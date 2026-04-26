@@ -59,7 +59,10 @@ const NAMELINK_USER_RE =
 
 const ROW_RE = /<tr id="row_\d+">([\s\S]*?)<\/tr>/g;
 const DATETITLE_RE = /<th class="datetitle">\s*([^<]+?)\s*</;
-const DATESTATUS_RE = /class="dateStatus"[\s\S]{0,200}?value="(CANDIDATE|DECISION)"/;
+// Permissive: extract any value, then bucket as DECISION/CANDIDATE later.
+// Past rows on character-sheets sometimes have a different (or empty) value
+// once a session has aged past its date — we still want to display them.
+const DATESTATUS_RE = /class="dateStatus"[\s\S]{0,200}?value="([^"]*)"/;
 const ATTENDANCE_RE =
   /<span\s+class="tag statustag[^"]*"[^>]*>\s*([^<]+?)\s*<\/span>/g;
 
@@ -142,6 +145,13 @@ function parseSessions(html: string, userCount: number): ScheduleSession[] {
     const rawDate = dateMatch[1].trim();
     const parsed = parseRawDate(rawDate);
     if (!parsed) continue;
+
+    // Bucket the dateStatus value:
+    //   "DECISION"     → confirmed session
+    //   anything else  → CANDIDATE (default; covers empty / past / future)
+    const statusRaw = statusMatch ? statusMatch[1] : "";
+    const status: SessionStatus =
+      statusRaw === "DECISION" ? "DECISION" : "CANDIDATE";
 
     // Attendance symbols, in document order. We only collect entries up to
     // the user count to avoid accidentally consuming extra spans elsewhere.

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Eye, EyeOff, ExternalLink } from "lucide-react";
+import { History, ExternalLink } from "lucide-react";
 import { NextSessionCard } from "./next-session-card";
 import { ScheduleList } from "./schedule-list";
 import type { NextSessionResult, ScheduleFetchResult } from "@/lib/schedule/next-session";
@@ -66,6 +66,12 @@ export function SchedulePageBody({ result, nextResult, scheduleUrl }: Props) {
           </h1>
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
+          {/* History icon with color-based state — avoids the Eye/EyeOff
+              ambiguity ("does open eye mean things are visible or that I
+              can click to view them?"). Single icon, three visual states:
+                - default (off): muted grey
+                - hover (peek):  foreground with cyan border tint
+                - pinned (on):   solid cyan + soft glow */}
           <button
             type="button"
             onClick={() => setPinned((v) => !v)}
@@ -75,8 +81,8 @@ export function SchedulePageBody({ result, nextResult, scheduleUrl }: Props) {
             aria-label={pinned ? "過去日程を隠す" : "過去日程を表示"}
             title={
               pinned
-                ? "クリックで非表示にする"
-                : "ホバーで一時表示・クリックで固定表示（タップでも切替）"
+                ? "過去日程: 表示中（クリックで非表示）"
+                : "過去日程: 非表示（ホバーで一時表示・クリック/タップで固定）"
             }
             className={
               "inline-flex h-8 w-8 items-center justify-center rounded-md border transition-colors " +
@@ -85,11 +91,13 @@ export function SchedulePageBody({ result, nextResult, scheduleUrl }: Props) {
                 : "border-border/60 text-muted-foreground hover:border-[var(--neon-cyan)]/60 hover:text-foreground")
             }
           >
-            {showPast ? (
-              <EyeOff className="h-4 w-4" aria-hidden />
-            ) : (
-              <Eye className="h-4 w-4" aria-hidden />
-            )}
+            <History
+              className={
+                "h-4 w-4 transition-transform " +
+                (showPast && !pinned ? "scale-110" : "")
+              }
+              aria-hidden
+            />
           </button>
           <a
             href={scheduleUrl}
