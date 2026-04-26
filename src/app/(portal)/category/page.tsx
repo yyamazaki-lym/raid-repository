@@ -3,8 +3,12 @@ import { Card } from "@/components/ui/card";
 import { CategoryFormDialog } from "@/components/portal/category-form-dialog";
 import { ImportDiscordButton } from "@/components/portal/import-discord-button";
 import { BackfillFirstClearButton } from "@/components/portal/backfill-first-clear-button";
+import { BackfillDurationsButton } from "@/components/portal/backfill-durations-button";
 import { fetchCategories } from "@/lib/supabase/categories";
-import { fetchRecentImportCountsByCategory } from "@/lib/server/categories-actions";
+import {
+  fetchPracticeSecondsByCategory,
+  fetchRecentImportCountsByCategory,
+} from "@/lib/server/categories-actions";
 import { CategoryList } from "./category-list";
 
 export const metadata = {
@@ -12,9 +16,10 @@ export const metadata = {
 };
 
 export default async function CategoryIndexPage() {
-  const [result, recentCounts] = await Promise.all([
+  const [result, recentCounts, practiceSeconds] = await Promise.all([
     fetchCategories(),
     fetchRecentImportCountsByCategory(7),
+    fetchPracticeSecondsByCategory(),
   ]);
 
   return (
@@ -29,6 +34,7 @@ export default async function CategoryIndexPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <BackfillDurationsButton />
           <BackfillFirstClearButton />
           <ImportDiscordButton />
           <CategoryFormDialog />
@@ -56,6 +62,7 @@ export default async function CategoryIndexPage() {
       <CategoryList
         initialCategories={result.categories}
         recentImportCounts={recentCounts}
+        practiceSecondsByCategory={practiceSeconds}
       />
     </div>
   );

@@ -9,6 +9,7 @@ import {
   Trash2,
   Pencil,
   Trophy,
+  Timer,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -51,11 +52,14 @@ type Props = {
   initialCategories: Category[];
   /** Map of category.id → number of Discord-imported links in the last 7d. */
   recentImportCounts?: Record<string, number>;
+  /** Map of category.id → sum of all video durations in seconds. */
+  practiceSecondsByCategory?: Record<string, number>;
 };
 
 export function CategoryList({
   initialCategories,
   recentImportCounts = {},
+  practiceSecondsByCategory = {},
 }: Props) {
   // Realtime hook keeps the list in sync with DB changes from any client.
   const live = useRealtimeCategories(initialCategories);
@@ -172,6 +176,7 @@ export function CategoryList({
                 key={cat.id}
                 category={cat}
                 recentImports={recentImportCounts[cat.id] ?? 0}
+                practiceSeconds={practiceSecondsByCategory[cat.id] ?? 0}
                 onChangeStatus={(s) => onChangeStatus(cat.id, s)}
                 onEdit={() => setEditTarget(cat)}
                 onDelete={() => onDelete(cat)}
@@ -196,12 +201,14 @@ export function CategoryList({
 function SortableCategoryCard({
   category,
   recentImports,
+  practiceSeconds,
   onChangeStatus,
   onEdit,
   onDelete,
 }: {
   category: Category;
   recentImports: number;
+  practiceSeconds: number;
   onChangeStatus: (s: CategoryStatus) => void;
   onEdit: () => void;
   onDelete: () => void;
@@ -221,6 +228,16 @@ function SortableCategoryCard({
     opacity: isDragging ? 0.5 : 1,
     zIndex: isDragging ? 10 : "auto",
   };
+
+  // "Practice time" badge — only meaningful for categories that the
+  // group has actually engaged with. 未着手 has no practice time by
+  // definition; the other three statuses show the cumulative video
+  // total when there's data to show.
+  const showPracticeTime =
+    practiceSeconds > 0 &&
+    (category.status === "練習中" ||
+      category.status === "休止中" ||
+      category.status === "クリア済");
 
   return (
     <li ref={setNodeRef} style={style} {...attributes}>
@@ -244,9 +261,18 @@ function SortableCategoryCard({
               {category.name}
             </p>
           </div>
-          <div className="mt-1 flex items-center justify-between gap-2 font-mono text-[11px] tracking-widest uppercase">
+          <div className="mt-1 flex flex-wrap items-center justify-between gap-2 font-mono text-[11px] tracking-widest uppercase">
             <p className="text-muted-foreground">/{category.slug}</p>
-            <div className="flex items-center gap-1">
+            <div className="flex flex-wrap items-center gap-1">
+              {showPracticeTime && (
+                <span
+                  className="inline-flex items-center gap-1 rounded-sm border border-violet-400/40 bg-violet-400/10 px-1.5 py-px text-[9px] text-violet-200"
+                  title={`累計練習時間: ${formatDurationLong(practiceSeconds)}`}
+                >
+                  <Timer className="h-2.5 w-2.5" aria-hidden />
+                  {formatDurationShort(practiceSeconds)}
+                </span>
+              )}
               {category.firstClearAt && (
                 <span
                   className="inline-flex items-center gap-1 rounded-sm border border-amber-400/45 bg-amber-400/10 px-1.5 py-px text-[9px] text-amber-200"
@@ -286,6 +312,34 @@ function SortableCategoryCard({
       </Card>
     </li>
   );
+}
+
+/**
+ * Compact duration label for the practice-time badge.
+ *   <  1h: `45m`
+ *   <100h: `12h30m`
+ *   ≥100h: `120h` (drop minutes once total dwarfs them)
+ */
+function formatDurationShort(seconds: number): string {
+  const totalMinutes = Math.floor(seconds / 60);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (hours === 0) return `${minutes}m`;
+  if (hours >= 100) return `${hours}h`;
+  if (minutes === 0) return `${hours}h`;
+  return `${hours}h${minutes}m`;
+}
+
+/**
+ * Verbose duration for the hover tooltip — Japanese readable form.
+ */
+function formatDurationLong(seconds: number): string {
+  const totalMinutes = Math.floor(seconds / 60);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (hours === 0) return `${minutes}分`;
+  if (minutes === 0) return `${hours}時間`;
+  return `${hours}時間${minutes}分`;
 }
 
 /**

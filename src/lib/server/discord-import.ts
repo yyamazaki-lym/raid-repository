@@ -1,6 +1,7 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { fetchPageTitle } from "@/lib/server/page-title";
+import { fetchYouTubeDuration } from "@/lib/server/youtube-duration";
 import { isClearTitle } from "@/lib/clear-detection";
 import {
   rowToCategory,
@@ -221,6 +222,10 @@ async function importChannel(
   for (const c of fresh) {
     const title = (await fetchPageTitle(c.url)) ?? c.url;
     const description = `Discord 取り込み (by ${c.postedBy})`;
+    // Only try a duration lookup for video kind — strategy links are
+    // articles/Notion pages where "duration" is meaningless.
+    const duration =
+      kind === "video" ? await fetchYouTubeDuration(c.url) : null;
     const { error: insertError } = await supabase.from("category_links").insert({
       category_id: cat.id,
       kind,
@@ -229,6 +234,7 @@ async function importChannel(
       description,
       sort_order: nextOrder,
       source: "discord",
+      duration_seconds: duration,
     });
     if (insertError) {
       console.warn(

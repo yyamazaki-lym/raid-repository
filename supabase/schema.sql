@@ -83,6 +83,12 @@ ALTER TABLE public.category_links
 -- corresponding FFLogs report (or any related external page).
 ALTER TABLE public.category_links
   ADD COLUMN IF NOT EXISTS logs_url text;
+
+-- Phase 4.5: video duration in seconds. Auto-fetched from YouTube on
+-- insert (HTML scrape) or manually filled. Used to compute the
+-- cumulative "practice time" total per category.
+ALTER TABLE public.category_links
+  ADD COLUMN IF NOT EXISTS duration_seconds integer;
 CREATE INDEX IF NOT EXISTS category_links_category_kind_idx
   ON public.category_links(category_id, kind, sort_order);
 

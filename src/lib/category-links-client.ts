@@ -4,6 +4,8 @@ import { useEffect, useId, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { isClearTitle } from "@/lib/clear-detection";
 import { maybeSetFirstClearAt } from "@/lib/categories-client";
+import { enrichVideoLinkDuration } from "@/lib/server/categories-actions";
+import { parseYouTubeId } from "@/lib/youtube";
 import {
   rowToCategoryLink,
   type CategoryLink,
@@ -65,6 +67,18 @@ export async function createCategoryLink(input: {
       await maybeSetFirstClearAt(link.categoryId, link.createdAt);
     } catch (e) {
       console.warn("[category-links-client] first-clear auto-set failed:", e);
+    }
+  }
+
+  // Auto-fetch YouTube duration for video links. Server-side via a Server
+  // Action so credentials/User-Agent stay off the browser. Best-effort —
+  // failures leave duration_seconds NULL and the user can retry via the
+  // backfill button later.
+  if (link.kind === "video" && parseYouTubeId(link.url)) {
+    try {
+      await enrichVideoLinkDuration(link.id, link.url);
+    } catch (e) {
+      console.warn("[category-links-client] duration enrich failed:", e);
     }
   }
   return { ok: true, link };

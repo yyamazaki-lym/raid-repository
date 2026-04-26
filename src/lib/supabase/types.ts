@@ -91,6 +91,8 @@ export type CategoryLinkRow = {
   source: CategoryLinkSource;
   /** Optional secondary URL — videos use this for FFLogs reports. */
   logs_url: string | null;
+  /** Video length in seconds. NULL until fetched from YouTube or set manually. */
+  duration_seconds: number | null;
   created_at: string;
   updated_at: string;
 };
@@ -105,6 +107,7 @@ export type CategoryLink = {
   sortOrder: number;
   source: CategoryLinkSource;
   logsUrl: string | null;
+  durationSeconds: number | null;
   createdAt: string;
 };
 
@@ -119,6 +122,7 @@ export function rowToCategoryLink(row: CategoryLinkRow): CategoryLink {
     sortOrder: row.sort_order,
     source: row.source ?? "manual",
     logsUrl: row.logs_url ?? null,
+    durationSeconds: row.duration_seconds ?? null,
     createdAt: row.created_at,
   };
 }

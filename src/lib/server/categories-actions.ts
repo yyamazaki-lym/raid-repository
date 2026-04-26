@@ -1,6 +1,7 @@
 "use server";
 
 import { runDiscordImport } from "./discord-import";
+import { fetchYouTubeDuration } from "./youtube-duration";
 import { isClearTitle } from "@/lib/clear-detection";
 import { createClient } from "@/lib/supabase/server";
 
@@ -168,6 +169,124 @@ export async function backfillFirstClearFromExistingVideos(): Promise<BackfillRe
     noMatch,
     filledDetails,
   };
+}
+
+/**
+ * Server Action: fetch YouTube duration for an existing link and persist
+ * `category_links.duration_seconds`. Called by the link form dialog
+ * after a manual create — the dialog inserts the row first (browser-side),
+ * then asks us to enrich with the duration.
+ *
+ * No-op for non-YouTube URLs or fetch failures; the row stays as NULL.
+ */
+export async function enrichVideoLinkDuration(
+  linkId: string,
+  url: string,
+): Promise<{ ok: boolean; durationSeconds: number | null }> {
+  const seconds = await fetchYouTubeDuration(url);
+  if (seconds === null) return { ok: true, durationSeconds: null };
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("category_links")
+    .update({ duration_seconds: seconds })
+    .eq("id", linkId);
+  if (error) {
+    console.warn("[enrich-video] update failed", linkId, error.message);
+    return { ok: false, durationSeconds: null };
+  }
+  return { ok: true, durationSeconds: seconds };
+}
+
+export type DurationBackfillResult = {
+  ok: boolean;
+  reason?: string;
+  scanned: number;
+  filled: number;
+  failed: number;
+  /** YouTube URLs only — non-YouTube videos are not attempted. */
+  skippedNonYoutube: number;
+};
+
+/**
+ * Server Action: walk every video link with NULL `duration_seconds` and
+ * try to fill it via the YouTube scrape. Idempotent — re-running is a
+ * no-op once everything fetchable has been filled.
+ */
+export async function backfillVideoDurations(): Promise<DurationBackfillResult> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("category_links")
+    .select("id, url, duration_seconds")
+    .eq("kind", "video")
+    .is("duration_seconds", null);
+  if (error || !data) {
+    return {
+      ok: false,
+      reason: "video links fetch failed: " + (error?.message ?? "unknown"),
+      scanned: 0,
+      filled: 0,
+      failed: 0,
+      skippedNonYoutube: 0,
+    };
+  }
+  let filled = 0;
+  let failed = 0;
+  let skippedNonYoutube = 0;
+  for (const row of data) {
+    const seconds = await fetchYouTubeDuration(row.url as string);
+    if (seconds === null) {
+      // Either non-YouTube or fetch failed — bucket separately so the UI
+      // can distinguish "no videos to process" from "real errors".
+      skippedNonYoutube += 1;
+      continue;
+    }
+    const { error: updErr } = await supabase
+      .from("category_links")
+      .update({ duration_seconds: seconds })
+      .eq("id", row.id as string);
+    if (updErr) {
+      console.warn(
+        "[duration-backfill] update failed",
+        row.id,
+        updErr.message,
+      );
+      failed += 1;
+      continue;
+    }
+    filled += 1;
+  }
+  return {
+    ok: true,
+    scanned: data.length,
+    filled,
+    failed,
+    skippedNonYoutube,
+  };
+}
+
+/**
+ * Sum of `duration_seconds` per category across all video links.
+ * NULL durations are ignored. Used by the category index to render the
+ * "累計練習時間" badge on each card.
+ */
+export async function fetchPracticeSecondsByCategory(): Promise<
+  Record<string, number>
+> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("category_links")
+    .select("category_id, duration_seconds")
+    .eq("kind", "video")
+    .not("duration_seconds", "is", null);
+  if (error || !data) return {};
+  const totals: Record<string, number> = {};
+  for (const row of data) {
+    const cid = row.category_id as string;
+    const sec = row.duration_seconds as number | null;
+    if (typeof sec !== "number" || sec <= 0) continue;
+    totals[cid] = (totals[cid] ?? 0) + sec;
+  }
+  return totals;
 }
 
 /**
