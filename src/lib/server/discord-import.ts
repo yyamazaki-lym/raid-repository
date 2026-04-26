@@ -33,8 +33,16 @@ export type ImportResult = {
   category: string;
   kind: CategoryLinkKind;
   ok: boolean;
+  /** Total URLs found in the Discord messages this run. */
   scanned?: number;
+  /** Of `scanned`, how many were already in the DB and skipped. */
+  duplicates?: number;
+  /** Of (scanned - duplicates), how many INSERTs succeeded. */
   inserted?: number;
+  /** Of (scanned - duplicates), how many INSERTs failed (DB error). */
+  failed?: number;
+  /** Set when the most-recent insert failure produced an error message. */
+  failReason?: string;
   reason?: string;
   skipped?: "disabled";
 };
@@ -176,13 +184,16 @@ async function importChannel(
     .eq("kind", kind);
   const existingUrls = new Set((existing ?? []).map((r) => r.url as string));
   const fresh = candidates.filter((c) => !existingUrls.has(c.url));
+  const duplicates = candidates.length - fresh.length;
   if (fresh.length === 0) {
     return {
       category: cat.slug,
       kind,
       ok: true,
       scanned: candidates.length,
+      duplicates,
       inserted: 0,
+      failed: 0,
     };
   }
 
@@ -199,6 +210,8 @@ async function importChannel(
 
   // 5. Insert.
   let inserted = 0;
+  let failed = 0;
+  let lastFailReason: string | undefined;
   for (const c of fresh) {
     const title = (await fetchPageTitle(c.url)) ?? c.url;
     const description = `Discord 取り込み (by ${c.postedBy})`;
@@ -219,6 +232,8 @@ async function importChannel(
         c.url,
         insertError.message,
       );
+      failed += 1;
+      lastFailReason = insertError.message;
       continue;
     }
     nextOrder += 1;
@@ -230,7 +245,10 @@ async function importChannel(
     kind,
     ok: true,
     scanned: candidates.length,
+    duplicates,
     inserted,
+    failed,
+    failReason: lastFailReason,
   };
 }
 

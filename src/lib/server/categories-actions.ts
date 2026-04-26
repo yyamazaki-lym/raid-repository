@@ -3,20 +3,33 @@
 import { runDiscordImport } from "./discord-import";
 import { createClient } from "@/lib/supabase/server";
 
+export type ImportNowItem = {
+  category: string;
+  kind: "strategy" | "video";
+  ok: boolean;
+  scanned: number;
+  duplicates: number;
+  inserted: number;
+  failed: number;
+  reason?: string;
+  skipped?: "disabled";
+};
+
 /**
  * Server Action: trigger the Discord import on demand from the UI.
  *
- * Runs server-side (so DISCORD_BOT_TOKEN and Supabase credentials never
- * leave the server). Anyone hitting the page can call it — there is no
- * user auth model in this single-tenant app, and the action only writes
- * rows that the underlying RLS already permits.
+ * Runs server-side so credentials never leave the server. Returns a
+ * detailed per-(category, kind) breakdown so the UI can show exactly
+ * what happened — useful when scanned=0 hints at bot permission issues
+ * vs duplicates>0/inserted=0 hints at idempotent re-runs.
  */
 export async function importDiscordNow(): Promise<{
   ok: boolean;
   reason?: string;
   totalScanned: number;
   totalInserted: number;
-  byCategory: { category: string; kind: "strategy" | "video"; inserted: number; scanned: number }[];
+  totalFailed: number;
+  items: ImportNowItem[];
 }> {
   const result = await runDiscordImport();
   if (!result.ok) {
@@ -25,30 +38,31 @@ export async function importDiscordNow(): Promise<{
       reason: result.reason,
       totalScanned: 0,
       totalInserted: 0,
-      byCategory: [],
+      totalFailed: 0,
+      items: [],
     };
   }
   let totalScanned = 0;
   let totalInserted = 0;
-  const byCategory: {
-    category: string;
-    kind: "strategy" | "video";
-    inserted: number;
-    scanned: number;
-  }[] = [];
+  let totalFailed = 0;
+  const items: ImportNowItem[] = [];
   for (const r of result.results) {
     totalScanned += r.scanned ?? 0;
     totalInserted += r.inserted ?? 0;
-    if ((r.scanned ?? 0) + (r.inserted ?? 0) > 0) {
-      byCategory.push({
-        category: r.category,
-        kind: r.kind,
-        inserted: r.inserted ?? 0,
-        scanned: r.scanned ?? 0,
-      });
-    }
+    totalFailed += r.failed ?? 0;
+    items.push({
+      category: r.category,
+      kind: r.kind,
+      ok: r.ok,
+      scanned: r.scanned ?? 0,
+      duplicates: r.duplicates ?? 0,
+      inserted: r.inserted ?? 0,
+      failed: r.failed ?? 0,
+      reason: r.reason ?? r.failReason,
+      skipped: r.skipped,
+    });
   }
-  return { ok: true, totalScanned, totalInserted, byCategory };
+  return { ok: true, totalScanned, totalInserted, totalFailed, items };
 }
 
 /**
