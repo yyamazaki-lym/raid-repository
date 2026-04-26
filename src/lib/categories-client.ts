@@ -93,6 +93,8 @@ export async function updateCategory(
     status: CategoryStatus;
     loot_sheet_url: string | null;
     mitigation_sheet_url: string | null;
+    discord_strategy_channel_id: string | null;
+    discord_video_channel_id: string | null;
   }>,
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
   const supabase = createClient();

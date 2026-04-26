@@ -32,6 +32,8 @@ export type CategoryRow = {
   sort_order: number;
   loot_sheet_url: string | null;
   mitigation_sheet_url: string | null;
+  discord_strategy_channel_id: string | null;
+  discord_video_channel_id: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -45,6 +47,8 @@ export type Category = {
   sortOrder: number;
   lootSheetUrl: string | null;
   mitigationSheetUrl: string | null;
+  discordStrategyChannelId: string | null;
+  discordVideoChannelId: string | null;
 };
 
 export function rowToCategory(row: CategoryRow): Category {
@@ -56,6 +60,8 @@ export function rowToCategory(row: CategoryRow): Category {
     sortOrder: row.sort_order,
     lootSheetUrl: row.loot_sheet_url ?? null,
     mitigationSheetUrl: row.mitigation_sheet_url ?? null,
+    discordStrategyChannelId: row.discord_strategy_channel_id ?? null,
+    discordVideoChannelId: row.discord_video_channel_id ?? null,
   };
 }
 

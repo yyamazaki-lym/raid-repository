@@ -39,8 +39,11 @@ ALTER TABLE public.categories
   CHECK (status IN ('未着手','練習中','クリア済','休止中'));
 -- Phase 3 additions: external spreadsheet URLs (added later via migration).
 ALTER TABLE public.categories
-  ADD COLUMN IF NOT EXISTS loot_sheet_url       text,
-  ADD COLUMN IF NOT EXISTS mitigation_sheet_url text;
+  ADD COLUMN IF NOT EXISTS loot_sheet_url               text,
+  ADD COLUMN IF NOT EXISTS mitigation_sheet_url         text,
+  -- Phase 4: per-category Discord channels for the daily auto-import job.
+  ADD COLUMN IF NOT EXISTS discord_strategy_channel_id  text,
+  ADD COLUMN IF NOT EXISTS discord_video_channel_id     text;
 
 CREATE INDEX IF NOT EXISTS categories_sort_order_idx
   ON public.categories(sort_order);

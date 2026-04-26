@@ -65,6 +65,12 @@ export function CategoryFormDialog({
     category?.mitigationSheetUrl ?? "",
   );
   const [lootUrl, setLootUrl] = useState(category?.lootSheetUrl ?? "");
+  const [discordStrategy, setDiscordStrategy] = useState(
+    category?.discordStrategyChannelId ?? "",
+  );
+  const [discordVideo, setDiscordVideo] = useState(
+    category?.discordVideoChannelId ?? "",
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -75,6 +81,8 @@ export function CategoryFormDialog({
       setStatus(category?.status ?? "未着手");
       setMitigationUrl(category?.mitigationSheetUrl ?? "");
       setLootUrl(category?.lootSheetUrl ?? "");
+      setDiscordStrategy(category?.discordStrategyChannelId ?? "");
+      setDiscordVideo(category?.discordVideoChannelId ?? "");
       setError(null);
     }
   }, [open, category]);
@@ -97,6 +105,8 @@ export function CategoryFormDialog({
     const trimmedSlug = slug.trim().toLowerCase();
     const trimmedMitigation = mitigationUrl.trim();
     const trimmedLoot = lootUrl.trim();
+    const trimmedDiscordStrategy = discordStrategy.trim();
+    const trimmedDiscordVideo = discordVideo.trim();
 
     if (!trimmedName) return setError("名前を入力してください");
     if (!trimmedSlug || !SLUG_RE.test(trimmedSlug)) {
@@ -109,6 +119,15 @@ export function CategoryFormDialog({
     const lootErr = validateUrl(trimmedLoot);
     if (lootErr) return setError("ロット管理URL: " + lootErr);
 
+    // Discord channel IDs are 17–20 digit snowflakes.
+    const SNOWFLAKE_RE = /^\d{17,20}$/;
+    if (trimmedDiscordStrategy && !SNOWFLAKE_RE.test(trimmedDiscordStrategy)) {
+      return setError("攻略チャンネルIDは17〜20桁の数字です");
+    }
+    if (trimmedDiscordVideo && !SNOWFLAKE_RE.test(trimmedDiscordVideo)) {
+      return setError("動画チャンネルIDは17〜20桁の数字です");
+    }
+
     setBusy(true);
     const patch = {
       name: trimmedName,
@@ -116,6 +135,8 @@ export function CategoryFormDialog({
       status,
       mitigation_sheet_url: trimmedMitigation || null,
       loot_sheet_url: trimmedLoot || null,
+      discord_strategy_channel_id: trimmedDiscordStrategy || null,
+      discord_video_channel_id: trimmedDiscordVideo || null,
     };
 
     const result = isEdit
@@ -284,6 +305,51 @@ export function CategoryFormDialog({
             />
             <p className="text-muted-foreground text-[11px] leading-relaxed">
               ロット管理サブタブで iframe 埋め込み表示されます。
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-1.5 border-t border-border/30 pt-4">
+            <Label
+              htmlFor="discord-strategy"
+              className="text-xs text-foreground/80"
+            >
+              Discord 攻略チャンネルID（任意）
+            </Label>
+            <Input
+              id="discord-strategy"
+              inputMode="numeric"
+              value={discordStrategy}
+              onChange={(e) => setDiscordStrategy(e.target.value)}
+              placeholder="例: 1234567890123456789"
+              className="font-mono text-[12px]"
+              autoComplete="off"
+              spellCheck={false}
+            />
+            <p className="text-muted-foreground text-[11px] leading-relaxed">
+              設定すると、毎日1回このチャンネルから URL を自動で攻略情報タブに取り込みます。
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label
+              htmlFor="discord-video"
+              className="text-xs text-foreground/80"
+            >
+              Discord 動画チャンネルID（任意）
+            </Label>
+            <Input
+              id="discord-video"
+              inputMode="numeric"
+              value={discordVideo}
+              onChange={(e) => setDiscordVideo(e.target.value)}
+              placeholder="例: 1234567890123456789"
+              className="font-mono text-[12px]"
+              autoComplete="off"
+              spellCheck={false}
+            />
+            <p className="text-muted-foreground text-[11px] leading-relaxed">
+              設定すると、毎日1回このチャンネルから URL を自動で動画タブに取り込みます。
+              Discord の開発者モードを ON にして、チャンネル名右クリック → IDコピーで取得できます。
             </p>
           </div>
 
