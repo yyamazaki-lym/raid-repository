@@ -34,6 +34,12 @@ type Props = {
   showPast?: boolean;
   /** Source schedule URL — used to derive the per-user edit URL on hover/click. */
   scheduleUrl?: string | null;
+  /**
+   * Pre-fetched Japanese-holiday `YYYY-MM-DD` set passed down from
+   * the server page. Used to color holiday rows red. When undefined,
+   * the synchronous hardcoded fallback is used by `isJapaneseHoliday`.
+   */
+  holidays?: readonly string[];
 };
 
 export function ScheduleList({
@@ -41,6 +47,7 @@ export function ScheduleList({
   limit,
   showPast = false,
   scheduleUrl,
+  holidays,
 }: Props) {
   if (!result.ok) {
     return (
@@ -80,57 +87,93 @@ export function ScheduleList({
     );
   }
 
+  // Header row used by both the upcoming and past tables. Extracted so
+  // the two tables stay in lockstep when columns change.
+  const tableHead = (
+    <thead>
+      <tr className="border-b border-border/60 text-[10px] tracking-[0.18em] text-muted-foreground uppercase">
+        <th scope="col" className="px-3 py-2 font-mono">
+          日程
+        </th>
+        <th scope="col" className="px-2 py-2 font-mono">
+          確定
+        </th>
+        {users.map((u) => (
+          <UserHeaderCell
+            key={u.userId}
+            user={u}
+            comments={commentsByAuthor.get(u.name) ?? []}
+            editUrl={buildEditUrl(scheduleUrl, u.userId)}
+          />
+        ))}
+      </tr>
+    </thead>
+  );
+
   return (
-    <Card className="glass overflow-hidden p-0">
-      <Legend />
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[640px] border-collapse text-left text-sm">
-          <thead>
-            <tr className="border-b border-border/60 text-[10px] tracking-[0.18em] text-muted-foreground uppercase">
-              <th scope="col" className="px-3 py-2 font-mono">
-                日程
-              </th>
-              <th scope="col" className="px-2 py-2 font-mono">
-                確定
-              </th>
-              {users.map((u) => (
-                <UserHeaderCell
-                  key={u.userId}
-                  user={u}
-                  comments={commentsByAuthor.get(u.name) ?? []}
-                  editUrl={buildEditUrl(scheduleUrl, u.userId)}
+    <div className="flex flex-col gap-4">
+      {/* Upcoming sessions — primary card. Layout untouched. */}
+      <Card className="glass overflow-hidden p-0">
+        <Legend />
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[640px] border-collapse text-left text-sm">
+            {tableHead}
+            <tbody>
+              {upcoming.map((s) => (
+                <SessionRow
+                  key={s.rawDate}
+                  session={s}
+                  users={users}
+                  holidays={holidays}
                 />
               ))}
-            </tr>
-          </thead>
-          <tbody>
-            {upcoming.map((s) => (
-              <SessionRow key={s.rawDate} session={s} users={users} />
-            ))}
-            {showPast && renderedPast.length > 0 && (
-              <>
+              {upcoming.length === 0 && (
                 <tr>
                   <td
                     colSpan={2 + users.length}
-                    className="border-t border-border/40 bg-secondary/20 px-3 py-1.5 font-mono text-[10px] tracking-[0.22em] text-muted-foreground uppercase"
+                    className="px-3 py-6 text-center text-xs text-muted-foreground"
                   >
-                    Past — 過去の予定 ({renderedPast.length}件)
+                    今後の予定はありません
                   </td>
                 </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      {/* Past sessions — separate card so the visual break is unmistakable.
+          Hidden until the user enables the toggle. */}
+      {showPast && renderedPast.length > 0 && (
+        <Card className="glass overflow-hidden p-0">
+          <header className="flex items-center justify-between gap-2 border-b border-border/40 bg-secondary/20 px-3 py-2">
+            <div className="flex items-center gap-2 font-mono text-[10px] tracking-[0.22em] text-muted-foreground uppercase">
+              <span className="inline-flex h-1.5 w-1.5 rounded-full bg-muted-foreground/60" />
+              Past · 過去の予定
+            </div>
+            <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
+              {renderedPast.length} 件
+            </span>
+          </header>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[640px] border-collapse text-left text-sm">
+              {tableHead}
+              <tbody>
                 {renderedPast.map((s) => (
                   <SessionRow
                     key={s.rawDate}
                     session={s}
                     users={users}
                     isPast
+                    holidays={holidays}
                   />
                 ))}
-              </>
-            )}
-          </tbody>
-        </table>
-      </div>
-    </Card>
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+    </div>
   );
 }
 
@@ -197,16 +240,18 @@ function SessionRow({
   session,
   users,
   isPast = false,
+  holidays,
 }: {
   session: ScheduleSession;
   users: ScheduleUser[];
   isPast?: boolean;
+  holidays?: readonly string[];
 }) {
   const decided = session.status === "DECISION";
   // Japanese national holidays get a red date label — overrides the
   // default and DECISION-cyan styling. Doesn't change the row background
   // so the past/decided treatment still composes underneath.
-  const holiday = isJapaneseHoliday(session.date);
+  const holiday = isJapaneseHoliday(session.date, holidays);
   return (
     <tr
       className={

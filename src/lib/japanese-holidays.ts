@@ -1,19 +1,18 @@
 /**
- * Lightweight Japanese national-holiday detector.
+ * Japanese national-holiday detector.
  *
- * Hardcoded list of national holidays + 振替休日 (substitute holidays
- * when the original falls on a Sunday) for the years a typical FF14
- * raid group's schedule actually spans (2024 〜 2028).
+ * Strategy:
+ *   1. Server-side `fetchJapaneseHolidays()` pulls the public JSON
+ *      from holidays-jp.github.io (~ Cabinet Office data, well-maintained,
+ *      auto-updates with new years + Cabinet announcements). Cached
+ *      24 hours via Next.js fetch revalidate, so no per-request cost.
+ *   2. If that fetch fails (network down, GitHub Pages outage), we fall
+ *      back to a hardcoded table covering 2024 〜 2028 so the UI doesn't
+ *      lose holiday colors entirely.
  *
- * Why not pull in a library:
- *   - Existing libraries (japanese-holidays, holiday_jp) bundle data
- *     for decades — overkill for our scope
- *   - The rules involve equinox astronomical calculations and
- *     substitute-holiday logic which is finicky to get exactly right;
- *     a hardcoded table for the relevant years is unambiguous
- *
- * If the app survives long enough, extend the table — the structure
- * makes that a simple data-only update.
+ * Consumers (server pages) call `fetchJapaneseHolidays()` and pass the
+ * resulting Set down to client components, which use the synchronous
+ * `isJapaneseHoliday(date, holidays?)` to color rows.
  */
 
 const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
@@ -140,7 +139,50 @@ function toJstYmd(date: Date): string {
   return `${y}-${m}-${d}`;
 }
 
-/** Returns true when the date (in JST) is a Japanese national holiday. */
-export function isJapaneseHoliday(date: Date): boolean {
-  return HOLIDAYS.has(toJstYmd(date));
+/**
+ * Server-side: fetch the latest Japanese-holiday list from the
+ * public holidays-jp.github.io JSON. Returns a Set of `YYYY-MM-DD`
+ * strings. Falls back to the hardcoded table on any failure.
+ *
+ * Cached for 24 hours via Next.js fetch revalidate — holiday data
+ * changes only when the Cabinet announces a new year's calendar
+ * (typically Feb of the prior year), so daily refresh is plenty.
+ */
+export async function fetchJapaneseHolidays(): Promise<Set<string>> {
+  try {
+    const res = await fetch(
+      "https://holidays-jp.github.io/api/v1/date.json",
+      {
+        next: { revalidate: 86400 },
+        headers: { "User-Agent": "RaidRepository/1.0" },
+        signal: AbortSignal.timeout(8000),
+      },
+    );
+    if (!res.ok) return HOLIDAYS;
+    const data = (await res.json()) as Record<string, string>;
+    const keys = Object.keys(data);
+    if (keys.length === 0) return HOLIDAYS;
+    return new Set(keys);
+  } catch {
+    return HOLIDAYS;
+  }
+}
+
+/**
+ * Returns true when the date (in JST) is a Japanese national holiday.
+ *
+ * @param holidays  Pre-fetched holidays Set (from `fetchJapaneseHolidays()`).
+ *                  Pass `undefined` to fall back to the hardcoded table.
+ *                  Accepts an array too, for ease of prop passing across
+ *                  the server/client boundary where Set isn't always
+ *                  reliably serialized.
+ */
+export function isJapaneseHoliday(
+  date: Date,
+  holidays?: Set<string> | readonly string[],
+): boolean {
+  const ymd = toJstYmd(date);
+  if (Array.isArray(holidays)) return holidays.includes(ymd);
+  if (holidays instanceof Set) return holidays.has(ymd);
+  return HOLIDAYS.has(ymd);
 }

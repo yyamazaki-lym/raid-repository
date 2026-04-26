@@ -27,9 +27,25 @@ type Props = {
   result: ScheduleFetchResult;
   nextResult: NextSessionResult;
   scheduleUrl: string;
+  /** Pre-fetched Japanese holiday dates (`YYYY-MM-DD`). */
+  holidays?: readonly string[];
 };
 
-export function SchedulePageBody({ result, nextResult, scheduleUrl }: Props) {
+export function SchedulePageBody({
+  result,
+  nextResult,
+  scheduleUrl,
+  holidays,
+}: Props) {
+  // Compute past-session count for the toggle badge so users can see
+  // at a glance how many past dates are available — addresses the
+  // surprise where past dates ended up far below upcoming and weren't
+  // immediately visible.
+  const pastCount = result.ok
+    ? result.data.sessions.filter(
+        (s) => s.date.getTime() < Date.now() - 6 * 60 * 60 * 1000,
+      ).length
+    : 0;
   // Pinned: durable on/off, persisted across visits.
   const [pinned, setPinned] = useState(false);
   // Hovered: ephemeral peek mode while the cursor is over the eye icon.
@@ -78,14 +94,18 @@ export function SchedulePageBody({ result, nextResult, scheduleUrl }: Props) {
             onMouseEnter={() => setHovered(true)}
             onMouseLeave={() => setHovered(false)}
             aria-pressed={pinned}
-            aria-label={pinned ? "過去日程を隠す" : "過去日程を表示"}
+            aria-label={
+              pinned
+                ? `過去日程を隠す (${pastCount}件)`
+                : `過去日程を表示 (${pastCount}件)`
+            }
             title={
               pinned
-                ? "過去日程: 表示中（クリックで非表示）"
-                : "過去日程: 非表示（ホバーで一時表示・クリック/タップで固定）"
+                ? `過去日程 ${pastCount}件: 表示中（クリックで非表示）`
+                : `過去日程 ${pastCount}件: 非表示（ホバーで一時表示・クリック/タップで固定）`
             }
             className={
-              "inline-flex h-8 w-8 items-center justify-center rounded-md border transition-colors " +
+              "relative inline-flex h-8 items-center justify-center gap-1 rounded-md border px-2 transition-colors " +
               (pinned
                 ? "border-[var(--neon-cyan)]/60 bg-[var(--neon-cyan)]/10 text-[var(--neon-cyan)] shadow-[0_0_10px_-4px_var(--neon-cyan)]"
                 : "border-border/60 text-muted-foreground hover:border-[var(--neon-cyan)]/60 hover:text-foreground")
@@ -98,6 +118,13 @@ export function SchedulePageBody({ result, nextResult, scheduleUrl }: Props) {
               }
               aria-hidden
             />
+            {/* Inline count so the user knows past data exists without
+                having to scroll to the bottom of the table. */}
+            {pastCount > 0 && (
+              <span className="font-mono text-[10px] tracking-widest tabular-nums">
+                {pastCount}
+              </span>
+            )}
           </button>
           <a
             href={scheduleUrl}
@@ -118,6 +145,7 @@ export function SchedulePageBody({ result, nextResult, scheduleUrl }: Props) {
         result={result}
         showPast={showPast}
         scheduleUrl={scheduleUrl}
+        holidays={holidays}
       />
     </div>
   );

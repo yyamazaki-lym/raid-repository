@@ -3,6 +3,26 @@ import { Activity } from "lucide-react";
 import { ThemeSwitcher } from "./theme-switcher";
 import { SettingsDialog } from "./settings-dialog";
 
+/**
+ * App version for the header badge.
+ *
+ * Versioning convention:
+ *   MAJOR.MINOR.PATCH (semver-ish)
+ *     PATCH  — bug fixes, small UI tweaks (1.0.0 → 1.0.1)
+ *     MINOR  — page-wide overhauls or notable new features (1.0.x → 1.1.0)
+ *     MAJOR  — rare, breaking changes (1.x → 2.0.0)
+ *
+ * Stage tag (suffix):
+ *     ALPHA — internal, rough — bumped to BETA once it's daily-driver usable
+ *     BETA  — operational, but still actively bug-fixing (current)
+ *     RC    — release candidate, only show-stoppers being fixed
+ *     (none) — stable
+ *
+ * Keep this in sync with package.json's `version` field on every bump.
+ */
+const APP_VERSION = "1.0.0";
+const APP_STAGE = "BETA";
+
 export function SiteHeader() {
   return (
     <header className="glass-bar sticky top-0 z-30">
@@ -20,7 +40,7 @@ export function SiteHeader() {
               RAID REPOSITORY
             </span>
             <span className="font-mono text-[10px] tracking-widest text-muted-foreground sm:text-[11px]">
-              v0.1 · ALPHA
+              v{APP_VERSION} · {APP_STAGE}
             </span>
           </div>
         </Link>

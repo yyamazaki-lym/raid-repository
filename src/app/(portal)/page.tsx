@@ -1,5 +1,6 @@
 import { ScheduleOnboarding } from "@/components/portal/schedule-onboarding";
 import { SchedulePageBody } from "@/components/portal/schedule-page-body";
+import { fetchJapaneseHolidays } from "@/lib/japanese-holidays";
 import {
   fetchSchedule,
   pickNextDecision,
@@ -28,7 +29,10 @@ export default async function SchedulePage() {
     );
   }
 
-  const result = await fetchSchedule();
+  const [result, holidaySet] = await Promise.all([
+    fetchSchedule(),
+    fetchJapaneseHolidays(),
+  ]);
   const nextResult: NextSessionResult = result.ok
     ? { ok: true, session: pickNextDecision(result.data.sessions) }
     : { ok: false, reason: result.reason };
@@ -36,11 +40,14 @@ export default async function SchedulePage() {
   // Past-visibility state lives client-side now so we can offer a
   // hover-peek + click-to-pin UX. The header buttons + the list are
   // wrapped together in a Client Component that owns that state.
+  // Holidays are passed as a string[] so it serializes cleanly across
+  // the server/client boundary (Set works in RSC but is verbose).
   return (
     <SchedulePageBody
       result={result}
       nextResult={nextResult}
       scheduleUrl={url}
+      holidays={Array.from(holidaySet)}
     />
   );
 }

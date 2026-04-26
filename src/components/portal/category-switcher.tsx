@@ -76,7 +76,7 @@ export function CategorySwitcher({ initialCategories }: Props) {
           )}
           aria-hidden
         />
-        <span className="max-w-[14ch] truncate sm:max-w-[24ch] lg:max-w-[32ch]">
+        <span className="max-w-[18ch] truncate sm:max-w-[28ch] lg:max-w-[40ch]">
           {triggerLabel}
         </span>
         <ChevronDown
@@ -95,9 +95,11 @@ export function CategorySwitcher({ initialCategories }: Props) {
       <DropdownMenuContent
         align="start"
         sideOffset={8}
-        // Wide popup so long content names render fully.
-        // Caps at viewport width on mobile.
-        className="glass-popup min-w-72 max-w-[calc(100vw-1rem)] border-border/40 sm:min-w-96"
+        // Wide popup so long content names render fully without truncation.
+        // Mobile caps at viewport width; desktop sizes up to 28rem so
+        // long category names like "アルカディア:ライトヘビー級" fit
+        // on one line alongside the 4 sub-page icons.
+        className="glass-popup w-[max(20rem,min(calc(100vw-1rem),32rem))] border-border/40"
       >
         <div className="px-1.5 pt-1 pb-1 font-mono text-[10px] tracking-[0.2em] text-muted-foreground uppercase">
           Categories
@@ -118,17 +120,18 @@ export function CategorySwitcher({ initialCategories }: Props) {
               <div
                 key={cat.id}
                 className={cn(
-                  "group flex items-center gap-2 rounded-md px-1.5 py-1 transition-colors hover:bg-secondary/60 focus-within:bg-secondary/60",
+                  "group flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md px-1.5 py-1 transition-colors hover:bg-secondary/60 focus-within:bg-secondary/60",
                   isActive && "bg-secondary/40",
                 )}
               >
                 {/* Default-click target: name + status. Goes to current
                     sub-tab to feel "natural" when chained from another
-                    category page. */}
+                    category page. Long names wrap to multiple lines
+                    instead of truncating. */}
                 <Link
                   href={defaultHref}
                   prefetch
-                  className="flex flex-1 items-center gap-3 cursor-pointer"
+                  className="flex min-w-0 flex-1 items-center gap-3 cursor-pointer"
                 >
                   <StatusBadge
                     status={cat.status}
@@ -136,18 +139,22 @@ export function CategorySwitcher({ initialCategories }: Props) {
                     variant="compact"
                     className="shrink-0"
                   />
-                  <span className="flex-1 truncate text-sm">{cat.name}</span>
+                  <span className="min-w-0 flex-1 break-words text-sm leading-tight">
+                    {cat.name}
+                  </span>
                   {isActive && (
                     <span
                       aria-hidden
-                      className="h-1.5 w-1.5 rounded-full bg-[var(--neon-violet)] shadow-[0_0_8px_var(--neon-violet)]"
+                      className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--neon-violet)] shadow-[0_0_8px_var(--neon-violet)]"
                     />
                   )}
                 </Link>
 
                 {/* Sub-page shortcuts: always visible (touch-friendly).
                     Each is its own Link so clicking jumps directly to
-                    that page without needing the default sub-tab path. */}
+                    that page without needing the default sub-tab path.
+                    On narrow rows where the long name wraps, this
+                    flexbox row wraps the icons under the name. */}
                 <nav
                   aria-label={`${cat.name} のサブページ`}
                   className="flex shrink-0 items-center gap-0.5"
