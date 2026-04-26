@@ -89,6 +89,14 @@ ALTER TABLE public.category_links
 -- cumulative "practice time" total per category.
 ALTER TABLE public.category_links
   ADD COLUMN IF NOT EXISTS duration_seconds integer;
+
+-- Phase 4.6: original post timestamp distinct from `created_at`
+-- (which is the row insert time). Discord-imported rows store the
+-- message timestamp here; YouTube-sourced rows fall back to the
+-- video's upload date. Used by first-clear detection so a single
+-- batch import doesn't end up giving every category the same date.
+ALTER TABLE public.category_links
+  ADD COLUMN IF NOT EXISTS posted_at timestamptz;
 CREATE INDEX IF NOT EXISTS category_links_category_kind_idx
   ON public.category_links(category_id, kind, sort_order);
 

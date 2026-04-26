@@ -10,6 +10,7 @@ import {
   Pencil,
   Trophy,
   Timer,
+  Hourglass,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -54,12 +55,19 @@ type Props = {
   recentImportCounts?: Record<string, number>;
   /** Map of category.id → sum of all video durations in seconds. */
   practiceSecondsByCategory?: Record<string, number>;
+  /**
+   * Map of category.id → sum of video durations posted on/before
+   * `first_clear_at` ("time it took to clear"). Empty for categories
+   * without a clear date.
+   */
+  timeToClearByCategory?: Record<string, number>;
 };
 
 export function CategoryList({
   initialCategories,
   recentImportCounts = {},
   practiceSecondsByCategory = {},
+  timeToClearByCategory = {},
 }: Props) {
   // Realtime hook keeps the list in sync with DB changes from any client.
   const live = useRealtimeCategories(initialCategories);
@@ -177,6 +185,7 @@ export function CategoryList({
                 category={cat}
                 recentImports={recentImportCounts[cat.id] ?? 0}
                 practiceSeconds={practiceSecondsByCategory[cat.id] ?? 0}
+                timeToClearSeconds={timeToClearByCategory[cat.id] ?? 0}
                 onChangeStatus={(s) => onChangeStatus(cat.id, s)}
                 onEdit={() => setEditTarget(cat)}
                 onDelete={() => onDelete(cat)}
@@ -202,6 +211,7 @@ function SortableCategoryCard({
   category,
   recentImports,
   practiceSeconds,
+  timeToClearSeconds,
   onChangeStatus,
   onEdit,
   onDelete,
@@ -209,6 +219,7 @@ function SortableCategoryCard({
   category: Category;
   recentImports: number;
   practiceSeconds: number;
+  timeToClearSeconds: number;
   onChangeStatus: (s: CategoryStatus) => void;
   onEdit: () => void;
   onDelete: () => void;
@@ -271,6 +282,15 @@ function SortableCategoryCard({
                 >
                   <Timer className="h-2.5 w-2.5" aria-hidden />
                   {formatDurationShort(practiceSeconds)}
+                </span>
+              )}
+              {timeToClearSeconds > 0 && category.firstClearAt && (
+                <span
+                  className="inline-flex items-center gap-1 rounded-sm border border-emerald-400/45 bg-emerald-400/10 px-1.5 py-px text-[9px] text-emerald-200"
+                  title={`クリアまでの累計時間: ${formatDurationLong(timeToClearSeconds)}`}
+                >
+                  <Hourglass className="h-2.5 w-2.5" aria-hidden />
+                  →{formatDurationShort(timeToClearSeconds)}
                 </span>
               )}
               {category.firstClearAt && (

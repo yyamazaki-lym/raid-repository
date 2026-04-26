@@ -2,51 +2,106 @@ import "server-only";
 import { parseYouTubeId } from "@/lib/youtube";
 
 /**
- * Fetch a YouTube video's duration in seconds via HTML scrape.
+ * Lightweight concurrency-limited map. Used by the bulk backfills so we
+ * don't fire dozens of YouTube fetches in series.
+ */
+async function pmap<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let next = 0;
+  const workers = Array.from(
+    { length: Math.min(limit, items.length) },
+    async () => {
+      while (true) {
+        const i = next++;
+        if (i >= items.length) return;
+        results[i] = await fn(items[i]!, i);
+      }
+    },
+  );
+  await Promise.all(workers);
+  return results;
+}
+
+export type YouTubeMeta = {
+  /** Length in seconds (null if not parseable / non-YouTube). */
+  durationSeconds: number | null;
+  /** ISO 8601 upload timestamp (null if not parseable / non-YouTube). */
+  uploadDate: string | null;
+};
+
+/**
+ * Fetch a YouTube video's duration AND upload date via HTML scrape.
  *
  * Why scrape instead of using the YouTube Data API:
- *   - The Data API requires an extra `YOUTUBE_API_KEY` env var, which adds
- *     friction for fork deployments
+ *   - The Data API requires an extra `YOUTUBE_API_KEY` env var, which
+ *     adds friction for fork deployments
  *   - Volume per group is small (tens of videos), so rate limits aren't
  *     a real concern
- *   - We only need duration; the watch page exposes `lengthSeconds` in
- *     embedded JSON which is stable enough for our use
+ *   - We only need duration + uploadDate; the watch page exposes both
+ *     in embedded JSON which is stable enough for our use
  *
- * Returns null on:
- *   - Non-YouTube URL
- *   - Network failure / non-200
- *   - Page format changed (lengthSeconds key not present)
- *
- * Caller should treat null as "unknown" and not fail the surrounding flow.
+ * Returns `{ durationSeconds: null, uploadDate: null }` on failure
+ * (non-YouTube URL, network failure, page format changed). Caller
+ * should treat null as "unknown" and not fail the surrounding flow.
  */
-export async function fetchYouTubeDuration(
-  url: string,
-): Promise<number | null> {
+export async function fetchYouTubeMeta(url: string): Promise<YouTubeMeta> {
   const id = parseYouTubeId(url);
-  if (!id) return null;
+  if (!id) return { durationSeconds: null, uploadDate: null };
   try {
     const res = await fetch(`https://www.youtube.com/watch?v=${id}`, {
       headers: {
         "User-Agent": "Mozilla/5.0 (compatible; RaidRepositoryBot/0.1)",
-        // Force English so any locale-specific markup variations are
-        // less likely to bite us.
+        // Force English so locale-specific markup variations are less
+        // likely to bite us (e.g. some date formats vary by Accept-Language).
         "Accept-Language": "en-US,en;q=0.9",
       },
-      signal: AbortSignal.timeout(8000),
+      // Tightened from 8s to 5s — at concurrency=8 that's the difference
+      // between a fast user-visible spinner and a sluggish one.
+      signal: AbortSignal.timeout(5000),
       redirect: "follow",
     });
-    if (!res.ok) return null;
+    if (!res.ok) return { durationSeconds: null, uploadDate: null };
     const html = await res.text();
 
-    // The watch page embeds player config JSON. The duration appears as
-    //   "lengthSeconds":"123"
-    // somewhere in that blob. Tolerate optional whitespace.
-    const m = html.match(/"lengthSeconds"\s*:\s*"(\d+)"/);
-    if (!m) return null;
-    const seconds = parseInt(m[1]!, 10);
-    if (!Number.isFinite(seconds) || seconds <= 0) return null;
-    return seconds;
+    let durationSeconds: number | null = null;
+    const dm = html.match(/"lengthSeconds"\s*:\s*"(\d+)"/);
+    if (dm) {
+      const s = parseInt(dm[1]!, 10);
+      if (Number.isFinite(s) && s > 0) durationSeconds = s;
+    }
+
+    let uploadDate: string | null = null;
+    // 1. JSON-LD structured data (most reliable / human-readable).
+    const um = html.match(/"uploadDate"\s*:\s*"([^"]+)"/);
+    if (um) uploadDate = normalizeDate(um[1]!);
+    // 2. Player config publish date as fallback.
+    if (!uploadDate) {
+      const pm = html.match(/"publishDate"\s*:\s*"([^"]+)"/);
+      if (pm) uploadDate = normalizeDate(pm[1]!);
+    }
+
+    return { durationSeconds, uploadDate };
   } catch {
-    return null;
+    return { durationSeconds: null, uploadDate: null };
   }
 }
+
+/** Back-compat alias — prefer `fetchYouTubeMeta` for new code. */
+export async function fetchYouTubeDuration(
+  url: string,
+): Promise<number | null> {
+  const { durationSeconds } = await fetchYouTubeMeta(url);
+  return durationSeconds;
+}
+
+function normalizeDate(raw: string): string | null {
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString();
+}
+
+export { pmap };

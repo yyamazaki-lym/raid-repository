@@ -93,6 +93,12 @@ export type CategoryLinkRow = {
   logs_url: string | null;
   /** Video length in seconds. NULL until fetched from YouTube or set manually. */
   duration_seconds: number | null;
+  /**
+   * Original post timestamp (Discord message time, or YouTube upload date
+   * when fetched from a YouTube URL). NULL for pre-migration rows until
+   * the duration backfill has run. Falls back to `created_at` in queries.
+   */
+  posted_at: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -108,6 +114,7 @@ export type CategoryLink = {
   source: CategoryLinkSource;
   logsUrl: string | null;
   durationSeconds: number | null;
+  postedAt: string | null;
   createdAt: string;
 };
 
@@ -123,6 +130,7 @@ export function rowToCategoryLink(row: CategoryLinkRow): CategoryLink {
     source: row.source ?? "manual",
     logsUrl: row.logs_url ?? null,
     durationSeconds: row.duration_seconds ?? null,
+    postedAt: row.posted_at ?? null,
     createdAt: row.created_at,
   };
 }

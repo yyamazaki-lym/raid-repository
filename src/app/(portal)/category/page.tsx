@@ -1,13 +1,12 @@
 import { AlertTriangle } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { CategoryFormDialog } from "@/components/portal/category-form-dialog";
-import { ImportDiscordButton } from "@/components/portal/import-discord-button";
-import { BackfillFirstClearButton } from "@/components/portal/backfill-first-clear-button";
-import { BackfillDurationsButton } from "@/components/portal/backfill-durations-button";
+import { MaintenanceMenu } from "@/components/portal/maintenance-menu";
 import { fetchCategories } from "@/lib/supabase/categories";
 import {
   fetchPracticeSecondsByCategory,
   fetchRecentImportCountsByCategory,
+  fetchTimeToClearByCategory,
 } from "@/lib/server/categories-actions";
 import { CategoryList } from "./category-list";
 
@@ -16,10 +15,11 @@ export const metadata = {
 };
 
 export default async function CategoryIndexPage() {
-  const [result, recentCounts, practiceSeconds] = await Promise.all([
+  const [result, recentCounts, practiceSeconds, timeToClear] = await Promise.all([
     fetchCategories(),
     fetchRecentImportCountsByCategory(7),
     fetchPracticeSecondsByCategory(),
+    fetchTimeToClearByCategory(),
   ]);
 
   return (
@@ -34,9 +34,7 @@ export default async function CategoryIndexPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <BackfillDurationsButton />
-          <BackfillFirstClearButton />
-          <ImportDiscordButton />
+          <MaintenanceMenu />
           <CategoryFormDialog />
         </div>
       </div>
@@ -63,6 +61,7 @@ export default async function CategoryIndexPage() {
         initialCategories={result.categories}
         recentImportCounts={recentCounts}
         practiceSecondsByCategory={practiceSeconds}
+        timeToClearByCategory={timeToClear}
       />
     </div>
   );

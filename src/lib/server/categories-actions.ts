@@ -1,7 +1,7 @@
 "use server";
 
 import { runDiscordImport } from "./discord-import";
-import { fetchYouTubeDuration } from "./youtube-duration";
+import { fetchYouTubeMeta, pmap } from "./youtube-duration";
 import { isClearTitle } from "@/lib/clear-detection";
 import { createClient } from "@/lib/supabase/server";
 
@@ -82,20 +82,25 @@ export type BackfillResult = {
 
 /**
  * Server Action: scan all existing video links and back-fill
- * `categories.first_clear_at` for any category that:
- *   1. Currently has `first_clear_at IS NULL`, AND
- *   2. Has at least one video link whose title matches `isClearTitle`
+ * `categories.first_clear_at`. The chosen timestamp is the earliest
+ * matching video's `posted_at` (Discord message time / YouTube upload
+ * date), falling back to `created_at` only if `posted_at` is NULL.
  *
- * The chosen timestamp is the earliest matching video's `created_at`.
- * Race-safe: the UPDATE is guarded by `first_clear_at IS NULL` so a
- * concurrent manual edit can't be clobbered.
+ * @param opts.overwrite  When true, recompute even for categories that
+ *   already have a value set. Use this after running the duration
+ *   backfill (which fills `posted_at`) to repair previously-wrong dates
+ *   that came from a single batch import sharing one created_at. Default
+ *   is false — NULL only — so casual re-runs don't clobber manual edits.
  *
- * This is idempotent — running it twice is a no-op the second time.
+ * Idempotent for the default case. Race-safe: the UPDATE is guarded by
+ * `first_clear_at IS NULL` (or unguarded in overwrite mode).
  */
-export async function backfillFirstClearFromExistingVideos(): Promise<BackfillResult> {
+export async function backfillFirstClearFromExistingVideos(
+  opts: { overwrite?: boolean } = {},
+): Promise<BackfillResult> {
   const supabase = await createClient();
+  const overwrite = opts.overwrite === true;
 
-  // 1. All categories currently lacking first_clear_at.
   const { data: cats, error: catErr } = await supabase
     .from("categories")
     .select("id, slug, first_clear_at");
@@ -116,41 +121,52 @@ export async function backfillFirstClearFromExistingVideos(): Promise<BackfillRe
   const filledDetails: BackfillResult["filledDetails"] = [];
 
   for (const cat of cats) {
-    if (cat.first_clear_at) {
+    if (cat.first_clear_at && !overwrite) {
       alreadySet += 1;
       continue;
     }
-    // 2. Earliest video in this category, ordered by created_at ASC.
-    //    We scan in JS rather than via SQL ILIKE because the keyword
-    //    rule (incl. "未クリア" exclusion + English word boundary) is
-    //    centralized in `isClearTitle` and we want a single source of truth.
+    // Pull all videos in the category. Order by COALESCE(posted_at,
+    // created_at) ASC so the first clear-titled match is the earliest.
+    // Supabase's PostgREST doesn't support COALESCE in `order`, so we
+    // sort client-side after the fetch.
     const { data: videos, error: vErr } = await supabase
       .from("category_links")
-      .select("title, created_at")
+      .select("title, posted_at, created_at")
       .eq("category_id", cat.id)
-      .eq("kind", "video")
-      .order("created_at", { ascending: true });
+      .eq("kind", "video");
     if (vErr || !videos) {
       noMatch += 1;
       continue;
     }
-    const firstClear = videos.find((v) => isClearTitle(v.title as string));
+    const sorted = [...videos].sort((a, b) => {
+      const ad = (a.posted_at as string | null) ?? (a.created_at as string);
+      const bd = (b.posted_at as string | null) ?? (b.created_at as string);
+      return ad.localeCompare(bd);
+    });
+    const firstClear = sorted.find((v) => isClearTitle(v.title as string));
     if (!firstClear) {
       noMatch += 1;
       continue;
     }
-    const iso = firstClear.created_at as string;
-    const { error: updErr } = await supabase
+    const iso =
+      ((firstClear.posted_at as string | null) ??
+        (firstClear.created_at as string));
+
+    // In overwrite mode, skip if the new computed value matches the
+    // existing one (avoids reporting "filled" for no-change rows).
+    if (overwrite && cat.first_clear_at === iso) {
+      alreadySet += 1;
+      continue;
+    }
+
+    let q = supabase
       .from("categories")
       .update({ first_clear_at: iso })
-      .eq("id", cat.id)
-      .is("first_clear_at", null);
+      .eq("id", cat.id);
+    if (!overwrite) q = q.is("first_clear_at", null);
+    const { error: updErr } = await q;
     if (updErr) {
-      console.warn(
-        "[backfill] update failed",
-        cat.slug,
-        updErr.message,
-      );
+      console.warn("[backfill] update failed", cat.slug, updErr.message);
       noMatch += 1;
       continue;
     }
@@ -172,29 +188,52 @@ export async function backfillFirstClearFromExistingVideos(): Promise<BackfillRe
 }
 
 /**
- * Server Action: fetch YouTube duration for an existing link and persist
- * `category_links.duration_seconds`. Called by the link form dialog
- * after a manual create — the dialog inserts the row first (browser-side),
- * then asks us to enrich with the duration.
+ * Server Action: fetch YouTube meta (duration + upload date) for an
+ * existing link and persist both columns. Called by the link form
+ * dialog after a manual create — the dialog inserts the row first
+ * (browser-side), then asks us to enrich.
  *
- * No-op for non-YouTube URLs or fetch failures; the row stays as NULL.
+ * `posted_at` is only set when the row currently has it NULL, so we
+ * never clobber a more accurate Discord message timestamp.
+ *
+ * No-op for non-YouTube URLs or fetch failures; the row stays as-is.
  */
 export async function enrichVideoLinkDuration(
   linkId: string,
   url: string,
 ): Promise<{ ok: boolean; durationSeconds: number | null }> {
-  const seconds = await fetchYouTubeDuration(url);
-  if (seconds === null) return { ok: true, durationSeconds: null };
-  const supabase = await createClient();
-  const { error } = await supabase
-    .from("category_links")
-    .update({ duration_seconds: seconds })
-    .eq("id", linkId);
-  if (error) {
-    console.warn("[enrich-video] update failed", linkId, error.message);
-    return { ok: false, durationSeconds: null };
+  const meta = await fetchYouTubeMeta(url);
+  if (meta.durationSeconds === null && meta.uploadDate === null) {
+    return { ok: true, durationSeconds: null };
   }
-  return { ok: true, durationSeconds: seconds };
+  const supabase = await createClient();
+
+  // duration_seconds: always overwrite (it's deterministic).
+  if (meta.durationSeconds !== null) {
+    const { error } = await supabase
+      .from("category_links")
+      .update({ duration_seconds: meta.durationSeconds })
+      .eq("id", linkId);
+    if (error) {
+      console.warn("[enrich-video] duration update failed", linkId, error.message);
+      return { ok: false, durationSeconds: null };
+    }
+  }
+
+  // posted_at: only fill when currently NULL — Discord-supplied
+  // timestamps are more authoritative than YouTube upload dates.
+  if (meta.uploadDate !== null) {
+    const { error } = await supabase
+      .from("category_links")
+      .update({ posted_at: meta.uploadDate })
+      .eq("id", linkId)
+      .is("posted_at", null);
+    if (error) {
+      console.warn("[enrich-video] posted_at update failed", linkId, error.message);
+    }
+  }
+
+  return { ok: true, durationSeconds: meta.durationSeconds };
 }
 
 export type DurationBackfillResult = {
@@ -208,17 +247,27 @@ export type DurationBackfillResult = {
 };
 
 /**
- * Server Action: walk every video link with NULL `duration_seconds` and
- * try to fill it via the YouTube scrape. Idempotent — re-running is a
- * no-op once everything fetchable has been filled.
+ * Server Action: walk every video link missing `duration_seconds` AND/OR
+ * `posted_at` and try to fill both via a single YouTube scrape per row.
+ *
+ * - `duration_seconds`: written (overwriting NULL) when the scrape succeeds
+ * - `posted_at`: written only when currently NULL (don't clobber Discord
+ *   timestamps from the import path, which are more authoritative)
+ *
+ * Idempotent — re-running is a no-op once everything fetchable has been
+ * filled. Runs fetches concurrently to keep wall-clock time reasonable
+ * for groups with hundreds of historical videos.
  */
 export async function backfillVideoDurations(): Promise<DurationBackfillResult> {
   const supabase = await createClient();
+  // Pull rows that are missing EITHER column. Without OR, a row that
+  // already has duration_seconds (filled in a prior run) but NULL
+  // posted_at would be left behind permanently.
   const { data, error } = await supabase
     .from("category_links")
-    .select("id, url, duration_seconds")
+    .select("id, url, duration_seconds, posted_at")
     .eq("kind", "video")
-    .is("duration_seconds", null);
+    .or("duration_seconds.is.null,posted_at.is.null");
   if (error || !data) {
     return {
       ok: false,
@@ -229,31 +278,51 @@ export async function backfillVideoDurations(): Promise<DurationBackfillResult> 
       skippedNonYoutube: 0,
     };
   }
+
+  // Parallelize with a small pool to dramatically speed up the bulk
+  // scrape (sequential @ ~1s/req → ~⌈N/8⌉ × 1s with concurrency=8).
+  const FETCH_CONCURRENCY = 8;
+  type Outcome = "filled" | "skipped" | "failed";
+  const outcomes = await pmap<typeof data[number], Outcome>(
+    data,
+    FETCH_CONCURRENCY,
+    async (row) => {
+      const meta = await fetchYouTubeMeta(row.url as string);
+      const needsDuration =
+        row.duration_seconds === null && meta.durationSeconds !== null;
+      const needsPostedAt =
+        row.posted_at === null && meta.uploadDate !== null;
+      if (!needsDuration && !needsPostedAt) {
+        // Either non-YouTube, or scrape didn't return useful data, or
+        // the row already has the value we'd write. Bucket as "skipped".
+        return "skipped";
+      }
+      const update: { duration_seconds?: number; posted_at?: string } = {};
+      if (needsDuration) update.duration_seconds = meta.durationSeconds!;
+      if (needsPostedAt) update.posted_at = meta.uploadDate!;
+      const { error: updErr } = await supabase
+        .from("category_links")
+        .update(update)
+        .eq("id", row.id as string);
+      if (updErr) {
+        console.warn(
+          "[duration-backfill] update failed",
+          row.id,
+          updErr.message,
+        );
+        return "failed";
+      }
+      return "filled";
+    },
+  );
+
   let filled = 0;
   let failed = 0;
   let skippedNonYoutube = 0;
-  for (const row of data) {
-    const seconds = await fetchYouTubeDuration(row.url as string);
-    if (seconds === null) {
-      // Either non-YouTube or fetch failed — bucket separately so the UI
-      // can distinguish "no videos to process" from "real errors".
-      skippedNonYoutube += 1;
-      continue;
-    }
-    const { error: updErr } = await supabase
-      .from("category_links")
-      .update({ duration_seconds: seconds })
-      .eq("id", row.id as string);
-    if (updErr) {
-      console.warn(
-        "[duration-backfill] update failed",
-        row.id,
-        updErr.message,
-      );
-      failed += 1;
-      continue;
-    }
-    filled += 1;
+  for (const o of outcomes) {
+    if (o === "filled") filled += 1;
+    else if (o === "failed") failed += 1;
+    else skippedNonYoutube += 1;
   }
   return {
     ok: true,
@@ -284,6 +353,58 @@ export async function fetchPracticeSecondsByCategory(): Promise<
     const cid = row.category_id as string;
     const sec = row.duration_seconds as number | null;
     if (typeof sec !== "number" || sec <= 0) continue;
+    totals[cid] = (totals[cid] ?? 0) + sec;
+  }
+  return totals;
+}
+
+/**
+ * "Time to clear" per category — sum of `duration_seconds` for all
+ * videos in that category whose `posted_at` (or `created_at` fallback)
+ * is on-or-before the category's `first_clear_at`.
+ *
+ * Conceptually: "how much footage did the group accumulate from start
+ * of practice up to the clear?" Useful as a parallel to total practice
+ * time — the "until clear" partial.
+ *
+ * Returns an empty map for categories without `first_clear_at` set.
+ */
+export async function fetchTimeToClearByCategory(): Promise<
+  Record<string, number>
+> {
+  const supabase = await createClient();
+  // Pull the categories that have a first_clear_at, plus all their
+  // videos with non-null durations. Doing this in two queries + JS
+  // aggregation keeps RLS-safe and avoids needing a custom RPC.
+  const { data: cats, error: catErr } = await supabase
+    .from("categories")
+    .select("id, first_clear_at")
+    .not("first_clear_at", "is", null);
+  if (catErr || !cats || cats.length === 0) return {};
+  const catIds = cats.map((c) => c.id as string);
+  const firstClearMap = new Map<string, string>(
+    cats.map((c) => [c.id as string, c.first_clear_at as string]),
+  );
+
+  const { data: videos, error: vErr } = await supabase
+    .from("category_links")
+    .select("category_id, duration_seconds, posted_at, created_at")
+    .in("category_id", catIds)
+    .eq("kind", "video")
+    .not("duration_seconds", "is", null);
+  if (vErr || !videos) return {};
+
+  const totals: Record<string, number> = {};
+  for (const v of videos) {
+    const cid = v.category_id as string;
+    const fc = firstClearMap.get(cid);
+    if (!fc) continue;
+    const sec = v.duration_seconds as number | null;
+    if (typeof sec !== "number" || sec <= 0) continue;
+    const at =
+      (v.posted_at as string | null) ?? (v.created_at as string);
+    // Inclusive cutoff — a video posted on the clear day itself counts.
+    if (at > fc) continue;
     totals[cid] = (totals[cid] ?? 0) + sec;
   }
   return totals;

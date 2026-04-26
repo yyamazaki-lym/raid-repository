@@ -1,7 +1,10 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { fetchPageTitle } from "@/lib/server/page-title";
-import { fetchYouTubeDuration } from "@/lib/server/youtube-duration";
+import {
+  fetchYouTubeMeta,
+  pmap,
+} from "@/lib/server/youtube-duration";
 import { isClearTitle } from "@/lib/clear-detection";
 import {
   rowToCategory,
@@ -210,73 +213,109 @@ async function importChannel(
     .maybeSingle();
   let nextOrder = ((maxRow?.sort_order as number | undefined) ?? -1) + 1;
 
-  // 5. Insert.
-  // For first-clear auto-detection (video kind only): track the earliest
-  // posted_at among inserted clear-flagged videos in this batch, so if the
-  // category had multiple clear-titled videos posted in a single import we
-  // pick the chronologically-first one as the first-clear timestamp.
+  // 5. Enrich (fetch title + YouTube meta) in parallel, then bulk insert.
+  // Concurrency cap of 6 keeps us well under any per-host rate limits
+  // while massively beating sequential fetches (8s × N → ~8s × ⌈N/6⌉).
+  const FETCH_CONCURRENCY = 6;
+  const enriched = await pmap(fresh, FETCH_CONCURRENCY, async (c) => {
+    const [title, meta] = await Promise.all([
+      fetchPageTitle(c.url),
+      kind === "video"
+        ? fetchYouTubeMeta(c.url)
+        : Promise.resolve({ durationSeconds: null, uploadDate: null }),
+    ]);
+    return {
+      url: c.url,
+      postedBy: c.postedBy,
+      postedAt: c.postedAt,
+      title: title ?? c.url,
+      durationSeconds: meta.durationSeconds,
+    };
+  });
+
+  // Allocate sort_orders deterministically so chronological insertion
+  // order is preserved even though fetches finished out-of-order.
+  const startSortOrder = nextOrder;
+  const rowsToInsert = enriched.map((e, i) => ({
+    category_id: cat.id,
+    kind,
+    title: e.title,
+    url: e.url,
+    description: `Discord 取り込み (by ${e.postedBy})`,
+    sort_order: startSortOrder + i,
+    source: "discord" as const,
+    duration_seconds: e.durationSeconds,
+    // Discord message timestamp — most accurate "when did this video
+    // become known to the group" signal we have.
+    posted_at: e.postedAt,
+  }));
+
   let inserted = 0;
   let failed = 0;
   let lastFailReason: string | undefined;
-  let earliestClearPostedAt: string | null = null;
-  for (const c of fresh) {
-    const title = (await fetchPageTitle(c.url)) ?? c.url;
-    const description = `Discord 取り込み (by ${c.postedBy})`;
-    // Only try a duration lookup for video kind — strategy links are
-    // articles/Notion pages where "duration" is meaningless.
-    const duration =
-      kind === "video" ? await fetchYouTubeDuration(c.url) : null;
-    const { error: insertError } = await supabase.from("category_links").insert({
-      category_id: cat.id,
-      kind,
-      title,
-      url: c.url,
-      description,
-      sort_order: nextOrder,
-      source: "discord",
-      duration_seconds: duration,
-    });
-    if (insertError) {
-      console.warn(
-        "[discord-import] insert failed",
-        cat.slug,
-        kind,
-        c.url,
-        insertError.message,
-      );
-      failed += 1;
-      lastFailReason = insertError.message;
-      continue;
-    }
-    nextOrder += 1;
-    inserted += 1;
-
-    // Track first-clear candidate (videos only). c.postedAt is the Discord
-    // message timestamp, which is more accurate than the row's created_at.
-    if (kind === "video" && isClearTitle(title)) {
-      if (
-        earliestClearPostedAt === null ||
-        c.postedAt < earliestClearPostedAt
-      ) {
-        earliestClearPostedAt = c.postedAt;
+  // One bulk insert is dramatically faster than N round-trips, but
+  // also fails atomically — if any row's URL violates a unique index
+  // we'd lose the rest. We checked dedup earlier so duplicates aren't
+  // expected; a constraint violation here would indicate a race with
+  // another import. Fall back to per-row inserts on bulk failure so
+  // we still get partial progress.
+  const { error: bulkErr } = await supabase
+    .from("category_links")
+    .insert(rowsToInsert);
+  if (bulkErr) {
+    console.warn(
+      "[discord-import] bulk insert failed, retrying per-row",
+      cat.slug,
+      bulkErr.message,
+    );
+    for (const row of rowsToInsert) {
+      const { error: rowErr } = await supabase
+        .from("category_links")
+        .insert(row);
+      if (rowErr) {
+        console.warn(
+          "[discord-import] row insert failed",
+          cat.slug,
+          row.url,
+          rowErr.message,
+        );
+        failed += 1;
+        lastFailReason = rowErr.message;
+      } else {
+        inserted += 1;
       }
     }
+  } else {
+    inserted = rowsToInsert.length;
   }
 
-  // 6. If a clear-flagged video was inserted and the category has no
-  // first_clear_at yet, fill it in. Race-safe via the IS NULL guard.
-  if (earliestClearPostedAt && !cat.firstClearAt) {
-    const { error: clearErr } = await supabase
-      .from("categories")
-      .update({ first_clear_at: earliestClearPostedAt })
-      .eq("id", cat.id)
-      .is("first_clear_at", null);
-    if (clearErr) {
-      console.warn(
-        "[discord-import] first_clear_at update failed",
-        cat.slug,
-        clearErr.message,
-      );
+  // 6. First-clear detection: pick the earliest clear-titled video's
+  // posted_at out of the just-inserted rows. Only fires if the category
+  // doesn't already have first_clear_at set; race-safe via IS NULL guard.
+  if (kind === "video" && !cat.firstClearAt && inserted > 0) {
+    let earliestClearPostedAt: string | null = null;
+    for (const e of enriched) {
+      if (!isClearTitle(e.title)) continue;
+      if (
+        earliestClearPostedAt === null ||
+        e.postedAt < earliestClearPostedAt
+      ) {
+        earliestClearPostedAt = e.postedAt;
+      }
+    }
+    if (earliestClearPostedAt) {
+      const { error: clearErr } = await supabase
+        .from("categories")
+        .update({ first_clear_at: earliestClearPostedAt })
+        .eq("id", cat.id)
+        .is("first_clear_at", null);
+      if (clearErr) {
+        console.warn(
+          "[discord-import] first_clear_at update failed",
+          cat.slug,
+          clearErr.message,
+        );
+      }
     }
   }
 
