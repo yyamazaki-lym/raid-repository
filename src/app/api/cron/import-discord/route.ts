@@ -50,12 +50,34 @@ type DiscordMessage = {
 
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get("authorization");
-  const secret = process.env.CRON_SECRET;
+  // Trim — pasted env values sometimes carry a trailing newline/whitespace
+  // which makes a strict equality compare with the Bearer header fail.
+  const secret = process.env.CRON_SECRET?.trim();
   if (!secret) {
     console.warn("[cron/discord] CRON_SECRET not configured");
     return NextResponse.json({ error: "not configured" }, { status: 503 });
   }
-  if (authHeader !== `Bearer ${secret}`) {
+
+  // Vercel attaches an `x-vercel-cron` header to cron-invoked requests.
+  // Treat that as an additional accepted auth path so manual Run from the
+  // dashboard still works even if the Authorization header is missing.
+  const isVercelCron = req.headers.get("x-vercel-cron") !== null;
+  const expected = `Bearer ${secret}`;
+  const headerOk = authHeader === expected || authHeader?.trim() === expected;
+
+  if (!headerOk && !isVercelCron) {
+    // Server-side diagnostic only — leak just the lengths so log readers can
+    // tell at-a-glance whether the env value or the inbound header is the
+    // mismatched one (and never reveal the full secret).
+    console.warn(
+      "[cron/discord] auth failed",
+      JSON.stringify({
+        receivedHeaderLength: authHeader?.length ?? 0,
+        receivedHeaderPrefix: authHeader?.slice(0, 14) ?? null,
+        expectedSecretLength: secret.length,
+        hasVercelCronHeader: isVercelCron,
+      }),
+    );
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
