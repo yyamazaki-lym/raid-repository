@@ -84,6 +84,27 @@ export async function deleteCategoryLink(
 }
 
 /**
+ * Bulk reorder — assigns sort_order = index for each given id.
+ * Mirrors `setCategoryOrder` for categories. Updates run in parallel.
+ */
+export async function setCategoryLinkOrder(
+  orderedIds: string[],
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const supabase = createClient();
+  const results = await Promise.all(
+    orderedIds.map((id, index) =>
+      supabase
+        .from("category_links")
+        .update({ sort_order: index })
+        .eq("id", id),
+    ),
+  );
+  const failed = results.find((r) => r.error);
+  if (failed?.error) return { ok: false, reason: failed.error.message };
+  return { ok: true };
+}
+
+/**
  * Live link list for a category + kind. Mirrors `useRealtimeCategories`.
  */
 export function useRealtimeCategoryLinks(

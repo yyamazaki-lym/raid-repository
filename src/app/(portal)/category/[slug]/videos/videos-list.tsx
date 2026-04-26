@@ -1,12 +1,34 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Image from "next/image";
-import { ExternalLink, Film, Play } from "lucide-react";
+import { ExternalLink, Film, Play, GripVertical } from "lucide-react";
+import { toast } from "sonner";
+import {
+  DndContext,
+  KeyboardSensor,
+  MouseSensor,
+  TouchSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  rectSortingStrategy,
+  sortableKeyboardCoordinates,
+  useSortable,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { Card } from "@/components/ui/card";
 import { LinkFormDialog } from "@/components/portal/link-form-dialog";
 import { LinkCardMenu } from "@/components/portal/link-card-menu";
-import { useRealtimeCategoryLinks } from "@/lib/category-links-client";
+import {
+  setCategoryLinkOrder,
+  useRealtimeCategoryLinks,
+} from "@/lib/category-links-client";
 import {
   parseYouTubeId,
   youtubeEmbedUrl,
@@ -20,14 +42,63 @@ type Props = {
 };
 
 export function VideosList({ categoryId, initial }: Props) {
-  const videos = useRealtimeCategoryLinks(categoryId, "video", initial);
+  const live = useRealtimeCategoryLinks(categoryId, "video", initial);
   const [editTarget, setEditTarget] = useState<CategoryLink | null>(null);
+  const [optimistic, setOptimistic] = useState<string[] | null>(null);
+
+  const videos = useMemo(() => {
+    if (!optimistic) return live;
+    const idx = new Map(optimistic.map((id, i) => [id, i] as const));
+    return [...live].sort((a, b) => {
+      const ai = idx.get(a.id);
+      const bi = idx.get(b.id);
+      if (ai === undefined && bi === undefined) return 0;
+      if (ai === undefined) return 1;
+      if (bi === undefined) return -1;
+      return ai - bi;
+    });
+  }, [live, optimistic]);
+
+  const sensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 200, tolerance: 6 },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  );
+
+  const onDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = videos.findIndex((v) => v.id === active.id);
+    const newIndex = videos.findIndex((v) => v.id === over.id);
+    if (oldIndex < 0 || newIndex < 0) return;
+
+    const next = arrayMove(videos, oldIndex, newIndex).map((v) => v.id);
+    setOptimistic(next);
+    const result = await setCategoryLinkOrder(next);
+    if (!result.ok) {
+      toast.error("並び替えの保存に失敗: " + result.reason);
+      setOptimistic(null);
+      return;
+    }
+    setTimeout(() => setOptimistic(null), 1500);
+  };
+
+  const ids = useMemo(() => videos.map((v) => v.id), [videos]);
 
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between">
         <p className="font-mono text-[10px] tracking-[0.2em] text-muted-foreground uppercase">
           {videos.length} video{videos.length === 1 ? "" : "s"}
+          {videos.length > 1 && (
+            <span className="ml-2 text-muted-foreground/60">
+              · ドラッグで並び替え
+            </span>
+          )}
         </p>
         <LinkFormDialog categoryId={categoryId} kind="video" />
       </div>
@@ -44,13 +115,23 @@ export function VideosList({ categoryId, initial }: Props) {
           </p>
         </Card>
       ) : (
-        <ul className="grid gap-4 sm:grid-cols-2">
-          {videos.map((v) => (
-            <li key={v.id}>
-              <VideoCard video={v} onEdit={() => setEditTarget(v)} />
-            </li>
-          ))}
-        </ul>
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={onDragEnd}
+        >
+          <SortableContext items={ids} strategy={rectSortingStrategy}>
+            <ul className="grid gap-4 sm:grid-cols-2">
+              {videos.map((v) => (
+                <SortableVideoCard
+                  key={v.id}
+                  video={v}
+                  onEdit={() => setEditTarget(v)}
+                />
+              ))}
+            </ul>
+          </SortableContext>
+        </DndContext>
       )}
 
       <LinkFormDialog
@@ -66,33 +147,80 @@ export function VideosList({ categoryId, initial }: Props) {
   );
 }
 
-function VideoCard({
+function SortableVideoCard({
   video,
   onEdit,
 }: {
   video: CategoryLink;
   onEdit: () => void;
 }) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: video.id });
+
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 10 : "auto",
+  };
+
+  return (
+    <li ref={setNodeRef} style={style} {...attributes}>
+      <VideoCard video={video} onEdit={onEdit} dragListeners={listeners} />
+    </li>
+  );
+}
+
+function VideoCard({
+  video,
+  onEdit,
+  dragListeners,
+}: {
+  video: CategoryLink;
+  onEdit: () => void;
+  dragListeners?: ReturnType<typeof useSortable>["listeners"];
+}) {
   const ytId = parseYouTubeId(video.url);
   return (
     <Card className="glass neon-edge group flex flex-col gap-2 overflow-hidden p-0 transition-transform hover:-translate-y-0.5">
-      {ytId ? (
-        <YouTubePreview id={ytId} url={video.url} title={video.title} />
-      ) : (
-        <a
-          href={video.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="grid aspect-video place-items-center bg-secondary/30 text-muted-foreground transition-colors hover:bg-secondary/50 hover:text-foreground"
-        >
-          <div className="flex flex-col items-center gap-2">
-            <Film className="h-8 w-8" aria-hidden />
-            <span className="font-mono text-[10px] tracking-widest uppercase">
-              External Video
-            </span>
-          </div>
-        </a>
-      )}
+      <div className="relative">
+        {ytId ? (
+          <YouTubePreview id={ytId} url={video.url} title={video.title} />
+        ) : (
+          <a
+            href={video.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="grid aspect-video place-items-center bg-secondary/30 text-muted-foreground transition-colors hover:bg-secondary/50 hover:text-foreground"
+          >
+            <div className="flex flex-col items-center gap-2">
+              <Film className="h-8 w-8" aria-hidden />
+              <span className="font-mono text-[10px] tracking-widest uppercase">
+                External Video
+              </span>
+            </div>
+          </a>
+        )}
+
+        {/* Drag handle floats over the top-left corner of the thumbnail. */}
+        {dragListeners && (
+          <button
+            type="button"
+            {...dragListeners}
+            aria-label={`${video.title} の並び替えハンドル`}
+            className="absolute top-2 left-2 inline-flex h-7 w-7 cursor-grab items-center justify-center rounded-md bg-black/60 text-white/80 backdrop-blur-sm transition-colors hover:bg-black/80 hover:text-white active:cursor-grabbing"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <GripVertical className="h-3.5 w-3.5" aria-hidden />
+          </button>
+        )}
+      </div>
 
       <div className="flex items-start gap-2 px-3 pb-1">
         <a
@@ -177,7 +305,7 @@ function YouTubePreview({
         target="_blank"
         rel="noopener noreferrer"
         onClick={(e) => e.stopPropagation()}
-        className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-md bg-black/60 px-1.5 py-1 font-mono text-[9px] tracking-widest text-white/80 uppercase transition-colors hover:text-white"
+        className="absolute top-2 right-2 inline-flex items-center gap-1 rounded-md bg-black/60 px-1.5 py-1 font-mono text-[9px] tracking-widest text-white/80 uppercase transition-colors hover:text-white"
         aria-label="YouTubeで開く"
       >
         <ExternalLink className="h-3 w-3" aria-hidden />
