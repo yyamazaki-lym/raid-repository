@@ -35,25 +35,35 @@ export function NextSessionCard({ result }: { result: NextSessionResult }) {
   const jstDayNumber = (utcMs: number) =>
     Math.floor((utcMs + JST_OFFSET_MS) / 86400000);
   const dayDiff = jstDayNumber(date.getTime()) - jstDayNumber(Date.now());
-  const relative =
-    dayDiff === 0
-      ? "本日"
-      : dayDiff === 1
-        ? "明日"
-        : dayDiff > 0
-          ? `あと ${dayDiff} 日`
-          : null;
+  const isToday = dayDiff === 0;
+  const relative = isToday
+    ? "本日"
+    : dayDiff === 1
+      ? "明日"
+      : dayDiff > 0
+        ? `あと ${dayDiff} 日`
+        : null;
 
   return (
-    <Frame tone="active" icon={<CalendarCheck2 className="h-4 w-4" aria-hidden />}>
+    <Frame
+      tone={isToday ? "today" : "active"}
+      icon={<CalendarCheck2 className="h-4 w-4" aria-hidden />}
+    >
       <Label>次回開催日</Label>
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <Value>{rawDate}</Value>
+        <Value highlight={isToday}>{rawDate}</Value>
         <span className="font-mono text-sm text-foreground/80">
           {startTime} ~ {endTime}
         </span>
         {relative && (
-          <span className="font-mono text-[11px] tracking-widest text-[var(--neon-cyan)] uppercase">
+          <span
+            className={
+              "font-mono text-[11px] tracking-widest uppercase " +
+              (isToday
+                ? "rounded-sm border border-[var(--neon-cyan)]/60 bg-[var(--neon-cyan)]/15 px-1.5 py-px font-bold text-[var(--neon-cyan)] shadow-[0_0_12px_-2px_var(--neon-cyan)] animate-pulse"
+                : "text-[var(--neon-cyan)]")
+            }
+          >
             {relative}
           </span>
         )}
@@ -72,14 +82,19 @@ function Frame({
 }: {
   children: React.ReactNode;
   icon: React.ReactNode;
-  tone?: "default" | "active" | "warn";
+  tone?: "default" | "active" | "today" | "warn";
 }) {
+  // "today" = active session today: stronger border + glow than the
+  // generic "active" upcoming highlight, so when you open the page
+  // your eye lands on it immediately.
   const toneClass =
-    tone === "active"
-      ? "border-[var(--neon-cyan)]/30 shadow-[0_0_24px_-12px_var(--neon-cyan)]"
-      : tone === "warn"
-        ? "border-destructive/40"
-        : "border-border/50";
+    tone === "today"
+      ? "border-[var(--neon-cyan)]/70 bg-[var(--neon-cyan)]/[0.04] shadow-[0_0_36px_-8px_var(--neon-cyan),inset_0_0_20px_-12px_var(--neon-cyan)]"
+      : tone === "active"
+        ? "border-[var(--neon-cyan)]/30 shadow-[0_0_24px_-12px_var(--neon-cyan)]"
+        : tone === "warn"
+          ? "border-destructive/40"
+          : "border-border/50";
 
   return (
     <div
@@ -101,8 +116,25 @@ function Label({ children }: { children: React.ReactNode }) {
   );
 }
 
-function Value({ children }: { children: React.ReactNode }) {
-  return <span className="font-display text-lg leading-tight text-foreground">{children}</span>;
+function Value({
+  children,
+  highlight = false,
+}: {
+  children: React.ReactNode;
+  highlight?: boolean;
+}) {
+  return (
+    <span
+      className={
+        "font-display leading-tight " +
+        (highlight
+          ? "text-xl font-bold text-[var(--neon-cyan)] drop-shadow-[0_0_8px_color-mix(in_oklch,var(--neon-cyan)_50%,transparent)]"
+          : "text-lg text-foreground")
+      }
+    >
+      {children}
+    </span>
+  );
 }
 
 function Sub({ children }: { children: React.ReactNode }) {

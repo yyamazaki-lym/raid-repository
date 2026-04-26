@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import {
   GripVertical,
@@ -74,6 +75,7 @@ export function CategoryList({
   practiceSecondsByCategory = {},
   timeToClearByCategory = {},
 }: Props) {
+  const router = useRouter();
   // Realtime hook keeps the list in sync with DB changes from any client.
   const live = useRealtimeCategories(initialCategories);
   // Local mirror so DnD can rearrange optimistically without waiting on
@@ -166,8 +168,16 @@ export function CategoryList({
       return;
     }
     const result = await deleteCategory(cat.id);
-    if (!result.ok) toast.error("削除失敗: " + result.reason);
-    else toast.success(`「${cat.name}」を削除しました`);
+    if (!result.ok) {
+      toast.error("削除失敗: " + result.reason);
+      return;
+    }
+    toast.success(`「${cat.name}」を削除しました`);
+    // Force a server-side refetch so the row disappears immediately
+    // even if Realtime DELETE event filtering hasn't picked it up
+    // (REPLICA IDENTITY FULL needed; schema may not have been
+    // re-run yet on the user's deployment).
+    router.refresh();
   };
 
   const slugIds = useMemo(() => sorted.map((c) => c.id), [sorted]);

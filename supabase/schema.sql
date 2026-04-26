@@ -297,6 +297,28 @@ BEGIN
   END LOOP;
 END $$;
 
+-- ---- 7b. Realtime: REPLICA IDENTITY FULL ------------------------------
+-- Without this, Supabase Realtime DELETE events only carry the primary
+-- key in the payload — which means the client-side filter
+-- `category_id=eq.<id>` (and similar) can't match (the column it's
+-- filtering on isn't present), so the subscription doesn't fire and
+-- the deleted row stays visible until reload.
+--
+-- REPLICA IDENTITY FULL ships the entire OLD row in DELETE events, so
+-- filters on any column work as expected. Slight WAL overhead, but
+-- our row sizes are small.
+
+ALTER TABLE public.categories             REPLICA IDENTITY FULL;
+ALTER TABLE public.category_links         REPLICA IDENTITY FULL;
+ALTER TABLE public.app_settings           REPLICA IDENTITY FULL;
+ALTER TABLE public.schedule_past_sessions REPLICA IDENTITY FULL;
+ALTER TABLE public.loot_items             REPLICA IDENTITY FULL;
+ALTER TABLE public.loot_entries           REPLICA IDENTITY FULL;
+ALTER TABLE public.mitigation_phases      REPLICA IDENTITY FULL;
+ALTER TABLE public.mitigation_entries     REPLICA IDENTITY FULL;
+ALTER TABLE public.strategy_docs          REPLICA IDENTITY FULL;
+ALTER TABLE public.tags                   REPLICA IDENTITY FULL;
+
 -- ---- 8. Realtime publication ------------------------------------------
 
 DO $$
