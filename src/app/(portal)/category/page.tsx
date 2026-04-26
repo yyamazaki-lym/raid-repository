@@ -2,6 +2,7 @@ import { AlertTriangle } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { CategoryFormDialog } from "@/components/portal/category-form-dialog";
 import { ImportDiscordButton } from "@/components/portal/import-discord-button";
+import { BackfillFirstClearButton } from "@/components/portal/backfill-first-clear-button";
 import { fetchCategories } from "@/lib/supabase/categories";
 import { fetchRecentImportCountsByCategory } from "@/lib/server/categories-actions";
 import { CategoryList } from "./category-list";
@@ -27,7 +28,8 @@ export default async function CategoryIndexPage() {
             レイドコンテンツ単位で、軽減・ロット・攻略情報を切り替えます。
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <BackfillFirstClearButton />
           <ImportDiscordButton />
           <CategoryFormDialog />
         </div>
