@@ -464,6 +464,11 @@ function DiagnosePanel({ data }: { data: YouTubeDiagnosticResult }) {
                   size={a.htmlSize}
                 </span>
               )}
+              {a.matchedStrategy && (
+                <span className="ml-2 text-emerald-300">
+                  via {a.matchedStrategy}
+                </span>
+              )}
             </div>
             <div>
               length=
@@ -477,6 +482,48 @@ function DiagnosePanel({ data }: { data: YouTubeDiagnosticResult }) {
                 </span>
               </span>
             </div>
+            {a.pageMarkers && (
+              <div className="text-muted-foreground break-words">
+                player=
+                <span
+                  className={
+                    a.pageMarkers.hasPlayerResponse
+                      ? "text-emerald-300"
+                      : "text-rose-300"
+                  }
+                >
+                  {a.pageMarkers.hasPlayerResponse ? "Y" : "N"}
+                </span>
+                {" "}
+                ldjson=
+                <span
+                  className={
+                    a.pageMarkers.hasLdJson
+                      ? "text-emerald-300"
+                      : "text-rose-300"
+                  }
+                >
+                  {a.pageMarkers.hasLdJson ? "Y" : "N"}
+                </span>
+                {" "}
+                meta=
+                <span
+                  className={
+                    a.pageMarkers.hasItempropDuration
+                      ? "text-emerald-300"
+                      : "text-rose-300"
+                  }
+                >
+                  {a.pageMarkers.hasItempropDuration ? "Y" : "N"}
+                </span>
+                {a.pageMarkers.hasConsentText && (
+                  <span className="ml-2 text-amber-300">consent!</span>
+                )}
+                {a.pageMarkers.hasSignInWall && (
+                  <span className="ml-2 text-amber-300">signin!</span>
+                )}
+              </div>
+            )}
             {a.note && (
               <div className="text-amber-300 break-words">{a.note}</div>
             )}

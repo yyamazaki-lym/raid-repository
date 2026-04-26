@@ -77,9 +77,172 @@ export type YouTubeMetaDebug = {
     htmlSize: number | null;
     foundLength: boolean;
     foundUpload: boolean;
+    /** Which parser strategy matched, if any. */
+    matchedStrategy?: "player" | "ldjson" | "meta";
+    /** Indicators that help diagnose what kind of page YouTube returned. */
+    pageMarkers?: {
+      hasPlayerResponse: boolean;
+      hasLdJson: boolean;
+      hasItempropDuration: boolean;
+      hasConsentText: boolean;
+      hasSignInWall: boolean;
+    };
     note?: string;
   }>;
 };
+
+/**
+ * Parse ISO 8601 duration (e.g. "PT3M33S", "PT1H2M3S") into seconds.
+ * Returns null on malformed input. Used by both the JSON-LD path and
+ * the `<meta itemprop="duration">` path.
+ */
+function parseIsoDuration(raw: string): number | null {
+  const m = raw.match(/^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/);
+  if (!m) return null;
+  const h = m[1] ? parseInt(m[1], 10) : 0;
+  const min = m[2] ? parseInt(m[2], 10) : 0;
+  const s = m[3] ? parseInt(m[3], 10) : 0;
+  const total = h * 3600 + min * 60 + s;
+  return total > 0 ? total : null;
+}
+
+/**
+ * Apply three parser strategies and combine results — different YouTube
+ * HTML variants expose different fields, so we try all three and take
+ * the first non-null match per field. `matchedStrategy` records which
+ * variant FIRST produced any non-null value (best-effort label).
+ *
+ *   1. ytInitialPlayerResponse: "lengthSeconds":"213" + "uploadDate":"..."
+ *   2. JSON-LD VideoObject: {"duration":"PT3M33S","uploadDate":"..."}
+ *   3. <meta itemprop="duration" content="PT3M33S">
+ *      <meta itemprop="datePublished" content="...">
+ */
+function parseMetaFromHtml(html: string): {
+  durationSeconds: number | null;
+  uploadDate: string | null;
+  matchedStrategy?: "player" | "ldjson" | "meta";
+} {
+  let durationSeconds: number | null = null;
+  let uploadDate: string | null = null;
+  let matchedStrategy: "player" | "ldjson" | "meta" | undefined;
+
+  const tag = (s: typeof matchedStrategy) => {
+    if (!matchedStrategy) matchedStrategy = s;
+  };
+
+  // Strategy 1: player response.
+  const dm = html.match(/"lengthSeconds"\s*:\s*"(\d+)"/);
+  if (dm) {
+    const s = parseInt(dm[1]!, 10);
+    if (Number.isFinite(s) && s > 0) {
+      durationSeconds = s;
+      tag("player");
+    }
+  }
+  if (uploadDate === null) {
+    const um = html.match(/"uploadDate"\s*:\s*"([^"]+)"/);
+    if (um) {
+      const norm = normalizeDate(um[1]!);
+      if (norm) {
+        uploadDate = norm;
+        tag("player");
+      }
+    }
+  }
+  if (uploadDate === null) {
+    const pm = html.match(/"publishDate"\s*:\s*"([^"]+)"/);
+    if (pm) {
+      const norm = normalizeDate(pm[1]!);
+      if (norm) {
+        uploadDate = norm;
+        tag("player");
+      }
+    }
+  }
+
+  // Strategy 2: JSON-LD VideoObject (only if a field is still missing).
+  if (durationSeconds === null || uploadDate === null) {
+    const ld = html.match(
+      /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/i,
+    );
+    if (ld) {
+      try {
+        const obj = JSON.parse(ld[1]!.trim());
+        if (durationSeconds === null && typeof obj?.duration === "string") {
+          const sec = parseIsoDuration(obj.duration);
+          if (sec !== null) {
+            durationSeconds = sec;
+            tag("ldjson");
+          }
+        }
+        if (uploadDate === null) {
+          const ud = obj?.uploadDate ?? obj?.datePublished;
+          if (typeof ud === "string") {
+            const norm = normalizeDate(ud);
+            if (norm) {
+              uploadDate = norm;
+              tag("ldjson");
+            }
+          }
+        }
+      } catch {
+        // malformed JSON — ignore
+      }
+    }
+  }
+
+  // Strategy 3: <meta itemprop="duration"> + datePublished.
+  if (durationSeconds === null) {
+    const md = html.match(
+      /<meta[^>]+itemprop=["']duration["'][^>]+content=["']([^"']+)["']/i,
+    );
+    if (md) {
+      const sec = parseIsoDuration(md[1]!);
+      if (sec !== null) {
+        durationSeconds = sec;
+        tag("meta");
+      }
+    }
+  }
+  if (uploadDate === null) {
+    const mu = html.match(
+      /<meta[^>]+itemprop=["']datePublished["'][^>]+content=["']([^"']+)["']/i,
+    );
+    if (mu) {
+      const norm = normalizeDate(mu[1]!);
+      if (norm) {
+        uploadDate = norm;
+        tag("meta");
+      }
+    }
+  }
+  if (uploadDate === null) {
+    const mu2 = html.match(
+      /<meta[^>]+itemprop=["']uploadDate["'][^>]+content=["']([^"']+)["']/i,
+    );
+    if (mu2) {
+      const norm = normalizeDate(mu2[1]!);
+      if (norm) {
+        uploadDate = norm;
+        tag("meta");
+      }
+    }
+  }
+
+  return { durationSeconds, uploadDate, matchedStrategy };
+}
+
+function detectPageMarkers(html: string) {
+  return {
+    hasPlayerResponse: html.includes("ytInitialPlayerResponse"),
+    hasLdJson: /<script[^>]+type=["']application\/ld\+json["']/i.test(html),
+    hasItempropDuration: /itemprop=["']duration["']/i.test(html),
+    hasConsentText:
+      html.includes("Before you continue to YouTube") ||
+      html.includes("consent.youtube.com"),
+    hasSignInWall: html.includes("Sign in to confirm"),
+  };
+}
 
 /**
  * Internal core — fetches with debug info attached so the diagnostic
@@ -102,7 +265,10 @@ async function fetchYouTubeMetaInternal(
     return { durationSeconds: null, uploadDate: null };
   }
   for (const host of ALT_HOSTS) {
-    const target = `https://${host}/watch?v=${id}&hl=en`;
+    // bpctr=9999999999: bypass consent gate (timestamp far in the future)
+    // has_verified=1: skip age gate (we accept maturity warnings)
+    // hl=en: lock locale to English so JSON keys aren't translated/missing
+    const target = `https://${host}/watch?v=${id}&hl=en&bpctr=9999999999&has_verified=1`;
     let status: number | "error" | "timeout" = "error";
     let htmlSize: number | null = null;
     let foundLength = false;
@@ -151,22 +317,10 @@ async function fetchYouTubeMetaInternal(
       const html = await res.text();
       htmlSize = html.length;
 
-      let durationSeconds: number | null = null;
-      const dm = html.match(/"lengthSeconds"\s*:\s*"(\d+)"/);
-      if (dm) {
-        const s = parseInt(dm[1]!, 10);
-        if (Number.isFinite(s) && s > 0) durationSeconds = s;
-      }
-      foundLength = durationSeconds !== null;
-
-      let uploadDate: string | null = null;
-      const um = html.match(/"uploadDate"\s*:\s*"([^"]+)"/);
-      if (um) uploadDate = normalizeDate(um[1]!);
-      if (!uploadDate) {
-        const pm = html.match(/"publishDate"\s*:\s*"([^"]+)"/);
-        if (pm) uploadDate = normalizeDate(pm[1]!);
-      }
-      foundUpload = uploadDate !== null;
+      const parsed = parseMetaFromHtml(html);
+      foundLength = parsed.durationSeconds !== null;
+      foundUpload = parsed.uploadDate !== null;
+      const pageMarkers = detectPageMarkers(html);
 
       debug?.attempts.push({
         host,
@@ -174,11 +328,16 @@ async function fetchYouTubeMetaInternal(
         htmlSize,
         foundLength,
         foundUpload,
+        matchedStrategy: parsed.matchedStrategy,
+        pageMarkers,
       });
-      if (durationSeconds !== null || uploadDate !== null) {
-        return { durationSeconds, uploadDate };
+      if (foundLength || foundUpload) {
+        return {
+          durationSeconds: parsed.durationSeconds,
+          uploadDate: parsed.uploadDate,
+        };
       }
-      // Otherwise loop to next host as a fallback (rare).
+      // Otherwise loop to next host as a fallback.
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       status = msg.includes("aborted") || msg.includes("timeout")
