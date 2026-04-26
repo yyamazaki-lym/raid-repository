@@ -48,12 +48,15 @@ export function StatusBadge({
 }: Props) {
   const isEditable = !readOnly && typeof onChange === "function";
 
+  // Fixed min-width + centered content so different status labels
+  // (未着手/練習中/クリア済/休止中) all occupy the same horizontal space.
+  // Without this, dropdown items show jagged content-name start positions.
   const baseBadge = cn(
-    "inline-flex items-center gap-1.5 rounded-sm border font-mono uppercase",
+    "inline-flex items-center justify-center gap-1.5 rounded-sm border font-mono uppercase",
     STATUS_TONE[status],
     variant === "compact"
-      ? "px-1.5 py-px text-[9px] tracking-widest"
-      : "px-2 py-0.5 text-[10px] tracking-[0.18em]",
+      ? "min-w-[4.5rem] px-1.5 py-px text-[9px] tracking-widest"
+      : "min-w-[5.5rem] px-2 py-0.5 text-[10px] tracking-[0.18em]",
     className,
   );
 
