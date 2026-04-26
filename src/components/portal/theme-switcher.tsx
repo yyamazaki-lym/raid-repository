@@ -25,7 +25,7 @@ export function ThemeSwitcher() {
         <Swatch theme={currentTheme} size="sm" />
         <span className="hidden sm:inline">{currentTheme.label}</span>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" sideOffset={8} className="glass min-w-64">
+      <DropdownMenuContent align="end" sideOffset={8} className="glass-popup min-w-64">
         <div className="px-1.5 pt-1 pb-1 font-mono text-[10px] tracking-[0.2em] text-muted-foreground uppercase">
           Theme
         </div>

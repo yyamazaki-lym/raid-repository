@@ -85,6 +85,25 @@ export async function deleteCategory(
   return { ok: true };
 }
 
+export async function updateCategory(
+  id: string,
+  patch: Partial<{
+    name: string;
+    slug: string;
+    status: CategoryStatus;
+    loot_sheet_url: string | null;
+    mitigation_sheet_url: string | null;
+  }>,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const supabase = createClient();
+  const { error } = await supabase
+    .from("categories")
+    .update(patch)
+    .eq("id", id);
+  if (error) return { ok: false, reason: error.message };
+  return { ok: true };
+}
+
 /**
  * Live category list — starts from `initial` (server-rendered) and listens to
  * Realtime changes on the `categories` table. On any change, refetches the

@@ -13,7 +13,8 @@ import { toast } from "sonner";
 import {
   DndContext,
   KeyboardSensor,
-  PointerSensor,
+  MouseSensor,
+  TouchSensor,
   closestCenter,
   useSensor,
   useSensors,
@@ -36,6 +37,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { StatusBadge } from "@/components/portal/status-badge";
+import { CategoryFormDialog } from "@/components/portal/category-form-dialog";
 import {
   deleteCategory,
   setCategoryOrder,
@@ -68,8 +70,17 @@ export function CategoryList({ initialCategories }: Props) {
     });
   }, [live, optimisticOrder]);
 
+  // Sensor strategy:
+  // - MouseSensor: distance-based activation so a click on the link inside the
+  //   card isn't interpreted as a drag.
+  // - TouchSensor: delay-based (long-press) so the user can scroll the page
+  //   normally; pressing-and-holding on the grip starts the drag.
+  // - KeyboardSensor: arrow-key reorder for accessibility.
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 200, tolerance: 6 },
+    }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     }),
@@ -225,37 +236,55 @@ function SortableCategoryCard({
             />
           </span>
 
-          <CategoryMenu onDelete={onDelete} />
+          <CategoryMenu category={category} onDelete={onDelete} />
         </div>
       </Card>
     </li>
   );
 }
 
-function CategoryMenu({ onDelete }: { onDelete: () => void }) {
+function CategoryMenu({
+  category,
+  onDelete,
+}: {
+  category: Category;
+  onDelete: () => void;
+}) {
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground"
-        aria-label="カテゴリーメニュー"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <MoreVertical className="h-3.5 w-3.5" aria-hidden />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" sideOffset={4} className="glass min-w-40">
-        <DropdownMenuItem disabled className="flex items-center gap-2 opacity-60">
-          <Pencil className="h-3.5 w-3.5" aria-hidden />
-          <span className="text-sm">編集 (近日)</span>
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem
-          onClick={onDelete}
-          className="flex cursor-pointer items-center gap-2 text-rose-300 focus:text-rose-200"
+    <span
+      onClick={(e) => e.stopPropagation()}
+      onKeyDown={(e) => e.stopPropagation()}
+    >
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground"
+          aria-label="カテゴリーメニュー"
         >
-          <Trash2 className="h-3.5 w-3.5" aria-hidden />
-          <span className="text-sm">削除</span>
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+          <MoreVertical className="h-3.5 w-3.5" aria-hidden />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" sideOffset={4} className="glass-popup min-w-40">
+          <CategoryFormDialog
+            category={category}
+            trigger={
+              <DropdownMenuItem
+                onSelect={(e) => e.preventDefault()}
+                className="flex cursor-pointer items-center gap-2"
+              >
+                <Pencil className="h-3.5 w-3.5" aria-hidden />
+                <span className="text-sm">編集</span>
+              </DropdownMenuItem>
+            }
+          />
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            onClick={onDelete}
+            className="flex cursor-pointer items-center gap-2 text-rose-300 focus:text-rose-200"
+          >
+            <Trash2 className="h-3.5 w-3.5" aria-hidden />
+            <span className="text-sm">削除</span>
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </span>
   );
 }

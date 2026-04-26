@@ -3,7 +3,13 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion } from "motion/react";
-import { Dice5, ShieldHalf, BookOpen, type LucideIcon } from "lucide-react";
+import {
+  Dice5,
+  ShieldHalf,
+  BookOpen,
+  Film,
+  type LucideIcon,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type SubTab = {
@@ -13,11 +19,12 @@ type SubTab = {
   Icon: LucideIcon;
 };
 
-// Order = use frequency: 軽減表 > ロット管理 > 攻略情報.
+// Order = use frequency: 軽減表 > ロット管理 > 攻略情報 > 動画.
 const SUB_TABS: SubTab[] = [
   { id: "mitigation", label: "軽減表", segment: "mitigation", Icon: ShieldHalf },
   { id: "loot", label: "ロット管理", segment: "loot", Icon: Dice5 },
   { id: "strategy", label: "攻略情報", segment: "strategy", Icon: BookOpen },
+  { id: "videos", label: "動画", segment: "videos", Icon: Film },
 ];
 
 export function SubTabs({ baseHref }: { baseHref: string }) {

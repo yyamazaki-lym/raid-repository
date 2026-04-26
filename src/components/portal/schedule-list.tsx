@@ -1,10 +1,10 @@
 import { CalendarX2, AlertTriangle, MessageSquareText } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import type {
   Attendance,
   ScheduleComment,
@@ -148,58 +148,50 @@ function UserHeaderCell({
 }) {
   const hasComments = comments.length > 0;
 
-  // Inner content reused whether wrapped in tooltip or not.
-  const inner = (
-    <>
-      <span>{user.name}</span>
-      {hasComments && (
-        <MessageSquareText
-          className="h-2.5 w-2.5 text-[var(--neon-cyan)] opacity-70 transition-opacity group-hover:opacity-100"
-          aria-hidden
-        />
-      )}
-    </>
-  );
+  // Username is always a clickable link to the per-user edit URL (or a plain
+  // span if no edit URL is available). Comments live in a separate small
+  // button → Popover. This works on both touch (tap) and mouse (click), and
+  // keeps the link semantics clean.
+  const nameClass =
+    "inline-block underline decoration-dotted decoration-[var(--neon-cyan)]/60 underline-offset-4 transition-colors hover:decoration-[var(--neon-cyan)] hover:text-[var(--neon-cyan)]";
 
-  // The trigger element — an anchor when an edit URL is available so clicks
-  // jump to the per-user input page on the source site, otherwise a span.
-  const triggerClass =
-    "group inline-flex items-center gap-1 underline decoration-dotted decoration-[var(--neon-cyan)]/60 underline-offset-4 transition-colors hover:decoration-[var(--neon-cyan)] hover:text-[var(--neon-cyan)] " +
-    (editUrl ? "cursor-pointer" : "cursor-help");
-
-  const trigger = editUrl ? (
+  const nameNode = editUrl ? (
     <a
       href={editUrl}
       target="_blank"
       rel="noopener noreferrer"
-      className={triggerClass}
-      title={hasComments ? undefined : `${user.name} の出欠を編集`}
+      className={nameClass}
+      title={`${user.name} の出欠を編集`}
     >
-      {inner}
+      {user.name}
     </a>
   ) : (
-    <span className={triggerClass}>{inner}</span>
+    <span className={nameClass}>{user.name}</span>
   );
 
   return (
     <th scope="col" className="px-2 py-2 text-center font-mono whitespace-nowrap">
-      {hasComments ? (
-        <Tooltip>
-          <TooltipTrigger
-            // Base UI uses `render` to swap the element. We pass our anchor /
-            // span directly so the Tooltip wraps interactivity transparently.
-            render={trigger}
-          />
-          <TooltipContent
-            side="bottom"
-            className="max-w-[20rem] bg-popover text-popover-foreground p-0 shadow-xl ring-1 ring-[var(--neon-cyan)]/30"
-          >
-            <CommentList user={user} comments={comments} />
-          </TooltipContent>
-        </Tooltip>
-      ) : (
-        trigger
-      )}
+      <span className="inline-flex items-center gap-1">
+        {nameNode}
+        {hasComments && (
+          <Popover>
+            <PopoverTrigger
+              className="inline-flex h-5 w-5 items-center justify-center rounded-sm border border-[var(--neon-cyan)]/40 bg-[var(--neon-cyan)]/8 text-[var(--neon-cyan)] transition-colors hover:bg-[var(--neon-cyan)]/15"
+              aria-label={`${user.name} のコメントを表示`}
+            >
+              <MessageSquareText className="h-2.5 w-2.5" aria-hidden />
+            </PopoverTrigger>
+            <PopoverContent
+              side="bottom"
+              align="center"
+              sideOffset={6}
+              className="glass-popup w-72 max-w-[80vw] p-0"
+            >
+              <CommentList user={user} comments={comments} />
+            </PopoverContent>
+          </Popover>
+        )}
+      </span>
     </th>
   );
 }

@@ -29,12 +29,38 @@ CREATE TABLE IF NOT EXISTS public.categories (
   created_at  timestamptz NOT NULL DEFAULT now(),
   updated_at  timestamptz NOT NULL DEFAULT now()
 );
+-- Phase 3 additions: external spreadsheet URLs (added later via migration).
+ALTER TABLE public.categories
+  ADD COLUMN IF NOT EXISTS loot_sheet_url       text,
+  ADD COLUMN IF NOT EXISTS mitigation_sheet_url text;
+
 CREATE INDEX IF NOT EXISTS categories_sort_order_idx
   ON public.categories(sort_order);
 
 DROP TRIGGER IF EXISTS set_updated_at_categories ON public.categories;
 CREATE TRIGGER set_updated_at_categories
   BEFORE UPDATE ON public.categories
+  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+-- ---- 2b. category_links (strategy links + videos) ----------------------
+
+CREATE TABLE IF NOT EXISTS public.category_links (
+  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  category_id uuid NOT NULL REFERENCES public.categories(id) ON DELETE CASCADE,
+  kind        text NOT NULL CHECK (kind IN ('strategy','video')),
+  title       text NOT NULL,
+  url         text NOT NULL,
+  description text,
+  sort_order  integer NOT NULL DEFAULT 0,
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  updated_at  timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS category_links_category_kind_idx
+  ON public.category_links(category_id, kind, sort_order);
+
+DROP TRIGGER IF EXISTS set_updated_at_category_links ON public.category_links;
+CREATE TRIGGER set_updated_at_category_links
+  BEFORE UPDATE ON public.category_links
   FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
 -- ---- 3. loot -----------------------------------------------------------
@@ -145,6 +171,7 @@ CREATE INDEX IF NOT EXISTS tags_target_idx
 -- ---- 7. RLS — fully open for the anon key -----------------------------
 
 ALTER TABLE public.categories          ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.category_links      ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.loot_items          ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.loot_entries        ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.mitigation_phases   ENABLE ROW LEVEL SECURITY;
@@ -161,7 +188,8 @@ DECLARE
   policy_name text;
 BEGIN
   FOR t IN SELECT unnest(ARRAY[
-    'categories','loot_items','loot_entries',
+    'categories','category_links',
+    'loot_items','loot_entries',
     'mitigation_phases','mitigation_entries',
     'strategy_docs','tags'
   ]) LOOP
@@ -200,7 +228,8 @@ DECLARE
   t text;
 BEGIN
   FOR t IN SELECT unnest(ARRAY[
-    'categories','loot_items','loot_entries',
+    'categories','category_links',
+    'loot_items','loot_entries',
     'mitigation_phases','mitigation_entries',
     'strategy_docs','tags'
   ]) LOOP

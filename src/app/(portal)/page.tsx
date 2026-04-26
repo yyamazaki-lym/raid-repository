@@ -31,32 +31,32 @@ export default async function SchedulePage({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="font-display text-xl text-foreground sm:text-2xl">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <h1 className="font-display text-xl leading-tight text-foreground sm:text-2xl">
             Schedule
           </h1>
-          <p className="text-muted-foreground mt-1 text-sm">
-            外部スケジュールサイトから取得した日程一覧（10分キャッシュ）。
+          <p className="text-muted-foreground mt-0.5 truncate font-mono text-[10px] tracking-[0.18em] uppercase sm:text-[11px]">
+            10分キャッシュ
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-1.5">
           <Link
             href={showPast ? "/" : "/?past=1"}
             scroll={false}
             prefetch={false}
-            className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 rounded-md border border-border/60 px-3 py-1.5 font-mono text-[11px] tracking-widest uppercase transition-colors hover:border-[var(--neon-cyan)]/60"
+            className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 rounded-md border border-border/60 px-2.5 py-1.5 font-mono text-[11px] tracking-widest uppercase transition-colors hover:border-[var(--neon-cyan)]/60 sm:px-3"
             aria-label={showPast ? "過去日程を非表示にする" : "過去日程を表示する"}
           >
             {showPast ? (
               <>
                 <EyeOff className="h-3.5 w-3.5" aria-hidden />
-                非表示
+                <span className="hidden sm:inline">過去</span>非表示
               </>
             ) : (
               <>
                 <Eye className="h-3.5 w-3.5" aria-hidden />
-                過去日程表示
+                過去<span className="hidden sm:inline">日程</span>表示
               </>
             )}
           </Link>
@@ -65,10 +65,11 @@ export default async function SchedulePage({
               href={url}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 rounded-md border border-border/60 px-3 py-1.5 font-mono text-[11px] tracking-widest uppercase transition-colors hover:border-[var(--neon-cyan)]/60"
+              className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 rounded-md border border-border/60 px-2.5 py-1.5 font-mono text-[11px] tracking-widest uppercase transition-colors hover:border-[var(--neon-cyan)]/60 sm:px-3"
+              aria-label="元サイトを開く"
             >
               <ExternalLink className="h-3.5 w-3.5" aria-hidden />
-              元サイトを開く
+              <span className="hidden sm:inline">元サイト</span>
             </a>
           )}
         </div>

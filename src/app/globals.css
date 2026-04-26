@@ -520,6 +520,20 @@
   box-shadow: 0 6px 16px -10px color-mix(in oklch, black 70%, transparent);
 }
 
+/* Glass popup — used by floating dropdowns / popovers / tooltips. The base
+ * .glass is 55% opaque (great for cards over a stable background) but reads
+ * as see-through when stacked over scrolling content. This variant is mostly
+ * opaque with stronger blur so popup content stays readable. */
+.glass-popup {
+  background: color-mix(in oklch, var(--popover) 94%, transparent);
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  border: 1px solid color-mix(in oklch, var(--frost) 14%, transparent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in oklch, var(--frost) 10%, transparent),
+    0 12px 32px -12px color-mix(in oklch, black 65%, transparent);
+}
+
 /* Frosted edge — silver-blue glow on hover/active. */
 .neon-edge {
   position: relative;

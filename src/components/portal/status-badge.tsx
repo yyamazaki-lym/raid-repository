@@ -77,7 +77,7 @@ export function StatusBadge({
         {status}
         <ChevronDown className="h-2.5 w-2.5 opacity-60" aria-hidden />
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" sideOffset={6} className="glass min-w-44">
+      <DropdownMenuContent align="start" sideOffset={6} className="glass-popup min-w-44">
         {ALL_STATUSES.map((s) => {
           const isCurrent = s === status;
           return (

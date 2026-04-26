@@ -1,12 +1,12 @@
 import { findCategoryBySlug } from "@/lib/supabase/categories";
 import { fetchCategoryLinks } from "@/lib/supabase/category-links";
-import { StrategyList } from "./strategy-list";
+import { VideosList } from "./videos-list";
 
 export const metadata = {
-  title: "攻略情報",
+  title: "動画",
 };
 
-export default async function StrategyPage({
+export default async function VideosPage({
   params,
 }: {
   params: Promise<{ slug: string }>;
@@ -22,6 +22,6 @@ export default async function StrategyPage({
     );
   }
 
-  const links = await fetchCategoryLinks(category.id, "strategy");
-  return <StrategyList categoryId={category.id} initial={links} />;
+  const videos = await fetchCategoryLinks(category.id, "video");
+  return <VideosList categoryId={category.id} initial={videos} />;
 }

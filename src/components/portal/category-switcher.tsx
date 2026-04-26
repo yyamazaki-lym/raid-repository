@@ -77,7 +77,7 @@ export function CategorySwitcher({ initialCategories }: Props) {
       <DropdownMenuContent
         align="start"
         sideOffset={8}
-        className="glass min-w-80 border-border/40"
+        className="glass-popup min-w-80 border-border/40"
       >
         <div className="px-1.5 pt-1 pb-1 font-mono text-[10px] tracking-[0.2em] text-muted-foreground uppercase">
           Categories
