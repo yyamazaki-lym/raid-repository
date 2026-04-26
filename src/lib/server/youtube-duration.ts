@@ -245,6 +245,56 @@ function detectPageMarkers(html: string) {
 }
 
 /**
+ * YouTube Data API v3 — the official, authenticated endpoint. Best for:
+ *   - Unlisted videos (which MWEB Innertube can't see from bot IPs)
+ *   - Reliability (no scraping fragility, no rate-limit guesswork)
+ *
+ * Requires `YOUTUBE_API_KEY` env var. Free tier gives ~10,000 quota
+ * units/day, each `videos.list` call = 1 unit, so a typical raid
+ * group's worth of videos (sub-1k) fits comfortably.
+ *
+ * Returns nulls when the env var is missing — caller falls through to
+ * the Innertube + HTML strategies.
+ */
+async function fetchDataApiMeta(videoId: string): Promise<YouTubeMeta> {
+  const apiKey = process.env.YOUTUBE_API_KEY?.trim();
+  if (!apiKey) return { durationSeconds: null, uploadDate: null };
+  try {
+    const url =
+      "https://www.googleapis.com/youtube/v3/videos" +
+      `?part=snippet,contentDetails&id=${encodeURIComponent(videoId)}` +
+      `&key=${encodeURIComponent(apiKey)}`;
+    const res = await fetch(url, {
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) return { durationSeconds: null, uploadDate: null };
+    const data = (await res.json()) as {
+      items?: Array<{
+        snippet?: { publishedAt?: string };
+        contentDetails?: { duration?: string };
+      }>;
+    };
+    const item = data.items?.[0];
+    if (!item) return { durationSeconds: null, uploadDate: null };
+
+    let durationSeconds: number | null = null;
+    if (item.contentDetails?.duration) {
+      const sec = parseIsoDuration(item.contentDetails.duration);
+      if (sec !== null) durationSeconds = sec;
+    }
+    let uploadDate: string | null = null;
+    if (item.snippet?.publishedAt) {
+      const norm = normalizeDate(item.snippet.publishedAt);
+      if (norm) uploadDate = norm;
+    }
+    return { durationSeconds, uploadDate };
+  } catch {
+    return { durationSeconds: null, uploadDate: null };
+  }
+}
+
+/**
  * Innertube API — the JSON endpoint that YouTube's official mobile apps
  * use. Pretending to be the MWEB (mobile web) client bypasses the bot-
  * detection signin wall that Vercel/AWS egress IPs hit on the regular
@@ -328,9 +378,10 @@ async function fetchInnertubeMeta(videoId: string): Promise<YouTubeMeta> {
  * Server Action can surface exactly which step failed.
  *
  * Strategy order:
- *   1. Innertube API (Android client) — bypasses the signin wall that
- *      hits Vercel/AWS IPs; returns clean JSON
- *   2. HTML scrape fallbacks — multi-strategy parser over watch page
+ *   1. YouTube Data API v3 — official, handles unlisted/限定公開
+ *      videos (only available when YOUTUBE_API_KEY is configured)
+ *   2. Innertube MWEB — works for public videos without an API key
+ *   3. HTML scrape — last-resort fallback
  */
 async function fetchYouTubeMetaInternal(
   url: string,
@@ -349,7 +400,51 @@ async function fetchYouTubeMetaInternal(
     return { durationSeconds: null, uploadDate: null };
   }
 
-  // === Strategy 1: Innertube API (Android client) ===
+  // === Strategy 1: YouTube Data API v3 (when configured) ===
+  const hasApiKey = !!process.env.YOUTUBE_API_KEY?.trim();
+  if (hasApiKey) {
+    try {
+      const meta = await fetchDataApiMeta(id);
+      debug?.attempts.push({
+        host: "googleapis (Data API v3)",
+        status:
+          meta.durationSeconds !== null || meta.uploadDate !== null
+            ? 200
+            : "error",
+        htmlSize: null,
+        foundLength: meta.durationSeconds !== null,
+        foundUpload: meta.uploadDate !== null,
+        note:
+          meta.durationSeconds === null && meta.uploadDate === null
+            ? "no items — video private/removed/wrong key"
+            : undefined,
+      });
+      if (meta.durationSeconds !== null || meta.uploadDate !== null) {
+        return meta;
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      debug?.attempts.push({
+        host: "googleapis (Data API v3)",
+        status: "error",
+        htmlSize: null,
+        foundLength: false,
+        foundUpload: false,
+        note: msg.slice(0, 120),
+      });
+    }
+  } else {
+    debug?.attempts.push({
+      host: "googleapis (Data API v3)",
+      status: "error",
+      htmlSize: null,
+      foundLength: false,
+      foundUpload: false,
+      note: "YOUTUBE_API_KEY 未設定 — 限定公開動画は取得不可",
+    });
+  }
+
+  // === Strategy 2: Innertube API (MWEB client) ===
   let innertubeStatus: number | "error" | "timeout" = "error";
   let innertubeNote: string | undefined;
   try {
@@ -385,7 +480,7 @@ async function fetchYouTubeMetaInternal(
     });
   }
 
-  // === Strategy 2: HTML scrape fallbacks ===
+  // === Strategy 3: HTML scrape fallbacks ===
   for (const host of ALT_HOSTS) {
     // bpctr=9999999999: bypass consent gate (timestamp far in the future)
     // has_verified=1: skip age gate (we accept maturity warnings)
