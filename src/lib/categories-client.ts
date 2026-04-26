@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
   rowToCategory,
@@ -89,9 +89,14 @@ export async function deleteCategory(
  * Live category list — starts from `initial` (server-rendered) and listens to
  * Realtime changes on the `categories` table. On any change, refetches the
  * full list (keeps the implementation simple; categories are <50 rows).
+ *
+ * Channel name uses React's `useId()` so two component instances on the same
+ * page (e.g. CategoryList + CategorySwitcher) get different subscriptions.
  */
 export function useRealtimeCategories(initial: Category[]): Category[] {
   const [categories, setCategories] = useState<Category[]>(initial);
+  const id = useId();
+
   // Update when initial changes (e.g. after router.refresh()).
   const initialRef = useRef(initial);
   useEffect(() => {
@@ -102,41 +107,52 @@ export function useRealtimeCategories(initial: Category[]): Category[] {
   }, [initial]);
 
   useEffect(() => {
+    let cancelled = false;
     const supabase = createClient();
 
-    let cancelled = false;
-
     const refetch = async () => {
-      const { data, error } = await supabase
-        .from("categories")
-        .select("*")
-        .order("sort_order", { ascending: true })
-        .order("created_at", { ascending: true });
       if (cancelled) return;
-      if (error) {
-        console.warn("[categories-client] refetch error:", error.message);
-        return;
+      try {
+        const { data, error } = await supabase
+          .from("categories")
+          .select("*")
+          .order("sort_order", { ascending: true })
+          .order("created_at", { ascending: true });
+        if (cancelled) return;
+        if (error) {
+          console.warn("[categories-client] refetch error:", error.message);
+          return;
+        }
+        setCategories(((data ?? []) as CategoryRow[]).map(rowToCategory));
+      } catch (e) {
+        console.warn("[categories-client] refetch exception:", e);
       }
-      setCategories(((data ?? []) as CategoryRow[]).map(rowToCategory));
     };
 
     const channel = supabase
-      .channel("categories-changes")
+      .channel(`categories-${id}`)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "categories" },
         () => {
-          // Coalesce bursts (DnD reorder fires N updates) by debouncing.
           void refetch();
         },
       )
-      .subscribe();
+      .subscribe((status, err) => {
+        if (err) {
+          console.warn("[categories-client] subscribe error:", status, err);
+        }
+      });
 
     return () => {
       cancelled = true;
-      void supabase.removeChannel(channel);
+      try {
+        void supabase.removeChannel(channel);
+      } catch (e) {
+        console.warn("[categories-client] removeChannel error:", e);
+      }
     };
-  }, []);
+  }, [id]);
 
   return categories;
 }
