@@ -1,27 +1,19 @@
-import { cookies } from "next/headers";
-
-/**
- * Cookie name shared between the client setter (settings dialog) and the
- * server-side reader. Synced manually with `schedule-url-store.ts`.
- */
-export const SCHEDULE_URL_COOKIE = "raid-repo-schedule-url";
+import { fetchAppSetting } from "@/lib/supabase/app-settings";
 
 /**
  * Resolve the schedule source URL.
  *
  * Resolution order:
- *   1. Cookie set via the in-app settings dialog (per-browser override)
- *   2. `NEXT_PUBLIC_SCHEDULE_URL` build-time default
+ *   1. `app_settings` row with key='schedule_url' (shared across all viewers)
+ *   2. `NEXT_PUBLIC_SCHEDULE_URL` build-time fallback (left in for fork
+ *      deployments that prefer baking the URL into env)
  *
- * Returns `null` if neither is configured. Phase 3 will replace this with a
- * Supabase `groups.schedule_url` lookup keyed by the active group.
+ * Returns `null` if neither is configured — the schedule page renders the
+ * onboarding card in that case.
  */
 export async function getScheduleSourceUrl(): Promise<string | null> {
-  const store = await cookies();
-  const override = store.get(SCHEDULE_URL_COOKIE)?.value?.trim();
-  if (override && /^https?:\/\//i.test(override)) {
-    return override;
-  }
+  const fromDb = await fetchAppSetting("schedule_url");
+  if (fromDb && /^https?:\/\//i.test(fromDb)) return fromDb;
   const env = process.env.NEXT_PUBLIC_SCHEDULE_URL?.trim();
   return env && env.length > 0 ? env : null;
 }

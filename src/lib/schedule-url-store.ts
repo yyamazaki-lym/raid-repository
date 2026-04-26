@@ -1,35 +1,24 @@
 "use client";
 
+import { createClient } from "@/lib/supabase/client";
+
 /**
- * Client-side helpers for the schedule-source URL override.
+ * Client-side mutator for the shared schedule source URL.
  *
- * The override is stored as BOTH a cookie (so the server-rendered page sees
- * it on the next request) AND localStorage (so the settings UI can show the
- * current value without parsing cookies). Cookie is the source of truth for
- * server reads; localStorage just mirrors it for UX.
+ * Writes to the Supabase `app_settings` table so every viewer of the固定
+ * sees the same URL on their next page load (no per-browser cookie). The
+ * server-side reader is in `lib/supabase/app-settings.ts`.
  *
- * Cookie name is duplicated as a string literal here because importing from
- * `./schedule/source-url.ts` (which uses `next/headers`) would pull server-only
- * code into the client bundle. Keep the name in sync if it ever changes.
+ * Migration note: the previous version of this file persisted the URL in
+ * a cookie + localStorage. Those values are now ignored — once a固定
+ * member runs Save in the settings dialog, the DB takes over for everyone.
  */
 
-const COOKIE_NAME = "raid-repo-schedule-url";
-const STORAGE_KEY = "raid-repo:schedule-url";
+const SETTING_KEY = "schedule_url";
 
-const COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 365; // 1 year
-
-export function getScheduleUrlOverride(): string | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const stored = window.localStorage.getItem(STORAGE_KEY);
-    if (stored && stored.trim().length > 0) return stored;
-  } catch {
-    // localStorage may be disabled — fall through to cookie.
-  }
-  return readCookie(COOKIE_NAME);
-}
-
-export function setScheduleUrlOverride(rawUrl: string): { ok: boolean; reason?: string } {
+export async function setScheduleUrl(
+  rawUrl: string,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
   const url = rawUrl.trim();
   if (!url) return { ok: false, reason: "URLを入力してください" };
   if (!/^https?:\/\//i.test(url)) {
@@ -41,36 +30,33 @@ export function setScheduleUrlOverride(rawUrl: string): { ok: boolean; reason?: 
     return { ok: false, reason: "URLの形式が正しくありません" };
   }
 
-  if (typeof document !== "undefined") {
-    document.cookie = `${COOKIE_NAME}=${encodeURIComponent(url)}; path=/; max-age=${COOKIE_MAX_AGE_SECONDS}; SameSite=Lax`;
-  }
-  try {
-    window.localStorage.setItem(STORAGE_KEY, url);
-  } catch {
-    // ignore quota / disabled storage
-  }
+  const supabase = createClient();
+  const { error } = await supabase
+    .from("app_settings")
+    .upsert({ key: SETTING_KEY, value: url }, { onConflict: "key" });
+  if (error) return { ok: false, reason: error.message };
   return { ok: true };
 }
 
-export function clearScheduleUrlOverride(): void {
-  if (typeof document !== "undefined") {
-    document.cookie = `${COOKIE_NAME}=; path=/; max-age=0; SameSite=Lax`;
-  }
-  try {
-    window.localStorage.removeItem(STORAGE_KEY);
-  } catch {
-    // ignore
-  }
+export async function clearScheduleUrl(): Promise<
+  { ok: true } | { ok: false; reason: string }
+> {
+  const supabase = createClient();
+  const { error } = await supabase
+    .from("app_settings")
+    .delete()
+    .eq("key", SETTING_KEY);
+  if (error) return { ok: false, reason: error.message };
+  return { ok: true };
 }
 
-function readCookie(name: string): string | null {
-  if (typeof document === "undefined") return null;
-  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const match = document.cookie.match(new RegExp(`(^|;\\s*)${escaped}=([^;]*)`));
-  if (!match) return null;
-  try {
-    return decodeURIComponent(match[2]);
-  } catch {
-    return match[2] || null;
-  }
+/** Browser-side fetch — used by the settings dialog to prefill the form. */
+export async function getScheduleUrlFromDb(): Promise<string | null> {
+  const supabase = createClient();
+  const { data } = await supabase
+    .from("app_settings")
+    .select("value")
+    .eq("key", SETTING_KEY)
+    .maybeSingle();
+  return (data?.value as string | null | undefined) ?? null;
 }

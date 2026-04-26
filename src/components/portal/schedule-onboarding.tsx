@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { setScheduleUrlOverride } from "@/lib/schedule-url-store";
+import { setScheduleUrl } from "@/lib/schedule-url-store";
 
 /**
  * Onboarding card shown on the schedule page when no source URL is configured.
@@ -21,16 +21,16 @@ export function ScheduleOnboarding() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const onSave = () => {
+  const onSave = async () => {
     setError(null);
     setBusy(true);
-    const result = setScheduleUrlOverride(url);
+    const result = await setScheduleUrl(url);
     setBusy(false);
     if (!result.ok) {
       setError(result.reason ?? "保存に失敗しました");
       return;
     }
-    toast.success("スケジュールURLを保存しました");
+    toast.success("スケジュールURLを保存しました（全員共有）");
     router.refresh();
   };
 
@@ -46,6 +46,8 @@ export function ScheduleOnboarding() {
           </h2>
           <p className="text-muted-foreground text-xs leading-relaxed">
             外部スケジュールサイトのURLを登録すると、ここに日程一覧と次回開催日が表示されます。
+            <br />
+            登録した URL は<strong>固定の全員に共有</strong>されます。
           </p>
         </div>
       </div>

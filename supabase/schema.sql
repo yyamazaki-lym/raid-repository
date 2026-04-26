@@ -169,6 +169,19 @@ CREATE TRIGGER set_updated_at_strategy_docs
   BEFORE UPDATE ON public.strategy_docs
   FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
+-- ---- 5b. app_settings (shared key/value across all members) -----------
+
+CREATE TABLE IF NOT EXISTS public.app_settings (
+  key        text PRIMARY KEY,
+  value      text,
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+DROP TRIGGER IF EXISTS set_updated_at_app_settings ON public.app_settings;
+CREATE TRIGGER set_updated_at_app_settings
+  BEFORE UPDATE ON public.app_settings
+  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
 -- ---- 6. tags (universal — D scheme) ----------------------------------
 
 CREATE TABLE IF NOT EXISTS public.tags (
@@ -190,6 +203,7 @@ CREATE INDEX IF NOT EXISTS tags_target_idx
 
 ALTER TABLE public.categories          ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.category_links      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.app_settings        ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.loot_items          ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.loot_entries        ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.mitigation_phases   ENABLE ROW LEVEL SECURITY;
@@ -206,7 +220,7 @@ DECLARE
   policy_name text;
 BEGIN
   FOR t IN SELECT unnest(ARRAY[
-    'categories','category_links',
+    'categories','category_links','app_settings',
     'loot_items','loot_entries',
     'mitigation_phases','mitigation_entries',
     'strategy_docs','tags'
@@ -246,7 +260,7 @@ DECLARE
   t text;
 BEGIN
   FOR t IN SELECT unnest(ARRAY[
-    'categories','category_links',
+    'categories','category_links','app_settings',
     'loot_items','loot_entries',
     'mitigation_phases','mitigation_entries',
     'strategy_docs','tags'

@@ -17,8 +17,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import {
-  getScheduleUrlOverride,
-  setScheduleUrlOverride,
+  getScheduleUrlFromDb,
+  setScheduleUrl,
 } from "@/lib/schedule-url-store";
 
 /**
@@ -34,19 +34,25 @@ export function SettingsDialog() {
 
   useEffect(() => {
     if (!open) return;
-    const current = getScheduleUrlOverride();
-    setUrl(current ?? "");
+    let cancelled = false;
+    void (async () => {
+      const current = await getScheduleUrlFromDb();
+      if (!cancelled) setUrl(current ?? "");
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [open]);
 
-  const onSave = () => {
+  const onSave = async () => {
     setBusy(true);
-    const result = setScheduleUrlOverride(url);
+    const result = await setScheduleUrl(url);
     setBusy(false);
     if (!result.ok) {
       toast.error(result.reason ?? "保存に失敗しました");
       return;
     }
-    toast.success("スケジュールURLを保存しました");
+    toast.success("スケジュールURLを保存しました（全員共有）");
     setOpen(false);
     router.refresh();
   };
@@ -70,7 +76,7 @@ export function SettingsDialog() {
               Settings
             </DialogTitle>
             <DialogDescription className="text-xs">
-              このブラウザでのみ適用されます
+              この設定は固定の全員に共有されます
             </DialogDescription>
           </div>
         </DialogHeader>
