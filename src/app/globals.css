@@ -758,67 +758,81 @@
   background: radial-gradient(closest-side, var(--accent), transparent 70%);
 }
 
-/* Shadowbringers — Crystal Tower silhouette as a tall triangular spire. */
+/* Shadowbringers — Jet-black void pierced by descending sin-eater light.
+   No grand silhouette — the theme is about emptiness with a single divine
+   beam from above and faintly glowing aether motes drifting in the dark. */
+
+/* A faint halo softens the deep blackness without reducing the void feel. */
 .dark.theme-shadowbringers .bg-grid {
-  /* Vertical gradient that becomes the spire body — clipped to a triangle
-     so it reads as a cone/pyramid pointing up to the heavens. */
   background:
-    linear-gradient(
-      180deg,
-      transparent 0%,
-      color-mix(in oklch, var(--neon-cyan) 55%, transparent) 18%,
-      color-mix(in oklch, var(--neon-magenta) 40%, transparent) 55%,
-      color-mix(in oklch, var(--neon-cyan) 60%, transparent) 90%,
-      transparent 100%
+    radial-gradient(
+      ellipse 60% 35% at 50% 30%,
+      color-mix(in oklch, var(--frost) 14%, transparent) 0%,
+      color-mix(in oklch, var(--neon-cyan) 8%, transparent) 30%,
+      transparent 70%
     );
   background-size: 100% 100%;
-  background-position: center;
   background-repeat: no-repeat;
-  /* Slender triangle: tip near top center, base at bottom occupying ~16%
-     of viewport width. Looks like a distant Crystal Tower spire. */
-  clip-path: polygon(50% 6%, 58% 92%, 42% 92%);
-  filter: blur(6px);
   mask-image: none;
 }
 .dark.theme-shadowbringers .bg-grid-animate { animation: none; }
+
+/* Aether motes — drift slowly, brightening / fading like floating souls. */
 .dark.theme-shadowbringers .bg-scanlines {
-  /* Aether motes around the tower. */
   background-image:
-    radial-gradient(2px 2px at 30% 22%, color-mix(in oklch, var(--neon-cyan) 50%, transparent), transparent 50%),
-    radial-gradient(2px 2px at 70% 65%, color-mix(in oklch, var(--neon-magenta) 50%, transparent), transparent 50%),
-    radial-gradient(1.5px 1.5px at 22% 75%, color-mix(in oklch, var(--frost) 60%, transparent), transparent 50%),
-    radial-gradient(1.5px 1.5px at 78% 30%, color-mix(in oklch, var(--neon-cyan) 50%, transparent), transparent 50%);
-  background-size: 700px 700px;
-  background-position: 0 0, 200px 200px, 100px 350px, 350px 100px;
-  animation: shb-pulse 8s ease-in-out infinite;
+    radial-gradient(2px 2px at 18% 32%, color-mix(in oklch, var(--neon-cyan) 65%, transparent), transparent 50%),
+    radial-gradient(1.5px 1.5px at 73% 24%, color-mix(in oklch, var(--frost) 70%, transparent), transparent 50%),
+    radial-gradient(2px 2px at 32% 76%, color-mix(in oklch, var(--neon-magenta) 65%, transparent), transparent 50%),
+    radial-gradient(1.5px 1.5px at 68% 82%, color-mix(in oklch, var(--neon-cyan) 55%, transparent), transparent 50%),
+    radial-gradient(2px 2px at 50% 55%, color-mix(in oklch, var(--frost) 55%, transparent), transparent 50%),
+    radial-gradient(1.5px 1.5px at 88% 58%, color-mix(in oklch, var(--neon-magenta) 60%, transparent), transparent 50%),
+    radial-gradient(1.5px 1.5px at 12% 60%, color-mix(in oklch, var(--neon-cyan) 50%, transparent), transparent 50%);
+  background-size: 720px 720px;
+  background-repeat: repeat;
+  animation: shb-aether-pulse 9s ease-in-out infinite;
 }
-@keyframes shb-pulse {
-  0%, 100% { opacity: 0.4; }
-  50% { opacity: 0.7; }
+@keyframes shb-aether-pulse {
+  0%, 100% { opacity: 0.42; }
+  50% { opacity: 0.78; }
 }
+
+/* The descending light — bright warm-white sin-eater radiance from above. */
 .dark.theme-shadowbringers .bg-orbs::before {
-  /* Top halo above the tower. */
-  top: -8rem;
+  top: -16rem;
   left: 50%;
   right: auto;
+  bottom: auto;
   transform: translateX(-50%);
-  width: 24rem;
-  height: 24rem;
-  opacity: 0.5;
-  filter: blur(80px);
-  background: radial-gradient(circle, var(--neon-cyan), transparent 70%);
+  width: 38rem;
+  height: 38rem;
+  opacity: 0.55;
+  filter: blur(70px);
+  background:
+    radial-gradient(
+      circle,
+      var(--frost) 0%,
+      color-mix(in oklch, var(--frost) 70%, transparent) 18%,
+      color-mix(in oklch, var(--neon-cyan) 45%, transparent) 38%,
+      transparent 75%
+    );
 }
+
+/* Lavender aether welling up from the depths — the dark counterpart. */
 .dark.theme-shadowbringers .bg-orbs::after {
-  /* Base glow at the tower's foundation. */
-  bottom: -6rem;
+  bottom: -14rem;
   left: 50%;
   right: auto;
   transform: translateX(-50%);
-  width: 28rem;
-  height: 16rem;
-  opacity: 0.4;
-  filter: blur(80px);
-  background: radial-gradient(closest-side, var(--neon-magenta), transparent 70%);
+  width: 42rem;
+  height: 26rem;
+  opacity: 0.45;
+  filter: blur(110px);
+  background:
+    radial-gradient(
+      closest-side,
+      var(--neon-magenta),
+      transparent 75%
+    );
 }
 
 /* Endwalker — Twilight aurora bands + glowing moon disc + faint stars. */
