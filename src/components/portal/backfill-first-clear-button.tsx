@@ -1,13 +1,15 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Trophy } from "lucide-react";
+import { Loader2, Trophy, X } from "lucide-react";
 import { toast } from "sonner";
 import {
   backfillFirstClearFromExistingVideos,
   type BackfillResult,
 } from "@/lib/server/categories-actions";
+
+
 
 /**
  * One-shot scan that walks every category's existing video links and
@@ -21,6 +23,25 @@ export function BackfillFirstClearButton() {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [result, setResult] = useState<BackfillResult | null>(null);
+  const popupRef = useRef<HTMLDivElement | null>(null);
+
+  // Same click-outside-to-dismiss pattern as ImportDiscordButton.
+  useEffect(() => {
+    if (!result || result.filled === 0) return;
+    const onDocClick = (e: MouseEvent) => {
+      const target = e.target as Node | null;
+      if (!target) return;
+      if (popupRef.current && popupRef.current.contains(target)) return;
+      setResult(null);
+    };
+    const handle = setTimeout(() => {
+      document.addEventListener("mousedown", onDocClick);
+    }, 0);
+    return () => {
+      clearTimeout(handle);
+      document.removeEventListener("mousedown", onDocClick);
+    };
+  }, [result]);
 
   const onClick = () => {
     setResult(null);
@@ -43,7 +64,7 @@ export function BackfillFirstClearButton() {
   };
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="relative flex flex-col gap-2">
       <button
         type="button"
         onClick={onClick}
@@ -61,8 +82,19 @@ export function BackfillFirstClearButton() {
       </button>
 
       {result && result.filled > 0 && (
-        <div className="glass-popup w-full max-w-md rounded-md p-3 sm:absolute sm:right-0 sm:mt-12">
-          <p className="mb-2 font-mono text-[10px] tracking-[0.2em] text-muted-foreground uppercase">
+        <div
+          ref={popupRef}
+          className="glass-popup relative z-30 w-full max-w-md rounded-md p-3 sm:absolute sm:top-full sm:right-0 sm:mt-2"
+        >
+          <button
+            type="button"
+            onClick={() => setResult(null)}
+            aria-label="結果を閉じる"
+            className="absolute top-1.5 right-1.5 inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground"
+          >
+            <X className="h-3.5 w-3.5" aria-hidden />
+          </button>
+          <p className="mb-2 pr-6 font-mono text-[10px] tracking-[0.2em] text-muted-foreground uppercase">
             初クリア日時 — 設定結果
           </p>
           <ul className="flex flex-col gap-1.5 text-[11px]">
