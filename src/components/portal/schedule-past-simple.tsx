@@ -66,15 +66,17 @@ function DateChip({
 }) {
   const holiday = isJapaneseHoliday(session.date, holidays);
   const decided = session.status === "DECISION";
-  // Date label: extract MM/DD from the raw "YYYY/MM/DD" portion.
+  // Date label: Japanese-style "M月D日（曜）" instead of MM/DD which
+  // reads as a Western format. Extract month/day from the raw
+  // "YYYY/MM/DD" portion of the rawDate string.
   const datePart = session.rawDate.split(" ")[0] ?? session.rawDate;
   const m = datePart.match(/(\d{1,2})\/(\d{1,2})/);
-  const display = m ? `${m[1]}/${m[2]}` : datePart;
+  const monthDay = m ? `${parseInt(m[1]!, 10)}月${parseInt(m[2]!, 10)}日` : datePart;
 
   return (
     <li
       className={
-        "inline-flex items-center gap-1 rounded-sm border px-1.5 py-0.5 font-mono text-[11px] tabular-nums " +
+        "inline-flex items-center gap-0.5 rounded-sm border px-1.5 py-0.5 text-[11px] " +
         (holiday
           ? "border-rose-400/45 bg-rose-400/10 text-rose-300"
           : decided
@@ -83,8 +85,8 @@ function DateChip({
       }
       title={`${session.rawDate}${decided ? " · 確定" : ""}${holiday ? " · 祝日" : ""}`}
     >
-      <span>{display}</span>
-      <span className="text-[10px] opacity-75">({session.dayOfWeek})</span>
+      <span className="font-display tabular-nums">{monthDay}</span>
+      <span className="text-[10px] opacity-75">（{session.dayOfWeek}）</span>
     </li>
   );
 }

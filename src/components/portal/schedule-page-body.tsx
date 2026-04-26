@@ -41,11 +41,13 @@ export function SchedulePageBody({
   holidays,
 }: Props) {
   // Two-toggle state: simple list (top) and detailed table (bottom).
-  // Each has independent pinned + hovered state so they can be combined
-  // freely. Defaults are off; pinned values persist via localStorage.
+  // Both default to off; pinned values persist via localStorage.
+  //
+  // Simple toggle is click-only — the hover-peek pattern was found
+  // disorienting (the strip flickering in/out as the cursor crossed
+  // the icon). Detail keeps the hover-peek since it's a more drastic
+  // change the user typically wants to glance at before pinning.
   const [pinnedSimple, setPinnedSimple] = useState(false);
-  const [hoveredSimple, setHoveredSimple] = useState(false);
-  const showSimple = pinnedSimple || hoveredSimple;
 
   const [pinnedDetail, setPinnedDetail] = useState(false);
   const [hoveredDetail, setHoveredDetail] = useState(false);
@@ -85,20 +87,19 @@ export function SchedulePageBody({
           </h1>
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
-          {/* Two independent past-view toggles. Each follows the same
-              hover-peek + click-to-pin pattern (mobile = tap-to-pin).
-              Color-based state communicates pinned/hover/off without
-              changing icon shape. */}
+          {/* Simple toggle: click-only (no hover-peek — felt
+              disorienting as the strip flashed in/out under the
+              cursor). State is solely the pinned bool. */}
           <ToggleButton
             pinned={pinnedSimple}
-            hovered={hoveredSimple}
+            hovered={false}
             onPin={() => setPinnedSimple((v) => !v)}
-            onHover={setHoveredSimple}
+            onHover={() => {}}
             ariaLabel={pinnedSimple ? "過去日程の簡易表示を隠す" : "過去日程の簡易表示"}
             title={
               pinnedSimple
                 ? "簡易表示: ON（クリックで非表示）"
-                : "簡易表示: OFF（ホバーで一時表示・クリック/タップで固定）"
+                : "簡易表示: OFF（クリック/タップで表示）"
             }
             Icon={History}
           />
@@ -132,8 +133,8 @@ export function SchedulePageBody({
 
       {/* Simple past strip — fits between NextSession and Upcoming
           without disturbing the main layout. Shown only when the
-          History toggle is on. */}
-      {showSimple && result.ok && (
+          History toggle is pinned (no hover-peek for this one). */}
+      {pinnedSimple && result.ok && (
         <SchedulePastSimple
           sessions={result.data.sessions}
           holidays={holidays}

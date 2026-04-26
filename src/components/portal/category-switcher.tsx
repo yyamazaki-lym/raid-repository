@@ -40,15 +40,14 @@ type Props = {
 export function CategorySwitcher({ initialCategories }: Props) {
   const categories = useRealtimeCategories(initialCategories);
   const pathname = usePathname();
-  // Controlled open state so we can force-close on Link navigation.
-  // Without this the dropdown stayed visually open after the Page
-  // re-rendered (the SiteHeader is in the persistent layout, so the
-  // dropdown component instance survives the route change).
+  // Controlled open state. The SiteHeader sits in the persistent
+  // layout so the dropdown component instance survives route changes;
+  // without this we'd need a way to force-close.
   const [open, setOpen] = useState(false);
 
-  // Close the dropdown whenever the route changes — covers any
-  // navigation path that doesn't go through our explicit onClick
-  // handler below (e.g. middle-click that reopens, browser back).
+  // Close on route change — single source of truth for "navigation
+  // happened, dismiss the menu". No per-Link onClick handlers
+  // necessary, which keeps the JSX simple.
   useEffect(() => {
     setOpen(false);
   }, [pathname]);
@@ -140,12 +139,11 @@ export function CategorySwitcher({ initialCategories }: Props) {
                 {/* Default-click target: name + status. Goes to current
                     sub-tab to feel "natural" when chained from another
                     category page. Long names wrap to multiple lines
-                    instead of truncating. onClick closes the dropdown
-                    immediately so it doesn't linger after navigation. */}
+                    instead of truncating. The pathname-watching effect
+                    above closes the menu after navigation. */}
                 <Link
                   href={defaultHref}
                   prefetch
-                  onClick={() => setOpen(false)}
                   className="flex min-w-0 flex-1 items-center gap-3 cursor-pointer"
                 >
                   <StatusBadge
@@ -168,8 +166,7 @@ export function CategorySwitcher({ initialCategories }: Props) {
                 {/* Sub-page shortcuts: always visible (touch-friendly).
                     Each is its own Link so clicking jumps directly to
                     that page without needing the default sub-tab path.
-                    onClick closes the dropdown on navigation so it
-                    doesn't stay visually open afterward. */}
+                    Menu close is handled by the pathname effect. */}
                 <nav
                   aria-label={`${cat.name} のサブページ`}
                   className="flex shrink-0 items-center gap-0.5"
@@ -179,7 +176,6 @@ export function CategorySwitcher({ initialCategories }: Props) {
                       key={p.segment}
                       href={`/category/${cat.slug}/${p.segment}`}
                       prefetch
-                      onClick={() => setOpen(false)}
                       title={p.label}
                       aria-label={`${cat.name} - ${p.label}`}
                       className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-all duration-150 hover:scale-110 hover:bg-[var(--neon-violet)]/15 hover:text-[var(--neon-violet)]"
@@ -196,13 +192,7 @@ export function CategorySwitcher({ initialCategories }: Props) {
         <DropdownMenuSeparator />
 
         <DropdownMenuItem
-          render={
-            <Link
-              href="/category"
-              prefetch
-              onClick={() => setOpen(false)}
-            />
-          }
+          render={<Link href="/category" prefetch />}
           className="flex cursor-pointer items-center gap-2"
         >
           <ListChecks className="h-4 w-4 text-muted-foreground" aria-hidden />
