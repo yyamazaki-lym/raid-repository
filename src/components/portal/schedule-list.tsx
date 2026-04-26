@@ -30,8 +30,13 @@ type Props = {
   result: ScheduleFetchResult;
   /** Maximum sessions to render. Defaults to all upcoming + a small past buffer. */
   limit?: number;
-  /** When true, render past sessions (in muted style) below the upcoming ones. */
-  showPast?: boolean;
+  /**
+   * When true, render the FULL detailed past-sessions table at the
+   * bottom (with participant columns + time-of-day). The simple
+   * date-only strip lives in a separate component (SchedulePastSimple)
+   * inserted between the next-session card and the upcoming table.
+   */
+  showDetailedPast?: boolean;
   /** Source schedule URL — used to derive the per-user edit URL on hover/click. */
   scheduleUrl?: string | null;
   /**
@@ -45,7 +50,7 @@ type Props = {
 export function ScheduleList({
   result,
   limit,
-  showPast = false,
+  showDetailedPast = false,
   scheduleUrl,
   holidays,
 }: Props) {
@@ -71,7 +76,11 @@ export function ScheduleList({
   const commentsByAuthor = groupCommentsByAuthor(comments);
 
   const { upcoming, past } = splitSessions(sessions, limit);
-  const renderedPast = showPast ? past : [];
+  // Past sessions for the chronologically-ordered detail table at the
+  // bottom of the page. Reverse to old → new so reading top-to-bottom
+  // matches a "history" feel (oldest first, most recent at the bottom
+  // adjacent to upcoming).
+  const renderedPast = showDetailedPast ? [...past].reverse() : [];
 
   if (upcoming.length === 0 && renderedPast.length === 0) {
     return (
@@ -143,8 +152,8 @@ export function ScheduleList({
       </Card>
 
       {/* Past sessions — separate card so the visual break is unmistakable.
-          Hidden until the user enables the toggle. */}
-      {showPast && renderedPast.length > 0 && (
+          Hidden until the user enables the detail toggle. */}
+      {showDetailedPast && renderedPast.length > 0 && (
         <Card className="glass overflow-hidden p-0">
           <header className="flex items-center justify-between gap-2 border-b border-border/40 bg-secondary/20 px-3 py-2">
             <div className="flex items-center gap-2 font-mono text-[10px] tracking-[0.22em] text-muted-foreground uppercase">

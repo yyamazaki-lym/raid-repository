@@ -1,27 +1,30 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { History, ExternalLink } from "lucide-react";
+import { History, Table, ExternalLink } from "lucide-react";
 import { NextSessionCard } from "./next-session-card";
 import { ScheduleList } from "./schedule-list";
+import { SchedulePastSimple } from "./schedule-past-simple";
 import type { NextSessionResult, ScheduleFetchResult } from "@/lib/schedule/next-session";
 
 /**
  * Client wrapper that owns the past-sessions visibility state and
- * renders the page header (compact icon toggle + ext-site link), the
- * next-session card, and the full schedule list.
+ * renders the page header (compact icon toggles + ext-site link),
+ * the next-session card, and the schedule list.
  *
- * UX:
- *   - Desktop: hover the eye icon to peek; click to pin/unpin
- *   - Mobile/touch: tap the eye icon to pin/unpin (no hover capability,
- *     so the click is the only mechanism — same as before but clutter-
- *     free since we no longer show "過去日程表示" / "非表示" text)
+ * Two independent past-view modes:
+ *   - Simple: a compact 10-date chronological strip between the
+ *     "next session" card and the upcoming-sessions card. Date-only
+ *     by default, no participant columns. Toggled by the History icon.
+ *   - Detailed: the full table at the bottom of the page (with
+ *     participants + time-of-day). Toggled by the Table icon.
  *
- * Pinned state persists in localStorage under `STORAGE_KEY` so the user
- * doesn't have to re-toggle on every visit.
+ * Each toggle has its own pinned state (localStorage-persisted) plus
+ * a transient hover state for desktop peek.
  */
 
-const STORAGE_KEY = "raid-repo:show-past";
+const SIMPLE_KEY = "raid-repo:show-past";
+const DETAIL_KEY = "raid-repo:show-past-detail";
 
 type Props = {
   result: ScheduleFetchResult;
@@ -37,41 +40,41 @@ export function SchedulePageBody({
   scheduleUrl,
   holidays,
 }: Props) {
-  // Compute past-session count for the toggle badge so users can see
-  // at a glance how many past dates are available — addresses the
-  // surprise where past dates ended up far below upcoming and weren't
-  // immediately visible.
-  const pastCount = result.ok
-    ? result.data.sessions.filter(
-        (s) => s.date.getTime() < Date.now() - 6 * 60 * 60 * 1000,
-      ).length
-    : 0;
-  // Pinned: durable on/off, persisted across visits.
-  const [pinned, setPinned] = useState(false);
-  // Hovered: ephemeral peek mode while the cursor is over the eye icon.
-  // Useless on touch devices (no hover) — there the click does the work.
-  const [hovered, setHovered] = useState(false);
-  const showPast = pinned || hovered;
+  // Two-toggle state: simple list (top) and detailed table (bottom).
+  // Each has independent pinned + hovered state so they can be combined
+  // freely. Defaults are off; pinned values persist via localStorage.
+  const [pinnedSimple, setPinnedSimple] = useState(false);
+  const [hoveredSimple, setHoveredSimple] = useState(false);
+  const showSimple = pinnedSimple || hoveredSimple;
 
-  // Restore pinned state on mount.
+  const [pinnedDetail, setPinnedDetail] = useState(false);
+  const [hoveredDetail, setHoveredDetail] = useState(false);
+  const showDetail = pinnedDetail || hoveredDetail;
+
   useEffect(() => {
     try {
-      if (window.localStorage.getItem(STORAGE_KEY) === "1") {
-        setPinned(true);
-      }
+      if (window.localStorage.getItem(SIMPLE_KEY) === "1") setPinnedSimple(true);
+      if (window.localStorage.getItem(DETAIL_KEY) === "1") setPinnedDetail(true);
     } catch {
       // ignore — localStorage unavailable in some embedded contexts
     }
   }, []);
 
-  // Persist pinned changes.
   useEffect(() => {
     try {
-      window.localStorage.setItem(STORAGE_KEY, pinned ? "1" : "0");
+      window.localStorage.setItem(SIMPLE_KEY, pinnedSimple ? "1" : "0");
     } catch {
       // ignore
     }
-  }, [pinned]);
+  }, [pinnedSimple]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(DETAIL_KEY, pinnedDetail ? "1" : "0");
+    } catch {
+      // ignore
+    }
+  }, [pinnedDetail]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -82,50 +85,36 @@ export function SchedulePageBody({
           </h1>
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
-          {/* History icon with color-based state — avoids the Eye/EyeOff
-              ambiguity ("does open eye mean things are visible or that I
-              can click to view them?"). Single icon, three visual states:
-                - default (off): muted grey
-                - hover (peek):  foreground with cyan border tint
-                - pinned (on):   solid cyan + soft glow */}
-          <button
-            type="button"
-            onClick={() => setPinned((v) => !v)}
-            onMouseEnter={() => setHovered(true)}
-            onMouseLeave={() => setHovered(false)}
-            aria-pressed={pinned}
-            aria-label={
-              pinned
-                ? `過去日程を隠す (${pastCount}件)`
-                : `過去日程を表示 (${pastCount}件)`
-            }
+          {/* Two independent past-view toggles. Each follows the same
+              hover-peek + click-to-pin pattern (mobile = tap-to-pin).
+              Color-based state communicates pinned/hover/off without
+              changing icon shape. */}
+          <ToggleButton
+            pinned={pinnedSimple}
+            hovered={hoveredSimple}
+            onPin={() => setPinnedSimple((v) => !v)}
+            onHover={setHoveredSimple}
+            ariaLabel={pinnedSimple ? "過去日程の簡易表示を隠す" : "過去日程の簡易表示"}
             title={
-              pinned
-                ? `過去日程 ${pastCount}件: 表示中（クリックで非表示）`
-                : `過去日程 ${pastCount}件: 非表示（ホバーで一時表示・クリック/タップで固定）`
+              pinnedSimple
+                ? "簡易表示: ON（クリックで非表示）"
+                : "簡易表示: OFF（ホバーで一時表示・クリック/タップで固定）"
             }
-            className={
-              "relative inline-flex h-8 items-center justify-center gap-1 rounded-md border px-2 transition-colors " +
-              (pinned
-                ? "border-[var(--neon-cyan)]/60 bg-[var(--neon-cyan)]/10 text-[var(--neon-cyan)] shadow-[0_0_10px_-4px_var(--neon-cyan)]"
-                : "border-border/60 text-muted-foreground hover:border-[var(--neon-cyan)]/60 hover:text-foreground")
+            Icon={History}
+          />
+          <ToggleButton
+            pinned={pinnedDetail}
+            hovered={hoveredDetail}
+            onPin={() => setPinnedDetail((v) => !v)}
+            onHover={setHoveredDetail}
+            ariaLabel={pinnedDetail ? "過去日程の詳細表示を隠す" : "過去日程の詳細表示"}
+            title={
+              pinnedDetail
+                ? "詳細表示: ON — 参加者付きの全件表（下部に表示）"
+                : "詳細表示: OFF — 参加者付きの全件表（クリックで下部に表示）"
             }
-          >
-            <History
-              className={
-                "h-4 w-4 transition-transform " +
-                (showPast && !pinned ? "scale-110" : "")
-              }
-              aria-hidden
-            />
-            {/* Inline count so the user knows past data exists without
-                having to scroll to the bottom of the table. */}
-            {pastCount > 0 && (
-              <span className="font-mono text-[10px] tracking-widest tabular-nums">
-                {pastCount}
-              </span>
-            )}
-          </button>
+            Icon={Table}
+          />
           <a
             href={scheduleUrl}
             target="_blank"
@@ -141,12 +130,73 @@ export function SchedulePageBody({
 
       <NextSessionCard result={nextResult} />
 
+      {/* Simple past strip — fits between NextSession and Upcoming
+          without disturbing the main layout. Shown only when the
+          History toggle is on. */}
+      {showSimple && result.ok && (
+        <SchedulePastSimple
+          sessions={result.data.sessions}
+          holidays={holidays}
+        />
+      )}
+
       <ScheduleList
         result={result}
-        showPast={showPast}
+        showDetailedPast={showDetail}
         scheduleUrl={scheduleUrl}
         holidays={holidays}
       />
     </div>
+  );
+}
+
+/**
+ * Compact toggle button used for both past-view modes. Shares the
+ * three-state visual treatment (off / hover-peek / pinned-on) so the
+ * user gets consistent feedback regardless of which toggle they're
+ * interacting with.
+ */
+function ToggleButton({
+  pinned,
+  hovered,
+  onPin,
+  onHover,
+  ariaLabel,
+  title,
+  Icon,
+}: {
+  pinned: boolean;
+  hovered: boolean;
+  onPin: () => void;
+  onHover: (value: boolean) => void;
+  ariaLabel: string;
+  title: string;
+  Icon: React.ComponentType<{ className?: string; "aria-hidden"?: boolean }>;
+}) {
+  const active = pinned || hovered;
+  return (
+    <button
+      type="button"
+      onClick={onPin}
+      onMouseEnter={() => onHover(true)}
+      onMouseLeave={() => onHover(false)}
+      aria-pressed={pinned}
+      aria-label={ariaLabel}
+      title={title}
+      className={
+        "inline-flex h-8 w-8 items-center justify-center rounded-md border transition-colors " +
+        (pinned
+          ? "border-[var(--neon-cyan)]/60 bg-[var(--neon-cyan)]/10 text-[var(--neon-cyan)] shadow-[0_0_10px_-4px_var(--neon-cyan)]"
+          : "border-border/60 text-muted-foreground hover:border-[var(--neon-cyan)]/60 hover:text-foreground")
+      }
+    >
+      <Icon
+        className={
+          "h-4 w-4 transition-transform " +
+          (active && !pinned ? "scale-110" : "")
+        }
+        aria-hidden
+      />
+    </button>
   );
 }

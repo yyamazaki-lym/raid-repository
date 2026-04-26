@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { SubTabs } from "@/components/portal/sub-tabs";
-import { CategoryStatusEditor } from "./category-status-editor";
+import { StatusBadge } from "@/components/portal/status-badge";
 import { findCategoryBySlug } from "@/lib/supabase/categories";
 
 export default async function CategoryDetailLayout({
@@ -29,10 +29,13 @@ export default async function CategoryDetailLayout({
         </Link>
         <span className="text-muted-foreground/50">/</span>
         <span className="font-display text-foreground text-sm">{display}</span>
+        {/* Status here is read-only — editing happens in /category list
+            view only, so the per-page status edit doesn't drift across
+            multiple sources of truth. */}
         {category && (
-          <CategoryStatusEditor
-            id={category.id}
-            initialStatus={category.status}
+          <StatusBadge
+            status={category.status}
+            readOnly
             className="ml-1"
           />
         )}
