@@ -15,6 +15,7 @@ import { createClient } from "@/lib/supabase/client";
  */
 
 const SETTING_KEY = "schedule_url";
+const SCHEDULE_CHANNEL_KEY = "discord_schedule_channel_id";
 
 export async function setScheduleUrl(
   rawUrl: string,
@@ -57,6 +58,53 @@ export async function getScheduleUrlFromDb(): Promise<string | null> {
     .from("app_settings")
     .select("value")
     .eq("key", SETTING_KEY)
+    .maybeSingle();
+  return (data?.value as string | null | undefined) ?? null;
+}
+
+const SNOWFLAKE_RE = /^\d{17,20}$/;
+
+/**
+ * Channel ID for the Discord notification channel that posts daily
+ * raid-session reminders. Used by `importDiscordScheduleHistory()` to
+ * back-fill `schedule_past_sessions` from Discord history.
+ *
+ * Empty string clears the setting (sets value to NULL).
+ */
+export async function setDiscordScheduleChannelId(
+  rawId: string,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const id = rawId.trim();
+  if (!id) {
+    // Clear it if blank.
+    const supabase = createClient();
+    const { error } = await supabase
+      .from("app_settings")
+      .delete()
+      .eq("key", SCHEDULE_CHANNEL_KEY);
+    if (error) return { ok: false, reason: error.message };
+    return { ok: true };
+  }
+  if (!SNOWFLAKE_RE.test(id)) {
+    return {
+      ok: false,
+      reason: "チャンネル ID は 17〜20 桁の数字です",
+    };
+  }
+  const supabase = createClient();
+  const { error } = await supabase
+    .from("app_settings")
+    .upsert({ key: SCHEDULE_CHANNEL_KEY, value: id }, { onConflict: "key" });
+  if (error) return { ok: false, reason: error.message };
+  return { ok: true };
+}
+
+export async function getDiscordScheduleChannelId(): Promise<string | null> {
+  const supabase = createClient();
+  const { data } = await supabase
+    .from("app_settings")
+    .select("value")
+    .eq("key", SCHEDULE_CHANNEL_KEY)
     .maybeSingle();
   return (data?.value as string | null | undefined) ?? null;
 }

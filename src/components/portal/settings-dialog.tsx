@@ -1,8 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Settings, Save, Calendar } from "lucide-react";
+import {
+  Settings,
+  Save,
+  Calendar,
+  History,
+  Cloud,
+  Loader2,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -17,27 +24,59 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import {
+  getDiscordScheduleChannelId,
   getScheduleUrlFromDb,
+  setDiscordScheduleChannelId,
   setScheduleUrl,
 } from "@/lib/schedule-url-store";
+import { importPastScheduleFromDiscord } from "@/lib/server/categories-actions";
+
+// Inline copy of the Server Action result type — we can't re-export the
+// type from a "use server" module on the client side, and the shape is
+// stable.
+type ScheduleHistoryImportResult = {
+  ok: boolean;
+  reason?: string;
+  scanned: number;
+  parsed: number;
+  inserted: number;
+  duplicates: number;
+};
 
 /**
- * Settings dialog: minimal config UI for the schedule source URL.
- * No "Reset to default" affordance — there is no env-default anymore;
- * the URL is whatever the user types here, persisted per-browser.
+ * Settings dialog: shared global configuration that all members see
+ * once any one of them saves.
+ *
+ * Sections:
+ *   1. Schedule Source — character-sheets URL (used for live data)
+ *   2. Past History — Discord channel ID + on-demand back-fill button
+ *      that reads daily-reminder messages and stores parsed past
+ *      session dates so the schedule UI can show history that has
+ *      aged out of character-sheets
  */
 export function SettingsDialog() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [url, setUrl] = useState("");
+  const [channelId, setChannelId] = useState("");
   const [busy, setBusy] = useState(false);
+  const [importing, startImport] = useTransition();
+  const [importResult, setImportResult] =
+    useState<ScheduleHistoryImportResult | null>(null);
 
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
     void (async () => {
-      const current = await getScheduleUrlFromDb();
-      if (!cancelled) setUrl(current ?? "");
+      const [currentUrl, currentChannel] = await Promise.all([
+        getScheduleUrlFromDb(),
+        getDiscordScheduleChannelId(),
+      ]);
+      if (!cancelled) {
+        setUrl(currentUrl ?? "");
+        setChannelId(currentChannel ?? "");
+        setImportResult(null);
+      }
     })();
     return () => {
       cancelled = true;
@@ -46,15 +85,42 @@ export function SettingsDialog() {
 
   const onSave = async () => {
     setBusy(true);
-    const result = await setScheduleUrl(url);
-    setBusy(false);
-    if (!result.ok) {
-      toast.error(result.reason ?? "保存に失敗しました");
+    // Save URL first; if URL save fails, don't bother with channel ID.
+    const urlResult = await setScheduleUrl(url);
+    if (!urlResult.ok) {
+      setBusy(false);
+      toast.error("URL: " + urlResult.reason);
       return;
     }
-    toast.success("スケジュールURLを保存しました（全員共有）");
+    const channelResult = await setDiscordScheduleChannelId(channelId);
+    setBusy(false);
+    if (!channelResult.ok) {
+      toast.error("チャンネルID: " + channelResult.reason);
+      return;
+    }
+    toast.success("設定を保存しました（全員共有）");
     setOpen(false);
     router.refresh();
+  };
+
+  const onImport = () => {
+    setImportResult(null);
+    startImport(async () => {
+      const r = await importPastScheduleFromDiscord();
+      setImportResult(r);
+      if (!r.ok) {
+        toast.error("取り込み失敗: " + (r.reason ?? "unknown"));
+        return;
+      }
+      toast.success(
+        r.inserted > 0
+          ? `${r.inserted} 件の過去日程を追加`
+          : r.parsed > 0
+            ? "新規分なし（すべて取り込み済み）"
+            : "通知メッセージ未検出",
+      );
+      router.refresh();
+    });
   };
 
   return (
@@ -81,7 +147,8 @@ export function SettingsDialog() {
           </div>
         </DialogHeader>
 
-        <div className="flex flex-col gap-5 p-5">
+        <div className="flex max-h-[70svh] flex-col gap-5 overflow-y-auto p-5">
+          {/* Schedule URL */}
           <section className="flex flex-col gap-3">
             <header className="flex items-center gap-2 border-b border-border/30 pb-2">
               <Calendar className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
@@ -117,6 +184,88 @@ export function SettingsDialog() {
                 ※ 元サイトの変更は最大{" "}
                 <strong>10 分</strong> 遅れて反映されます。
               </p>
+            </div>
+          </section>
+
+          {/* Discord schedule history */}
+          <section className="flex flex-col gap-3">
+            <header className="flex items-center gap-2 border-b border-border/30 pb-2">
+              <History className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
+              <span className="font-mono text-[10px] tracking-[0.22em] text-muted-foreground uppercase">
+                Past Sessions from Discord
+              </span>
+            </header>
+
+            <div className="flex flex-col gap-2">
+              <Label
+                htmlFor="discord-schedule-channel"
+                className="text-xs text-foreground/80"
+              >
+                スケジュール通知チャンネル ID（任意）
+              </Label>
+              <Input
+                id="discord-schedule-channel"
+                inputMode="numeric"
+                value={channelId}
+                onChange={(e) => setChannelId(e.target.value)}
+                placeholder="例: 1234567890123456789"
+                className="font-mono text-[12px]"
+                spellCheck={false}
+                autoComplete="off"
+              />
+              <p className="text-muted-foreground text-[11px] leading-relaxed">
+                日次の活動予定通知が投稿されているチャンネル ID。設定すると
+                「<strong>本日YYYY/MM/DD(曜) HH:MM~HH:MM</strong>」形式の
+                メッセージから過去の開催日を取得できます。
+              </p>
+              <p className="text-muted-foreground/80 text-[10px] leading-relaxed">
+                Bot がこのチャンネルにアクセスできる必要があります（View
+                Channels + Read Message History）。
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={onImport}
+                disabled={importing || !channelId.trim()}
+                className="self-start gap-1.5 font-mono text-[11px] tracking-widest uppercase"
+                title={
+                  !channelId.trim()
+                    ? "チャンネル ID を入力してください（先に保存）"
+                    : "Discord 履歴から過去日程を取り込み"
+                }
+              >
+                {importing ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                ) : (
+                  <Cloud className="h-3.5 w-3.5" aria-hidden />
+                )}
+                {importing ? "取り込み中..." : "Discord 履歴から取り込み"}
+              </Button>
+              {importResult && (
+                <div className="flex flex-col gap-0.5 rounded-sm border border-border/40 bg-secondary/20 px-2.5 py-1.5 text-[11px] leading-relaxed">
+                  {importResult.ok ? (
+                    <>
+                      <p className="font-mono">
+                        scanned {importResult.scanned} / 検出{" "}
+                        {importResult.parsed} / 新規 {importResult.inserted} /
+                        重複 {importResult.duplicates}
+                      </p>
+                      <p className="text-muted-foreground text-[10px]">
+                        Discord は最新 100 件まで取得します（必要なら時間を
+                        おいて再実行）。
+                      </p>
+                    </>
+                  ) : (
+                    <p className="text-rose-300">
+                      エラー: {importResult.reason ?? "unknown"}
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
           </section>
         </div>

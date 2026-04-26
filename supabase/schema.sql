@@ -206,6 +206,25 @@ CREATE TRIGGER set_updated_at_app_settings
   BEFORE UPDATE ON public.app_settings
   FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
+-- ---- 5c. schedule_past_sessions (Discord-sourced history) -------------
+-- Past raid session dates parsed from a Discord notification channel.
+-- Useful when character-sheets has aged out old dates but the group
+-- still wants a complete historical record. Idempotent: rawDate is the
+-- primary key so a re-import won't double-insert.
+
+CREATE TABLE IF NOT EXISTS public.schedule_past_sessions (
+  raw_date    text PRIMARY KEY,
+  parsed_date timestamptz NOT NULL,
+  start_time  text NOT NULL,
+  end_time    text NOT NULL,
+  day_of_week text NOT NULL,
+  source      text NOT NULL DEFAULT 'discord'
+              CHECK (source IN ('discord','manual')),
+  created_at  timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS schedule_past_sessions_date_idx
+  ON public.schedule_past_sessions(parsed_date DESC);
+
 -- ---- 6. tags (universal — D scheme) ----------------------------------
 
 CREATE TABLE IF NOT EXISTS public.tags (
@@ -225,15 +244,16 @@ CREATE INDEX IF NOT EXISTS tags_target_idx
 
 -- ---- 7. RLS — fully open for the anon key -----------------------------
 
-ALTER TABLE public.categories          ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.category_links      ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.app_settings        ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.loot_items          ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.loot_entries        ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.mitigation_phases   ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.mitigation_entries  ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.strategy_docs       ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.tags                ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.categories             ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.category_links         ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.app_settings           ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.schedule_past_sessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.loot_items             ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.loot_entries           ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.mitigation_phases      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.mitigation_entries     ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.strategy_docs          ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.tags                   ENABLE ROW LEVEL SECURITY;
 
 -- Replay-safe policy creation: drop then create per (table, action).
 DO $$
@@ -244,7 +264,7 @@ DECLARE
   policy_name text;
 BEGIN
   FOR t IN SELECT unnest(ARRAY[
-    'categories','category_links','app_settings',
+    'categories','category_links','app_settings','schedule_past_sessions',
     'loot_items','loot_entries',
     'mitigation_phases','mitigation_entries',
     'strategy_docs','tags'
@@ -284,7 +304,7 @@ DECLARE
   t text;
 BEGIN
   FOR t IN SELECT unnest(ARRAY[
-    'categories','category_links','app_settings',
+    'categories','category_links','app_settings','schedule_past_sessions',
     'loot_items','loot_entries',
     'mitigation_phases','mitigation_entries',
     'strategy_docs','tags'

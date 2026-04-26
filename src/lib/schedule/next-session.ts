@@ -14,6 +14,7 @@ import {
   type ScheduleSession,
 } from "./parse";
 import { getScheduleSourceUrl } from "./source-url";
+import { fetchStoredPastSessions } from "@/lib/server/discord-schedule";
 
 export type {
   ScheduleSession,
@@ -58,11 +59,54 @@ export async function fetchSchedule(): Promise<ScheduleFetchResult> {
 
   try {
     const data = attachUsersToSessions(parseSchedule(html));
-    return { ok: true, data };
+    // Merge in past sessions stored from Discord notifications. These
+    // appear at the bottom of the list (sorted into past) and have no
+    // attendance data — they're just date placeholders for history.
+    const merged = await mergeStoredPastSessions(data);
+    return { ok: true, data: merged };
   } catch (err) {
     console.warn("[schedule] parse error:", err);
     return { ok: false, reason: "parse-failed" };
   }
+}
+
+/**
+ * Merge `schedule_past_sessions` rows into the parsed schedule. Dedupes
+ * by `rawDate` — character-sheets data wins when the same session
+ * appears in both (it has full attendance info). DB-only entries get
+ * empty attendance maps.
+ */
+async function mergeStoredPastSessions(
+  parsed: ParsedSchedule,
+): Promise<ParsedSchedule> {
+  let stored: Awaited<ReturnType<typeof fetchStoredPastSessions>>;
+  try {
+    stored = await fetchStoredPastSessions();
+  } catch {
+    return parsed; // best-effort merge
+  }
+  if (stored.length === 0) return parsed;
+  const existingRawDates = new Set(parsed.sessions.map((s) => s.rawDate));
+  const additions: ScheduleSession[] = [];
+  for (const s of stored) {
+    if (existingRawDates.has(s.rawDate)) continue;
+    additions.push({
+      rawDate: s.rawDate,
+      date: new Date(s.parsedDate),
+      dayOfWeek: s.dayOfWeek,
+      startTime: s.startTime,
+      endTime: s.endTime,
+      // We don't know whether these were decided sessions; mark as
+      // CANDIDATE so we don't accidentally pick them as "next confirmed"
+      // (they're all in the past anyway, but be defensive).
+      status: "CANDIDATE",
+      attendances: {},
+    });
+  }
+  return {
+    ...parsed,
+    sessions: [...parsed.sessions, ...additions],
+  };
 }
 
 export async function fetchNextConfirmedSession(): Promise<NextSessionResult> {

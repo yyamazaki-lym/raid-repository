@@ -2,6 +2,14 @@
 
 import { runDiscordImport } from "./discord-import";
 import {
+  backfillPostedAtFromDiscord,
+  type PostedAtBackfillResult,
+} from "./discord-postedat-backfill";
+import {
+  importDiscordScheduleHistory,
+  type ScheduleHistoryImportResult,
+} from "./discord-schedule";
+import {
   fetchYouTubeMeta,
   fetchYouTubeMetaWithDebug,
   pmap,
@@ -190,6 +198,27 @@ export async function backfillFirstClearFromExistingVideos(
     noMatch,
     filledDetails,
   };
+}
+
+/**
+ * Server Action: scan the configured Discord schedule channel for past
+ * raid-session date notifications and store them in
+ * `schedule_past_sessions`. Triggered from the settings dialog (rare —
+ * usually a one-shot to seed history, then occasionally for upkeep).
+ */
+export async function importPastScheduleFromDiscord(): Promise<ScheduleHistoryImportResult> {
+  return importDiscordScheduleHistory();
+}
+
+/**
+ * Server Action: backfill `category_links.posted_at` from each
+ * configured Discord channel's recent message timestamps. Run this
+ * before "クリア日時を強制再計算" so the recomputed first-clear dates
+ * pick up the actual Discord post times (instead of created_at, which
+ * is the same for everything imported in one cron run).
+ */
+export async function backfillPostedAtFromDiscordChannels(): Promise<PostedAtBackfillResult> {
+  return backfillPostedAtFromDiscord();
 }
 
 /**

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   Cloud,
+  Clock,
   Loader2,
   Settings2,
   Stethoscope,
@@ -25,6 +26,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import {
   backfillFirstClearFromExistingVideos,
+  backfillPostedAtFromDiscordChannels,
   backfillVideoDurations,
   diagnoseYouTubeUrl,
   importDiscordNow,
@@ -33,6 +35,24 @@ import {
   type ImportNowItem,
   type YouTubeDiagnosticResult,
 } from "@/lib/server/categories-actions";
+
+// Inline type since "use server" modules can't re-export pure types.
+type PostedAtBackfillResult = {
+  ok: boolean;
+  reason?: string;
+  scannedMessages: number;
+  scannedUrls: number;
+  matched: number;
+  updated: number;
+  channels: Array<{
+    categorySlug: string;
+    kind: "strategy" | "video";
+    ok: boolean;
+    reason?: string;
+    scanned: number;
+    updated: number;
+  }>;
+};
 
 /**
  * Single dropdown that consolidates the three rarely-used maintenance
@@ -46,6 +66,7 @@ import {
 type ActionKind =
   | "discord"
   | "durations"
+  | "postedAt"
   | "firstClear"
   | "firstClearForce"
   | "diagnose";
@@ -53,6 +74,7 @@ type ActionKind =
 type Result =
   | { kind: "discord"; data: { items: ImportNowItem[] } }
   | { kind: "durations"; data: DurationBackfillResult }
+  | { kind: "postedAt"; data: PostedAtBackfillResult }
   | { kind: "firstClear"; data: BackfillResult; force: boolean }
   | { kind: "diagnose"; data: YouTubeDiagnosticResult };
 
@@ -119,6 +141,23 @@ export function MaintenanceMenu() {
                 : `更新なし (YouTube 以外: ${r.skippedNonYoutube})`,
           );
           setResult({ kind: "durations", data: r });
+          router.refresh();
+          return;
+        }
+        if (kind === "postedAt") {
+          const r = await backfillPostedAtFromDiscordChannels();
+          if (!r.ok) {
+            toast.error("投稿日時取得失敗: " + (r.reason ?? "unknown"));
+            return;
+          }
+          toast.success(
+            r.updated > 0
+              ? `${r.updated} 件の投稿日時を Discord から取得`
+              : r.matched === 0
+                ? "Discord メッセージから一致する URL 検出できず"
+                : `更新なし (すでに設定済み)`,
+          );
+          setResult({ kind: "postedAt", data: r });
           router.refresh();
           return;
         }
@@ -206,9 +245,21 @@ export function MaintenanceMenu() {
           >
             <Timer className="mt-0.5 h-3.5 w-3.5 shrink-0 text-violet-300" aria-hidden />
             <div className="flex flex-col gap-0.5">
-              <span className="text-sm">動画時間 + 投稿日時を取得</span>
+              <span className="text-sm">動画時間 + 投稿日時を取得（YouTube）</span>
               <span className="text-[10px] text-muted-foreground leading-snug">
-                未取得の動画から duration と posted_at を一括取得
+                YouTube から duration + uploadDate を一括取得（限定公開は API キー必要）
+              </span>
+            </div>
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() => run("postedAt")}
+            className="flex cursor-pointer items-start gap-2"
+          >
+            <Clock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-300" aria-hidden />
+            <div className="flex flex-col gap-0.5">
+              <span className="text-sm">投稿日時を Discord から取得</span>
+              <span className="text-[10px] text-muted-foreground leading-snug">
+                各チャンネルの最新メッセージから URL を照合し posted_at を埋める（API キー不要）
               </span>
             </div>
           </DropdownMenuItem>
@@ -271,6 +322,9 @@ export function MaintenanceMenu() {
           )}
           {result.kind === "durations" && (
             <DurationsPanel data={result.data} />
+          )}
+          {result.kind === "postedAt" && (
+            <PostedAtPanel data={result.data} />
           )}
           {result.kind === "firstClear" && (
             <FirstClearPanel data={result.data} force={result.force} />
@@ -364,6 +418,61 @@ function DurationsPanel({ data }: { data: DurationBackfillResult }) {
           対象: {data.scanned} 件
         </li>
       </ul>
+    </>
+  );
+}
+
+function PostedAtPanel({ data }: { data: PostedAtBackfillResult }) {
+  return (
+    <>
+      <p className="mb-2 pr-6 font-mono text-[10px] tracking-[0.2em] text-muted-foreground uppercase">
+        投稿日時 — Discord 取得結果
+      </p>
+      <ul className="flex flex-col gap-1 text-[11px] leading-relaxed">
+        <li className="flex items-baseline gap-2">
+          <span className="font-mono text-emerald-300">更新</span>
+          <span className="font-mono text-foreground">{data.updated}</span>
+          <span className="text-muted-foreground">件</span>
+        </li>
+        <li className="flex items-baseline gap-2">
+          <span className="font-mono text-zinc-400">URL一致</span>
+          <span className="font-mono text-foreground">{data.matched}</span>
+          <span className="text-muted-foreground">件</span>
+        </li>
+        <li className="text-[10px] text-muted-foreground">
+          スキャン: {data.scannedMessages} メッセージ /{" "}
+          {data.scannedUrls} URL
+        </li>
+      </ul>
+      {data.channels.length > 0 && (
+        <ul className="mt-2 flex flex-col gap-1 text-[10px] leading-relaxed">
+          {data.channels.map((c, i) => (
+            <li
+              key={i}
+              className="flex items-baseline gap-2 rounded-sm border border-border/40 bg-secondary/20 px-2 py-0.5 font-mono"
+            >
+              <span className="text-foreground">
+                {c.categorySlug}/{c.kind}
+              </span>
+              <span
+                className={c.ok ? "text-emerald-300" : "text-rose-300"}
+              >
+                +{c.updated}
+              </span>
+              <span className="text-muted-foreground">
+                ({c.scanned} msgs)
+              </span>
+              {c.reason && (
+                <span className="text-rose-300">{c.reason}</span>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="mt-2 text-[10px] text-muted-foreground leading-relaxed">
+        ⚡ この後「クリア日時を強制再計算」を実行すると、正しい
+        posted_at で計算されます
+      </p>
     </>
   );
 }
