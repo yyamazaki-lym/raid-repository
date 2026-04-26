@@ -129,8 +129,8 @@ async function importChannel(
       {
         headers: {
           Authorization: `Bot ${botToken}`,
-          "User-Agent":
-            "RaidRepositoryBot (https://raid-repository.vercel.app, 0.1)",
+          // Generic UA — fork deployments shouldn't all impersonate one URL.
+          "User-Agent": "RaidRepositoryBot/0.1",
         },
         signal: AbortSignal.timeout(15000),
       },

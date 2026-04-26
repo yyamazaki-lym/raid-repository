@@ -47,8 +47,9 @@ export async function fetchPageTitle(url: string): Promise<string | null> {
   try {
     const res = await fetch(parsed.toString(), {
       headers: {
+        // Generic UA — fork deployments shouldn't all impersonate one URL.
         "User-Agent":
-          "Mozilla/5.0 (compatible; RaidRepositoryBot/0.1; +https://raid-repository.vercel.app)",
+          "Mozilla/5.0 (compatible; RaidRepositoryBot/0.1)",
         Accept: "text/html,application/xhtml+xml,application/xml;q=0.9",
       },
       signal: AbortSignal.timeout(8000),
