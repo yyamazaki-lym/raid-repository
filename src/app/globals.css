@@ -1,26 +1,713 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@custom-variant dark (&:is(.dark *));
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-mono: var(--font-jetbrains-mono);
+  --font-heading: var(--font-orbitron);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-neon-cyan: var(--neon-cyan);
+  --color-neon-magenta: var(--neon-magenta);
+  --color-neon-violet: var(--neon-violet);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+/* Evercold (白銀のワンダラー) inspired palette — deep navy base, ice-blue
+ * accents, silver/white highlights. Low chroma overall = "frozen", high
+ * lightness on the accents = "frost light". */
+:root {
+  --background: oklch(0.985 0.005 220);
+  --foreground: oklch(0.22 0.04 230);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.22 0.04 230);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.22 0.04 230);
+  --primary: oklch(0.55 0.12 225);
+  --primary-foreground: oklch(0.99 0 0);
+  --secondary: oklch(0.95 0.015 220);
+  --secondary-foreground: oklch(0.24 0.04 230);
+  --muted: oklch(0.95 0.015 220);
+  --muted-foreground: oklch(0.5 0.03 225);
+  --accent: oklch(0.94 0.03 220);
+  --accent-foreground: oklch(0.24 0.04 230);
+  --destructive: oklch(0.62 0.24 27);
+  --border: oklch(0.88 0.02 225);
+  --input: oklch(0.93 0.02 225);
+  --ring: oklch(0.62 0.13 225);
+  --chart-1: oklch(0.72 0.13 225);
+  --chart-2: oklch(0.85 0.06 220);
+  --chart-3: oklch(0.55 0.1 200);
+  --chart-4: oklch(0.78 0.1 195);
+  --chart-5: oklch(0.65 0.09 240);
+  --radius: 0.625rem;
+  --sidebar: oklch(0.97 0.01 220);
+  --sidebar-foreground: oklch(0.24 0.04 230);
+  --sidebar-primary: oklch(0.55 0.12 225);
+  --sidebar-primary-foreground: oklch(0.99 0 0);
+  --sidebar-accent: oklch(0.94 0.03 220);
+  --sidebar-accent-foreground: oklch(0.24 0.04 230);
+  --sidebar-border: oklch(0.88 0.02 225);
+  --sidebar-ring: oklch(0.62 0.13 225);
+
+  /* "Neon" slots renamed in spirit only — these are now icy highlights. */
+  --neon-cyan: oklch(0.82 0.13 215);   /* ice blue */
+  --neon-magenta: oklch(0.92 0.02 220); /* silver-white */
+  --neon-violet: oklch(0.7 0.1 230);    /* steel blue */
+  --frost: oklch(0.97 0.02 220);        /* near-white frost */
+}
+
+/* ============================================================
+ * Theme system — `.dark` carries the currently selected theme's
+ * dark-mode tokens. Default = Evercold (applied if no theme class).
+ * Per-expansion overrides live in `.dark.theme-<id>` blocks below.
+ * The pre-hydration script in `layout.tsx` adds the class before
+ * React mounts so there's no flash of an unintended palette.
+ * ============================================================ */
+
+/* Default = Evercold (also explicitly available as .dark.theme-evercold). */
+.dark,
+.dark.theme-evercold {
+  --background: oklch(0.11 0.02 235);
+  --foreground: oklch(0.97 0.012 220);
+  --card: oklch(0.16 0.025 235);
+  --card-foreground: oklch(0.97 0.012 220);
+  --popover: oklch(0.14 0.025 235);
+  --popover-foreground: oklch(0.97 0.012 220);
+  /* Silver-leaning primary: very low chroma, very high lightness. */
+  --primary: oklch(0.93 0.025 220);
+  --primary-foreground: oklch(0.1 0.04 235);
+  --secondary: oklch(0.22 0.035 235);
+  --secondary-foreground: oklch(0.97 0.012 220);
+  --muted: oklch(0.2 0.025 235);
+  --muted-foreground: oklch(0.76 0.025 220);
+  --accent: oklch(0.85 0.1 218);
+  --accent-foreground: oklch(0.1 0.04 235);
+  --destructive: oklch(0.7 0.22 22);
+  --border: oklch(0.97 0.035 220 / 14%);
+  --input: oklch(0.97 0.035 220 / 18%);
+  --ring: oklch(0.92 0.04 220);
+  --chart-1: oklch(0.93 0.025 220);
+  --chart-2: oklch(0.85 0.1 218);
+  --chart-3: oklch(0.74 0.08 225);
+  --chart-4: oklch(0.78 0.08 195);
+  --chart-5: oklch(0.62 0.08 245);
+  --sidebar: oklch(0.14 0.025 235);
+  --sidebar-foreground: oklch(0.97 0.012 220);
+  --sidebar-primary: oklch(0.93 0.025 220);
+  --sidebar-primary-foreground: oklch(0.1 0.04 235);
+  --sidebar-accent: oklch(0.22 0.035 235);
+  --sidebar-accent-foreground: oklch(0.97 0.012 220);
+  --sidebar-border: oklch(0.97 0.035 220 / 14%);
+  --sidebar-ring: oklch(0.92 0.04 220);
+
+  /* Highlights: silver / ice / steel — no warm tones. */
+  --neon-cyan: oklch(0.85 0.1 218);     /* ice */
+  --neon-magenta: oklch(0.97 0.012 220);/* polished silver */
+  --neon-violet: oklch(0.8 0.07 225);   /* pale steel */
+  --frost: oklch(0.99 0.005 220);
+}
+
+/* ===== A Realm Reborn — 新生エオルゼア (verdant rebirth: green-dominant) =====
+ * The Hydaelyn / Eorzea aesthetic: deep forest base, emerald primary, and warm
+ * gold accent. Differentiated from DT by being GREEN-primary (vs DT gold-primary)
+ * and from SB by being lush/calm (vs SB blood/aggression). */
+.dark.theme-arr {
+  --background: oklch(0.12 0.045 155);
+  --foreground: oklch(0.96 0.04 110);
+  --card: oklch(0.17 0.06 155);
+  --card-foreground: oklch(0.96 0.04 110);
+  --popover: oklch(0.15 0.05 155);
+  --popover-foreground: oklch(0.96 0.04 110);
+  --primary: oklch(0.72 0.18 150);            /* emerald — the dominant color */
+  --primary-foreground: oklch(0.13 0.05 155);
+  --secondary: oklch(0.22 0.07 155);
+  --secondary-foreground: oklch(0.96 0.04 110);
+  --muted: oklch(0.2 0.05 155);
+  --muted-foreground: oklch(0.76 0.06 130);
+  --accent: oklch(0.78 0.16 75);              /* warm gold (highlight, not dominant) */
+  --accent-foreground: oklch(0.13 0.05 155);
+  --destructive: oklch(0.62 0.24 27);
+  --border: oklch(0.95 0.06 130 / 14%);
+  --input: oklch(0.95 0.06 130 / 18%);
+  --ring: oklch(0.72 0.18 150);
+  --chart-1: oklch(0.72 0.18 150);            /* emerald */
+  --chart-2: oklch(0.78 0.16 75);             /* gold */
+  --chart-3: oklch(0.55 0.16 165);            /* deep forest */
+  --chart-4: oklch(0.85 0.12 130);            /* spring green */
+  --chart-5: oklch(0.65 0.16 90);             /* amber */
+  --sidebar: oklch(0.15 0.05 155);
+  --sidebar-foreground: oklch(0.96 0.04 110);
+  --sidebar-primary: oklch(0.72 0.18 150);
+  --sidebar-primary-foreground: oklch(0.13 0.05 155);
+  --sidebar-accent: oklch(0.22 0.07 155);
+  --sidebar-accent-foreground: oklch(0.96 0.04 110);
+  --sidebar-border: oklch(0.95 0.06 130 / 14%);
+  --sidebar-ring: oklch(0.72 0.18 150);
+
+  --neon-cyan: oklch(0.72 0.18 150);          /* emerald */
+  --neon-magenta: oklch(0.78 0.16 75);        /* warm gold */
+  --neon-violet: oklch(0.55 0.16 165);        /* deep forest */
+  --frost: oklch(0.96 0.05 100);              /* warm parchment */
+}
+
+/* ===== Heavensward — 蒼天のイシュガルド (knight blue + stained-glass gold) ===== */
+.dark.theme-heavensward {
+  --background: oklch(0.1 0.04 245);
+  --foreground: oklch(0.96 0.02 235);
+  --card: oklch(0.16 0.06 245);
+  --card-foreground: oklch(0.96 0.02 235);
+  --popover: oklch(0.14 0.05 245);
+  --popover-foreground: oklch(0.96 0.02 235);
+  --primary: oklch(0.7 0.16 235);           /* azure */
+  --primary-foreground: oklch(0.1 0.05 245);
+  --secondary: oklch(0.23 0.07 245);
+  --secondary-foreground: oklch(0.96 0.02 235);
+  --muted: oklch(0.21 0.05 245);
+  --muted-foreground: oklch(0.76 0.05 235);
+  --accent: oklch(0.82 0.16 80);            /* gold */
+  --accent-foreground: oklch(0.1 0.05 245);
+  --destructive: oklch(0.7 0.22 22);
+  --border: oklch(0.96 0.06 235 / 14%);
+  --input: oklch(0.96 0.06 235 / 18%);
+  --ring: oklch(0.7 0.16 235);
+  --chart-1: oklch(0.7 0.16 235);
+  --chart-2: oklch(0.82 0.16 80);
+  --chart-3: oklch(0.55 0.18 250);
+  --chart-4: oklch(0.85 0.05 230);
+  --chart-5: oklch(0.65 0.18 220);
+  --sidebar: oklch(0.14 0.05 245);
+  --sidebar-foreground: oklch(0.96 0.02 235);
+  --sidebar-primary: oklch(0.7 0.16 235);
+  --sidebar-primary-foreground: oklch(0.1 0.05 245);
+  --sidebar-accent: oklch(0.23 0.07 245);
+  --sidebar-accent-foreground: oklch(0.96 0.02 235);
+  --sidebar-border: oklch(0.96 0.06 235 / 14%);
+  --sidebar-ring: oklch(0.7 0.16 235);
+
+  --neon-cyan: oklch(0.7 0.16 235);         /* azure */
+  --neon-magenta: oklch(0.82 0.16 80);      /* gold */
+  --neon-violet: oklch(0.78 0.13 250);
+  --frost: oklch(0.96 0.04 230);
+}
+
+/* ===== Stormblood — 紅蓮のリベレーター (blood + ember + near-black) =====
+ * Differentiated from ARR by: near-black background (much darker), bright
+ * saturated crimson primary (vs ARR's dulled antique gold), and an ember
+ * orange accent (vs ARR's wine red and DT's emerald). No gold in this theme. */
+.dark.theme-stormblood {
+  --background: oklch(0.08 0.04 22);
+  --foreground: oklch(0.96 0.03 30);
+  --card: oklch(0.13 0.07 22);
+  --card-foreground: oklch(0.96 0.03 30);
+  --popover: oklch(0.11 0.06 22);
+  --popover-foreground: oklch(0.96 0.03 30);
+  --primary: oklch(0.62 0.27 22);            /* bright crimson */
+  --primary-foreground: oklch(0.99 0.02 30);
+  --secondary: oklch(0.22 0.1 22);
+  --secondary-foreground: oklch(0.96 0.03 30);
+  --muted: oklch(0.18 0.07 22);
+  --muted-foreground: oklch(0.76 0.07 35);
+  --accent: oklch(0.74 0.2 45);              /* ember orange (NOT gold) */
+  --accent-foreground: oklch(0.13 0.06 22);
+  --destructive: oklch(0.62 0.24 27);
+  --border: oklch(0.95 0.06 30 / 14%);
+  --input: oklch(0.95 0.06 30 / 18%);
+  --ring: oklch(0.62 0.27 22);
+  --chart-1: oklch(0.62 0.27 22);
+  --chart-2: oklch(0.74 0.2 45);
+  --chart-3: oklch(0.5 0.22 15);
+  --chart-4: oklch(0.85 0.16 55);
+  --chart-5: oklch(0.4 0.2 18);
+  --sidebar: oklch(0.11 0.06 22);
+  --sidebar-foreground: oklch(0.96 0.03 30);
+  --sidebar-primary: oklch(0.62 0.27 22);
+  --sidebar-primary-foreground: oklch(0.99 0.02 30);
+  --sidebar-accent: oklch(0.22 0.1 22);
+  --sidebar-accent-foreground: oklch(0.96 0.03 30);
+  --sidebar-border: oklch(0.95 0.06 30 / 14%);
+  --sidebar-ring: oklch(0.62 0.27 22);
+
+  --neon-cyan: oklch(0.62 0.27 22);          /* crimson */
+  --neon-magenta: oklch(0.74 0.2 45);        /* ember */
+  --neon-violet: oklch(0.5 0.22 15);         /* dark blood */
+  --frost: oklch(0.85 0.16 55);              /* hot ember highlight */
+}
+
+/* ===== Shadowbringers — 漆黒のヴィランズ (jet black + aether glow) ===== */
+.dark.theme-shadowbringers {
+  --background: oklch(0.07 0.015 285);
+  --foreground: oklch(0.96 0.02 80);        /* sin-eater warm white */
+  --card: oklch(0.12 0.03 285);
+  --card-foreground: oklch(0.96 0.02 80);
+  --popover: oklch(0.1 0.025 285);
+  --popover-foreground: oklch(0.96 0.02 80);
+  --primary: oklch(0.85 0.14 195);          /* aether cyan */
+  --primary-foreground: oklch(0.07 0.015 285);
+  --secondary: oklch(0.2 0.04 285);
+  --secondary-foreground: oklch(0.96 0.02 80);
+  --muted: oklch(0.18 0.03 285);
+  --muted-foreground: oklch(0.74 0.04 80);
+  --accent: oklch(0.78 0.16 320);           /* lavender */
+  --accent-foreground: oklch(0.07 0.015 285);
+  --destructive: oklch(0.7 0.22 22);
+  --border: oklch(0.96 0.06 80 / 12%);
+  --input: oklch(0.96 0.06 80 / 16%);
+  --ring: oklch(0.85 0.14 195);
+  --chart-1: oklch(0.85 0.14 195);
+  --chart-2: oklch(0.78 0.16 320);
+  --chart-3: oklch(0.96 0.04 80);
+  --chart-4: oklch(0.7 0.18 260);
+  --chart-5: oklch(0.6 0.18 200);
+  --sidebar: oklch(0.1 0.025 285);
+  --sidebar-foreground: oklch(0.96 0.02 80);
+  --sidebar-primary: oklch(0.85 0.14 195);
+  --sidebar-primary-foreground: oklch(0.07 0.015 285);
+  --sidebar-accent: oklch(0.2 0.04 285);
+  --sidebar-accent-foreground: oklch(0.96 0.02 80);
+  --sidebar-border: oklch(0.96 0.06 80 / 12%);
+  --sidebar-ring: oklch(0.85 0.14 195);
+
+  --neon-cyan: oklch(0.85 0.14 195);        /* aether */
+  --neon-magenta: oklch(0.78 0.16 320);     /* lavender */
+  --neon-violet: oklch(0.7 0.18 260);
+  --frost: oklch(0.96 0.06 80);             /* sin-eater */
+}
+
+/* ===== Endwalker — 暁月のフィナーレ (twilight peach + moonlight) ===== */
+.dark.theme-endwalker {
+  --background: oklch(0.13 0.045 310);
+  --foreground: oklch(0.97 0.025 35);
+  --card: oklch(0.19 0.06 310);
+  --card-foreground: oklch(0.97 0.025 35);
+  --popover: oklch(0.17 0.055 310);
+  --popover-foreground: oklch(0.97 0.025 35);
+  --primary: oklch(0.8 0.15 35);             /* dawn peach */
+  --primary-foreground: oklch(0.13 0.05 310);
+  --secondary: oklch(0.25 0.07 310);
+  --secondary-foreground: oklch(0.97 0.025 35);
+  --muted: oklch(0.22 0.05 310);
+  --muted-foreground: oklch(0.78 0.05 30);
+  --accent: oklch(0.74 0.14 320);            /* lavender moonlight */
+  --accent-foreground: oklch(0.13 0.05 310);
+  --destructive: oklch(0.7 0.22 22);
+  --border: oklch(0.96 0.06 35 / 14%);
+  --input: oklch(0.96 0.06 35 / 18%);
+  --ring: oklch(0.8 0.15 35);
+  --chart-1: oklch(0.8 0.15 35);
+  --chart-2: oklch(0.74 0.14 320);
+  --chart-3: oklch(0.62 0.18 25);
+  --chart-4: oklch(0.85 0.1 70);
+  --chart-5: oklch(0.55 0.16 290);
+  --sidebar: oklch(0.17 0.055 310);
+  --sidebar-foreground: oklch(0.97 0.025 35);
+  --sidebar-primary: oklch(0.8 0.15 35);
+  --sidebar-primary-foreground: oklch(0.13 0.05 310);
+  --sidebar-accent: oklch(0.25 0.07 310);
+  --sidebar-accent-foreground: oklch(0.97 0.025 35);
+  --sidebar-border: oklch(0.96 0.06 35 / 14%);
+  --sidebar-ring: oklch(0.8 0.15 35);
+
+  --neon-cyan: oklch(0.8 0.15 35);          /* peach */
+  --neon-magenta: oklch(0.74 0.14 320);     /* lavender */
+  --neon-violet: oklch(0.62 0.18 25);
+  --frost: oklch(0.96 0.05 30);
+}
+
+/* ===== Dawntrail — 黄金のレガシー (sun gold + emerald + tropical teal) =====
+ * Differentiated from ARR/SB by: olive-green background (vs ARR wine, SB
+ * near-black), bright sun gold primary (vs ARR's dulled antique gold),
+ * and BOTH emerald and tropical teal as accents (no red anywhere). */
+.dark.theme-dawntrail {
+  --background: oklch(0.14 0.04 100);
+  --foreground: oklch(0.97 0.03 80);
+  --card: oklch(0.2 0.06 100);
+  --card-foreground: oklch(0.97 0.03 80);
+  --popover: oklch(0.18 0.05 100);
+  --popover-foreground: oklch(0.97 0.03 80);
+  --primary: oklch(0.84 0.18 90);            /* bright sun gold */
+  --primary-foreground: oklch(0.13 0.04 100);
+  --secondary: oklch(0.25 0.07 100);
+  --secondary-foreground: oklch(0.97 0.03 80);
+  --muted: oklch(0.22 0.05 100);
+  --muted-foreground: oklch(0.78 0.05 90);
+  --accent: oklch(0.7 0.18 145);             /* emerald */
+  --accent-foreground: oklch(0.13 0.04 100);
+  --destructive: oklch(0.62 0.24 27);
+  --border: oklch(0.96 0.06 90 / 14%);
+  --input: oklch(0.96 0.06 90 / 18%);
+  --ring: oklch(0.84 0.18 90);
+  --chart-1: oklch(0.84 0.18 90);
+  --chart-2: oklch(0.7 0.18 145);
+  --chart-3: oklch(0.75 0.15 200);           /* tropical teal */
+  --chart-4: oklch(0.65 0.16 110);
+  --chart-5: oklch(0.55 0.18 165);
+  --sidebar: oklch(0.18 0.05 100);
+  --sidebar-foreground: oklch(0.97 0.03 80);
+  --sidebar-primary: oklch(0.84 0.18 90);
+  --sidebar-primary-foreground: oklch(0.13 0.04 100);
+  --sidebar-accent: oklch(0.25 0.07 100);
+  --sidebar-accent-foreground: oklch(0.97 0.03 80);
+  --sidebar-border: oklch(0.96 0.06 90 / 14%);
+  --sidebar-ring: oklch(0.84 0.18 90);
+
+  --neon-cyan: oklch(0.84 0.18 90);          /* sun */
+  --neon-magenta: oklch(0.7 0.18 145);       /* emerald */
+  --neon-violet: oklch(0.75 0.15 200);       /* tropical teal */
+  --frost: oklch(0.96 0.06 110);             /* lime cream */
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    @apply font-sans;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings:
+      "rlig" 1,
+      "calt" 1,
+      "ss01" 1;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* ----- Frost ambient layers (Evercold-inspired) ----- */
+
+/* Faint grid — barely visible, like frost on glass. */
+.bg-grid {
+  background-image:
+    linear-gradient(
+      to right,
+      color-mix(in oklch, var(--neon-cyan) 10%, transparent) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      to bottom,
+      color-mix(in oklch, var(--neon-cyan) 10%, transparent) 1px,
+      transparent 1px
+    );
+  background-size: 64px 64px;
+  background-position: center;
+  mask-image: radial-gradient(ellipse 90% 70% at 50% 25%, black 20%, transparent 80%);
 }
+
+/* Glow orbs — ice blue from above, white frost from below. */
+.bg-orbs::before,
+.bg-orbs::after {
+  content: "";
+  position: absolute;
+  inset: auto;
+  width: 42rem;
+  height: 42rem;
+  border-radius: 9999px;
+  filter: blur(140px);
+  pointer-events: none;
+}
+
+.bg-orbs::before {
+  top: -14rem;
+  left: -10rem;
+  opacity: 0.32;
+  background: radial-gradient(closest-side, var(--neon-cyan), transparent 70%);
+}
+
+.bg-orbs::after {
+  bottom: -16rem;
+  right: -10rem;
+  opacity: 0.18;
+  background: radial-gradient(closest-side, var(--frost), transparent 70%);
+}
+
+/* Subtle frost particles — tiny dots like ice crystals scattered. */
+.bg-scanlines {
+  background-image:
+    radial-gradient(
+      circle at 17% 23%,
+      color-mix(in oklch, var(--frost) 80%, transparent) 0.5px,
+      transparent 1.2px
+    ),
+    radial-gradient(
+      circle at 73% 11%,
+      color-mix(in oklch, var(--frost) 70%, transparent) 0.5px,
+      transparent 1.2px
+    ),
+    radial-gradient(
+      circle at 41% 61%,
+      color-mix(in oklch, var(--frost) 60%, transparent) 0.5px,
+      transparent 1.2px
+    ),
+    radial-gradient(
+      circle at 85% 47%,
+      color-mix(in oklch, var(--frost) 80%, transparent) 0.5px,
+      transparent 1.2px
+    ),
+    radial-gradient(
+      circle at 9% 78%,
+      color-mix(in oklch, var(--frost) 70%, transparent) 0.5px,
+      transparent 1.2px
+    ),
+    radial-gradient(
+      circle at 56% 88%,
+      color-mix(in oklch, var(--frost) 60%, transparent) 0.5px,
+      transparent 1.2px
+    );
+  background-size: 320px 320px;
+  background-repeat: repeat;
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+/* Glass surface — frosted, almost like ice. Used by cards & dropdowns where
+ * the see-through effect is desired. */
+.glass {
+  background: color-mix(in oklch, var(--card) 55%, transparent);
+  backdrop-filter: blur(16px) saturate(120%);
+  -webkit-backdrop-filter: blur(16px) saturate(120%);
+  border: 1px solid color-mix(in oklch, var(--frost) 10%, transparent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in oklch, var(--frost) 10%, transparent),
+    0 1px 0 color-mix(in oklch, var(--background) 70%, transparent);
+}
+
+/* Solid bar — used by sticky header / tab bars so scrolled content does NOT
+ * bleed through and overlap with the bar's labels. We keep a tiny amount of
+ * blur for atmosphere, but the background is effectively opaque. */
+.glass-bar {
+  background: color-mix(in oklch, var(--background) 96%, transparent);
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  border-bottom: 1px solid color-mix(in oklch, var(--frost) 10%, transparent);
+  box-shadow: 0 6px 16px -10px color-mix(in oklch, black 70%, transparent);
+}
+
+/* Frosted edge — silver-blue glow on hover/active. */
+.neon-edge {
+  position: relative;
+  isolation: isolate;
+}
+
+.neon-edge::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(
+    135deg,
+    var(--frost),
+    var(--neon-cyan),
+    var(--neon-violet)
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+  pointer-events: none;
+}
+
+.neon-edge[data-active="true"]::before,
+.neon-edge:hover::before {
+  opacity: 0.9;
+}
+
+/* Heading utility. */
+.font-display {
+  font-family: var(--font-orbitron), var(--font-geist-sans), system-ui, sans-serif;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* Animate the grid drift gently. */
+@keyframes drift {
+  0% {
+    background-position: 0 0;
+  }
+  100% {
+    background-position: 56px 56px;
+  }
+}
+
+.bg-grid-animate {
+  animation: drift 14s linear infinite;
+}
+
+/* ============================================================
+ * Per-theme background effects — fully distinct atmospheres.
+ * Each theme overrides .bg-grid and/or .bg-scanlines with a
+ * different pattern (sparkles / lattice / ember / aurora /
+ * sun rays / void / frost). The shared <div> layers in <body>
+ * stay the same; only their backgrounds change.
+ * ============================================================ */
+
+/* ARR — Crystal sparkles. Emerald + gold motes scattered, gentle twinkle. */
+.dark.theme-arr .bg-grid {
+  background-image: none;
+}
+.dark.theme-arr .bg-scanlines {
+  background-image:
+    radial-gradient(1.8px 1.8px at 18% 22%, color-mix(in oklch, var(--neon-cyan) 70%, transparent), transparent 60%),
+    radial-gradient(1.2px 1.2px at 78% 14%, color-mix(in oklch, var(--neon-magenta) 60%, transparent), transparent 60%),
+    radial-gradient(2px 2px at 47% 65%, color-mix(in oklch, var(--frost) 70%, transparent), transparent 60%),
+    radial-gradient(1.2px 1.2px at 86% 78%, color-mix(in oklch, var(--neon-cyan) 60%, transparent), transparent 60%),
+    radial-gradient(1.8px 1.8px at 13% 88%, color-mix(in oklch, var(--neon-magenta) 60%, transparent), transparent 60%),
+    radial-gradient(1.4px 1.4px at 60% 35%, color-mix(in oklch, var(--frost) 60%, transparent), transparent 60%);
+  background-size: 260px 260px;
+  background-repeat: repeat;
+  opacity: 0.55;
+  animation: arr-twinkle 5s ease-in-out infinite alternate;
+}
+@keyframes arr-twinkle {
+  0% { opacity: 0.4; }
+  100% { opacity: 0.72; }
+}
+.dark.theme-arr .bg-orbs::before { opacity: 0.32; }
+.dark.theme-arr .bg-orbs::after { opacity: 0.22; }
+
+/* Heavensward — Stained-glass diagonal lattice (no animation, like glass). */
+.dark.theme-heavensward .bg-grid {
+  background-image:
+    linear-gradient(60deg, color-mix(in oklch, var(--neon-cyan) 14%, transparent) 1px, transparent 1.5px),
+    linear-gradient(-60deg, color-mix(in oklch, var(--neon-cyan) 14%, transparent) 1px, transparent 1.5px);
+  background-size: 64px 110px;
+  mask-image: radial-gradient(ellipse 90% 70% at 50% 25%, black 25%, transparent 80%);
+}
+.dark.theme-heavensward .bg-grid-animate { animation: none; }
+.dark.theme-heavensward .bg-scanlines { background-image: none; }
+.dark.theme-heavensward .bg-orbs::before { opacity: 0.34; }
+.dark.theme-heavensward .bg-orbs::after { opacity: 0.22; }
+
+/* Stormblood — Vertical ember drift, falling down the screen. */
+.dark.theme-stormblood .bg-grid { background-image: none; }
+.dark.theme-stormblood .bg-scanlines {
+  background-image:
+    repeating-linear-gradient(
+      to right,
+      transparent 0,
+      transparent 86px,
+      color-mix(in oklch, var(--neon-magenta) 26%, transparent) 86px,
+      color-mix(in oklch, var(--neon-magenta) 26%, transparent) 87px,
+      transparent 87px,
+      transparent 200px
+    ),
+    repeating-linear-gradient(
+      to right,
+      transparent 0,
+      transparent 142px,
+      color-mix(in oklch, var(--neon-magenta) 16%, transparent) 142px,
+      color-mix(in oklch, var(--neon-magenta) 16%, transparent) 143px,
+      transparent 143px,
+      transparent 320px
+    );
+  background-size: auto 280px, auto 420px;
+  background-repeat: repeat;
+  animation: sb-ash 14s linear infinite;
+  opacity: 0.5;
+}
+@keyframes sb-ash {
+  0% { background-position: 0 -280px, 80px -420px; }
+  100% { background-position: 0 0, 80px 0; }
+}
+.dark.theme-stormblood .bg-orbs::before { opacity: 0.5; filter: blur(150px); }
+.dark.theme-stormblood .bg-orbs::after { opacity: 0.32; filter: blur(150px); }
+
+/* Shadowbringers — Pure void with two slow pulsing motes. */
+.dark.theme-shadowbringers .bg-grid { background-image: none; }
+.dark.theme-shadowbringers .bg-scanlines {
+  background-image:
+    radial-gradient(3px 3px at 35% 22%, color-mix(in oklch, var(--neon-cyan) 55%, transparent), transparent 50%),
+    radial-gradient(3px 3px at 70% 70%, color-mix(in oklch, var(--neon-magenta) 55%, transparent), transparent 50%);
+  background-size: 700px 700px;
+  background-position: 0 0, 200px 200px;
+  animation: shb-pulse 8s ease-in-out infinite;
+}
+@keyframes shb-pulse {
+  0%, 100% { opacity: 0.32; }
+  50% { opacity: 0.72; }
+}
+.dark.theme-shadowbringers .bg-orbs::before { opacity: 0.42; filter: blur(130px); }
+.dark.theme-shadowbringers .bg-orbs::after { opacity: 0.22; filter: blur(150px); }
+
+/* Endwalker — Twilight aurora gradient bands (top-bottom fade). */
+.dark.theme-endwalker .bg-grid { background-image: none; }
+.dark.theme-endwalker .bg-scanlines {
+  background-image: linear-gradient(
+    180deg,
+    color-mix(in oklch, var(--neon-cyan) 18%, transparent) 0%,
+    transparent 32%,
+    transparent 65%,
+    color-mix(in oklch, var(--neon-magenta) 16%, transparent) 100%
+  );
+  background-size: 100% 100%;
+  opacity: 0.78;
+  animation: ew-aurora 12s ease-in-out infinite alternate;
+}
+@keyframes ew-aurora {
+  0% { opacity: 0.55; }
+  100% { opacity: 0.88; }
+}
+.dark.theme-endwalker .bg-orbs::before { opacity: 0.4; filter: blur(160px); }
+.dark.theme-endwalker .bg-orbs::after { opacity: 0.32; filter: blur(160px); }
+
+/* Dawntrail — Sun rays radiating from bottom-center. */
+.dark.theme-dawntrail .bg-grid {
+  background-image:
+    repeating-conic-gradient(
+      from -150deg at 50% 110%,
+      transparent 0deg,
+      transparent 5deg,
+      color-mix(in oklch, var(--neon-cyan) 10%, transparent) 5deg,
+      color-mix(in oklch, var(--neon-cyan) 10%, transparent) 6deg
+    );
+  background-size: 100% 100%;
+  background-position: center bottom;
+  mask-image: radial-gradient(ellipse 100% 80% at 50% 100%, black 30%, transparent 90%);
+}
+.dark.theme-dawntrail .bg-grid-animate { animation: none; }
+.dark.theme-dawntrail .bg-scanlines { background-image: none; }
+.dark.theme-dawntrail .bg-orbs::before { opacity: 0.42; }
+.dark.theme-dawntrail .bg-orbs::after { opacity: 0.32; }
+
+/* Evercold — Default frost crystals (no override; uses base .bg-scanlines). */
