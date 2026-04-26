@@ -24,11 +24,19 @@ CREATE TABLE IF NOT EXISTS public.categories (
   slug        text NOT NULL UNIQUE,
   name        text NOT NULL,
   status      text NOT NULL DEFAULT '未着手'
-              CHECK (status IN ('未着手','練習中','クリア済')),
+              CHECK (status IN ('未着手','練習中','クリア済','休止中')),
   sort_order  integer NOT NULL DEFAULT 0,
   created_at  timestamptz NOT NULL DEFAULT now(),
   updated_at  timestamptz NOT NULL DEFAULT now()
 );
+
+-- Idempotent CHECK widening — recreate the constraint so re-running this
+-- file after the original three-value version expands it to four values.
+ALTER TABLE public.categories
+  DROP CONSTRAINT IF EXISTS categories_status_check;
+ALTER TABLE public.categories
+  ADD CONSTRAINT categories_status_check
+  CHECK (status IN ('未着手','練習中','クリア済','休止中'));
 -- Phase 3 additions: external spreadsheet URLs (added later via migration).
 ALTER TABLE public.categories
   ADD COLUMN IF NOT EXISTS loot_sheet_url       text,

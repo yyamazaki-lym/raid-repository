@@ -33,8 +33,18 @@ export function SheetIframe({
   }
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex items-center justify-end">
+    /* Full-bleed wrapper: negative margin breaks out of the parent's
+       max-w-6xl container so the iframe can use the full viewport width.
+       The formula `calc(50% - 50vw)` resolves to 0 when parent fills the
+       viewport (mobile) and to a negative pull on wider screens. */
+    <div
+      className="flex flex-col gap-3"
+      style={{
+        marginLeft: "calc(50% - 50vw + 1rem)",
+        marginRight: "calc(50% - 50vw + 1rem)",
+      }}
+    >
+      <div className="flex items-center justify-end px-4 sm:px-6">
         <a
           href={url}
           target="_blank"
@@ -45,23 +55,25 @@ export function SheetIframe({
           元サイトを開く
         </a>
       </div>
-      <Card className="glass overflow-hidden p-0">
-        {/* Wrapper hides overflow; iframe at 125% scaled to 0.8 so visible
-            content is 80% — fits more spreadsheet rows on screen. */}
-        <div className="relative h-[calc(100dvh-22rem)] min-h-[420px] w-full overflow-hidden bg-white">
-          <iframe
-            src={url}
-            title={title}
-            className="absolute top-0 left-0 origin-top-left border-0"
-            style={{
-              width: "125%",
-              height: "125%",
-              transform: "scale(0.8)",
-            }}
-            sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
-          />
-        </div>
-      </Card>
+      <div className="px-4 sm:px-6">
+        <Card className="glass overflow-hidden p-0">
+          {/* Wrapper hides overflow; iframe at 125% scaled to 0.8 so visible
+              content is 80% — fits more spreadsheet rows on screen. */}
+          <div className="relative h-[calc(100dvh-22rem)] min-h-[420px] w-full overflow-hidden bg-white">
+            <iframe
+              src={url}
+              title={title}
+              className="absolute top-0 left-0 origin-top-left border-0"
+              style={{
+                width: "125%",
+                height: "125%",
+                transform: "scale(0.8)",
+              }}
+              sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
+            />
+          </div>
+        </Card>
+      </div>
     </div>
   );
 }

@@ -6,16 +6,22 @@
  * that drift can be caught by code review when the schema changes.
  */
 
-export type CategoryStatus = "未着手" | "練習中" | "クリア済";
+export type CategoryStatus = "未着手" | "練習中" | "クリア済" | "休止中";
 
 export const ALL_STATUSES: readonly CategoryStatus[] = [
   "未着手",
   "練習中",
   "クリア済",
+  "休止中",
 ] as const;
 
 export function isCategoryStatus(value: unknown): value is CategoryStatus {
-  return value === "未着手" || value === "練習中" || value === "クリア済";
+  return (
+    value === "未着手" ||
+    value === "練習中" ||
+    value === "クリア済" ||
+    value === "休止中"
+  );
 }
 
 export type CategoryRow = {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Plus, Save, AlertTriangle, Pencil } from "lucide-react";
+import { Plus, Save, AlertTriangle, Pencil, Wand2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -62,6 +62,7 @@ export function LinkFormDialog({
   const [url, setUrl] = useState(link?.url ?? "");
   const [description, setDescription] = useState(link?.description ?? "");
   const [busy, setBusy] = useState(false);
+  const [fetchingTitle, setFetchingTitle] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Reset form when opening (handles consecutive opens with stale state).
@@ -73,6 +74,36 @@ export function LinkFormDialog({
       setError(null);
     }
   }, [open, link]);
+
+  const onFetchTitle = async () => {
+    const u = url.trim();
+    if (!u) {
+      setError("URLを入力してから取得してください");
+      return;
+    }
+    if (!/^https?:\/\//i.test(u)) {
+      setError("URLは http:// または https:// で始めてください");
+      return;
+    }
+    setError(null);
+    setFetchingTitle(true);
+    try {
+      const res = await fetch(
+        "/api/page-title?url=" + encodeURIComponent(u),
+      );
+      const data = (await res.json()) as { title?: string; error?: string };
+      if (!res.ok || !data.title) {
+        toast.error("タイトル取得失敗: " + (data.error ?? "no title"));
+        return;
+      }
+      setTitle(data.title);
+      toast.success("タイトルを取得しました");
+    } catch (e) {
+      toast.error("タイトル取得失敗: " + String(e));
+    } finally {
+      setFetchingTitle(false);
+    }
+  };
 
   const onSubmit = async () => {
     setError(null);
@@ -149,24 +180,7 @@ export function LinkFormDialog({
         </DialogHeader>
 
         <div className="flex flex-col gap-4 p-5">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="link-title" className="text-xs text-foreground/80">
-              タイトル
-            </Label>
-            <Input
-              id="link-title"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder={
-                kind === "video"
-                  ? "例: P1 黒魔目線 (固定〇〇)"
-                  : "例: 攻略記事 by ○○"
-              }
-              autoFocus
-              spellCheck={false}
-            />
-          </div>
-
+          {/* URL input first — title fetcher reads it. */}
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="link-url" className="text-xs text-foreground/80">
               URL
@@ -184,6 +198,36 @@ export function LinkFormDialog({
               }
               className="font-mono text-[12px]"
               autoComplete="off"
+              spellCheck={false}
+              autoFocus
+            />
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between gap-2">
+              <Label htmlFor="link-title" className="text-xs text-foreground/80">
+                タイトル
+              </Label>
+              <button
+                type="button"
+                onClick={onFetchTitle}
+                disabled={fetchingTitle || !url.trim()}
+                className="inline-flex items-center gap-1 rounded-sm border border-[var(--neon-cyan)]/40 bg-[var(--neon-cyan)]/8 px-2 py-0.5 font-mono text-[10px] tracking-widest text-[var(--neon-cyan)] uppercase transition-colors hover:bg-[var(--neon-cyan)]/15 disabled:opacity-40"
+                aria-label="URLからタイトルを取得"
+              >
+                <Wand2 className="h-3 w-3" aria-hidden />
+                {fetchingTitle ? "取得中…" : "URLから取得"}
+              </button>
+            </div>
+            <Input
+              id="link-title"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder={
+                kind === "video"
+                  ? "例: P1 黒魔目線 (固定〇〇)"
+                  : "例: 攻略記事 by ○○"
+              }
               spellCheck={false}
             />
           </div>

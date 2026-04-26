@@ -60,7 +60,9 @@ export function CategorySwitcher({ initialCategories }: Props) {
           )}
           aria-hidden
         />
-        <span className="max-w-[20ch] truncate">{triggerLabel}</span>
+        <span className="max-w-[14ch] truncate sm:max-w-[24ch] lg:max-w-[32ch]">
+          {triggerLabel}
+        </span>
         <ChevronDown
           className="h-3 w-3 opacity-70 transition-transform data-[popup-open]:rotate-180"
           aria-hidden
@@ -77,7 +79,9 @@ export function CategorySwitcher({ initialCategories }: Props) {
       <DropdownMenuContent
         align="start"
         sideOffset={8}
-        className="glass-popup min-w-80 border-border/40"
+        // Wide popup so long content names render fully.
+        // Caps at viewport width on mobile.
+        className="glass-popup min-w-72 max-w-[calc(100vw-1rem)] border-border/40 sm:min-w-96"
       >
         <div className="px-1.5 pt-1 pb-1 font-mono text-[10px] tracking-[0.2em] text-muted-foreground uppercase">
           Categories

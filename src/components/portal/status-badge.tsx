@@ -11,17 +11,19 @@ import {
 import { ALL_STATUSES, type CategoryStatus } from "@/lib/supabase/types";
 
 // Semantic task-progress palette — distinct across all themes.
-// Gray → amber → emerald = "未着手 → 練習中 → クリア済".
+// Gray → amber → emerald → slate = "未着手 → 練習中 → クリア済 → 休止中".
 const STATUS_TONE: Record<CategoryStatus, string> = {
   未着手: "text-zinc-300 border-zinc-500/40 bg-zinc-500/10",
   練習中: "text-amber-300 border-amber-400/45 bg-amber-400/12",
   クリア済: "text-emerald-300 border-emerald-400/45 bg-emerald-400/12",
+  休止中: "text-slate-300 border-slate-400/45 bg-slate-400/14",
 };
 
 const STATUS_DOT: Record<CategoryStatus, string> = {
   未着手: "bg-zinc-400/60",
   練習中: "bg-amber-400 shadow-[0_0_8px_rgb(251_191_36_/_0.7)]",
   クリア済: "bg-emerald-400 shadow-[0_0_8px_rgb(52_211_153_/_0.7)]",
+  休止中: "bg-slate-400 shadow-[0_0_8px_rgb(148_163_184_/_0.6)]",
 };
 
 type Variant = "compact" | "default";

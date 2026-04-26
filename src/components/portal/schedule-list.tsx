@@ -1,10 +1,6 @@
-import { CalendarX2, AlertTriangle, MessageSquareText } from "lucide-react";
+import { CalendarX2, AlertTriangle } from "lucide-react";
 import { Card } from "@/components/ui/card";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import { CommentPopover } from "./comment-popover";
 import type {
   Attendance,
   ScheduleComment,
@@ -173,24 +169,7 @@ function UserHeaderCell({
     <th scope="col" className="px-2 py-2 text-center font-mono whitespace-nowrap">
       <span className="inline-flex items-center gap-1">
         {nameNode}
-        {hasComments && (
-          <Popover>
-            <PopoverTrigger
-              className="inline-flex h-5 w-5 items-center justify-center rounded-sm border border-[var(--neon-cyan)]/40 bg-[var(--neon-cyan)]/8 text-[var(--neon-cyan)] transition-colors hover:bg-[var(--neon-cyan)]/15"
-              aria-label={`${user.name} のコメントを表示`}
-            >
-              <MessageSquareText className="h-2.5 w-2.5" aria-hidden />
-            </PopoverTrigger>
-            <PopoverContent
-              side="bottom"
-              align="center"
-              sideOffset={6}
-              className="glass-popup w-72 max-w-[80vw] p-0"
-            >
-              <CommentList user={user} comments={comments} />
-            </PopoverContent>
-          </Popover>
-        )}
+        {hasComments && <CommentPopover user={user} comments={comments} />}
       </span>
     </th>
   );
@@ -211,42 +190,6 @@ function buildEditUrl(sourceUrl: string | null | undefined, userId: string): str
   } catch {
     return null;
   }
-}
-
-function CommentList({
-  user,
-  comments,
-}: {
-  user: ScheduleUser;
-  comments: ScheduleComment[];
-}) {
-  return (
-    <div className="flex w-72 max-w-[80vw] flex-col gap-1 p-3 text-left">
-      <div className="flex items-center gap-1.5 border-b border-border/50 pb-1.5">
-        <MessageSquareText
-          className="h-3 w-3 text-[var(--neon-cyan)]"
-          aria-hidden
-        />
-        <span className="font-mono text-[9px] tracking-[0.2em] text-muted-foreground uppercase">
-          {user.name} の一言
-        </span>
-      </div>
-      <ul className="flex flex-col gap-1.5 pt-1">
-        {comments.map((c, idx) => (
-          <li key={idx} className="flex flex-col gap-0.5">
-            <p className="text-[11px] leading-relaxed text-foreground/95 whitespace-pre-wrap break-words">
-              {c.body || "—"}
-            </p>
-            {c.timestamp && (
-              <span className="font-mono text-[9px] text-muted-foreground">
-                {c.timestamp}
-              </span>
-            )}
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
 }
 
 function SessionRow({
