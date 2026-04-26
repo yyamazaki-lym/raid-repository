@@ -1,8 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
-import { GripVertical, Layers } from "lucide-react";
+import { useMemo, useState } from "react";
+import {
+  GripVertical,
+  Layers,
+  MoreVertical,
+  Trash2,
+  Pencil,
+} from "lucide-react";
+import { toast } from "sonner";
 import {
   DndContext,
   KeyboardSensor,
@@ -21,25 +28,46 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Card } from "@/components/ui/card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { StatusBadge } from "@/components/portal/status-badge";
 import {
-  applyCategoryOrder,
+  deleteCategory,
   setCategoryOrder,
-  useCategoryOrder,
-} from "@/lib/category-order-store";
-import type { Category } from "@/lib/placeholder-categories";
+  updateCategoryStatus,
+  useRealtimeCategories,
+} from "@/lib/categories-client";
+import type { Category, CategoryStatus } from "@/lib/supabase/types";
 
-export function CategoryList({ categories }: { categories: Category[] }) {
-  const order = useCategoryOrder();
+type Props = {
+  initialCategories: Category[];
+};
 
-  // Apply persisted ordering on top of the source list.
-  const sorted = useMemo(
-    () => applyCategoryOrder(categories, order),
-    [categories, order],
-  );
+export function CategoryList({ initialCategories }: Props) {
+  // Realtime hook keeps the list in sync with DB changes from any client.
+  const live = useRealtimeCategories(initialCategories);
+  // Local mirror so DnD can rearrange optimistically without waiting on
+  // round-trip+realtime — Realtime overwrites once the server confirms.
+  const [optimisticOrder, setOptimisticOrder] = useState<string[] | null>(null);
 
-  // PointerSensor with a small activation distance so a click on the link
-  // isn't accidentally interpreted as a drag.
+  const sorted = useMemo(() => {
+    if (!optimisticOrder) return live;
+    const idx = new Map(optimisticOrder.map((id, i) => [id, i] as const));
+    return [...live].sort((a, b) => {
+      const ai = idx.get(a.id);
+      const bi = idx.get(b.id);
+      if (ai === undefined && bi === undefined) return 0;
+      if (ai === undefined) return 1;
+      if (bi === undefined) return -1;
+      return ai - bi;
+    });
+  }, [live, optimisticOrder]);
+
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, {
@@ -54,26 +82,56 @@ export function CategoryList({ categories }: { categories: Category[] }) {
           <Layers className="h-5 w-5" aria-hidden />
         </span>
         <div className="space-y-1">
-          <p className="font-display text-foreground text-sm">No categories yet</p>
+          <p className="font-display text-foreground text-sm">
+            カテゴリーがありません
+          </p>
           <p className="text-muted-foreground text-xs">
-            Supabase 連携完了後、ここから追加できるようになります（Phase 3）。
+            右上の「カテゴリー追加」ボタンから登録できます。
           </p>
         </div>
       </Card>
     );
   }
 
-  const onDragEnd = (event: DragEndEvent) => {
+  const onDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
-    const oldIndex = sorted.findIndex((c) => c.slug === active.id);
-    const newIndex = sorted.findIndex((c) => c.slug === over.id);
+    const oldIndex = sorted.findIndex((c) => c.id === active.id);
+    const newIndex = sorted.findIndex((c) => c.id === over.id);
     if (oldIndex < 0 || newIndex < 0) return;
-    const next = arrayMove(sorted, oldIndex, newIndex).map((c) => c.slug);
-    setCategoryOrder(next);
+
+    const next = arrayMove(sorted, oldIndex, newIndex).map((c) => c.id);
+    setOptimisticOrder(next);
+
+    const result = await setCategoryOrder(next);
+    if (!result.ok) {
+      toast.error("並び替えの保存に失敗しました: " + result.reason);
+      setOptimisticOrder(null);
+    }
+    // On success, Realtime broadcasts and overwrites with DB values; clear
+    // optimistic state so future changes start from the DB-confirmed order.
+    setTimeout(() => setOptimisticOrder(null), 1500);
   };
 
-  const slugIds = useMemo(() => sorted.map((c) => c.slug), [sorted]);
+  const onChangeStatus = async (id: string, status: CategoryStatus) => {
+    const result = await updateCategoryStatus(id, status);
+    if (!result.ok) toast.error("ステータス更新失敗: " + result.reason);
+  };
+
+  const onDelete = async (cat: Category) => {
+    if (
+      !window.confirm(
+        `「${cat.name}」を削除しますか？\nロット・軽減・攻略情報もすべて削除されます。`,
+      )
+    ) {
+      return;
+    }
+    const result = await deleteCategory(cat.id);
+    if (!result.ok) toast.error("削除失敗: " + result.reason);
+    else toast.success(`「${cat.name}」を削除しました`);
+  };
+
+  const slugIds = useMemo(() => sorted.map((c) => c.id), [sorted]);
 
   return (
     <div className="flex flex-col gap-2">
@@ -88,7 +146,12 @@ export function CategoryList({ categories }: { categories: Category[] }) {
         <SortableContext items={slugIds} strategy={rectSortingStrategy}>
           <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {sorted.map((cat) => (
-              <SortableCategoryCard key={cat.slug} category={cat} />
+              <SortableCategoryCard
+                key={cat.id}
+                category={cat}
+                onChangeStatus={(s) => onChangeStatus(cat.id, s)}
+                onDelete={() => onDelete(cat)}
+              />
             ))}
           </ul>
         </SortableContext>
@@ -97,7 +160,15 @@ export function CategoryList({ categories }: { categories: Category[] }) {
   );
 }
 
-function SortableCategoryCard({ category }: { category: Category }) {
+function SortableCategoryCard({
+  category,
+  onChangeStatus,
+  onDelete,
+}: {
+  category: Category;
+  onChangeStatus: (s: CategoryStatus) => void;
+  onDelete: () => void;
+}) {
   const {
     attributes,
     listeners,
@@ -105,7 +176,7 @@ function SortableCategoryCard({ category }: { category: Category }) {
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: category.slug });
+  } = useSortable({ id: category.id });
 
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -117,8 +188,6 @@ function SortableCategoryCard({ category }: { category: Category }) {
   return (
     <li ref={setNodeRef} style={style} {...attributes}>
       <Card className="glass neon-edge relative flex items-stretch gap-2 p-0 transition-transform hover:-translate-y-0.5">
-        {/* Drag handle — listeners scoped here so the rest of the card stays
-            clickable as a plain link. */}
         <button
           type="button"
           {...listeners}
@@ -131,22 +200,62 @@ function SortableCategoryCard({ category }: { category: Category }) {
         <Link
           href={`/category/${category.slug}/mitigation`}
           prefetch
-          className="flex flex-1 flex-col gap-1 p-4"
+          className="flex flex-1 flex-col gap-1 p-4 pr-2"
         >
-          <div className="flex items-start justify-between gap-3">
-            <p className="font-display text-foreground text-sm">{category.name}</p>
-            <StatusBadge
-              slug={category.slug}
-              defaultStatus={category.status}
-              readOnly
-              variant="compact"
-            />
+          <div className="flex items-start justify-between gap-2">
+            <p className="font-display text-foreground text-sm leading-tight">
+              {category.name}
+            </p>
           </div>
           <p className="text-muted-foreground mt-1 font-mono text-[11px] tracking-widest uppercase">
             /{category.slug}
           </p>
         </Link>
+
+        <div className="flex flex-col items-end justify-between gap-1 p-2">
+          {/* Status badge — stops propagation so clicking it doesn't navigate. */}
+          <span
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
+          >
+            <StatusBadge
+              status={category.status}
+              onChange={onChangeStatus}
+              variant="compact"
+            />
+          </span>
+
+          <CategoryMenu onDelete={onDelete} />
+        </div>
       </Card>
     </li>
+  );
+}
+
+function CategoryMenu({ onDelete }: { onDelete: () => void }) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground"
+        aria-label="カテゴリーメニュー"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <MoreVertical className="h-3.5 w-3.5" aria-hidden />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" sideOffset={4} className="glass min-w-40">
+        <DropdownMenuItem disabled className="flex items-center gap-2 opacity-60">
+          <Pencil className="h-3.5 w-3.5" aria-hidden />
+          <span className="text-sm">編集 (近日)</span>
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          onClick={onDelete}
+          className="flex cursor-pointer items-center gap-2 text-rose-300 focus:text-rose-200"
+        >
+          <Trash2 className="h-3.5 w-3.5" aria-hidden />
+          <span className="text-sm">削除</span>
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

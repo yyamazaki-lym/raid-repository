@@ -6,8 +6,13 @@ import { CalendarDays } from "lucide-react";
 import { motion } from "motion/react";
 import { cn } from "@/lib/utils";
 import { CategorySwitcher } from "./category-switcher";
+import type { Category } from "@/lib/supabase/types";
 
-export function MainTabs() {
+export function MainTabs({
+  initialCategories,
+}: {
+  initialCategories: Category[];
+}) {
   const pathname = usePathname();
   const scheduleActive = pathname === "/";
 
@@ -51,7 +56,7 @@ export function MainTabs() {
           </li>
 
           <li className="shrink-0">
-            <CategorySwitcher />
+            <CategorySwitcher initialCategories={initialCategories} />
           </li>
         </ul>
       </div>

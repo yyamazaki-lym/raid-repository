@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { SubTabs } from "@/components/portal/sub-tabs";
-import { StatusBadge } from "@/components/portal/status-badge";
-import { findCategoryBySlug } from "@/lib/placeholder-categories";
+import { CategoryStatusEditor } from "./category-status-editor";
+import { findCategoryBySlug } from "@/lib/supabase/categories";
 
 export default async function CategoryDetailLayout({
   children,
@@ -13,9 +13,8 @@ export default async function CategoryDetailLayout({
 }>) {
   const { slug } = await params;
 
-  // Decode for display; route stays URL-encoded.
   const decoded = decodeURIComponent(slug);
-  const category = findCategoryBySlug(slug);
+  const category = await findCategoryBySlug(slug);
   const display = category?.name ?? decoded;
 
   return (
@@ -31,9 +30,9 @@ export default async function CategoryDetailLayout({
         <span className="text-muted-foreground/50">/</span>
         <span className="font-display text-foreground text-sm">{display}</span>
         {category && (
-          <StatusBadge
-            slug={category.slug}
-            defaultStatus={category.status}
+          <CategoryStatusEditor
+            id={category.id}
+            initialStatus={category.status}
             className="ml-1"
           />
         )}

@@ -8,16 +8,9 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  ALL_STATUSES,
-  type CategoryStatus,
-} from "@/lib/placeholder-categories";
-import {
-  setCategoryStatus,
-  useCategoryStatusMap,
-} from "@/lib/category-status-store";
+import { ALL_STATUSES, type CategoryStatus } from "@/lib/supabase/types";
 
-// Semantic task-progress palette — stays distinct across all themes.
+// Semantic task-progress palette — distinct across all themes.
 // Gray → amber → emerald = "未着手 → 練習中 → クリア済".
 const STATUS_TONE: Record<CategoryStatus, string> = {
   未着手: "text-zinc-300 border-zinc-500/40 bg-zinc-500/10",
@@ -34,28 +27,24 @@ const STATUS_DOT: Record<CategoryStatus, string> = {
 type Variant = "compact" | "default";
 
 type Props = {
-  slug: string;
-  /** Status to show until localStorage hydration / when no override exists. */
-  defaultStatus: CategoryStatus;
-  /** Disable the editor (read-only display). */
+  status: CategoryStatus;
+  /** When provided, badge is editable; clicking opens a dropdown to switch. */
+  onChange?: (next: CategoryStatus) => void;
   readOnly?: boolean;
   variant?: Variant;
   className?: string;
+  ariaLabel?: string;
 };
 
-/**
- * A clickable status badge. In Phase 1 the value is persisted to localStorage;
- * Phase 3 will swap to a Supabase mutation.
- */
 export function StatusBadge({
-  slug,
-  defaultStatus,
+  status,
+  onChange,
   readOnly = false,
   variant = "default",
   className,
+  ariaLabel,
 }: Props) {
-  const overrides = useCategoryStatusMap();
-  const status = overrides[slug] ?? defaultStatus;
+  const isEditable = !readOnly && typeof onChange === "function";
 
   const baseBadge = cn(
     "inline-flex items-center gap-1.5 rounded-sm border font-mono uppercase",
@@ -66,7 +55,7 @@ export function StatusBadge({
     className,
   );
 
-  if (readOnly) {
+  if (!isEditable) {
     return (
       <span className={baseBadge}>
         <span className={cn("h-1 w-1 rounded-full", STATUS_DOT[status])} aria-hidden />
@@ -82,7 +71,7 @@ export function StatusBadge({
           baseBadge,
           "cursor-pointer transition-shadow hover:shadow-[0_0_12px_-4px_currentColor]",
         )}
-        aria-label={`ステータス: ${status} (クリックして変更)`}
+        aria-label={ariaLabel ?? `ステータス: ${status} (クリックして変更)`}
       >
         <span className={cn("h-1 w-1 rounded-full", STATUS_DOT[status])} aria-hidden />
         {status}
@@ -94,7 +83,7 @@ export function StatusBadge({
           return (
             <DropdownMenuItem
               key={s}
-              onClick={() => setCategoryStatus(slug, s)}
+              onClick={() => onChange?.(s)}
               className={cn(
                 "flex cursor-pointer items-center gap-2",
                 isCurrent && "bg-secondary/40",

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ChevronDown, Layers, ListChecks, Plus } from "lucide-react";
+import { ChevronDown, Layers, ListChecks } from "lucide-react";
 import { motion } from "motion/react";
 import { cn } from "@/lib/utils";
 import {
@@ -12,28 +12,28 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  PLACEHOLDER_CATEGORIES,
-  findCategoryBySlug,
-} from "@/lib/placeholder-categories";
 import { StatusBadge } from "./status-badge";
+import { useRealtimeCategories } from "@/lib/categories-client";
+import type { Category } from "@/lib/supabase/types";
 
-/**
- * The "カテゴリー" main-tab — click opens a dropdown of categories so users can
- * jump straight to a specific category without bouncing through the index page.
- */
-export function CategorySwitcher() {
+type Props = {
+  initialCategories: Category[];
+};
+
+export function CategorySwitcher({ initialCategories }: Props) {
+  const categories = useRealtimeCategories(initialCategories);
   const pathname = usePathname();
 
   const isCategoryRoute = pathname.startsWith("/category");
-  // /category/[slug]/... → extract slug
   const slugMatch = pathname.match(/^\/category\/([^/]+)/);
   const activeSlug = slugMatch ? decodeURIComponent(slugMatch[1]) : null;
-  const activeCategory = activeSlug ? findCategoryBySlug(activeSlug) : null;
+  const activeCategory =
+    activeSlug != null
+      ? (categories.find((c) => c.slug === activeSlug) ?? null)
+      : null;
 
-  // What sub-tab are we on? Preserve it when switching categories — falls
-  // back to the default `mitigation` (most-used sub-tab) when entering from
-  // outside any category route.
+  // Preserve current sub-tab when switching categories — fall back to
+  // mitigation (most-used) when entering from outside.
   const subSegment =
     pathname.match(/^\/category\/[^/]+\/([^/]+)/)?.[1] ?? "mitigation";
 
@@ -41,8 +41,6 @@ export function CategorySwitcher() {
 
   return (
     <DropdownMenu>
-      {/* Base UI's Trigger renders its own <button>; we style it directly
-          (no asChild — Base UI uses `render` prop, not Radix's asChild). */}
       <DropdownMenuTrigger
         data-active={isCategoryRoute}
         aria-current={isCategoryRoute ? "page" : undefined}
@@ -79,28 +77,23 @@ export function CategorySwitcher() {
       <DropdownMenuContent
         align="start"
         sideOffset={8}
-        // min-w-80 (20rem) so long content names like "アルカディア:ライトヘビー級"
-        // render without truncation. Items still apply truncate as a safety net.
         className="glass min-w-80 border-border/40"
       >
         <div className="px-1.5 pt-1 pb-1 font-mono text-[10px] tracking-[0.2em] text-muted-foreground uppercase">
           Categories
         </div>
 
-        {PLACEHOLDER_CATEGORIES.length === 0 ? (
+        {categories.length === 0 ? (
           <div className="px-2 py-3 text-center text-xs text-muted-foreground">
-            まだカテゴリーがありません
+            カテゴリーがまだ登録されていません
           </div>
         ) : (
-          PLACEHOLDER_CATEGORIES.map((cat) => {
+          categories.map((cat) => {
             const isActive = cat.slug === activeSlug;
-            // Preserve the current sub-tab (loot/mitigation/strategy) when switching.
             const href = `/category/${cat.slug}/${subSegment}`;
             return (
               <DropdownMenuItem
-                key={cat.slug}
-                // Base UI uses `render` to swap the underlying element. Passing a
-                // Next.js Link here keeps prefetch + client-side navigation.
+                key={cat.id}
                 render={<Link href={href} prefetch />}
                 className={cn(
                   "flex cursor-pointer items-center gap-3 focus:bg-secondary/60",
@@ -108,8 +101,7 @@ export function CategorySwitcher() {
                 )}
               >
                 <StatusBadge
-                  slug={cat.slug}
-                  defaultStatus={cat.status}
+                  status={cat.status}
                   readOnly
                   variant="compact"
                   className="shrink-0"
@@ -134,11 +126,6 @@ export function CategorySwitcher() {
         >
           <ListChecks className="h-4 w-4 text-muted-foreground" aria-hidden />
           <span className="text-sm">全カテゴリー一覧</span>
-        </DropdownMenuItem>
-
-        <DropdownMenuItem disabled className="flex items-center gap-2 opacity-60">
-          <Plus className="h-4 w-4" aria-hidden />
-          <span className="text-sm">カテゴリー追加（Phase 3）</span>
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
