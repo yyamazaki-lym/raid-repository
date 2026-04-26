@@ -31,8 +31,11 @@ export function CategorySwitcher() {
   const activeSlug = slugMatch ? decodeURIComponent(slugMatch[1]) : null;
   const activeCategory = activeSlug ? findCategoryBySlug(activeSlug) : null;
 
-  // What sub-tab are we on? Preserve it when switching categories.
-  const subSegment = pathname.match(/^\/category\/[^/]+\/([^/]+)/)?.[1] ?? "loot";
+  // What sub-tab are we on? Preserve it when switching categories — falls
+  // back to the default `mitigation` (most-used sub-tab) when entering from
+  // outside any category route.
+  const subSegment =
+    pathname.match(/^\/category\/[^/]+\/([^/]+)/)?.[1] ?? "mitigation";
 
   const triggerLabel = activeCategory ? activeCategory.name : "カテゴリー";
 
@@ -59,7 +62,7 @@ export function CategorySwitcher() {
           )}
           aria-hidden
         />
-        <span className="max-w-[12ch] truncate">{triggerLabel}</span>
+        <span className="max-w-[20ch] truncate">{triggerLabel}</span>
         <ChevronDown
           className="h-3 w-3 opacity-70 transition-transform data-[popup-open]:rotate-180"
           aria-hidden
@@ -76,7 +79,9 @@ export function CategorySwitcher() {
       <DropdownMenuContent
         align="start"
         sideOffset={8}
-        className="glass min-w-64 border-border/40"
+        // min-w-80 (20rem) so long content names like "アルカディア:ライトヘビー級"
+        // render without truncation. Items still apply truncate as a safety net.
+        className="glass min-w-80 border-border/40"
       >
         <div className="px-1.5 pt-1 pb-1 font-mono text-[10px] tracking-[0.2em] text-muted-foreground uppercase">
           Categories

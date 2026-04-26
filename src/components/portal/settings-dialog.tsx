@@ -150,16 +150,18 @@ export function SettingsDialog({ defaultUrl }: Props) {
                 形式を指定してください。
               </p>
               {defaultUrl && (
-                <div className="flex items-start gap-1.5 rounded-md border border-border/40 bg-secondary/20 px-2 py-1.5">
+                <div className="flex items-start gap-1.5 overflow-hidden rounded-md border border-border/40 bg-secondary/20 px-2 py-1.5">
                   <ExternalLink
                     className="mt-0.5 h-3 w-3 shrink-0 text-muted-foreground"
                     aria-hidden
                   />
-                  <div className="min-w-0 flex-1">
+                  <div className="min-w-0 flex-1 overflow-hidden">
                     <span className="font-mono text-[9px] tracking-widest text-muted-foreground uppercase">
                       Default
                     </span>
-                    <p className="truncate font-mono text-[10px] text-muted-foreground/90">
+                    {/* URLs lack spaces, so use break-all to wrap on any char
+                        instead of truncate (which pushed the dialog wider). */}
+                    <p className="font-mono text-[10px] leading-relaxed break-all text-muted-foreground/90">
                       {defaultUrl}
                     </p>
                   </div>

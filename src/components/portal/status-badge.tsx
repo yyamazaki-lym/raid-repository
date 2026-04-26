@@ -17,16 +17,18 @@ import {
   useCategoryStatusMap,
 } from "@/lib/category-status-store";
 
+// Semantic task-progress palette — stays distinct across all themes.
+// Gray → amber → emerald = "未着手 → 練習中 → クリア済".
 const STATUS_TONE: Record<CategoryStatus, string> = {
-  未着手: "text-muted-foreground border-border bg-secondary/30",
-  練習中: "text-[var(--neon-cyan)] border-[var(--neon-cyan)]/40 bg-[var(--neon-cyan)]/8",
-  クリア済: "text-[var(--neon-violet)] border-[var(--neon-violet)]/40 bg-[var(--neon-violet)]/8",
+  未着手: "text-zinc-300 border-zinc-500/40 bg-zinc-500/10",
+  練習中: "text-amber-300 border-amber-400/45 bg-amber-400/12",
+  クリア済: "text-emerald-300 border-emerald-400/45 bg-emerald-400/12",
 };
 
 const STATUS_DOT: Record<CategoryStatus, string> = {
-  未着手: "bg-muted-foreground/40",
-  練習中: "bg-[var(--neon-cyan)] shadow-[0_0_8px_var(--neon-cyan)]",
-  クリア済: "bg-[var(--neon-violet)] shadow-[0_0_8px_var(--neon-violet)]",
+  未着手: "bg-zinc-400/60",
+  練習中: "bg-amber-400 shadow-[0_0_8px_rgb(251_191_36_/_0.7)]",
+  クリア済: "bg-emerald-400 shadow-[0_0_8px_rgb(52_211_153_/_0.7)]",
 };
 
 type Variant = "compact" | "default";

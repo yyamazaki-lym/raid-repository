@@ -35,9 +35,16 @@ type Props = {
   limit?: number;
   /** When true, render past sessions (in muted style) below the upcoming ones. */
   showPast?: boolean;
+  /** Source schedule URL — used to derive the per-user edit URL on hover/click. */
+  scheduleUrl?: string | null;
 };
 
-export function ScheduleList({ result, limit, showPast = false }: Props) {
+export function ScheduleList({
+  result,
+  limit,
+  showPast = false,
+  scheduleUrl,
+}: Props) {
   if (!result.ok) {
     return (
       <Card className="glass flex flex-col items-center gap-3 border-destructive/40 p-8 text-center">
@@ -94,6 +101,7 @@ export function ScheduleList({ result, limit, showPast = false }: Props) {
                   key={u.userId}
                   user={u}
                   comments={commentsByAuthor.get(u.name) ?? []}
+                  editUrl={buildEditUrl(scheduleUrl, u.userId)}
                 />
               ))}
             </tr>
@@ -132,49 +140,85 @@ export function ScheduleList({ result, limit, showPast = false }: Props) {
 function UserHeaderCell({
   user,
   comments,
+  editUrl,
 }: {
   user: ScheduleUser;
   comments: ScheduleComment[];
+  editUrl: string | null;
 }) {
   const hasComments = comments.length > 0;
 
-  if (!hasComments) {
-    return (
-      <th
-        scope="col"
-        className="px-2 py-2 text-center font-mono whitespace-nowrap"
-      >
-        {user.name}
-      </th>
-    );
-  }
+  // Inner content reused whether wrapped in tooltip or not.
+  const inner = (
+    <>
+      <span>{user.name}</span>
+      {hasComments && (
+        <MessageSquareText
+          className="h-2.5 w-2.5 text-[var(--neon-cyan)] opacity-70 transition-opacity group-hover:opacity-100"
+          aria-hidden
+        />
+      )}
+    </>
+  );
+
+  // The trigger element — an anchor when an edit URL is available so clicks
+  // jump to the per-user input page on the source site, otherwise a span.
+  const triggerClass =
+    "group inline-flex items-center gap-1 underline decoration-dotted decoration-[var(--neon-cyan)]/60 underline-offset-4 transition-colors hover:decoration-[var(--neon-cyan)] hover:text-[var(--neon-cyan)] " +
+    (editUrl ? "cursor-pointer" : "cursor-help");
+
+  const trigger = editUrl ? (
+    <a
+      href={editUrl}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={triggerClass}
+      title={hasComments ? undefined : `${user.name} の出欠を編集`}
+    >
+      {inner}
+    </a>
+  ) : (
+    <span className={triggerClass}>{inner}</span>
+  );
 
   return (
     <th scope="col" className="px-2 py-2 text-center font-mono whitespace-nowrap">
-      <Tooltip>
-        <TooltipTrigger
-          // Render as a span so it sits naturally in a <th>; default <button>
-          // adds focus styling we don't want here. The dotted underline + tiny
-          // bullet hint to the user that a tooltip is available.
-          render={
-            <span className="group inline-flex cursor-help items-center gap-1 underline decoration-dotted decoration-[var(--neon-cyan)]/60 underline-offset-4 transition-colors hover:decoration-[var(--neon-cyan)]" />
-          }
-        >
-          <span>{user.name}</span>
-          <MessageSquareText
-            className="h-2.5 w-2.5 text-[var(--neon-cyan)] opacity-70 transition-opacity group-hover:opacity-100"
-            aria-hidden
+      {hasComments ? (
+        <Tooltip>
+          <TooltipTrigger
+            // Base UI uses `render` to swap the element. We pass our anchor /
+            // span directly so the Tooltip wraps interactivity transparently.
+            render={trigger}
           />
-        </TooltipTrigger>
-        <TooltipContent
-          side="bottom"
-          className="max-w-[20rem] bg-popover text-popover-foreground p-0 shadow-xl ring-1 ring-[var(--neon-cyan)]/30"
-        >
-          <CommentList user={user} comments={comments} />
-        </TooltipContent>
-      </Tooltip>
+          <TooltipContent
+            side="bottom"
+            className="max-w-[20rem] bg-popover text-popover-foreground p-0 shadow-xl ring-1 ring-[var(--neon-cyan)]/30"
+          >
+            <CommentList user={user} comments={comments} />
+          </TooltipContent>
+        </Tooltip>
+      ) : (
+        trigger
+      )}
     </th>
   );
+}
+
+/**
+ * Derive the per-user edit URL from the schedule list URL.
+ *   /schedule/list?key=KEY  →  /schedule/input?key=KEY&userId=USERID
+ * Returns null if the source URL is missing or malformed.
+ */
+function buildEditUrl(sourceUrl: string | null | undefined, userId: string): string | null {
+  if (!sourceUrl) return null;
+  try {
+    const u = new URL(sourceUrl);
+    u.pathname = u.pathname.replace(/\/list(\b|$)/, "/input");
+    u.searchParams.set("userId", userId);
+    return u.toString();
+  } catch {
+    return null;
+  }
 }
 
 function CommentList({

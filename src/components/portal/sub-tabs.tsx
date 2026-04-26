@@ -13,9 +13,10 @@ type SubTab = {
   Icon: LucideIcon;
 };
 
+// Order = use frequency: 軽減表 > ロット管理 > 攻略情報.
 const SUB_TABS: SubTab[] = [
-  { id: "loot", label: "ロット管理", segment: "loot", Icon: Dice5 },
   { id: "mitigation", label: "軽減表", segment: "mitigation", Icon: ShieldHalf },
+  { id: "loot", label: "ロット管理", segment: "loot", Icon: Dice5 },
   { id: "strategy", label: "攻略情報", segment: "strategy", Icon: BookOpen },
 ];
 

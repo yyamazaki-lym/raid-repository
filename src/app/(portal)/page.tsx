@@ -46,16 +46,17 @@ export default async function SchedulePage({
             scroll={false}
             prefetch={false}
             className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 rounded-md border border-border/60 px-3 py-1.5 font-mono text-[11px] tracking-widest uppercase transition-colors hover:border-[var(--neon-cyan)]/60"
+            aria-label={showPast ? "過去日程を非表示にする" : "過去日程を表示する"}
           >
             {showPast ? (
               <>
                 <EyeOff className="h-3.5 w-3.5" aria-hidden />
-                過去を隠す
+                非表示
               </>
             ) : (
               <>
                 <Eye className="h-3.5 w-3.5" aria-hidden />
-                過去も表示
+                過去日程表示
               </>
             )}
           </Link>
@@ -75,7 +76,7 @@ export default async function SchedulePage({
 
       <NextSessionCard result={nextResult} />
 
-      <ScheduleList result={result} showPast={showPast} />
+      <ScheduleList result={result} showPast={showPast} scheduleUrl={url} />
     </div>
   );
 }
