@@ -245,8 +245,92 @@ function detectPageMarkers(html: string) {
 }
 
 /**
+ * Innertube API — the JSON endpoint that YouTube's official mobile apps
+ * use. Pretending to be the MWEB (mobile web) client bypasses the bot-
+ * detection signin wall that Vercel/AWS egress IPs hit on the regular
+ * watch page. Same approach as yt-dlp / NewPipe / Invidious.
+ *
+ * Why MWEB and not ANDROID/IOS:
+ *   - Late-2024 / 2025: ANDROID + IOS started returning HTTP 400
+ *     "FAILED_PRECONDITION" without an authenticated PoToken
+ *   - MWEB still returns clean metadata (videoDetails + microformat)
+ *     even with `playabilityStatus = UNPLAYABLE`, which is fine —
+ *     we're just reading metadata, not the playback URLs
+ *   - Other clients (ANDROID_VR / TVHTML5) return 200 but no metadata
+ *
+ * Returns nulls on any failure so the caller can fall through to HTML.
+ */
+async function fetchInnertubeMeta(videoId: string): Promise<YouTubeMeta> {
+  const body = {
+    context: {
+      client: {
+        clientName: "MWEB",
+        clientVersion: "2.20241126.01.00",
+        hl: "en",
+        gl: "US",
+      },
+    },
+    videoId,
+    racyCheckOk: true,
+    contentCheckOk: true,
+  };
+  try {
+    const res = await fetch(
+      "https://www.youtube.com/youtubei/v1/player",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "User-Agent":
+            "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) " +
+            "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 " +
+            "Mobile/15E148 Safari/604.1",
+          "Accept-Language": "en-US,en;q=0.9",
+        },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(8000),
+      },
+    );
+    if (!res.ok) return { durationSeconds: null, uploadDate: null };
+    const data = (await res.json()) as {
+      playabilityStatus?: { status?: string };
+      videoDetails?: { lengthSeconds?: string };
+      microformat?: {
+        playerMicroformatRenderer?: {
+          uploadDate?: string;
+          publishDate?: string;
+        };
+      };
+    };
+    const lenStr = data.videoDetails?.lengthSeconds;
+    const upStr =
+      data.microformat?.playerMicroformatRenderer?.uploadDate ??
+      data.microformat?.playerMicroformatRenderer?.publishDate;
+
+    let durationSeconds: number | null = null;
+    if (typeof lenStr === "string") {
+      const n = parseInt(lenStr, 10);
+      if (Number.isFinite(n) && n > 0) durationSeconds = n;
+    }
+    let uploadDate: string | null = null;
+    if (typeof upStr === "string") {
+      const norm = normalizeDate(upStr);
+      if (norm) uploadDate = norm;
+    }
+    return { durationSeconds, uploadDate };
+  } catch {
+    return { durationSeconds: null, uploadDate: null };
+  }
+}
+
+/**
  * Internal core — fetches with debug info attached so the diagnostic
  * Server Action can surface exactly which step failed.
+ *
+ * Strategy order:
+ *   1. Innertube API (Android client) — bypasses the signin wall that
+ *      hits Vercel/AWS IPs; returns clean JSON
+ *   2. HTML scrape fallbacks — multi-strategy parser over watch page
  */
 async function fetchYouTubeMetaInternal(
   url: string,
@@ -264,6 +348,44 @@ async function fetchYouTubeMetaInternal(
     });
     return { durationSeconds: null, uploadDate: null };
   }
+
+  // === Strategy 1: Innertube API (Android client) ===
+  let innertubeStatus: number | "error" | "timeout" = "error";
+  let innertubeNote: string | undefined;
+  try {
+    const meta = await fetchInnertubeMeta(id);
+    innertubeStatus = meta.durationSeconds !== null || meta.uploadDate !== null
+      ? 200
+      : "error";
+    debug?.attempts.push({
+      host: "youtubei (MWEB)",
+      status: innertubeStatus,
+      htmlSize: null,
+      foundLength: meta.durationSeconds !== null,
+      foundUpload: meta.uploadDate !== null,
+      matchedStrategy: undefined,
+      note:
+        meta.durationSeconds === null && meta.uploadDate === null
+          ? "no videoDetails — likely private/region-blocked/removed"
+          : undefined,
+    });
+    if (meta.durationSeconds !== null || meta.uploadDate !== null) {
+      return meta;
+    }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    innertubeNote = msg.slice(0, 120);
+    debug?.attempts.push({
+      host: "youtubei (MWEB)",
+      status: "error",
+      htmlSize: null,
+      foundLength: false,
+      foundUpload: false,
+      note: innertubeNote,
+    });
+  }
+
+  // === Strategy 2: HTML scrape fallbacks ===
   for (const host of ALT_HOSTS) {
     // bpctr=9999999999: bypass consent gate (timestamp far in the future)
     // has_verified=1: skip age gate (we accept maturity warnings)
