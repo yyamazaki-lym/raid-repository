@@ -31,13 +31,31 @@ const SLUG_RE = /^[a-z0-9][a-z0-9-]{1,40}[a-z0-9]?$/;
 type Props = {
   /** Existing category for edit mode; omit for create. */
   category?: Category;
-  /** Custom trigger (e.g. menu item). Defaults to "+カテゴリー追加" button. */
+  /** Custom trigger (e.g. menu item). Defaults to "+カテゴリー追加" button.
+   *  Ignored in controlled mode. */
   trigger?: React.ReactNode;
+  /** Controlled-mode open state. When provided, the dialog skips rendering
+   *  its own trigger — useful for wiring open/close from outside (e.g. a
+   *  dropdown menu item that needs to close the menu before the dialog
+   *  opens, avoiding the focus collision that auto-closes the dialog). */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 };
 
-export function CategoryFormDialog({ category, trigger }: Props) {
+export function CategoryFormDialog({
+  category,
+  trigger,
+  open: controlledOpen,
+  onOpenChange: controlledOnOpenChange,
+}: Props) {
   const isEdit = !!category;
-  const [open, setOpen] = useState(false);
+  const isControlled = controlledOpen !== undefined;
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = isControlled ? controlledOpen! : internalOpen;
+  const setOpen = (next: boolean) => {
+    if (isControlled) controlledOnOpenChange?.(next);
+    else setInternalOpen(next);
+  };
   const [name, setName] = useState(category?.name ?? "");
   const [slug, setSlug] = useState(category?.slug ?? "");
   const [status, setStatus] = useState<CategoryStatus>(
@@ -142,11 +160,15 @@ export function CategoryFormDialog({ category, trigger }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      {trigger ? (
-        <DialogTrigger render={trigger as React.ReactElement} />
-      ) : (
-        defaultTrigger
-      )}
+      {/* Skip trigger render entirely in controlled mode — caller owns the
+          state, presumably driven by a menu item or other affordance that
+          doesn't need a Base UI Trigger wrapper. */}
+      {!isControlled &&
+        (trigger ? (
+          <DialogTrigger render={trigger as React.ReactElement} />
+        ) : (
+          defaultTrigger
+        ))}
 
       <DialogContent className="glass top-[8svh] max-w-[calc(100%-1.5rem)] translate-y-0 gap-0 p-0 sm:top-20 sm:max-w-xl">
         <DialogHeader className="flex-row items-start gap-3 border-b border-border/40 p-5">

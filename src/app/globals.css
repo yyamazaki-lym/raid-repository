@@ -684,8 +684,22 @@
 .dark.theme-shadowbringers .bg-orbs::before { opacity: 0.42; filter: blur(130px); }
 .dark.theme-shadowbringers .bg-orbs::after { opacity: 0.22; filter: blur(150px); }
 
-/* Endwalker — Twilight aurora gradient bands (top-bottom fade). */
-.dark.theme-endwalker .bg-grid { background-image: none; }
+/* Endwalker — Twilight aurora bands + glowing moon disc + faint stars. */
+.dark.theme-endwalker .bg-grid {
+  /* Star field — small static dots scattered across the upper sky. */
+  background-image:
+    radial-gradient(1px 1px at 12% 18%, color-mix(in oklch, var(--frost) 70%, transparent), transparent 70%),
+    radial-gradient(1.2px 1.2px at 28% 8%, color-mix(in oklch, var(--frost) 80%, transparent), transparent 70%),
+    radial-gradient(0.8px 0.8px at 45% 32%, color-mix(in oklch, var(--frost) 60%, transparent), transparent 70%),
+    radial-gradient(1px 1px at 65% 22%, color-mix(in oklch, var(--frost) 70%, transparent), transparent 70%),
+    radial-gradient(1.5px 1.5px at 22% 65%, color-mix(in oklch, var(--frost) 80%, transparent), transparent 70%),
+    radial-gradient(0.8px 0.8px at 78% 52%, color-mix(in oklch, var(--frost) 60%, transparent), transparent 70%),
+    radial-gradient(1.2px 1.2px at 88% 78%, color-mix(in oklch, var(--frost) 70%, transparent), transparent 70%);
+  background-size: 480px 320px;
+  background-repeat: repeat;
+  mask-image: none;
+}
+.dark.theme-endwalker .bg-grid-animate { animation: none; }
 .dark.theme-endwalker .bg-scanlines {
   background-image: linear-gradient(
     180deg,
@@ -695,17 +709,37 @@
     color-mix(in oklch, var(--neon-magenta) 16%, transparent) 100%
   );
   background-size: 100% 100%;
-  opacity: 0.78;
+  opacity: 0.7;
   animation: ew-aurora 12s ease-in-out infinite alternate;
 }
 @keyframes ew-aurora {
-  0% { opacity: 0.55; }
-  100% { opacity: 0.88; }
+  0% { opacity: 0.5; }
+  100% { opacity: 0.85; }
 }
-.dark.theme-endwalker .bg-orbs::before { opacity: 0.4; filter: blur(160px); }
-.dark.theme-endwalker .bg-orbs::after { opacity: 0.32; filter: blur(160px); }
+/* Glowing moon disc, upper right. */
+.dark.theme-endwalker .bg-orbs::before {
+  top: 3rem;
+  right: 6%;
+  left: auto;
+  bottom: auto;
+  width: 13rem;
+  height: 13rem;
+  opacity: 0.7;
+  filter: blur(26px);
+  background:
+    radial-gradient(
+      circle,
+      var(--neon-magenta) 35%,
+      color-mix(in oklch, var(--neon-magenta) 40%, transparent) 60%,
+      transparent 80%
+    );
+}
+.dark.theme-endwalker .bg-orbs::after {
+  opacity: 0.32;
+  filter: blur(160px);
+}
 
-/* Dawntrail — Sun rays radiating from bottom-center. */
+/* Dawntrail — Bright sun disc at top + radiating rays from below. */
 .dark.theme-dawntrail .bg-grid {
   background-image:
     repeating-conic-gradient(
@@ -721,7 +755,63 @@
 }
 .dark.theme-dawntrail .bg-grid-animate { animation: none; }
 .dark.theme-dawntrail .bg-scanlines { background-image: none; }
-.dark.theme-dawntrail .bg-orbs::before { opacity: 0.42; }
-.dark.theme-dawntrail .bg-orbs::after { opacity: 0.32; }
+/* Big sun disc, top-center. */
+.dark.theme-dawntrail .bg-orbs::before {
+  top: -16rem;
+  left: 50%;
+  right: auto;
+  bottom: auto;
+  transform: translateX(-50%);
+  width: 44rem;
+  height: 44rem;
+  opacity: 0.5;
+  filter: blur(70px);
+  background:
+    radial-gradient(
+      circle,
+      var(--neon-cyan),
+      color-mix(in oklch, var(--neon-cyan) 50%, transparent) 35%,
+      transparent 70%
+    );
+}
+.dark.theme-dawntrail .bg-orbs::after {
+  opacity: 0.32;
+}
 
-/* Evercold — Default frost crystals (no override; uses base .bg-scanlines). */
+/* Evercold — Falling snow on two layers (small fast + large slow). */
+.dark.theme-evercold .bg-scanlines {
+  /* Small flakes — denser, faster. */
+  background-image:
+    radial-gradient(2px 2px at 17% 23%, var(--frost), transparent 60%),
+    radial-gradient(1.5px 1.5px at 73% 11%, color-mix(in oklch, var(--frost) 80%, transparent), transparent 60%),
+    radial-gradient(1.8px 1.8px at 41% 61%, var(--frost), transparent 60%),
+    radial-gradient(1.4px 1.4px at 85% 47%, color-mix(in oklch, var(--frost) 80%, transparent), transparent 60%),
+    radial-gradient(1.6px 1.6px at 9% 78%, var(--frost), transparent 60%),
+    radial-gradient(1.5px 1.5px at 56% 88%, color-mix(in oklch, var(--frost) 70%, transparent), transparent 60%);
+  background-size: 320px 320px;
+  background-repeat: repeat;
+  opacity: 0.7;
+  animation: ec-snow-small 22s linear infinite;
+}
+@keyframes ec-snow-small {
+  0% { background-position: 0 0; }
+  100% { background-position: 0 320px; }
+}
+.dark.theme-evercold .bg-grid {
+  /* Large flakes — sparser, slower. Replaces the frost grid lines. */
+  background-image:
+    radial-gradient(2.6px 2.6px at 12% 0%, color-mix(in oklch, var(--frost) 90%, transparent), transparent 60%),
+    radial-gradient(3px 3px at 38% 0%, color-mix(in oklch, var(--frost) 70%, transparent), transparent 60%),
+    radial-gradient(2.4px 2.4px at 62% 0%, color-mix(in oklch, var(--frost) 90%, transparent), transparent 60%),
+    radial-gradient(3px 3px at 88% 0%, color-mix(in oklch, var(--frost) 80%, transparent), transparent 60%);
+  background-size: 240px 480px;
+  background-repeat: repeat;
+  mask-image: radial-gradient(ellipse 100% 80% at 50% 30%, black 20%, transparent 85%);
+}
+@keyframes ec-snow-big {
+  0% { background-position: 0 -480px; }
+  100% { background-position: 0 0; }
+}
+.dark.theme-evercold .bg-grid-animate {
+  animation: ec-snow-big 38s linear infinite;
+}

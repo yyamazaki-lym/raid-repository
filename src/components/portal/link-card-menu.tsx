@@ -9,16 +9,22 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { LinkFormDialog } from "./link-form-dialog";
 import { deleteCategoryLink } from "@/lib/category-links-client";
 import type { CategoryLink } from "@/lib/supabase/types";
 
 /**
- * Three-dot menu for a single CategoryLink: edit (opens dialog) + delete
- * (with confirm). Stops event propagation so clicking the menu doesn't also
- * trigger the parent card's link / play action.
+ * Three-dot menu for a single CategoryLink. Stateless w.r.t. the edit
+ * dialog — `onEdit` is provided by the list component which owns the
+ * shared dialog (lifted to avoid the menu↔dialog focus collision that
+ * caused the dialog to auto-close).
  */
-export function LinkCardMenu({ link }: { link: CategoryLink }) {
+export function LinkCardMenu({
+  link,
+  onEdit,
+}: {
+  link: CategoryLink;
+  onEdit: () => void;
+}) {
   const onDelete = async () => {
     if (!window.confirm(`「${link.title}」を削除しますか？`)) return;
     const result = await deleteCategoryLink(link.id);
@@ -39,20 +45,13 @@ export function LinkCardMenu({ link }: { link: CategoryLink }) {
           <MoreVertical className="h-3.5 w-3.5" aria-hidden />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" sideOffset={4} className="glass-popup min-w-40">
-          <LinkFormDialog
-            categoryId={link.categoryId}
-            kind={link.kind}
-            link={link}
-            trigger={
-              <DropdownMenuItem
-                onSelect={(e) => e.preventDefault()}
-                className="flex cursor-pointer items-center gap-2"
-              >
-                <Pencil className="h-3.5 w-3.5" aria-hidden />
-                <span className="text-sm">編集</span>
-              </DropdownMenuItem>
-            }
-          />
+          <DropdownMenuItem
+            onClick={onEdit}
+            className="flex cursor-pointer items-center gap-2"
+          >
+            <Pencil className="h-3.5 w-3.5" aria-hidden />
+            <span className="text-sm">編集</span>
+          </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem
             onClick={onDelete}

@@ -48,9 +48,6 @@ export default async function SchedulePage({
           <h1 className="font-display text-xl leading-tight text-foreground sm:text-2xl">
             Schedule
           </h1>
-          <p className="text-muted-foreground mt-0.5 truncate font-mono text-[10px] tracking-[0.18em] uppercase sm:text-[11px]">
-            10分キャッシュ
-          </p>
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
           <Link

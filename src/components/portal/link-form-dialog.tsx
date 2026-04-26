@@ -32,6 +32,9 @@ type Props = {
   link?: CategoryLink;
   /** Custom trigger element (e.g. menu item). Defaults to a primary "追加" button. */
   trigger?: React.ReactNode;
+  /** Controlled-mode open state — see CategoryFormDialog for rationale. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 };
 
 const KIND_LABEL: Record<CategoryLinkKind, string> = {
@@ -39,9 +42,22 @@ const KIND_LABEL: Record<CategoryLinkKind, string> = {
   video: "動画",
 };
 
-export function LinkFormDialog({ categoryId, kind, link, trigger }: Props) {
+export function LinkFormDialog({
+  categoryId,
+  kind,
+  link,
+  trigger,
+  open: controlledOpen,
+  onOpenChange: controlledOnOpenChange,
+}: Props) {
   const isEdit = !!link;
-  const [open, setOpen] = useState(false);
+  const isControlled = controlledOpen !== undefined;
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = isControlled ? controlledOpen! : internalOpen;
+  const setOpen = (next: boolean) => {
+    if (isControlled) controlledOnOpenChange?.(next);
+    else setInternalOpen(next);
+  };
   const [title, setTitle] = useState(link?.title ?? "");
   const [url, setUrl] = useState(link?.url ?? "");
   const [description, setDescription] = useState(link?.description ?? "");
@@ -104,11 +120,12 @@ export function LinkFormDialog({ categoryId, kind, link, trigger }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      {trigger ? (
-        <DialogTrigger render={trigger as React.ReactElement} />
-      ) : (
-        defaultTrigger
-      )}
+      {!isControlled &&
+        (trigger ? (
+          <DialogTrigger render={trigger as React.ReactElement} />
+        ) : (
+          defaultTrigger
+        ))}
 
       <DialogContent className="glass top-[8svh] max-w-[calc(100%-1.5rem)] translate-y-0 gap-0 p-0 sm:top-20 sm:max-w-lg">
         <DialogHeader className="flex-row items-start gap-3 border-b border-border/40 p-5">

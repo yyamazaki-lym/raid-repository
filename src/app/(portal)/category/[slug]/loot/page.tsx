@@ -1,4 +1,5 @@
 import { SheetIframe } from "@/components/portal/sheet-iframe";
+import { SheetUrlOnboarding } from "@/components/portal/sheet-url-onboarding";
 import { findCategoryBySlug } from "@/lib/supabase/categories";
 
 export const metadata = {
@@ -13,11 +14,29 @@ export default async function LootPage({
   const { slug } = await params;
   const category = await findCategoryBySlug(slug);
 
+  if (!category) {
+    return (
+      <p className="text-muted-foreground p-6 text-center text-sm">
+        カテゴリーが見つかりませんでした。
+      </p>
+    );
+  }
+
+  if (!category.lootSheetUrl) {
+    return (
+      <SheetUrlOnboarding
+        categoryId={category.id}
+        categoryName={category.name}
+        kind="loot"
+      />
+    );
+  }
+
   return (
     <SheetIframe
-      url={category?.lootSheetUrl ?? null}
+      url={category.lootSheetUrl}
       title="ロット管理"
-      emptyHint="ヘッダーのカテゴリーメニュー → 編集 から、ロット管理のスプレッドシートURLを登録すると、ここに埋め込み表示されます。"
+      emptyHint=""
     />
   );
 }

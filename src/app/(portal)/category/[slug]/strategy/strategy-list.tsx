@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { ExternalLink, BookOpen } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { LinkFormDialog } from "@/components/portal/link-form-dialog";
@@ -14,6 +15,7 @@ type Props = {
 
 export function StrategyList({ categoryId, initial }: Props) {
   const links = useRealtimeCategoryLinks(categoryId, "strategy", initial);
+  const [editTarget, setEditTarget] = useState<CategoryLink | null>(null);
 
   return (
     <div className="flex flex-col gap-3">
@@ -56,7 +58,7 @@ export function StrategyList({ categoryId, initial }: Props) {
                       {link.title}
                     </span>
                   </a>
-                  <LinkCardMenu link={link} />
+                  <LinkCardMenu link={link} onEdit={() => setEditTarget(link)} />
                 </div>
                 {link.description && (
                   <p className="px-4 text-xs text-muted-foreground leading-relaxed whitespace-pre-wrap">
@@ -71,6 +73,16 @@ export function StrategyList({ categoryId, initial }: Props) {
           ))}
         </ul>
       )}
+
+      <LinkFormDialog
+        categoryId={categoryId}
+        kind="strategy"
+        link={editTarget ?? undefined}
+        open={editTarget !== null}
+        onOpenChange={(o) => {
+          if (!o) setEditTarget(null);
+        }}
+      />
     </div>
   );
 }

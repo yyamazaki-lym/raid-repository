@@ -56,6 +56,11 @@ export function CategoryList({ initialCategories }: Props) {
   // Local mirror so DnD can rearrange optimistically without waiting on
   // round-trip+realtime — Realtime overwrites once the server confirms.
   const [optimisticOrder, setOptimisticOrder] = useState<string[] | null>(null);
+  // Single edit dialog controlled at the list level. Lifting state here
+  // (rather than embedding the dialog inside the per-card menu) avoids the
+  // focus collision where a DropdownMenuItem closing immediately re-closes
+  // the dialog it just opened.
+  const [editTarget, setEditTarget] = useState<Category | null>(null);
 
   const sorted = useMemo(() => {
     if (!optimisticOrder) return live;
@@ -161,12 +166,22 @@ export function CategoryList({ initialCategories }: Props) {
                 key={cat.id}
                 category={cat}
                 onChangeStatus={(s) => onChangeStatus(cat.id, s)}
+                onEdit={() => setEditTarget(cat)}
                 onDelete={() => onDelete(cat)}
               />
             ))}
           </ul>
         </SortableContext>
       </DndContext>
+
+      {/* Single edit dialog — opens for whichever category was clicked. */}
+      <CategoryFormDialog
+        category={editTarget ?? undefined}
+        open={editTarget !== null}
+        onOpenChange={(o) => {
+          if (!o) setEditTarget(null);
+        }}
+      />
     </div>
   );
 }
@@ -174,10 +189,12 @@ export function CategoryList({ initialCategories }: Props) {
 function SortableCategoryCard({
   category,
   onChangeStatus,
+  onEdit,
   onDelete,
 }: {
   category: Category;
   onChangeStatus: (s: CategoryStatus) => void;
+  onEdit: () => void;
   onDelete: () => void;
 }) {
   const {
@@ -236,7 +253,7 @@ function SortableCategoryCard({
             />
           </span>
 
-          <CategoryMenu category={category} onDelete={onDelete} />
+          <CategoryMenu onEdit={onEdit} onDelete={onDelete} />
         </div>
       </Card>
     </li>
@@ -244,10 +261,10 @@ function SortableCategoryCard({
 }
 
 function CategoryMenu({
-  category,
+  onEdit,
   onDelete,
 }: {
-  category: Category;
+  onEdit: () => void;
   onDelete: () => void;
 }) {
   return (
@@ -263,18 +280,13 @@ function CategoryMenu({
           <MoreVertical className="h-3.5 w-3.5" aria-hidden />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" sideOffset={4} className="glass-popup min-w-40">
-          <CategoryFormDialog
-            category={category}
-            trigger={
-              <DropdownMenuItem
-                onSelect={(e) => e.preventDefault()}
-                className="flex cursor-pointer items-center gap-2"
-              >
-                <Pencil className="h-3.5 w-3.5" aria-hidden />
-                <span className="text-sm">編集</span>
-              </DropdownMenuItem>
-            }
-          />
+          <DropdownMenuItem
+            onClick={onEdit}
+            className="flex cursor-pointer items-center gap-2"
+          >
+            <Pencil className="h-3.5 w-3.5" aria-hidden />
+            <span className="text-sm">編集</span>
+          </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem
             onClick={onDelete}

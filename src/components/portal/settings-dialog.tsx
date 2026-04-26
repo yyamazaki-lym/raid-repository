@@ -107,6 +107,10 @@ export function SettingsDialog() {
                 <code className="font-mono">schedule/list?key=…</code>{" "}
                 形式を指定してください。
               </p>
+              <p className="text-muted-foreground/80 text-[10px] leading-relaxed">
+                ※ 取得したスケジュールは <strong>10分間キャッシュ</strong>{" "}
+                されます。
+              </p>
             </div>
           </section>
         </div>

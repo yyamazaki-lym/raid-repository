@@ -21,6 +21,7 @@ type Props = {
 
 export function VideosList({ categoryId, initial }: Props) {
   const videos = useRealtimeCategoryLinks(categoryId, "video", initial);
+  const [editTarget, setEditTarget] = useState<CategoryLink | null>(null);
 
   return (
     <div className="flex flex-col gap-3">
@@ -46,16 +47,32 @@ export function VideosList({ categoryId, initial }: Props) {
         <ul className="grid gap-4 sm:grid-cols-2">
           {videos.map((v) => (
             <li key={v.id}>
-              <VideoCard video={v} />
+              <VideoCard video={v} onEdit={() => setEditTarget(v)} />
             </li>
           ))}
         </ul>
       )}
+
+      <LinkFormDialog
+        categoryId={categoryId}
+        kind="video"
+        link={editTarget ?? undefined}
+        open={editTarget !== null}
+        onOpenChange={(o) => {
+          if (!o) setEditTarget(null);
+        }}
+      />
     </div>
   );
 }
 
-function VideoCard({ video }: { video: CategoryLink }) {
+function VideoCard({
+  video,
+  onEdit,
+}: {
+  video: CategoryLink;
+  onEdit: () => void;
+}) {
   const ytId = parseYouTubeId(video.url);
   return (
     <Card className="glass neon-edge group flex flex-col gap-2 overflow-hidden p-0 transition-transform hover:-translate-y-0.5">
@@ -86,7 +103,7 @@ function VideoCard({ video }: { video: CategoryLink }) {
         >
           {video.title}
         </a>
-        <LinkCardMenu link={video} />
+        <LinkCardMenu link={video} onEdit={onEdit} />
       </div>
       {video.description && (
         <p className="px-3 text-xs text-muted-foreground leading-relaxed whitespace-pre-wrap">
