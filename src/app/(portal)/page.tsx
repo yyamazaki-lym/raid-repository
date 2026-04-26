@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ExternalLink, Eye, EyeOff } from "lucide-react";
 import { NextSessionCard } from "@/components/portal/next-session-card";
 import { ScheduleList } from "@/components/portal/schedule-list";
+import { ScheduleOnboarding } from "@/components/portal/schedule-onboarding";
 import {
   fetchSchedule,
   pickNextDecision,
@@ -17,13 +18,24 @@ export default async function SchedulePage({
 }: {
   searchParams: Promise<{ past?: string }>;
 }) {
-  // Resolve params + active URL + schedule data in parallel.
-  const [sp, url, result] = await Promise.all([
-    searchParams,
-    getScheduleSourceUrl(),
-    fetchSchedule(),
-  ]);
+  // Resolve params + active URL in parallel — schedule fetch is deferred
+  // until we know we have a URL (skips a wasted upstream request).
+  const [sp, url] = await Promise.all([searchParams, getScheduleSourceUrl()]);
 
+  // No URL yet — render an onboarding card that lets the user register one
+  // inline (same shape as the settings dialog body, but not behind a gear).
+  if (!url) {
+    return (
+      <div className="flex flex-col gap-4">
+        <h1 className="font-display text-xl text-foreground sm:text-2xl">
+          Schedule
+        </h1>
+        <ScheduleOnboarding />
+      </div>
+    );
+  }
+
+  const result = await fetchSchedule();
   const showPast = sp.past === "1";
   const nextResult = result.ok
     ? ({ ok: true, session: pickNextDecision(result.data.sessions) } as const)

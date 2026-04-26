@@ -2,11 +2,8 @@ import Link from "next/link";
 import { Activity } from "lucide-react";
 import { ThemeSwitcher } from "./theme-switcher";
 import { SettingsDialog } from "./settings-dialog";
-import { getDefaultScheduleSourceUrl } from "@/lib/schedule/source-url";
 
 export function SiteHeader() {
-  const defaultUrl = getDefaultScheduleSourceUrl();
-
   return (
     <header className="glass-bar sticky top-0 z-30">
       <div className="mx-auto flex h-14 max-w-6xl items-center gap-3 px-4 sm:h-16 sm:px-6">
@@ -30,7 +27,7 @@ export function SiteHeader() {
 
         <div className="ml-auto flex items-center gap-2">
           <ThemeSwitcher />
-          <SettingsDialog defaultUrl={defaultUrl} />
+          <SettingsDialog />
           <span
             aria-hidden
             className="hidden h-2 w-2 animate-pulse rounded-full bg-[var(--neon-cyan)] shadow-[0_0_10px_var(--neon-cyan)] sm:inline-block"
