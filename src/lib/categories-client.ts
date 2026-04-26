@@ -96,6 +96,7 @@ export async function updateCategory(
     discord_strategy_channel_id: string | null;
     discord_video_channel_id: string | null;
     discord_import_enabled: boolean;
+    first_clear_at: string | null;
   }>,
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
   const supabase = createClient();
@@ -105,6 +106,36 @@ export async function updateCategory(
     .eq("id", id);
   if (error) return { ok: false, reason: error.message };
   return { ok: true };
+}
+
+/**
+ * If the category's `first_clear_at` is currently NULL, set it to the
+ * given timestamp. No-op otherwise (we never overwrite an existing value
+ * automatically — only manual edits via the dialog can change it once set).
+ *
+ * Returns whether an update actually occurred, so callers can surface a
+ * toast like "🎉 初クリア記録".
+ */
+export async function maybeSetFirstClearAt(
+  categoryId: string,
+  isoTimestamp: string,
+): Promise<{ updated: boolean; reason?: string }> {
+  const supabase = createClient();
+  const { data, error: selErr } = await supabase
+    .from("categories")
+    .select("first_clear_at")
+    .eq("id", categoryId)
+    .maybeSingle();
+  if (selErr) return { updated: false, reason: selErr.message };
+  if (data?.first_clear_at) return { updated: false }; // already set
+  const { error: updErr } = await supabase
+    .from("categories")
+    .update({ first_clear_at: isoTimestamp })
+    .eq("id", categoryId)
+    // Race-safety: only NULL→value, never overwrite.
+    .is("first_clear_at", null);
+  if (updErr) return { updated: false, reason: updErr.message };
+  return { updated: true };
 }
 
 /**

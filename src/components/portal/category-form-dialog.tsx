@@ -28,6 +28,37 @@ import { cn } from "@/lib/utils";
 
 const SLUG_RE = /^[a-z0-9][a-z0-9-]{1,40}[a-z0-9]?$/;
 
+/**
+ * Format an ISO timestamp as `YYYY-MM-DD` for `<input type="date">`,
+ * using the user's local timezone. Returns "" for null/invalid input.
+ */
+function isoToDateInput(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  // Use local components — `<input type="date">` works in local TZ.
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+/**
+ * Convert a `<input type="date">` value (`YYYY-MM-DD`) to an ISO timestamp
+ * at midnight local time, or null if empty. The timezone offset comes from
+ * `Date(...)` so the round-trip with `isoToDateInput` is stable.
+ */
+function dateInputToIso(value: string): string | null {
+  const v = value.trim();
+  if (!v) return null;
+  // Construct as local midnight, not UTC, so the displayed date matches.
+  const [y, m, d] = v.split("-").map(Number);
+  if (!y || !m || !d) return null;
+  const dt = new Date(y, m - 1, d, 0, 0, 0, 0);
+  if (Number.isNaN(dt.getTime())) return null;
+  return dt.toISOString();
+}
+
 type Props = {
   /** Existing category for edit mode; omit for create. */
   category?: Category;
@@ -74,6 +105,12 @@ export function CategoryFormDialog({
   const [discordEnabled, setDiscordEnabled] = useState(
     category?.discordImportEnabled ?? true,
   );
+  // Manual override for the first-clear date. Stored on `categories` as
+  // `timestamptz`. UI is `<input type="date">` so the user only deals with
+  // a calendar; we serialize the date as midnight local time.
+  const [firstClearDate, setFirstClearDate] = useState(
+    isoToDateInput(category?.firstClearAt ?? null),
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -87,6 +124,7 @@ export function CategoryFormDialog({
       setDiscordStrategy(category?.discordStrategyChannelId ?? "");
       setDiscordVideo(category?.discordVideoChannelId ?? "");
       setDiscordEnabled(category?.discordImportEnabled ?? true);
+      setFirstClearDate(isoToDateInput(category?.firstClearAt ?? null));
       setError(null);
     }
   }, [open, category]);
@@ -133,6 +171,7 @@ export function CategoryFormDialog({
     }
 
     setBusy(true);
+    const firstClearIso = dateInputToIso(firstClearDate);
     const patch = {
       name: trimmedName,
       slug: trimmedSlug,
@@ -142,6 +181,7 @@ export function CategoryFormDialog({
       discord_strategy_channel_id: trimmedDiscordStrategy || null,
       discord_video_channel_id: trimmedDiscordVideo || null,
       discord_import_enabled: discordEnabled,
+      first_clear_at: firstClearIso,
     };
 
     const result = isEdit
@@ -151,14 +191,16 @@ export function CategoryFormDialog({
           name: trimmedName,
           status,
         }).then(async (r) => {
-          // After create, set the URLs in a follow-up update so the existing
-          // create helper stays focused on the minimal required columns.
+          // After create, set the URLs (and first_clear_at if specified) in
+          // a follow-up update so the existing create helper stays focused
+          // on the minimal required columns.
           if (!r.ok) return r;
-          if (trimmedMitigation || trimmedLoot) {
-            await updateCategory(r.category.id, {
-              mitigation_sheet_url: trimmedMitigation || null,
-              loot_sheet_url: trimmedLoot || null,
-            });
+          const followUp: Parameters<typeof updateCategory>[1] = {};
+          if (trimmedMitigation) followUp.mitigation_sheet_url = trimmedMitigation;
+          if (trimmedLoot) followUp.loot_sheet_url = trimmedLoot;
+          if (firstClearIso) followUp.first_clear_at = firstClearIso;
+          if (Object.keys(followUp).length > 0) {
+            await updateCategory(r.category.id, followUp);
           }
           return { ok: true } as const;
         });
@@ -375,6 +417,36 @@ export function CategoryFormDialog({
               </p>
             </div>
           </label>
+
+          <div className="flex flex-col gap-1.5 border-t border-border/30 pt-4">
+            <Label htmlFor="first-clear" className="text-xs text-foreground/80">
+              初クリア日（任意）
+            </Label>
+            <div className="flex items-center gap-2">
+              <Input
+                id="first-clear"
+                type="date"
+                value={firstClearDate}
+                onChange={(e) => setFirstClearDate(e.target.value)}
+                className="font-mono text-[12px]"
+              />
+              {firstClearDate && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setFirstClearDate("")}
+                  className="font-mono text-[10px] tracking-widest uppercase"
+                >
+                  クリア
+                </Button>
+              )}
+            </div>
+            <p className="text-muted-foreground text-[11px] leading-relaxed">
+              手動入力 or 動画タイトルに「クリア / Clear」が初めて現れた時点で自動登録。
+              一度設定された後は自動上書きされません。
+            </p>
+          </div>
 
           {error && (
             <div className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive-foreground/90">

@@ -45,7 +45,12 @@ ALTER TABLE public.categories
   ADD COLUMN IF NOT EXISTS discord_strategy_channel_id  text,
   ADD COLUMN IF NOT EXISTS discord_video_channel_id     text,
   -- Phase 4.1: per-category pause toggle for the Discord import.
-  ADD COLUMN IF NOT EXISTS discord_import_enabled       boolean NOT NULL DEFAULT true;
+  ADD COLUMN IF NOT EXISTS discord_import_enabled       boolean NOT NULL DEFAULT true,
+  -- Phase 4.4: first-clear timestamp. Manually editable via the category
+  -- dialog, and also auto-populated when a video link with "クリア" / "clear"
+  -- in the title first appears (manual add or Discord import) AND this field
+  -- is still NULL. Once set, never auto-overwritten — only manual edits.
+  ADD COLUMN IF NOT EXISTS first_clear_at               timestamptz;
 
 CREATE INDEX IF NOT EXISTS categories_sort_order_idx
   ON public.categories(sort_order);

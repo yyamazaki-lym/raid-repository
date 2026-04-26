@@ -35,6 +35,8 @@ export type CategoryRow = {
   discord_strategy_channel_id: string | null;
   discord_video_channel_id: string | null;
   discord_import_enabled: boolean;
+  /** ISO timestamp of the group's first clear of this content. Nullable. */
+  first_clear_at: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -51,6 +53,8 @@ export type Category = {
   discordStrategyChannelId: string | null;
   discordVideoChannelId: string | null;
   discordImportEnabled: boolean;
+  /** ISO timestamp (or null). Manually-set or auto-detected on first clear video. */
+  firstClearAt: string | null;
 };
 
 export function rowToCategory(row: CategoryRow): Category {
@@ -65,6 +69,7 @@ export function rowToCategory(row: CategoryRow): Category {
     discordStrategyChannelId: row.discord_strategy_channel_id ?? null,
     discordVideoChannelId: row.discord_video_channel_id ?? null,
     discordImportEnabled: row.discord_import_enabled ?? true,
+    firstClearAt: row.first_clear_at ?? null,
   };
 }
 

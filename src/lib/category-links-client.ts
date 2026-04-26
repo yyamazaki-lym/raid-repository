@@ -2,6 +2,8 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { isClearTitle } from "@/lib/clear-detection";
+import { maybeSetFirstClearAt } from "@/lib/categories-client";
 import {
   rowToCategoryLink,
   type CategoryLink,
@@ -53,7 +55,19 @@ export async function createCategoryLink(input: {
   if (error || !data) {
     return { ok: false, reason: error?.message ?? "unknown error" };
   }
-  return { ok: true, link: rowToCategoryLink(data as CategoryLinkRow) };
+  const link = rowToCategoryLink(data as CategoryLinkRow);
+
+  // Auto-detect first clear: if this is a video and the title contains
+  // a clear keyword, fill `first_clear_at` (only if currently NULL).
+  // Best-effort — don't fail the whole insert if this side-effect errors.
+  if (link.kind === "video" && isClearTitle(link.title)) {
+    try {
+      await maybeSetFirstClearAt(link.categoryId, link.createdAt);
+    } catch (e) {
+      console.warn("[category-links-client] first-clear auto-set failed:", e);
+    }
+  }
+  return { ok: true, link };
 }
 
 export async function updateCategoryLink(

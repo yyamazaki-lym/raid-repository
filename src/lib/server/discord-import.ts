@@ -1,6 +1,7 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { fetchPageTitle } from "@/lib/server/page-title";
+import { isClearTitle } from "@/lib/clear-detection";
 import {
   rowToCategory,
   type Category,
@@ -209,9 +210,14 @@ async function importChannel(
   let nextOrder = ((maxRow?.sort_order as number | undefined) ?? -1) + 1;
 
   // 5. Insert.
+  // For first-clear auto-detection (video kind only): track the earliest
+  // posted_at among inserted clear-flagged videos in this batch, so if the
+  // category had multiple clear-titled videos posted in a single import we
+  // pick the chronologically-first one as the first-clear timestamp.
   let inserted = 0;
   let failed = 0;
   let lastFailReason: string | undefined;
+  let earliestClearPostedAt: string | null = null;
   for (const c of fresh) {
     const title = (await fetchPageTitle(c.url)) ?? c.url;
     const description = `Discord 取り込み (by ${c.postedBy})`;
@@ -238,6 +244,34 @@ async function importChannel(
     }
     nextOrder += 1;
     inserted += 1;
+
+    // Track first-clear candidate (videos only). c.postedAt is the Discord
+    // message timestamp, which is more accurate than the row's created_at.
+    if (kind === "video" && isClearTitle(title)) {
+      if (
+        earliestClearPostedAt === null ||
+        c.postedAt < earliestClearPostedAt
+      ) {
+        earliestClearPostedAt = c.postedAt;
+      }
+    }
+  }
+
+  // 6. If a clear-flagged video was inserted and the category has no
+  // first_clear_at yet, fill it in. Race-safe via the IS NULL guard.
+  if (earliestClearPostedAt && !cat.firstClearAt) {
+    const { error: clearErr } = await supabase
+      .from("categories")
+      .update({ first_clear_at: earliestClearPostedAt })
+      .eq("id", cat.id)
+      .is("first_clear_at", null);
+    if (clearErr) {
+      console.warn(
+        "[discord-import] first_clear_at update failed",
+        cat.slug,
+        clearErr.message,
+      );
+    }
   }
 
   return {

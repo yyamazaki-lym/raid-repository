@@ -8,6 +8,7 @@ import {
   MoreVertical,
   Trash2,
   Pencil,
+  Trophy,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -245,14 +246,25 @@ function SortableCategoryCard({
           </div>
           <div className="mt-1 flex items-center justify-between gap-2 font-mono text-[11px] tracking-widest uppercase">
             <p className="text-muted-foreground">/{category.slug}</p>
-            {recentImports > 0 && (
-              <span
-                className="inline-flex items-center gap-1 rounded-sm border border-indigo-400/40 bg-indigo-400/10 px-1.5 py-px text-[9px] text-indigo-300"
-                title={`過去7日で Discord から ${recentImports} 件取り込み`}
-              >
-                +{recentImports}/wk
-              </span>
-            )}
+            <div className="flex items-center gap-1">
+              {category.firstClearAt && (
+                <span
+                  className="inline-flex items-center gap-1 rounded-sm border border-amber-400/45 bg-amber-400/10 px-1.5 py-px text-[9px] text-amber-200"
+                  title={`初クリア: ${formatFirstClear(category.firstClearAt, "long")}`}
+                >
+                  <Trophy className="h-2.5 w-2.5" aria-hidden />
+                  {formatFirstClear(category.firstClearAt, "short")}
+                </span>
+              )}
+              {recentImports > 0 && (
+                <span
+                  className="inline-flex items-center gap-1 rounded-sm border border-indigo-400/40 bg-indigo-400/10 px-1.5 py-px text-[9px] text-indigo-300"
+                  title={`過去7日で Discord から ${recentImports} 件取り込み`}
+                >
+                  +{recentImports}/wk
+                </span>
+              )}
+            </div>
           </div>
         </Link>
 
@@ -274,6 +286,24 @@ function SortableCategoryCard({
       </Card>
     </li>
   );
+}
+
+/**
+ * Format the first-clear timestamp for the badge:
+ *   "short" → `12/15` (M/D in local TZ)
+ *   "long"  → `2025-12-15 (月)` for the hover tooltip
+ */
+function formatFirstClear(iso: string, mode: "short" | "long"): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  if (mode === "short") {
+    return `${d.getMonth() + 1}/${d.getDate()}`;
+  }
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  const wd = ["日", "月", "火", "水", "木", "金", "土"][d.getDay()];
+  return `${y}-${m}-${day} (${wd})`;
 }
 
 function CategoryMenu({
