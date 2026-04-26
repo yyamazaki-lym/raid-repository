@@ -61,6 +61,9 @@ export function LinkFormDialog({
   const [title, setTitle] = useState(link?.title ?? "");
   const [url, setUrl] = useState(link?.url ?? "");
   const [description, setDescription] = useState(link?.description ?? "");
+  // FFLogs / secondary URL — currently only surfaced for the "video" kind
+  // but stored on every CategoryLink row uniformly.
+  const [logsUrl, setLogsUrl] = useState(link?.logsUrl ?? "");
   const [busy, setBusy] = useState(false);
   const [fetchingTitle, setFetchingTitle] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -71,6 +74,7 @@ export function LinkFormDialog({
       setTitle(link?.title ?? "");
       setUrl(link?.url ?? "");
       setDescription(link?.description ?? "");
+      setLogsUrl(link?.logsUrl ?? "");
       setError(null);
     }
   }, [open, link]);
@@ -118,16 +122,36 @@ export function LinkFormDialog({
       return setError("URLの形式が正しくありません");
     }
 
+    // Validate optional logs URL.
+    const trimmedLogs = logsUrl.trim();
+    if (trimmedLogs && !/^https?:\/\//i.test(trimmedLogs)) {
+      return setError("Logs URL は http:// または https:// で始めてください");
+    }
+    if (trimmedLogs) {
+      try {
+        new URL(trimmedLogs);
+      } catch {
+        return setError("Logs URL の形式が正しくありません");
+      }
+    }
+
     setBusy(true);
     const desc = description.trim() ? description.trim() : null;
+    const logs = trimmedLogs || null;
     const result = isEdit
-      ? await updateCategoryLink(link!.id, { title: t, url: u, description: desc })
+      ? await updateCategoryLink(link!.id, {
+          title: t,
+          url: u,
+          description: desc,
+          logs_url: logs,
+        })
       : await createCategoryLink({
           categoryId,
           kind,
           title: t,
           url: u,
           description: desc ?? undefined,
+          logsUrl: logs,
         });
     setBusy(false);
 
@@ -252,6 +276,28 @@ export function LinkFormDialog({
               className="text-[13px] leading-relaxed"
             />
           </div>
+
+          {kind === "video" && (
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="link-logs" className="text-xs text-foreground/80">
+                FFLogs URL（任意）
+              </Label>
+              <Input
+                id="link-logs"
+                type="url"
+                inputMode="url"
+                value={logsUrl}
+                onChange={(e) => setLogsUrl(e.target.value)}
+                placeholder="https://www.fflogs.com/reports/..."
+                className="font-mono text-[12px]"
+                autoComplete="off"
+                spellCheck={false}
+              />
+              <p className="text-muted-foreground text-[11px] leading-relaxed">
+                登録するとカードに「Logs」ボタンが追加され、ワンタップで報告ページに飛べます。
+              </p>
+            </div>
+          )}
 
           {error && (
             <div className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive-foreground/90">

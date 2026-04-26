@@ -84,6 +84,8 @@ export type CategoryLinkRow = {
   description: string | null;
   sort_order: number;
   source: CategoryLinkSource;
+  /** Optional secondary URL — videos use this for FFLogs reports. */
+  logs_url: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -97,6 +99,7 @@ export type CategoryLink = {
   description: string | null;
   sortOrder: number;
   source: CategoryLinkSource;
+  logsUrl: string | null;
   createdAt: string;
 };
 
@@ -110,6 +113,7 @@ export function rowToCategoryLink(row: CategoryLinkRow): CategoryLink {
     description: row.description,
     sortOrder: row.sort_order,
     source: row.source ?? "manual",
+    logsUrl: row.logs_url ?? null,
     createdAt: row.created_at,
   };
 }

@@ -10,6 +10,7 @@ import {
   MessageCircle,
   Calendar,
   ListOrdered,
+  BarChart3,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -333,6 +334,21 @@ function VideoCard({
         <p className="px-3 text-xs text-muted-foreground leading-relaxed whitespace-pre-wrap">
           {video.description}
         </p>
+      )}
+      {video.logsUrl && (
+        <div className="px-3">
+          <a
+            href={video.logsUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 rounded-sm border border-amber-400/45 bg-amber-400/10 px-2 py-1 font-mono text-[10px] tracking-widest text-amber-200 uppercase transition-colors hover:bg-amber-400/15 hover:text-amber-100"
+            title="FFLogs レポートを開く"
+          >
+            <BarChart3 className="h-3 w-3" aria-hidden />
+            FFLogs
+            <ExternalLink className="h-2.5 w-2.5 opacity-70" aria-hidden />
+          </a>
+        </div>
       )}
       <a
         href={video.url}

@@ -23,6 +23,7 @@ export async function createCategoryLink(input: {
   title: string;
   url: string;
   description?: string;
+  logsUrl?: string | null;
 }): Promise<{ ok: true; link: CategoryLink } | { ok: false; reason: string }> {
   const supabase = createClient();
   // New entries appended to end (max sort_order + 1 within this category+kind).
@@ -44,6 +45,7 @@ export async function createCategoryLink(input: {
       title: input.title,
       url: input.url,
       description: input.description ?? null,
+      logs_url: input.logsUrl ?? null,
       sort_order: nextOrder,
     })
     .select("*")
@@ -60,6 +62,7 @@ export async function updateCategoryLink(
     title: string;
     url: string;
     description: string | null;
+    logs_url: string | null;
   }>,
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
   const supabase = createClient();

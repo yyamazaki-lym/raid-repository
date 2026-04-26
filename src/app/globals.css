@@ -596,20 +596,19 @@
  * stay the same; only their backgrounds change.
  * ============================================================ */
 
-/* ARR — Diagonal meteor streak across the sky (the Calamity meteor) +
-   ambient crystal sparkles. */
+/* ARR — Soft distant meteor with light sparkles. Toned down so the
+   theme reads as ambient rather than dominant. */
 .dark.theme-arr .bg-grid {
-  /* Meteor head + trail. A long tilted gradient with a brighter head. */
+  /* Meteor trail, but much fainter than before. */
   background-image:
-    /* The long trail */
     linear-gradient(
       -22deg,
       transparent 0%,
-      transparent 50%,
-      color-mix(in oklch, var(--frost) 50%, transparent) 56%,
-      color-mix(in oklch, var(--neon-cyan) 80%, transparent) 65%,
-      var(--frost) 70%,
-      transparent 73%,
+      transparent 56%,
+      color-mix(in oklch, var(--frost) 18%, transparent) 60%,
+      color-mix(in oklch, var(--neon-cyan) 28%, transparent) 65%,
+      color-mix(in oklch, var(--frost) 22%, transparent) 70%,
+      transparent 74%,
       transparent 100%
     );
   background-size: 60rem 60rem;
@@ -619,43 +618,41 @@
 }
 .dark.theme-arr .bg-grid-animate { animation: none; }
 .dark.theme-arr .bg-scanlines {
-  /* Faint sparkles around. */
+  /* Faint, sparse sparkles. */
   background-image:
-    radial-gradient(1.8px 1.8px at 18% 22%, color-mix(in oklch, var(--neon-cyan) 70%, transparent), transparent 60%),
-    radial-gradient(1.2px 1.2px at 78% 14%, color-mix(in oklch, var(--neon-magenta) 60%, transparent), transparent 60%),
-    radial-gradient(2px 2px at 47% 65%, color-mix(in oklch, var(--frost) 70%, transparent), transparent 60%),
-    radial-gradient(1.2px 1.2px at 86% 78%, color-mix(in oklch, var(--neon-cyan) 60%, transparent), transparent 60%),
-    radial-gradient(1.8px 1.8px at 13% 88%, color-mix(in oklch, var(--neon-magenta) 60%, transparent), transparent 60%),
-    radial-gradient(1.4px 1.4px at 60% 35%, color-mix(in oklch, var(--frost) 60%, transparent), transparent 60%);
-  background-size: 260px 260px;
+    radial-gradient(1.4px 1.4px at 18% 22%, color-mix(in oklch, var(--neon-cyan) 50%, transparent), transparent 60%),
+    radial-gradient(1px 1px at 78% 14%, color-mix(in oklch, var(--neon-magenta) 40%, transparent), transparent 60%),
+    radial-gradient(1.6px 1.6px at 47% 65%, color-mix(in oklch, var(--frost) 50%, transparent), transparent 60%),
+    radial-gradient(1px 1px at 86% 78%, color-mix(in oklch, var(--neon-cyan) 40%, transparent), transparent 60%),
+    radial-gradient(1.2px 1.2px at 13% 88%, color-mix(in oklch, var(--neon-magenta) 40%, transparent), transparent 60%);
+  background-size: 320px 320px;
   background-repeat: repeat;
-  opacity: 0.4;
-  animation: arr-twinkle 5s ease-in-out infinite alternate;
+  opacity: 0.28;
+  animation: arr-twinkle 6s ease-in-out infinite alternate;
 }
 @keyframes arr-twinkle {
-  0% { opacity: 0.3; }
-  100% { opacity: 0.55; }
+  0% { opacity: 0.2; }
+  100% { opacity: 0.36; }
 }
-/* Bright meteor head — a focused glow at the trail's leading edge. */
+/* Distant meteor head — much smaller and dimmer. */
 .dark.theme-arr .bg-orbs::before {
   top: 4rem;
   right: 6%;
   left: auto;
   bottom: auto;
-  width: 8rem;
-  height: 8rem;
-  opacity: 0.85;
-  filter: blur(28px);
+  width: 6rem;
+  height: 6rem;
+  opacity: 0.45;
+  filter: blur(36px);
   background:
     radial-gradient(
       circle,
-      var(--frost) 0%,
-      var(--neon-cyan) 25%,
-      color-mix(in oklch, var(--neon-cyan) 50%, transparent) 50%,
+      color-mix(in oklch, var(--frost) 70%, transparent) 0%,
+      color-mix(in oklch, var(--neon-cyan) 40%, transparent) 35%,
       transparent 70%
     );
 }
-.dark.theme-arr .bg-orbs::after { opacity: 0.18; }
+.dark.theme-arr .bg-orbs::after { opacity: 0.14; }
 
 /* Heavensward — Stained-glass lattice + golden sunbeam streaming through.
    Dragons / cathedrals / heavenly light — no snow (that's Evercold's lane). */

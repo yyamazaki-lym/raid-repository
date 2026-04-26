@@ -73,6 +73,11 @@ CREATE TABLE IF NOT EXISTS public.category_links (
 ALTER TABLE public.category_links
   ADD COLUMN IF NOT EXISTS source text NOT NULL DEFAULT 'manual'
     CHECK (source IN ('manual','discord'));
+
+-- Phase 4.3: optional secondary URL — used by videos to link to the
+-- corresponding FFLogs report (or any related external page).
+ALTER TABLE public.category_links
+  ADD COLUMN IF NOT EXISTS logs_url text;
 CREATE INDEX IF NOT EXISTS category_links_category_kind_idx
   ON public.category_links(category_id, kind, sort_order);
 
