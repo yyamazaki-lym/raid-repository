@@ -11,6 +11,11 @@ import {
   Trophy,
   Timer,
   Hourglass,
+  ShieldHalf,
+  Dice5,
+  BookOpen,
+  Film,
+  type LucideIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -252,7 +257,7 @@ function SortableCategoryCard({
 
   return (
     <li ref={setNodeRef} style={style} {...attributes}>
-      <Card className="glass neon-edge relative flex items-stretch gap-2 p-0 transition-transform hover:-translate-y-0.5">
+      <Card className="glass neon-edge group relative flex items-stretch gap-2 p-0 transition-transform hover:-translate-y-0.5">
         <button
           type="button"
           {...listeners}
@@ -262,57 +267,65 @@ function SortableCategoryCard({
           <GripVertical className="h-4 w-4" aria-hidden />
         </button>
 
-        <Link
-          href={`/category/${category.slug}/mitigation`}
-          prefetch
-          className="flex flex-1 flex-col gap-1 p-4 pr-2"
-        >
-          <div className="flex items-start justify-between gap-2">
-            <p className="font-display text-foreground text-sm leading-tight">
-              {category.name}
-            </p>
-          </div>
-          <div className="mt-1 flex flex-wrap items-center justify-between gap-2 font-mono text-[11px] tracking-widest uppercase">
-            <p className="text-muted-foreground">/{category.slug}</p>
-            <div className="flex flex-wrap items-center gap-1">
-              {showPracticeTime && (
-                <span
-                  className="inline-flex items-center gap-1 rounded-sm border border-violet-400/40 bg-violet-400/10 px-1.5 py-px text-[9px] text-violet-200"
-                  title={`累計練習時間: ${formatDurationLong(practiceSeconds)}`}
-                >
-                  <Timer className="h-2.5 w-2.5" aria-hidden />
-                  {formatDurationShort(practiceSeconds)}
-                </span>
-              )}
-              {timeToClearSeconds > 0 && category.firstClearAt && (
-                <span
-                  className="inline-flex items-center gap-1 rounded-sm border border-emerald-400/45 bg-emerald-400/10 px-1.5 py-px text-[9px] text-emerald-200"
-                  title={`クリアまでの累計時間: ${formatDurationLong(timeToClearSeconds)}`}
-                >
-                  <Hourglass className="h-2.5 w-2.5" aria-hidden />
-                  →{formatDurationShort(timeToClearSeconds)}
-                </span>
-              )}
-              {category.firstClearAt && (
-                <span
-                  className="inline-flex items-center gap-1 rounded-sm border border-amber-400/45 bg-amber-400/10 px-1.5 py-px text-[9px] text-amber-200"
-                  title={`初クリア: ${formatFirstClear(category.firstClearAt, "long")}`}
-                >
-                  <Trophy className="h-2.5 w-2.5" aria-hidden />
-                  {formatFirstClear(category.firstClearAt, "short")}
-                </span>
-              )}
-              {recentImports > 0 && (
-                <span
-                  className="inline-flex items-center gap-1 rounded-sm border border-indigo-400/40 bg-indigo-400/10 px-1.5 py-px text-[9px] text-indigo-300"
-                  title={`過去7日で Discord から ${recentImports} 件取り込み`}
-                >
-                  +{recentImports}/wk
-                </span>
-              )}
+        {/* Middle column: name+slug+badges (one Link for the default-action
+            click-anywhere behavior) above an always-visible icon row that
+            short-cuts to each sub-page. Icon row is OUTSIDE the parent
+            Link to keep nested-anchor invalid HTML out of the tree. */}
+        <div className="flex flex-1 flex-col">
+          <Link
+            href={`/category/${category.slug}/mitigation`}
+            prefetch
+            className="flex flex-col gap-1 px-4 pt-4 pb-1"
+          >
+            <div className="flex items-start justify-between gap-2">
+              <p className="font-display text-foreground text-sm leading-tight">
+                {category.name}
+              </p>
             </div>
-          </div>
-        </Link>
+            <div className="mt-1 flex flex-wrap items-center justify-between gap-2 font-mono text-[11px] tracking-widest uppercase">
+              <p className="text-muted-foreground">/{category.slug}</p>
+              <div className="flex flex-wrap items-center gap-1">
+                {showPracticeTime && (
+                  <span
+                    className="inline-flex items-center gap-1 rounded-sm border border-violet-400/40 bg-violet-400/10 px-1.5 py-px text-[9px] text-violet-200"
+                    title={`累計練習時間: ${formatDurationLong(practiceSeconds)}`}
+                  >
+                    <Timer className="h-2.5 w-2.5" aria-hidden />
+                    {formatDurationShort(practiceSeconds)}
+                  </span>
+                )}
+                {timeToClearSeconds > 0 && category.firstClearAt && (
+                  <span
+                    className="inline-flex items-center gap-1 rounded-sm border border-emerald-400/45 bg-emerald-400/10 px-1.5 py-px text-[9px] text-emerald-200"
+                    title={`クリアまでの累計時間: ${formatDurationLong(timeToClearSeconds)}`}
+                  >
+                    <Hourglass className="h-2.5 w-2.5" aria-hidden />
+                    →{formatDurationShort(timeToClearSeconds)}
+                  </span>
+                )}
+                {category.firstClearAt && (
+                  <span
+                    className="inline-flex items-center gap-1 rounded-sm border border-amber-400/45 bg-amber-400/10 px-1.5 py-px text-[9px] text-amber-200"
+                    title={`初クリア: ${formatFirstClear(category.firstClearAt, "long")}`}
+                  >
+                    <Trophy className="h-2.5 w-2.5" aria-hidden />
+                    {formatFirstClear(category.firstClearAt, "short")}
+                  </span>
+                )}
+                {recentImports > 0 && (
+                  <span
+                    className="inline-flex items-center gap-1 rounded-sm border border-indigo-400/40 bg-indigo-400/10 px-1.5 py-px text-[9px] text-indigo-300"
+                    title={`過去7日で Discord から ${recentImports} 件取り込み`}
+                  >
+                    +{recentImports}/wk
+                  </span>
+                )}
+              </div>
+            </div>
+          </Link>
+
+          <SubPageShortcuts slug={category.slug} />
+        </div>
 
         <div className="flex flex-col items-end justify-between gap-1 p-2">
           {/* Status badge — stops propagation so clicking it doesn't navigate. */}
@@ -331,6 +344,46 @@ function SortableCategoryCard({
         </div>
       </Card>
     </li>
+  );
+}
+
+/**
+ * Always-visible 4-icon shortcut row at the bottom of each category card
+ * for direct navigation to mitigation / loot / strategy / videos sub-pages.
+ *
+ * Why always visible (rather than hover-only):
+ *   - Touch devices have no hover state, so a hover-reveal would hide
+ *     this navigation completely on mobile
+ *   - Icon-row is small enough to not clutter the card
+ *   - Hover styling (scale + color shift) still gives desktop users the
+ *     "this is interactive" affordance
+ */
+const SUB_PAGES: Array<{ segment: string; label: string; Icon: LucideIcon }> = [
+  { segment: "mitigation", label: "軽減表", Icon: ShieldHalf },
+  { segment: "loot", label: "ロット管理", Icon: Dice5 },
+  { segment: "strategy", label: "攻略情報", Icon: BookOpen },
+  { segment: "videos", label: "動画", Icon: Film },
+];
+
+function SubPageShortcuts({ slug }: { slug: string }) {
+  return (
+    <nav
+      aria-label="サブページへのショートカット"
+      className="flex items-center gap-1 px-3 pt-1 pb-3"
+    >
+      {SUB_PAGES.map((p) => (
+        <Link
+          key={p.segment}
+          href={`/category/${slug}/${p.segment}`}
+          prefetch
+          aria-label={p.label}
+          title={p.label}
+          className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border/40 bg-background/30 text-muted-foreground transition-all duration-150 hover:scale-110 hover:border-[var(--neon-violet)]/60 hover:bg-[var(--neon-violet)]/10 hover:text-[var(--neon-violet)] hover:shadow-[0_0_10px_-4px_var(--neon-violet)]"
+        >
+          <p.Icon className="h-3.5 w-3.5" aria-hidden />
+        </Link>
+      ))}
+    </nav>
   );
 }
 
