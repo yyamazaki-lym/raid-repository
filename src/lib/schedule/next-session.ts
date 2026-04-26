@@ -13,6 +13,7 @@ import {
   type ParsedSchedule,
   type ScheduleSession,
 } from "./parse";
+import { getScheduleSourceUrl } from "./source-url";
 
 export type {
   ScheduleSession,
@@ -33,7 +34,8 @@ export type NextSessionResult =
 const STILL_RELEVANT_MS = 6 * 60 * 60 * 1000;
 
 export async function fetchSchedule(): Promise<ScheduleFetchResult> {
-  const url = process.env.NEXT_PUBLIC_SCHEDULE_URL;
+  // Resolution order: cookie override (settings dialog) → env var.
+  const url = await getScheduleSourceUrl();
   if (!url) return { ok: false, reason: "no-url" };
 
   let html: string;

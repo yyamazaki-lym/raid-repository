@@ -33,9 +33,11 @@ type Props = {
   result: ScheduleFetchResult;
   /** Maximum sessions to render. Defaults to all upcoming + a small past buffer. */
   limit?: number;
+  /** When true, render past sessions (in muted style) below the upcoming ones. */
+  showPast?: boolean;
 };
 
-export function ScheduleList({ result, limit }: Props) {
+export function ScheduleList({ result, limit, showPast = false }: Props) {
   if (!result.ok) {
     return (
       <Card className="glass flex flex-col items-center gap-3 border-destructive/40 p-8 text-center">
@@ -57,9 +59,10 @@ export function ScheduleList({ result, limit }: Props) {
   const { users, sessions, comments } = result.data;
   const commentsByAuthor = groupCommentsByAuthor(comments);
 
-  const visible = filterAndSortSessions(sessions, limit);
+  const { upcoming, past } = splitSessions(sessions, limit);
+  const renderedPast = showPast ? past : [];
 
-  if (visible.length === 0) {
+  if (upcoming.length === 0 && renderedPast.length === 0) {
     return (
       <Card className="glass flex flex-col items-center gap-3 p-8 text-center">
         <span className="grid h-10 w-10 place-items-center rounded-md border border-border/60 bg-background/40 text-muted-foreground">
@@ -96,9 +99,29 @@ export function ScheduleList({ result, limit }: Props) {
             </tr>
           </thead>
           <tbody>
-            {visible.map((s) => (
+            {upcoming.map((s) => (
               <SessionRow key={s.rawDate} session={s} users={users} />
             ))}
+            {showPast && renderedPast.length > 0 && (
+              <>
+                <tr>
+                  <td
+                    colSpan={2 + users.length}
+                    className="border-t border-border/40 bg-secondary/20 px-3 py-1.5 font-mono text-[10px] tracking-[0.22em] text-muted-foreground uppercase"
+                  >
+                    Past — 過去の予定 ({renderedPast.length}件)
+                  </td>
+                </tr>
+                {renderedPast.map((s) => (
+                  <SessionRow
+                    key={s.rawDate}
+                    session={s}
+                    users={users}
+                    isPast
+                  />
+                ))}
+              </>
+            )}
           </tbody>
         </table>
       </div>
@@ -193,18 +216,22 @@ function CommentList({
 function SessionRow({
   session,
   users,
+  isPast = false,
 }: {
   session: ScheduleSession;
   users: ScheduleUser[];
+  isPast?: boolean;
 }) {
   const decided = session.status === "DECISION";
   return (
     <tr
       className={
         "border-b border-border/30 transition-colors last:border-b-0 " +
-        (decided
-          ? "bg-[var(--neon-cyan)]/4 hover:bg-[var(--neon-cyan)]/8"
-          : "hover:bg-secondary/40")
+        (isPast
+          ? "opacity-60 hover:opacity-100 hover:bg-secondary/40 "
+          : decided
+            ? "bg-[var(--neon-cyan)]/4 hover:bg-[var(--neon-cyan)]/8"
+            : "hover:bg-secondary/40")
       }
     >
       <th
@@ -299,15 +326,27 @@ function groupCommentsByAuthor(
   return out;
 }
 
-function filterAndSortSessions(
+/**
+ * Split sessions into upcoming (future + ≤6h-past) and past (everything older),
+ * each pre-sorted. Limit is applied to upcoming only — past list is always
+ * sorted newest-first so the most relevant past dates appear right after the
+ * "Past" divider.
+ */
+function splitSessions(
   sessions: ScheduleSession[],
   limit?: number,
-): ScheduleSession[] {
-  const now = Date.now();
-  const cutoff = now - 6 * 60 * 60 * 1000;
-  const upcoming = sessions
-    .filter((s) => s.date.getTime() >= cutoff)
-    .sort((a, b) => a.date.getTime() - b.date.getTime());
-  if (typeof limit === "number") return upcoming.slice(0, limit);
-  return upcoming;
+): { upcoming: ScheduleSession[]; past: ScheduleSession[] } {
+  const cutoff = Date.now() - 6 * 60 * 60 * 1000;
+  const upcoming: ScheduleSession[] = [];
+  const past: ScheduleSession[] = [];
+  for (const s of sessions) {
+    if (s.date.getTime() >= cutoff) upcoming.push(s);
+    else past.push(s);
+  }
+  upcoming.sort((a, b) => a.date.getTime() - b.date.getTime());
+  past.sort((a, b) => b.date.getTime() - a.date.getTime());
+  return {
+    upcoming: typeof limit === "number" ? upcoming.slice(0, limit) : upcoming,
+    past,
+  };
 }
