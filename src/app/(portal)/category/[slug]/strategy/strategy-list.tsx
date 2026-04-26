@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ExternalLink, BookOpen, GripVertical } from "lucide-react";
+import { ExternalLink, BookOpen, GripVertical, MessageCircle } from "lucide-react";
 import { toast } from "sonner";
 import {
   DndContext,
@@ -193,6 +193,15 @@ function SortableStrategyCard({
                 {link.title}
               </span>
             </a>
+            {link.source === "discord" && (
+              <span
+                title="Discord から自動取り込み"
+                aria-label="Discord 由来"
+                className="grid h-5 w-5 shrink-0 place-items-center rounded-sm border border-indigo-400/40 bg-indigo-400/10 text-indigo-300"
+              >
+                <MessageCircle className="h-2.5 w-2.5" aria-hidden />
+              </span>
+            )}
             <LinkCardMenu link={link} onEdit={onEdit} />
           </div>
           {link.description && (

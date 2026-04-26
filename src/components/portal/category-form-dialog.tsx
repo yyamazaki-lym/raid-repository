@@ -71,6 +71,9 @@ export function CategoryFormDialog({
   const [discordVideo, setDiscordVideo] = useState(
     category?.discordVideoChannelId ?? "",
   );
+  const [discordEnabled, setDiscordEnabled] = useState(
+    category?.discordImportEnabled ?? true,
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -83,6 +86,7 @@ export function CategoryFormDialog({
       setLootUrl(category?.lootSheetUrl ?? "");
       setDiscordStrategy(category?.discordStrategyChannelId ?? "");
       setDiscordVideo(category?.discordVideoChannelId ?? "");
+      setDiscordEnabled(category?.discordImportEnabled ?? true);
       setError(null);
     }
   }, [open, category]);
@@ -137,6 +141,7 @@ export function CategoryFormDialog({
       loot_sheet_url: trimmedLoot || null,
       discord_strategy_channel_id: trimmedDiscordStrategy || null,
       discord_video_channel_id: trimmedDiscordVideo || null,
+      discord_import_enabled: discordEnabled,
     };
 
     const result = isEdit
@@ -352,6 +357,24 @@ export function CategoryFormDialog({
               Discord の開発者モードを ON にして、チャンネル名右クリック → IDコピーで取得できます。
             </p>
           </div>
+
+          <label className="mt-1 flex cursor-pointer items-start gap-3 rounded-md border border-border/40 bg-secondary/20 px-3 py-2.5">
+            <input
+              type="checkbox"
+              checked={discordEnabled}
+              onChange={(e) => setDiscordEnabled(e.target.checked)}
+              className="mt-0.5 h-4 w-4 cursor-pointer accent-[var(--neon-cyan)]"
+            />
+            <div className="flex-1">
+              <span className="block text-xs text-foreground/90">
+                Discord 取り込みを有効化
+              </span>
+              <p className="text-muted-foreground text-[11px] leading-relaxed">
+                OFF にすると、このカテゴリーは毎日の自動取り込みをスキップします。
+                チャンネルID は保存されたままなので、再 ON で即再開可能。
+              </p>
+            </div>
+          </label>
 
           {error && (
             <div className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive-foreground/90">

@@ -1,7 +1,9 @@
 import { AlertTriangle } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { CategoryFormDialog } from "@/components/portal/category-form-dialog";
+import { ImportDiscordButton } from "@/components/portal/import-discord-button";
 import { fetchCategories } from "@/lib/supabase/categories";
+import { fetchRecentImportCountsByCategory } from "@/lib/server/categories-actions";
 import { CategoryList } from "./category-list";
 
 export const metadata = {
@@ -9,7 +11,10 @@ export const metadata = {
 };
 
 export default async function CategoryIndexPage() {
-  const result = await fetchCategories();
+  const [result, recentCounts] = await Promise.all([
+    fetchCategories(),
+    fetchRecentImportCountsByCategory(7),
+  ]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -22,7 +27,10 @@ export default async function CategoryIndexPage() {
             レイドコンテンツ単位で、軽減・ロット・攻略情報を切り替えます。
           </p>
         </div>
-        <CategoryFormDialog />
+        <div className="flex items-center gap-2">
+          <ImportDiscordButton />
+          <CategoryFormDialog />
+        </div>
       </div>
 
       {!result.ok && (
@@ -43,7 +51,10 @@ export default async function CategoryIndexPage() {
         </Card>
       )}
 
-      <CategoryList initialCategories={result.categories} />
+      <CategoryList
+        initialCategories={result.categories}
+        recentImportCounts={recentCounts}
+      />
     </div>
   );
 }

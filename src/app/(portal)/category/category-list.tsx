@@ -48,9 +48,14 @@ import type { Category, CategoryStatus } from "@/lib/supabase/types";
 
 type Props = {
   initialCategories: Category[];
+  /** Map of category.id → number of Discord-imported links in the last 7d. */
+  recentImportCounts?: Record<string, number>;
 };
 
-export function CategoryList({ initialCategories }: Props) {
+export function CategoryList({
+  initialCategories,
+  recentImportCounts = {},
+}: Props) {
   // Realtime hook keeps the list in sync with DB changes from any client.
   const live = useRealtimeCategories(initialCategories);
   // Local mirror so DnD can rearrange optimistically without waiting on
@@ -165,6 +170,7 @@ export function CategoryList({ initialCategories }: Props) {
               <SortableCategoryCard
                 key={cat.id}
                 category={cat}
+                recentImports={recentImportCounts[cat.id] ?? 0}
                 onChangeStatus={(s) => onChangeStatus(cat.id, s)}
                 onEdit={() => setEditTarget(cat)}
                 onDelete={() => onDelete(cat)}
@@ -188,11 +194,13 @@ export function CategoryList({ initialCategories }: Props) {
 
 function SortableCategoryCard({
   category,
+  recentImports,
   onChangeStatus,
   onEdit,
   onDelete,
 }: {
   category: Category;
+  recentImports: number;
   onChangeStatus: (s: CategoryStatus) => void;
   onEdit: () => void;
   onDelete: () => void;
@@ -235,9 +243,17 @@ function SortableCategoryCard({
               {category.name}
             </p>
           </div>
-          <p className="text-muted-foreground mt-1 font-mono text-[11px] tracking-widest uppercase">
-            /{category.slug}
-          </p>
+          <div className="mt-1 flex items-center justify-between gap-2 font-mono text-[11px] tracking-widest uppercase">
+            <p className="text-muted-foreground">/{category.slug}</p>
+            {recentImports > 0 && (
+              <span
+                className="inline-flex items-center gap-1 rounded-sm border border-indigo-400/40 bg-indigo-400/10 px-1.5 py-px text-[9px] text-indigo-300"
+                title={`過去7日で Discord から ${recentImports} 件取り込み`}
+              >
+                +{recentImports}/wk
+              </span>
+            )}
+          </div>
         </Link>
 
         <div className="flex flex-col items-end justify-between gap-1 p-2">

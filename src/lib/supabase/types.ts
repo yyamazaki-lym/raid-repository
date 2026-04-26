@@ -34,6 +34,7 @@ export type CategoryRow = {
   mitigation_sheet_url: string | null;
   discord_strategy_channel_id: string | null;
   discord_video_channel_id: string | null;
+  discord_import_enabled: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -49,6 +50,7 @@ export type Category = {
   mitigationSheetUrl: string | null;
   discordStrategyChannelId: string | null;
   discordVideoChannelId: string | null;
+  discordImportEnabled: boolean;
 };
 
 export function rowToCategory(row: CategoryRow): Category {
@@ -62,6 +64,7 @@ export function rowToCategory(row: CategoryRow): Category {
     mitigationSheetUrl: row.mitigation_sheet_url ?? null,
     discordStrategyChannelId: row.discord_strategy_channel_id ?? null,
     discordVideoChannelId: row.discord_video_channel_id ?? null,
+    discordImportEnabled: row.discord_import_enabled ?? true,
   };
 }
 
@@ -70,6 +73,7 @@ export function rowToCategory(row: CategoryRow): Category {
 // =============================================================
 
 export type CategoryLinkKind = "strategy" | "video";
+export type CategoryLinkSource = "manual" | "discord";
 
 export type CategoryLinkRow = {
   id: string;
@@ -79,6 +83,7 @@ export type CategoryLinkRow = {
   url: string;
   description: string | null;
   sort_order: number;
+  source: CategoryLinkSource;
   created_at: string;
   updated_at: string;
 };
@@ -91,6 +96,8 @@ export type CategoryLink = {
   url: string;
   description: string | null;
   sortOrder: number;
+  source: CategoryLinkSource;
+  createdAt: string;
 };
 
 export function rowToCategoryLink(row: CategoryLinkRow): CategoryLink {
@@ -102,5 +109,7 @@ export function rowToCategoryLink(row: CategoryLinkRow): CategoryLink {
     url: row.url,
     description: row.description,
     sortOrder: row.sort_order,
+    source: row.source ?? "manual",
+    createdAt: row.created_at,
   };
 }

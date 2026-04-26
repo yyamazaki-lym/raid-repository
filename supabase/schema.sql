@@ -43,7 +43,9 @@ ALTER TABLE public.categories
   ADD COLUMN IF NOT EXISTS mitigation_sheet_url         text,
   -- Phase 4: per-category Discord channels for the daily auto-import job.
   ADD COLUMN IF NOT EXISTS discord_strategy_channel_id  text,
-  ADD COLUMN IF NOT EXISTS discord_video_channel_id     text;
+  ADD COLUMN IF NOT EXISTS discord_video_channel_id     text,
+  -- Phase 4.1: per-category pause toggle for the Discord import.
+  ADD COLUMN IF NOT EXISTS discord_import_enabled       boolean NOT NULL DEFAULT true;
 
 CREATE INDEX IF NOT EXISTS categories_sort_order_idx
   ON public.categories(sort_order);
@@ -66,6 +68,11 @@ CREATE TABLE IF NOT EXISTS public.category_links (
   created_at  timestamptz NOT NULL DEFAULT now(),
   updated_at  timestamptz NOT NULL DEFAULT now()
 );
+
+-- Phase 4.1: track origin so the UI can mark Discord-imported entries.
+ALTER TABLE public.category_links
+  ADD COLUMN IF NOT EXISTS source text NOT NULL DEFAULT 'manual'
+    CHECK (source IN ('manual','discord'));
 CREATE INDEX IF NOT EXISTS category_links_category_kind_idx
   ON public.category_links(category_id, kind, sort_order);
 

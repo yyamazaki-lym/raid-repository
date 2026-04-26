@@ -1,8 +1,16 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
-import { ExternalLink, Film, Play, GripVertical } from "lucide-react";
+import {
+  ExternalLink,
+  Film,
+  Play,
+  GripVertical,
+  MessageCircle,
+  Calendar,
+  ListOrdered,
+} from "lucide-react";
 import { toast } from "sonner";
 import {
   DndContext,
@@ -41,12 +49,41 @@ type Props = {
   initial: CategoryLink[];
 };
 
+type SortMode = "date" | "custom";
+const SORT_STORAGE_KEY = "raid-repo:videos-sort-mode";
+
 export function VideosList({ categoryId, initial }: Props) {
   const live = useRealtimeCategoryLinks(categoryId, "video", initial);
   const [editTarget, setEditTarget] = useState<CategoryLink | null>(null);
   const [optimistic, setOptimistic] = useState<string[] | null>(null);
+  // Sort mode lives in localStorage so the user's choice survives reloads.
+  // Default to date (newest-first) — matches the request to view videos
+  // chronologically; switching to custom enables DnD reordering.
+  const [sortMode, setSortMode] = useState<SortMode>("date");
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const stored = window.localStorage.getItem(SORT_STORAGE_KEY);
+    if (stored === "custom" || stored === "date") setSortMode(stored);
+  }, []);
+  const persistSort = (mode: SortMode) => {
+    setSortMode(mode);
+    try {
+      window.localStorage.setItem(SORT_STORAGE_KEY, mode);
+    } catch {
+      // ignore
+    }
+  };
 
   const videos = useMemo(() => {
+    if (sortMode === "date") {
+      // Newest first by created_at; ties (within the same insert batch from
+      // the cron) fall back to sort_order ascending.
+      return [...live].sort((a, b) => {
+        const cmp = b.createdAt.localeCompare(a.createdAt);
+        return cmp !== 0 ? cmp : a.sortOrder - b.sortOrder;
+      });
+    }
+    // Custom mode — apply optimistic order if present, otherwise sort_order.
     if (!optimistic) return live;
     const idx = new Map(optimistic.map((id, i) => [id, i] as const));
     return [...live].sort((a, b) => {
@@ -57,7 +94,7 @@ export function VideosList({ categoryId, initial }: Props) {
       if (bi === undefined) return -1;
       return ai - bi;
     });
-  }, [live, optimistic]);
+  }, [live, optimistic, sortMode]);
 
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
@@ -91,16 +128,55 @@ export function VideosList({ categoryId, initial }: Props) {
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <p className="font-mono text-[10px] tracking-[0.2em] text-muted-foreground uppercase">
           {videos.length} video{videos.length === 1 ? "" : "s"}
-          {videos.length > 1 && (
+          {videos.length > 1 && sortMode === "custom" && (
             <span className="ml-2 text-muted-foreground/60">
               · ドラッグで並び替え
             </span>
           )}
         </p>
-        <LinkFormDialog categoryId={categoryId} kind="video" />
+        <div className="flex items-center gap-1.5">
+          {/* Sort mode toggle: 日付順 (newest first) or カスタム順 (DnD). */}
+          <div
+            className="inline-flex items-center rounded-md border border-border/40 bg-background/30 p-0.5 font-mono text-[10px] tracking-widest uppercase"
+            role="radiogroup"
+            aria-label="並び順"
+          >
+            <button
+              type="button"
+              onClick={() => persistSort("date")}
+              role="radio"
+              aria-checked={sortMode === "date"}
+              className={
+                "inline-flex items-center gap-1 rounded-sm px-2 py-1 transition-colors " +
+                (sortMode === "date"
+                  ? "bg-[var(--neon-cyan)]/12 text-[var(--neon-cyan)]"
+                  : "text-muted-foreground hover:text-foreground")
+              }
+            >
+              <Calendar className="h-3 w-3" aria-hidden />
+              日付順
+            </button>
+            <button
+              type="button"
+              onClick={() => persistSort("custom")}
+              role="radio"
+              aria-checked={sortMode === "custom"}
+              className={
+                "inline-flex items-center gap-1 rounded-sm px-2 py-1 transition-colors " +
+                (sortMode === "custom"
+                  ? "bg-[var(--neon-cyan)]/12 text-[var(--neon-cyan)]"
+                  : "text-muted-foreground hover:text-foreground")
+              }
+            >
+              <ListOrdered className="h-3 w-3" aria-hidden />
+              カスタム
+            </button>
+          </div>
+          <LinkFormDialog categoryId={categoryId} kind="video" />
+        </div>
       </div>
 
       {videos.length === 0 ? (
@@ -111,10 +187,12 @@ export function VideosList({ categoryId, initial }: Props) {
           <p className="font-display text-foreground text-sm">動画未登録</p>
           <p className="text-muted-foreground max-w-md text-xs leading-relaxed">
             YouTube の URL を登録するとサムネイル付きで表示されます。
+            <br />
             その他の動画サイト URL もリンク表示できます。
           </p>
         </Card>
-      ) : (
+      ) : sortMode === "custom" ? (
+        // Custom (DnD-enabled) layout. Each card carries a drag handle.
         <DndContext
           sensors={sensors}
           collisionDetection={closestCenter}
@@ -132,6 +210,15 @@ export function VideosList({ categoryId, initial }: Props) {
             </ul>
           </SortableContext>
         </DndContext>
+      ) : (
+        // Date-sorted layout — DnD makes no sense here so render plain cards.
+        <ul className="grid gap-4 sm:grid-cols-2">
+          {videos.map((v) => (
+            <li key={v.id}>
+              <VideoCard video={v} onEdit={() => setEditTarget(v)} />
+            </li>
+          ))}
+        </ul>
       )}
 
       <LinkFormDialog
@@ -231,6 +318,15 @@ function VideoCard({
         >
           {video.title}
         </a>
+        {video.source === "discord" && (
+          <span
+            title="Discord から自動取り込み"
+            aria-label="Discord 由来"
+            className="grid h-5 w-5 shrink-0 place-items-center rounded-sm border border-indigo-400/40 bg-indigo-400/10 text-indigo-300"
+          >
+            <MessageCircle className="h-2.5 w-2.5" aria-hidden />
+          </span>
+        )}
         <LinkCardMenu link={video} onEdit={onEdit} />
       </div>
       {video.description && (

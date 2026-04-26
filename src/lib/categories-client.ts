@@ -95,6 +95,7 @@ export async function updateCategory(
     mitigation_sheet_url: string | null;
     discord_strategy_channel_id: string | null;
     discord_video_channel_id: string | null;
+    discord_import_enabled: boolean;
   }>,
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
   const supabase = createClient();
