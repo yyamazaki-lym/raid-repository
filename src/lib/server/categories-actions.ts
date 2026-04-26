@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { runDiscordImport } from "./discord-import";
 import {
   backfillPostedAtFromDiscord,
@@ -205,9 +206,57 @@ export async function backfillFirstClearFromExistingVideos(
  * raid-session date notifications and store them in
  * `schedule_past_sessions`. Triggered from the settings dialog (rare —
  * usually a one-shot to seed history, then occasionally for upkeep).
+ *
+ * Calls `revalidatePath("/")` on success so the schedule page picks up
+ * the new rows immediately without a hard reload.
  */
 export async function importPastScheduleFromDiscord(): Promise<ScheduleHistoryImportResult> {
-  return importDiscordScheduleHistory();
+  const result = await importDiscordScheduleHistory();
+  if (result.ok && result.inserted > 0) {
+    try {
+      revalidatePath("/");
+    } catch {
+      // best-effort
+    }
+  }
+  return result;
+}
+
+/**
+ * Server Action: peek at how many rows are currently stored in
+ * `schedule_past_sessions`. Surfaced in the settings dialog so the
+ * user can verify the DB read path is actually working when something
+ * looks off (e.g. import succeeded but rows don't appear on schedule).
+ */
+export async function countStoredPastSessions(): Promise<{
+  ok: boolean;
+  reason?: string;
+  count: number;
+  sampleRawDates: string[];
+}> {
+  const supabase = await createClient();
+  const { count, error: cErr } = await supabase
+    .from("schedule_past_sessions")
+    .select("raw_date", { count: "exact", head: true });
+  if (cErr) {
+    return {
+      ok: false,
+      reason: cErr.message,
+      count: 0,
+      sampleRawDates: [],
+    };
+  }
+  // Also pull a small sample so the user can eyeball the raw_date format.
+  const { data } = await supabase
+    .from("schedule_past_sessions")
+    .select("raw_date")
+    .order("parsed_date", { ascending: false })
+    .limit(5);
+  return {
+    ok: true,
+    count: count ?? 0,
+    sampleRawDates: (data ?? []).map((r) => r.raw_date as string),
+  };
 }
 
 /**

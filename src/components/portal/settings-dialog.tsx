@@ -9,6 +9,7 @@ import {
   History,
   Cloud,
   Loader2,
+  Database,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -29,7 +30,10 @@ import {
   setDiscordScheduleChannelId,
   setScheduleUrl,
 } from "@/lib/schedule-url-store";
-import { importPastScheduleFromDiscord } from "@/lib/server/categories-actions";
+import {
+  countStoredPastSessions,
+  importPastScheduleFromDiscord,
+} from "@/lib/server/categories-actions";
 
 // Inline copy of the Server Action result type — we can't re-export the
 // type from a "use server" module on the client side, and the shape is
@@ -63,6 +67,13 @@ export function SettingsDialog() {
   const [importing, startImport] = useTransition();
   const [importResult, setImportResult] =
     useState<ScheduleHistoryImportResult | null>(null);
+  const [counting, startCount] = useTransition();
+  const [storedInfo, setStoredInfo] = useState<{
+    ok: boolean;
+    count: number;
+    sampleRawDates: string[];
+    reason?: string;
+  } | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -120,6 +131,15 @@ export function SettingsDialog() {
             : "通知メッセージ未検出",
       );
       router.refresh();
+    });
+  };
+
+  const onCount = () => {
+    setStoredInfo(null);
+    startCount(async () => {
+      const r = await countStoredPastSessions();
+      setStoredInfo(r);
+      if (!r.ok) toast.error("件数取得失敗: " + (r.reason ?? "unknown"));
     });
   };
 
@@ -262,6 +282,55 @@ export function SettingsDialog() {
                   ) : (
                     <p className="text-rose-300">
                       エラー: {importResult.reason ?? "unknown"}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="flex flex-col gap-2 border-t border-border/30 pt-3">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={onCount}
+                disabled={counting}
+                className="self-start gap-1.5 font-mono text-[10px] tracking-widest uppercase"
+                title="schedule_past_sessions の現在の保存件数を確認（デバッグ用）"
+              >
+                {counting ? (
+                  <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
+                ) : (
+                  <Database className="h-3 w-3" aria-hidden />
+                )}
+                DB の保存件数を確認
+              </Button>
+              {storedInfo && (
+                <div className="flex flex-col gap-0.5 rounded-sm border border-border/40 bg-secondary/20 px-2.5 py-1.5 text-[11px] leading-relaxed">
+                  {storedInfo.ok ? (
+                    <>
+                      <p className="font-mono">
+                        DB 保存件数: <strong>{storedInfo.count}</strong>
+                      </p>
+                      {storedInfo.sampleRawDates.length > 0 && (
+                        <ul className="font-mono text-[10px] text-muted-foreground">
+                          <li>サンプル（新しい順）:</li>
+                          {storedInfo.sampleRawDates.map((s, i) => (
+                            <li key={i} className="break-words">
+                              ・{s}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      <p className="mt-1 text-muted-foreground text-[10px]">
+                        この件数はスケジュールページの「過去」に
+                        マージされる候補数です。0 なら保存されていない or
+                        SELECT が RLS で拒否されています。
+                      </p>
+                    </>
+                  ) : (
+                    <p className="text-rose-300">
+                      エラー: {storedInfo.reason ?? "unknown"}
                     </p>
                   )}
                 </div>

@@ -1,6 +1,7 @@
 import { CalendarX2, AlertTriangle } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { CommentPopover } from "./comment-popover";
+import { isJapaneseHoliday } from "@/lib/japanese-holidays";
 import type {
   Attendance,
   ScheduleComment,
@@ -202,6 +203,10 @@ function SessionRow({
   isPast?: boolean;
 }) {
   const decided = session.status === "DECISION";
+  // Japanese national holidays get a red date label — overrides the
+  // default and DECISION-cyan styling. Doesn't change the row background
+  // so the past/decided treatment still composes underneath.
+  const holiday = isJapaneseHoliday(session.date);
   return (
     <tr
       className={
@@ -218,14 +223,19 @@ function SessionRow({
         className="px-3 py-2 align-middle font-mono text-[12px] whitespace-nowrap text-foreground"
       >
         <div className="flex items-baseline gap-2">
-          {/* DECISION rows get a bold + accent date so the confirmed schedule
-              jumps out at a glance. The time stays unchanged. */}
+          {/* Date label color priority:
+                1. Holiday → red glow
+                2. DECISION → cyan glow + bold
+                3. default → foreground */}
           <span
             className={
-              decided
-                ? "font-bold text-[var(--neon-cyan)] drop-shadow-[0_0_4px_color-mix(in_oklch,var(--neon-cyan)_40%,transparent)]"
-                : ""
+              holiday
+                ? "font-bold text-rose-400 drop-shadow-[0_0_4px_color-mix(in_oklch,oklch(0.65_0.22_25)_40%,transparent)]"
+                : decided
+                  ? "font-bold text-[var(--neon-cyan)] drop-shadow-[0_0_4px_color-mix(in_oklch,var(--neon-cyan)_40%,transparent)]"
+                  : ""
             }
+            title={holiday ? "日本の祝日" : undefined}
           >
             {session.rawDate.split(" ")[0]}
           </span>
