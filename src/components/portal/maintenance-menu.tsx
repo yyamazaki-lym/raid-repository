@@ -6,6 +6,7 @@ import {
   Cloud,
   Loader2,
   Settings2,
+  Stethoscope,
   Timer,
   Trophy,
   X,
@@ -25,10 +26,12 @@ import {
 import {
   backfillFirstClearFromExistingVideos,
   backfillVideoDurations,
+  diagnoseYouTubeUrl,
   importDiscordNow,
   type BackfillResult,
   type DurationBackfillResult,
   type ImportNowItem,
+  type YouTubeDiagnosticResult,
 } from "@/lib/server/categories-actions";
 
 /**
@@ -40,12 +43,18 @@ import {
  * Each action displays its result in a shared popup region below the menu
  * button, with click-outside-to-dismiss and an explicit ✕ close.
  */
-type ActionKind = "discord" | "durations" | "firstClear" | "firstClearForce";
+type ActionKind =
+  | "discord"
+  | "durations"
+  | "firstClear"
+  | "firstClearForce"
+  | "diagnose";
 
 type Result =
   | { kind: "discord"; data: { items: ImportNowItem[] } }
   | { kind: "durations"; data: DurationBackfillResult }
-  | { kind: "firstClear"; data: BackfillResult; force: boolean };
+  | { kind: "firstClear"; data: BackfillResult; force: boolean }
+  | { kind: "diagnose"; data: YouTubeDiagnosticResult };
 
 export function MaintenanceMenu() {
   const router = useRouter();
@@ -111,6 +120,23 @@ export function MaintenanceMenu() {
           );
           setResult({ kind: "durations", data: r });
           router.refresh();
+          return;
+        }
+        if (kind === "diagnose") {
+          const url = window.prompt(
+            "診断する YouTube URL を入力してください：\n（既存動画の URL をコピペ → 各ステップの結果を表示）",
+            "https://www.youtube.com/watch?v=",
+          );
+          if (!url) return;
+          const r = await diagnoseYouTubeUrl(url);
+          if (r.durationSeconds || r.uploadDate) {
+            toast.success(
+              `取得成功: duration=${r.durationSeconds}s upload=${r.uploadDate?.slice(0, 10)}`,
+            );
+          } else {
+            toast.error("取得失敗 — 詳細はパネルで確認");
+          }
+          setResult({ kind: "diagnose", data: r });
           return;
         }
         // firstClear (NULL only) or firstClearForce
@@ -210,6 +236,19 @@ export function MaintenanceMenu() {
               </span>
             </div>
           </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            onClick={() => run("diagnose")}
+            className="flex cursor-pointer items-start gap-2"
+          >
+            <Stethoscope className="mt-0.5 h-3.5 w-3.5 shrink-0 text-zinc-300" aria-hidden />
+            <div className="flex flex-col gap-0.5">
+              <span className="text-sm">1件テスト（診断用）</span>
+              <span className="text-[10px] text-muted-foreground leading-snug">
+                単一 URL を fetch して取得結果＆失敗ステップを表示
+              </span>
+            </div>
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
 
@@ -236,6 +275,7 @@ export function MaintenanceMenu() {
           {result.kind === "firstClear" && (
             <FirstClearPanel data={result.data} force={result.force} />
           )}
+          {result.kind === "diagnose" && <DiagnosePanel data={result.data} />}
         </div>
       )}
     </div>
@@ -367,6 +407,82 @@ function FirstClearPanel({
           設定済み {data.alreadySet} ／ 該当なし {data.noMatch}
         </p>
       )}
+    </>
+  );
+}
+
+function DiagnosePanel({ data }: { data: YouTubeDiagnosticResult }) {
+  return (
+    <>
+      <p className="mb-2 pr-6 font-mono text-[10px] tracking-[0.2em] text-muted-foreground uppercase">
+        YouTube 診断
+      </p>
+      <p className="mb-2 break-all font-mono text-[10px] text-muted-foreground">
+        {data.url}
+      </p>
+      <ul className="flex flex-col gap-1 text-[11px] leading-relaxed">
+        <li className="flex items-baseline gap-2">
+          <span className="font-mono text-muted-foreground">duration</span>
+          <span className="font-mono text-foreground">
+            {data.durationSeconds === null
+              ? "—"
+              : `${data.durationSeconds}s`}
+          </span>
+        </li>
+        <li className="flex items-baseline gap-2">
+          <span className="font-mono text-muted-foreground">uploadDate</span>
+          <span className="font-mono text-foreground">
+            {data.uploadDate ?? "—"}
+          </span>
+        </li>
+      </ul>
+      <p className="mt-3 mb-1 font-mono text-[10px] tracking-[0.2em] text-muted-foreground uppercase">
+        試行ログ
+      </p>
+      <ul className="flex flex-col gap-1 text-[10px] leading-relaxed">
+        {data.attempts.map((a, i) => (
+          <li
+            key={i}
+            className="rounded-sm border border-border/40 bg-secondary/20 px-2 py-1 font-mono"
+          >
+            <div>
+              <span className="text-muted-foreground">{a.host}</span>
+              <span className="ml-2">
+                status=
+                <span
+                  className={
+                    typeof a.status === "number" && a.status === 200
+                      ? "text-emerald-300"
+                      : "text-rose-300"
+                  }
+                >
+                  {a.status}
+                </span>
+              </span>
+              {a.htmlSize !== null && (
+                <span className="ml-2 text-muted-foreground">
+                  size={a.htmlSize}
+                </span>
+              )}
+            </div>
+            <div>
+              length=
+              <span className={a.foundLength ? "text-emerald-300" : "text-rose-300"}>
+                {a.foundLength ? "OK" : "NONE"}
+              </span>
+              <span className="ml-2">
+                upload=
+                <span className={a.foundUpload ? "text-emerald-300" : "text-rose-300"}>
+                  {a.foundUpload ? "OK" : "NONE"}
+                </span>
+              </span>
+            </div>
+            {a.note && (
+              <div className="text-amber-300 break-words">{a.note}</div>
+            )}
+          </li>
+        ))}
+      </ul>
     </>
   );
 }

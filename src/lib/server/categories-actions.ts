@@ -1,7 +1,12 @@
 "use server";
 
 import { runDiscordImport } from "./discord-import";
-import { fetchYouTubeMeta, pmap } from "./youtube-duration";
+import {
+  fetchYouTubeMeta,
+  fetchYouTubeMetaWithDebug,
+  pmap,
+  type YouTubeMetaDebug,
+} from "./youtube-duration";
 import { isClearTitle } from "@/lib/clear-detection";
 import { createClient } from "@/lib/supabase/server";
 
@@ -246,6 +251,34 @@ export type DurationBackfillResult = {
   skippedNonYoutube: number;
 };
 
+export type YouTubeDiagnosticResult = {
+  url: string;
+  durationSeconds: number | null;
+  uploadDate: string | null;
+  attempts: YouTubeMetaDebug["attempts"];
+};
+
+/**
+ * Server Action: fetch one YouTube URL with full debug instrumentation.
+ *
+ * Surfaced in the maintenance menu so when the bulk backfill fails on
+ * Vercel (consent gate, bot detection, IP-based block, regex miss), the
+ * user can pick any one of their stored URLs and see exactly which step
+ * failed — host attempted, HTTP status, html size, whether
+ * lengthSeconds / uploadDate matched.
+ */
+export async function diagnoseYouTubeUrl(
+  url: string,
+): Promise<YouTubeDiagnosticResult> {
+  const { meta, debug } = await fetchYouTubeMetaWithDebug(url);
+  return {
+    url,
+    durationSeconds: meta.durationSeconds,
+    uploadDate: meta.uploadDate,
+    attempts: debug.attempts,
+  };
+}
+
 /**
  * Server Action: walk every video link missing `duration_seconds` AND/OR
  * `posted_at` and try to fill both via a single YouTube scrape per row.
@@ -269,9 +302,16 @@ export async function backfillVideoDurations(): Promise<DurationBackfillResult> 
     .eq("kind", "video")
     .or("duration_seconds.is.null,posted_at.is.null");
   if (error || !data) {
+    const msg = error?.message ?? "unknown";
+    // Most common failure: schema not re-run after the posted_at column
+    // was added. Surface a concrete remediation hint.
+    const hint =
+      msg.includes("posted_at") || msg.includes("duration_seconds")
+        ? " — Supabase の SQL Editor で supabase/schema.sql を再実行してください"
+        : "";
     return {
       ok: false,
-      reason: "video links fetch failed: " + (error?.message ?? "unknown"),
+      reason: "video links fetch failed: " + msg + hint,
       scanned: 0,
       filled: 0,
       failed: 0,
