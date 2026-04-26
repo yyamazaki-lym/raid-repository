@@ -75,7 +75,8 @@ export default function RootLayout({
           className="bg-scanlines pointer-events-none fixed inset-0 -z-10"
         />
 
-        <TooltipProvider delayDuration={150}>
+        {/* Base UI Tooltip uses `delay` (formerly Radix's `delayDuration`). */}
+        <TooltipProvider delay={150}>
           <div className="relative z-0 flex min-h-screen flex-col">
             {children}
           </div>
