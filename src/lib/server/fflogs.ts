@@ -494,6 +494,11 @@ function extractTimestampMs(ctx: string): number | null {
     if (Number.isFinite(t)) return t;
   }
   // 4. Japanese: 2026年4月17日 [HH:MM]
+  // 1.9.15 bugfix: explicitly mark as JST (+09:00). Without a TZ
+  // suffix, `Date.parse()` interprets the string as LOCAL time (UTC
+  // on Vercel), which skews evening-JST raids by 9h and pushes their
+  // JST calendar date into the NEXT day — silently producing wrong
+  // matches in the auto-link pipeline.
   const jp = ctx.match(
     /(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日(?:\s*(\d{1,2}):(\d{2}))?/,
   );
@@ -503,23 +508,30 @@ function extractTimestampMs(ctx: string): number | null {
     const d = jp[3]!.padStart(2, "0");
     const h = (jp[4] ?? "0").padStart(2, "0");
     const mi = (jp[5] ?? "0").padStart(2, "0");
-    const t = Date.parse(`${y}-${mo}-${d}T${h}:${mi}:00`);
+    const t = Date.parse(`${y}-${mo}-${d}T${h}:${mi}:00+09:00`);
     if (Number.isFinite(t)) return t;
   }
-  // 5. English: April 17, 2026 12:33 AM
+  // 5. English: April 17, 2026 12:33 AM (assume JST since the page is
+  // requested with Accept-Language: ja-JP and FFLogs date strings on
+  // Japanese-locale pages are rendered in JST per user's profile).
   const en = ctx.match(
     /([A-Z][a-z]+\s+\d{1,2},\s+\d{4}(?:\s+\d{1,2}:\d{2}\s*(?:AM|PM)?)?)/,
   );
   if (en) {
-    const t = Date.parse(en[1]!);
+    const t = Date.parse(en[1]! + " +0900");
     if (Number.isFinite(t)) return t;
   }
-  // 6. ISO-ish: 2026-04-17 / 2026/04/17 [HH:MM]
+  // 6. ISO-ish: 2026-04-17 / 2026/04/17 [HH:MM] — assume JST as above.
   const iso = ctx.match(
-    /(\d{4}[-/]\d{1,2}[-/]\d{1,2}(?:\s+\d{1,2}:\d{2})?)/,
+    /(\d{4})[-/](\d{1,2})[-/](\d{1,2})(?:\s+(\d{1,2}):(\d{2}))?/,
   );
   if (iso) {
-    const t = Date.parse(iso[1]!);
+    const y = iso[1]!;
+    const mo = iso[2]!.padStart(2, "0");
+    const d = iso[3]!.padStart(2, "0");
+    const h = (iso[4] ?? "0").padStart(2, "0");
+    const mi = (iso[5] ?? "0").padStart(2, "0");
+    const t = Date.parse(`${y}-${mo}-${d}T${h}:${mi}:00+09:00`);
     if (Number.isFinite(t)) return t;
   }
   // 7. Any standalone Unix timestamp number in context (10 or 13
@@ -656,6 +668,14 @@ export type FflogsLinkDetail = {
   videoDate?: string;
   /** JST calendar date of the FFLogs report start time. */
   reportDate?: string;
+  /** Hours between the video's expected raid moment (titleDate at 22:00
+   * JST) and the report's startMs. Negative = report earlier, positive
+   * = report later. Helps the user verify the match is sensible. */
+  diffHours?: number;
+  /** Report's start time formatted in JST (YYYY-MM-DD HH:mm). Surfaces
+   * the actual raid moment, not just the calendar date — lets the user
+   * spot timezone / parsing bugs. */
+  reportStartJst?: string;
 };
 
 export type FflogsLinkResult = {
@@ -1470,13 +1490,29 @@ async function linkReportsToVideos(
   const details: FflogsLinkDetail[] = [];
   let matched = 0;
 
-  // 1.9.9 scoring: title-date is REQUIRED (no posted_at fallback).
-  //   Date check: STRICT — same JST calendar day only.
-  //   Content check: bilingual group classifier; reject only on
-  //   confirmed mismatch (different known content groups).
+  // 1.9.15 scoring: ±X時間ウィンドウ方式 (user request — 1.9.9 の "完全
+  // 同 JST 日" だと深夜またぎ raid (23:30開始 → 翌日0:30) が JST 日付的
+  // にズレて誤マッチを生む可能性があった)。
   //
-  // Tie-breaker between same-day candidates: content-match score.
-  const SMALL_PENALTY = 6 * 60 * 60 * 1000; // ambiguous content nudge
+  // 各動画のタイトル日付に対して、JST のその日の RAID_HOUR_JST 時を
+  // 「想定 raid 開始時刻」として ms 化。報告書の startMs との時間差を
+  // 計算し、MATCH_WINDOW_HOURS 以内なら候補。コンテンツ照合は別途。
+  //
+  // RAID_HOUR_JST=22 (22:00 JST 想定 — 多くの固定の通常 raid 時刻)、
+  // MATCH_WINDOW_HOURS=12 (前後12h まで許容)。
+  // 連続日 (24h 差) は 12h ウィンドウからはみ出るので別の日の report が
+  // 紛れ込まない。深夜またぎは ±2-4h 程度で吸収される。
+  const RAID_HOUR_JST = 22;
+  const MATCH_WINDOW_HOURS = 12;
+  const HOUR_MS = 60 * 60 * 1000;
+  const SMALL_PENALTY = 6 * HOUR_MS; // ambiguous content nudge (1/2 window)
+  /** Returns the UTC ms for `RAID_HOUR_JST:00:00 JST` on the given title date. */
+  const expectedRaidMs = (d: {
+    y: number;
+    m: number;
+    d: number;
+  }): number =>
+    Date.UTC(d.y, d.m - 1, d.d, RAID_HOUR_JST - 9, 0, 0);
   const scoreCandidate = (
     video: {
       titleDate: { y: number; m: number; d: number };
@@ -1484,33 +1520,42 @@ async function linkReportsToVideos(
       title: string | null;
     },
     report: FflogsReport,
-  ) => {
-    const reportDate = jstCalendarDate(report.startMs);
-    const days = daysApart(video.titleDate, reportDate);
-    if (days !== 0) return Infinity;
+  ): { score: number; diffHours: number } => {
+    const expectedMs = expectedRaidMs(video.titleDate);
+    const diffMs = Math.abs(report.startMs - expectedMs);
+    const diffHours = diffMs / HOUR_MS;
+    if (diffHours > MATCH_WINDOW_HOURS) {
+      return { score: Infinity, diffHours };
+    }
     const mismatch = contentMismatchPenalty(
       video.categoryName,
       video.title,
       report.zoneName,
       report.title,
     );
-    if (mismatch === 1) return Infinity;
-    return mismatch === 0.5 ? SMALL_PENALTY : 0;
+    if (mismatch === 1) return { score: Infinity, diffHours };
+    // Score = diff in ms (closer = better). Add SMALL_PENALTY when
+    // content classification is ambiguous so confidently-matched
+    // candidates win ties even at slightly higher distance.
+    const penalty = mismatch === 0.5 ? SMALL_PENALTY : 0;
+    return { score: diffMs + penalty, diffHours };
   };
 
-  // Build all candidate (video, report, score) tuples that fit the
-  // window, then sort globally by score and assign greedily. Each
-  // video and report can be claimed at most once.
+  // Build all candidate (video, report, score, diffHours) tuples that
+  // fit the window, then sort globally by score and assign greedily.
   type Pair = {
     video: (typeof sortedVideos)[number];
     report: FflogsReport;
     score: number;
+    diffHours: number;
   };
   const pairs: Pair[] = [];
   for (const v of sortedVideos) {
     for (const r of reports) {
-      const score = scoreCandidate(v, r);
-      if (Number.isFinite(score)) pairs.push({ video: v, report: r, score });
+      const { score, diffHours } = scoreCandidate(v, r);
+      if (Number.isFinite(score)) {
+        pairs.push({ video: v, report: r, score, diffHours });
+      }
     }
   }
   pairs.sort((a, b) => a.score - b.score);
@@ -1532,12 +1577,26 @@ async function linkReportsToVideos(
     usedReports.add(pair.report.id);
     usedVideos.add(vId);
     matched += 1;
-    // Re-use the same titleDate that scoring used (already cached in
-    // pair.video.titleDate). Falls back to extracting again if absent.
+    // Re-use the same titleDate that scoring used.
     const videoTitleDate = pair.video.titleDate;
     const reportJst = jstCalendarDate(pair.report.startMs);
     const fmt = (d: { y: number; m: number; d: number } | null) =>
       d ? `${d.y}-${String(d.m).padStart(2, "0")}-${String(d.d).padStart(2, "0")}` : undefined;
+    // Format report.startMs in JST (YYYY-MM-DD HH:mm) — applies the
+    // +9h shift then reads the UTC fields, same approach as
+    // jstCalendarDate.
+    const formatJst = (ms: number) => {
+      const dt = new Date(ms + 9 * HOUR_MS);
+      const Y = dt.getUTCFullYear();
+      const M = String(dt.getUTCMonth() + 1).padStart(2, "0");
+      const D = String(dt.getUTCDate()).padStart(2, "0");
+      const h = String(dt.getUTCHours()).padStart(2, "0");
+      const mi = String(dt.getUTCMinutes()).padStart(2, "0");
+      return `${Y}-${M}-${D} ${h}:${mi}`;
+    };
+    // Signed hour difference (negative = report before expected).
+    const expectedMs = expectedRaidMs(videoTitleDate);
+    const signedDiffHours = (pair.report.startMs - expectedMs) / HOUR_MS;
     details.push({
       kind: "video",
       label: pair.video.title as string,
@@ -1550,6 +1609,8 @@ async function linkReportsToVideos(
             " (posted_at)"
           : undefined,
       reportDate: fmt(reportJst),
+      reportStartJst: formatJst(pair.report.startMs),
+      diffHours: Math.round(signedDiffHours * 10) / 10,
     });
   }
 
@@ -1659,6 +1720,18 @@ async function linkReportsToSessions(
     const reportJst = jstCalendarDate(pair.report.startMs);
     const fmt = (d: { y: number; m: number; d: number }) =>
       `${d.y}-${String(d.m).padStart(2, "0")}-${String(d.d).padStart(2, "0")}`;
+    const HOUR_MS_LOCAL = 60 * 60 * 1000;
+    const formatJstSession = (ms: number) => {
+      const dt = new Date(ms + 9 * HOUR_MS_LOCAL);
+      const Y = dt.getUTCFullYear();
+      const M = String(dt.getUTCMonth() + 1).padStart(2, "0");
+      const D = String(dt.getUTCDate()).padStart(2, "0");
+      const h = String(dt.getUTCHours()).padStart(2, "0");
+      const mi = String(dt.getUTCMinutes()).padStart(2, "0");
+      return `${Y}-${M}-${D} ${h}:${mi}`;
+    };
+    const signedDiffHours =
+      (pair.report.startMs - pair.session.tMs) / HOUR_MS_LOCAL;
     details.push({
       kind: "session",
       label: sKey,
@@ -1666,6 +1739,8 @@ async function linkReportsToSessions(
       reportUrl: logsUrl,
       videoDate: fmt(sessionJst),
       reportDate: fmt(reportJst),
+      reportStartJst: formatJstSession(pair.report.startMs),
+      diffHours: Math.round(signedDiffHours * 10) / 10,
     });
   }
 

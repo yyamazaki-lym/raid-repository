@@ -14,6 +14,9 @@ import {
   BarChart3,
   Timer,
   Trophy,
+  Trash2,
+  CheckSquare,
+  Square,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -38,6 +41,7 @@ import { Card } from "@/components/ui/card";
 import { LinkFormDialog } from "@/components/portal/link-form-dialog";
 import { LinkCardMenu } from "@/components/portal/link-card-menu";
 import {
+  deleteCategoryLink,
   setCategoryLinkOrder,
   useRealtimeCategoryLinks,
 } from "@/lib/category-links-client";
@@ -72,6 +76,21 @@ export function VideosList({ categoryId, initial, firstClearAt }: Props) {
   const live = useRealtimeCategoryLinks(categoryId, "video", initial);
   const [editTarget, setEditTarget] = useState<CategoryLink | null>(null);
   const [optimistic, setOptimistic] = useState<string[] | null>(null);
+  // Multi-select state (1.9.15): toggling on switches each card into a
+  // selectable mode. Card body click stops opening YouTube; instead it
+  // toggles the row's selection. Header gains a delete button when
+  // selection is non-empty.
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const toggleSelected = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
   // ?focus=<videoId> — set when navigating from the schedule page's
   // past date cell. Used to scroll the matching card into view and
   // briefly highlight it.
@@ -236,7 +255,82 @@ export function VideosList({ categoryId, initial, firstClearAt }: Props) {
             </span>
           )}
         </div>
-        <div className="flex items-center gap-1.5">
+        <div className="flex flex-wrap items-center gap-1.5">
+          {/* 複数選択モード切替 (1.9.15) — オフ時はカード本体クリックが
+              YouTube 再生 / 編集など通常動作。オン時はカード上に
+              チェックボックスが現れ、クリックで選択切替。複数選択時は
+              ヘッダー右端に「N 件削除」ボタンが追加表示される */}
+          <button
+            type="button"
+            onClick={() => {
+              setSelectMode((m) => {
+                if (m) setSelectedIds(new Set());
+                return !m;
+              });
+            }}
+            className={
+              "inline-flex h-7 items-center gap-1 rounded-md border px-2 font-mono text-[10px] tracking-[0.18em] uppercase transition-colors " +
+              (selectMode
+                ? "border-[var(--neon-cyan)]/60 bg-[var(--neon-cyan)]/12 text-[var(--neon-cyan)]"
+                : "border-border/40 bg-background/30 text-muted-foreground hover:text-foreground")
+            }
+            title={
+              selectMode
+                ? "選択モードを解除 (選択もリセット)"
+                : "複数選択モードに入る"
+            }
+            aria-pressed={selectMode}
+          >
+            {selectMode ? (
+              <CheckSquare className="h-3 w-3" aria-hidden />
+            ) : (
+              <Square className="h-3 w-3" aria-hidden />
+            )}
+            選択
+          </button>
+          {selectMode && selectedIds.size > 0 && (
+            <button
+              type="button"
+              disabled={bulkDeleting}
+              onClick={async () => {
+                const count = selectedIds.size;
+                if (
+                  !window.confirm(
+                    `選択した ${count} 件の動画を削除します。元に戻せません。よろしいですか？`,
+                  )
+                ) {
+                  return;
+                }
+                setBulkDeleting(true);
+                const ids = [...selectedIds];
+                const results = await Promise.all(
+                  ids.map((id) => deleteCategoryLink(id)),
+                );
+                const failed = results
+                  .map((r, i) => ({ r, id: ids[i]! }))
+                  .filter((x) => !x.r.ok);
+                setBulkDeleting(false);
+                if (failed.length === 0) {
+                  toast.success(`${count} 件削除しました`);
+                  setSelectedIds(new Set());
+                  setSelectMode(false);
+                } else {
+                  const okCount = count - failed.length;
+                  toast.error(
+                    `${okCount} 件削除、${failed.length} 件失敗: ${failed[0]?.r.ok === false ? failed[0].r.reason : ""}`,
+                  );
+                  setSelectedIds(
+                    new Set(failed.map((x) => x.id)),
+                  );
+                }
+              }}
+              className="inline-flex h-7 items-center gap-1 rounded-md border border-rose-400/60 bg-rose-400/10 px-2 font-mono text-[10px] tracking-[0.18em] text-rose-200 uppercase transition-colors hover:border-rose-400/80 hover:bg-rose-400/20 disabled:opacity-50"
+              title="選択した動画を削除"
+            >
+              <Trash2 className="h-3 w-3" aria-hidden />
+              {bulkDeleting ? "削除中…" : `${selectedIds.size} 件削除`}
+            </button>
+          )}
           {/* Sort mode toggle: 日付順 (newest first) or カスタム順 (DnD). */}
           <div
             className="inline-flex items-center rounded-md border border-border/40 bg-background/30 p-0.5 font-mono text-[10px] tracking-[0.18em] uppercase"
@@ -306,6 +400,9 @@ export function VideosList({ categoryId, initial, firstClearAt }: Props) {
                   onEdit={() => setEditTarget(v)}
                   focused={v.id === focusId}
                   refIfFocused={v.id === focusId ? focusedRef : null}
+                  selectMode={selectMode}
+                  selected={selectedIds.has(v.id)}
+                  onToggleSelect={() => toggleSelected(v.id)}
                 />
               ))}
             </ul>
@@ -324,7 +421,13 @@ export function VideosList({ categoryId, initial, firstClearAt }: Props) {
                   : ""
               }
             >
-              <VideoCard video={v} onEdit={() => setEditTarget(v)} />
+              <VideoCard
+                video={v}
+                onEdit={() => setEditTarget(v)}
+                selectMode={selectMode}
+                selected={selectedIds.has(v.id)}
+                onToggleSelect={() => toggleSelected(v.id)}
+              />
             </li>
           ))}
         </ul>
@@ -348,11 +451,17 @@ function SortableVideoCard({
   onEdit,
   focused = false,
   refIfFocused = null,
+  selectMode = false,
+  selected = false,
+  onToggleSelect,
 }: {
   video: CategoryLink;
   onEdit: () => void;
   focused?: boolean;
   refIfFocused?: React.RefObject<HTMLLIElement | null> | null;
+  selectMode?: boolean;
+  selected?: boolean;
+  onToggleSelect?: () => void;
 }) {
   const {
     attributes,
@@ -391,7 +500,14 @@ function SortableVideoCard({
           : ""
       }
     >
-      <VideoCard video={video} onEdit={onEdit} dragListeners={listeners} />
+      <VideoCard
+        video={video}
+        onEdit={onEdit}
+        dragListeners={listeners}
+        selectMode={selectMode}
+        selected={selected}
+        onToggleSelect={onToggleSelect}
+      />
     </li>
   );
 }
@@ -400,10 +516,16 @@ function VideoCard({
   video,
   onEdit,
   dragListeners,
+  selectMode = false,
+  selected = false,
+  onToggleSelect,
 }: {
   video: CategoryLink;
   onEdit: () => void;
   dragListeners?: ReturnType<typeof useSortable>["listeners"];
+  selectMode?: boolean;
+  selected?: boolean;
+  onToggleSelect?: () => void;
 }) {
   const ytId = parseYouTubeId(video.url);
   // safeHref returns undefined for non-http(s) values, which renders the
@@ -412,7 +534,14 @@ function VideoCard({
   const videoHref = safeHref(video.url);
   const logsHref = safeHref(video.logsUrl);
   return (
-    <Card className="glass neon-edge group flex flex-col gap-2 overflow-hidden p-0 transition-transform hover:-translate-y-0.5">
+    <Card
+      className={
+        "glass neon-edge group flex flex-col gap-2 overflow-hidden p-0 transition-all hover:-translate-y-0.5 " +
+        (selected
+          ? "ring-2 ring-rose-400/70 ring-offset-2 ring-offset-background"
+          : "")
+      }
+    >
       <div className="relative">
         {ytId ? (
           <YouTubePreview id={ytId} url={video.url} title={video.title} />
@@ -432,8 +561,48 @@ function VideoCard({
           </a>
         )}
 
+        {/* 選択モード中はサムネイル左上に大きめのチェックボックスを
+            表示。サムネイル全体をクリックすると選択トグルになる。 */}
+        {selectMode && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              onToggleSelect?.();
+            }}
+            aria-pressed={selected}
+            aria-label={
+              selected
+                ? `${video.title} の選択を解除`
+                : `${video.title} を選択`
+            }
+            className={
+              "absolute inset-0 z-20 flex items-start justify-end p-3 transition-colors " +
+              (selected
+                ? "bg-rose-400/15"
+                : "bg-black/0 hover:bg-black/20")
+            }
+          >
+            <span
+              className={
+                "inline-flex h-7 w-7 items-center justify-center rounded-md border-2 backdrop-blur-sm transition-colors " +
+                (selected
+                  ? "border-rose-400 bg-rose-400/80 text-white"
+                  : "border-white/70 bg-black/50 text-white/0")
+              }
+            >
+              {selected ? (
+                <CheckSquare className="h-4 w-4" aria-hidden />
+              ) : (
+                <Square className="h-4 w-4 opacity-90" aria-hidden />
+              )}
+            </span>
+          </button>
+        )}
+
         {/* Drag handle floats over the top-left corner of the thumbnail. */}
-        {dragListeners && (
+        {dragListeners && !selectMode && (
           <button
             type="button"
             {...dragListeners}
