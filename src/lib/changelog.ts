@@ -19,6 +19,14 @@ export type ReleaseEntry = {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    version: "1.5.4",
+    date: "2026-04-27",
+    notes: [
+      "メモ既存日の紫ドットをクリックでもポップオーバーが開くように（日付ラベル / ドットの両方がトリガー）",
+      "メモ削除の確認ダイアログをページ中央に表示（ブラウザ標準 confirm を撤廃 → カスタムモーダル）",
+    ],
+  },
+  {
     version: "1.5.3",
     date: "2026-04-27",
     notes: [

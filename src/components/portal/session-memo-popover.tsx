@@ -1,6 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from "react";
 import { createPortal } from "react-dom";
 import {
   MessageSquarePlus,
@@ -49,14 +55,35 @@ type Props = {
   children: React.ReactNode;
 };
 
-export function SessionMemoPopover({
-  rawDate,
-  displayDate,
-  memos,
-  onRefresh,
-  children,
-}: Props) {
+/**
+ * Imperative handle exposed via `forwardRef` so siblings (e.g. the
+ * memo-count dot rendered outside this component's wrapper) can open
+ * the popover without lifting state into the parent. Keeps the
+ * popover self-contained while still allowing remote triggers.
+ */
+export type SessionMemoPopoverHandle = {
+  open: () => void;
+  close: () => void;
+  toggle: () => void;
+};
+
+export const SessionMemoPopover = forwardRef<
+  SessionMemoPopoverHandle,
+  Props
+>(function SessionMemoPopover(
+  { rawDate, displayDate, memos, onRefresh, children },
+  handleRef,
+) {
   const [open, setOpen] = useState(false);
+  useImperativeHandle(
+    handleRef,
+    () => ({
+      open: () => setOpen(true),
+      close: () => setOpen(false),
+      toggle: () => setOpen((v) => !v),
+    }),
+    [],
+  );
   const popupRef = useRef<HTMLDivElement | null>(null);
   const wrapperRef = useRef<HTMLSpanElement | null>(null);
   const [coords, setCoords] = useState<{ top: number; left: number } | null>(
@@ -175,30 +202,55 @@ export function SessionMemoPopover({
         )}
     </span>
   );
-}
+});
 
 /**
  * Tiny purple dot indicator. Parent renders this wherever it wants
  * (e.g. trailing the time text rather than the date), so the visual
  * cue and the click-to-edit affordance can sit in different spots.
+ *
+ * When given an `onClick`, renders as a button — typically wired to
+ * `popoverRef.current?.open()` so clicking the dot opens the same
+ * popover that the date label opens. The button gets a hit-target
+ * larger than the visual dot (extra padding) so taps work on touch.
  */
 export function SessionMemoDot({
   count,
   className = "",
+  onClick,
 }: {
   count: number;
   className?: string;
+  onClick?: () => void;
 }) {
   if (count <= 0) return null;
+  const dotClass =
+    "inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--neon-violet)] shadow-[0_0_6px_var(--neon-violet)]";
+  if (!onClick) {
+    return (
+      <span
+        aria-label={`メモ ${count} 件`}
+        title={`メモ ${count} 件`}
+        className={`inline-flex items-center ${dotClass} ${className}`}
+      />
+    );
+  }
   return (
-    <span
-      aria-label={`メモ ${count} 件`}
-      title={`メモ ${count} 件`}
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+      aria-label={`メモ ${count} 件 を開く`}
+      title={`メモ ${count} 件（クリックで開く）`}
       className={
-        "inline-flex h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--neon-violet)] shadow-[0_0_6px_var(--neon-violet)] " +
+        "inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-[var(--neon-violet)]/15 " +
         className
       }
-    />
+    >
+      <span aria-hidden className={dotClass} />
+    </button>
   );
 }
 
@@ -215,6 +267,12 @@ function MemoList({
   const [editingBody, setEditingBody] = useState("");
   const [editingAuthor, setEditingAuthor] = useState("");
   const [busy, setBusy] = useState(false);
+  // Holds the memo currently pending delete-confirmation. `null` =
+  // nothing pending. Replaces `window.confirm` (which renders at the
+  // top of the viewport in some browsers) with a Portal-rendered
+  // overlay centered on screen.
+  const [pendingDelete, setPendingDelete] =
+    useState<ScheduleSessionMemo | null>(null);
 
   // Compose state for adding a new memo. Author name initialized
   // from localStorage so returning users don't retype their name.
@@ -275,9 +333,15 @@ function MemoList({
     toast.success("更新しました");
     if (onRefresh) void onRefresh();
   };
-  const onDelete = async (m: ScheduleSessionMemo) => {
-    if (!window.confirm("このメモを削除しますか？")) return;
+  const requestDelete = (m: ScheduleSessionMemo) => setPendingDelete(m);
+  const cancelDelete = () => setPendingDelete(null);
+  const confirmDelete = async () => {
+    if (!pendingDelete) return;
+    const m = pendingDelete;
+    setBusy(true);
     const result = await deleteScheduleMemo(m.id);
+    setBusy(false);
+    setPendingDelete(null);
     if (!result.ok) {
       toast.error("削除失敗: " + result.reason);
       return;
@@ -361,7 +425,7 @@ function MemoList({
                       </button>
                       <button
                         type="button"
-                        onClick={() => onDelete(m)}
+                        onClick={() => requestDelete(m)}
                         aria-label="削除"
                         title="削除"
                         className="inline-flex h-5 w-5 items-center justify-center rounded text-rose-300 hover:bg-rose-500/15 hover:text-rose-200"
@@ -409,6 +473,109 @@ function MemoList({
           >
             <Send className="h-3 w-3" aria-hidden />
             投稿
+          </button>
+        </div>
+      </div>
+      {/* Centered delete-confirmation modal. Portal'd to document.body
+          so the parent popover's clipping / coordinate frame doesn't
+          affect placement. `inset-0` + flex center → reliably centered
+          regardless of scroll position. Replaces `window.confirm`
+          which renders at the top of the viewport in some browsers. */}
+      {pendingDelete &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <DeleteConfirmModal
+            memo={pendingDelete}
+            busy={busy}
+            onCancel={cancelDelete}
+            onConfirm={confirmDelete}
+          />,
+          document.body,
+        )}
+    </div>
+  );
+}
+
+/**
+ * Centered modal asking the user to confirm a memo deletion. Esc to
+ * cancel, click-on-backdrop to cancel. Stops mousedown propagation on
+ * the panel itself so the parent popover's outside-click handler
+ * doesn't close the popover behind the modal.
+ */
+function DeleteConfirmModal({
+  memo,
+  busy,
+  onCancel,
+  onConfirm,
+}: {
+  memo: ScheduleSessionMemo;
+  busy: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onCancel();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onCancel]);
+
+  // Truncate the memo body for the prompt — long memos shouldn't blow
+  // out the modal, but a short preview confirms which one is being
+  // deleted. 120 chars is enough for context without dominating.
+  const preview =
+    memo.body.length > 120 ? memo.body.slice(0, 120) + "…" : memo.body;
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="メモ削除の確認"
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-background/60 p-4 backdrop-blur-sm"
+      onMouseDown={(e) => {
+        // Click on backdrop = cancel. Stop here so the parent popover
+        // doesn't also close on the same click.
+        if (e.target === e.currentTarget) {
+          e.stopPropagation();
+          onCancel();
+        }
+      }}
+    >
+      <div
+        onMouseDown={(e) => e.stopPropagation()}
+        className="glass-popup w-full max-w-sm rounded-md border border-rose-400/45 p-4 shadow-[0_8px_32px_-12px_rgba(244,63,94,0.55)]"
+      >
+        <header className="mb-2 flex items-center gap-2">
+          <Trash2 className="h-4 w-4 text-rose-300" aria-hidden />
+          <p className="font-mono text-[11px] tracking-[0.22em] text-rose-300 uppercase">
+            メモを削除しますか？
+          </p>
+        </header>
+        <p className="mb-3 rounded-sm border border-border/40 bg-secondary/20 px-2 py-1.5 text-[11px] leading-relaxed whitespace-pre-wrap break-words text-foreground/85">
+          {preview || "（本文なし）"}
+        </p>
+        <p className="mb-3 text-[10px] text-muted-foreground">
+          削除すると元に戻せません。
+        </p>
+        <div className="flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={busy}
+            className="inline-flex items-center gap-1 rounded border border-border/50 px-3 py-1.5 font-mono text-[10px] tracking-widest text-muted-foreground uppercase hover:bg-secondary/60 hover:text-foreground"
+          >
+            <X className="h-3 w-3" aria-hidden />
+            キャンセル
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={busy}
+            className="inline-flex items-center gap-1 rounded border border-rose-400/60 bg-rose-500/15 px-3 py-1.5 font-mono text-[10px] tracking-widest text-rose-200 uppercase transition-colors hover:bg-rose-500/25 disabled:opacity-60"
+          >
+            <Trash2 className="h-3 w-3" aria-hidden />
+            削除
           </button>
         </div>
       </div>

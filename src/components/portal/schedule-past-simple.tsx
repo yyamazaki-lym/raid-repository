@@ -1,5 +1,6 @@
 "use client";
 
+import { useRef } from "react";
 import Link from "next/link";
 import { BarChart3, Film } from "lucide-react";
 import { Card } from "@/components/ui/card";
@@ -17,6 +18,7 @@ import type { SessionVideoLink } from "@/lib/server/session-video-link";
 import {
   SessionMemoDot,
   SessionMemoPopover,
+  type SessionMemoPopoverHandle,
 } from "./session-memo-popover";
 
 // Stable reference for the realtime hook's initial param. Passing `[]`
@@ -102,6 +104,10 @@ function DateChip({
     session.rawDate,
     EMPTY_MEMOS,
   );
+  // Ref to the popover so the (separately-rendered) memo dot can
+  // open it. Keeping the dot outside the popover wrapper preserves
+  // the chip's left-to-right reading order: date → icons → dot.
+  const popoverRef = useRef<SessionMemoPopoverHandle>(null);
   const holiday = isJapaneseHoliday(session.date, holidays);
   const holidayName = holiday
     ? getJapaneseHolidayName(session.date, holidays)
@@ -155,6 +161,7 @@ function DateChip({
           line-height — earlier two-span layout (different text sizes)
           made the optical center drift. */}
       <SessionMemoPopover
+        ref={popoverRef}
         rawDate={session.rawDate}
         displayDate={`${monthDay}（${session.dayOfWeek}）`}
         memos={memos}
@@ -187,7 +194,11 @@ function DateChip({
           <BarChart3 className="h-2.5 w-2.5" aria-hidden />
         </a>
       )}
-      <SessionMemoDot count={memos.length} className="ml-0.5" />
+      <SessionMemoDot
+        count={memos.length}
+        className="ml-0.5"
+        onClick={() => popoverRef.current?.open()}
+      />
     </li>
   );
 }
