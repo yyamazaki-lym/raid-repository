@@ -533,8 +533,23 @@ export function SettingsDialog() {
               <p className="text-muted-foreground/80 text-[10px] leading-relaxed">
                 サーバー側で <code className="font-mono">FFLOGS_API_KEY</code>
                 {" "}環境変数の設定が必要（Vercel ダッシュボード →
-                Settings → Environment Variables）。未設定だと
-                「FFLOGS_API_KEY 未設定」と表示されます。
+                Settings → Environment Variables → 設定後 redeploy）。
+              </p>
+              <p className="text-muted-foreground/80 text-[10px] leading-relaxed">
+                <strong>キーの取得元:</strong>
+                {" "}
+                <a
+                  href="https://www.fflogs.com/profile"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[var(--neon-cyan)] underline decoration-dotted underline-offset-2 hover:text-[var(--neon-cyan)]/85"
+                >
+                  fflogs.com/profile
+                </a>
+                {" "}の <strong>Web API</strong> セクション。
+                <br />
+                ※ <strong>v1 Public API key</strong> を使用（v2 OAuth の
+                client_id / client_secret ではなく、シンプルな英数字 1 行のキー）。
               </p>
             </div>
 

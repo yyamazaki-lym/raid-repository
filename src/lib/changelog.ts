@@ -19,6 +19,16 @@ export type ReleaseEntry = {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    version: "1.6.1",
+    date: "2026-04-27",
+    notes: [
+      "FFLogs エラーメッセージを改善 — 401 (Invalid key) 時に「Vercel Settings → Environment Variables で v1 Web API キーを確認してください」と具体的に表示",
+      "FFLogs 401: v1 Public API key が必要（v2 OAuth の client_id/secret は不可）。設定ダイアログにキーの取得元と種別の説明追加",
+      "FFLogs 404: ユーザー名が見つからない場合に「綴りまたは公開設定を確認」と表示",
+      "`shadcn` パッケージを runtime → devDep に移動（npm warn の `node-domexception` 由来。CSS import のみで build 時にしか使わないため）",
+    ],
+  },
+  {
     version: "1.6.0",
     date: "2026-04-27",
     notes: [

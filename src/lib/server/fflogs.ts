@@ -49,6 +49,24 @@ export async function fetchFflogsReports(
     });
     if (!res.ok) {
       const body = await res.text().catch(() => "");
+      // 401 = invalid API key. The error message from FFLogs itself
+      // ("Invalid key specified.") doesn't tell the user WHAT to do,
+      // so surface a concrete remediation hint here.
+      if (res.status === 401) {
+        return {
+          ok: false,
+          reason:
+            "FFLOGS_API_KEY が無効です — Vercel Settings → Environment Variables で v1 Web API キーを確認してください（fflogs.com/profile の Web API セクション。V2 OAuth の client_id/secret ではなく v1 キー）",
+        };
+      }
+      // 404 on the user endpoint usually means the username doesn't
+      // exist or has no public reports.
+      if (res.status === 404) {
+        return {
+          ok: false,
+          reason: `fflogs 404: ユーザー「${username}」が見つかりません（綴りまたは公開設定を確認）`,
+        };
+      }
       return {
         ok: false,
         reason: `fflogs ${res.status}: ${body.slice(0, 200)}`,
