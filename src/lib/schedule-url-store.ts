@@ -109,9 +109,95 @@ export async function getDiscordScheduleChannelId(): Promise<string | null> {
   return (data?.value as string | null | undefined) ?? null;
 }
 
-// NOTE: legacy v1 FFLogs username helpers (`setFflogsUsername`,
-// `getFflogsUsername`, `parseFflogsDisplayName`) and the
-// `FFLOGS_USERNAME_KEY` constant were removed in 1.7.3 — the FFLogs
-// integration is now v2 OAuth only. Stored `fflogs_username` rows in
-// `app_settings` from earlier deployments are simply ignored (left
-// behind to avoid a destructive migration).
+/**
+ * FFLogs display name (v1 path) — restored in 1.8.5.
+ * Required by FFLogs API v1 endpoint `/v1/reports/user/{userName}`.
+ *
+ * Numeric IDs (e.g. `70734` from profile URLs) are NOT accepted by the
+ * API; only the display name string works. URL pastes that contain
+ * `/user/{name}/...` extract the name; `/user/reports-list/{id}` form
+ * is rejected with an actionable error.
+ */
+const FFLOGS_USERNAME_KEY = "fflogs_username";
+
+export async function setFflogsUsername(
+  raw: string,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    const supabase = createClient();
+    const { error } = await supabase
+      .from("app_settings")
+      .delete()
+      .eq("key", FFLOGS_USERNAME_KEY);
+    if (error) return { ok: false, reason: error.message };
+    return { ok: true };
+  }
+  const parsed = parseFflogsDisplayName(trimmed);
+  if (!parsed.ok) return parsed;
+  const supabase = createClient();
+  const { error } = await supabase
+    .from("app_settings")
+    .upsert(
+      { key: FFLOGS_USERNAME_KEY, value: parsed.value },
+      { onConflict: "key" },
+    );
+  if (error) return { ok: false, reason: error.message };
+  return { ok: true };
+}
+
+export async function getFflogsUsername(): Promise<string | null> {
+  const supabase = createClient();
+  const { data } = await supabase
+    .from("app_settings")
+    .select("value")
+    .eq("key", FFLOGS_USERNAME_KEY)
+    .maybeSingle();
+  return (data?.value as string | null | undefined) ?? null;
+}
+
+function parseFflogsDisplayName(
+  raw: string,
+):
+  | { ok: true; value: string }
+  | { ok: false; reason: string } {
+  if (/fflogs\.com/i.test(raw)) {
+    try {
+      const u = new URL(raw);
+      const segs = u.pathname.split("/").filter(Boolean);
+      const userIdx = segs.indexOf("user");
+      if (userIdx >= 0 && userIdx + 1 < segs.length) {
+        const next = segs[userIdx + 1]!;
+        if (next === "reports-list") {
+          return {
+            ok: false,
+            reason:
+              "URL 末尾の数字 ID は API で使えません — fflogs.com/profile で表示名を確認してください",
+          };
+        }
+        const name = decodeURIComponent(next);
+        if (/^\d+$/.test(name)) {
+          return {
+            ok: false,
+            reason:
+              "数値 ID ではなく表示名（display name）を入力してください",
+          };
+        }
+        return { ok: true, value: name };
+      }
+      return { ok: false, reason: "URL から表示名を抽出できませんでした" };
+    } catch {
+      return { ok: false, reason: "URL 形式不正" };
+    }
+  }
+  const cleaned = raw.replace(/^[\s"']+|[\s"']+$/g, "");
+  if (!cleaned) return { ok: false, reason: "空文字は受け付けません" };
+  if (/^\d+$/.test(cleaned)) {
+    return {
+      ok: false,
+      reason:
+        "数値 ID ではなく表示名を入力してください（fflogs.com/profile の見出しに記載）",
+    };
+  }
+  return { ok: true, value: cleaned };
+}

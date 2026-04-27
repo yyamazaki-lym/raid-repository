@@ -19,6 +19,18 @@ export type ReleaseEntry = {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    version: "1.9.0",
+    date: "2026-04-27",
+    notes: [
+      "FFLogs 連動の構成を 3 段階のソースに整理 — ① v1 表示名 (基本・常時表示)、② v2 OAuth (オプション・畳み)、③ Session Cookie (Private/Unlisted 用・オプション・畳み)",
+      "v1 path を復活: シンプルセットアップ向け（FFLOGS_API_KEY env var + 表示名のみ、Public レポートを取得）",
+      "linker のフェッチを multi-source 統合に変更 — 設定済の v1 + v2 + Cookie 全部で並列取得 → union + dedupe (by report code)",
+      "設定ダイアログの UI 整理: v1 表示名フォームが常時見える基本セクションに、v2 OAuth と Session Cookie は折り畳み式（クリックで展開）。Private/Unlisted を取得したい時に Cookie セクションを開く流れが分かりやすく",
+      "「FFLogs と動画を連動」ボタンの活性化条件を v1 表示名 OR OAuth 接続のいずれかが必要に変更",
+      "matching algorithm 改善 (1.8.4 から継承): 動画↔レポートを「最古を greedy」から「全ペアスコア → 近い順」に変更、絶コンテンツのような連続 raid で誤マッチを防止",
+    ],
+  },
+  {
     version: "1.8.4",
     date: "2026-04-27",
     notes: [

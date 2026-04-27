@@ -30,6 +30,81 @@ export type FflogsReport = {
 };
 
 const FFLOGS_GRAPHQL_URL = "https://www.fflogs.com/api/v2/user";
+const FFLOGS_V1_BASE = "https://www.fflogs.com/v1";
+
+/**
+ * v1 REST fetcher — restored in 1.8.5 as the default/simplest path.
+ * Requires `FFLOGS_API_KEY` env var + a display name in app_settings.
+ * Returns ONLY Public reports (FFLogs API spec limit). v2 OAuth and
+ * Cookie scrape are layered on top for users who need more visibility.
+ */
+export async function fetchFflogsReportsV1(
+  username: string,
+): Promise<{ ok: true; reports: FflogsReport[] } | { ok: false; reason: string }> {
+  const apiKey = process.env.FFLOGS_API_KEY?.trim();
+  if (!apiKey) return { ok: false, reason: "FFLOGS_API_KEY 未設定" };
+  const url = new URL(
+    `${FFLOGS_V1_BASE}/reports/user/${encodeURIComponent(username)}`,
+  );
+  url.searchParams.set("api_key", apiKey);
+  try {
+    const res = await fetch(url.toString(), {
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      if (res.status === 401) {
+        return {
+          ok: false,
+          reason:
+            "FFLOGS_API_KEY が無効です — fflogs.com/profile の Web API セクションで v1 Public Key を確認、Vercel に設定後 redeploy",
+        };
+      }
+      if (res.status === 400 && /invalid user name/i.test(body)) {
+        return {
+          ok: false,
+          reason: /^\d+$/.test(username)
+            ? `数値 ID「${username}」は使えません — fflogs.com/profile の表示名（display name）を入力してください`
+            : `表示名「${username}」が API に拒否されました — fflogs.com/profile と一致しているか確認`,
+        };
+      }
+      if (res.status === 404) {
+        return {
+          ok: false,
+          reason: `ユーザー「${username}」が見つかりません`,
+        };
+      }
+      return {
+        ok: false,
+        reason: `fflogs v1 ${res.status}: ${body.slice(0, 200)}`,
+      };
+    }
+    const data = (await res.json()) as Array<{
+      id: string;
+      title?: string;
+      start: number;
+      end: number;
+      zone?: number;
+    }>;
+    if (!Array.isArray(data)) {
+      return { ok: false, reason: "v1 レスポンス形式不正" };
+    }
+    return {
+      ok: true,
+      reports: data.map((r) => ({
+        id: r.id,
+        title: r.title ?? "",
+        // v1 returns seconds (10 digits); convert to ms.
+        startMs: r.start < 1e11 ? r.start * 1000 : r.start,
+        endMs: r.end < 1e11 ? r.end * 1000 : r.end,
+        zone: r.zone ?? null,
+      })),
+    };
+  } catch (e) {
+    return { ok: false, reason: "v1 fetch error: " + String(e) };
+  }
+}
 
 /**
  * v2 GraphQL fetcher — uses the OAuth access token to fetch reports
@@ -661,29 +736,27 @@ const SESSION_WINDOW_AFTER_MS = 4 * 60 * 60 * 1000;
  * the target's window — same heuristic as the video↔session matching.
  */
 export async function linkFflogsReportsToVideos(): Promise<FflogsLinkResult> {
-  // v2 OAuth only. The previous v1 fallback (display name + API key)
-  // was removed in 1.7.3 because it returned Public reports only AND
-  // sometimes returned reports owned by other users with the same name.
+  // Multi-source aggregation (1.8.5+):
+  //   - v1 REST (default, simplest setup): Public reports
+  //   - v2 OAuth (optional, more precise owner-filter): Public reports
+  //   - Session cookie scrape (optional, max coverage): Public + Unlisted + Private
+  // Whichever sources are configured run in parallel; results are
+  // unioned + dedup'd by report code. This way a固定 can start with
+  // just v1 (easy) and add Cookie when they need Private reports.
 
-  // One-time cleanup: drop the deprecated `fflogs_username` row from
-  // app_settings if it's still around. Idempotent — runs on every
-  // linker invocation but does nothing once the row is gone.
-  try {
-    const cleanupClient = await createClient();
-    await cleanupClient
-      .from("app_settings")
-      .delete()
-      .eq("key", "fflogs_username");
-  } catch {
-    // best-effort
-  }
+  // Read all sources' configuration.
+  const [username, oauthToken, sessionCookie] = await Promise.all([
+    fetchAppSetting("fflogs_username"),
+    getValidFflogsOAuthToken(),
+    fetchAppSetting("fflogs_session_cookie"),
+  ]);
 
-  const oauthToken = await getValidFflogsOAuthToken();
-  if (!oauthToken) {
+  // At least one source must be configured.
+  if (!username && !oauthToken) {
     return {
       ok: false,
       reason:
-        "FFLogs OAuth 未接続 — 設定ダイアログから「FFLogs と OAuth 接続」を実行してください",
+        "FFLogs ソースが設定されていません — 表示名 (v1)、OAuth、Cookie のいずれかを設定してください",
       reportsScanned: 0,
       videosScanned: 0,
       matched: 0,
@@ -692,81 +765,127 @@ export async function linkFflogsReportsToVideos(): Promise<FflogsLinkResult> {
       details: [],
     };
   }
-  const v2Result = await fetchFflogsReportsV2(oauthToken);
-  if (!v2Result.ok) {
-    return {
-      ok: false,
-      reason: v2Result.reason,
-      reportsScanned: 0,
-      videosScanned: 0,
-      matched: 0,
-      sessionsScanned: 0,
-      sessionsMatched: 0,
-      details: [],
-    };
+
+  // Default partial accumulators for the diag panel — populated below
+  // depending on which sources are active.
+  let v2Result: FflogsV2Result | null = null;
+  let userTypeFields: string[] = [];
+  let schemaIntrospect:
+    | { user: string[]; reportData: string[]; query: string[] }
+    | undefined;
+
+  // Run v1 if username configured.
+  let v1Reports: FflogsReport[] = [];
+  let v1Error: string | undefined;
+  if (username) {
+    const r = await fetchFflogsReportsV1(username);
+    if (r.ok) v1Reports = r.reports;
+    else v1Error = r.reason;
   }
-  let reports = v2Result.reports;
-  let usedSource: "v2-owned" | "html-scrape" | "v2+html" = "v2-owned";
-  let htmlPageSize: number | undefined;
-  let htmlCodesFound: number | undefined;
+
+  // Run v2 OAuth if connected.
+  if (oauthToken) {
+    schemaIntrospect = await introspectFflogsSchema(oauthToken);
+    userTypeFields = schemaIntrospect.user;
+    v2Result = await fetchFflogsReportsV2(oauthToken);
+  }
+  const v2Reports = v2Result && v2Result.ok ? v2Result.reports : [];
+  const v2Error = v2Result && !v2Result.ok ? v2Result.reason : undefined;
+
+  let reports: FflogsReport[] = [];
+  let usedSource:
+    | "v1"
+    | "v2-owned"
+    | "html-scrape"
+    | "v1+v2"
+    | "v1+html"
+    | "v2+html"
+    | "v1+v2+html"
+    | "none" = "none";
   let cookieUsed = false;
   let htmlReportCount: number | undefined;
   let htmlScrapeError: string | undefined;
   let htmlSampleForDiag: string | undefined;
+  let htmlPageSize: number | undefined;
+  let htmlCodesFound: number | undefined;
+  let htmlReports: FflogsReport[] = [];
 
-  // 戦略: ユーザー自身のレポート**だけ**を確実に取得する。
-  //   1. v2 GraphQL の owner-filtered 結果 (= 自分が所有するレポート)
-  //   2. HTML スクレイプ (= 自分のプロフィールページの reports-list)
-  //   両者を union + dedupe。1.7.8 の Layer 2 (raw 全件採用) は
-  //   別人のレポートを巻き込んでいたため撤廃。
-  //
-  // Public レポートの取得には強い: v2 + HTML どちらかには出てくる。
-  // Private / Unlisted は API/HTML どちらにも露出しないことが多いので、
-  // メモポップオーバーから手動紐づけする必要がある。
-  // Introspect schema types so the diag panel can surface any
-  // undocumented field that might unlock Private/Unlisted access.
-  const schemaIntrospect = await introspectFflogsSchema(oauthToken);
-  const userTypeFields = schemaIntrospect.user;
-
-  const me = await fetchCurrentUser(oauthToken);
-  if (me.ok) {
-    const sessionCookie = await fetchAppSetting("fflogs_session_cookie");
-    cookieUsed = Boolean(sessionCookie?.trim());
-    const scrapeResult = await fetchFflogsReportsHtmlScrape(
-      me.id,
-      sessionCookie,
-    );
-    // Auto-delete the cookie after use — one-time-use semantics.
-    if (cookieUsed) {
-      try {
-        const cleanupClient = await createClient();
-        await cleanupClient
-          .from("app_settings")
-          .delete()
-          .eq("key", "fflogs_session_cookie");
-      } catch {
-        // best-effort
+  // HTML scrape — works only when we have a numeric user ID.
+  // Currently we only obtain that via OAuth (currentUser.id), so
+  // scrape requires v2 OAuth to be configured. With session cookie,
+  // it returns Public + Unlisted + Private; without, only Public.
+  cookieUsed = Boolean(sessionCookie?.trim());
+  if (oauthToken) {
+    const me = await fetchCurrentUser(oauthToken);
+    if (me.ok) {
+      const scrapeResult = await fetchFflogsReportsHtmlScrape(
+        me.id,
+        sessionCookie,
+      );
+      if (cookieUsed) {
+        // Auto-delete the cookie after use — one-time-use semantics.
+        try {
+          const cleanupClient = await createClient();
+          await cleanupClient
+            .from("app_settings")
+            .delete()
+            .eq("key", "fflogs_session_cookie");
+        } catch {
+          // best-effort
+        }
+      }
+      if (scrapeResult.ok) {
+        htmlPageSize = scrapeResult.htmlPageSize;
+        htmlCodesFound = scrapeResult.htmlCodesFound;
+        htmlReportCount = scrapeResult.reports.length;
+        htmlSampleForDiag = scrapeResult.htmlSample;
+        htmlReports = scrapeResult.reports;
+      } else {
+        htmlScrapeError = scrapeResult.reason;
       }
     }
-    if (scrapeResult.ok) {
-      htmlPageSize = scrapeResult.htmlPageSize;
-      htmlCodesFound = scrapeResult.htmlCodesFound;
-      htmlReportCount = scrapeResult.reports.length;
-      htmlSampleForDiag = scrapeResult.htmlSample;
-      if (scrapeResult.reports.length > 0) {
-        const byCode = new Map<string, FflogsReport>();
-        for (const r of reports) byCode.set(r.id, r);
-        for (const r of scrapeResult.reports) {
-          if (!byCode.has(r.id)) byCode.set(r.id, r);
-        }
-        const merged = [...byCode.values()];
-        if (merged.length > reports.length) {
-          usedSource = reports.length > 0 ? "v2+html" : "html-scrape";
-          reports = merged;
-        }
-      }
-    } else {
-      htmlScrapeError = scrapeResult.reason;
+  }
+
+  // Union all sources (v1 + v2 + HTML scrape) and dedupe by report id.
+  // Priority: prefer entries with richer metadata (v2 has zone id;
+  // v1 also has zone; html scrape has neither). Order of insertion
+  // matters because Map preserves first-seen entry on collision.
+  const byCode = new Map<string, FflogsReport>();
+  for (const r of v2Reports) byCode.set(r.id, r);
+  for (const r of v1Reports) if (!byCode.has(r.id)) byCode.set(r.id, r);
+  for (const r of htmlReports) if (!byCode.has(r.id)) byCode.set(r.id, r);
+  reports = [...byCode.values()];
+
+  // Source label tells the user which paths produced data.
+  const labels: string[] = [];
+  if (v1Reports.length > 0) labels.push("v1");
+  if (v2Reports.length > 0) labels.push("v2-owned");
+  if (htmlReports.length > 0) labels.push("html-scrape");
+  if (labels.length === 0) {
+    usedSource = "none";
+  } else if (labels.length === 1) {
+    usedSource = labels[0] as typeof usedSource;
+  } else {
+    usedSource = labels.join("+") as typeof usedSource;
+  }
+
+  // Surface fatal-style errors when nothing was retrieved.
+  if (reports.length === 0) {
+    const errors: string[] = [];
+    if (v1Error) errors.push("v1: " + v1Error);
+    if (v2Error) errors.push("v2: " + v2Error);
+    if (htmlScrapeError) errors.push("scrape: " + htmlScrapeError);
+    if (errors.length > 0) {
+      return {
+        ok: false,
+        reason: errors.join(" | "),
+        reportsScanned: 0,
+        videosScanned: 0,
+        matched: 0,
+        sessionsScanned: 0,
+        sessionsMatched: 0,
+        details: [],
+      };
     }
   }
 
@@ -819,20 +938,16 @@ export async function linkFflogsReportsToVideos(): Promise<FflogsLinkResult> {
     videosDateRange: videoResult.dateRange,
     sessionsDateRange: sessionResult.dateRange,
     reportSamples,
-    queriedUsername:
-      usedSource === "html-scrape"
-        ? "(HTML スクレイプ — 自分のプロフィールページ)"
-        : usedSource === "v2+html"
-          ? "(v2 GraphQL owner-filter + HTML スクレイプ)"
-          : "(v2 GraphQL — 自分所有のレポートのみ)",
+    queriedUsername: `(取得ソース: ${usedSource})`,
     apiPath: "v2",
     userTypeFields,
     schemaIntrospect,
     diag: {
-      v2RawCount: v2Result.rawCount,
-      v2OwnedCount: v2Result.ownedCount,
-      v2Me: v2Result.me,
-      v2OwnersSample: v2Result.ownersSample,
+      v2RawCount: v2Result && v2Result.ok ? v2Result.rawCount : undefined,
+      v2OwnedCount: v2Result && v2Result.ok ? v2Result.ownedCount : undefined,
+      v2Me: v2Result && v2Result.ok ? v2Result.me : undefined,
+      v2OwnersSample:
+        v2Result && v2Result.ok ? v2Result.ownersSample : undefined,
       htmlPageSize,
       htmlCodesFound,
       cookieUsed,

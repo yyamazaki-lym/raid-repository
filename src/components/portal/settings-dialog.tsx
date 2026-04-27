@@ -31,8 +31,10 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import {
   getDiscordScheduleChannelId,
+  getFflogsUsername,
   getScheduleUrlFromDb,
   setDiscordScheduleChannelId,
+  setFflogsUsername,
   setScheduleUrl,
 } from "@/lib/schedule-url-store";
 import {
@@ -130,6 +132,8 @@ export function SettingsDialog() {
   const [snapshotting, startSnapshot] = useTransition();
   const [snapshotResult, setSnapshotResult] =
     useState<ScheduleSnapshotResult | null>(null);
+  const [fflogsUsername, setFflogsUsernameState] = useState("");
+  const [savingUsername, startSaveUsername] = useTransition();
   const [linkingLogs, startLinkLogs] = useTransition();
   const [logsResult, setLogsResult] = useState<FflogsLinkResultLite | null>(
     null,
@@ -185,18 +189,25 @@ export function SettingsDialog() {
     if (!open) return;
     let cancelled = false;
     void (async () => {
-      const [currentUrl, currentChannel, currentOauth, currentCookie] =
-        await Promise.all([
-          getScheduleUrlFromDb(),
-          getDiscordScheduleChannelId(),
-          fetchFflogsOAuthStatus(),
-          getFflogsSessionCookieStatus(),
-        ]);
+      const [
+        currentUrl,
+        currentChannel,
+        currentOauth,
+        currentCookie,
+        currentUsername,
+      ] = await Promise.all([
+        getScheduleUrlFromDb(),
+        getDiscordScheduleChannelId(),
+        fetchFflogsOAuthStatus(),
+        getFflogsSessionCookieStatus(),
+        getFflogsUsername(),
+      ]);
       if (!cancelled) {
         setUrl(currentUrl ?? "");
         setChannelId(currentChannel ?? "");
         setOauthStatus(currentOauth);
         setCookieStatus(currentCookie);
+        setFflogsUsernameState(currentUsername ?? "");
         setSessionCookieInput("");
         setImportResult(null);
         setLogsResult(null);
@@ -587,9 +598,10 @@ export function SettingsDialog() {
             )}
           </section>
 
-          {/* FFLogs section — feature-gated by FFLOGS_API_KEY env var
-              (silently allows username field but the link button will
-              report "API key 未設定" if not configured). */}
+          {/* FFLogs section — three sources stacked:
+              ① v1 表示名 (基本・常時表示) — Public のみ取得
+              ② v2 OAuth (オプション・畳んで表示)
+              ③ Session Cookie (オプション・Private/Unlisted 用、畳んで表示) */}
           <section className="flex flex-col gap-3">
             <header className="flex items-center gap-2 border-b border-border/30 pb-2">
               <BarChart3 className="h-3.5 w-3.5 text-amber-300" aria-hidden />
@@ -598,10 +610,92 @@ export function SettingsDialog() {
               </span>
             </header>
 
-            {/* OAuth 認証で v2 GraphQL を使用。Public + Unlisted +
-                Private のすべてのレポートが取得対象。FFLOGS_OAUTH_CLIENT_ID
-                / _SECRET の env var が必要。 */}
-            <div className="flex flex-col gap-2 rounded-md border border-amber-400/35 bg-amber-400/5 px-3 py-2.5">
+            {/* v1 表示名 (基本) — Public レポートを取得する最も簡単な
+                方法。FFLOGS_API_KEY env var (v1 Public Key) のみ必要、
+                ブラウザでの操作不要。 */}
+            <div className="flex flex-col gap-2">
+              <div className="flex items-baseline justify-between gap-2">
+                <Label
+                  htmlFor="fflogs-username"
+                  className="text-xs text-foreground/80"
+                >
+                  FFLogs 表示名 (基本)
+                </Label>
+                <a
+                  href="https://www.fflogs.com/profile"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-[10px] text-amber-300/85 underline decoration-dotted underline-offset-2 transition-colors hover:text-amber-300"
+                  title="自分のプロフィールページを開く"
+                >
+                  <BarChart3 className="h-2.5 w-2.5" aria-hidden />
+                  fflogs.com/profile
+                </a>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                <Input
+                  id="fflogs-username"
+                  value={fflogsUsername}
+                  onChange={(e) => setFflogsUsernameState(e.target.value)}
+                  placeholder="例: TaroYamada (display name)"
+                  className="font-mono text-[12px] flex-1 min-w-[12rem]"
+                  spellCheck={false}
+                  autoComplete="off"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    startSaveUsername(async () => {
+                      const r = await setFflogsUsername(fflogsUsername);
+                      if (!r.ok) {
+                        toast.error("表示名保存失敗: " + r.reason);
+                        return;
+                      }
+                      toast.success("表示名を保存しました");
+                    });
+                  }}
+                  disabled={savingUsername}
+                  className="gap-1.5 font-mono text-[10px] tracking-[0.18em] uppercase"
+                >
+                  <Save className="h-3 w-3" aria-hidden />
+                  保存
+                </Button>
+              </div>
+              <p className="text-muted-foreground text-[11px] leading-relaxed">
+                <strong>基本構成</strong>: 表示名 + サーバーの{" "}
+                <code className="font-mono">FFLOGS_API_KEY</code>
+                {" "}env var (v1 Public Key) で
+                <strong>Public レポート</strong> を取得します。
+                Private/Unlisted も自動取得したい場合は、下のオプションを開いて{" "}
+                <strong>Session Cookie</strong> を設定してください。
+              </p>
+            </div>
+
+            {/* v2 OAuth — オプション。Public 取得を v1 より厳密にする
+                (owner filter を API 側で適用)。Private/Unlisted の追加
+                取得には貢献しないが、html scrape との連携で userId 取得に
+                使われる。 */}
+            <details className="group/oauth flex flex-col gap-2">
+              <summary className="cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+                <div className="flex items-center justify-between gap-2 rounded-md border border-border/40 bg-secondary/15 px-3 py-2 hover:bg-secondary/25 transition-colors">
+                  <span className="flex items-center gap-1.5 font-mono text-[10px] tracking-[0.22em] text-muted-foreground uppercase">
+                    <span className="text-[var(--neon-cyan)]/70 transition-transform group-open/oauth:rotate-90">
+                      ▸
+                    </span>
+                    <Link2 className="h-3 w-3" aria-hidden />
+                    OAuth 認証 (v2 API・オプション)
+                  </span>
+                  {oauthStatus?.connected && (
+                    <span className="inline-flex items-center gap-1 rounded-sm border border-emerald-400/45 bg-emerald-400/10 px-1.5 py-px font-mono text-[9px] tracking-[0.18em] text-emerald-200 uppercase">
+                      <span className="inline-block h-1 w-1 rounded-full bg-emerald-400 shadow-[0_0_6px_rgb(52_211_153)]" />
+                      接続済
+                    </span>
+                  )}
+                </div>
+              </summary>
+              <div className="ml-2 flex flex-col gap-2 rounded-md border border-amber-400/35 bg-amber-400/5 px-3 py-2.5">
               <div className="flex items-center justify-between gap-2">
                 <span className="flex items-center gap-1.5 font-mono text-[10px] tracking-[0.22em] text-amber-200/95 uppercase">
                   <Link2 className="h-3 w-3" aria-hidden />
@@ -691,24 +785,30 @@ export function SettingsDialog() {
                   </p>
                 </div>
               )}
-            </div>
-
-            {/* Session cookie 入力 — Private/Unlisted 自動紐づけ用の
-                opt-in 機能。auto-delete によりセキュリティリスクを
-                最小化する。 */}
-            <div className="flex flex-col gap-2 rounded-md border border-rose-400/30 bg-rose-500/5 px-3 py-2.5">
-              <div className="flex items-center justify-between gap-2">
-                <span className="flex items-center gap-1.5 font-mono text-[10px] tracking-[0.22em] text-rose-200/95 uppercase">
-                  <BarChart3 className="h-3 w-3" aria-hidden />
-                  Session Cookie (オプション)
-                </span>
-                {cookieStatus?.set && (
-                  <span className="inline-flex items-center gap-1 rounded-sm border border-amber-400/45 bg-amber-400/10 px-1.5 py-px font-mono text-[9px] tracking-[0.18em] text-amber-200 uppercase">
-                    <span className="inline-block h-1 w-1 rounded-full bg-amber-400 shadow-[0_0_6px_rgb(251_191_36)]" />
-                    セット済 (次回連動で消費)
-                  </span>
-                )}
               </div>
+            </details>
+
+            {/* Session Cookie — オプション。Private/Unlisted を取得したい
+                場合のみ使う。auto-delete でセキュリティリスクを最小化。 */}
+            <details className="group/cookie flex flex-col gap-2">
+              <summary className="cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+                <div className="flex items-center justify-between gap-2 rounded-md border border-rose-400/40 bg-rose-500/5 px-3 py-2 hover:bg-rose-500/10 transition-colors">
+                  <span className="flex items-center gap-1.5 font-mono text-[10px] tracking-[0.22em] text-rose-200/95 uppercase">
+                    <span className="text-rose-300/80 transition-transform group-open/cookie:rotate-90">
+                      ▸
+                    </span>
+                    <BarChart3 className="h-3 w-3" aria-hidden />
+                    Session Cookie (Private/Unlisted 用・オプション)
+                  </span>
+                  {cookieStatus?.set && (
+                    <span className="inline-flex items-center gap-1 rounded-sm border border-amber-400/45 bg-amber-400/10 px-1.5 py-px font-mono text-[9px] tracking-[0.18em] text-amber-200 uppercase">
+                      <span className="inline-block h-1 w-1 rounded-full bg-amber-400 shadow-[0_0_6px_rgb(251_191_36)]" />
+                      セット済 (次回連動で消費)
+                    </span>
+                  )}
+                </div>
+              </summary>
+              <div className="ml-2 flex flex-col gap-2 rounded-md border border-rose-400/30 bg-rose-500/5 px-3 py-2.5">
               <p className="text-[11px] leading-relaxed text-foreground/85">
                 <strong>Private / Unlisted のレポートも取得したい場合のみ</strong>
                 {" "}使う opt-in 機能。fflogs.com にログインしたブラウザの
@@ -816,7 +916,8 @@ export function SettingsDialog() {
                   </Button>
                 )}
               </div>
-            </div>
+              </div>
+            </details>
 
             <div className="flex flex-col gap-2">
               <div className="flex flex-wrap items-center gap-1.5">
@@ -825,11 +926,14 @@ export function SettingsDialog() {
                   variant="outline"
                   size="sm"
                   onClick={onLinkLogs}
-                  disabled={linkingLogs || !oauthStatus?.connected}
+                  disabled={
+                    linkingLogs ||
+                    (!oauthStatus?.connected && !fflogsUsername.trim())
+                  }
                   className="gap-1.5 font-mono text-[11px] tracking-[0.18em] uppercase"
                   title={
-                    !oauthStatus?.connected
-                      ? "先に上の「OAuth 接続」を実行してください"
+                    !oauthStatus?.connected && !fflogsUsername.trim()
+                      ? "先に「FFLogs 表示名」を保存するか「OAuth 接続」を実行してください"
                       : "FFLogs レポートを動画 / 過去予定に自動紐づけ"
                   }
                 >
