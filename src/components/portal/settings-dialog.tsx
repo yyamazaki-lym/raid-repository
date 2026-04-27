@@ -86,6 +86,7 @@ type FflogsLinkResultLite = {
     htmlReportCount?: number;
     htmlScrapeError?: string;
     htmlSample?: string;
+    videosSkippedNoPostedAt?: number;
   };
   userTypeFields?: string[];
 };
@@ -1228,6 +1229,21 @@ export function SettingsDialog() {
                               <p className="mt-0.5 text-rose-300/85">
                                 HTML スクレイプエラー:{" "}
                                 {logsResult.diag.htmlScrapeError}
+                              </p>
+                            )}
+                            {(logsResult.diag.videosSkippedNoPostedAt ?? 0) >
+                              0 && (
+                              <p className="mt-0.5 text-amber-200/85">
+                                ⚠ posted_at 未設定でスキップした動画:{" "}
+                                <strong>
+                                  {logsResult.diag.videosSkippedNoPostedAt}
+                                </strong>
+                                {" 件"}
+                                <span className="ml-1 text-muted-foreground/85">
+                                  ※ コンテンツページ → メンテナンス →
+                                  「Discord 履歴から posted_at を補完」を実行
+                                  推奨
+                                </span>
                               </p>
                             )}
                             {logsResult.diag.htmlSample && (

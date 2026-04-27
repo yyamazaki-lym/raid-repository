@@ -711,6 +711,8 @@ export type FflogsLinkResult = {
     htmlScrapeError?: string;
     /** Sample of HTML around the first report code — for date-format debugging. */
     htmlSample?: string;
+    /** Number of videos skipped because they had no `posted_at`. */
+    videosSkippedNoPostedAt?: number;
   };
 };
 
@@ -961,6 +963,7 @@ export async function linkFflogsReportsToVideos(): Promise<FflogsLinkResult> {
       htmlReportCount,
       htmlScrapeError,
       htmlSample: htmlSampleForDiag,
+      videosSkippedNoPostedAt: videoResult.skippedNoPostedAt,
     },
   };
 }
@@ -996,7 +999,12 @@ function contentMismatchPenalty(
     .filter(Boolean)
     .join(" ")
     .toLowerCase();
+  // If either side is genuinely empty, we can't infer — don't penalize.
   if (!videoText || !reportText) return 0.5;
+  // If either side lacks structured content info (zoneName missing on
+  // report, no category on video), also don't penalize — only the
+  // other side's free-text title is available, which is unreliable.
+  if (!videoCategoryName || !reportZoneName) return 0.5;
 
   // Strip noise — punctuation, brackets, dates etc — leave content
   // keywords mostly intact.
@@ -1010,36 +1018,70 @@ function contentMismatchPenalty(
   const v = stripNoise(videoText);
   const r = stripNoise(reportText);
 
-  // Known content keywords (FFXIV raid / trial / ultimate names) —
-  // used as a coarse-grained classifier. Both sides need to share at
-  // least one of these to be considered a content match.
+  // PRIMARY check: bigram overlap on cleaned strings. Works for any
+  // language and any user-chosen content name without relying on
+  // hardcoded keywords. Bigrams are 2-character substrings — for CJK
+  // this captures meaningful tokens (e.g. "ヘビ", "ビー", "級"); for
+  // English it captures word starts.
+  const bigrams = (s: string): Set<string> => {
+    const out = new Set<string>();
+    const stripped = s.replace(/\s+/g, "");
+    if (stripped.length < 2) return out;
+    for (let i = 0; i < stripped.length - 1; i++) {
+      out.add(stripped.slice(i, i + 2));
+    }
+    return out;
+  };
+  const vBigrams = bigrams(v);
+  const rBigrams = bigrams(r);
+  if (vBigrams.size === 0 || rBigrams.size === 0) return 0.5;
+  let shared = 0;
+  for (const b of vBigrams) if (rBigrams.has(b)) shared += 1;
+  // Jaccard-like ratio: shared / smaller-side. Threshold for confident
+  // match is ~25% — the smaller-side is typically the structured zone
+  // name, and most content names share at least 25% bigrams when
+  // talking about the same raid (e.g. "ヘビー級" appears in both
+  // "アルカディア:ヘビー級" and "AAC Heavyweight Tier" via romaji /
+  // mixed forms doesn't help, but 25% covers most cases).
+  const ratio = shared / Math.min(vBigrams.size, rBigrams.size);
+
+  // SECONDARY check: known FFXIV content keywords as confidence boost.
+  // Even if bigram overlap is low, an exact keyword hit on both sides
+  // confirms content match (handles mixed-language cases like
+  // "アルカディア:ヘビー級" video vs "AAC Heavyweight Tier" zone).
   const keywords = [
-    // 絶 (Ultimate) シリーズ
+    // 絶 (Ultimate)
     "絶アレキサンダー", "絶オメガ検証", "絶バハムート", "絶アルテマウェポン",
     "絶ニーズヘッグ", "絶エンドシンガー", "絶ゾディアーク",
     "ultimate alexander", "ultimate omega", "futures rewritten",
     "dragonsong", "epic of alexander", "ucob", "uwu", "tea", "dsr",
     "top", "fru",
-    // 零式 (Savage) シリーズ
-    "アスフォデロス零式", "アバンギャルド零式", "アルカディア",
-    "ライトヘビー級", "ヘビー級", "クルーザー級", "ウェルター級",
-    "asphodelos", "anabaseios", "abyssos", "pandæmonium",
-    "aac light-heavyweight", "aac heavyweight", "aac cruiserweight",
-    "aac welterweight", "light-heavyweight", "heavyweight",
+    // 零式 (Savage) — Japanese to English mappings
+    "アスフォデロス", "asphodelos",
+    "アバンギャルド", "anabaseios",
+    "アルカディア", "arcadion",
+    "ライトヘビー級", "light-heavyweight", "lightheavyweight",
+    "ヘビー級", "heavyweight",
+    "クルーザー級", "cruiserweight",
+    "ウェルター級", "welterweight",
     "p9s", "p10s", "p11s", "p12s",
     "m1s", "m2s", "m3s", "m4s",
-    // 極 (Extreme) シリーズなど
-    "極", "蛮神", "extreme",
+    // 極 (Extreme)
+    "extreme", "極",
   ];
-  const hasKeyword = (text: string, k: string) =>
-    text.includes(k.toLowerCase());
-
-  // Find shared keywords.
   for (const k of keywords) {
-    if (hasKeyword(v, k) && hasKeyword(r, k)) return 0;
+    const kk = k.toLowerCase();
+    if (v.includes(kk) && r.includes(kk)) return 0; // confident match
   }
-  // No shared keyword → likely different content.
-  return 1;
+
+  // Decide based on bigram ratio:
+  //   ≥ 25%: likely same content
+  //   10-25%: ambiguous (small penalty)
+  //   < 10%: likely different content (still small penalty — manual
+  //          category names may legitimately differ from FFLogs zone
+  //          names without sharing many bigrams)
+  if (ratio >= 0.25) return 0;
+  return 0.5; // ambiguous — small penalty, don't hard-reject
 }
 
 async function linkReportsToVideos(
@@ -1050,8 +1092,11 @@ async function linkReportsToVideos(
   matched: number;
   details: FflogsLinkDetail[];
   dateRange?: { earliest: string; latest: string };
+  /** Videos that had no `posted_at` and were excluded from matching. */
+  skippedNoPostedAt: number;
 }> {
-  if (reports.length === 0) return { scanned: 0, matched: 0, details: [] };
+  if (reports.length === 0)
+    return { scanned: 0, matched: 0, details: [], skippedNoPostedAt: 0 };
 
   // Pull category info alongside each video so we can do
   // content-match (raid-name) checks during scoring.
@@ -1063,15 +1108,28 @@ async function linkReportsToVideos(
     .eq("kind", "video")
     .is("logs_url", null);
   if (!videos || videos.length === 0) {
-    return { scanned: 0, matched: 0, details: [] };
+    return { scanned: 0, matched: 0, details: [], skippedNoPostedAt: 0 };
   }
 
+  // CRITICAL: only match against videos that have an actual posted_at
+  // (the YouTube/Discord publish timestamp). created_at is when the
+  // row was inserted into our DB — for videos imported in bulk later,
+  // that's wildly off from the actual raid date and causes mismatches
+  // (e.g. a 04/01 raid video imported on 03/28 would match a 03/28
+  // report).
+  let videosSkippedNoPostedAt = 0;
   const sortedVideos = [...videos]
     .map((v) => {
-      const ts = (v.posted_at as string | null) ?? (v.created_at as string);
-      const tMs = new Date(ts).getTime();
-      // category may come back as an object or an array depending on
-      // how supabase resolves the relation; normalize to a single name.
+      const postedAt = v.posted_at as string | null;
+      if (!postedAt) {
+        videosSkippedNoPostedAt += 1;
+        return null;
+      }
+      const tMs = new Date(postedAt).getTime();
+      if (!Number.isFinite(tMs)) {
+        videosSkippedNoPostedAt += 1;
+        return null;
+      }
       const cat = (v as { category?: unknown }).category as
         | { name?: string | null }
         | { name?: string | null }[]
@@ -1080,15 +1138,10 @@ async function linkReportsToVideos(
       const categoryName = Array.isArray(cat)
         ? (cat[0]?.name ?? null)
         : (cat?.name ?? null);
-      return {
-        ...v,
-        tMs: Number.isFinite(tMs) ? tMs : null,
-        categoryName,
-      };
+      return { ...v, tMs, categoryName };
     })
     .filter(
-      (v): v is typeof v & { tMs: number; categoryName: string | null } =>
-        v.tMs !== null,
+      (v): v is NonNullable<typeof v> & { tMs: number } => v !== null,
     )
     .sort((a, b) => a.tMs - b.tMs);
 
@@ -1182,7 +1235,13 @@ async function linkReportsToVideos(
         }
       : undefined;
 
-  return { scanned: sortedVideos.length, matched, details, dateRange };
+  return {
+    scanned: sortedVideos.length,
+    matched,
+    details,
+    dateRange,
+    skippedNoPostedAt: videosSkippedNoPostedAt,
+  };
 }
 
 async function linkReportsToSessions(

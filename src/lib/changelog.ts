@@ -19,6 +19,17 @@ export type ReleaseEntry = {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    version: "1.9.3",
+    date: "2026-04-27",
+    notes: [
+      "🐛 日時ズレの主因を修正: `posted_at` が null の動画では `created_at` (DB 投入時刻) にフォールバックしていた → これが実際の raid 日と全然違う日付になり誤マッチを引き起こしていた。posted_at が null の動画は紐づけ対象から完全に除外するように変更",
+      "結果パネルに「posted_at 未設定でスキップした動画 N 件」を表示。多い場合は コンテンツページ → メンテナンス → 「Discord 履歴から posted_at を補完」を実行推奨",
+      "コンテンツ照合を bigram (2文字 N-gram) ベースに刷新 — 旧版の hardcode keyword は手動 category 名 (ユーザーが任意につけた raid 名) に対応できなかった。bigram overlap で言語非依存に類似度判定（25% 以上で確定一致、それ未満は曖昧扱いで小ペナルティのみ）",
+      "keyword リストは confidence boost として残す (混在言語の zone vs category 名で確実に拾うため)",
+      "結果として: 厳密にコンテンツ違いと判断した時のみリジェクト、不確実な場合は時間距離で決まる安全なフォールバック",
+    ],
+  },
+  {
     version: "1.9.2",
     date: "2026-04-27",
     notes: [
