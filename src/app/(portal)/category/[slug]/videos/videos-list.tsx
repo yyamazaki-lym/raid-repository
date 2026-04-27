@@ -12,6 +12,8 @@ import {
   Calendar,
   ListOrdered,
   BarChart3,
+  Timer,
+  Trophy,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -44,17 +46,28 @@ import {
   youtubeEmbedUrl,
   youtubeThumbnailUrl,
 } from "@/lib/youtube";
+import {
+  formatDurationLong,
+  formatDurationShort,
+  formatFirstClear,
+} from "@/lib/duration-format";
 import type { CategoryLink } from "@/lib/supabase/types";
 
 type Props = {
   categoryId: string;
   initial: CategoryLink[];
+  /**
+   * Category's first-clear timestamp (auto-detected from a "クリア"-titled
+   * video, or manually set). Used in the header to show a クリア badge
+   * + the time-to-clear stat alongside the running total.
+   */
+  firstClearAt?: string | null;
 };
 
 type SortMode = "date" | "custom";
 const SORT_STORAGE_KEY = "raid-repo:videos-sort-mode";
 
-export function VideosList({ categoryId, initial }: Props) {
+export function VideosList({ categoryId, initial, firstClearAt }: Props) {
   const live = useRealtimeCategoryLinks(categoryId, "video", initial);
   const [editTarget, setEditTarget] = useState<CategoryLink | null>(null);
   const [optimistic, setOptimistic] = useState<string[] | null>(null);
@@ -148,17 +161,80 @@ export function VideosList({ categoryId, initial }: Props) {
 
   const ids = useMemo(() => videos.map((v) => v.id), [videos]);
 
+  // Cumulative duration across all videos in this category. NULL durations
+  // (not yet backfilled) are treated as 0. timeToClear sums only videos
+  // posted on/before the first-clear timestamp — same definition as the
+  // category list page badge.
+  const { totalSeconds, timeToClearSeconds, missingDurationCount } =
+    useMemo(() => {
+      let total = 0;
+      let toClear = 0;
+      let missing = 0;
+      const clearMs = firstClearAt
+        ? new Date(firstClearAt).getTime()
+        : null;
+      for (const v of live) {
+        if (v.durationSeconds === null) {
+          missing += 1;
+          continue;
+        }
+        total += v.durationSeconds;
+        if (clearMs !== null) {
+          const ref = v.postedAt ?? v.createdAt;
+          const t = new Date(ref).getTime();
+          if (Number.isFinite(t) && t <= clearMs) toClear += v.durationSeconds;
+        }
+      }
+      return {
+        totalSeconds: total,
+        timeToClearSeconds: toClear,
+        missingDurationCount: missing,
+      };
+    }, [live, firstClearAt]);
+
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex items-center justify-between gap-2">
-        <p className="font-mono text-[10px] tracking-[0.2em] text-muted-foreground uppercase">
-          {videos.length} video{videos.length === 1 ? "" : "s"}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-1.5 font-mono text-[10px] tracking-[0.2em] text-muted-foreground uppercase">
+          <span>
+            {videos.length} video{videos.length === 1 ? "" : "s"}
+          </span>
+          {totalSeconds > 0 && (
+            <span
+              className="inline-flex items-center gap-1 rounded-sm border border-violet-400/40 bg-violet-400/10 px-1.5 py-px text-[9px] text-violet-200 normal-case"
+              title={`累計練習時間: ${formatDurationLong(totalSeconds)}${
+                missingDurationCount > 0
+                  ? ` (${missingDurationCount} 件は再生時間未取得)`
+                  : ""
+              }`}
+            >
+              <Timer className="h-2.5 w-2.5" aria-hidden />
+              {formatDurationShort(totalSeconds)}
+            </span>
+          )}
+          {firstClearAt && timeToClearSeconds > 0 && (
+            <span
+              className="inline-flex items-center gap-1 rounded-sm border border-emerald-400/45 bg-emerald-400/10 px-1.5 py-px text-[9px] text-emerald-200 normal-case"
+              title={`クリアまでの累計時間: ${formatDurationLong(timeToClearSeconds)}`}
+            >
+              →{formatDurationShort(timeToClearSeconds)}
+            </span>
+          )}
+          {firstClearAt && (
+            <span
+              className="inline-flex items-center gap-1 rounded-sm border border-amber-400/45 bg-amber-400/10 px-1.5 py-px text-[9px] text-amber-200 normal-case"
+              title={`初クリア: ${formatFirstClear(firstClearAt, "long")}`}
+            >
+              <Trophy className="h-2.5 w-2.5" aria-hidden />
+              {formatFirstClear(firstClearAt, "short")}
+            </span>
+          )}
           {videos.length > 1 && sortMode === "custom" && (
-            <span className="ml-2 text-muted-foreground/60">
+            <span className="text-muted-foreground/60">
               · ドラッグで並び替え
             </span>
           )}
-        </p>
+        </div>
         <div className="flex items-center gap-1.5">
           {/* Sort mode toggle: 日付順 (newest first) or カスタム順 (DnD). */}
           <div
@@ -389,19 +465,30 @@ function VideoCard({
           {video.description}
         </p>
       )}
-      {video.logsUrl && (
-        <div className="px-3">
-          <a
-            href={video.logsUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 rounded-sm border border-amber-400/45 bg-amber-400/10 px-2 py-1 font-mono text-[10px] tracking-[0.18em] text-amber-200 uppercase transition-colors hover:bg-amber-400/15 hover:text-amber-100"
-            title="FFLogs レポートを開く"
-          >
-            <BarChart3 className="h-3 w-3" aria-hidden />
-            FFLogs
-            <ExternalLink className="h-2.5 w-2.5 opacity-70" aria-hidden />
-          </a>
+      {(video.logsUrl || video.durationSeconds !== null) && (
+        <div className="flex flex-wrap items-center gap-1.5 px-3">
+          {video.logsUrl && (
+            <a
+              href={video.logsUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 rounded-sm border border-amber-400/45 bg-amber-400/10 px-2 py-1 font-mono text-[10px] tracking-[0.18em] text-amber-200 uppercase transition-colors hover:bg-amber-400/15 hover:text-amber-100"
+              title="FFLogs レポートを開く"
+            >
+              <BarChart3 className="h-3 w-3" aria-hidden />
+              FFLogs
+              <ExternalLink className="h-2.5 w-2.5 opacity-70" aria-hidden />
+            </a>
+          )}
+          {video.durationSeconds !== null && (
+            <span
+              className="inline-flex items-center gap-1 rounded-sm border border-violet-400/40 bg-violet-400/10 px-1.5 py-1 font-mono text-[10px] tracking-[0.18em] text-violet-200"
+              title={`再生時間: ${formatDurationLong(video.durationSeconds)}`}
+            >
+              <Timer className="h-2.5 w-2.5" aria-hidden />
+              {formatDurationShort(video.durationSeconds)}
+            </span>
+          )}
         </div>
       )}
       <a

@@ -756,6 +756,48 @@ const SESSION_WINDOW_AFTER_MS = 4 * 60 * 60 * 1000;
  * the target's window — same heuristic as the video↔session matching.
  */
 export async function linkFflogsReportsToVideos(): Promise<FflogsLinkResult> {
+  // 1.9.11: ONE-TIME BOOTSTRAP. The 1.9.10 schema added logs_url_source
+  // with `NOT NULL DEFAULT 'manual'`, which means every pre-existing
+  // logs_url row got tagged 'manual'. The 'auto'-only cleanup below
+  // therefore never wiped legacy auto-matches (including the wrong
+  // 0328↔0401 ones the user reported). Flip them to 'auto' once so the
+  // next sync produces a clean re-match. Guarded by an app_settings
+  // flag so subsequent syncs don't keep flipping legitimately-manual
+  // rows the user has set since 1.9.11 shipped.
+  try {
+    const flagClient = await createClient();
+    const { data: flagRow } = await flagClient
+      .from("app_settings")
+      .select("value")
+      .eq("key", "fflogs_source_bootstrap_v1")
+      .maybeSingle();
+    if (!flagRow) {
+      await Promise.all([
+        flagClient
+          .from("category_links")
+          .update({ logs_url_source: "auto" })
+          .not("logs_url", "is", null)
+          .eq("logs_url_source", "manual"),
+        flagClient
+          .from("schedule_past_sessions")
+          .update({ logs_url_source: "auto" })
+          .not("logs_url", "is", null)
+          .eq("logs_url_source", "manual"),
+      ]);
+      await flagClient
+        .from("app_settings")
+        .upsert(
+          {
+            key: "fflogs_source_bootstrap_v1",
+            value: new Date().toISOString(),
+          },
+          { onConflict: "key" },
+        );
+    }
+  } catch (e) {
+    console.warn("[fflogs] 1.9.11 bootstrap flip failed", e);
+  }
+
   // 1.9.10: wipe stale AUTO logs_url before re-matching. Manual entries
   // (set via the memo popover or the video edit dialog) are preserved
   // because they have logs_url_source = 'manual'. This makes every

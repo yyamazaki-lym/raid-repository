@@ -19,6 +19,17 @@ export type ReleaseEntry = {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    version: "1.9.11",
+    date: "2026-04-27",
+    notes: [
+      "🐛 1.9.10 で残っていた legacy 誤マッチを根治 — schema migration が既存 logs_url 行を全て 'manual' タグで埋めたため、'auto' のみワイプする再同期では 1.9.10 以前の誤マッチ（0328↔0401 等）が残り続けていた。`linkFflogsReportsToVideos` の冒頭に「初回 1 回だけ既存 'manual' 行を 'auto' へ flip する」bootstrap を追加（`app_settings.fflogs_source_bootstrap_v1` フラグでガード）。次回「FFLogs と動画を連動」実行時に legacy 誤マッチが自動的にクリアされる",
+      "動画ページ (各コンテンツ → 動画タブ) のヘッダーに統計バッジを追加 — 累計練習時間 / クリアまでの累計時間 / 初クリア日。コンテンツ一覧ページのバッジと同じ表示形式で、ホバーで詳細時間を表示",
+      "各動画カードに再生時間バッジを表示 — duration_seconds が NULL のものは表示なし（バックフィル後に自動表示）",
+      "クリア検出のタイムスタンプ精度を改善 — `createCategoryLink` 経由の自動 first-clear 検出で、行の `created_at` ではなく `posted_at` (YouTube アップロード日 / Discord 投稿時刻) を優先採用。古いクリア動画を後日登録した場合の誤った日付を防止",
+      "duration / clear 表示ヘルパーを `@/lib/duration-format` に切り出し — コンテンツ一覧と動画ページで重複していた formatter を共通化",
+    ],
+  },
+  {
     version: "1.9.10",
     date: "2026-04-27",
     notes: [

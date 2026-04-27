@@ -23,5 +23,11 @@ export default async function VideosPage({
   }
 
   const videos = await fetchCategoryLinks(category.id, "video");
-  return <VideosList categoryId={category.id} initial={videos} />;
+  return (
+    <VideosList
+      categoryId={category.id}
+      initial={videos}
+      firstClearAt={category.firstClearAt}
+    />
+  );
 }

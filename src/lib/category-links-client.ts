@@ -63,10 +63,17 @@ export async function createCategoryLink(input: {
 
   // Auto-detect first clear: if this is a video and the title contains
   // a clear keyword, fill `first_clear_at` (only if currently NULL).
+  // Prefer `postedAt` (YouTube upload date / Discord message time) over
+  // `createdAt` (row insert time) since the former actually reflects
+  // when the clear happened — users sometimes register old clear videos
+  // weeks later, in which case `createdAt` would be misleading.
   // Best-effort — don't fail the whole insert if this side-effect errors.
   if (link.kind === "video" && isClearTitle(link.title)) {
     try {
-      await maybeSetFirstClearAt(link.categoryId, link.createdAt);
+      await maybeSetFirstClearAt(
+        link.categoryId,
+        link.postedAt ?? link.createdAt,
+      );
     } catch (e) {
       console.warn("[category-links-client] first-clear auto-set failed:", e);
     }

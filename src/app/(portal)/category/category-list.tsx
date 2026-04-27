@@ -49,6 +49,11 @@ import {
 import { StatusBadge } from "@/components/portal/status-badge";
 import { CategoryFormDialog } from "@/components/portal/category-form-dialog";
 import {
+  formatDurationLong,
+  formatDurationShort,
+  formatFirstClear,
+} from "@/lib/duration-format";
+import {
   deleteCategory,
   setCategoryOrder,
   updateCategoryStatus,
@@ -401,52 +406,6 @@ function SubPageShortcuts({ slug }: { slug: string }) {
       ))}
     </nav>
   );
-}
-
-/**
- * Compact duration label for the practice-time badge.
- *   <  1h: `45m`
- *   <100h: `12h30m`
- *   ≥100h: `120h` (drop minutes once total dwarfs them)
- */
-function formatDurationShort(seconds: number): string {
-  const totalMinutes = Math.floor(seconds / 60);
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-  if (hours === 0) return `${minutes}m`;
-  if (hours >= 100) return `${hours}h`;
-  if (minutes === 0) return `${hours}h`;
-  return `${hours}h${minutes}m`;
-}
-
-/**
- * Verbose duration for the hover tooltip — Japanese readable form.
- */
-function formatDurationLong(seconds: number): string {
-  const totalMinutes = Math.floor(seconds / 60);
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-  if (hours === 0) return `${minutes}分`;
-  if (minutes === 0) return `${hours}時間`;
-  return `${hours}時間${minutes}分`;
-}
-
-/**
- * Format the first-clear timestamp for the badge:
- *   "short" → `12/15` (M/D in local TZ)
- *   "long"  → `2025-12-15 (月)` for the hover tooltip
- */
-function formatFirstClear(iso: string, mode: "short" | "long"): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  if (mode === "short") {
-    return `${d.getMonth() + 1}/${d.getDate()}`;
-  }
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  const wd = ["日", "月", "火", "水", "木", "金", "土"][d.getDay()];
-  return `${y}-${m}-${day} (${wd})`;
 }
 
 function CategoryMenu({
