@@ -718,23 +718,29 @@ function EditDialog({
                   <Label htmlFor="edit-body" className="text-xs text-foreground/80">
                     本文
                   </Label>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const next = toHalfWidth(value.body);
-                      if (next === value.body) {
-                        toast.info("変換対象の全角文字なし");
-                        return;
-                      }
-                      onChange({ ...value, body: next });
-                      toast.success("全角を半角に変換しました");
-                    }}
-                    className="inline-flex items-center gap-1 rounded-sm border border-[var(--neon-cyan)]/40 bg-[var(--neon-cyan)]/8 px-2 py-0.5 font-mono text-[10px] tracking-widest text-[var(--neon-cyan)] uppercase transition-colors hover:bg-[var(--neon-cyan)]/15"
-                    title="全角→半角"
-                  >
-                    <CaseSensitive className="h-3 w-3" aria-hidden />
-                    全角→半角
-                  </button>
+                  {/* 全角→半角 button only useful for PT-募集 text where
+                      Japanese-IME 全角 chars sneak in. Macros are
+                      typically mostly Japanese so the button just
+                      adds noise — hidden for kind="macro". */}
+                  {kind === "template" && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = toHalfWidth(value.body);
+                        if (next === value.body) {
+                          toast.info("変換対象の全角文字なし");
+                          return;
+                        }
+                        onChange({ ...value, body: next });
+                        toast.success("全角を半角に変換しました");
+                      }}
+                      className="inline-flex items-center gap-1 rounded-sm border border-[var(--neon-cyan)]/40 bg-[var(--neon-cyan)]/8 px-2 py-0.5 font-mono text-[10px] tracking-widest text-[var(--neon-cyan)] uppercase transition-colors hover:bg-[var(--neon-cyan)]/15"
+                      title="全角→半角"
+                    >
+                      <CaseSensitive className="h-3 w-3" aria-hidden />
+                      全角→半角
+                    </button>
+                  )}
                 </div>
                 <Textarea
                   id="edit-body"

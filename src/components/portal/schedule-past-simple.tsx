@@ -10,6 +10,7 @@ import {
 import type { JapaneseHolidaysMap } from "@/lib/japanese-holidays";
 import type { ScheduleSession } from "@/lib/schedule/next-session";
 import type { SessionVideoLink } from "@/lib/server/session-video-link";
+import { SessionMemoPopover } from "./session-memo-popover";
 
 /**
  * Simple past-sessions view: a compact horizontal-wrap strip of the
@@ -127,8 +128,17 @@ function DateChip({
       }
       title={tooltip}
     >
-      <span className="tabular-nums">{monthDay}</span>
-      <span className="text-[10px] opacity-75">（{session.dayOfWeek}）</span>
+      {/* Date+曜 wrapped in a memo popover trigger. Click reveals
+          per-session shared notes. */}
+      <SessionMemoPopover
+        rawDate={session.rawDate}
+        displayDate={`${monthDay}（${session.dayOfWeek}）`}
+      >
+        <span className="tabular-nums">{monthDay}</span>
+        <span className="ml-0.5 text-[10px] opacity-75">
+          （{session.dayOfWeek}）
+        </span>
+      </SessionMemoPopover>
       {videoLink && (
         <Link
           href={videoLink.href}

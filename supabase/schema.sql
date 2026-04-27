@@ -206,6 +206,29 @@ CREATE TRIGGER set_updated_at_app_settings
   BEFORE UPDATE ON public.app_settings
   FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
+-- ---- 5c-2. schedule_session_memos (per-date shared notes) ------------
+-- Free-form notes attached to a particular session (keyed by rawDate
+-- so the same key joins both live character-sheets data and the
+-- snapshot table). Multiple memos per date, all visible to every
+-- viewer (no auth model — same trust scope as the rest of the app).
+
+CREATE TABLE IF NOT EXISTS public.schedule_session_memos (
+  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  raw_date    text NOT NULL,
+  body        text NOT NULL,
+  author_name text NOT NULL DEFAULT '',
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  updated_at  timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS schedule_session_memos_date_idx
+  ON public.schedule_session_memos(raw_date, created_at);
+
+DROP TRIGGER IF EXISTS set_updated_at_schedule_session_memos
+  ON public.schedule_session_memos;
+CREATE TRIGGER set_updated_at_schedule_session_memos
+  BEFORE UPDATE ON public.schedule_session_memos
+  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
 -- ---- 5d-pre. category_macros (in-game text macros per category) ------
 -- FF14 chat-window macros (`/p ...` / `/say ...` style payloads) that
 -- a group typically posts during a fight to coordinate calls. Modeled
@@ -330,6 +353,7 @@ ALTER TABLE public.app_settings           ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.schedule_past_sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.recruitment_templates  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.category_macros        ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.schedule_session_memos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.loot_items             ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.loot_entries           ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.mitigation_phases      ENABLE ROW LEVEL SECURITY;
@@ -347,7 +371,7 @@ DECLARE
 BEGIN
   FOR t IN SELECT unnest(ARRAY[
     'categories','category_links','app_settings','schedule_past_sessions',
-    'recruitment_templates','category_macros',
+    'recruitment_templates','category_macros','schedule_session_memos',
     'loot_items','loot_entries',
     'mitigation_phases','mitigation_entries',
     'strategy_docs','tags'
@@ -397,6 +421,7 @@ ALTER TABLE public.app_settings           REPLICA IDENTITY FULL;
 ALTER TABLE public.schedule_past_sessions REPLICA IDENTITY FULL;
 ALTER TABLE public.recruitment_templates  REPLICA IDENTITY FULL;
 ALTER TABLE public.category_macros        REPLICA IDENTITY FULL;
+ALTER TABLE public.schedule_session_memos REPLICA IDENTITY FULL;
 ALTER TABLE public.loot_items             REPLICA IDENTITY FULL;
 ALTER TABLE public.loot_entries           REPLICA IDENTITY FULL;
 ALTER TABLE public.mitigation_phases      REPLICA IDENTITY FULL;
@@ -412,7 +437,7 @@ DECLARE
 BEGIN
   FOR t IN SELECT unnest(ARRAY[
     'categories','category_links','app_settings','schedule_past_sessions',
-    'recruitment_templates','category_macros',
+    'recruitment_templates','category_macros','schedule_session_memos',
     'loot_items','loot_entries',
     'mitigation_phases','mitigation_entries',
     'strategy_docs','tags'

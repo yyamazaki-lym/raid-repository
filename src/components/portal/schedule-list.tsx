@@ -2,6 +2,7 @@ import Link from "next/link";
 import { CalendarX2, AlertTriangle, BarChart3, Film } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { CommentPopover } from "./comment-popover";
+import { SessionMemoPopover } from "./session-memo-popover";
 import {
   getJapaneseHolidayName,
   isJapaneseHoliday,
@@ -371,13 +372,20 @@ function SessionRow({
           {/* Date label color priority:
                 1. Holiday → red glow
                 2. DECISION → cyan glow + bold
-                3. default → foreground */}
-          <DateLabel
-            text={session.rawDate.split(" ")[0]!}
-            holiday={holiday}
-            decided={decided}
-            holidayName={holidayName}
-          />
+                3. default → foreground
+              Wrapped in a memo popover so any user can leave shared
+              notes for this session by clicking the date. */}
+          <SessionMemoPopover
+            rawDate={session.rawDate}
+            displayDate={session.rawDate.split(" ")[0] ?? session.rawDate}
+          >
+            <DateLabel
+              text={session.rawDate.split(" ")[0]!}
+              holiday={holiday}
+              decided={decided}
+              holidayName={holidayName}
+            />
+          </SessionMemoPopover>
           <span className="text-muted-foreground text-[11px]">
             {session.startTime} ~ {session.endTime}
           </span>
