@@ -420,6 +420,13 @@ function SessionRow({
             displayDate={session.rawDate.split(" ")[0] ?? session.rawDate}
             memos={memos}
             onRefresh={refetchMemos}
+            currentLogsUrl={videoLink?.logsUrl ?? sessionLogsUrl ?? null}
+            sessionDetails={{
+              parsedDate: session.date.toISOString(),
+              startTime: session.startTime,
+              endTime: session.endTime,
+              dayOfWeek: session.dayOfWeek,
+            }}
           >
             <DateLabel
               text={session.rawDate.split(" ")[0]!}

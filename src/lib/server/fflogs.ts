@@ -42,12 +42,13 @@ export async function fetchFflogsReports(
     `${FFLOGS_API_BASE}/reports/user/${encodeURIComponent(username)}`,
   );
   url.searchParams.set("api_key", apiKey);
-  // Include private (non-public) reports owned by the API-key holder.
-  // Without this, FFLogs hides reports flagged "Private" (owner-only)
-  // — which is the default visibility for many groups now. Reports
-  // flagged "Unlisted" are returned regardless. This explained why
-  // recent uploads (2026) didn't appear while older public ones did.
-  url.searchParams.set("includePrivate", "true");
+  // NOTE: the v1 API returns ONLY public reports. There is no
+  // documented parameter to include Unlisted / Private reports
+  // (an earlier attempt with `includePrivate=true` was based on
+  // a guess and had no effect). For non-public logs, users have
+  // to either change the report visibility on FFLogs to Public,
+  // or use the per-date "Logs URL を手動で紐づけ" form in the
+  // memo popover to bind a URL manually.
   if (options.page !== undefined) url.searchParams.set("page", String(options.page));
 
   try {

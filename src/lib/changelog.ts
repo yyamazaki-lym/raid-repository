@@ -19,6 +19,17 @@ export type ReleaseEntry = {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    version: "1.6.8",
+    date: "2026-04-27",
+    notes: [
+      "FFLogs URL の手動紐づけ機能を追加 — メモポップオーバーに「FFLogs URL」セクションを統合。日付クリック → URL 入力 → 保存 で個別の日に直接バインド可能",
+      "メモポップオーバー: 現在の URL があれば「現在の URL を開く」直リンク表示、新タブで確認可能",
+      "メモポップオーバー: 保存 / クリア両方のアクション、URL 形式バリデーション (fflogs.com/reports/...) 付き",
+      "v1 API の `includePrivate=true` パラメータを撤廃 — ドキュメント未記載のため効果がなかった。Unlisted/Private レポートは v1 API では取得不可と確定（v2 OAuth は今後対応予定）",
+      "新 server action: `setSessionLogsUrl(rawDate, url, sessionDetails?)` — 既存の past_session を UPDATE、なければ provided details で UPSERT",
+    ],
+  },
+  {
     version: "1.6.7",
     date: "2026-04-27",
     notes: [

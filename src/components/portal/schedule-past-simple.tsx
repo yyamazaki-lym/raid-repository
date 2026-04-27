@@ -183,6 +183,13 @@ function DateChip({
         displayDate={`${monthDay}（${session.dayOfWeek}）`}
         memos={memos}
         onRefresh={refetchMemos}
+        currentLogsUrl={videoLink?.logsUrl ?? sessionLogsUrl ?? null}
+        sessionDetails={{
+          parsedDate: session.date.toISOString(),
+          startTime: session.startTime,
+          endTime: session.endTime,
+          dayOfWeek: session.dayOfWeek,
+        }}
       >
         <span className="tabular-nums">
           {monthDay}（{session.dayOfWeek}）

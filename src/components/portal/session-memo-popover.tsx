@@ -9,6 +9,8 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import {
+  BarChart3,
+  ExternalLink,
   MessageSquare,
   MessageSquarePlus,
   Pencil,
@@ -26,6 +28,7 @@ import {
   updateScheduleMemo,
   type ScheduleSessionMemo,
 } from "@/lib/schedule-memos-client";
+import { setSessionLogsUrl } from "@/lib/server/categories-actions";
 
 /**
  * Click-on-date popover that lets any viewer leave shared memos for a
@@ -53,6 +56,23 @@ type Props = {
    * lack `REPLICA IDENTITY FULL` on the table).
    */
   onRefresh?: () => Promise<void>;
+  /**
+   * Currently-set FFLogs URL for this date (from `schedule_past_sessions
+   * .logs_url` OR a matching video's `logs_url`). Used to pre-fill the
+   * manual-entry input — the API's v1 endpoint only returns Public
+   * reports, so Unlisted / Private logs need to be bound by hand.
+   */
+  currentLogsUrl?: string | null;
+  /**
+   * Session details for upserting the past_session row when manually
+   * setting a logs URL for a session that hasn't been snapshotted yet.
+   */
+  sessionDetails?: {
+    parsedDate: string;
+    startTime: string;
+    endTime: string;
+    dayOfWeek: string;
+  };
   children: React.ReactNode;
 };
 
@@ -72,7 +92,15 @@ export const SessionMemoPopover = forwardRef<
   SessionMemoPopoverHandle,
   Props
 >(function SessionMemoPopover(
-  { rawDate, displayDate, memos, onRefresh, children },
+  {
+    rawDate,
+    displayDate,
+    memos,
+    onRefresh,
+    currentLogsUrl,
+    sessionDetails,
+    children,
+  },
   handleRef,
 ) {
   const [open, setOpen] = useState(false);
@@ -234,6 +262,8 @@ export const SessionMemoPopover = forwardRef<
                 rawDate={rawDate}
                 memos={memos}
                 onRefresh={onRefresh}
+                currentLogsUrl={currentLogsUrl ?? null}
+                sessionDetails={sessionDetails}
               />
             </div>
           </div>,
@@ -300,10 +330,19 @@ function MemoList({
   rawDate,
   memos,
   onRefresh,
+  currentLogsUrl,
+  sessionDetails,
 }: {
   rawDate: string;
   memos: ScheduleSessionMemo[];
   onRefresh?: () => Promise<void>;
+  currentLogsUrl: string | null;
+  sessionDetails?: {
+    parsedDate: string;
+    startTime: string;
+    endTime: string;
+    dayOfWeek: string;
+  };
 }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingBody, setEditingBody] = useState("");
@@ -315,6 +354,32 @@ function MemoList({
   // overlay centered on screen.
   const [pendingDelete, setPendingDelete] =
     useState<ScheduleSessionMemo | null>(null);
+  // FFLogs URL editor state. Pre-filled from prop so users see the
+  // currently-bound URL on open. Editable in-place; save / clear
+  // buttons commit via the server action.
+  const [logsUrlInput, setLogsUrlInput] = useState(currentLogsUrl ?? "");
+  const [logsBusy, setLogsBusy] = useState(false);
+  // Re-sync local input when the prop changes (e.g. another tab edited
+  // it, or after our own save returns and parent re-fetches).
+  useEffect(() => {
+    setLogsUrlInput(currentLogsUrl ?? "");
+  }, [currentLogsUrl]);
+
+  const saveLogsUrl = async (next: string | null) => {
+    setLogsBusy(true);
+    const r = await setSessionLogsUrl(rawDate, next, sessionDetails);
+    setLogsBusy(false);
+    if (!r.ok) {
+      toast.error("Logs URL 保存失敗: " + r.reason);
+      return;
+    }
+    toast.success(next ? "Logs URL を保存しました" : "Logs URL をクリアしました");
+    // Page-level state (sessionLogsByDate map) only refreshes via
+    // server revalidation. The action calls `revalidatePath('/')`
+    // which re-renders the schedule on the next nav/click. Local
+    // input stays in sync via the useEffect above when the prop
+    // updates after refresh.
+  };
 
   // Compose state for adding a new memo. Author name initialized
   // from localStorage so returning users don't retype their name.
@@ -497,6 +562,73 @@ function MemoList({
           ))}
         </ul>
       )}
+
+      {/* FFLogs URL editor. The v1 API only returns Public reports,
+          so Unlisted / Private logs need to be bound here by hand.
+          Position: between memos and new-memo form, so it's
+          visible without scrolling but doesn't crowd the memo
+          reading area. */}
+      <div className="flex flex-col gap-1.5 border-t border-border/40 pt-2.5">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 font-mono text-[10px] tracking-[0.22em] text-muted-foreground uppercase">
+            <BarChart3
+              className="h-3 w-3 text-amber-300/85"
+              aria-hidden
+            />
+            FFLogs URL
+          </div>
+          {currentLogsUrl && (
+            <a
+              href={currentLogsUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-[10px] text-amber-300/85 underline decoration-dotted underline-offset-2 hover:text-amber-300"
+              title="現在の URL を新タブで開く"
+            >
+              <ExternalLink className="h-2.5 w-2.5" aria-hidden />
+              現在の URL を開く
+            </a>
+          )}
+        </div>
+        <input
+          value={logsUrlInput}
+          onChange={(e) => setLogsUrlInput(e.target.value)}
+          placeholder="https://www.fflogs.com/reports/abc123..."
+          type="url"
+          inputMode="url"
+          spellCheck={false}
+          autoComplete="off"
+          className={inputClass}
+        />
+        <div className="flex justify-end gap-1.5">
+          {currentLogsUrl && (
+            <button
+              type="button"
+              onClick={() => {
+                setLogsUrlInput("");
+                void saveLogsUrl(null);
+              }}
+              disabled={logsBusy}
+              className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 font-mono text-[10px] tracking-[0.18em] text-muted-foreground uppercase transition-colors hover:bg-secondary/60 hover:text-rose-200 disabled:opacity-50"
+            >
+              <X className="h-3 w-3" aria-hidden />
+              クリア
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => void saveLogsUrl(logsUrlInput.trim() || null)}
+            disabled={
+              logsBusy ||
+              logsUrlInput.trim() === (currentLogsUrl ?? "").trim()
+            }
+            className="inline-flex items-center gap-1.5 rounded-md border border-amber-400/45 bg-amber-400/10 px-3 py-1.5 font-mono text-[10px] tracking-[0.22em] text-amber-200 uppercase transition-colors hover:border-amber-400/70 hover:bg-amber-400/18 disabled:opacity-50"
+          >
+            <Save className="h-3 w-3" aria-hidden />
+            保存
+          </button>
+        </div>
+      </div>
 
       <div className="flex flex-col gap-1.5 border-t border-border/40 pt-2.5">
         <div className="flex items-center gap-1.5 font-mono text-[10px] tracking-[0.22em] text-muted-foreground uppercase">

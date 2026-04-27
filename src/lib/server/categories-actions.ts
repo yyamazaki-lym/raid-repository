@@ -253,6 +253,94 @@ export async function linkFflogsReports(): Promise<FflogsLinkResult> {
 }
 
 /**
+ * Server Action: manually set / clear a session's `logs_url`.
+ *
+ * Workaround for the v1 API limitation: it returns ONLY public reports,
+ * so Unlisted / Private FFLogs reports can't be auto-linked. Users
+ * paste the URL by hand from the memo popover for the date.
+ *
+ * Upserts: if the past_session row doesn't exist yet (live session
+ * that hasn't been snapshotted), insert it using the provided session
+ * details. Pass `null` (or empty string) for `logsUrl` to clear the
+ * value.
+ */
+export async function setSessionLogsUrl(
+  rawDate: string,
+  logsUrl: string | null,
+  sessionDetails?: {
+    parsedDate: string;
+    startTime: string;
+    endTime: string;
+    dayOfWeek: string;
+  },
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const trimmedDate = rawDate.trim();
+  if (!trimmedDate) {
+    return { ok: false, reason: "rawDate が空です" };
+  }
+  // Normalize: empty string → null (clear). Anything else gets a basic
+  // shape check.
+  let normalized: string | null = null;
+  if (logsUrl && logsUrl.trim()) {
+    const t = logsUrl.trim();
+    if (!/^https?:\/\//i.test(t)) {
+      return {
+        ok: false,
+        reason: "FFLogs URL は http:// か https:// で始めてください",
+      };
+    }
+    if (!/fflogs\.com\/reports\//i.test(t)) {
+      return {
+        ok: false,
+        reason:
+          "FFLogs レポート URL を入力してください (例: https://www.fflogs.com/reports/abc123)",
+      };
+    }
+    normalized = t;
+  }
+
+  const supabase = await createClient();
+  // Try UPDATE first. If 0 rows affected and we have session details,
+  // INSERT a new row. This covers both "live session not yet
+  // snapshotted" and "past session that's been snapshotted" cases.
+  const { data: updated, error: updErr } = await supabase
+    .from("schedule_past_sessions")
+    .update({ logs_url: normalized })
+    .eq("raw_date", trimmedDate)
+    .select("raw_date")
+    .maybeSingle();
+  if (updErr) return { ok: false, reason: updErr.message };
+
+  if (!updated) {
+    if (!sessionDetails) {
+      return {
+        ok: false,
+        reason:
+          "対象の過去予定が見つかりませんでした — 先にスナップショットを取るか、メモポップオーバーから手動で紐づけてください",
+      };
+    }
+    const { error: insErr } = await supabase
+      .from("schedule_past_sessions")
+      .insert({
+        raw_date: trimmedDate,
+        parsed_date: sessionDetails.parsedDate,
+        start_time: sessionDetails.startTime,
+        end_time: sessionDetails.endTime,
+        day_of_week: sessionDetails.dayOfWeek,
+        source: "manual",
+        logs_url: normalized,
+      });
+    if (insErr) return { ok: false, reason: insErr.message };
+  }
+  try {
+    revalidatePath("/");
+  } catch {
+    // best-effort
+  }
+  return { ok: true };
+}
+
+/**
  * Server Action: take a snapshot of the current character-sheets
  * attendance into `schedule_past_sessions`. Triggered manually from
  * the maintenance menu (rare) — the typical run is the daily Vercel
