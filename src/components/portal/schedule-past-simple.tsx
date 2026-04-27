@@ -1,6 +1,7 @@
 "use client";
 
-import { BarChart3 } from "lucide-react";
+import Link from "next/link";
+import { BarChart3, Film } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import {
   getJapaneseHolidayName,
@@ -111,9 +112,10 @@ function DateChip({
     videoLink ? ` · ${videoLink.categoryName}/動画` : ""
   }`;
 
-  // The chip is a quiet visual marker — date + 曜 only, no link
-  // or hover effect. Logs gets its own small icon when set so the
-  // user can still hop into FFLogs straight from the strip.
+  // The chip's date text is plain (no link / no underline) so the
+  // visual stays calm. Action icons sit at the right edge: a small
+  // Film icon links into the matched video card, and a BarChart3
+  // icon opens FFLogs when the matched video has logs_url set.
   return (
     <li
       className={
@@ -124,6 +126,17 @@ function DateChip({
     >
       <span className="font-display tabular-nums">{monthDay}</span>
       <span className="text-[10px] opacity-75">（{session.dayOfWeek}）</span>
+      {videoLink && (
+        <Link
+          href={videoLink.href}
+          prefetch={false}
+          aria-label={`${videoLink.categoryName}/動画「${videoLink.videoTitle}」を開く`}
+          title={`${videoLink.categoryName}/動画 → 「${videoLink.videoTitle}」`}
+          className="inline-flex h-3.5 w-3.5 items-center justify-center rounded text-current/80 transition-colors hover:bg-current/15 hover:text-current"
+        >
+          <Film className="h-2.5 w-2.5" aria-hidden />
+        </Link>
+      )}
       {videoLink?.logsUrl && (
         <a
           href={videoLink.logsUrl}

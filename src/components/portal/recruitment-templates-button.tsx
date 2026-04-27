@@ -135,7 +135,7 @@ export function RecruitmentTemplatesButton({ initial, categories }: Props) {
             <>
               <p className="px-1.5 pt-1 pb-1 text-[10px] leading-snug text-muted-foreground/85">
                 <span className="font-mono tracking-widest text-[var(--neon-cyan)]/80 uppercase">★ Top</span>
-                {" "}が「次回開催日」カードのコピー対象です。並べ替えはダイアログから。
+                {" "}が次回開催日カードのコピーボタンの対象。
               </p>
               {grouped.map(({ categoryName, items }) => (
                 <div key={categoryName ?? "__none__"} className="mb-1 last:mb-0">
