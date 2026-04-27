@@ -581,27 +581,27 @@ export function SettingsDialog() {
                 id="fflogs-username"
                 value={fflogsUsername}
                 onChange={(e) => setFflogsUsernameState(e.target.value)}
-                placeholder="例: 70734  または  https://ja.fflogs.com/user/reports-list/70734"
+                placeholder="例: TaroYamada（表示名・display name）"
                 className="font-mono text-[12px]"
                 spellCheck={false}
                 autoComplete="off"
               />
               <p className="text-muted-foreground text-[11px] leading-relaxed">
-                <strong>ユーザー数値 ID</strong>（プロフィール URL の末尾の
-                数字、例:{" "}
-                <code className="font-mono">70734</code>）または
-                <strong>表示名</strong>を入力。プロフィール URL を直接貼り付け
-                ても OK — 末尾の ID / 名前を自動抽出します。
+                FFLogs の <strong>表示名（display name）</strong> を入力。
+                fflogs.com/profile を開くと、ページ上部の見出しに表示されている
+                英数字の名前がそれです（プロフィール URL 末尾の{" "}
+                <code className="font-mono">70734</code> などの
+                <strong>数値 ID は API では使えません</strong>）。
               </p>
               <p className="text-muted-foreground/80 text-[10px] leading-relaxed">
-                ※ <strong>非公開 (Private)</strong> レポートも、
-                API キーの持ち主が同じユーザーであれば取得されます
-                （<code className="font-mono">includePrivate=true</code>
-                {" "}を自動付与）。<strong>限定公開 (Unlisted)</strong>
-                {" "}のレポートも同様に取得可能。
+                ※ <strong>非公開 (Private)</strong> /{" "}
+                <strong>限定公開 (Unlisted)</strong> レポートも取得対象
+                （<code className="font-mono">includePrivate=true</code> を
+                自動付与）。ただし API キーの持ち主が表示名のユーザー本人で
+                ある必要があります。
                 <br />
-                ※ <strong>レポート所有者ベース</strong>: 設定したユーザーが
-                アップロードしたレポートのみ取得します。
+                ※ <strong>レポート所有者ベース</strong>: 設定した表示名の
+                ユーザーがアップロードしたレポートのみ取得します。
               </p>
               <p className="text-muted-foreground/80 text-[10px] leading-relaxed">
                 サーバー側で <code className="font-mono">FFLOGS_API_KEY</code>

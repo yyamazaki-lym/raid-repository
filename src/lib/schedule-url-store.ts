@@ -111,15 +111,22 @@ export async function getDiscordScheduleChannelId(): Promise<string | null> {
 }
 
 /**
- * FFLogs user identifier — accepted by API v1 endpoint
- * `/v1/reports/user/{userName}`. Despite the param name, the API
- * accepts BOTH:
- *   - the numeric user ID (e.g. `70734`), seen in profile URLs like
- *     `https://www.fflogs.com/user/reports-list/70734`
- *   - the human-readable display name string
+ * FFLogs user display name — required by API v1 endpoint
+ * `/v1/reports/user/{userName}`.
  *
- * So we accept either form and also auto-extract the ID/name from a
- * pasted profile URL for convenience.
+ * IMPORTANT: the API requires the **display name string**, NOT the
+ * numeric user ID seen in URLs like
+ * `https://www.fflogs.com/user/reports-list/70734`. Passing a numeric
+ * ID returns `400 Invalid user name specified.`
+ *
+ * We accept either:
+ *   - a bare display name (`TaroYamada`)
+ *   - a URL containing the display name (`/user/{name}` or
+ *     `/user/{name}/reports-list/...`)
+ *
+ * If the user pastes the numeric-ID URL form (`/reports-list/{id}`),
+ * we reject it with an actionable error directing them to look up
+ * their display name on `fflogs.com/profile`.
  *
  * Empty string clears the setting.
  */
@@ -137,18 +144,13 @@ export async function setFflogsUsername(
     if (error) return { ok: false, reason: error.message };
     return { ok: true };
   }
-  const cleaned = parseFflogsUserIdent(trimmed);
-  if (!cleaned) {
-    return {
-      ok: false,
-      reason: "ユーザー ID または名前を抽出できませんでした",
-    };
-  }
+  const result = parseFflogsDisplayName(trimmed);
+  if (!result.ok) return result;
   const supabase = createClient();
   const { error } = await supabase
     .from("app_settings")
     .upsert(
-      { key: FFLOGS_USERNAME_KEY, value: cleaned },
+      { key: FFLOGS_USERNAME_KEY, value: result.value },
       { onConflict: "key" },
     );
   if (error) return { ok: false, reason: error.message };
@@ -156,33 +158,65 @@ export async function setFflogsUsername(
 }
 
 /**
- * Accept either:
- *   - a bare identifier (`70734` or `TaroYamada`)
- *   - a profile URL (`https://(www|ja|en|de|fr).fflogs.com/user/reports-list/70734`
- *     or `https://www.fflogs.com/user/{name}` with similar shape)
+ * Try to derive an FFLogs display name from arbitrary user input.
  *
- * Extracts the last meaningful path segment when given a URL.
- * Returns null if nothing usable can be derived.
+ * Returns:
+ *   - `{ ok: true, value }` — usable display name
+ *   - `{ ok: false, reason }` — pure-numeric ID detected, or unparseable
  */
-function parseFflogsUserIdent(raw: string): string | null {
-  if (!/fflogs\.com/i.test(raw)) {
-    // Bare identifier — strip whitespace/quotes and accept it.
-    return raw.replace(/^[\s"']+|[\s"']+$/g, "") || null;
+function parseFflogsDisplayName(
+  raw: string,
+):
+  | { ok: true; value: string }
+  | { ok: false; reason: string } {
+  // URL form: extract a name segment, but reject `/reports-list/{id}`
+  // since the trailing `{id}` is the NUMERIC profile id and the API
+  // rejects it with 400.
+  if (/fflogs\.com/i.test(raw)) {
+    try {
+      const u = new URL(raw);
+      const segs = u.pathname.split("/").filter(Boolean);
+      // Pattern A: /user/{name}/...  → take {name}
+      // Pattern B: /user/reports-list/{id}  → reject (id-only form)
+      const userIdx = segs.indexOf("user");
+      if (userIdx >= 0 && userIdx + 1 < segs.length) {
+        const next = segs[userIdx + 1]!;
+        if (next === "reports-list") {
+          // The piece after `reports-list` is the numeric id.
+          return {
+            ok: false,
+            reason:
+              "URL 末尾の数字 ID は API で使えません — fflogs.com/profile で表示名（heading に表示されている名前）を確認して、その名前を直接入力してください",
+          };
+        }
+        const name = decodeURIComponent(next);
+        if (/^\d+$/.test(name)) {
+          return {
+            ok: false,
+            reason:
+              "数値 ID ではなく表示名を入力してください（fflogs.com/profile に記載）",
+          };
+        }
+        return { ok: true, value: name };
+      }
+      return { ok: false, reason: "URL から表示名を抽出できませんでした" };
+    } catch {
+      return { ok: false, reason: "URL の形式が正しくありません" };
+    }
   }
-  try {
-    const u = new URL(raw);
-    // `/user/reports-list/{id}` or `/user/{name}/reports-list/...` or
-    // `/user/{name}` — pick the last non-empty path segment after
-    // dropping `reports-list` boilerplate.
-    const segs = u.pathname
-      .split("/")
-      .map((s) => s.trim())
-      .filter((s) => s && s !== "user" && s !== "reports-list");
-    if (segs.length === 0) return null;
-    return decodeURIComponent(segs[segs.length - 1]!);
-  } catch {
-    return null;
+
+  // Bare input — accept unless it's purely numeric (which the API
+  // would 400 on anyway).
+  const cleaned = raw.replace(/^[\s"']+|[\s"']+$/g, "");
+  if (!cleaned) return { ok: false, reason: "空文字は受け付けません" };
+  if (/^\d+$/.test(cleaned)) {
+    return {
+      ok: false,
+      reason:
+        "数値 ID ではなく表示名（display name）を入力してください — fflogs.com/profile の見出しに表示されている英数字の名前です",
+    };
   }
+  return { ok: true, value: cleaned };
 }
 
 export async function getFflogsUsername(): Promise<string | null> {

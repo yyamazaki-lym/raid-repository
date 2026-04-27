@@ -67,6 +67,17 @@ export async function fetchFflogsReports(
             "FFLOGS_API_KEY が無効です — Vercel Settings → Environment Variables で v1 Web API キーを確認してください（fflogs.com/profile の Web API セクション。V2 OAuth の client_id/secret ではなく v1 キー）",
         };
       }
+      // 400 "Invalid user name" — the configured username is rejected.
+      // Almost always a numeric ID mistakenly stored. The API requires
+      // the human-readable display name (fflogs.com/profile heading).
+      if (res.status === 400 && /invalid user name/i.test(body)) {
+        return {
+          ok: false,
+          reason: /^\d+$/.test(username)
+            ? `fflogs 400: 数値 ID「${username}」は使えません — fflogs.com/profile で表示名（display name）を確認して、設定ダイアログで入力し直してください`
+            : `fflogs 400: ユーザー名「${username}」は API に拒否されました — fflogs.com/profile の表示名（display name）と一致しているか確認してください`,
+        };
+      }
       // 404 on the user endpoint usually means the username doesn't
       // exist or has no public reports.
       if (res.status === 404) {

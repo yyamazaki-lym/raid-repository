@@ -19,6 +19,17 @@ export type ReleaseEntry = {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    version: "1.6.6",
+    date: "2026-04-27",
+    notes: [
+      "FFLogs 連動の修正: API は表示名 (display name) のみ受け付ける（数値 ID は 400 エラー）。1.6.5 で数値 ID 入力を許可したのを取り消し、表示名専用に戻す",
+      "数値 ID / `/reports-list/{id}` URL 形式が入力された場合は保存時に拒否し、「fflogs.com/profile で表示名を確認してください」と案内",
+      "URL 形式 `https://www.fflogs.com/user/{name}` または `/user/{name}/reports-list/...` から表示名を自動抽出",
+      "API の 400 エラー (Invalid user name) を分かりやすく日本語化し、数値 ID と分かれば具体的な対処を提示",
+      "設定ダイアログの placeholder を表示名重視に変更（例: TaroYamada）",
+    ],
+  },
+  {
     version: "1.6.5",
     date: "2026-04-27",
     notes: [
