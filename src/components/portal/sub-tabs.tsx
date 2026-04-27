@@ -37,7 +37,7 @@ export function SubTabs({ baseHref }: { baseHref: string }) {
       aria-label="コンテンツ内ナビゲーション"
       className="border-border/40 border-b"
     >
-      <div className="mx-auto max-w-6xl px-2 sm:px-6">
+      <div className="mx-auto max-w-5xl px-2 sm:px-6">
         <ul className="flex gap-1 overflow-x-auto py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {SUB_TABS.map((tab) => {
             const href = `${baseHref}/${tab.segment}`;

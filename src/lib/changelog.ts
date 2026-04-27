@@ -19,6 +19,14 @@ export type ReleaseEntry = {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    version: "1.9.30",
+    date: "2026-04-28",
+    notes: [
+      "📐 ページ全体の最大幅を絞ってスリム化 — `max-w-6xl` (1152px) → `max-w-5xl` (1024px)。PC ブラウザで横に間延びして見えていたのを縮め、カードや表の密度を上げる。site-header / main-tabs / sub-tabs / portal-main の 4 箇所すべて更新",
+      "📐 過去の簡易チップ: 日付の縦中央揃えを `h-6 leading-6` 方式から **natural sizing + `py-1`** に変更。固定高さを使わずブラウザの自然な行ボックスで上下対称な padding (4px + 4px) を確保。`leading-tight` でテキスト行が縦中央に配置され、システム日本語フォントの ascent/descent ratio に依存せず確実に等間隔の余白に",
+    ],
+  },
+  {
     version: "1.9.29",
     date: "2026-04-28",
     notes: [

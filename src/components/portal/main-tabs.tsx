@@ -21,7 +21,7 @@ export function MainTabs({
       aria-label="メインナビゲーション"
       className="glass-bar sticky top-14 z-20 sm:top-16"
     >
-      <div className="mx-auto max-w-6xl px-2 sm:px-6">
+      <div className="mx-auto max-w-5xl px-2 sm:px-6">
         <ul className="flex gap-1 overflow-x-auto py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <li className="shrink-0">
             <Link
