@@ -161,19 +161,13 @@ function DateChip({
   return (
     <li
       className={
-        // 1.9.31: ASYMMETRIC padding (pt-0.5 pb-1.5 = 2px top, 6px
-        // bottom) to physically compensate for system Japanese font
-        // metrics. Yu Gothic / Hiragino / Noto Sans CJK JP all draw
-        // CJK glyphs in the UPPER portion of their em-box (more
-        // ascent than descent space), so symmetric padding leaves
-        // the glyphs visually low (≈ 2× whitespace above vs below).
-        // 1.9.28-1.9.30 tried symmetric vertical alignment via
-        // `h-6 + items-center`, `leading-none`, `leading-6`, and
-        // `py-1 + leading-tight` — all symmetric solutions failed
-        // because the asymmetry is in the font metrics themselves.
-        // This change adds 4px more bottom padding than top to put
-        // the visual center of the glyph at the chip center.
-        "inline-flex items-center gap-1 rounded-md border px-2 pt-0.5 pb-1.5 text-[11px] tabular-nums leading-tight transition-colors " +
+        // 1.9.32: extreme asymmetric padding (pt-0 pb-2 = 0px top,
+        // 8px bottom). 1.9.31 used pt-0.5 pb-1.5 (4px diff) but user
+        // reported the asymmetry persisted. Maximum correction in
+        // the same direction: 8px diff. If glyph still appears
+        // bottom-shifted, the correction direction is wrong (rare
+        // font metric, would need pt large + pb small instead).
+        "inline-flex items-center gap-1 rounded-md border px-2 pt-0 pb-2 text-[11px] tabular-nums leading-tight transition-colors " +
         chipColor
       }
       title={tooltip}

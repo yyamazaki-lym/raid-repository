@@ -19,6 +19,13 @@ export type ReleaseEntry = {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    version: "1.9.32",
+    date: "2026-04-28",
+    notes: [
+      "📐 過去の活動カードのチップ日付縦中央 5 度目: 非対称 padding を `pt-0.5 pb-1.5` (4px diff) → `pt-0 pb-2` (8px diff) に強化。1.9.31 の補正でも依然として上が長く下が短く見えていたため、最大限の補正に切り替え",
+    ],
+  },
+  {
     version: "1.9.31",
     date: "2026-04-28",
     notes: [
