@@ -8,6 +8,7 @@ import {
   ShieldHalf,
   BookOpen,
   Film,
+  Terminal,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -19,12 +20,13 @@ type SubTab = {
   Icon: LucideIcon;
 };
 
-// Order = use frequency: 軽減表 > ロット管理 > 攻略情報 > 動画.
+// Order = use frequency: 軽減表 > ロット管理 > 攻略情報 > 動画 > マクロ.
 const SUB_TABS: SubTab[] = [
   { id: "mitigation", label: "軽減表", segment: "mitigation", Icon: ShieldHalf },
   { id: "loot", label: "ロット管理", segment: "loot", Icon: Dice5 },
   { id: "strategy", label: "攻略情報", segment: "strategy", Icon: BookOpen },
   { id: "videos", label: "動画", segment: "videos", Icon: Film },
+  { id: "macros", label: "マクロ", segment: "macros", Icon: Terminal },
 ];
 
 export function SubTabs({ baseHref }: { baseHref: string }) {

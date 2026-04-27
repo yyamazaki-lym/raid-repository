@@ -16,6 +16,7 @@ import {
   Dice5,
   BookOpen,
   Film,
+  Terminal,
   type LucideIcon,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -373,6 +374,7 @@ const SUB_PAGES: Array<{ segment: string; label: string; Icon: LucideIcon }> = [
   { segment: "loot", label: "ロット管理", Icon: Dice5 },
   { segment: "strategy", label: "攻略情報", Icon: BookOpen },
   { segment: "videos", label: "動画", Icon: Film },
+  { segment: "macros", label: "マクロ", Icon: Terminal },
 ];
 
 function SubPageShortcuts({ slug }: { slug: string }) {

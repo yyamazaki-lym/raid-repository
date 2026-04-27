@@ -206,6 +206,29 @@ CREATE TRIGGER set_updated_at_app_settings
   BEFORE UPDATE ON public.app_settings
   FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
+-- ---- 5d-pre. category_macros (in-game text macros per category) ------
+-- FF14 chat-window macros (`/p ...` / `/say ...` style payloads) that
+-- a group typically posts during a fight to coordinate calls. Modeled
+-- per category so each content's macros stay scoped to its tab.
+
+CREATE TABLE IF NOT EXISTS public.category_macros (
+  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  category_id uuid NOT NULL REFERENCES public.categories(id) ON DELETE CASCADE,
+  label       text NOT NULL DEFAULT '',
+  body        text NOT NULL,
+  sort_order  integer NOT NULL DEFAULT 0,
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  updated_at  timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS category_macros_category_idx
+  ON public.category_macros(category_id, sort_order);
+
+DROP TRIGGER IF EXISTS set_updated_at_category_macros
+  ON public.category_macros;
+CREATE TRIGGER set_updated_at_category_macros
+  BEFORE UPDATE ON public.category_macros
+  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
 -- ---- 5d. recruitment_templates (PT募集文 templates, shared) -----------
 -- Text templates that get copy-pasted into Discord / FF14 PT-募集 sites.
 -- Each template is associated with a category (heavy / cruiser / ...)
@@ -306,6 +329,7 @@ ALTER TABLE public.category_links         ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.app_settings           ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.schedule_past_sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.recruitment_templates  ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.category_macros        ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.loot_items             ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.loot_entries           ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.mitigation_phases      ENABLE ROW LEVEL SECURITY;
@@ -323,7 +347,7 @@ DECLARE
 BEGIN
   FOR t IN SELECT unnest(ARRAY[
     'categories','category_links','app_settings','schedule_past_sessions',
-    'recruitment_templates',
+    'recruitment_templates','category_macros',
     'loot_items','loot_entries',
     'mitigation_phases','mitigation_entries',
     'strategy_docs','tags'
@@ -372,6 +396,7 @@ ALTER TABLE public.category_links         REPLICA IDENTITY FULL;
 ALTER TABLE public.app_settings           REPLICA IDENTITY FULL;
 ALTER TABLE public.schedule_past_sessions REPLICA IDENTITY FULL;
 ALTER TABLE public.recruitment_templates  REPLICA IDENTITY FULL;
+ALTER TABLE public.category_macros        REPLICA IDENTITY FULL;
 ALTER TABLE public.loot_items             REPLICA IDENTITY FULL;
 ALTER TABLE public.loot_entries           REPLICA IDENTITY FULL;
 ALTER TABLE public.mitigation_phases      REPLICA IDENTITY FULL;
@@ -387,7 +412,7 @@ DECLARE
 BEGIN
   FOR t IN SELECT unnest(ARRAY[
     'categories','category_links','app_settings','schedule_past_sessions',
-    'recruitment_templates',
+    'recruitment_templates','category_macros',
     'loot_items','loot_entries',
     'mitigation_phases','mitigation_entries',
     'strategy_docs','tags'
