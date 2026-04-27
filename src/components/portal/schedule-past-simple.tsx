@@ -161,17 +161,13 @@ function DateChip({
   return (
     <li
       className={
-        // 1.9.35: empirically verified via Claude Preview that the
-        // chip layout is `inline-grid h-[24px] place-items-center
-        // leading-none`, which centers the line-box (11px) at chip
-        // center (5.5px above + 5.5px below). On Linux/Noto, the
-        // glyph extends 2px above + 1px below the line-box → 4.5px
-        // top space, 5.5px bottom space (close to symmetric). On
-        // Windows / Yu Gothic UI, Japanese glyphs render in the
-        // LOWER portion of the em-box, so the user sees larger top
-        // whitespace. To compensate we lift the inner text via
-        // `transform: translateY(-2px)` (visible regardless of font).
-        "inline-grid grid-flow-col auto-cols-max place-items-center gap-1 rounded-md border px-2 h-[24px] text-[11px] tabular-nums leading-none transition-colors " +
+        // 1.9.37: revert translateY on inner span (it shifted only
+        // the date, leaving icons at their natural baseline → user
+        // saw "icons offset down from date"). Instead, apply
+        // asymmetric padding to the WHOLE chip: more pb than pt so
+        // ALL grid items (date + icons) shift up uniformly.
+        // Removed h-[24px] — let chip auto-size from padding.
+        "inline-grid grid-flow-col auto-cols-max place-items-center gap-1 rounded-md border px-2 pt-0 pb-1.5 text-[11px] tabular-nums leading-none transition-colors " +
         chipColor
       }
       title={tooltip}
@@ -190,14 +186,7 @@ function DateChip({
           dayOfWeek: session.dayOfWeek,
         }}
       >
-        {/* 1.9.36: translateY(-3px) に強化。1.9.35 の -2px でも
-            まだ Yu Gothic UI ユーザーから「上が長い」報告。Linux/
-            Noto では下寄り過剰になるが、Windows ユーザーの可読性
-            を優先する。ユーザー測定で fine-tune する想定。 */}
-        <span
-          className="tabular-nums"
-          style={{ transform: "translateY(-3px)", display: "inline-block" }}
-        >
+        <span className="tabular-nums">
           {monthDay}（{session.dayOfWeek}）
         </span>
       </SessionMemoPopover>

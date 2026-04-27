@@ -108,6 +108,13 @@ function parseTopText(html: string): string | null {
   const bodyMatch = before.match(/<body\b[^>]*>([\s\S]*)$/i);
   if (bodyMatch) before = bodyMatch[1]!;
 
+  // 1.9.37: truncate at the "■コメント" header so any comments
+  // rendered above the schedule table aren't pulled into the top
+  // text. Comments are surfaced separately by parseComments() and
+  // shown per-author on the schedule, so they don't belong here.
+  const commentIdx = before.indexOf("■コメント");
+  if (commentIdx > 0) before = before.slice(0, commentIdx);
+
   // Extract text from prominent block elements before the schedule.
   // We deliberately skip <h1> (typically the static name / title of
   // the page) and <div> (would catch the entire layout container).

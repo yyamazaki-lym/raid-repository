@@ -724,63 +724,61 @@ function Legend({
           <span className="text-[11px] text-muted-foreground">{l.label}</span>
         </span>
       ))}
-      {/* 1.9.36: コメントアイコンを ATT_LEGEND ループの外に出して
-          凡例の右寄りに独立配置。ml-auto は更新ボタンが取るので、
-          このアイコンはその左隣 (gap-x で間隔は確保) に。元サイトに
-          上部テキストが無ければアイコン自体を非表示。 */}
-      {topText && (
-        <span className="relative inline-flex">
+      {/* 1.9.37: ルール / 更新ボタンを右端 1 グループにまとめる。
+          ml-auto を group コンテナに付けて全体を右寄せ。ルール
+          ボタンの popover は right-0 で button right-edge 揃えに
+          開くので、画面右端からの overflow を防げる。 */}
+      <div className="ml-auto flex items-center gap-1.5">
+        {topText && (
+          <span className="relative inline-flex">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowTopText((v) => !v);
+              }}
+              aria-label="運用ルール / 注意事項を表示"
+              title="運用ルール / 注意事項"
+              aria-expanded={showTopText}
+              className="inline-flex h-6 items-center gap-1 rounded-md border border-[var(--neon-violet)]/40 bg-[var(--neon-violet)]/8 px-2 font-mono text-[10px] tracking-[0.18em] text-[var(--neon-violet)]/90 uppercase transition-all hover:border-[var(--neon-violet)]/70 hover:bg-[var(--neon-violet)]/15 hover:shadow-[0_0_8px_-2px_rgba(167,139,250,0.55)]"
+            >
+              <MessageSquare className="h-3 w-3" aria-hidden />
+              ルール
+            </button>
+            {showTopText && (
+              <div
+                ref={topTextRef}
+                role="dialog"
+                aria-label="運用ルール / 注意事項"
+                className="glass-popup absolute top-full right-0 z-40 mt-1 w-[min(36rem,calc(100vw-2rem))] rounded-lg border border-[var(--neon-violet)]/35 px-3.5 py-3 text-[12px] leading-relaxed text-foreground/85 shadow-[0_12px_40px_-16px_rgba(167,139,250,0.45),0_2px_8px_-2px_rgba(0,0,0,0.4)]"
+              >
+                <p className="mb-2 font-mono text-[10px] tracking-[0.22em] text-[var(--neon-violet)]/85 uppercase">
+                  運用ルール / 注意事項
+                </p>
+                <pre className="whitespace-pre-wrap break-words font-sans text-[12px] leading-relaxed">
+                  {topText}
+                </pre>
+              </div>
+            )}
+          </span>
+        )}
+        {onRefresh && (
           <button
             type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              setShowTopText((v) => !v);
-            }}
-            aria-label="運用ルール / 注意事項を表示"
-            title="運用ルール / 注意事項"
-            aria-expanded={showTopText}
-            className="inline-flex h-6 items-center gap-1 rounded-md border border-[var(--neon-violet)]/40 bg-[var(--neon-violet)]/8 px-2 font-mono text-[10px] tracking-[0.18em] text-[var(--neon-violet)]/90 uppercase transition-all hover:border-[var(--neon-violet)]/70 hover:bg-[var(--neon-violet)]/15 hover:shadow-[0_0_8px_-2px_rgba(167,139,250,0.55)]"
+            onClick={onRefresh}
+            disabled={refreshing}
+            aria-label="スケジュールを最新の状態に更新"
+            title="スケジュールを最新の状態に更新"
+            className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-border/50 bg-background/30 text-muted-foreground transition-all hover:border-[var(--neon-cyan)]/60 hover:bg-[var(--neon-cyan)]/8 hover:text-[var(--neon-cyan)] disabled:cursor-not-allowed disabled:opacity-60"
           >
-            <MessageSquare className="h-3 w-3" aria-hidden />
-            ルール
+            {refreshing ? (
+              <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
+            ) : (
+              <RefreshCw className="h-3 w-3" aria-hidden />
+            )}
           </button>
-          {showTopText && (
-            <div
-              ref={topTextRef}
-              role="dialog"
-              aria-label="運用ルール / 注意事項"
-              className="glass-popup absolute top-full right-0 z-40 mt-1 w-[min(36rem,calc(100vw-2rem))] rounded-lg border border-[var(--neon-violet)]/35 px-3.5 py-3 text-[12px] leading-relaxed text-foreground/85 shadow-[0_12px_40px_-16px_rgba(167,139,250,0.45),0_2px_8px_-2px_rgba(0,0,0,0.4)]"
-            >
-              <p className="mb-2 font-mono text-[10px] tracking-[0.22em] text-[var(--neon-violet)]/85 uppercase">
-                運用ルール / 注意事項
-              </p>
-              <pre className="whitespace-pre-wrap break-words font-sans text-[12px] leading-relaxed">
-                {topText}
-              </pre>
-            </div>
-          )}
-        </span>
-      )}
-      {/* 1.9.28: 右端に更新ボタン。クリックで router.refresh() →
-          サーバーサイド fetchSchedule() が再実行され、最新の出欠
-          状況がページ全体に反映される。useTransition の pending を
-          受けてスピナー表示。 */}
-      {onRefresh && (
-        <button
-          type="button"
-          onClick={onRefresh}
-          disabled={refreshing}
-          aria-label="スケジュールを最新の状態に更新"
-          title="スケジュールを最新の状態に更新"
-          className="ml-auto inline-flex h-6 w-6 items-center justify-center rounded-md border border-border/50 bg-background/30 text-muted-foreground transition-all hover:border-[var(--neon-cyan)]/60 hover:bg-[var(--neon-cyan)]/8 hover:text-[var(--neon-cyan)] disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {refreshing ? (
-            <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
-          ) : (
-            <RefreshCw className="h-3 w-3" aria-hidden />
-          )}
-        </button>
-      )}
+        )}
+      </div>
     </div>
   );
 }
