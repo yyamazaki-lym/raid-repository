@@ -7,6 +7,7 @@ import {
   type NextSessionResult,
 } from "@/lib/schedule/next-session";
 import { getScheduleSourceUrl } from "@/lib/schedule/source-url";
+import { buildSessionVideoLinkMap } from "@/lib/server/session-video-link";
 import { fetchRecruitmentTemplatesServer } from "@/lib/supabase/recruitment-templates";
 
 export const metadata = {
@@ -30,11 +31,13 @@ export default async function SchedulePage() {
     );
   }
 
-  const [result, holidays, recruitmentTemplates] = await Promise.all([
-    fetchSchedule(),
-    fetchJapaneseHolidays(),
-    fetchRecruitmentTemplatesServer(),
-  ]);
+  const [result, holidays, recruitmentTemplates, sessionVideoLinks] =
+    await Promise.all([
+      fetchSchedule(),
+      fetchJapaneseHolidays(),
+      fetchRecruitmentTemplatesServer(),
+      buildSessionVideoLinkMap(),
+    ]);
   const nextResult: NextSessionResult = result.ok
     ? { ok: true, session: pickNextDecision(result.data.sessions) }
     : { ok: false, reason: result.reason };
@@ -51,6 +54,7 @@ export default async function SchedulePage() {
       scheduleUrl={url}
       holidays={holidays}
       recruitmentTemplates={recruitmentTemplates}
+      sessionVideoLinks={sessionVideoLinks}
     />
   );
 }

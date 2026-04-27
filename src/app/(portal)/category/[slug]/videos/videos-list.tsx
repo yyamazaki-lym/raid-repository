@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import Image from "next/image";
 import {
   ExternalLink,
@@ -57,6 +58,12 @@ export function VideosList({ categoryId, initial }: Props) {
   const live = useRealtimeCategoryLinks(categoryId, "video", initial);
   const [editTarget, setEditTarget] = useState<CategoryLink | null>(null);
   const [optimistic, setOptimistic] = useState<string[] | null>(null);
+  // ?focus=<videoId> — set when navigating from the schedule page's
+  // past date cell. Used to scroll the matching card into view and
+  // briefly highlight it.
+  const searchParams = useSearchParams();
+  const focusId = searchParams.get("focus");
+  const focusedRef = useRef<HTMLLIElement | null>(null);
   // Sort mode lives in localStorage so the user's choice survives reloads.
   // Default to date (newest-first) — matches the request to view videos
   // chronologically; switching to custom enables DnD reordering.
@@ -66,6 +73,20 @@ export function VideosList({ categoryId, initial }: Props) {
     const stored = window.localStorage.getItem(SORT_STORAGE_KEY);
     if (stored === "custom" || stored === "date") setSortMode(stored);
   }, []);
+
+  // Scroll the focused card into view once it mounts. Re-runs when
+  // the focusId changes or when the live list arrives (since the
+  // ref is set during render of the matching card). The matching
+  // card uses a thin one-shot CSS animation for the highlight.
+  useEffect(() => {
+    if (!focusId) return;
+    const el = focusedRef.current;
+    if (!el) return;
+    const id = window.setTimeout(() => {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 50);
+    return () => window.clearTimeout(id);
+  }, [focusId, live.length]);
   const persistSort = (mode: SortMode) => {
     setSortMode(mode);
     try {
@@ -206,6 +227,8 @@ export function VideosList({ categoryId, initial }: Props) {
                   key={v.id}
                   video={v}
                   onEdit={() => setEditTarget(v)}
+                  focused={v.id === focusId}
+                  refIfFocused={v.id === focusId ? focusedRef : null}
                 />
               ))}
             </ul>
@@ -215,7 +238,15 @@ export function VideosList({ categoryId, initial }: Props) {
         // Date-sorted layout — DnD makes no sense here so render plain cards.
         <ul className="grid gap-4 sm:grid-cols-2">
           {videos.map((v) => (
-            <li key={v.id}>
+            <li
+              key={v.id}
+              ref={v.id === focusId ? focusedRef : undefined}
+              className={
+                v.id === focusId
+                  ? "animate-[pulse_1.4s_ease-out_2] rounded-lg ring-2 ring-[var(--neon-cyan)]/60 ring-offset-2 ring-offset-background"
+                  : ""
+              }
+            >
               <VideoCard video={v} onEdit={() => setEditTarget(v)} />
             </li>
           ))}
@@ -238,9 +269,13 @@ export function VideosList({ categoryId, initial }: Props) {
 function SortableVideoCard({
   video,
   onEdit,
+  focused = false,
+  refIfFocused = null,
 }: {
   video: CategoryLink;
   onEdit: () => void;
+  focused?: boolean;
+  refIfFocused?: React.RefObject<HTMLLIElement | null> | null;
 }) {
   const {
     attributes,
@@ -258,8 +293,27 @@ function SortableVideoCard({
     zIndex: isDragging ? 10 : "auto",
   };
 
+  // Compose dnd-kit's setNodeRef with the optional focus ref so a
+  // single <li> can satisfy both. Both functions/objects are called
+  // with the DOM node when it mounts.
+  const composedRef = (node: HTMLLIElement | null) => {
+    setNodeRef(node);
+    if (refIfFocused) {
+      refIfFocused.current = node;
+    }
+  };
+
   return (
-    <li ref={setNodeRef} style={style} {...attributes}>
+    <li
+      ref={composedRef}
+      style={style}
+      {...attributes}
+      className={
+        focused
+          ? "animate-[pulse_1.4s_ease-out_2] rounded-lg ring-2 ring-[var(--neon-cyan)]/60 ring-offset-2 ring-offset-background"
+          : ""
+      }
+    >
       <VideoCard video={video} onEdit={onEdit} dragListeners={listeners} />
     </li>
   );

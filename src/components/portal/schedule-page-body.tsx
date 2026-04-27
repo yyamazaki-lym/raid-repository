@@ -9,6 +9,7 @@ import { SchedulePastSimple } from "./schedule-past-simple";
 import type { JapaneseHolidaysMap } from "@/lib/japanese-holidays";
 import type { RecruitmentTemplate } from "@/lib/recruitment-templates-client";
 import type { NextSessionResult, ScheduleFetchResult } from "@/lib/schedule/next-session";
+import type { SessionVideoLink } from "@/lib/server/session-video-link";
 
 /**
  * Client wrapper that owns the past-sessions visibility state and
@@ -37,6 +38,12 @@ type Props = {
   holidays?: JapaneseHolidaysMap;
   /** Pre-fetched PT-募集 templates (server-rendered initial state). */
   recruitmentTemplates?: RecruitmentTemplate[];
+  /**
+   * Pre-built map of `YYYY-MM-DD` (JST) → matching video page link.
+   * Used by the past detail table to make date cells clickable into
+   * the corresponding video.
+   */
+  sessionVideoLinks?: Record<string, SessionVideoLink>;
 };
 
 export function SchedulePageBody({
@@ -45,6 +52,7 @@ export function SchedulePageBody({
   scheduleUrl,
   holidays,
   recruitmentTemplates = [],
+  sessionVideoLinks,
 }: Props) {
   // Two-toggle state: simple list (top) and detailed table (bottom).
   // Both default to off; pinned values persist via localStorage.
@@ -153,6 +161,7 @@ export function SchedulePageBody({
         showDetailedPast={showDetail}
         scheduleUrl={scheduleUrl}
         holidays={holidays}
+        sessionVideoLinks={sessionVideoLinks}
       />
     </div>
   );

@@ -1,4 +1,5 @@
-import { CalendarX2, AlertTriangle } from "lucide-react";
+import Link from "next/link";
+import { CalendarX2, AlertTriangle, Film } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { CommentPopover } from "./comment-popover";
 import {
@@ -13,6 +14,7 @@ import type {
   ScheduleSession,
   ScheduleUser,
 } from "@/lib/schedule/next-session";
+import type { SessionVideoLink } from "@/lib/server/session-video-link";
 
 const ATT_TONE: Record<Attendance, string> = {
   "◯": "text-[var(--neon-cyan)] bg-[var(--neon-cyan)]/10 border-[var(--neon-cyan)]/30",
@@ -50,6 +52,12 @@ type Props = {
    * synchronous hardcoded fallback is used.
    */
   holidays?: JapaneseHolidaysMap;
+  /**
+   * Pre-built `YYYY-MM-DD` → matching-video-link map. When a past
+   * session has an entry, its date cell becomes a Link to that
+   * video; otherwise the cell renders as plain text.
+   */
+  sessionVideoLinks?: Record<string, SessionVideoLink>;
 };
 
 export function ScheduleList({
@@ -58,6 +66,7 @@ export function ScheduleList({
   showDetailedPast = false,
   scheduleUrl,
   holidays,
+  sessionVideoLinks,
 }: Props) {
   if (!result.ok) {
     return (
@@ -184,6 +193,7 @@ export function ScheduleList({
                     isPast
                     holidays={holidays}
                     showDecided={false}
+                    videoLink={lookupVideoLink(s, sessionVideoLinks)}
                   />
                 ))}
               </tbody>
@@ -254,12 +264,87 @@ function buildEditUrl(sourceUrl: string | null | undefined, userId: string): str
   }
 }
 
+/**
+ * Date cell content. Plain colored span when no video is linked; a
+ * Link with a small Film icon (and underline-on-hover) when one is.
+ * Color priority is the same in both branches: holiday > decided >
+ * foreground.
+ */
+function DateLabel({
+  text,
+  holiday,
+  decided,
+  holidayName,
+  videoLink,
+}: {
+  text: string;
+  holiday: boolean;
+  decided: boolean;
+  holidayName: string | null;
+  videoLink: SessionVideoLink | null;
+}) {
+  const colorClass = holiday
+    ? "font-bold text-rose-400 drop-shadow-[0_0_4px_color-mix(in_oklch,oklch(0.65_0.22_25)_40%,transparent)]"
+    : decided
+      ? "font-bold text-[var(--neon-cyan)] drop-shadow-[0_0_4px_color-mix(in_oklch,var(--neon-cyan)_40%,transparent)]"
+      : "";
+  const tooltipParts = [
+    holidayName,
+    videoLink
+      ? `${videoLink.categoryName}/動画 → 「${videoLink.videoTitle}」`
+      : null,
+  ].filter(Boolean);
+  const title = tooltipParts.length > 0 ? tooltipParts.join(" · ") : undefined;
+
+  if (videoLink) {
+    return (
+      <Link
+        href={videoLink.href}
+        prefetch={false}
+        title={title}
+        className={
+          "group inline-flex items-center gap-1 underline decoration-dotted decoration-[var(--neon-cyan)]/40 underline-offset-4 transition-colors hover:decoration-[var(--neon-cyan)] " +
+          colorClass
+        }
+      >
+        <span>{text}</span>
+        <Film
+          className="h-3 w-3 shrink-0 opacity-50 transition-opacity group-hover:opacity-100"
+          aria-hidden
+        />
+      </Link>
+    );
+  }
+  return (
+    <span className={colorClass} title={title}>
+      {text}
+    </span>
+  );
+}
+
+/**
+ * Look up a session's matching video by its JST calendar day.
+ */
+function lookupVideoLink(
+  session: ScheduleSession,
+  links: Record<string, SessionVideoLink> | undefined,
+): SessionVideoLink | null {
+  if (!links) return null;
+  const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
+  const jst = new Date(session.date.getTime() + JST_OFFSET_MS);
+  const y = jst.getUTCFullYear();
+  const m = String(jst.getUTCMonth() + 1).padStart(2, "0");
+  const d = String(jst.getUTCDate()).padStart(2, "0");
+  return links[`${y}-${m}-${d}`] ?? null;
+}
+
 function SessionRow({
   session,
   users,
   isPast = false,
   holidays,
   showDecided = true,
+  videoLink = null,
 }: {
   session: ScheduleSession;
   users: ScheduleUser[];
@@ -267,6 +352,8 @@ function SessionRow({
   holidays?: JapaneseHolidaysMap;
   /** When false, drop the 確定 column entirely (past table). */
   showDecided?: boolean;
+  /** When non-null, the date label becomes a Link to that video. */
+  videoLink?: SessionVideoLink | null;
 }) {
   const decided = session.status === "DECISION";
   // Japanese national holidays get a red date label — overrides the
@@ -295,22 +382,16 @@ function SessionRow({
           {/* Date label color priority:
                 1. Holiday → red glow
                 2. DECISION → cyan glow + bold
-                3. default → foreground */}
-          <span
-            className={
-              holiday
-                ? "font-bold text-rose-400 drop-shadow-[0_0_4px_color-mix(in_oklch,oklch(0.65_0.22_25)_40%,transparent)]"
-                : decided
-                  ? "font-bold text-[var(--neon-cyan)] drop-shadow-[0_0_4px_color-mix(in_oklch,var(--neon-cyan)_40%,transparent)]"
-                  : ""
-            }
-            // Tooltip shows the holiday name on hover (PC). Mobile
-            // browsers mostly ignore `title`, which matches the user's
-            // "PC only" preference for this hint.
-            title={holidayName ?? undefined}
-          >
-            {session.rawDate.split(" ")[0]}
-          </span>
+                3. default → foreground
+              When the past detail row has a matching video, wrap the
+              date in a Link to the video. Otherwise plain span. */}
+          <DateLabel
+            text={session.rawDate.split(" ")[0]!}
+            holiday={holiday}
+            decided={decided}
+            holidayName={holidayName}
+            videoLink={videoLink}
+          />
           <span className="text-muted-foreground text-[11px]">
             {session.startTime} ~ {session.endTime}
           </span>
