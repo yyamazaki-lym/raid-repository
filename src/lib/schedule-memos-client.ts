@@ -170,6 +170,10 @@ export function useRealtimeScheduleMemos(
       )
       .subscribe();
 
+    // Initial fetch — without this the hook only ever populates via
+    // postgres_changes events, so existing memos never appeared.
+    void refetch();
+
     return () => {
       cancelled = true;
       try {

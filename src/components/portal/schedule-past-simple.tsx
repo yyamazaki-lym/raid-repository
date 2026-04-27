@@ -125,10 +125,13 @@ function DateChip({
   // `font-mono` + `leading-none` on every child so all glyphs share
   // the same baseline / x-height — `font-display` was misaligning
   // against the default-font 曜 parens.
+  // Fixed h-6 + items-center so the date text is dead-centered
+  // vertically — `py-* + leading-none` was producing slight optical
+  // asymmetry where the smaller 曜 glyphs sat above the date center.
   return (
     <li
       className={
-        "inline-flex items-center gap-1 rounded-sm border px-1.5 py-1 font-mono text-[11px] leading-none " +
+        "inline-flex h-6 items-center gap-1 rounded-sm border px-1.5 font-mono text-[11px] leading-none " +
         chipColor
       }
       title={tooltip}

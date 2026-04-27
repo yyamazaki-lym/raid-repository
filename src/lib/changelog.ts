@@ -19,6 +19,14 @@ export type ReleaseEntry = {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    version: "1.4.2",
+    date: "2026-04-27",
+    notes: [
+      "メモが取得・表示されない不具合を修正（realtime hook の初期 fetch 漏れ）",
+      "簡易過去日程チップを固定高さ (h-6) + items-center に変更し、日時テキストの上下空白を対称化",
+    ],
+  },
+  {
     version: "1.4.1",
     date: "2026-04-27",
     notes: [
