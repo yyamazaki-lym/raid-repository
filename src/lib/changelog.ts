@@ -19,6 +19,16 @@ export type ReleaseEntry = {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    version: "1.9.9",
+    date: "2026-04-27",
+    notes: [
+      "FFLogs 自動マッチを「タイトル日付必須」に厳格化 — タイトルから raid 日が抽出できない動画は自動マッチ対象外に。posted_at fallback による隣接 raid 日との誤マッチ（連鎖ズレ）を完全防止",
+      "対象外になった動画は、動画編集ダイアログから FFLogs URL を手動指定する運用に",
+      "診断パネルの注記を更新: 「失敗 = 自動マッチ対象外」と明示。失敗タイトル一覧で対象動画を確認可能",
+      "スコアリングロジック簡素化: title-date 必須なので fallback 経路を完全削除、コード量 ~50 行削減",
+    ],
+  },
+  {
     version: "1.9.8",
     date: "2026-04-27",
     notes: [

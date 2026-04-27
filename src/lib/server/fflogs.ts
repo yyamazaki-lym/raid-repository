@@ -1312,13 +1312,12 @@ async function linkReportsToVideos(
     };
   }
 
-  // A video is matchable if EITHER:
-  //   - its title contains a parseable raid date (e.g.「【2026 04 01】」)
-  //   - OR it has a non-null `posted_at` timestamp
-  // We DO NOT fall back to `created_at` because that's the row insert
-  // time (irrelevant to the actual raid). A video with neither title
-  // date nor posted_at has no reliable date and is skipped.
-  let videosSkippedNoDate = 0;
+  // STRICT POLICY (1.9.9): only videos with a parseable raid date in
+  // their title participate in auto-matching. posted_at fallback
+  // produced cascading wrong matches when consecutive raids fell in
+  // each other's ±18h windows. Better to leave dateless videos
+  // unmatched (user binds manually via the video edit dialog).
+  let videosSkippedNoTitleDate = 0;
   let titleDateHits = 0;
   let titleDateMisses = 0;
   const titleDateMissSample: string[] = [];
@@ -1329,7 +1328,6 @@ async function linkReportsToVideos(
         postedAt && Number.isFinite(new Date(postedAt).getTime())
           ? new Date(postedAt).getTime()
           : null;
-      // Year fallback for year-less title patterns ("4月1日", "0401" etc).
       const fallbackYear =
         postedTMs !== null
           ? new Date(postedTMs).getUTCFullYear()
@@ -1340,21 +1338,17 @@ async function linkReportsToVideos(
         titleDateHits += 1;
       } else {
         titleDateMisses += 1;
+        videosSkippedNoTitleDate += 1;
         if (vTitle && titleDateMissSample.length < 10) {
           titleDateMissSample.push(vTitle);
         }
+        return null; // skip — no posted_at fallback in 1.9.9+
       }
-      // Need at least one date source.
-      if (!titleDate && postedTMs === null) {
-        videosSkippedNoDate += 1;
-        return null;
-      }
-      // Sort key: prefer title-date as the primary chronological sort,
-      // fall back to posted_at if title has no date.
-      const sortKey =
-        titleDate !== null
-          ? Date.UTC(titleDate.y, titleDate.m - 1, titleDate.d)
-          : (postedTMs as number);
+      const sortKey = Date.UTC(
+        titleDate.y,
+        titleDate.m - 1,
+        titleDate.d,
+      );
       const cat = (v as { category?: unknown }).category as
         | { name?: string | null }
         | { name?: string | null }[]
@@ -1365,8 +1359,7 @@ async function linkReportsToVideos(
         : (cat?.name ?? null);
       return {
         ...v,
-        // tMs is the posted_at fallback timestamp (may be null).
-        tMs: postedTMs,
+        tMs: postedTMs, // kept for diag display only — not used in scoring
         titleDate,
         sortKey,
         categoryName,
@@ -1379,39 +1372,24 @@ async function linkReportsToVideos(
   const details: FflogsLinkDetail[] = [];
   let matched = 0;
 
-  // 2-stage scoring per user request:
-  //   Stage 1 (primary): raid date.
-  //     - Try to extract date from video TITLE (e.g.「【2026 04 01】」)
-  //       → compare to report.startMs (JST calendar date).
-  //     - When titles include a date, this is FAR more reliable than
-  //       YouTube posted_at (upload time can be days off from raid).
-  //     - score = days_apart * 24h. 0 days = 0 score. Reject if > 1 day.
-  //   Stage 1 fallback (when video title has no date):
-  //     - Use posted_at - report.startMs delta within ±18h window.
-  //     - Add small penalty so title-date matches are preferred.
-  //   Stage 2 (secondary tiebreaker): content match.
-  //     - Same-date pairs get further sorted by content (zone↔category
-  //       name bigram overlap). Mismatch adds small penalty.
+  // 1.9.9 scoring: title-date is REQUIRED (no posted_at fallback).
+  //   Date check: STRICT — same JST calendar day only.
+  //   Content check: bilingual group classifier; reject only on
+  //   confirmed mismatch (different known content groups).
   //
-  // Net effect: same-day raid date dominates; content disambiguates
-  // when multiple videos share the same date; posted_at is the
-  // backstop only.
-  const ONE_DAY_MS = 24 * 60 * 60 * 1000;
-  const SMALL_PENALTY = 6 * 60 * 60 * 1000; // 6h equivalent
-  const NO_TITLE_DATE_PENALTY = 12 * 60 * 60 * 1000; // 12h, prefer title-date matches
-
+  // Tie-breaker between same-day candidates: content-match score.
+  const SMALL_PENALTY = 6 * 60 * 60 * 1000; // ambiguous content nudge
   const scoreCandidate = (
     video: {
-      tMs: number | null;
-      titleDate: { y: number; m: number; d: number } | null;
+      titleDate: { y: number; m: number; d: number };
       categoryName: string | null;
       title: string | null;
     },
     report: FflogsReport,
   ) => {
     const reportDate = jstCalendarDate(report.startMs);
-
-    // Content mismatch: hard reject only when 100% confident different.
+    const days = daysApart(video.titleDate, reportDate);
+    if (days !== 0) return Infinity;
     const mismatch = contentMismatchPenalty(
       video.categoryName,
       video.title,
@@ -1419,23 +1397,7 @@ async function linkReportsToVideos(
       report.title,
     );
     if (mismatch === 1) return Infinity;
-    const contentPenalty = mismatch === 0.5 ? SMALL_PENALTY : 0;
-
-    if (video.titleDate) {
-      // Stage 1 primary: title-date match. STRICT — exact same JST
-      // calendar day required. Title-date is user-curated truth, no
-      // need for fuzzy ±1 day window.
-      const days = daysApart(video.titleDate, reportDate);
-      if (days !== 0) return Infinity;
-      return contentPenalty;
-    }
-
-    // Stage 1 fallback: posted_at-based (only when title date absent).
-    if (video.tMs === null) return Infinity;
-    const delta = video.tMs - report.startMs;
-    if (Math.abs(delta) > MATCH_WINDOW_MS) return Infinity;
-    const timeScore = delta >= 0 ? delta : -delta * 4;
-    return timeScore + NO_TITLE_DATE_PENALTY + contentPenalty;
+    return mismatch === 0.5 ? SMALL_PENALTY : 0;
   };
 
   // Build all candidate (video, report, score) tuples that fit the
@@ -1512,7 +1474,7 @@ async function linkReportsToVideos(
     matched,
     details,
     dateRange,
-    skippedNoPostedAt: videosSkippedNoDate,
+    skippedNoPostedAt: videosSkippedNoTitleDate,
     titleDateHits,
     titleDateMisses,
     titleDateMissSample,

@@ -1239,16 +1239,16 @@ export function SettingsDialog() {
                             {(logsResult.diag.videosSkippedNoPostedAt ?? 0) >
                               0 && (
                               <p className="mt-0.5 text-amber-200/85">
-                                ⚠ 日付がなくスキップした動画:{" "}
+                                ⚠ タイトル日付なしでスキップ:{" "}
                                 <strong>
                                   {logsResult.diag.videosSkippedNoPostedAt}
                                 </strong>
                                 {" 件"}
                                 <span className="ml-1 text-muted-foreground/85">
-                                  ※ タイトルに raid 日 (例「2026 04 01」)
-                                  も無く、posted_at も未設定の動画。コンテンツ
-                                  ページ → メンテナンス → 「Discord 履歴から
-                                  posted_at を補完」を実行推奨
+                                  ※ 1.9.9 から、タイトルに raid 日が無い動画は
+                                  自動マッチ対象から除外（誤マッチ防止）。
+                                  動画編集ダイアログから FFLogs URL を手動指定
+                                  してください
                                 </span>
                               </p>
                             )}
@@ -1263,7 +1263,10 @@ export function SettingsDialog() {
                                 <strong className="text-rose-300">
                                   {logsResult.diag.titleDateMissCount ?? 0}
                                 </strong>
-                                {" 件 (失敗時は posted_at fallback)"}
+                                {" 件"}
+                                <span className="ml-1 text-muted-foreground/70">
+                                  (失敗 = 自動マッチ対象外)
+                                </span>
                               </p>
                             )}
                             {logsResult.diag.titleDateMissSample &&
