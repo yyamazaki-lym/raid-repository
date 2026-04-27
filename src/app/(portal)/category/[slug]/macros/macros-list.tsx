@@ -412,14 +412,25 @@ function TemplatesSection({
   // realtime hook (which gets ALL templates) and filter back down to
   // this category. Keeps the per-page list in sync with edits made
   // on the schedule page's global manager.
-  const initialAll: RecruitmentTemplate[] = initialTemplates.map((t) => ({
-    id: t.id,
-    label: t.label,
-    body: t.body,
-    sortOrder: t.sortOrder,
-    categoryId, // assume parent supplied filtered list
-    categoryName,
-  }));
+  //
+  // Bug fix: `initialAll` MUST be memoized. The realtime hook uses
+  // reference equality to detect when `initial` was replaced by the
+  // parent (e.g. after router.refresh) — without useMemo a fresh
+  // array on every render kept overwriting the live-tracked state
+  // with the original server payload, so additions made from this
+  // page didn't appear until a hard reload.
+  const initialAll = useMemo<RecruitmentTemplate[]>(
+    () =>
+      initialTemplates.map((t) => ({
+        id: t.id,
+        label: t.label,
+        body: t.body,
+        sortOrder: t.sortOrder,
+        categoryId,
+        categoryName,
+      })),
+    [initialTemplates, categoryId, categoryName],
+  );
   const allLive = useRealtimeRecruitmentTemplates(initialAll);
   const templates = useMemo(
     () => allLive.filter((t) => t.categoryId === categoryId),

@@ -61,7 +61,7 @@ export function SchedulePastSimple({
           直近 {recent.length} 件
         </span>
       </header>
-      <ul className="flex flex-wrap gap-1.5 p-3">
+      <ul className="flex flex-wrap gap-1.5 px-3 py-2">
         {recent.map((s) => (
           <DateChip
             key={s.rawDate}

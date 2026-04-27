@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import {
   CaseSensitive,
+  Check,
   ClipboardCopy,
   ClipboardList,
   ExternalLink,
@@ -222,6 +223,11 @@ export function RecruitmentTopCopyButton({
 }) {
   const templates = useRealtimeRecruitmentTemplates(initial);
   const [hovered, setHovered] = useState(false);
+  // Brief "just copied" state — flips the button to emerald + Check
+  // icon for ~1.5s as visual confirmation. Toast is also fired but
+  // disappears quickly; the button color change is in the user's
+  // direct line of sight.
+  const [justCopied, setJustCopied] = useState(false);
   if (templates.length === 0) return null;
   const top = templates[0]!;
 
@@ -229,6 +235,8 @@ export function RecruitmentTopCopyButton({
     try {
       await navigator.clipboard.writeText(top.body);
       toast.success(`「${displayLabel(top)}」をコピーしました`);
+      setJustCopied(true);
+      window.setTimeout(() => setJustCopied(false), 1500);
     } catch {
       toast.error("コピー失敗");
     }
@@ -245,10 +253,19 @@ export function RecruitmentTopCopyButton({
         onClick={copy}
         aria-label={`「${displayLabel(top)}」を募集文としてコピー`}
         title={`${displayLabel(top)} をコピー`}
-        className="inline-flex h-6 items-center gap-1 rounded-sm border border-[var(--neon-cyan)]/40 bg-[var(--neon-cyan)]/10 px-1.5 font-mono text-[10px] tracking-widest text-[var(--neon-cyan)] uppercase transition-colors hover:border-[var(--neon-cyan)]/60 hover:bg-[var(--neon-cyan)]/15"
+        className={
+          "inline-flex h-6 items-center gap-1 rounded-sm border px-1.5 font-mono text-[10px] tracking-widest uppercase transition-colors " +
+          (justCopied
+            ? "border-emerald-400/60 bg-emerald-400/15 text-emerald-300 shadow-[0_0_10px_-4px_color-mix(in_oklch,oklch(0.78_0.18_155)_50%,transparent)]"
+            : "border-[var(--neon-cyan)]/40 bg-[var(--neon-cyan)]/10 text-[var(--neon-cyan)] hover:border-[var(--neon-cyan)]/60 hover:bg-[var(--neon-cyan)]/15")
+        }
       >
-        <ClipboardCopy className="h-3 w-3" aria-hidden />
-        募集
+        {justCopied ? (
+          <Check className="h-3 w-3" aria-hidden />
+        ) : (
+          <ClipboardCopy className="h-3 w-3" aria-hidden />
+        )}
+        {justCopied ? "コピー済" : "募集"}
       </button>
       {hovered && (
         <div
