@@ -743,6 +743,14 @@ export function SettingsDialog() {
                         動画 <strong>{logsResult.matched}</strong> /{" "}
                         過去予定 <strong>{logsResult.sessionsMatched}</strong>
                         {" "}件を紐づけ · レポート {logsResult.reportsScanned}
+                        {logsResult.reportsScanned >= 625 && (
+                          <span
+                            className="ml-1 inline-flex items-center gap-1 rounded-sm border border-amber-400/40 bg-amber-400/10 px-1 py-px text-[9px] tracking-[0.16em] text-amber-200/85 uppercase"
+                            title="FFLogs v2 API のページネーション上限 (25 ページ × 25 件) に達しました。それ以前の古いレポートは取得できていない可能性があります"
+                          >
+                            上限到達
+                          </span>
+                        )}
                       </p>
                       <p className="font-mono text-[10px] text-muted-foreground/70">
                         候補: 動画 {logsResult.videosScanned} / 過去予定{" "}

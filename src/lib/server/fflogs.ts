@@ -514,95 +514,38 @@ export async function linkFflogsReportsToVideos(): Promise<FflogsLinkResult> {
     };
   }
   let reports = v2Result.reports;
-  let usedSource: "v2" | "v2-unfiltered" | "html-scrape" = "v2";
+  let usedSource: "v2-owned" | "html-scrape" | "v2+html" = "v2-owned";
   let htmlPageSize: number | undefined;
   let htmlCodesFound: number | undefined;
 
-  // Priority order:
-  //   1. v2 GraphQL with owner filter (owner.id/name match) — proper.
-  //   2. v2 GraphQL UNFILTERED (raw fetch) — when raw > 0 but owner
-  //      filter caught nothing, the visibility scope is correct (these
-  //      are reports the OAuth user can see) so accept them all. This
-  //      handles the case where the user uploads under an account
-  //      whose `owner.id` differs from `currentUser.id`.
-  //   3. HTML scrape of the public reports-list page — last resort
-  //      for accounts the API doesn't expose directly.
-  if (reports.length === 0 && v2Result.rawCount > 0) {
-    // Layer 2: raw v2 fetch had results but none matched owner filter.
-    // Accept all of them — the OAuth scope already restricts to
-    // reports the user has visibility on.
-    const allRawQuery = `query ($page: Int!) {
-      reportData {
-        reports(limit: 25, page: $page) {
-          has_more_pages
-          data { code title startTime endTime zone { id } }
+  // 戦略: ユーザー自身のレポート**だけ**を確実に取得する。
+  //   1. v2 GraphQL の owner-filtered 結果 (= 自分が所有するレポート)
+  //   2. HTML スクレイプ (= 自分のプロフィールページの reports-list)
+  //   両者を union + dedupe。1.7.8 の Layer 2 (raw 全件採用) は
+  //   別人のレポートを巻き込んでいたため撤廃。
+  //
+  // Public レポートの取得には強い: v2 + HTML どちらかには出てくる。
+  // Private / Unlisted は API/HTML どちらにも露出しないことが多いので、
+  // メモポップオーバーから手動紐づけする必要がある。
+  const me = await fetchCurrentUser(oauthToken);
+  if (me.ok) {
+    const scrapeResult = await fetchFflogsReportsHtmlScrape(me.id);
+    if (scrapeResult.ok) {
+      htmlPageSize = scrapeResult.htmlPageSize;
+      htmlCodesFound = scrapeResult.htmlCodesFound;
+      if (scrapeResult.reports.length > 0) {
+        // Union + dedupe — keep v2-owned reports first (they have
+        // richer metadata like zone id), append unique HTML scrape
+        // reports.
+        const byCode = new Map<string, FflogsReport>();
+        for (const r of reports) byCode.set(r.id, r);
+        for (const r of scrapeResult.reports) {
+          if (!byCode.has(r.id)) byCode.set(r.id, r);
         }
-      }
-    }`;
-    const acceptAll: FflogsReport[] = [];
-    for (let page = 1; page <= 25; page++) {
-      try {
-        const res = await fetch(FFLOGS_GRAPHQL_URL, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${oauthToken}`,
-            "Content-Type": "application/json",
-            Accept: "application/json",
-          },
-          body: JSON.stringify({ query: allRawQuery, variables: { page } }),
-          signal: AbortSignal.timeout(20000),
-        });
-        if (!res.ok) break;
-        const json = (await res.json()) as {
-          data?: {
-            reportData?: {
-              reports?: {
-                has_more_pages?: boolean;
-                data?: Array<{
-                  code: string;
-                  title?: string | null;
-                  startTime: number;
-                  endTime: number;
-                  zone?: { id?: number | null } | null;
-                }>;
-              };
-            };
-          };
-        };
-        const rs = json.data?.reportData?.reports;
-        if (!rs?.data) break;
-        for (const r of rs.data) {
-          const sMs = r.startTime < 1e11 ? r.startTime * 1000 : r.startTime;
-          const eMs = r.endTime < 1e11 ? r.endTime * 1000 : r.endTime;
-          acceptAll.push({
-            id: r.code,
-            title: r.title ?? "",
-            startMs: sMs,
-            endMs: eMs,
-            zone: r.zone?.id ?? null,
-          });
-        }
-        if (!rs.has_more_pages) break;
-      } catch {
-        break;
-      }
-    }
-    if (acceptAll.length > 0) {
-      reports = acceptAll;
-      usedSource = "v2-unfiltered";
-    }
-  }
-  if (reports.length === 0) {
-    // Layer 3: HTML scrape.
-    const me = await fetchCurrentUser(oauthToken);
-    if (me.ok) {
-      const scrapeResult = await fetchFflogsReportsHtmlScrape(me.id);
-      if (scrapeResult.ok) {
-        htmlPageSize = scrapeResult.htmlPageSize;
-        htmlCodesFound = scrapeResult.htmlCodesFound;
-        if (scrapeResult.reports.length > 0) {
-          reports = scrapeResult.reports;
-          usedSource = "html-scrape";
+        const merged = [...byCode.values()];
+        if (merged.length > reports.length) {
+          usedSource = reports.length > 0 ? "v2+html" : "html-scrape";
+          reports = merged;
         }
       }
     }
@@ -659,10 +602,10 @@ export async function linkFflogsReportsToVideos(): Promise<FflogsLinkResult> {
     reportSamples,
     queriedUsername:
       usedSource === "html-scrape"
-        ? "(OAuth → HTML スクレイプフォールバック)"
-        : usedSource === "v2-unfiltered"
-          ? "(OAuth → v2 owner filter なし)"
-          : "(OAuth 認証済みユーザー)",
+        ? "(HTML スクレイプ — 自分のプロフィールページ)"
+        : usedSource === "v2+html"
+          ? "(v2 GraphQL owner-filter + HTML スクレイプ)"
+          : "(v2 GraphQL — 自分所有のレポートのみ)",
     apiPath: "v2",
     diag: {
       v2RawCount: v2Result.rawCount,

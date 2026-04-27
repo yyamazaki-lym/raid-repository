@@ -19,6 +19,17 @@ export type ReleaseEntry = {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    version: "1.7.9",
+    date: "2026-04-27",
+    notes: [
+      "🐛 重大: 1.7.8 で導入した「Layer 2 (raw 全件採用)」を撤廃 — owner filter を通過しない 600+ 件の他ユーザーのレポートを誤って採用していた。3+3 件マッチした以外のものは全部別人のログだった",
+      "新戦略: ユーザー自身のレポートだけを取得する v2 GraphQL owner-filter + HTML スクレイプの **両方を実行 + union + dedupe** 方式に変更。両方とも user-specific なソースなので別人のレポートが混入しない",
+      "結果パネルの「クエリしたユーザー名」表示にソース注記: `v2 GraphQL — 自分所有のレポートのみ` / `HTML スクレイプ — 自分のプロフィールページ` / `v2 GraphQL owner-filter + HTML スクレイプ`",
+      "レポート 625 件到達時の「上限到達」バッジを結果に追加（FFLogs v2 API のページ上限）",
+      "既存の誤紐づけは「全 logs URL クリア」ボタンで除去可能 → 再連動で正しい結果に",
+    ],
+  },
+  {
     version: "1.7.8",
     date: "2026-04-27",
     notes: [
