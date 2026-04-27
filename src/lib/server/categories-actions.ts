@@ -10,6 +10,7 @@ import {
   importDiscordScheduleHistory,
   type ScheduleHistoryImportResult,
 } from "./discord-schedule";
+import { runScheduleSnapshot } from "./schedule-snapshot";
 import {
   fetchYouTubeMeta,
   fetchYouTubeMetaWithDebug,
@@ -213,6 +214,32 @@ export async function backfillFirstClearFromExistingVideos(
 export async function importPastScheduleFromDiscord(): Promise<ScheduleHistoryImportResult> {
   const result = await importDiscordScheduleHistory();
   if (result.ok && result.inserted > 0) {
+    try {
+      revalidatePath("/");
+    } catch {
+      // best-effort
+    }
+  }
+  return result;
+}
+
+export type ScheduleSnapshotResult = {
+  ok: boolean;
+  reason?: string;
+  scanned: number;
+  inserted: number;
+  updated: number;
+};
+
+/**
+ * Server Action: take a snapshot of the current character-sheets
+ * attendance into `schedule_past_sessions`. Triggered manually from
+ * the maintenance menu (rare) — the typical run is the daily Vercel
+ * Cron at 21:50 JST (just before raid time, latest answers in).
+ */
+export async function snapshotScheduleNow(): Promise<ScheduleSnapshotResult> {
+  const result = await runScheduleSnapshot();
+  if (result.ok) {
     try {
       revalidatePath("/");
     } catch {

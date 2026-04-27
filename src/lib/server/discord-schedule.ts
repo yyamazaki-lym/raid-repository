@@ -212,6 +212,9 @@ export async function importDiscordScheduleHistory(): Promise<ScheduleHistoryImp
 /**
  * Read all stored past sessions ordered newest-first. Used by the
  * schedule page to merge with the live character-sheets feed.
+ *
+ * The optional `attendances` + `userNames` fields come from the
+ * snapshot mechanism — for date-only Discord rows they're null.
  */
 export async function fetchStoredPastSessions(): Promise<
   Array<{
@@ -220,12 +223,18 @@ export async function fetchStoredPastSessions(): Promise<
     startTime: string;
     endTime: string;
     dayOfWeek: string;
+    /** Map of participant-name → attendance symbol. Null for date-only rows. */
+    attendances: Record<string, string> | null;
+    /** Ordered list of participant names from when the snapshot was taken. */
+    userNames: string[] | null;
   }>
 > {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("schedule_past_sessions")
-    .select("raw_date, parsed_date, start_time, end_time, day_of_week")
+    .select(
+      "raw_date, parsed_date, start_time, end_time, day_of_week, attendances, user_names",
+    )
     .order("parsed_date", { ascending: false });
   if (error || !data) return [];
   return data.map((r) => ({
@@ -234,5 +243,7 @@ export async function fetchStoredPastSessions(): Promise<
     startTime: r.start_time as string,
     endTime: r.end_time as string,
     dayOfWeek: r.day_of_week as string,
+    attendances: (r.attendances as Record<string, string> | null) ?? null,
+    userNames: (r.user_names as string[] | null) ?? null,
   }));
 }

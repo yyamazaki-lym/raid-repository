@@ -76,11 +76,10 @@ export function ScheduleList({
   const commentsByAuthor = groupCommentsByAuthor(comments);
 
   const { upcoming, past } = splitSessions(sessions, limit);
-  // Past sessions for the chronologically-ordered detail table at the
-  // bottom of the page. Reverse to old → new so reading top-to-bottom
-  // matches a "history" feel (oldest first, most recent at the bottom
-  // adjacent to upcoming).
-  const renderedPast = showDetailedPast ? [...past].reverse() : [];
+  // Past sessions newest-first (already sorted by splitSessions). The
+  // most-recent past sits at the top of the detail table — reads as
+  // "what happened most recently" first.
+  const renderedPast = showDetailedPast ? past : [];
 
   if (upcoming.length === 0 && renderedPast.length === 0) {
     return (
@@ -96,17 +95,20 @@ export function ScheduleList({
     );
   }
 
-  // Header row used by both the upcoming and past tables. Extracted so
-  // the two tables stay in lockstep when columns change.
-  const tableHead = (
+  // Header row factory. The past table omits the "確定" column since
+  // every past session was de facto held — the column only carries
+  // signal for upcoming dates that may still slip.
+  const tableHead = (showDecided: boolean) => (
     <thead>
       <tr className="border-b border-border/60 text-[10px] tracking-[0.18em] text-muted-foreground uppercase">
         <th scope="col" className="px-3 py-2 font-mono">
           日程
         </th>
-        <th scope="col" className="px-2 py-2 font-mono">
-          確定
-        </th>
+        {showDecided && (
+          <th scope="col" className="px-2 py-2 font-mono">
+            確定
+          </th>
+        )}
         {users.map((u) => (
           <UserHeaderCell
             key={u.userId}
@@ -126,7 +128,7 @@ export function ScheduleList({
         <Legend />
         <div className="overflow-x-auto">
           <table className="w-full min-w-[640px] border-collapse text-left text-sm">
-            {tableHead}
+            {tableHead(true)}
             <tbody>
               {upcoming.map((s) => (
                 <SessionRow
@@ -152,7 +154,8 @@ export function ScheduleList({
       </Card>
 
       {/* Past sessions — separate card so the visual break is unmistakable.
-          Hidden until the user enables the detail toggle. */}
+          Hidden until the user enables the detail toggle. The "確定"
+          column is dropped here since past sessions were all held. */}
       {showDetailedPast && renderedPast.length > 0 && (
         <Card className="glass overflow-hidden p-0">
           <header className="flex items-center justify-between gap-2 border-b border-border/40 bg-secondary/20 px-3 py-2">
@@ -166,7 +169,7 @@ export function ScheduleList({
           </header>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[640px] border-collapse text-left text-sm">
-              {tableHead}
+              {tableHead(false)}
               <tbody>
                 {renderedPast.map((s) => (
                   <SessionRow
@@ -175,6 +178,7 @@ export function ScheduleList({
                     users={users}
                     isPast
                     holidays={holidays}
+                    showDecided={false}
                   />
                 ))}
               </tbody>
@@ -250,11 +254,14 @@ function SessionRow({
   users,
   isPast = false,
   holidays,
+  showDecided = true,
 }: {
   session: ScheduleSession;
   users: ScheduleUser[];
   isPast?: boolean;
   holidays?: readonly string[];
+  /** When false, drop the 確定 column entirely (past table). */
+  showDecided?: boolean;
 }) {
   const decided = session.status === "DECISION";
   // Japanese national holidays get a red date label — overrides the
@@ -298,20 +305,22 @@ function SessionRow({
           </span>
         </div>
       </th>
-      <td className="px-2 py-2 text-center align-middle">
-        {decided ? (
-          <span
-            aria-label="日程確定"
-            className="inline-flex h-5 min-w-[1.75rem] items-center justify-center rounded-sm border border-[var(--neon-cyan)]/40 bg-[var(--neon-cyan)]/12 px-1.5 font-mono text-[10px] tracking-widest text-[var(--neon-cyan)] uppercase shadow-[0_0_10px_-4px_var(--neon-cyan)]"
-          >
-            ✓
-          </span>
-        ) : (
-          <span aria-hidden className="text-muted-foreground/60 font-mono text-xs">
-            ·
-          </span>
-        )}
-      </td>
+      {showDecided && (
+        <td className="px-2 py-2 text-center align-middle">
+          {decided ? (
+            <span
+              aria-label="日程確定"
+              className="inline-flex h-5 min-w-[1.75rem] items-center justify-center rounded-sm border border-[var(--neon-cyan)]/40 bg-[var(--neon-cyan)]/12 px-1.5 font-mono text-[10px] tracking-widest text-[var(--neon-cyan)] uppercase shadow-[0_0_10px_-4px_var(--neon-cyan)]"
+            >
+              ✓
+            </span>
+          ) : (
+            <span aria-hidden className="text-muted-foreground/60 font-mono text-xs">
+              ·
+            </span>
+          )}
+        </td>
+      )}
       {users.map((u) => {
         const att = session.attendances[u.userId] ?? "－";
         return (

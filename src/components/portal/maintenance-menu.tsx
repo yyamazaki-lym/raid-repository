@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   Cloud,
   Clock,
+  Camera,
   Loader2,
   Settings2,
   Stethoscope,
@@ -30,9 +31,11 @@ import {
   backfillVideoDurations,
   diagnoseYouTubeUrl,
   importDiscordNow,
+  snapshotScheduleNow,
   type BackfillResult,
   type DurationBackfillResult,
   type ImportNowItem,
+  type ScheduleSnapshotResult,
   type YouTubeDiagnosticResult,
 } from "@/lib/server/categories-actions";
 
@@ -69,6 +72,7 @@ type ActionKind =
   | "postedAt"
   | "firstClear"
   | "firstClearForce"
+  | "snapshot"
   | "diagnose";
 
 type Result =
@@ -76,6 +80,7 @@ type Result =
   | { kind: "durations"; data: DurationBackfillResult }
   | { kind: "postedAt"; data: PostedAtBackfillResult }
   | { kind: "firstClear"; data: BackfillResult; force: boolean }
+  | { kind: "snapshot"; data: ScheduleSnapshotResult }
   | { kind: "diagnose"; data: YouTubeDiagnosticResult };
 
 export function MaintenanceMenu() {
@@ -158,6 +163,21 @@ export function MaintenanceMenu() {
                 : `更新なし (すでに設定済み)`,
           );
           setResult({ kind: "postedAt", data: r });
+          router.refresh();
+          return;
+        }
+        if (kind === "snapshot") {
+          const r = await snapshotScheduleNow();
+          if (!r.ok) {
+            toast.error("スナップショット失敗: " + (r.reason ?? "unknown"));
+            return;
+          }
+          toast.success(
+            r.scanned > 0
+              ? `${r.scanned} 件のスケジュールを保存（新規 ${r.inserted} / 更新 ${r.updated}）`
+              : "保存対象のセッションなし",
+          );
+          setResult({ kind: "snapshot", data: r });
           router.refresh();
           return;
         }
@@ -289,6 +309,19 @@ export function MaintenanceMenu() {
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem
+            onClick={() => run("snapshot")}
+            className="flex cursor-pointer items-start gap-2"
+          >
+            <Camera className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-300" aria-hidden />
+            <div className="flex flex-col gap-0.5">
+              <span className="text-sm">出席状況を即時スナップショット</span>
+              <span className="text-[10px] text-muted-foreground leading-snug">
+                現在の出欠を保存（自動: 毎日 21:50 JST）
+              </span>
+            </div>
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
             onClick={() => run("diagnose")}
             className="flex cursor-pointer items-start gap-2"
           >
@@ -328,6 +361,9 @@ export function MaintenanceMenu() {
           )}
           {result.kind === "firstClear" && (
             <FirstClearPanel data={result.data} force={result.force} />
+          )}
+          {result.kind === "snapshot" && (
+            <SnapshotPanel data={result.data} />
           )}
           {result.kind === "diagnose" && <DiagnosePanel data={result.data} />}
         </div>
@@ -516,6 +552,31 @@ function FirstClearPanel({
           設定済み {data.alreadySet} ／ 該当なし {data.noMatch}
         </p>
       )}
+    </>
+  );
+}
+
+function SnapshotPanel({ data }: { data: ScheduleSnapshotResult }) {
+  return (
+    <>
+      <p className="mb-2 pr-6 font-mono text-[10px] tracking-[0.2em] text-muted-foreground uppercase">
+        スケジュール スナップショット
+      </p>
+      <ul className="flex flex-col gap-1 text-[11px] leading-relaxed">
+        <li className="flex items-baseline gap-2">
+          <span className="font-mono text-emerald-300">新規</span>
+          <span className="font-mono text-foreground">{data.inserted}</span>
+          <span className="text-muted-foreground">件</span>
+        </li>
+        <li className="flex items-baseline gap-2">
+          <span className="font-mono text-cyan-300">更新</span>
+          <span className="font-mono text-foreground">{data.updated}</span>
+          <span className="text-muted-foreground">件</span>
+        </li>
+        <li className="text-[10px] text-muted-foreground">
+          対象: {data.scanned} セッション（character-sheets 上の現在の予定）
+        </li>
+      </ul>
     </>
   );
 }

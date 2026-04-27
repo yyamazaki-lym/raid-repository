@@ -6,8 +6,8 @@ import type { ScheduleSession } from "@/lib/schedule/next-session";
 
 /**
  * Simple past-sessions view: a compact horizontal-wrap strip of the
- * 10 most recent past dates, ordered chronologically (oldest → newest)
- * so the day closest to "today" sits at the rightmost / bottom.
+ * 10 most recent past dates, ordered NEWEST → OLDEST so the day
+ * closest to "today" sits at the leftmost / first chip.
  *
  * No participant data, no time-of-day — just dates. For users who only
  * want to glance at "when did we do something recently". The detailed
@@ -28,14 +28,15 @@ export function SchedulePastSimple({
   holidays?: readonly string[];
 }) {
   const cutoff = Date.now() - STILL_RELEVANT_MS;
-  // Filter to past, sort newest-first, take 10, reverse to chronological.
-  const recentChronological = [...sessions]
+  // Filter to past, sort newest-first, take 10. Newest-first display
+  // means the chip you most likely care about (yesterday's session)
+  // sits at the leftmost / start of the row.
+  const recent = [...sessions]
     .filter((s) => s.date.getTime() < cutoff)
     .sort((a, b) => b.date.getTime() - a.date.getTime())
-    .slice(0, SIMPLE_LIMIT)
-    .reverse();
+    .slice(0, SIMPLE_LIMIT);
 
-  if (recentChronological.length === 0) return null;
+  if (recent.length === 0) return null;
 
   return (
     <Card className="glass overflow-hidden p-0">
@@ -45,11 +46,11 @@ export function SchedulePastSimple({
           Past · 過去の活動
         </div>
         <span className="font-mono text-[10px] tabular-nums text-muted-foreground/80">
-          直近 {recentChronological.length} 件 · 古い順
+          直近 {recent.length} 件
         </span>
       </header>
       <ul className="flex flex-wrap gap-1.5 p-3">
-        {recentChronological.map((s) => (
+        {recent.map((s) => (
           <DateChip key={s.rawDate} session={s} holidays={holidays} />
         ))}
       </ul>
@@ -66,12 +67,16 @@ function DateChip({
 }) {
   const holiday = isJapaneseHoliday(session.date, holidays);
   const decided = session.status === "DECISION";
-  // Date label: Japanese-style "M月D日（曜）" instead of MM/DD which
-  // reads as a Western format. Extract month/day from the raw
-  // "YYYY/MM/DD" portion of the rawDate string.
-  const datePart = session.rawDate.split(" ")[0] ?? session.rawDate;
-  const m = datePart.match(/(\d{1,2})\/(\d{1,2})/);
-  const monthDay = m ? `${parseInt(m[1]!, 10)}月${parseInt(m[2]!, 10)}日` : datePart;
+  // Date label: Japanese-style "M月D日（曜）". Anchor the regex to the
+  // full YYYY/MM/DD form so a 4-digit year doesn't get mistaken for
+  // a month/day pair (the loose `(\d{1,2})/(\d{1,2})` matched "26/04"
+  // out of "2026/04/23" and rendered "26月4日"). Fall back to the
+  // session.date object if the rawDate string doesn't match — that
+  // way client-rendered timezone differences don't surface as bugs.
+  const m = session.rawDate.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})/);
+  const monthDay = m
+    ? `${parseInt(m[2]!, 10)}月${parseInt(m[3]!, 10)}日`
+    : `${session.date.getMonth() + 1}月${session.date.getDate()}日`;
 
   return (
     <li

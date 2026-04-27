@@ -219,11 +219,29 @@ CREATE TABLE IF NOT EXISTS public.schedule_past_sessions (
   end_time    text NOT NULL,
   day_of_week text NOT NULL,
   source      text NOT NULL DEFAULT 'discord'
-              CHECK (source IN ('discord','manual')),
+              CHECK (source IN ('discord','manual','snapshot')),
   created_at  timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS schedule_past_sessions_date_idx
   ON public.schedule_past_sessions(parsed_date DESC);
+
+-- Phase 5: attendance snapshot. Discord-only rows get NULL here; rows
+-- created from a character-sheets snapshot store the attendance map +
+-- user-name list so we can reconstruct the past detail table even
+-- after character-sheets ages the date out.
+ALTER TABLE public.schedule_past_sessions
+  ADD COLUMN IF NOT EXISTS attendances jsonb,
+  ADD COLUMN IF NOT EXISTS user_names jsonb;
+-- attendances format: { "Alice": "◯", "Bob": "×", ... }
+-- user_names format:  ["Alice","Bob","Charlie", ...] (order = column order)
+
+-- Widen the source CHECK constraint to allow 'snapshot' on existing
+-- deployments where the table was created with the old 2-value list.
+ALTER TABLE public.schedule_past_sessions
+  DROP CONSTRAINT IF EXISTS schedule_past_sessions_source_check;
+ALTER TABLE public.schedule_past_sessions
+  ADD CONSTRAINT schedule_past_sessions_source_check
+  CHECK (source IN ('discord','manual','snapshot'));
 
 -- ---- 6. tags (universal — D scheme) ----------------------------------
 
