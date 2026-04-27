@@ -7,6 +7,7 @@ import {
   type NextSessionResult,
 } from "@/lib/schedule/next-session";
 import { getScheduleSourceUrl } from "@/lib/schedule/source-url";
+import { fetchSessionLogsByDate } from "@/lib/server/fflogs";
 import { buildSessionVideoLinkMap } from "@/lib/server/session-video-link";
 import { fetchCategories } from "@/lib/supabase/categories";
 import { fetchRecruitmentTemplatesServer } from "@/lib/supabase/recruitment-templates";
@@ -32,13 +33,19 @@ export default async function SchedulePage() {
     );
   }
 
-  const [result, holidays, recruitmentTemplates, categoriesResult] =
-    await Promise.all([
-      fetchSchedule(),
-      fetchJapaneseHolidays(),
-      fetchRecruitmentTemplatesServer(),
-      fetchCategories(),
-    ]);
+  const [
+    result,
+    holidays,
+    recruitmentTemplates,
+    categoriesResult,
+    sessionLogsByDate,
+  ] = await Promise.all([
+    fetchSchedule(),
+    fetchJapaneseHolidays(),
+    fetchRecruitmentTemplatesServer(),
+    fetchCategories(),
+    fetchSessionLogsByDate(),
+  ]);
   // Slim category list passed to the recruitment dialog's category
   // picker. Only id+name are needed there.
   const recruitmentCategoryOptions = categoriesResult.ok
@@ -69,6 +76,7 @@ export default async function SchedulePage() {
       recruitmentTemplates={recruitmentTemplates}
       recruitmentCategories={recruitmentCategoryOptions}
       sessionVideoLinks={sessionVideoLinks}
+      sessionLogsByDate={sessionLogsByDate}
     />
   );
 }

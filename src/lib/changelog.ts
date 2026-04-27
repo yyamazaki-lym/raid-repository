@@ -19,6 +19,19 @@ export type ReleaseEntry = {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    version: "1.6.0",
+    date: "2026-04-27",
+    notes: [
+      "FFLogs 連動 — 過去予定（動画なしの日も）にも logs URL を自動紐づけ。スケジュール表 / 簡易チップで日付セルから直接 FFLogs を開けるように",
+      "DB スキーマ追加: `schedule_past_sessions.logs_url TEXT` 列。supabase/schema.sql を本番 DB に再実行してください",
+      "FFLogs 連動の挙動修正: 設定ダイアログの「連動」ボタンを押すと、ユーザー名が未保存でも自動保存してから API を呼ぶように（以前は「未設定」エラーで止まっていた）",
+      "FFLogs ユーザー名フィールド: プロフィール URL の入力を撤廃（API は username 文字列のみ受け付けるため）。URL が入力された場合は明確なエラー表示",
+      "FFLogs 連動結果パネル: 動画 / 過去予定の両方の matched 件数を表示、絵文字で video / session を区別",
+      "簡易過去日程チップの縦中央揃え修正: `font-mono` を撤廃（CJK fallback の baseline 不整合が原因）+ `h-6 + leading-none` で固定。Geist Sans + tabular-nums で数字も揃う",
+      "スケジュール表の出欠記号（◯⏰△×－）の縦位置揃え修正: 同じく `font-mono` を撤廃して `leading-none` で baseline を統一",
+    ],
+  },
+  {
     version: "1.5.6",
     date: "2026-04-27",
     notes: [

@@ -52,7 +52,14 @@ type FflogsLinkResultLite = {
   reportsScanned: number;
   videosScanned: number;
   matched: number;
-  details: Array<{ videoTitle: string; reportTitle: string; reportUrl: string }>;
+  sessionsScanned: number;
+  sessionsMatched: number;
+  details: Array<{
+    kind: "video" | "session";
+    label: string;
+    reportTitle: string;
+    reportUrl: string;
+  }>;
 };
 
 // Inline copy of the Server Action result type — we can't re-export the
@@ -202,18 +209,42 @@ export function SettingsDialog() {
   const onLinkLogs = () => {
     setLogsResult(null);
     startLinkLogs(async () => {
+      // Auto-save the username before syncing — the sync server-action
+      // reads from `app_settings`, not the local form state, so users
+      // who type a username and click "連動" without first clicking
+      // "保存" would otherwise hit "未設定". Persist any non-empty
+      // local value first; the function is idempotent.
+      const localUsername = fflogsUsername.trim();
+      if (localUsername) {
+        const saveResult = await setFflogsUsername(localUsername);
+        if (!saveResult.ok) {
+          toast.error("FFLogs ユーザー名の保存失敗: " + saveResult.reason);
+          setLogsResult({
+            ok: false,
+            reason: saveResult.reason,
+            reportsScanned: 0,
+            videosScanned: 0,
+            matched: 0,
+            sessionsScanned: 0,
+            sessionsMatched: 0,
+            details: [],
+          });
+          return;
+        }
+      }
       const r = await linkFflogsReports();
       setLogsResult(r);
       if (!r.ok) {
         toast.error("FFLogs 連動失敗: " + (r.reason ?? "unknown"));
         return;
       }
+      const totalMatched = r.matched + r.sessionsMatched;
       toast.success(
-        r.matched > 0
-          ? `${r.matched} 件の動画に Logs URL を紐づけ`
-          : r.videosScanned === 0
-            ? "logs_url 未設定の動画なし"
-            : `合うレポートなし (報告 ${r.reportsScanned} / 動画 ${r.videosScanned})`,
+        totalMatched > 0
+          ? `動画 ${r.matched} 件 / 過去予定 ${r.sessionsMatched} 件 に Logs URL を紐づけ`
+          : r.videosScanned === 0 && r.sessionsScanned === 0
+            ? "logs_url 未設定の動画 / 過去予定なし"
+            : `合うレポートなし (報告 ${r.reportsScanned} / 動画 ${r.videosScanned} / 予定 ${r.sessionsScanned})`,
       );
       router.refresh();
     });
@@ -482,24 +513,28 @@ export function SettingsDialog() {
                 htmlFor="fflogs-username"
                 className="text-xs text-foreground/80"
               >
-                FFLogs ユーザー名 / プロフィール URL（任意）
+                FFLogs ユーザー名（任意）
               </Label>
               <Input
                 id="fflogs-username"
                 value={fflogsUsername}
                 onChange={(e) => setFflogsUsernameState(e.target.value)}
-                placeholder="例: TaroYamada または https://ja.fflogs.com/user/reports-list/70734"
+                placeholder="例: TaroYamada"
                 className="font-mono text-[12px]"
                 spellCheck={false}
                 autoComplete="off"
               />
               <p className="text-muted-foreground text-[11px] leading-relaxed">
-                代表 1 名分のレポートで OK — 動画の投稿日時 ±36h でマッチした
-                FFLogs レポートを自動的に動画の logs URL に紐づけます。
+                代表 1 名分の <strong>ユーザー名のみ</strong> を入力（プロフィール
+                URL の数字 ID は API で使えないので不可）。動画の投稿日時 ±36h
+                および過去予定の開催時間と一致する FFLogs レポートを
+                自動的に紐づけます。
               </p>
               <p className="text-muted-foreground/80 text-[10px] leading-relaxed">
                 サーバー側で <code className="font-mono">FFLOGS_API_KEY</code>
-                {" "}環境変数の設定も必要（Vercel ダッシュボード）。
+                {" "}環境変数の設定が必要（Vercel ダッシュボード →
+                Settings → Environment Variables）。未設定だと
+                「FFLOGS_API_KEY 未設定」と表示されます。
               </p>
             </div>
 
@@ -537,22 +572,34 @@ export function SettingsDialog() {
                   {logsResult.ok ? (
                     <>
                       <p className="font-mono">
-                        新規紐づけ <strong>{logsResult.matched}</strong> 件
-                        / レポート {logsResult.reportsScanned} / 動画候補{" "}
-                        {logsResult.videosScanned}
+                        動画 <strong>{logsResult.matched}</strong> /{" "}
+                        過去予定 <strong>{logsResult.sessionsMatched}</strong>
+                        {" "}件を紐づけ · レポート {logsResult.reportsScanned}
+                      </p>
+                      <p className="font-mono text-[10px] text-muted-foreground/70">
+                        候補: 動画 {logsResult.videosScanned} / 過去予定{" "}
+                        {logsResult.sessionsScanned}
                       </p>
                       {logsResult.details.length > 0 && (
                         <ul className="mt-1 flex flex-col gap-0.5 font-mono text-[10px] text-muted-foreground">
-                          {logsResult.details.slice(0, 5).map((d, i) => (
+                          {logsResult.details.slice(0, 8).map((d, i) => (
                             <li key={i} className="break-words">
-                              <span className="text-amber-200/80">→</span>{" "}
-                              {d.videoTitle.slice(0, 40)}
-                              {d.videoTitle.length > 40 ? "…" : ""}
+                              <span
+                                className={
+                                  d.kind === "video"
+                                    ? "text-amber-200/80"
+                                    : "text-[var(--neon-cyan)]/80"
+                                }
+                              >
+                                {d.kind === "video" ? "▶" : "📅"}
+                              </span>{" "}
+                              {d.label.slice(0, 40)}
+                              {d.label.length > 40 ? "…" : ""}
                             </li>
                           ))}
-                          {logsResult.details.length > 5 && (
+                          {logsResult.details.length > 8 && (
                             <li className="text-muted-foreground/60">
-                              …他 {logsResult.details.length - 5} 件
+                              …他 {logsResult.details.length - 8} 件
                             </li>
                           )}
                         </ul>

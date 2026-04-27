@@ -320,6 +320,13 @@ ALTER TABLE public.schedule_past_sessions
 -- attendances format: { "Alice": "◯", "Bob": "×", ... }
 -- user_names format:  ["Alice","Bob","Charlie", ...] (order = column order)
 
+-- Phase 6: per-session FFLogs URL. Populated by the FFLogs sync action
+-- when a report's start time falls within the session's window — lets
+-- the schedule UI surface a Logs link for sessions that have no
+-- matching video (e.g. a session that wasn't recorded).
+ALTER TABLE public.schedule_past_sessions
+  ADD COLUMN IF NOT EXISTS logs_url text;
+
 -- Widen the source CHECK constraint to allow 'snapshot' on existing
 -- deployments where the table was created with the old 2-value list.
 ALTER TABLE public.schedule_past_sessions

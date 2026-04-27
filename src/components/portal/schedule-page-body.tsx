@@ -48,6 +48,12 @@ type Props = {
    * Used by the schedule date cells to deep-link into the video.
    */
   sessionVideoLinks?: Record<string, SessionVideoLink>;
+  /**
+   * Pre-built map of `session.rawDate` → FFLogs URL stored on the
+   * past-session row. Surfaced as a Logs icon in the date cell even
+   * when no matching video exists.
+   */
+  sessionLogsByDate?: Record<string, string>;
 };
 
 export function SchedulePageBody({
@@ -58,6 +64,7 @@ export function SchedulePageBody({
   recruitmentTemplates = [],
   recruitmentCategories = [],
   sessionVideoLinks,
+  sessionLogsByDate,
 }: Props) {
   // Two-toggle state: simple list (top) and detailed table (bottom).
   // Both default to off; pinned values persist via localStorage.
@@ -169,6 +176,7 @@ export function SchedulePageBody({
           sessions={result.data.sessions}
           holidays={holidays}
           sessionVideoLinks={sessionVideoLinks}
+          sessionLogsByDate={sessionLogsByDate}
         />
       )}
 
@@ -178,6 +186,7 @@ export function SchedulePageBody({
         scheduleUrl={scheduleUrl}
         holidays={holidays}
         sessionVideoLinks={sessionVideoLinks}
+        sessionLogsByDate={sessionLogsByDate}
       />
     </div>
   );

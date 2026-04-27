@@ -111,37 +111,46 @@ export async function getDiscordScheduleChannelId(): Promise<string | null> {
 }
 
 /**
- * FFLogs username (the string identifier accepted by FFLogs API v1).
- * Distinct from the numeric profile id seen in URLs like
- * `/user/reports-list/70734` — the API needs the username string.
+ * FFLogs username — the string identifier accepted by FFLogs API v1
+ * endpoint `/v1/reports/user/{username}`.
  *
- * Pasting a profile URL is also accepted; we extract the username
- * from the path. Empty string clears the setting.
+ * IMPORTANT: only a bare username string works with the API. Profile
+ * URLs like `https://www.fflogs.com/user/reports-list/70734` contain
+ * a numeric profile-id which the API does NOT accept. So this setter
+ * rejects URLs and asks the user to enter just the username.
+ *
+ * Empty string clears the setting.
  */
 export async function setFflogsUsername(
   raw: string,
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
-  const cleaned = parseFflogsUsername(raw);
-  if (!cleaned) {
-    // Empty input clears the setting.
-    if (!raw.trim()) {
-      const supabase = createClient();
-      const { error } = await supabase
-        .from("app_settings")
-        .delete()
-        .eq("key", FFLOGS_USERNAME_KEY);
-      if (error) return { ok: false, reason: error.message };
-      return { ok: true };
-    }
+  const trimmed = raw.trim();
+  // Empty input clears the setting.
+  if (!trimmed) {
+    const supabase = createClient();
+    const { error } = await supabase
+      .from("app_settings")
+      .delete()
+      .eq("key", FFLOGS_USERNAME_KEY);
+    if (error) return { ok: false, reason: error.message };
+    return { ok: true };
+  }
+  // Reject anything that looks like a URL — the API needs the bare
+  // username string, not the numeric profile-id from the URL path.
+  if (/^https?:\/\//i.test(trimmed) || /\//.test(trimmed)) {
     return {
       ok: false,
-      reason: "ユーザー名を抽出できませんでした",
+      reason:
+        "URL ではなくユーザー名のみを入力してください（例: TaroYamada）",
     };
   }
   const supabase = createClient();
   const { error } = await supabase
     .from("app_settings")
-    .upsert({ key: FFLOGS_USERNAME_KEY, value: cleaned }, { onConflict: "key" });
+    .upsert(
+      { key: FFLOGS_USERNAME_KEY, value: trimmed },
+      { onConflict: "key" },
+    );
   if (error) return { ok: false, reason: error.message };
   return { ok: true };
 }
@@ -154,31 +163,4 @@ export async function getFflogsUsername(): Promise<string | null> {
     .eq("key", FFLOGS_USERNAME_KEY)
     .maybeSingle();
   return (data?.value as string | null | undefined) ?? null;
-}
-
-/**
- * Accepts either a bare username or a fflogs.com profile URL and
- * returns the bare username string.
- *
- * URL form: `https://(?:www|ja|en|de|fr).fflogs.com/user/reports-list/{id}/`
- * — note: the "id" in the URL is a numeric profile ID, NOT the API
- * username. We can't programmatically convert numeric → string here,
- * so for URL inputs we currently pass the numeric ID through and the
- * user just gets a clear API error if their ID isn't usable.
- */
-function parseFflogsUsername(raw: string): string | null {
-  const trimmed = raw.trim();
-  if (!trimmed) return null;
-  if (!/fflogs\.com/i.test(trimmed)) {
-    // Bare string — assume it's a username.
-    return trimmed;
-  }
-  try {
-    const u = new URL(trimmed);
-    const match = u.pathname.match(/\/user\/reports-list\/([^/?]+)/);
-    if (match?.[1]) return decodeURIComponent(match[1]);
-    return null;
-  } catch {
-    return null;
-  }
 }

@@ -50,10 +50,13 @@ export function SchedulePastSimple({
   sessions,
   holidays,
   sessionVideoLinks,
+  sessionLogsByDate,
 }: {
   sessions: ScheduleSession[];
   holidays?: JapaneseHolidaysMap;
   sessionVideoLinks?: Record<string, SessionVideoLink>;
+  /** FFLogs URLs keyed by `rawDate` — fallback when no video. */
+  sessionLogsByDate?: Record<string, string>;
 }) {
   const cutoff = Date.now() - STILL_RELEVANT_MS;
   // Filter to past, sort newest-first, take 10. Newest-first display
@@ -87,6 +90,7 @@ export function SchedulePastSimple({
             session={s}
             holidays={holidays}
             videoLink={sessionVideoLinks?.[s.rawDate] ?? null}
+            sessionLogsUrl={sessionLogsByDate?.[s.rawDate] ?? null}
           />
         ))}
       </ul>
@@ -98,10 +102,13 @@ function DateChip({
   session,
   holidays,
   videoLink,
+  sessionLogsUrl,
 }: {
   session: ScheduleSession;
   holidays?: JapaneseHolidaysMap;
   videoLink: SessionVideoLink | null;
+  /** Fallback FFLogs URL for sessions without a matching video. */
+  sessionLogsUrl: string | null;
 }) {
   const { memos, refetch: refetchMemos } = useRealtimeScheduleMemos(
     session.rawDate,
@@ -133,11 +140,12 @@ function DateChip({
       ? "border-[var(--neon-cyan)]/40 bg-[var(--neon-cyan)]/8 text-[var(--neon-cyan)]"
       : "border-border/50 bg-background/30 text-foreground/85";
 
+  const hasLogs = Boolean(videoLink?.logsUrl ?? sessionLogsUrl);
   const tooltip = `${session.rawDate}${decided ? " · 確定" : ""}${
     holidayName ? " · " + holidayName : holiday ? " · 祝日" : ""
   }${
     videoLink ? ` · ${videoLink.categoryName}/動画` : ""
-  }`;
+  }${hasLogs && !videoLink?.logsUrl ? " · FFLogs" : ""}`;
 
   // The chip's date text is plain (no link / no underline) so the
   // visual stays calm. Action icons sit at the right edge: a small
@@ -152,7 +160,13 @@ function DateChip({
   return (
     <li
       className={
-        "inline-flex items-center gap-1 rounded-md border px-2 py-1 font-mono text-[11px] transition-colors " +
+        // Chip dimensions: fixed h-6 + leading-none + items-center.
+        // CJK glyph metrics on the system fallback font don't
+        // line up with JetBrains Mono so we drop `font-mono` here
+        // (the date is mostly digits + 曜 + parens — Geist Sans
+        // renders all of them with consistent vertical metrics).
+        // tabular-nums keeps the digits aligned across rows.
+        "inline-flex h-6 items-center gap-1 rounded-md border px-2 text-[11px] tabular-nums leading-none transition-colors " +
         chipColor
       }
       title={tooltip}
@@ -185,18 +199,25 @@ function DateChip({
           <Film className="h-2.5 w-2.5" aria-hidden />
         </Link>
       )}
-      {videoLink?.logsUrl && (
-        <a
-          href={videoLink.logsUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          aria-label={`${monthDay} の FFLogs を開く`}
-          title={`FFLogs: ${monthDay}`}
-          className="inline-flex h-4 w-4 items-center justify-center rounded text-amber-300/85 transition-all hover:bg-amber-400/15 hover:text-amber-200 hover:shadow-[0_0_8px_-2px_rgba(251,191,36,0.55)]"
-        >
-          <BarChart3 className="h-2.5 w-2.5" aria-hidden />
-        </a>
-      )}
+      {(() => {
+        // Same priority as schedule-list: video.logs_url first, then
+        // session-level fallback. Lets the chip surface a Logs icon
+        // for sessions that have no recorded video.
+        const logsUrl = videoLink?.logsUrl ?? sessionLogsUrl;
+        if (!logsUrl) return null;
+        return (
+          <a
+            href={logsUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={`${monthDay} の FFLogs を開く`}
+            title={`FFLogs: ${monthDay}`}
+            className="inline-flex h-4 w-4 items-center justify-center rounded text-amber-300/85 transition-all hover:bg-amber-400/15 hover:text-amber-200 hover:shadow-[0_0_8px_-2px_rgba(251,191,36,0.55)]"
+          >
+            <BarChart3 className="h-2.5 w-2.5" aria-hidden />
+          </a>
+        );
+      })()}
       <SessionMemoDot
         count={memos.length}
         className="ml-0.5"

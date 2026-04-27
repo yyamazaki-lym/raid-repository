@@ -73,6 +73,12 @@ type Props = {
    * video; otherwise the cell renders as plain text.
    */
   sessionVideoLinks?: Record<string, SessionVideoLink>;
+  /**
+   * Pre-built `rawDate` → FFLogs URL map for past sessions. Lets the
+   * UI show a Logs icon next to a date even when there's no matching
+   * video for that session.
+   */
+  sessionLogsByDate?: Record<string, string>;
 };
 
 export function ScheduleList({
@@ -82,6 +88,7 @@ export function ScheduleList({
   scheduleUrl,
   holidays,
   sessionVideoLinks,
+  sessionLogsByDate,
 }: Props) {
   if (!result.ok) {
     return (
@@ -170,6 +177,7 @@ export function ScheduleList({
                   users={users}
                   holidays={holidays}
                   videoLink={lookupVideoLink(s, sessionVideoLinks)}
+                  sessionLogsUrl={sessionLogsByDate?.[s.rawDate] ?? null}
                   scheduleUrl={scheduleUrl}
                 />
               ))}
@@ -219,6 +227,7 @@ export function ScheduleList({
                     holidays={holidays}
                     showDecided={false}
                     videoLink={lookupVideoLink(s, sessionVideoLinks)}
+                    sessionLogsUrl={sessionLogsByDate?.[s.rawDate] ?? null}
                     scheduleUrl={scheduleUrl}
                   />
                 ))}
@@ -345,6 +354,7 @@ function SessionRow({
   holidays,
   showDecided = true,
   videoLink = null,
+  sessionLogsUrl = null,
   scheduleUrl,
 }: {
   session: ScheduleSession;
@@ -355,6 +365,12 @@ function SessionRow({
   showDecided?: boolean;
   /** When non-null, the date label becomes a Link to that video. */
   videoLink?: SessionVideoLink | null;
+  /**
+   * FFLogs URL stored on the past-session row. Used as the Logs icon
+   * source when no matching video exists for this date (a session
+   * happened, was logged on FFLogs, but nobody uploaded a video).
+   */
+  sessionLogsUrl?: string | null;
   /**
    * Source schedule URL — used to derive each user's character-sheets
    * input page so attendance cells can become "click here to edit"
@@ -439,18 +455,25 @@ function SessionRow({
               <Film className="h-3 w-3" aria-hidden />
             </Link>
           )}
-          {videoLink?.logsUrl && (
-            <a
-              href={videoLink.logsUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label={`${session.rawDate.split(" ")[0]} の FFLogs を開く`}
-              title="FFLogs"
-              className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-amber-300/85 transition-all hover:bg-amber-400/15 hover:text-amber-200 hover:shadow-[0_0_10px_-2px_rgba(251,191,36,0.6)]"
-            >
-              <BarChart3 className="h-3 w-3" aria-hidden />
-            </a>
-          )}
+          {(() => {
+            // Logs URL priority: video's logs_url first (richer
+            // context — it ties to the recorded run), then the
+            // session's own logs_url (covers sessions without video).
+            const logsUrl = videoLink?.logsUrl ?? sessionLogsUrl;
+            if (!logsUrl) return null;
+            return (
+              <a
+                href={logsUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={`${session.rawDate.split(" ")[0]} の FFLogs を開く`}
+                title="FFLogs"
+                className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-amber-300/85 transition-all hover:bg-amber-400/15 hover:text-amber-200 hover:shadow-[0_0_10px_-2px_rgba(251,191,36,0.6)]"
+              >
+                <BarChart3 className="h-3 w-3" aria-hidden />
+              </a>
+            );
+          })()}
         </div>
       </th>
       {showDecided && (
@@ -475,8 +498,16 @@ function SessionRow({
         const dateLabel = session.rawDate.split(" ")[0] ?? session.rawDate;
         const symbol = (
           <span
+            // Drop `font-mono` for the symbols — ◯ ⏰ △ × － are CJK
+            // full-width / emoji glyphs that fall back to system fonts
+            // when JetBrains Mono lacks them. The fallback's vertical
+            // metrics differ slightly per glyph (especially ⏰ which
+            // sits taller in the line-box), causing perceived
+            // misalignment. Using the default sans + `leading-none`
+            // forces every cell to render the glyph at the same
+            // baseline within a fixed h-5 box.
             className={
-              "inline-flex h-5 min-w-[1.75rem] items-center justify-center rounded-sm border px-1 font-mono text-[12px] transition-transform " +
+              "inline-flex h-5 min-w-[1.75rem] items-center justify-center rounded-sm border px-1 text-[12px] leading-none transition-transform " +
               ATT_TONE[att]
             }
             aria-label={`${u.name}: ${att}`}
@@ -519,7 +550,7 @@ function Legend() {
         <span key={l.symbol} className="inline-flex items-center gap-1.5">
           <span
             className={
-              "inline-flex h-4 w-5 items-center justify-center rounded-sm border font-mono text-[11px] " +
+              "inline-flex h-4 w-5 items-center justify-center rounded-sm border text-[11px] leading-none " +
               ATT_TONE[l.symbol]
             }
           >

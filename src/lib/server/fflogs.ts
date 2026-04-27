@@ -82,6 +82,15 @@ export async function fetchFflogsReports(
   }
 }
 
+export type FflogsLinkDetail = {
+  /** Whether this match was for a video card or a past session. */
+  kind: "video" | "session";
+  /** Video title for `kind=video`, raw_date string for `kind=session`. */
+  label: string;
+  reportTitle: string;
+  reportUrl: string;
+};
+
 export type FflogsLinkResult = {
   ok: boolean;
   reason?: string;
@@ -91,25 +100,40 @@ export type FflogsLinkResult = {
   videosScanned: number;
   /** Videos that got their logs_url set this run. */
   matched: number;
-  /** Per-video detail for the result panel. */
-  details: Array<{
-    videoTitle: string;
-    reportTitle: string;
-    reportUrl: string;
-  }>;
+  /** Past sessions checked (logs_url IS NULL). */
+  sessionsScanned: number;
+  /** Past sessions that got their logs_url set this run. */
+  sessionsMatched: number;
+  /** Per-match detail for the result panel. */
+  details: FflogsLinkDetail[];
 };
 
+// Video matching window: ±36h around the video's posted_at. Generous
+// because videos are often uploaded the morning after a late-night
+// session, and sometimes pre-recorded.
 const MATCH_WINDOW_MS = 36 * 60 * 60 * 1000;
+// Session matching window: tighter, since sessions are scheduled. The
+// FFLogs report's start should land near the session's start_time:
+// 1h grace before (people log in early) and 4h after (covers the full
+// raid plus overrun).
+const SESSION_WINDOW_BEFORE_MS = 1 * 60 * 60 * 1000;
+const SESSION_WINDOW_AFTER_MS = 4 * 60 * 60 * 1000;
 
 /**
- * Match FFLogs reports to videos that don't yet have a logs_url.
+ * Match FFLogs reports to videos AND past sessions in one pass.
  *
- * Match rule:
- *   - For each video without `logs_url`, find the FFLogs report
- *     whose `start` is within 36h before the video's posted_at
- *     (created_at fallback). The earliest matching report wins.
- *   - Each report can match at most one video (used-set), mirroring
- *     the video↔session matching heuristic.
+ * The two linkers run independently — the same FFLogs report can be
+ * claimed by both one video AND one session (a recorded raid night
+ * has both: a video that got uploaded, plus the session itself).
+ *
+ * Match rules:
+ *   - Video: report.start within ±36h of video.posted_at. Generous
+ *     because videos are often uploaded the morning after.
+ *   - Session: report.start within [session_start - 1h, session_start
+ *     + 4h]. Tighter because raid times are scheduled.
+ *
+ * Each linker greedily claims the earliest unmatched report that fits
+ * the target's window — same heuristic as the video↔session matching.
  */
 export async function linkFflogsReportsToVideos(): Promise<FflogsLinkResult> {
   const username = (await fetchAppSetting("fflogs_username"))?.trim();
@@ -120,6 +144,8 @@ export async function linkFflogsReportsToVideos(): Promise<FflogsLinkResult> {
       reportsScanned: 0,
       videosScanned: 0,
       matched: 0,
+      sessionsScanned: 0,
+      sessionsMatched: 0,
       details: [],
     };
   }
@@ -132,38 +158,50 @@ export async function linkFflogsReportsToVideos(): Promise<FflogsLinkResult> {
       reportsScanned: 0,
       videosScanned: 0,
       matched: 0,
+      sessionsScanned: 0,
+      sessionsMatched: 0,
       details: [],
     };
   }
   const reports = reportsResult.reports;
-  if (reports.length === 0) {
-    return {
-      ok: true,
-      reportsScanned: 0,
-      videosScanned: 0,
-      matched: 0,
-      details: [],
-    };
-  }
 
+  // Run both linkers (independently — they don't share their used-set
+  // because each FFLogs report legitimately maps to both a video and
+  // a session for the same raid night).
   const supabase = await createClient();
+  const [videoResult, sessionResult] = await Promise.all([
+    linkReportsToVideos(supabase, reports),
+    linkReportsToSessions(supabase, reports),
+  ]);
+
+  return {
+    ok: true,
+    reportsScanned: reports.length,
+    videosScanned: videoResult.scanned,
+    matched: videoResult.matched,
+    sessionsScanned: sessionResult.scanned,
+    sessionsMatched: sessionResult.matched,
+    details: [...videoResult.details, ...sessionResult.details],
+  };
+}
+
+type SupabaseLike = Awaited<ReturnType<typeof createClient>>;
+
+async function linkReportsToVideos(
+  supabase: SupabaseLike,
+  reports: FflogsReport[],
+): Promise<{ scanned: number; matched: number; details: FflogsLinkDetail[] }> {
+  if (reports.length === 0) return { scanned: 0, matched: 0, details: [] };
+
   const { data: videos } = await supabase
     .from("category_links")
     .select("id, title, posted_at, created_at, logs_url")
     .eq("kind", "video")
     .is("logs_url", null);
   if (!videos || videos.length === 0) {
-    return {
-      ok: true,
-      reportsScanned: reports.length,
-      videosScanned: 0,
-      matched: 0,
-      details: [],
-    };
+    return { scanned: 0, matched: 0, details: [] };
   }
 
-  // Sort videos oldest-first so each report claims the chronologically
-  // earliest unmatched video that fits its window.
   const sortedVideos = [...videos]
     .map((v) => {
       const ts = (v.posted_at as string | null) ?? (v.created_at as string);
@@ -173,51 +211,125 @@ export async function linkFflogsReportsToVideos(): Promise<FflogsLinkResult> {
     .filter((v): v is typeof v & { tMs: number } => v.tMs !== null)
     .sort((a, b) => a.tMs - b.tMs);
 
-  // Sort reports oldest-first too — earlier reports typically match
-  // earlier videos.
   const sortedReports = [...reports].sort((a, b) => a.startMs - b.startMs);
-
   const usedReports = new Set<string>();
-  const details: FflogsLinkResult["details"] = [];
+  const details: FflogsLinkDetail[] = [];
   let matched = 0;
 
   for (const video of sortedVideos) {
     const lo = video.tMs - MATCH_WINDOW_MS;
     const hi = video.tMs + MATCH_WINDOW_MS;
-    // Earliest unmatched report in window.
     const report = sortedReports.find(
-      (r) =>
-        !usedReports.has(r.id) && r.startMs >= lo && r.startMs <= hi,
+      (r) => !usedReports.has(r.id) && r.startMs >= lo && r.startMs <= hi,
     );
     if (!report) continue;
     const logsUrl = `https://www.fflogs.com/reports/${report.id}`;
-    const { error: updErr } = await supabase
+    const { error } = await supabase
       .from("category_links")
       .update({ logs_url: logsUrl })
       .eq("id", video.id as string)
       .is("logs_url", null);
-    if (updErr) {
+    if (error) {
+      console.warn("[fflogs-link/video] update failed", video.id, error.message);
+      continue;
+    }
+    usedReports.add(report.id);
+    matched += 1;
+    details.push({
+      kind: "video",
+      label: video.title as string,
+      reportTitle: report.title || "(無題のレポート)",
+      reportUrl: logsUrl,
+    });
+  }
+
+  return { scanned: sortedVideos.length, matched, details };
+}
+
+async function linkReportsToSessions(
+  supabase: SupabaseLike,
+  reports: FflogsReport[],
+): Promise<{ scanned: number; matched: number; details: FflogsLinkDetail[] }> {
+  if (reports.length === 0) return { scanned: 0, matched: 0, details: [] };
+
+  const { data: sessions } = await supabase
+    .from("schedule_past_sessions")
+    .select("raw_date, parsed_date, logs_url")
+    .is("logs_url", null);
+  if (!sessions || sessions.length === 0) {
+    return { scanned: 0, matched: 0, details: [] };
+  }
+
+  const sortedSessions = sessions
+    .map((s) => {
+      const tMs = new Date(s.parsed_date as string).getTime();
+      return { ...s, tMs: Number.isNaN(tMs) ? null : tMs };
+    })
+    .filter((s): s is typeof s & { tMs: number } => s.tMs !== null)
+    .sort((a, b) => a.tMs - b.tMs);
+
+  const sortedReports = [...reports].sort((a, b) => a.startMs - b.startMs);
+  const usedReports = new Set<string>();
+  const details: FflogsLinkDetail[] = [];
+  let matched = 0;
+
+  for (const session of sortedSessions) {
+    const lo = session.tMs - SESSION_WINDOW_BEFORE_MS;
+    const hi = session.tMs + SESSION_WINDOW_AFTER_MS;
+    const report = sortedReports.find(
+      (r) => !usedReports.has(r.id) && r.startMs >= lo && r.startMs <= hi,
+    );
+    if (!report) continue;
+    const logsUrl = `https://www.fflogs.com/reports/${report.id}`;
+    const { error } = await supabase
+      .from("schedule_past_sessions")
+      .update({ logs_url: logsUrl })
+      .eq("raw_date", session.raw_date as string)
+      .is("logs_url", null);
+    if (error) {
       console.warn(
-        "[fflogs-link] update failed",
-        video.id,
-        updErr.message,
+        "[fflogs-link/session] update failed",
+        session.raw_date,
+        error.message,
       );
       continue;
     }
     usedReports.add(report.id);
     matched += 1;
     details.push({
-      videoTitle: video.title as string,
+      kind: "session",
+      label: session.raw_date as string,
       reportTitle: report.title || "(無題のレポート)",
       reportUrl: logsUrl,
     });
   }
 
-  return {
-    ok: true,
-    reportsScanned: reports.length,
-    videosScanned: sortedVideos.length,
-    matched,
-    details,
-  };
+  return { scanned: sortedSessions.length, matched, details };
+}
+
+/**
+ * Server-side reader: returns a `rawDate → logs_url` map covering all
+ * past sessions whose `logs_url` is non-null. Used by the schedule
+ * page to surface a Logs icon on the date row even when no matching
+ * video exists.
+ */
+export async function fetchSessionLogsByDate(): Promise<Record<string, string>> {
+  try {
+    const supabase = await createClient();
+    const { data, error } = await supabase
+      .from("schedule_past_sessions")
+      .select("raw_date, logs_url")
+      .not("logs_url", "is", null);
+    if (error || !data) return {};
+    const out: Record<string, string> = {};
+    for (const row of data) {
+      const k = row.raw_date as string;
+      const v = row.logs_url as string | null;
+      if (k && v) out[k] = v;
+    }
+    return out;
+  } catch (e) {
+    console.warn("[fflogs] fetchSessionLogsByDate error:", e);
+    return {};
+  }
 }
