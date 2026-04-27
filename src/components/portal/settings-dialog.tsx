@@ -67,6 +67,18 @@ type FflogsLinkResultLite = {
   reportSamples?: Array<{ date: string; title: string; url: string }>;
   queriedUsername?: string;
   apiPath?: "v1" | "v2";
+  diag?: {
+    v2RawCount?: number;
+    v2OwnedCount?: number;
+    v2Me?: { id: number; name: string };
+    v2OwnersSample?: Array<{
+      id: number | null;
+      name: string | null;
+      count: number;
+    }>;
+    htmlPageSize?: number;
+    htmlCodesFound?: number;
+  };
 };
 
 // Inline copy of the Server Action result type — we can't re-export the
@@ -866,6 +878,74 @@ export function SettingsDialog() {
                             </ul>
                           </details>
                         )}
+                      {/* 詳細診断パネル — 各フェッチレイヤーの結果を
+                          全部見せる。なぜ 0 件なのか切り分けに使う。 */}
+                      {logsResult.diag && (
+                        <details className="mt-2 group/diag">
+                          <summary className="cursor-pointer list-none text-[10px] text-muted-foreground/80 hover:text-foreground/90 [&::-webkit-details-marker]:hidden">
+                            <span className="inline-flex items-center gap-1">
+                              <span className="text-amber-300/70 transition-transform group-open/diag:rotate-90">
+                                ▸
+                              </span>
+                              詳細診断（v2 / HTML スクレイプの取得状況）
+                            </span>
+                          </summary>
+                          <div className="mt-1.5 ml-3.5 flex flex-col gap-0.5 font-mono text-[10px] text-muted-foreground">
+                            {logsResult.diag.v2Me && (
+                              <p>
+                                v2 currentUser: id=
+                                <strong className="text-foreground/85">
+                                  {logsResult.diag.v2Me.id}
+                                </strong>
+                                {" / name="}
+                                <strong className="text-foreground/85">
+                                  {logsResult.diag.v2Me.name || "(空)"}
+                                </strong>
+                              </p>
+                            )}
+                            <p>
+                              v2 raw fetched:{" "}
+                              <strong className="text-foreground/85">
+                                {logsResult.diag.v2RawCount ?? "(なし)"}
+                              </strong>
+                              {" / owner-filter 通過: "}
+                              <strong className="text-foreground/85">
+                                {logsResult.diag.v2OwnedCount ?? "(なし)"}
+                              </strong>
+                            </p>
+                            {logsResult.diag.v2OwnersSample &&
+                              logsResult.diag.v2OwnersSample.length > 0 && (
+                                <>
+                                  <p className="mt-0.5">
+                                    v2 取得時の owner 上位:
+                                  </p>
+                                  <ul className="ml-3 flex flex-col gap-0.5">
+                                    {logsResult.diag.v2OwnersSample.map(
+                                      (o, i) => (
+                                        <li key={i}>
+                                          ・id={o.id ?? "(null)"} / name=
+                                          {o.name ?? "(null)"} ×{o.count}
+                                        </li>
+                                      ),
+                                    )}
+                                  </ul>
+                                </>
+                              )}
+                            {logsResult.diag.htmlPageSize !== undefined && (
+                              <p className="mt-0.5">
+                                HTML スクレイプ: page1 size=
+                                <strong className="text-foreground/85">
+                                  {logsResult.diag.htmlPageSize}
+                                </strong>
+                                {" bytes / 検出 codes="}
+                                <strong className="text-foreground/85">
+                                  {logsResult.diag.htmlCodesFound ?? 0}
+                                </strong>
+                              </p>
+                            )}
+                          </div>
+                        </details>
+                      )}
                       {logsResult.details.length > 0 && (
                         <ul className="mt-1 flex flex-col gap-0.5 font-mono text-[10px] text-muted-foreground">
                           {logsResult.details.slice(0, 8).map((d, i) => (

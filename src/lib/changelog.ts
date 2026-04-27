@@ -19,6 +19,16 @@ export type ReleaseEntry = {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    version: "1.7.8",
+    date: "2026-04-27",
+    notes: [
+      "FFLogs 連動の取得を 3 段階フォールバック構造に — ① v2 GraphQL with owner filter → ② v2 GraphQL UNFILTERED (raw 採用) → ③ HTML スクレイプ。owner filter で全消えする状況も raw fetch で救済",
+      "詳細診断パネルを結果に追加 — v2 currentUser id/name、raw fetch 件数、owner filter 通過件数、owner 上位の出現リスト、HTML スクレイプの page1 サイズと code 検出数を全部表示。0 件原因の切り分けに使用",
+      "HTML スクレイパーをより permissive に — 全ての `/reports/{code}` リンクを抽出、周辺 ±500 文字から日時を抽出（`<tr>` 構造に依存しない）",
+      "結果パネルの「クエリしたユーザー名」表示にどのソース経由か注記（OAuth 認証済 / OAuth → owner filter なし / OAuth → HTML スクレイプ）",
+    ],
+  },
+  {
     version: "1.7.7",
     date: "2026-04-27",
     notes: [

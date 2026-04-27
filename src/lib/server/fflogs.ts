@@ -106,9 +106,24 @@ async function fetchCurrentUser(
   }
 }
 
+export type FflogsV2Result =
+  | {
+      ok: true;
+      reports: FflogsReport[];
+      /** Diagnostic: total reports across pages before owner filter. */
+      rawCount: number;
+      /** Diagnostic: how many passed `owner.id == me.id || owner.name == me.name`. */
+      ownedCount: number;
+      /** Diagnostic: the authenticated user identity used. */
+      me: { id: number; name: string };
+      /** Diagnostic: top owners of fetched reports (helps diagnose why ownedCount = 0). */
+      ownersSample: Array<{ id: number | null; name: string | null; count: number }>;
+    }
+  | { ok: false; reason: string };
+
 export async function fetchFflogsReportsV2(
   accessToken: string,
-): Promise<{ ok: true; reports: FflogsReport[] } | { ok: false; reason: string }> {
+): Promise<FflogsV2Result> {
   // Step 1: identify the authenticated user.
   const me = await fetchCurrentUser(accessToken);
   if (!me.ok) return me;
@@ -128,6 +143,8 @@ export async function fetchFflogsReportsV2(
   // the v2 GraphQL schema to retrieve OAuth-user-owned non-public
   // reports.
   const all: FflogsReport[] = [];
+  const allOwners = new Map<string, { id: number | null; name: string | null; count: number }>();
+  let rawCount = 0;
   // FFLogs v2 caps page at 25 ("maximum allowed page is 25 until the
   // performance of paginated queries can be improved"). With limit=25
   // per page, total cap = 25 × 25 = 625 reports, which is plenty for
@@ -201,11 +218,22 @@ export async function fetchFflogsReportsV2(
       const reports = json.data?.reportData?.reports;
       if (!reports?.data) break;
       for (const r of reports.data) {
+        rawCount += 1;
+        // Track owners for diagnostic.
+        const ownerKey = String(r.owner?.id ?? r.owner?.name ?? "(unknown)");
+        const existing = allOwners.get(ownerKey);
+        if (existing) {
+          existing.count += 1;
+        } else {
+          allOwners.set(ownerKey, {
+            id: typeof r.owner?.id === "number" ? r.owner.id : null,
+            name: r.owner?.name ?? null,
+            count: 1,
+          });
+        }
         // Client-side ownership filter — exclude reports owned by
-        // other users (guild-shared etc). Use string comparison
-        // because GraphQL Int / FFLogs API number types can sneak
-        // through as strings in some payloads. Also accept name
-        // match as a fallback in case `owner.id` isn't populated.
+        // other users. String comparison guards against type sneakiness;
+        // name match fallback for rare cases where owner.id is absent.
         const ownerIdStr = r.owner?.id != null ? String(r.owner.id) : null;
         const meIdStr = String(me.id);
         const idMatch = ownerIdStr !== null && ownerIdStr === meIdStr;
@@ -230,7 +258,18 @@ export async function fetchFflogsReportsV2(
       return { ok: false, reason: "fetch error: " + String(e) };
     }
   }
-  return { ok: true, reports: all };
+  // Top 5 owners for the diagnostic panel.
+  const ownersSample = [...allOwners.values()]
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 5);
+  return {
+    ok: true,
+    reports: all,
+    rawCount,
+    ownedCount: all.length,
+    me: { id: me.id, name: me.name },
+    ownersSample,
+  };
 }
 
 /**
@@ -252,19 +291,30 @@ export async function fetchFflogsReportsV2(
  */
 async function fetchFflogsReportsHtmlScrape(
   userId: number,
-): Promise<{ ok: true; reports: FflogsReport[] } | { ok: false; reason: string }> {
+): Promise<
+  | {
+      ok: true;
+      reports: FflogsReport[];
+      htmlPageSize: number;
+      htmlCodesFound: number;
+    }
+  | { ok: false; reason: string }
+> {
   const all: FflogsReport[] = [];
   const seen = new Set<string>();
   const MAX_PAGES = 25;
+  let firstPageSize = 0;
+  let totalCodesSeen = 0;
   for (let page = 1; page <= MAX_PAGES; page++) {
     const url = `https://www.fflogs.com/user/reports-list/${userId}?page=${page}`;
     try {
       const res = await fetch(url, {
         headers: {
-          // Friendly UA — avoids being mistaken for a scraper bot.
           "User-Agent":
             "Mozilla/5.0 (compatible; RaidRepository/1.0; +https://github.com)",
-          Accept: "text/html",
+          Accept: "text/html,application/xhtml+xml",
+          // Some pages serve different content based on language pref.
+          "Accept-Language": "ja-JP,ja;q=0.9,en;q=0.8",
         },
         signal: AbortSignal.timeout(20000),
       });
@@ -275,48 +325,47 @@ async function fetchFflogsReportsHtmlScrape(
         };
       }
       const html = await res.text();
+      if (page === 1) firstPageSize = html.length;
       const before = all.length;
-      // Look for `/reports/{code}` links and try to extract title +
-      // start time from the surrounding HTML. The page structure has
-      // each report row containing:
-      //   <a href="/reports/CODE">Title</a>
-      // and a column with the start datetime. We use a permissive
-      // regex that grabs the link, then look at the row HTML for a
-      // date string.
-      const rowRegex =
-        /<tr[^>]*>([\s\S]*?)<\/tr>/g;
-      const linkRegex =
-        /<a[^>]+href="\/reports\/([A-Za-z0-9]+)"[^>]*>([\s\S]*?)<\/a>/;
-      // FFLogs renders timestamps as e.g. "April 17, 2026 12:33 AM"
-      // OR "2026-04-17 00:33" depending on locale/page. Match either.
+      // Permissive: scan for any `/reports/{code}` link (both `<a>` and
+      // bare URL forms) and try to extract a date from the surrounding
+      // ~500 chars of context. Modern FFLogs pages may inject content
+      // via JS, but the report links are typically still in the SSR'd
+      // HTML.
+      const linkPattern =
+        /\/reports\/([A-Za-z0-9]{8,})(?:[?#"\s]|$)/g;
       const dateRegexEn =
-        /\b([A-Z][a-z]+\s+\d{1,2},\s+\d{4}(?:\s+\d{1,2}:\d{2}\s*(?:AM|PM)?)?)/;
+        /([A-Z][a-z]+\s+\d{1,2},\s+\d{4}(?:\s+\d{1,2}:\d{2}\s*(?:AM|PM)?)?)/;
       const dateRegexIso =
-        /\b(\d{4}[-/]\d{1,2}[-/]\d{1,2}(?:\s+\d{1,2}:\d{2})?)/;
-      let rowMatch;
-      while ((rowMatch = rowRegex.exec(html)) !== null) {
-        const rowHtml = rowMatch[1]!;
-        const linkMatch = rowHtml.match(linkRegex);
-        if (!linkMatch) continue;
-        const code = linkMatch[1]!;
+        /(\d{4}[-/]\d{1,2}[-/]\d{1,2}(?:\s+\d{1,2}:\d{2})?)/;
+      let m;
+      while ((m = linkPattern.exec(html)) !== null) {
+        const code = m[1]!;
         if (seen.has(code)) continue;
-        // Strip HTML tags from inner content for a clean title.
-        const title = linkMatch[2]!
-          .replace(/<[^>]+>/g, "")
-          .replace(/\s+/g, " ")
-          .trim();
+        totalCodesSeen += 1;
+        // Look at ±500 chars of context for date / title.
+        const ctxStart = Math.max(0, m.index - 200);
+        const ctxEnd = Math.min(html.length, m.index + 500);
+        const ctx = html.slice(ctxStart, ctxEnd);
         const dateStr =
-          rowHtml.match(dateRegexEn)?.[1] ??
-          rowHtml.match(dateRegexIso)?.[1] ??
+          ctx.match(dateRegexEn)?.[1] ??
+          ctx.match(dateRegexIso)?.[1] ??
           null;
         const tMs = dateStr ? Date.parse(dateStr) : NaN;
         if (!Number.isFinite(tMs)) continue;
+        // Title: try `<a href="/reports/CODE">TITLE</a>` form first.
+        const titleMatch = ctx.match(
+          new RegExp(
+            `<a[^>]+href="/reports/${code}[^"]*"[^>]*>([^<]+)</a>`,
+          ),
+        );
+        const title = titleMatch?.[1]?.replace(/\s+/g, " ").trim() ?? "";
         seen.add(code);
         all.push({
           id: code,
           title,
           startMs: tMs,
-          endMs: tMs, // unknown; matching only uses startMs anyway
+          endMs: tMs,
           zone: null,
         });
       }
@@ -326,7 +375,12 @@ async function fetchFflogsReportsHtmlScrape(
       return { ok: false, reason: "HTML scrape fetch error: " + String(e) };
     }
   }
-  return { ok: true, reports: all };
+  return {
+    ok: true,
+    reports: all,
+    htmlPageSize: firstPageSize,
+    htmlCodesFound: totalCodesSeen,
+  };
 }
 
 export type FflogsLinkDetail = {
@@ -365,6 +419,26 @@ export type FflogsLinkResult = {
   queriedUsername?: string;
   /** Which API path was used: v1 (display-name + key) or v2 (OAuth). */
   apiPath?: "v1" | "v2";
+  /**
+   * Deep diagnostic info for empty-results debugging. Surfaces what
+   * each fetch attempt actually returned at the wire level so we can
+   * tell if the query is hitting the API correctly but no rows pass
+   * the owner filter, vs. the API itself returns nothing.
+   */
+  diag?: {
+    /** GraphQL: total reports across all pages BEFORE owner filter. */
+    v2RawCount?: number;
+    /** GraphQL: reports passing the owner filter (this becomes our reports). */
+    v2OwnedCount?: number;
+    /** GraphQL: currentUser id + name resolved via the auth context. */
+    v2Me?: { id: number; name: string };
+    /** GraphQL: sample of owners from raw results (first 5 unique). */
+    v2OwnersSample?: Array<{ id: number | null; name: string | null; count: number }>;
+    /** HTML scrape: page 1 response size in bytes. */
+    htmlPageSize?: number;
+    /** HTML scrape: number of /reports/CODE links found (before any filter). */
+    htmlCodesFound?: number;
+  };
 };
 
 // Video matching window: ±36h around the video's posted_at. Generous
@@ -440,20 +514,96 @@ export async function linkFflogsReportsToVideos(): Promise<FflogsLinkResult> {
     };
   }
   let reports = v2Result.reports;
-  let usedSource: "v2" | "html-scrape" = "v2";
+  let usedSource: "v2" | "v2-unfiltered" | "html-scrape" = "v2";
+  let htmlPageSize: number | undefined;
+  let htmlCodesFound: number | undefined;
 
-  // If the v2 GraphQL endpoint returned 0 reports owned by the
-  // authenticated user (a known limitation in some account
-  // configurations), fall back to scraping the public reports-list
-  // page. This covers Public + Unlisted reports; truly Private
-  // ones still need manual binding via the memo popover.
+  // Priority order:
+  //   1. v2 GraphQL with owner filter (owner.id/name match) — proper.
+  //   2. v2 GraphQL UNFILTERED (raw fetch) — when raw > 0 but owner
+  //      filter caught nothing, the visibility scope is correct (these
+  //      are reports the OAuth user can see) so accept them all. This
+  //      handles the case where the user uploads under an account
+  //      whose `owner.id` differs from `currentUser.id`.
+  //   3. HTML scrape of the public reports-list page — last resort
+  //      for accounts the API doesn't expose directly.
+  if (reports.length === 0 && v2Result.rawCount > 0) {
+    // Layer 2: raw v2 fetch had results but none matched owner filter.
+    // Accept all of them — the OAuth scope already restricts to
+    // reports the user has visibility on.
+    const allRawQuery = `query ($page: Int!) {
+      reportData {
+        reports(limit: 25, page: $page) {
+          has_more_pages
+          data { code title startTime endTime zone { id } }
+        }
+      }
+    }`;
+    const acceptAll: FflogsReport[] = [];
+    for (let page = 1; page <= 25; page++) {
+      try {
+        const res = await fetch(FFLOGS_GRAPHQL_URL, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${oauthToken}`,
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          body: JSON.stringify({ query: allRawQuery, variables: { page } }),
+          signal: AbortSignal.timeout(20000),
+        });
+        if (!res.ok) break;
+        const json = (await res.json()) as {
+          data?: {
+            reportData?: {
+              reports?: {
+                has_more_pages?: boolean;
+                data?: Array<{
+                  code: string;
+                  title?: string | null;
+                  startTime: number;
+                  endTime: number;
+                  zone?: { id?: number | null } | null;
+                }>;
+              };
+            };
+          };
+        };
+        const rs = json.data?.reportData?.reports;
+        if (!rs?.data) break;
+        for (const r of rs.data) {
+          const sMs = r.startTime < 1e11 ? r.startTime * 1000 : r.startTime;
+          const eMs = r.endTime < 1e11 ? r.endTime * 1000 : r.endTime;
+          acceptAll.push({
+            id: r.code,
+            title: r.title ?? "",
+            startMs: sMs,
+            endMs: eMs,
+            zone: r.zone?.id ?? null,
+          });
+        }
+        if (!rs.has_more_pages) break;
+      } catch {
+        break;
+      }
+    }
+    if (acceptAll.length > 0) {
+      reports = acceptAll;
+      usedSource = "v2-unfiltered";
+    }
+  }
   if (reports.length === 0) {
+    // Layer 3: HTML scrape.
     const me = await fetchCurrentUser(oauthToken);
     if (me.ok) {
       const scrapeResult = await fetchFflogsReportsHtmlScrape(me.id);
-      if (scrapeResult.ok && scrapeResult.reports.length > 0) {
-        reports = scrapeResult.reports;
-        usedSource = "html-scrape";
+      if (scrapeResult.ok) {
+        htmlPageSize = scrapeResult.htmlPageSize;
+        htmlCodesFound = scrapeResult.htmlCodesFound;
+        if (scrapeResult.reports.length > 0) {
+          reports = scrapeResult.reports;
+          usedSource = "html-scrape";
+        }
       }
     }
   }
@@ -509,9 +659,19 @@ export async function linkFflogsReportsToVideos(): Promise<FflogsLinkResult> {
     reportSamples,
     queriedUsername:
       usedSource === "html-scrape"
-        ? "(OAuth 認証 → HTML スクレイプフォールバック)"
-        : "(OAuth 認証済みユーザー)",
+        ? "(OAuth → HTML スクレイプフォールバック)"
+        : usedSource === "v2-unfiltered"
+          ? "(OAuth → v2 owner filter なし)"
+          : "(OAuth 認証済みユーザー)",
     apiPath: "v2",
+    diag: {
+      v2RawCount: v2Result.rawCount,
+      v2OwnedCount: v2Result.ownedCount,
+      v2Me: v2Result.me,
+      v2OwnersSample: v2Result.ownersSample,
+      htmlPageSize,
+      htmlCodesFound,
+    },
   };
 }
 
