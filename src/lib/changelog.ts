@@ -19,6 +19,14 @@ export type ReleaseEntry = {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    version: "1.9.26",
+    date: "2026-04-27",
+    notes: [
+      "🧹 過去の簡易日程チップ: 動画 / Logs / メモのいずれも紐づいていない日に表示されていた `SessionMemoDot` の不可視 placeholder (h-4 w-4) を削除。何もない日付チップは日付テキストだけがコンパクトに表示される",
+      "📐 過去の詳細日程: 動画なし + Logs ありの日に Logs アイコンが動画スロットに左ズレしていたのを修正。Logs が存在する場合のみ Film スロットを placeholder で確保し、Logs アイコンは右スロットに固定。両方とも無い場合は何もレンダリングしない",
+    ],
+  },
+  {
     version: "1.9.25",
     date: "2026-04-27",
     notes: [

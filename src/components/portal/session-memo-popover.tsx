@@ -293,22 +293,15 @@ export function SessionMemoDot({
   className?: string;
   onClick?: () => void;
 }) {
-  // ALWAYS reserve the same h-4 w-4 footprint regardless of count, so
-  // the row layout doesn't shift when memos populate asynchronously
-  // via the realtime hook (initial render: count=0 → fetch returns →
-  // count=N → previously the dot would pop in and push siblings).
   const dotClass =
     "inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--neon-violet)] shadow-[0_0_6px_var(--neon-violet)] transition-shadow";
-  if (count <= 0) {
-    // Invisible placeholder — same dimensions as the rendered button
-    // so the row layout is identical at count=0 and count=N.
-    return (
-      <span
-        aria-hidden
-        className={`inline-block h-4 w-4 shrink-0 ${className}`}
-      />
-    );
-  }
+  // 1.9.26: drop the invisible h-4 w-4 placeholder when no memos
+  // exist. Earlier versions reserved the dot's footprint for layout
+  // stability, but it created visible empty gaps in compact strips
+  // (schedule-past-simple chips) where dates without memos / logs /
+  // videos would still show a 16px void. Trade-off: a slight layout
+  // shift when memos arrive via realtime, but UX is cleaner overall.
+  if (count <= 0) return null;
   if (!onClick) {
     return (
       <span

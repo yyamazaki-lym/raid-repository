@@ -500,29 +500,28 @@ function SessionRow({
           />
           {/* Action icons — placed after the time so the cell reads
               "what is this date" → "actions for this date" left-to-right.
-              Film: deep-link into the matched video card.
-              BarChart3: FFLogs URL associated with that video. */}
-          {videoLink && (
-            <Link
-              href={videoLink.href}
-              prefetch={false}
-              aria-label={`${videoLink.categoryName}/動画「${videoLink.videoTitle}」を開く`}
-              title={`${videoLink.categoryName}/動画 → 「${videoLink.videoTitle}」`}
-              className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-[var(--neon-cyan)]/85 transition-all hover:bg-[var(--neon-cyan)]/15 hover:text-[var(--neon-cyan)] hover:shadow-[0_0_10px_-2px_var(--neon-cyan)]"
-            >
-              <Film className="h-3 w-3" aria-hidden />
-            </Link>
-          )}
+              Film slot (left) | BarChart3 slot (right).
+              1.9.26: keep the Film slot reserved IF logs exist but
+              video doesn't, so the Logs icon stays in its proper
+              position. When neither exists, render nothing. */}
           {(() => {
-            // Logs URL priority: video's logs_url first (richer
-            // context — it ties to the recorded run), then the
-            // session's own logs_url (covers sessions without video).
-            // Wrap in safeHref so a malformed/dangerous-scheme URL
-            // can't reach the DOM (defense in depth alongside the
-            // form/server validators).
             const logsUrl = safeHref(videoLink?.logsUrl ?? sessionLogsUrl);
-            if (!logsUrl) return null;
-            return (
+            const filmSlot = videoLink ? (
+              <Link
+                href={videoLink.href}
+                prefetch={false}
+                aria-label={`${videoLink.categoryName}/動画「${videoLink.videoTitle}」を開く`}
+                title={`${videoLink.categoryName}/動画 → 「${videoLink.videoTitle}」`}
+                className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-[var(--neon-cyan)]/85 transition-all hover:bg-[var(--neon-cyan)]/15 hover:text-[var(--neon-cyan)] hover:shadow-[0_0_10px_-2px_var(--neon-cyan)]"
+              >
+                <Film className="h-3 w-3" aria-hidden />
+              </Link>
+            ) : logsUrl ? (
+              // Reserve the Film slot only when Logs will be rendered,
+              // so the BarChart3 doesn't slide into the Film position.
+              <span aria-hidden className="inline-block h-5 w-5 shrink-0" />
+            ) : null;
+            const logsSlot = logsUrl ? (
               <a
                 href={logsUrl}
                 target="_blank"
@@ -533,6 +532,12 @@ function SessionRow({
               >
                 <BarChart3 className="h-3 w-3" aria-hidden />
               </a>
+            ) : null;
+            return (
+              <>
+                {filmSlot}
+                {logsSlot}
+              </>
             );
           })()}
         </div>
