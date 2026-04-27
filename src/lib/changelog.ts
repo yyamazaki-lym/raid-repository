@@ -19,6 +19,21 @@ export type ReleaseEntry = {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    version: "1.7.0",
+    date: "2026-04-27",
+    notes: [
+      "FFLogs v2 GraphQL + OAuth Authorization Code Flow に対応 — 接続すると Public + Unlisted + Private のすべてのレポートが取得対象に。設定ダイアログから「FFLogs と OAuth 接続」ボタンで認可フロー開始",
+      "新ルート: `/api/auth/fflogs/start`（OAuth 開始）/ `/callback`（コード交換）/ `/disconnect`（トークン削除）。state は app_settings に一時保存して CSRF 検証",
+      "新 server module: `fflogs-oauth.ts` — トークン保存・自動リフレッシュ・接続状態取得",
+      "v2 GraphQL fetcher: `fetchFflogsReportsV2` — `reportData.reports` をページネーション込みで取得（最大 16 ページ × 25 件 = 400 件）",
+      "linkFflogsReports: OAuth 接続済みなら v2 を優先、未接続なら v1（表示名 + API キー、Public のみ）にフォールバック。結果パネルに使った API バージョンを表示",
+      "ENV 変数追加: `FFLOGS_OAUTH_CLIENT_ID` / `FFLOGS_OAUTH_CLIENT_SECRET`（Vercel に設定要、fflogs.com/api/clients/ で OAuth クライアント作成）",
+      "redirect_uri はリクエスト Origin から動的に組み立て — localhost と本番ドメインの両方を OAuth クライアント側で許可リストに登録",
+      "メモポップアップの FFLogs URL 編集セクションを最下部に移動（メモ閲覧の邪魔にならないよう）",
+      "メモ既読ドット（紫）の表示位置のレイアウトシフトを修正 — count=0 の時も h-4 w-4 の placeholder を確保し、リロード時のチラつきを排除",
+    ],
+  },
+  {
     version: "1.6.8",
     date: "2026-04-27",
     notes: [

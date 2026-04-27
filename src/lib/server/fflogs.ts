@@ -1,6 +1,7 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { fetchAppSetting } from "@/lib/supabase/app-settings";
+import { getValidFflogsOAuthToken } from "./fflogs-oauth";
 
 /**
  * FFLogs API v1 wrapper. Fetches a user's report list and matches
@@ -31,6 +32,108 @@ export type FflogsReport = {
 };
 
 const FFLOGS_API_BASE = "https://www.fflogs.com/v1";
+const FFLOGS_GRAPHQL_URL = "https://www.fflogs.com/api/v2/user";
+
+/**
+ * v2 GraphQL fetcher — uses the OAuth access token to fetch reports
+ * including Unlisted / Private (subject to scope). Returns reports in
+ * the same shape as `fetchFflogsReports` so the linker doesn't care
+ * which API path was used.
+ *
+ * Note: GraphQL `reports` is paginated by ReportPagination. We fetch
+ * the first ~16 pages (well over typical activity for one user) by
+ * walking `has_more_pages`.
+ */
+export async function fetchFflogsReportsV2(
+  accessToken: string,
+): Promise<{ ok: true; reports: FflogsReport[] } | { ok: false; reason: string }> {
+  const all: FflogsReport[] = [];
+  const MAX_PAGES = 16;
+  for (let page = 1; page <= MAX_PAGES; page++) {
+    const query = `query ($page: Int) {
+      reportData {
+        reports(limit: 25, page: $page) {
+          has_more_pages
+          data {
+            code
+            title
+            startTime
+            endTime
+            zone { id }
+          }
+        }
+      }
+    }`;
+    try {
+      const res = await fetch(FFLOGS_GRAPHQL_URL, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({ query, variables: { page } }),
+        signal: AbortSignal.timeout(20000),
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        if (res.status === 401) {
+          return {
+            ok: false,
+            reason:
+              "FFLogs OAuth トークンが無効です — 設定で再認証してください",
+          };
+        }
+        return {
+          ok: false,
+          reason: `fflogs v2 ${res.status}: ${text.slice(0, 200)}`,
+        };
+      }
+      const json = (await res.json()) as {
+        errors?: Array<{ message?: string }>;
+        data?: {
+          reportData?: {
+            reports?: {
+              has_more_pages?: boolean;
+              data?: Array<{
+                code: string;
+                title?: string | null;
+                startTime: number;
+                endTime: number;
+                zone?: { id?: number | null } | null;
+              }>;
+            };
+          };
+        };
+      };
+      if (json.errors?.length) {
+        return {
+          ok: false,
+          reason: "fflogs v2 GraphQL error: " + json.errors[0]!.message,
+        };
+      }
+      const reports = json.data?.reportData?.reports;
+      if (!reports?.data) break;
+      for (const r of reports.data) {
+        // GraphQL returns startTime/endTime in milliseconds (per FFLogs
+        // v2 docs) — different from v1 which is seconds. We keep the
+        // same magnitude-based normalization in fflogs.ts callers, but
+        // here we trust v2's spec and pass through as ms.
+        all.push({
+          id: r.code,
+          title: r.title ?? "",
+          startMs: r.startTime,
+          endMs: r.endTime,
+          zone: r.zone?.id ?? null,
+        });
+      }
+      if (!reports.has_more_pages) break;
+    } catch (e) {
+      return { ok: false, reason: "fetch error: " + String(e) };
+    }
+  }
+  return { ok: true, reports: all };
+}
 
 export async function fetchFflogsReports(
   username: string,
@@ -162,6 +265,8 @@ export type FflogsLinkResult = {
   reportSamples?: Array<{ date: string; title: string; url: string }>;
   /** Diagnostic — the username actually queried (echo back to verify). */
   queriedUsername?: string;
+  /** Which API path was used: v1 (display-name + key) or v2 (OAuth). */
+  apiPath?: "v1" | "v2";
 };
 
 // Video matching window: ±36h around the video's posted_at. Generous
@@ -192,34 +297,65 @@ const SESSION_WINDOW_AFTER_MS = 4 * 60 * 60 * 1000;
  * the target's window — same heuristic as the video↔session matching.
  */
 export async function linkFflogsReportsToVideos(): Promise<FflogsLinkResult> {
-  const username = (await fetchAppSetting("fflogs_username"))?.trim();
-  if (!username) {
-    return {
-      ok: false,
-      reason: "FFLogs ユーザー名が未設定（設定ダイアログから保存してください）",
-      reportsScanned: 0,
-      videosScanned: 0,
-      matched: 0,
-      sessionsScanned: 0,
-      sessionsMatched: 0,
-      details: [],
-    };
-  }
+  // OAuth v2 path takes priority when connected — it returns
+  // Public + Unlisted + Private reports owned by the authenticated
+  // user. Fall back to v1 (Public-only) when not OAuth-connected.
+  const oauthToken = await getValidFflogsOAuthToken();
 
-  const reportsResult = await fetchFflogsReports(username);
-  if (!reportsResult.ok) {
-    return {
-      ok: false,
-      reason: reportsResult.reason,
-      reportsScanned: 0,
-      videosScanned: 0,
-      matched: 0,
-      sessionsScanned: 0,
-      sessionsMatched: 0,
-      details: [],
-    };
+  let usedPath: "v1" | "v2" = "v1";
+  let queriedIdentifier = "";
+
+  let reports: FflogsReport[] = [];
+  if (oauthToken) {
+    usedPath = "v2";
+    queriedIdentifier = "(OAuth 認証済みユーザー)";
+    const v2Result = await fetchFflogsReportsV2(oauthToken);
+    if (!v2Result.ok) {
+      return {
+        ok: false,
+        reason: v2Result.reason,
+        reportsScanned: 0,
+        videosScanned: 0,
+        matched: 0,
+        sessionsScanned: 0,
+        sessionsMatched: 0,
+        details: [],
+      };
+    }
+    reports = v2Result.reports;
+  } else {
+    // v1 fallback: requires display name in `app_settings` and
+    // FFLOGS_API_KEY env var. Returns Public reports only.
+    const username = (await fetchAppSetting("fflogs_username"))?.trim();
+    if (!username) {
+      return {
+        ok: false,
+        reason:
+          "FFLogs OAuth 未接続かつ表示名も未設定 — 設定ダイアログから OAuth 認証するか、表示名を保存してください",
+        reportsScanned: 0,
+        videosScanned: 0,
+        matched: 0,
+        sessionsScanned: 0,
+        sessionsMatched: 0,
+        details: [],
+      };
+    }
+    queriedIdentifier = username;
+    const v1Result = await fetchFflogsReports(username);
+    if (!v1Result.ok) {
+      return {
+        ok: false,
+        reason: v1Result.reason,
+        reportsScanned: 0,
+        videosScanned: 0,
+        matched: 0,
+        sessionsScanned: 0,
+        sessionsMatched: 0,
+        details: [],
+      };
+    }
+    reports = v1Result.reports;
   }
-  const reports = reportsResult.reports;
 
   // Run both linkers (independently — they don't share their used-set
   // because each FFLogs report legitimately maps to both a video and
@@ -270,7 +406,8 @@ export async function linkFflogsReportsToVideos(): Promise<FflogsLinkResult> {
     videosDateRange: videoResult.dateRange,
     sessionsDateRange: sessionResult.dateRange,
     reportSamples,
-    queriedUsername: username,
+    queriedUsername: queriedIdentifier,
+    apiPath: usedPath,
   };
 }
 

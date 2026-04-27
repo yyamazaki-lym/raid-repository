@@ -292,16 +292,31 @@ export function SessionMemoDot({
   className?: string;
   onClick?: () => void;
 }) {
-  if (count <= 0) return null;
+  // ALWAYS reserve the same h-4 w-4 footprint regardless of count, so
+  // the row layout doesn't shift when memos populate asynchronously
+  // via the realtime hook (initial render: count=0 → fetch returns →
+  // count=N → previously the dot would pop in and push siblings).
   const dotClass =
     "inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--neon-violet)] shadow-[0_0_6px_var(--neon-violet)] transition-shadow";
+  if (count <= 0) {
+    // Invisible placeholder — same dimensions as the rendered button
+    // so the row layout is identical at count=0 and count=N.
+    return (
+      <span
+        aria-hidden
+        className={`inline-block h-4 w-4 shrink-0 ${className}`}
+      />
+    );
+  }
   if (!onClick) {
     return (
       <span
         aria-label={`メモ ${count} 件`}
         title={`メモ ${count} 件`}
-        className={`inline-flex items-center ${dotClass} ${className}`}
-      />
+        className={`inline-flex h-4 w-4 shrink-0 items-center justify-center ${className}`}
+      >
+        <span aria-hidden className={dotClass} />
+      </span>
     );
   }
   return (
@@ -563,11 +578,46 @@ function MemoList({
         </ul>
       )}
 
-      {/* FFLogs URL editor. The v1 API only returns Public reports,
-          so Unlisted / Private logs need to be bound here by hand.
-          Position: between memos and new-memo form, so it's
-          visible without scrolling but doesn't crowd the memo
-          reading area. */}
+      <div className="flex flex-col gap-1.5 border-t border-border/40 pt-2.5">
+        <div className="flex items-center gap-1.5 font-mono text-[10px] tracking-[0.22em] text-muted-foreground uppercase">
+          <MessageSquarePlus
+            className="h-3 w-3 text-[var(--neon-violet)]/80"
+            aria-hidden
+          />
+          新規メモ
+        </div>
+        <input
+          value={draftAuthor}
+          onChange={(e) => setDraftAuthor(e.target.value)}
+          placeholder="名前（任意・次回も使用）"
+          spellCheck={false}
+          className={inputClass}
+        />
+        <textarea
+          value={draftBody}
+          onChange={(e) => setDraftBody(e.target.value)}
+          rows={3}
+          placeholder="メモ内容…"
+          spellCheck={false}
+          className={inputClass}
+        />
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={submitDraft}
+            disabled={busy || draftBody.trim().length === 0}
+            className="inline-flex items-center gap-1.5 rounded-md border border-[var(--neon-violet)]/50 bg-[var(--neon-violet)]/10 px-3 py-1.5 font-mono text-[10px] tracking-[0.22em] text-[var(--neon-violet)] uppercase transition-colors hover:border-[var(--neon-violet)]/70 hover:bg-[var(--neon-violet)]/18 disabled:opacity-50"
+          >
+            <Send className="h-3 w-3" aria-hidden />
+            投稿
+          </button>
+        </div>
+      </div>
+
+      {/* FFLogs URL editor — placed at the bottom of the popover so it
+          doesn't compete with memo reading. The v1 API only returns
+          Public reports, so Unlisted / Private logs need to be bound
+          here by hand. */}
       <div className="flex flex-col gap-1.5 border-t border-border/40 pt-2.5">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-1.5 font-mono text-[10px] tracking-[0.22em] text-muted-foreground uppercase">
@@ -626,42 +676,6 @@ function MemoList({
           >
             <Save className="h-3 w-3" aria-hidden />
             保存
-          </button>
-        </div>
-      </div>
-
-      <div className="flex flex-col gap-1.5 border-t border-border/40 pt-2.5">
-        <div className="flex items-center gap-1.5 font-mono text-[10px] tracking-[0.22em] text-muted-foreground uppercase">
-          <MessageSquarePlus
-            className="h-3 w-3 text-[var(--neon-violet)]/80"
-            aria-hidden
-          />
-          新規メモ
-        </div>
-        <input
-          value={draftAuthor}
-          onChange={(e) => setDraftAuthor(e.target.value)}
-          placeholder="名前（任意・次回も使用）"
-          spellCheck={false}
-          className={inputClass}
-        />
-        <textarea
-          value={draftBody}
-          onChange={(e) => setDraftBody(e.target.value)}
-          rows={3}
-          placeholder="メモ内容…"
-          spellCheck={false}
-          className={inputClass}
-        />
-        <div className="flex justify-end">
-          <button
-            type="button"
-            onClick={submitDraft}
-            disabled={busy || draftBody.trim().length === 0}
-            className="inline-flex items-center gap-1.5 rounded-md border border-[var(--neon-violet)]/50 bg-[var(--neon-violet)]/10 px-3 py-1.5 font-mono text-[10px] tracking-[0.22em] text-[var(--neon-violet)] uppercase transition-colors hover:border-[var(--neon-violet)]/70 hover:bg-[var(--neon-violet)]/18 disabled:opacity-50"
-          >
-            <Send className="h-3 w-3" aria-hidden />
-            投稿
           </button>
         </div>
       </div>

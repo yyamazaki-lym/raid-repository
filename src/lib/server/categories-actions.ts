@@ -16,6 +16,10 @@ import {
   type FflogsLinkResult,
 } from "./fflogs";
 import {
+  disconnectFflogsOAuth,
+  getFflogsOAuthStatus,
+} from "./fflogs-oauth";
+import {
   fetchYouTubeMeta,
   fetchYouTubeMetaWithDebug,
   pmap,
@@ -242,7 +246,7 @@ export type ScheduleSnapshotResult = {
  */
 export async function linkFflogsReports(): Promise<FflogsLinkResult> {
   const result = await linkFflogsReportsToVideos();
-  if (result.ok && result.matched > 0) {
+  if (result.ok && (result.matched > 0 || result.sessionsMatched > 0)) {
     try {
       revalidatePath("/");
     } catch {
@@ -250,6 +254,27 @@ export async function linkFflogsReports(): Promise<FflogsLinkResult> {
     }
   }
   return result;
+}
+
+/**
+ * Server Action: read FFLogs OAuth connection status for the settings UI.
+ */
+export async function fetchFflogsOAuthStatus(): Promise<{
+  connected: boolean;
+  userName: string | null;
+  expiresAt: string | null;
+}> {
+  return getFflogsOAuthStatus();
+}
+
+/**
+ * Server Action: clear FFLogs OAuth tokens. Settings UI calls this when
+ * the user clicks "Disconnect".
+ */
+export async function disconnectFflogsOAuthAction(): Promise<
+  { ok: true } | { ok: false; reason: string }
+> {
+  return disconnectFflogsOAuth();
 }
 
 /**

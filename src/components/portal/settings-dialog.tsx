@@ -39,6 +39,8 @@ import {
 } from "@/lib/schedule-url-store";
 import {
   countStoredPastSessions,
+  disconnectFflogsOAuthAction,
+  fetchFflogsOAuthStatus,
   importPastScheduleFromDiscord,
   linkFflogsReports,
   snapshotScheduleNow,
@@ -65,6 +67,7 @@ type FflogsLinkResultLite = {
   sessionsDateRange?: { earliest: string; latest: string };
   reportSamples?: Array<{ date: string; title: string; url: string }>;
   queriedUsername?: string;
+  apiPath?: "v1" | "v2";
 };
 
 // Inline copy of the Server Action result type — we can't re-export the
@@ -114,21 +117,59 @@ export function SettingsDialog() {
   const [logsResult, setLogsResult] = useState<FflogsLinkResultLite | null>(
     null,
   );
+  // FFLogs OAuth state — fetched from server when dialog opens. Lets
+  // us show "Connected as XYZ" vs "Connect" in the OAuth section.
+  const [oauthStatus, setOauthStatus] = useState<{
+    connected: boolean;
+    userName: string | null;
+    expiresAt: string | null;
+  } | null>(null);
+  const [disconnecting, startDisconnect] = useTransition();
   const [showChangelog, setShowChangelog] = useState(false);
+
+  // OAuth callback handler — when the user returns from FFLogs to
+  // /api/auth/fflogs/callback, we redirect back to "/" with either
+  // ?fflogs_oauth_connected=1 or ?fflogs_oauth_error=<reason>. Toast
+  // the result, auto-open the settings dialog so the user sees the
+  // connected state, and clean the query params from the URL.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const connected = params.get("fflogs_oauth_connected");
+    const errParam = params.get("fflogs_oauth_error");
+    if (!connected && !errParam) return;
+    if (connected) {
+      toast.success("FFLogs OAuth 認証に成功しました");
+      setOpen(true);
+    } else if (errParam) {
+      toast.error("FFLogs OAuth: " + errParam);
+      setOpen(true);
+    }
+    // Strip the params so reload doesn't re-fire the toast.
+    params.delete("fflogs_oauth_connected");
+    params.delete("fflogs_oauth_error");
+    const cleanQuery = params.toString();
+    const cleanUrl =
+      window.location.pathname + (cleanQuery ? `?${cleanQuery}` : "");
+    window.history.replaceState({}, "", cleanUrl);
+  }, []);
 
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
     void (async () => {
-      const [currentUrl, currentChannel, currentFflogs] = await Promise.all([
-        getScheduleUrlFromDb(),
-        getDiscordScheduleChannelId(),
-        getFflogsUsername(),
-      ]);
+      const [currentUrl, currentChannel, currentFflogs, currentOauth] =
+        await Promise.all([
+          getScheduleUrlFromDb(),
+          getDiscordScheduleChannelId(),
+          getFflogsUsername(),
+          fetchFflogsOAuthStatus(),
+        ]);
       if (!cancelled) {
         setUrl(currentUrl ?? "");
         setChannelId(currentChannel ?? "");
         setFflogsUsernameState(currentFflogs ?? "");
+        setOauthStatus(currentOauth);
         setImportResult(null);
         setLogsResult(null);
       }
@@ -560,13 +601,108 @@ export function SettingsDialog() {
               </span>
             </header>
 
+            {/* v2 OAuth (推奨)。OAuth で接続すると Public + Unlisted +
+                Private のすべてのレポートが取得対象になる。v1 と違って
+                FFLOGS_API_KEY は不要、代わりに FFLOGS_OAUTH_CLIENT_ID /
+                _SECRET の env var が必要。 */}
+            <div className="flex flex-col gap-2 rounded-md border border-amber-400/35 bg-amber-400/5 px-3 py-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="flex items-center gap-1.5 font-mono text-[10px] tracking-[0.22em] text-amber-200/95 uppercase">
+                  <Link2 className="h-3 w-3" aria-hidden />
+                  OAuth 認証 (v2 API・推奨)
+                </span>
+                {oauthStatus?.connected && (
+                  <span className="inline-flex items-center gap-1 rounded-sm border border-emerald-400/45 bg-emerald-400/10 px-1.5 py-px font-mono text-[9px] tracking-[0.18em] text-emerald-200 uppercase">
+                    <span className="inline-block h-1 w-1 rounded-full bg-emerald-400 shadow-[0_0_6px_rgb(52_211_153)]" />
+                    接続済
+                  </span>
+                )}
+              </div>
+              {oauthStatus?.connected ? (
+                <div className="flex flex-col gap-1.5">
+                  <p className="text-[11px] text-foreground/85">
+                    {oauthStatus.userName ? (
+                      <>
+                        <strong>{oauthStatus.userName}</strong> として接続中
+                      </>
+                    ) : (
+                      "FFLogs と接続済み"
+                    )}
+                  </p>
+                  {oauthStatus.expiresAt && (
+                    <p className="font-mono text-[10px] text-muted-foreground/70">
+                      access_token 有効期限:{" "}
+                      {new Date(oauthStatus.expiresAt).toLocaleString("ja-JP")}
+                      （期限切れ時は refresh_token で自動更新）
+                    </p>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      startDisconnect(async () => {
+                        const r = await disconnectFflogsOAuthAction();
+                        if (!r.ok) {
+                          toast.error("切断失敗: " + r.reason);
+                          return;
+                        }
+                        setOauthStatus({
+                          connected: false,
+                          userName: null,
+                          expiresAt: null,
+                        });
+                        toast.success("FFLogs OAuth を切断しました");
+                      });
+                    }}
+                    disabled={disconnecting}
+                    className="self-start inline-flex items-center gap-1.5 rounded-md border border-border/50 px-2.5 py-1.5 font-mono text-[10px] tracking-[0.18em] text-muted-foreground uppercase transition-colors hover:bg-secondary/60 hover:text-rose-200 disabled:opacity-50"
+                  >
+                    <X className="h-3 w-3" aria-hidden />
+                    {disconnecting ? "切断中..." : "切断"}
+                  </button>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-1.5">
+                  <p className="text-[11px] leading-relaxed text-foreground/85">
+                    FFLogs にログインして認可すると、Private / Unlisted を含む
+                    全レポートが取得可能になります（v1 API は Public のみ）。
+                  </p>
+                  <a
+                    href="/api/auth/fflogs/start"
+                    className="self-start inline-flex items-center gap-1.5 rounded-md border border-amber-400/55 bg-amber-400/15 px-3 py-1.5 font-mono text-[10px] tracking-[0.22em] text-amber-100 uppercase transition-colors hover:border-amber-400/80 hover:bg-amber-400/25"
+                  >
+                    <Link2 className="h-3.5 w-3.5" aria-hidden />
+                    FFLogs と OAuth 接続
+                  </a>
+                  <p className="text-[10px] leading-relaxed text-muted-foreground/80">
+                    ※ サーバー側で{" "}
+                    <code className="font-mono">FFLOGS_OAUTH_CLIENT_ID</code>{" "}
+                    と{" "}
+                    <code className="font-mono">FFLOGS_OAUTH_CLIENT_SECRET</code>{" "}
+                    の設定が必要（{" "}
+                    <a
+                      href="https://www.fflogs.com/api/clients/"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[var(--neon-cyan)] underline decoration-dotted underline-offset-2 hover:text-[var(--neon-cyan)]/85"
+                    >
+                      fflogs.com/api/clients/
+                    </a>
+                    {" "}で OAuth クライアントを作成）。リダイレクト URI には
+                    現在のドメイン{" "}
+                    <code className="font-mono">/api/auth/fflogs/callback</code>{" "}
+                    を登録。
+                  </p>
+                </div>
+              )}
+            </div>
+
             <div className="flex flex-col gap-2">
               <div className="flex items-baseline justify-between gap-2">
                 <Label
                   htmlFor="fflogs-username"
                   className="text-xs text-foreground/80"
                 >
-                  FFLogs ユーザー（任意）
+                  v1 表示名フォールバック（任意）
                 </Label>
                 <a
                   href="https://www.fflogs.com/profile"
@@ -665,6 +801,10 @@ export function SettingsDialog() {
                         動画 <strong>{logsResult.matched}</strong> /{" "}
                         過去予定 <strong>{logsResult.sessionsMatched}</strong>
                         {" "}件を紐づけ · レポート {logsResult.reportsScanned}
+                        {" "}
+                        <span className="ml-1 text-[9px] text-muted-foreground">
+                          [{logsResult.apiPath ?? "v1"}]
+                        </span>
                       </p>
                       <p className="font-mono text-[10px] text-muted-foreground/70">
                         候補: 動画 {logsResult.videosScanned} / 過去予定{" "}
