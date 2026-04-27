@@ -111,13 +111,15 @@ export async function getDiscordScheduleChannelId(): Promise<string | null> {
 }
 
 /**
- * FFLogs username — the string identifier accepted by FFLogs API v1
- * endpoint `/v1/reports/user/{username}`.
+ * FFLogs user identifier — accepted by API v1 endpoint
+ * `/v1/reports/user/{userName}`. Despite the param name, the API
+ * accepts BOTH:
+ *   - the numeric user ID (e.g. `70734`), seen in profile URLs like
+ *     `https://www.fflogs.com/user/reports-list/70734`
+ *   - the human-readable display name string
  *
- * IMPORTANT: only a bare username string works with the API. Profile
- * URLs like `https://www.fflogs.com/user/reports-list/70734` contain
- * a numeric profile-id which the API does NOT accept. So this setter
- * rejects URLs and asks the user to enter just the username.
+ * So we accept either form and also auto-extract the ID/name from a
+ * pasted profile URL for convenience.
  *
  * Empty string clears the setting.
  */
@@ -135,24 +137,52 @@ export async function setFflogsUsername(
     if (error) return { ok: false, reason: error.message };
     return { ok: true };
   }
-  // Reject anything that looks like a URL — the API needs the bare
-  // username string, not the numeric profile-id from the URL path.
-  if (/^https?:\/\//i.test(trimmed) || /\//.test(trimmed)) {
+  const cleaned = parseFflogsUserIdent(trimmed);
+  if (!cleaned) {
     return {
       ok: false,
-      reason:
-        "URL ではなくユーザー名のみを入力してください（例: TaroYamada）",
+      reason: "ユーザー ID または名前を抽出できませんでした",
     };
   }
   const supabase = createClient();
   const { error } = await supabase
     .from("app_settings")
     .upsert(
-      { key: FFLOGS_USERNAME_KEY, value: trimmed },
+      { key: FFLOGS_USERNAME_KEY, value: cleaned },
       { onConflict: "key" },
     );
   if (error) return { ok: false, reason: error.message };
   return { ok: true };
+}
+
+/**
+ * Accept either:
+ *   - a bare identifier (`70734` or `TaroYamada`)
+ *   - a profile URL (`https://(www|ja|en|de|fr).fflogs.com/user/reports-list/70734`
+ *     or `https://www.fflogs.com/user/{name}` with similar shape)
+ *
+ * Extracts the last meaningful path segment when given a URL.
+ * Returns null if nothing usable can be derived.
+ */
+function parseFflogsUserIdent(raw: string): string | null {
+  if (!/fflogs\.com/i.test(raw)) {
+    // Bare identifier — strip whitespace/quotes and accept it.
+    return raw.replace(/^[\s"']+|[\s"']+$/g, "") || null;
+  }
+  try {
+    const u = new URL(raw);
+    // `/user/reports-list/{id}` or `/user/{name}/reports-list/...` or
+    // `/user/{name}` — pick the last non-empty path segment after
+    // dropping `reports-list` boilerplate.
+    const segs = u.pathname
+      .split("/")
+      .map((s) => s.trim())
+      .filter((s) => s && s !== "user" && s !== "reports-list");
+    if (segs.length === 0) return null;
+    return decodeURIComponent(segs[segs.length - 1]!);
+  } catch {
+    return null;
+  }
 }
 
 export async function getFflogsUsername(): Promise<string | null> {

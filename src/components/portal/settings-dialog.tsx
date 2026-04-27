@@ -559,36 +559,49 @@ export function SettingsDialog() {
             </header>
 
             <div className="flex flex-col gap-2">
-              <Label
-                htmlFor="fflogs-username"
-                className="text-xs text-foreground/80"
-              >
-                FFLogs ユーザー名（任意）
-              </Label>
+              <div className="flex items-baseline justify-between gap-2">
+                <Label
+                  htmlFor="fflogs-username"
+                  className="text-xs text-foreground/80"
+                >
+                  FFLogs ユーザー（任意）
+                </Label>
+                <a
+                  href="https://www.fflogs.com/profile"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-[10px] text-amber-300/85 underline decoration-dotted underline-offset-2 transition-colors hover:text-amber-300"
+                  title="自分のプロフィールページを開く"
+                >
+                  <BarChart3 className="h-2.5 w-2.5" aria-hidden />
+                  fflogs.com/profile
+                </a>
+              </div>
               <Input
                 id="fflogs-username"
                 value={fflogsUsername}
                 onChange={(e) => setFflogsUsernameState(e.target.value)}
-                placeholder="例: TaroYamada"
+                placeholder="例: 70734  または  https://ja.fflogs.com/user/reports-list/70734"
                 className="font-mono text-[12px]"
                 spellCheck={false}
                 autoComplete="off"
               />
               <p className="text-muted-foreground text-[11px] leading-relaxed">
-                代表 1 名分の <strong>ユーザー名のみ</strong> を入力（プロフィール
-                URL の数字 ID は API で使えないので不可）。その人がアップロード
-                した FFLogs レポートを取得し、動画の投稿日時 ±36h
-                および過去予定の開催時間と一致するものを自動的に紐づけます。
+                <strong>ユーザー数値 ID</strong>（プロフィール URL の末尾の
+                数字、例:{" "}
+                <code className="font-mono">70734</code>）または
+                <strong>表示名</strong>を入力。プロフィール URL を直接貼り付け
+                ても OK — 末尾の ID / 名前を自動抽出します。
               </p>
               <p className="text-muted-foreground/80 text-[10px] leading-relaxed">
-                ※ <strong>レポート所有者ベース</strong>です — 別のメンバーが
-                アップロードしたレポートは含まれません。多くの動画がマッチしない
-                場合は、固定でレポートを上げている人のユーザー名を試してください。
+                ※ <strong>非公開 (Private)</strong> レポートも、
+                API キーの持ち主が同じユーザーであれば取得されます
+                （<code className="font-mono">includePrivate=true</code>
+                {" "}を自動付与）。<strong>限定公開 (Unlisted)</strong>
+                {" "}のレポートも同様に取得可能。
                 <br />
-                ※ <strong>限定公開 (Unlisted)</strong> のレポートも、API キーの
-                持ち主に閲覧権限があれば取得されます（リンクを知っている人だけが
-                見られる設定）。<strong>非公開 (Private)</strong>
-                {" "}のレポートはオーナー以外閲覧不可のため API でも取得できません。
+                ※ <strong>レポート所有者ベース</strong>: 設定したユーザーが
+                アップロードしたレポートのみ取得します。
               </p>
               <p className="text-muted-foreground/80 text-[10px] leading-relaxed">
                 サーバー側で <code className="font-mono">FFLOGS_API_KEY</code>

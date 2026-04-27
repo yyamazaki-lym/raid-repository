@@ -19,6 +19,15 @@ export type ReleaseEntry = {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    version: "1.6.5",
+    date: "2026-04-27",
+    notes: [
+      "FFLogs 連動: API リクエストに `includePrivate=true` を自動付与 — これまで非公開 (Private) レポートが返らないため最近のレポートが取得できていなかった (主因)",
+      "FFLogs ユーザー入力: 数値 ID（プロフィール URL 末尾の `70734` 等）と表示名の両方を受け付け、プロフィール URL の貼り付けにも対応（末尾を自動抽出）",
+      "設定ダイアログ: FFLogs フィールドのラベル右に「fflogs.com/profile」直リンク追加、placeholder と説明文を実態に合わせて更新",
+    ],
+  },
+  {
     version: "1.6.4",
     date: "2026-04-27",
     notes: [

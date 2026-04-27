@@ -38,8 +38,16 @@ export async function fetchFflogsReports(
 ): Promise<{ ok: true; reports: FflogsReport[] } | { ok: false; reason: string }> {
   const apiKey = process.env.FFLOGS_API_KEY?.trim();
   if (!apiKey) return { ok: false, reason: "FFLOGS_API_KEY 未設定" };
-  const url = new URL(`${FFLOGS_API_BASE}/reports/user/${encodeURIComponent(username)}`);
+  const url = new URL(
+    `${FFLOGS_API_BASE}/reports/user/${encodeURIComponent(username)}`,
+  );
   url.searchParams.set("api_key", apiKey);
+  // Include private (non-public) reports owned by the API-key holder.
+  // Without this, FFLogs hides reports flagged "Private" (owner-only)
+  // — which is the default visibility for many groups now. Reports
+  // flagged "Unlisted" are returned regardless. This explained why
+  // recent uploads (2026) didn't appear while older public ones did.
+  url.searchParams.set("includePrivate", "true");
   if (options.page !== undefined) url.searchParams.set("page", String(options.page));
 
   try {
