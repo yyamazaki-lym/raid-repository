@@ -19,6 +19,13 @@ export type ReleaseEntry = {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    version: "1.9.34",
+    date: "2026-04-28",
+    notes: [
+      "📐 過去の活動カードのチップ縦中央 7 度目: `inline-flex` を撤廃して `inline-grid grid-flow-col auto-cols-max place-items-center` に切り替え。`h-[24px]` 固定 + `leading-none` で line-box=glyph 高さ。grid の `place-items-center` が line-box を box の中央に配置するため、font metric に依存しない数学的な中央揃えに",
+    ],
+  },
+  {
     version: "1.9.33",
     date: "2026-04-28",
     notes: [

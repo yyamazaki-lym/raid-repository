@@ -161,15 +161,14 @@ function DateChip({
   return (
     <li
       className={
-        // 1.9.33: switched from padding-based to TRANSFORM-based
-        // vertical correction. 1.9.30-1.9.32 attempts at asymmetric
-        // padding all "no change" per user — likely the layout
-        // engine was preserving the line-box alignment even with
-        // padding shifts. Now using `-translate-y-px` on the inner
-        // date span (see below) to PHYSICALLY shift the rendered
-        // glyph up by 1px, bypassing all layout/font-metric
-        // concerns. Padding restored to symmetric py-1.
-        "inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] tabular-nums leading-tight transition-colors " +
+        // 1.9.34: COMPLETELY DIFFERENT APPROACH. Previous 5 versions'
+        // visual changes weren't visible to the user (cache or
+        // rendering). Switching from inline-flex → inline-grid with
+        // explicit h-[24px] + place-items-center. Grid centers the
+        // line-box in the box mathematically. With leading-none the
+        // line-box equals the glyph height (no leading asymmetry),
+        // so the glyph itself is centered in the chip.
+        "inline-grid grid-flow-col auto-cols-max place-items-center gap-1 rounded-md border px-2 h-[24px] text-[11px] tabular-nums leading-none transition-colors " +
         chipColor
       }
       title={tooltip}
@@ -194,15 +193,7 @@ function DateChip({
           dayOfWeek: session.dayOfWeek,
         }}
       >
-        {/* 1.9.33: transform で 1px 上に物理シフト。padding /
-            line-height の symmetric な調整では font metric の
-            非対称を補正できなかったため、CSS transform で render
-            された glyph 自体をずらす。レイアウトには影響しない
-            (transform は layout box を変えない)。 */}
-        <span
-          className="tabular-nums"
-          style={{ transform: "translateY(-1px)", display: "inline-block" }}
-        >
+        <span className="tabular-nums">
           {monthDay}（{session.dayOfWeek}）
         </span>
       </SessionMemoPopover>
