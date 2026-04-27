@@ -357,41 +357,37 @@ function SortableCategoryCard({
           <SubPageShortcuts slug={category.slug} />
         </div>
 
-        {/* 1.9.21: 右カラムレイアウト。
-              ┌───────────────────┐
-              │ [クリア済]         │   ← StatusBadge (左寄せ)
-              │ [+N/wk]      [⋮]  │   ← +N/wk 左、CategoryMenu 右
-              └───────────────────┘
-              StatusBadge と +N/wk の左端を揃える (どちらも左寄せ)。
-              CategoryMenu (3点) は 2 行目の右端。 */}
-        <div className="flex min-w-[6.5rem] flex-col justify-between gap-1 p-2">
-          <span
-            onClick={(e) => e.stopPropagation()}
-            onKeyDown={(e) => e.stopPropagation()}
-            className="self-start"
-          >
-            <StatusBadge
-              status={category.status}
-              onChange={onChangeStatus}
-              variant="compact"
-            />
-          </span>
-
-          <div className="mt-auto flex items-center justify-between gap-2">
-            {recentImports > 0 ? (
-              <span
-                className="inline-flex items-center gap-1 rounded-sm border border-indigo-400/40 bg-indigo-400/10 px-1.5 py-px font-mono text-[9px] tracking-[0.18em] text-indigo-300 uppercase"
-                title={`過去7日で Discord から ${recentImports} 件取り込み`}
-              >
-                +{recentImports}/wk
-              </span>
-            ) : (
-              // 1 行目左の StatusBadge と垂直方向の整合性を保つ
-              // ため、placeholder で行高を確保 (CategoryMenu だけ右端
-              // に残るが行自体は維持される)。
-              <span aria-hidden />
-            )}
-            <CategoryMenu onEdit={onEdit} onDelete={onDelete} />
+        {/* 1.9.22: 右カラムレイアウト最終形。
+                ┌──────────────────────┐
+                │            [Status]  │  ← StatusBadge (内側左寄せ)
+                │       [+N/wk] [⋮]    │  ← +N/wk と ⋮ の横並び
+                └──────────────────────┘
+            外側 (items-end) で全体を card 右端に寄せる。内側
+            (items-start) で StatusBadge と +N/wk の左端を揃える。
+            CategoryMenu (⋮) は +N/wk のすぐ右隣。 */}
+        <div className="flex flex-col items-end justify-between gap-1 p-2">
+          <div className="flex flex-col items-start gap-1">
+            <span
+              onClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => e.stopPropagation()}
+            >
+              <StatusBadge
+                status={category.status}
+                onChange={onChangeStatus}
+                variant="compact"
+              />
+            </span>
+            <div className="flex items-center gap-1">
+              {recentImports > 0 && (
+                <span
+                  className="inline-flex items-center gap-1 rounded-sm border border-indigo-400/40 bg-indigo-400/10 px-1.5 py-px font-mono text-[9px] tracking-[0.18em] text-indigo-300 uppercase"
+                  title={`過去7日で Discord から ${recentImports} 件取り込み`}
+                >
+                  +{recentImports}/wk
+                </span>
+              )}
+              <CategoryMenu onEdit={onEdit} onDelete={onDelete} />
+            </div>
           </div>
         </div>
       </Card>

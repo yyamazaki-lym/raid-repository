@@ -19,6 +19,13 @@ export type ReleaseEntry = {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    version: "1.9.22",
+    date: "2026-04-27",
+    notes: [
+      "📐 コンテンツカード右カラムレイアウト最終形 — `[+N/wk] [⋮]` を card 右端に横並びで配置し、StatusBadge は その上に重ねて 左端を +N/wk に揃える。外側 `items-end` で右寄せ、内側 `items-start` で StatusBadge と +N/wk の左ラインを一致させる二段構造に",
+    ],
+  },
+  {
     version: "1.9.21",
     date: "2026-04-27",
     notes: [
