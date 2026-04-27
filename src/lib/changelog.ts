@@ -19,6 +19,13 @@ export type ReleaseEntry = {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    version: "1.9.33",
+    date: "2026-04-28",
+    notes: [
+      "📐 過去の活動カードのチップ日付縦中央 6 度目: padding ベースの補正 (1.9.30-1.9.32) が全部「変化なし」だったため、CSS `transform: translateY(-1px)` で render された glyph 自体を物理シフトする方式に切り替え。layout box は不変のまま視覚的にだけ 1px 上にずらすため、font metric の非対称や line-box 計算に依存しない直接的な補正",
+    ],
+  },
+  {
     version: "1.9.32",
     date: "2026-04-28",
     notes: [

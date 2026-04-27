@@ -161,13 +161,15 @@ function DateChip({
   return (
     <li
       className={
-        // 1.9.32: extreme asymmetric padding (pt-0 pb-2 = 0px top,
-        // 8px bottom). 1.9.31 used pt-0.5 pb-1.5 (4px diff) but user
-        // reported the asymmetry persisted. Maximum correction in
-        // the same direction: 8px diff. If glyph still appears
-        // bottom-shifted, the correction direction is wrong (rare
-        // font metric, would need pt large + pb small instead).
-        "inline-flex items-center gap-1 rounded-md border px-2 pt-0 pb-2 text-[11px] tabular-nums leading-tight transition-colors " +
+        // 1.9.33: switched from padding-based to TRANSFORM-based
+        // vertical correction. 1.9.30-1.9.32 attempts at asymmetric
+        // padding all "no change" per user — likely the layout
+        // engine was preserving the line-box alignment even with
+        // padding shifts. Now using `-translate-y-px` on the inner
+        // date span (see below) to PHYSICALLY shift the rendered
+        // glyph up by 1px, bypassing all layout/font-metric
+        // concerns. Padding restored to symmetric py-1.
+        "inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] tabular-nums leading-tight transition-colors " +
         chipColor
       }
       title={tooltip}
@@ -192,7 +194,15 @@ function DateChip({
           dayOfWeek: session.dayOfWeek,
         }}
       >
-        <span className="tabular-nums">
+        {/* 1.9.33: transform で 1px 上に物理シフト。padding /
+            line-height の symmetric な調整では font metric の
+            非対称を補正できなかったため、CSS transform で render
+            された glyph 自体をずらす。レイアウトには影響しない
+            (transform は layout box を変えない)。 */}
+        <span
+          className="tabular-nums"
+          style={{ transform: "translateY(-1px)", display: "inline-block" }}
+        >
           {monthDay}（{session.dayOfWeek}）
         </span>
       </SessionMemoPopover>
