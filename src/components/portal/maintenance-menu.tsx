@@ -6,6 +6,7 @@ import {
   Cloud,
   Loader2,
   Settings2,
+  Stethoscope,
   Timer,
   Trophy,
   X,
@@ -25,11 +26,13 @@ import {
 import {
   backfillFirstClearFromExistingVideos,
   backfillPostedAtFromDiscordChannels,
-  backfillVideoDurations,
+  backfillVideoDurationsChunk,
+  diagnoseYouTubeUrl,
   importDiscordNow,
   type BackfillResult,
   type DurationBackfillResult,
   type ImportNowItem,
+  type YouTubeDiagnosticResult,
 } from "@/lib/server/categories-actions";
 
 // Inline type since "use server" modules can't re-export pure types.
@@ -62,7 +65,11 @@ type PostedAtBackfillResult = {
  * mistake), the NULL-only firstClear action (always overwrite now —
  * simpler), and the per-URL diagnose tester (rarely useful).
  */
-type ActionKind = "discord" | "videoMeta" | "firstClearForce";
+type ActionKind =
+  | "discord"
+  | "videoMeta"
+  | "firstClearForce"
+  | "diagnoseYoutube";
 
 type Result =
   | { kind: "discord"; data: { items: ImportNowItem[] } }
@@ -73,13 +80,28 @@ type Result =
         postedAt: PostedAtBackfillResult;
       };
     }
-  | { kind: "firstClear"; data: BackfillResult; force: boolean };
+  | { kind: "firstClear"; data: BackfillResult; force: boolean }
+  | { kind: "diagnose"; data: YouTubeDiagnosticResult };
+
+/**
+ * 1.9.21: live progress shown next to the dropdown trigger while
+ * `videoMeta` is running. Each chunk updates these counters so the
+ * user sees "X / Y 件" instead of an indefinite spinner.
+ */
+type VideoMetaProgress = {
+  phase: "duration" | "postedAt";
+  processed: number;
+  total: number;
+};
 
 export function MaintenanceMenu() {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [pendingKind, setPendingKind] = useState<ActionKind | null>(null);
   const [result, setResult] = useState<Result | null>(null);
+  // 1.9.21: live progress for videoMeta. null while idle.
+  const [videoMetaProgress, setVideoMetaProgress] =
+    useState<VideoMetaProgress | null>(null);
   const popupRef = useRef<HTMLDivElement | null>(null);
 
   // Click-outside-to-dismiss for the result popup.
@@ -125,18 +147,83 @@ export function MaintenanceMenu() {
           return;
         }
         if (kind === "videoMeta") {
-          // 1.9.16 統合アクション: YouTube から duration / uploadDate を
-          // 取得 → そのあと Discord メッセージから posted_at を埋める。
-          // 旧 "durations" + "postedAt" を 1 ボタン化。
-          const dur = await backfillVideoDurations();
+          // 1.9.21: chunked YouTube duration backfill with live progress
+          // updates. We loop over `backfillVideoDurationsChunk()` until
+          // it reports done=true; each iteration updates the progress
+          // counter so the dropdown shows "X / Y 件" instead of an
+          // indefinite spinner.
+          let totalScanned = 0;
+          let totFilled = 0;
+          let totFailed = 0;
+          let totSkipped = 0;
+          let total = 0;
+          let lastId: string | null = null;
+          let durFatal: string | undefined;
+          // Safety: bail out if we ever process 0 rows in a chunk
+          // (shouldn't happen with the cursor-by-id design, but
+          // guards against an infinite loop if the server flakes).
+          for (let iter = 0; iter < 500; iter++) {
+            const r = await backfillVideoDurationsChunk({ afterId: lastId });
+            if (!r.ok) {
+              durFatal = r.reason ?? "unknown";
+              break;
+            }
+            if (iter === 0 && typeof r.totalPending === "number") {
+              total = r.totalPending;
+              setVideoMetaProgress({
+                phase: "duration",
+                processed: 0,
+                total,
+              });
+            }
+            const inc = r.filled + r.failed + r.skippedNonYoutube;
+            totalScanned += inc;
+            totFilled += r.filled;
+            totFailed += r.failed;
+            totSkipped += r.skippedNonYoutube;
+            setVideoMetaProgress({
+              phase: "duration",
+              processed: totalScanned,
+              total: Math.max(total, totalScanned),
+            });
+            if (r.done) break;
+            if (r.lastProcessedId === null) break; // safety
+            lastId = r.lastProcessedId;
+          }
+          const dur: DurationBackfillResult = durFatal
+            ? {
+                ok: false,
+                reason: durFatal,
+                scanned: totalScanned,
+                filled: totFilled,
+                failed: totFailed,
+                skippedNonYoutube: totSkipped,
+              }
+            : {
+                ok: true,
+                scanned: totalScanned,
+                filled: totFilled,
+                failed: totFailed,
+                skippedNonYoutube: totSkipped,
+              };
           if (!dur.ok) {
             toast.error("動画時間取得失敗: " + (dur.reason ?? "unknown"));
+            setVideoMetaProgress(null);
             return;
           }
+
+          // Discord posted_at — runs as a single server action since
+          // it's per-channel and typically fast. Show "投稿日時取得中"
+          // phase while it runs.
+          setVideoMetaProgress({
+            phase: "postedAt",
+            processed: 0,
+            total: 0,
+          });
           const posted = await backfillPostedAtFromDiscordChannels();
+          setVideoMetaProgress(null);
           if (!posted.ok) {
             toast.error("投稿日時取得失敗: " + (posted.reason ?? "unknown"));
-            // duration の結果は表示する
             setResult({
               kind: "videoMeta",
               data: { durations: dur, postedAt: posted },
@@ -157,6 +244,23 @@ export function MaintenanceMenu() {
             data: { durations: dur, postedAt: posted },
           });
           router.refresh();
+          return;
+        }
+        if (kind === "diagnoseYoutube") {
+          const url = window.prompt(
+            "診断する YouTube URL を入力してください\n(動画ページ上の URL をコピペ — 各取得ステップの結果が表示されます)",
+            "https://www.youtube.com/watch?v=",
+          );
+          if (!url) return;
+          const r = await diagnoseYouTubeUrl(url);
+          if (r.durationSeconds || r.uploadDate) {
+            toast.success(
+              `取得成功: duration=${r.durationSeconds}s upload=${r.uploadDate?.slice(0, 10) ?? "—"}`,
+            );
+          } else {
+            toast.error("取得失敗 — 詳細はパネルで確認");
+          }
+          setResult({ kind: "diagnose", data: r });
           return;
         }
         if (kind === "firstClearForce") {
@@ -199,8 +303,14 @@ export function MaintenanceMenu() {
             ? pendingKind === "discord"
               ? "取り込み中…"
               : pendingKind === "videoMeta"
-                ? "メタデータ取得中…"
-                : "再スキャン中…"
+                ? videoMetaProgress
+                  ? videoMetaProgress.phase === "duration"
+                    ? `動画時間 ${videoMetaProgress.processed}/${videoMetaProgress.total}`
+                    : "投稿日時取得中…"
+                  : "メタデータ取得中…"
+                : pendingKind === "diagnoseYoutube"
+                  ? "YouTube 診断中…"
+                  : "再スキャン中…"
             : "メンテナンス"}
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" sideOffset={4} className="glass-popup min-w-60">
@@ -246,6 +356,22 @@ export function MaintenanceMenu() {
               </span>
             </div>
           </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            onClick={() => run("diagnoseYoutube")}
+            className="flex cursor-pointer items-start gap-2"
+          >
+            <Stethoscope
+              className="mt-0.5 h-3.5 w-3.5 shrink-0 text-zinc-300"
+              aria-hidden
+            />
+            <div className="flex flex-col gap-0.5">
+              <span className="text-sm">YouTube 取得テスト (1 件)</span>
+              <span className="text-[10px] text-muted-foreground leading-snug">
+                指定 URL の duration / uploadDate がなぜ取得できないか診断
+              </span>
+            </div>
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
 
@@ -274,6 +400,9 @@ export function MaintenanceMenu() {
           )}
           {result.kind === "firstClear" && (
             <FirstClearPanel data={result.data} force={result.force} />
+          )}
+          {result.kind === "diagnose" && (
+            <DiagnosePanel data={result.data} />
           )}
         </div>
       )}
@@ -606,11 +735,139 @@ function formatHM(seconds: number): string {
   return `${hours}h${minutes}m`;
 }
 
-// Removed in 1.9.16: SnapshotPanel + DiagnosePanel + PostedAtPanel +
-// DurationsPanel. Snapshot trigger and per-URL diagnose tester were
-// never useful in production (auto-cron handles snapshots; the
-// diagnose tester required users to know what they were debugging).
-// Durations / postedAt panels are merged into VideoMetaPanel above.
+/**
+ * 1.9.21: re-introduced YouTube diagnose panel. Surfaces per-host
+ * attempt logs (status, html size, which strategy matched, page
+ * markers like consent gate / sign-in wall) so the user can see WHY
+ * the bulk YouTube backfill returned 0 fills — typically a Vercel-
+ * side bot detection / consent gate / IP block issue.
+ */
+function DiagnosePanel({ data }: { data: YouTubeDiagnosticResult }) {
+  return (
+    <>
+      <p className="mb-2 pr-6 font-mono text-[10px] tracking-[0.2em] text-muted-foreground uppercase">
+        YouTube 取得テスト
+      </p>
+      <p className="mb-2 break-all font-mono text-[10px] text-muted-foreground">
+        {data.url}
+      </p>
+      <ul className="flex flex-col gap-1 text-[11px] leading-relaxed">
+        <li className="flex items-baseline gap-2">
+          <span className="font-mono text-muted-foreground">duration</span>
+          <span className="font-mono text-foreground">
+            {data.durationSeconds === null ? "—" : `${data.durationSeconds}s`}
+          </span>
+        </li>
+        <li className="flex items-baseline gap-2">
+          <span className="font-mono text-muted-foreground">uploadDate</span>
+          <span className="font-mono text-foreground">
+            {data.uploadDate ?? "—"}
+          </span>
+        </li>
+      </ul>
+      <p className="mt-3 mb-1 font-mono text-[10px] tracking-[0.2em] text-muted-foreground uppercase">
+        試行ログ
+      </p>
+      <ul className="flex flex-col gap-1 text-[10px] leading-relaxed">
+        {data.attempts.map((a, i) => (
+          <li
+            key={i}
+            className="rounded-sm border border-border/40 bg-secondary/20 px-2 py-1 font-mono"
+          >
+            <div>
+              <span className="text-muted-foreground">{a.host}</span>
+              <span className="ml-2">
+                status=
+                <span
+                  className={
+                    typeof a.status === "number" && a.status === 200
+                      ? "text-emerald-300"
+                      : "text-rose-300"
+                  }
+                >
+                  {a.status}
+                </span>
+              </span>
+              {a.htmlSize !== null && (
+                <span className="ml-2 text-muted-foreground">
+                  size={a.htmlSize}
+                </span>
+              )}
+              {a.matchedStrategy && (
+                <span className="ml-2 text-emerald-300">
+                  via {a.matchedStrategy}
+                </span>
+              )}
+            </div>
+            <div>
+              length=
+              <span
+                className={
+                  a.foundLength ? "text-emerald-300" : "text-rose-300"
+                }
+              >
+                {a.foundLength ? "OK" : "NONE"}
+              </span>
+              <span className="ml-2">
+                upload=
+                <span
+                  className={
+                    a.foundUpload ? "text-emerald-300" : "text-rose-300"
+                  }
+                >
+                  {a.foundUpload ? "OK" : "NONE"}
+                </span>
+              </span>
+            </div>
+            {a.pageMarkers && (
+              <div className="text-muted-foreground break-words">
+                player=
+                <span
+                  className={
+                    a.pageMarkers.hasPlayerResponse
+                      ? "text-emerald-300"
+                      : "text-rose-300"
+                  }
+                >
+                  {a.pageMarkers.hasPlayerResponse ? "Y" : "N"}
+                </span>{" "}
+                ldjson=
+                <span
+                  className={
+                    a.pageMarkers.hasLdJson
+                      ? "text-emerald-300"
+                      : "text-rose-300"
+                  }
+                >
+                  {a.pageMarkers.hasLdJson ? "Y" : "N"}
+                </span>{" "}
+                meta=
+                <span
+                  className={
+                    a.pageMarkers.hasItempropDuration
+                      ? "text-emerald-300"
+                      : "text-rose-300"
+                  }
+                >
+                  {a.pageMarkers.hasItempropDuration ? "Y" : "N"}
+                </span>
+                {a.pageMarkers.hasConsentText && (
+                  <span className="ml-2 text-amber-300">consent!</span>
+                )}
+                {a.pageMarkers.hasSignInWall && (
+                  <span className="ml-2 text-amber-300">signin!</span>
+                )}
+              </div>
+            )}
+            {a.note && (
+              <div className="text-amber-300 break-words">{a.note}</div>
+            )}
+          </li>
+        ))}
+      </ul>
+    </>
+  );
+}
 
 function formatLong(iso: string): string {
   const d = new Date(iso);

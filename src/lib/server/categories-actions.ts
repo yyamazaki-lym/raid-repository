@@ -887,6 +887,147 @@ export async function backfillVideoDurations(): Promise<DurationBackfillResult> 
 }
 
 /**
+ * 1.9.21: chunked variant of `backfillVideoDurations` for progress
+ * reporting. Each call processes up to `BATCH_SIZE` rows whose `id` is
+ * greater than `afterId` (lexicographic ordering — UUIDs sort
+ * deterministically), so the client can loop with progress updates.
+ *
+ * Done when the batch returns fewer than `BATCH_SIZE` rows.
+ */
+export async function backfillVideoDurationsChunk(opts: {
+  afterId?: string | null;
+}): Promise<{
+  ok: boolean;
+  reason?: string;
+  /** Rows successfully filled in this chunk. */
+  filled: number;
+  failed: number;
+  skippedNonYoutube: number;
+  /** Total pending count snapshot for progress display (computed only
+   * on the first call, where afterId is null/undefined). */
+  totalPending?: number;
+  /** ID of the last row processed in this chunk; pass back as
+   * `afterId` on the next call. Null when the batch was empty. */
+  lastProcessedId: string | null;
+  /** True when there are no more pending rows beyond this chunk. */
+  done: boolean;
+}> {
+  const supabase = await createClient();
+  const BATCH_SIZE = 16;
+  const FETCH_CONCURRENCY = 8;
+
+  // First-call snapshot: total pending count for progress denominator.
+  let totalPending: number | undefined;
+  if (!opts.afterId) {
+    const { count } = await supabase
+      .from("category_links")
+      .select("id", { count: "exact", head: true })
+      .eq("kind", "video")
+      .or("duration_seconds.is.null,posted_at.is.null");
+    totalPending = count ?? 0;
+    if (totalPending === 0) {
+      return {
+        ok: true,
+        filled: 0,
+        failed: 0,
+        skippedNonYoutube: 0,
+        totalPending: 0,
+        lastProcessedId: null,
+        done: true,
+      };
+    }
+  }
+
+  // Pull this batch — order by id ascending so afterId pagination is
+  // stable across iterations. The pending status itself acts as the
+  // primary cursor; the id-GTE filter just prevents reprocessing rows
+  // we've already attempted in earlier iterations of this loop.
+  const baseQ = supabase
+    .from("category_links")
+    .select("id, url, duration_seconds, posted_at")
+    .eq("kind", "video")
+    .or("duration_seconds.is.null,posted_at.is.null");
+  const { data, error } = await (opts.afterId
+    ? baseQ.gt("id", opts.afterId)
+    : baseQ
+  )
+    .order("id")
+    .limit(BATCH_SIZE);
+  if (error) {
+    return {
+      ok: false,
+      reason: "fetch failed: " + error.message,
+      filled: 0,
+      failed: 0,
+      skippedNonYoutube: 0,
+      totalPending,
+      lastProcessedId: null,
+      done: false,
+    };
+  }
+  if (!data || data.length === 0) {
+    return {
+      ok: true,
+      filled: 0,
+      failed: 0,
+      skippedNonYoutube: 0,
+      totalPending,
+      lastProcessedId: null,
+      done: true,
+    };
+  }
+
+  type Outcome = "filled" | "skipped" | "failed";
+  const outcomes = await pmap<(typeof data)[number], Outcome>(
+    data,
+    FETCH_CONCURRENCY,
+    async (row) => {
+      const meta = await fetchYouTubeMeta(row.url as string);
+      const needsDuration =
+        row.duration_seconds === null && meta.durationSeconds !== null;
+      const needsPostedAt =
+        row.posted_at === null && meta.uploadDate !== null;
+      if (!needsDuration && !needsPostedAt) return "skipped";
+      const update: { duration_seconds?: number; posted_at?: string } = {};
+      if (needsDuration) update.duration_seconds = meta.durationSeconds!;
+      if (needsPostedAt) update.posted_at = meta.uploadDate!;
+      const { error: updErr } = await supabase
+        .from("category_links")
+        .update(update)
+        .eq("id", row.id as string);
+      if (updErr) {
+        console.warn(
+          "[duration-backfill-chunk] update failed",
+          row.id,
+          updErr.message,
+        );
+        return "failed";
+      }
+      return "filled";
+    },
+  );
+
+  let filled = 0;
+  let failed = 0;
+  let skippedNonYoutube = 0;
+  for (const o of outcomes) {
+    if (o === "filled") filled += 1;
+    else if (o === "failed") failed += 1;
+    else skippedNonYoutube += 1;
+  }
+
+  return {
+    ok: true,
+    filled,
+    failed,
+    skippedNonYoutube,
+    totalPending,
+    lastProcessedId: (data[data.length - 1]!.id as string) ?? null,
+    done: data.length < BATCH_SIZE,
+  };
+}
+
+/**
  * Sum of `duration_seconds` per category across all video links.
  * NULL durations are ignored. Used by the category index to render the
  * "累計練習時間" badge on each card.

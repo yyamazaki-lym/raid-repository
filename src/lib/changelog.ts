@@ -19,6 +19,16 @@ export type ReleaseEntry = {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    version: "1.9.21",
+    date: "2026-04-27",
+    notes: [
+      "📐 コンテンツカード右カラムを再調整 — 上段にステータス、下段に [+N/wk] と [⋮] を横並び (justify-between)。StatusBadge と +N/wk の左端が揃う構造に",
+      "⏱ 「動画時間 + 投稿日時を取得」に進捗表示を追加 — 16 件ずつのバッチで処理し、ボタンに `動画時間 X/Y` のリアルタイム数値を表示。「メタデータ取得中…」で止まっているように見えた問題を解消",
+      "🔬 「YouTube 取得テスト (1 件)」を再導入 — 「動画時間 + 投稿日時を取得」が `0/N 件` で全件失敗するケース (Vercel 側 IP ブロック / consent gate / sign-in wall 等) の原因を 1 URL ずつ診断できる。試行ログ (status, html size, page markers, matchedStrategy) を表示",
+      "DB 側に `backfillVideoDurationsChunk(afterId)` server action を追加。id-cursor pagination で安全にループ可能",
+    ],
+  },
+  {
     version: "1.9.20",
     date: "2026-04-27",
     notes: [
