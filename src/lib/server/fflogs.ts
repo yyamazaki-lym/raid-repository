@@ -128,8 +128,11 @@ export async function fetchFflogsReportsV2(
   // the v2 GraphQL schema to retrieve OAuth-user-owned non-public
   // reports.
   const all: FflogsReport[] = [];
-  const MAX_PAGES = 32; // 32×25 = 800 reports — enough headroom for
-                       // active groups; tighter than fetching forever.
+  // FFLogs v2 caps page at 25 ("maximum allowed page is 25 until the
+  // performance of paginated queries can be improved"). With limit=25
+  // per page, total cap = 25 × 25 = 625 reports, which is plenty for
+  // any active group.
+  const MAX_PAGES = 25;
   for (let page = 1; page <= MAX_PAGES; page++) {
     const query = `query ($page: Int!) {
       reportData {

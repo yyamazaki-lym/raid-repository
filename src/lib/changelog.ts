@@ -19,6 +19,15 @@ export type ReleaseEntry = {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    version: "1.7.6",
+    date: "2026-04-27",
+    notes: [
+      "FFLogs v2 GraphQL: ページネーション上限超過エラー修正 — 32 → 25 ページに戻す（FFLogs API は page > 25 を「performance 改善まで使用不可」として拒否）。総取得件数の上限は 25 × 25 = 625 件に",
+      "スケジュール表「確定」バッジの文字ズレ修正 — バッジ内の `✓` アイコンを削除して「確定」テキストのみに。これでヘッダーの「確定」と各行のバッジの「確定」が文字位置で揃う",
+      "ヘッダー th にも `text-center` を明示してセルの `text-center` と完全に一致するように",
+    ],
+  },
+  {
     version: "1.7.5",
     date: "2026-04-27",
     notes: [
