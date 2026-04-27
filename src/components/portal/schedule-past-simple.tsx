@@ -98,7 +98,10 @@ function DateChip({
   holidays?: JapaneseHolidaysMap;
   videoLink: SessionVideoLink | null;
 }) {
-  const memos = useRealtimeScheduleMemos(session.rawDate, EMPTY_MEMOS);
+  const { memos, refetch: refetchMemos } = useRealtimeScheduleMemos(
+    session.rawDate,
+    EMPTY_MEMOS,
+  );
   const holiday = isJapaneseHoliday(session.date, holidays);
   const holidayName = holiday
     ? getJapaneseHolidayName(session.date, holidays)
@@ -155,6 +158,7 @@ function DateChip({
         rawDate={session.rawDate}
         displayDate={`${monthDay}（${session.dayOfWeek}）`}
         memos={memos}
+        onRefresh={refetchMemos}
       >
         <span className="tabular-nums">
           {monthDay}（{session.dayOfWeek}）

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
 /**
@@ -119,7 +119,7 @@ export async function deleteScheduleMemo(
 export function useRealtimeScheduleMemos(
   rawDate: string,
   initial: ScheduleSessionMemo[],
-): ScheduleSessionMemo[] {
+): { memos: ScheduleSessionMemo[]; refetch: () => Promise<void> } {
   const [memos, setMemos] = useState<ScheduleSessionMemo[]>(initial);
   const id = useId();
 
@@ -131,28 +131,29 @@ export function useRealtimeScheduleMemos(
     }
   }, [initial]);
 
-  useEffect(() => {
-    let cancelled = false;
+  // Stable refetch — exposed to callers so they can force-refresh
+  // immediately after a CUD operation (defense against realtime
+  // delivery failures or REPLICA IDENTITY misconfiguration).
+  const refetch = useCallback(async () => {
     const supabase = createClient();
-
-    const refetch = async () => {
-      if (cancelled) return;
-      try {
-        const { data, error } = await supabase
-          .from("schedule_session_memos")
-          .select("*")
-          .eq("raw_date", rawDate)
-          .order("created_at", { ascending: true });
-        if (cancelled) return;
-        if (error) {
-          console.warn("[schedule-memos] refetch error:", error.message);
-          return;
-        }
-        setMemos(((data ?? []) as ScheduleSessionMemoRow[]).map(rowToMemo));
-      } catch (e) {
-        console.warn("[schedule-memos] refetch exception:", e);
+    try {
+      const { data, error } = await supabase
+        .from("schedule_session_memos")
+        .select("*")
+        .eq("raw_date", rawDate)
+        .order("created_at", { ascending: true });
+      if (error) {
+        console.warn("[schedule-memos] refetch error:", error.message);
+        return;
       }
-    };
+      setMemos(((data ?? []) as ScheduleSessionMemoRow[]).map(rowToMemo));
+    } catch (e) {
+      console.warn("[schedule-memos] refetch exception:", e);
+    }
+  }, [rawDate]);
+
+  useEffect(() => {
+    const supabase = createClient();
 
     // Subscribe without a server-side filter on raw_date — that field
     // contains parens / slashes / spaces / tildes (e.g.
@@ -172,9 +173,24 @@ export function useRealtimeScheduleMemos(
         (payload) => {
           const newRow = payload.new as { raw_date?: string } | null;
           const oldRow = payload.old as { raw_date?: string } | null;
-          const matched =
-            newRow?.raw_date === rawDate || oldRow?.raw_date === rawDate;
-          if (matched) {
+          // INSERT / UPDATE always carry `new`. UPDATE / DELETE carry
+          // `old` IF the table has REPLICA IDENTITY FULL — without it,
+          // `old` is just `{ id }` on DELETE and we can't tell whether
+          // the deleted row was ours. So: always refetch on DELETE
+          // (volume is tiny) as a defensive fallback in case the
+          // production DB hasn't received the FULL replica migration.
+          if (newRow?.raw_date === rawDate) {
+            void refetch();
+            return;
+          }
+          if (oldRow?.raw_date === rawDate) {
+            void refetch();
+            return;
+          }
+          if (payload.eventType === "DELETE") {
+            // We can't tell which date this DELETE was for. One refetch
+            // per delete event (per row instance) is a fine cost vs.
+            // the alternative of stale UI.
             void refetch();
           }
         },
@@ -186,16 +202,15 @@ export function useRealtimeScheduleMemos(
     void refetch();
 
     return () => {
-      cancelled = true;
       try {
         void supabase.removeChannel(channel);
       } catch (e) {
         console.warn("[schedule-memos] removeChannel error:", e);
       }
     };
-  }, [id, rawDate]);
+  }, [id, rawDate, refetch]);
 
-  return memos;
+  return { memos, refetch };
 }
 
 /** Browser-side initial fetch for a single date. */

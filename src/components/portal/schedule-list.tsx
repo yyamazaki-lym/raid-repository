@@ -358,7 +358,10 @@ function SessionRow({
   scheduleUrl?: string | null;
 }) {
   const decided = session.status === "DECISION";
-  const memos = useRealtimeScheduleMemos(session.rawDate, EMPTY_MEMOS);
+  const { memos, refetch: refetchMemos } = useRealtimeScheduleMemos(
+    session.rawDate,
+    EMPTY_MEMOS,
+  );
   // Japanese national holidays get a red date label — overrides the
   // default and DECISION-cyan styling. Doesn't change the row background
   // so the past/decided treatment still composes underneath.
@@ -392,6 +395,7 @@ function SessionRow({
             rawDate={session.rawDate}
             displayDate={session.rawDate.split(" ")[0] ?? session.rawDate}
             memos={memos}
+            onRefresh={refetchMemos}
           >
             <DateLabel
               text={session.rawDate.split(" ")[0]!}

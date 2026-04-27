@@ -39,6 +39,13 @@ type Props = {
   displayDate: string;
   /** Realtime-tracked memo list for `rawDate`. */
   memos: ScheduleSessionMemo[];
+  /**
+   * Force-refresh callback exposed by `useRealtimeScheduleMemos`.
+   * Called after each successful CUD so the UI updates instantly even
+   * when the realtime DELETE event is missing `old.raw_date` (DBs that
+   * lack `REPLICA IDENTITY FULL` on the table).
+   */
+  onRefresh?: () => Promise<void>;
   children: React.ReactNode;
 };
 
@@ -46,6 +53,7 @@ export function SessionMemoPopover({
   rawDate,
   displayDate,
   memos,
+  onRefresh,
   children,
 }: Props) {
   const [open, setOpen] = useState(false);
@@ -157,7 +165,11 @@ export function SessionMemoPopover({
                 <X className="h-3 w-3" aria-hidden />
               </button>
             </header>
-            <MemoList rawDate={rawDate} memos={memos} />
+            <MemoList
+              rawDate={rawDate}
+              memos={memos}
+              onRefresh={onRefresh}
+            />
           </div>,
           document.body,
         )}
@@ -193,9 +205,11 @@ export function SessionMemoDot({
 function MemoList({
   rawDate,
   memos,
+  onRefresh,
 }: {
   rawDate: string;
   memos: ScheduleSessionMemo[];
+  onRefresh?: () => Promise<void>;
 }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingBody, setEditingBody] = useState("");
@@ -227,6 +241,10 @@ function MemoList({
     persistAuthorName(authorName);
     setDraftBody("");
     toast.success("メモを追加しました");
+    // Defense-in-depth: realtime should also fire, but force-refresh
+    // immediately so the UI is correct even when realtime delivery
+    // fails / is delayed.
+    if (onRefresh) void onRefresh();
   };
 
   const startEdit = (m: ScheduleSessionMemo) => {
@@ -255,6 +273,7 @@ function MemoList({
     }
     cancelEdit();
     toast.success("更新しました");
+    if (onRefresh) void onRefresh();
   };
   const onDelete = async (m: ScheduleSessionMemo) => {
     if (!window.confirm("このメモを削除しますか？")) return;
@@ -264,6 +283,11 @@ function MemoList({
       return;
     }
     toast.success("削除しました");
+    // Critical for DELETE — realtime DELETE events may be missing
+    // `old.raw_date` if the table lacks REPLICA IDENTITY FULL, which
+    // means the realtime handler can't tell the deletion was for our
+    // date. Force-refresh guarantees the UI updates regardless.
+    if (onRefresh) void onRefresh();
   };
 
   return (

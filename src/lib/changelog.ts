@@ -19,6 +19,13 @@ export type ReleaseEntry = {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    version: "1.5.3",
+    date: "2026-04-27",
+    notes: [
+      "メモ削除後にリロードしないと一覧と紫ドットが残る不具合を修正（realtime DELETE で `old.raw_date` が欠落する DB 構成のフォールバック + 削除/追加/更新成功時に手動 refetch も発火）",
+    ],
+  },
+  {
     version: "1.5.2",
     date: "2026-04-27",
     notes: [
