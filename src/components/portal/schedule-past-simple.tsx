@@ -190,14 +190,13 @@ function DateChip({
           dayOfWeek: session.dayOfWeek,
         }}
       >
-        {/* 1.9.35 Yu Gothic UI 補正: translateY(-2px) で glyph を
-            視覚的に 2px 上にシフト。Linux/Noto では既に 5.5/4.5 の
-            軽微な下寄りなので -2px で 7.5/2.5 の上寄りになるが、
-            Yu Gothic UI ユーザーの「上 2x bottom」が解消するほうを
-            優先 (両 OS で 0.5px 以下の差ならどちらでも違和感少)。 */}
+        {/* 1.9.36: translateY(-3px) に強化。1.9.35 の -2px でも
+            まだ Yu Gothic UI ユーザーから「上が長い」報告。Linux/
+            Noto では下寄り過剰になるが、Windows ユーザーの可読性
+            を優先する。ユーザー測定で fine-tune する想定。 */}
         <span
           className="tabular-nums"
-          style={{ transform: "translateY(-2px)", display: "inline-block" }}
+          style={{ transform: "translateY(-3px)", display: "inline-block" }}
         >
           {monthDay}（{session.dayOfWeek}）
         </span>

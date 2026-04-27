@@ -133,11 +133,19 @@ function parseTopText(html: string): string | null {
  * Strip HTML tags + decode common entities, preserving paragraph-level
  * line breaks. Used by `parseTopText` to clean fragments for popover
  * display.
+ *
+ * 1.9.36: emoji handling extended:
+ *   - Numeric character refs `&#1234;` and `&#xABCD;` decoded to their
+ *     Unicode code-points (covers emoji + most non-ASCII)
+ *   - `<img alt="...">` replaced by its alt text — many sites
+ *     (character-sheets included) use Twemoji-style image emoji
+ *     where the visible character is in the `alt` attribute
  */
 function stripHtmlToText(html: string): string {
   return html
     .replace(/<br\s*\/?>/gi, "\n")
     .replace(/<\/(p|div|li|h[1-6])>/gi, "\n")
+    .replace(/<img\b[^>]*\balt="([^"]*)"[^>]*\/?>/gi, "$1")
     .replace(/<[^>]*>/g, "")
     .replace(/&nbsp;/g, " ")
     .replace(/&amp;/g, "&")
@@ -145,6 +153,20 @@ function stripHtmlToText(html: string): string {
     .replace(/&gt;/g, ">")
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex: string) => {
+      try {
+        return String.fromCodePoint(parseInt(hex, 16));
+      } catch {
+        return "";
+      }
+    })
+    .replace(/&#(\d+);/g, (_, dec: string) => {
+      try {
+        return String.fromCodePoint(parseInt(dec, 10));
+      } catch {
+        return "";
+      }
+    })
     .replace(/[ \t]+/g, " ")
     .replace(/[ \t]*\n[ \t]*/g, "\n")
     .replace(/\n{3,}/g, "\n\n");
