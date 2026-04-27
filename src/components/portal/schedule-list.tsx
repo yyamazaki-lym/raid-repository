@@ -324,14 +324,38 @@ function UserHeaderCell({
 /**
  * Derive the per-user edit URL from the schedule list URL.
  *   /schedule/list?key=KEY  →  /schedule/input?key=KEY&userId=USERID
+ *
+ * 1.9.14: optional `rawDate` ("YYYY-MM-DD ...") attaches several
+ * fragment / query hints that character-sheets MAY use to auto-scroll
+ * to the target row:
+ *   - `#date-YYYY-MM-DD` (most common anchor convention)
+ *   - `?date=YYYY-MM-DD` (in case the upstream parses it server-side)
+ *
+ * The script is best-effort: if character-sheets doesn't honor any of
+ * them, nothing breaks. The dialog itself still surfaces the target
+ * date in the title so the user knows where to scroll manually.
+ *
  * Returns null if the source URL is missing or malformed.
  */
-function buildEditUrl(sourceUrl: string | null | undefined, userId: string): string | null {
+function buildEditUrl(
+  sourceUrl: string | null | undefined,
+  userId: string,
+  rawDate?: string,
+): string | null {
   if (!sourceUrl) return null;
   try {
     const u = new URL(sourceUrl);
     u.pathname = u.pathname.replace(/\/list(\b|$)/, "/input");
     u.searchParams.set("userId", userId);
+    if (rawDate) {
+      // Extract the YYYY-MM-DD prefix from the rawDate (it normally
+      // looks like "2026-04-09 (木)" or similar).
+      const isoMatch = rawDate.match(/^(\d{4}-\d{2}-\d{2})/);
+      if (isoMatch) {
+        u.searchParams.set("date", isoMatch[1]!);
+        u.hash = `date-${isoMatch[1]}`;
+      }
+    }
     return u.toString();
   } catch {
     return null;
@@ -548,7 +572,9 @@ function SessionRow({
       )}
       {users.map((u) => {
         const att = session.attendances[u.userId] ?? "－";
-        const editUrl = buildEditUrl(scheduleUrl, u.userId);
+        // Pass `rawDate` so the URL can hint at the target date via
+        // hash + query — character-sheets MAY auto-scroll on load.
+        const editUrl = buildEditUrl(scheduleUrl, u.userId, session.rawDate);
         const dateLabel = session.rawDate.split(" ")[0] ?? session.rawDate;
         const symbol = (
           <span

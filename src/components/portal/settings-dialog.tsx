@@ -16,6 +16,24 @@ import {
   Link2,
   X,
 } from "lucide-react";
+
+/**
+ * Inline GitHub mark — `lucide-react` v1.x removed brand icons (Github
+ * et al.) so we embed the simple-icons SVG path directly. Single use,
+ * not worth a separate component.
+ */
+function GithubMark({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden
+      className={className}
+    >
+      <path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.111.82-.261.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.305-5.467-1.334-5.467-5.931 0-1.31.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.51 11.51 0 0 1 12 5.803c1.02.005 2.045.138 3.003.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.652.242 2.873.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222 0 1.606-.014 2.898-.014 3.293 0 .319.216.694.825.576C20.565 22.092 24 17.598 24 12.297c0-6.627-5.373-12-12-12" />
+    </svg>
+  );
+}
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -1400,18 +1418,33 @@ export function SettingsDialog() {
             </div>
 
             <div className="flex flex-col gap-2 border-t border-border/30 pt-3">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setShowChangelog((v) => !v)}
-                className="self-start gap-1.5 font-mono text-[10px] tracking-[0.18em] uppercase"
-                title="更新履歴を表示 / 非表示"
-                aria-expanded={showChangelog}
-              >
-                <FileClock className="h-3 w-3" aria-hidden />
-                {showChangelog ? "更新履歴を隠す" : "更新履歴"}
-              </Button>
+              {/* 更新履歴ボタン + GitHub リポジトリへのリンクを横並び。
+                  GitHub アイコンを単独配置すると意図が伝わりにくいので、
+                  ラベル "Source" を併記してアウトラインボタンと統一感を出す。 */}
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowChangelog((v) => !v)}
+                  className="gap-1.5 font-mono text-[10px] tracking-[0.18em] uppercase"
+                  title="更新履歴を表示 / 非表示"
+                  aria-expanded={showChangelog}
+                >
+                  <FileClock className="h-3 w-3" aria-hidden />
+                  {showChangelog ? "更新履歴を隠す" : "更新履歴"}
+                </Button>
+                <a
+                  href="https://github.com/yyamazaki-lym/raid-repository"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="GitHub リポジトリを新しいタブで開く"
+                  className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border/60 bg-background/40 px-3 font-mono text-[10px] tracking-[0.18em] text-muted-foreground uppercase transition-colors hover:border-[var(--neon-cyan)]/60 hover:bg-secondary/40 hover:text-foreground"
+                >
+                  <GithubMark className="h-3 w-3" />
+                  Source
+                </a>
+              </div>
               {showChangelog && (
                 <div className="flex flex-col gap-3 rounded-sm border border-border/40 bg-secondary/20 px-3 py-2.5 text-[11px] leading-relaxed">
                   <p className="font-mono text-[10px] tracking-[0.2em] text-muted-foreground uppercase">

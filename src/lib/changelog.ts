@@ -19,6 +19,15 @@ export type ReleaseEntry = {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    version: "1.9.14",
+    date: "2026-04-27",
+    notes: [
+      "🔗 設定ダイアログの「更新履歴」ボタンの隣に GitHub リポジトリへのリンク (Source) を追加。lucide-react v1 系で Brand Icon (Github 等) が削除されたため、simple-icons の SVG をインライン化",
+      "📍 スケジュールの出欠セルから開く編集ダイアログで、対象日付までの自動スクロール補助を試行 — `buildEditUrl` に `rawDate` 引数を追加し、URL に `?date=YYYY-MM-DD` クエリと `#date-YYYY-MM-DD` フラグメントを付与。character-sheets 側がアンカーをサポートしていれば自動スクロール、未対応なら無視されるベストエフォート",
+      "ダイアログタイトルに対象日付 (例: 「Y.Y の出欠を編集 (2026-04-09 を含む)」) を含めているので、自動スクロールしない場合も画面上でどの行を見るべきかが明確",
+    ],
+  },
+  {
     version: "1.9.13",
     date: "2026-04-27",
     notes: [
