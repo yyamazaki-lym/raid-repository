@@ -1214,23 +1214,50 @@ const CONTENT_GROUPS: Array<string[]> = [
 ];
 
 /**
+ * Normalize a content string for keyword matching:
+ *   - lowercase
+ *   - fullwidth → halfwidth ASCII (digits + alphabet)
+ *   - fullwidth colon `：` → halfwidth `:`
+ *   - assorted fullwidth brackets / spaces → halfwidth
+ *
+ * 1.9.13 BUG FIX: the seed schema names categories with halfwidth colon
+ * (`アルカディア:ヘビー級`) but the keyword list uses fullwidth `：`. Without
+ * normalization, the classifier missed seed-data categories entirely and
+ * fell through to the bigram fallback, which often returned 0.5
+ * (ambiguous) — letting cross-content reports on the same day be matched.
+ */
+function normalizeContentText(text: string): string {
+  return (
+    text
+      .toLowerCase()
+      // Fullwidth letters / digits → ASCII (U+FF21..U+FF5A → U+0041..U+007A)
+      .replace(/[！-～]/g, (ch) =>
+        String.fromCharCode(ch.charCodeAt(0) - 0xfee0),
+      )
+      // Common Japanese punctuation that varies between sources
+      .replace(/[　]/g, " ") // ideographic space
+      .replace(/[・]/g, " ") // katakana middle dot
+  );
+}
+
+/**
  * Returns the set of content group ids that the given text matches.
  * Uses longest-match-wins masking so a more specific keyword (e.g.
  * "ライトヘビー級") prevents a more general one (e.g. "ヘビー級") from
  * spuriously matching the same characters.
  */
 function findContentGroups(text: string): Set<number> {
-  const lower = text.toLowerCase();
+  const norm = normalizeContentText(text);
   // Build (group, kw) tuples sorted by kw length desc.
   const all: Array<{ group: number; kw: string }> = [];
   for (let i = 0; i < CONTENT_GROUPS.length; i++) {
     for (const kw of CONTENT_GROUPS[i]!) {
-      all.push({ group: i, kw: kw.toLowerCase() });
+      all.push({ group: i, kw: normalizeContentText(kw) });
     }
   }
   all.sort((a, b) => b.kw.length - a.kw.length);
   const groups = new Set<number>();
-  let masked = lower;
+  let masked = norm;
   for (const { group, kw } of all) {
     if (masked.includes(kw)) {
       groups.add(group);
@@ -1297,6 +1324,20 @@ function contentMismatchPenalty(
       if (rGroups.has(g)) return 0; // confirmed same content
     }
     // No shared group → confidently different content.
+    return 1;
+  }
+
+  // 1.9.13 STRICTER: when the VIDEO side classifies (high-confidence —
+  // the user hand-labeled the category) but the report does NOT, that's
+  // strong evidence the report is from an unrelated content. Bigram
+  // fallback used to return 0.5 (ambiguous) here, which let same-day
+  // cross-content reports slip through. Reject instead.
+  //
+  // Conversely, video-unclassified + report-classified is rarer (videos
+  // often have weak titles like "練習会"); keep that as ambiguous so we
+  // don't lose legitimate matches when category naming is non-standard.
+  const vCatGroups = findContentGroups(videoCategoryName ?? "");
+  if (vCatGroups.size > 0 && rGroups.size === 0) {
     return 1;
   }
 

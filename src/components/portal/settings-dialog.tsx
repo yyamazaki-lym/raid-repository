@@ -646,7 +646,7 @@ export function SettingsDialog() {
                   id="fflogs-username"
                   value={fflogsUsername}
                   onChange={(e) => setFflogsUsernameState(e.target.value)}
-                  placeholder="例: TaroYamada (display name)"
+                  placeholder="例: Ascian_Emet-Selch"
                   // min-w only on sm+ so narrow phones (<640px) don't get
                   // a 12rem-wide input forced into a tighter row layout.
                   className="font-mono text-[12px] flex-1 sm:min-w-[12rem]"

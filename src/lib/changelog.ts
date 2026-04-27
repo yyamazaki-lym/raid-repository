@@ -19,6 +19,18 @@ export type ReleaseEntry = {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    version: "1.9.13",
+    date: "2026-04-27",
+    notes: [
+      "🐛 FFLogs コンテンツ照合の取りこぼし修正 (重要) — seed の 'アルカディア:ヘビー級' は半角コロン、CONTENT_GROUPS の keyword は全角コロン '：' を使っていたため、classifier が seed カテゴリーを認識できず常に bigram fallback (0.5 ambiguous) になっていた。同日に別コンテンツの FFLogs report があると無関係マッチが成立する状態",
+      "fix: `findContentGroups` 前に正規化 (`normalizeContentText`) を追加 — 全角英数字 → 半角、全角コロン → 半角、ideographic space / 中点を空白に。これで seed カテゴリーが正しく group 認識される",
+      "🚫 マッチ判定を厳格化 — VIDEO のカテゴリーが既知 group に分類できる場合、report が分類できない (zone 名が keyword に未登録) なら mismatch=1 として強制リジェクト。bigram fallback で 0.5 になり同日別コンテンツが通る抜け穴を塞ぐ",
+      "📺 スケジュール表のユーザー名 / 出欠セルが「インライン編集ダイアログ」を開くように — 従来は `target=\"_blank\"` で別タブ遷移だったが、その場で iframe を開いて編集 → 閉じてポータルに即復帰、というフローに。スマホでもタブを行き来せず編集可能",
+      "ダイアログ右上に「新しいタブ」ボタンを残置 — character-sheets 側が iframe 表示を拒否する場合のフォールバック",
+      "✏️ FFLogs 表示名入力欄の placeholder を 'TaroYamada (display name)' → 'Ascian_Emet-Selch' に変更",
+    ],
+  },
+  {
     version: "1.9.12",
     date: "2026-04-27",
     notes: [

@@ -1,8 +1,9 @@
-import { useRef } from "react";
+import { useCallback, useRef, useState } from "react";
 import Link from "next/link";
 import { CalendarX2, AlertTriangle, BarChart3, Film } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { CommentPopover } from "./comment-popover";
+import { ScheduleEditFrameDialog } from "./schedule-edit-frame-dialog";
 import {
   SessionMemoDot,
   SessionMemoPopover,
@@ -91,6 +92,18 @@ export function ScheduleList({
   sessionVideoLinks,
   sessionLogsByDate,
 }: Props) {
+  // 1.9.13: replace `target="_blank"` external nav with an in-portal
+  // iframe overlay. Tapping a username header or per-session attendance
+  // cell now sets `editTarget`, which mounts the dialog. State lives at
+  // the top level so a single dialog instance is reused across rows.
+  const [editTarget, setEditTarget] = useState<{
+    url: string;
+    title: string;
+  } | null>(null);
+  const openEditFrame = useCallback((url: string, title: string) => {
+    setEditTarget({ url, title });
+  }, []);
+
   if (!result.ok) {
     return (
       <Card className="glass flex flex-col items-center gap-3 border-destructive/40 p-8 text-center">
@@ -156,6 +169,7 @@ export function ScheduleList({
             user={u}
             comments={commentsByAuthor.get(u.name) ?? []}
             editUrl={buildEditUrl(scheduleUrl, u.userId)}
+            onOpenEditFrame={openEditFrame}
           />
         ))}
       </tr>
@@ -180,6 +194,7 @@ export function ScheduleList({
                   videoLink={lookupVideoLink(s, sessionVideoLinks)}
                   sessionLogsUrl={sessionLogsByDate?.[s.rawDate] ?? null}
                   scheduleUrl={scheduleUrl}
+                  onOpenEditFrame={openEditFrame}
                 />
               ))}
               {upcoming.length === 0 && (
@@ -196,6 +211,15 @@ export function ScheduleList({
           </table>
         </div>
       </Card>
+
+      {/* インライン編集ダイアログ — ユーザー名 / 出欠セルをタップすると
+          ここがマウントされ、character-sheets の編集 URL を iframe で
+          表示します。閉じるとスクロール位置などポータル側の状態は維持。 */}
+      <ScheduleEditFrameDialog
+        url={editTarget?.url ?? null}
+        title={editTarget?.title ?? ""}
+        onClose={() => setEditTarget(null)}
+      />
 
       {/* Past sessions — separate card so the visual break is unmistakable.
           Hidden until the user enables the detail toggle. The "確定"
@@ -230,6 +254,7 @@ export function ScheduleList({
                     videoLink={lookupVideoLink(s, sessionVideoLinks)}
                     sessionLogsUrl={sessionLogsByDate?.[s.rawDate] ?? null}
                     scheduleUrl={scheduleUrl}
+                    onOpenEditFrame={openEditFrame}
                   />
                 ))}
               </tbody>
@@ -245,35 +270,36 @@ function UserHeaderCell({
   user,
   comments,
   editUrl,
+  onOpenEditFrame,
 }: {
   user: ScheduleUser;
   comments: ScheduleComment[];
   editUrl: string | null;
+  /** Open the in-portal iframe dialog for the given URL. */
+  onOpenEditFrame: (url: string, title: string) => void;
 }) {
   const hasComments = comments.length > 0;
 
-  // Username is always a clickable link to the per-user edit URL (or a plain
-  // span if no edit URL is available). Comments live in a separate small
-  // button → Popover. This works on both touch (tap) and mouse (click), and
-  // keeps the link semantics clean.
+  // Username is a clickable button that opens the in-portal iframe
+  // dialog (1.9.13). Comments live in a separate small button →
+  // Popover. This works on both touch (tap) and mouse (click).
   //
   // Cap the inline width at 7rem and let CSS truncate with ellipsis when a
   // name is unusually long — prevents one outlier name from blowing out
   // the whole table's layout. The full name is still in the title
-  // attribute (tooltip) and the editUrl tooltip references it too.
+  // attribute (tooltip).
   const nameClass =
     "inline-block max-w-[7rem] truncate align-bottom underline decoration-dotted decoration-[var(--neon-cyan)]/60 underline-offset-4 transition-colors hover:decoration-[var(--neon-cyan)] hover:text-[var(--neon-cyan)]";
 
   const nameNode = editUrl ? (
-    <a
-      href={editUrl}
-      target="_blank"
-      rel="noopener noreferrer"
+    <button
+      type="button"
+      onClick={() => onOpenEditFrame(editUrl, `${user.name} の出欠を編集`)}
       className={nameClass}
-      title={`${user.name} の出欠を編集`}
+      title={`${user.name} の出欠をその場で編集`}
     >
       {user.name}
-    </a>
+    </button>
   ) : (
     <span className={nameClass} title={user.name}>
       {user.name}
@@ -362,6 +388,7 @@ function SessionRow({
   videoLink = null,
   sessionLogsUrl = null,
   scheduleUrl,
+  onOpenEditFrame,
 }: {
   session: ScheduleSession;
   users: ScheduleUser[];
@@ -383,6 +410,8 @@ function SessionRow({
    * targets.
    */
   scheduleUrl?: string | null;
+  /** Open the in-portal iframe dialog for the given URL. */
+  onOpenEditFrame: (url: string, title: string) => void;
 }) {
   const decided = session.status === "DECISION";
   const { memos, refetch: refetchMemos } = useRealtimeScheduleMemos(
@@ -543,18 +572,22 @@ function SessionRow({
         return (
           <td key={u.userId} className="px-2 py-2 align-middle text-center">
             {editUrl ? (
-              // Click to edit on character-sheets. Per-user URL — opens
-              // their full input page; the user finds their session there.
-              // Hover scale + ring gives a clear "this is interactive" cue.
-              <a
-                href={editUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                title={`${u.name} の出欠を編集 (${dateLabel} を含む全日程)`}
+              // ボタン化 (1.9.13): その場でインライン iframe ダイアログを
+              // 開いて出欠を編集。タブ移動なしで戻れる。hover の scale +
+              // focus ring で「タップ可能」のフィードバックを残す。
+              <button
+                type="button"
+                onClick={() =>
+                  onOpenEditFrame(
+                    editUrl,
+                    `${u.name} の出欠を編集 (${dateLabel} を含む)`,
+                  )
+                }
+                title={`${u.name} の出欠をその場で編集 (${dateLabel} を含む全日程)`}
                 className="group/cell inline-flex rounded-sm transition-transform hover:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--neon-cyan)]/60"
               >
                 {symbol}
-              </a>
+              </button>
             ) : (
               symbol
             )}
