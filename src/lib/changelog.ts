@@ -19,6 +19,17 @@ export type ReleaseEntry = {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    version: "1.9.24",
+    date: "2026-04-27",
+    notes: [
+      "🎯 FFLogs マッチャを大幅シンプル化 (再設計) — 「動画タイトル日付 == レポートの JST カレンダー日 + content classifier」のみで判定。1.9.4 以降積み重ねた ±時間ウィンドウ / RAID_HOUR_JST / SMALL_PENALTY / diffHours / expectedRaidMs 等のスコアリング機構を全部撤廃",
+      "📐 ユーザー知見ベース: 「Log の startTime はコンテンツ挑戦日なので外れ値にならない」 → 同 JST 日マッチで十分。複雑な時刻調整は不要",
+      "🔧 session linker (linkReportsToSessions) も同様に「同 JST 日」のみに簡素化。±1h/+4h ウィンドウ撤廃。同日複数レポートのときのみ session 開始時刻に近い report を tie-breaker",
+      "撤廃した定数: MATCH_WINDOW_MS / SESSION_WINDOW_BEFORE_MS / SESSION_WINDOW_AFTER_MS",
+      "撤廃した診断項目: diffHours (もう意味を持たない)。reportStartJst (HH:mm) は残置 — 開始時刻の目視確認用",
+    ],
+  },
+  {
     version: "1.9.23",
     date: "2026-04-27",
     notes: [

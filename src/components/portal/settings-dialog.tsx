@@ -84,8 +84,6 @@ type FflogsLinkResultLite = {
     reportUrl: string;
     videoDate?: string;
     reportDate?: string;
-    /** Hours between expected raid moment and report.startMs. */
-    diffHours?: number;
     /** Report start formatted in JST (YYYY-MM-DD HH:mm). */
     reportStartJst?: string;
   }>;
@@ -1401,13 +1399,9 @@ export function SettingsDialog() {
                                 )}{" "}
                                 {d.label.slice(0, 40)}
                                 {d.label.length > 40 ? "…" : ""}
-                                {(d.diffHours !== undefined ||
-                                  d.reportStartJst) && (
+                                {d.reportStartJst && (
                                   <span className="ml-1 text-[9px] text-muted-foreground/70">
-                                    {d.reportStartJst &&
-                                      ` · report=${d.reportStartJst} JST`}
-                                    {d.diffHours !== undefined &&
-                                      ` (${d.diffHours >= 0 ? "+" : ""}${d.diffHours}h)`}
+                                    {` · report=${d.reportStartJst} JST`}
                                   </span>
                                 )}
                               </li>
