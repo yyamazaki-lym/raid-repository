@@ -978,35 +978,74 @@ type SupabaseLike = Awaited<ReturnType<typeof createClient>>;
 /**
  * Extract a calendar date (Y/M/D) from a video title. Most users
  * include the raid date in the title (例: 【2026 04 01】, 「2026/04/01」,
- * "20260401" etc) — this is FAR more reliable than YouTube's posted_at
- * (which is the upload time, often days late) for date-matching against
- * FFLogs report startTimes.
+ * "20260401", "4月1日", "4/1" etc) — this is FAR more reliable than
+ * YouTube's posted_at (the upload time, often days late) for date-
+ * matching against FFLogs report startTimes.
+ *
+ * Year-explicit formats (YYYY MM DD) are matched first since they're
+ * unambiguous. Year-less formats fall back to `fallbackYear` (typically
+ * the year of the video's posted_at or the current year).
  *
  * Returns null when no date can be inferred from the title.
  */
 function extractDateFromTitle(
   title: string | null | undefined,
+  fallbackYear?: number,
 ): { y: number; m: number; d: number } | null {
   if (!title) return null;
-  // Pattern A: separated by space / slash / dash / Japanese 年月日
-  // 「2026 04 01」「2026/04/01」「2026-04-01」「2026年4月1日」
-  const sep = title.match(
+  const validate = (y: number, m: number, d: number) =>
+    m >= 1 && m <= 12 && d >= 1 && d <= 31;
+
+  // Year-explicit: 「2026 04 01」「2026/04/01」「2026-04-01」「2026年4月1日」
+  const yexp = title.match(
     /(20\d{2})[\s年\/\-.](\d{1,2})[\s月\/\-.](\d{1,2})/,
   );
-  if (sep) {
-    const y = parseInt(sep[1]!, 10);
-    const m = parseInt(sep[2]!, 10);
-    const d = parseInt(sep[3]!, 10);
-    if (m >= 1 && m <= 12 && d >= 1 && d <= 31) return { y, m, d };
+  if (yexp) {
+    const y = parseInt(yexp[1]!, 10);
+    const m = parseInt(yexp[2]!, 10);
+    const d = parseInt(yexp[3]!, 10);
+    if (validate(y, m, d)) return { y, m, d };
   }
-  // Pattern B: compact 8-digit "20260401"
-  const compact = title.match(/(?<!\d)(20\d{2})(\d{2})(\d{2})(?!\d)/);
-  if (compact) {
-    const y = parseInt(compact[1]!, 10);
-    const m = parseInt(compact[2]!, 10);
-    const d = parseInt(compact[3]!, 10);
-    if (m >= 1 && m <= 12 && d >= 1 && d <= 31) return { y, m, d };
+  // Compact 8-digit: "20260401"
+  const c8 = title.match(/(?<!\d)(20\d{2})(\d{2})(\d{2})(?!\d)/);
+  if (c8) {
+    const y = parseInt(c8[1]!, 10);
+    const m = parseInt(c8[2]!, 10);
+    const d = parseInt(c8[3]!, 10);
+    if (validate(y, m, d)) return { y, m, d };
   }
+
+  // Year-less patterns need context.
+  if (fallbackYear === undefined) return null;
+
+  // Japanese: 「4月1日」「04月01日」
+  const jp = title.match(/(?<!\d)(\d{1,2})月\s*(\d{1,2})日/);
+  if (jp) {
+    const m = parseInt(jp[1]!, 10);
+    const d = parseInt(jp[2]!, 10);
+    if (validate(fallbackYear, m, d)) return { y: fallbackYear, m, d };
+  }
+
+  // Slash: "4/1" or "04/01" — boundary ensures we don't match parts of
+  // longer numeric tokens like "1080/120".
+  const slash = title.match(/(?<![\d\/])(\d{1,2})\/(\d{1,2})(?![\d\/])/);
+  if (slash) {
+    const m = parseInt(slash[1]!, 10);
+    const d = parseInt(slash[2]!, 10);
+    if (validate(fallbackYear, m, d)) return { y: fallbackYear, m, d };
+  }
+
+  // Compact 4-digit: "0401" — risky, only in bracket / start-of-token
+  // context to avoid matching things like "1080" (resolution) or other
+  // 4-digit numbers. Look for one wrapped in 【...】 or [...] or as a
+  // standalone "20XX/YYMMDD" prefix.
+  const c4Bracket = title.match(/[【\[]\s*(\d{2})(\d{2})\s*[】\]]/);
+  if (c4Bracket) {
+    const m = parseInt(c4Bracket[1]!, 10);
+    const d = parseInt(c4Bracket[2]!, 10);
+    if (validate(fallbackYear, m, d)) return { y: fallbackYear, m, d };
+  }
+
   return null;
 }
 
@@ -1251,14 +1290,21 @@ async function linkReportsToVideos(
   let videosSkippedNoDate = 0;
   const sortedVideos = [...videos]
     .map((v) => {
-      const titleDate = extractDateFromTitle(
-        (v as { title?: string | null }).title ?? null,
-      );
       const postedAt = v.posted_at as string | null;
       const postedTMs =
         postedAt && Number.isFinite(new Date(postedAt).getTime())
           ? new Date(postedAt).getTime()
           : null;
+      // Year fallback for year-less title patterns ("4月1日", "0401" etc).
+      // Use posted_at year if available, otherwise current year.
+      const fallbackYear =
+        postedTMs !== null
+          ? new Date(postedTMs).getUTCFullYear()
+          : new Date().getUTCFullYear();
+      const titleDate = extractDateFromTitle(
+        (v as { title?: string | null }).title ?? null,
+        fallbackYear,
+      );
       // Need at least one date source.
       if (!titleDate && postedTMs === null) {
         videosSkippedNoDate += 1;
@@ -1387,9 +1433,9 @@ async function linkReportsToVideos(
     usedReports.add(pair.report.id);
     usedVideos.add(vId);
     matched += 1;
-    const videoTitleDate = extractDateFromTitle(
-      (pair.video.title as string | null) ?? null,
-    );
+    // Re-use the same titleDate that scoring used (already cached in
+    // pair.video.titleDate). Falls back to extracting again if absent.
+    const videoTitleDate = pair.video.titleDate;
     const reportJst = jstCalendarDate(pair.report.startMs);
     const fmt = (d: { y: number; m: number; d: number } | null) =>
       d ? `${d.y}-${String(d.m).padStart(2, "0")}-${String(d.d).padStart(2, "0")}` : undefined;

@@ -19,6 +19,15 @@ export type ReleaseEntry = {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    version: "1.9.7",
+    date: "2026-04-27",
+    notes: [
+      "FFLogs マッチング: タイトル日付の抽出パターンを大幅拡張 — 旧版は「2026 04 01」「2026/04/01」「20260401」など年付き形式のみ対応だった。新規対応: 「4月1日」「4/1」「【0401】」など年無し形式も認識（year は posted_at の年を fallback で使用）",
+      "対応パターン詳細: ① 年付き YYYY-MM-DD or YYYY/MM/DD or YYYY 年月日 ② 8 桁 compact YYYYMMDD ③ 年無し M月D日 ④ 年無し M/D (resolution 等の数字には誤マッチしないよう boundary check) ⑤ 年無し 4 桁 compact MMDD ([...] や 【...】 ブラケット内のみ)",
+      "DB スキーマ拡張: `categories.expected_fflogs_zone_ids INTEGER[]` を追加（将来的にコンテンツ単位で FFLogs zone ID 厳密フィルタを設定できるようにするための準備。現在はまだマッチには影響しない）",
+    ],
+  },
+  {
     version: "1.9.6",
     date: "2026-04-27",
     notes: [

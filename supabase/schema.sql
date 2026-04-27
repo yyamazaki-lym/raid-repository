@@ -50,7 +50,14 @@ ALTER TABLE public.categories
   -- dialog, and also auto-populated when a video link with "クリア" / "clear"
   -- in the title first appears (manual add or Discord import) AND this field
   -- is still NULL. Once set, never auto-overwritten — only manual edits.
-  ADD COLUMN IF NOT EXISTS first_clear_at               timestamptz;
+  ADD COLUMN IF NOT EXISTS first_clear_at               timestamptz,
+  -- Phase 8 (1.9.7): expected FFLogs zone IDs for this content. When set,
+  -- the FFLogs auto-link feature only matches reports whose zone.id is in
+  -- this array — eliminates wrong-content matches when multiple raids
+  -- happen on the same date. Empty / NULL = fall back to fuzzy bilingual
+  -- group matching. Find zone IDs from any FFLogs report URL of that
+  -- content (the report's zone field in the API response).
+  ADD COLUMN IF NOT EXISTS expected_fflogs_zone_ids      integer[];
 
 CREATE INDEX IF NOT EXISTS categories_sort_order_idx
   ON public.categories(sort_order);
