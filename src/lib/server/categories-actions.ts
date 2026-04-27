@@ -12,6 +12,10 @@ import {
 } from "./discord-schedule";
 import { runScheduleSnapshot } from "./schedule-snapshot";
 import {
+  linkFflogsReportsToVideos,
+  type FflogsLinkResult,
+} from "./fflogs";
+import {
   fetchYouTubeMeta,
   fetchYouTubeMetaWithDebug,
   pmap,
@@ -230,6 +234,23 @@ export type ScheduleSnapshotResult = {
   inserted: number;
   updated: number;
 };
+
+/**
+ * Server Action: pull the configured FFLogs username's reports and
+ * auto-link each report to a matching video (by ±36h window on the
+ * report's start timestamp). Each report claims at most one video.
+ */
+export async function linkFflogsReports(): Promise<FflogsLinkResult> {
+  const result = await linkFflogsReportsToVideos();
+  if (result.ok && result.matched > 0) {
+    try {
+      revalidatePath("/");
+    } catch {
+      // best-effort
+    }
+  }
+  return result;
+}
 
 /**
  * Server Action: take a snapshot of the current character-sheets

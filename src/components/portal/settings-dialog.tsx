@@ -12,6 +12,8 @@ import {
   Database,
   Camera,
   FileClock,
+  BarChart3,
+  Link2,
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -29,17 +31,29 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import {
   getDiscordScheduleChannelId,
+  getFflogsUsername,
   getScheduleUrlFromDb,
   setDiscordScheduleChannelId,
+  setFflogsUsername,
   setScheduleUrl,
 } from "@/lib/schedule-url-store";
 import {
   countStoredPastSessions,
   importPastScheduleFromDiscord,
+  linkFflogsReports,
   snapshotScheduleNow,
   type ScheduleSnapshotResult,
 } from "@/lib/server/categories-actions";
 import { RELEASES } from "@/lib/changelog";
+
+type FflogsLinkResultLite = {
+  ok: boolean;
+  reason?: string;
+  reportsScanned: number;
+  videosScanned: number;
+  matched: number;
+  details: Array<{ videoTitle: string; reportTitle: string; reportUrl: string }>;
+};
 
 // Inline copy of the Server Action result type — we can't re-export the
 // type from a "use server" module on the client side, and the shape is
@@ -83,20 +97,28 @@ export function SettingsDialog() {
   const [snapshotting, startSnapshot] = useTransition();
   const [snapshotResult, setSnapshotResult] =
     useState<ScheduleSnapshotResult | null>(null);
+  const [fflogsUsername, setFflogsUsernameState] = useState("");
+  const [linkingLogs, startLinkLogs] = useTransition();
+  const [logsResult, setLogsResult] = useState<FflogsLinkResultLite | null>(
+    null,
+  );
   const [showChangelog, setShowChangelog] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
     void (async () => {
-      const [currentUrl, currentChannel] = await Promise.all([
+      const [currentUrl, currentChannel, currentFflogs] = await Promise.all([
         getScheduleUrlFromDb(),
         getDiscordScheduleChannelId(),
+        getFflogsUsername(),
       ]);
       if (!cancelled) {
         setUrl(currentUrl ?? "");
         setChannelId(currentChannel ?? "");
+        setFflogsUsernameState(currentFflogs ?? "");
         setImportResult(null);
+        setLogsResult(null);
       }
     })();
     return () => {
@@ -106,7 +128,7 @@ export function SettingsDialog() {
 
   const onSave = async () => {
     setBusy(true);
-    // Save URL first; if URL save fails, don't bother with channel ID.
+    // Save URL first; if URL save fails, don't bother with the rest.
     const urlResult = await setScheduleUrl(url);
     if (!urlResult.ok) {
       setBusy(false);
@@ -114,9 +136,15 @@ export function SettingsDialog() {
       return;
     }
     const channelResult = await setDiscordScheduleChannelId(channelId);
-    setBusy(false);
     if (!channelResult.ok) {
+      setBusy(false);
       toast.error("チャンネルID: " + channelResult.reason);
+      return;
+    }
+    const fflogsResult = await setFflogsUsername(fflogsUsername);
+    setBusy(false);
+    if (!fflogsResult.ok) {
+      toast.error("FFLogs: " + fflogsResult.reason);
       return;
     }
     toast.success("設定を保存しました（全員共有）");
@@ -166,6 +194,26 @@ export function SettingsDialog() {
         r.scanned > 0
           ? `${r.scanned} 件保存（新規 ${r.inserted} / 更新 ${r.updated}）`
           : "保存対象のセッションなし",
+      );
+      router.refresh();
+    });
+  };
+
+  const onLinkLogs = () => {
+    setLogsResult(null);
+    startLinkLogs(async () => {
+      const r = await linkFflogsReports();
+      setLogsResult(r);
+      if (!r.ok) {
+        toast.error("FFLogs 連動失敗: " + (r.reason ?? "unknown"));
+        return;
+      }
+      toast.success(
+        r.matched > 0
+          ? `${r.matched} 件の動画に Logs URL を紐づけ`
+          : r.videosScanned === 0
+            ? "logs_url 未設定の動画なし"
+            : `合うレポートなし (報告 ${r.reportsScanned} / 動画 ${r.videosScanned})`,
       );
       router.refresh();
     });
@@ -416,6 +464,108 @@ export function SettingsDialog() {
                 )}
               </div>
             )}
+          </section>
+
+          {/* FFLogs section — feature-gated by FFLOGS_API_KEY env var
+              (silently allows username field but the link button will
+              report "API key 未設定" if not configured). */}
+          <section className="flex flex-col gap-3">
+            <header className="flex items-center gap-2 border-b border-border/30 pb-2">
+              <BarChart3 className="h-3.5 w-3.5 text-amber-300" aria-hidden />
+              <span className="font-mono text-[10px] tracking-[0.22em] text-muted-foreground uppercase">
+                FFLogs Sync
+              </span>
+            </header>
+
+            <div className="flex flex-col gap-2">
+              <Label
+                htmlFor="fflogs-username"
+                className="text-xs text-foreground/80"
+              >
+                FFLogs ユーザー名 / プロフィール URL（任意）
+              </Label>
+              <Input
+                id="fflogs-username"
+                value={fflogsUsername}
+                onChange={(e) => setFflogsUsernameState(e.target.value)}
+                placeholder="例: TaroYamada または https://ja.fflogs.com/user/reports-list/70734"
+                className="font-mono text-[12px]"
+                spellCheck={false}
+                autoComplete="off"
+              />
+              <p className="text-muted-foreground text-[11px] leading-relaxed">
+                代表 1 名分のレポートで OK — 動画の投稿日時 ±36h でマッチした
+                FFLogs レポートを自動的に動画の logs URL に紐づけます。
+              </p>
+              <p className="text-muted-foreground/80 text-[10px] leading-relaxed">
+                サーバー側で <code className="font-mono">FFLOGS_API_KEY</code>
+                {" "}環境変数の設定も必要（Vercel ダッシュボード）。
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={onLinkLogs}
+                disabled={linkingLogs || !fflogsUsername.trim()}
+                className="self-start gap-1.5 font-mono text-[11px] tracking-widest uppercase"
+                title={
+                  !fflogsUsername.trim()
+                    ? "FFLogs ユーザー名を入力（先に保存）"
+                    : "FFLogs レポートを動画に自動紐づけ"
+                }
+              >
+                {linkingLogs ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                ) : (
+                  <Link2 className="h-3.5 w-3.5" aria-hidden />
+                )}
+                {linkingLogs ? "連動中..." : "FFLogs と動画を連動"}
+              </Button>
+              {logsResult && (
+                <div className="relative flex flex-col gap-0.5 rounded-sm border border-border/40 bg-secondary/20 px-2.5 py-1.5 pr-7 text-[11px] leading-relaxed">
+                  <button
+                    type="button"
+                    onClick={() => setLogsResult(null)}
+                    aria-label="結果を閉じる"
+                    className="absolute right-1 top-1 inline-flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
+                  >
+                    <X className="h-3 w-3" aria-hidden />
+                  </button>
+                  {logsResult.ok ? (
+                    <>
+                      <p className="font-mono">
+                        新規紐づけ <strong>{logsResult.matched}</strong> 件
+                        / レポート {logsResult.reportsScanned} / 動画候補{" "}
+                        {logsResult.videosScanned}
+                      </p>
+                      {logsResult.details.length > 0 && (
+                        <ul className="mt-1 flex flex-col gap-0.5 font-mono text-[10px] text-muted-foreground">
+                          {logsResult.details.slice(0, 5).map((d, i) => (
+                            <li key={i} className="break-words">
+                              <span className="text-amber-200/80">→</span>{" "}
+                              {d.videoTitle.slice(0, 40)}
+                              {d.videoTitle.length > 40 ? "…" : ""}
+                            </li>
+                          ))}
+                          {logsResult.details.length > 5 && (
+                            <li className="text-muted-foreground/60">
+                              …他 {logsResult.details.length - 5} 件
+                            </li>
+                          )}
+                        </ul>
+                      )}
+                    </>
+                  ) : (
+                    <p className="text-rose-300">
+                      エラー: {logsResult.reason ?? "unknown"}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
 
             <div className="flex flex-col gap-2 border-t border-border/30 pt-3">
               <Button

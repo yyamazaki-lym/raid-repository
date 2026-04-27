@@ -138,15 +138,17 @@ function DateChip({
     >
       {/* Date+曜 wrapped in a memo popover trigger. Click reveals
           per-session shared notes. The dot indicator sits AFTER all
-          icons (rightmost) so it doesn't crowd the date label. */}
+          icons (rightmost) so it doesn't crowd the date label.
+          Single span so date and 曜 share the same baseline / size /
+          line-height — earlier two-span layout (different text sizes)
+          made the optical center drift. */}
       <SessionMemoPopover
         rawDate={session.rawDate}
         displayDate={`${monthDay}（${session.dayOfWeek}）`}
         memos={memos}
       >
-        <span className="tabular-nums">{monthDay}</span>
-        <span className="ml-0.5 text-[10px] opacity-75">
-          （{session.dayOfWeek}）
+        <span className="tabular-nums">
+          {monthDay}（{session.dayOfWeek}）
         </span>
       </SessionMemoPopover>
       {videoLink && (

@@ -19,6 +19,15 @@ export type ReleaseEntry = {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    version: "1.5.0",
+    date: "2026-04-27",
+    notes: [
+      "FFLogs 連動: 設定で FFLogs ユーザー名を保存 → 動画の投稿日時 ±36h でレポートを自動マッチして logs URL に紐づけ",
+      "サーバー側で FFLOGS_API_KEY 環境変数の設定が必要",
+      "簡易過去日程チップの日時を単一 span に統一し上下空白を完全対称化",
+    ],
+  },
+  {
     version: "1.4.2",
     date: "2026-04-27",
     notes: [
