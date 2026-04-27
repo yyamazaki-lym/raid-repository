@@ -27,6 +27,9 @@ export type FflogsReport = {
   endMs: number;
   /** FFLogs zone id. Useful for content-name correlation later. */
   zone: number | null;
+  /** FFLogs zone name (e.g. "AAC Light-heavyweight Tier"). Used to
+   * verify the report content matches a video's content. */
+  zoneName: string | null;
 };
 
 const FFLOGS_GRAPHQL_URL = "https://www.fflogs.com/api/v2/user";
@@ -99,6 +102,7 @@ export async function fetchFflogsReportsV1(
         startMs: r.start < 1e11 ? r.start * 1000 : r.start,
         endMs: r.end < 1e11 ? r.end * 1000 : r.end,
         zone: r.zone ?? null,
+        zoneName: null, // v1 REST doesn't provide zone name
       })),
     };
   } catch (e) {
@@ -326,7 +330,7 @@ export async function fetchFflogsReportsV2(
             title
             startTime
             endTime
-            zone { id }
+            zone { id name }
             owner { id name }
           }
         }
@@ -368,7 +372,7 @@ export async function fetchFflogsReportsV2(
                 title?: string | null;
                 startTime: number;
                 endTime: number;
-                zone?: { id?: number | null } | null;
+                zone?: { id?: number | null; name?: string | null } | null;
                 owner?: { id?: number | null; name?: string | null } | null;
               }>;
             };
@@ -421,6 +425,7 @@ export async function fetchFflogsReportsV2(
           startMs: sMs,
           endMs: eMs,
           zone: r.zone?.id ?? null,
+          zoneName: r.zone?.name ?? null,
         });
       }
       if (!reports.has_more_pages) break;
@@ -622,6 +627,7 @@ async function fetchFflogsReportsHtmlScrape(
           startMs: tMs,
           endMs: tMs,
           zone: null,
+          zoneName: null,
         });
       }
       // Stop once a page yields no new reports (end of list).
@@ -708,10 +714,11 @@ export type FflogsLinkResult = {
   };
 };
 
-// Video matching window: ±36h around the video's posted_at. Generous
-// because videos are often uploaded the morning after a late-night
-// session, and sometimes pre-recorded.
-const MATCH_WINDOW_MS = 36 * 60 * 60 * 1000;
+// Video matching window: ±18h around the video's posted_at.
+// Tightened from 36h in 1.9.2 because the wider window allowed
+// adjacent raid days (3-4 days apart) to cross-match, especially when
+// the user has many similar reports near each other.
+const MATCH_WINDOW_MS = 18 * 60 * 60 * 1000;
 // Session matching window: tighter, since sessions are scheduled. The
 // FFLogs report's start should land near the session's start_time:
 // 1h grace before (people log in early) and 4h after (covers the full
@@ -960,6 +967,81 @@ export async function linkFflogsReportsToVideos(): Promise<FflogsLinkResult> {
 
 type SupabaseLike = Awaited<ReturnType<typeof createClient>>;
 
+/**
+ * Lightweight content-similarity check between a video's content
+ * (typically the FFXIV raid name in its category) and a FFLogs
+ * report's zone (the FFLogs raid name).
+ *
+ * Returns:
+ *   - 0   when there's clear keyword overlap (good match)
+ *   - 1   when no overlap (likely different content — penalize)
+ *   - 0.5 when one side has no info (skip — don't penalize blindly)
+ *
+ * This is used as a multiplier on the time-distance score so that
+ * even within the time window, a content mismatch costs more than
+ * a small time difference.
+ */
+function contentMismatchPenalty(
+  videoCategoryName: string | null,
+  videoTitle: string | null,
+  reportZoneName: string | null,
+  reportTitle: string | null,
+): 0 | 0.5 | 1 {
+  // Combine candidate text from each side.
+  const videoText = [videoCategoryName, videoTitle]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  const reportText = [reportZoneName, reportTitle]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  if (!videoText || !reportText) return 0.5;
+
+  // Strip noise — punctuation, brackets, dates etc — leave content
+  // keywords mostly intact.
+  const stripNoise = (s: string) =>
+    s
+      .replace(/[【】\[\]（）()「」『』,.\-:：/／〜~・,]/g, " ")
+      .replace(/\d{4}\s*\d{1,2}\s*\d{1,2}|\d{4}\/\d{1,2}\/\d{1,2}/g, " ") // dates
+      .replace(/day\s*\d+/gi, " ") // "Day1" etc
+      .replace(/\s+/g, " ")
+      .trim();
+  const v = stripNoise(videoText);
+  const r = stripNoise(reportText);
+
+  // Known content keywords (FFXIV raid / trial / ultimate names) —
+  // used as a coarse-grained classifier. Both sides need to share at
+  // least one of these to be considered a content match.
+  const keywords = [
+    // 絶 (Ultimate) シリーズ
+    "絶アレキサンダー", "絶オメガ検証", "絶バハムート", "絶アルテマウェポン",
+    "絶ニーズヘッグ", "絶エンドシンガー", "絶ゾディアーク",
+    "ultimate alexander", "ultimate omega", "futures rewritten",
+    "dragonsong", "epic of alexander", "ucob", "uwu", "tea", "dsr",
+    "top", "fru",
+    // 零式 (Savage) シリーズ
+    "アスフォデロス零式", "アバンギャルド零式", "アルカディア",
+    "ライトヘビー級", "ヘビー級", "クルーザー級", "ウェルター級",
+    "asphodelos", "anabaseios", "abyssos", "pandæmonium",
+    "aac light-heavyweight", "aac heavyweight", "aac cruiserweight",
+    "aac welterweight", "light-heavyweight", "heavyweight",
+    "p9s", "p10s", "p11s", "p12s",
+    "m1s", "m2s", "m3s", "m4s",
+    // 極 (Extreme) シリーズなど
+    "極", "蛮神", "extreme",
+  ];
+  const hasKeyword = (text: string, k: string) =>
+    text.includes(k.toLowerCase());
+
+  // Find shared keywords.
+  for (const k of keywords) {
+    if (hasKeyword(v, k) && hasKeyword(r, k)) return 0;
+  }
+  // No shared keyword → likely different content.
+  return 1;
+}
+
 async function linkReportsToVideos(
   supabase: SupabaseLike,
   reports: FflogsReport[],
@@ -971,9 +1053,13 @@ async function linkReportsToVideos(
 }> {
   if (reports.length === 0) return { scanned: 0, matched: 0, details: [] };
 
+  // Pull category info alongside each video so we can do
+  // content-match (raid-name) checks during scoring.
   const { data: videos } = await supabase
     .from("category_links")
-    .select("id, title, posted_at, created_at, logs_url")
+    .select(
+      "id, title, posted_at, created_at, logs_url, category:categories(id, name)",
+    )
     .eq("kind", "video")
     .is("logs_url", null);
   if (!videos || videos.length === 0) {
@@ -984,31 +1070,64 @@ async function linkReportsToVideos(
     .map((v) => {
       const ts = (v.posted_at as string | null) ?? (v.created_at as string);
       const tMs = new Date(ts).getTime();
-      return { ...v, tMs: Number.isFinite(tMs) ? tMs : null };
+      // category may come back as an object or an array depending on
+      // how supabase resolves the relation; normalize to a single name.
+      const cat = (v as { category?: unknown }).category as
+        | { name?: string | null }
+        | { name?: string | null }[]
+        | null
+        | undefined;
+      const categoryName = Array.isArray(cat)
+        ? (cat[0]?.name ?? null)
+        : (cat?.name ?? null);
+      return {
+        ...v,
+        tMs: Number.isFinite(tMs) ? tMs : null,
+        categoryName,
+      };
     })
-    .filter((v): v is typeof v & { tMs: number } => v.tMs !== null)
+    .filter(
+      (v): v is typeof v & { tMs: number; categoryName: string | null } =>
+        v.tMs !== null,
+    )
     .sort((a, b) => a.tMs - b.tMs);
 
   const usedReports = new Set<string>();
   const details: FflogsLinkDetail[] = [];
   let matched = 0;
 
-  // Score function for video↔report compatibility:
+  // Score: time distance + content-mismatch penalty.
   //   delta = video.posted_at - report.startMs
-  //   - delta > 0 means raid happened BEFORE upload (the normal case;
-  //     people upload videos after their raid)
-  //   - delta < 0 means upload happened BEFORE raid (very unusual;
-  //     pre-recorded or scheduling drift). Penalize heavily.
-  // Lower score = better match. The "best" pairing is the closest
-  // report that came BEFORE the video.
+  //   - delta > 0: raid before upload (normal). score = delta.
+  //   - delta < 0: upload before raid (rare). score = -delta * 4.
+  //   - |delta| > window: out, score = Infinity.
+  //   Plus content gating:
+  //     - mismatch = 1 (confirmed different content): score = Infinity
+  //       (reject — different raid). e.g. 絶アレキサンダー report
+  //       can never match a 絶オメガ video.
+  //     - mismatch = 0.5 (one side unknown): small penalty (still
+  //       allowed, but a clear-content match wins by time).
+  //     - mismatch = 0 (confirmed same content): no penalty.
   //
-  // Replaces the previous greedy "earliest unmatched in window" which
-  // could pair a Day-1 raid report with a Day-27 video just because
-  // both were within ±36h of an old upload.
-  const scoreCandidate = (video: { tMs: number }, report: FflogsReport) => {
+  // Replaces "earliest unmatched in window" which could pair a Day-1
+  // 絶アレキサンダー report with a Day-27 絶オメガ video just because
+  // both were within the window of an upload.
+  const SMALL_PENALTY = 6 * 60 * 60 * 1000; // 6h equivalent
+  const scoreCandidate = (
+    video: { tMs: number; categoryName: string | null; title: string | null },
+    report: FflogsReport,
+  ) => {
     const delta = video.tMs - report.startMs; // ms
     if (Math.abs(delta) > MATCH_WINDOW_MS) return Infinity;
-    return delta >= 0 ? delta : -delta * 4; // penalize "report after video"
+    const mismatch = contentMismatchPenalty(
+      video.categoryName,
+      video.title,
+      report.zoneName,
+      report.title,
+    );
+    if (mismatch === 1) return Infinity; // confirmed different content
+    const timeScore = delta >= 0 ? delta : -delta * 4;
+    return timeScore + (mismatch === 0.5 ? SMALL_PENALTY : 0);
   };
 
   // Build all candidate (video, report, score) tuples that fit the

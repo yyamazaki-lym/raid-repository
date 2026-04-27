@@ -19,6 +19,18 @@ export type ReleaseEntry = {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    version: "1.9.2",
+    date: "2026-04-27",
+    notes: [
+      "FFLogs マッチング精度改善: 動画↔レポートのマッチ時間幅を ±36h → ±18h に縮小（隣接する raid 日に誤マッチしないよう）",
+      "新規: コンテンツ照合機能 — レポートの zone name と動画のコンテンツ名で keyword overlap を確認。絶アレキサンダーのレポートが絶オメガの動画に紐づくような content mismatch を防ぐ",
+      "v2 GraphQL クエリに `zone { name }` を追加して raid 名を取得",
+      "動画フェッチに `category:categories(id, name)` を join してコンテンツ名を取得",
+      "スコアリング: 同一コンテンツ確認時はそのまま、片側不明時は小ペナルティ (6h 相当)、コンテンツ不一致確定時は完全 reject (Infinity)。これで 絶/零式/極 の違うレポートが混在しないように",
+      "認識キーワード: 絶アレキサンダー・絶オメガ検証・絶バハムート・絶ニーズヘッグ・絶エンドシンガー・絶アルテマウェポン・絶ゾディアーク、アスフォデロス零式・アバンギャルド零式・アルカディア (ライト/ヘビー/クルーザー/ウェルター級)、ucob/uwu/tea/dsr/top/fru、p9-12s, m1-4s 等",
+    ],
+  },
+  {
     version: "1.9.1",
     date: "2026-04-27",
     notes: [
