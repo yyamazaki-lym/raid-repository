@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   MessageSquarePlus,
   Pencil,
@@ -13,58 +14,81 @@ import { toast } from "sonner";
 import {
   createScheduleMemo,
   deleteScheduleMemo,
-  fetchScheduleMemosByDate,
   getStoredAuthorName,
   persistAuthorName,
   updateScheduleMemo,
-  useRealtimeScheduleMemos,
   type ScheduleSessionMemo,
 } from "@/lib/schedule-memos-client";
 
 /**
  * Click-on-date popover that lets any viewer leave shared memos for a
- * specific session. Memos persist server-side and live-sync via the
- * realtime hook so all logged-in viewers see updates immediately.
+ * specific session. The realtime fetch lives ONE LEVEL UP at the row
+ * (so a single subscription per session row, not one per
+ * popover instance), and the row passes `memos` in as a prop.
  *
- * Trigger is whatever the parent renders as `children` — typically
- * the date span/chip from the schedule. Clicking the trigger opens
- * the popover; clicking outside or pressing Esc closes it.
- *
- * Identity model
- * ---------------
- * The app has no auth system. The author-name field is informational
- * only — a returning user's name is remembered via localStorage so
- * they don't have to re-type each session. Any viewer can edit /
- * delete any memo (matches the "open RLS" trust model elsewhere).
+ * Popover content is rendered through a Portal so the parent's
+ * `overflow-hidden` (Card border-radius clipping) doesn't truncate
+ * the popover. Position is fixed and computed from the trigger's
+ * bounding-rect; it closes on scroll / resize so stale coordinates
+ * don't drift away from the trigger.
  */
 
 type Props = {
   rawDate: string;
   /** What date label to show in the popover header. */
   displayDate: string;
+  /** Realtime-tracked memo list for `rawDate`. */
+  memos: ScheduleSessionMemo[];
   children: React.ReactNode;
 };
 
-export function SessionMemoPopover({ rawDate, displayDate, children }: Props) {
+export function SessionMemoPopover({
+  rawDate,
+  displayDate,
+  memos,
+  children,
+}: Props) {
   const [open, setOpen] = useState(false);
-  const [initial, setInitial] = useState<ScheduleSessionMemo[]>([]);
-  const memos = useRealtimeScheduleMemos(rawDate, initial);
   const popupRef = useRef<HTMLDivElement | null>(null);
   const wrapperRef = useRef<HTMLSpanElement | null>(null);
+  const [coords, setCoords] = useState<{ top: number; left: number } | null>(
+    null,
+  );
 
-  // Lazy-load memos when first opened. Realtime subscription takes
-  // over after that for live updates.
+  // Compute the popup's fixed-position coordinates whenever it
+  // opens, then reposition / close on scroll-resize since fixed
+  // coords don't track the trigger automatically.
   useEffect(() => {
-    if (!open) return;
-    let cancelled = false;
-    void (async () => {
-      const m = await fetchScheduleMemosByDate(rawDate);
-      if (!cancelled) setInitial(m);
-    })();
-    return () => {
-      cancelled = true;
+    if (!open) {
+      setCoords(null);
+      return;
+    }
+    const place = () => {
+      const rect = wrapperRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      // Default: below trigger, left-aligned. Clamp horizontally so
+      // the popup never escapes the viewport on small screens.
+      const popupWidth = Math.min(
+        448,
+        document.documentElement.clientWidth - 32,
+      );
+      const left = Math.max(
+        16,
+        Math.min(rect.left, document.documentElement.clientWidth - popupWidth - 16),
+      );
+      const top = rect.bottom + 4;
+      setCoords({ top, left });
     };
-  }, [open, rawDate]);
+    place();
+    const onResize = () => place();
+    const onScroll = () => setOpen(false);
+    window.addEventListener("resize", onResize);
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      window.removeEventListener("resize", onResize);
+      window.removeEventListener("scroll", onScroll);
+    };
+  }, [open]);
 
   // Click-outside-to-dismiss + Esc.
   useEffect(() => {
@@ -91,7 +115,7 @@ export function SessionMemoPopover({ rawDate, displayDate, children }: Props) {
   }, [open]);
 
   return (
-    <span ref={wrapperRef} className="relative inline-flex">
+    <span ref={wrapperRef} className="inline-flex">
       <button
         type="button"
         onClick={(e) => {
@@ -103,39 +127,66 @@ export function SessionMemoPopover({ rawDate, displayDate, children }: Props) {
         aria-label={`${displayDate} のメモを開く`}
       >
         {children}
-        {/* Tiny indicator that memos exist for this date. Shown only
-            when memos are present so empty dates stay quiet. */}
-        {memos.length > 0 && (
-          <span
-            aria-hidden
-            className="ml-0.5 inline-flex h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--neon-violet)] shadow-[0_0_6px_var(--neon-violet)]"
-          />
-        )}
       </button>
-      {open && (
-        <div
-          ref={popupRef}
-          role="dialog"
-          aria-label={`${displayDate} のメモ`}
-          className="glass-popup absolute left-0 top-full z-40 mt-1 w-[min(28rem,calc(100vw-2rem))] rounded-md border border-[var(--neon-violet)]/40 p-3 shadow-[0_8px_32px_-16px_var(--neon-violet)]"
-        >
-          <header className="mb-2 flex items-center justify-between gap-2">
-            <p className="font-mono text-[10px] tracking-[0.2em] text-[var(--neon-violet)]/90 uppercase">
-              {displayDate} のメモ
-            </p>
-            <button
-              type="button"
-              onClick={() => setOpen(false)}
-              aria-label="閉じる"
-              className="inline-flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
-            >
-              <X className="h-3 w-3" aria-hidden />
-            </button>
-          </header>
-          <MemoList rawDate={rawDate} memos={memos} />
-        </div>
-      )}
+      {open &&
+        coords &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div
+            ref={popupRef}
+            role="dialog"
+            aria-label={`${displayDate} のメモ`}
+            style={{
+              position: "fixed",
+              top: coords.top,
+              left: coords.left,
+              width: "min(28rem,calc(100vw - 2rem))",
+            }}
+            className="glass-popup z-50 rounded-md border border-[var(--neon-violet)]/40 p-3 shadow-[0_8px_32px_-16px_var(--neon-violet)]"
+          >
+            <header className="mb-2 flex items-center justify-between gap-2">
+              <p className="font-mono text-[10px] tracking-[0.2em] text-[var(--neon-violet)]/90 uppercase">
+                {displayDate} のメモ
+              </p>
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                aria-label="閉じる"
+                className="inline-flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
+              >
+                <X className="h-3 w-3" aria-hidden />
+              </button>
+            </header>
+            <MemoList rawDate={rawDate} memos={memos} />
+          </div>,
+          document.body,
+        )}
     </span>
+  );
+}
+
+/**
+ * Tiny purple dot indicator. Parent renders this wherever it wants
+ * (e.g. trailing the time text rather than the date), so the visual
+ * cue and the click-to-edit affordance can sit in different spots.
+ */
+export function SessionMemoDot({
+  count,
+  className = "",
+}: {
+  count: number;
+  className?: string;
+}) {
+  if (count <= 0) return null;
+  return (
+    <span
+      aria-label={`メモ ${count} 件`}
+      title={`メモ ${count} 件`}
+      className={
+        "inline-flex h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--neon-violet)] shadow-[0_0_6px_var(--neon-violet)] " +
+        className
+      }
+    />
   );
 }
 
@@ -364,4 +415,3 @@ function formatRelativeTime(iso: string): string {
   const dd = String(d.getDate()).padStart(2, "0");
   return `${y}-${mo}-${dd}`;
 }
-

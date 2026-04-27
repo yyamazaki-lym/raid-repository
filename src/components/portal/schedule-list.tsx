@@ -2,7 +2,11 @@ import Link from "next/link";
 import { CalendarX2, AlertTriangle, BarChart3, Film } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { CommentPopover } from "./comment-popover";
-import { SessionMemoPopover } from "./session-memo-popover";
+import {
+  SessionMemoDot,
+  SessionMemoPopover,
+} from "./session-memo-popover";
+import { useRealtimeScheduleMemos } from "@/lib/schedule-memos-client";
 import {
   getJapaneseHolidayName,
   isJapaneseHoliday,
@@ -346,6 +350,7 @@ function SessionRow({
   scheduleUrl?: string | null;
 }) {
   const decided = session.status === "DECISION";
+  const memos = useRealtimeScheduleMemos(session.rawDate, []);
   // Japanese national holidays get a red date label — overrides the
   // default and DECISION-cyan styling. Doesn't change the row background
   // so the past/decided treatment still composes underneath.
@@ -378,6 +383,7 @@ function SessionRow({
           <SessionMemoPopover
             rawDate={session.rawDate}
             displayDate={session.rawDate.split(" ")[0] ?? session.rawDate}
+            memos={memos}
           >
             <DateLabel
               text={session.rawDate.split(" ")[0]!}
@@ -389,6 +395,10 @@ function SessionRow({
           <span className="text-muted-foreground text-[11px]">
             {session.startTime} ~ {session.endTime}
           </span>
+          {/* Memo indicator placed right after the time per user
+              request — visible whether or not video/Logs links are
+              also rendered for this row. */}
+          <SessionMemoDot count={memos.length} />
           {/* Action icons — placed after the time so the cell reads
               "what is this date" → "actions for this date" left-to-right.
               Film: deep-link into the matched video card.

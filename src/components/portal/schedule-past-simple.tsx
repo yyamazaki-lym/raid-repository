@@ -8,9 +8,13 @@ import {
   isJapaneseHoliday,
 } from "@/lib/japanese-holidays";
 import type { JapaneseHolidaysMap } from "@/lib/japanese-holidays";
+import { useRealtimeScheduleMemos } from "@/lib/schedule-memos-client";
 import type { ScheduleSession } from "@/lib/schedule/next-session";
 import type { SessionVideoLink } from "@/lib/server/session-video-link";
-import { SessionMemoPopover } from "./session-memo-popover";
+import {
+  SessionMemoDot,
+  SessionMemoPopover,
+} from "./session-memo-popover";
 
 /**
  * Simple past-sessions view: a compact horizontal-wrap strip of the
@@ -85,6 +89,7 @@ function DateChip({
   holidays?: JapaneseHolidaysMap;
   videoLink: SessionVideoLink | null;
 }) {
+  const memos = useRealtimeScheduleMemos(session.rawDate, []);
   const holiday = isJapaneseHoliday(session.date, holidays);
   const holidayName = holiday
     ? getJapaneseHolidayName(session.date, holidays)
@@ -129,10 +134,12 @@ function DateChip({
       title={tooltip}
     >
       {/* Date+曜 wrapped in a memo popover trigger. Click reveals
-          per-session shared notes. */}
+          per-session shared notes. The dot indicator sits AFTER all
+          icons (rightmost) so it doesn't crowd the date label. */}
       <SessionMemoPopover
         rawDate={session.rawDate}
         displayDate={`${monthDay}（${session.dayOfWeek}）`}
+        memos={memos}
       >
         <span className="tabular-nums">{monthDay}</span>
         <span className="ml-0.5 text-[10px] opacity-75">
@@ -162,6 +169,7 @@ function DateChip({
           <BarChart3 className="h-2.5 w-2.5" aria-hidden />
         </a>
       )}
+      <SessionMemoDot count={memos.length} className="ml-0.5" />
     </li>
   );
 }

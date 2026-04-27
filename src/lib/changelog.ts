@@ -19,6 +19,14 @@ export type ReleaseEntry = {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    version: "1.4.1",
+    date: "2026-04-27",
+    notes: [
+      "簡易日程のメモポップオーバーがカード境界で隠れる不具合を修正（Portal 描画 + scroll で自動クローズ）",
+      "メモ存在を示す紫ドットを時刻の右（行）/ 末尾（チップ）に移動",
+    ],
+  },
+  {
     version: "1.4.0",
     date: "2026-04-27",
     notes: [
