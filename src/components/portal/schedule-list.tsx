@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CalendarX2, AlertTriangle, Film } from "lucide-react";
+import { CalendarX2, AlertTriangle, BarChart3, Film } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { CommentPopover } from "./comment-popover";
 import {
@@ -111,9 +111,9 @@ export function ScheduleList({
 
   // Header row factory. The past table omits the "確定" column since
   // every past session was de facto held — the column only carries
-  // signal for upcoming dates that may still slip. The 確定 column
-  // hugs the date column tightly (pl-1 / pr-1 on the date) since the
-  // gap was visually too wide.
+  // signal for upcoming dates that may still slip. 確定 column
+  // hugs the date col tightly (no left padding, minimal right) since
+  // the column content is just a 1ch ✓ badge.
   const tableHead = (showDecided: boolean) => (
     <thead>
       <tr className="border-b border-border/60 text-[10px] tracking-[0.18em] text-muted-foreground uppercase">
@@ -121,7 +121,7 @@ export function ScheduleList({
           日程
         </th>
         {showDecided && (
-          <th scope="col" className="px-1 py-2 font-mono">
+          <th scope="col" className="pl-0 pr-1 py-2 font-mono">
             確定
           </th>
         )}
@@ -395,14 +395,29 @@ function SessionRow({
           <span className="text-muted-foreground text-[11px]">
             {session.startTime} ~ {session.endTime}
           </span>
+          {/* Standalone Logs button — separate Link so the user can
+              tap into FFLogs without going via the video page. Only
+              shown when the matched video has logs_url set. */}
+          {videoLink?.logsUrl && (
+            <a
+              href={videoLink.logsUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label={`${session.rawDate.split(" ")[0]} の FFLogs を開く`}
+              title="FFLogs"
+              className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded text-amber-300 transition-colors hover:bg-amber-400/15 hover:text-amber-200"
+            >
+              <BarChart3 className="h-3 w-3" aria-hidden />
+            </a>
+          )}
         </div>
       </th>
       {showDecided && (
-        <td className="px-1 py-2 text-center align-middle">
+        <td className="pl-0 pr-1 py-2 text-center align-middle">
           {decided ? (
             <span
               aria-label="日程確定"
-              className="inline-flex h-5 min-w-[1.75rem] items-center justify-center rounded-sm border border-[var(--neon-cyan)]/40 bg-[var(--neon-cyan)]/12 px-1.5 font-mono text-[10px] tracking-widest text-[var(--neon-cyan)] uppercase shadow-[0_0_10px_-4px_var(--neon-cyan)]"
+              className="inline-flex h-4 w-4 items-center justify-center rounded-sm border border-[var(--neon-cyan)]/40 bg-[var(--neon-cyan)]/12 font-mono text-[10px] text-[var(--neon-cyan)] shadow-[0_0_10px_-4px_var(--neon-cyan)]"
             >
               ✓
             </span>

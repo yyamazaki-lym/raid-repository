@@ -25,7 +25,10 @@ import type { SessionVideoLink } from "@/lib/server/session-video-link";
  */
 
 const STILL_RELEVANT_MS = 6 * 60 * 60 * 1000;
-const SIMPLE_LIMIT = 10;
+// Reduced from 10 → 7: adding the video Link icon + Logs icon made
+// each chip ~30% wider, so 10 was wrapping to a second line on most
+// viewports. Seven fits comfortably on a single line at common widths.
+const SIMPLE_LIMIT = 7;
 
 export function SchedulePastSimple({
   sessions,

@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import {
+  CaseSensitive,
   ClipboardCopy,
   ClipboardList,
   GripVertical,
@@ -216,6 +217,26 @@ export function RecruitmentTopCopyButton({
 function displayLabel(t: RecruitmentTemplate): string {
   const cat = t.categoryName ?? "未分類";
   return t.label ? `${cat} / ${t.label}` : cat;
+}
+
+/**
+ * Convert full-width ASCII characters (digits, Latin letters, and the
+ * `！` 〜 `～` punctuation block) to their half-width equivalents.
+ * Common pain point in PT募集文 — text typed via a Japanese IME often
+ * sneaks in 全角 chars (`１`, `（`, `／`, `＞`) that the user actually
+ * wanted as half-width. Surfaced as a manual "全角→半角" button so
+ * the conversion is opt-in, not a silent rewrite.
+ *
+ * Algorithm: every full-width ASCII char from U+FF01 to U+FF5E maps
+ * to its half-width counterpart by subtracting 0xFEE0. The 全角 space
+ * U+3000 is converted separately to a regular space.
+ */
+function toHalfWidth(s: string): string {
+  return s
+    .replace(/[！-～]/g, (c) =>
+      String.fromCharCode(c.charCodeAt(0) - 0xfee0),
+    )
+    .replace(/　/g, " ");
 }
 
 function groupByCategory(
@@ -467,9 +488,31 @@ function ManageDialog({
                 </p>
               </div>
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="rt-body" className="text-xs text-foreground/80">
-                  本文
-                </Label>
+                <div className="flex items-center justify-between gap-2">
+                  <Label htmlFor="rt-body" className="text-xs text-foreground/80">
+                    本文
+                  </Label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = toHalfWidth(editing.body);
+                      if (next === editing.body) {
+                        toast.info("変換対象の全角文字なし");
+                        return;
+                      }
+                      setEditing((cur) =>
+                        cur ? { ...cur, body: next } : cur,
+                      );
+                      toast.success("全角を半角に変換しました");
+                    }}
+                    className="inline-flex items-center gap-1 rounded-sm border border-[var(--neon-cyan)]/40 bg-[var(--neon-cyan)]/8 px-2 py-0.5 font-mono text-[10px] tracking-widest text-[var(--neon-cyan)] uppercase transition-colors hover:bg-[var(--neon-cyan)]/15"
+                    title="全角の数字・英字・記号を半角に変換"
+                    aria-label="全角を半角に変換"
+                  >
+                    <CaseSensitive className="h-3 w-3" aria-hidden />
+                    全角→半角
+                  </button>
+                </div>
                 <Textarea
                   id="rt-body"
                   value={editing.body}
