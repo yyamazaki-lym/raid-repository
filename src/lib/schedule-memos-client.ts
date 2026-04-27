@@ -154,6 +154,12 @@ export function useRealtimeScheduleMemos(
       }
     };
 
+    // Subscribe without a server-side filter on raw_date — that field
+    // contains parens / slashes / spaces / tildes (e.g.
+    // "2026/04/23(木) 22:00~0:00") which Supabase Realtime's filter
+    // parser doesn't reliably handle. Cheaper to listen to all memo
+    // changes and match in the callback. Volume is tiny (one row per
+    // memo create / edit / delete).
     const channel = supabase
       .channel(`schedule-memos-${id}`)
       .on(
@@ -162,10 +168,15 @@ export function useRealtimeScheduleMemos(
           event: "*",
           schema: "public",
           table: "schedule_session_memos",
-          filter: `raw_date=eq.${rawDate}`,
         },
-        () => {
-          void refetch();
+        (payload) => {
+          const newRow = payload.new as { raw_date?: string } | null;
+          const oldRow = payload.old as { raw_date?: string } | null;
+          const matched =
+            newRow?.raw_date === rawDate || oldRow?.raw_date === rawDate;
+          if (matched) {
+            void refetch();
+          }
         },
       )
       .subscribe();

@@ -19,6 +19,16 @@ export type ReleaseEntry = {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    version: "1.5.1",
+    date: "2026-04-27",
+    notes: [
+      "カテゴリースイッチャーから各ページへの遷移が動かない不具合を修正（DropdownMenuItem に戻して Base UI のクリック処理に乗せる）",
+      "メモ realtime のフィルタを撤廃し callback 側で raw_date 照合（特殊文字混入で配信されない問題に対処）",
+      "簡易過去日程チップの上下空白を `h-6 + leading-none` を撤廃して padding-only に（CJK グリフの自然な縦中央表示に）",
+      "募集ボタンのホバープレビュー — タイトルからカテゴリー名を削除（冗長だったため）",
+    ],
+  },
+  {
     version: "1.5.0",
     date: "2026-04-27",
     notes: [

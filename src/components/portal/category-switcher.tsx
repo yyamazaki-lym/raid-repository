@@ -134,19 +134,21 @@ export function CategorySwitcher({ initialCategories }: Props) {
               <div
                 key={cat.id}
                 className={cn(
-                  "group flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md px-1.5 py-1 transition-colors hover:bg-secondary/60 focus-within:bg-secondary/60",
+                  "group flex flex-wrap items-center gap-x-1 gap-y-1 rounded-md transition-colors",
                   isActive && "bg-secondary/40",
                 )}
               >
-                {/* Default-click target: name + status. Goes to current
-                    sub-tab to feel "natural" when chained from another
-                    category page. Long names wrap to multiple lines
-                    instead of truncating. The pathname-watching effect
-                    above closes the menu after navigation. */}
-                <Link
-                  href={defaultHref}
-                  prefetch
-                  className="flex min-w-0 flex-1 items-center gap-3 cursor-pointer"
+                {/* Default-click target wrapped in DropdownMenuItem so
+                    Base UI's menuitem semantics (focus / click / close)
+                    play nicely with Next.js Link navigation. The
+                    earlier raw <div>+<Link> form was being swallowed
+                    by the menu's pointer handling and never navigated. */}
+                <DropdownMenuItem
+                  render={<Link href={defaultHref} prefetch />}
+                  className={cn(
+                    "flex min-w-0 flex-1 cursor-pointer items-center gap-3",
+                    isActive && "bg-secondary/40",
+                  )}
                 >
                   <StatusBadge
                     status={cat.status}
@@ -163,27 +165,30 @@ export function CategorySwitcher({ initialCategories }: Props) {
                       className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--neon-violet)] shadow-[0_0_8px_var(--neon-violet)]"
                     />
                   )}
-                </Link>
+                </DropdownMenuItem>
 
-                {/* Sub-page shortcuts: always visible (touch-friendly).
-                    Each is its own Link so clicking jumps directly to
-                    that page without needing the default sub-tab path.
-                    Menu close is handled by the pathname effect. */}
+                {/* Sub-page shortcuts: each as its own DropdownMenuItem
+                    so they get the same menuitem behavior. Compact
+                    h-6 w-6 with icon-only rendering. */}
                 <nav
                   aria-label={`${cat.name} のサブページ`}
-                  className="flex shrink-0 items-center gap-0.5"
+                  className="flex shrink-0 items-center gap-0.5 pr-1.5"
                 >
                   {SUB_PAGES.map((p) => (
-                    <Link
+                    <DropdownMenuItem
                       key={p.segment}
-                      href={`/category/${cat.slug}/${p.segment}`}
-                      prefetch
-                      title={p.label}
-                      aria-label={`${cat.name} - ${p.label}`}
-                      className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-all duration-150 hover:scale-110 hover:bg-[var(--neon-violet)]/15 hover:text-[var(--neon-violet)]"
+                      render={
+                        <Link
+                          href={`/category/${cat.slug}/${p.segment}`}
+                          prefetch
+                          title={p.label}
+                          aria-label={`${cat.name} - ${p.label}`}
+                        />
+                      }
+                      className="inline-flex h-6 w-6 cursor-pointer items-center justify-center rounded text-muted-foreground transition-all duration-150 hover:scale-110 hover:bg-[var(--neon-violet)]/15 hover:text-[var(--neon-violet)]"
                     >
                       <p.Icon className="h-3 w-3" aria-hidden />
-                    </Link>
+                    </DropdownMenuItem>
                   ))}
                 </nav>
               </div>

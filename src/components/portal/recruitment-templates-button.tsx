@@ -274,8 +274,10 @@ export function RecruitmentTopCopyButton({
           role="tooltip"
           className="glass-popup pointer-events-none absolute right-0 top-full z-50 mt-1 w-[min(28rem,calc(100vw-2rem))] rounded-md border border-[var(--neon-cyan)]/30 p-2 shadow-[0_8px_24px_-12px_var(--neon-cyan)]"
         >
+          {/* Sub-label only — category name is implicit (this is the
+              top template; the user picked it as default). */}
           <p className="mb-1 font-mono text-[10px] tracking-[0.2em] text-[var(--neon-cyan)] uppercase">
-            ★ {displayLabel(top)}
+            ★ {top.label || "通常募集"}
           </p>
           <pre className="max-h-[14rem] overflow-y-auto font-mono text-[11px] leading-relaxed whitespace-pre-wrap text-foreground/90">
             {top.body}
