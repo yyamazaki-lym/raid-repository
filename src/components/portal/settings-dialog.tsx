@@ -63,6 +63,7 @@ type FflogsLinkResultLite = {
   reportsDateRange?: { earliest: string; latest: string };
   videosDateRange?: { earliest: string; latest: string };
   sessionsDateRange?: { earliest: string; latest: string };
+  reportSamples?: Array<{ date: string; title: string; url: string }>;
 };
 
 // Inline copy of the Server Action result type — we can't re-export the
@@ -234,6 +235,7 @@ export function SettingsDialog() {
             reportsDateRange: undefined,
             videosDateRange: undefined,
             sessionsDateRange: undefined,
+            reportSamples: undefined,
           });
           return;
         }
@@ -699,11 +701,52 @@ export function SettingsDialog() {
                               )}
                             </ul>
                             <p className="text-[10px] text-muted-foreground/85 leading-relaxed">
-                              レポート期間と動画 / 過去予定の期間が重なっていない
-                              場合は、別のメンバーのユーザー名（その人がアップロード
-                              したレポートを持っている）を試してください。
+                              レポート期間が古すぎる場合は、設定した
+                              ユーザー名が <strong>最近のレポートをアップしていない</strong>
+                              ことを意味します。下の取得済みレポート一覧で実際の
+                              タイトルを確認して、想定通りのアカウントか
+                              チェックしてみてください。
                             </p>
                           </div>
+                        )}
+                      {/* Fetched report list — lets the user verify
+                          which reports the API actually returned. If
+                          they're old / unfamiliar / wrong group, the
+                          username probably points to a stale account. */}
+                      {logsResult.reportSamples &&
+                        logsResult.reportSamples.length > 0 && (
+                          <details className="mt-2 group/reports">
+                            <summary className="cursor-pointer list-none text-[10px] text-muted-foreground/80 hover:text-foreground/90 [&::-webkit-details-marker]:hidden">
+                              <span className="inline-flex items-center gap-1">
+                                <span className="text-[var(--neon-cyan)]/70 transition-transform group-open/reports:rotate-90">
+                                  ▸
+                                </span>
+                                取得済みレポート (新しい順 上位
+                                {logsResult.reportSamples.length} 件)
+                              </span>
+                            </summary>
+                            <ul className="mt-1.5 ml-3.5 flex flex-col gap-0.5 font-mono text-[10px] text-muted-foreground">
+                              {logsResult.reportSamples.map((r, i) => (
+                                <li
+                                  key={i}
+                                  className="flex items-baseline gap-2 break-words"
+                                >
+                                  <span className="shrink-0 tabular-nums text-amber-200/70">
+                                    {r.date}
+                                  </span>
+                                  <a
+                                    href={r.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="min-w-0 flex-1 truncate text-foreground/85 underline decoration-dotted underline-offset-2 hover:text-[var(--neon-cyan)]"
+                                    title={r.title}
+                                  >
+                                    {r.title}
+                                  </a>
+                                </li>
+                              ))}
+                            </ul>
+                          </details>
                         )}
                       {logsResult.details.length > 0 && (
                         <ul className="mt-1 flex flex-col gap-0.5 font-mono text-[10px] text-muted-foreground">

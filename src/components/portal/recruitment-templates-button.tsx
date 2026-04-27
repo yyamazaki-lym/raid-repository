@@ -233,10 +233,16 @@ export function RecruitmentTopCopyButton({
   if (templates.length === 0) return null;
   const top = templates[0]!;
 
+  // Display label without the category prefix — the schedule page
+  // shows the recruitment button in context of "this is the next
+  // session's recruitment text", so the category name is implicit
+  // and adding it makes the tooltip / toast feel redundant.
+  const subLabel = top.label || "通常募集";
+
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(top.body);
-      toast.success(`「${displayLabel(top)}」をコピーしました`);
+      toast.success(`「${subLabel}」をコピーしました`);
       setJustCopied(true);
       window.setTimeout(() => setJustCopied(false), 1500);
     } catch {
@@ -253,8 +259,8 @@ export function RecruitmentTopCopyButton({
       <button
         type="button"
         onClick={copy}
-        aria-label={`「${displayLabel(top)}」を募集文としてコピー`}
-        title={`${displayLabel(top)} をコピー`}
+        aria-label={`「${subLabel}」を募集文としてコピー`}
+        title={`${subLabel} をコピー`}
         className={
           "inline-flex h-7 items-center gap-1.5 rounded-md border px-2.5 font-mono text-[11px] tracking-[0.18em] uppercase transition-colors " +
           (justCopied

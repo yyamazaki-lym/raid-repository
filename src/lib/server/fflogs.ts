@@ -138,6 +138,8 @@ export type FflogsLinkResult = {
   videosDateRange?: { earliest: string; latest: string };
   /** Diagnostic — date range of unmatched sessions. */
   sessionsDateRange?: { earliest: string; latest: string };
+  /** Diagnostic — sample of fetched reports (most recent first). */
+  reportSamples?: Array<{ date: string; title: string; url: string }>;
 };
 
 // Video matching window: ±36h around the video's posted_at. Generous
@@ -211,14 +213,28 @@ export async function linkFflogsReportsToVideos(): Promise<FflogsLinkResult> {
   // problem is "no overlap" (different time periods) vs "match logic
   // bug".
   const sortedReports = [...reports].sort((a, b) => a.startMs - b.startMs);
-  const reportsDateRange = sortedReports.length > 0
-    ? {
-        earliest: new Date(sortedReports[0]!.startMs).toISOString().slice(0, 10),
-        latest: new Date(
-          sortedReports[sortedReports.length - 1]!.startMs,
-        ).toISOString().slice(0, 10),
-      }
-    : undefined;
+  const reportsDateRange =
+    sortedReports.length > 0
+      ? {
+          earliest: new Date(sortedReports[0]!.startMs)
+            .toISOString()
+            .slice(0, 10),
+          latest: new Date(sortedReports[sortedReports.length - 1]!.startMs)
+            .toISOString()
+            .slice(0, 10),
+        }
+      : undefined;
+
+  // Sample (newest first) so the user can verify what FFLogs returned
+  // — useful when the reports are surprisingly old or unfamiliar.
+  const reportSamples = [...reports]
+    .sort((a, b) => b.startMs - a.startMs)
+    .slice(0, 10)
+    .map((r) => ({
+      date: new Date(r.startMs).toISOString().slice(0, 10),
+      title: r.title || "(無題のレポート)",
+      url: `https://www.fflogs.com/reports/${r.id}`,
+    }));
 
   return {
     ok: true,
@@ -231,6 +247,7 @@ export async function linkFflogsReportsToVideos(): Promise<FflogsLinkResult> {
     reportsDateRange,
     videosDateRange: videoResult.dateRange,
     sessionsDateRange: sessionResult.dateRange,
+    reportSamples,
   };
 }
 
