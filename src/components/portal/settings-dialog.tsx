@@ -79,6 +79,7 @@ type FflogsLinkResultLite = {
     htmlPageSize?: number;
     htmlCodesFound?: number;
   };
+  userTypeFields?: string[];
 };
 
 // Inline copy of the Server Action result type — we can't re-export the
@@ -951,6 +952,24 @@ export function SettingsDialog() {
                                 </strong>
                               </p>
                             )}
+                            {logsResult.userTypeFields &&
+                              logsResult.userTypeFields.length > 0 && (
+                                <details className="mt-1.5 group/userfields">
+                                  <summary className="cursor-pointer list-none text-[10px] hover:text-foreground/90 [&::-webkit-details-marker]:hidden">
+                                    <span className="inline-flex items-center gap-1">
+                                      <span className="text-amber-300/70 transition-transform group-open/userfields:rotate-90">
+                                        ▸
+                                      </span>
+                                      User 型のフィールド一覧 (introspect、{
+                                        logsResult.userTypeFields.length
+                                      } 個)
+                                    </span>
+                                  </summary>
+                                  <pre className="mt-1 ml-3 rounded bg-secondary/30 px-1.5 py-1 font-mono text-[9px] leading-tight whitespace-pre-wrap break-words text-muted-foreground/85 max-h-[12rem] overflow-y-auto">
+                                    {logsResult.userTypeFields.join("\n")}
+                                  </pre>
+                                </details>
+                              )}
                           </div>
                         </details>
                       )}

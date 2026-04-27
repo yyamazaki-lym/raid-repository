@@ -41,10 +41,58 @@ const FFLOGS_GRAPHQL_URL = "https://www.fflogs.com/api/v2/user";
  * walking `has_more_pages`.
  */
 /**
+ * Introspect the GraphQL schema to list all fields available on the
+ * `User` type. Used as a diagnostic to find any hidden / undocumented
+ * field that might expose Private reports of the OAuth user (the
+ * documented `reportData.reports(userID:)` only returns Public).
+ */
+export async function introspectUserFields(
+  accessToken: string,
+): Promise<string[]> {
+  try {
+    const res = await fetch(FFLOGS_GRAPHQL_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({
+        query: `query { __type(name: "User") { fields { name type { name kind ofType { name kind } } } } }`,
+      }),
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!res.ok) return [];
+    const json = (await res.json()) as {
+      data?: {
+        __type?: {
+          fields?: Array<{
+            name: string;
+            type?: {
+              name?: string | null;
+              kind?: string;
+              ofType?: { name?: string | null; kind?: string } | null;
+            };
+          }>;
+        } | null;
+      };
+    };
+    const fields = json.data?.__type?.fields ?? [];
+    return fields.map((f) => {
+      const typeName =
+        f.type?.name ?? f.type?.ofType?.name ?? f.type?.kind ?? "";
+      return `${f.name}${typeName ? `: ${typeName}` : ""}`;
+    });
+  } catch {
+    return [];
+  }
+}
+
+/**
  * Fetch the authenticated user's profile (id + name). Used as the
  * first step before paginating their reports — `User` type does NOT
- * have a `reports` field, so we have to filter `reportData.reports`
- * by owner client-side.
+ * have a `reports` field per introspection, so we have to filter
+ * `reportData.reports` by owner client-side.
  */
 async function fetchCurrentUser(
   accessToken: string,
@@ -427,6 +475,8 @@ export type FflogsLinkResult = {
   details: FflogsLinkDetail[];
   /** Diagnostic — date range of fetched FFLogs reports (for empty-match debugging). */
   reportsDateRange?: { earliest: string; latest: string };
+  /** Diagnostic — fields available on FFLogs `User` type (introspected). */
+  userTypeFields?: string[];
   /** Diagnostic — date range of unmatched videos. */
   videosDateRange?: { earliest: string; latest: string };
   /** Diagnostic — date range of unmatched sessions. */
@@ -545,6 +595,10 @@ export async function linkFflogsReportsToVideos(): Promise<FflogsLinkResult> {
   // Public レポートの取得には強い: v2 + HTML どちらかには出てくる。
   // Private / Unlisted は API/HTML どちらにも露出しないことが多いので、
   // メモポップオーバーから手動紐づけする必要がある。
+  // Introspect the User type so the diagnostic panel can surface any
+  // undocumented fields that might unlock Private/Unlisted access.
+  const userTypeFields = await introspectUserFields(oauthToken);
+
   const me = await fetchCurrentUser(oauthToken);
   if (me.ok) {
     const scrapeResult = await fetchFflogsReportsHtmlScrape(me.id);
@@ -625,6 +679,7 @@ export async function linkFflogsReportsToVideos(): Promise<FflogsLinkResult> {
           ? "(v2 GraphQL owner-filter + HTML スクレイプ)"
           : "(v2 GraphQL — 自分所有のレポートのみ)",
     apiPath: "v2",
+    userTypeFields,
     diag: {
       v2RawCount: v2Result.rawCount,
       v2OwnedCount: v2Result.ownedCount,

@@ -19,6 +19,14 @@ export type ReleaseEntry = {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    version: "1.7.11",
+    date: "2026-04-27",
+    notes: [
+      "🔬 GraphQL イントロスペクション機能を追加 — 自動化路線で進めるため、FFLogs v2 スキーマの `User` 型に隠されたフィールドがないか調査するための diag 出力。連動結果の詳細診断パネルから「User 型のフィールド一覧」を展開可能",
+      "もし `privateReports` / `uploadedReports` などのフィールドがあれば、それを使うことで Private/Unlisted の自動取得が可能になる可能性。フィールドリストの内容次第で次の実装方針が決まる",
+    ],
+  },
+  {
     version: "1.7.10",
     date: "2026-04-27",
     notes: [
