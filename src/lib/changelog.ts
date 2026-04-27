@@ -19,6 +19,14 @@ export type ReleaseEntry = {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    version: "1.6.7",
+    date: "2026-04-27",
+    notes: [
+      "FFLogs 0件マッチ時の診断パネルに「クエリしたユーザー名」のエコー表示追加（実際に何が API に送られたか確認可能）",
+      "0件マッチ時の対処を 3 段階で説明追加 — ① API キーと表示名のユーザーが別人、② 表示名の綴り誤り、③ 別メンバーが最近の分をアップ。原因切り分けの順序を明示",
+    ],
+  },
+  {
     version: "1.6.6",
     date: "2026-04-27",
     notes: [

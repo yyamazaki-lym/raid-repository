@@ -64,6 +64,7 @@ type FflogsLinkResultLite = {
   videosDateRange?: { earliest: string; latest: string };
   sessionsDateRange?: { earliest: string; latest: string };
   reportSamples?: Array<{ date: string; title: string; url: string }>;
+  queriedUsername?: string;
 };
 
 // Inline copy of the Server Action result type — we can't re-export the
@@ -236,6 +237,7 @@ export function SettingsDialog() {
             videosDateRange: undefined,
             sessionsDateRange: undefined,
             reportSamples: undefined,
+            queriedUsername: undefined,
           });
           return;
         }
@@ -682,6 +684,14 @@ export function SettingsDialog() {
                               ⚠ どれもマッチしませんでした — 期間の不一致が原因の可能性
                             </p>
                             <ul className="ml-2 flex flex-col gap-0.5 font-mono text-[10px] text-muted-foreground">
+                              {logsResult.queriedUsername && (
+                                <li>
+                                  クエリしたユーザー名:{" "}
+                                  <strong className="text-foreground/90">
+                                    {logsResult.queriedUsername}
+                                  </strong>
+                                </li>
+                              )}
                               {logsResult.reportsDateRange && (
                                 <li>
                                   レポート期間:{" "}
@@ -713,13 +723,42 @@ export function SettingsDialog() {
                                 </li>
                               )}
                             </ul>
-                            <p className="text-[10px] text-muted-foreground/85 leading-relaxed">
-                              レポート期間が古すぎる場合は、設定した
-                              ユーザー名が <strong>最近のレポートをアップしていない</strong>
-                              ことを意味します。下の取得済みレポート一覧で実際の
-                              タイトルを確認して、想定通りのアカウントか
-                              チェックしてみてください。
-                            </p>
+                            <div className="mt-1.5 flex flex-col gap-1 rounded-sm bg-secondary/30 px-2 py-1.5 text-[10px] leading-relaxed">
+                              <p className="font-mono text-[10px] text-amber-200/90">
+                                想定される原因（上から確認推奨）：
+                              </p>
+                              <ol className="ml-3.5 flex list-decimal flex-col gap-1 text-muted-foreground">
+                                <li>
+                                  <strong>API キーと表示名のユーザーが別人</strong>
+                                  {" "}— Vercel の{" "}
+                                  <code className="font-mono">FFLOGS_API_KEY</code>
+                                  {" "}は{" "}
+                                  <a
+                                    href="https://www.fflogs.com/profile"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-[var(--neon-cyan)] underline decoration-dotted underline-offset-2 hover:text-[var(--neon-cyan)]/85"
+                                  >
+                                    fflogs.com/profile
+                                  </a>
+                                  {" "}でログインしているユーザー本人が生成したものでないと、
+                                  そのユーザーの非公開・限定公開レポートは取得できません
+                                  （Public のみ返ってくる）。
+                                </li>
+                                <li>
+                                  <strong>表示名が間違っている</strong>
+                                  {" "}— 上の「クエリしたユーザー名」が
+                                  fflogs.com/profile の見出しに表示されている
+                                  名前と一致しているか確認。大文字小文字も区別されます。
+                                </li>
+                                <li>
+                                  <strong>表示名のユーザーが昔しかアップしていない</strong>
+                                  {" "}— 別のメンバーが最近のレポートを上げている場合、
+                                  その人の表示名 + その人の API キーに切り替える必要が
+                                  あります。
+                                </li>
+                              </ol>
+                            </div>
                           </div>
                         )}
                       {/* Fetched report list — lets the user verify

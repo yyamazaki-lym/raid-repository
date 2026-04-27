@@ -159,6 +159,8 @@ export type FflogsLinkResult = {
   sessionsDateRange?: { earliest: string; latest: string };
   /** Diagnostic — sample of fetched reports (most recent first). */
   reportSamples?: Array<{ date: string; title: string; url: string }>;
+  /** Diagnostic — the username actually queried (echo back to verify). */
+  queriedUsername?: string;
 };
 
 // Video matching window: ±36h around the video's posted_at. Generous
@@ -267,6 +269,7 @@ export async function linkFflogsReportsToVideos(): Promise<FflogsLinkResult> {
     videosDateRange: videoResult.dateRange,
     sessionsDateRange: sessionResult.dateRange,
     reportSamples,
+    queriedUsername: username,
   };
 }
 
