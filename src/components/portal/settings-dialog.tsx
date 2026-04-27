@@ -40,8 +40,10 @@ import {
   countStoredPastSessions,
   disconnectFflogsOAuthAction,
   fetchFflogsOAuthStatus,
+  getFflogsSessionCookieStatus,
   importPastScheduleFromDiscord,
   linkFflogsReports,
+  setFflogsSessionCookie,
   snapshotScheduleNow,
   type ScheduleSnapshotResult,
 } from "@/lib/server/categories-actions";
@@ -137,6 +139,15 @@ export function SettingsDialog() {
     expiresAt: string | null;
   } | null>(null);
   const [disconnecting, startDisconnect] = useTransition();
+  // FFLogs session cookie — opt-in for retrieving Private/Unlisted
+  // reports. Auto-deleted after each sync run (server-side) so the
+  // window of exposure is minimized.
+  const [sessionCookieInput, setSessionCookieInput] = useState("");
+  const [cookieStatus, setCookieStatus] = useState<{
+    set: boolean;
+    preview: string | null;
+  } | null>(null);
+  const [savingCookie, startSaveCookie] = useTransition();
   const [showChangelog, setShowChangelog] = useState(false);
 
   // OAuth callback handler — when the user returns from FFLogs to
@@ -170,15 +181,19 @@ export function SettingsDialog() {
     if (!open) return;
     let cancelled = false;
     void (async () => {
-      const [currentUrl, currentChannel, currentOauth] = await Promise.all([
-        getScheduleUrlFromDb(),
-        getDiscordScheduleChannelId(),
-        fetchFflogsOAuthStatus(),
-      ]);
+      const [currentUrl, currentChannel, currentOauth, currentCookie] =
+        await Promise.all([
+          getScheduleUrlFromDb(),
+          getDiscordScheduleChannelId(),
+          fetchFflogsOAuthStatus(),
+          getFflogsSessionCookieStatus(),
+        ]);
       if (!cancelled) {
         setUrl(currentUrl ?? "");
         setChannelId(currentChannel ?? "");
         setOauthStatus(currentOauth);
+        setCookieStatus(currentCookie);
+        setSessionCookieInput("");
         setImportResult(null);
         setLogsResult(null);
       }
@@ -272,6 +287,9 @@ export function SettingsDialog() {
             ? "logs_url 未設定の動画 / 過去予定なし"
             : `合うレポートなし (報告 ${r.reportsScanned} / 動画 ${r.videosScanned} / 予定 ${r.sessionsScanned})`,
       );
+      // 連動完了直後 — session cookie は使われていれば server 側で
+      // 自動削除されているはず。UI のステータスを再フェッチ。
+      void getFflogsSessionCookieStatus().then((s) => setCookieStatus(s));
       router.refresh();
     });
   };
@@ -669,6 +687,112 @@ export function SettingsDialog() {
                   </p>
                 </div>
               )}
+            </div>
+
+            {/* Session cookie 入力 — Private/Unlisted 自動紐づけ用の
+                opt-in 機能。auto-delete によりセキュリティリスクを
+                最小化する。 */}
+            <div className="flex flex-col gap-2 rounded-md border border-rose-400/30 bg-rose-500/5 px-3 py-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="flex items-center gap-1.5 font-mono text-[10px] tracking-[0.22em] text-rose-200/95 uppercase">
+                  <BarChart3 className="h-3 w-3" aria-hidden />
+                  Session Cookie (オプション)
+                </span>
+                {cookieStatus?.set && (
+                  <span className="inline-flex items-center gap-1 rounded-sm border border-amber-400/45 bg-amber-400/10 px-1.5 py-px font-mono text-[9px] tracking-[0.18em] text-amber-200 uppercase">
+                    <span className="inline-block h-1 w-1 rounded-full bg-amber-400 shadow-[0_0_6px_rgb(251_191_36)]" />
+                    セット済 (次回連動で消費)
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] leading-relaxed text-foreground/85">
+                <strong>Private / Unlisted のレポートも取得したい場合のみ</strong>
+                {" "}使う opt-in 機能。fflogs.com にログインしたブラウザの
+                cookie を一時的にここに保存し、次回「FFLogs と動画を連動」
+                時に使われます。
+              </p>
+              <p className="text-[10px] leading-relaxed text-rose-200/85">
+                <strong>⚠ セキュリティ注意</strong>: cookie は FFLogs
+                アカウントの全権限を持ちます。漏れると当該アカウントに
+                自由にアクセスできてしまいます。リスクを最小化するため、
+                <strong>連動実行直後に自動削除</strong>される設計です
+                （ワンタイムユース）。次回紐づけ時に都度再貼り付けが必要。
+              </p>
+              <details className="text-[10px]">
+                <summary className="cursor-pointer text-muted-foreground/85 hover:text-foreground/90">
+                  ▸ Cookie の取り方 (Chrome / Edge)
+                </summary>
+                <ol className="mt-1 ml-3.5 flex list-decimal flex-col gap-0.5 text-muted-foreground leading-relaxed">
+                  <li>fflogs.com を開いてログイン</li>
+                  <li>F12 で DevTools → Application タブ → Cookies → fflogs.com</li>
+                  <li>
+                    <code className="font-mono">_fflogs_session</code> 等の
+                    値を <strong>一行コピー</strong>
+                    {" "}（複数 cookie を semicolon 区切りで結合: 例{" "}
+                    <code className="font-mono">_fflogs_session=abc; XSRF-TOKEN=xyz</code>
+                    ）
+                  </li>
+                  <li>下の入力欄に貼り付け → 保存 → すぐ「連動」を実行</li>
+                </ol>
+              </details>
+              <Input
+                value={sessionCookieInput}
+                onChange={(e) => setSessionCookieInput(e.target.value)}
+                placeholder="_fflogs_session=...; XSRF-TOKEN=..."
+                type="password"
+                className="font-mono text-[11px]"
+                spellCheck={false}
+                autoComplete="off"
+              />
+              <div className="flex flex-wrap gap-1.5">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    startSaveCookie(async () => {
+                      const r = await setFflogsSessionCookie(sessionCookieInput);
+                      if (!r.ok) {
+                        toast.error("Cookie 保存失敗: " + r.reason);
+                        return;
+                      }
+                      toast.success(
+                        "Cookie を保存しました — 次回連動時に使われ、その後自動削除されます",
+                      );
+                      setCookieStatus({ set: true, preview: null });
+                      setSessionCookieInput("");
+                    });
+                  }}
+                  disabled={savingCookie || !sessionCookieInput.trim()}
+                  className="gap-1.5 font-mono text-[10px] tracking-[0.18em] uppercase"
+                >
+                  <Save className="h-3 w-3" aria-hidden />
+                  Cookie 保存
+                </Button>
+                {cookieStatus?.set && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      startSaveCookie(async () => {
+                        const r = await setFflogsSessionCookie("");
+                        if (!r.ok) {
+                          toast.error("Cookie 削除失敗: " + r.reason);
+                          return;
+                        }
+                        toast.success("Cookie を削除しました");
+                        setCookieStatus({ set: false, preview: null });
+                      });
+                    }}
+                    disabled={savingCookie}
+                    className="gap-1.5 font-mono text-[10px] tracking-[0.18em] uppercase text-muted-foreground"
+                  >
+                    <X className="h-3 w-3" aria-hidden />
+                    今すぐ削除
+                  </Button>
+                )}
+              </div>
             </div>
 
             <div className="flex flex-col gap-2">

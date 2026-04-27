@@ -1,5 +1,6 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
+import { fetchAppSetting } from "@/lib/supabase/app-settings";
 import { getValidFflogsOAuthToken } from "./fflogs-oauth";
 
 /**
@@ -41,13 +42,13 @@ const FFLOGS_GRAPHQL_URL = "https://www.fflogs.com/api/v2/user";
  * walking `has_more_pages`.
  */
 /**
- * Introspect the GraphQL schema to list all fields available on the
- * `User` type. Used as a diagnostic to find any hidden / undocumented
- * field that might expose Private reports of the OAuth user (the
- * documented `reportData.reports(userID:)` only returns Public).
+ * Introspect a GraphQL type's fields. Used as a diagnostic to find
+ * any hidden / undocumented field that might expose Private reports
+ * of the OAuth user.
  */
-export async function introspectUserFields(
+async function introspectType(
   accessToken: string,
+  typeName: string,
 ): Promise<string[]> {
   try {
     const res = await fetch(FFLOGS_GRAPHQL_URL, {
@@ -58,7 +59,8 @@ export async function introspectUserFields(
         Accept: "application/json",
       },
       body: JSON.stringify({
-        query: `query { __type(name: "User") { fields { name type { name kind ofType { name kind } } } } }`,
+        query: `query Q($n: String!) { __type(name: $n) { name fields { name args { name type { name kind ofType { name kind } } } type { name kind ofType { name kind } } } } }`,
+        variables: { n: typeName },
       }),
       signal: AbortSignal.timeout(15000),
     });
@@ -66,8 +68,13 @@ export async function introspectUserFields(
     const json = (await res.json()) as {
       data?: {
         __type?: {
+          name?: string;
           fields?: Array<{
             name: string;
+            args?: Array<{
+              name: string;
+              type?: { name?: string | null; kind?: string; ofType?: { name?: string | null; kind?: string } | null };
+            }>;
             type?: {
               name?: string | null;
               kind?: string;
@@ -81,11 +88,33 @@ export async function introspectUserFields(
     return fields.map((f) => {
       const typeName =
         f.type?.name ?? f.type?.ofType?.name ?? f.type?.kind ?? "";
-      return `${f.name}${typeName ? `: ${typeName}` : ""}`;
+      const argList = (f.args ?? [])
+        .map((a) => {
+          const t = a.type?.name ?? a.type?.ofType?.name ?? a.type?.kind ?? "";
+          return `${a.name}: ${t}`;
+        })
+        .join(", ");
+      const argStr = argList ? `(${argList})` : "";
+      return `${f.name}${argStr}${typeName ? `: ${typeName}` : ""}`;
     });
   } catch {
     return [];
   }
+}
+
+/**
+ * Comprehensive introspection across types likely to contain
+ * report-related fields. Returns a structured map for the diag panel.
+ */
+export async function introspectFflogsSchema(
+  accessToken: string,
+): Promise<{ user: string[]; reportData: string[]; query: string[] }> {
+  const [user, reportData, query] = await Promise.all([
+    introspectType(accessToken, "User"),
+    introspectType(accessToken, "ReportData"),
+    introspectType(accessToken, "Query"),
+  ]);
+  return { user, reportData, query };
 }
 
 /**
@@ -357,6 +386,19 @@ export async function fetchFflogsReportsV2(
  */
 async function fetchFflogsReportsHtmlScrape(
   userId: number,
+  /**
+   * Optional FFLogs session cookie value. When provided, the fetch
+   * is sent with `Cookie: ...` header which makes FFLogs serve the
+   * LOGGED-IN version of the reports-list page — that includes the
+   * user's Public + Unlisted + Private reports (everything they
+   * see when logged in via browser). Without this, only Public
+   * reports show on the page.
+   *
+   * The cookie value should be the full Cookie header content
+   * (`name1=value1; name2=value2; ...`) copied from the user's
+   * browser DevTools while logged into fflogs.com.
+   */
+  sessionCookie?: string | null,
 ): Promise<
   | {
       ok: true;
@@ -374,16 +416,32 @@ async function fetchFflogsReportsHtmlScrape(
   for (let page = 1; page <= MAX_PAGES; page++) {
     const url = `https://www.fflogs.com/user/reports-list/${userId}?page=${page}`;
     try {
+      const headers: Record<string, string> = {
+        "User-Agent":
+          "Mozilla/5.0 (compatible; RaidRepository/1.0; +https://github.com)",
+        Accept: "text/html,application/xhtml+xml",
+        // Some pages serve different content based on language pref.
+        "Accept-Language": "ja-JP,ja;q=0.9,en;q=0.8",
+      };
+      if (sessionCookie && sessionCookie.trim()) {
+        headers.Cookie = sessionCookie.trim();
+      }
       const res = await fetch(url, {
-        headers: {
-          "User-Agent":
-            "Mozilla/5.0 (compatible; RaidRepository/1.0; +https://github.com)",
-          Accept: "text/html,application/xhtml+xml",
-          // Some pages serve different content based on language pref.
-          "Accept-Language": "ja-JP,ja;q=0.9,en;q=0.8",
-        },
+        headers,
         signal: AbortSignal.timeout(20000),
+        // Don't auto-follow login redirects — if the cookie is invalid
+        // FFLogs will redirect to /login, and a redirect signals "not
+        // really logged in". We want to detect that.
+        redirect: "manual",
       });
+      // Manual redirect: 3xx means cookie expired or invalid.
+      if (res.status >= 300 && res.status < 400) {
+        return {
+          ok: false,
+          reason:
+            "FFLogs にリダイレクトされました — session cookie が期限切れか無効です。fflogs.com に再ログインして cookie を取り直してください",
+        };
+      }
       if (!res.ok) {
         return {
           ok: false,
@@ -477,6 +535,8 @@ export type FflogsLinkResult = {
   reportsDateRange?: { earliest: string; latest: string };
   /** Diagnostic — fields available on FFLogs `User` type (introspected). */
   userTypeFields?: string[];
+  /** Diagnostic — fields on `ReportData` and `Query` root (introspected). */
+  schemaIntrospect?: { user: string[]; reportData: string[]; query: string[] };
   /** Diagnostic — date range of unmatched videos. */
   videosDateRange?: { earliest: string; latest: string };
   /** Diagnostic — date range of unmatched sessions. */
@@ -595,13 +655,39 @@ export async function linkFflogsReportsToVideos(): Promise<FflogsLinkResult> {
   // Public レポートの取得には強い: v2 + HTML どちらかには出てくる。
   // Private / Unlisted は API/HTML どちらにも露出しないことが多いので、
   // メモポップオーバーから手動紐づけする必要がある。
-  // Introspect the User type so the diagnostic panel can surface any
-  // undocumented fields that might unlock Private/Unlisted access.
-  const userTypeFields = await introspectUserFields(oauthToken);
+  // Introspect schema types so the diag panel can surface any
+  // undocumented field that might unlock Private/Unlisted access.
+  const schemaIntrospect = await introspectFflogsSchema(oauthToken);
+  const userTypeFields = schemaIntrospect.user;
 
   const me = await fetchCurrentUser(oauthToken);
   if (me.ok) {
-    const scrapeResult = await fetchFflogsReportsHtmlScrape(me.id);
+    // Pull the optional session cookie from app_settings — when set,
+    // the scrape fetch authenticates as the logged-in user and gets
+    // ALL their reports (Public + Unlisted + Private).
+    //
+    // SECURITY: cookie is auto-DELETED immediately after this fetch
+    // (success OR failure) to minimize window of exposure. Each sync
+    // run requires the user to re-paste the cookie. This is the
+    // tradeoff that lets us automate Private/Unlisted retrieval
+    // without persistently storing a credential.
+    const sessionCookie = await fetchAppSetting("fflogs_session_cookie");
+    const scrapeResult = await fetchFflogsReportsHtmlScrape(
+      me.id,
+      sessionCookie,
+    );
+    // Auto-delete the cookie after use — one-time-use semantics.
+    if (sessionCookie) {
+      try {
+        const cleanupClient = await createClient();
+        await cleanupClient
+          .from("app_settings")
+          .delete()
+          .eq("key", "fflogs_session_cookie");
+      } catch {
+        // best-effort
+      }
+    }
     if (scrapeResult.ok) {
       htmlPageSize = scrapeResult.htmlPageSize;
       htmlCodesFound = scrapeResult.htmlCodesFound;
@@ -680,6 +766,7 @@ export async function linkFflogsReportsToVideos(): Promise<FflogsLinkResult> {
           : "(v2 GraphQL — 自分所有のレポートのみ)",
     apiPath: "v2",
     userTypeFields,
+    schemaIntrospect,
     diag: {
       v2RawCount: v2Result.rawCount,
       v2OwnedCount: v2Result.ownedCount,

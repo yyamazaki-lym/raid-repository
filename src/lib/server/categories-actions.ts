@@ -278,6 +278,62 @@ export async function disconnectFflogsOAuthAction(): Promise<
 }
 
 /**
+ * Server Action: set / clear the FFLogs session cookie.
+ *
+ * SECURITY: This stores the user's logged-in browser session cookie
+ * in `app_settings`. Anyone with read access to that table can use
+ * the cookie to access the user's FFLogs account. For a small private
+ * 固定 with trusted members this is acceptable; for wider access,
+ * tighten the RLS policy on the `fflogs_session_cookie` row.
+ *
+ * The user obtains the cookie value from their browser DevTools while
+ * logged into fflogs.com (Application → Cookies → fflogs.com → copy
+ * the relevant session cookie value, e.g. `_fflogs_session=...`).
+ *
+ * Pass empty string to clear.
+ */
+export async function setFflogsSessionCookie(
+  raw: string,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const trimmed = raw.trim();
+  const supabase = await createClient();
+  if (!trimmed) {
+    const { error } = await supabase
+      .from("app_settings")
+      .delete()
+      .eq("key", "fflogs_session_cookie");
+    if (error) return { ok: false, reason: error.message };
+    return { ok: true };
+  }
+  const { error } = await supabase
+    .from("app_settings")
+    .upsert(
+      { key: "fflogs_session_cookie", value: trimmed },
+      { onConflict: "key" },
+    );
+  if (error) return { ok: false, reason: error.message };
+  return { ok: true };
+}
+
+export async function getFflogsSessionCookieStatus(): Promise<{
+  set: boolean;
+  preview: string | null;
+}> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("app_settings")
+    .select("value")
+    .eq("key", "fflogs_session_cookie")
+    .maybeSingle();
+  const value = (data?.value as string | null | undefined) ?? null;
+  if (!value) return { set: false, preview: null };
+  // Preview just enough to confirm a cookie is stored, without
+  // exposing the full value.
+  const preview = value.length > 40 ? value.slice(0, 40) + "…" : value;
+  return { set: true, preview };
+}
+
+/**
  * Server Action: clear all auto-linked `logs_url` values from videos
  * and past sessions. Use this to undo a previous bad sync run (e.g.
  * v1 fallback that linked someone else's reports) and re-sync from

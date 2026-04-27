@@ -19,6 +19,17 @@ export type ReleaseEntry = {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    version: "1.8.0",
+    date: "2026-04-27",
+    notes: [
+      "FFLogs Private/Unlisted 自動取得 — 「Session Cookie」opt-in 機能を追加。fflogs.com にログイン状態の cookie を一時的に保存して、ログイン状態のスクレイプで全 visibility のレポートを取得",
+      "🛡️ ワンタイムユース設計 — cookie は連動実行直後に自動削除される。次回紐づけ時は再貼り付けが必要（紐づけは新規カテゴリー作成時など頻度が低い操作なのでこの運用で OK）",
+      "強い security warning と取り方説明（Chrome DevTools 手順）を UI に明示",
+      "「今すぐ削除」ボタンも追加（連動を行わずに cookie を消したい場合用）",
+      "introspection を User / ReportData / Query 3 type に拡張 — User 型に reports フィールドが存在しないことを確定（5 fields: id / name / avatar / guilds / characters）",
+    ],
+  },
+  {
     version: "1.7.11",
     date: "2026-04-27",
     notes: [
