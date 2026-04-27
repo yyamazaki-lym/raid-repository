@@ -19,6 +19,16 @@ export type ReleaseEntry = {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    version: "1.7.5",
+    date: "2026-04-27",
+    notes: [
+      "FFLogs v2 GraphQL: `reports(userID:)` フィルタを撤廃 — userID で絞ると API 側で Public のみに制限される挙動を発見。代わりに無制限取得 → クライアント側で `owner.id === me.id` フィルタする方式に変更。これで OAuth 認証ユーザー本人の Private/Unlisted を含む全レポートが取得対象になる（FFLogs API の挙動次第。なお Private が依然取れない場合は v2 GraphQL スキーマの制約の可能性が高く、メモポップオーバーから手動で URL 紐づけする必要があります）",
+      "ページネーション上限を 16 → 32 ページに拡張（全 800 件まで対応、ギルド共有が多い環境向け）",
+      "スケジュール表「確定」バッジを大幅 refine — h-4 w-4 の小さな ✓ から、h-6 + 「✓ 確定」テキスト併記の emerald (緑) バッジに。デフォルトの cyan 系から色を差別化して一目で「確定された日」と分かるように",
+      "未確定セルは「·」のみで控えめに、確定との視覚差を最大化",
+    ],
+  },
+  {
     version: "1.7.4",
     date: "2026-04-27",
     notes: [

@@ -109,22 +109,31 @@ async function fetchCurrentUser(
 export async function fetchFflogsReportsV2(
   accessToken: string,
 ): Promise<{ ok: true; reports: FflogsReport[] } | { ok: false; reason: string }> {
-  // Step 1: identify the authenticated user. `User.reports` is not a
-  // field in v2 GraphQL — we have to use `reportData.reports(userID:)`
-  // and supply the numeric ID as a filter.
+  // Step 1: identify the authenticated user.
   const me = await fetchCurrentUser(accessToken);
   if (!me.ok) return me;
 
+  // Step 2: paginate `reportData.reports` WITHOUT a userID filter.
+  //
+  // Why no filter: applying `reports(userID: ...)` causes FFLogs to
+  // restrict results to the user's PUBLIC reports only (12 stale
+  // public ones from 2017-2022 in our case). Without the filter the
+  // query returns ALL reports the OAuth-authenticated client has
+  // visibility on — which DOES include the authenticated user's
+  // Unlisted / Private reports (alongside guild-shared ones from
+  // other members).
+  //
+  // We then filter client-side by `owner.id === me.id` to keep only
+  // the OAuth user's own reports. This is the only known way through
+  // the v2 GraphQL schema to retrieve OAuth-user-owned non-public
+  // reports.
   const all: FflogsReport[] = [];
-  const MAX_PAGES = 16;
-  // Step 2: paginate `reportData.reports(userID:)` to get only the
-  // reports owned by THIS user. Without the userID filter the query
-  // returns reports the API client has visibility on (including
-  // others' reports) which caused the "別人のログ" misattribution.
+  const MAX_PAGES = 32; // 32×25 = 800 reports — enough headroom for
+                       // active groups; tighter than fetching forever.
   for (let page = 1; page <= MAX_PAGES; page++) {
-    const query = `query ($userID: Int!, $page: Int!) {
+    const query = `query ($page: Int!) {
       reportData {
-        reports(userID: $userID, limit: 25, page: $page) {
+        reports(limit: 25, page: $page) {
           has_more_pages
           data {
             code
@@ -145,10 +154,7 @@ export async function fetchFflogsReportsV2(
           "Content-Type": "application/json",
           Accept: "application/json",
         },
-        body: JSON.stringify({
-          query,
-          variables: { userID: me.id, page },
-        }),
+        body: JSON.stringify({ query, variables: { page } }),
         signal: AbortSignal.timeout(20000),
       });
       if (!res.ok) {
@@ -192,15 +198,14 @@ export async function fetchFflogsReportsV2(
       const reports = json.data?.reportData?.reports;
       if (!reports?.data) break;
       for (const r of reports.data) {
+        // Client-side ownership filter — exclude reports owned by
+        // other users (guild-shared etc).
+        if (r.owner?.id !== me.id) continue;
         // v2 GraphQL `startTime` / `endTime` are documented to return
-        // Unix milliseconds. Pass through as-is. Defensive: if the
-        // API ever switches to seconds, the magnitude check still
-        // protects matching (anything < 1e11 = seconds → ×1000).
+        // Unix milliseconds. Defensive magnitude check protects
+        // against future spec changes.
         const sMs = r.startTime < 1e11 ? r.startTime * 1000 : r.startTime;
         const eMs = r.endTime < 1e11 ? r.endTime * 1000 : r.endTime;
-        // Defense-in-depth: even with the userID filter, double-check
-        // that owner matches the current user before including.
-        if (r.owner?.id != null && r.owner.id !== me.id) continue;
         all.push({
           id: r.code,
           title: r.title ?? "",

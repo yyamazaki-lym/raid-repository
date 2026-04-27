@@ -145,7 +145,7 @@ export function ScheduleList({
           日程
         </th>
         {showDecided && (
-          <th scope="col" className="px-0 py-2.5">
+          <th scope="col" className="px-1 py-2.5">
             確定
           </th>
         )}
@@ -484,16 +484,27 @@ function SessionRow({
         </div>
       </th>
       {showDecided && (
-        <td className="px-0 py-2 text-center align-middle">
+        <td className="px-1 py-2 text-center align-middle">
           {decided ? (
+            // 確定 = 日程が確定した = 一目で識別できる強めのバッジに。
+            // emerald 系（信号機の緑＝GO に近い）でデフォルトの cyan
+            // 系から差別化、サイズも h-6 に拡大。
             <span
               aria-label="日程確定"
-              className="inline-flex h-4 w-4 items-center justify-center rounded-sm border border-[var(--neon-cyan)]/40 bg-[var(--neon-cyan)]/12 font-mono text-[10px] text-[var(--neon-cyan)] shadow-[0_0_10px_-4px_var(--neon-cyan)]"
+              title="日程確定"
+              className="inline-flex h-6 min-w-[1.75rem] items-center justify-center gap-0.5 rounded-md border border-emerald-400/60 bg-emerald-400/15 px-1 font-mono text-[10px] font-bold tracking-[0.16em] text-emerald-300 uppercase shadow-[0_0_12px_-3px_rgb(52_211_153)]"
             >
-              ✓
+              <span aria-hidden className="text-[12px]">
+                ✓
+              </span>
+              確定
             </span>
           ) : (
-            <span aria-hidden className="text-muted-foreground/60 font-mono text-xs">
+            <span
+              aria-hidden
+              title="未確定"
+              className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground/40"
+            >
               ·
             </span>
           )}
