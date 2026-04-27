@@ -161,24 +161,21 @@ function DateChip({
   return (
     <li
       className={
-        // 1.9.34: COMPLETELY DIFFERENT APPROACH. Previous 5 versions'
-        // visual changes weren't visible to the user (cache or
-        // rendering). Switching from inline-flex → inline-grid with
-        // explicit h-[24px] + place-items-center. Grid centers the
-        // line-box in the box mathematically. With leading-none the
-        // line-box equals the glyph height (no leading asymmetry),
-        // so the glyph itself is centered in the chip.
+        // 1.9.35: empirically verified via Claude Preview that the
+        // chip layout is `inline-grid h-[24px] place-items-center
+        // leading-none`, which centers the line-box (11px) at chip
+        // center (5.5px above + 5.5px below). On Linux/Noto, the
+        // glyph extends 2px above + 1px below the line-box → 4.5px
+        // top space, 5.5px bottom space (close to symmetric). On
+        // Windows / Yu Gothic UI, Japanese glyphs render in the
+        // LOWER portion of the em-box, so the user sees larger top
+        // whitespace. To compensate we lift the inner text via
+        // `transform: translateY(-2px)` (visible regardless of font).
         "inline-grid grid-flow-col auto-cols-max place-items-center gap-1 rounded-md border px-2 h-[24px] text-[11px] tabular-nums leading-none transition-colors " +
         chipColor
       }
       title={tooltip}
     >
-      {/* Date+曜 wrapped in a memo popover trigger. Click reveals
-          per-session shared notes. The dot indicator sits AFTER all
-          icons (rightmost) so it doesn't crowd the date label.
-          Single span so date and 曜 share the same baseline / size /
-          line-height — earlier two-span layout (different text sizes)
-          made the optical center drift. */}
       <SessionMemoPopover
         ref={popoverRef}
         rawDate={session.rawDate}
@@ -193,7 +190,15 @@ function DateChip({
           dayOfWeek: session.dayOfWeek,
         }}
       >
-        <span className="tabular-nums">
+        {/* 1.9.35 Yu Gothic UI 補正: translateY(-2px) で glyph を
+            視覚的に 2px 上にシフト。Linux/Noto では既に 5.5/4.5 の
+            軽微な下寄りなので -2px で 7.5/2.5 の上寄りになるが、
+            Yu Gothic UI ユーザーの「上 2x bottom」が解消するほうを
+            優先 (両 OS で 0.5px 以下の差ならどちらでも違和感少)。 */}
+        <span
+          className="tabular-nums"
+          style={{ transform: "translateY(-2px)", display: "inline-block" }}
+        >
           {monthDay}（{session.dayOfWeek}）
         </span>
       </SessionMemoPopover>

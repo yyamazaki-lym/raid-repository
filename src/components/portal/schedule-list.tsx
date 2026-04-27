@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -7,6 +7,7 @@ import {
   BarChart3,
   Film,
   Loader2,
+  MessageSquare,
   RefreshCw,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
@@ -210,6 +211,7 @@ export function ScheduleList({
           hasUltimateClear={hasUltimateClear}
           onRefresh={refreshSchedule}
           refreshing={refreshing}
+          topText={result.data.topText ?? null}
         />
         <div className="overflow-x-auto">
           <table className="w-full min-w-[640px] border-collapse text-left text-sm">
@@ -657,13 +659,38 @@ function Legend({
   hasUltimateClear = false,
   onRefresh,
   refreshing = false,
+  topText = null,
 }: {
   hasUltimateClear?: boolean;
   /** Called when the user clicks the refresh button at the right end. */
   onRefresh?: () => void;
   /** Show a spinning loader while the refresh transition is pending. */
   refreshing?: boolean;
+  /** Free-form text from the top of the source schedule page (e.g.
+   * operation rules). When non-null, a clickable MessageSquare icon is
+   * shown next to the 未回答 entry → opens a popover with the text. */
+  topText?: string | null;
 }) {
+  // Local controlled-popover state for the top-text comment icon.
+  const [showTopText, setShowTopText] = useState(false);
+  const topTextRef = useRef<HTMLDivElement | null>(null);
+  // Click outside to close the popover.
+  useEffect(() => {
+    if (!showTopText) return;
+    const onDocClick = (e: MouseEvent) => {
+      const t = e.target as Node | null;
+      if (!t) return;
+      if (topTextRef.current && topTextRef.current.contains(t)) return;
+      setShowTopText(false);
+    };
+    const handle = setTimeout(() => {
+      document.addEventListener("mousedown", onDocClick);
+    }, 0);
+    return () => {
+      clearTimeout(handle);
+      document.removeEventListener("mousedown", onDocClick);
+    };
+  }, [showTopText]);
   // 1.9.16: ラベル "MEMBERS" デフォルト、絶クリア達成済みの固定なら
   // "LEGENDS" 表記に昇格 (称号として)。
   const label = hasUltimateClear ? "Legends" : "Members";
@@ -695,6 +722,41 @@ function Legend({
             {l.symbol}
           </span>
           <span className="text-[11px] text-muted-foreground">{l.label}</span>
+          {/* 1.9.35: comment icon next to 未回答 — clicking opens a
+              popover with the source schedule page's top text (e.g.
+              operation rules). Only renders when topText is non-null. */}
+          {l.symbol === "－" && topText && (
+            <span className="relative inline-flex">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowTopText((v) => !v);
+                }}
+                aria-label="運用ルール / 注意事項を表示"
+                title="運用ルール / 注意事項"
+                aria-expanded={showTopText}
+                className="inline-flex h-4 w-4 items-center justify-center rounded text-[var(--neon-violet)]/85 transition-all hover:bg-[var(--neon-violet)]/15 hover:text-[var(--neon-violet)] hover:shadow-[0_0_8px_-2px_rgba(167,139,250,0.55)]"
+              >
+                <MessageSquare className="h-3 w-3" aria-hidden />
+              </button>
+              {showTopText && (
+                <div
+                  ref={topTextRef}
+                  role="dialog"
+                  aria-label="運用ルール / 注意事項"
+                  className="glass-popup absolute top-full left-0 z-40 mt-1 w-[min(20rem,calc(100vw-2rem))] rounded-lg border border-[var(--neon-violet)]/35 px-3 py-2.5 text-[11px] leading-relaxed text-foreground/85 shadow-[0_12px_40px_-16px_rgba(167,139,250,0.45),0_2px_8px_-2px_rgba(0,0,0,0.4)]"
+                >
+                  <p className="mb-1.5 font-mono text-[10px] tracking-[0.22em] text-[var(--neon-violet)]/85 uppercase">
+                    運用ルール / 注意事項
+                  </p>
+                  <pre className="whitespace-pre-wrap break-words font-sans text-[11px] leading-relaxed">
+                    {topText}
+                  </pre>
+                </div>
+              )}
+            </span>
+          )}
         </span>
       ))}
       {/* 1.9.28: 右端に更新ボタン。クリックで router.refresh() →

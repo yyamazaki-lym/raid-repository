@@ -52,6 +52,13 @@ export type ParsedSchedule = {
   sessions: ScheduleSession[];
   /** Free-form comments from the "■コメント" section. */
   comments: ScheduleComment[];
+  /**
+   * Free-form text extracted from the page header / top section
+   * (typically operation rules, group conventions, etc.). `null` when
+   * the schedule page has no top text. Used by the schedule legend
+   * to surface a clickable comment icon → popover on the portal.
+   */
+  topText: string | null;
 };
 
 const NAMELINK_USER_RE =
@@ -73,7 +80,74 @@ export function parseSchedule(html: string): ParsedSchedule {
   const users = parseUsers(html);
   const sessions = parseSessions(html, users.length);
   const comments = parseComments(html);
-  return { users, sessions, comments };
+  const topText = parseTopText(html);
+  return { users, sessions, comments, topText };
+}
+
+/**
+ * Pull the page-header free-form text (e.g. operation rules) shown
+ * ABOVE the first schedule `<table>`. Heuristic — character-sheets
+ * doesn't expose a stable id for this region, so we extract from
+ * `<p>` / `<pre>` / `<blockquote>` / `<h2>`-`<h3>` blocks before the
+ * first table. Returns `null` when no usable text was found.
+ */
+function parseTopText(html: string): string | null {
+  const tableIdx = html.search(/<table\b/i);
+  if (tableIdx < 0) return null;
+
+  // Strip script/style/noscript content so JS literals don't leak in.
+  let before = html
+    .slice(0, tableIdx)
+    .replace(
+      /<(script|style|noscript)\b[^>]*>[\s\S]*?<\/\1>/gi,
+      "",
+    );
+
+  // Restrict to inside <body>; the <head> contains meta/title text we
+  // don't want.
+  const bodyMatch = before.match(/<body\b[^>]*>([\s\S]*)$/i);
+  if (bodyMatch) before = bodyMatch[1]!;
+
+  // Extract text from prominent block elements before the schedule.
+  // We deliberately skip <h1> (typically the static name / title of
+  // the page) and <div> (would catch the entire layout container).
+  const blocks: string[] = [];
+  const seen = new Set<string>();
+  const blockRe = /<(p|pre|blockquote|h2|h3|h4)\b[^>]*>([\s\S]*?)<\/\1>/gi;
+  let m;
+  while ((m = blockRe.exec(before)) !== null) {
+    const text = stripHtmlToText(m[2]!).trim();
+    if (!text || text.length < 2) continue;
+    // Skip duplicates (some templates double-render the same text in
+    // hidden vs visible variants).
+    if (seen.has(text)) continue;
+    seen.add(text);
+    blocks.push(text);
+  }
+
+  if (blocks.length === 0) return null;
+  return blocks.join("\n");
+}
+
+/**
+ * Strip HTML tags + decode common entities, preserving paragraph-level
+ * line breaks. Used by `parseTopText` to clean fragments for popover
+ * display.
+ */
+function stripHtmlToText(html: string): string {
+  return html
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|div|li|h[1-6])>/gi, "\n")
+    .replace(/<[^>]*>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/[ \t]+/g, " ")
+    .replace(/[ \t]*\n[ \t]*/g, "\n")
+    .replace(/\n{3,}/g, "\n\n");
 }
 
 const COMMENT_HEADER = "■コメント";
@@ -190,7 +264,12 @@ export function attachUsersToSessions(parsed: ParsedSchedule): ParsedSchedule {
     });
     return { ...s, attendances };
   });
-  return { users: parsed.users, sessions, comments: parsed.comments };
+  return {
+    users: parsed.users,
+    sessions,
+    comments: parsed.comments,
+    topText: parsed.topText,
+  };
 }
 
 /** JST has no DST so a fixed offset is always correct. */
