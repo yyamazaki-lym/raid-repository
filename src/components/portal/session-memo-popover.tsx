@@ -9,6 +9,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import {
+  MessageSquare,
   MessageSquarePlus,
   Pencil,
   Save,
@@ -177,26 +178,45 @@ export const SessionMemoPopover = forwardRef<
               left: coords.left,
               width: "min(28rem,calc(100vw - 2rem))",
             }}
-            className="glass-popup z-50 rounded-md border border-[var(--neon-violet)]/40 p-3 shadow-[0_8px_32px_-16px_var(--neon-violet)]"
+            className="glass-popup z-50 overflow-hidden rounded-lg border border-[var(--neon-violet)]/35 shadow-[0_12px_40px_-16px_rgba(167,139,250,0.45),0_2px_8px_-2px_rgba(0,0,0,0.4)]"
           >
-            <header className="mb-2 flex items-center justify-between gap-2">
-              <p className="font-mono text-[10px] tracking-[0.2em] text-[var(--neon-violet)]/90 uppercase">
-                {displayDate} のメモ
-              </p>
+            {/* Header strip — subtle violet wash that anchors the
+                popup with a clear "what is this" affordance, plus
+                close X. The thin glow strip below the header (via
+                border-b + bg) gives the panel a definite "title bar
+                / body" split without a heavy divider. */}
+            <header className="flex items-center justify-between gap-2 border-b border-[var(--neon-violet)]/25 bg-[var(--neon-violet)]/8 px-3 py-2">
+              <div className="flex items-center gap-2">
+                <MessageSquare
+                  className="h-3 w-3 text-[var(--neon-violet)]"
+                  aria-hidden
+                />
+                <p className="font-mono text-[10px] tracking-[0.22em] text-[var(--neon-violet)] uppercase">
+                  {displayDate}
+                </p>
+                <span
+                  aria-hidden
+                  className="font-mono text-[10px] tracking-[0.18em] text-[var(--neon-violet)]/55 uppercase"
+                >
+                  · memo
+                </span>
+              </div>
               <button
                 type="button"
                 onClick={() => setOpen(false)}
                 aria-label="閉じる"
-                className="inline-flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
+                className="inline-flex h-5 w-5 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-[var(--neon-violet)]/15 hover:text-foreground"
               >
                 <X className="h-3 w-3" aria-hidden />
               </button>
             </header>
-            <MemoList
-              rawDate={rawDate}
-              memos={memos}
-              onRefresh={onRefresh}
-            />
+            <div className="px-3 py-3">
+              <MemoList
+                rawDate={rawDate}
+                memos={memos}
+                onRefresh={onRefresh}
+              />
+            </div>
           </div>,
           document.body,
         )}
@@ -225,7 +245,7 @@ export function SessionMemoDot({
 }) {
   if (count <= 0) return null;
   const dotClass =
-    "inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--neon-violet)] shadow-[0_0_6px_var(--neon-violet)]";
+    "inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--neon-violet)] shadow-[0_0_6px_var(--neon-violet)] transition-shadow";
   if (!onClick) {
     return (
       <span
@@ -245,11 +265,14 @@ export function SessionMemoDot({
       aria-label={`メモ ${count} 件 を開く`}
       title={`メモ ${count} 件（クリックで開く）`}
       className={
-        "inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-[var(--neon-violet)]/15 " +
+        "group/memodot inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-[var(--neon-violet)]/18 " +
         className
       }
     >
-      <span aria-hidden className={dotClass} />
+      <span
+        aria-hidden
+        className={`${dotClass} group-hover/memodot:shadow-[0_0_10px_var(--neon-violet)]`}
+      />
     </button>
   );
 }
@@ -354,41 +377,47 @@ function MemoList({
     if (onRefresh) void onRefresh();
   };
 
+  // Shared input styling — consistent focus ring + neutral border so
+  // every input/textarea looks like one control family.
+  const inputClass =
+    "rounded-md border border-input/70 bg-background/40 px-2.5 py-1.5 text-[12px] leading-relaxed transition-colors focus:border-[var(--neon-violet)]/60 focus:outline-none focus:ring-2 focus:ring-[var(--neon-violet)]/30";
+
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-2.5">
       {memos.length === 0 ? (
-        <p className="rounded-sm border border-dashed border-border/40 px-3 py-2 text-center text-[11px] text-muted-foreground">
-          まだメモはありません — 下のフォームから追加できます
+        <p className="flex items-center justify-center gap-1.5 rounded-md border border-dashed border-border/40 bg-secondary/10 px-3 py-3 text-center text-[11px] text-muted-foreground">
+          <MessageSquare className="h-3 w-3 opacity-60" aria-hidden />
+          まだメモはありません
         </p>
       ) : (
-        <ul className="flex max-h-[16rem] flex-col gap-1.5 overflow-y-auto">
+        <ul className="flex max-h-[18rem] flex-col gap-1.5 overflow-y-auto pr-0.5">
           {memos.map((m) => (
             <li
               key={m.id}
-              className="rounded-sm border border-border/40 bg-secondary/20 px-2 py-1.5"
+              className="group rounded-md border border-border/40 bg-secondary/15 px-2.5 py-2 transition-colors hover:border-[var(--neon-violet)]/30 hover:bg-secondary/25"
             >
               {editingId === m.id ? (
-                <div className="flex flex-col gap-1.5">
+                <div className="flex flex-col gap-2">
                   <input
                     value={editingAuthor}
                     onChange={(e) => setEditingAuthor(e.target.value)}
                     placeholder="名前（任意）"
                     spellCheck={false}
-                    className="rounded border border-input bg-background/30 px-2 py-1 text-[11px] focus:outline-none focus:ring-2 focus:ring-[var(--neon-violet)]/40"
+                    className={inputClass}
                   />
                   <textarea
                     value={editingBody}
                     onChange={(e) => setEditingBody(e.target.value)}
                     rows={3}
                     spellCheck={false}
-                    className="rounded border border-input bg-background/30 px-2 py-1 text-[11px] leading-relaxed focus:outline-none focus:ring-2 focus:ring-[var(--neon-violet)]/40"
+                    className={inputClass}
                   />
-                  <div className="flex justify-end gap-1">
+                  <div className="flex justify-end gap-1.5">
                     <button
                       type="button"
                       onClick={cancelEdit}
                       disabled={busy}
-                      className="inline-flex items-center gap-1 rounded px-2 py-1 font-mono text-[10px] tracking-widest text-muted-foreground uppercase hover:bg-secondary/60"
+                      className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 font-mono text-[10px] tracking-[0.18em] text-muted-foreground uppercase transition-colors hover:bg-secondary/60 hover:text-foreground disabled:opacity-50"
                     >
                       <X className="h-3 w-3" aria-hidden />
                       キャンセル
@@ -397,7 +426,7 @@ function MemoList({
                       type="button"
                       onClick={() => saveEdit(m.id)}
                       disabled={busy}
-                      className="inline-flex items-center gap-1 rounded border border-[var(--neon-cyan)]/50 bg-[var(--neon-cyan)]/10 px-2 py-1 font-mono text-[10px] tracking-widest text-[var(--neon-cyan)] uppercase hover:bg-[var(--neon-cyan)]/15"
+                      className="inline-flex items-center gap-1.5 rounded-md border border-[var(--neon-cyan)]/45 bg-[var(--neon-cyan)]/10 px-2.5 py-1.5 font-mono text-[10px] tracking-[0.18em] text-[var(--neon-cyan)] uppercase transition-colors hover:border-[var(--neon-cyan)]/70 hover:bg-[var(--neon-cyan)]/18 disabled:opacity-50"
                     >
                       <Save className="h-3 w-3" aria-hidden />
                       保存
@@ -406,20 +435,26 @@ function MemoList({
                 </div>
               ) : (
                 <>
-                  <div className="flex items-baseline justify-between gap-2">
-                    <span className="font-mono text-[10px] text-muted-foreground/80">
-                      {m.authorName || "（匿名）"}
-                      <span className="ml-1.5 text-[9px] opacity-70">
+                  <div className="mb-1 flex items-center justify-between gap-2">
+                    <div className="flex min-w-0 items-baseline gap-1.5">
+                      <span className="truncate text-[11px] font-medium text-foreground/85">
+                        {m.authorName || (
+                          <span className="text-muted-foreground/70">
+                            匿名
+                          </span>
+                        )}
+                      </span>
+                      <span className="font-mono text-[9px] tracking-wide text-muted-foreground/65">
                         {formatRelativeTime(m.createdAt)}
                       </span>
-                    </span>
-                    <span className="flex shrink-0 items-center gap-0.5">
+                    </div>
+                    <span className="flex shrink-0 items-center gap-0.5 opacity-60 transition-opacity group-hover:opacity-100">
                       <button
                         type="button"
                         onClick={() => startEdit(m)}
                         aria-label="編集"
                         title="編集"
-                        className="inline-flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
+                        className="inline-flex h-5 w-5 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-secondary/70 hover:text-foreground"
                       >
                         <Pencil className="h-3 w-3" aria-hidden />
                       </button>
@@ -428,7 +463,7 @@ function MemoList({
                         onClick={() => requestDelete(m)}
                         aria-label="削除"
                         title="削除"
-                        className="inline-flex h-5 w-5 items-center justify-center rounded text-rose-300 hover:bg-rose-500/15 hover:text-rose-200"
+                        className="inline-flex h-5 w-5 items-center justify-center rounded text-rose-300/80 transition-colors hover:bg-rose-500/15 hover:text-rose-200"
                       >
                         <Trash2 className="h-3 w-3" aria-hidden />
                       </button>
@@ -444,17 +479,20 @@ function MemoList({
         </ul>
       )}
 
-      <div className="flex flex-col gap-1.5 border-t border-border/40 pt-2">
-        <div className="flex items-center gap-1 text-[10px] tracking-[0.2em] text-muted-foreground uppercase">
-          <MessageSquarePlus className="h-3 w-3" aria-hidden />
-          新しいメモ
+      <div className="flex flex-col gap-1.5 border-t border-border/40 pt-2.5">
+        <div className="flex items-center gap-1.5 font-mono text-[10px] tracking-[0.22em] text-muted-foreground uppercase">
+          <MessageSquarePlus
+            className="h-3 w-3 text-[var(--neon-violet)]/80"
+            aria-hidden
+          />
+          新規メモ
         </div>
         <input
           value={draftAuthor}
           onChange={(e) => setDraftAuthor(e.target.value)}
           placeholder="名前（任意・次回も使用）"
           spellCheck={false}
-          className="rounded border border-input bg-background/30 px-2 py-1 text-[11px] focus:outline-none focus:ring-2 focus:ring-[var(--neon-violet)]/40"
+          className={inputClass}
         />
         <textarea
           value={draftBody}
@@ -462,14 +500,14 @@ function MemoList({
           rows={3}
           placeholder="メモ内容…"
           spellCheck={false}
-          className="rounded border border-input bg-background/30 px-2 py-1 text-[11px] leading-relaxed focus:outline-none focus:ring-2 focus:ring-[var(--neon-violet)]/40"
+          className={inputClass}
         />
         <div className="flex justify-end">
           <button
             type="button"
             onClick={submitDraft}
             disabled={busy || draftBody.trim().length === 0}
-            className="inline-flex items-center gap-1 rounded border border-[var(--neon-violet)]/50 bg-[var(--neon-violet)]/10 px-2 py-1 font-mono text-[10px] tracking-widest text-[var(--neon-violet)] uppercase transition-colors hover:bg-[var(--neon-violet)]/15 disabled:opacity-60"
+            className="inline-flex items-center gap-1.5 rounded-md border border-[var(--neon-violet)]/50 bg-[var(--neon-violet)]/10 px-3 py-1.5 font-mono text-[10px] tracking-[0.22em] text-[var(--neon-violet)] uppercase transition-colors hover:border-[var(--neon-violet)]/70 hover:bg-[var(--neon-violet)]/18 disabled:opacity-50"
           >
             <Send className="h-3 w-3" aria-hidden />
             投稿
@@ -528,14 +566,16 @@ function DeleteConfirmModal({
     memo.body.length > 120 ? memo.body.slice(0, 120) + "…" : memo.body;
 
   return (
+    // Transparent click-catcher — keeps the rest of the page fully
+    // visible (no dim / blur), but still allows click-outside to
+    // cancel and prevents accidental interaction with content
+    // underneath while the dialog is up.
     <div
       role="dialog"
       aria-modal="true"
       aria-label="メモ削除の確認"
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-background/60 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-[60] flex items-center justify-center p-4"
       onMouseDown={(e) => {
-        // Click on backdrop = cancel. Stop here so the parent popover
-        // doesn't also close on the same click.
         if (e.target === e.currentTarget) {
           e.stopPropagation();
           onCancel();
@@ -544,39 +584,47 @@ function DeleteConfirmModal({
     >
       <div
         onMouseDown={(e) => e.stopPropagation()}
-        className="glass-popup w-full max-w-sm rounded-md border border-rose-400/45 p-4 shadow-[0_8px_32px_-12px_rgba(244,63,94,0.55)]"
+        className="glass-popup w-full max-w-sm rounded-lg border border-rose-400/55 shadow-[0_16px_48px_-12px_rgba(244,63,94,0.4),0_4px_16px_-4px_rgba(0,0,0,0.5)]"
       >
-        <header className="mb-2 flex items-center gap-2">
-          <Trash2 className="h-4 w-4 text-rose-300" aria-hidden />
-          <p className="font-mono text-[11px] tracking-[0.22em] text-rose-300 uppercase">
-            メモを削除しますか？
+        <header className="flex items-center gap-2 rounded-t-lg border-b border-rose-400/25 bg-rose-500/10 px-4 py-2.5">
+          <Trash2 className="h-3.5 w-3.5 text-rose-300" aria-hidden />
+          <p className="font-mono text-[11px] tracking-[0.22em] text-rose-200 uppercase">
+            メモを削除
           </p>
         </header>
-        <p className="mb-3 rounded-sm border border-border/40 bg-secondary/20 px-2 py-1.5 text-[11px] leading-relaxed whitespace-pre-wrap break-words text-foreground/85">
-          {preview || "（本文なし）"}
-        </p>
-        <p className="mb-3 text-[10px] text-muted-foreground">
-          削除すると元に戻せません。
-        </p>
-        <div className="flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={onCancel}
-            disabled={busy}
-            className="inline-flex items-center gap-1 rounded border border-border/50 px-3 py-1.5 font-mono text-[10px] tracking-widest text-muted-foreground uppercase hover:bg-secondary/60 hover:text-foreground"
-          >
-            <X className="h-3 w-3" aria-hidden />
-            キャンセル
-          </button>
-          <button
-            type="button"
-            onClick={onConfirm}
-            disabled={busy}
-            className="inline-flex items-center gap-1 rounded border border-rose-400/60 bg-rose-500/15 px-3 py-1.5 font-mono text-[10px] tracking-widest text-rose-200 uppercase transition-colors hover:bg-rose-500/25 disabled:opacity-60"
-          >
-            <Trash2 className="h-3 w-3" aria-hidden />
-            削除
-          </button>
+        <div className="px-4 py-3">
+          <p className="mb-2.5 rounded-md border border-border/40 bg-secondary/20 px-2.5 py-2 text-[12px] leading-relaxed whitespace-pre-wrap break-words text-foreground/85">
+            {preview || (
+              <span className="text-muted-foreground/70">（本文なし）</span>
+            )}
+          </p>
+          <p className="mb-3 flex items-center gap-1 text-[10px] text-muted-foreground">
+            <span
+              aria-hidden
+              className="inline-block h-1 w-1 rounded-full bg-rose-400/70"
+            />
+            この操作は元に戻せません
+          </p>
+          <div className="flex justify-end gap-1.5">
+            <button
+              type="button"
+              onClick={onCancel}
+              disabled={busy}
+              className="inline-flex items-center gap-1.5 rounded-md border border-border/50 px-3 py-1.5 font-mono text-[10px] tracking-[0.22em] text-muted-foreground uppercase transition-colors hover:bg-secondary/60 hover:text-foreground disabled:opacity-50"
+            >
+              <X className="h-3 w-3" aria-hidden />
+              キャンセル
+            </button>
+            <button
+              type="button"
+              onClick={onConfirm}
+              disabled={busy}
+              className="inline-flex items-center gap-1.5 rounded-md border border-rose-400/55 bg-rose-500/15 px-3 py-1.5 font-mono text-[10px] tracking-[0.22em] text-rose-100 uppercase transition-colors hover:border-rose-400/80 hover:bg-rose-500/25 disabled:opacity-50"
+            >
+              <Trash2 className="h-3 w-3" aria-hidden />
+              削除
+            </button>
+          </div>
         </div>
       </div>
     </div>

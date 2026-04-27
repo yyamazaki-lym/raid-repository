@@ -109,11 +109,13 @@ export function CategorySwitcher({ initialCategories }: Props) {
       <DropdownMenuContent
         align="start"
         sideOffset={8}
-        // Wide popup so long content names render fully without truncation.
-        // Mobile caps at viewport width; desktop sizes up to 28rem so
-        // long category names like "アルカディア:ライトヘビー級" fit
-        // on one line alongside the 4 sub-page icons.
-        className="glass-popup w-[max(20rem,min(calc(100vw-1rem),32rem))] border-border/40"
+        // Wide popup so long content names render on a single line
+        // alongside the 5 sub-page icons. Bumped to 40rem on desktop
+        // (was 32rem) because Japanese category names like
+        // "FRU零式 / アルカディアライトヘビー級" were wrapping to two
+        // lines once the icon row claimed ~140px.
+        // Mobile caps at viewport width.
+        className="glass-popup w-[max(20rem,min(calc(100vw-1rem),40rem))] border-border/40"
       >
         <div className="px-1.5 pt-1 pb-1 font-mono text-[10px] tracking-[0.2em] text-muted-foreground uppercase">
           Categories
@@ -144,7 +146,14 @@ export function CategorySwitcher({ initialCategories }: Props) {
                     earlier raw <div>+<Link> form was being swallowed
                     by the menu's pointer handling and never navigated. */}
                 <DropdownMenuItem
-                  render={<Link href={defaultHref} prefetch />}
+                  render={
+                    <Link
+                      href={defaultHref}
+                      prefetch
+                      title={cat.name}
+                      aria-label={cat.name}
+                    />
+                  }
                   className={cn(
                     "flex min-w-0 flex-1 cursor-pointer items-center gap-3",
                     isActive && "bg-secondary/40",
@@ -156,7 +165,7 @@ export function CategorySwitcher({ initialCategories }: Props) {
                     variant="compact"
                     className="shrink-0"
                   />
-                  <span className="min-w-0 flex-1 break-words text-sm leading-tight">
+                  <span className="min-w-0 flex-1 truncate text-sm leading-tight">
                     {cat.name}
                   </span>
                   {isActive && (
