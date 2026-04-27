@@ -80,6 +80,9 @@ type FflogsLinkResultLite = {
     }>;
     htmlPageSize?: number;
     htmlCodesFound?: number;
+    cookieUsed?: boolean;
+    htmlReportCount?: number;
+    htmlScrapeError?: string;
   };
   userTypeFields?: string[];
 };
@@ -1093,6 +1096,33 @@ export function SettingsDialog() {
                                 <strong className="text-foreground/85">
                                   {logsResult.diag.htmlCodesFound ?? 0}
                                 </strong>
+                                {" / 取得 reports="}
+                                <strong className="text-foreground/85">
+                                  {logsResult.diag.htmlReportCount ?? 0}
+                                </strong>
+                              </p>
+                            )}
+                            <p className="mt-0.5">
+                              Session Cookie 適用:{" "}
+                              <strong
+                                className={
+                                  logsResult.diag.cookieUsed
+                                    ? "text-emerald-300"
+                                    : "text-rose-300/80"
+                                }
+                              >
+                                {logsResult.diag.cookieUsed ? "あり" : "なし"}
+                              </strong>
+                              {logsResult.diag.cookieUsed && (
+                                <span className="ml-1 text-muted-foreground/70">
+                                  (連動完了後に自動削除済)
+                                </span>
+                              )}
+                            </p>
+                            {logsResult.diag.htmlScrapeError && (
+                              <p className="mt-0.5 text-rose-300/85">
+                                HTML スクレイプエラー:{" "}
+                                {logsResult.diag.htmlScrapeError}
                               </p>
                             )}
                             {logsResult.userTypeFields &&

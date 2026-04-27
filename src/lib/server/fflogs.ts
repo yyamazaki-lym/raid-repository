@@ -566,6 +566,12 @@ export type FflogsLinkResult = {
     htmlPageSize?: number;
     /** HTML scrape: number of /reports/CODE links found (before any filter). */
     htmlCodesFound?: number;
+    /** Whether a session cookie was applied to the HTML scrape. */
+    cookieUsed?: boolean;
+    /** Reports returned by the HTML scrape pass. */
+    htmlReportCount?: number;
+    /** HTML scrape error reason if any. */
+    htmlScrapeError?: string;
   };
 };
 
@@ -645,6 +651,9 @@ export async function linkFflogsReportsToVideos(): Promise<FflogsLinkResult> {
   let usedSource: "v2-owned" | "html-scrape" | "v2+html" = "v2-owned";
   let htmlPageSize: number | undefined;
   let htmlCodesFound: number | undefined;
+  let cookieUsed = false;
+  let htmlReportCount: number | undefined;
+  let htmlScrapeError: string | undefined;
 
   // 戦略: ユーザー自身のレポート**だけ**を確実に取得する。
   //   1. v2 GraphQL の owner-filtered 結果 (= 自分が所有するレポート)
@@ -662,22 +671,14 @@ export async function linkFflogsReportsToVideos(): Promise<FflogsLinkResult> {
 
   const me = await fetchCurrentUser(oauthToken);
   if (me.ok) {
-    // Pull the optional session cookie from app_settings — when set,
-    // the scrape fetch authenticates as the logged-in user and gets
-    // ALL their reports (Public + Unlisted + Private).
-    //
-    // SECURITY: cookie is auto-DELETED immediately after this fetch
-    // (success OR failure) to minimize window of exposure. Each sync
-    // run requires the user to re-paste the cookie. This is the
-    // tradeoff that lets us automate Private/Unlisted retrieval
-    // without persistently storing a credential.
     const sessionCookie = await fetchAppSetting("fflogs_session_cookie");
+    cookieUsed = Boolean(sessionCookie?.trim());
     const scrapeResult = await fetchFflogsReportsHtmlScrape(
       me.id,
       sessionCookie,
     );
     // Auto-delete the cookie after use — one-time-use semantics.
-    if (sessionCookie) {
+    if (cookieUsed) {
       try {
         const cleanupClient = await createClient();
         await cleanupClient
@@ -691,10 +692,8 @@ export async function linkFflogsReportsToVideos(): Promise<FflogsLinkResult> {
     if (scrapeResult.ok) {
       htmlPageSize = scrapeResult.htmlPageSize;
       htmlCodesFound = scrapeResult.htmlCodesFound;
+      htmlReportCount = scrapeResult.reports.length;
       if (scrapeResult.reports.length > 0) {
-        // Union + dedupe — keep v2-owned reports first (they have
-        // richer metadata like zone id), append unique HTML scrape
-        // reports.
         const byCode = new Map<string, FflogsReport>();
         for (const r of reports) byCode.set(r.id, r);
         for (const r of scrapeResult.reports) {
@@ -706,6 +705,8 @@ export async function linkFflogsReportsToVideos(): Promise<FflogsLinkResult> {
           reports = merged;
         }
       }
+    } else {
+      htmlScrapeError = scrapeResult.reason;
     }
   }
 
@@ -774,6 +775,9 @@ export async function linkFflogsReportsToVideos(): Promise<FflogsLinkResult> {
       v2OwnersSample: v2Result.ownersSample,
       htmlPageSize,
       htmlCodesFound,
+      cookieUsed,
+      htmlReportCount,
+      htmlScrapeError,
     },
   };
 }

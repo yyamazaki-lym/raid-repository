@@ -19,6 +19,15 @@ export type ReleaseEntry = {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    version: "1.8.2",
+    date: "2026-04-27",
+    notes: [
+      "FFLogs 連動結果の詳細診断パネルに「Session Cookie 適用: あり/なし」表示を追加 — cookie が今回の sync で実際に使われたか一目で分かる",
+      "HTML スクレイプの「取得 reports 件数」を診断に追加 — codes 検出数とは別に、最終的に何件のレポートを scraping から得たか確認可能",
+      "HTML スクレイプエラーがあれば理由を診断パネルに表示（cookie 期限切れ時の redirect 検出など）",
+    ],
+  },
+  {
     version: "1.8.1",
     date: "2026-04-27",
     notes: [
