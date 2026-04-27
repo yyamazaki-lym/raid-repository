@@ -493,17 +493,20 @@ function SessionRow({
           </span>
           {/* Memo indicator placed right after the time per user
               request — visible whether or not video/Logs links are
-              also rendered for this row. */}
+              also rendered for this row. `reserveSpace` keeps an
+              invisible placeholder so memo / video / Logs icons sit
+              at the same horizontal position across all rows
+              (1.9.27). */}
           <SessionMemoDot
             count={memos.length}
+            reserveSpace
             onClick={() => popoverRef.current?.open()}
           />
-          {/* Action icons — placed after the time so the cell reads
-              "what is this date" → "actions for this date" left-to-right.
-              Film slot (left) | BarChart3 slot (right).
-              1.9.26: keep the Film slot reserved IF logs exist but
-              video doesn't, so the Logs icon stays in its proper
-              position. When neither exists, render nothing. */}
+          {/* Action icons — Film slot (left) | BarChart3 slot (right).
+              1.9.27: ALWAYS reserve both slots in the detail table so
+              icons share vertical column alignment across all rows.
+              When a slot has no content, render an invisible h-5 w-5
+              placeholder. */}
           {(() => {
             const logsUrl = safeHref(videoLink?.logsUrl ?? sessionLogsUrl);
             const filmSlot = videoLink ? (
@@ -516,11 +519,9 @@ function SessionRow({
               >
                 <Film className="h-3 w-3" aria-hidden />
               </Link>
-            ) : logsUrl ? (
-              // Reserve the Film slot only when Logs will be rendered,
-              // so the BarChart3 doesn't slide into the Film position.
+            ) : (
               <span aria-hidden className="inline-block h-5 w-5 shrink-0" />
-            ) : null;
+            );
             const logsSlot = logsUrl ? (
               <a
                 href={logsUrl}
@@ -532,7 +533,9 @@ function SessionRow({
               >
                 <BarChart3 className="h-3 w-3" aria-hidden />
               </a>
-            ) : null;
+            ) : (
+              <span aria-hidden className="inline-block h-5 w-5 shrink-0" />
+            );
             return (
               <>
                 {filmSlot}

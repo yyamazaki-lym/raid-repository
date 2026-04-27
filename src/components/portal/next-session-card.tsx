@@ -60,11 +60,9 @@ export function NextSessionCard({
     <Frame
       tone={isToday ? "today" : "active"}
       icon={<CalendarCheck2 className="h-4 w-4" aria-hidden />}
+      rightSlot={recruitmentTopButton}
     >
-      {/* Header line: label + 確定 badge inline. The badge previously
-          floated to the far right where the eye easily missed it;
-          sitting next to the label makes "this date is locked-in"
-          immediately obvious. */}
+      {/* Header line: label + 確定 badge inline. */}
       <div className="flex flex-wrap items-center gap-2">
         <Label>次回開催日</Label>
         <span className="rounded-sm border border-[var(--neon-cyan)]/40 bg-[var(--neon-cyan)]/8 px-1.5 py-px font-mono text-[10px] tracking-[0.22em] text-[var(--neon-cyan)] uppercase">
@@ -90,11 +88,6 @@ export function NextSessionCard({
             {relative}
           </span>
         )}
-        {recruitmentTopButton && (
-          <span className="ml-auto inline-flex items-center self-center">
-            {recruitmentTopButton}
-          </span>
-        )}
       </div>
     </Frame>
   );
@@ -104,15 +97,19 @@ function Frame({
   children,
   icon,
   tone = "default",
+  rightSlot = null,
 }: {
   children: React.ReactNode;
   icon: React.ReactNode;
   tone?: "default" | "active" | "today" | "warn";
+  /**
+   * 1.9.27: optional right-edge content (e.g. recruitment button).
+   * Hoisted out of the content block so it sits at the same flex level
+   * as the icon — both `items-center` so they share the same vertical
+   * alignment with equal top / bottom whitespace.
+   */
+  rightSlot?: React.ReactNode;
 }) {
-  // "today" = active session today: stronger border + glow than the
-  // generic "active" upcoming highlight, so when you open the page
-  // your eye lands on it immediately. "active" itself is also
-  // emphasized — the card is the most-actioned thing on the page.
   const toneClass =
     tone === "today"
       ? "border-[var(--neon-cyan)]/80 bg-[var(--neon-cyan)]/[0.05] shadow-[0_0_42px_-6px_var(--neon-cyan),inset_0_0_24px_-10px_var(--neon-cyan)]"
@@ -124,12 +121,15 @@ function Frame({
 
   return (
     <div
-      className={`glass relative flex items-start gap-3 rounded-lg border p-3 sm:p-4 ${toneClass}`}
+      className={`glass relative flex items-center gap-3 rounded-lg border p-3 sm:p-4 ${toneClass}`}
     >
-      <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-md border border-[var(--neon-cyan)]/40 bg-background/40 text-[var(--neon-cyan)] shadow-[inset_0_0_12px_-4px_var(--neon-cyan)]">
+      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-[var(--neon-cyan)]/40 bg-background/40 text-[var(--neon-cyan)] shadow-[inset_0_0_12px_-4px_var(--neon-cyan)]">
         {icon}
       </span>
-      <div className="flex flex-1 flex-col gap-1">{children}</div>
+      <div className="flex min-w-0 flex-1 flex-col gap-1">{children}</div>
+      {rightSlot && (
+        <div className="ml-auto flex shrink-0 items-center">{rightSlot}</div>
+      )}
     </div>
   );
 }

@@ -120,19 +120,20 @@ export function SchedulePageBody({
           </h1>
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
-          {/* Simple toggle: click-only (no hover-peek — felt
-              disorienting as the strip flashed in/out under the
-              cursor). State is solely the pinned bool. */}
+          {/* Simple toggle: click-only. Tooltip phrasing chosen to be
+              short and unambiguous about "this shows past sessions". */}
           <ToggleButton
             pinned={pinnedSimple}
             hovered={false}
             onPin={() => setPinnedSimple((v) => !v)}
             onHover={() => {}}
-            ariaLabel={pinnedSimple ? "過去日程の簡易表示を隠す" : "過去日程の簡易表示"}
+            ariaLabel={
+              pinnedSimple ? "過去の活動 (簡易) を隠す" : "過去の活動 (簡易)"
+            }
             title={
               pinnedSimple
-                ? "簡易表示: ON（クリックで非表示）"
-                : "簡易表示: OFF（クリック/タップで表示）"
+                ? "過去の活動 (簡易) — 表示中"
+                : "過去の活動 (簡易) — 直近の日付チップ"
             }
             Icon={History}
           />
@@ -141,11 +142,15 @@ export function SchedulePageBody({
             hovered={hoveredDetail}
             onPin={() => setPinnedDetail((v) => !v)}
             onHover={setHoveredDetail}
-            ariaLabel={pinnedDetail ? "過去日程の詳細表示を隠す" : "過去日程の詳細表示"}
+            ariaLabel={
+              pinnedDetail
+                ? "過去の活動 (詳細) を隠す"
+                : "過去の活動 (詳細)"
+            }
             title={
               pinnedDetail
-                ? "詳細表示: ON — 参加者付きの全件表（下部に表示）"
-                : "詳細表示: OFF — 参加者付きの全件表（クリックで下部に表示）"
+                ? "過去の活動 (詳細) — 表示中"
+                : "過去の活動 (詳細) — 出席者付きの全件表"
             }
             Icon={Table}
           />

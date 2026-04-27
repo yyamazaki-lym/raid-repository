@@ -19,6 +19,16 @@ export type ReleaseEntry = {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    version: "1.9.27",
+    date: "2026-04-28",
+    notes: [
+      "📐 次回開催日カード: 左端のカレンダーアイコンと右端の「募集」ボタンを縦中央寄せに統一。`Frame` を `items-start` → `items-center` に変更し、`recruitmentTopButton` を内側コンテンツ列から `rightSlot` として切り出して flex 兄弟要素に。これでアイコン / コンテンツ / ボタンの上下空白が等間隔になる",
+      "📐 過去の詳細日程: メモが無い行で行内が左詰めになっていたのを修正。`SessionMemoDot` に `reserveSpace` prop を追加 — 詳細日程テーブルでは true (16px placeholder で行間整列)、簡易チップでは false (コンパクト)",
+      "📐 詳細日程の Film / Logs スロットを常に確保 — 動画 / Logs 不在の場合も h-5 w-5 placeholder で予約。全行のアイコンが垂直に同位置で揃う",
+      "💬 スケジュールページの簡易/詳細トグルボタンのマウスオーバー文言を整理 — 「簡易表示: ON（クリックで非表示）」のような状態説明を「過去の活動 (簡易) — 直近の日付チップ」「過去の活動 (詳細) — 出席者付きの全件表」のような『何が表示されるか』ベースの分かりやすい文に",
+    ],
+  },
+  {
     version: "1.9.26",
     date: "2026-04-27",
     notes: [

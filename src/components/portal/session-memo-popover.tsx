@@ -288,20 +288,30 @@ export function SessionMemoDot({
   count,
   className = "",
   onClick,
+  reserveSpace = false,
 }: {
   count: number;
   className?: string;
   onClick?: () => void;
+  /**
+   * 1.9.27: when true, render an invisible h-4 w-4 placeholder for
+   * count=0 (used in tabular contexts where memo / video / Logs
+   * icons need vertical column alignment across rows). Default false
+   * — compact strips (chips) prefer no empty gap.
+   */
+  reserveSpace?: boolean;
 }) {
   const dotClass =
     "inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--neon-violet)] shadow-[0_0_6px_var(--neon-violet)] transition-shadow";
-  // 1.9.26: drop the invisible h-4 w-4 placeholder when no memos
-  // exist. Earlier versions reserved the dot's footprint for layout
-  // stability, but it created visible empty gaps in compact strips
-  // (schedule-past-simple chips) where dates without memos / logs /
-  // videos would still show a 16px void. Trade-off: a slight layout
-  // shift when memos arrive via realtime, but UX is cleaner overall.
-  if (count <= 0) return null;
+  if (count <= 0) {
+    if (!reserveSpace) return null;
+    return (
+      <span
+        aria-hidden
+        className={`inline-block h-4 w-4 shrink-0 ${className}`}
+      />
+    );
+  }
   if (!onClick) {
     return (
       <span
