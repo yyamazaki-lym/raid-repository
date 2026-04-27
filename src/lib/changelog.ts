@@ -19,6 +19,17 @@ export type ReleaseEntry = {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    version: "1.7.3",
+    date: "2026-04-27",
+    notes: [
+      "🐛 重大: v2 GraphQL クエリを `reportData.reports` から `userData.currentUser.reports` に変更。前者は API client が見えるレポート全体（**他人のレポートを含む**）を返していたため誤紐づけが発生していた",
+      "v1 周りの実装を全削除 — `fetchFflogsReports` (v1 REST)、`setFflogsUsername` / `getFflogsUsername` / `parseFflogsDisplayName`、`FFLOGS_USERNAME_KEY` 定数、`FFLOGS_API_KEY` 環境変数の参照、設定ダイアログの v1 表示名フォーム、保存時の v1 username 自動保存処理など。FFLogs 連動は v2 OAuth のみに",
+      "「全 logs URL クリア」ボタンを設定ダイアログに追加 — 過去の誤紐づけを一括削除して再連動するための保守機能。動画 / 過去予定の logs_url を null に",
+      "`FFLOGS_API_KEY` 環境変数は不要になりました（残しておいても害はありませんが削除推奨）",
+      "DB の `app_settings.fflogs_username` 行は今後参照されません（残しておいても害はありませんが削除しても OK）",
+    ],
+  },
+  {
     version: "1.7.2",
     date: "2026-04-27",
     notes: [

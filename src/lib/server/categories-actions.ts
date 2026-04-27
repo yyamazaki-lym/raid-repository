@@ -278,6 +278,62 @@ export async function disconnectFflogsOAuthAction(): Promise<
 }
 
 /**
+ * Server Action: clear all auto-linked `logs_url` values from videos
+ * and past sessions. Use this to undo a previous bad sync run (e.g.
+ * v1 fallback that linked someone else's reports) and re-sync from
+ * a clean slate.
+ *
+ * Per-date manual entries set via the memo popover are also wiped —
+ * if that's a problem, users should restore manually after re-running
+ * the OAuth sync.
+ */
+export async function clearAllFflogsLinks(): Promise<{
+  ok: boolean;
+  reason?: string;
+  videosCleared: number;
+  sessionsCleared: number;
+}> {
+  const supabase = await createClient();
+  const { data: vids, error: vidsErr } = await supabase
+    .from("category_links")
+    .update({ logs_url: null })
+    .eq("kind", "video")
+    .not("logs_url", "is", null)
+    .select("id");
+  if (vidsErr) {
+    return {
+      ok: false,
+      reason: "videos: " + vidsErr.message,
+      videosCleared: 0,
+      sessionsCleared: 0,
+    };
+  }
+  const { data: ses, error: sesErr } = await supabase
+    .from("schedule_past_sessions")
+    .update({ logs_url: null })
+    .not("logs_url", "is", null)
+    .select("raw_date");
+  if (sesErr) {
+    return {
+      ok: false,
+      reason: "sessions: " + sesErr.message,
+      videosCleared: vids?.length ?? 0,
+      sessionsCleared: 0,
+    };
+  }
+  try {
+    revalidatePath("/");
+  } catch {
+    // best-effort
+  }
+  return {
+    ok: true,
+    videosCleared: vids?.length ?? 0,
+    sessionsCleared: ses?.length ?? 0,
+  };
+}
+
+/**
  * Server Action: manually set / clear a session's `logs_url`.
  *
  * Workaround for the v1 API limitation: it returns ONLY public reports,

@@ -31,13 +31,12 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import {
   getDiscordScheduleChannelId,
-  getFflogsUsername,
   getScheduleUrlFromDb,
   setDiscordScheduleChannelId,
-  setFflogsUsername,
   setScheduleUrl,
 } from "@/lib/schedule-url-store";
 import {
+  clearAllFflogsLinks,
   countStoredPastSessions,
   disconnectFflogsOAuthAction,
   fetchFflogsOAuthStatus,
@@ -112,11 +111,11 @@ export function SettingsDialog() {
   const [snapshotting, startSnapshot] = useTransition();
   const [snapshotResult, setSnapshotResult] =
     useState<ScheduleSnapshotResult | null>(null);
-  const [fflogsUsername, setFflogsUsernameState] = useState("");
   const [linkingLogs, startLinkLogs] = useTransition();
   const [logsResult, setLogsResult] = useState<FflogsLinkResultLite | null>(
     null,
   );
+  const [clearingLogs, startClearLogs] = useTransition();
   // FFLogs OAuth state — fetched from server when dialog opens. Lets
   // us show "Connected as XYZ" vs "Connect" in the OAuth section.
   const [oauthStatus, setOauthStatus] = useState<{
@@ -158,17 +157,14 @@ export function SettingsDialog() {
     if (!open) return;
     let cancelled = false;
     void (async () => {
-      const [currentUrl, currentChannel, currentFflogs, currentOauth] =
-        await Promise.all([
-          getScheduleUrlFromDb(),
-          getDiscordScheduleChannelId(),
-          getFflogsUsername(),
-          fetchFflogsOAuthStatus(),
-        ]);
+      const [currentUrl, currentChannel, currentOauth] = await Promise.all([
+        getScheduleUrlFromDb(),
+        getDiscordScheduleChannelId(),
+        fetchFflogsOAuthStatus(),
+      ]);
       if (!cancelled) {
         setUrl(currentUrl ?? "");
         setChannelId(currentChannel ?? "");
-        setFflogsUsernameState(currentFflogs ?? "");
         setOauthStatus(currentOauth);
         setImportResult(null);
         setLogsResult(null);
@@ -189,15 +185,9 @@ export function SettingsDialog() {
       return;
     }
     const channelResult = await setDiscordScheduleChannelId(channelId);
-    if (!channelResult.ok) {
-      setBusy(false);
-      toast.error("チャンネルID: " + channelResult.reason);
-      return;
-    }
-    const fflogsResult = await setFflogsUsername(fflogsUsername);
     setBusy(false);
-    if (!fflogsResult.ok) {
-      toast.error("FFLogs: " + fflogsResult.reason);
+    if (!channelResult.ok) {
+      toast.error("チャンネルID: " + channelResult.reason);
       return;
     }
     toast.success("設定を保存しました（全員共有）");
@@ -255,34 +245,6 @@ export function SettingsDialog() {
   const onLinkLogs = () => {
     setLogsResult(null);
     startLinkLogs(async () => {
-      // Auto-save the username before syncing — the sync server-action
-      // reads from `app_settings`, not the local form state, so users
-      // who type a username and click "連動" without first clicking
-      // "保存" would otherwise hit "未設定". Persist any non-empty
-      // local value first; the function is idempotent.
-      const localUsername = fflogsUsername.trim();
-      if (localUsername) {
-        const saveResult = await setFflogsUsername(localUsername);
-        if (!saveResult.ok) {
-          toast.error("FFLogs ユーザー名の保存失敗: " + saveResult.reason);
-          setLogsResult({
-            ok: false,
-            reason: saveResult.reason,
-            reportsScanned: 0,
-            videosScanned: 0,
-            matched: 0,
-            sessionsScanned: 0,
-            sessionsMatched: 0,
-            details: [],
-            reportsDateRange: undefined,
-            videosDateRange: undefined,
-            sessionsDateRange: undefined,
-            reportSamples: undefined,
-            queriedUsername: undefined,
-          });
-          return;
-        }
-      }
       const r = await linkFflogsReports();
       setLogsResult(r);
       if (!r.ok) {
@@ -601,15 +563,14 @@ export function SettingsDialog() {
               </span>
             </header>
 
-            {/* v2 OAuth (推奨)。OAuth で接続すると Public + Unlisted +
-                Private のすべてのレポートが取得対象になる。v1 と違って
-                FFLOGS_API_KEY は不要、代わりに FFLOGS_OAUTH_CLIENT_ID /
-                _SECRET の env var が必要。 */}
+            {/* OAuth 認証で v2 GraphQL を使用。Public + Unlisted +
+                Private のすべてのレポートが取得対象。FFLOGS_OAUTH_CLIENT_ID
+                / _SECRET の env var が必要。 */}
             <div className="flex flex-col gap-2 rounded-md border border-amber-400/35 bg-amber-400/5 px-3 py-2.5">
               <div className="flex items-center justify-between gap-2">
                 <span className="flex items-center gap-1.5 font-mono text-[10px] tracking-[0.22em] text-amber-200/95 uppercase">
                   <Link2 className="h-3 w-3" aria-hidden />
-                  OAuth 認証 (v2 API・推奨)
+                  OAuth 認証 (v2 API)
                 </span>
                 {oauthStatus?.connected && (
                   <span className="inline-flex items-center gap-1 rounded-sm border border-emerald-400/45 bg-emerald-400/10 px-1.5 py-px font-mono text-[9px] tracking-[0.18em] text-emerald-200 uppercase">
@@ -663,8 +624,9 @@ export function SettingsDialog() {
               ) : (
                 <div className="flex flex-col gap-1.5">
                   <p className="text-[11px] leading-relaxed text-foreground/85">
-                    FFLogs にログインして認可すると、Private / Unlisted を含む
-                    全レポートが取得可能になります（v1 API は Public のみ）。
+                    FFLogs にログインして認可すると、Public / Unlisted /
+                    Private を含む自分のレポートを動画 / 過去予定に
+                    自動紐づけできます。
                   </p>
                   <a
                     href="/api/auth/fflogs/start"
@@ -697,94 +659,62 @@ export function SettingsDialog() {
             </div>
 
             <div className="flex flex-col gap-2">
-              <div className="flex items-baseline justify-between gap-2">
-                <Label
-                  htmlFor="fflogs-username"
-                  className="text-xs text-foreground/80"
+              <div className="flex flex-wrap items-center gap-1.5">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={onLinkLogs}
+                  disabled={linkingLogs || !oauthStatus?.connected}
+                  className="gap-1.5 font-mono text-[11px] tracking-[0.18em] uppercase"
+                  title={
+                    !oauthStatus?.connected
+                      ? "先に上の「OAuth 接続」を実行してください"
+                      : "FFLogs レポートを動画 / 過去予定に自動紐づけ"
+                  }
                 >
-                  v1 表示名フォールバック（任意）
-                </Label>
-                <a
-                  href="https://www.fflogs.com/profile"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-[10px] text-amber-300/85 underline decoration-dotted underline-offset-2 transition-colors hover:text-amber-300"
-                  title="自分のプロフィールページを開く"
+                  {linkingLogs ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                  ) : (
+                    <Link2 className="h-3.5 w-3.5" aria-hidden />
+                  )}
+                  {linkingLogs ? "連動中..." : "FFLogs と動画を連動"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    if (
+                      !window.confirm(
+                        "全ての logs URL（動画 / 過去予定の自動紐づけ + 手動紐づけの両方）をクリアします。よろしいですか？",
+                      )
+                    )
+                      return;
+                    startClearLogs(async () => {
+                      const r = await clearAllFflogsLinks();
+                      if (!r.ok) {
+                        toast.error("クリア失敗: " + (r.reason ?? "unknown"));
+                        return;
+                      }
+                      toast.success(
+                        `動画 ${r.videosCleared} 件 / 過去予定 ${r.sessionsCleared} 件の logs URL をクリア`,
+                      );
+                      router.refresh();
+                    });
+                  }}
+                  disabled={clearingLogs}
+                  className="gap-1.5 font-mono text-[11px] tracking-[0.18em] uppercase text-rose-200"
+                  title="全 logs URL を一括削除（過去の v1 fallback で誤って紐づいたものをリセット）"
                 >
-                  <BarChart3 className="h-2.5 w-2.5" aria-hidden />
-                  fflogs.com/profile
-                </a>
+                  {clearingLogs ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                  ) : (
+                    <X className="h-3.5 w-3.5" aria-hidden />
+                  )}
+                  {clearingLogs ? "クリア中..." : "全 logs URL クリア"}
+                </Button>
               </div>
-              <Input
-                id="fflogs-username"
-                value={fflogsUsername}
-                onChange={(e) => setFflogsUsernameState(e.target.value)}
-                placeholder="例: TaroYamada（表示名・display name）"
-                className="font-mono text-[12px]"
-                spellCheck={false}
-                autoComplete="off"
-              />
-              <p className="text-muted-foreground text-[11px] leading-relaxed">
-                FFLogs の <strong>表示名（display name）</strong> を入力。
-                fflogs.com/profile を開くと、ページ上部の見出しに表示されている
-                英数字の名前がそれです（プロフィール URL 末尾の{" "}
-                <code className="font-mono">70734</code> などの
-                <strong>数値 ID は API では使えません</strong>）。
-              </p>
-              <p className="text-muted-foreground/80 text-[10px] leading-relaxed">
-                ※ <strong>非公開 (Private)</strong> /{" "}
-                <strong>限定公開 (Unlisted)</strong> レポートも取得対象
-                （<code className="font-mono">includePrivate=true</code> を
-                自動付与）。ただし API キーの持ち主が表示名のユーザー本人で
-                ある必要があります。
-                <br />
-                ※ <strong>レポート所有者ベース</strong>: 設定した表示名の
-                ユーザーがアップロードしたレポートのみ取得します。
-              </p>
-              <p className="text-muted-foreground/80 text-[10px] leading-relaxed">
-                サーバー側で <code className="font-mono">FFLOGS_API_KEY</code>
-                {" "}環境変数の設定が必要（Vercel ダッシュボード →
-                Settings → Environment Variables → 設定後 redeploy）。
-              </p>
-              <p className="text-muted-foreground/80 text-[10px] leading-relaxed">
-                <strong>キーの取得元:</strong>
-                {" "}
-                <a
-                  href="https://www.fflogs.com/profile"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-[var(--neon-cyan)] underline decoration-dotted underline-offset-2 hover:text-[var(--neon-cyan)]/85"
-                >
-                  fflogs.com/profile
-                </a>
-                {" "}の <strong>Web API</strong> セクション。
-                <br />
-                ※ <strong>v1 Public API key</strong> を使用（v2 OAuth の
-                client_id / client_secret ではなく、シンプルな英数字 1 行のキー）。
-              </p>
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={onLinkLogs}
-                disabled={linkingLogs || !fflogsUsername.trim()}
-                className="self-start gap-1.5 font-mono text-[11px] tracking-[0.18em] uppercase"
-                title={
-                  !fflogsUsername.trim()
-                    ? "FFLogs ユーザー名を入力（先に保存）"
-                    : "FFLogs レポートを動画に自動紐づけ"
-                }
-              >
-                {linkingLogs ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
-                ) : (
-                  <Link2 className="h-3.5 w-3.5" aria-hidden />
-                )}
-                {linkingLogs ? "連動中..." : "FFLogs と動画を連動"}
-              </Button>
               {logsResult && (
                 <div className="relative flex flex-col gap-0.5 rounded-sm border border-border/40 bg-secondary/20 px-2.5 py-1.5 pr-7 text-[11px] leading-relaxed">
                   <button
@@ -801,10 +731,6 @@ export function SettingsDialog() {
                         動画 <strong>{logsResult.matched}</strong> /{" "}
                         過去予定 <strong>{logsResult.sessionsMatched}</strong>
                         {" "}件を紐づけ · レポート {logsResult.reportsScanned}
-                        {" "}
-                        <span className="ml-1 text-[9px] text-muted-foreground">
-                          [{logsResult.apiPath ?? "v1"}]
-                        </span>
                       </p>
                       <p className="font-mono text-[10px] text-muted-foreground/70">
                         候補: 動画 {logsResult.videosScanned} / 過去予定{" "}

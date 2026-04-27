@@ -1,23 +1,20 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
-import { fetchAppSetting } from "@/lib/supabase/app-settings";
 import { getValidFflogsOAuthToken } from "./fflogs-oauth";
 
 /**
- * FFLogs API v1 wrapper. Fetches a user's report list and matches
- * each report to an existing video link by timestamp.
+ * FFLogs v2 GraphQL wrapper.
  *
  * Endpoint:
- *   https://www.fflogs.com/v1/reports/user/{username}?api_key=KEY
+ *   https://www.fflogs.com/api/v2/user (GraphQL POST)
+ *   Authorization: Bearer <oauth_access_token>
  *
- * Response shape (each entry):
- *   { id, title, owner, start, end, zone, fights[] }
- *   start/end are unix-millis. We use `start` as the report's
- *   "posted at" for matching.
+ * Returns reports the OAuth-authenticated user owns, including
+ * Public + Unlisted + Private (subject to scope `view-user-profile`).
  *
- * Setup needs:
- *   - FFLOGS_API_KEY env var (server-side)
- *   - `fflogs_username` setting in app_settings
+ * The previous v1 REST wrapper was removed in 1.7.3 — v1 only
+ * exposes Public reports and required a separate FFLOGS_API_KEY.
+ * v2 OAuth is now the sole path.
  */
 
 export type FflogsReport = {
@@ -31,7 +28,6 @@ export type FflogsReport = {
   zone: number | null;
 };
 
-const FFLOGS_API_BASE = "https://www.fflogs.com/v1";
 const FFLOGS_GRAPHQL_URL = "https://www.fflogs.com/api/v2/user";
 
 /**
@@ -50,16 +46,25 @@ export async function fetchFflogsReportsV2(
   const all: FflogsReport[] = [];
   const MAX_PAGES = 16;
   for (let page = 1; page <= MAX_PAGES; page++) {
+    // CRITICAL: query through `userData.currentUser.reports` — this
+    // is the OAuth-authenticated user's OWN reports. The previous
+    // `reportData.reports` path returns reports the API client has
+    // visibility on, which can include reports OWNED BY OTHER USERS
+    // (e.g. ones the user has viewed or shared with). That caused
+    // "someone else's logs got linked" reports.
     const query = `query ($page: Int) {
-      reportData {
-        reports(limit: 25, page: $page) {
-          has_more_pages
-          data {
-            code
-            title
-            startTime
-            endTime
-            zone { id }
+      userData {
+        currentUser {
+          reports(limit: 25, page: $page) {
+            has_more_pages
+            data {
+              code
+              title
+              startTime
+              endTime
+              zone { id }
+              owner { id name }
+            }
           }
         }
       }
@@ -92,16 +97,19 @@ export async function fetchFflogsReportsV2(
       const json = (await res.json()) as {
         errors?: Array<{ message?: string }>;
         data?: {
-          reportData?: {
-            reports?: {
-              has_more_pages?: boolean;
-              data?: Array<{
-                code: string;
-                title?: string | null;
-                startTime: number;
-                endTime: number;
-                zone?: { id?: number | null } | null;
-              }>;
+          userData?: {
+            currentUser?: {
+              reports?: {
+                has_more_pages?: boolean;
+                data?: Array<{
+                  code: string;
+                  title?: string | null;
+                  startTime: number;
+                  endTime: number;
+                  zone?: { id?: number | null } | null;
+                  owner?: { id?: number | null; name?: string | null } | null;
+                }>;
+              };
             };
           };
         };
@@ -112,18 +120,20 @@ export async function fetchFflogsReportsV2(
           reason: "fflogs v2 GraphQL error: " + json.errors[0]!.message,
         };
       }
-      const reports = json.data?.reportData?.reports;
+      const reports = json.data?.userData?.currentUser?.reports;
       if (!reports?.data) break;
       for (const r of reports.data) {
-        // GraphQL returns startTime/endTime in milliseconds (per FFLogs
-        // v2 docs) — different from v1 which is seconds. We keep the
-        // same magnitude-based normalization in fflogs.ts callers, but
-        // here we trust v2's spec and pass through as ms.
+        // v2 GraphQL `startTime` / `endTime` are documented to return
+        // Unix milliseconds. Pass through as-is. Defensive: if the
+        // API ever switches to seconds, the magnitude check still
+        // protects matching (anything < 1e11 = seconds → ×1000).
+        const sMs = r.startTime < 1e11 ? r.startTime * 1000 : r.startTime;
+        const eMs = r.endTime < 1e11 ? r.endTime * 1000 : r.endTime;
         all.push({
           id: r.code,
           title: r.title ?? "",
-          startMs: r.startTime,
-          endMs: r.endTime,
+          startMs: sMs,
+          endMs: eMs,
           zone: r.zone?.id ?? null,
         });
       }
@@ -133,102 +143,6 @@ export async function fetchFflogsReportsV2(
     }
   }
   return { ok: true, reports: all };
-}
-
-export async function fetchFflogsReports(
-  username: string,
-  options: { page?: number } = {},
-): Promise<{ ok: true; reports: FflogsReport[] } | { ok: false; reason: string }> {
-  const apiKey = process.env.FFLOGS_API_KEY?.trim();
-  if (!apiKey) return { ok: false, reason: "FFLOGS_API_KEY 未設定" };
-  const url = new URL(
-    `${FFLOGS_API_BASE}/reports/user/${encodeURIComponent(username)}`,
-  );
-  url.searchParams.set("api_key", apiKey);
-  // NOTE: the v1 API returns ONLY public reports. There is no
-  // documented parameter to include Unlisted / Private reports
-  // (an earlier attempt with `includePrivate=true` was based on
-  // a guess and had no effect). For non-public logs, users have
-  // to either change the report visibility on FFLogs to Public,
-  // or use the per-date "Logs URL を手動で紐づけ" form in the
-  // memo popover to bind a URL manually.
-  if (options.page !== undefined) url.searchParams.set("page", String(options.page));
-
-  try {
-    const res = await fetch(url.toString(), {
-      headers: { Accept: "application/json" },
-      signal: AbortSignal.timeout(15000),
-    });
-    if (!res.ok) {
-      const body = await res.text().catch(() => "");
-      // 401 = invalid API key. The error message from FFLogs itself
-      // ("Invalid key specified.") doesn't tell the user WHAT to do,
-      // so surface a concrete remediation hint here.
-      if (res.status === 401) {
-        return {
-          ok: false,
-          reason:
-            "FFLOGS_API_KEY が無効です — Vercel Settings → Environment Variables で v1 Web API キーを確認してください（fflogs.com/profile の Web API セクション。V2 OAuth の client_id/secret ではなく v1 キー）",
-        };
-      }
-      // 400 "Invalid user name" — the configured username is rejected.
-      // Almost always a numeric ID mistakenly stored. The API requires
-      // the human-readable display name (fflogs.com/profile heading).
-      if (res.status === 400 && /invalid user name/i.test(body)) {
-        return {
-          ok: false,
-          reason: /^\d+$/.test(username)
-            ? `fflogs 400: 数値 ID「${username}」は使えません — fflogs.com/profile で表示名（display name）を確認して、設定ダイアログで入力し直してください`
-            : `fflogs 400: ユーザー名「${username}」は API に拒否されました — fflogs.com/profile の表示名（display name）と一致しているか確認してください`,
-        };
-      }
-      // 404 on the user endpoint usually means the username doesn't
-      // exist or has no public reports.
-      if (res.status === 404) {
-        return {
-          ok: false,
-          reason: `fflogs 404: ユーザー「${username}」が見つかりません（綴りまたは公開設定を確認）`,
-        };
-      }
-      return {
-        ok: false,
-        reason: `fflogs ${res.status}: ${body.slice(0, 200)}`,
-      };
-    }
-    const data = (await res.json()) as Array<{
-      id: string;
-      title?: string;
-      start: number;
-      end: number;
-      zone?: number;
-    }>;
-    if (!Array.isArray(data)) {
-      return {
-        ok: false,
-        reason: "unexpected response shape (expected array)",
-      };
-    }
-    return {
-      ok: true,
-      reports: data.map((r) => ({
-        id: r.id,
-        title: r.title ?? "",
-        // FFLogs v1 returns `start`/`end` as Unix MILLISECONDS — but
-        // some code paths in the wild treat them as seconds. Detect
-        // by magnitude: a seconds-epoch value for a 2024+ raid is
-        // ~1.7e9 (10 digits), milliseconds is ~1.7e12 (13 digits).
-        // Anything under 1e11 must be seconds → multiply by 1000.
-        // Without this normalization, all matches fail because the
-        // report timestamps land in 1970 and don't fit any video /
-        // session window.
-        startMs: r.start < 1e11 ? r.start * 1000 : r.start,
-        endMs: r.end < 1e11 ? r.end * 1000 : r.end,
-        zone: r.zone ?? null,
-      })),
-    };
-  } catch (e) {
-    return { ok: false, reason: "fetch error: " + String(e) };
-  }
 }
 
 export type FflogsLinkDetail = {
@@ -297,65 +211,37 @@ const SESSION_WINDOW_AFTER_MS = 4 * 60 * 60 * 1000;
  * the target's window — same heuristic as the video↔session matching.
  */
 export async function linkFflogsReportsToVideos(): Promise<FflogsLinkResult> {
-  // OAuth v2 path takes priority when connected — it returns
-  // Public + Unlisted + Private reports owned by the authenticated
-  // user. Fall back to v1 (Public-only) when not OAuth-connected.
+  // v2 OAuth only. The previous v1 fallback (display name + API key)
+  // was removed in 1.7.3 because it returned Public reports only AND
+  // sometimes returned reports owned by other users with the same name.
   const oauthToken = await getValidFflogsOAuthToken();
-
-  let usedPath: "v1" | "v2" = "v1";
-  let queriedIdentifier = "";
-
-  let reports: FflogsReport[] = [];
-  if (oauthToken) {
-    usedPath = "v2";
-    queriedIdentifier = "(OAuth 認証済みユーザー)";
-    const v2Result = await fetchFflogsReportsV2(oauthToken);
-    if (!v2Result.ok) {
-      return {
-        ok: false,
-        reason: v2Result.reason,
-        reportsScanned: 0,
-        videosScanned: 0,
-        matched: 0,
-        sessionsScanned: 0,
-        sessionsMatched: 0,
-        details: [],
-      };
-    }
-    reports = v2Result.reports;
-  } else {
-    // v1 fallback: requires display name in `app_settings` and
-    // FFLOGS_API_KEY env var. Returns Public reports only.
-    const username = (await fetchAppSetting("fflogs_username"))?.trim();
-    if (!username) {
-      return {
-        ok: false,
-        reason:
-          "FFLogs OAuth 未接続かつ表示名も未設定 — 設定ダイアログから OAuth 認証するか、表示名を保存してください",
-        reportsScanned: 0,
-        videosScanned: 0,
-        matched: 0,
-        sessionsScanned: 0,
-        sessionsMatched: 0,
-        details: [],
-      };
-    }
-    queriedIdentifier = username;
-    const v1Result = await fetchFflogsReports(username);
-    if (!v1Result.ok) {
-      return {
-        ok: false,
-        reason: v1Result.reason,
-        reportsScanned: 0,
-        videosScanned: 0,
-        matched: 0,
-        sessionsScanned: 0,
-        sessionsMatched: 0,
-        details: [],
-      };
-    }
-    reports = v1Result.reports;
+  if (!oauthToken) {
+    return {
+      ok: false,
+      reason:
+        "FFLogs OAuth 未接続 — 設定ダイアログから「FFLogs と OAuth 接続」を実行してください",
+      reportsScanned: 0,
+      videosScanned: 0,
+      matched: 0,
+      sessionsScanned: 0,
+      sessionsMatched: 0,
+      details: [],
+    };
   }
+  const v2Result = await fetchFflogsReportsV2(oauthToken);
+  if (!v2Result.ok) {
+    return {
+      ok: false,
+      reason: v2Result.reason,
+      reportsScanned: 0,
+      videosScanned: 0,
+      matched: 0,
+      sessionsScanned: 0,
+      sessionsMatched: 0,
+      details: [],
+    };
+  }
+  const reports = v2Result.reports;
 
   // Run both linkers (independently — they don't share their used-set
   // because each FFLogs report legitimately maps to both a video and
@@ -406,8 +292,8 @@ export async function linkFflogsReportsToVideos(): Promise<FflogsLinkResult> {
     videosDateRange: videoResult.dateRange,
     sessionsDateRange: sessionResult.dateRange,
     reportSamples,
-    queriedUsername: queriedIdentifier,
-    apiPath: usedPath,
+    queriedUsername: "(OAuth 認証済みユーザー)",
+    apiPath: "v2",
   };
 }
 
