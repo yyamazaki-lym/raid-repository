@@ -8,13 +8,22 @@ import {
   isJapaneseHoliday,
 } from "@/lib/japanese-holidays";
 import type { JapaneseHolidaysMap } from "@/lib/japanese-holidays";
-import { useRealtimeScheduleMemos } from "@/lib/schedule-memos-client";
+import {
+  useRealtimeScheduleMemos,
+  type ScheduleSessionMemo,
+} from "@/lib/schedule-memos-client";
 import type { ScheduleSession } from "@/lib/schedule/next-session";
 import type { SessionVideoLink } from "@/lib/server/session-video-link";
 import {
   SessionMemoDot,
   SessionMemoPopover,
 } from "./session-memo-popover";
+
+// Stable reference for the realtime hook's initial param. Passing `[]`
+// inline creates a fresh array on every render, which trips the hook's
+// "initial reference changed → reset state" guard and clobbers the
+// fetched memos. Module-level constant keeps the reference identity.
+const EMPTY_MEMOS: ScheduleSessionMemo[] = [];
 
 /**
  * Simple past-sessions view: a compact horizontal-wrap strip of the
@@ -89,7 +98,7 @@ function DateChip({
   holidays?: JapaneseHolidaysMap;
   videoLink: SessionVideoLink | null;
 }) {
-  const memos = useRealtimeScheduleMemos(session.rawDate, []);
+  const memos = useRealtimeScheduleMemos(session.rawDate, EMPTY_MEMOS);
   const holiday = isJapaneseHoliday(session.date, holidays);
   const holidayName = holiday
     ? getJapaneseHolidayName(session.date, holidays)

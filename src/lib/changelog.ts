@@ -19,6 +19,13 @@ export type ReleaseEntry = {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    version: "1.5.2",
+    date: "2026-04-27",
+    notes: [
+      "メモが保存・表示されない不具合を修正（呼び出し側で realtime hook に渡す initial 値の参照を安定化 — 毎レンダリング `[]` リテラルを渡していたため、フェッチ済みデータが毎レンダ空配列で上書きされていた）",
+    ],
+  },
+  {
     version: "1.5.1",
     date: "2026-04-27",
     notes: [

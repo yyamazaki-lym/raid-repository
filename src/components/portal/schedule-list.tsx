@@ -6,7 +6,10 @@ import {
   SessionMemoDot,
   SessionMemoPopover,
 } from "./session-memo-popover";
-import { useRealtimeScheduleMemos } from "@/lib/schedule-memos-client";
+import {
+  useRealtimeScheduleMemos,
+  type ScheduleSessionMemo,
+} from "@/lib/schedule-memos-client";
 import {
   getJapaneseHolidayName,
   isJapaneseHoliday,
@@ -20,6 +23,11 @@ import type {
   ScheduleUser,
 } from "@/lib/schedule/next-session";
 import type { SessionVideoLink } from "@/lib/server/session-video-link";
+
+// Stable reference for the realtime hook's initial param — `[]` inline
+// would be a fresh array on every render and trip the hook's
+// "initial-changed" guard, clobbering fetched memos with empty.
+const EMPTY_MEMOS: ScheduleSessionMemo[] = [];
 
 const ATT_TONE: Record<Attendance, string> = {
   "◯": "text-[var(--neon-cyan)] bg-[var(--neon-cyan)]/10 border-[var(--neon-cyan)]/30",
@@ -350,7 +358,7 @@ function SessionRow({
   scheduleUrl?: string | null;
 }) {
   const decided = session.status === "DECISION";
-  const memos = useRealtimeScheduleMemos(session.rawDate, []);
+  const memos = useRealtimeScheduleMemos(session.rawDate, EMPTY_MEMOS);
   // Japanese national holidays get a red date label — overrides the
   // default and DECISION-cyan styling. Doesn't change the row background
   // so the past/decided treatment still composes underneath.
