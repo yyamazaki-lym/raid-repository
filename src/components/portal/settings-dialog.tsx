@@ -720,25 +720,44 @@ export function SettingsDialog() {
               </p>
               <details className="text-[10px]">
                 <summary className="cursor-pointer text-muted-foreground/85 hover:text-foreground/90">
-                  ▸ Cookie の取り方 (Chrome / Edge)
+                  ▸ Cookie の取り方（Network タブから一括コピー — 推奨）
                 </summary>
                 <ol className="mt-1 ml-3.5 flex list-decimal flex-col gap-0.5 text-muted-foreground leading-relaxed">
-                  <li>fflogs.com を開いてログイン</li>
-                  <li>F12 で DevTools → Application タブ → Cookies → fflogs.com</li>
+                  <li>fflogs.com を開いて<strong>ログイン</strong></li>
                   <li>
-                    <code className="font-mono">_fflogs_session</code> 等の
-                    値を <strong>一行コピー</strong>
-                    {" "}（複数 cookie を semicolon 区切りで結合: 例{" "}
-                    <code className="font-mono">_fflogs_session=abc; XSRF-TOKEN=xyz</code>
-                    ）
+                    自分のプロフィール{" "}
+                    <code className="font-mono">/user/reports-list/...</code>{" "}
+                    に移動
+                  </li>
+                  <li>
+                    F12 で DevTools → <strong>Network</strong> タブを開く
+                  </li>
+                  <li>
+                    ページを <strong>F5 でリロード</strong>{" "}
+                    → リクエスト一覧の一番上（HTML ドキュメント）をクリック
+                  </li>
+                  <li>
+                    右側 <strong>Headers</strong> タブ →{" "}
+                    <strong>Request Headers</strong> セクション →{" "}
+                    <code className="font-mono">Cookie:</code>{" "}
+                    の右側の値（長い文字列）を全て選択してコピー
                   </li>
                   <li>下の入力欄に貼り付け → 保存 → すぐ「連動」を実行</li>
                 </ol>
+                <p className="mt-1 ml-3.5 text-muted-foreground/75 leading-relaxed">
+                  ※ Cookie の名前は FFLogs 側の実装で変わる可能性があるため、
+                  特定の cookie 名を探すのではなく <strong>Cookie ヘッダー
+                  全体</strong> をそのまま使うのが確実です。
+                  <br />
+                  ※ 値は{" "}
+                  <code className="font-mono">name1=value1; name2=value2; ...</code>
+                  {" "}の形式で 1 行のテキスト。改行が含まれる場合は削除。
+                </p>
               </details>
               <Input
                 value={sessionCookieInput}
                 onChange={(e) => setSessionCookieInput(e.target.value)}
-                placeholder="_fflogs_session=...; XSRF-TOKEN=..."
+                placeholder="name1=value1; name2=value2; ... (Cookie ヘッダー全体)"
                 type="password"
                 className="font-mono text-[11px]"
                 spellCheck={false}

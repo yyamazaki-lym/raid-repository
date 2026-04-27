@@ -19,6 +19,14 @@ export type ReleaseEntry = {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    version: "1.8.1",
+    date: "2026-04-27",
+    notes: [
+      "FFLogs Session Cookie 取得手順を Network タブから Cookie ヘッダー全体をコピーする方式に変更 — `_fflogs_session` という特定の名前を探す方式は環境によって名前が違うため確実性が低かった。Network → Headers → Cookie の値全体を 1 行コピーする方法に統一",
+      "placeholder と説明文を「Cookie ヘッダー全体 (name1=val1; name2=val2; ...)」に更新",
+    ],
+  },
+  {
     version: "1.8.0",
     date: "2026-04-27",
     notes: [
