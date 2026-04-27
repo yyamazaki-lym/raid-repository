@@ -19,6 +19,13 @@ export type ReleaseEntry = {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    version: "1.9.38",
+    date: "2026-04-28",
+    notes: [
+      "🏳️ チップ縦中央の追求を断念し、シンプルな `inline-flex items-center py-1 leading-tight` に戻す。1.9.28-1.9.37 で試した h-6 + leading-6 / leading-none / asymmetric padding / translateY / inline-grid + place-items-center などのいずれも、Windows / Yu Gothic UI 環境での font metric 非対称を完全には吸収できず、副作用 (アイコンとのズレ) が出ていた。Windows ユーザーにはわずかな上寄りの空白が残るが、アイコン整列が崩れないことを優先",
+    ],
+  },
+  {
     version: "1.9.37",
     date: "2026-04-28",
     notes: [

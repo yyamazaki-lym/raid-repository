@@ -161,13 +161,16 @@ function DateChip({
   return (
     <li
       className={
-        // 1.9.37: revert translateY on inner span (it shifted only
-        // the date, leaving icons at their natural baseline → user
-        // saw "icons offset down from date"). Instead, apply
-        // asymmetric padding to the WHOLE chip: more pb than pt so
-        // ALL grid items (date + icons) shift up uniformly.
-        // Removed h-[24px] — let chip auto-size from padding.
-        "inline-grid grid-flow-col auto-cols-max place-items-center gap-1 rounded-md border px-2 pt-0 pb-1.5 text-[11px] tabular-nums leading-none transition-colors " +
+        // 1.9.38: ABANDONED vertical-center pursuit. Versions
+        // 1.9.28-1.9.37 attempted h-6 + leading-6, leading-none,
+        // asymmetric padding, transform: translateY, inline-grid +
+        // place-items-center — all left some users seeing top-heavy
+        // glyphs due to system Japanese font (Yu Gothic UI) metric
+        // asymmetry. Reverted to simple symmetric `py-1` + leading-
+        // tight inline-flex layout. The slight font-metric drift on
+        // Windows is accepted — pursuing it further was hurting
+        // icon alignment.
+        "inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] tabular-nums leading-tight transition-colors " +
         chipColor
       }
       title={tooltip}

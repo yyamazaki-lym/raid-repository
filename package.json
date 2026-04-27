@@ -1,6 +1,6 @@
 {
   "name": "portal",
-  "version": "1.9.37",
+  "version": "1.9.38",
   "private": true,
   "scripts": {
     "dev": "next dev",
