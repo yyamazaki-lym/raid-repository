@@ -19,6 +19,16 @@ export type ReleaseEntry = {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    version: "1.8.3",
+    date: "2026-04-27",
+    notes: [
+      "FFLogs HTML スクレイパーの日時パーサーを大幅強化 — 旧版は英語形式 / ISO のみ対応で日本語ページの「2026年4月17日 00:33」形式をパースできず、25 codes 検出しても 0 reports しか取得できていなかった",
+      "新しい `extractTimestampMs` 関数で 7 種類のパターンに対応: ① data-timestamp 属性、② data-time/start 属性、③ datetime 属性、④ 日本語「YYYY年M月D日 HH:MM」、⑤ 英語「Month D, YYYY」、⑥ ISO「YYYY-MM-DD」、⑦ Unix timestamp 数値",
+      "コンテキスト窓を ±500 → ±1500 文字に拡張（FFLogs の verbose な HTML 構造で日時が遠くにある場合に対応）",
+      "診断パネルに「HTML サンプル」を追加 — 最初のレポートコード周辺の HTML を 800 文字まで折り畳み表示。今後 FFLogs の構造が変わった場合の調査に使える",
+    ],
+  },
+  {
     version: "1.8.2",
     date: "2026-04-27",
     notes: [

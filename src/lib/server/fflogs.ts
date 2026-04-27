@@ -384,20 +384,76 @@ export async function fetchFflogsReportsV2(
  *     function will start returning 0 reports — at which point we'd
  *     either need to update the regex or return to API-only.
  */
+/**
+ * Extract a Unix timestamp (ms) from arbitrary HTML context. Tries
+ * multiple formats because FFLogs may render dates differently per
+ * locale (en / ja) or use JavaScript-friendly attributes
+ * (data-timestamp, datetime). Returns null if no parseable date is
+ * found.
+ */
+function extractTimestampMs(ctx: string): number | null {
+  // 1. data-timestamp="..." — most reliable when present (FFLogs
+  //    often renders timestamps this way for client-side formatting).
+  const ts = ctx.match(/data-timestamp\s*=\s*"(\d{10,13})"/);
+  if (ts) {
+    const n = parseInt(ts[1]!, 10);
+    return n > 1e11 ? n : n * 1000;
+  }
+  // 2. data-time / data-start / similar attributes.
+  const ts2 = ctx.match(
+    /data-(?:time|start|started|datetime)\s*=\s*"(\d{10,13})"/,
+  );
+  if (ts2) {
+    const n = parseInt(ts2[1]!, 10);
+    return n > 1e11 ? n : n * 1000;
+  }
+  // 3. <time datetime="ISO"> element.
+  const dt = ctx.match(/datetime\s*=\s*"([^"]+)"/);
+  if (dt) {
+    const t = Date.parse(dt[1]!);
+    if (Number.isFinite(t)) return t;
+  }
+  // 4. Japanese: 2026年4月17日 [HH:MM]
+  const jp = ctx.match(
+    /(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日(?:\s*(\d{1,2}):(\d{2}))?/,
+  );
+  if (jp) {
+    const y = jp[1]!;
+    const mo = jp[2]!.padStart(2, "0");
+    const d = jp[3]!.padStart(2, "0");
+    const h = (jp[4] ?? "0").padStart(2, "0");
+    const mi = (jp[5] ?? "0").padStart(2, "0");
+    const t = Date.parse(`${y}-${mo}-${d}T${h}:${mi}:00`);
+    if (Number.isFinite(t)) return t;
+  }
+  // 5. English: April 17, 2026 12:33 AM
+  const en = ctx.match(
+    /([A-Z][a-z]+\s+\d{1,2},\s+\d{4}(?:\s+\d{1,2}:\d{2}\s*(?:AM|PM)?)?)/,
+  );
+  if (en) {
+    const t = Date.parse(en[1]!);
+    if (Number.isFinite(t)) return t;
+  }
+  // 6. ISO-ish: 2026-04-17 / 2026/04/17 [HH:MM]
+  const iso = ctx.match(
+    /(\d{4}[-/]\d{1,2}[-/]\d{1,2}(?:\s+\d{1,2}:\d{2})?)/,
+  );
+  if (iso) {
+    const t = Date.parse(iso[1]!);
+    if (Number.isFinite(t)) return t;
+  }
+  // 7. Any standalone Unix timestamp number in context (10 or 13
+  //    digits, in 2010-2030 range to avoid false positives).
+  const num = ctx.match(/\b(1[0-9]{9}|1[5-9][0-9]{11})\b/);
+  if (num) {
+    const n = parseInt(num[1]!, 10);
+    return n > 1e11 ? n : n * 1000;
+  }
+  return null;
+}
+
 async function fetchFflogsReportsHtmlScrape(
   userId: number,
-  /**
-   * Optional FFLogs session cookie value. When provided, the fetch
-   * is sent with `Cookie: ...` header which makes FFLogs serve the
-   * LOGGED-IN version of the reports-list page — that includes the
-   * user's Public + Unlisted + Private reports (everything they
-   * see when logged in via browser). Without this, only Public
-   * reports show on the page.
-   *
-   * The cookie value should be the full Cookie header content
-   * (`name1=value1; name2=value2; ...`) copied from the user's
-   * browser DevTools while logged into fflogs.com.
-   */
   sessionCookie?: string | null,
 ): Promise<
   | {
@@ -405,6 +461,8 @@ async function fetchFflogsReportsHtmlScrape(
       reports: FflogsReport[];
       htmlPageSize: number;
       htmlCodesFound: number;
+      /** Sample of HTML around the first detected report code — for debugging. */
+      htmlSample?: string;
     }
   | { ok: false; reason: string }
 > {
@@ -413,6 +471,7 @@ async function fetchFflogsReportsHtmlScrape(
   const MAX_PAGES = 25;
   let firstPageSize = 0;
   let totalCodesSeen = 0;
+  let htmlSample: string | undefined;
   for (let page = 1; page <= MAX_PAGES; page++) {
     const url = `https://www.fflogs.com/user/reports-list/${userId}?page=${page}`;
     try {
@@ -451,32 +510,29 @@ async function fetchFflogsReportsHtmlScrape(
       const html = await res.text();
       if (page === 1) firstPageSize = html.length;
       const before = all.length;
-      // Permissive: scan for any `/reports/{code}` link (both `<a>` and
-      // bare URL forms) and try to extract a date from the surrounding
-      // ~500 chars of context. Modern FFLogs pages may inject content
-      // via JS, but the report links are typically still in the SSR'd
-      // HTML.
+      // Permissive: scan for any `/reports/{code}` link, then look at
+      // the surrounding ~3000 chars (above + below) for a date in any
+      // of several formats (EN, JP, ISO, data-timestamp, datetime).
       const linkPattern =
         /\/reports\/([A-Za-z0-9]{8,})(?:[?#"\s]|$)/g;
-      const dateRegexEn =
-        /([A-Z][a-z]+\s+\d{1,2},\s+\d{4}(?:\s+\d{1,2}:\d{2}\s*(?:AM|PM)?)?)/;
-      const dateRegexIso =
-        /(\d{4}[-/]\d{1,2}[-/]\d{1,2}(?:\s+\d{1,2}:\d{2})?)/;
       let m;
       while ((m = linkPattern.exec(html)) !== null) {
         const code = m[1]!;
         if (seen.has(code)) continue;
         totalCodesSeen += 1;
-        // Look at ±500 chars of context for date / title.
-        const ctxStart = Math.max(0, m.index - 200);
-        const ctxEnd = Math.min(html.length, m.index + 500);
+        // Look at a generous window (1500 chars before + 1500 after)
+        // — date might be in the same row but separated by lots of
+        // markup. FFLogs's reports-list HTML can be verbose.
+        const ctxStart = Math.max(0, m.index - 1500);
+        const ctxEnd = Math.min(html.length, m.index + 1500);
         const ctx = html.slice(ctxStart, ctxEnd);
-        const dateStr =
-          ctx.match(dateRegexEn)?.[1] ??
-          ctx.match(dateRegexIso)?.[1] ??
-          null;
-        const tMs = dateStr ? Date.parse(dateStr) : NaN;
-        if (!Number.isFinite(tMs)) continue;
+        // Stash a sample of the first context for debugging — we can
+        // see what the actual HTML structure looks like.
+        if (!htmlSample) {
+          htmlSample = ctx.slice(0, 800);
+        }
+        const tMs = extractTimestampMs(ctx);
+        if (tMs == null) continue;
         // Title: try `<a href="/reports/CODE">TITLE</a>` form first.
         const titleMatch = ctx.match(
           new RegExp(
@@ -572,6 +628,8 @@ export type FflogsLinkResult = {
     htmlReportCount?: number;
     /** HTML scrape error reason if any. */
     htmlScrapeError?: string;
+    /** Sample of HTML around the first report code — for date-format debugging. */
+    htmlSample?: string;
   };
 };
 
@@ -654,6 +712,7 @@ export async function linkFflogsReportsToVideos(): Promise<FflogsLinkResult> {
   let cookieUsed = false;
   let htmlReportCount: number | undefined;
   let htmlScrapeError: string | undefined;
+  let htmlSampleForDiag: string | undefined;
 
   // 戦略: ユーザー自身のレポート**だけ**を確実に取得する。
   //   1. v2 GraphQL の owner-filtered 結果 (= 自分が所有するレポート)
@@ -693,6 +752,7 @@ export async function linkFflogsReportsToVideos(): Promise<FflogsLinkResult> {
       htmlPageSize = scrapeResult.htmlPageSize;
       htmlCodesFound = scrapeResult.htmlCodesFound;
       htmlReportCount = scrapeResult.reports.length;
+      htmlSampleForDiag = scrapeResult.htmlSample;
       if (scrapeResult.reports.length > 0) {
         const byCode = new Map<string, FflogsReport>();
         for (const r of reports) byCode.set(r.id, r);
@@ -778,6 +838,7 @@ export async function linkFflogsReportsToVideos(): Promise<FflogsLinkResult> {
       cookieUsed,
       htmlReportCount,
       htmlScrapeError,
+      htmlSample: htmlSampleForDiag,
     },
   };
 }

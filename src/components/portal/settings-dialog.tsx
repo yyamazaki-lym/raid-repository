@@ -83,6 +83,7 @@ type FflogsLinkResultLite = {
     cookieUsed?: boolean;
     htmlReportCount?: number;
     htmlScrapeError?: string;
+    htmlSample?: string;
   };
   userTypeFields?: string[];
 };
@@ -1124,6 +1125,21 @@ export function SettingsDialog() {
                                 HTML スクレイプエラー:{" "}
                                 {logsResult.diag.htmlScrapeError}
                               </p>
+                            )}
+                            {logsResult.diag.htmlSample && (
+                              <details className="mt-1.5 group/htmlsample">
+                                <summary className="cursor-pointer list-none text-[10px] hover:text-foreground/90 [&::-webkit-details-marker]:hidden">
+                                  <span className="inline-flex items-center gap-1">
+                                    <span className="text-amber-300/70 transition-transform group-open/htmlsample:rotate-90">
+                                      ▸
+                                    </span>
+                                    HTML サンプル (最初のレポートコード周辺)
+                                  </span>
+                                </summary>
+                                <pre className="mt-1 ml-3 rounded bg-secondary/30 px-1.5 py-1 font-mono text-[9px] leading-tight whitespace-pre-wrap break-all text-muted-foreground/85 max-h-[16rem] overflow-y-auto">
+                                  {logsResult.diag.htmlSample}
+                                </pre>
+                              </details>
                             )}
                             {logsResult.userTypeFields &&
                               logsResult.userTypeFields.length > 0 && (
