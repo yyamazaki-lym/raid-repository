@@ -25,7 +25,13 @@ export async function GET(req: NextRequest) {
   const redirectUri = buildRedirectUri(origin);
   const result = await buildAuthorizeUrl(redirectUri);
   if (!result.ok) {
-    return NextResponse.json({ error: result.reason }, { status: 503 });
+    // Redirect back to home with error param so the settings dialog
+    // can toast the message — much friendlier than a raw JSON error
+    // page when the user just clicked "FFLogs と OAuth 接続" and is
+    // missing env vars.
+    const homeUrl = new URL("/", origin);
+    homeUrl.searchParams.set("fflogs_oauth_error", result.reason);
+    return NextResponse.redirect(homeUrl);
   }
   return NextResponse.redirect(result.url);
 }

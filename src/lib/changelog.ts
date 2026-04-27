@@ -19,6 +19,14 @@ export type ReleaseEntry = {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    version: "1.7.1",
+    date: "2026-04-27",
+    notes: [
+      "OAuth 接続ボタン押下時に環境変数未設定だった場合、生 JSON エラー表示ではなく、ホーム画面に redirect して toast でメッセージ表示するように修正",
+      "エラー文言を具体的な対処手順入りに改善（fflogs.com/api/clients/ で OAuth クライアント作成 → Vercel に環境変数設定 → redeploy）",
+    ],
+  },
+  {
     version: "1.7.0",
     date: "2026-04-27",
     notes: [

@@ -81,7 +81,7 @@ export async function buildAuthorizeUrl(
     return {
       ok: false,
       reason:
-        "FFLOGS_OAUTH_CLIENT_ID / FFLOGS_OAUTH_CLIENT_SECRET 環境変数が未設定です",
+        "OAuth クライアント未設定 — fflogs.com/api/clients/ で OAuth クライアントを作成し、Vercel の環境変数 FFLOGS_OAUTH_CLIENT_ID / FFLOGS_OAUTH_CLIENT_SECRET に設定して redeploy してください",
     };
   }
   // Use Web Crypto for a random state. 32 bytes → 64 hex chars.
@@ -124,7 +124,7 @@ export async function exchangeCodeForTokens(
     return {
       ok: false,
       reason:
-        "FFLOGS_OAUTH_CLIENT_ID / FFLOGS_OAUTH_CLIENT_SECRET 環境変数が未設定です",
+        "OAuth クライアント未設定 — Vercel の環境変数 FFLOGS_OAUTH_CLIENT_ID / FFLOGS_OAUTH_CLIENT_SECRET を設定して redeploy してください",
     };
   }
   // Verify state matches what we issued.
