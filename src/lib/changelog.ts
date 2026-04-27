@@ -19,6 +19,14 @@ export type ReleaseEntry = {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    version: "1.7.2",
+    date: "2026-04-27",
+    notes: [
+      "FFLogs OAuth トークンエンドポイントの認証方式を Basic Auth に切り替え — FFLogs はリクエストボディに client_id / client_secret を入れる方式を `invalid_client` で拒否するため、HTTP Authorization Basic ヘッダーで送る形に修正（refresh_token のリフレッシュも同じ）",
+      "401 / invalid_client エラー時は「client_id/secret が正しいか、Public Client にチェックが入っていないか確認」の具体メッセージを表示",
+    ],
+  },
+  {
     version: "1.7.1",
     date: "2026-04-27",
     notes: [

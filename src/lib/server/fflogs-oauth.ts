@@ -139,17 +139,23 @@ export async function exchangeCodeForTokens(
   const supabase = await createClient();
   await supabase.from("app_settings").delete().eq("key", KEY_STATE_PENDING);
 
+  // FFLogs requires HTTP Basic auth on the token endpoint (body-form
+  // credentials returned `invalid_client` in the wild). Switch to the
+  // Authorization: Basic <base64(id:secret)> header form which is the
+  // strict OAuth 2.0 spec preference.
+  const basicAuth = Buffer.from(
+    `${creds.clientId}:${creds.clientSecret}`,
+  ).toString("base64");
   const body = new URLSearchParams({
     grant_type: "authorization_code",
     code,
     redirect_uri: redirectUri,
-    client_id: creds.clientId,
-    client_secret: creds.clientSecret,
   });
   try {
     const res = await fetch(OAUTH_TOKEN_URL, {
       method: "POST",
       headers: {
+        Authorization: `Basic ${basicAuth}`,
         "Content-Type": "application/x-www-form-urlencoded",
         Accept: "application/json",
       },
@@ -158,6 +164,19 @@ export async function exchangeCodeForTokens(
     });
     if (!res.ok) {
       const text = await res.text().catch(() => "");
+      // 401 invalid_client almost always means the OAuth client is
+      // configured as Public (no secret) but we're sending one, OR
+      // the credentials are wrong. Surface a hint.
+      if (
+        res.status === 401 ||
+        /invalid_client/i.test(text)
+      ) {
+        return {
+          ok: false,
+          reason:
+            "OAuth クライアント認証失敗 — fflogs.com/api/clients/ で client_id / client_secret が正しいか、Public Client にチェックが入っていないかを確認してください",
+        };
+      }
       return {
         ok: false,
         reason: `token 交換失敗 (${res.status}): ${text.slice(0, 200)}`,
@@ -202,16 +221,20 @@ async function refreshTokens(
 ): Promise<OAuthTokens | null> {
   const creds = getOAuthClientCreds();
   if (!creds) return null;
+  // Same Basic-Auth pattern as the code-exchange path — FFLogs's
+  // token endpoint rejects body-form credentials with invalid_client.
+  const basicAuth = Buffer.from(
+    `${creds.clientId}:${creds.clientSecret}`,
+  ).toString("base64");
   const body = new URLSearchParams({
     grant_type: "refresh_token",
     refresh_token: refreshToken,
-    client_id: creds.clientId,
-    client_secret: creds.clientSecret,
   });
   try {
     const res = await fetch(OAUTH_TOKEN_URL, {
       method: "POST",
       headers: {
+        Authorization: `Basic ${basicAuth}`,
         "Content-Type": "application/x-www-form-urlencoded",
         Accept: "application/json",
       },
