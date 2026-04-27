@@ -19,6 +19,14 @@ export type ReleaseEntry = {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    version: "1.9.8",
+    date: "2026-04-27",
+    notes: [
+      "FFLogs 連動の詳細診断にタイトル日付抽出統計を追加 — 「成功 N 件 / 失敗 N 件」と、失敗したタイトルのサンプル（上位 10 件）を折り畳みで表示",
+      "ユーザー報告の「日時ズレ」を切り分けるため：成功率が低ければ regex を改善する材料に、サンプルの実タイトルを見て対応すべきパターンを判定可能",
+    ],
+  },
+  {
     version: "1.9.7",
     date: "2026-04-27",
     notes: [

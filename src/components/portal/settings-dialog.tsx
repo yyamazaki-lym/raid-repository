@@ -89,6 +89,9 @@ type FflogsLinkResultLite = {
     htmlScrapeError?: string;
     htmlSample?: string;
     videosSkippedNoPostedAt?: number;
+    titleDateHitCount?: number;
+    titleDateMissCount?: number;
+    titleDateMissSample?: string[];
   };
   userTypeFields?: string[];
 };
@@ -1249,6 +1252,48 @@ export function SettingsDialog() {
                                 </span>
                               </p>
                             )}
+                            {logsResult.diag.titleDateHitCount !== undefined && (
+                              <p className="mt-0.5">
+                                タイトル日付抽出:
+                                {" 成功 "}
+                                <strong className="text-emerald-300">
+                                  {logsResult.diag.titleDateHitCount}
+                                </strong>
+                                {" / 失敗 "}
+                                <strong className="text-rose-300">
+                                  {logsResult.diag.titleDateMissCount ?? 0}
+                                </strong>
+                                {" 件 (失敗時は posted_at fallback)"}
+                              </p>
+                            )}
+                            {logsResult.diag.titleDateMissSample &&
+                              logsResult.diag.titleDateMissSample.length >
+                                0 && (
+                                <details className="mt-1 group/missdates">
+                                  <summary className="cursor-pointer list-none text-[10px] hover:text-foreground/90 [&::-webkit-details-marker]:hidden">
+                                    <span className="inline-flex items-center gap-1">
+                                      <span className="text-rose-300/70 transition-transform group-open/missdates:rotate-90">
+                                        ▸
+                                      </span>
+                                      日付抽出に失敗したタイトル (上位
+                                      {logsResult.diag.titleDateMissSample.length}
+                                      件)
+                                    </span>
+                                  </summary>
+                                  <ul className="mt-1 ml-3 flex flex-col gap-0.5 font-mono text-[9px] leading-tight text-muted-foreground">
+                                    {logsResult.diag.titleDateMissSample.map(
+                                      (t, i) => (
+                                        <li
+                                          key={i}
+                                          className="break-all bg-secondary/20 px-1.5 py-0.5 rounded"
+                                        >
+                                          {t}
+                                        </li>
+                                      ),
+                                    )}
+                                  </ul>
+                                </details>
+                              )}
                             {logsResult.diag.htmlSample && (
                               <details className="mt-1.5 group/htmlsample">
                                 <summary className="cursor-pointer list-none text-[10px] hover:text-foreground/90 [&::-webkit-details-marker]:hidden">

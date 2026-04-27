@@ -718,6 +718,12 @@ export type FflogsLinkResult = {
     htmlSample?: string;
     /** Number of videos skipped because they had no `posted_at`. */
     videosSkippedNoPostedAt?: number;
+    /** Number of videos where title-date was successfully extracted. */
+    titleDateHitCount?: number;
+    /** Number of videos where title-date extraction FAILED (fell back to posted_at). */
+    titleDateMissCount?: number;
+    /** Sample of video titles where title-date extraction failed (first 10). */
+    titleDateMissSample?: string[];
   };
 };
 
@@ -969,6 +975,9 @@ export async function linkFflogsReportsToVideos(): Promise<FflogsLinkResult> {
       htmlScrapeError,
       htmlSample: htmlSampleForDiag,
       videosSkippedNoPostedAt: videoResult.skippedNoPostedAt,
+      titleDateHitCount: videoResult.titleDateHits,
+      titleDateMissCount: videoResult.titleDateMisses,
+      titleDateMissSample: videoResult.titleDateMissSample,
     },
   };
 }
@@ -1264,9 +1273,23 @@ async function linkReportsToVideos(
   dateRange?: { earliest: string; latest: string };
   /** Videos that had no `posted_at` and were excluded from matching. */
   skippedNoPostedAt: number;
+  /** Videos where title-date was successfully extracted. */
+  titleDateHits: number;
+  /** Videos where title-date was NOT extracted (fell back to posted_at). */
+  titleDateMisses: number;
+  /** Sample of failed titles. */
+  titleDateMissSample: string[];
 }> {
   if (reports.length === 0)
-    return { scanned: 0, matched: 0, details: [], skippedNoPostedAt: 0 };
+    return {
+      scanned: 0,
+      matched: 0,
+      details: [],
+      skippedNoPostedAt: 0,
+      titleDateHits: 0,
+      titleDateMisses: 0,
+      titleDateMissSample: [],
+    };
 
   // Pull category info alongside each video so we can do
   // content-match (raid-name) checks during scoring.
@@ -1278,7 +1301,15 @@ async function linkReportsToVideos(
     .eq("kind", "video")
     .is("logs_url", null);
   if (!videos || videos.length === 0) {
-    return { scanned: 0, matched: 0, details: [], skippedNoPostedAt: 0 };
+    return {
+      scanned: 0,
+      matched: 0,
+      details: [],
+      skippedNoPostedAt: 0,
+      titleDateHits: 0,
+      titleDateMisses: 0,
+      titleDateMissSample: [],
+    };
   }
 
   // A video is matchable if EITHER:
@@ -1288,6 +1319,9 @@ async function linkReportsToVideos(
   // time (irrelevant to the actual raid). A video with neither title
   // date nor posted_at has no reliable date and is skipped.
   let videosSkippedNoDate = 0;
+  let titleDateHits = 0;
+  let titleDateMisses = 0;
+  const titleDateMissSample: string[] = [];
   const sortedVideos = [...videos]
     .map((v) => {
       const postedAt = v.posted_at as string | null;
@@ -1296,15 +1330,20 @@ async function linkReportsToVideos(
           ? new Date(postedAt).getTime()
           : null;
       // Year fallback for year-less title patterns ("4月1日", "0401" etc).
-      // Use posted_at year if available, otherwise current year.
       const fallbackYear =
         postedTMs !== null
           ? new Date(postedTMs).getUTCFullYear()
           : new Date().getUTCFullYear();
-      const titleDate = extractDateFromTitle(
-        (v as { title?: string | null }).title ?? null,
-        fallbackYear,
-      );
+      const vTitle = (v as { title?: string | null }).title ?? null;
+      const titleDate = extractDateFromTitle(vTitle, fallbackYear);
+      if (titleDate) {
+        titleDateHits += 1;
+      } else {
+        titleDateMisses += 1;
+        if (vTitle && titleDateMissSample.length < 10) {
+          titleDateMissSample.push(vTitle);
+        }
+      }
       // Need at least one date source.
       if (!titleDate && postedTMs === null) {
         videosSkippedNoDate += 1;
@@ -1474,6 +1513,9 @@ async function linkReportsToVideos(
     details,
     dateRange,
     skippedNoPostedAt: videosSkippedNoDate,
+    titleDateHits,
+    titleDateMisses,
+    titleDateMissSample,
   };
 }
 
