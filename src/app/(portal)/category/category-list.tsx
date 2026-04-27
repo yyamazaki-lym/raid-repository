@@ -357,14 +357,13 @@ function SortableCategoryCard({
           <SubPageShortcuts slug={category.slug} />
         </div>
 
-        {/* 1.9.22: 右カラムレイアウト最終形。
+        {/* 1.9.23: 右カラムレイアウト。
                 ┌──────────────────────┐
                 │            [Status]  │  ← StatusBadge (内側左寄せ)
                 │       [+N/wk] [⋮]    │  ← +N/wk と ⋮ の横並び
                 └──────────────────────┘
-            外側 (items-end) で全体を card 右端に寄せる。内側
-            (items-start) で StatusBadge と +N/wk の左端を揃える。
-            CategoryMenu (⋮) は +N/wk のすぐ右隣。 */}
+            +N/wk が無いカードでも `invisible` placeholder で同サイズの
+            幅を確保し、⋮ が card 右端から動かないようにする。 */}
         <div className="flex flex-col items-end justify-between gap-1 p-2">
           <div className="flex flex-col items-start gap-1">
             <span
@@ -378,12 +377,21 @@ function SortableCategoryCard({
               />
             </span>
             <div className="flex items-center gap-1">
-              {recentImports > 0 && (
+              {recentImports > 0 ? (
                 <span
                   className="inline-flex items-center gap-1 rounded-sm border border-indigo-400/40 bg-indigo-400/10 px-1.5 py-px font-mono text-[9px] tracking-[0.18em] text-indigo-300 uppercase"
                   title={`過去7日で Discord から ${recentImports} 件取り込み`}
                 >
                   +{recentImports}/wk
+                </span>
+              ) : (
+                // Discord 取り込みが無いカードでも +N/wk と同じ幅を
+                // `invisible` で確保し、⋮ の位置がぶれないようにする。
+                <span
+                  aria-hidden
+                  className="invisible inline-flex items-center gap-1 rounded-sm border px-1.5 py-px font-mono text-[9px] tracking-[0.18em] uppercase"
+                >
+                  +0/wk
                 </span>
               )}
               <CategoryMenu onEdit={onEdit} onDelete={onDelete} />

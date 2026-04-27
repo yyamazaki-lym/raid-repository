@@ -19,6 +19,14 @@ export type ReleaseEntry = {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    version: "1.9.23",
+    date: "2026-04-27",
+    notes: [
+      "📐 コンテンツカード右カラム: Discord 取り込みが無いカードで `⋮` (編集ボタン) が左にずれる見た目を修正。+N/wk と同サイズの `invisible` placeholder を入れて ⋮ を card 右端に固定",
+      "FFLogs マッチング: 「Criterion / Variant Dungeon は raid 扱いで除外しない」とのユーザー指示により、1.9.23 で試した非 raid フィルタは撤回。既存の `contentMismatchPenalty` がコンテンツグループ違いを既に reject しているため、現状の挙動で問題なし",
+    ],
+  },
+  {
     version: "1.9.22",
     date: "2026-04-27",
     notes: [

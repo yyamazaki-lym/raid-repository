@@ -955,6 +955,16 @@ export async function linkFflogsReportsToVideos(): Promise<FflogsLinkResult> {
   for (const r of htmlReports) if (!byCode.has(r.id)) byCode.set(r.id, r);
   reports = [...byCode.values()];
 
+  // Note (1.9.23): tried filtering "non-raid" content (group 14 =
+  // Criterion / Variant) but user clarified those are challenge
+  // raids the group runs and should NOT be excluded. The existing
+  // `contentMismatchPenalty` already rejects cross-group same-day
+  // matches (e.g. Heavy video vs Criterion report → score=Infinity)
+  // so legitimate non-raid reports just sit unmatched without harm.
+  // If we ever need to exclude regular instanced dungeons (which we
+  // don't currently classify), add a dedicated "regular dungeon"
+  // group with a hardcoded keyword list.
+
   // Source label tells the user which paths produced data.
   const labels: string[] = [];
   if (v1Reports.length > 0) labels.push("v1");
