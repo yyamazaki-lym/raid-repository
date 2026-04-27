@@ -60,6 +60,9 @@ type FflogsLinkResultLite = {
     reportTitle: string;
     reportUrl: string;
   }>;
+  reportsDateRange?: { earliest: string; latest: string };
+  videosDateRange?: { earliest: string; latest: string };
+  sessionsDateRange?: { earliest: string; latest: string };
 };
 
 // Inline copy of the Server Action result type — we can't re-export the
@@ -228,6 +231,9 @@ export function SettingsDialog() {
             sessionsScanned: 0,
             sessionsMatched: 0,
             details: [],
+            reportsDateRange: undefined,
+            videosDateRange: undefined,
+            sessionsDateRange: undefined,
           });
           return;
         }
@@ -285,12 +291,24 @@ export function SettingsDialog() {
             </header>
 
             <div className="flex flex-col gap-2">
-              <Label
-                htmlFor="schedule-url"
-                className="text-xs text-foreground/80"
-              >
-                スケジュールページの URL
-              </Label>
+              <div className="flex items-baseline justify-between gap-2">
+                <Label
+                  htmlFor="schedule-url"
+                  className="text-xs text-foreground/80"
+                >
+                  スケジュールページの URL
+                </Label>
+                <a
+                  href="https://character-sheets.appspot.com/schedule/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-[10px] text-[var(--neon-cyan)]/85 underline decoration-dotted underline-offset-2 transition-colors hover:text-[var(--neon-cyan)]"
+                  title="character-sheets.appspot.com を開く"
+                >
+                  <Calendar className="h-2.5 w-2.5" aria-hidden />
+                  character-sheets を開く
+                </a>
+              </div>
               <Input
                 id="schedule-url"
                 type="url"
@@ -307,6 +325,36 @@ export function SettingsDialog() {
                 <code className="font-mono">schedule/list?key=…</code>{" "}
                 形式を指定してください。
               </p>
+              <details className="group/help">
+                <summary className="cursor-pointer text-[10px] text-muted-foreground/80 transition-colors hover:text-foreground/90 list-none [&::-webkit-details-marker]:hidden">
+                  <span className="inline-flex items-center gap-1">
+                    <span className="text-[var(--neon-cyan)]/70 transition-transform group-open/help:rotate-90">
+                      ▸
+                    </span>
+                    URL の取得手順
+                  </span>
+                </summary>
+                <ol className="mt-1.5 ml-3.5 flex list-decimal flex-col gap-0.5 text-[10px] text-muted-foreground/80 leading-relaxed">
+                  <li>
+                    <a
+                      href="https://character-sheets.appspot.com/schedule/"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[var(--neon-cyan)]/85 underline decoration-dotted underline-offset-2 hover:text-[var(--neon-cyan)]"
+                    >
+                      character-sheets.appspot.com/schedule/
+                    </a>
+                    {" "}を開く
+                  </li>
+                  <li>固定で使っているスケジュールページに移動</li>
+                  <li>
+                    ブラウザのアドレスバーから URL をコピー（
+                    <code className="font-mono">/schedule/list?key=…</code>
+                    {" "}で終わるもの）
+                  </li>
+                  <li>上の入力欄に貼り付けて「保存」</li>
+                </ol>
+              </details>
               <p className="text-muted-foreground/80 text-[10px] leading-relaxed">
                 ※ 元サイトの変更は最大{" "}
                 <strong>10 分</strong> 遅れて反映されます。
@@ -526,9 +574,19 @@ export function SettingsDialog() {
               />
               <p className="text-muted-foreground text-[11px] leading-relaxed">
                 代表 1 名分の <strong>ユーザー名のみ</strong> を入力（プロフィール
-                URL の数字 ID は API で使えないので不可）。動画の投稿日時 ±36h
-                および過去予定の開催時間と一致する FFLogs レポートを
-                自動的に紐づけます。
+                URL の数字 ID は API で使えないので不可）。その人がアップロード
+                した FFLogs レポートを取得し、動画の投稿日時 ±36h
+                および過去予定の開催時間と一致するものを自動的に紐づけます。
+              </p>
+              <p className="text-muted-foreground/80 text-[10px] leading-relaxed">
+                ※ <strong>レポート所有者ベース</strong>です — 別のメンバーが
+                アップロードしたレポートは含まれません。多くの動画がマッチしない
+                場合は、固定でレポートを上げている人のユーザー名を試してください。
+                <br />
+                ※ <strong>限定公開 (Unlisted)</strong> のレポートも、API キーの
+                持ち主に閲覧権限があれば取得されます（リンクを知っている人だけが
+                見られる設定）。<strong>非公開 (Private)</strong>
+                {" "}のレポートはオーナー以外閲覧不可のため API でも取得できません。
               </p>
               <p className="text-muted-foreground/80 text-[10px] leading-relaxed">
                 サーバー側で <code className="font-mono">FFLOGS_API_KEY</code>
@@ -595,6 +653,58 @@ export function SettingsDialog() {
                         候補: 動画 {logsResult.videosScanned} / 過去予定{" "}
                         {logsResult.sessionsScanned}
                       </p>
+                      {/* Diagnostics: when nothing matched, show the
+                          date ranges so the user can spot a "different
+                          time period" mismatch (e.g. their FFLogs
+                          uploads are from 2024 but videos start 2025).
+                          Also explains the 12-reports situation when
+                          the API returns only one user's owned reports. */}
+                      {logsResult.matched === 0 &&
+                        logsResult.sessionsMatched === 0 &&
+                        logsResult.reportsScanned > 0 && (
+                          <div className="mt-2 flex flex-col gap-1 rounded-sm border border-amber-400/30 bg-amber-400/5 px-2 py-1.5">
+                            <p className="font-mono text-[10px] text-amber-200/90">
+                              ⚠ どれもマッチしませんでした — 期間の不一致が原因の可能性
+                            </p>
+                            <ul className="ml-2 flex flex-col gap-0.5 font-mono text-[10px] text-muted-foreground">
+                              {logsResult.reportsDateRange && (
+                                <li>
+                                  レポート期間:{" "}
+                                  <strong className="text-amber-200/80">
+                                    {logsResult.reportsDateRange.earliest}
+                                    {" 〜 "}
+                                    {logsResult.reportsDateRange.latest}
+                                  </strong>
+                                </li>
+                              )}
+                              {logsResult.videosDateRange && (
+                                <li>
+                                  未紐づけ動画期間:{" "}
+                                  <span className="text-foreground/85">
+                                    {logsResult.videosDateRange.earliest}
+                                    {" 〜 "}
+                                    {logsResult.videosDateRange.latest}
+                                  </span>
+                                </li>
+                              )}
+                              {logsResult.sessionsDateRange && (
+                                <li>
+                                  未紐づけ過去予定期間:{" "}
+                                  <span className="text-foreground/85">
+                                    {logsResult.sessionsDateRange.earliest}
+                                    {" 〜 "}
+                                    {logsResult.sessionsDateRange.latest}
+                                  </span>
+                                </li>
+                              )}
+                            </ul>
+                            <p className="text-[10px] text-muted-foreground/85 leading-relaxed">
+                              レポート期間と動画 / 過去予定の期間が重なっていない
+                              場合は、別のメンバーのユーザー名（その人がアップロード
+                              したレポートを持っている）を試してください。
+                            </p>
+                          </div>
+                        )}
                       {logsResult.details.length > 0 && (
                         <ul className="mt-1 flex flex-col gap-0.5 font-mono text-[10px] text-muted-foreground">
                           {logsResult.details.slice(0, 8).map((d, i) => (

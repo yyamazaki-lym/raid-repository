@@ -132,6 +132,12 @@ export type FflogsLinkResult = {
   sessionsMatched: number;
   /** Per-match detail for the result panel. */
   details: FflogsLinkDetail[];
+  /** Diagnostic — date range of fetched FFLogs reports (for empty-match debugging). */
+  reportsDateRange?: { earliest: string; latest: string };
+  /** Diagnostic — date range of unmatched videos. */
+  videosDateRange?: { earliest: string; latest: string };
+  /** Diagnostic — date range of unmatched sessions. */
+  sessionsDateRange?: { earliest: string; latest: string };
 };
 
 // Video matching window: ±36h around the video's posted_at. Generous
@@ -200,6 +206,20 @@ export async function linkFflogsReportsToVideos(): Promise<FflogsLinkResult> {
     linkReportsToSessions(supabase, reports),
   ]);
 
+  // Compute report date range for diagnostics — if matched=0 the user
+  // can compare this against video / session ranges to see if the
+  // problem is "no overlap" (different time periods) vs "match logic
+  // bug".
+  const sortedReports = [...reports].sort((a, b) => a.startMs - b.startMs);
+  const reportsDateRange = sortedReports.length > 0
+    ? {
+        earliest: new Date(sortedReports[0]!.startMs).toISOString().slice(0, 10),
+        latest: new Date(
+          sortedReports[sortedReports.length - 1]!.startMs,
+        ).toISOString().slice(0, 10),
+      }
+    : undefined;
+
   return {
     ok: true,
     reportsScanned: reports.length,
@@ -208,6 +228,9 @@ export async function linkFflogsReportsToVideos(): Promise<FflogsLinkResult> {
     sessionsScanned: sessionResult.scanned,
     sessionsMatched: sessionResult.matched,
     details: [...videoResult.details, ...sessionResult.details],
+    reportsDateRange,
+    videosDateRange: videoResult.dateRange,
+    sessionsDateRange: sessionResult.dateRange,
   };
 }
 
@@ -216,7 +239,12 @@ type SupabaseLike = Awaited<ReturnType<typeof createClient>>;
 async function linkReportsToVideos(
   supabase: SupabaseLike,
   reports: FflogsReport[],
-): Promise<{ scanned: number; matched: number; details: FflogsLinkDetail[] }> {
+): Promise<{
+  scanned: number;
+  matched: number;
+  details: FflogsLinkDetail[];
+  dateRange?: { earliest: string; latest: string };
+}> {
   if (reports.length === 0) return { scanned: 0, matched: 0, details: [] };
 
   const { data: videos } = await supabase
@@ -232,7 +260,7 @@ async function linkReportsToVideos(
     .map((v) => {
       const ts = (v.posted_at as string | null) ?? (v.created_at as string);
       const tMs = new Date(ts).getTime();
-      return { ...v, tMs: Number.isNaN(tMs) ? null : tMs };
+      return { ...v, tMs: Number.isFinite(tMs) ? tMs : null };
     })
     .filter((v): v is typeof v & { tMs: number } => v.tMs !== null)
     .sort((a, b) => a.tMs - b.tMs);
@@ -269,13 +297,28 @@ async function linkReportsToVideos(
     });
   }
 
-  return { scanned: sortedVideos.length, matched, details };
+  const dateRange =
+    sortedVideos.length > 0
+      ? {
+          earliest: new Date(sortedVideos[0]!.tMs).toISOString().slice(0, 10),
+          latest: new Date(
+            sortedVideos[sortedVideos.length - 1]!.tMs,
+          ).toISOString().slice(0, 10),
+        }
+      : undefined;
+
+  return { scanned: sortedVideos.length, matched, details, dateRange };
 }
 
 async function linkReportsToSessions(
   supabase: SupabaseLike,
   reports: FflogsReport[],
-): Promise<{ scanned: number; matched: number; details: FflogsLinkDetail[] }> {
+): Promise<{
+  scanned: number;
+  matched: number;
+  details: FflogsLinkDetail[];
+  dateRange?: { earliest: string; latest: string };
+}> {
   if (reports.length === 0) return { scanned: 0, matched: 0, details: [] };
 
   const { data: sessions } = await supabase
@@ -289,7 +332,7 @@ async function linkReportsToSessions(
   const sortedSessions = sessions
     .map((s) => {
       const tMs = new Date(s.parsed_date as string).getTime();
-      return { ...s, tMs: Number.isNaN(tMs) ? null : tMs };
+      return { ...s, tMs: Number.isFinite(tMs) ? tMs : null };
     })
     .filter((s): s is typeof s & { tMs: number } => s.tMs !== null)
     .sort((a, b) => a.tMs - b.tMs);
@@ -330,7 +373,19 @@ async function linkReportsToSessions(
     });
   }
 
-  return { scanned: sortedSessions.length, matched, details };
+  const dateRange =
+    sortedSessions.length > 0
+      ? {
+          earliest: new Date(sortedSessions[0]!.tMs)
+            .toISOString()
+            .slice(0, 10),
+          latest: new Date(sortedSessions[sortedSessions.length - 1]!.tMs)
+            .toISOString()
+            .slice(0, 10),
+        }
+      : undefined;
+
+  return { scanned: sortedSessions.length, matched, details, dateRange };
 }
 
 /**
