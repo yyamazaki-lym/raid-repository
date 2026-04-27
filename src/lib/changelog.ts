@@ -19,6 +19,18 @@ export type ReleaseEntry = {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    version: "1.9.6",
+    date: "2026-04-27",
+    notes: [
+      "🐛 重大バグ修正: posted_at が null の動画でタイトルに日付があってもスキップしていた → タイトル日付があれば posted_at 不要に変更（タイトルから日付取れる動画 OR posted_at がある動画は全部マッチ対象）",
+      "コンテンツ照合をグループベースに刷新 — 「絶アレキサンダー」「Ultimate Alexander」「TEA」を同じ Group 0 として扱う、cross-language 対応。グループは Ultimate (TEA/UCOB/UWU/DSR/TOP/FRU/Zodiark) / 零式 (Asphodelos P1-4S, Abyssos P5-8S, Anabaseios P9-12S) / Arcadion (Light-heavyweight M1-4S / Cruiserweight M5-8S / Heavyweight / Welterweight) / Criterion 等",
+      "両側のコンテンツが分類できた場合は厳密グループ照合（同グループ → 0、別グループ → 1 reject）",
+      "longest-match-wins masking で「ライトヘビー級」が「ヘビー級」グループに誤分類されないよう保護",
+      "片側未分類の場合のみ bigram fallback。未分類同士なら 0.5 で曖昧扱い",
+      "結果として 03/28 の AAC Heavyweight レポートと 04/01 の AAC Heavyweight 動画が同グループ → 同日のみ matchable、別グループの誤マッチは絶対起きない",
+    ],
+  },
+  {
     version: "1.9.5",
     date: "2026-04-27",
     notes: [

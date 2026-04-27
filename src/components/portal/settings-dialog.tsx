@@ -1236,15 +1236,16 @@ export function SettingsDialog() {
                             {(logsResult.diag.videosSkippedNoPostedAt ?? 0) >
                               0 && (
                               <p className="mt-0.5 text-amber-200/85">
-                                ⚠ posted_at 未設定でスキップした動画:{" "}
+                                ⚠ 日付がなくスキップした動画:{" "}
                                 <strong>
                                   {logsResult.diag.videosSkippedNoPostedAt}
                                 </strong>
                                 {" 件"}
                                 <span className="ml-1 text-muted-foreground/85">
-                                  ※ コンテンツページ → メンテナンス →
-                                  「Discord 履歴から posted_at を補完」を実行
-                                  推奨
+                                  ※ タイトルに raid 日 (例「2026 04 01」)
+                                  も無く、posted_at も未設定の動画。コンテンツ
+                                  ページ → メンテナンス → 「Discord 履歴から
+                                  posted_at を補完」を実行推奨
                                 </span>
                               </p>
                             )}

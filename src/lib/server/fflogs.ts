@@ -1032,18 +1032,129 @@ function daysApart(
 }
 
 /**
- * Lightweight content-similarity check between a video's content
- * (typically the FFXIV raid name in its category) and a FFLogs
- * report's zone (the FFLogs raid name).
+ * Content groups — each row groups together all the synonyms (Japanese
+ * + English + abbreviation) for one specific FFXIV raid / tier.
+ * `findContentGroups()` returns the set of group ids that text matches;
+ * if both sides match disjoint groups, the content is confirmed
+ * different.
+ *
+ * Order matters: longer/more-specific keywords listed first within
+ * each group, and `findContentGroups` matches longest-first so that
+ * "ライトヘビー級" doesn't accidentally also match the more general
+ * "ヘビー級" group.
+ */
+const CONTENT_GROUPS: Array<string[]> = [
+  // 0: Ultimate Alexander (TEA)
+  ["絶アレキサンダー", "epic of alexander", "ultimate alexander", "tea"],
+  // 1: Ultimate Bahamut (UCOB)
+  ["絶バハムート", "unending coil of bahamut", "ucob"],
+  // 2: Ultimate Ultima Weapon (UWU)
+  ["絶アルテマウェポン", "ultima weapon ultimate", "uwu"],
+  // 3: Ultimate Dragonsong (DSR)
+  ["絶ニーズヘッグ", "dragonsong's reprise", "dragonsong reprise", "dsr"],
+  // 4: Ultimate Omega Protocol (TOP)
+  ["絶オメガ検証戦", "絶オメガ検証", "the omega protocol", "top "],
+  // 5: Ultimate Futures Rewritten (FRU)
+  ["絶エンドシンガー", "futures rewritten", "fru "],
+  // 6: Ultimate Zodiark
+  ["絶ゾディアーク", "ultimate zodiark"],
+  // 7: Asphodelos (P1-4S, EW Tier 1)
+  ["アスフォデロス", "asphodelos", "p1s", "p2s", "p3s", "p4s"],
+  // 8: Abyssos (P5-8S, EW Tier 2)
+  ["アビス", "abyssos", "p5s", "p6s", "p7s", "p8s"],
+  // 9: Anabaseios (P9-12S, EW Tier 3)
+  ["アナバセイオス", "anabaseios", "p9s", "p10s", "p11s", "p12s"],
+  // 10: Arcadion AAC Light-heavyweight Tier (DT M1-4S)
+  [
+    "至天の座アルカディア：ライトヘビー級",
+    "アルカディア：ライトヘビー級",
+    "ライトヘビー級",
+    "aac light-heavyweight",
+    "light-heavyweight",
+    "lightheavyweight",
+    "m1s",
+    "m2s",
+    "m3s",
+    "m4s",
+  ],
+  // 11: Arcadion AAC Cruiserweight Tier (DT M5-8S, expected)
+  [
+    "至天の座アルカディア：クルーザー級",
+    "アルカディア：クルーザー級",
+    "クルーザー級",
+    "aac cruiserweight",
+    "cruiserweight",
+    "m5s",
+    "m6s",
+    "m7s",
+    "m8s",
+  ],
+  // 12: Arcadion AAC Heavyweight Tier
+  [
+    "至天の座アルカディア：ヘビー級",
+    "アルカディア：ヘビー級",
+    "aac heavyweight",
+    "heavyweight",
+  ],
+  // 13: Arcadion AAC Welterweight Tier
+  [
+    "至天の座アルカディア：ウェルター級",
+    "アルカディア：ウェルター級",
+    "ウェルター級",
+    "aac welterweight",
+    "welterweight",
+  ],
+  // 14: Criterion / Variant dungeons
+  ["criterion", "variant", "criterion dungeon"],
+];
+
+/**
+ * Returns the set of content group ids that the given text matches.
+ * Uses longest-match-wins masking so a more specific keyword (e.g.
+ * "ライトヘビー級") prevents a more general one (e.g. "ヘビー級") from
+ * spuriously matching the same characters.
+ */
+function findContentGroups(text: string): Set<number> {
+  const lower = text.toLowerCase();
+  // Build (group, kw) tuples sorted by kw length desc.
+  const all: Array<{ group: number; kw: string }> = [];
+  for (let i = 0; i < CONTENT_GROUPS.length; i++) {
+    for (const kw of CONTENT_GROUPS[i]!) {
+      all.push({ group: i, kw: kw.toLowerCase() });
+    }
+  }
+  all.sort((a, b) => b.kw.length - a.kw.length);
+  const groups = new Set<number>();
+  let masked = lower;
+  for (const { group, kw } of all) {
+    if (masked.includes(kw)) {
+      groups.add(group);
+      // Mask out the matched substring so shorter sub-keywords don't
+      // also match the same chars.
+      masked = masked.split(kw).join(" ".repeat(kw.length));
+    }
+  }
+  return groups;
+}
+
+/**
+ * Content-similarity check between a video's content (category name /
+ * title) and a FFLogs report's content (zone name / title).
+ *
+ * Strategy:
+ *   1. Extract content groups from each side using a curated bilingual
+ *      keyword map (Japanese + English + abbrev for each FFXIV raid).
+ *   2. If both sides are classified, check if any group overlaps:
+ *      - shared group → 0 (confident match)
+ *      - disjoint groups → 1 (confident mismatch — REJECT)
+ *   3. If only one side is classified, check bigram overlap on the
+ *      free-text. High overlap = match, otherwise ambiguous.
+ *   4. If neither side is classified, also fall back to bigrams.
  *
  * Returns:
- *   - 0   when there's clear keyword overlap (good match)
- *   - 1   when no overlap (likely different content — penalize)
- *   - 0.5 when one side has no info (skip — don't penalize blindly)
- *
- * This is used as a multiplier on the time-distance score so that
- * even within the time window, a content mismatch costs more than
- * a small time difference.
+ *   - 0   confident same content (no penalty)
+ *   - 1   confident different content (HARD REJECT in scorer)
+ *   - 0.5 ambiguous (small penalty — kept matchable)
  */
 function contentMismatchPenalty(
   videoCategoryName: string | null,
@@ -1051,7 +1162,6 @@ function contentMismatchPenalty(
   reportZoneName: string | null,
   reportTitle: string | null,
 ): 0 | 0.5 | 1 {
-  // Combine candidate text from each side.
   const videoText = [videoCategoryName, videoTitle]
     .filter(Boolean)
     .join(" ")
@@ -1060,30 +1170,32 @@ function contentMismatchPenalty(
     .filter(Boolean)
     .join(" ")
     .toLowerCase();
-  // If either side is genuinely empty, we can't infer — don't penalize.
   if (!videoText || !reportText) return 0.5;
-  // If either side lacks structured content info (zoneName missing on
-  // report, no category on video), also don't penalize — only the
-  // other side's free-text title is available, which is unreliable.
-  if (!videoCategoryName || !reportZoneName) return 0.5;
 
-  // Strip noise — punctuation, brackets, dates etc — leave content
-  // keywords mostly intact.
+  // Strip noise to avoid date/punctuation tokens disturbing matching.
   const stripNoise = (s: string) =>
     s
       .replace(/[【】\[\]（）()「」『』,.\-:：/／〜~・,]/g, " ")
-      .replace(/\d{4}\s*\d{1,2}\s*\d{1,2}|\d{4}\/\d{1,2}\/\d{1,2}/g, " ") // dates
-      .replace(/day\s*\d+/gi, " ") // "Day1" etc
+      .replace(/\d{4}\s*\d{1,2}\s*\d{1,2}|\d{4}\/\d{1,2}\/\d{1,2}/g, " ")
+      .replace(/day\s*\d+/gi, " ")
       .replace(/\s+/g, " ")
       .trim();
   const v = stripNoise(videoText);
   const r = stripNoise(reportText);
 
-  // PRIMARY check: bigram overlap on cleaned strings. Works for any
-  // language and any user-chosen content name without relying on
-  // hardcoded keywords. Bigrams are 2-character substrings — for CJK
-  // this captures meaningful tokens (e.g. "ヘビ", "ビー", "級"); for
-  // English it captures word starts.
+  // Group classification: cross-language content matching.
+  const vGroups = findContentGroups(v);
+  const rGroups = findContentGroups(r);
+  if (vGroups.size > 0 && rGroups.size > 0) {
+    // Both classified — strict group match check.
+    for (const g of vGroups) {
+      if (rGroups.has(g)) return 0; // confirmed same content
+    }
+    // No shared group → confidently different content.
+    return 1;
+  }
+
+  // Bigram fallback for at least one unclassified side.
   const bigrams = (s: string): Set<string> => {
     const out = new Set<string>();
     const stripped = s.replace(/\s+/g, "");
@@ -1098,51 +1210,9 @@ function contentMismatchPenalty(
   if (vBigrams.size === 0 || rBigrams.size === 0) return 0.5;
   let shared = 0;
   for (const b of vBigrams) if (rBigrams.has(b)) shared += 1;
-  // Jaccard-like ratio: shared / smaller-side. Threshold for confident
-  // match is ~25% — the smaller-side is typically the structured zone
-  // name, and most content names share at least 25% bigrams when
-  // talking about the same raid (e.g. "ヘビー級" appears in both
-  // "アルカディア:ヘビー級" and "AAC Heavyweight Tier" via romaji /
-  // mixed forms doesn't help, but 25% covers most cases).
   const ratio = shared / Math.min(vBigrams.size, rBigrams.size);
-
-  // SECONDARY check: known FFXIV content keywords as confidence boost.
-  // Even if bigram overlap is low, an exact keyword hit on both sides
-  // confirms content match (handles mixed-language cases like
-  // "アルカディア:ヘビー級" video vs "AAC Heavyweight Tier" zone).
-  const keywords = [
-    // 絶 (Ultimate)
-    "絶アレキサンダー", "絶オメガ検証", "絶バハムート", "絶アルテマウェポン",
-    "絶ニーズヘッグ", "絶エンドシンガー", "絶ゾディアーク",
-    "ultimate alexander", "ultimate omega", "futures rewritten",
-    "dragonsong", "epic of alexander", "ucob", "uwu", "tea", "dsr",
-    "top", "fru",
-    // 零式 (Savage) — Japanese to English mappings
-    "アスフォデロス", "asphodelos",
-    "アバンギャルド", "anabaseios",
-    "アルカディア", "arcadion",
-    "ライトヘビー級", "light-heavyweight", "lightheavyweight",
-    "ヘビー級", "heavyweight",
-    "クルーザー級", "cruiserweight",
-    "ウェルター級", "welterweight",
-    "p9s", "p10s", "p11s", "p12s",
-    "m1s", "m2s", "m3s", "m4s",
-    // 極 (Extreme)
-    "extreme", "極",
-  ];
-  for (const k of keywords) {
-    const kk = k.toLowerCase();
-    if (v.includes(kk) && r.includes(kk)) return 0; // confident match
-  }
-
-  // Decide based on bigram ratio:
-  //   ≥ 25%: likely same content
-  //   10-25%: ambiguous (small penalty)
-  //   < 10%: likely different content (still small penalty — manual
-  //          category names may legitimately differ from FFLogs zone
-  //          names without sharing many bigrams)
   if (ratio >= 0.25) return 0;
-  return 0.5; // ambiguous — small penalty, don't hard-reject
+  return 0.5;
 }
 
 async function linkReportsToVideos(
@@ -1172,25 +1242,34 @@ async function linkReportsToVideos(
     return { scanned: 0, matched: 0, details: [], skippedNoPostedAt: 0 };
   }
 
-  // CRITICAL: only match against videos that have an actual posted_at
-  // (the YouTube/Discord publish timestamp). created_at is when the
-  // row was inserted into our DB — for videos imported in bulk later,
-  // that's wildly off from the actual raid date and causes mismatches
-  // (e.g. a 04/01 raid video imported on 03/28 would match a 03/28
-  // report).
-  let videosSkippedNoPostedAt = 0;
+  // A video is matchable if EITHER:
+  //   - its title contains a parseable raid date (e.g.「【2026 04 01】」)
+  //   - OR it has a non-null `posted_at` timestamp
+  // We DO NOT fall back to `created_at` because that's the row insert
+  // time (irrelevant to the actual raid). A video with neither title
+  // date nor posted_at has no reliable date and is skipped.
+  let videosSkippedNoDate = 0;
   const sortedVideos = [...videos]
     .map((v) => {
+      const titleDate = extractDateFromTitle(
+        (v as { title?: string | null }).title ?? null,
+      );
       const postedAt = v.posted_at as string | null;
-      if (!postedAt) {
-        videosSkippedNoPostedAt += 1;
+      const postedTMs =
+        postedAt && Number.isFinite(new Date(postedAt).getTime())
+          ? new Date(postedAt).getTime()
+          : null;
+      // Need at least one date source.
+      if (!titleDate && postedTMs === null) {
+        videosSkippedNoDate += 1;
         return null;
       }
-      const tMs = new Date(postedAt).getTime();
-      if (!Number.isFinite(tMs)) {
-        videosSkippedNoPostedAt += 1;
-        return null;
-      }
+      // Sort key: prefer title-date as the primary chronological sort,
+      // fall back to posted_at if title has no date.
+      const sortKey =
+        titleDate !== null
+          ? Date.UTC(titleDate.y, titleDate.m - 1, titleDate.d)
+          : (postedTMs as number);
       const cat = (v as { category?: unknown }).category as
         | { name?: string | null }
         | { name?: string | null }[]
@@ -1199,12 +1278,17 @@ async function linkReportsToVideos(
       const categoryName = Array.isArray(cat)
         ? (cat[0]?.name ?? null)
         : (cat?.name ?? null);
-      return { ...v, tMs, categoryName };
+      return {
+        ...v,
+        // tMs is the posted_at fallback timestamp (may be null).
+        tMs: postedTMs,
+        titleDate,
+        sortKey,
+        categoryName,
+      };
     })
-    .filter(
-      (v): v is NonNullable<typeof v> & { tMs: number } => v !== null,
-    )
-    .sort((a, b) => a.tMs - b.tMs);
+    .filter((v): v is NonNullable<typeof v> => v !== null)
+    .sort((a, b) => a.sortKey - b.sortKey);
 
   const usedReports = new Set<string>();
   const details: FflogsLinkDetail[] = [];
@@ -1233,13 +1317,13 @@ async function linkReportsToVideos(
 
   const scoreCandidate = (
     video: {
-      tMs: number;
+      tMs: number | null;
+      titleDate: { y: number; m: number; d: number } | null;
       categoryName: string | null;
       title: string | null;
     },
     report: FflogsReport,
   ) => {
-    const titleDate = extractDateFromTitle(video.title);
     const reportDate = jstCalendarDate(report.startMs);
 
     // Content mismatch: hard reject only when 100% confident different.
@@ -1252,18 +1336,17 @@ async function linkReportsToVideos(
     if (mismatch === 1) return Infinity;
     const contentPenalty = mismatch === 0.5 ? SMALL_PENALTY : 0;
 
-    if (titleDate) {
+    if (video.titleDate) {
       // Stage 1 primary: title-date match. STRICT — exact same JST
       // calendar day required. Title-date is user-curated truth, no
-      // need for fuzzy ±1 day window. If we've already used the
-      // matching report for another video, this video stays unmatched
-      // (better than picking an adjacent-day report).
-      const days = daysApart(titleDate, reportDate);
+      // need for fuzzy ±1 day window.
+      const days = daysApart(video.titleDate, reportDate);
       if (days !== 0) return Infinity;
       return contentPenalty;
     }
 
-    // Stage 1 fallback: posted_at-based.
+    // Stage 1 fallback: posted_at-based (only when title date absent).
+    if (video.tMs === null) return Infinity;
     const delta = video.tMs - report.startMs;
     if (Math.abs(delta) > MATCH_WINDOW_MS) return Infinity;
     const timeScore = delta >= 0 ? delta : -delta * 4;
@@ -1317,18 +1400,25 @@ async function linkReportsToVideos(
       reportUrl: logsUrl,
       videoDate: videoTitleDate
         ? fmt(videoTitleDate)
-        : new Date(pair.video.tMs).toISOString().slice(0, 10) + " (posted_at)",
+        : pair.video.tMs !== null
+          ? new Date(pair.video.tMs).toISOString().slice(0, 10) +
+            " (posted_at)"
+          : undefined,
       reportDate: fmt(reportJst),
     });
   }
 
+  // dateRange uses sortKey (which is title-date when available, posted_at
+  // otherwise) — not the raw tMs since some videos have null tMs.
   const dateRange =
     sortedVideos.length > 0
       ? {
-          earliest: new Date(sortedVideos[0]!.tMs).toISOString().slice(0, 10),
-          latest: new Date(
-            sortedVideos[sortedVideos.length - 1]!.tMs,
-          ).toISOString().slice(0, 10),
+          earliest: new Date(sortedVideos[0]!.sortKey)
+            .toISOString()
+            .slice(0, 10),
+          latest: new Date(sortedVideos[sortedVideos.length - 1]!.sortKey)
+            .toISOString()
+            .slice(0, 10),
         }
       : undefined;
 
@@ -1337,7 +1427,7 @@ async function linkReportsToVideos(
     matched,
     details,
     dateRange,
-    skippedNoPostedAt: videosSkippedNoPostedAt,
+    skippedNoPostedAt: videosSkippedNoDate,
   };
 }
 
