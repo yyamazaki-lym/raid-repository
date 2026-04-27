@@ -10,6 +10,7 @@ import {
   Cloud,
   Loader2,
   Database,
+  FileClock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -34,6 +35,7 @@ import {
   countStoredPastSessions,
   importPastScheduleFromDiscord,
 } from "@/lib/server/categories-actions";
+import { RELEASES } from "@/lib/changelog";
 
 // Inline copy of the Server Action result type — we can't re-export the
 // type from a "use server" module on the client side, and the shape is
@@ -74,6 +76,7 @@ export function SettingsDialog() {
     sampleRawDates: string[];
     reason?: string;
   } | null>(null);
+  const [showChangelog, setShowChangelog] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -289,22 +292,36 @@ export function SettingsDialog() {
             </div>
 
             <div className="flex flex-col gap-2 border-t border-border/30 pt-3">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={onCount}
-                disabled={counting}
-                className="self-start gap-1.5 font-mono text-[10px] tracking-widest uppercase"
-                title="schedule_past_sessions の現在の保存件数を確認（デバッグ用）"
-              >
-                {counting ? (
-                  <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
-                ) : (
-                  <Database className="h-3 w-3" aria-hidden />
-                )}
-                DB の保存件数を確認
-              </Button>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={onCount}
+                  disabled={counting}
+                  className="gap-1.5 font-mono text-[10px] tracking-widest uppercase"
+                  title="schedule_past_sessions の現在の保存件数を確認（デバッグ用）"
+                >
+                  {counting ? (
+                    <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
+                  ) : (
+                    <Database className="h-3 w-3" aria-hidden />
+                  )}
+                  DB の保存件数を確認
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowChangelog((v) => !v)}
+                  className="gap-1.5 font-mono text-[10px] tracking-widest uppercase"
+                  title="更新履歴を表示 / 非表示"
+                  aria-expanded={showChangelog}
+                >
+                  <FileClock className="h-3 w-3" aria-hidden />
+                  {showChangelog ? "更新履歴を隠す" : "更新履歴"}
+                </Button>
+              </div>
               {storedInfo && (
                 <div className="flex flex-col gap-0.5 rounded-sm border border-border/40 bg-secondary/20 px-2.5 py-1.5 text-[11px] leading-relaxed">
                   {storedInfo.ok ? (
@@ -332,6 +349,41 @@ export function SettingsDialog() {
                     <p className="text-rose-300">
                       エラー: {storedInfo.reason ?? "unknown"}
                     </p>
+                  )}
+                </div>
+              )}
+              {showChangelog && (
+                <div className="flex flex-col gap-3 rounded-sm border border-border/40 bg-secondary/20 px-3 py-2.5 text-[11px] leading-relaxed">
+                  <p className="font-mono text-[10px] tracking-[0.2em] text-muted-foreground uppercase">
+                    更新履歴 — Release Notes
+                  </p>
+                  {RELEASES.length === 0 ? (
+                    <p className="text-muted-foreground">記録なし</p>
+                  ) : (
+                    <ul className="flex flex-col gap-3">
+                      {RELEASES.map((r) => (
+                        <li
+                          key={r.version}
+                          className="flex flex-col gap-1 border-l-2 border-[var(--neon-cyan)]/40 pl-2.5"
+                        >
+                          <div className="flex items-baseline gap-2">
+                            <span className="font-mono text-[12px] font-bold text-[var(--neon-cyan)]">
+                              v{r.version}
+                            </span>
+                            <span className="font-mono text-[10px] text-muted-foreground">
+                              {r.date}
+                            </span>
+                          </div>
+                          <ul className="flex flex-col gap-0.5 text-[11px] text-foreground/85">
+                            {r.notes.map((n, i) => (
+                              <li key={i} className="leading-snug">
+                                ・{n}
+                              </li>
+                            ))}
+                          </ul>
+                        </li>
+                      ))}
+                    </ul>
                   )}
                 </div>
               )}

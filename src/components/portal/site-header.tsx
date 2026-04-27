@@ -2,9 +2,13 @@ import Link from "next/link";
 import { Activity } from "lucide-react";
 import { ThemeSwitcher } from "./theme-switcher";
 import { SettingsDialog } from "./settings-dialog";
+import packageJson from "../../../package.json";
 
 /**
  * App version for the header badge.
+ *
+ * Single source of truth: `package.json#version`. Bumping the package
+ * file alone updates the badge — no need to keep two strings in sync.
  *
  * Versioning convention:
  *   MAJOR.MINOR.PATCH (semver-ish)
@@ -12,15 +16,13 @@ import { SettingsDialog } from "./settings-dialog";
  *     MINOR  — page-wide overhauls or notable new features (1.0.x → 1.1.0)
  *     MAJOR  — rare, breaking changes (1.x → 2.0.0)
  *
- * Stage tag (suffix):
+ * Stage tag is deliberately kept inline since it changes rarely:
  *     ALPHA — internal, rough — bumped to BETA once it's daily-driver usable
  *     BETA  — operational, but still actively bug-fixing (current)
  *     RC    — release candidate, only show-stoppers being fixed
  *     (none) — stable
- *
- * Keep this in sync with package.json's `version` field on every bump.
  */
-const APP_VERSION = "1.0.0";
+const APP_VERSION = packageJson.version;
 const APP_STAGE = "BETA";
 
 export function SiteHeader() {
