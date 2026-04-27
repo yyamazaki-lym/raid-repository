@@ -357,16 +357,14 @@ function SortableCategoryCard({
           <SubPageShortcuts slug={category.slug} />
         </div>
 
-        {/* 1.9.19: 右カラムを縦 1 列に整列。上から順に
-              ・ステータス (クリア済 / 練習中 等)
-              ・Discord 取り込み件数 (+N/wk)
-              ・詳細メニュー (3点)
-            幅 (w-[5.5rem]) を固定して全項目を右端に揃える。 */}
-        <div className="flex w-[5.5rem] shrink-0 flex-col items-end gap-1 p-2">
+        {/* 1.9.20: 右カラムを 1.9.18 の見た目に戻し、ステータス /
+              +N/wk / 詳細メニューを縦に並べる (右端揃え)。
+              各要素の固有サイズを尊重しつつ items-end で右ラインだけ
+              揃える — w-full で引き伸ばすと窮屈に見えたので撤回。 */}
+        <div className="flex flex-col items-end justify-between gap-1 p-2">
           <span
             onClick={(e) => e.stopPropagation()}
             onKeyDown={(e) => e.stopPropagation()}
-            className="block w-full"
           >
             <StatusBadge
               status={category.status}
@@ -375,20 +373,15 @@ function SortableCategoryCard({
             />
           </span>
 
-          {recentImports > 0 ? (
-            <span
-              className="inline-flex w-full items-center justify-center rounded-sm border border-indigo-400/40 bg-indigo-400/10 px-1.5 py-px font-mono text-[9px] tracking-[0.18em] text-indigo-300 uppercase"
-              title={`過去7日で Discord から ${recentImports} 件取り込み`}
-            >
-              +{recentImports}/wk
-            </span>
-          ) : (
-            // 高さを固定して、+N/wk が無いカードでも下の CategoryMenu
-            // の縦位置がずれないように見えない placeholder を入れる。
-            <span aria-hidden className="block h-[18px] w-full" />
-          )}
-
-          <div className="mt-auto">
+          <div className="flex flex-col items-end gap-1">
+            {recentImports > 0 && (
+              <span
+                className="inline-flex items-center gap-1 rounded-sm border border-indigo-400/40 bg-indigo-400/10 px-1.5 py-px font-mono text-[9px] tracking-[0.18em] text-indigo-300 uppercase"
+                title={`過去7日で Discord から ${recentImports} 件取り込み`}
+              >
+                +{recentImports}/wk
+              </span>
+            )}
             <CategoryMenu onEdit={onEdit} onDelete={onDelete} />
           </div>
         </div>
