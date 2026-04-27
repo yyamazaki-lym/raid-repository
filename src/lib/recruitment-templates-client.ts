@@ -13,9 +13,13 @@ import { createClient } from "@/lib/supabase/client";
 
 export type RecruitmentTemplate = {
   id: string;
+  /** Optional sub-label within a category (e.g. "1層" / "2層"). */
   label: string;
   body: string;
   sortOrder: number;
+  categoryId: string | null;
+  /** Joined from `categories.name` for display. NULL when category was deleted. */
+  categoryName: string | null;
 };
 
 type RecruitmentTemplateRow = {
@@ -23,29 +27,44 @@ type RecruitmentTemplateRow = {
   label: string;
   body: string;
   sort_order: number;
+  category_id: string | null;
+  // Supabase nested-select returns the related row as a one-to-one
+  // object at runtime even though its strict types model it as an
+  // array. We accept either for safety.
+  categories:
+    | { name: string }
+    | { name: string }[]
+    | null;
 };
 
 function rowToTemplate(row: RecruitmentTemplateRow): RecruitmentTemplate {
+  const cat = Array.isArray(row.categories) ? row.categories[0] : row.categories;
   return {
     id: row.id,
-    label: row.label,
+    label: row.label ?? "",
     body: row.body,
     sortOrder: row.sort_order,
+    categoryId: row.category_id ?? null,
+    categoryName: cat?.name ?? null,
   };
 }
+
+const SELECT_WITH_CATEGORY =
+  "id, label, body, sort_order, category_id, categories(name)";
 
 export async function fetchRecruitmentTemplates(): Promise<RecruitmentTemplate[]> {
   const supabase = createClient();
   const { data, error } = await supabase
     .from("recruitment_templates")
-    .select("*")
+    .select(SELECT_WITH_CATEGORY)
     .order("sort_order", { ascending: true })
     .order("created_at", { ascending: true });
   if (error || !data) return [];
-  return (data as RecruitmentTemplateRow[]).map(rowToTemplate);
+  return (data as unknown as RecruitmentTemplateRow[]).map(rowToTemplate);
 }
 
 export async function createRecruitmentTemplate(input: {
+  categoryId: string;
   label: string;
   body: string;
 }): Promise<{ ok: true; template: RecruitmentTemplate } | { ok: false; reason: string }> {
@@ -62,26 +81,55 @@ export async function createRecruitmentTemplate(input: {
   const { data, error } = await supabase
     .from("recruitment_templates")
     .insert({
+      category_id: input.categoryId,
       label: input.label,
       body: input.body,
       sort_order: nextOrder,
     })
-    .select("*")
+    .select(SELECT_WITH_CATEGORY)
     .single();
   if (error || !data) return { ok: false, reason: error?.message ?? "unknown" };
-  return { ok: true, template: rowToTemplate(data as RecruitmentTemplateRow) };
+  return {
+    ok: true,
+    template: rowToTemplate(data as unknown as RecruitmentTemplateRow),
+  };
 }
 
 export async function updateRecruitmentTemplate(
   id: string,
-  patch: Partial<{ label: string; body: string }>,
+  patch: Partial<{ label: string; body: string; categoryId: string | null }>,
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
   const supabase = createClient();
+  const dbPatch: Record<string, unknown> = {};
+  if (patch.label !== undefined) dbPatch.label = patch.label;
+  if (patch.body !== undefined) dbPatch.body = patch.body;
+  if (patch.categoryId !== undefined) dbPatch.category_id = patch.categoryId;
   const { error } = await supabase
     .from("recruitment_templates")
-    .update(patch)
+    .update(dbPatch)
     .eq("id", id);
   if (error) return { ok: false, reason: error.message };
+  return { ok: true };
+}
+
+/**
+ * Bulk reorder — assigns sort_order = index for each given id.
+ * Updates run in parallel.
+ */
+export async function setRecruitmentTemplateOrder(
+  orderedIds: string[],
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const supabase = createClient();
+  const results = await Promise.all(
+    orderedIds.map((id, index) =>
+      supabase
+        .from("recruitment_templates")
+        .update({ sort_order: index })
+        .eq("id", id),
+    ),
+  );
+  const failed = results.find((r) => r.error);
+  if (failed?.error) return { ok: false, reason: failed.error.message };
   return { ok: true };
 }
 
@@ -123,7 +171,7 @@ export function useRealtimeRecruitmentTemplates(
       try {
         const { data, error } = await supabase
           .from("recruitment_templates")
-          .select("*")
+          .select(SELECT_WITH_CATEGORY)
           .order("sort_order", { ascending: true })
           .order("created_at", { ascending: true });
         if (cancelled) return;
@@ -131,7 +179,9 @@ export function useRealtimeRecruitmentTemplates(
           console.warn("[recruitment-templates] refetch error:", error.message);
           return;
         }
-        setTemplates(((data ?? []) as RecruitmentTemplateRow[]).map(rowToTemplate));
+        setTemplates(
+          ((data ?? []) as unknown as RecruitmentTemplateRow[]).map(rowToTemplate),
+        );
       } catch (e) {
         console.warn("[recruitment-templates] refetch exception:", e);
       }

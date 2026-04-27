@@ -8,6 +8,7 @@ import {
 } from "@/lib/schedule/next-session";
 import { getScheduleSourceUrl } from "@/lib/schedule/source-url";
 import { buildSessionVideoLinkMap } from "@/lib/server/session-video-link";
+import { fetchCategories } from "@/lib/supabase/categories";
 import { fetchRecruitmentTemplatesServer } from "@/lib/supabase/recruitment-templates";
 
 export const metadata = {
@@ -31,11 +32,18 @@ export default async function SchedulePage() {
     );
   }
 
-  const [result, holidays, recruitmentTemplates] = await Promise.all([
-    fetchSchedule(),
-    fetchJapaneseHolidays(),
-    fetchRecruitmentTemplatesServer(),
-  ]);
+  const [result, holidays, recruitmentTemplates, categoriesResult] =
+    await Promise.all([
+      fetchSchedule(),
+      fetchJapaneseHolidays(),
+      fetchRecruitmentTemplatesServer(),
+      fetchCategories(),
+    ]);
+  // Slim category list passed to the recruitment dialog's category
+  // picker. Only id+name are needed there.
+  const recruitmentCategoryOptions = categoriesResult.ok
+    ? categoriesResult.categories.map((c) => ({ id: c.id, name: c.name }))
+    : [];
   // Build the date-→-video map from the actual session list so the
   // 36h window matching can pick the right video for each session
   // (vs. the older naive "same JST day" approach which missed videos
@@ -59,6 +67,7 @@ export default async function SchedulePage() {
       scheduleUrl={url}
       holidays={holidays}
       recruitmentTemplates={recruitmentTemplates}
+      recruitmentCategories={recruitmentCategoryOptions}
       sessionVideoLinks={sessionVideoLinks}
     />
   );

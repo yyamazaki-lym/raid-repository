@@ -1,7 +1,19 @@
 import { CalendarCheck2, AlertTriangle } from "lucide-react";
 import type { NextSessionResult } from "@/lib/schedule/next-session";
 
-export function NextSessionCard({ result }: { result: NextSessionResult }) {
+export function NextSessionCard({
+  result,
+  recruitmentTopButton = null,
+}: {
+  result: NextSessionResult;
+  /**
+   * Optional inline button(s) rendered between the date/time text and
+   * the right-aligned 確定 badge. The schedule page passes a
+   * top-template recruitment-copy button here so the action is one
+   * click away from the most-relevant card.
+   */
+  recruitmentTopButton?: React.ReactNode;
+}) {
   if (!result.ok) {
     return (
       <Frame tone="warn" icon={<AlertTriangle className="h-4 w-4" aria-hidden />}>
@@ -67,7 +79,19 @@ export function NextSessionCard({ result }: { result: NextSessionResult }) {
             {relative}
           </span>
         )}
-        <span className="ml-auto rounded-sm border border-[var(--neon-cyan)]/40 bg-[var(--neon-cyan)]/8 px-1.5 py-px font-mono text-[10px] tracking-[0.18em] text-[var(--neon-cyan)] uppercase">
+        {/* Top-template recruitment copy button: sits between the
+            relative-time label and the right-aligned 確定 badge. */}
+        {recruitmentTopButton && (
+          <span className="ml-auto inline-flex items-center self-center">
+            {recruitmentTopButton}
+          </span>
+        )}
+        <span
+          className={
+            (recruitmentTopButton ? "" : "ml-auto ") +
+            "rounded-sm border border-[var(--neon-cyan)]/40 bg-[var(--neon-cyan)]/8 px-1.5 py-px font-mono text-[10px] tracking-[0.18em] text-[var(--neon-cyan)] uppercase"
+          }
+        >
           確定
         </span>
       </div>

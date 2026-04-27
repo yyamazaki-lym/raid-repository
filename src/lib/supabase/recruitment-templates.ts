@@ -14,18 +14,34 @@ export const fetchRecruitmentTemplatesServer = cache(
   async (): Promise<RecruitmentTemplate[]> => {
     try {
       const supabase = await createClient();
+      type Row = {
+        id: string;
+        label: string;
+        body: string;
+        sort_order: number;
+        category_id: string | null;
+        categories: { name: string } | { name: string }[] | null;
+      };
       const { data, error } = await supabase
         .from("recruitment_templates")
-        .select("*")
+        .select(
+          "id, label, body, sort_order, category_id, categories(name)",
+        )
         .order("sort_order", { ascending: true })
         .order("created_at", { ascending: true });
       if (error || !data) return [];
-      return data.map((r) => ({
-        id: r.id as string,
-        label: r.label as string,
-        body: r.body as string,
-        sortOrder: r.sort_order as number,
-      }));
+      const rows = data as unknown as Row[];
+      return rows.map((r) => {
+        const cat = Array.isArray(r.categories) ? r.categories[0] : r.categories;
+        return {
+          id: r.id,
+          label: r.label ?? "",
+          body: r.body,
+          sortOrder: r.sort_order,
+          categoryId: r.category_id ?? null,
+          categoryName: cat?.name ?? null,
+        };
+      });
     } catch (err) {
       // Re-throw Next.js prerender bailouts so the framework can
       // correctly opt into dynamic rendering.

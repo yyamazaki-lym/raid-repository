@@ -3,7 +3,10 @@
 import { useEffect, useState } from "react";
 import { History, Table, ExternalLink } from "lucide-react";
 import { NextSessionCard } from "./next-session-card";
-import { RecruitmentTemplatesButton } from "./recruitment-templates-button";
+import {
+  RecruitmentTemplatesButton,
+  RecruitmentTopCopyButton,
+} from "./recruitment-templates-button";
 import { ScheduleList } from "./schedule-list";
 import { SchedulePastSimple } from "./schedule-past-simple";
 import type { JapaneseHolidaysMap } from "@/lib/japanese-holidays";
@@ -38,10 +41,11 @@ type Props = {
   holidays?: JapaneseHolidaysMap;
   /** Pre-fetched PT-募集 templates (server-rendered initial state). */
   recruitmentTemplates?: RecruitmentTemplate[];
+  /** Categories for the recruitment-templates dialog category picker. */
+  recruitmentCategories?: { id: string; name: string }[];
   /**
-   * Pre-built map of `YYYY-MM-DD` (JST) → matching video page link.
-   * Used by the past detail table to make date cells clickable into
-   * the corresponding video.
+   * Pre-built map of `session.rawDate` → matching video page link.
+   * Used by the schedule date cells to deep-link into the video.
    */
   sessionVideoLinks?: Record<string, SessionVideoLink>;
 };
@@ -52,6 +56,7 @@ export function SchedulePageBody({
   scheduleUrl,
   holidays,
   recruitmentTemplates = [],
+  recruitmentCategories = [],
   sessionVideoLinks,
 }: Props) {
   // Two-toggle state: simple list (top) and detailed table (bottom).
@@ -130,7 +135,10 @@ export function SchedulePageBody({
             }
             Icon={Table}
           />
-          <RecruitmentTemplatesButton initial={recruitmentTemplates} />
+          <RecruitmentTemplatesButton
+            initial={recruitmentTemplates}
+            categories={recruitmentCategories}
+          />
           <a
             href={scheduleUrl}
             target="_blank"
@@ -144,7 +152,14 @@ export function SchedulePageBody({
         </div>
       </div>
 
-      <NextSessionCard result={nextResult} />
+      <NextSessionCard
+        result={nextResult}
+        recruitmentTopButton={
+          recruitmentTemplates.length > 0 ? (
+            <RecruitmentTopCopyButton initial={recruitmentTemplates} />
+          ) : null
+        }
+      />
 
       {/* Simple past strip — fits between NextSession and Upcoming
           without disturbing the main layout. Shown only when the
