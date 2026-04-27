@@ -126,6 +126,33 @@ export type BackfillResult = {
     timeToClearSeconds: number;
     /** Number of foreign-content videos filtered out for this category. */
     excludedForeignCount: number;
+    /**
+     * 1.9.19: # of videos in the practice→clear window that don't have
+     * `duration_seconds` filled. When >0 it means the time-to-clear
+     * total is incomplete and the user should run the
+     * 「動画時間 + 投稿日時を取得」 action.
+     */
+    videosWithoutDurationCount: number;
+  }>;
+  /**
+   * 1.9.19: per-category diagnostic for entries that failed to find a
+   * clear-flagged video. Lets the user see whether the category had
+   * no videos at all, all foreign-content, no 4層クリア title, etc —
+   * without having to inspect the DB.
+   */
+  noMatchDetails: Array<{
+    slug: string;
+    /** "no-videos" | "all-foreign" | "no-final-floor" | "no-clear-keyword" | "missing-name" */
+    reason:
+      | "no-videos"
+      | "all-foreign"
+      | "no-final-floor"
+      | "no-clear-keyword"
+      | "missing-name";
+    videoCount: number;
+    inCategoryCount: number;
+    /** Up to 5 in-category video titles for visual inspection. */
+    titleSamples: string[];
   }>;
 };
 
@@ -161,6 +188,7 @@ export async function backfillFirstClearFromExistingVideos(
       filled: 0,
       noMatch: 0,
       filledDetails: [],
+      noMatchDetails: [],
     };
   }
 
@@ -168,6 +196,7 @@ export async function backfillFirstClearFromExistingVideos(
   let filled = 0;
   let noMatch = 0;
   const filledDetails: BackfillResult["filledDetails"] = [];
+  const noMatchDetails: BackfillResult["noMatchDetails"] = [];
 
   for (const cat of cats) {
     if (cat.first_clear_at && !overwrite) {
@@ -185,9 +214,17 @@ export async function backfillFirstClearFromExistingVideos(
       .eq("kind", "video");
     if (vErr || !videos) {
       noMatch += 1;
+      noMatchDetails.push({
+        slug: cat.slug as string,
+        reason: "no-videos",
+        videoCount: 0,
+        inCategoryCount: 0,
+        titleSamples: [],
+      });
       continue;
     }
     const categoryName = (cat as { name?: string | null }).name ?? null;
+    const totalVideoCount = videos.length;
 
     // 1.9.17: filter out videos that classify to a *different* content
     // group than the category. Catches LH-級 videos accidentally added
@@ -241,6 +278,31 @@ export async function backfillFirstClearFromExistingVideos(
     );
     if (!firstClear) {
       noMatch += 1;
+      // 1.9.19: classify the failure reason so the user can debug
+      // why this category didn't get a clear date set.
+      let reason: BackfillResult["noMatchDetails"][number]["reason"];
+      if (sorted.length === 0) {
+        reason = excludedForeignCount > 0 ? "all-foreign" : "no-videos";
+      } else {
+        // Did any in-category video have a clear keyword at all?
+        // If yes, the issue is the missing final-floor marker
+        // (Savage requires "4 層" etc). If no, no clear-flagged video
+        // exists yet.
+        const anyHasClearKw = sorted.some((v) =>
+          /クリア|clear/i.test(v.title as string),
+        );
+        if (!anyHasClearKw) reason = "no-clear-keyword";
+        else reason = "no-final-floor";
+      }
+      noMatchDetails.push({
+        slug: cat.slug as string,
+        reason,
+        videoCount: totalVideoCount,
+        inCategoryCount: sorted.length,
+        titleSamples: sorted
+          .slice(0, 5)
+          .map((v) => v.title as string),
+      });
       continue;
     }
     const iso = firstClear.effectiveIso;
@@ -275,11 +337,16 @@ export async function backfillFirstClearFromExistingVideos(
     const startIso =
       firstFloorVideo?.effectiveIso ?? sorted[0]?.effectiveIso ?? iso;
     let timeToClearSeconds = 0;
+    let videosWithoutDurationCount = 0;
     for (const v of sorted) {
-      const sec = v.duration_seconds as number | null;
-      if (typeof sec !== "number" || sec <= 0) continue;
+      // Only count videos within the practice→clear window.
       if (v.effectiveIso < startIso) continue;
       if (v.effectiveIso > iso) continue;
+      const sec = v.duration_seconds as number | null;
+      if (typeof sec !== "number" || sec <= 0) {
+        videosWithoutDurationCount += 1;
+        continue;
+      }
       timeToClearSeconds += sec;
     }
 
@@ -290,6 +357,7 @@ export async function backfillFirstClearFromExistingVideos(
       source: firstClear.source,
       timeToClearSeconds,
       excludedForeignCount,
+      videosWithoutDurationCount,
     });
   }
 
@@ -299,6 +367,7 @@ export async function backfillFirstClearFromExistingVideos(
     filled,
     noMatch,
     filledDetails,
+    noMatchDetails,
   };
 }
 
