@@ -19,6 +19,16 @@ export type ReleaseEntry = {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    version: "1.9.25",
+    date: "2026-04-27",
+    notes: [
+      "🐛 HTML scrape の日付抽出バグを根治 — レポートページの「Created by NAME on Sat Mar 21 2026」(アップロード日時) が raid 開始日として誤抽出され、3/21 のレポートが 3/23 の動画に紐づくケースが発生していた",
+      "🔧 `extractTimestampMs` を全面書き直し: 1) コンテキストから ALL の日付パターンを収集 2) 「Created by / Uploaded / Posted by / Last updated / Updated on / Modified on」 直後の日付は upload metadata として除外 3) 残った候補の中からリンク位置に最も近いものを選択 (priority + distance)",
+      "🔧 コンテキストウィンドウを ±1500 (合計 3000 文字) → ±400 (合計 800 文字) に縮小。隣接 report 行の日付が混入するリスクを下げる",
+      "📐 優先順位を再構成: 視覚的な日付 (年月日 / Month D, YYYY / ISO) > `<time datetime>` 属性 > `data-timestamp` 属性 > 単独 Unix 数値。FFLogs の `<time>` や data 属性は Created/relative time を含むことがあるため",
+    ],
+  },
+  {
     version: "1.9.24",
     date: "2026-04-27",
     notes: [

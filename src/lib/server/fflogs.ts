@@ -473,77 +473,134 @@ export async function fetchFflogsReportsV2(
  * (data-timestamp, datetime). Returns null if no parseable date is
  * found.
  */
-function extractTimestampMs(ctx: string): number | null {
-  // 1. data-timestamp="..." — most reliable when present (FFLogs
-  //    often renders timestamps this way for client-side formatting).
-  const ts = ctx.match(/data-timestamp\s*=\s*"(\d{10,13})"/);
-  if (ts) {
-    const n = parseInt(ts[1]!, 10);
-    return n > 1e11 ? n : n * 1000;
+/**
+ * 1.9.25 rewrite: extract timestamp from HTML context, picking the
+ * date CLOSEST to `anchorPos` (the report-link position in `ctx`).
+ *
+ * Why the rewrite: earlier versions returned the FIRST regex hit by
+ * priority. With a 3000-char context window this often picked up a
+ * neighboring report's date OR the "Created by NAME on DATE" line
+ * (which is the upload time, NOT the raid date). Confirmed user case:
+ * "Created by Aranrhod on Sat Mar 21 2026" → matched a 2026-03-23
+ * video, off by 2 days, because some 3-23 date elsewhere in the page
+ * leaked into the context window.
+ *
+ * New algorithm:
+ *   1. Scan ALL date patterns in `ctx`
+ *   2. SKIP any candidate immediately preceded by `Created`/`Uploaded`/
+ *      `Posted` markers within ~30 chars — these are upload/edit
+ *      timestamps, not raid timestamps
+ *   3. Sort surviving candidates by (priority, distance to anchorPos)
+ *   4. Return the best
+ *
+ * Priority ranking (lower is preferred):
+ *   1. Japanese visible date (年月日) — usually the rendered raid date
+ *   2. English visible date (Month D, YYYY)
+ *   3. ISO visible date
+ *   4. <time datetime="..."> attribute
+ *   5. data-timestamp / data-time attribute
+ *   6. Standalone Unix timestamp
+ */
+function extractTimestampMs(
+  ctx: string,
+  anchorPos = 0,
+): number | null {
+  type Cand = { pos: number; ms: number; priority: number };
+  const candidates: Cand[] = [];
+
+  /** Heuristic: if the date is immediately preceded by "Created" /
+   * "Uploaded" / "Posted" / "Last updated" within `lookbehind` chars,
+   * it's an upload metadata timestamp and should be ignored.
+   * Looks at the *raw* characters preceding the match position. */
+  const isUploadMetadataAt = (pos: number) => {
+    const before = ctx.slice(Math.max(0, pos - 50), pos);
+    return /Created\s+by|Uploaded|Posted\s+by|Last\s+updated|Updated\s+on|Modified\s+on/i.test(
+      before,
+    );
+  };
+
+  const pad = (s: string) => s.padStart(2, "0");
+
+  // 1. Japanese: 2026年4月17日 [HH:MM]
+  for (const m of ctx.matchAll(
+    /(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日(?:\s*(\d{1,2}):(\d{2}))?/g,
+  )) {
+    if (isUploadMetadataAt(m.index!)) continue;
+    const t = Date.parse(
+      `${m[1]}-${pad(m[2]!)}-${pad(m[3]!)}T${pad(m[4] ?? "0")}:${pad(
+        m[5] ?? "0",
+      )}:00+09:00`,
+    );
+    if (Number.isFinite(t))
+      candidates.push({ pos: m.index!, ms: t, priority: 1 });
   }
-  // 2. data-time / data-start / similar attributes.
-  const ts2 = ctx.match(
-    /data-(?:time|start|started|datetime)\s*=\s*"(\d{10,13})"/,
-  );
-  if (ts2) {
-    const n = parseInt(ts2[1]!, 10);
-    return n > 1e11 ? n : n * 1000;
+
+  // 2. English: April 17, 2026 [12:33 AM] OR Sat Mar 21 2026 (no
+  //    comma — this is the FFLogs "Created by" line format)
+  for (const m of ctx.matchAll(
+    /([A-Z][a-z]+\s+\d{1,2},\s+\d{4}(?:\s+\d{1,2}:\d{2}\s*(?:AM|PM)?)?)/g,
+  )) {
+    if (isUploadMetadataAt(m.index!)) continue;
+    const t = Date.parse(m[0] + " +0900");
+    if (Number.isFinite(t))
+      candidates.push({ pos: m.index!, ms: t, priority: 2 });
   }
-  // 3. <time datetime="ISO"> element.
-  const dt = ctx.match(/datetime\s*=\s*"([^"]+)"/);
-  if (dt) {
-    const t = Date.parse(dt[1]!);
-    if (Number.isFinite(t)) return t;
+
+  // 3. ISO: 2026-04-17 / 2026/04/17 [HH:MM]
+  for (const m of ctx.matchAll(
+    /(?<![\d-])(\d{4})[-/](\d{1,2})[-/](\d{1,2})(?:[ T](\d{1,2}):(\d{2}))?(?![-/\d])/g,
+  )) {
+    if (isUploadMetadataAt(m.index!)) continue;
+    const t = Date.parse(
+      `${m[1]}-${pad(m[2]!)}-${pad(m[3]!)}T${pad(m[4] ?? "0")}:${pad(
+        m[5] ?? "0",
+      )}:00+09:00`,
+    );
+    if (Number.isFinite(t))
+      candidates.push({ pos: m.index!, ms: t, priority: 3 });
   }
-  // 4. Japanese: 2026年4月17日 [HH:MM]
-  // 1.9.15 bugfix: explicitly mark as JST (+09:00). Without a TZ
-  // suffix, `Date.parse()` interprets the string as LOCAL time (UTC
-  // on Vercel), which skews evening-JST raids by 9h and pushes their
-  // JST calendar date into the NEXT day — silently producing wrong
-  // matches in the auto-link pipeline.
-  const jp = ctx.match(
-    /(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日(?:\s*(\d{1,2}):(\d{2}))?/,
-  );
-  if (jp) {
-    const y = jp[1]!;
-    const mo = jp[2]!.padStart(2, "0");
-    const d = jp[3]!.padStart(2, "0");
-    const h = (jp[4] ?? "0").padStart(2, "0");
-    const mi = (jp[5] ?? "0").padStart(2, "0");
-    const t = Date.parse(`${y}-${mo}-${d}T${h}:${mi}:00+09:00`);
-    if (Number.isFinite(t)) return t;
+
+  // 4. <time datetime="ISO"> attribute
+  for (const m of ctx.matchAll(/datetime\s*=\s*"([^"]+)"/g)) {
+    if (isUploadMetadataAt(m.index!)) continue;
+    const t = Date.parse(m[1]!);
+    if (Number.isFinite(t))
+      candidates.push({ pos: m.index!, ms: t, priority: 4 });
   }
-  // 5. English: April 17, 2026 12:33 AM (assume JST since the page is
-  // requested with Accept-Language: ja-JP and FFLogs date strings on
-  // Japanese-locale pages are rendered in JST per user's profile).
-  const en = ctx.match(
-    /([A-Z][a-z]+\s+\d{1,2},\s+\d{4}(?:\s+\d{1,2}:\d{2}\s*(?:AM|PM)?)?)/,
-  );
-  if (en) {
-    const t = Date.parse(en[1]! + " +0900");
-    if (Number.isFinite(t)) return t;
+
+  // 5. data-* numeric timestamp
+  for (const m of ctx.matchAll(
+    /data-(?:timestamp|time|start|started|datetime)\s*=\s*"(\d{10,13})"/g,
+  )) {
+    if (isUploadMetadataAt(m.index!)) continue;
+    const n = parseInt(m[1]!, 10);
+    candidates.push({
+      pos: m.index!,
+      ms: n > 1e11 ? n : n * 1000,
+      priority: 5,
+    });
   }
-  // 6. ISO-ish: 2026-04-17 / 2026/04/17 [HH:MM] — assume JST as above.
-  const iso = ctx.match(
-    /(\d{4})[-/](\d{1,2})[-/](\d{1,2})(?:\s+(\d{1,2}):(\d{2}))?/,
-  );
-  if (iso) {
-    const y = iso[1]!;
-    const mo = iso[2]!.padStart(2, "0");
-    const d = iso[3]!.padStart(2, "0");
-    const h = (iso[4] ?? "0").padStart(2, "0");
-    const mi = (iso[5] ?? "0").padStart(2, "0");
-    const t = Date.parse(`${y}-${mo}-${d}T${h}:${mi}:00+09:00`);
-    if (Number.isFinite(t)) return t;
+
+  // 6. Standalone Unix timestamp
+  for (const m of ctx.matchAll(/\b(1[0-9]{9}|1[5-9][0-9]{11})\b/g)) {
+    if (isUploadMetadataAt(m.index!)) continue;
+    const n = parseInt(m[1]!, 10);
+    candidates.push({
+      pos: m.index!,
+      ms: n > 1e11 ? n : n * 1000,
+      priority: 6,
+    });
   }
-  // 7. Any standalone Unix timestamp number in context (10 or 13
-  //    digits, in 2010-2030 range to avoid false positives).
-  const num = ctx.match(/\b(1[0-9]{9}|1[5-9][0-9]{11})\b/);
-  if (num) {
-    const n = parseInt(num[1]!, 10);
-    return n > 1e11 ? n : n * 1000;
-  }
-  return null;
+
+  if (candidates.length === 0) return null;
+
+  // Sort: priority asc, then distance to anchor asc.
+  candidates.sort((a, b) => {
+    if (a.priority !== b.priority) return a.priority - b.priority;
+    return Math.abs(a.pos - anchorPos) - Math.abs(b.pos - anchorPos);
+  });
+
+  return candidates[0]!.ms;
 }
 
 async function fetchFflogsReportsHtmlScrape(
@@ -614,18 +671,21 @@ async function fetchFflogsReportsHtmlScrape(
         const code = m[1]!;
         if (seen.has(code)) continue;
         totalCodesSeen += 1;
-        // Look at a generous window (1500 chars before + 1500 after)
-        // — date might be in the same row but separated by lots of
-        // markup. FFLogs's reports-list HTML can be verbose.
-        const ctxStart = Math.max(0, m.index - 1500);
-        const ctxEnd = Math.min(html.length, m.index + 1500);
+        // 1.9.25: tightened from ±1500 → ±400 chars (= 800 total).
+        // Wider windows leak adjacent rows' dates and the page-wide
+        // "Created by NAME on DATE" header, producing wrong matches.
+        // 800 chars is enough to span 1 report row's HTML in most
+        // FFLogs templates without bleeding into neighbors.
+        const ctxStart = Math.max(0, m.index - 400);
+        const ctxEnd = Math.min(html.length, m.index + 400);
         const ctx = html.slice(ctxStart, ctxEnd);
-        // Stash a sample of the first context for debugging — we can
-        // see what the actual HTML structure looks like.
+        // Anchor: the link's position WITHIN ctx (used by the closest-
+        // date selection in extractTimestampMs).
+        const anchorPos = m.index - ctxStart;
         if (!htmlSample) {
           htmlSample = ctx.slice(0, 800);
         }
-        const tMs = extractTimestampMs(ctx);
+        const tMs = extractTimestampMs(ctx, anchorPos);
         if (tMs == null) continue;
         // Title: try `<a href="/reports/CODE">TITLE</a>` form first.
         const titleMatch = ctx.match(
