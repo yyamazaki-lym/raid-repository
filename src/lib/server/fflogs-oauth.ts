@@ -290,6 +290,15 @@ export async function getFflogsOAuthStatus(): Promise<{
   userName: string | null;
   expiresAt: string | null;
 }> {
+  // Idempotent cleanup of legacy v1 setting — removed in 1.7.3 but
+  // existing deployments may still have the row. Drops it on every
+  // settings-dialog open until gone.
+  try {
+    const supabase = await createClient();
+    await supabase.from("app_settings").delete().eq("key", "fflogs_username");
+  } catch {
+    // best-effort
+  }
   const [accessToken, userName, expiresAt] = await Promise.all([
     fetchAppSetting(KEY_ACCESS),
     fetchAppSetting(KEY_USER_NAME),

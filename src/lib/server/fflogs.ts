@@ -40,31 +40,99 @@ const FFLOGS_GRAPHQL_URL = "https://www.fflogs.com/api/v2/user";
  * the first ~16 pages (well over typical activity for one user) by
  * walking `has_more_pages`.
  */
+/**
+ * Fetch the authenticated user's profile (id + name). Used as the
+ * first step before paginating their reports — `User` type does NOT
+ * have a `reports` field, so we have to filter `reportData.reports`
+ * by `userID` instead.
+ */
+async function fetchCurrentUser(
+  accessToken: string,
+): Promise<
+  { ok: true; id: number; name: string } | { ok: false; reason: string }
+> {
+  try {
+    const res = await fetch(FFLOGS_GRAPHQL_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({
+        query: `query { userData { currentUser { id name } } }`,
+      }),
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      if (res.status === 401) {
+        return {
+          ok: false,
+          reason:
+            "FFLogs OAuth トークンが無効です — 設定で再認証してください",
+        };
+      }
+      return {
+        ok: false,
+        reason: `fflogs v2 ${res.status}: ${text.slice(0, 200)}`,
+      };
+    }
+    const json = (await res.json()) as {
+      errors?: Array<{ message?: string }>;
+      data?: {
+        userData?: {
+          currentUser?: { id?: number; name?: string } | null;
+        };
+      };
+    };
+    if (json.errors?.length) {
+      return {
+        ok: false,
+        reason: "fflogs v2 GraphQL error: " + json.errors[0]!.message,
+      };
+    }
+    const u = json.data?.userData?.currentUser;
+    if (!u || typeof u.id !== "number") {
+      return {
+        ok: false,
+        reason:
+          "現在のユーザー情報が取得できません — OAuth scope が view-user-profile を含んでいるか確認してください",
+      };
+    }
+    return { ok: true, id: u.id, name: u.name ?? "" };
+  } catch (e) {
+    return { ok: false, reason: "fetch error: " + String(e) };
+  }
+}
+
 export async function fetchFflogsReportsV2(
   accessToken: string,
 ): Promise<{ ok: true; reports: FflogsReport[] } | { ok: false; reason: string }> {
+  // Step 1: identify the authenticated user. `User.reports` is not a
+  // field in v2 GraphQL — we have to use `reportData.reports(userID:)`
+  // and supply the numeric ID as a filter.
+  const me = await fetchCurrentUser(accessToken);
+  if (!me.ok) return me;
+
   const all: FflogsReport[] = [];
   const MAX_PAGES = 16;
+  // Step 2: paginate `reportData.reports(userID:)` to get only the
+  // reports owned by THIS user. Without the userID filter the query
+  // returns reports the API client has visibility on (including
+  // others' reports) which caused the "別人のログ" misattribution.
   for (let page = 1; page <= MAX_PAGES; page++) {
-    // CRITICAL: query through `userData.currentUser.reports` — this
-    // is the OAuth-authenticated user's OWN reports. The previous
-    // `reportData.reports` path returns reports the API client has
-    // visibility on, which can include reports OWNED BY OTHER USERS
-    // (e.g. ones the user has viewed or shared with). That caused
-    // "someone else's logs got linked" reports.
-    const query = `query ($page: Int) {
-      userData {
-        currentUser {
-          reports(limit: 25, page: $page) {
-            has_more_pages
-            data {
-              code
-              title
-              startTime
-              endTime
-              zone { id }
-              owner { id name }
-            }
+    const query = `query ($userID: Int!, $page: Int!) {
+      reportData {
+        reports(userID: $userID, limit: 25, page: $page) {
+          has_more_pages
+          data {
+            code
+            title
+            startTime
+            endTime
+            zone { id }
+            owner { id name }
           }
         }
       }
@@ -77,7 +145,10 @@ export async function fetchFflogsReportsV2(
           "Content-Type": "application/json",
           Accept: "application/json",
         },
-        body: JSON.stringify({ query, variables: { page } }),
+        body: JSON.stringify({
+          query,
+          variables: { userID: me.id, page },
+        }),
         signal: AbortSignal.timeout(20000),
       });
       if (!res.ok) {
@@ -97,19 +168,17 @@ export async function fetchFflogsReportsV2(
       const json = (await res.json()) as {
         errors?: Array<{ message?: string }>;
         data?: {
-          userData?: {
-            currentUser?: {
-              reports?: {
-                has_more_pages?: boolean;
-                data?: Array<{
-                  code: string;
-                  title?: string | null;
-                  startTime: number;
-                  endTime: number;
-                  zone?: { id?: number | null } | null;
-                  owner?: { id?: number | null; name?: string | null } | null;
-                }>;
-              };
+          reportData?: {
+            reports?: {
+              has_more_pages?: boolean;
+              data?: Array<{
+                code: string;
+                title?: string | null;
+                startTime: number;
+                endTime: number;
+                zone?: { id?: number | null } | null;
+                owner?: { id?: number | null; name?: string | null } | null;
+              }>;
             };
           };
         };
@@ -120,7 +189,7 @@ export async function fetchFflogsReportsV2(
           reason: "fflogs v2 GraphQL error: " + json.errors[0]!.message,
         };
       }
-      const reports = json.data?.userData?.currentUser?.reports;
+      const reports = json.data?.reportData?.reports;
       if (!reports?.data) break;
       for (const r of reports.data) {
         // v2 GraphQL `startTime` / `endTime` are documented to return
@@ -129,6 +198,9 @@ export async function fetchFflogsReportsV2(
         // protects matching (anything < 1e11 = seconds → ×1000).
         const sMs = r.startTime < 1e11 ? r.startTime * 1000 : r.startTime;
         const eMs = r.endTime < 1e11 ? r.endTime * 1000 : r.endTime;
+        // Defense-in-depth: even with the userID filter, double-check
+        // that owner matches the current user before including.
+        if (r.owner?.id != null && r.owner.id !== me.id) continue;
         all.push({
           id: r.code,
           title: r.title ?? "",
@@ -214,6 +286,20 @@ export async function linkFflogsReportsToVideos(): Promise<FflogsLinkResult> {
   // v2 OAuth only. The previous v1 fallback (display name + API key)
   // was removed in 1.7.3 because it returned Public reports only AND
   // sometimes returned reports owned by other users with the same name.
+
+  // One-time cleanup: drop the deprecated `fflogs_username` row from
+  // app_settings if it's still around. Idempotent — runs on every
+  // linker invocation but does nothing once the row is gone.
+  try {
+    const cleanupClient = await createClient();
+    await cleanupClient
+      .from("app_settings")
+      .delete()
+      .eq("key", "fflogs_username");
+  } catch {
+    // best-effort
+  }
+
   const oauthToken = await getValidFflogsOAuthToken();
   if (!oauthToken) {
     return {

@@ -19,6 +19,15 @@ export type ReleaseEntry = {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    version: "1.7.4",
+    date: "2026-04-27",
+    notes: [
+      "🐛 GraphQL エラー修正: `User.reports` フィールドは存在しないため、2 段階クエリに変更 — まず `userData.currentUser { id }` で自分の userID を取得し、その後 `reportData.reports(userID: $myID)` で自分のレポートだけ取得",
+      "二重保険: owner.id が currentUser.id と一致するレポートのみ採用するフィルタを GraphQL filter に加えてクライアント側でも実施",
+      "DB クリーンアップ: 旧 `app_settings.fflogs_username` 行を自動削除（設定ダイアログ open 時 + FFLogs 連動実行時の両方で idempotent に削除）",
+    ],
+  },
+  {
     version: "1.7.3",
     date: "2026-04-27",
     notes: [
