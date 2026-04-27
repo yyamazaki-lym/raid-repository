@@ -64,6 +64,8 @@ type FflogsLinkResultLite = {
     label: string;
     reportTitle: string;
     reportUrl: string;
+    videoDate?: string;
+    reportDate?: string;
   }>;
   reportsDateRange?: { earliest: string; latest: string };
   videosDateRange?: { earliest: string; latest: string };
@@ -1284,21 +1286,48 @@ export function SettingsDialog() {
                       )}
                       {logsResult.details.length > 0 && (
                         <ul className="mt-1 flex flex-col gap-0.5 font-mono text-[10px] text-muted-foreground">
-                          {logsResult.details.slice(0, 8).map((d, i) => (
-                            <li key={i} className="break-words">
-                              <span
-                                className={
-                                  d.kind === "video"
-                                    ? "text-amber-200/80"
-                                    : "text-[var(--neon-cyan)]/80"
-                                }
-                              >
-                                {d.kind === "video" ? "▶" : "📅"}
-                              </span>{" "}
-                              {d.label.slice(0, 40)}
-                              {d.label.length > 40 ? "…" : ""}
-                            </li>
-                          ))}
+                          {logsResult.details.slice(0, 8).map((d, i) => {
+                            const dateMismatch =
+                              d.videoDate &&
+                              d.reportDate &&
+                              !d.videoDate.startsWith(d.reportDate) &&
+                              !d.reportDate.startsWith(d.videoDate.slice(0, 10));
+                            return (
+                              <li key={i} className="break-words">
+                                <span
+                                  className={
+                                    d.kind === "video"
+                                      ? "text-amber-200/80"
+                                      : "text-[var(--neon-cyan)]/80"
+                                  }
+                                >
+                                  {d.kind === "video" ? "▶" : "📅"}
+                                </span>{" "}
+                                {d.videoDate && (
+                                  <span
+                                    className={
+                                      dateMismatch
+                                        ? "text-rose-300"
+                                        : "text-emerald-300/80"
+                                    }
+                                    title={
+                                      dateMismatch
+                                        ? "video 日付とレポート日付がズレている"
+                                        : "video 日付と一致"
+                                    }
+                                  >
+                                    [{d.videoDate}
+                                    {d.reportDate &&
+                                      d.videoDate !== d.reportDate &&
+                                      `→${d.reportDate}`}
+                                    ]
+                                  </span>
+                                )}{" "}
+                                {d.label.slice(0, 40)}
+                                {d.label.length > 40 ? "…" : ""}
+                              </li>
+                            );
+                          })}
                           {logsResult.details.length > 8 && (
                             <li className="text-muted-foreground/60">
                               …他 {logsResult.details.length - 8} 件

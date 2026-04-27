@@ -651,6 +651,11 @@ export type FflogsLinkDetail = {
   label: string;
   reportTitle: string;
   reportUrl: string;
+  /** JST calendar date inferred from the video title or session, for
+   * verifying matches at a glance. */
+  videoDate?: string;
+  /** JST calendar date of the FFLogs report start time. */
+  reportDate?: string;
 };
 
 export type FflogsLinkResult = {
@@ -1248,10 +1253,14 @@ async function linkReportsToVideos(
     const contentPenalty = mismatch === 0.5 ? SMALL_PENALTY : 0;
 
     if (titleDate) {
-      // Stage 1 primary: title-date match.
+      // Stage 1 primary: title-date match. STRICT — exact same JST
+      // calendar day required. Title-date is user-curated truth, no
+      // need for fuzzy ±1 day window. If we've already used the
+      // matching report for another video, this video stays unmatched
+      // (better than picking an adjacent-day report).
       const days = daysApart(titleDate, reportDate);
-      if (days > 1) return Infinity; // > 1 day = different raid night
-      return days * ONE_DAY_MS + contentPenalty;
+      if (days !== 0) return Infinity;
+      return contentPenalty;
     }
 
     // Stage 1 fallback: posted_at-based.
@@ -1295,11 +1304,21 @@ async function linkReportsToVideos(
     usedReports.add(pair.report.id);
     usedVideos.add(vId);
     matched += 1;
+    const videoTitleDate = extractDateFromTitle(
+      (pair.video.title as string | null) ?? null,
+    );
+    const reportJst = jstCalendarDate(pair.report.startMs);
+    const fmt = (d: { y: number; m: number; d: number } | null) =>
+      d ? `${d.y}-${String(d.m).padStart(2, "0")}-${String(d.d).padStart(2, "0")}` : undefined;
     details.push({
       kind: "video",
       label: pair.video.title as string,
       reportTitle: pair.report.title || "(無題のレポート)",
       reportUrl: logsUrl,
+      videoDate: videoTitleDate
+        ? fmt(videoTitleDate)
+        : new Date(pair.video.tMs).toISOString().slice(0, 10) + " (posted_at)",
+      reportDate: fmt(reportJst),
     });
   }
 
@@ -1398,11 +1417,17 @@ async function linkReportsToSessions(
     usedReports.add(pair.report.id);
     usedSessions.add(sKey);
     matched += 1;
+    const sessionJst = jstCalendarDate(pair.session.tMs);
+    const reportJst = jstCalendarDate(pair.report.startMs);
+    const fmt = (d: { y: number; m: number; d: number }) =>
+      `${d.y}-${String(d.m).padStart(2, "0")}-${String(d.d).padStart(2, "0")}`;
     details.push({
       kind: "session",
       label: sKey,
       reportTitle: pair.report.title || "(無題のレポート)",
       reportUrl: logsUrl,
+      videoDate: fmt(sessionJst),
+      reportDate: fmt(reportJst),
     });
   }
 
