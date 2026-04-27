@@ -18,114 +18,116 @@
 const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
 
 /**
- * Set of `YYYY-MM-DD` strings (in JST) for every Japanese national
- * holiday + substitute holiday.
+ * Hardcoded fallback table — `YYYY-MM-DD` (JST) → Japanese holiday name.
+ * Used when the holidays-jp.github.io fetch fails. Holiday names are
+ * shown in tooltips on the schedule page so the user can hover a red
+ * date to see what holiday it is.
  *
  * Sources: Cabinet Office of Japan, National Astronomical Observatory
  * of Japan (for equinoxes — published 1 year ahead).
  */
-const HOLIDAYS: Set<string> = new Set([
+const HOLIDAYS: Record<string, string> = {
   // ---------- 2024 ----------
-  "2024-01-01", // 元日
-  "2024-01-08", // 成人の日
-  "2024-02-11", // 建国記念の日
-  "2024-02-12", // 振替休日
-  "2024-02-23", // 天皇誕生日
-  "2024-03-20", // 春分の日
-  "2024-04-29", // 昭和の日
-  "2024-05-03", // 憲法記念日
-  "2024-05-04", // みどりの日
-  "2024-05-05", // こどもの日
-  "2024-05-06", // 振替休日
-  "2024-07-15", // 海の日
-  "2024-08-11", // 山の日
-  "2024-08-12", // 振替休日
-  "2024-09-16", // 敬老の日
-  "2024-09-22", // 秋分の日
-  "2024-09-23", // 振替休日
-  "2024-10-14", // スポーツの日
-  "2024-11-03", // 文化の日
-  "2024-11-04", // 振替休日
-  "2024-11-23", // 勤労感謝の日
+  "2024-01-01": "元日",
+  "2024-01-08": "成人の日",
+  "2024-02-11": "建国記念の日",
+  "2024-02-12": "振替休日",
+  "2024-02-23": "天皇誕生日",
+  "2024-03-20": "春分の日",
+  "2024-04-29": "昭和の日",
+  "2024-05-03": "憲法記念日",
+  "2024-05-04": "みどりの日",
+  "2024-05-05": "こどもの日",
+  "2024-05-06": "振替休日",
+  "2024-07-15": "海の日",
+  "2024-08-11": "山の日",
+  "2024-08-12": "振替休日",
+  "2024-09-16": "敬老の日",
+  "2024-09-22": "秋分の日",
+  "2024-09-23": "振替休日",
+  "2024-10-14": "スポーツの日",
+  "2024-11-03": "文化の日",
+  "2024-11-04": "振替休日",
+  "2024-11-23": "勤労感謝の日",
 
   // ---------- 2025 ----------
-  "2025-01-01", // 元日
-  "2025-01-13", // 成人の日
-  "2025-02-11", // 建国記念の日
-  "2025-02-23", // 天皇誕生日
-  "2025-02-24", // 振替休日
-  "2025-03-20", // 春分の日
-  "2025-04-29", // 昭和の日
-  "2025-05-03", // 憲法記念日
-  "2025-05-04", // みどりの日
-  "2025-05-05", // こどもの日
-  "2025-05-06", // 振替休日
-  "2025-07-21", // 海の日
-  "2025-08-11", // 山の日
-  "2025-09-15", // 敬老の日
-  "2025-09-23", // 秋分の日
-  "2025-10-13", // スポーツの日
-  "2025-11-03", // 文化の日
-  "2025-11-23", // 勤労感謝の日
-  "2025-11-24", // 振替休日
+  "2025-01-01": "元日",
+  "2025-01-13": "成人の日",
+  "2025-02-11": "建国記念の日",
+  "2025-02-23": "天皇誕生日",
+  "2025-02-24": "振替休日",
+  "2025-03-20": "春分の日",
+  "2025-04-29": "昭和の日",
+  "2025-05-03": "憲法記念日",
+  "2025-05-04": "みどりの日",
+  "2025-05-05": "こどもの日",
+  "2025-05-06": "振替休日",
+  "2025-07-21": "海の日",
+  "2025-08-11": "山の日",
+  "2025-09-15": "敬老の日",
+  "2025-09-23": "秋分の日",
+  "2025-10-13": "スポーツの日",
+  "2025-11-03": "文化の日",
+  "2025-11-23": "勤労感謝の日",
+  "2025-11-24": "振替休日",
 
   // ---------- 2026 ----------
-  "2026-01-01", // 元日
-  "2026-01-12", // 成人の日
-  "2026-02-11", // 建国記念の日
-  "2026-02-23", // 天皇誕生日
-  "2026-03-20", // 春分の日
-  "2026-04-29", // 昭和の日
-  "2026-05-03", // 憲法記念日
-  "2026-05-04", // みどりの日
-  "2026-05-05", // こどもの日
-  "2026-05-06", // 振替休日
-  "2026-07-20", // 海の日
-  "2026-08-11", // 山の日
-  "2026-09-21", // 敬老の日
-  "2026-09-22", // 国民の休日 (between two adjacent holidays)
-  "2026-09-23", // 秋分の日
-  "2026-10-12", // スポーツの日
-  "2026-11-03", // 文化の日
-  "2026-11-23", // 勤労感謝の日
+  "2026-01-01": "元日",
+  "2026-01-12": "成人の日",
+  "2026-02-11": "建国記念の日",
+  "2026-02-23": "天皇誕生日",
+  "2026-03-20": "春分の日",
+  "2026-04-29": "昭和の日",
+  "2026-05-03": "憲法記念日",
+  "2026-05-04": "みどりの日",
+  "2026-05-05": "こどもの日",
+  "2026-05-06": "振替休日",
+  "2026-07-20": "海の日",
+  "2026-08-11": "山の日",
+  "2026-09-21": "敬老の日",
+  "2026-09-22": "国民の休日",
+  "2026-09-23": "秋分の日",
+  "2026-10-12": "スポーツの日",
+  "2026-11-03": "文化の日",
+  "2026-11-23": "勤労感謝の日",
 
   // ---------- 2027 ----------
-  "2027-01-01", // 元日
-  "2027-01-11", // 成人の日
-  "2027-02-11", // 建国記念の日
-  "2027-02-23", // 天皇誕生日
-  "2027-03-21", // 春分の日
-  "2027-03-22", // 振替休日
-  "2027-04-29", // 昭和の日
-  "2027-05-03", // 憲法記念日
-  "2027-05-04", // みどりの日
-  "2027-05-05", // こどもの日
-  "2027-07-19", // 海の日
-  "2027-08-11", // 山の日
-  "2027-09-20", // 敬老の日
-  "2027-09-23", // 秋分の日
-  "2027-10-11", // スポーツの日
-  "2027-11-03", // 文化の日
-  "2027-11-23", // 勤労感謝の日
+  "2027-01-01": "元日",
+  "2027-01-11": "成人の日",
+  "2027-02-11": "建国記念の日",
+  "2027-02-23": "天皇誕生日",
+  "2027-03-21": "春分の日",
+  "2027-03-22": "振替休日",
+  "2027-04-29": "昭和の日",
+  "2027-05-03": "憲法記念日",
+  "2027-05-04": "みどりの日",
+  "2027-05-05": "こどもの日",
+  "2027-07-19": "海の日",
+  "2027-08-11": "山の日",
+  "2027-09-20": "敬老の日",
+  "2027-09-23": "秋分の日",
+  "2027-10-11": "スポーツの日",
+  "2027-11-03": "文化の日",
+  "2027-11-23": "勤労感謝の日",
 
   // ---------- 2028 ----------
-  "2028-01-01", // 元日
-  "2028-01-10", // 成人の日
-  "2028-02-11", // 建国記念の日
-  "2028-02-23", // 天皇誕生日
-  "2028-03-20", // 春分の日
-  "2028-04-29", // 昭和の日
-  "2028-05-03", // 憲法記念日
-  "2028-05-04", // みどりの日
-  "2028-05-05", // こどもの日
-  "2028-07-17", // 海の日
-  "2028-08-11", // 山の日
-  "2028-09-18", // 敬老の日
-  "2028-09-22", // 秋分の日
-  "2028-10-09", // スポーツの日
-  "2028-11-03", // 文化の日
-  "2028-11-23", // 勤労感謝の日
-]);
+  "2028-01-01": "元日",
+  "2028-01-10": "成人の日",
+  "2028-02-11": "建国記念の日",
+  "2028-02-23": "天皇誕生日",
+  "2028-03-20": "春分の日",
+  "2028-04-29": "昭和の日",
+  "2028-05-03": "憲法記念日",
+  "2028-05-04": "みどりの日",
+  "2028-05-05": "こどもの日",
+  "2028-07-17": "海の日",
+  "2028-08-11": "山の日",
+  "2028-09-18": "敬老の日",
+  "2028-09-22": "秋分の日",
+  "2028-10-09": "スポーツの日",
+  "2028-11-03": "文化の日",
+  "2028-11-23": "勤労感謝の日",
+};
 
 /**
  * Format a Date as JST `YYYY-MM-DD`. Used internally so the table
@@ -140,15 +142,22 @@ function toJstYmd(date: Date): string {
 }
 
 /**
- * Server-side: fetch the latest Japanese-holiday list from the
- * public holidays-jp.github.io JSON. Returns a Set of `YYYY-MM-DD`
- * strings. Falls back to the hardcoded table on any failure.
+ * `YYYY-MM-DD` → holiday-name map. Easy to serialize across the
+ * server/client boundary as a plain object — no Set/Map gymnastics.
+ */
+export type JapaneseHolidaysMap = Record<string, string>;
+
+/**
+ * Server-side: fetch the latest Japanese-holiday map from the public
+ * holidays-jp.github.io JSON. The API returns the same shape we want
+ * (`{ "YYYY-MM-DD": "holiday name", ... }`), so we pass it through
+ * verbatim. Falls back to the hardcoded table on any failure.
  *
  * Cached for 24 hours via Next.js fetch revalidate — holiday data
  * changes only when the Cabinet announces a new year's calendar
  * (typically Feb of the prior year), so daily refresh is plenty.
  */
-export async function fetchJapaneseHolidays(): Promise<Set<string>> {
+export async function fetchJapaneseHolidays(): Promise<JapaneseHolidaysMap> {
   try {
     const res = await fetch(
       "https://holidays-jp.github.io/api/v1/date.json",
@@ -160,9 +169,8 @@ export async function fetchJapaneseHolidays(): Promise<Set<string>> {
     );
     if (!res.ok) return HOLIDAYS;
     const data = (await res.json()) as Record<string, string>;
-    const keys = Object.keys(data);
-    if (keys.length === 0) return HOLIDAYS;
-    return new Set(keys);
+    if (Object.keys(data).length === 0) return HOLIDAYS;
+    return data;
   } catch {
     return HOLIDAYS;
   }
@@ -171,18 +179,44 @@ export async function fetchJapaneseHolidays(): Promise<Set<string>> {
 /**
  * Returns true when the date (in JST) is a Japanese national holiday.
  *
- * @param holidays  Pre-fetched holidays Set (from `fetchJapaneseHolidays()`).
- *                  Pass `undefined` to fall back to the hardcoded table.
- *                  Accepts an array too, for ease of prop passing across
- *                  the server/client boundary where Set isn't always
- *                  reliably serialized.
+ * @param holidays  Pre-fetched holidays map. When undefined, the
+ *                  hardcoded table is consulted as a fallback. Also
+ *                  accepts a plain `string[]` of dates for backward
+ *                  compatibility with older call sites.
  */
 export function isJapaneseHoliday(
   date: Date,
-  holidays?: Set<string> | readonly string[],
+  holidays?: JapaneseHolidaysMap | readonly string[],
 ): boolean {
   const ymd = toJstYmd(date);
   if (Array.isArray(holidays)) return holidays.includes(ymd);
-  if (holidays instanceof Set) return holidays.has(ymd);
-  return HOLIDAYS.has(ymd);
+  if (holidays && typeof holidays === "object") {
+    return ymd in holidays;
+  }
+  return ymd in HOLIDAYS;
+}
+
+/**
+ * Returns the holiday name (e.g. "元日") for the given date in JST,
+ * or `null` when the date is not a holiday. The hover-tooltip on the
+ * schedule date column uses this so users can confirm WHY a date is
+ * red without having to remember the calendar.
+ */
+export function getJapaneseHolidayName(
+  date: Date,
+  holidays?: JapaneseHolidaysMap | readonly string[],
+): string | null {
+  const ymd = toJstYmd(date);
+  if (Array.isArray(holidays)) {
+    // Array form: we only know the date is a holiday, not the name —
+    // fall back to the hardcoded table for the name, then a generic
+    // "祝日" label if not present.
+    const arr = holidays as readonly string[];
+    return arr.includes(ymd) ? (HOLIDAYS[ymd] ?? "祝日") : null;
+  }
+  if (holidays !== undefined) {
+    const map = holidays as JapaneseHolidaysMap;
+    return map[ymd] ?? null;
+  }
+  return HOLIDAYS[ymd] ?? null;
 }

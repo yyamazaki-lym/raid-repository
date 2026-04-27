@@ -29,7 +29,7 @@ export default async function SchedulePage() {
     );
   }
 
-  const [result, holidaySet] = await Promise.all([
+  const [result, holidays] = await Promise.all([
     fetchSchedule(),
     fetchJapaneseHolidays(),
   ]);
@@ -40,14 +40,14 @@ export default async function SchedulePage() {
   // Past-visibility state lives client-side now so we can offer a
   // hover-peek + click-to-pin UX. The header buttons + the list are
   // wrapped together in a Client Component that owns that state.
-  // Holidays are passed as a string[] so it serializes cleanly across
-  // the server/client boundary (Set works in RSC but is verbose).
+  // Holidays travel as a plain object (date → name) so the date-column
+  // tooltip can show e.g. "建国記念の日" instead of just "祝日".
   return (
     <SchedulePageBody
       result={result}
       nextResult={nextResult}
       scheduleUrl={url}
-      holidays={Array.from(holidaySet)}
+      holidays={holidays}
     />
   );
 }

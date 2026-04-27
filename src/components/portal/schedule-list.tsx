@@ -1,7 +1,11 @@
 import { CalendarX2, AlertTriangle } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { CommentPopover } from "./comment-popover";
-import { isJapaneseHoliday } from "@/lib/japanese-holidays";
+import {
+  getJapaneseHolidayName,
+  isJapaneseHoliday,
+} from "@/lib/japanese-holidays";
+import type { JapaneseHolidaysMap } from "@/lib/japanese-holidays";
 import type {
   Attendance,
   ScheduleComment,
@@ -40,11 +44,12 @@ type Props = {
   /** Source schedule URL — used to derive the per-user edit URL on hover/click. */
   scheduleUrl?: string | null;
   /**
-   * Pre-fetched Japanese-holiday `YYYY-MM-DD` set passed down from
-   * the server page. Used to color holiday rows red. When undefined,
-   * the synchronous hardcoded fallback is used by `isJapaneseHoliday`.
+   * Pre-fetched Japanese-holiday map (date → holiday name) passed down
+   * from the server page. Used to color holiday rows red and surface
+   * the holiday name in the date-cell tooltip. When undefined, the
+   * synchronous hardcoded fallback is used.
    */
-  holidays?: readonly string[];
+  holidays?: JapaneseHolidaysMap;
 };
 
 export function ScheduleList({
@@ -259,7 +264,7 @@ function SessionRow({
   session: ScheduleSession;
   users: ScheduleUser[];
   isPast?: boolean;
-  holidays?: readonly string[];
+  holidays?: JapaneseHolidaysMap;
   /** When false, drop the 確定 column entirely (past table). */
   showDecided?: boolean;
 }) {
@@ -268,6 +273,9 @@ function SessionRow({
   // default and DECISION-cyan styling. Doesn't change the row background
   // so the past/decided treatment still composes underneath.
   const holiday = isJapaneseHoliday(session.date, holidays);
+  const holidayName = holiday
+    ? getJapaneseHolidayName(session.date, holidays)
+    : null;
   return (
     <tr
       className={
@@ -296,7 +304,10 @@ function SessionRow({
                   ? "font-bold text-[var(--neon-cyan)] drop-shadow-[0_0_4px_color-mix(in_oklch,var(--neon-cyan)_40%,transparent)]"
                   : ""
             }
-            title={holiday ? "日本の祝日" : undefined}
+            // Tooltip shows the holiday name on hover (PC). Mobile
+            // browsers mostly ignore `title`, which matches the user's
+            // "PC only" preference for this hint.
+            title={holidayName ?? undefined}
           >
             {session.rawDate.split(" ")[0]}
           </span>

@@ -1,7 +1,11 @@
 "use client";
 
 import { Card } from "@/components/ui/card";
-import { isJapaneseHoliday } from "@/lib/japanese-holidays";
+import {
+  getJapaneseHolidayName,
+  isJapaneseHoliday,
+} from "@/lib/japanese-holidays";
+import type { JapaneseHolidaysMap } from "@/lib/japanese-holidays";
 import type { ScheduleSession } from "@/lib/schedule/next-session";
 
 /**
@@ -25,7 +29,7 @@ export function SchedulePastSimple({
   holidays,
 }: {
   sessions: ScheduleSession[];
-  holidays?: readonly string[];
+  holidays?: JapaneseHolidaysMap;
 }) {
   const cutoff = Date.now() - STILL_RELEVANT_MS;
   // Filter to past, sort newest-first, take 10. Newest-first display
@@ -63,9 +67,12 @@ function DateChip({
   holidays,
 }: {
   session: ScheduleSession;
-  holidays?: readonly string[];
+  holidays?: JapaneseHolidaysMap;
 }) {
   const holiday = isJapaneseHoliday(session.date, holidays);
+  const holidayName = holiday
+    ? getJapaneseHolidayName(session.date, holidays)
+    : null;
   const decided = session.status === "DECISION";
   // Date label: Japanese-style "M月D日（曜）". Anchor the regex to the
   // full YYYY/MM/DD form so a 4-digit year doesn't get mistaken for
@@ -88,7 +95,7 @@ function DateChip({
             ? "border-[var(--neon-cyan)]/40 bg-[var(--neon-cyan)]/8 text-[var(--neon-cyan)]"
             : "border-border/50 bg-background/30 text-foreground/85")
       }
-      title={`${session.rawDate}${decided ? " · 確定" : ""}${holiday ? " · 祝日" : ""}`}
+      title={`${session.rawDate}${decided ? " · 確定" : ""}${holidayName ? " · " + holidayName : holiday ? " · 祝日" : ""}`}
     >
       <span className="font-display tabular-nums">{monthDay}</span>
       <span className="text-[10px] opacity-75">（{session.dayOfWeek}）</span>

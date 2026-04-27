@@ -5,6 +5,7 @@ import { History, Table, ExternalLink } from "lucide-react";
 import { NextSessionCard } from "./next-session-card";
 import { ScheduleList } from "./schedule-list";
 import { SchedulePastSimple } from "./schedule-past-simple";
+import type { JapaneseHolidaysMap } from "@/lib/japanese-holidays";
 import type { NextSessionResult, ScheduleFetchResult } from "@/lib/schedule/next-session";
 
 /**
@@ -30,8 +31,8 @@ type Props = {
   result: ScheduleFetchResult;
   nextResult: NextSessionResult;
   scheduleUrl: string;
-  /** Pre-fetched Japanese holiday dates (`YYYY-MM-DD`). */
-  holidays?: readonly string[];
+  /** Pre-fetched Japanese holidays map (date → holiday name). */
+  holidays?: JapaneseHolidaysMap;
 };
 
 export function SchedulePageBody({
