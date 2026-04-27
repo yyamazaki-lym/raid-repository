@@ -3,9 +3,11 @@
 import { useEffect, useState } from "react";
 import { History, Table, ExternalLink } from "lucide-react";
 import { NextSessionCard } from "./next-session-card";
+import { RecruitmentTemplatesButton } from "./recruitment-templates-button";
 import { ScheduleList } from "./schedule-list";
 import { SchedulePastSimple } from "./schedule-past-simple";
 import type { JapaneseHolidaysMap } from "@/lib/japanese-holidays";
+import type { RecruitmentTemplate } from "@/lib/recruitment-templates-client";
 import type { NextSessionResult, ScheduleFetchResult } from "@/lib/schedule/next-session";
 
 /**
@@ -33,6 +35,8 @@ type Props = {
   scheduleUrl: string;
   /** Pre-fetched Japanese holidays map (date → holiday name). */
   holidays?: JapaneseHolidaysMap;
+  /** Pre-fetched PT-募集 templates (server-rendered initial state). */
+  recruitmentTemplates?: RecruitmentTemplate[];
 };
 
 export function SchedulePageBody({
@@ -40,6 +44,7 @@ export function SchedulePageBody({
   nextResult,
   scheduleUrl,
   holidays,
+  recruitmentTemplates = [],
 }: Props) {
   // Two-toggle state: simple list (top) and detailed table (bottom).
   // Both default to off; pinned values persist via localStorage.
@@ -117,6 +122,7 @@ export function SchedulePageBody({
             }
             Icon={Table}
           />
+          <RecruitmentTemplatesButton initial={recruitmentTemplates} />
           <a
             href={scheduleUrl}
             target="_blank"
