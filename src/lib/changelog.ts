@@ -19,6 +19,16 @@ export type ReleaseEntry = {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    version: "1.7.7",
+    date: "2026-04-27",
+    notes: [
+      "FFLogs: HTML スクレイピングをフォールバックパスとして追加 — v2 GraphQL が 0 件返した場合、`https://www.fflogs.com/user/reports-list/{userId}` の公開ページをパースして Public + Unlisted レポートを取得（ユーザー提案）",
+      "v2 GraphQL の owner 比較を改善: `String(owner.id) === String(me.id)` でロバストに、加えて `owner.name === me.name` を fallback に",
+      "結果パネルで HTML スクレイピング fallback 経由かどうか判別可能（クエリしたユーザー名表示に「HTML スクレイプフォールバック」と注記）",
+      "備考: HTML スクレイピングは Public 公開ページがソースなので、真の Private レポートは依然取得不可。完全に取得したい場合は FFLogs 上で「Public」または「Unlisted」に変更するか、メモポップオーバーから手動 URL 紐づけ",
+    ],
+  },
+  {
     version: "1.7.6",
     date: "2026-04-27",
     notes: [

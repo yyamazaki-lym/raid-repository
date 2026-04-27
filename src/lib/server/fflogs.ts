@@ -44,7 +44,7 @@ const FFLOGS_GRAPHQL_URL = "https://www.fflogs.com/api/v2/user";
  * Fetch the authenticated user's profile (id + name). Used as the
  * first step before paginating their reports — `User` type does NOT
  * have a `reports` field, so we have to filter `reportData.reports`
- * by `userID` instead.
+ * by owner client-side.
  */
 async function fetchCurrentUser(
   accessToken: string,
@@ -202,8 +202,16 @@ export async function fetchFflogsReportsV2(
       if (!reports?.data) break;
       for (const r of reports.data) {
         // Client-side ownership filter — exclude reports owned by
-        // other users (guild-shared etc).
-        if (r.owner?.id !== me.id) continue;
+        // other users (guild-shared etc). Use string comparison
+        // because GraphQL Int / FFLogs API number types can sneak
+        // through as strings in some payloads. Also accept name
+        // match as a fallback in case `owner.id` isn't populated.
+        const ownerIdStr = r.owner?.id != null ? String(r.owner.id) : null;
+        const meIdStr = String(me.id);
+        const idMatch = ownerIdStr !== null && ownerIdStr === meIdStr;
+        const nameMatch =
+          !!me.name && r.owner?.name != null && r.owner.name === me.name;
+        if (!idMatch && !nameMatch) continue;
         // v2 GraphQL `startTime` / `endTime` are documented to return
         // Unix milliseconds. Defensive magnitude check protects
         // against future spec changes.
@@ -220,6 +228,102 @@ export async function fetchFflogsReportsV2(
       if (!reports.has_more_pages) break;
     } catch (e) {
       return { ok: false, reason: "fetch error: " + String(e) };
+    }
+  }
+  return { ok: true, reports: all };
+}
+
+/**
+ * HTML scrape fallback — fetches the public reports-list page
+ * (`https://www.fflogs.com/user/reports-list/{userId}`) and parses
+ * the report rows out. Used when the v2 GraphQL endpoint returns 0
+ * owned reports despite OAuth auth (apparently a v2 schema limitation
+ * for some users).
+ *
+ * Limitations:
+ *   - Only fetches Public + (probably) Unlisted reports — the public
+ *     web page doesn't expose Private reports without login session.
+ *     Truly Private reports still need manual binding via the memo
+ *     popover.
+ *   - HTML parser uses regex (no cheerio dep) so it's brittle to
+ *     FFLogs page redesigns. If FFLogs ships a layout change, this
+ *     function will start returning 0 reports — at which point we'd
+ *     either need to update the regex or return to API-only.
+ */
+async function fetchFflogsReportsHtmlScrape(
+  userId: number,
+): Promise<{ ok: true; reports: FflogsReport[] } | { ok: false; reason: string }> {
+  const all: FflogsReport[] = [];
+  const seen = new Set<string>();
+  const MAX_PAGES = 25;
+  for (let page = 1; page <= MAX_PAGES; page++) {
+    const url = `https://www.fflogs.com/user/reports-list/${userId}?page=${page}`;
+    try {
+      const res = await fetch(url, {
+        headers: {
+          // Friendly UA — avoids being mistaken for a scraper bot.
+          "User-Agent":
+            "Mozilla/5.0 (compatible; RaidRepository/1.0; +https://github.com)",
+          Accept: "text/html",
+        },
+        signal: AbortSignal.timeout(20000),
+      });
+      if (!res.ok) {
+        return {
+          ok: false,
+          reason: `fflogs HTML scrape ${res.status} (page ${page})`,
+        };
+      }
+      const html = await res.text();
+      const before = all.length;
+      // Look for `/reports/{code}` links and try to extract title +
+      // start time from the surrounding HTML. The page structure has
+      // each report row containing:
+      //   <a href="/reports/CODE">Title</a>
+      // and a column with the start datetime. We use a permissive
+      // regex that grabs the link, then look at the row HTML for a
+      // date string.
+      const rowRegex =
+        /<tr[^>]*>([\s\S]*?)<\/tr>/g;
+      const linkRegex =
+        /<a[^>]+href="\/reports\/([A-Za-z0-9]+)"[^>]*>([\s\S]*?)<\/a>/;
+      // FFLogs renders timestamps as e.g. "April 17, 2026 12:33 AM"
+      // OR "2026-04-17 00:33" depending on locale/page. Match either.
+      const dateRegexEn =
+        /\b([A-Z][a-z]+\s+\d{1,2},\s+\d{4}(?:\s+\d{1,2}:\d{2}\s*(?:AM|PM)?)?)/;
+      const dateRegexIso =
+        /\b(\d{4}[-/]\d{1,2}[-/]\d{1,2}(?:\s+\d{1,2}:\d{2})?)/;
+      let rowMatch;
+      while ((rowMatch = rowRegex.exec(html)) !== null) {
+        const rowHtml = rowMatch[1]!;
+        const linkMatch = rowHtml.match(linkRegex);
+        if (!linkMatch) continue;
+        const code = linkMatch[1]!;
+        if (seen.has(code)) continue;
+        // Strip HTML tags from inner content for a clean title.
+        const title = linkMatch[2]!
+          .replace(/<[^>]+>/g, "")
+          .replace(/\s+/g, " ")
+          .trim();
+        const dateStr =
+          rowHtml.match(dateRegexEn)?.[1] ??
+          rowHtml.match(dateRegexIso)?.[1] ??
+          null;
+        const tMs = dateStr ? Date.parse(dateStr) : NaN;
+        if (!Number.isFinite(tMs)) continue;
+        seen.add(code);
+        all.push({
+          id: code,
+          title,
+          startMs: tMs,
+          endMs: tMs, // unknown; matching only uses startMs anyway
+          zone: null,
+        });
+      }
+      // Stop once a page yields no new reports (end of list).
+      if (all.length === before) break;
+    } catch (e) {
+      return { ok: false, reason: "HTML scrape fetch error: " + String(e) };
     }
   }
   return { ok: true, reports: all };
@@ -335,7 +439,24 @@ export async function linkFflogsReportsToVideos(): Promise<FflogsLinkResult> {
       details: [],
     };
   }
-  const reports = v2Result.reports;
+  let reports = v2Result.reports;
+  let usedSource: "v2" | "html-scrape" = "v2";
+
+  // If the v2 GraphQL endpoint returned 0 reports owned by the
+  // authenticated user (a known limitation in some account
+  // configurations), fall back to scraping the public reports-list
+  // page. This covers Public + Unlisted reports; truly Private
+  // ones still need manual binding via the memo popover.
+  if (reports.length === 0) {
+    const me = await fetchCurrentUser(oauthToken);
+    if (me.ok) {
+      const scrapeResult = await fetchFflogsReportsHtmlScrape(me.id);
+      if (scrapeResult.ok && scrapeResult.reports.length > 0) {
+        reports = scrapeResult.reports;
+        usedSource = "html-scrape";
+      }
+    }
+  }
 
   // Run both linkers (independently — they don't share their used-set
   // because each FFLogs report legitimately maps to both a video and
@@ -386,7 +507,10 @@ export async function linkFflogsReportsToVideos(): Promise<FflogsLinkResult> {
     videosDateRange: videoResult.dateRange,
     sessionsDateRange: sessionResult.dateRange,
     reportSamples,
-    queriedUsername: "(OAuth 認証済みユーザー)",
+    queriedUsername:
+      usedSource === "html-scrape"
+        ? "(OAuth 認証 → HTML スクレイプフォールバック)"
+        : "(OAuth 認証済みユーザー)",
     apiPath: "v2",
   };
 }
