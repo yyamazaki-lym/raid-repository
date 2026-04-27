@@ -207,8 +207,13 @@ export function RecruitmentTemplatesButton({ initial, categories }: Props) {
 
 /**
  * Lightweight quick-copy button suitable for embedding inline (e.g.
- * the next-session card). Copies the topmost template directly. When
- * no template is registered, renders nothing.
+ * the next-session card). Copies the topmost template directly on
+ * click; hovering reveals a floating preview of the body so the user
+ * can confirm what they're about to copy without firing first.
+ *
+ * Mobile (no hover) falls through gracefully — the click still copies
+ * and the preview never shows. The button's `title` attribute carries
+ * the label as a fallback for keyboard / a11y.
  */
 export function RecruitmentTopCopyButton({
   initial,
@@ -216,6 +221,7 @@ export function RecruitmentTopCopyButton({
   initial: RecruitmentTemplate[];
 }) {
   const templates = useRealtimeRecruitmentTemplates(initial);
+  const [hovered, setHovered] = useState(false);
   if (templates.length === 0) return null;
   const top = templates[0]!;
 
@@ -229,16 +235,35 @@ export function RecruitmentTopCopyButton({
   };
 
   return (
-    <button
-      type="button"
-      onClick={copy}
-      aria-label={`「${displayLabel(top)}」を募集文としてコピー`}
-      title={`${displayLabel(top)} をコピー`}
-      className="inline-flex h-6 items-center gap-1 rounded-sm border border-[var(--neon-cyan)]/40 bg-[var(--neon-cyan)]/10 px-1.5 font-mono text-[10px] tracking-widest text-[var(--neon-cyan)] uppercase transition-colors hover:border-[var(--neon-cyan)]/60 hover:bg-[var(--neon-cyan)]/15"
+    <span
+      className="relative inline-flex"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
     >
-      <ClipboardCopy className="h-3 w-3" aria-hidden />
-      募集
-    </button>
+      <button
+        type="button"
+        onClick={copy}
+        aria-label={`「${displayLabel(top)}」を募集文としてコピー`}
+        title={`${displayLabel(top)} をコピー`}
+        className="inline-flex h-6 items-center gap-1 rounded-sm border border-[var(--neon-cyan)]/40 bg-[var(--neon-cyan)]/10 px-1.5 font-mono text-[10px] tracking-widest text-[var(--neon-cyan)] uppercase transition-colors hover:border-[var(--neon-cyan)]/60 hover:bg-[var(--neon-cyan)]/15"
+      >
+        <ClipboardCopy className="h-3 w-3" aria-hidden />
+        募集
+      </button>
+      {hovered && (
+        <div
+          role="tooltip"
+          className="glass-popup pointer-events-none absolute right-0 top-full z-50 mt-1 w-[min(28rem,calc(100vw-2rem))] rounded-md border border-[var(--neon-cyan)]/30 p-2 shadow-[0_8px_24px_-12px_var(--neon-cyan)]"
+        >
+          <p className="mb-1 font-mono text-[10px] tracking-[0.2em] text-[var(--neon-cyan)] uppercase">
+            ★ {displayLabel(top)}
+          </p>
+          <pre className="max-h-[14rem] overflow-y-auto font-mono text-[11px] leading-relaxed whitespace-pre-wrap text-foreground/90">
+            {top.body}
+          </pre>
+        </div>
+      )}
+    </span>
   );
 }
 

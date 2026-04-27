@@ -61,7 +61,16 @@ export function NextSessionCard({
       tone={isToday ? "today" : "active"}
       icon={<CalendarCheck2 className="h-4 w-4" aria-hidden />}
     >
-      <Label>次回開催日</Label>
+      {/* Header line: label + 確定 badge inline. The badge previously
+          floated to the far right where the eye easily missed it;
+          sitting next to the label makes "this date is locked-in"
+          immediately obvious. */}
+      <div className="flex flex-wrap items-center gap-2">
+        <Label>次回開催日</Label>
+        <span className="rounded-sm border border-[var(--neon-cyan)]/40 bg-[var(--neon-cyan)]/8 px-1.5 py-px font-mono text-[10px] tracking-[0.18em] text-[var(--neon-cyan)] uppercase">
+          確定
+        </span>
+      </div>
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <Value highlight={isToday}>{rawDate}</Value>
         <span className="font-mono text-sm text-foreground/80">
@@ -79,21 +88,11 @@ export function NextSessionCard({
             {relative}
           </span>
         )}
-        {/* Top-template recruitment copy button: sits between the
-            relative-time label and the right-aligned 確定 badge. */}
         {recruitmentTopButton && (
           <span className="ml-auto inline-flex items-center self-center">
             {recruitmentTopButton}
           </span>
         )}
-        <span
-          className={
-            (recruitmentTopButton ? "" : "ml-auto ") +
-            "rounded-sm border border-[var(--neon-cyan)]/40 bg-[var(--neon-cyan)]/8 px-1.5 py-px font-mono text-[10px] tracking-[0.18em] text-[var(--neon-cyan)] uppercase"
-          }
-        >
-          確定
-        </span>
       </div>
     </Frame>
   );

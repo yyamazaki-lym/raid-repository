@@ -10,6 +10,7 @@ import {
   Cloud,
   Loader2,
   Database,
+  Camera,
   FileClock,
   X,
 } from "lucide-react";
@@ -35,6 +36,8 @@ import {
 import {
   countStoredPastSessions,
   importPastScheduleFromDiscord,
+  snapshotScheduleNow,
+  type ScheduleSnapshotResult,
 } from "@/lib/server/categories-actions";
 import { RELEASES } from "@/lib/changelog";
 
@@ -77,6 +80,9 @@ export function SettingsDialog() {
     sampleRawDates: string[];
     reason?: string;
   } | null>(null);
+  const [snapshotting, startSnapshot] = useTransition();
+  const [snapshotResult, setSnapshotResult] =
+    useState<ScheduleSnapshotResult | null>(null);
   const [showChangelog, setShowChangelog] = useState(false);
 
   useEffect(() => {
@@ -144,6 +150,24 @@ export function SettingsDialog() {
       const r = await countStoredPastSessions();
       setStoredInfo(r);
       if (!r.ok) toast.error("件数取得失敗: " + (r.reason ?? "unknown"));
+    });
+  };
+
+  const onSnapshot = () => {
+    setSnapshotResult(null);
+    startSnapshot(async () => {
+      const r = await snapshotScheduleNow();
+      setSnapshotResult(r);
+      if (!r.ok) {
+        toast.error("スナップショット失敗: " + (r.reason ?? "unknown"));
+        return;
+      }
+      toast.success(
+        r.scanned > 0
+          ? `${r.scanned} 件保存（新規 ${r.inserted} / 更新 ${r.updated}）`
+          : "保存対象のセッションなし",
+      );
+      router.refresh();
     });
   };
 
@@ -274,6 +298,22 @@ export function SettingsDialog() {
                   type="button"
                   variant="outline"
                   size="sm"
+                  onClick={onSnapshot}
+                  disabled={snapshotting}
+                  className="gap-1.5 font-mono text-[11px] tracking-widest uppercase"
+                  title="現在の出席状況を即時スナップショット（自動: 毎日21:50 JST）"
+                >
+                  {snapshotting ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                  ) : (
+                    <Camera className="h-3.5 w-3.5" aria-hidden />
+                  )}
+                  {snapshotting ? "保存中..." : "出席状況を即時保存"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
                   onClick={onCount}
                   disabled={counting}
                   className="gap-1.5 font-mono text-[10px] tracking-widest uppercase"
@@ -310,6 +350,34 @@ export function SettingsDialog() {
               )}
             </div>
 
+            {snapshotResult && (
+              <div className="relative flex flex-col gap-0.5 rounded-sm border border-border/40 bg-secondary/20 px-2.5 py-1.5 pr-7 text-[11px] leading-relaxed">
+                <button
+                  type="button"
+                  onClick={() => setSnapshotResult(null)}
+                  aria-label="スナップショット結果を閉じる"
+                  className="absolute right-1 top-1 inline-flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
+                >
+                  <X className="h-3 w-3" aria-hidden />
+                </button>
+                {snapshotResult.ok ? (
+                  <>
+                    <p className="font-mono">
+                      対象 {snapshotResult.scanned} 件 / 新規{" "}
+                      <strong>{snapshotResult.inserted}</strong> / 更新{" "}
+                      <strong>{snapshotResult.updated}</strong>
+                    </p>
+                    <p className="text-muted-foreground text-[10px]">
+                      character-sheets の現スケジュール全体を出席情報込みで保存しました。
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-rose-300">
+                    エラー: {snapshotResult.reason ?? "unknown"}
+                  </p>
+                )}
+              </div>
+            )}
             {storedInfo && (
               <div className="relative flex flex-col gap-0.5 rounded-sm border border-border/40 bg-secondary/20 px-2.5 py-1.5 pr-7 text-[11px] leading-relaxed">
                 <button

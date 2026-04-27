@@ -1,20 +1,7 @@
-"use client";
-
 import Link from "next/link";
-import { useTransition } from "react";
-import { useRouter } from "next/navigation";
-import {
-  CalendarX2,
-  AlertTriangle,
-  BarChart3,
-  Camera,
-  Film,
-  Loader2,
-} from "lucide-react";
-import { toast } from "sonner";
+import { CalendarX2, AlertTriangle, BarChart3, Film } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { CommentPopover } from "./comment-popover";
-import { snapshotScheduleNow } from "@/lib/server/categories-actions";
 import {
   getJapaneseHolidayName,
   isJapaneseHoliday,
@@ -188,10 +175,7 @@ export function ScheduleList({
       {/* Past sessions — separate card so the visual break is unmistakable.
           Hidden until the user enables the detail toggle. The "確定"
           column is dropped here since past sessions were all held.
-          The header carries a manual-snapshot button: the daily cron
-          runs at 21:50 JST, but a button here lets the user capture
-          the latest answers without waiting (e.g. right before raid
-          time when someone just changed their answer). */}
+          Manual snapshot trigger lives in the settings dialog now. */}
       {showDetailedPast && renderedPast.length > 0 && (
         <Card className="glass overflow-hidden p-0">
           <header className="flex items-center justify-between gap-2 border-b border-border/40 bg-secondary/20 px-3 py-2">
@@ -199,12 +183,9 @@ export function ScheduleList({
               <span className="inline-flex h-1.5 w-1.5 rounded-full bg-muted-foreground/60" />
               Past · 過去の予定
             </div>
-            <div className="flex items-center gap-2">
-              <SnapshotNowButton />
-              <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
-                {renderedPast.length} 件
-              </span>
-            </div>
+            <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
+              {renderedPast.length} 件
+            </span>
           </header>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[640px] border-collapse text-left text-sm">
@@ -294,53 +275,6 @@ function buildEditUrl(sourceUrl: string | null | undefined, userId: string): str
   } catch {
     return null;
   }
-}
-
-/**
- * Compact "出席状況スナップショット" trigger placed next to the past
- * card's count. Cron runs daily at 21:50 JST automatically; this is
- * for ad-hoc captures when the user knows the live answers just
- * changed and they want the snapshot to reflect that.
- */
-function SnapshotNowButton() {
-  const router = useRouter();
-  const [pending, startTransition] = useTransition();
-  const onClick = () => {
-    startTransition(async () => {
-      const r = await snapshotScheduleNow();
-      if (!r.ok) {
-        toast.error("スナップショット失敗: " + (r.reason ?? "unknown"));
-        return;
-      }
-      toast.success(
-        r.scanned > 0
-          ? `${r.scanned} 件保存（新規 ${r.inserted} / 更新 ${r.updated}）`
-          : "保存対象のセッションなし",
-      );
-      router.refresh();
-    });
-  };
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={pending}
-      aria-label="現在の出席状況をスナップショット保存"
-      title={
-        pending
-          ? "保存中…"
-          : "現在の出席状況を即時保存（自動: 毎日21:50 JST）"
-      }
-      className="inline-flex h-6 items-center justify-center gap-1 rounded-sm border border-emerald-400/40 bg-emerald-400/8 px-1.5 font-mono text-[10px] tracking-widest text-emerald-300 uppercase transition-colors hover:border-emerald-400/60 hover:bg-emerald-400/12 disabled:opacity-60"
-    >
-      {pending ? (
-        <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
-      ) : (
-        <Camera className="h-3 w-3" aria-hidden />
-      )}
-      保存
-    </button>
-  );
 }
 
 /**
