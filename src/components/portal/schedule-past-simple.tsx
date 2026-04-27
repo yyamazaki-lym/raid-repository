@@ -161,16 +161,19 @@ function DateChip({
   return (
     <li
       className={
-        // 1.9.30: ABANDONED `h-6` fixed-height approach — system
-        // Japanese fonts (Hiragino / Yu Gothic / Noto Sans CJK JP)
-        // have different ascent/descent ratios that don't center
-        // cleanly inside a forced height. Switching to NATURAL sizing
-        // with symmetric `py-1` (4px top + 4px bottom) lets the
-        // browser put the glyphs at the visual center regardless of
-        // the fallback font's metrics. Total chip height drops from
-        // 24px to ~21px — also fits the user's "全体的にスリムに"
-        // request.
-        "inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] tabular-nums leading-tight transition-colors " +
+        // 1.9.31: ASYMMETRIC padding (pt-0.5 pb-1.5 = 2px top, 6px
+        // bottom) to physically compensate for system Japanese font
+        // metrics. Yu Gothic / Hiragino / Noto Sans CJK JP all draw
+        // CJK glyphs in the UPPER portion of their em-box (more
+        // ascent than descent space), so symmetric padding leaves
+        // the glyphs visually low (≈ 2× whitespace above vs below).
+        // 1.9.28-1.9.30 tried symmetric vertical alignment via
+        // `h-6 + items-center`, `leading-none`, `leading-6`, and
+        // `py-1 + leading-tight` — all symmetric solutions failed
+        // because the asymmetry is in the font metrics themselves.
+        // This change adds 4px more bottom padding than top to put
+        // the visual center of the glyph at the chip center.
+        "inline-flex items-center gap-1 rounded-md border px-2 pt-0.5 pb-1.5 text-[11px] tabular-nums leading-tight transition-colors " +
         chipColor
       }
       title={tooltip}

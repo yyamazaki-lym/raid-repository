@@ -19,6 +19,13 @@ export type ReleaseEntry = {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    version: "1.9.31",
+    date: "2026-04-28",
+    notes: [
+      "📐 過去の活動カード (簡易チップ) の日付縦中央揃え 4 度目の試行 — symmetric padding でなく **asymmetric padding** で物理的に補正。`pt-0.5 pb-1.5` (上 2px / 下 6px) で、システム日本語フォント (Yu Gothic / Hiragino / Noto Sans CJK JP) が CJK glyphs を em-box の上寄りに描く特性を相殺。1.9.28-1.9.30 の symmetric な解 (`h-6 + items-center`, `leading-6`, `py-1`) は font metrics 自体の非対称性を解決できなかったため、padding 側で 4px の差をつけて視覚的に中央揃えに",
+    ],
+  },
+  {
     version: "1.9.30",
     date: "2026-04-28",
     notes: [
