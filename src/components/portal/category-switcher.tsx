@@ -67,7 +67,7 @@ export function CategorySwitcher({ initialCategories }: Props) {
   const subSegment =
     pathname.match(/^\/category\/[^/]+\/([^/]+)/)?.[1] ?? "mitigation";
 
-  const triggerLabel = activeCategory ? activeCategory.name : "カテゴリー";
+  const triggerLabel = activeCategory ? activeCategory.name : "コンテンツ";
 
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
@@ -118,12 +118,12 @@ export function CategorySwitcher({ initialCategories }: Props) {
         className="glass-popup w-[max(20rem,min(calc(100vw-1rem),40rem))] border-border/40"
       >
         <div className="px-1.5 pt-1 pb-1 font-mono text-[10px] tracking-[0.2em] text-muted-foreground uppercase">
-          Categories
+          Contents
         </div>
 
         {categories.length === 0 ? (
           <div className="px-2 py-3 text-center text-xs text-muted-foreground">
-            カテゴリーがまだ登録されていません
+            コンテンツがまだ登録されていません
           </div>
         ) : (
           categories.map((cat) => {
@@ -212,7 +212,7 @@ export function CategorySwitcher({ initialCategories }: Props) {
           className="flex cursor-pointer items-center gap-2"
         >
           <ListChecks className="h-4 w-4 text-muted-foreground" aria-hidden />
-          <span className="text-sm">全カテゴリー一覧</span>
+          <span className="text-sm">全コンテンツ一覧</span>
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

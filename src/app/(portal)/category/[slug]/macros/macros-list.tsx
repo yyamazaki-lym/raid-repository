@@ -504,7 +504,7 @@ function TemplatesSection({
       {templates.length === 0 ? (
         <Card className="glass flex flex-col items-center gap-2 p-6 text-center">
           <p className="text-muted-foreground text-xs leading-relaxed">
-            このカテゴリーに紐づく募集文テンプレートはまだ登録されていません。
+            このコンテンツに紐づく募集文テンプレートはまだ登録されていません。
             <br />
             上の「+ 追加」ボタンから登録できます。
             <br />
@@ -709,7 +709,7 @@ function EditDialog({
                 />
                 {kind === "template" && (
                   <p className="text-[10px] text-muted-foreground leading-relaxed">
-                    カテゴリー内で複数テンプレを使い分ける時の小見出し。1つだけなら空でOK。
+                    コンテンツ内で複数テンプレを使い分ける時の小見出し。1つだけなら空でOK。
                   </p>
                 )}
               </div>

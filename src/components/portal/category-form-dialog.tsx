@@ -62,7 +62,7 @@ function dateInputToIso(value: string): string | null {
 type Props = {
   /** Existing category for edit mode; omit for create. */
   category?: Category;
-  /** Custom trigger (e.g. menu item). Defaults to "+カテゴリー追加" button.
+  /** Custom trigger (e.g. menu item). Defaults to "+コンテンツ追加" button.
    *  Ignored in controlled mode. */
   trigger?: React.ReactNode;
   /** Controlled-mode open state. When provided, the dialog skips rendering
@@ -222,7 +222,7 @@ export function CategoryFormDialog({
   const defaultTrigger = (
     <DialogTrigger className="inline-flex items-center gap-1.5 rounded-md border border-border/60 bg-background/30 px-3 py-1.5 font-mono text-[11px] tracking-[0.18em] text-muted-foreground uppercase transition-colors hover:border-[var(--neon-cyan)]/60 hover:text-foreground">
       <Plus className="h-3.5 w-3.5" aria-hidden />
-      カテゴリー追加
+      コンテンツ追加
     </DialogTrigger>
   );
 
@@ -253,7 +253,7 @@ export function CategoryFormDialog({
             </DialogTitle>
             <DialogDescription className="text-xs">
               {isEdit
-                ? "カテゴリー情報・スプレッドシートURLを編集"
+                ? "コンテンツ情報・スプレッドシートURLを編集"
                 : "新しいレイドコンテンツを追加します"}
             </DialogDescription>
           </div>
@@ -412,7 +412,7 @@ export function CategoryFormDialog({
                 Discord 取り込みを有効化
               </span>
               <p className="text-muted-foreground text-[11px] leading-relaxed">
-                OFF にすると、このカテゴリーは毎日の自動取り込みをスキップします。
+                OFF にすると、このコンテンツは毎日の自動取り込みをスキップします。
                 チャンネルID は保存されたままなので、再 ON で即再開可能。
               </p>
             </div>

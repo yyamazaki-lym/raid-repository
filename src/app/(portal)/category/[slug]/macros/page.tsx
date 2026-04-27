@@ -20,7 +20,7 @@ export default async function MacrosPage({
   if (!category) {
     return (
       <p className="text-muted-foreground p-6 text-center text-sm">
-        カテゴリーが見つかりませんでした。
+        コンテンツが見つかりませんでした。
       </p>
     );
   }

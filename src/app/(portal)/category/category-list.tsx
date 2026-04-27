@@ -125,10 +125,10 @@ export function CategoryList({
         </span>
         <div className="space-y-1">
           <p className="font-display text-foreground text-sm">
-            カテゴリーがありません
+            コンテンツがありません
           </p>
           <p className="text-muted-foreground text-xs">
-            右上の「カテゴリー追加」ボタンから登録できます。
+            右上の「コンテンツ追加」ボタンから登録できます。
           </p>
         </div>
       </Card>
@@ -464,7 +464,7 @@ function CategoryMenu({
       <DropdownMenu>
         <DropdownMenuTrigger
           className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground"
-          aria-label="カテゴリーメニュー"
+          aria-label="コンテンツメニュー"
         >
           <MoreVertical className="h-3.5 w-3.5" aria-hidden />
         </DropdownMenuTrigger>

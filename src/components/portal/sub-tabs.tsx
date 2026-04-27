@@ -34,7 +34,7 @@ export function SubTabs({ baseHref }: { baseHref: string }) {
 
   return (
     <nav
-      aria-label="カテゴリー内ナビゲーション"
+      aria-label="コンテンツ内ナビゲーション"
       className="border-border/40 border-b"
     >
       <div className="mx-auto max-w-6xl px-2 sm:px-6">

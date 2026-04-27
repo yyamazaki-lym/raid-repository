@@ -137,7 +137,7 @@ export function RecruitmentTemplatesButton({ initial, categories }: Props) {
               {grouped.map(({ categoryName, items }) => (
                 <div key={categoryName ?? "__none__"} className="mb-1 last:mb-0">
                   <div className="px-1.5 pt-1 pb-0.5 font-mono text-[10px] tracking-[0.2em] text-muted-foreground uppercase truncate">
-                    {categoryName ?? "（カテゴリー未設定）"}
+                    {categoryName ?? "（コンテンツ未設定）"}
                   </div>
                   {items.map((t) => {
                     const isTop = t.id === topId;
@@ -403,7 +403,7 @@ function ManageDialog({
 
   const startNew = () => {
     if (categories.length === 0) {
-      toast.error("先にカテゴリーを登録してください");
+      toast.error("先にコンテンツを登録してください");
       return;
     }
     setEditing({
@@ -424,7 +424,7 @@ function ManageDialog({
   const onSave = async () => {
     if (!editing) return;
     if (!editing.categoryId) {
-      toast.error("カテゴリーを選択してください");
+      toast.error("コンテンツを選択してください");
       return;
     }
     const label = editing.label.trim();
@@ -478,7 +478,7 @@ function ManageDialog({
               PT募集文 Templates
             </DialogTitle>
             <DialogDescription className="text-xs">
-              カテゴリー別に募集文を保存。先頭のテンプレが「次回開催日」カードのコピーボタンに出ます。
+              コンテンツ別に募集文を保存。先頭のテンプレが「次回開催日」カードのコピーボタンに出ます。
             </DialogDescription>
           </div>
         </DialogHeader>
@@ -529,7 +529,7 @@ function ManageDialog({
               </div>
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="rt-category" className="text-xs text-foreground/80">
-                  カテゴリー
+                  コンテンツ
                 </Label>
                 <select
                   id="rt-category"
@@ -563,7 +563,7 @@ function ManageDialog({
                   spellCheck={false}
                 />
                 <p className="text-[10px] text-muted-foreground leading-relaxed">
-                  カテゴリー内で複数テンプレを使い分ける時の小見出し。1つだけなら空でOK。
+                  コンテンツ内で複数テンプレを使い分ける時の小見出し。1つだけなら空でOK。
                 </p>
               </div>
               <div className="flex flex-col gap-1.5">

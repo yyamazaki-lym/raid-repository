@@ -11,7 +11,7 @@ import {
 import { CategoryList } from "./category-list";
 
 export const metadata = {
-  title: "カテゴリー",
+  title: "コンテンツ",
 };
 
 export default async function CategoryIndexPage() {
@@ -27,7 +27,7 @@ export default async function CategoryIndexPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="font-display text-xl text-foreground sm:text-2xl">
-            Categories
+            Contents
           </h1>
           <p className="text-muted-foreground mt-1 text-sm">
             レイドコンテンツ単位で、軽減・ロット・攻略情報を切り替えます。

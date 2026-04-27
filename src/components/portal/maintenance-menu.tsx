@@ -202,7 +202,7 @@ export function MaintenanceMenu() {
         const force = kind === "firstClearForce";
         if (force) {
           const ok = window.confirm(
-            "全カテゴリーのクリア日時を動画から再計算します。\n手動で編集した値も上書きされます。続行しますか？",
+            "全コンテンツのクリア日時を動画から再計算します。\n手動で編集した値も上書きされます。続行しますか？",
           );
           if (!ok) return;
         }
@@ -213,7 +213,7 @@ export function MaintenanceMenu() {
         }
         toast.success(
           r.filled > 0
-            ? `${r.filled} カテゴリーのクリア日時を${force ? "再計算" : "設定"}`
+            ? `${r.filled} コンテンツのクリア日時を${force ? "再計算" : "設定"}`
             : `更新なし (該当 ${r.noMatch} / 設定済み ${r.alreadySet})`,
         );
         setResult({ kind: "firstClear", data: r, force });
@@ -291,7 +291,7 @@ export function MaintenanceMenu() {
             <div className="flex flex-col gap-0.5">
               <span className="text-sm">クリア日時を設定（NULL のみ）</span>
               <span className="text-[10px] text-muted-foreground leading-snug">
-                未設定カテゴリーに動画タイトルから初クリア日を埋める
+                未設定コンテンツに動画タイトルから初クリア日を埋める
               </span>
             </div>
           </DropdownMenuItem>
@@ -303,7 +303,7 @@ export function MaintenanceMenu() {
             <div className="flex flex-col gap-0.5">
               <span className="text-sm">クリア日時を強制再計算</span>
               <span className="text-[10px] text-rose-300/70 leading-snug">
-                既存値を含めて全カテゴリー再計算（手動編集も上書き）
+                既存値を含めて全コンテンツ再計算（手動編集も上書き）
               </span>
             </div>
           </DropdownMenuItem>
