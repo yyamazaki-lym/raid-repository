@@ -56,6 +56,7 @@ import {
   formatFirstClear,
 } from "@/lib/duration-format";
 import { safeHref } from "@/lib/url-safe";
+import { extractDateFromTitle } from "@/lib/title-date";
 import type { CategoryLink } from "@/lib/supabase/types";
 
 type Props = {
@@ -94,9 +95,37 @@ export function VideosList({ categoryId, initial, firstClearAt }: Props) {
   // ?focus=<videoId> — set when navigating from the schedule page's
   // past date cell. Used to scroll the matching card into view and
   // briefly highlight it.
+  // ?focusDate=YYYY-MM-DD — set when navigating from the category
+  // list's クリア日 (Trophy) badge. The first video whose
+  // title-extracted date OR posted_at / created_at starts with the
+  // given YYYY-MM-DD becomes the focus target. (1.9.18)
   const searchParams = useSearchParams();
   const focusId = searchParams.get("focus");
+  const focusDate = searchParams.get("focusDate");
   const focusedRef = useRef<HTMLLIElement | null>(null);
+
+  // Resolve focusDate → focused video id by scanning the live list.
+  // Title-extracted date (the actual raid day) takes priority over
+  // posted_at, matching the same convention as the backfill logic.
+  const focusedVideoId = useMemo(() => {
+    if (focusId) return focusId;
+    if (!focusDate) return null;
+    for (const v of live) {
+      const fallbackYear = v.postedAt
+        ? new Date(v.postedAt).getUTCFullYear()
+        : new Date(v.createdAt).getUTCFullYear();
+      const titleD = extractDateFromTitle(v.title, fallbackYear);
+      if (titleD) {
+        const iso = `${titleD.y}-${String(titleD.m).padStart(2, "0")}-${String(titleD.d).padStart(2, "0")}`;
+        if (iso === focusDate) return v.id;
+      } else if (v.postedAt && v.postedAt.startsWith(focusDate)) {
+        return v.id;
+      } else if (v.createdAt.startsWith(focusDate)) {
+        return v.id;
+      }
+    }
+    return null;
+  }, [focusId, focusDate, live]);
   // Sort mode lives in localStorage so the user's choice survives reloads.
   // Default to date (newest-first) — matches the request to view videos
   // chronologically; switching to custom enables DnD reordering.
@@ -108,18 +137,18 @@ export function VideosList({ categoryId, initial, firstClearAt }: Props) {
   }, []);
 
   // Scroll the focused card into view once it mounts. Re-runs when
-  // the focusId changes or when the live list arrives (since the
-  // ref is set during render of the matching card). The matching
+  // the focusedVideoId changes or when the live list arrives (since
+  // the ref is set during render of the matching card). The matching
   // card uses a thin one-shot CSS animation for the highlight.
   useEffect(() => {
-    if (!focusId) return;
+    if (!focusedVideoId) return;
     const el = focusedRef.current;
     if (!el) return;
     const id = window.setTimeout(() => {
       el.scrollIntoView({ behavior: "smooth", block: "center" });
     }, 50);
     return () => window.clearTimeout(id);
-  }, [focusId, live.length]);
+  }, [focusedVideoId, live.length]);
   const persistSort = (mode: SortMode) => {
     setSortMode(mode);
     try {
@@ -398,8 +427,10 @@ export function VideosList({ categoryId, initial, firstClearAt }: Props) {
                   key={v.id}
                   video={v}
                   onEdit={() => setEditTarget(v)}
-                  focused={v.id === focusId}
-                  refIfFocused={v.id === focusId ? focusedRef : null}
+                  focused={v.id === focusedVideoId}
+                  refIfFocused={
+                    v.id === focusedVideoId ? focusedRef : null
+                  }
                   selectMode={selectMode}
                   selected={selectedIds.has(v.id)}
                   onToggleSelect={() => toggleSelected(v.id)}
@@ -414,9 +445,9 @@ export function VideosList({ categoryId, initial, firstClearAt }: Props) {
           {videos.map((v) => (
             <li
               key={v.id}
-              ref={v.id === focusId ? focusedRef : undefined}
+              ref={v.id === focusedVideoId ? focusedRef : undefined}
               className={
-                v.id === focusId
+                v.id === focusedVideoId
                   ? "animate-[pulse_1.4s_ease-out_2] rounded-lg ring-2 ring-[var(--neon-cyan)]/60 ring-offset-2 ring-offset-background"
                   : ""
               }

@@ -249,6 +249,9 @@ function SortableCategoryCard({
   onEdit: () => void;
   onDelete: () => void;
 }) {
+  // Used by the Trophy badge to navigate to the videos page focused
+  // on the clear-day card without firing the parent row Link.
+  const router = useRouter();
   const {
     attributes,
     listeners,
@@ -314,6 +317,30 @@ function SortableCategoryCard({
                     {formatDurationShort(practiceSeconds)}
                   </span>
                 )}
+                {category.firstClearAt && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      // 1.9.18: クリア日バッジをクリックすると、その
+                      // 日付の動画ページに遷移して該当行をハイライト。
+                      // 親 <Link> (mitigation) に伝播しないよう stop。
+                      e.stopPropagation();
+                      e.preventDefault();
+                      const iso = category.firstClearAt!.slice(0, 10);
+                      router.push(
+                        `/category/${category.slug}/videos?focusDate=${iso}`,
+                      );
+                    }}
+                    className="inline-flex items-center gap-1 rounded-sm border border-amber-400/45 bg-amber-400/10 px-1.5 py-px text-[9px] text-amber-200 transition-colors hover:border-amber-400/80 hover:bg-amber-400/20"
+                    title={`初クリア: ${formatFirstClear(category.firstClearAt, "long")} (クリックでクリア日の動画へジャンプ)`}
+                  >
+                    <Trophy className="h-2.5 w-2.5" aria-hidden />
+                    {formatFirstClear(category.firstClearAt, "short")}
+                  </button>
+                )}
+                {/* 1.9.18: クリア日 (Trophy) の右隣にクリアまでの累計
+                    時間 (Hourglass) を移動。論理順は「いつクリアした
+                    → かかった時間」が自然なため。 */}
                 {timeToClearSeconds > 0 && category.firstClearAt && (
                   <span
                     className="inline-flex items-center gap-1 rounded-sm border border-emerald-400/45 bg-emerald-400/10 px-1.5 py-px text-[9px] text-emerald-200"
@@ -321,23 +348,6 @@ function SortableCategoryCard({
                   >
                     <Hourglass className="h-2.5 w-2.5" aria-hidden />
                     →{formatDurationShort(timeToClearSeconds)}
-                  </span>
-                )}
-                {category.firstClearAt && (
-                  <span
-                    className="inline-flex items-center gap-1 rounded-sm border border-amber-400/45 bg-amber-400/10 px-1.5 py-px text-[9px] text-amber-200"
-                    title={`初クリア: ${formatFirstClear(category.firstClearAt, "long")}`}
-                  >
-                    <Trophy className="h-2.5 w-2.5" aria-hidden />
-                    {formatFirstClear(category.firstClearAt, "short")}
-                  </span>
-                )}
-                {recentImports > 0 && (
-                  <span
-                    className="inline-flex items-center gap-1 rounded-sm border border-indigo-400/40 bg-indigo-400/10 px-1.5 py-px text-[9px] text-indigo-300"
-                    title={`過去7日で Discord から ${recentImports} 件取り込み`}
-                  >
-                    +{recentImports}/wk
                   </span>
                 )}
               </div>
@@ -360,7 +370,20 @@ function SortableCategoryCard({
             />
           </span>
 
-          <CategoryMenu onEdit={onEdit} onDelete={onDelete} />
+          {/* 1.9.18: Discord 取り込み件数バッジを右カラムの下端、
+              詳細メニュー (CategoryMenu) の左隣に移動。練習時間 /
+              クリア時間バッジの並びと混ざらないように。 */}
+          <div className="flex items-center gap-1">
+            {recentImports > 0 && (
+              <span
+                className="inline-flex items-center gap-1 rounded-sm border border-indigo-400/40 bg-indigo-400/10 px-1.5 py-px font-mono text-[9px] tracking-[0.18em] text-indigo-300 uppercase"
+                title={`過去7日で Discord から ${recentImports} 件取り込み`}
+              >
+                +{recentImports}/wk
+              </span>
+            )}
+            <CategoryMenu onEdit={onEdit} onDelete={onDelete} />
+          </div>
         </div>
       </Card>
     </li>

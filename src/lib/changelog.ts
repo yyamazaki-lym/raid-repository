@@ -19,6 +19,15 @@ export type ReleaseEntry = {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    version: "1.9.18",
+    date: "2026-04-27",
+    notes: [
+      "🏆 コンテンツ一覧のクリア日 (Trophy) バッジをクリック可能に — その日付の動画ページに遷移し、該当動画を自動スクロール + ハイライト表示。動画ページに `?focusDate=YYYY-MM-DD` クエリを追加し、タイトル日付 / posted_at の順でマッチした最初の動画にフォーカス",
+      "📐 バッジ並び替え: クリア日 (Trophy) の右隣に「クリアまでの累計時間」 (Hourglass →) を移動。「いつクリアした → かかった時間」の自然な視線順に",
+      "📐 Discord 取り込み件数 (`+N/wk`) バッジを右カラムの詳細メニュー (3点) の左隣に移動。練習時間 / クリア時間バッジの並びと混ざらず、Discord 由来は別エリアに",
+    ],
+  },
+  {
     version: "1.9.17",
     date: "2026-04-27",
     notes: [
