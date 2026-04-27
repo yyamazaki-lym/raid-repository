@@ -128,6 +128,20 @@ export async function fetchFflogsReportsV2(
   const me = await fetchCurrentUser(accessToken);
   if (!me.ok) return me;
 
+  // Step 2: query `reports(userID: me.id)` — this is the API's
+  // canonical way to fetch reports OWNED BY a specific user. The
+  // alternative `reports()` (no filter) returns reports the OAuth
+  // scope can SEE (= guild-shared / friends' reports of others),
+  // NOT the user's own. Diagnosis from a real run showed that
+  // unfiltered `reports()` returned 625 reports owned by River810,
+  // 공야, AyyJay, etc. — none owned by the actual current user.
+  //
+  // Caveat: `reports(userID:)` returns Public reports of that user.
+  // Unlisted / Private reports are not exposed via this path even
+  // when OAuth-authenticated as the same user. Those need manual
+  // binding via the memo popover (or change visibility on FFLogs
+  // to Public).
+
   // Step 2: paginate `reportData.reports` WITHOUT a userID filter.
   //
   // Why no filter: applying `reports(userID: ...)` causes FFLogs to
@@ -151,9 +165,9 @@ export async function fetchFflogsReportsV2(
   // any active group.
   const MAX_PAGES = 25;
   for (let page = 1; page <= MAX_PAGES; page++) {
-    const query = `query ($page: Int!) {
+    const query = `query ($userID: Int!, $page: Int!) {
       reportData {
-        reports(limit: 25, page: $page) {
+        reports(userID: $userID, limit: 25, page: $page) {
           has_more_pages
           data {
             code
@@ -174,7 +188,7 @@ export async function fetchFflogsReportsV2(
           "Content-Type": "application/json",
           Accept: "application/json",
         },
-        body: JSON.stringify({ query, variables: { page } }),
+        body: JSON.stringify({ query, variables: { userID: me.id, page } }),
         signal: AbortSignal.timeout(20000),
       });
       if (!res.ok) {
@@ -231,15 +245,19 @@ export async function fetchFflogsReportsV2(
             count: 1,
           });
         }
-        // Client-side ownership filter — exclude reports owned by
-        // other users. String comparison guards against type sneakiness;
-        // name match fallback for rare cases where owner.id is absent.
+        // Sanity check: reports(userID:) should only return reports
+        // owned by that user, but just in case the API changes,
+        // cross-verify owner.id matches. Skip with NO match required
+        // (since the userID filter already enforces ownership).
         const ownerIdStr = r.owner?.id != null ? String(r.owner.id) : null;
-        const meIdStr = String(me.id);
-        const idMatch = ownerIdStr !== null && ownerIdStr === meIdStr;
-        const nameMatch =
-          !!me.name && r.owner?.name != null && r.owner.name === me.name;
-        if (!idMatch && !nameMatch) continue;
+        if (
+          ownerIdStr !== null &&
+          ownerIdStr !== String(me.id) &&
+          r.owner?.name !== me.name
+        ) {
+          // owner is provided AND differs from me — skip defensively
+          continue;
+        }
         // v2 GraphQL `startTime` / `endTime` are documented to return
         // Unix milliseconds. Defensive magnitude check protects
         // against future spec changes.

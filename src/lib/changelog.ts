@@ -19,6 +19,16 @@ export type ReleaseEntry = {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    version: "1.7.10",
+    date: "2026-04-27",
+    notes: [
+      "🔬 FFLogs v2 API の挙動が判明 — `reportData.reports()` フィルタ無しは「自分が見える他人のレポート」を返す仕様（OAuth スコープが許す範囲、ギルド共有など）。自分自身のレポートは含まれない",
+      "v2 GraphQL を `reports(userID: me.id)` フィルタ付きに戻す — これが「自分所有のレポート」を取得する正しい API パス。ただし Public のみ返る仕様（v2 OAuth でも Private/Unlisted は API で露出されない）",
+      "owner の sanity check を追加 — userID filter で安全のはずだが、API 仕様変更時の保険として `owner.id !== me.id` のレポートは defensive にスキップ",
+      "0件マッチ時のヒント文を実態に即して書き換え — 「FFLogs API は Public 設定のレポートしか取得できない」「対処は fflogs.com 上で Public に変更 or 手動 URL 紐づけ」と明示",
+    ],
+  },
+  {
     version: "1.7.9",
     date: "2026-04-27",
     notes: [

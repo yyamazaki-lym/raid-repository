@@ -811,37 +811,37 @@ export function SettingsDialog() {
                             </ul>
                             <div className="mt-1.5 flex flex-col gap-1 rounded-sm bg-secondary/30 px-2 py-1.5 text-[10px] leading-relaxed">
                               <p className="font-mono text-[10px] text-amber-200/90">
-                                想定される原因（上から確認推奨）：
+                                想定される原因 — FFLogs API の制約：
+                              </p>
+                              <p className="text-muted-foreground leading-relaxed">
+                                FFLogs v2 API は <strong>Public</strong> 設定の
+                                レポートしか自動取得できません（OAuth で本人認証
+                                していても <strong>Private (非公開)</strong> /{" "}
+                                <strong>Unlisted (限定公開)</strong> は API
+                                では露出されない仕様）。レポート期間が
+                                <strong> 古い日付に偏っている</strong>場合、
+                                最近のレポートは Public 以外の visibility に
+                                なっている可能性が高いです。
+                              </p>
+                              <p className="text-muted-foreground leading-relaxed mt-1">
+                                対処：
                               </p>
                               <ol className="ml-3.5 flex list-decimal flex-col gap-1 text-muted-foreground">
                                 <li>
-                                  <strong>API キーと表示名のユーザーが別人</strong>
-                                  {" "}— Vercel の{" "}
-                                  <code className="font-mono">FFLOGS_API_KEY</code>
-                                  {" "}は{" "}
-                                  <a
-                                    href="https://www.fflogs.com/profile"
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-[var(--neon-cyan)] underline decoration-dotted underline-offset-2 hover:text-[var(--neon-cyan)]/85"
-                                  >
-                                    fflogs.com/profile
-                                  </a>
-                                  {" "}でログインしているユーザー本人が生成したものでないと、
-                                  そのユーザーの非公開・限定公開レポートは取得できません
-                                  （Public のみ返ってくる）。
+                                  <strong>fflogs.com で当該レポートを Public に変更</strong>
+                                  {" "}→ 再度「FFLogs と動画を連動」で取得可能
                                 </li>
                                 <li>
-                                  <strong>表示名が間違っている</strong>
-                                  {" "}— 上の「クエリしたユーザー名」が
-                                  fflogs.com/profile の見出しに表示されている
-                                  名前と一致しているか確認。大文字小文字も区別されます。
+                                  <strong>個別に手動紐づけ</strong>
+                                  {" "}— スケジュール上の日付をクリックして
+                                  メモポップオーバー最下部の{" "}
+                                  <strong>FFLogs URL 欄</strong>に
+                                  レポート URL を貼り付け
                                 </li>
                                 <li>
-                                  <strong>表示名のユーザーが昔しかアップしていない</strong>
-                                  {" "}— 別のメンバーが最近のレポートを上げている場合、
-                                  その人の表示名 + その人の API キーに切り替える必要が
-                                  あります。
+                                  <strong>表示名 / API キーが別人の可能性</strong>
+                                  {" "}— 上の「v2 currentUser」が想定通りの
+                                  ユーザーになっているか確認
                                 </li>
                               </ol>
                             </div>
