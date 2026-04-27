@@ -1,7 +1,6 @@
 "use client";
 
-import Link from "next/link";
-import { BarChart3, Film } from "lucide-react";
+import { BarChart3 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import {
   getJapaneseHolidayName,
@@ -112,9 +111,9 @@ function DateChip({
     videoLink ? ` · ${videoLink.categoryName}/動画` : ""
   }`;
 
-  // The chip's main affordance is the date itself, which becomes a
-  // Link to the matching video when one exists. The tiny Logs button
-  // (when set) sits to the right as a separate target.
+  // The chip is a quiet visual marker — date + 曜 only, no link
+  // or hover effect. Logs gets its own small icon when set so the
+  // user can still hop into FFLogs straight from the strip.
   return (
     <li
       className={
@@ -123,25 +122,8 @@ function DateChip({
       }
       title={tooltip}
     >
-      {videoLink ? (
-        <Link
-          href={videoLink.href}
-          prefetch={false}
-          className="group inline-flex items-center gap-0.5 underline decoration-dotted decoration-current/40 underline-offset-4 hover:decoration-current"
-        >
-          <span className="font-display tabular-nums">{monthDay}</span>
-          <span className="text-[10px] opacity-75">（{session.dayOfWeek}）</span>
-          <Film
-            className="h-2.5 w-2.5 shrink-0 opacity-50 transition-opacity group-hover:opacity-100"
-            aria-hidden
-          />
-        </Link>
-      ) : (
-        <>
-          <span className="font-display tabular-nums">{monthDay}</span>
-          <span className="text-[10px] opacity-75">（{session.dayOfWeek}）</span>
-        </>
-      )}
+      <span className="font-display tabular-nums">{monthDay}</span>
+      <span className="text-[10px] opacity-75">（{session.dayOfWeek}）</span>
       {videoLink?.logsUrl && (
         <a
           href={videoLink.logsUrl}

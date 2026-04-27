@@ -111,9 +111,11 @@ export function ScheduleList({
 
   // Header row factory. The past table omits the "確定" column since
   // every past session was de facto held — the column only carries
-  // signal for upcoming dates that may still slip. 確定 column
-  // hugs the date col tightly (no left padding, minimal right) since
-  // the column content is just a 1ch ✓ badge.
+  // signal for upcoming dates that may still slip. 確定 column has
+  // 0 horizontal padding so the 16px badge sits flush against the
+  // adjacent columns. Users get a min-width so name length doesn't
+  // shift the table layout between rows / between the upcoming and
+  // past tables.
   const tableHead = (showDecided: boolean) => (
     <thead>
       <tr className="border-b border-border/60 text-[10px] tracking-[0.18em] text-muted-foreground uppercase">
@@ -121,7 +123,7 @@ export function ScheduleList({
           日程
         </th>
         {showDecided && (
-          <th scope="col" className="pl-0 pr-1 py-2 font-mono">
+          <th scope="col" className="px-0 py-2 font-mono">
             確定
           </th>
         )}
@@ -241,7 +243,14 @@ function UserHeaderCell({
   );
 
   return (
-    <th scope="col" className="px-2 py-2 text-center font-mono whitespace-nowrap">
+    <th
+      scope="col"
+      // min-w ensures every user column is at least 5rem wide so
+      // table layout stays stable across upcoming/past tables and
+      // doesn't shift on row content. Long names overflow gracefully
+      // (whitespace-nowrap), keeping the column at content width.
+      className="min-w-[5rem] px-2 py-2 text-center font-mono whitespace-nowrap"
+    >
       <span className="inline-flex items-center gap-1">
         {nameNode}
         {hasComments && <CommentPopover user={user} comments={comments} />}
@@ -268,58 +277,28 @@ function buildEditUrl(sourceUrl: string | null | undefined, userId: string): str
 }
 
 /**
- * Date cell content. Plain colored span when no video is linked; a
- * Link with a small Film icon (and underline-on-hover) when one is.
- * Color priority is the same in both branches: holiday > decided >
- * foreground.
+ * Date cell label — plain colored span, no link. Video / Logs links
+ * are rendered separately AFTER the time inside the row so both
+ * icons sit at the end of the cell where the eye expects "actions".
  */
 function DateLabel({
   text,
   holiday,
   decided,
   holidayName,
-  videoLink,
 }: {
   text: string;
   holiday: boolean;
   decided: boolean;
   holidayName: string | null;
-  videoLink: SessionVideoLink | null;
 }) {
   const colorClass = holiday
     ? "font-bold text-rose-400 drop-shadow-[0_0_4px_color-mix(in_oklch,oklch(0.65_0.22_25)_40%,transparent)]"
     : decided
       ? "font-bold text-[var(--neon-cyan)] drop-shadow-[0_0_4px_color-mix(in_oklch,var(--neon-cyan)_40%,transparent)]"
       : "";
-  const tooltipParts = [
-    holidayName,
-    videoLink
-      ? `${videoLink.categoryName}/動画 → 「${videoLink.videoTitle}」`
-      : null,
-  ].filter(Boolean);
-  const title = tooltipParts.length > 0 ? tooltipParts.join(" · ") : undefined;
-
-  if (videoLink) {
-    return (
-      <Link
-        href={videoLink.href}
-        prefetch={false}
-        title={title}
-        className={
-          "group inline-flex items-center gap-1 underline decoration-dotted decoration-[var(--neon-cyan)]/40 underline-offset-4 transition-colors hover:decoration-[var(--neon-cyan)] " +
-          colorClass
-        }
-      >
-        <span>{text}</span>
-        <Film
-          className="h-3 w-3 shrink-0 opacity-50 transition-opacity group-hover:opacity-100"
-          aria-hidden
-        />
-      </Link>
-    );
-  }
   return (
-    <span className={colorClass} title={title}>
+    <span className={colorClass} title={holidayName ?? undefined}>
       {text}
     </span>
   );
@@ -368,7 +347,7 @@ function SessionRow({
       className={
         "border-b border-border/30 transition-colors last:border-b-0 " +
         (isPast
-          ? "opacity-60 hover:opacity-100 hover:bg-secondary/40 "
+          ? "" // past rows render at full opacity with no hover effect — once the past view is open, dimming-then-revealing on hover is just visual noise
           : decided
             ? "bg-[var(--neon-cyan)]/4 hover:bg-[var(--neon-cyan)]/8"
             : "hover:bg-secondary/40")
@@ -382,22 +361,31 @@ function SessionRow({
           {/* Date label color priority:
                 1. Holiday → red glow
                 2. DECISION → cyan glow + bold
-                3. default → foreground
-              When the past detail row has a matching video, wrap the
-              date in a Link to the video. Otherwise plain span. */}
+                3. default → foreground */}
           <DateLabel
             text={session.rawDate.split(" ")[0]!}
             holiday={holiday}
             decided={decided}
             holidayName={holidayName}
-            videoLink={videoLink}
           />
           <span className="text-muted-foreground text-[11px]">
             {session.startTime} ~ {session.endTime}
           </span>
-          {/* Standalone Logs button — separate Link so the user can
-              tap into FFLogs without going via the video page. Only
-              shown when the matched video has logs_url set. */}
+          {/* Action icons — placed after the time so the cell reads
+              "what is this date" → "actions for this date" left-to-right.
+              Film: deep-link into the matched video card.
+              BarChart3: FFLogs URL associated with that video. */}
+          {videoLink && (
+            <Link
+              href={videoLink.href}
+              prefetch={false}
+              aria-label={`${videoLink.categoryName}/動画「${videoLink.videoTitle}」を開く`}
+              title={`${videoLink.categoryName}/動画 → 「${videoLink.videoTitle}」`}
+              className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded text-[var(--neon-cyan)] transition-colors hover:bg-[var(--neon-cyan)]/15"
+            >
+              <Film className="h-3 w-3" aria-hidden />
+            </Link>
+          )}
           {videoLink?.logsUrl && (
             <a
               href={videoLink.logsUrl}
@@ -413,7 +401,7 @@ function SessionRow({
         </div>
       </th>
       {showDecided && (
-        <td className="pl-0 pr-1 py-2 text-center align-middle">
+        <td className="px-0 py-2 text-center align-middle">
           {decided ? (
             <span
               aria-label="日程確定"

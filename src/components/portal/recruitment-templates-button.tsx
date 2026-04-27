@@ -5,10 +5,12 @@ import {
   CaseSensitive,
   ClipboardCopy,
   ClipboardList,
+  ExternalLink,
   GripVertical,
   Pencil,
   Plus,
   Save,
+  Star,
   Trash2,
   X,
 } from "lucide-react";
@@ -94,6 +96,10 @@ export function RecruitmentTemplatesButton({ initial, categories }: Props) {
   };
 
   const grouped = useMemo(() => groupByCategory(templates), [templates]);
+  // The first template (sort_order = 0) is what the next-session
+  // card's quick-copy button uses. Highlight it in the dropdown so
+  // users can confirm "this is what gets copied".
+  const topId = templates[0]?.id ?? null;
 
   return (
     <>
@@ -126,31 +132,59 @@ export function RecruitmentTemplatesButton({ initial, categories }: Props) {
               テンプレート未登録
             </div>
           ) : (
-            grouped.map(({ categoryName, items }) => (
-              <div key={categoryName ?? "__none__"} className="mb-1 last:mb-0">
-                <div className="px-1.5 pt-1 pb-0.5 font-mono text-[10px] tracking-[0.2em] text-muted-foreground uppercase truncate">
-                  {categoryName ?? "（カテゴリー未設定）"}
+            <>
+              <p className="px-1.5 pt-1 pb-1 text-[10px] leading-snug text-muted-foreground/85">
+                <span className="font-mono tracking-widest text-[var(--neon-cyan)]/80 uppercase">★ Top</span>
+                {" "}が「次回開催日」カードのコピー対象です。並べ替えはダイアログから。
+              </p>
+              {grouped.map(({ categoryName, items }) => (
+                <div key={categoryName ?? "__none__"} className="mb-1 last:mb-0">
+                  <div className="px-1.5 pt-1 pb-0.5 font-mono text-[10px] tracking-[0.2em] text-muted-foreground uppercase truncate">
+                    {categoryName ?? "（カテゴリー未設定）"}
+                  </div>
+                  {items.map((t) => {
+                    const isTop = t.id === topId;
+                    return (
+                      <DropdownMenuItem
+                        key={t.id}
+                        onClick={() => copyToClipboard(t)}
+                        className={cn(
+                          "flex cursor-pointer items-start gap-2",
+                          isTop &&
+                            "bg-[var(--neon-cyan)]/8 ring-1 ring-inset ring-[var(--neon-cyan)]/30",
+                        )}
+                      >
+                        {isTop ? (
+                          <Star
+                            className="mt-0.5 h-3.5 w-3.5 shrink-0 fill-[var(--neon-cyan)] text-[var(--neon-cyan)]"
+                            aria-hidden
+                          />
+                        ) : (
+                          <ClipboardCopy
+                            className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--neon-cyan)]"
+                            aria-hidden
+                          />
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm">
+                            {t.label || "通常募集"}
+                            {isTop && (
+                              <span className="ml-1.5 font-mono text-[9px] tracking-widest text-[var(--neon-cyan)] uppercase">
+                                Top
+                              </span>
+                            )}
+                          </p>
+                          <p className="truncate text-[10px] text-muted-foreground/80">
+                            {t.body.slice(0, 60)}
+                            {t.body.length > 60 ? "…" : ""}
+                          </p>
+                        </div>
+                      </DropdownMenuItem>
+                    );
+                  })}
                 </div>
-                {items.map((t) => (
-                  <DropdownMenuItem
-                    key={t.id}
-                    onClick={() => copyToClipboard(t)}
-                    className="flex cursor-pointer items-start gap-2"
-                  >
-                    <ClipboardCopy className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--neon-cyan)]" aria-hidden />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm">
-                        {t.label || "通常募集"}
-                      </p>
-                      <p className="truncate text-[10px] text-muted-foreground/80">
-                        {t.body.slice(0, 60)}
-                        {t.body.length > 60 ? "…" : ""}
-                      </p>
-                    </div>
-                  </DropdownMenuItem>
-                ))}
-              </div>
-            ))
+              ))}
+            </>
           )}
           <DropdownMenuSeparator />
           <DropdownMenuItem
@@ -480,7 +514,6 @@ function ManageDialog({
                       cur ? { ...cur, label: e.target.value } : cur,
                     )
                   }
-                  placeholder="例: 1層 / 2層 / 補強募集"
                   spellCheck={false}
                 />
                 <p className="text-[10px] text-muted-foreground leading-relaxed">
@@ -488,30 +521,43 @@ function ManageDialog({
                 </p>
               </div>
               <div className="flex flex-col gap-1.5">
-                <div className="flex items-center justify-between gap-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <Label htmlFor="rt-body" className="text-xs text-foreground/80">
                     本文
                   </Label>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const next = toHalfWidth(editing.body);
-                      if (next === editing.body) {
-                        toast.info("変換対象の全角文字なし");
-                        return;
-                      }
-                      setEditing((cur) =>
-                        cur ? { ...cur, body: next } : cur,
-                      );
-                      toast.success("全角を半角に変換しました");
-                    }}
-                    className="inline-flex items-center gap-1 rounded-sm border border-[var(--neon-cyan)]/40 bg-[var(--neon-cyan)]/8 px-2 py-0.5 font-mono text-[10px] tracking-widest text-[var(--neon-cyan)] uppercase transition-colors hover:bg-[var(--neon-cyan)]/15"
-                    title="全角の数字・英字・記号を半角に変換"
-                    aria-label="全角を半角に変換"
-                  >
-                    <CaseSensitive className="h-3 w-3" aria-hidden />
-                    全角→半角
-                  </button>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = toHalfWidth(editing.body);
+                        if (next === editing.body) {
+                          toast.info("変換対象の全角文字なし");
+                          return;
+                        }
+                        setEditing((cur) =>
+                          cur ? { ...cur, body: next } : cur,
+                        );
+                        toast.success("全角を半角に変換しました");
+                      }}
+                      className="inline-flex items-center gap-1 rounded-sm border border-[var(--neon-cyan)]/40 bg-[var(--neon-cyan)]/8 px-2 py-0.5 font-mono text-[10px] tracking-widest text-[var(--neon-cyan)] uppercase transition-colors hover:bg-[var(--neon-cyan)]/15"
+                      title="全角の数字・英字・記号を半角に変換"
+                      aria-label="全角を半角に変換"
+                    >
+                      <CaseSensitive className="h-3 w-3" aria-hidden />
+                      全角→半角
+                    </button>
+                    <a
+                      href="https://knt-a.com/pt-msg/"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 rounded-sm border border-border/60 bg-background/40 px-2 py-0.5 font-mono text-[10px] tracking-widest text-muted-foreground uppercase transition-colors hover:border-foreground/40 hover:text-foreground"
+                      title="募集文テンプレート作成サイト (knt-a.com) を開く"
+                      aria-label="募集文テンプレート作成サイトを開く"
+                    >
+                      <ExternalLink className="h-3 w-3" aria-hidden />
+                      作成サイト
+                    </a>
+                  </div>
                 </div>
                 <Textarea
                   id="rt-body"
@@ -523,7 +569,6 @@ function ManageDialog({
                   }
                   rows={6}
                   className="text-[12px] leading-relaxed font-mono"
-                  placeholder="例: 22:00開始 黄金零式 1〜4層消化編成 / 待機所..."
                   spellCheck={false}
                 />
               </div>
