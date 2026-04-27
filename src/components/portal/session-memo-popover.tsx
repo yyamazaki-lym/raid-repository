@@ -92,8 +92,10 @@ export const SessionMemoPopover = forwardRef<
   );
 
   // Compute the popup's fixed-position coordinates whenever it
-  // opens, then reposition / close on scroll-resize since fixed
-  // coords don't track the trigger automatically.
+  // opens. On scroll/resize, REPOSITION (track the trigger) instead
+  // of closing — the previous "close on scroll" behavior was hostile
+  // when users wanted to scroll within the popup (long memo lists)
+  // or just shift the page slightly while reading.
   useEffect(() => {
     if (!open) {
       setCoords(null);
@@ -110,19 +112,30 @@ export const SessionMemoPopover = forwardRef<
       );
       const left = Math.max(
         16,
-        Math.min(rect.left, document.documentElement.clientWidth - popupWidth - 16),
+        Math.min(
+          rect.left,
+          document.documentElement.clientWidth - popupWidth - 16,
+        ),
       );
       const top = rect.bottom + 4;
       setCoords({ top, left });
     };
     place();
     const onResize = () => place();
-    const onScroll = () => setOpen(false);
+    const onScroll = () => place();
+    // Capture phase so we hear scrolls on inner scrollable elements
+    // too (e.g. the page's own scroll container in some layouts).
+    // The popup's own internal scroll fires its own scroll event,
+    // but capture-phase callbacks won't reposition it incorrectly
+    // because the trigger (wrapperRef) hasn't moved.
     window.addEventListener("resize", onResize);
-    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("scroll", onScroll, {
+      passive: true,
+      capture: true,
+    });
     return () => {
       window.removeEventListener("resize", onResize);
-      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("scroll", onScroll, { capture: true });
     };
   }, [open]);
 
@@ -177,8 +190,14 @@ export const SessionMemoPopover = forwardRef<
               top: coords.top,
               left: coords.left,
               width: "min(28rem,calc(100vw - 2rem))",
+              // Cap height so the popup never extends past the
+              // bottom of the viewport. Inner sections handle their
+              // own scrolling, and the popup body itself can also
+              // scroll when content (form + lots of memos) exceeds
+              // this cap.
+              maxHeight: `calc(100vh - ${coords.top + 16}px)`,
             }}
-            className="glass-popup z-50 overflow-hidden rounded-lg border border-[var(--neon-violet)]/35 shadow-[0_12px_40px_-16px_rgba(167,139,250,0.45),0_2px_8px_-2px_rgba(0,0,0,0.4)]"
+            className="glass-popup z-50 flex flex-col overflow-hidden rounded-lg border border-[var(--neon-violet)]/35 shadow-[0_12px_40px_-16px_rgba(167,139,250,0.45),0_2px_8px_-2px_rgba(0,0,0,0.4)]"
           >
             {/* Header strip — subtle violet wash that anchors the
                 popup with a clear "what is this" affordance, plus
@@ -210,7 +229,7 @@ export const SessionMemoPopover = forwardRef<
                 <X className="h-3 w-3" aria-hidden />
               </button>
             </header>
-            <div className="px-3 py-3">
+            <div className="flex-1 overflow-y-auto px-3 py-3">
               <MemoList
                 rawDate={rawDate}
                 memos={memos}
@@ -390,7 +409,7 @@ function MemoList({
           まだメモはありません
         </p>
       ) : (
-        <ul className="flex max-h-[18rem] flex-col gap-1.5 overflow-y-auto pr-0.5">
+        <ul className="flex flex-col gap-1.5 pr-0.5">
           {memos.map((m) => (
             <li
               key={m.id}

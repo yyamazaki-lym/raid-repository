@@ -90,8 +90,16 @@ export async function fetchFflogsReports(
       reports: data.map((r) => ({
         id: r.id,
         title: r.title ?? "",
-        startMs: r.start,
-        endMs: r.end,
+        // FFLogs v1 returns `start`/`end` as Unix MILLISECONDS — but
+        // some code paths in the wild treat them as seconds. Detect
+        // by magnitude: a seconds-epoch value for a 2024+ raid is
+        // ~1.7e9 (10 digits), milliseconds is ~1.7e12 (13 digits).
+        // Anything under 1e11 must be seconds → multiply by 1000.
+        // Without this normalization, all matches fail because the
+        // report timestamps land in 1970 and don't fit any video /
+        // session window.
+        startMs: r.start < 1e11 ? r.start * 1000 : r.start,
+        endMs: r.end < 1e11 ? r.end * 1000 : r.end,
         zone: r.zone ?? null,
       })),
     };
