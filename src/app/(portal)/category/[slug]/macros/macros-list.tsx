@@ -539,7 +539,10 @@ function CollapsibleTemplateRow({
   onEdit: () => void;
   onDelete: () => void;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  // Templates default to expanded — bodies are typically one-line PT
+  // 募集 text, short enough that hiding them costs more than it saves.
+  // Macros stay collapsed-by-default (multi-line `/p` payloads).
+  const [expanded, setExpanded] = useState(true);
   const heading = template.label || "通常募集";
   return (
     <li className="rounded-md border border-border/40 bg-secondary/20">

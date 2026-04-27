@@ -19,6 +19,13 @@ export type ReleaseEntry = {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    version: "1.3.3",
+    date: "2026-04-27",
+    notes: [
+      "マクロページの募集文テンプレはデフォルトで展開表示（1行程度なので隠す必要なし）",
+    ],
+  },
+  {
     version: "1.3.2",
     date: "2026-04-27",
     notes: [
