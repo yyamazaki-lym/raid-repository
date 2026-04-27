@@ -874,34 +874,66 @@ async function linkReportsToVideos(
     .filter((v): v is typeof v & { tMs: number } => v.tMs !== null)
     .sort((a, b) => a.tMs - b.tMs);
 
-  const sortedReports = [...reports].sort((a, b) => a.startMs - b.startMs);
   const usedReports = new Set<string>();
   const details: FflogsLinkDetail[] = [];
   let matched = 0;
 
-  for (const video of sortedVideos) {
-    const lo = video.tMs - MATCH_WINDOW_MS;
-    const hi = video.tMs + MATCH_WINDOW_MS;
-    const report = sortedReports.find(
-      (r) => !usedReports.has(r.id) && r.startMs >= lo && r.startMs <= hi,
-    );
-    if (!report) continue;
-    const logsUrl = `https://www.fflogs.com/reports/${report.id}`;
+  // Score function for video↔report compatibility:
+  //   delta = video.posted_at - report.startMs
+  //   - delta > 0 means raid happened BEFORE upload (the normal case;
+  //     people upload videos after their raid)
+  //   - delta < 0 means upload happened BEFORE raid (very unusual;
+  //     pre-recorded or scheduling drift). Penalize heavily.
+  // Lower score = better match. The "best" pairing is the closest
+  // report that came BEFORE the video.
+  //
+  // Replaces the previous greedy "earliest unmatched in window" which
+  // could pair a Day-1 raid report with a Day-27 video just because
+  // both were within ±36h of an old upload.
+  const scoreCandidate = (video: { tMs: number }, report: FflogsReport) => {
+    const delta = video.tMs - report.startMs; // ms
+    if (Math.abs(delta) > MATCH_WINDOW_MS) return Infinity;
+    return delta >= 0 ? delta : -delta * 4; // penalize "report after video"
+  };
+
+  // Build all candidate (video, report, score) tuples that fit the
+  // window, then sort globally by score and assign greedily. Each
+  // video and report can be claimed at most once.
+  type Pair = {
+    video: (typeof sortedVideos)[number];
+    report: FflogsReport;
+    score: number;
+  };
+  const pairs: Pair[] = [];
+  for (const v of sortedVideos) {
+    for (const r of reports) {
+      const score = scoreCandidate(v, r);
+      if (Number.isFinite(score)) pairs.push({ video: v, report: r, score });
+    }
+  }
+  pairs.sort((a, b) => a.score - b.score);
+  const usedVideos = new Set<string>();
+  for (const pair of pairs) {
+    const vId = pair.video.id as string;
+    if (usedVideos.has(vId)) continue;
+    if (usedReports.has(pair.report.id)) continue;
+    const logsUrl = `https://www.fflogs.com/reports/${pair.report.id}`;
     const { error } = await supabase
       .from("category_links")
       .update({ logs_url: logsUrl })
-      .eq("id", video.id as string)
+      .eq("id", vId)
       .is("logs_url", null);
     if (error) {
-      console.warn("[fflogs-link/video] update failed", video.id, error.message);
+      console.warn("[fflogs-link/video] update failed", vId, error.message);
       continue;
     }
-    usedReports.add(report.id);
+    usedReports.add(pair.report.id);
+    usedVideos.add(vId);
     matched += 1;
     details.push({
       kind: "video",
-      label: video.title as string,
-      reportTitle: report.title || "(無題のレポート)",
+      label: pair.video.title as string,
+      reportTitle: pair.report.title || "(無題のレポート)",
       reportUrl: logsUrl,
     });
   }
@@ -946,38 +978,59 @@ async function linkReportsToSessions(
     .filter((s): s is typeof s & { tMs: number } => s.tMs !== null)
     .sort((a, b) => a.tMs - b.tMs);
 
-  const sortedReports = [...reports].sort((a, b) => a.startMs - b.startMs);
   const usedReports = new Set<string>();
   const details: FflogsLinkDetail[] = [];
   let matched = 0;
 
-  for (const session of sortedSessions) {
-    const lo = session.tMs - SESSION_WINDOW_BEFORE_MS;
-    const hi = session.tMs + SESSION_WINDOW_AFTER_MS;
-    const report = sortedReports.find(
-      (r) => !usedReports.has(r.id) && r.startMs >= lo && r.startMs <= hi,
-    );
-    if (!report) continue;
-    const logsUrl = `https://www.fflogs.com/reports/${report.id}`;
+  // Score: report.startMs should fall within
+  //   [session.parsed_date - 1h, session.parsed_date + 4h]
+  // and ideally be CLOSE to the scheduled start time.
+  // Lower abs distance from scheduled start = better match.
+  type SPair = {
+    session: (typeof sortedSessions)[number];
+    report: FflogsReport;
+    score: number;
+  };
+  const pairs: SPair[] = [];
+  for (const s of sortedSessions) {
+    const lo = s.tMs - SESSION_WINDOW_BEFORE_MS;
+    const hi = s.tMs + SESSION_WINDOW_AFTER_MS;
+    for (const r of reports) {
+      if (r.startMs < lo || r.startMs > hi) continue;
+      pairs.push({
+        session: s,
+        report: r,
+        score: Math.abs(r.startMs - s.tMs),
+      });
+    }
+  }
+  pairs.sort((a, b) => a.score - b.score);
+  const usedSessions = new Set<string>();
+  for (const pair of pairs) {
+    const sKey = pair.session.raw_date as string;
+    if (usedSessions.has(sKey)) continue;
+    if (usedReports.has(pair.report.id)) continue;
+    const logsUrl = `https://www.fflogs.com/reports/${pair.report.id}`;
     const { error } = await supabase
       .from("schedule_past_sessions")
       .update({ logs_url: logsUrl })
-      .eq("raw_date", session.raw_date as string)
+      .eq("raw_date", sKey)
       .is("logs_url", null);
     if (error) {
       console.warn(
         "[fflogs-link/session] update failed",
-        session.raw_date,
+        sKey,
         error.message,
       );
       continue;
     }
-    usedReports.add(report.id);
+    usedReports.add(pair.report.id);
+    usedSessions.add(sKey);
     matched += 1;
     details.push({
       kind: "session",
-      label: session.raw_date as string,
-      reportTitle: report.title || "(無題のレポート)",
+      label: sKey,
+      reportTitle: pair.report.title || "(無題のレポート)",
       reportUrl: logsUrl,
     });
   }

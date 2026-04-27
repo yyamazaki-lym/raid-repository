@@ -19,6 +19,16 @@ export type ReleaseEntry = {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    version: "1.8.4",
+    date: "2026-04-27",
+    notes: [
+      "FFLogs 紐づけのマッチングアルゴリズムを改善 — 旧版は「ウィンドウ内の最古の未使用レポート」を採用していたため、Day1 のレポートが Day27 の動画に紐づくような誤マッチが起きていた（特に絶コンテンツのように同じ raid を何回も繰り返すケース）",
+      "動画↔レポート: グローバルにスコア計算 (delta = video.posted_at - report.startMs、レポートが動画より前なら delta、後なら delta×4 のペナルティ) → 全ペアでスコアが小さい順に貪欲マッチング",
+      "過去予定↔レポート: 同様に scheduled start time との絶対時刻差でスコア計算、近い順にマッチング",
+      "結果として、近接する複数の raid 日に対して正しい組み合わせが選ばれる（既存の誤紐づけは「全 logs URL クリア」→「再連動」で修正可能）",
+    ],
+  },
+  {
     version: "1.8.3",
     date: "2026-04-27",
     notes: [
