@@ -50,6 +50,8 @@ export async function createCategoryLink(input: {
       url: input.url,
       description: input.description ?? null,
       logs_url: input.logsUrl ?? null,
+      // Any logs_url set via the form is by definition user-curated.
+      logs_url_source: "manual",
       sort_order: nextOrder,
     })
     .select("*")
@@ -94,9 +96,15 @@ export async function updateCategoryLink(
   }>,
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
   const supabase = createClient();
+  // If the patch touches `logs_url`, also flip the source to 'manual'
+  // so it isn't wiped by the next FFLogs auto-sync.
+  const dbPatch: Record<string, unknown> = { ...patch };
+  if ("logs_url" in patch) {
+    dbPatch.logs_url_source = "manual";
+  }
   const { error } = await supabase
     .from("category_links")
-    .update(patch)
+    .update(dbPatch)
     .eq("id", id);
   if (error) return { ok: false, reason: error.message };
   return { ok: true };

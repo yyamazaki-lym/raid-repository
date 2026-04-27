@@ -59,6 +59,26 @@ ALTER TABLE public.categories
   -- content (the report's zone field in the API response).
   ADD COLUMN IF NOT EXISTS expected_fflogs_zone_ids      integer[];
 
+-- Phase 8.1 (1.9.10): track whether category_links.logs_url was set by
+-- automated FFLogs sync ('auto') or by manual user edit ('manual'). This
+-- lets the sync re-run safely: only 'auto' values are wiped before
+-- re-matching, while user-curated 'manual' overrides are preserved.
+ALTER TABLE public.category_links
+  ADD COLUMN IF NOT EXISTS logs_url_source text NOT NULL DEFAULT 'manual';
+ALTER TABLE public.category_links
+  DROP CONSTRAINT IF EXISTS category_links_logs_url_source_check;
+ALTER TABLE public.category_links
+  ADD CONSTRAINT category_links_logs_url_source_check
+  CHECK (logs_url_source IN ('auto','manual'));
+
+ALTER TABLE public.schedule_past_sessions
+  ADD COLUMN IF NOT EXISTS logs_url_source text NOT NULL DEFAULT 'manual';
+ALTER TABLE public.schedule_past_sessions
+  DROP CONSTRAINT IF EXISTS schedule_past_sessions_logs_url_source_check;
+ALTER TABLE public.schedule_past_sessions
+  ADD CONSTRAINT schedule_past_sessions_logs_url_source_check
+  CHECK (logs_url_source IN ('auto','manual'));
+
 CREATE INDEX IF NOT EXISTS categories_sort_order_idx
   ON public.categories(sort_order);
 

@@ -756,13 +756,28 @@ const SESSION_WINDOW_AFTER_MS = 4 * 60 * 60 * 1000;
  * the target's window — same heuristic as the video↔session matching.
  */
 export async function linkFflogsReportsToVideos(): Promise<FflogsLinkResult> {
-  // Multi-source aggregation (1.8.5+):
-  //   - v1 REST (default, simplest setup): Public reports
-  //   - v2 OAuth (optional, more precise owner-filter): Public reports
-  //   - Session cookie scrape (optional, max coverage): Public + Unlisted + Private
-  // Whichever sources are configured run in parallel; results are
-  // unioned + dedup'd by report code. This way a固定 can start with
-  // just v1 (easy) and add Cookie when they need Private reports.
+  // 1.9.10: wipe stale AUTO logs_url before re-matching. Manual entries
+  // (set via the memo popover or the video edit dialog) are preserved
+  // because they have logs_url_source = 'manual'. This makes every
+  // sync produce a fresh, consistent set of auto matches without
+  // requiring the user to click "全 logs URL クリア" first.
+  try {
+    const cleanupClient = await createClient();
+    await Promise.all([
+      cleanupClient
+        .from("category_links")
+        .update({ logs_url: null })
+        .eq("logs_url_source", "auto")
+        .not("logs_url", "is", null),
+      cleanupClient
+        .from("schedule_past_sessions")
+        .update({ logs_url: null })
+        .eq("logs_url_source", "auto")
+        .not("logs_url", "is", null),
+    ]);
+  } catch (e) {
+    console.warn("[fflogs] auto-cleanup failed", e);
+  }
 
   // Read all sources' configuration.
   const [username, oauthToken, sessionCookie] = await Promise.all([
@@ -1424,7 +1439,7 @@ async function linkReportsToVideos(
     const logsUrl = `https://www.fflogs.com/reports/${pair.report.id}`;
     const { error } = await supabase
       .from("category_links")
-      .update({ logs_url: logsUrl })
+      .update({ logs_url: logsUrl, logs_url_source: "auto" })
       .eq("id", vId)
       .is("logs_url", null);
     if (error) {
@@ -1543,7 +1558,7 @@ async function linkReportsToSessions(
     const logsUrl = `https://www.fflogs.com/reports/${pair.report.id}`;
     const { error } = await supabase
       .from("schedule_past_sessions")
-      .update({ logs_url: logsUrl })
+      .update({ logs_url: logsUrl, logs_url_source: "auto" })
       .eq("raw_date", sKey)
       .is("logs_url", null);
     if (error) {

@@ -19,6 +19,16 @@ export type ReleaseEntry = {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    version: "1.9.10",
+    date: "2026-04-27",
+    notes: [
+      "FFLogs マッチに 自動 / 手動 ソース管理を導入 — 動画と過去予定の logs_url それぞれに `logs_url_source` カラム ('auto' | 'manual') を追加。再同期時に 'auto' のレコードのみクリアし、ユーザーが手動で設定した URL は保持されるように",
+      "「FFLogs と動画を連動」実行時、過去の自動マッチ結果（誤マッチ含む）を毎回ワイプしてから再計算。これにより 1.9.9 までに DB に残った旧誤マッチ（0328↔0401 など）も次回同期で自動的に解消",
+      "動画編集ダイアログ・予定メモポップオーバーから設定した logs_url は 'manual' フラグ付きで保存され、以後の自動同期で上書きされない",
+      "DB スキーマ追加: `category_links.logs_url_source` / `schedule_past_sessions.logs_url_source` (default 'manual', CHECK 'auto' or 'manual')。既存データはマイグレーション時に 'manual' 扱いとなるため、初回のみ「全 logs URL クリア」→「FFLogs と動画を連動」で全件クリーン化推奨",
+    ],
+  },
+  {
     version: "1.9.9",
     date: "2026-04-27",
     notes: [

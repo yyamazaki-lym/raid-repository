@@ -442,7 +442,7 @@ export async function setSessionLogsUrl(
   // snapshotted" and "past session that's been snapshotted" cases.
   const { data: updated, error: updErr } = await supabase
     .from("schedule_past_sessions")
-    .update({ logs_url: normalized })
+    .update({ logs_url: normalized, logs_url_source: "manual" })
     .eq("raw_date", trimmedDate)
     .select("raw_date")
     .maybeSingle();
@@ -466,6 +466,7 @@ export async function setSessionLogsUrl(
         day_of_week: sessionDetails.dayOfWeek,
         source: "manual",
         logs_url: normalized,
+        logs_url_source: "manual",
       });
     if (insErr) return { ok: false, reason: insErr.message };
   }
