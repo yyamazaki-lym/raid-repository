@@ -19,6 +19,25 @@ export type ReleaseEntry = {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    version: "1.5.6",
+    date: "2026-04-27",
+    notes: [
+      "全頁の typography を refine — `tracking-widest` (0.1em) を `tracking-[0.18em]` に統一（uppercase mono ラベルが詰まりすぎていた箇所を改善）",
+      "スケジュール表 — 日付セルに `tabular-nums`、時刻表記を `font-mono tabular-nums` に統一して縦の揃い改善、`~` を opacity 60% に",
+      "スケジュール表 — Film / FFLogs アクションアイコンの hover に glow（box-shadow）追加、ホバーターゲットを h-4 → h-5 に拡張",
+      "スケジュール表 — Legends 行の背景を secondary に、行ヘッダーの padding 調整",
+      "Past セクションヘッダー — 「Past · 過去の予定」を mono 大文字 + 通常フォントの 2 段組に分割（読みやすさ向上）",
+      "簡易過去日程チップ — 角丸を sm → md に、padding 調整、アクションアイコンを h-4 に揃える",
+      "次回開催日カード — 時刻に `tabular-nums`、アイコンコンテナに inset shadow 追加",
+      "次回開催日カード「確定」バッジのトラッキングを 0.22em に統一",
+      "サブタブ — アイコン gap を tighten（gap-1.5）、トラッキング 0.16em に統一",
+      "サイトヘッダー — バージョン表記の構造を改善（vX.X.X · BETA を分離 + tabular-nums）",
+      "ステータスバッジ — トラッキング 0.18em / 0.22em に統一",
+      "カテゴリー一覧 — 「Drag to reorder」見出しに紫ドットと整理された 2 段組を追加",
+      "カテゴリーカード — 名前のトラッキング 0.04em で読みやすさ微調整",
+    ],
+  },
+  {
     version: "1.5.5",
     date: "2026-04-27",
     notes: [

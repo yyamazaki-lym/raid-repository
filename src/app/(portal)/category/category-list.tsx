@@ -185,8 +185,12 @@ export function CategoryList({
 
   return (
     <div className="flex flex-col gap-2">
-      <p className="font-mono text-[10px] tracking-[0.2em] text-muted-foreground uppercase">
-        Drag to reorder · ドラッグで並び替え
+      <p className="flex items-center gap-2 font-mono text-[10px] tracking-[0.22em] text-muted-foreground uppercase">
+        <span className="inline-flex h-1.5 w-1.5 rounded-full bg-muted-foreground/60" />
+        Drag to reorder
+        <span className="font-sans text-[11px] tracking-normal normal-case text-muted-foreground/85">
+          · ドラッグで並び替え
+        </span>
       </p>
       <DndContext
         sensors={sensors}
@@ -289,11 +293,11 @@ function SortableCategoryCard({
             className="flex flex-col gap-1 px-4 pt-4 pb-1"
           >
             <div className="flex items-start justify-between gap-2">
-              <p className="font-display text-foreground text-sm leading-tight">
+              <p className="font-display text-foreground text-sm leading-tight tracking-[0.04em]">
                 {category.name}
               </p>
             </div>
-            <div className="mt-1 flex flex-wrap items-center justify-between gap-2 font-mono text-[11px] tracking-widest uppercase">
+            <div className="mt-1 flex flex-wrap items-center justify-between gap-2 font-mono text-[11px] tracking-[0.18em] uppercase">
               <p className="text-muted-foreground">/{category.slug}</p>
               <div className="flex flex-wrap items-center gap-1">
                 {showPracticeTime && (

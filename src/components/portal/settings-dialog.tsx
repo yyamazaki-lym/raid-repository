@@ -328,7 +328,7 @@ export function SettingsDialog() {
                   size="sm"
                   onClick={onImport}
                   disabled={importing || !channelId.trim()}
-                  className="gap-1.5 font-mono text-[11px] tracking-widest uppercase"
+                  className="gap-1.5 font-mono text-[11px] tracking-[0.18em] uppercase"
                   title={
                     !channelId.trim()
                       ? "チャンネル ID を入力してください（先に保存）"
@@ -348,7 +348,7 @@ export function SettingsDialog() {
                   size="sm"
                   onClick={onSnapshot}
                   disabled={snapshotting}
-                  className="gap-1.5 font-mono text-[11px] tracking-widest uppercase"
+                  className="gap-1.5 font-mono text-[11px] tracking-[0.18em] uppercase"
                   title="現在の出席状況を即時スナップショット（自動: 毎日21:50 JST）"
                 >
                   {snapshotting ? (
@@ -364,7 +364,7 @@ export function SettingsDialog() {
                   size="sm"
                   onClick={onCount}
                   disabled={counting}
-                  className="gap-1.5 font-mono text-[10px] tracking-widest uppercase"
+                  className="gap-1.5 font-mono text-[10px] tracking-[0.18em] uppercase"
                   title="schedule_past_sessions の現在の保存件数を確認（デバッグ用）"
                 >
                   {counting ? (
@@ -510,7 +510,7 @@ export function SettingsDialog() {
                 size="sm"
                 onClick={onLinkLogs}
                 disabled={linkingLogs || !fflogsUsername.trim()}
-                className="self-start gap-1.5 font-mono text-[11px] tracking-widest uppercase"
+                className="self-start gap-1.5 font-mono text-[11px] tracking-[0.18em] uppercase"
                 title={
                   !fflogsUsername.trim()
                     ? "FFLogs ユーザー名を入力（先に保存）"
@@ -573,7 +573,7 @@ export function SettingsDialog() {
                 variant="outline"
                 size="sm"
                 onClick={() => setShowChangelog((v) => !v)}
-                className="self-start gap-1.5 font-mono text-[10px] tracking-widest uppercase"
+                className="self-start gap-1.5 font-mono text-[10px] tracking-[0.18em] uppercase"
                 title="更新履歴を表示 / 非表示"
                 aria-expanded={showChangelog}
               >
@@ -626,7 +626,7 @@ export function SettingsDialog() {
             size="sm"
             onClick={() => setOpen(false)}
             disabled={busy}
-            className="font-mono text-[11px] tracking-widest uppercase"
+            className="font-mono text-[11px] tracking-[0.18em] uppercase"
           >
             キャンセル
           </Button>
@@ -635,7 +635,7 @@ export function SettingsDialog() {
             size="sm"
             onClick={onSave}
             disabled={busy}
-            className="gap-1.5 font-mono text-[11px] tracking-widest uppercase"
+            className="gap-1.5 font-mono text-[11px] tracking-[0.18em] uppercase"
           >
             <Save className="h-3.5 w-3.5" aria-hidden />
             {busy ? "保存中..." : "保存"}

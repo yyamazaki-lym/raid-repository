@@ -55,8 +55,8 @@ export function StatusBadge({
     "inline-flex items-center justify-center gap-1.5 rounded-sm border font-mono uppercase",
     STATUS_TONE[status],
     variant === "compact"
-      ? "min-w-[4.5rem] px-1.5 py-px text-[9px] tracking-widest"
-      : "min-w-[5.5rem] px-2 py-0.5 text-[10px] tracking-[0.18em]",
+      ? "min-w-[4.5rem] px-1.5 py-px text-[9px] tracking-[0.18em]"
+      : "min-w-[5.5rem] px-2 py-0.5 text-[10px] tracking-[0.22em]",
     className,
   );
 
@@ -97,7 +97,7 @@ export function StatusBadge({
               <span className={cn("h-1.5 w-1.5 rounded-full", STATUS_DOT[s])} aria-hidden />
               <span className="flex-1 text-sm">{s}</span>
               {isCurrent && (
-                <span className="text-muted-foreground font-mono text-[9px] tracking-widest uppercase">
+                <span className="text-muted-foreground font-mono text-[9px] tracking-[0.22em] uppercase">
                   current
                 </span>
               )}

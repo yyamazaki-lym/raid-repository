@@ -228,7 +228,7 @@ export function MaintenanceMenu() {
     <div className="relative flex flex-col gap-2">
       <DropdownMenu>
         <DropdownMenuTrigger
-          className="inline-flex items-center gap-1.5 rounded-md border border-border/60 bg-background/30 px-3 py-1.5 font-mono text-[11px] tracking-widest text-muted-foreground uppercase transition-colors hover:border-[var(--neon-cyan)]/60 hover:text-foreground disabled:opacity-60"
+          className="inline-flex items-center gap-1.5 rounded-md border border-border/60 bg-background/30 px-3 py-1.5 font-mono text-[11px] tracking-[0.18em] text-muted-foreground uppercase transition-colors hover:border-[var(--neon-cyan)]/60 hover:text-foreground disabled:opacity-60"
           disabled={pending}
           aria-label="メンテナンスメニュー"
         >

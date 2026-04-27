@@ -220,7 +220,7 @@ export function CategoryFormDialog({
   };
 
   const defaultTrigger = (
-    <DialogTrigger className="inline-flex items-center gap-1.5 rounded-md border border-border/60 bg-background/30 px-3 py-1.5 font-mono text-[11px] tracking-widest text-muted-foreground uppercase transition-colors hover:border-[var(--neon-cyan)]/60 hover:text-foreground">
+    <DialogTrigger className="inline-flex items-center gap-1.5 rounded-md border border-border/60 bg-background/30 px-3 py-1.5 font-mono text-[11px] tracking-[0.18em] text-muted-foreground uppercase transition-colors hover:border-[var(--neon-cyan)]/60 hover:text-foreground">
       <Plus className="h-3.5 w-3.5" aria-hidden />
       カテゴリー追加
     </DialogTrigger>
@@ -303,7 +303,7 @@ export function CategoryFormDialog({
                   type="button"
                   onClick={() => setStatus(s)}
                   className={cn(
-                    "inline-flex items-center gap-1.5 rounded-sm border px-2 py-1 font-mono text-[10px] tracking-widest uppercase transition-colors",
+                    "inline-flex items-center gap-1.5 rounded-sm border px-2 py-1 font-mono text-[10px] tracking-[0.18em] uppercase transition-colors",
                     status === s
                       ? "border-[var(--neon-cyan)]/60 bg-[var(--neon-cyan)]/10 text-foreground"
                       : "border-border bg-background/30 text-muted-foreground hover:text-foreground/80",
@@ -436,7 +436,7 @@ export function CategoryFormDialog({
                   variant="ghost"
                   size="sm"
                   onClick={() => setFirstClearDate("")}
-                  className="font-mono text-[10px] tracking-widest uppercase"
+                  className="font-mono text-[10px] tracking-[0.18em] uppercase"
                 >
                   クリア
                 </Button>
@@ -466,7 +466,7 @@ export function CategoryFormDialog({
             size="sm"
             onClick={() => setOpen(false)}
             disabled={busy}
-            className="font-mono text-[11px] tracking-widest uppercase"
+            className="font-mono text-[11px] tracking-[0.18em] uppercase"
           >
             キャンセル
           </Button>
@@ -475,7 +475,7 @@ export function CategoryFormDialog({
             size="sm"
             onClick={onSubmit}
             disabled={busy}
-            className="gap-1.5 font-mono text-[11px] tracking-widest uppercase"
+            className="gap-1.5 font-mono text-[11px] tracking-[0.18em] uppercase"
           >
             <Save className="h-3.5 w-3.5" aria-hidden />
             {busy ? "保存中..." : isEdit ? "更新" : "追加"}

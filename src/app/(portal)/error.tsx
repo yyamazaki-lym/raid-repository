@@ -48,7 +48,7 @@ export default function PortalError({
         type="button"
         size="sm"
         onClick={reset}
-        className="gap-1.5 font-mono text-[11px] tracking-widest uppercase"
+        className="gap-1.5 font-mono text-[11px] tracking-[0.18em] uppercase"
       >
         <RotateCcw className="h-3.5 w-3.5" aria-hidden />
         Retry

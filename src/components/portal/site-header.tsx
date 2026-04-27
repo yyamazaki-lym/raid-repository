@@ -37,12 +37,14 @@ export function SiteHeader() {
           <span className="relative grid h-8 w-8 place-items-center rounded-md border border-primary/40 bg-background/40 text-primary shadow-[0_0_18px_-4px_var(--neon-cyan)] transition-shadow group-hover:shadow-[0_0_22px_-2px_var(--neon-cyan)]">
             <Activity className="h-4 w-4" aria-hidden />
           </span>
-          <div className="flex flex-col leading-none">
-            <span className="font-display text-[13px] font-semibold tracking-[0.18em] text-foreground sm:text-sm">
+          <div className="flex flex-col gap-0.5 leading-none">
+            <span className="font-display text-[13px] font-semibold tracking-[0.2em] text-foreground sm:text-sm">
               RAID REPOSITORY
             </span>
-            <span className="font-mono text-[10px] tracking-widest text-muted-foreground sm:text-[11px]">
-              v{APP_VERSION} · {APP_STAGE}
+            <span className="flex items-center gap-1.5 font-mono text-[10px] tabular-nums tracking-[0.16em] text-muted-foreground sm:text-[11px]">
+              <span>v{APP_VERSION}</span>
+              <span aria-hidden className="opacity-50">·</span>
+              <span className="tracking-[0.22em]">{APP_STAGE}</span>
             </span>
           </div>
         </Link>
@@ -54,7 +56,7 @@ export function SiteHeader() {
             aria-hidden
             className="hidden h-2 w-2 animate-pulse rounded-full bg-[var(--neon-cyan)] shadow-[0_0_10px_var(--neon-cyan)] sm:inline-block"
           />
-          <span className="hidden font-mono text-[11px] tracking-widest text-muted-foreground sm:inline">
+          <span className="hidden font-mono text-[11px] tracking-[0.22em] text-muted-foreground sm:inline">
             ONLINE
           </span>
         </div>

@@ -67,19 +67,21 @@ export function NextSessionCard({
           immediately obvious. */}
       <div className="flex flex-wrap items-center gap-2">
         <Label>次回開催日</Label>
-        <span className="rounded-sm border border-[var(--neon-cyan)]/40 bg-[var(--neon-cyan)]/8 px-1.5 py-px font-mono text-[10px] tracking-[0.18em] text-[var(--neon-cyan)] uppercase">
+        <span className="rounded-sm border border-[var(--neon-cyan)]/40 bg-[var(--neon-cyan)]/8 px-1.5 py-px font-mono text-[10px] tracking-[0.22em] text-[var(--neon-cyan)] uppercase">
           確定
         </span>
       </div>
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <Value highlight={isToday}>{rawDate}</Value>
-        <span className="font-mono text-sm text-foreground/80">
-          {startTime} ~ {endTime}
+        <span className="font-mono text-sm tabular-nums text-foreground/80">
+          {startTime}
+          <span className="mx-1 opacity-60">~</span>
+          {endTime}
         </span>
         {relative && (
           <span
             className={
-              "font-mono text-[11px] tracking-widest uppercase " +
+              "font-mono text-[11px] tracking-[0.22em] uppercase " +
               (isToday
                 ? "rounded-sm border border-[var(--neon-cyan)]/60 bg-[var(--neon-cyan)]/15 px-1.5 py-px font-bold text-[var(--neon-cyan)] shadow-[0_0_12px_-2px_var(--neon-cyan)] animate-pulse"
                 : "text-[var(--neon-cyan)]")
@@ -124,10 +126,10 @@ function Frame({
     <div
       className={`glass relative flex items-start gap-3 rounded-lg border p-3 sm:p-4 ${toneClass}`}
     >
-      <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-md border border-[var(--neon-cyan)]/40 bg-background/40 text-[var(--neon-cyan)]">
+      <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-md border border-[var(--neon-cyan)]/40 bg-background/40 text-[var(--neon-cyan)] shadow-[inset_0_0_12px_-4px_var(--neon-cyan)]">
         {icon}
       </span>
-      <div className="flex flex-1 flex-col gap-0.5">{children}</div>
+      <div className="flex flex-1 flex-col gap-1">{children}</div>
     </div>
   );
 }
@@ -150,7 +152,7 @@ function Value({
   return (
     <span
       className={
-        "font-display leading-tight " +
+        "font-display tabular-nums leading-tight " +
         (highlight
           ? "text-xl font-bold text-[var(--neon-cyan)] drop-shadow-[0_0_8px_color-mix(in_oklch,var(--neon-cyan)_50%,transparent)]"
           : "text-lg text-foreground")
@@ -162,5 +164,9 @@ function Value({
 }
 
 function Sub({ children }: { children: React.ReactNode }) {
-  return <span className="text-xs text-muted-foreground">{children}</span>;
+  return (
+    <span className="text-xs leading-relaxed text-muted-foreground">
+      {children}
+    </span>
+  );
 }

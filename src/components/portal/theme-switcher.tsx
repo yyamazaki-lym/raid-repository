@@ -43,7 +43,7 @@ export function ThemeSwitcher() {
               <Swatch theme={t} />
               <div className="flex min-w-0 flex-1 flex-col leading-tight">
                 <span className="truncate text-sm">{t.title}</span>
-                <span className="font-mono text-[10px] tracking-widest text-muted-foreground uppercase">
+                <span className="font-mono text-[10px] tracking-[0.18em] text-muted-foreground uppercase">
                   v{t.version} · {t.subtitle}
                 </span>
               </div>

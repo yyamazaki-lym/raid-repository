@@ -162,7 +162,7 @@ export function VideosList({ categoryId, initial }: Props) {
         <div className="flex items-center gap-1.5">
           {/* Sort mode toggle: 日付順 (newest first) or カスタム順 (DnD). */}
           <div
-            className="inline-flex items-center rounded-md border border-border/40 bg-background/30 p-0.5 font-mono text-[10px] tracking-widest uppercase"
+            className="inline-flex items-center rounded-md border border-border/40 bg-background/30 p-0.5 font-mono text-[10px] tracking-[0.18em] uppercase"
             role="radiogroup"
             aria-label="並び順"
           >
@@ -343,7 +343,7 @@ function VideoCard({
           >
             <div className="flex flex-col items-center gap-2">
               <Film className="h-8 w-8" aria-hidden />
-              <span className="font-mono text-[10px] tracking-widest uppercase">
+              <span className="font-mono text-[10px] tracking-[0.18em] uppercase">
                 External Video
               </span>
             </div>
@@ -395,7 +395,7 @@ function VideoCard({
             href={video.logsUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 rounded-sm border border-amber-400/45 bg-amber-400/10 px-2 py-1 font-mono text-[10px] tracking-widest text-amber-200 uppercase transition-colors hover:bg-amber-400/15 hover:text-amber-100"
+            className="inline-flex items-center gap-1.5 rounded-sm border border-amber-400/45 bg-amber-400/10 px-2 py-1 font-mono text-[10px] tracking-[0.18em] text-amber-200 uppercase transition-colors hover:bg-amber-400/15 hover:text-amber-100"
             title="FFLogs レポートを開く"
           >
             <BarChart3 className="h-3 w-3" aria-hidden />
@@ -471,7 +471,7 @@ function YouTubePreview({
         target="_blank"
         rel="noopener noreferrer"
         onClick={(e) => e.stopPropagation()}
-        className="absolute top-2 right-2 inline-flex items-center gap-1 rounded-md bg-black/60 px-1.5 py-1 font-mono text-[9px] tracking-widest text-white/80 uppercase transition-colors hover:text-white"
+        className="absolute top-2 right-2 inline-flex items-center gap-1 rounded-md bg-black/60 px-1.5 py-1 font-mono text-[9px] tracking-[0.18em] text-white/80 uppercase transition-colors hover:text-white"
         aria-label="YouTubeで開く"
       >
         <ExternalLink className="h-3 w-3" aria-hidden />

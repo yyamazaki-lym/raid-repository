@@ -230,7 +230,7 @@ function MacrosSection({
         <div className="flex items-center gap-2">
           <Terminal className="h-4 w-4 text-[var(--neon-violet)]" aria-hidden />
           <h2 className="font-display text-base">マクロ</h2>
-          <span className="font-mono text-[10px] tracking-widest text-muted-foreground">
+          <span className="font-mono text-[10px] tracking-[0.18em] text-muted-foreground">
             {ordered.length}件
           </span>
         </div>
@@ -239,7 +239,7 @@ function MacrosSection({
           variant="outline"
           size="sm"
           onClick={startNew}
-          className="gap-1.5 font-mono text-[11px] tracking-widest uppercase"
+          className="gap-1.5 font-mono text-[11px] tracking-[0.18em] uppercase"
         >
           <Plus className="h-3.5 w-3.5" aria-hidden />
           追加
@@ -485,7 +485,7 @@ function TemplatesSection({
         <div className="flex items-center gap-2">
           <ClipboardList className="h-4 w-4 text-[var(--neon-cyan)]" aria-hidden />
           <h2 className="font-display text-base">募集文テンプレート</h2>
-          <span className="font-mono text-[10px] tracking-widest text-muted-foreground">
+          <span className="font-mono text-[10px] tracking-[0.18em] text-muted-foreground">
             {templates.length}件
           </span>
         </div>
@@ -494,7 +494,7 @@ function TemplatesSection({
           variant="outline"
           size="sm"
           onClick={startNew}
-          className="gap-1.5 font-mono text-[11px] tracking-widest uppercase"
+          className="gap-1.5 font-mono text-[11px] tracking-[0.18em] uppercase"
         >
           <Plus className="h-3.5 w-3.5" aria-hidden />
           追加
@@ -734,7 +734,7 @@ function EditDialog({
                         onChange({ ...value, body: next });
                         toast.success("全角を半角に変換しました");
                       }}
-                      className="inline-flex items-center gap-1 rounded-sm border border-[var(--neon-cyan)]/40 bg-[var(--neon-cyan)]/8 px-2 py-0.5 font-mono text-[10px] tracking-widest text-[var(--neon-cyan)] uppercase transition-colors hover:bg-[var(--neon-cyan)]/15"
+                      className="inline-flex items-center gap-1 rounded-sm border border-[var(--neon-cyan)]/40 bg-[var(--neon-cyan)]/8 px-2 py-0.5 font-mono text-[10px] tracking-[0.18em] text-[var(--neon-cyan)] uppercase transition-colors hover:bg-[var(--neon-cyan)]/15"
                       title="全角→半角"
                     >
                       <CaseSensitive className="h-3 w-3" aria-hidden />
@@ -762,7 +762,7 @@ function EditDialog({
             size="sm"
             onClick={() => setOpen(false)}
             disabled={busy}
-            className="font-mono text-[11px] tracking-widest uppercase"
+            className="font-mono text-[11px] tracking-[0.18em] uppercase"
           >
             <X className="h-3.5 w-3.5 mr-1" aria-hidden />
             キャンセル
@@ -772,7 +772,7 @@ function EditDialog({
             size="sm"
             onClick={onSave}
             disabled={busy}
-            className="gap-1.5 font-mono text-[11px] tracking-widest uppercase"
+            className="gap-1.5 font-mono text-[11px] tracking-[0.18em] uppercase"
           >
             <Save className="h-3.5 w-3.5" aria-hidden />
             {busy ? "保存中..." : isEdit ? "更新" : "追加"}

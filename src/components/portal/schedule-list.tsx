@@ -133,12 +133,12 @@ export function ScheduleList({
   // past tables.
   const tableHead = (showDecided: boolean) => (
     <thead>
-      <tr className="border-b border-border/60 text-[10px] tracking-[0.18em] text-muted-foreground uppercase">
-        <th scope="col" className="pl-3 pr-1 py-2 font-mono">
+      <tr className="border-b border-border/60 font-mono text-[10px] tracking-[0.22em] text-muted-foreground uppercase">
+        <th scope="col" className="pl-3 pr-1 py-2.5">
           日程
         </th>
         {showDecided && (
-          <th scope="col" className="px-0 py-2 font-mono">
+          <th scope="col" className="px-0 py-2.5">
             確定
           </th>
         )}
@@ -197,7 +197,10 @@ export function ScheduleList({
           <header className="flex items-center justify-between gap-2 border-b border-border/40 bg-secondary/20 px-3 py-2">
             <div className="flex items-center gap-2 font-mono text-[10px] tracking-[0.22em] text-muted-foreground uppercase">
               <span className="inline-flex h-1.5 w-1.5 rounded-full bg-muted-foreground/60" />
-              Past · 過去の予定
+              Past
+              <span className="font-sans text-[11px] tracking-normal normal-case text-muted-foreground/85">
+                · 過去の予定
+              </span>
             </div>
             <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
               {renderedPast.length} 件
@@ -386,9 +389,9 @@ function SessionRow({
     >
       <th
         scope="row"
-        className="pl-3 pr-1 py-2 align-middle font-mono text-[12px] whitespace-nowrap text-foreground"
+        className="pl-3 pr-1 py-2 align-middle font-mono text-[12px] tabular-nums whitespace-nowrap text-foreground"
       >
-        <div className="flex items-baseline gap-2">
+        <div className="flex items-center gap-2">
           {/* Date label color priority:
                 1. Holiday → red glow
                 2. DECISION → cyan glow + bold
@@ -409,8 +412,10 @@ function SessionRow({
               holidayName={holidayName}
             />
           </SessionMemoPopover>
-          <span className="text-muted-foreground text-[11px]">
-            {session.startTime} ~ {session.endTime}
+          <span className="font-mono text-[11px] tabular-nums text-muted-foreground/85">
+            {session.startTime}
+            <span className="mx-0.5 opacity-60">~</span>
+            {session.endTime}
           </span>
           {/* Memo indicator placed right after the time per user
               request — visible whether or not video/Logs links are
@@ -429,7 +434,7 @@ function SessionRow({
               prefetch={false}
               aria-label={`${videoLink.categoryName}/動画「${videoLink.videoTitle}」を開く`}
               title={`${videoLink.categoryName}/動画 → 「${videoLink.videoTitle}」`}
-              className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded text-[var(--neon-cyan)] transition-colors hover:bg-[var(--neon-cyan)]/15"
+              className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-[var(--neon-cyan)]/85 transition-all hover:bg-[var(--neon-cyan)]/15 hover:text-[var(--neon-cyan)] hover:shadow-[0_0_10px_-2px_var(--neon-cyan)]"
             >
               <Film className="h-3 w-3" aria-hidden />
             </Link>
@@ -441,7 +446,7 @@ function SessionRow({
               rel="noopener noreferrer"
               aria-label={`${session.rawDate.split(" ")[0]} の FFLogs を開く`}
               title="FFLogs"
-              className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded text-amber-300 transition-colors hover:bg-amber-400/15 hover:text-amber-200"
+              className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-amber-300/85 transition-all hover:bg-amber-400/15 hover:text-amber-200 hover:shadow-[0_0_10px_-2px_rgba(251,191,36,0.6)]"
             >
               <BarChart3 className="h-3 w-3" aria-hidden />
             </a>
@@ -506,12 +511,12 @@ function SessionRow({
 
 function Legend() {
   return (
-    <div className="flex flex-wrap items-center gap-2 border-b border-border/60 px-3 py-2 text-[11px]">
-      <span className="font-mono text-[10px] tracking-[0.2em] text-muted-foreground uppercase">
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-border/40 bg-secondary/15 px-3 py-2 text-[11px]">
+      <span className="font-mono text-[10px] tracking-[0.22em] text-muted-foreground uppercase">
         Legends
       </span>
       {ATT_LEGEND.map((l) => (
-        <span key={l.symbol} className="inline-flex items-center gap-1">
+        <span key={l.symbol} className="inline-flex items-center gap-1.5">
           <span
             className={
               "inline-flex h-4 w-5 items-center justify-center rounded-sm border font-mono text-[11px] " +
@@ -520,7 +525,7 @@ function Legend() {
           >
             {l.symbol}
           </span>
-          <span className="text-muted-foreground">{l.label}</span>
+          <span className="text-[11px] text-muted-foreground">{l.label}</span>
         </span>
       ))}
     </div>

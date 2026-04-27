@@ -131,7 +131,7 @@ export function RecruitmentTemplatesButton({ initial, categories }: Props) {
           ) : (
             <>
               <p className="px-1.5 pt-1 pb-1 text-[10px] leading-snug text-muted-foreground/85">
-                <span className="font-mono tracking-widest text-[var(--neon-cyan)]/80 uppercase">★ Top</span>
+                <span className="font-mono tracking-[0.18em] text-[var(--neon-cyan)]/80 uppercase">★ Top</span>
                 {" "}が次回開催日カードのコピーボタンの対象。
               </p>
               {grouped.map(({ categoryName, items }) => (
@@ -166,7 +166,7 @@ export function RecruitmentTemplatesButton({ initial, categories }: Props) {
                           <p className="truncate text-sm">
                             {t.label || "通常募集"}
                             {isTop && (
-                              <span className="ml-1.5 font-mono text-[9px] tracking-widest text-[var(--neon-cyan)] uppercase">
+                              <span className="ml-1.5 font-mono text-[9px] tracking-[0.18em] text-[var(--neon-cyan)] uppercase">
                                 Top
                               </span>
                             )}
@@ -256,7 +256,7 @@ export function RecruitmentTopCopyButton({
         aria-label={`「${displayLabel(top)}」を募集文としてコピー`}
         title={`${displayLabel(top)} をコピー`}
         className={
-          "inline-flex h-7 items-center gap-1.5 rounded-md border px-2.5 font-mono text-[11px] tracking-widest uppercase transition-colors " +
+          "inline-flex h-7 items-center gap-1.5 rounded-md border px-2.5 font-mono text-[11px] tracking-[0.18em] uppercase transition-colors " +
           (justCopied
             ? "border-emerald-400/60 bg-emerald-400/15 text-emerald-300 shadow-[0_0_10px_-4px_color-mix(in_oklch,oklch(0.78_0.18_155)_50%,transparent)]"
             : "border-[var(--neon-cyan)]/40 bg-[var(--neon-cyan)]/10 text-[var(--neon-cyan)] hover:border-[var(--neon-cyan)]/60 hover:bg-[var(--neon-cyan)]/15")
@@ -579,7 +579,7 @@ function ManageDialog({
                         );
                         toast.success("全角を半角に変換しました");
                       }}
-                      className="inline-flex items-center gap-1 rounded-sm border border-[var(--neon-cyan)]/40 bg-[var(--neon-cyan)]/8 px-2 py-0.5 font-mono text-[10px] tracking-widest text-[var(--neon-cyan)] uppercase transition-colors hover:bg-[var(--neon-cyan)]/15"
+                      className="inline-flex items-center gap-1 rounded-sm border border-[var(--neon-cyan)]/40 bg-[var(--neon-cyan)]/8 px-2 py-0.5 font-mono text-[10px] tracking-[0.18em] text-[var(--neon-cyan)] uppercase transition-colors hover:bg-[var(--neon-cyan)]/15"
                       title="全角の数字・英字・記号を半角に変換"
                       aria-label="全角を半角に変換"
                     >
@@ -590,7 +590,7 @@ function ManageDialog({
                       href="https://knt-a.com/pt-msg/"
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 rounded-sm border border-border/60 bg-background/40 px-2 py-0.5 font-mono text-[10px] tracking-widest text-muted-foreground uppercase transition-colors hover:border-foreground/40 hover:text-foreground"
+                      className="inline-flex items-center gap-1 rounded-sm border border-border/60 bg-background/40 px-2 py-0.5 font-mono text-[10px] tracking-[0.18em] text-muted-foreground uppercase transition-colors hover:border-foreground/40 hover:text-foreground"
                       title="募集文テンプレート作成サイト (knt-a.com) を開く"
                       aria-label="募集文テンプレート作成サイトを開く"
                     >
@@ -619,7 +619,7 @@ function ManageDialog({
                   size="sm"
                   onClick={cancelEdit}
                   disabled={busy}
-                  className="font-mono text-[11px] tracking-widest uppercase"
+                  className="font-mono text-[11px] tracking-[0.18em] uppercase"
                 >
                   キャンセル
                 </Button>
@@ -628,7 +628,7 @@ function ManageDialog({
                   size="sm"
                   onClick={onSave}
                   disabled={busy}
-                  className="gap-1.5 font-mono text-[11px] tracking-widest uppercase"
+                  className="gap-1.5 font-mono text-[11px] tracking-[0.18em] uppercase"
                 >
                   <Save className="h-3.5 w-3.5" aria-hidden />
                   {busy ? "保存中..." : editing.id ? "更新" : "追加"}
@@ -641,7 +641,7 @@ function ManageDialog({
               variant="outline"
               size="sm"
               onClick={startNew}
-              className="self-start gap-1.5 font-mono text-[11px] tracking-widest uppercase"
+              className="self-start gap-1.5 font-mono text-[11px] tracking-[0.18em] uppercase"
             >
               <Plus className="h-3.5 w-3.5" aria-hidden />
               新規追加
@@ -655,7 +655,7 @@ function ManageDialog({
             variant="ghost"
             size="sm"
             onClick={() => onOpenChange(false)}
-            className="font-mono text-[11px] tracking-widest uppercase"
+            className="font-mono text-[11px] tracking-[0.18em] uppercase"
           >
             閉じる
           </Button>
@@ -708,7 +708,7 @@ function SortableTemplateRow({
           <div className="min-w-0 flex-1">
             <p className="truncate font-display text-sm">{heading}</p>
             {isFirst && (
-              <p className="font-mono text-[9px] tracking-widest text-[var(--neon-cyan)] uppercase">
+              <p className="font-mono text-[9px] tracking-[0.18em] text-[var(--neon-cyan)] uppercase">
                 Top — 開催日カードのコピー対象
               </p>
             )}

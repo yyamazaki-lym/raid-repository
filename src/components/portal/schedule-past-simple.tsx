@@ -71,13 +71,16 @@ export function SchedulePastSimple({
       <header className="flex items-center justify-between gap-2 border-b border-border/40 bg-secondary/20 px-3 py-2">
         <div className="flex items-center gap-2 font-mono text-[10px] tracking-[0.22em] text-muted-foreground uppercase">
           <span className="inline-flex h-1.5 w-1.5 rounded-full bg-muted-foreground/60" />
-          Past · 過去の活動
+          Past
+          <span className="font-sans text-[11px] tracking-normal normal-case text-muted-foreground/85">
+            · 過去の活動
+          </span>
         </div>
         <span className="font-mono text-[10px] tabular-nums text-muted-foreground/80">
           直近 {recent.length} 件
         </span>
       </header>
-      <ul className="flex flex-wrap gap-1.5 px-3 py-2">
+      <ul className="flex flex-wrap gap-1.5 px-3 py-2.5">
         {recent.map((s) => (
           <DateChip
             key={s.rawDate}
@@ -149,7 +152,7 @@ function DateChip({
   return (
     <li
       className={
-        "inline-flex items-center gap-1 rounded-sm border px-1.5 py-1 font-mono text-[11px] " +
+        "inline-flex items-center gap-1 rounded-md border px-2 py-1 font-mono text-[11px] transition-colors " +
         chipColor
       }
       title={tooltip}
@@ -177,7 +180,7 @@ function DateChip({
           prefetch={false}
           aria-label={`${videoLink.categoryName}/動画「${videoLink.videoTitle}」を開く`}
           title={`${videoLink.categoryName}/動画 → 「${videoLink.videoTitle}」`}
-          className="inline-flex h-3.5 w-3.5 items-center justify-center rounded text-current/80 transition-colors hover:bg-current/15 hover:text-current"
+          className="inline-flex h-4 w-4 items-center justify-center rounded text-current/75 transition-all hover:bg-current/15 hover:text-current"
         >
           <Film className="h-2.5 w-2.5" aria-hidden />
         </Link>
@@ -189,7 +192,7 @@ function DateChip({
           rel="noopener noreferrer"
           aria-label={`${monthDay} の FFLogs を開く`}
           title={`FFLogs: ${monthDay}`}
-          className="inline-flex h-3.5 w-3.5 items-center justify-center rounded text-amber-300 transition-colors hover:bg-amber-400/15 hover:text-amber-200"
+          className="inline-flex h-4 w-4 items-center justify-center rounded text-amber-300/85 transition-all hover:bg-amber-400/15 hover:text-amber-200 hover:shadow-[0_0_8px_-2px_rgba(251,191,36,0.55)]"
         >
           <BarChart3 className="h-2.5 w-2.5" aria-hidden />
         </a>

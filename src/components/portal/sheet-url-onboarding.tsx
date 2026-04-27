@@ -138,7 +138,7 @@ export function SheetUrlOnboarding({
             size="sm"
             onClick={onSave}
             disabled={busy}
-            className="gap-1.5 font-mono text-[11px] tracking-widest uppercase"
+            className="gap-1.5 font-mono text-[11px] tracking-[0.18em] uppercase"
           >
             <Save className="h-3.5 w-3.5" aria-hidden />
             {busy ? "保存中..." : "URL を登録"}

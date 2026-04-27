@@ -48,7 +48,7 @@ export function SubTabs({ baseHref }: { baseHref: string }) {
                   href={href}
                   data-active={active}
                   className={cn(
-                    "relative flex items-center gap-2 rounded-md px-3 py-1.5 font-mono text-[11px] tracking-[0.14em] uppercase transition-colors",
+                    "relative flex items-center gap-1.5 rounded-md px-3 py-1.5 font-mono text-[11px] tracking-[0.16em] uppercase transition-colors",
                     active
                       ? "bg-secondary/60 text-foreground"
                       : "text-muted-foreground hover:bg-secondary/40 hover:text-foreground/90",
@@ -57,10 +57,10 @@ export function SubTabs({ baseHref }: { baseHref: string }) {
                 >
                   <tab.Icon
                     className={cn(
-                      "h-3.5 w-3.5",
+                      "h-3.5 w-3.5 shrink-0 transition-colors",
                       active
                         ? "text-[var(--neon-violet)]"
-                        : "text-muted-foreground/80",
+                        : "text-muted-foreground/75",
                     )}
                     aria-hidden
                   />
