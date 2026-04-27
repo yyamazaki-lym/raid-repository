@@ -16,6 +16,7 @@ import {
   getJapaneseHolidayName,
   isJapaneseHoliday,
 } from "@/lib/japanese-holidays";
+import { safeHref } from "@/lib/url-safe";
 import type { JapaneseHolidaysMap } from "@/lib/japanese-holidays";
 import type {
   Attendance,
@@ -255,8 +256,13 @@ function UserHeaderCell({
   // span if no edit URL is available). Comments live in a separate small
   // button → Popover. This works on both touch (tap) and mouse (click), and
   // keeps the link semantics clean.
+  //
+  // Cap the inline width at 7rem and let CSS truncate with ellipsis when a
+  // name is unusually long — prevents one outlier name from blowing out
+  // the whole table's layout. The full name is still in the title
+  // attribute (tooltip) and the editUrl tooltip references it too.
   const nameClass =
-    "inline-block underline decoration-dotted decoration-[var(--neon-cyan)]/60 underline-offset-4 transition-colors hover:decoration-[var(--neon-cyan)] hover:text-[var(--neon-cyan)]";
+    "inline-block max-w-[7rem] truncate align-bottom underline decoration-dotted decoration-[var(--neon-cyan)]/60 underline-offset-4 transition-colors hover:decoration-[var(--neon-cyan)] hover:text-[var(--neon-cyan)]";
 
   const nameNode = editUrl ? (
     <a
@@ -269,16 +275,16 @@ function UserHeaderCell({
       {user.name}
     </a>
   ) : (
-    <span className={nameClass}>{user.name}</span>
+    <span className={nameClass} title={user.name}>
+      {user.name}
+    </span>
   );
 
   return (
     <th
       scope="col"
-      // min-w ensures every user column is at least 5rem wide so
-      // table layout stays stable across upcoming/past tables and
-      // doesn't shift on row content. Long names overflow gracefully
-      // (whitespace-nowrap), keeping the column at content width.
+      // min-w stabilizes the layout; max-w on the name (above) caps long
+      // names so they ellipsize instead of pushing other columns offscreen.
       className="min-w-[5rem] px-2 py-2 text-center font-mono whitespace-nowrap"
     >
       <span className="inline-flex items-center gap-1">
@@ -466,7 +472,10 @@ function SessionRow({
             // Logs URL priority: video's logs_url first (richer
             // context — it ties to the recorded run), then the
             // session's own logs_url (covers sessions without video).
-            const logsUrl = videoLink?.logsUrl ?? sessionLogsUrl;
+            // Wrap in safeHref so a malformed/dangerous-scheme URL
+            // can't reach the DOM (defense in depth alongside the
+            // form/server validators).
+            const logsUrl = safeHref(videoLink?.logsUrl ?? sessionLogsUrl);
             if (!logsUrl) return null;
             return (
               <a

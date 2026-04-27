@@ -1,5 +1,6 @@
-import { ExternalLink, Settings } from "lucide-react";
+import { ExternalLink, Settings, AlertTriangle } from "lucide-react";
 import { Card } from "@/components/ui/card";
+import { safeHref } from "@/lib/url-safe";
 
 /**
  * Shared iframe view for the mitigation / loot sub-tabs.
@@ -32,6 +33,26 @@ export function SheetIframe({
     );
   }
 
+  // Defense in depth: refuse to render the iframe (and external link)
+  // unless the URL uses http/https. Prevents `data:` / `javascript:` /
+  // `file:` URIs from ever reaching iframe.src or anchor.href.
+  const safeUrl = safeHref(url);
+  if (!safeUrl) {
+    return (
+      <Card className="glass flex flex-col items-center gap-3 border-amber-400/40 p-10 text-center">
+        <span className="grid h-10 w-10 place-items-center rounded-md border border-amber-400/40 bg-amber-400/10 text-amber-300">
+          <AlertTriangle className="h-4 w-4" aria-hidden />
+        </span>
+        <p className="font-display text-foreground text-sm">
+          {title}: 安全でない URL のため表示できません
+        </p>
+        <p className="text-muted-foreground max-w-md text-xs leading-relaxed">
+          http:// または https:// で始まる URL をコンテンツ編集ダイアログから設定してください。
+        </p>
+      </Card>
+    );
+  }
+
   return (
     /* Full-bleed wrapper: negative margin breaks out of the parent's
        max-w-6xl container so the iframe can use the full viewport width.
@@ -46,7 +67,7 @@ export function SheetIframe({
     >
       <div className="flex items-center justify-end px-4 sm:px-6">
         <a
-          href={url}
+          href={safeUrl}
           target="_blank"
           rel="noopener noreferrer"
           className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 rounded-md border border-border/60 px-3 py-1.5 font-mono text-[11px] tracking-[0.18em] uppercase transition-colors hover:border-[var(--neon-cyan)]/60"
@@ -61,7 +82,7 @@ export function SheetIframe({
               content is 80% — fits more spreadsheet rows on screen. */}
           <div className="relative h-[calc(100dvh-22rem)] min-h-[420px] w-full overflow-hidden bg-white">
             <iframe
-              src={url}
+              src={safeUrl}
               title={title}
               className="absolute top-0 left-0 origin-top-left border-0"
               style={{

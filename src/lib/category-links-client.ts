@@ -6,6 +6,7 @@ import { isClearTitle } from "@/lib/clear-detection";
 import { maybeSetFirstClearAt } from "@/lib/categories-client";
 import { enrichVideoLinkDuration } from "@/lib/server/categories-actions";
 import { parseYouTubeId } from "@/lib/youtube";
+import { isSafeUrl } from "@/lib/url-safe";
 import {
   rowToCategoryLink,
   type CategoryLink,
@@ -29,6 +30,23 @@ export async function createCategoryLink(input: {
   description?: string;
   logsUrl?: string | null;
 }): Promise<{ ok: true; link: CategoryLink } | { ok: false; reason: string }> {
+  // Defense in depth: the link form already validates client-side, but
+  // the anon key is exposed in the browser bundle so a direct caller
+  // could bypass. Reject obviously-bad URLs (non-http(s) schemes etc).
+  if (!isSafeUrl(input.url)) {
+    return {
+      ok: false,
+      reason:
+        "URL は http:// または https:// で始まる正しい URL である必要があります",
+    };
+  }
+  if (input.logsUrl && !isSafeUrl(input.logsUrl)) {
+    return {
+      ok: false,
+      reason:
+        "Logs URL は http:// または https:// で始まる正しい URL である必要があります",
+    };
+  }
   const supabase = createClient();
   // New entries appended to end (max sort_order + 1 within this category+kind).
   const { data: maxRow } = await supabase
@@ -102,6 +120,26 @@ export async function updateCategoryLink(
     logs_url: string | null;
   }>,
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
+  // Defense in depth: same scheme check as createCategoryLink. Only
+  // validate fields that are actually present in the patch.
+  if (patch.url !== undefined && !isSafeUrl(patch.url)) {
+    return {
+      ok: false,
+      reason:
+        "URL は http:// または https:// で始まる正しい URL である必要があります",
+    };
+  }
+  if (
+    patch.logs_url !== undefined &&
+    patch.logs_url !== null &&
+    !isSafeUrl(patch.logs_url)
+  ) {
+    return {
+      ok: false,
+      reason:
+        "Logs URL は http:// または https:// で始まる正しい URL である必要があります",
+    };
+  }
   const supabase = createClient();
   // If the patch touches `logs_url`, also flip the source to 'manual'
   // so it isn't wiped by the next FFLogs auto-sync.

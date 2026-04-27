@@ -29,6 +29,7 @@ import {
   type ScheduleSessionMemo,
 } from "@/lib/schedule-memos-client";
 import { setSessionLogsUrl } from "@/lib/server/categories-actions";
+import { safeHref } from "@/lib/url-safe";
 
 /**
  * Click-on-date popover that lets any viewer leave shared memos for a
@@ -627,18 +628,22 @@ function MemoList({
             />
             FFLogs URL
           </div>
-          {currentLogsUrl && (
-            <a
-              href={currentLogsUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-[10px] text-amber-300/85 underline decoration-dotted underline-offset-2 hover:text-amber-300"
-              title="現在の URL を新タブで開く"
-            >
-              <ExternalLink className="h-2.5 w-2.5" aria-hidden />
-              現在の URL を開く
-            </a>
-          )}
+          {(() => {
+            const safeLogsHref = safeHref(currentLogsUrl);
+            if (!safeLogsHref) return null;
+            return (
+              <a
+                href={safeLogsHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-[10px] text-amber-300/85 underline decoration-dotted underline-offset-2 hover:text-amber-300"
+                title="現在の URL を新タブで開く"
+              >
+                <ExternalLink className="h-2.5 w-2.5" aria-hidden />
+                現在の URL を開く
+              </a>
+            );
+          })()}
         </div>
         <input
           value={logsUrlInput}

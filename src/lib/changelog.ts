@@ -19,6 +19,19 @@ export type ReleaseEntry = {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    version: "1.9.12",
+    date: "2026-04-27",
+    notes: [
+      "🔒 セキュリティ強化: 全頁の URL レンダリングに safeHref() ガードを導入 — `javascript:` / `data:` / `file:` 等の危険 scheme が `<a href>` や `<iframe src>` に到達しないように。動画カード / FFLogs リンク / FFLogs 入力 / 軽減・ロット iframe / セッションメモポップオーバーで適用",
+      "🔒 サーバー / API 層も多層防御: `createCategoryLink` / `updateCategoryLink` で URL の scheme + parseability を再検証、`/api/page-title` でも http(s) のみ受理（フォーム検証をバイパスされても DB に危険 URL が入らない）",
+      "📐 コンテンツ → 動画ページの統計バッジが折り返し対応 — モバイルで時計 / クリア日バッジが行を超えても綺麗に整列",
+      "📐 設定ダイアログのモバイル対応改善: 縦の最大高を sm 未満で `80svh`、sm 以上で `70svh` に分岐。短い縦画面のスマホでも内容が見やすく",
+      "📐 設定ダイアログ FFLogs 表示名入力欄: `min-w-[12rem]` を `sm:` 限定にして、狭い画面でフォームが破綻しないように",
+      "📐 出席表のユーザー列: 異常に長い名前を `max-w-[7rem]` + ellipsis で切り詰め、テーブル全体の崩れを防止。フル名はホバーツールチップ + 編集リンクで確認可能",
+      "🚀 YouTube 埋め込み iframe に `referrerPolicy=\"no-referrer\"` + `loading=\"lazy\"` を追加 — ポータル URL が YouTube に Referer として漏れないように、画面外なら遅延読み込みで初期表示も軽量化",
+    ],
+  },
+  {
     version: "1.9.11",
     date: "2026-04-27",
     notes: [

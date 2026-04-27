@@ -8,6 +8,7 @@ import {
   getJapaneseHolidayName,
   isJapaneseHoliday,
 } from "@/lib/japanese-holidays";
+import { safeHref } from "@/lib/url-safe";
 import type { JapaneseHolidaysMap } from "@/lib/japanese-holidays";
 import {
   useRealtimeScheduleMemos,
@@ -209,8 +210,10 @@ function DateChip({
       {(() => {
         // Same priority as schedule-list: video.logs_url first, then
         // session-level fallback. Lets the chip surface a Logs icon
-        // for sessions that have no recorded video.
-        const logsUrl = videoLink?.logsUrl ?? sessionLogsUrl;
+        // for sessions that have no recorded video. safeHref drops
+        // anything that isn't http(s) so a malformed/dangerous URL
+        // can't reach the DOM.
+        const logsUrl = safeHref(videoLink?.logsUrl ?? sessionLogsUrl);
         if (!logsUrl) return null;
         return (
           <a

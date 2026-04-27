@@ -339,7 +339,10 @@ export function SettingsDialog() {
           </div>
         </DialogHeader>
 
-        <div className="flex max-h-[70svh] flex-col gap-5 overflow-y-auto p-5">
+        {/* Responsive viewport cap: shorter phones get more headroom
+            (80svh) while desktop stays at 70svh so the dialog doesn't
+            dominate the viewport on large monitors. */}
+        <div className="flex max-h-[80svh] flex-col gap-5 overflow-y-auto p-5 sm:max-h-[70svh]">
           {/* Schedule URL */}
           <section className="flex flex-col gap-3">
             <header className="flex items-center gap-2 border-b border-border/30 pb-2">
@@ -644,7 +647,9 @@ export function SettingsDialog() {
                   value={fflogsUsername}
                   onChange={(e) => setFflogsUsernameState(e.target.value)}
                   placeholder="例: TaroYamada (display name)"
-                  className="font-mono text-[12px] flex-1 min-w-[12rem]"
+                  // min-w only on sm+ so narrow phones (<640px) don't get
+                  // a 12rem-wide input forced into a tighter row layout.
+                  className="font-mono text-[12px] flex-1 sm:min-w-[12rem]"
                   spellCheck={false}
                   autoComplete="off"
                 />

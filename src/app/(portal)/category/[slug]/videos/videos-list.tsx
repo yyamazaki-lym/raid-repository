@@ -51,6 +51,7 @@ import {
   formatDurationShort,
   formatFirstClear,
 } from "@/lib/duration-format";
+import { safeHref } from "@/lib/url-safe";
 import type { CategoryLink } from "@/lib/supabase/types";
 
 type Props = {
@@ -405,6 +406,11 @@ function VideoCard({
   dragListeners?: ReturnType<typeof useSortable>["listeners"];
 }) {
   const ytId = parseYouTubeId(video.url);
+  // safeHref returns undefined for non-http(s) values, which renders the
+  // anchor as inert (no clickable XSS surface) — defense in depth alongside
+  // the form-level + server-action validators.
+  const videoHref = safeHref(video.url);
+  const logsHref = safeHref(video.logsUrl);
   return (
     <Card className="glass neon-edge group flex flex-col gap-2 overflow-hidden p-0 transition-transform hover:-translate-y-0.5">
       <div className="relative">
@@ -412,7 +418,7 @@ function VideoCard({
           <YouTubePreview id={ytId} url={video.url} title={video.title} />
         ) : (
           <a
-            href={video.url}
+            href={videoHref}
             target="_blank"
             rel="noopener noreferrer"
             className="grid aspect-video place-items-center bg-secondary/30 text-muted-foreground transition-colors hover:bg-secondary/50 hover:text-foreground"
@@ -442,7 +448,7 @@ function VideoCard({
 
       <div className="flex items-start gap-2 px-3 pb-1">
         <a
-          href={video.url}
+          href={videoHref}
           target="_blank"
           rel="noopener noreferrer"
           className="flex-1 break-words font-display text-sm text-foreground transition-colors hover:text-[var(--neon-cyan)]"
@@ -465,11 +471,11 @@ function VideoCard({
           {video.description}
         </p>
       )}
-      {(video.logsUrl || video.durationSeconds !== null) && (
+      {(logsHref || video.durationSeconds !== null) && (
         <div className="flex flex-wrap items-center gap-1.5 px-3">
-          {video.logsUrl && (
+          {logsHref && (
             <a
-              href={video.logsUrl}
+              href={logsHref}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1.5 rounded-sm border border-amber-400/45 bg-amber-400/10 px-2 py-1 font-mono text-[10px] tracking-[0.18em] text-amber-200 uppercase transition-colors hover:bg-amber-400/15 hover:text-amber-100"
@@ -492,7 +498,7 @@ function VideoCard({
         </div>
       )}
       <a
-        href={video.url}
+        href={videoHref}
         target="_blank"
         rel="noopener noreferrer"
         className="flex items-center gap-1 px-3 pb-3 font-mono text-[10px] break-all text-muted-foreground/70 hover:text-foreground/80"
@@ -527,6 +533,10 @@ function YouTubePreview({
           title={title}
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
           allowFullScreen
+          // Tighten the embed: don't leak the portal URL as Referer
+          // (privacy), and lazy-load when off-screen (perf).
+          referrerPolicy="no-referrer"
+          loading="lazy"
           className="absolute inset-0 h-full w-full"
         />
       </div>
