@@ -116,15 +116,18 @@ function DateChip({
   // visual stays calm. Action icons sit at the right edge: a small
   // Film icon links into the matched video card, and a BarChart3
   // icon opens FFLogs when the matched video has logs_url set.
+  // `font-mono` + `leading-none` on every child so all glyphs share
+  // the same baseline / x-height — `font-display` was misaligning
+  // against the default-font 曜 parens.
   return (
     <li
       className={
-        "inline-flex items-center gap-1 rounded-sm border px-1.5 py-0.5 text-[11px] " +
+        "inline-flex items-center gap-1 rounded-sm border px-1.5 py-1 font-mono text-[11px] leading-none " +
         chipColor
       }
       title={tooltip}
     >
-      <span className="font-display tabular-nums">{monthDay}</span>
+      <span className="tabular-nums">{monthDay}</span>
       <span className="text-[10px] opacity-75">（{session.dayOfWeek}）</span>
       {videoLink && (
         <Link

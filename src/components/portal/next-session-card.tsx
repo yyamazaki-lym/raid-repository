@@ -109,12 +109,13 @@ function Frame({
 }) {
   // "today" = active session today: stronger border + glow than the
   // generic "active" upcoming highlight, so when you open the page
-  // your eye lands on it immediately.
+  // your eye lands on it immediately. "active" itself is also
+  // emphasized — the card is the most-actioned thing on the page.
   const toneClass =
     tone === "today"
-      ? "border-[var(--neon-cyan)]/70 bg-[var(--neon-cyan)]/[0.04] shadow-[0_0_36px_-8px_var(--neon-cyan),inset_0_0_20px_-12px_var(--neon-cyan)]"
+      ? "border-[var(--neon-cyan)]/80 bg-[var(--neon-cyan)]/[0.05] shadow-[0_0_42px_-6px_var(--neon-cyan),inset_0_0_24px_-10px_var(--neon-cyan)]"
       : tone === "active"
-        ? "border-[var(--neon-cyan)]/30 shadow-[0_0_24px_-12px_var(--neon-cyan)]"
+        ? "border-[var(--neon-cyan)]/55 shadow-[0_0_32px_-8px_var(--neon-cyan)]"
         : tone === "warn"
           ? "border-destructive/40"
           : "border-border/50";

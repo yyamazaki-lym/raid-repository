@@ -577,7 +577,10 @@ function CollapsibleTemplateRow({
             }
             aria-hidden
           />
-          <p className="truncate font-display text-sm">
+          {/* Plain body font for the sub-label — `font-display` was
+              rendering ASCII lowercase letters in a stylized form that
+              read as uppercase. Body font preserves user-typed casing. */}
+          <p className="truncate text-sm">
             {template.label || (
               <span className="text-muted-foreground/80">通常募集</span>
             )}

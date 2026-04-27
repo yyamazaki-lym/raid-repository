@@ -110,9 +110,11 @@ export function RecruitmentTemplatesButton({ initial, categories }: Props) {
           title={`PT募集文 ${templates.length}件 — クリックで一覧`}
           className={cn(
             "inline-flex h-8 w-8 items-center justify-center rounded-md border transition-colors",
-            templates.length > 0
-              ? "border-[var(--neon-cyan)]/40 bg-[var(--neon-cyan)]/8 text-[var(--neon-cyan)] hover:border-[var(--neon-cyan)]/60 hover:bg-[var(--neon-cyan)]/12"
-              : "border-border/60 text-muted-foreground hover:border-[var(--neon-cyan)]/60 hover:text-foreground",
+            // Muted base — keeps the header palette quiet. Hover / open
+            // states tint cyan so the active state is unambiguous.
+            "border-border/60 text-muted-foreground",
+            "hover:border-[var(--neon-cyan)]/60 hover:text-foreground",
+            "data-[popup-open]:border-[var(--neon-cyan)]/60 data-[popup-open]:bg-[var(--neon-cyan)]/12 data-[popup-open]:text-[var(--neon-cyan)]",
           )}
         >
           <ClipboardCopy className="h-4 w-4" aria-hidden />
@@ -254,16 +256,16 @@ export function RecruitmentTopCopyButton({
         aria-label={`「${displayLabel(top)}」を募集文としてコピー`}
         title={`${displayLabel(top)} をコピー`}
         className={
-          "inline-flex h-6 items-center gap-1 rounded-sm border px-1.5 font-mono text-[10px] tracking-widest uppercase transition-colors " +
+          "inline-flex h-7 items-center gap-1.5 rounded-md border px-2.5 font-mono text-[11px] tracking-widest uppercase transition-colors " +
           (justCopied
             ? "border-emerald-400/60 bg-emerald-400/15 text-emerald-300 shadow-[0_0_10px_-4px_color-mix(in_oklch,oklch(0.78_0.18_155)_50%,transparent)]"
             : "border-[var(--neon-cyan)]/40 bg-[var(--neon-cyan)]/10 text-[var(--neon-cyan)] hover:border-[var(--neon-cyan)]/60 hover:bg-[var(--neon-cyan)]/15")
         }
       >
         {justCopied ? (
-          <Check className="h-3 w-3" aria-hidden />
+          <Check className="h-3.5 w-3.5" aria-hidden />
         ) : (
-          <ClipboardCopy className="h-3 w-3" aria-hidden />
+          <ClipboardCopy className="h-3.5 w-3.5" aria-hidden />
         )}
         {justCopied ? "コピー済" : "募集"}
       </button>

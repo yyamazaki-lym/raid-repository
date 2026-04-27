@@ -19,6 +19,17 @@ export type ReleaseEntry = {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    version: "1.3.6",
+    date: "2026-04-27",
+    notes: [
+      "募集文ボタン（ヘッダーの ◧）はデフォルト muted 表示、ホバー時とドロップダウンを開いた時のみ cyan",
+      "次回開催日カードの「募集」ボタンを少し大きく + 上下空白を統一 (h-7 / px-2.5)",
+      "簡易過去日程チップを font-mono + leading-none に統一して文字の上下ずれを解消",
+      "次回開催日カードの外枠を強調（border 不透明度 + glow を強化）",
+      "マクロページ募集テンプレートのサブラベルが大文字風に見える問題を修正（font-display → 通常フォント）",
+    ],
+  },
+  {
     version: "1.3.5",
     date: "2026-04-27",
     notes: [
