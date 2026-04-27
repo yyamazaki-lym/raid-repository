@@ -339,9 +339,11 @@ function UserHeaderCell({
   return (
     <th
       scope="col"
-      // min-w stabilizes the layout; max-w on the name (above) caps long
-      // names so they ellipsize instead of pushing other columns offscreen.
-      className="min-w-[5rem] px-2 py-2 text-center font-mono whitespace-nowrap"
+      // 1.9.29: px-2 → px-1.5 to bring the first member column closer
+      // to the 日程 column. min-w-[5rem] still stabilizes per-column
+      // width; max-w on the name (above) caps long names so they
+      // ellipsize instead of pushing other columns offscreen.
+      className="min-w-[5rem] px-1.5 py-2 text-center font-mono whitespace-nowrap"
     >
       <span className="inline-flex items-center gap-1">
         {nameNode}
@@ -480,14 +482,14 @@ function SessionRow({
     >
       <th
         scope="row"
-        // 1.9.28: min-w fixes the 日程 column at a consistent width so
-        // the upcoming + past tables render with the user-name columns
-        // starting at the same horizontal position. Tighter pr-2 +
-        // gap-1.5 reduces the visible whitespace between the rightmost
-        // icon and the first user-name column.
-        className="pl-3 pr-2 py-2 align-middle font-mono text-[12px] tabular-nums whitespace-nowrap text-foreground min-w-[15rem]"
+        // 1.9.29: tighten 日程 column right-padding (pr-2 → pr-1) and
+        // internal gap (gap-1.5 → gap-1). Cell auto-sizes to widest
+        // row content; with both tables sharing identical icon slot
+        // reservations the auto-size is consistent across them, so
+        // the explicit `min-w-[15rem]` is no longer needed.
+        className="pl-3 pr-1 py-2 align-middle font-mono text-[12px] tabular-nums whitespace-nowrap text-foreground"
       >
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1">
           {/* Date label color priority:
                 1. Holiday → red glow
                 2. DECISION → cyan glow + bold
@@ -623,7 +625,7 @@ function SessionRow({
           </span>
         );
         return (
-          <td key={u.userId} className="px-2 py-2 align-middle text-center">
+          <td key={u.userId} className="px-1.5 py-2 align-middle text-center">
             {editUrl ? (
               // ボタン化 (1.9.13): その場でインライン iframe ダイアログを
               // 開いて出欠を編集。タブ移動なしで戻れる。hover の scale +

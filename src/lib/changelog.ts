@@ -19,6 +19,14 @@ export type ReleaseEntry = {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    version: "1.9.29",
+    date: "2026-04-28",
+    notes: [
+      "📐 過去の簡易チップ: 日付の縦中央揃えを修正 — `leading-tight` (1.25 × 11px = 13.75px line-box) → `leading-6` (24px line-box) に変更。chip 高さ h-6 (24px) と line-box 高さが一致し、ブラウザの自然な baseline-center で glyphs が確実に中央に配置される (システム日本語フォント fallback でも安定)",
+      "📐 詳細日程テーブル: 日程列とメンバー列の間隔を縮小 — 日程列 `pr-2 → pr-1`、メンバー列 `px-2 → px-1.5`、日程列内 `gap-1.5 → gap-1`。両テーブル共通のアイコン slot 予約により auto-size が一致するため、`min-w-[15rem]` も撤廃 (タイトな自然サイズ)",
+    ],
+  },
+  {
     version: "1.9.28",
     date: "2026-04-28",
     notes: [

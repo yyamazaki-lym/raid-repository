@@ -161,11 +161,14 @@ function DateChip({
   return (
     <li
       className={
-        // 1.9.28: dropped `leading-none` — it was collapsing the
-        // line-box, leaving asymmetric vertical whitespace inside
-        // the h-6 chip. With `items-center` + default `leading-tight`
-        // the date glyphs sit at the chip's optical center.
-        "inline-flex h-6 items-center gap-1 rounded-md border px-2 text-[11px] tabular-nums leading-tight transition-colors " +
+        // 1.9.29: use `leading-6` (24px) so the line-box exactly fills
+        // the h-6 (24px) box. The browser's natural baseline-center
+        // within the line-box puts the glyphs at the chip's optical
+        // center reliably across system Japanese font fallbacks. Earlier
+        // tries with `leading-none` (collapsed) and `leading-tight`
+        // (1.25× = 13.75px line-box in a 24px box) both left visible
+        // top/bottom asymmetry.
+        "inline-flex h-6 items-center gap-1 rounded-md border px-2 text-[11px] tabular-nums leading-6 transition-colors " +
         chipColor
       }
       title={tooltip}
