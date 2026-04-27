@@ -19,6 +19,16 @@ export type ReleaseEntry = {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    version: "1.9.28",
+    date: "2026-04-28",
+    notes: [
+      "📐 過去の簡易チップ: 日付テキストを縦中央揃えに修正。`leading-none` を `leading-tight` に変更し、line-box を自然サイズに戻して h-6 chip 内の上下余白を均等化",
+      "📐 日程列を upcoming / past 両テーブルで同じ幅に固定 — `min-w-[15rem]` で最小幅を担保。これでメンバー名列の開始位置が両テーブル間で揃う",
+      "📐 日程列内のアイコン間隔を `gap-2` → `gap-1.5`、cell padding を `pr-1` → `pr-2` に微調整。Logs アイコンと隣のメンバー名列との間が空きすぎていた問題を緩和",
+      "🔄 スケジュール表の凡例 (Legend) 行の右端に更新ボタンを追加。クリックで `router.refresh()` を呼び、サーバ側 `fetchSchedule()` が再実行されて最新の出欠状況に反映 (`useTransition` でスピナー表示)",
+    ],
+  },
+  {
     version: "1.9.27",
     date: "2026-04-28",
     notes: [

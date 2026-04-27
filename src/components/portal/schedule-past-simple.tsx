@@ -161,13 +161,11 @@ function DateChip({
   return (
     <li
       className={
-        // Chip dimensions: fixed h-6 + leading-none + items-center.
-        // CJK glyph metrics on the system fallback font don't
-        // line up with JetBrains Mono so we drop `font-mono` here
-        // (the date is mostly digits + 曜 + parens — Geist Sans
-        // renders all of them with consistent vertical metrics).
-        // tabular-nums keeps the digits aligned across rows.
-        "inline-flex h-6 items-center gap-1 rounded-md border px-2 text-[11px] tabular-nums leading-none transition-colors " +
+        // 1.9.28: dropped `leading-none` — it was collapsing the
+        // line-box, leaving asymmetric vertical whitespace inside
+        // the h-6 chip. With `items-center` + default `leading-tight`
+        // the date glyphs sit at the chip's optical center.
+        "inline-flex h-6 items-center gap-1 rounded-md border px-2 text-[11px] tabular-nums leading-tight transition-colors " +
         chipColor
       }
       title={tooltip}

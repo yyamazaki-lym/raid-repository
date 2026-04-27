@@ -1,6 +1,14 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useRef, useState, useTransition } from "react";
 import Link from "next/link";
-import { CalendarX2, AlertTriangle, BarChart3, Film } from "lucide-react";
+import { useRouter } from "next/navigation";
+import {
+  CalendarX2,
+  AlertTriangle,
+  BarChart3,
+  Film,
+  Loader2,
+  RefreshCw,
+} from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { CommentPopover } from "./comment-popover";
 import { ScheduleEditFrameDialog } from "./schedule-edit-frame-dialog";
@@ -110,6 +118,18 @@ export function ScheduleList({
     setEditTarget({ url, title });
   }, []);
 
+  // 1.9.28: refresh button next to the legend lets the user pull the
+  // latest schedule data on demand (no need to reload the page).
+  // useTransition gives the spinner a `pending` flag so the button can
+  // show a loader while server-side data is being re-fetched.
+  const router = useRouter();
+  const [refreshing, startRefresh] = useTransition();
+  const refreshSchedule = useCallback(() => {
+    startRefresh(() => {
+      router.refresh();
+    });
+  }, [router]);
+
   if (!result.ok) {
     return (
       <Card className="glass flex flex-col items-center gap-3 border-destructive/40 p-8 text-center">
@@ -186,7 +206,11 @@ export function ScheduleList({
     <div className="flex flex-col gap-4">
       {/* Upcoming sessions — primary card. Layout untouched. */}
       <Card className="glass overflow-hidden p-0">
-        <Legend hasUltimateClear={hasUltimateClear} />
+        <Legend
+          hasUltimateClear={hasUltimateClear}
+          onRefresh={refreshSchedule}
+          refreshing={refreshing}
+        />
         <div className="overflow-x-auto">
           <table className="w-full min-w-[640px] border-collapse text-left text-sm">
             {tableHead(true)}
@@ -456,9 +480,14 @@ function SessionRow({
     >
       <th
         scope="row"
-        className="pl-3 pr-1 py-2 align-middle font-mono text-[12px] tabular-nums whitespace-nowrap text-foreground"
+        // 1.9.28: min-w fixes the 日程 column at a consistent width so
+        // the upcoming + past tables render with the user-name columns
+        // starting at the same horizontal position. Tighter pr-2 +
+        // gap-1.5 reduces the visible whitespace between the rightmost
+        // icon and the first user-name column.
+        className="pl-3 pr-2 py-2 align-middle font-mono text-[12px] tabular-nums whitespace-nowrap text-foreground min-w-[15rem]"
       >
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           {/* Date label color priority:
                 1. Holiday → red glow
                 2. DECISION → cyan glow + bold
@@ -622,7 +651,17 @@ function SessionRow({
   );
 }
 
-function Legend({ hasUltimateClear = false }: { hasUltimateClear?: boolean }) {
+function Legend({
+  hasUltimateClear = false,
+  onRefresh,
+  refreshing = false,
+}: {
+  hasUltimateClear?: boolean;
+  /** Called when the user clicks the refresh button at the right end. */
+  onRefresh?: () => void;
+  /** Show a spinning loader while the refresh transition is pending. */
+  refreshing?: boolean;
+}) {
   // 1.9.16: ラベル "MEMBERS" デフォルト、絶クリア達成済みの固定なら
   // "LEGENDS" 表記に昇格 (称号として)。
   const label = hasUltimateClear ? "Legends" : "Members";
@@ -656,6 +695,26 @@ function Legend({ hasUltimateClear = false }: { hasUltimateClear?: boolean }) {
           <span className="text-[11px] text-muted-foreground">{l.label}</span>
         </span>
       ))}
+      {/* 1.9.28: 右端に更新ボタン。クリックで router.refresh() →
+          サーバーサイド fetchSchedule() が再実行され、最新の出欠
+          状況がページ全体に反映される。useTransition の pending を
+          受けてスピナー表示。 */}
+      {onRefresh && (
+        <button
+          type="button"
+          onClick={onRefresh}
+          disabled={refreshing}
+          aria-label="スケジュールを最新の状態に更新"
+          title="スケジュールを最新の状態に更新"
+          className="ml-auto inline-flex h-6 w-6 items-center justify-center rounded-md border border-border/50 bg-background/30 text-muted-foreground transition-all hover:border-[var(--neon-cyan)]/60 hover:bg-[var(--neon-cyan)]/8 hover:text-[var(--neon-cyan)] disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {refreshing ? (
+            <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
+          ) : (
+            <RefreshCw className="h-3 w-3" aria-hidden />
+          )}
+        </button>
+      )}
     </div>
   );
 }
