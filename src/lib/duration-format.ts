@@ -35,14 +35,17 @@ export function formatDurationLong(seconds: number): string {
 
 /**
  * Format the first-clear timestamp:
- *   "short" → `12/15` (M/D in local TZ)
+ *   "short" → `25/12/15` (YY/M/D in local TZ — 1.9.17 added the year
+ *               so users can disambiguate clears from different years
+ *               at a glance, since the badge is otherwise tiny)
  *   "long"  → `2025-12-15 (月)` for hover tooltip
  */
 export function formatFirstClear(iso: string, mode: "short" | "long"): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
   if (mode === "short") {
-    return `${d.getMonth() + 1}/${d.getDate()}`;
+    const yy = String(d.getFullYear()).slice(-2);
+    return `${yy}/${d.getMonth() + 1}/${d.getDate()}`;
   }
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");

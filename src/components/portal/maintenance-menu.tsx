@@ -160,10 +160,6 @@ export function MaintenanceMenu() {
           return;
         }
         if (kind === "firstClearForce") {
-          const ok = window.confirm(
-            "全コンテンツのクリア日時を動画から再計算します。\n手動で編集した値も上書きされます。続行しますか？",
-          );
-          if (!ok) return;
           const r = await backfillFirstClearFromExistingVideos({
             overwrite: true,
           });
@@ -236,13 +232,17 @@ export function MaintenanceMenu() {
           </DropdownMenuItem>
           <DropdownMenuItem
             onClick={() => run("firstClearForce")}
-            className="flex cursor-pointer items-start gap-2 text-rose-200 focus:text-rose-100"
+            className="flex cursor-pointer items-start gap-2"
           >
-            <Trophy className="mt-0.5 h-3.5 w-3.5 shrink-0 text-rose-300" aria-hidden />
+            <Trophy
+              className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-300"
+              aria-hidden
+            />
             <div className="flex flex-col gap-0.5">
-              <span className="text-sm">クリア日時を強制再計算</span>
-              <span className="text-[10px] text-rose-300/70 leading-snug">
-                全コンテンツ再計算（手動編集も上書き）
+              <span className="text-sm">クリア日時 / クリア時間の取得</span>
+              <span className="text-[10px] text-muted-foreground leading-snug">
+                各コンテンツのクリア日と「クリアまでの累計時間」を再計算
+                (手動設定値も上書きされます)
               </span>
             </div>
           </DropdownMenuItem>
@@ -447,7 +447,6 @@ function VideoMetaPanel({
 
 function FirstClearPanel({
   data,
-  force,
 }: {
   data: BackfillResult;
   force: boolean;
@@ -455,7 +454,7 @@ function FirstClearPanel({
   return (
     <>
       <p className="mb-2 pr-6 font-mono text-[10px] tracking-[0.2em] text-muted-foreground uppercase">
-        クリア日時 — {force ? "強制再計算" : "設定"}結果
+        クリア日時 / クリア時間 取得結果
       </p>
       {data.filled === 0 ? (
         <p className="text-[11px] text-muted-foreground">
@@ -465,12 +464,47 @@ function FirstClearPanel({
         <ul className="flex flex-col gap-1.5 text-[11px]">
           {data.filledDetails.map((d, i) => (
             <li key={i} className="flex items-start gap-2 leading-relaxed">
-              <Trophy className="mt-0.5 h-3 w-3 shrink-0 text-amber-300" aria-hidden />
+              <Trophy
+                className="mt-0.5 h-3 w-3 shrink-0 text-amber-300"
+                aria-hidden
+              />
               <div className="flex-1">
                 <span className="font-mono text-foreground">{d.slug}</span>
                 <span className="ml-2 text-amber-200">
                   {formatLong(d.isoDate)}
                 </span>
+                <span
+                  className={
+                    "ml-2 inline-flex items-center rounded-sm border px-1 text-[9px] font-mono tracking-[0.18em] uppercase " +
+                    (d.source === "title"
+                      ? "border-emerald-400/45 bg-emerald-400/10 text-emerald-200"
+                      : "border-zinc-400/45 bg-zinc-400/10 text-zinc-300")
+                  }
+                  title={
+                    d.source === "title"
+                      ? "動画タイトルから抽出した日付"
+                      : "投稿日時を使用 (タイトルに日付なし)"
+                  }
+                >
+                  {d.source === "title"
+                    ? "title"
+                    : d.source === "posted_at"
+                      ? "posted"
+                      : "created"}
+                </span>
+                {d.timeToClearSeconds > 0 && (
+                  <span className="ml-2 inline-flex items-center rounded-sm border border-violet-400/45 bg-violet-400/10 px-1 text-[9px] font-mono tracking-[0.18em] uppercase text-violet-200">
+                    {formatHM(d.timeToClearSeconds)}
+                  </span>
+                )}
+                {d.excludedForeignCount > 0 && (
+                  <span
+                    className="ml-2 inline-flex items-center rounded-sm border border-amber-400/45 bg-amber-400/10 px-1 text-[9px] font-mono tracking-[0.18em] uppercase text-amber-200"
+                    title={`他コンテンツの動画を ${d.excludedForeignCount} 件除外`}
+                  >
+                    -{d.excludedForeignCount} 異
+                  </span>
+                )}
                 <p className="mt-0.5 text-muted-foreground/80 break-words">
                   {d.videoTitle}
                 </p>
@@ -486,6 +520,15 @@ function FirstClearPanel({
       )}
     </>
   );
+}
+
+function formatHM(seconds: number): string {
+  const totalMinutes = Math.floor(seconds / 60);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (hours === 0) return `${minutes}m`;
+  if (minutes === 0) return `${hours}h`;
+  return `${hours}h${minutes}m`;
 }
 
 // Removed in 1.9.16: SnapshotPanel + DiagnosePanel + PostedAtPanel +

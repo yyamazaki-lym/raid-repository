@@ -29,6 +29,8 @@ import {
   isClearTitleForCategory,
   isFirstFloorPracticeTitle,
 } from "@/lib/clear-detection";
+import { videoBelongsToCategory } from "@/lib/content-groups";
+import { extractDateFromTitle } from "@/lib/title-date";
 import { createClient } from "@/lib/supabase/server";
 
 export type ImportNowItem = {
@@ -103,7 +105,28 @@ export type BackfillResult = {
   /** Categories with no clear-flagged video — left as NULL. */
   noMatch: number;
   /** Per-category detail for any categories that were updated. */
-  filledDetails: Array<{ slug: string; isoDate: string; videoTitle: string }>;
+  filledDetails: Array<{
+    slug: string;
+    isoDate: string;
+    videoTitle: string;
+    /**
+     * 1.9.17: indicate where the timestamp came from (title-extracted
+     * date vs `posted_at` / `created_at`) so the user can see at a
+     * glance whether the clear-day matches their video title.
+     */
+    source: "title" | "posted_at" | "created_at";
+    /**
+     * Sum of `duration_seconds` for videos in this category between
+     * the practice start (1層練習 for Savage; earliest video for
+     * Ultimate / 4-person) and the chosen clear timestamp. Same
+     * semantics as `fetchTimeToClearByCategory` but computed inline
+     * during the backfill so the user sees the resulting time on the
+     * action result panel without round-tripping to the cards.
+     */
+    timeToClearSeconds: number;
+    /** Number of foreign-content videos filtered out for this category. */
+    excludedForeignCount: number;
+  }>;
 };
 
 /**
@@ -151,28 +174,68 @@ export async function backfillFirstClearFromExistingVideos(
       alreadySet += 1;
       continue;
     }
-    // Pull all videos in the category. Order by COALESCE(posted_at,
-    // created_at) ASC so the first clear-titled match is the earliest.
-    // Supabase's PostgREST doesn't support COALESCE in `order`, so we
-    // sort client-side after the fetch.
+    // Pull all videos in the category. Need duration_seconds so we
+    // can compute time-to-clear inline (1.9.17 — used to be a
+    // separate render-time aggregation, now surfaced in the action
+    // result panel).
     const { data: videos, error: vErr } = await supabase
       .from("category_links")
-      .select("title, posted_at, created_at")
+      .select("title, posted_at, created_at, duration_seconds")
       .eq("category_id", cat.id)
       .eq("kind", "video");
     if (vErr || !videos) {
       noMatch += 1;
       continue;
     }
-    const sorted = [...videos].sort((a, b) => {
-      const ad = (a.posted_at as string | null) ?? (a.created_at as string);
-      const bd = (b.posted_at as string | null) ?? (b.created_at as string);
-      return ad.localeCompare(bd);
+    const categoryName = (cat as { name?: string | null }).name ?? null;
+
+    // 1.9.17: filter out videos that classify to a *different* content
+    // group than the category. Catches LH-級 videos accidentally added
+    // to the Cruiser category etc. Unclassified-on-either-side stays
+    // in (lenient — generic titles like "練習会" don't get rejected).
+    let excludedForeignCount = 0;
+    const inCategory = videos.filter((v) => {
+      if (videoBelongsToCategory(v.title as string, categoryName)) return true;
+      excludedForeignCount += 1;
+      return false;
     });
+
+    // 1.9.17: prefer title-extracted date over `posted_at`. Posts often
+    // happen days after the actual raid, so titles like "【2024 08 22】
+    // 4層クリア" are a far better signal than the upload time. Fall
+    // back to posted_at → created_at for titles without a parseable date.
+    type SortedVideo = (typeof inCategory)[number] & {
+      effectiveIso: string;
+      source: "title" | "posted_at" | "created_at";
+    };
+    const annotated: SortedVideo[] = inCategory.map((v) => {
+      const postedAt = (v.posted_at as string | null) ?? null;
+      const createdAt = v.created_at as string;
+      const fallbackYear = postedAt
+        ? new Date(postedAt).getUTCFullYear()
+        : new Date(createdAt).getUTCFullYear();
+      const titleD = extractDateFromTitle(v.title as string, fallbackYear);
+      if (titleD) {
+        // 22:00 JST = 13:00 UTC — pick a stable raid-hour so two
+        // videos posted on the same day sort consistently against
+        // posted_at fallbacks.
+        const iso = new Date(
+          Date.UTC(titleD.y, titleD.m - 1, titleD.d, 13, 0, 0),
+        ).toISOString();
+        return { ...v, effectiveIso: iso, source: "title" as const };
+      }
+      if (postedAt) {
+        return { ...v, effectiveIso: postedAt, source: "posted_at" as const };
+      }
+      return { ...v, effectiveIso: createdAt, source: "created_at" as const };
+    });
+    const sorted = [...annotated].sort((a, b) =>
+      a.effectiveIso.localeCompare(b.effectiveIso),
+    );
+
     // 1.9.16: tier-aware clear detection. Savage tiers require both a
     // final-floor marker (e.g. "4 層" / "M4S") AND the clear keyword,
     // so a 1-3 層クリア video doesn't prematurely set the date.
-    const categoryName = (cat as { name?: string | null }).name ?? null;
     const firstClear = sorted.find((v) =>
       isClearTitleForCategory(v.title as string, categoryName),
     );
@@ -180,9 +243,7 @@ export async function backfillFirstClearFromExistingVideos(
       noMatch += 1;
       continue;
     }
-    const iso =
-      ((firstClear.posted_at as string | null) ??
-        (firstClear.created_at as string));
+    const iso = firstClear.effectiveIso;
 
     // In overwrite mode, skip if the new computed value matches the
     // existing one (avoids reporting "filled" for no-change rows).
@@ -203,10 +264,32 @@ export async function backfillFirstClearFromExistingVideos(
       continue;
     }
     filled += 1;
+
+    // Compute time-to-clear inline using the same in-category sorted
+    // list (skips foreign-content videos automatically).
+    //   Savage: window starts at the earliest 1-層 practice title.
+    //   Ultimate / 4-person: window starts at the earliest video.
+    const firstFloorVideo = sorted.find((v) =>
+      isFirstFloorPracticeTitle(v.title as string, categoryName),
+    );
+    const startIso =
+      firstFloorVideo?.effectiveIso ?? sorted[0]?.effectiveIso ?? iso;
+    let timeToClearSeconds = 0;
+    for (const v of sorted) {
+      const sec = v.duration_seconds as number | null;
+      if (typeof sec !== "number" || sec <= 0) continue;
+      if (v.effectiveIso < startIso) continue;
+      if (v.effectiveIso > iso) continue;
+      timeToClearSeconds += sec;
+    }
+
     filledDetails.push({
       slug: cat.slug as string,
       isoDate: iso,
       videoTitle: firstClear.title as string,
+      source: firstClear.source,
+      timeToClearSeconds,
+      excludedForeignCount,
     });
   }
 
@@ -763,12 +846,17 @@ export async function fetchPracticeSecondsByCategory(): Promise<
  * "Time to clear" per category — sum of `duration_seconds` between the
  * tier's "1層練習" start and the first-clear timestamp.
  *
- * 1.9.16 changed the start point:
+ * 1.9.17 added:
+ *   - Title-date preferred over posted_at (raid date is a better
+ *     signal than upload date)
+ *   - Foreign-content videos filtered out via the bilingual classifier
+ *     (e.g. an LH-級 video misfiled in the Cruiser category)
+ *
+ * 1.9.16 had introduced the tier-aware start point:
  *   - Savage tiers: the earliest video whose title matches
  *     `isFirstFloorPracticeTitle` (e.g. "1層", "P1S", "M1S", "M5S").
- *     If none found, falls back to the earliest video — same as before.
- *   - Ultimate / 4-person: there's no notion of "first floor", so the
- *     start point stays at the earliest video (legacy behavior).
+ *     If none found, falls back to the earliest video.
+ *   - Ultimate / 4-person: starts at the earliest video.
  *
  * Returns an empty map for categories without `first_clear_at` set.
  */
@@ -777,7 +865,7 @@ export async function fetchTimeToClearByCategory(): Promise<
 > {
   const supabase = await createClient();
   // Pull categories that have a first_clear_at + their `name` (needed
-  // to apply tier-aware first-floor detection).
+  // for tier-aware detection + foreign-video filtering).
   const { data: cats, error: catErr } = await supabase
     .from("categories")
     .select("id, name, first_clear_at")
@@ -797,8 +885,6 @@ export async function fetchTimeToClearByCategory(): Promise<
     ]),
   );
 
-  // Pull title alongside duration / dates so we can detect first-floor
-  // practice titles for the tier-aware start point.
   const { data: videos, error: vErr } = await supabase
     .from("category_links")
     .select("category_id, title, duration_seconds, posted_at, created_at")
@@ -806,21 +892,38 @@ export async function fetchTimeToClearByCategory(): Promise<
     .eq("kind", "video");
   if (vErr || !videos) return {};
 
-  // Group videos by category, sorted by posted_at/created_at ascending,
-  // so we can scan for the earliest first-floor practice title.
-  const byCategory = new Map<string, typeof videos>();
-  for (const v of videos) {
+  // Annotate each video with its effective ISO timestamp (title >
+  // posted_at > created_at) so subsequent comparisons all use the
+  // raid date instead of the upload time.
+  const annotated = videos.map((v) => {
+    const postedAt = (v.posted_at as string | null) ?? null;
+    const createdAt = v.created_at as string;
+    const fallbackYear = postedAt
+      ? new Date(postedAt).getUTCFullYear()
+      : new Date(createdAt).getUTCFullYear();
+    const titleD = extractDateFromTitle(v.title as string, fallbackYear);
+    const effectiveIso = titleD
+      ? new Date(
+          Date.UTC(titleD.y, titleD.m - 1, titleD.d, 13, 0, 0),
+        ).toISOString()
+      : (postedAt ?? createdAt);
+    return { ...v, effectiveIso };
+  });
+
+  // Group + filter foreign-content videos per category, then sort by
+  // effective ISO ascending.
+  const byCategory = new Map<string, typeof annotated>();
+  for (const v of annotated) {
     const cid = v.category_id as string;
+    const info = catInfoMap.get(cid);
+    if (!info) continue;
+    if (!videoBelongsToCategory(v.title as string, info.name)) continue;
     const list = byCategory.get(cid);
     if (list) list.push(v);
     else byCategory.set(cid, [v]);
   }
   for (const list of byCategory.values()) {
-    list.sort((a, b) => {
-      const ad = (a.posted_at as string | null) ?? (a.created_at as string);
-      const bd = (b.posted_at as string | null) ?? (b.created_at as string);
-      return ad.localeCompare(bd);
-    });
+    list.sort((a, b) => a.effectiveIso.localeCompare(b.effectiveIso));
   }
 
   const totals: Record<string, number> = {};
@@ -830,29 +933,17 @@ export async function fetchTimeToClearByCategory(): Promise<
     const list = byCategory.get(cid);
     if (!list || list.length === 0) continue;
 
-    // Determine the practice start cutoff.
-    //   Savage: earliest "1層 / P1S / M1S / M5S / Floor 1" title.
-    //   Ultimate / 4-person: earliest video (isFirstFloorPracticeTitle
-    //     returns false, so the .find() falls through to undefined).
     const firstFloorVideo = list.find((v) =>
       isFirstFloorPracticeTitle(v.title as string, info.name),
     );
-    const startAt =
-      (firstFloorVideo
-        ? ((firstFloorVideo.posted_at as string | null) ??
-          (firstFloorVideo.created_at as string))
-        : ((list[0]!.posted_at as string | null) ??
-          (list[0]!.created_at as string)));
+    const startAt = firstFloorVideo?.effectiveIso ?? list[0]!.effectiveIso;
 
     let total = 0;
     for (const v of list) {
       const sec = v.duration_seconds as number | null;
       if (typeof sec !== "number" || sec <= 0) continue;
-      const at =
-        (v.posted_at as string | null) ?? (v.created_at as string);
-      // Window: [startAt, firstClearAt] inclusive on both ends.
-      if (at < startAt) continue;
-      if (at > info.firstClearAt) continue;
+      if (v.effectiveIso < startAt) continue;
+      if (v.effectiveIso > info.firstClearAt) continue;
       total += sec;
     }
     if (total > 0) totals[cid] = total;

@@ -1,6 +1,8 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { fetchAppSetting } from "@/lib/supabase/app-settings";
+import { findContentGroups } from "@/lib/content-groups";
+import { extractDateFromTitle } from "@/lib/title-date";
 import { getValidFflogsOAuthToken } from "./fflogs-oauth";
 
 /**
@@ -1061,79 +1063,9 @@ export async function linkFflogsReportsToVideos(): Promise<FflogsLinkResult> {
 
 type SupabaseLike = Awaited<ReturnType<typeof createClient>>;
 
-/**
- * Extract a calendar date (Y/M/D) from a video title. Most users
- * include the raid date in the title (例: 【2026 04 01】, 「2026/04/01」,
- * "20260401", "4月1日", "4/1" etc) — this is FAR more reliable than
- * YouTube's posted_at (the upload time, often days late) for date-
- * matching against FFLogs report startTimes.
- *
- * Year-explicit formats (YYYY MM DD) are matched first since they're
- * unambiguous. Year-less formats fall back to `fallbackYear` (typically
- * the year of the video's posted_at or the current year).
- *
- * Returns null when no date can be inferred from the title.
- */
-function extractDateFromTitle(
-  title: string | null | undefined,
-  fallbackYear?: number,
-): { y: number; m: number; d: number } | null {
-  if (!title) return null;
-  const validate = (y: number, m: number, d: number) =>
-    m >= 1 && m <= 12 && d >= 1 && d <= 31;
-
-  // Year-explicit: 「2026 04 01」「2026/04/01」「2026-04-01」「2026年4月1日」
-  const yexp = title.match(
-    /(20\d{2})[\s年\/\-.](\d{1,2})[\s月\/\-.](\d{1,2})/,
-  );
-  if (yexp) {
-    const y = parseInt(yexp[1]!, 10);
-    const m = parseInt(yexp[2]!, 10);
-    const d = parseInt(yexp[3]!, 10);
-    if (validate(y, m, d)) return { y, m, d };
-  }
-  // Compact 8-digit: "20260401"
-  const c8 = title.match(/(?<!\d)(20\d{2})(\d{2})(\d{2})(?!\d)/);
-  if (c8) {
-    const y = parseInt(c8[1]!, 10);
-    const m = parseInt(c8[2]!, 10);
-    const d = parseInt(c8[3]!, 10);
-    if (validate(y, m, d)) return { y, m, d };
-  }
-
-  // Year-less patterns need context.
-  if (fallbackYear === undefined) return null;
-
-  // Japanese: 「4月1日」「04月01日」
-  const jp = title.match(/(?<!\d)(\d{1,2})月\s*(\d{1,2})日/);
-  if (jp) {
-    const m = parseInt(jp[1]!, 10);
-    const d = parseInt(jp[2]!, 10);
-    if (validate(fallbackYear, m, d)) return { y: fallbackYear, m, d };
-  }
-
-  // Slash: "4/1" or "04/01" — boundary ensures we don't match parts of
-  // longer numeric tokens like "1080/120".
-  const slash = title.match(/(?<![\d\/])(\d{1,2})\/(\d{1,2})(?![\d\/])/);
-  if (slash) {
-    const m = parseInt(slash[1]!, 10);
-    const d = parseInt(slash[2]!, 10);
-    if (validate(fallbackYear, m, d)) return { y: fallbackYear, m, d };
-  }
-
-  // Compact 4-digit: "0401" — risky, only in bracket / start-of-token
-  // context to avoid matching things like "1080" (resolution) or other
-  // 4-digit numbers. Look for one wrapped in 【...】 or [...] or as a
-  // standalone "20XX/YYMMDD" prefix.
-  const c4Bracket = title.match(/[【\[]\s*(\d{2})(\d{2})\s*[】\]]/);
-  if (c4Bracket) {
-    const m = parseInt(c4Bracket[1]!, 10);
-    const d = parseInt(c4Bracket[2]!, 10);
-    if (validate(fallbackYear, m, d)) return { y: fallbackYear, m, d };
-  }
-
-  return null;
-}
+// 1.9.17: extractDateFromTitle moved to `@/lib/title-date.ts`. The
+// import at the top of this file replaces the previous local copy so
+// backfill / discord-import can reuse the same regex suite.
 
 /** Convert a Unix ms epoch to a JST calendar date. */
 function jstCalendarDate(ms: number): { y: number; m: number; d: number } {
@@ -1156,138 +1088,11 @@ function daysApart(
   return Math.abs(aMs - bMs) / (24 * 60 * 60 * 1000);
 }
 
-/**
- * Content groups — each row groups together all the synonyms (Japanese
- * + English + abbreviation) for one specific FFXIV raid / tier.
- * `findContentGroups()` returns the set of group ids that text matches;
- * if both sides match disjoint groups, the content is confirmed
- * different.
- *
- * Order matters: longer/more-specific keywords listed first within
- * each group, and `findContentGroups` matches longest-first so that
- * "ライトヘビー級" doesn't accidentally also match the more general
- * "ヘビー級" group.
- */
-const CONTENT_GROUPS: Array<string[]> = [
-  // 0: Ultimate Alexander (TEA)
-  ["絶アレキサンダー", "epic of alexander", "ultimate alexander", "tea"],
-  // 1: Ultimate Bahamut (UCOB)
-  ["絶バハムート", "unending coil of bahamut", "ucob"],
-  // 2: Ultimate Ultima Weapon (UWU)
-  ["絶アルテマウェポン", "ultima weapon ultimate", "uwu"],
-  // 3: Ultimate Dragonsong (DSR)
-  ["絶ニーズヘッグ", "dragonsong's reprise", "dragonsong reprise", "dsr"],
-  // 4: Ultimate Omega Protocol (TOP)
-  ["絶オメガ検証戦", "絶オメガ検証", "the omega protocol", "top "],
-  // 5: Ultimate Futures Rewritten (FRU)
-  ["絶エンドシンガー", "futures rewritten", "fru "],
-  // 6: Ultimate Zodiark
-  ["絶ゾディアーク", "ultimate zodiark"],
-  // 7: Asphodelos (P1-4S, EW Tier 1)
-  ["アスフォデロス", "asphodelos", "p1s", "p2s", "p3s", "p4s"],
-  // 8: Abyssos (P5-8S, EW Tier 2)
-  ["アビス", "abyssos", "p5s", "p6s", "p7s", "p8s"],
-  // 9: Anabaseios (P9-12S, EW Tier 3)
-  ["アナバセイオス", "anabaseios", "p9s", "p10s", "p11s", "p12s"],
-  // 10: Arcadion AAC Light-heavyweight Tier (DT M1-4S)
-  [
-    "至天の座アルカディア：ライトヘビー級",
-    "アルカディア：ライトヘビー級",
-    "ライトヘビー級",
-    "aac light-heavyweight",
-    "light-heavyweight",
-    "lightheavyweight",
-    "m1s",
-    "m2s",
-    "m3s",
-    "m4s",
-  ],
-  // 11: Arcadion AAC Cruiserweight Tier (DT M5-8S, expected)
-  [
-    "至天の座アルカディア：クルーザー級",
-    "アルカディア：クルーザー級",
-    "クルーザー級",
-    "aac cruiserweight",
-    "cruiserweight",
-    "m5s",
-    "m6s",
-    "m7s",
-    "m8s",
-  ],
-  // 12: Arcadion AAC Heavyweight Tier
-  [
-    "至天の座アルカディア：ヘビー級",
-    "アルカディア：ヘビー級",
-    "aac heavyweight",
-    "heavyweight",
-  ],
-  // 13: Arcadion AAC Welterweight Tier
-  [
-    "至天の座アルカディア：ウェルター級",
-    "アルカディア：ウェルター級",
-    "ウェルター級",
-    "aac welterweight",
-    "welterweight",
-  ],
-  // 14: Criterion / Variant dungeons
-  ["criterion", "variant", "criterion dungeon"],
-];
-
-/**
- * Normalize a content string for keyword matching:
- *   - lowercase
- *   - fullwidth → halfwidth ASCII (digits + alphabet)
- *   - fullwidth colon `：` → halfwidth `:`
- *   - assorted fullwidth brackets / spaces → halfwidth
- *
- * 1.9.13 BUG FIX: the seed schema names categories with halfwidth colon
- * (`アルカディア:ヘビー級`) but the keyword list uses fullwidth `：`. Without
- * normalization, the classifier missed seed-data categories entirely and
- * fell through to the bigram fallback, which often returned 0.5
- * (ambiguous) — letting cross-content reports on the same day be matched.
- */
-function normalizeContentText(text: string): string {
-  return (
-    text
-      .toLowerCase()
-      // Fullwidth letters / digits → ASCII (U+FF21..U+FF5A → U+0041..U+007A)
-      .replace(/[！-～]/g, (ch) =>
-        String.fromCharCode(ch.charCodeAt(0) - 0xfee0),
-      )
-      // Common Japanese punctuation that varies between sources
-      .replace(/[　]/g, " ") // ideographic space
-      .replace(/[・]/g, " ") // katakana middle dot
-  );
-}
-
-/**
- * Returns the set of content group ids that the given text matches.
- * Uses longest-match-wins masking so a more specific keyword (e.g.
- * "ライトヘビー級") prevents a more general one (e.g. "ヘビー級") from
- * spuriously matching the same characters.
- */
-function findContentGroups(text: string): Set<number> {
-  const norm = normalizeContentText(text);
-  // Build (group, kw) tuples sorted by kw length desc.
-  const all: Array<{ group: number; kw: string }> = [];
-  for (let i = 0; i < CONTENT_GROUPS.length; i++) {
-    for (const kw of CONTENT_GROUPS[i]!) {
-      all.push({ group: i, kw: normalizeContentText(kw) });
-    }
-  }
-  all.sort((a, b) => b.kw.length - a.kw.length);
-  const groups = new Set<number>();
-  let masked = norm;
-  for (const { group, kw } of all) {
-    if (masked.includes(kw)) {
-      groups.add(group);
-      // Mask out the matched substring so shorter sub-keywords don't
-      // also match the same chars.
-      masked = masked.split(kw).join(" ".repeat(kw.length));
-    }
-  }
-  return groups;
-}
+// 1.9.17: CONTENT_GROUPS / normalizeContentText / findContentGroups
+// were moved to `@/lib/content-groups.ts` so backfill / discord-import
+// can reuse the classifier for video-vs-category filtering. Re-import
+// the same names here so the rest of this file's references work
+// without changing call sites.
 
 /**
  * Content-similarity check between a video's content (category name /
