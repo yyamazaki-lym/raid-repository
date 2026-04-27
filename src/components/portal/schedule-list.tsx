@@ -81,6 +81,11 @@ type Props = {
    * video for that session.
    */
   sessionLogsByDate?: Record<string, string>;
+  /**
+   * True if the group has at least one Ultimate cleared. Drives the
+   * legend label MEMBERS → LEGENDS swap (1.9.16). Default false.
+   */
+  hasUltimateClear?: boolean;
 };
 
 export function ScheduleList({
@@ -91,6 +96,7 @@ export function ScheduleList({
   holidays,
   sessionVideoLinks,
   sessionLogsByDate,
+  hasUltimateClear = false,
 }: Props) {
   // 1.9.13: replace `target="_blank"` external nav with an in-portal
   // iframe overlay. Tapping a username header or per-session attendance
@@ -180,7 +186,7 @@ export function ScheduleList({
     <div className="flex flex-col gap-4">
       {/* Upcoming sessions — primary card. Layout untouched. */}
       <Card className="glass overflow-hidden p-0">
-        <Legend />
+        <Legend hasUltimateClear={hasUltimateClear} />
         <div className="overflow-x-auto">
           <table className="w-full min-w-[640px] border-collapse text-left text-sm">
             {tableHead(true)}
@@ -608,11 +614,26 @@ function SessionRow({
   );
 }
 
-function Legend() {
+function Legend({ hasUltimateClear = false }: { hasUltimateClear?: boolean }) {
+  // 1.9.16: ラベル "MEMBERS" デフォルト、絶クリア達成済みの固定なら
+  // "LEGENDS" 表記に昇格 (称号として)。
+  const label = hasUltimateClear ? "Legends" : "Members";
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-border/40 bg-secondary/15 px-3 py-2 text-[11px]">
-      <span className="font-mono text-[10px] tracking-[0.22em] text-muted-foreground uppercase">
-        Legends
+      <span
+        className={
+          "font-mono text-[10px] tracking-[0.22em] uppercase " +
+          (hasUltimateClear
+            ? "text-amber-300"
+            : "text-muted-foreground")
+        }
+        title={
+          hasUltimateClear
+            ? "絶コンテンツをクリアした「Legends」称号で表示中"
+            : "通常のメンバー表示 (絶クリアでLegends称号に切替)"
+        }
+      >
+        {label}
       </span>
       {ATT_LEGEND.map((l) => (
         <span key={l.symbol} className="inline-flex items-center gap-1.5">

@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { isClearTitle } from "@/lib/clear-detection";
+import { isClearTitleForCategory } from "@/lib/clear-detection";
 import { maybeSetFirstClearAt } from "@/lib/categories-client";
 import { enrichVideoLinkDuration } from "@/lib/server/categories-actions";
 import { parseYouTubeId } from "@/lib/youtube";
@@ -79,19 +79,26 @@ export async function createCategoryLink(input: {
   }
   const link = rowToCategoryLink(data as CategoryLinkRow);
 
-  // Auto-detect first clear: if this is a video and the title contains
-  // a clear keyword, fill `first_clear_at` (only if currently NULL).
-  // Prefer `postedAt` (YouTube upload date / Discord message time) over
-  // `createdAt` (row insert time) since the former actually reflects
-  // when the clear happened — users sometimes register old clear videos
-  // weeks later, in which case `createdAt` would be misleading.
-  // Best-effort — don't fail the whole insert if this side-effect errors.
-  if (link.kind === "video" && isClearTitle(link.title)) {
+  // Auto-detect first clear: if this is a video and the title is a
+  // category-appropriate clear (1.9.16), fill `first_clear_at` (only
+  // if currently NULL). Savage tiers require "4 層" + クリアキーワード
+  // — earlier-floor clears no longer prematurely set the date.
+  // Best-effort — don't fail the insert if this side-effect errors.
+  if (link.kind === "video") {
     try {
-      await maybeSetFirstClearAt(
-        link.categoryId,
-        link.postedAt ?? link.createdAt,
-      );
+      // Need the category name for tier-aware detection; fetch it.
+      const { data: catRow } = await supabase
+        .from("categories")
+        .select("name")
+        .eq("id", link.categoryId)
+        .maybeSingle();
+      const categoryName = (catRow as { name?: string | null } | null)?.name;
+      if (isClearTitleForCategory(link.title, categoryName)) {
+        await maybeSetFirstClearAt(
+          link.categoryId,
+          link.postedAt ?? link.createdAt,
+        );
+      }
     } catch (e) {
       console.warn("[category-links-client] first-clear auto-set failed:", e);
     }

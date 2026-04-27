@@ -19,6 +19,17 @@ export type ReleaseEntry = {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    version: "1.9.16",
+    date: "2026-04-27",
+    notes: [
+      "🧹 メンテナンスメニュー整理 — 「出席状況を即時スナップショット」「1件テスト (診断用)」を削除 (前者は cron 自動運用、後者は使い道不明)。「動画時間取得 (YouTube)」と「投稿日時を Discord から取得」を 1 ボタン「動画時間 + 投稿日時を取得」に統合し、結果も 1 つのパネルに合体。「クリア日時を設定 (NULL のみ)」を削除し「クリア日時を強制再計算」に一本化",
+      "🏆 4層クリア検出を導入 — 零式 (Savage) コンテンツでは「4 層」「四層」「P4S/P8S/P12S」「M4S/M8S」のいずれか + 「クリア」 / `clear` キーワードの両方を要求。1〜3 層クリア動画では first_clear_at が立たないように。絶 (Ultimate) と 4 人用 (Criterion / Variant) は単純なクリアキーワードで OK (従来通り)",
+      "📋 スケジュール表のメンバーリスト ヘッダーを `Members` (デフォルト) / `Legends` (絶クリア達成済) に切替。グループに「絶〇〇」コンテンツが status=クリア済 で登録されていれば称号として LEGENDS 表記",
+      "⏱ 「クリアまでの累計時間」ロジック改修 — 従来は最古の動画 〜 クリア日 で集計だったが、零式は「1層練習」動画 (タイトルに「1層」/「P1S」/「M1S」/「M5S」等を含む最初の動画) を起点に。絶 / 4人用は従来通り最古の動画 〜 クリア日 で集計",
+      "🔧 backfill / discord-import / createCategoryLink の first-clear 検出を全部新ロジック (`isClearTitleForCategory`) に移行。category 名を渡すことで tier に応じた判定を実施",
+    ],
+  },
+  {
     version: "1.9.15",
     date: "2026-04-27",
     notes: [

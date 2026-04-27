@@ -54,6 +54,12 @@ type Props = {
    * when no matching video exists.
    */
   sessionLogsByDate?: Record<string, string>;
+  /**
+   * True if the group has at least one cleared Ultimate (`絶...` +
+   * status = `クリア済`). Drives the schedule-legend label MEMBERS
+   * → LEGENDS swap (1.9.16).
+   */
+  hasUltimateClear?: boolean;
 };
 
 export function SchedulePageBody({
@@ -65,6 +71,7 @@ export function SchedulePageBody({
   recruitmentCategories = [],
   sessionVideoLinks,
   sessionLogsByDate,
+  hasUltimateClear = false,
 }: Props) {
   // Two-toggle state: simple list (top) and detailed table (bottom).
   // Both default to off; pinned values persist via localStorage.
@@ -187,6 +194,7 @@ export function SchedulePageBody({
         holidays={holidays}
         sessionVideoLinks={sessionVideoLinks}
         sessionLogsByDate={sessionLogsByDate}
+        hasUltimateClear={hasUltimateClear}
       />
     </div>
   );

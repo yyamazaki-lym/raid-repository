@@ -5,7 +5,7 @@ import {
   fetchYouTubeMeta,
   pmap,
 } from "@/lib/server/youtube-duration";
-import { isClearTitle } from "@/lib/clear-detection";
+import { isClearTitleForCategory } from "@/lib/clear-detection";
 import {
   rowToCategory,
   type Category,
@@ -295,7 +295,8 @@ async function importChannel(
   if (kind === "video" && !cat.firstClearAt && inserted > 0) {
     let earliestClearPostedAt: string | null = null;
     for (const e of enriched) {
-      if (!isClearTitle(e.title)) continue;
+      // 1.9.16: tier-aware — Savage requires "4 層" + clear keyword.
+      if (!isClearTitleForCategory(e.title, cat.name)) continue;
       if (
         earliestClearPostedAt === null ||
         e.postedAt < earliestClearPostedAt

@@ -25,7 +25,10 @@ import {
   pmap,
   type YouTubeMetaDebug,
 } from "./youtube-duration";
-import { isClearTitle } from "@/lib/clear-detection";
+import {
+  isClearTitleForCategory,
+  isFirstFloorPracticeTitle,
+} from "@/lib/clear-detection";
 import { createClient } from "@/lib/supabase/server";
 
 export type ImportNowItem = {
@@ -126,7 +129,7 @@ export async function backfillFirstClearFromExistingVideos(
 
   const { data: cats, error: catErr } = await supabase
     .from("categories")
-    .select("id, slug, first_clear_at");
+    .select("id, slug, name, first_clear_at");
   if (catErr || !cats) {
     return {
       ok: false,
@@ -166,7 +169,13 @@ export async function backfillFirstClearFromExistingVideos(
       const bd = (b.posted_at as string | null) ?? (b.created_at as string);
       return ad.localeCompare(bd);
     });
-    const firstClear = sorted.find((v) => isClearTitle(v.title as string));
+    // 1.9.16: tier-aware clear detection. Savage tiers require both a
+    // final-floor marker (e.g. "4 層" / "M4S") AND the clear keyword,
+    // so a 1-3 層クリア video doesn't prematurely set the date.
+    const categoryName = (cat as { name?: string | null }).name ?? null;
+    const firstClear = sorted.find((v) =>
+      isClearTitleForCategory(v.title as string, categoryName),
+    );
     if (!firstClear) {
       noMatch += 1;
       continue;
@@ -751,13 +760,15 @@ export async function fetchPracticeSecondsByCategory(): Promise<
 }
 
 /**
- * "Time to clear" per category — sum of `duration_seconds` for all
- * videos in that category whose `posted_at` (or `created_at` fallback)
- * is on-or-before the category's `first_clear_at`.
+ * "Time to clear" per category — sum of `duration_seconds` between the
+ * tier's "1層練習" start and the first-clear timestamp.
  *
- * Conceptually: "how much footage did the group accumulate from start
- * of practice up to the clear?" Useful as a parallel to total practice
- * time — the "until clear" partial.
+ * 1.9.16 changed the start point:
+ *   - Savage tiers: the earliest video whose title matches
+ *     `isFirstFloorPracticeTitle` (e.g. "1層", "P1S", "M1S", "M5S").
+ *     If none found, falls back to the earliest video — same as before.
+ *   - Ultimate / 4-person: there's no notion of "first floor", so the
+ *     start point stays at the earliest video (legacy behavior).
  *
  * Returns an empty map for categories without `first_clear_at` set.
  */
@@ -765,39 +776,86 @@ export async function fetchTimeToClearByCategory(): Promise<
   Record<string, number>
 > {
   const supabase = await createClient();
-  // Pull the categories that have a first_clear_at, plus all their
-  // videos with non-null durations. Doing this in two queries + JS
-  // aggregation keeps RLS-safe and avoids needing a custom RPC.
+  // Pull categories that have a first_clear_at + their `name` (needed
+  // to apply tier-aware first-floor detection).
   const { data: cats, error: catErr } = await supabase
     .from("categories")
-    .select("id, first_clear_at")
+    .select("id, name, first_clear_at")
     .not("first_clear_at", "is", null);
   if (catErr || !cats || cats.length === 0) return {};
   const catIds = cats.map((c) => c.id as string);
-  const firstClearMap = new Map<string, string>(
-    cats.map((c) => [c.id as string, c.first_clear_at as string]),
+  const catInfoMap = new Map<
+    string,
+    { name: string | null; firstClearAt: string }
+  >(
+    cats.map((c) => [
+      c.id as string,
+      {
+        name: (c as { name?: string | null }).name ?? null,
+        firstClearAt: c.first_clear_at as string,
+      },
+    ]),
   );
 
+  // Pull title alongside duration / dates so we can detect first-floor
+  // practice titles for the tier-aware start point.
   const { data: videos, error: vErr } = await supabase
     .from("category_links")
-    .select("category_id, duration_seconds, posted_at, created_at")
+    .select("category_id, title, duration_seconds, posted_at, created_at")
     .in("category_id", catIds)
-    .eq("kind", "video")
-    .not("duration_seconds", "is", null);
+    .eq("kind", "video");
   if (vErr || !videos) return {};
 
-  const totals: Record<string, number> = {};
+  // Group videos by category, sorted by posted_at/created_at ascending,
+  // so we can scan for the earliest first-floor practice title.
+  const byCategory = new Map<string, typeof videos>();
   for (const v of videos) {
     const cid = v.category_id as string;
-    const fc = firstClearMap.get(cid);
-    if (!fc) continue;
-    const sec = v.duration_seconds as number | null;
-    if (typeof sec !== "number" || sec <= 0) continue;
-    const at =
-      (v.posted_at as string | null) ?? (v.created_at as string);
-    // Inclusive cutoff — a video posted on the clear day itself counts.
-    if (at > fc) continue;
-    totals[cid] = (totals[cid] ?? 0) + sec;
+    const list = byCategory.get(cid);
+    if (list) list.push(v);
+    else byCategory.set(cid, [v]);
+  }
+  for (const list of byCategory.values()) {
+    list.sort((a, b) => {
+      const ad = (a.posted_at as string | null) ?? (a.created_at as string);
+      const bd = (b.posted_at as string | null) ?? (b.created_at as string);
+      return ad.localeCompare(bd);
+    });
+  }
+
+  const totals: Record<string, number> = {};
+  for (const cid of catIds) {
+    const info = catInfoMap.get(cid);
+    if (!info) continue;
+    const list = byCategory.get(cid);
+    if (!list || list.length === 0) continue;
+
+    // Determine the practice start cutoff.
+    //   Savage: earliest "1層 / P1S / M1S / M5S / Floor 1" title.
+    //   Ultimate / 4-person: earliest video (isFirstFloorPracticeTitle
+    //     returns false, so the .find() falls through to undefined).
+    const firstFloorVideo = list.find((v) =>
+      isFirstFloorPracticeTitle(v.title as string, info.name),
+    );
+    const startAt =
+      (firstFloorVideo
+        ? ((firstFloorVideo.posted_at as string | null) ??
+          (firstFloorVideo.created_at as string))
+        : ((list[0]!.posted_at as string | null) ??
+          (list[0]!.created_at as string)));
+
+    let total = 0;
+    for (const v of list) {
+      const sec = v.duration_seconds as number | null;
+      if (typeof sec !== "number" || sec <= 0) continue;
+      const at =
+        (v.posted_at as string | null) ?? (v.created_at as string);
+      // Window: [startAt, firstClearAt] inclusive on both ends.
+      if (at < startAt) continue;
+      if (at > info.firstClearAt) continue;
+      total += sec;
+    }
+    if (total > 0) totals[cid] = total;
   }
   return totals;
 }

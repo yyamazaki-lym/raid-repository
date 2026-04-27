@@ -51,6 +51,13 @@ export default async function SchedulePage() {
   const recruitmentCategoryOptions = categoriesResult.ok
     ? categoriesResult.categories.map((c) => ({ id: c.id, name: c.name }))
     : [];
+  // 1.9.16: schedule legend label switches MEMBERS → LEGENDS only when
+  // the group has at least one cleared Ultimate (絶◯◯ + status=クリア済).
+  const hasUltimateClear = categoriesResult.ok
+    ? categoriesResult.categories.some(
+        (c) => c.name.startsWith("絶") && c.status === "クリア済",
+      )
+    : false;
   // Build the date-→-video map from the actual session list so the
   // 36h window matching can pick the right video for each session
   // (vs. the older naive "same JST day" approach which missed videos
@@ -77,6 +84,7 @@ export default async function SchedulePage() {
       recruitmentCategories={recruitmentCategoryOptions}
       sessionVideoLinks={sessionVideoLinks}
       sessionLogsByDate={sessionLogsByDate}
+      hasUltimateClear={hasUltimateClear}
     />
   );
 }

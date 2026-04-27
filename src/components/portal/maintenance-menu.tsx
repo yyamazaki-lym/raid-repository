@@ -4,11 +4,8 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   Cloud,
-  Clock,
-  Camera,
   Loader2,
   Settings2,
-  Stethoscope,
   Timer,
   Trophy,
   X,
@@ -29,14 +26,10 @@ import {
   backfillFirstClearFromExistingVideos,
   backfillPostedAtFromDiscordChannels,
   backfillVideoDurations,
-  diagnoseYouTubeUrl,
   importDiscordNow,
-  snapshotScheduleNow,
   type BackfillResult,
   type DurationBackfillResult,
   type ImportNowItem,
-  type ScheduleSnapshotResult,
-  type YouTubeDiagnosticResult,
 } from "@/lib/server/categories-actions";
 
 // Inline type since "use server" modules can't re-export pure types.
@@ -58,30 +51,29 @@ type PostedAtBackfillResult = {
 };
 
 /**
- * Single dropdown that consolidates the three rarely-used maintenance
- * actions (Discord import, video-duration backfill, first-clear backfill)
- * behind one ⚙ button — they were previously laid out side-by-side and
- * cluttering the categories header.
+ * Maintenance dropdown — gives the user one-click access to the
+ * less-frequent operations:
+ *   - Discord 取り込み (latest links from each channel)
+ *   - 動画メタデータ取得 (YouTube duration + posted_at via YouTube
+ *     and Discord, run as a single combined action)
+ *   - クリア日時を強制再計算 (rebuilds from current videos, overwrites)
  *
- * Each action displays its result in a shared popup region below the menu
- * button, with click-outside-to-dismiss and an explicit ✕ close.
+ * 1.9.16: removed snapshot trigger (auto-runs daily; manual was a
+ * mistake), the NULL-only firstClear action (always overwrite now —
+ * simpler), and the per-URL diagnose tester (rarely useful).
  */
-type ActionKind =
-  | "discord"
-  | "durations"
-  | "postedAt"
-  | "firstClear"
-  | "firstClearForce"
-  | "snapshot"
-  | "diagnose";
+type ActionKind = "discord" | "videoMeta" | "firstClearForce";
 
 type Result =
   | { kind: "discord"; data: { items: ImportNowItem[] } }
-  | { kind: "durations"; data: DurationBackfillResult }
-  | { kind: "postedAt"; data: PostedAtBackfillResult }
-  | { kind: "firstClear"; data: BackfillResult; force: boolean }
-  | { kind: "snapshot"; data: ScheduleSnapshotResult }
-  | { kind: "diagnose"; data: YouTubeDiagnosticResult };
+  | {
+      kind: "videoMeta";
+      data: {
+        durations: DurationBackfillResult;
+        postedAt: PostedAtBackfillResult;
+      };
+    }
+  | { kind: "firstClear"; data: BackfillResult; force: boolean };
 
 export function MaintenanceMenu() {
   const router = useRouter();
@@ -132,92 +124,62 @@ export function MaintenanceMenu() {
           router.refresh();
           return;
         }
-        if (kind === "durations") {
-          const r = await backfillVideoDurations();
-          if (!r.ok) {
-            toast.error("動画時間取得失敗: " + (r.reason ?? "unknown"));
+        if (kind === "videoMeta") {
+          // 1.9.16 統合アクション: YouTube から duration / uploadDate を
+          // 取得 → そのあと Discord メッセージから posted_at を埋める。
+          // 旧 "durations" + "postedAt" を 1 ボタン化。
+          const dur = await backfillVideoDurations();
+          if (!dur.ok) {
+            toast.error("動画時間取得失敗: " + (dur.reason ?? "unknown"));
             return;
           }
+          const posted = await backfillPostedAtFromDiscordChannels();
+          if (!posted.ok) {
+            toast.error("投稿日時取得失敗: " + (posted.reason ?? "unknown"));
+            // duration の結果は表示する
+            setResult({
+              kind: "videoMeta",
+              data: { durations: dur, postedAt: posted },
+            });
+            return;
+          }
+          const summaryParts: string[] = [];
+          if (dur.filled > 0) summaryParts.push(`動画時間 ${dur.filled} 件`);
+          if (posted.updated > 0)
+            summaryParts.push(`投稿日時 ${posted.updated} 件`);
           toast.success(
-            r.filled > 0
-              ? `${r.filled} 件の動画時間を取得`
-              : r.scanned === 0
-                ? "未取得の動画なし"
-                : `更新なし (YouTube 以外: ${r.skippedNonYoutube})`,
+            summaryParts.length > 0
+              ? summaryParts.join(" / ") + " を取得"
+              : "更新なし",
           );
-          setResult({ kind: "durations", data: r });
+          setResult({
+            kind: "videoMeta",
+            data: { durations: dur, postedAt: posted },
+          });
           router.refresh();
           return;
         }
-        if (kind === "postedAt") {
-          const r = await backfillPostedAtFromDiscordChannels();
-          if (!r.ok) {
-            toast.error("投稿日時取得失敗: " + (r.reason ?? "unknown"));
-            return;
-          }
-          toast.success(
-            r.updated > 0
-              ? `${r.updated} 件の投稿日時を Discord から取得`
-              : r.matched === 0
-                ? "Discord メッセージから一致する URL 検出できず"
-                : `更新なし (すでに設定済み)`,
-          );
-          setResult({ kind: "postedAt", data: r });
-          router.refresh();
-          return;
-        }
-        if (kind === "snapshot") {
-          const r = await snapshotScheduleNow();
-          if (!r.ok) {
-            toast.error("スナップショット失敗: " + (r.reason ?? "unknown"));
-            return;
-          }
-          toast.success(
-            r.scanned > 0
-              ? `${r.scanned} 件のスケジュールを保存（新規 ${r.inserted} / 更新 ${r.updated}）`
-              : "保存対象のセッションなし",
-          );
-          setResult({ kind: "snapshot", data: r });
-          router.refresh();
-          return;
-        }
-        if (kind === "diagnose") {
-          const url = window.prompt(
-            "診断する YouTube URL を入力してください：\n（既存動画の URL をコピペ → 各ステップの結果を表示）",
-            "https://www.youtube.com/watch?v=",
-          );
-          if (!url) return;
-          const r = await diagnoseYouTubeUrl(url);
-          if (r.durationSeconds || r.uploadDate) {
-            toast.success(
-              `取得成功: duration=${r.durationSeconds}s upload=${r.uploadDate?.slice(0, 10)}`,
-            );
-          } else {
-            toast.error("取得失敗 — 詳細はパネルで確認");
-          }
-          setResult({ kind: "diagnose", data: r });
-          return;
-        }
-        // firstClear (NULL only) or firstClearForce
-        const force = kind === "firstClearForce";
-        if (force) {
+        if (kind === "firstClearForce") {
           const ok = window.confirm(
             "全コンテンツのクリア日時を動画から再計算します。\n手動で編集した値も上書きされます。続行しますか？",
           );
           if (!ok) return;
-        }
-        const r = await backfillFirstClearFromExistingVideos({ overwrite: force });
-        if (!r.ok) {
-          toast.error("スキャン失敗: " + (r.reason ?? "unknown"));
+          const r = await backfillFirstClearFromExistingVideos({
+            overwrite: true,
+          });
+          if (!r.ok) {
+            toast.error("スキャン失敗: " + (r.reason ?? "unknown"));
+            return;
+          }
+          toast.success(
+            r.filled > 0
+              ? `${r.filled} コンテンツのクリア日時を再計算`
+              : `更新なし (該当 ${r.noMatch} / 設定済み ${r.alreadySet})`,
+          );
+          setResult({ kind: "firstClear", data: r, force: true });
+          router.refresh();
           return;
         }
-        toast.success(
-          r.filled > 0
-            ? `${r.filled} コンテンツのクリア日時を${force ? "再計算" : "設定"}`
-            : `更新なし (該当 ${r.noMatch} / 設定済み ${r.alreadySet})`,
-        );
-        setResult({ kind: "firstClear", data: r, force });
-        router.refresh();
       } finally {
         setPendingKind(null);
       }
@@ -240,8 +202,8 @@ export function MaintenanceMenu() {
           {pending
             ? pendingKind === "discord"
               ? "取り込み中…"
-              : pendingKind === "durations"
-                ? "時間取得中…"
+              : pendingKind === "videoMeta"
+                ? "メタデータ取得中…"
                 : "再スキャン中…"
             : "メンテナンス"}
         </DropdownMenuTrigger>
@@ -260,38 +222,15 @@ export function MaintenanceMenu() {
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem
-            onClick={() => run("durations")}
+            onClick={() => run("videoMeta")}
             className="flex cursor-pointer items-start gap-2"
           >
             <Timer className="mt-0.5 h-3.5 w-3.5 shrink-0 text-violet-300" aria-hidden />
             <div className="flex flex-col gap-0.5">
-              <span className="text-sm">動画時間 + 投稿日時を取得（YouTube）</span>
+              <span className="text-sm">動画時間 + 投稿日時を取得</span>
               <span className="text-[10px] text-muted-foreground leading-snug">
-                YouTube から duration + uploadDate を一括取得（限定公開は API キー必要）
-              </span>
-            </div>
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={() => run("postedAt")}
-            className="flex cursor-pointer items-start gap-2"
-          >
-            <Clock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-300" aria-hidden />
-            <div className="flex flex-col gap-0.5">
-              <span className="text-sm">投稿日時を Discord から取得</span>
-              <span className="text-[10px] text-muted-foreground leading-snug">
-                各チャンネルの最新メッセージから URL を照合し posted_at を埋める（API キー不要）
-              </span>
-            </div>
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={() => run("firstClear")}
-            className="flex cursor-pointer items-start gap-2"
-          >
-            <Trophy className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-300" aria-hidden />
-            <div className="flex flex-col gap-0.5">
-              <span className="text-sm">クリア日時を設定（NULL のみ）</span>
-              <span className="text-[10px] text-muted-foreground leading-snug">
-                未設定コンテンツに動画タイトルから初クリア日を埋める
+                YouTube から duration / uploadDate を一括取得 +
+                Discord メッセージから posted_at を埋める
               </span>
             </div>
           </DropdownMenuItem>
@@ -303,33 +242,7 @@ export function MaintenanceMenu() {
             <div className="flex flex-col gap-0.5">
               <span className="text-sm">クリア日時を強制再計算</span>
               <span className="text-[10px] text-rose-300/70 leading-snug">
-                既存値を含めて全コンテンツ再計算（手動編集も上書き）
-              </span>
-            </div>
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem
-            onClick={() => run("snapshot")}
-            className="flex cursor-pointer items-start gap-2"
-          >
-            <Camera className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-300" aria-hidden />
-            <div className="flex flex-col gap-0.5">
-              <span className="text-sm">出席状況を即時スナップショット</span>
-              <span className="text-[10px] text-muted-foreground leading-snug">
-                現在の出欠を保存（自動: 毎日 21:50 JST）
-              </span>
-            </div>
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem
-            onClick={() => run("diagnose")}
-            className="flex cursor-pointer items-start gap-2"
-          >
-            <Stethoscope className="mt-0.5 h-3.5 w-3.5 shrink-0 text-zinc-300" aria-hidden />
-            <div className="flex flex-col gap-0.5">
-              <span className="text-sm">1件テスト（診断用）</span>
-              <span className="text-[10px] text-muted-foreground leading-snug">
-                単一 URL を fetch して取得結果＆失敗ステップを表示
+                全コンテンツ再計算（手動編集も上書き）
               </span>
             </div>
           </DropdownMenuItem>
@@ -353,19 +266,15 @@ export function MaintenanceMenu() {
           {result.kind === "discord" && (
             <DiscordPanel items={result.data.items} />
           )}
-          {result.kind === "durations" && (
-            <DurationsPanel data={result.data} />
-          )}
-          {result.kind === "postedAt" && (
-            <PostedAtPanel data={result.data} />
+          {result.kind === "videoMeta" && (
+            <VideoMetaPanel
+              durations={result.data.durations}
+              postedAt={result.data.postedAt}
+            />
           )}
           {result.kind === "firstClear" && (
             <FirstClearPanel data={result.data} force={result.force} />
           )}
-          {result.kind === "snapshot" && (
-            <SnapshotPanel data={result.data} />
-          )}
-          {result.kind === "diagnose" && <DiagnosePanel data={result.data} />}
         </div>
       )}
     </div>
@@ -426,85 +335,108 @@ function describeDiscord(it: ImportNowItem): string {
   return `すべて重複 (${it.duplicates})`;
 }
 
-function DurationsPanel({ data }: { data: DurationBackfillResult }) {
+/**
+ * 1.9.16: durations + postedAt の旧 2 ボタンを統合した結果パネル。
+ * YouTube 取得 → Discord 取得 を順次実行し、両方の結果サマリーを 1
+ * パネルに表示する。
+ */
+function VideoMetaPanel({
+  durations,
+  postedAt,
+}: {
+  durations: DurationBackfillResult;
+  postedAt: PostedAtBackfillResult;
+}) {
   return (
     <>
       <p className="mb-2 pr-6 font-mono text-[10px] tracking-[0.2em] text-muted-foreground uppercase">
-        動画時間 + 投稿日時 — 取得結果
+        動画メタデータ — 取得結果
       </p>
-      <ul className="flex flex-col gap-1 text-[11px] leading-relaxed">
-        <li className="flex items-baseline gap-2">
-          <span className="font-mono text-emerald-300">取得</span>
-          <span className="font-mono text-foreground">{data.filled}</span>
-          <span className="text-muted-foreground">件</span>
-        </li>
-        <li className="flex items-baseline gap-2">
-          <span className="font-mono text-zinc-400">YouTube 以外/取得不可</span>
-          <span className="font-mono text-foreground">
-            {data.skippedNonYoutube}
-          </span>
-        </li>
-        {data.failed > 0 && (
-          <li className="flex items-baseline gap-2">
-            <span className="font-mono text-rose-300">失敗</span>
-            <span className="font-mono text-foreground">{data.failed}</span>
-          </li>
-        )}
-        <li className="mt-1 text-[10px] text-muted-foreground">
-          対象: {data.scanned} 件
-        </li>
-      </ul>
-    </>
-  );
-}
-
-function PostedAtPanel({ data }: { data: PostedAtBackfillResult }) {
-  return (
-    <>
-      <p className="mb-2 pr-6 font-mono text-[10px] tracking-[0.2em] text-muted-foreground uppercase">
-        投稿日時 — Discord 取得結果
-      </p>
-      <ul className="flex flex-col gap-1 text-[11px] leading-relaxed">
-        <li className="flex items-baseline gap-2">
-          <span className="font-mono text-emerald-300">更新</span>
-          <span className="font-mono text-foreground">{data.updated}</span>
-          <span className="text-muted-foreground">件</span>
-        </li>
-        <li className="flex items-baseline gap-2">
-          <span className="font-mono text-zinc-400">URL一致</span>
-          <span className="font-mono text-foreground">{data.matched}</span>
-          <span className="text-muted-foreground">件</span>
-        </li>
-        <li className="text-[10px] text-muted-foreground">
-          スキャン: {data.scannedMessages} メッセージ /{" "}
-          {data.scannedUrls} URL
-        </li>
-      </ul>
-      {data.channels.length > 0 && (
-        <ul className="mt-2 flex flex-col gap-1 text-[10px] leading-relaxed">
-          {data.channels.map((c, i) => (
-            <li
-              key={i}
-              className="flex items-baseline gap-2 rounded-sm border border-border/40 bg-secondary/20 px-2 py-0.5 font-mono"
-            >
-              <span className="text-foreground">
-                {c.categorySlug}/{c.kind}
+      <div className="flex flex-col gap-2 text-[11px] leading-relaxed">
+        <section>
+          <p className="font-mono text-[10px] text-violet-300/85 tracking-[0.18em] uppercase">
+            YouTube (duration / uploadDate)
+          </p>
+          <ul className="mt-0.5 flex flex-col gap-0.5">
+            <li className="flex items-baseline gap-2">
+              <span className="font-mono text-emerald-300">取得</span>
+              <span className="font-mono text-foreground">
+                {durations.filled}
               </span>
-              <span
-                className={c.ok ? "text-emerald-300" : "text-rose-300"}
-              >
-                +{c.updated}
-              </span>
-              <span className="text-muted-foreground">
-                ({c.scanned} msgs)
-              </span>
-              {c.reason && (
-                <span className="text-rose-300">{c.reason}</span>
-              )}
+              <span className="text-muted-foreground">件</span>
             </li>
-          ))}
-        </ul>
-      )}
+            <li className="flex items-baseline gap-2">
+              <span className="font-mono text-zinc-400">
+                YouTube 以外 / 取得不可
+              </span>
+              <span className="font-mono text-foreground">
+                {durations.skippedNonYoutube}
+              </span>
+            </li>
+            {durations.failed > 0 && (
+              <li className="flex items-baseline gap-2">
+                <span className="font-mono text-rose-300">失敗</span>
+                <span className="font-mono text-foreground">
+                  {durations.failed}
+                </span>
+              </li>
+            )}
+            <li className="text-[10px] text-muted-foreground">
+              対象: {durations.scanned} 件
+            </li>
+          </ul>
+        </section>
+        <section>
+          <p className="font-mono text-[10px] text-emerald-300/85 tracking-[0.18em] uppercase">
+            Discord (posted_at)
+          </p>
+          <ul className="mt-0.5 flex flex-col gap-0.5">
+            <li className="flex items-baseline gap-2">
+              <span className="font-mono text-emerald-300">更新</span>
+              <span className="font-mono text-foreground">
+                {postedAt.updated}
+              </span>
+              <span className="text-muted-foreground">件</span>
+            </li>
+            <li className="flex items-baseline gap-2">
+              <span className="font-mono text-zinc-400">URL 一致</span>
+              <span className="font-mono text-foreground">
+                {postedAt.matched}
+              </span>
+              <span className="text-muted-foreground">件</span>
+            </li>
+            <li className="text-[10px] text-muted-foreground">
+              スキャン: {postedAt.scannedMessages} メッセージ /{" "}
+              {postedAt.scannedUrls} URL
+            </li>
+          </ul>
+          {postedAt.channels.length > 0 && (
+            <ul className="mt-1 flex flex-col gap-0.5 text-[10px] leading-relaxed">
+              {postedAt.channels.map((c, i) => (
+                <li
+                  key={i}
+                  className="flex items-baseline gap-2 rounded-sm border border-border/40 bg-secondary/20 px-2 py-0.5 font-mono"
+                >
+                  <span className="text-foreground">
+                    {c.categorySlug}/{c.kind}
+                  </span>
+                  <span
+                    className={c.ok ? "text-emerald-300" : "text-rose-300"}
+                  >
+                    +{c.updated}
+                  </span>
+                  <span className="text-muted-foreground">
+                    ({c.scanned} msgs)
+                  </span>
+                  {c.reason && (
+                    <span className="text-rose-300">{c.reason}</span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </div>
       <p className="mt-2 text-[10px] text-muted-foreground leading-relaxed">
         ⚡ この後「クリア日時を強制再計算」を実行すると、正しい
         posted_at で計算されます
@@ -556,153 +488,11 @@ function FirstClearPanel({
   );
 }
 
-function SnapshotPanel({ data }: { data: ScheduleSnapshotResult }) {
-  return (
-    <>
-      <p className="mb-2 pr-6 font-mono text-[10px] tracking-[0.2em] text-muted-foreground uppercase">
-        スケジュール スナップショット
-      </p>
-      <ul className="flex flex-col gap-1 text-[11px] leading-relaxed">
-        <li className="flex items-baseline gap-2">
-          <span className="font-mono text-emerald-300">新規</span>
-          <span className="font-mono text-foreground">{data.inserted}</span>
-          <span className="text-muted-foreground">件</span>
-        </li>
-        <li className="flex items-baseline gap-2">
-          <span className="font-mono text-cyan-300">更新</span>
-          <span className="font-mono text-foreground">{data.updated}</span>
-          <span className="text-muted-foreground">件</span>
-        </li>
-        <li className="text-[10px] text-muted-foreground">
-          対象: {data.scanned} セッション（character-sheets 上の現在の予定）
-        </li>
-      </ul>
-    </>
-  );
-}
-
-function DiagnosePanel({ data }: { data: YouTubeDiagnosticResult }) {
-  return (
-    <>
-      <p className="mb-2 pr-6 font-mono text-[10px] tracking-[0.2em] text-muted-foreground uppercase">
-        YouTube 診断
-      </p>
-      <p className="mb-2 break-all font-mono text-[10px] text-muted-foreground">
-        {data.url}
-      </p>
-      <ul className="flex flex-col gap-1 text-[11px] leading-relaxed">
-        <li className="flex items-baseline gap-2">
-          <span className="font-mono text-muted-foreground">duration</span>
-          <span className="font-mono text-foreground">
-            {data.durationSeconds === null
-              ? "—"
-              : `${data.durationSeconds}s`}
-          </span>
-        </li>
-        <li className="flex items-baseline gap-2">
-          <span className="font-mono text-muted-foreground">uploadDate</span>
-          <span className="font-mono text-foreground">
-            {data.uploadDate ?? "—"}
-          </span>
-        </li>
-      </ul>
-      <p className="mt-3 mb-1 font-mono text-[10px] tracking-[0.2em] text-muted-foreground uppercase">
-        試行ログ
-      </p>
-      <ul className="flex flex-col gap-1 text-[10px] leading-relaxed">
-        {data.attempts.map((a, i) => (
-          <li
-            key={i}
-            className="rounded-sm border border-border/40 bg-secondary/20 px-2 py-1 font-mono"
-          >
-            <div>
-              <span className="text-muted-foreground">{a.host}</span>
-              <span className="ml-2">
-                status=
-                <span
-                  className={
-                    typeof a.status === "number" && a.status === 200
-                      ? "text-emerald-300"
-                      : "text-rose-300"
-                  }
-                >
-                  {a.status}
-                </span>
-              </span>
-              {a.htmlSize !== null && (
-                <span className="ml-2 text-muted-foreground">
-                  size={a.htmlSize}
-                </span>
-              )}
-              {a.matchedStrategy && (
-                <span className="ml-2 text-emerald-300">
-                  via {a.matchedStrategy}
-                </span>
-              )}
-            </div>
-            <div>
-              length=
-              <span className={a.foundLength ? "text-emerald-300" : "text-rose-300"}>
-                {a.foundLength ? "OK" : "NONE"}
-              </span>
-              <span className="ml-2">
-                upload=
-                <span className={a.foundUpload ? "text-emerald-300" : "text-rose-300"}>
-                  {a.foundUpload ? "OK" : "NONE"}
-                </span>
-              </span>
-            </div>
-            {a.pageMarkers && (
-              <div className="text-muted-foreground break-words">
-                player=
-                <span
-                  className={
-                    a.pageMarkers.hasPlayerResponse
-                      ? "text-emerald-300"
-                      : "text-rose-300"
-                  }
-                >
-                  {a.pageMarkers.hasPlayerResponse ? "Y" : "N"}
-                </span>
-                {" "}
-                ldjson=
-                <span
-                  className={
-                    a.pageMarkers.hasLdJson
-                      ? "text-emerald-300"
-                      : "text-rose-300"
-                  }
-                >
-                  {a.pageMarkers.hasLdJson ? "Y" : "N"}
-                </span>
-                {" "}
-                meta=
-                <span
-                  className={
-                    a.pageMarkers.hasItempropDuration
-                      ? "text-emerald-300"
-                      : "text-rose-300"
-                  }
-                >
-                  {a.pageMarkers.hasItempropDuration ? "Y" : "N"}
-                </span>
-                {a.pageMarkers.hasConsentText && (
-                  <span className="ml-2 text-amber-300">consent!</span>
-                )}
-                {a.pageMarkers.hasSignInWall && (
-                  <span className="ml-2 text-amber-300">signin!</span>
-                )}
-              </div>
-            )}
-            {a.note && (
-              <div className="text-amber-300 break-words">{a.note}</div>
-            )}
-          </li>
-        ))}
-      </ul>
-    </>
-  );
-}
+// Removed in 1.9.16: SnapshotPanel + DiagnosePanel + PostedAtPanel +
+// DurationsPanel. Snapshot trigger and per-URL diagnose tester were
+// never useful in production (auto-cron handles snapshots; the
+// diagnose tester required users to know what they were debugging).
+// Durations / postedAt panels are merged into VideoMetaPanel above.
 
 function formatLong(iso: string): string {
   const d = new Date(iso);
