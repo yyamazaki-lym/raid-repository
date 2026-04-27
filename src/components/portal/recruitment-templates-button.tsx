@@ -105,22 +105,16 @@ export function RecruitmentTemplatesButton({ initial, categories }: Props) {
     <>
       <DropdownMenu>
         <DropdownMenuTrigger
-          aria-label="PT募集文を選択してコピー"
-          title="募集文を選択してコピー"
+          aria-label={`PT募集文を選択してコピー (${templates.length}件)`}
+          title={`PT募集文 ${templates.length}件 — クリックで一覧`}
           className={cn(
-            "inline-flex h-8 items-center justify-center gap-1 rounded-md border px-2 font-mono text-[11px] tracking-widest uppercase transition-colors",
+            "inline-flex h-8 w-8 items-center justify-center rounded-md border transition-colors",
             templates.length > 0
               ? "border-[var(--neon-cyan)]/40 bg-[var(--neon-cyan)]/8 text-[var(--neon-cyan)] hover:border-[var(--neon-cyan)]/60 hover:bg-[var(--neon-cyan)]/12"
               : "border-border/60 text-muted-foreground hover:border-[var(--neon-cyan)]/60 hover:text-foreground",
           )}
         >
-          <ClipboardCopy className="h-3.5 w-3.5" aria-hidden />
-          <span className="hidden sm:inline">募集文</span>
-          {templates.length > 0 && (
-            <span className="font-mono text-[10px] tracking-widest tabular-nums">
-              {templates.length}
-            </span>
-          )}
+          <ClipboardCopy className="h-4 w-4" aria-hidden />
         </DropdownMenuTrigger>
         <DropdownMenuContent
           align="end"

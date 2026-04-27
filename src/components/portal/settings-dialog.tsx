@@ -11,6 +11,7 @@ import {
   Loader2,
   Database,
   FileClock,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -248,26 +249,44 @@ export function SettingsDialog() {
             </div>
 
             <div className="flex flex-col gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={onImport}
-                disabled={importing || !channelId.trim()}
-                className="self-start gap-1.5 font-mono text-[11px] tracking-widest uppercase"
-                title={
-                  !channelId.trim()
-                    ? "チャンネル ID を入力してください（先に保存）"
-                    : "Discord 履歴から過去日程を取り込み"
-                }
-              >
-                {importing ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
-                ) : (
-                  <Cloud className="h-3.5 w-3.5" aria-hidden />
-                )}
-                {importing ? "取り込み中..." : "Discord 履歴から取り込み"}
-              </Button>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={onImport}
+                  disabled={importing || !channelId.trim()}
+                  className="gap-1.5 font-mono text-[11px] tracking-widest uppercase"
+                  title={
+                    !channelId.trim()
+                      ? "チャンネル ID を入力してください（先に保存）"
+                      : "Discord 履歴から過去日程を取り込み"
+                  }
+                >
+                  {importing ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                  ) : (
+                    <Cloud className="h-3.5 w-3.5" aria-hidden />
+                  )}
+                  {importing ? "取り込み中..." : "Discord 履歴から取り込み"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={onCount}
+                  disabled={counting}
+                  className="gap-1.5 font-mono text-[10px] tracking-widest uppercase"
+                  title="schedule_past_sessions の現在の保存件数を確認（デバッグ用）"
+                >
+                  {counting ? (
+                    <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
+                  ) : (
+                    <Database className="h-3 w-3" aria-hidden />
+                  )}
+                  DB の保存件数
+                </Button>
+              </div>
               {importResult && (
                 <div className="flex flex-col gap-0.5 rounded-sm border border-border/40 bg-secondary/20 px-2.5 py-1.5 text-[11px] leading-relaxed">
                   {importResult.ok ? (
@@ -291,67 +310,58 @@ export function SettingsDialog() {
               )}
             </div>
 
-            <div className="flex flex-col gap-2 border-t border-border/30 pt-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <Button
+            {storedInfo && (
+              <div className="relative flex flex-col gap-0.5 rounded-sm border border-border/40 bg-secondary/20 px-2.5 py-1.5 pr-7 text-[11px] leading-relaxed">
+                <button
                   type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={onCount}
-                  disabled={counting}
-                  className="gap-1.5 font-mono text-[10px] tracking-widest uppercase"
-                  title="schedule_past_sessions の現在の保存件数を確認（デバッグ用）"
+                  onClick={() => setStoredInfo(null)}
+                  aria-label="保存件数表示を閉じる"
+                  className="absolute right-1 top-1 inline-flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
                 >
-                  {counting ? (
-                    <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
-                  ) : (
-                    <Database className="h-3 w-3" aria-hidden />
-                  )}
-                  DB の保存件数を確認
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowChangelog((v) => !v)}
-                  className="gap-1.5 font-mono text-[10px] tracking-widest uppercase"
-                  title="更新履歴を表示 / 非表示"
-                  aria-expanded={showChangelog}
-                >
-                  <FileClock className="h-3 w-3" aria-hidden />
-                  {showChangelog ? "更新履歴を隠す" : "更新履歴"}
-                </Button>
-              </div>
-              {storedInfo && (
-                <div className="flex flex-col gap-0.5 rounded-sm border border-border/40 bg-secondary/20 px-2.5 py-1.5 text-[11px] leading-relaxed">
-                  {storedInfo.ok ? (
-                    <>
-                      <p className="font-mono">
-                        DB 保存件数: <strong>{storedInfo.count}</strong>
-                      </p>
-                      {storedInfo.sampleRawDates.length > 0 && (
-                        <ul className="font-mono text-[10px] text-muted-foreground">
-                          <li>サンプル（新しい順）:</li>
-                          {storedInfo.sampleRawDates.map((s, i) => (
-                            <li key={i} className="break-words">
-                              ・{s}
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                      <p className="mt-1 text-muted-foreground text-[10px]">
-                        この件数はスケジュールページの「過去」に
-                        マージされる候補数です。0 なら保存されていない or
-                        SELECT が RLS で拒否されています。
-                      </p>
-                    </>
-                  ) : (
-                    <p className="text-rose-300">
-                      エラー: {storedInfo.reason ?? "unknown"}
+                  <X className="h-3 w-3" aria-hidden />
+                </button>
+                {storedInfo.ok ? (
+                  <>
+                    <p className="font-mono">
+                      DB 保存件数: <strong>{storedInfo.count}</strong>
                     </p>
-                  )}
-                </div>
-              )}
+                    {storedInfo.sampleRawDates.length > 0 && (
+                      <ul className="font-mono text-[10px] text-muted-foreground">
+                        <li>サンプル（新しい順）:</li>
+                        {storedInfo.sampleRawDates.map((s, i) => (
+                          <li key={i} className="break-words">
+                            ・{s}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    <p className="mt-1 text-muted-foreground text-[10px]">
+                      この件数はスケジュールページの「過去」に
+                      マージされる候補数です。0 なら保存されていない or
+                      SELECT が RLS で拒否されています。
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-rose-300">
+                    エラー: {storedInfo.reason ?? "unknown"}
+                  </p>
+                )}
+              </div>
+            )}
+
+            <div className="flex flex-col gap-2 border-t border-border/30 pt-3">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setShowChangelog((v) => !v)}
+                className="self-start gap-1.5 font-mono text-[10px] tracking-widest uppercase"
+                title="更新履歴を表示 / 非表示"
+                aria-expanded={showChangelog}
+              >
+                <FileClock className="h-3 w-3" aria-hidden />
+                {showChangelog ? "更新履歴を隠す" : "更新履歴"}
+              </Button>
               {showChangelog && (
                 <div className="flex flex-col gap-3 rounded-sm border border-border/40 bg-secondary/20 px-3 py-2.5 text-[11px] leading-relaxed">
                   <p className="font-mono text-[10px] tracking-[0.2em] text-muted-foreground uppercase">
