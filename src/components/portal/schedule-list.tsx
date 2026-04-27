@@ -155,6 +155,7 @@ export function ScheduleList({
                   users={users}
                   holidays={holidays}
                   videoLink={lookupVideoLink(s, sessionVideoLinks)}
+                  scheduleUrl={scheduleUrl}
                 />
               ))}
               {upcoming.length === 0 && (
@@ -200,6 +201,7 @@ export function ScheduleList({
                     holidays={holidays}
                     showDecided={false}
                     videoLink={lookupVideoLink(s, sessionVideoLinks)}
+                    scheduleUrl={scheduleUrl}
                   />
                 ))}
               </tbody>
@@ -325,6 +327,7 @@ function SessionRow({
   holidays,
   showDecided = true,
   videoLink = null,
+  scheduleUrl,
 }: {
   session: ScheduleSession;
   users: ScheduleUser[];
@@ -334,6 +337,12 @@ function SessionRow({
   showDecided?: boolean;
   /** When non-null, the date label becomes a Link to that video. */
   videoLink?: SessionVideoLink | null;
+  /**
+   * Source schedule URL — used to derive each user's character-sheets
+   * input page so attendance cells can become "click here to edit"
+   * targets.
+   */
+  scheduleUrl?: string | null;
 }) {
   const decided = session.status === "DECISION";
   // Japanese national holidays get a red date label — overrides the
@@ -419,17 +428,37 @@ function SessionRow({
       )}
       {users.map((u) => {
         const att = session.attendances[u.userId] ?? "－";
+        const editUrl = buildEditUrl(scheduleUrl, u.userId);
+        const dateLabel = session.rawDate.split(" ")[0] ?? session.rawDate;
+        const symbol = (
+          <span
+            className={
+              "inline-flex h-5 min-w-[1.75rem] items-center justify-center rounded-sm border px-1 font-mono text-[12px] transition-transform " +
+              ATT_TONE[att]
+            }
+            aria-label={`${u.name}: ${att}`}
+          >
+            {att}
+          </span>
+        );
         return (
           <td key={u.userId} className="px-2 py-2 align-middle text-center">
-            <span
-              className={
-                "inline-flex h-5 min-w-[1.75rem] items-center justify-center rounded-sm border px-1 font-mono text-[12px] " +
-                ATT_TONE[att]
-              }
-              aria-label={`${u.name}: ${att}`}
-            >
-              {att}
-            </span>
+            {editUrl ? (
+              // Click to edit on character-sheets. Per-user URL — opens
+              // their full input page; the user finds their session there.
+              // Hover scale + ring gives a clear "this is interactive" cue.
+              <a
+                href={editUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                title={`${u.name} の出欠を編集 (${dateLabel} を含む全日程)`}
+                className="group/cell inline-flex rounded-sm transition-transform hover:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--neon-cyan)]/60"
+              >
+                {symbol}
+              </a>
+            ) : (
+              symbol
+            )}
           </td>
         );
       })}

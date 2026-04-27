@@ -19,6 +19,14 @@ export type ReleaseEntry = {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    version: "1.3.2",
+    date: "2026-04-27",
+    notes: [
+      "スケジュール表の各出欠セルを直接クリックで character-sheets 編集ページへ（新タブ）",
+      "ホバー時に拡大表示でクリック可能なことを明示",
+    ],
+  },
+  {
     version: "1.3.1",
     date: "2026-04-27",
     notes: [
