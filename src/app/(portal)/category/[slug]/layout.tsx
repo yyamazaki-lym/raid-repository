@@ -25,7 +25,7 @@ export default async function CategoryDetailLayout({
           className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 font-mono text-[11px] tracking-[0.18em] uppercase transition-colors"
         >
           <ChevronLeft className="h-3.5 w-3.5" aria-hidden />
-          Categories
+          Contents
         </Link>
         <span className="text-muted-foreground/50">/</span>
         <span className="font-display text-foreground text-sm">{display}</span>

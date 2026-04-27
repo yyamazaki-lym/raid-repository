@@ -19,6 +19,17 @@ export type ReleaseEntry = {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    version: "1.9.4",
+    date: "2026-04-27",
+    notes: [
+      "コンテンツページの戻る Link を「Categories」→「Contents」に修正（1.9.1 で残っていた）",
+      "FFLogs マッチング戦略を 2 段階に再設計 — Step 1: 動画タイトルから raid 日付を抽出 (例「【2026 04 01】」「20260401」「2026年4月1日」等) → FFLogs report の startTime (JST 日付) と比較。同一日 = 完全一致、1 日違い = 弱マッチ、2 日以上 = 完全リジェクト",
+      "Step 2: 同一日の動画が複数ある場合、コンテンツ名 bigram overlap で勝者を決定（既存ロジック）",
+      "fallback: 動画タイトルから日付が読めない場合のみ posted_at ベースの ±18h window 判定。タイトル日付ありの match に対して 12h ペナルティを付け、タイトル日付ありが優先されるように",
+      "結果: 「0401 動画に 0328 レポートが紐づく」のような誤マッチが、タイトルに raid 日が入っている動画では発生しなくなる",
+    ],
+  },
+  {
     version: "1.9.3",
     date: "2026-04-27",
     notes: [

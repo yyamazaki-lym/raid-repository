@@ -971,6 +971,62 @@ export async function linkFflogsReportsToVideos(): Promise<FflogsLinkResult> {
 type SupabaseLike = Awaited<ReturnType<typeof createClient>>;
 
 /**
+ * Extract a calendar date (Y/M/D) from a video title. Most users
+ * include the raid date in the title (例: 【2026 04 01】, 「2026/04/01」,
+ * "20260401" etc) — this is FAR more reliable than YouTube's posted_at
+ * (which is the upload time, often days late) for date-matching against
+ * FFLogs report startTimes.
+ *
+ * Returns null when no date can be inferred from the title.
+ */
+function extractDateFromTitle(
+  title: string | null | undefined,
+): { y: number; m: number; d: number } | null {
+  if (!title) return null;
+  // Pattern A: separated by space / slash / dash / Japanese 年月日
+  // 「2026 04 01」「2026/04/01」「2026-04-01」「2026年4月1日」
+  const sep = title.match(
+    /(20\d{2})[\s年\/\-.](\d{1,2})[\s月\/\-.](\d{1,2})/,
+  );
+  if (sep) {
+    const y = parseInt(sep[1]!, 10);
+    const m = parseInt(sep[2]!, 10);
+    const d = parseInt(sep[3]!, 10);
+    if (m >= 1 && m <= 12 && d >= 1 && d <= 31) return { y, m, d };
+  }
+  // Pattern B: compact 8-digit "20260401"
+  const compact = title.match(/(?<!\d)(20\d{2})(\d{2})(\d{2})(?!\d)/);
+  if (compact) {
+    const y = parseInt(compact[1]!, 10);
+    const m = parseInt(compact[2]!, 10);
+    const d = parseInt(compact[3]!, 10);
+    if (m >= 1 && m <= 12 && d >= 1 && d <= 31) return { y, m, d };
+  }
+  return null;
+}
+
+/** Convert a Unix ms epoch to a JST calendar date. */
+function jstCalendarDate(ms: number): { y: number; m: number; d: number } {
+  const JST_OFFSET = 9 * 60 * 60 * 1000;
+  const dt = new Date(ms + JST_OFFSET);
+  return {
+    y: dt.getUTCFullYear(),
+    m: dt.getUTCMonth() + 1,
+    d: dt.getUTCDate(),
+  };
+}
+
+/** Days apart between two calendar dates (always non-negative integer). */
+function daysApart(
+  a: { y: number; m: number; d: number },
+  b: { y: number; m: number; d: number },
+): number {
+  const aMs = Date.UTC(a.y, a.m - 1, a.d);
+  const bMs = Date.UTC(b.y, b.m - 1, b.d);
+  return Math.abs(aMs - bMs) / (24 * 60 * 60 * 1000);
+}
+
+/**
  * Lightweight content-similarity check between a video's content
  * (typically the FFXIV raid name in its category) and a FFLogs
  * report's zone (the FFLogs raid name).
@@ -1149,38 +1205,60 @@ async function linkReportsToVideos(
   const details: FflogsLinkDetail[] = [];
   let matched = 0;
 
-  // Score: time distance + content-mismatch penalty.
-  //   delta = video.posted_at - report.startMs
-  //   - delta > 0: raid before upload (normal). score = delta.
-  //   - delta < 0: upload before raid (rare). score = -delta * 4.
-  //   - |delta| > window: out, score = Infinity.
-  //   Plus content gating:
-  //     - mismatch = 1 (confirmed different content): score = Infinity
-  //       (reject — different raid). e.g. 絶アレキサンダー report
-  //       can never match a 絶オメガ video.
-  //     - mismatch = 0.5 (one side unknown): small penalty (still
-  //       allowed, but a clear-content match wins by time).
-  //     - mismatch = 0 (confirmed same content): no penalty.
+  // 2-stage scoring per user request:
+  //   Stage 1 (primary): raid date.
+  //     - Try to extract date from video TITLE (e.g.「【2026 04 01】」)
+  //       → compare to report.startMs (JST calendar date).
+  //     - When titles include a date, this is FAR more reliable than
+  //       YouTube posted_at (upload time can be days off from raid).
+  //     - score = days_apart * 24h. 0 days = 0 score. Reject if > 1 day.
+  //   Stage 1 fallback (when video title has no date):
+  //     - Use posted_at - report.startMs delta within ±18h window.
+  //     - Add small penalty so title-date matches are preferred.
+  //   Stage 2 (secondary tiebreaker): content match.
+  //     - Same-date pairs get further sorted by content (zone↔category
+  //       name bigram overlap). Mismatch adds small penalty.
   //
-  // Replaces "earliest unmatched in window" which could pair a Day-1
-  // 絶アレキサンダー report with a Day-27 絶オメガ video just because
-  // both were within the window of an upload.
+  // Net effect: same-day raid date dominates; content disambiguates
+  // when multiple videos share the same date; posted_at is the
+  // backstop only.
+  const ONE_DAY_MS = 24 * 60 * 60 * 1000;
   const SMALL_PENALTY = 6 * 60 * 60 * 1000; // 6h equivalent
+  const NO_TITLE_DATE_PENALTY = 12 * 60 * 60 * 1000; // 12h, prefer title-date matches
+
   const scoreCandidate = (
-    video: { tMs: number; categoryName: string | null; title: string | null },
+    video: {
+      tMs: number;
+      categoryName: string | null;
+      title: string | null;
+    },
     report: FflogsReport,
   ) => {
-    const delta = video.tMs - report.startMs; // ms
-    if (Math.abs(delta) > MATCH_WINDOW_MS) return Infinity;
+    const titleDate = extractDateFromTitle(video.title);
+    const reportDate = jstCalendarDate(report.startMs);
+
+    // Content mismatch: hard reject only when 100% confident different.
     const mismatch = contentMismatchPenalty(
       video.categoryName,
       video.title,
       report.zoneName,
       report.title,
     );
-    if (mismatch === 1) return Infinity; // confirmed different content
+    if (mismatch === 1) return Infinity;
+    const contentPenalty = mismatch === 0.5 ? SMALL_PENALTY : 0;
+
+    if (titleDate) {
+      // Stage 1 primary: title-date match.
+      const days = daysApart(titleDate, reportDate);
+      if (days > 1) return Infinity; // > 1 day = different raid night
+      return days * ONE_DAY_MS + contentPenalty;
+    }
+
+    // Stage 1 fallback: posted_at-based.
+    const delta = video.tMs - report.startMs;
+    if (Math.abs(delta) > MATCH_WINDOW_MS) return Infinity;
     const timeScore = delta >= 0 ? delta : -delta * 4;
-    return timeScore + (mismatch === 0.5 ? SMALL_PENALTY : 0);
+    return timeScore + NO_TITLE_DATE_PENALTY + contentPenalty;
   };
 
   // Build all candidate (video, report, score) tuples that fit the
