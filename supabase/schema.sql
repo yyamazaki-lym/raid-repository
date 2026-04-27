@@ -207,20 +207,37 @@ CREATE TRIGGER set_updated_at_app_settings
   FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
 -- ---- 5d. recruitment_templates (PT募集文 templates, shared) -----------
--- A few text templates per group (typically 1-3) that get copy-pasted
--- into Discord / FF14 PT-募集 sites. Saved in DB so all members see
--- the same wording, and one button-click copies the body to the clipboard.
+-- Text templates that get copy-pasted into Discord / FF14 PT-募集 sites.
+-- Each template is associated with a category (heavy / cruiser / ...)
+-- so the dropdown groups sensibly. Multiple templates per category is
+-- expected (e.g. one for each floor 1-4). The optional `label` is a
+-- short sub-name within the category — empty when there's only one.
 
 CREATE TABLE IF NOT EXISTS public.recruitment_templates (
   id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  label       text NOT NULL,
+  label       text NOT NULL DEFAULT '',
   body        text NOT NULL,
   sort_order  integer NOT NULL DEFAULT 0,
   created_at  timestamptz NOT NULL DEFAULT now(),
   updated_at  timestamptz NOT NULL DEFAULT now()
 );
+
+-- Phase 5b: per-category association.
+ALTER TABLE public.recruitment_templates
+  ADD COLUMN IF NOT EXISTS category_id uuid
+    REFERENCES public.categories(id) ON DELETE SET NULL;
+
+-- Allow empty labels (originally NOT NULL with no default — pre-migration
+-- rows are fine since label was always entered, but we want future
+-- inserts to be able to omit it).
+ALTER TABLE public.recruitment_templates
+  ALTER COLUMN label DROP NOT NULL,
+  ALTER COLUMN label SET DEFAULT '';
+
 CREATE INDEX IF NOT EXISTS recruitment_templates_sort_idx
   ON public.recruitment_templates(sort_order);
+CREATE INDEX IF NOT EXISTS recruitment_templates_category_idx
+  ON public.recruitment_templates(category_id);
 
 DROP TRIGGER IF EXISTS set_updated_at_recruitment_templates
   ON public.recruitment_templates;

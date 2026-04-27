@@ -153,6 +153,7 @@ export function SchedulePageBody({
         <SchedulePastSimple
           sessions={result.data.sessions}
           holidays={holidays}
+          sessionVideoLinks={sessionVideoLinks}
         />
       )}
 

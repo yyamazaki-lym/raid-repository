@@ -31,13 +31,18 @@ export default async function SchedulePage() {
     );
   }
 
-  const [result, holidays, recruitmentTemplates, sessionVideoLinks] =
-    await Promise.all([
-      fetchSchedule(),
-      fetchJapaneseHolidays(),
-      fetchRecruitmentTemplatesServer(),
-      buildSessionVideoLinkMap(),
-    ]);
+  const [result, holidays, recruitmentTemplates] = await Promise.all([
+    fetchSchedule(),
+    fetchJapaneseHolidays(),
+    fetchRecruitmentTemplatesServer(),
+  ]);
+  // Build the date-→-video map from the actual session list so the
+  // 36h window matching can pick the right video for each session
+  // (vs. the older naive "same JST day" approach which missed videos
+  // uploaded the morning after a late-night session).
+  const sessionVideoLinks = result.ok
+    ? await buildSessionVideoLinkMap(result.data.sessions)
+    : {};
   const nextResult: NextSessionResult = result.ok
     ? { ok: true, session: pickNextDecision(result.data.sessions) }
     : { ok: false, reason: result.reason };

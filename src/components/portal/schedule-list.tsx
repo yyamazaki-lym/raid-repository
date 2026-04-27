@@ -111,15 +111,17 @@ export function ScheduleList({
 
   // Header row factory. The past table omits the "確定" column since
   // every past session was de facto held — the column only carries
-  // signal for upcoming dates that may still slip.
+  // signal for upcoming dates that may still slip. The 確定 column
+  // hugs the date column tightly (pl-1 / pr-1 on the date) since the
+  // gap was visually too wide.
   const tableHead = (showDecided: boolean) => (
     <thead>
       <tr className="border-b border-border/60 text-[10px] tracking-[0.18em] text-muted-foreground uppercase">
-        <th scope="col" className="px-3 py-2 font-mono">
+        <th scope="col" className="pl-3 pr-1 py-2 font-mono">
           日程
         </th>
         {showDecided && (
-          <th scope="col" className="px-2 py-2 font-mono">
+          <th scope="col" className="px-1 py-2 font-mono">
             確定
           </th>
         )}
@@ -150,6 +152,7 @@ export function ScheduleList({
                   session={s}
                   users={users}
                   holidays={holidays}
+                  videoLink={lookupVideoLink(s, sessionVideoLinks)}
                 />
               ))}
               {upcoming.length === 0 && (
@@ -323,19 +326,16 @@ function DateLabel({
 }
 
 /**
- * Look up a session's matching video by its JST calendar day.
+ * Look up a session's matching video. Map is rawDate-keyed (built
+ * server-side using the 36h window heuristic) so the lookup is just
+ * a key access here — no timezone math needed.
  */
 function lookupVideoLink(
   session: ScheduleSession,
   links: Record<string, SessionVideoLink> | undefined,
 ): SessionVideoLink | null {
   if (!links) return null;
-  const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
-  const jst = new Date(session.date.getTime() + JST_OFFSET_MS);
-  const y = jst.getUTCFullYear();
-  const m = String(jst.getUTCMonth() + 1).padStart(2, "0");
-  const d = String(jst.getUTCDate()).padStart(2, "0");
-  return links[`${y}-${m}-${d}`] ?? null;
+  return links[session.rawDate] ?? null;
 }
 
 function SessionRow({
@@ -376,7 +376,7 @@ function SessionRow({
     >
       <th
         scope="row"
-        className="px-3 py-2 align-middle font-mono text-[12px] whitespace-nowrap text-foreground"
+        className="pl-3 pr-1 py-2 align-middle font-mono text-[12px] whitespace-nowrap text-foreground"
       >
         <div className="flex items-baseline gap-2">
           {/* Date label color priority:
@@ -398,7 +398,7 @@ function SessionRow({
         </div>
       </th>
       {showDecided && (
-        <td className="px-2 py-2 text-center align-middle">
+        <td className="px-1 py-2 text-center align-middle">
           {decided ? (
             <span
               aria-label="日程確定"
