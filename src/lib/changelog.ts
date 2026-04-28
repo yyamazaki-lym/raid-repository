@@ -147,6 +147,10 @@ export const RELEASES: ReleaseEntry[] = [
         title: "🚀 / ページを Edge Runtime 化 + 5 分毎の warm-up cron でコールドスタート抑制",
         body: "Vercel Free tier の Node.js Function は数分アクセスがないと sleep し、復帰に 500ms-1.5s かかってリロードの「引っ掛かり」体感の主因になっていた。対策 2 段:\n(1) `/` ルートを Edge Runtime に切替 (`export const runtime = \"edge\"`)。Edge Function は cold start ~50ms 程度で Node の数分の一。互換性のため `fflogs-oauth.ts` の `Buffer.from(...).toString(\"base64\")` を `btoa()` (Web 標準) に置換 — Node でも Edge でも動く。Build 検証で他の Node-only API は不在を確認。`/api/auth/fflogs/callback` 等の API ルートは Node Runtime のまま (route 単位で独立)。\n(2) `/api/health` を Edge で新設 (DB / 外部 fetch なし、軽量 JSON)。GitHub Actions ワークフロー `.github/workflows/warmup.yml` を追加し、5 分毎に repo secret `WARMUP_URL` (= `https://<deploy>/api/health`) を curl で叩く。これで `/` と同じ Function プールが常に warm。GitHub Actions Free tier は public repo で実質無料、月 8640 回のジョブも 1 回 ~10s で 2000 分以内に収まる。",
       },
+      {
+        title: "🌊 Suspense streaming で初期 paint を即時化 (TODO #11)",
+        body: "ページ全体の `await Promise.all([...6 fetches])` で layout HTML すら 1.5s 待たされていた問題に対応。`SchedulePage` を 2 段構成に分割:\n(1) 外側 (server component): `getScheduleSourceUrl()` のみ await (~50ms、`React.cache` で deduped)。url 不在なら Onboarding を即返す。\n(2) 主データ取得を `<Suspense fallback={<SchedulePageSkeleton />}>` でラップした `<ScheduleContent>` 内に隔離。\nNext.js の streaming protocol により layout (header / nav) + skeleton が ~100ms で client に届き、その下で fetch が完了次第 streamed HTML chunk として実コンテンツに置換される。新規 `<SchedulePageSkeleton />` コンポーネントは next-session card / schedule list の概形をなぞる pulse animation 付きで、置換時のレイアウトシフトも抑制。",
+      },
     ],
   },
   {
