@@ -8,41 +8,39 @@ import {
   type CategoryRow,
   type CategoryStatus,
 } from "@/lib/supabase/types";
+import {
+  createCategoryAction,
+  deleteCategoryAction,
+  maybeSetFirstClearAtAction,
+  setCategoryOrderAction,
+  updateCategoryAction,
+  updateCategoryStatusAction,
+  type CategoryUpdatePatch,
+} from "@/lib/server/categories-actions";
 
 /**
- * Browser-side mutations against the `categories` table.
+ * Browser-side category helpers.
  *
- * These call Supabase directly via the anon key. RLS policies allow anon
- * to read/write everything. Once a write succeeds, Realtime broadcasts the
- * change to every other client subscribed to `useRealtimeCategories`, so
- * the UI updates automatically without a refetch.
+ * READ: `useRealtimeCategories` keeps a live list via the anon key (RLS
+ * allows everyone to read).
+ *
+ * WRITE: 2.1 (TODO #21) — moved from direct anon writes to **Server Actions**
+ * so we can gate by Discord admin role (`DISCORD_ADMIN_ROLE_IDS`). The wrapper
+ * functions below preserve the existing call sites' API ({ok: true|false,...})
+ * so callers don't change. Non-admins get back `{ok: false, reason: "not_admin"}`.
  */
 
 export async function updateCategoryStatus(
   id: string,
   status: CategoryStatus,
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
-  const supabase = createClient();
-  const { error } = await supabase
-    .from("categories")
-    .update({ status })
-    .eq("id", id);
-  if (error) return { ok: false, reason: error.message };
-  return { ok: true };
+  return updateCategoryStatusAction(id, status);
 }
 
 export async function setCategoryOrder(
   orderedIds: string[],
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
-  // Postgres has no native multi-row reorder; issue updates in parallel.
-  const supabase = createClient();
-  const updates = orderedIds.map((id, index) =>
-    supabase.from("categories").update({ sort_order: index }).eq("id", id),
-  );
-  const results = await Promise.all(updates);
-  const failed = results.find((r) => r.error);
-  if (failed?.error) return { ok: false, reason: failed.error.message };
-  return { ok: true };
+  return setCategoryOrderAction(orderedIds);
 }
 
 export async function createCategory(input: {
@@ -50,64 +48,20 @@ export async function createCategory(input: {
   name: string;
   status?: CategoryStatus;
 }): Promise<{ ok: true; category: Category } | { ok: false; reason: string }> {
-  const supabase = createClient();
-  // Place new categories at the end (max sort_order + 1).
-  const { data: maxRow } = await supabase
-    .from("categories")
-    .select("sort_order")
-    .order("sort_order", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  const nextOrder = ((maxRow?.sort_order as number | undefined) ?? -1) + 1;
-
-  const { data, error } = await supabase
-    .from("categories")
-    .insert({
-      slug: input.slug,
-      name: input.name,
-      status: input.status ?? "未着手",
-      sort_order: nextOrder,
-    })
-    .select("*")
-    .single();
-  if (error || !data) {
-    return { ok: false, reason: error?.message ?? "unknown error" };
-  }
-  return { ok: true, category: rowToCategory(data as CategoryRow) };
+  return createCategoryAction(input);
 }
 
 export async function deleteCategory(
   id: string,
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
-  const supabase = createClient();
-  const { error } = await supabase.from("categories").delete().eq("id", id);
-  if (error) return { ok: false, reason: error.message };
-  return { ok: true };
+  return deleteCategoryAction(id);
 }
 
 export async function updateCategory(
   id: string,
-  patch: Partial<{
-    name: string;
-    slug: string;
-    status: CategoryStatus;
-    loot_sheet_url: string | null;
-    mitigation_sheet_url: string | null;
-    discord_strategy_channel_id: string | null;
-    discord_video_channel_id: string | null;
-    discord_import_enabled: boolean;
-    first_clear_at: string | null;
-    background_image_url: string | null;
-    required_role_ids: string[] | null;
-  }>,
+  patch: CategoryUpdatePatch,
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
-  const supabase = createClient();
-  const { error } = await supabase
-    .from("categories")
-    .update(patch)
-    .eq("id", id);
-  if (error) return { ok: false, reason: error.message };
-  return { ok: true };
+  return updateCategoryAction(id, patch);
 }
 
 /**
@@ -115,30 +69,19 @@ export async function updateCategory(
  * given timestamp. No-op otherwise (we never overwrite an existing value
  * automatically — only manual edits via the dialog can change it once set).
  *
- * Returns whether an update actually occurred, so callers can surface a
- * toast like "🎉 初クリア記録".
+ * **Not admin-gated**: any member's video upload should be able to mark
+ * a clear (this is auto-fired from the link form when a clear-keyword
+ * title is detected). The server action skips the admin check by design.
  */
 export async function maybeSetFirstClearAt(
   categoryId: string,
   isoTimestamp: string,
 ): Promise<{ updated: boolean; reason?: string }> {
-  const supabase = createClient();
-  const { data, error: selErr } = await supabase
-    .from("categories")
-    .select("first_clear_at")
-    .eq("id", categoryId)
-    .maybeSingle();
-  if (selErr) return { updated: false, reason: selErr.message };
-  if (data?.first_clear_at) return { updated: false }; // already set
-  const { error: updErr } = await supabase
-    .from("categories")
-    .update({ first_clear_at: isoTimestamp })
-    .eq("id", categoryId)
-    // Race-safety: only NULL→value, never overwrite.
-    .is("first_clear_at", null);
-  if (updErr) return { updated: false, reason: updErr.message };
-  return { updated: true };
+  return maybeSetFirstClearAtAction(categoryId, isoTimestamp);
 }
+
+// Re-export so callers can import `Category`/etc. from the same module.
+export type { Category, CategoryRow };
 
 /**
  * Live category list — starts from `initial` (server-rendered) and listens to

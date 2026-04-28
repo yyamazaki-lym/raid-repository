@@ -74,6 +74,12 @@ type Props = {
    * server-side).
    */
   userRoleIds: string[];
+  /**
+   * TODO #21 (2.1): false の場合、編集 UI (DnD ハンドル / ⋮ メニュー /
+   * ステータス変更) を全部隠す = 閲覧専用モード。env
+   * `DISCORD_ADMIN_ROLE_IDS` 未設定 / または admin ロール持ちなら true。
+   */
+  canEdit: boolean;
   /** Map of category.id → number of Discord-imported links in the last 7d. */
   recentImportCounts?: Record<string, number>;
   /** Map of category.id → sum of all video durations in seconds. */
@@ -89,6 +95,7 @@ type Props = {
 export function CategoryList({
   initialCategories,
   userRoleIds,
+  canEdit,
   recentImportCounts = {},
   practiceSecondsByCategory = {},
   timeToClearByCategory = {},
@@ -206,17 +213,19 @@ export function CategoryList({
 
   return (
     <div className="flex flex-col gap-2">
-      <p className="flex items-center gap-2 font-mono text-[10px] tracking-[0.22em] text-muted-foreground uppercase">
-        <span className="inline-flex h-1.5 w-1.5 rounded-full bg-muted-foreground/60" />
-        Drag to reorder
-        <span className="font-sans text-[11px] tracking-normal normal-case text-muted-foreground/85">
-          · ドラッグで並び替え
-        </span>
-      </p>
+      {canEdit && (
+        <p className="flex items-center gap-2 font-mono text-[10px] tracking-[0.22em] text-muted-foreground uppercase">
+          <span className="inline-flex h-1.5 w-1.5 rounded-full bg-muted-foreground/60" />
+          Drag to reorder
+          <span className="font-sans text-[11px] tracking-normal normal-case text-muted-foreground/85">
+            · ドラッグで並び替え
+          </span>
+        </p>
+      )}
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
-        onDragEnd={onDragEnd}
+        onDragEnd={canEdit ? onDragEnd : undefined}
       >
         <SortableContext items={slugIds} strategy={rectSortingStrategy}>
           <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -225,6 +234,7 @@ export function CategoryList({
                 key={cat.id}
                 category={cat}
                 viewerCanSee={isCategoryVisibleToRoles(cat, userRoleIds)}
+                canEdit={canEdit}
                 recentImports={recentImportCounts[cat.id] ?? 0}
                 practiceSeconds={practiceSecondsByCategory[cat.id] ?? 0}
                 timeToClearSeconds={timeToClearByCategory[cat.id] ?? 0}
@@ -237,14 +247,17 @@ export function CategoryList({
         </SortableContext>
       </DndContext>
 
-      {/* Single edit dialog — opens for whichever category was clicked. */}
-      <CategoryFormDialog
-        category={editTarget ?? undefined}
-        open={editTarget !== null}
-        onOpenChange={(o) => {
-          if (!o) setEditTarget(null);
-        }}
-      />
+      {/* Single edit dialog — opens for whichever category was clicked.
+          Only mounted for admins; the menu that opens it is also gated. */}
+      {canEdit && (
+        <CategoryFormDialog
+          category={editTarget ?? undefined}
+          open={editTarget !== null}
+          onOpenChange={(o) => {
+            if (!o) setEditTarget(null);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -252,6 +265,7 @@ export function CategoryList({
 function SortableCategoryCard({
   category,
   viewerCanSee,
+  canEdit,
   recentImports,
   practiceSeconds,
   timeToClearSeconds,
@@ -267,6 +281,8 @@ function SortableCategoryCard({
    * しないよう抑制し、編集メニュー (⋮) からの undo 経路を促す。
    */
   viewerCanSee: boolean;
+  /** 2.1 (TODO #21): 編集 UI (DnD ハンドル / ⋮ / ステータス変更) を出すか。 */
+  canEdit: boolean;
   recentImports: number;
   practiceSeconds: number;
   timeToClearSeconds: number;
@@ -337,14 +353,16 @@ function SortableCategoryCard({
             />
           </>
         )}
-        <button
-          type="button"
-          {...listeners}
-          aria-label={`${category.name} の並び替えハンドル`}
-          className="relative z-10 flex shrink-0 cursor-grab items-center justify-center rounded-l-lg border-r border-border/40 bg-secondary/30 px-2 text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground active:cursor-grabbing"
-        >
-          <GripVertical className="h-4 w-4" aria-hidden />
-        </button>
+        {canEdit && (
+          <button
+            type="button"
+            {...listeners}
+            aria-label={`${category.name} の並び替えハンドル`}
+            className="relative z-10 flex shrink-0 cursor-grab items-center justify-center rounded-l-lg border-r border-border/40 bg-secondary/30 px-2 text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground active:cursor-grabbing"
+          >
+            <GripVertical className="h-4 w-4" aria-hidden />
+          </button>
+        )}
 
         {/* Middle column: name+slug+badges (one Link for the default-action
             click-anywhere behavior) above an always-visible icon row that
@@ -437,7 +455,8 @@ function SortableCategoryCard({
             >
               <StatusBadge
                 status={category.status}
-                onChange={onChangeStatus}
+                onChange={canEdit ? onChangeStatus : undefined}
+                readOnly={!canEdit}
                 variant="compact"
               />
             </span>
@@ -459,7 +478,7 @@ function SortableCategoryCard({
                   +0/wk
                 </span>
               )}
-              <CategoryMenu onEdit={onEdit} onDelete={onDelete} />
+              {canEdit && <CategoryMenu onEdit={onEdit} onDelete={onDelete} />}
             </div>
           </div>
         </div>

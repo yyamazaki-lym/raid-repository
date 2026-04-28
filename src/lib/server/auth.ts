@@ -78,3 +78,73 @@ export async function getAuthorizedUserRoles(): Promise<string[]> {
   const { roles } = await requireDiscordMember();
   return roles;
 }
+
+// =============================================================
+// Admin gating (TODO #21, 2.1)
+// =============================================================
+//
+// `DISCORD_ADMIN_ROLE_IDS` env (カンマ区切り role ID) で「管理者ロール」を
+// 定義し、カテゴリの create / update / delete をそのロール持ちのみに制限
+// する。env 未設定 = 旧挙動 (全 guild メンバー編集可) — 既存デプロイの
+// 後方互換のため fail-open。本番は env を設定してロックダウンすべき。
+//
+// UI 側は `getCurrentUserCanEdit()` で sync 状態をフェッチし、編集 UI
+// を非 admin に対して隠す。Server Action 側は `requireAdmin()` (ハード)
+// もしくは `assertAdminResult()` (ソフト = エラーオブジェクト返却) で
+// 防御する。
+
+/** env からカンマ区切りで admin role ID 一覧を取り出す。trim + 空除去。 */
+export function getAdminRoleIds(): string[] {
+  const raw = process.env.DISCORD_ADMIN_ROLE_IDS?.trim();
+  if (!raw) return [];
+  return raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+/**
+ * ユーザが admin かどうか。env 未設定なら true (= 全員 admin、
+ * 後方互換)。設定済みなら user roles と admin role IDs の交差で判定。
+ */
+export function userIsAdmin(userRoleIds: readonly string[]): boolean {
+  const adminIds = getAdminRoleIds();
+  if (adminIds.length === 0) return true; // backward-compat
+  return adminIds.some((id) => userRoleIds.includes(id));
+}
+
+/**
+ * 現在のユーザが編集可能かを返す (UI から「ボタン出すか」判定する用途)。
+ * `requireDiscordMember()` を経由するので未ログイン / 非メンバーは
+ * /login や /auth/denied にリダイレクトされる。
+ */
+export async function getCurrentUserCanEdit(): Promise<boolean> {
+  const { roles } = await requireDiscordMember();
+  return userIsAdmin(roles);
+}
+
+/**
+ * 編集系 Server Action / Route Handler の入口で呼ぶハードガード。
+ * 非 admin は /auth/denied?reason=not_admin にリダイレクト。
+ */
+export async function requireAdmin(): Promise<AuthorizedUser> {
+  const authed = await requireDiscordMember();
+  if (!userIsAdmin(authed.roles)) {
+    redirect("/auth/denied?reason=not_admin");
+  }
+  return authed;
+}
+
+/**
+ * Server Action で「リダイレクトせず toast でエラーを出したい」用途。
+ * 結果が `{ ok: false, reason: "not_admin" }` で返る。
+ */
+export async function assertAdminResult(): Promise<
+  { ok: true; user: AuthorizedUser } | { ok: false; reason: "not_admin" }
+> {
+  const authed = await requireDiscordMember();
+  if (!userIsAdmin(authed.roles)) {
+    return { ok: false, reason: "not_admin" };
+  }
+  return { ok: true, user: authed };
+}

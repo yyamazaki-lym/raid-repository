@@ -53,7 +53,8 @@
 | ~~18~~ | ~~設定ダイアログに FF14 Lodestone へのリンクを追加~~ — 完了 (1.9 (2026-04-28)、フッター GitHub Source の隣に Link2 アイコン + "Lodestone" ラベルで配置) | ~~極小~~ |
 | ~~19~~ | ~~ロール単位で見られるページを分けたい~~ — 完了 (2.0 (2026-04-28)、`categories.required_role_ids` 列追加 + `CategoryFormDialog` のチェックボックス UI + bot token で `/guilds/{id}/roles` を React.cache 取得 + `filterVisibleCategories` で MainTabs/Switcher/index/popover に適用 + `[slug]/layout.tsx` で `requireDiscordRoles()` 直アクセスガード + `/auth/denied?reason=missing_role` UX) | ~~中~~ |
 | 20 | Vercel ドメイン変更 (`raid-repository.vercel.app` から好きな名前 / カスタムドメインへ) — Vercel Project Settings → Domains で実施。Discord Developer Portal の Redirects、Supabase Authentication の Site URL / Redirect URLs にも新ドメインを追加する必要あり | 小 |
-| 21 | カテゴリ編集を「admin ロール持ちのみ」に制限 — 現状はゲストでも編集ダイアログから `required_role_ids` を空にできてしまう (= ロール gate を自分で外せる)。`DISCORD_ADMIN_ROLE_IDS` env を導入し、create / update / delete を `requireDiscordRoles(adminRoleIds)` でガード + UI 側を read-only 化。Supabase RLS まで絞るか middleware だけで防ぐかは別途判断 | 中 |
+| ~~21~~ | ~~カテゴリ編集を「admin ロール持ちのみ」に制限~~ — 完了 (2.1 (2026-04-29)、`DISCORD_ADMIN_ROLE_IDS` env 追加 + `userIsAdmin` / `assertAdminResult` ヘルパー + `categories-actions.ts` に admin-gated Server Action 追加 + `categories-client.ts` を Server Action 経由に切替 + `/category` index で非 admin に編集 UI 非表示 + `/auth/denied?reason=not_admin` UX。Supabase RLS は依然 anon open なので REST 直接攻撃は別 PR で RLS 締めて対応) | ~~中~~ |
+| 22 | スケジュール ↔ 動画の紐付けがタイトル日付を見ていない — 現状は `posted_at` (無ければ `created_at`) ベースで「セッション開始 ± 36h 内に投稿された動画」を選ぶため、古い動画 (例: 2023 年録画) を後から DB に追加すると、追加日時のセッションに誤紐付けされる。修正: `extractDateFromTitle(title)` でタイトル内の日付を**優先**して使う ([src/lib/server/session-video-link.ts](src/lib/server/session-video-link.ts) の `videoEntries` 構築箇所)。**ユーザー要望追記 (2026-04-29)**: 日付がタイトルから抽出できない動画は、セッションに紐づけずスキップする (= 誤マッチを生むくらいなら何も出さない) | 小 |
 
 ### 除外済み (再対応不要)
 

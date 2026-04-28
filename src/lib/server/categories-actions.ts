@@ -36,6 +36,13 @@ import {
   fetchGuildRoles,
   type DiscordGuildRole,
 } from "./discord-roles";
+import { assertAdminResult } from "./auth";
+import {
+  rowToCategory,
+  type Category,
+  type CategoryRow,
+  type CategoryStatus,
+} from "@/lib/supabase/types";
 
 /**
  * Server Action: fetch the Discord guild's role list for the category
@@ -45,6 +52,171 @@ import {
  */
 export async function fetchAvailableGuildRoles(): Promise<DiscordGuildRole[]> {
   return fetchGuildRoles();
+}
+
+// =============================================================
+// Categories CRUD Server Actions (admin-gated, TODO #21)
+// =============================================================
+//
+// 旧来は `src/lib/categories-client.ts` から anon key で直接 supabase に
+// 書き込んでいたが、Discord ロール (DISCORD_ADMIN_ROLE_IDS) で書き込みを
+// 制限するため Server Action 経由に変えた。`assertAdminResult()` で
+// auth check → 通過時のみ supabase server client (= cookie 経由で auth
+// context を持つ) で実行。env 未設定なら全員通る (= 後方互換)。
+//
+// なお Supabase RLS は依然 anon フル open のままなので、決定的な攻撃者は
+// REST API を直接叩いて bypass できる。本番で本気のセキュリティが必要
+// なら後続で RLS を `auth.uid() で admin role 持ち以外は INSERT/UPDATE/
+// DELETE 拒否` に締める PR を別途立てること。
+
+export type CategoryWriteResult =
+  | { ok: true }
+  | { ok: false; reason: string };
+
+export type CategoryCreateInput = {
+  slug: string;
+  name: string;
+  status?: CategoryStatus;
+};
+
+export type CategoryUpdatePatch = Partial<{
+  name: string;
+  slug: string;
+  status: CategoryStatus;
+  loot_sheet_url: string | null;
+  mitigation_sheet_url: string | null;
+  discord_strategy_channel_id: string | null;
+  discord_video_channel_id: string | null;
+  discord_import_enabled: boolean;
+  first_clear_at: string | null;
+  background_image_url: string | null;
+  required_role_ids: string[] | null;
+}>;
+
+export async function createCategoryAction(
+  input: CategoryCreateInput,
+): Promise<
+  | { ok: true; category: Category }
+  | { ok: false; reason: string }
+> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) return { ok: false, reason: auth.reason };
+
+  const supabase = await createClient();
+  // Place new categories at the end (max sort_order + 1).
+  const { data: maxRow } = await supabase
+    .from("categories")
+    .select("sort_order")
+    .order("sort_order", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const nextOrder = ((maxRow?.sort_order as number | undefined) ?? -1) + 1;
+
+  const { data, error } = await supabase
+    .from("categories")
+    .insert({
+      slug: input.slug,
+      name: input.name,
+      status: input.status ?? "未着手",
+      sort_order: nextOrder,
+    })
+    .select("*")
+    .single();
+  if (error || !data) {
+    return { ok: false, reason: error?.message ?? "unknown error" };
+  }
+  return { ok: true, category: rowToCategory(data as CategoryRow) };
+}
+
+export async function updateCategoryAction(
+  id: string,
+  patch: CategoryUpdatePatch,
+): Promise<CategoryWriteResult> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) return { ok: false, reason: auth.reason };
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("categories")
+    .update(patch)
+    .eq("id", id);
+  if (error) return { ok: false, reason: error.message };
+  return { ok: true };
+}
+
+export async function deleteCategoryAction(
+  id: string,
+): Promise<CategoryWriteResult> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) return { ok: false, reason: auth.reason };
+
+  const supabase = await createClient();
+  const { error } = await supabase.from("categories").delete().eq("id", id);
+  if (error) return { ok: false, reason: error.message };
+  return { ok: true };
+}
+
+export async function setCategoryOrderAction(
+  orderedIds: string[],
+): Promise<CategoryWriteResult> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) return { ok: false, reason: auth.reason };
+
+  const supabase = await createClient();
+  // Postgres has no native multi-row reorder; issue updates in parallel.
+  const updates = orderedIds.map((id, index) =>
+    supabase.from("categories").update({ sort_order: index }).eq("id", id),
+  );
+  const results = await Promise.all(updates);
+  const failed = results.find((r) => r.error);
+  if (failed?.error) return { ok: false, reason: failed.error.message };
+  return { ok: true };
+}
+
+export async function updateCategoryStatusAction(
+  id: string,
+  status: CategoryStatus,
+): Promise<CategoryWriteResult> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) return { ok: false, reason: auth.reason };
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("categories")
+    .update({ status })
+    .eq("id", id);
+  if (error) return { ok: false, reason: error.message };
+  return { ok: true };
+}
+
+/**
+ * Race-safe NULL→value setter for `first_clear_at`. Triggered automatically
+ * when a clear-flagged video appears, so it must NOT require admin (any
+ * member's video upload should be able to mark a clear). Returns whether
+ * an update actually occurred.
+ */
+export async function maybeSetFirstClearAtAction(
+  categoryId: string,
+  isoTimestamp: string,
+): Promise<{ updated: boolean; reason?: string }> {
+  // Note: NOT admin-gated by design. This fires from the client when a
+  // video with a clear keyword is added, and we want any member to be
+  // able to surface a clear date — not just admins.
+  const supabase = await createClient();
+  const { data, error: selErr } = await supabase
+    .from("categories")
+    .select("first_clear_at")
+    .eq("id", categoryId)
+    .maybeSingle();
+  if (selErr) return { updated: false, reason: selErr.message };
+  if (data?.first_clear_at) return { updated: false }; // already set
+  const { error: updErr } = await supabase
+    .from("categories")
+    .update({ first_clear_at: isoTimestamp })
+    .eq("id", categoryId)
+    .is("first_clear_at", null);
+  if (updErr) return { updated: false, reason: updErr.message };
+  return { updated: true };
 }
 
 export type ImportNowItem = {

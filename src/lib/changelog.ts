@@ -48,6 +48,16 @@ export type ReleasePart = {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    version: "2.1",
+    date: "2026-04-29",
+    parts: [
+      {
+        title: "👑 admin ロール持ちのみカテゴリ編集可に (TODO #21)",
+        body: "現状は guild メンバー全員がカテゴリの編集 (作成/更新/削除/並び替え/ステータス変更) と Discord 取り込み等の保守操作を実行できてしまっており、ロール制限を付けたカードを誰でも解除可能だった。env `DISCORD_ADMIN_ROLE_IDS` (カンマ区切り role ID) を導入し、その指定ロールいずれか 1 つを持つメンバーのみが編集可能な状態にした。\n\n実装:\n1. `DISCORD_ADMIN_ROLE_IDS` env を `.env.local.example` に追加。空 / 未設定 = 全員 admin (後方互換)、設定後はそのロール持ちのみ admin。\n2. `src/lib/server/auth.ts` に `getAdminRoleIds()` / `userIsAdmin(roles)` / `getCurrentUserCanEdit()` / `requireAdmin()` / `assertAdminResult()` を追加。Server Action 用は `assertAdminResult()` (リダイレクトせず `{ok: false, reason: 'not_admin'}` を返す)。\n3. 旧来 anon key で直接 supabase に書いていた `categories-client.ts` の write 関数群を、Server Action (`createCategoryAction` / `updateCategoryAction` / `deleteCategoryAction` / `setCategoryOrderAction` / `updateCategoryStatusAction`) 経由に切り替え。各 Action で `assertAdminResult()` を呼んで gate。`maybeSetFirstClearAt` だけは「クリア動画追加で誰でもクリア日記録できる」性質のため admin 不要。\n4. `/category` index で `userIsAdmin(roles)` を計算し、非 admin には「+コンテンツ追加」「MaintenanceMenu」「DnD ハンドル」「⋮ メニュー」を非表示。`StatusBadge` も `readOnly` モードに切り替え。\n5. `/auth/denied?reason=not_admin` の UX を「管理者ロール付与を依頼」+「スケジュールへ戻る」/「別アカでログイン」に。\n\n注意点 (限界):\n- Supabase RLS は依然 anon フル open のままなので、決定的な攻撃者は REST API を直接叩いて bypass できる。本気の防御が必要なら別 PR で RLS を `auth.uid() の admin role 判定` に締めること。\n- 今回 admin gate されないもの: スケジュール page の各種 (settings dialog 内の URL 設定 / FFLogs OAuth / 募集テンプレート編集等)。これらも admin 限定にするかは別判断 (ユーザーごとの memo 等は逆に全員 OK にすべき)。",
+      },
+    ],
+  },
+  {
     version: "2.0",
     date: "2026-04-29",
     parts: [

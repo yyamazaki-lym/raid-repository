@@ -11,7 +11,10 @@ import {
   fetchRecentImportCountsByCategory,
   fetchTimeToClearByCategory,
 } from "@/lib/server/categories-actions";
-import { getAuthorizedUserRoles } from "@/lib/server/auth";
+import {
+  getAuthorizedUserRoles,
+  userIsAdmin,
+} from "@/lib/server/auth";
 import { CategoryList } from "./category-list";
 
 export const metadata = {
@@ -33,6 +36,10 @@ export default async function CategoryIndexPage() {
   // なため、index ではフィルタを外す。代わりに category-list.tsx 側で
   // 自分が見えないカードに 🔒 + ロールバッジを出して視認性を確保。
   // MainTabs ドロップダウンと subpage 直アクセスは引き続きロール gate。
+  // 2.1 (TODO #21): admin 限定編集。canEdit=false のときは「+追加」/
+  // MaintenanceMenu / DnD / ⋮ メニュー / ステータス変更 を全て隠す。
+  // env (`DISCORD_ADMIN_ROLE_IDS`) 未設定なら canEdit=true (後方互換)。
+  const canEdit = userIsAdmin(userRoles);
 
   return (
     <div className="flex flex-col gap-6">
@@ -46,8 +53,8 @@ export default async function CategoryIndexPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <MaintenanceMenu />
-          <CategoryFormDialog />
+          {canEdit && <MaintenanceMenu />}
+          {canEdit && <CategoryFormDialog />}
         </div>
       </div>
 
@@ -72,6 +79,7 @@ export default async function CategoryIndexPage() {
       <CategoryList
         initialCategories={result.categories}
         userRoleIds={userRoles}
+        canEdit={canEdit}
         recentImportCounts={recentCounts}
         practiceSecondsByCategory={practiceSeconds}
         timeToClearByCategory={timeToClear}
