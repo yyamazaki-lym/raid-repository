@@ -185,7 +185,12 @@ export function CategoryList({
 
   const onChangeStatus = async (id: string, status: CategoryStatus) => {
     const result = await updateCategoryStatus(id, status);
-    if (!result.ok) toast.error("ステータス更新失敗: " + result.reason);
+    if (!result.ok) {
+      toast.error("ステータス更新失敗: " + result.reason);
+      return;
+    }
+    // 2.1 (2026-04-29) hot-fix: server-rendered RSC を再実行して UI を確実に同期。
+    router.refresh();
   };
 
   const onDelete = async (cat: Category) => {

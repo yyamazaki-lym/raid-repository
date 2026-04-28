@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Plus, Save, AlertTriangle, Pencil, Upload, Loader2, Shield } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -82,6 +83,7 @@ export function CategoryFormDialog({
   open: controlledOpen,
   onOpenChange: controlledOnOpenChange,
 }: Props) {
+  const router = useRouter();
   const isEdit = !!category;
   const isControlled = controlledOpen !== undefined;
   const [internalOpen, setInternalOpen] = useState(false);
@@ -330,6 +332,10 @@ export function CategoryFormDialog({
 
     toast.success(isEdit ? "更新しました" : `「${trimmedName}」を追加しました`);
     setOpen(false);
+    // 2.1 (2026-04-29) hot-fix: realtime ハンドラだけだと server-rendered
+    // RSC が再実行されないため、ロール制限の追加/解除が UI に即時反映
+    // されない事象があった。明示的に server side cache を再評価。
+    router.refresh();
   };
 
   const defaultTrigger = (
