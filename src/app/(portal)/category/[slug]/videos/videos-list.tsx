@@ -17,6 +17,7 @@ import {
   Trash2,
   CheckSquare,
   Square,
+  X,
 } from "lucide-react";
 import { LinkSiteIcon } from "@/components/portal/link-site-icon";
 import { LINK_SITE_LABEL, detectLinkSite } from "@/lib/link-site";
@@ -890,49 +891,103 @@ function YouTubePreview({
     return () => observer.disconnect();
   }, [thumbVisible]);
 
+  // ESC で再生モーダルを閉じる + body スクロール抑止 (theater mode)
+  useEffect(() => {
+    if (!active) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setActive(false);
+    };
+    document.addEventListener("keydown", onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [active]);
+
   if (active) {
     // youtubeEmbedUrl は `?rel=0&modestbranding=1&playsinline=1` を含むので
     // autoplay は `&` で連結。
     const src = youtubeEmbedUrl(id) + "&autoplay=1";
     return (
-      <div className="relative aspect-video w-full bg-black">
-        <iframe
-          src={src}
-          title={title}
-          // 1.9 (2026-04-28): YouTube エラー 153 救済 (Zenn 記事準拠)。
-          //   - `web-share` を allow に追加 (YouTube 公式推奨)
-          //   - `referrerPolicy` を明示的に
-          //     `strict-origin-when-cross-origin` に設定。これは
-          //     YouTube が embed 元を判定するために要求する HTTP Referer
-          //     を origin 部分まで送る policy。`no-referrer` で完全に
-          //     ブロックすると embed 許可判定で「未知のサイトから」
-          //     扱いとなりエラー 153 になる。
-          //   - `frameBorder="0"` は deprecated だが YouTube 公式 share
-          //     コードに含まれているので互換性のため残す。
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-          referrerPolicy="strict-origin-when-cross-origin"
-          frameBorder="0"
-          allowFullScreen
-          loading="lazy"
-          className="absolute inset-0 h-full w-full"
-        />
-        {/* uploader が embed を完全無効化している動画用フォールバック。
-           cross-origin で iframe 内のエラー 153 は portal 側からは検知
-           できないため、「YouTube で開く」を常に表示してユーザーが
-           即座に外部タブへ逃げられるようにしておく。 */}
-        <a
-          href={url}
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={(e) => e.stopPropagation()}
-          className="absolute top-2 right-2 inline-flex items-center gap-1 rounded-md bg-black/70 px-1.5 py-1 font-mono text-[9px] tracking-[0.18em] text-white/85 uppercase backdrop-blur-sm transition-colors hover:bg-black/90 hover:text-white"
-          aria-label="YouTube で開く"
-          title="埋め込み再生できない場合はこちらから外部タブで再生"
+      <>
+        {/* カード内の元の枠は「再生中」プレースホルダだけ残してレイアウトを
+           維持。実際の iframe は下の fixed オーバーレイで描画する。 */}
+        <div className="relative aspect-video w-full bg-black">
+          <span className="absolute inset-0 grid place-items-center font-mono text-[10px] tracking-[0.22em] text-white/50 uppercase">
+            <span className="inline-flex items-center gap-1.5">
+              <Play className="h-3 w-3 fill-white/60" aria-hidden />
+              再生中…
+            </span>
+          </span>
+        </div>
+        {/* Theater mode: viewport を覆う backdrop 上で iframe を最大表示。
+           上部の sticky header / nav に被らないよう z-50 + fixed inset-0
+           で配置。max-w/max-h で 16:9 を維持しつつ枠余白を取る。
+           背景クリックと右上 × ボタンと ESC キーで閉じる。 */}
+        <div
+          className="fixed inset-0 z-50 grid place-items-center bg-black/85 p-4 backdrop-blur-sm sm:p-8"
+          onClick={() => setActive(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-label={`${title} を theater mode で再生中`}
         >
-          <ExternalLink className="h-3 w-3" aria-hidden />
-          YouTube
-        </a>
-      </div>
+          <div
+            className="relative aspect-video w-full max-w-6xl shadow-2xl shadow-black/80"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <iframe
+              src={src}
+              title={title}
+              // 1.9 (2026-04-28): YouTube エラー 153 救済 (Zenn 記事準拠)。
+              //   - `web-share` を allow に追加 (YouTube 公式推奨)
+              //   - `referrerPolicy` を明示的に
+              //     `strict-origin-when-cross-origin` に設定。これは
+              //     YouTube が embed 元を判定するために要求する HTTP Referer
+              //     を origin 部分まで送る policy。`no-referrer` で完全に
+              //     ブロックすると embed 許可判定で「未知のサイトから」
+              //     扱いとなりエラー 153 になる。
+              //   - `frameBorder="0"` は deprecated だが YouTube 公式 share
+              //     コードに含まれているので互換性のため残す。
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+              referrerPolicy="strict-origin-when-cross-origin"
+              frameBorder="0"
+              allowFullScreen
+              loading="lazy"
+              className="absolute inset-0 h-full w-full"
+            />
+            {/* 右上の操作行: 「YouTube で開く」と「閉じる」を縦に重ねず
+               横並びで一行に。 */}
+            <div className="absolute -top-10 right-0 flex items-center gap-2">
+              <a
+                href={url}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="inline-flex items-center gap-1 rounded-md bg-black/70 px-2 py-1 font-mono text-[10px] tracking-[0.18em] text-white/85 uppercase backdrop-blur-sm transition-colors hover:bg-black/90 hover:text-white"
+                aria-label="YouTube で開く"
+                title="埋め込み再生できない場合はこちらから外部タブで再生"
+              >
+                <ExternalLink className="h-3 w-3" aria-hidden />
+                YouTube
+              </a>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setActive(false);
+                }}
+                className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-black/70 text-white/85 backdrop-blur-sm transition-colors hover:bg-black/90 hover:text-white"
+                aria-label="再生を閉じる"
+                title="再生を閉じる (ESC)"
+              >
+                <X className="h-4 w-4" aria-hidden />
+              </button>
+            </div>
+          </div>
+        </div>
+      </>
     );
   }
 

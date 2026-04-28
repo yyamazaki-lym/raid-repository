@@ -52,6 +52,10 @@ export const RELEASES: ReleaseEntry[] = [
     date: "2026-04-28",
     parts: [
       {
+        title: "🎭 動画ページ内再生を theater mode で拡大表示 (sticky header に被らない)",
+        body: "PC で動画をページ内再生したときに上部の固定 header / nav に被って小さく窮屈に見えていたため、再生時は viewport を覆う backdrop 上に iframe を最大表示する theater mode を採用。`fixed inset-0 z-50` の dialog 内に iframe を配置し、`max-w-6xl aspect-video` で 16:9 を維持しつつ大きく描画。本体カードには「再生中…」プレースホルダだけ残してレイアウトシフトを抑制。閉じる手段は (1) `Escape` キー (2) 背景 (backdrop) クリック (3) 右上 × ボタン の 3 系統。再生中は `document.body.style.overflow = 'hidden'` で背景スクロールを抑止。`aria-modal=\"true\"` + `role=\"dialog\"` を付与してアクセシビリティ確保。",
+      },
+      {
         title: "🩹 動画 embed エラー 153 を Zenn 記事準拠で再修正 + 強調表示の挙動統合",
         body: "(1) **YouTube エラー 153 の再修正**: 前回の `youtube-nocookie.com` 切替だけでは不十分で再生不能のままだったため、参考記事 ([zenn.dev/tsubo_tsubo](https://zenn.dev/tsubo_tsubo/articles/zenn-youtube-embed)) に従い iframe 属性を YouTube 公式 share コードと同等に揃える: `referrerPolicy=\"strict-origin-when-cross-origin\"` を明示 (前は `no-referrer` で Referer 完全ブロック → embed 許可判定で「未知のサイトから」扱いとなっていた)、`allow` に `web-share` を追加、`frameBorder=\"0\"` も付与。さらに `?origin=` パラメタは外して URL を YouTube share コード相当のシンプルな形に。\n(2) **強調表示の auto-off を URL 経由 focus にも統合**: コンテンツカードのクリア日時 (?focusDate=) リンクから飛んだ場合も Trophy ボタン経由と同じく「次の操作 (枠外クリック / スクロール) で枠強調を off」する挙動に変更。`focusActive` state を追加し、Trophy 由来 (`manualFocusId`) と URL 由来 (`focus` / `focusDate`) を区別せず一律 dismiss 対象に。1.5s ガード後の `window.scroll` / `document.click` (focused 要素外) で `setFocusActive(false)`。\n(3) **強調表示の pulse animation を削除**: `animate-[pulse_1.4s_ease-out_2]` を撤去し、`ring-2 ring-[var(--neon-cyan)]/60 ring-offset-2` のみで控えめに。ちらつきが嫌というユーザー指示。`transition-shadow` を付けて off 時のフェードを滑らかに。",
       },
