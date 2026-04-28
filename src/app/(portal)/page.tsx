@@ -46,10 +46,16 @@ export default async function SchedulePage() {
     fetchCategories(),
     fetchSessionLogsByDate(),
   ]);
-  // Slim category list passed to the recruitment dialog's category
-  // picker. Only id+name are needed there.
+  // Slim category list passed to the recruitment popover. id+name+slug:
+  // slug is needed for the per-category macro-page link icons added in
+  // the popover (1.9 (2026-04-28)) — clicking the icon opens
+  // `/category/{slug}/macros` for full CRUD on that category's templates.
   const recruitmentCategoryOptions = categoriesResult.ok
-    ? categoriesResult.categories.map((c) => ({ id: c.id, name: c.name }))
+    ? categoriesResult.categories.map((c) => ({
+        id: c.id,
+        name: c.name,
+        slug: c.slug,
+      }))
     : [];
   // 1.9.16: schedule legend label switches MEMBERS → LEGENDS only when
   // the group has at least one cleared Ultimate (絶◯◯ + status=クリア済).

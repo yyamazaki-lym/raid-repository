@@ -91,6 +91,10 @@ export const RELEASES: ReleaseEntry[] = [
         title: "📦 更新履歴に「もっと見る」ボタン (5 件以降は省略)",
         body: "新スキーム移行で changelog エントリーが増えると設定ダイアログのレイアウトが縦に間延びするため、初期表示は最新 5 件に制限。`▼ もっと見る (残り N 件)` ボタンで全件展開、`▲ 最新 5 件まで折りたたむ` で再収納できる。ローカル state なのでダイアログ閉じ → 再度開いた際は default の 5 件表示に戻る。",
       },
+      {
+        title: "📋 トップの「テンプレ」ポップアップに DnD + カテゴリ折りたたみ + マクロページリンク",
+        body: "これまでは `DropdownMenu` ベースの単純なリスト + 別ダイアログ (`ManageDialog`) で並び替え/編集/削除を行っていたが、ポップアップ内で完結する形に統合。(1) 内部を `Popover` ベースに切替え、ドロップダウンメニュー特有の auto-close 制約を解消。(2) DnD を popup 内に直接配置 — `setRecruitmentTemplateOrder` 呼出で global sort_order に即時反映、`★ Top` バッジも自動連動。(3) カテゴリごとに collapsible (`★` を含むカテゴリのみ default open、それ以外は折りたたみ)、reorder で top カテゴリが入れ替わると新 top のカテゴリも自動展開。(4) 各カテゴリヘッダー右に `↗ ExternalLink` アイコンを追加 → `/category/{slug}/macros` で full CRUD (新規 / 編集 / 削除 + 全角→半角)。これに伴い不要になった `ManageDialog` および「テンプレートを編集 / 並べ替え」ボタンは削除。slug 受け渡しのため `recruitmentCategoryOptions` 型を `{ id, name }` → `{ id, name, slug }` に拡張。",
+      },
     ],
   },
   {

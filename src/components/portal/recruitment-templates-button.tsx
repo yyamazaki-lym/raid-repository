@@ -1,19 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
-  CaseSensitive,
   Check,
+  ChevronDown,
   ClipboardCopy,
-  ClipboardList,
   ExternalLink,
   GripVertical,
-  Pencil,
-  Plus,
-  Save,
   Star,
-  Trash2,
-  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -34,30 +28,13 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Button } from "@/components/ui/button";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import {
-  createRecruitmentTemplate,
-  deleteRecruitmentTemplate,
   setRecruitmentTemplateOrder,
-  updateRecruitmentTemplate,
   useRealtimeRecruitmentTemplates,
   type RecruitmentTemplate,
 } from "@/lib/recruitment-templates-client";
@@ -65,26 +42,135 @@ import { cn } from "@/lib/utils";
 
 /**
  * Header button on the schedule page that exposes saved PT-募集 text
- * templates. Always shows a dropdown menu (regardless of count) so the
- * user can always reach the management dialog — fixes the previous
- * UX where 1 template made the whole button collapse to "Copy".
+ * templates. Always shows the popover (regardless of count) so the user
+ * can always see context — fixes the previous UX where 1 template made
+ * the whole button collapse to a direct copy.
  *
- * Templates are grouped by category in the dropdown for readability,
+ * Templates are grouped by category in the popover for readability,
  * since groups commonly maintain 1-N templates per content (e.g. one
  * for each floor of a 4-floor raid).
+ *
+ * Features (1.9 (2026-04-28)):
+ *   - Inline DnD reorder right inside the popover. Drag handle on each
+ *     row updates global sort_order via `setRecruitmentTemplateOrder`,
+ *     same as the macro page.
+ *   - Per-category collapsible sections. Default open: only the section
+ *     containing the global top template. Other sections start
+ *     collapsed and require a click on the category header to expand.
+ *   - Per-category macro-page link (↗ icon next to the category name).
+ *     Routes to `/category/{slug}/macros` for full CRUD on that
+ *     category's templates (add / edit / delete + 全角→半角 conversion).
+ *
+ * The previous in-popover "テンプレートを編集 / 並べ替え" button — and
+ * the entire `ManageDialog` it opened — were removed: reorder now lives
+ * inline, and CRUD lives on the per-category macro page reachable via
+ * the new ↗ link icons.
  */
 
-type CategoryOption = { id: string; name: string };
+type CategoryOption = {
+  id: string;
+  name: string;
+  /** Used to build per-category macro-page links (`/category/{slug}/macros`) */
+  slug: string;
+};
 
 type Props = {
   initial: RecruitmentTemplate[];
-  /** Categories to choose from in the management dialog. */
+  /** Categories used to look up slugs for the per-category link icons. */
   categories: CategoryOption[];
 };
 
 export function RecruitmentTemplatesButton({ initial, categories }: Props) {
   const templates = useRealtimeRecruitmentTemplates(initial);
-  const [manageOpen, setManageOpen] = useState(false);
+
+  // category id → slug lookup for the per-category ↗ link icons.
+  const slugById = useMemo(
+    () => new Map(categories.map((c) => [c.id, c.slug] as const)),
+    [categories],
+  );
+
+  // Optimistic local order for instant DnD feedback. Server confirms via
+  // realtime refetch; on failure we revert.
+  const [optimisticOrder, setOptimisticOrder] = useState<string[] | null>(null);
+
+  const ordered = useMemo(() => {
+    if (!optimisticOrder) return templates;
+    const idx = new Map(optimisticOrder.map((id, i) => [id, i] as const));
+    return [...templates].sort((a, b) => {
+      const ai = idx.get(a.id);
+      const bi = idx.get(b.id);
+      if (ai === undefined && bi === undefined) return 0;
+      if (ai === undefined) return 1;
+      if (bi === undefined) return -1;
+      return ai - bi;
+    });
+  }, [templates, optimisticOrder]);
+
+  const grouped = useMemo(() => groupByCategory(ordered), [ordered]);
+
+  // The first template (sort_order = 0) is what the next-session card's
+  // quick-copy button uses. Highlight it in the list and auto-expand its
+  // category section.
+  const topId = ordered[0]?.id ?? null;
+  const topCategoryName = ordered[0]?.categoryName ?? null;
+
+  // Per-category collapsible state. Default: only the section containing
+  // the current top is open; others start collapsed for compactness.
+  const [openCategories, setOpenCategories] = useState<Set<string>>(() => {
+    const init = new Set<string>();
+    if (topCategoryName !== null) init.add(topCategoryName);
+    else init.add("__none__");
+    return init;
+  });
+
+  // If the top template's category changes (e.g., after a reorder), make
+  // sure the new top's section is expanded so the user can see the new ★
+  // without manually opening it.
+  useEffect(() => {
+    const key = topCategoryName ?? "__none__";
+    setOpenCategories((prev) => {
+      if (prev.has(key)) return prev;
+      const next = new Set(prev);
+      next.add(key);
+      return next;
+    });
+  }, [topCategoryName]);
+
+  const toggleCategory = (key: string) => {
+    setOpenCategories((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const sensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 200, tolerance: 6 },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  );
+
+  const onDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = ordered.findIndex((t) => t.id === active.id);
+    const newIndex = ordered.findIndex((t) => t.id === over.id);
+    if (oldIndex < 0 || newIndex < 0) return;
+    const next = arrayMove(ordered, oldIndex, newIndex).map((t) => t.id);
+    setOptimisticOrder(next);
+    const result = await setRecruitmentTemplateOrder(next);
+    if (!result.ok) {
+      toast.error("並び替え保存失敗: " + result.reason);
+      setOptimisticOrder(null);
+      return;
+    }
+    setTimeout(() => setOptimisticOrder(null), 1500);
+  };
 
   const copyToClipboard = async (template: RecruitmentTemplate) => {
     try {
@@ -96,115 +182,214 @@ export function RecruitmentTemplatesButton({ initial, categories }: Props) {
     }
   };
 
-  const grouped = useMemo(() => groupByCategory(templates), [templates]);
-  // The first template (sort_order = 0) is what the next-session
-  // card's quick-copy button uses. Highlight it in the dropdown so
-  // users can confirm "this is what gets copied".
-  const topId = templates[0]?.id ?? null;
-
   return (
-    <>
-      <DropdownMenu>
-        <DropdownMenuTrigger
-          aria-label={`PT募集文を選択してコピー (${templates.length}件)`}
-          title={`PT募集文 ${templates.length}件 — クリックで一覧`}
-          className={cn(
-            "inline-flex h-8 w-8 items-center justify-center rounded-md border transition-colors",
-            // Muted base — keeps the header palette quiet. Hover / open
-            // states tint cyan so the active state is unambiguous.
-            "border-border/60 text-muted-foreground",
-            "hover:border-[var(--neon-cyan)]/60 hover:text-foreground",
-            "data-[popup-open]:border-[var(--neon-cyan)]/60 data-[popup-open]:bg-[var(--neon-cyan)]/12 data-[popup-open]:text-[var(--neon-cyan)]",
-          )}
-        >
-          <ClipboardCopy className="h-4 w-4" aria-hidden />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent
-          align="end"
-          sideOffset={4}
-          className="glass-popup w-[max(18rem,min(calc(100vw-1rem),28rem))]"
-        >
-          {templates.length === 0 ? (
-            <div className="px-2 py-3 text-center text-[11px] text-muted-foreground">
-              テンプレート未登録
-            </div>
-          ) : (
-            <>
-              <p className="px-1.5 pt-1 pb-1 text-[10px] leading-snug text-muted-foreground/85">
-                <span className="font-mono tracking-[0.18em] text-[var(--neon-cyan)]/80 uppercase">★ Top</span>
-                {" "}が次回開催日カードのコピーボタンの対象。
-              </p>
-              {grouped.map(({ categoryName, items }) => (
-                <div key={categoryName ?? "__none__"} className="mb-1 last:mb-0">
-                  <div className="px-1.5 pt-1 pb-0.5 font-mono text-[10px] tracking-[0.2em] text-muted-foreground uppercase truncate">
-                    {categoryName ?? "（コンテンツ未設定）"}
-                  </div>
-                  {items.map((t) => {
-                    const isTop = t.id === topId;
+    <Popover>
+      <PopoverTrigger
+        aria-label={`PT募集文を選択してコピー (${templates.length}件)`}
+        title={`PT募集文 ${templates.length}件 — クリックで一覧`}
+        className={cn(
+          "inline-flex h-8 w-8 items-center justify-center rounded-md border transition-colors",
+          // Muted base — keeps the header palette quiet. Hover / open
+          // states tint cyan so the active state is unambiguous.
+          "border-border/60 text-muted-foreground",
+          "hover:border-[var(--neon-cyan)]/60 hover:text-foreground",
+          "data-[popup-open]:border-[var(--neon-cyan)]/60 data-[popup-open]:bg-[var(--neon-cyan)]/12 data-[popup-open]:text-[var(--neon-cyan)]",
+        )}
+      >
+        <ClipboardCopy className="h-4 w-4" aria-hidden />
+      </PopoverTrigger>
+      <PopoverContent
+        align="end"
+        sideOffset={4}
+        className="glass-popup w-[max(20rem,min(calc(100vw-1rem),32rem))] gap-1 p-1.5"
+      >
+        {templates.length === 0 ? (
+          <div className="px-2 py-3 text-center text-[11px] text-muted-foreground">
+            テンプレート未登録 — マクロページから登録できます
+          </div>
+        ) : (
+          <>
+            <p className="px-1.5 pt-1 pb-1 text-[10px] leading-snug text-muted-foreground/85">
+              <span className="font-mono tracking-[0.18em] text-[var(--neon-cyan)]/80 uppercase">
+                ★ Top
+              </span>
+              {" が次回開催日カードのコピー対象。ハンドルをドラッグで並び替え。"}
+            </p>
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={onDragEnd}
+            >
+              <SortableContext
+                items={ordered.map((t) => t.id)}
+                strategy={verticalListSortingStrategy}
+              >
+                <div className="flex flex-col gap-1">
+                  {grouped.map(({ categoryName, items }) => {
+                    const key = categoryName ?? "__none__";
+                    const isOpen = openCategories.has(key);
+                    const containsTop = items.some((t) => t.id === topId);
+                    // Use the first template's categoryId to look up the
+                    // slug for the macro-page link icon. All items in
+                    // this group share categoryId.
+                    const categoryId = items[0]?.categoryId ?? null;
+                    const slug = categoryId ? slugById.get(categoryId) ?? null : null;
                     return (
-                      <DropdownMenuItem
-                        key={t.id}
-                        onClick={() => copyToClipboard(t)}
-                        className={cn(
-                          "flex cursor-pointer items-start gap-2",
-                          isTop &&
-                            "bg-[var(--neon-cyan)]/8 ring-1 ring-inset ring-[var(--neon-cyan)]/30",
-                        )}
+                      <div
+                        key={key}
+                        className="rounded-sm border border-border/40 bg-secondary/15"
                       >
-                        {isTop ? (
-                          <Star
-                            className="mt-0.5 h-3.5 w-3.5 shrink-0 fill-[var(--neon-cyan)] text-[var(--neon-cyan)]"
-                            aria-hidden
-                          />
-                        ) : (
-                          <ClipboardCopy
-                            className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--neon-cyan)]"
-                            aria-hidden
-                          />
-                        )}
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm">
-                            {t.label || "通常募集"}
-                            {isTop && (
-                              <span className="ml-1.5 font-mono text-[9px] tracking-[0.18em] text-[var(--neon-cyan)] uppercase">
-                                Top
+                        <div className="flex items-center justify-between gap-1.5 px-1.5 py-1">
+                          <button
+                            type="button"
+                            onClick={() => toggleCategory(key)}
+                            aria-expanded={isOpen}
+                            aria-label={`${
+                              categoryName ?? "（コンテンツ未設定）"
+                            } のテンプレートを${isOpen ? "閉じる" : "開く"}`}
+                            className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded px-1 text-left hover:bg-secondary/40"
+                          >
+                            <ChevronDown
+                              className={cn(
+                                "h-3 w-3 shrink-0 text-muted-foreground transition-transform",
+                                isOpen ? "rotate-0" : "-rotate-90",
+                              )}
+                              aria-hidden
+                            />
+                            <span className="truncate font-mono text-[10px] tracking-[0.18em] text-muted-foreground uppercase">
+                              {categoryName ?? "（コンテンツ未設定）"}
+                            </span>
+                            <span className="font-mono text-[9px] text-muted-foreground/60">
+                              {items.length}
+                            </span>
+                            {containsTop && (
+                              <span
+                                className="font-mono text-[9px] tracking-[0.18em] text-[var(--neon-cyan)]/85 uppercase"
+                                title="このカテゴリに ★ Top のテンプレが含まれる"
+                              >
+                                ★
                               </span>
                             )}
-                          </p>
-                          <p className="truncate text-[10px] text-muted-foreground/80">
-                            {t.body.slice(0, 60)}
-                            {t.body.length > 60 ? "…" : ""}
-                          </p>
+                          </button>
+                          {slug && (
+                            <a
+                              href={`/category/${slug}/macros`}
+                              title={`「${categoryName}」のマクロページを開く (新規 / 編集 / 削除)`}
+                              aria-label={`「${categoryName}」のマクロページを開く`}
+                              className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-secondary/60 hover:text-[var(--neon-cyan)]"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <ExternalLink className="h-3 w-3" aria-hidden />
+                            </a>
+                          )}
                         </div>
-                      </DropdownMenuItem>
+                        {isOpen && (
+                          <ul className="flex flex-col gap-0.5 border-t border-border/30 p-1">
+                            {items.map((t) => (
+                              <SortableTemplateItem
+                                key={t.id}
+                                template={t}
+                                isTop={t.id === topId}
+                                onCopy={() => copyToClipboard(t)}
+                              />
+                            ))}
+                          </ul>
+                        )}
+                      </div>
                     );
                   })}
                 </div>
-              ))}
-            </>
-          )}
-          <DropdownMenuSeparator />
-          <DropdownMenuItem
-            onClick={() => setManageOpen(true)}
-            className="flex cursor-pointer items-center gap-2 text-muted-foreground focus:text-foreground"
-          >
-            <Pencil className="h-3.5 w-3.5" aria-hidden />
-            <span className="text-sm">
-              {templates.length === 0
-                ? "テンプレートを追加"
-                : "テンプレートを編集 / 並べ替え"}
-            </span>
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+              </SortableContext>
+            </DndContext>
+          </>
+        )}
+      </PopoverContent>
+    </Popover>
+  );
+}
 
-      <ManageDialog
-        open={manageOpen}
-        onOpenChange={setManageOpen}
-        templates={templates}
-        categories={categories}
-      />
-    </>
+/**
+ * One row inside the popover's per-category list. Drag handle on the
+ * left, click anywhere else to copy the body. ★ when this is the global
+ * top template (the one the next-session card's quick-copy button uses).
+ */
+function SortableTemplateItem({
+  template,
+  isTop,
+  onCopy,
+}: {
+  template: RecruitmentTemplate;
+  isTop: boolean;
+  onCopy: () => void;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: template.id });
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 10 : "auto",
+  };
+  return (
+    <li
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      className={cn(
+        "flex items-start gap-1 rounded-sm",
+        isTop &&
+          "bg-[var(--neon-cyan)]/8 ring-1 ring-inset ring-[var(--neon-cyan)]/30",
+      )}
+    >
+      <button
+        type="button"
+        {...listeners}
+        aria-label={`${template.label || "通常募集"} のドラッグハンドル`}
+        title="ドラッグで並び替え (グローバル順序に反映 → トップの「募集」ボタンも自動連動)"
+        className="inline-flex h-7 w-5 shrink-0 cursor-grab items-center justify-center rounded text-muted-foreground hover:text-foreground active:cursor-grabbing"
+      >
+        <GripVertical className="h-3 w-3" aria-hidden />
+      </button>
+      <button
+        type="button"
+        onClick={onCopy}
+        aria-label={`${template.label || "通常募集"} の本文をコピー`}
+        title="クリックで本文をコピー"
+        className="flex min-w-0 flex-1 cursor-pointer items-start gap-2 rounded px-1 py-1 text-left hover:bg-secondary/40"
+      >
+        {isTop ? (
+          <Star
+            className="mt-0.5 h-3.5 w-3.5 shrink-0 fill-[var(--neon-cyan)] text-[var(--neon-cyan)]"
+            aria-hidden
+          />
+        ) : (
+          <ClipboardCopy
+            className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--neon-cyan)]"
+            aria-hidden
+          />
+        )}
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm">
+            {template.label || "通常募集"}
+            {isTop && (
+              <span className="ml-1.5 font-mono text-[9px] tracking-[0.18em] text-[var(--neon-cyan)] uppercase">
+                Top
+              </span>
+            )}
+          </p>
+          <p className="truncate text-[10px] text-muted-foreground/80">
+            {template.body.slice(0, 60)}
+            {template.body.length > 60 ? "…" : ""}
+          </p>
+        </div>
+      </button>
+    </li>
   );
 }
 
@@ -299,26 +484,6 @@ function displayLabel(t: RecruitmentTemplate): string {
   return t.label ? `${cat} / ${t.label}` : cat;
 }
 
-/**
- * Convert full-width ASCII characters (digits, Latin letters, and the
- * `！` 〜 `～` punctuation block) to their half-width equivalents.
- * Common pain point in PT募集文 — text typed via a Japanese IME often
- * sneaks in 全角 chars (`１`, `（`, `／`, `＞`) that the user actually
- * wanted as half-width. Surfaced as a manual "全角→半角" button so
- * the conversion is opt-in, not a silent rewrite.
- *
- * Algorithm: every full-width ASCII char from U+FF01 to U+FF5E maps
- * to its half-width counterpart by subtracting 0xFEE0. The 全角 space
- * U+3000 is converted separately to a regular space.
- */
-function toHalfWidth(s: string): string {
-  return s
-    .replace(/[！-～]/g, (c) =>
-      String.fromCharCode(c.charCodeAt(0) - 0xfee0),
-    )
-    .replace(/　/g, " ");
-}
-
 function groupByCategory(
   templates: RecruitmentTemplate[],
 ): Array<{ categoryName: string | null; items: RecruitmentTemplate[] }> {
@@ -338,412 +503,4 @@ function groupByCategory(
     categoryName: k,
     items: map.get(k)!,
   }));
-}
-
-// ---------- Management dialog ----------------------------------------------
-
-function ManageDialog({
-  open,
-  onOpenChange,
-  templates,
-  categories,
-}: {
-  open: boolean;
-  onOpenChange: (next: boolean) => void;
-  templates: RecruitmentTemplate[];
-  categories: CategoryOption[];
-}) {
-  const [editing, setEditing] = useState<{
-    id?: string;
-    categoryId: string;
-    label: string;
-    body: string;
-  } | null>(null);
-  const [busy, setBusy] = useState(false);
-  // Optimistic local order so drag-feedback is instant.
-  const [optimisticOrder, setOptimisticOrder] = useState<string[] | null>(null);
-
-  const ordered = useMemo(() => {
-    if (!optimisticOrder) return templates;
-    const idx = new Map(optimisticOrder.map((id, i) => [id, i] as const));
-    return [...templates].sort((a, b) => {
-      const ai = idx.get(a.id);
-      const bi = idx.get(b.id);
-      if (ai === undefined && bi === undefined) return 0;
-      if (ai === undefined) return 1;
-      if (bi === undefined) return -1;
-      return ai - bi;
-    });
-  }, [templates, optimisticOrder]);
-
-  const sensors = useSensors(
-    useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(TouchSensor, {
-      activationConstraint: { delay: 200, tolerance: 6 },
-    }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
-  );
-
-  const onDragEnd = async (event: DragEndEvent) => {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    const oldIndex = ordered.findIndex((t) => t.id === active.id);
-    const newIndex = ordered.findIndex((t) => t.id === over.id);
-    if (oldIndex < 0 || newIndex < 0) return;
-    const next = arrayMove(ordered, oldIndex, newIndex).map((t) => t.id);
-    setOptimisticOrder(next);
-    const result = await setRecruitmentTemplateOrder(next);
-    if (!result.ok) {
-      toast.error("並び替え保存失敗: " + result.reason);
-      setOptimisticOrder(null);
-      return;
-    }
-    setTimeout(() => setOptimisticOrder(null), 1500);
-  };
-
-  const startNew = () => {
-    if (categories.length === 0) {
-      toast.error("先にコンテンツを登録してください");
-      return;
-    }
-    setEditing({
-      categoryId: categories[0]!.id,
-      label: "",
-      body: "",
-    });
-  };
-  const startEdit = (t: RecruitmentTemplate) =>
-    setEditing({
-      id: t.id,
-      categoryId: t.categoryId ?? (categories[0]?.id ?? ""),
-      label: t.label,
-      body: t.body,
-    });
-  const cancelEdit = () => setEditing(null);
-
-  const onSave = async () => {
-    if (!editing) return;
-    if (!editing.categoryId) {
-      toast.error("コンテンツを選択してください");
-      return;
-    }
-    const label = editing.label.trim();
-    const body = editing.body.trim();
-    if (!body) {
-      toast.error("本文を入力してください");
-      return;
-    }
-    setBusy(true);
-    const result = editing.id
-      ? await updateRecruitmentTemplate(editing.id, {
-          categoryId: editing.categoryId,
-          label,
-          body,
-        })
-      : await createRecruitmentTemplate({
-          categoryId: editing.categoryId,
-          label,
-          body,
-        });
-    setBusy(false);
-    if (!result.ok) {
-      toast.error("保存失敗: " + result.reason);
-      return;
-    }
-    toast.success(editing.id ? "更新しました" : "追加しました");
-    setEditing(null);
-  };
-
-  const onDelete = async (t: RecruitmentTemplate) => {
-    if (!window.confirm(`「${displayLabel(t)}」を削除しますか？`)) return;
-    const result = await deleteRecruitmentTemplate(t.id);
-    if (!result.ok) {
-      toast.error("削除失敗: " + result.reason);
-      return;
-    }
-    toast.success("削除しました");
-  };
-
-  const ids = useMemo(() => ordered.map((t) => t.id), [ordered]);
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="glass top-[8svh] max-w-[calc(100%-1.5rem)] translate-y-0 gap-0 p-0 sm:top-20 sm:max-w-2xl">
-        <DialogHeader className="flex-row items-start gap-3 border-b border-border/40 p-5">
-          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-[var(--neon-cyan)]/40 bg-background/40 text-[var(--neon-cyan)] shadow-[0_0_18px_-6px_var(--neon-cyan)]">
-            <ClipboardList className="h-4 w-4" aria-hidden />
-          </span>
-          <div className="flex flex-col gap-0.5">
-            <DialogTitle className="font-display text-base tracking-[0.16em] uppercase">
-              PT募集文 Templates
-            </DialogTitle>
-            <DialogDescription className="text-xs">
-              コンテンツ別に募集文を保存。先頭のテンプレが「次回開催日」カードのコピーボタンに出ます。
-            </DialogDescription>
-          </div>
-        </DialogHeader>
-
-        <div className="flex max-h-[70svh] flex-col gap-4 overflow-y-auto p-5">
-          {/* List */}
-          {ordered.length === 0 ? (
-            <p className="rounded-md border border-dashed border-border/40 px-4 py-6 text-center text-xs text-muted-foreground">
-              テンプレート未登録 — 下の「+ 新規追加」から1つ目を作成
-            </p>
-          ) : (
-            <DndContext
-              sensors={sensors}
-              collisionDetection={closestCenter}
-              onDragEnd={onDragEnd}
-            >
-              <SortableContext items={ids} strategy={verticalListSortingStrategy}>
-                <ul className="flex flex-col gap-2">
-                  {ordered.map((t, i) => (
-                    <SortableTemplateRow
-                      key={t.id}
-                      template={t}
-                      isFirst={i === 0}
-                      onEdit={() => startEdit(t)}
-                      onDelete={() => onDelete(t)}
-                    />
-                  ))}
-                </ul>
-              </SortableContext>
-            </DndContext>
-          )}
-
-          {/* Edit / Create form */}
-          {editing ? (
-            <section className="flex flex-col gap-2 rounded-md border border-[var(--neon-cyan)]/40 bg-[var(--neon-cyan)]/4 p-3">
-              <div className="flex items-center justify-between gap-2">
-                <span className="font-mono text-[10px] tracking-[0.22em] text-[var(--neon-cyan)] uppercase">
-                  {editing.id ? "Edit" : "New"} Template
-                </span>
-                <button
-                  type="button"
-                  onClick={cancelEdit}
-                  aria-label="フォームを閉じる"
-                  className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
-                >
-                  <X className="h-3.5 w-3.5" aria-hidden />
-                </button>
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="rt-category" className="text-xs text-foreground/80">
-                  コンテンツ
-                </Label>
-                <select
-                  id="rt-category"
-                  value={editing.categoryId}
-                  onChange={(e) =>
-                    setEditing((cur) =>
-                      cur ? { ...cur, categoryId: e.target.value } : cur,
-                    )
-                  }
-                  className="rounded-md border border-input bg-background/30 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--neon-cyan)]/40"
-                >
-                  {categories.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="rt-label" className="text-xs text-foreground/80">
-                  サブラベル（任意）
-                </Label>
-                <Input
-                  id="rt-label"
-                  value={editing.label}
-                  onChange={(e) =>
-                    setEditing((cur) =>
-                      cur ? { ...cur, label: e.target.value } : cur,
-                    )
-                  }
-                  spellCheck={false}
-                />
-                <p className="text-[10px] text-muted-foreground leading-relaxed">
-                  コンテンツ内で複数テンプレを使い分ける時の小見出し。1つだけなら空でOK。
-                </p>
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <Label htmlFor="rt-body" className="text-xs text-foreground/80">
-                    本文
-                  </Label>
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const next = toHalfWidth(editing.body);
-                        if (next === editing.body) {
-                          toast.info("変換対象の全角文字なし");
-                          return;
-                        }
-                        setEditing((cur) =>
-                          cur ? { ...cur, body: next } : cur,
-                        );
-                        toast.success("全角を半角に変換しました");
-                      }}
-                      className="inline-flex items-center gap-1 rounded-sm border border-[var(--neon-cyan)]/40 bg-[var(--neon-cyan)]/8 px-2 py-0.5 font-mono text-[10px] tracking-[0.18em] text-[var(--neon-cyan)] uppercase transition-colors hover:bg-[var(--neon-cyan)]/15"
-                      title="全角の数字・英字・記号を半角に変換"
-                      aria-label="全角を半角に変換"
-                    >
-                      <CaseSensitive className="h-3 w-3" aria-hidden />
-                      全角→半角
-                    </button>
-                    <a
-                      href="https://knt-a.com/pt-msg/"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 rounded-sm border border-border/60 bg-background/40 px-2 py-0.5 font-mono text-[10px] tracking-[0.18em] text-muted-foreground uppercase transition-colors hover:border-foreground/40 hover:text-foreground"
-                      title="募集文テンプレート作成サイト (knt-a.com) を開く"
-                      aria-label="募集文テンプレート作成サイトを開く"
-                    >
-                      <ExternalLink className="h-3 w-3" aria-hidden />
-                      作成サイト
-                    </a>
-                  </div>
-                </div>
-                <Textarea
-                  id="rt-body"
-                  value={editing.body}
-                  onChange={(e) =>
-                    setEditing((cur) =>
-                      cur ? { ...cur, body: e.target.value } : cur,
-                    )
-                  }
-                  rows={6}
-                  className="text-[12px] leading-relaxed font-mono"
-                  spellCheck={false}
-                />
-              </div>
-              <div className="flex justify-end gap-2 pt-1">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={cancelEdit}
-                  disabled={busy}
-                  className="font-mono text-[11px] tracking-[0.18em] uppercase"
-                >
-                  キャンセル
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  onClick={onSave}
-                  disabled={busy}
-                  className="gap-1.5 font-mono text-[11px] tracking-[0.18em] uppercase"
-                >
-                  <Save className="h-3.5 w-3.5" aria-hidden />
-                  {busy ? "保存中..." : editing.id ? "更新" : "追加"}
-                </Button>
-              </div>
-            </section>
-          ) : (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={startNew}
-              className="self-start gap-1.5 font-mono text-[11px] tracking-[0.18em] uppercase"
-            >
-              <Plus className="h-3.5 w-3.5" aria-hidden />
-              新規追加
-            </Button>
-          )}
-        </div>
-
-        <DialogFooter className="-mx-0 -mb-0 mt-0 flex-row items-center justify-end gap-2 rounded-b-xl border-t border-border/40 bg-secondary/30 p-3">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => onOpenChange(false)}
-            className="font-mono text-[11px] tracking-[0.18em] uppercase"
-          >
-            閉じる
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function SortableTemplateRow({
-  template,
-  isFirst,
-  onEdit,
-  onDelete,
-}: {
-  template: RecruitmentTemplate;
-  isFirst: boolean;
-  onEdit: () => void;
-  onDelete: () => void;
-}) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({ id: template.id });
-  const style: React.CSSProperties = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : 1,
-    zIndex: isDragging ? 10 : "auto",
-  };
-  const heading =
-    (template.categoryName ?? "（未分類）") +
-    (template.label ? ` / ${template.label}` : "");
-  return (
-    <li
-      ref={setNodeRef}
-      style={style}
-      {...attributes}
-      className="rounded-md border border-border/40 bg-secondary/20"
-    >
-      <div className="flex items-center justify-between gap-2 border-b border-border/30 px-2 py-2">
-        <div className="flex min-w-0 items-center gap-2">
-          <button
-            type="button"
-            {...listeners}
-            aria-label={`${heading} のドラッグハンドル`}
-            className="inline-flex h-6 w-6 cursor-grab items-center justify-center rounded text-muted-foreground hover:bg-secondary/60 hover:text-foreground active:cursor-grabbing"
-            title="ドラッグで並び替え"
-          >
-            <GripVertical className="h-3.5 w-3.5" aria-hidden />
-          </button>
-          <div className="min-w-0 flex-1">
-            <p className="truncate font-display text-sm">{heading}</p>
-            {isFirst && (
-              <p className="font-mono text-[9px] tracking-[0.18em] text-[var(--neon-cyan)] uppercase">
-                Top — 開催日カードのコピー対象
-              </p>
-            )}
-          </div>
-        </div>
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={onEdit}
-            aria-label={`${heading} を編集`}
-            title="編集"
-            className="inline-flex h-7 w-7 items-center justify-center rounded text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
-          >
-            <Pencil className="h-3.5 w-3.5" aria-hidden />
-          </button>
-          <button
-            type="button"
-            onClick={onDelete}
-            aria-label={`${heading} を削除`}
-            title="削除"
-            className="inline-flex h-7 w-7 items-center justify-center rounded text-rose-300 hover:bg-rose-500/15 hover:text-rose-200"
-          >
-            <Trash2 className="h-3.5 w-3.5" aria-hidden />
-          </button>
-        </div>
-      </div>
-      <pre className="max-h-[8rem] overflow-y-auto px-3 py-2 font-mono text-[11px] leading-relaxed whitespace-pre-wrap text-foreground/85">
-        {template.body}
-      </pre>
-    </li>
-  );
 }

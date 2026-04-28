@@ -41,8 +41,12 @@ type Props = {
   holidays?: JapaneseHolidaysMap;
   /** Pre-fetched PT-募集 templates (server-rendered initial state). */
   recruitmentTemplates?: RecruitmentTemplate[];
-  /** Categories for the recruitment-templates dialog category picker. */
-  recruitmentCategories?: { id: string; name: string }[];
+  /**
+   * Categories for the recruitment-templates popover. `slug` is used
+   * by the per-category macro-page link icon shown next to each
+   * category header inside the popover.
+   */
+  recruitmentCategories?: { id: string; name: string; slug: string }[];
   /**
    * Pre-built map of `session.rawDate` → matching video page link.
    * Used by the schedule date cells to deep-link into the video.
