@@ -24,22 +24,73 @@ export type ReleaseEntry = {
   version: string;
   /** ISO date `YYYY-MM-DD` of the bump. */
   date: string;
-  /** Short bullet points for the release. Markdown not supported. */
-  notes: string[];
+  /**
+   * Short bullet points for the release. Markdown not supported.
+   * 旧スキーム (1.9.38 以前) で使用、新スキームでも軽微な変更で使う。
+   * `parts` と排他: 同時指定された場合 UI は `parts` を優先表示。
+   */
+  notes?: string[];
+  /**
+   * 1 日内に多数のコミットがある日 (新スキーム運用後の典型) で、
+   * notes を「コミットごとの part」に分割して表示するためのフィールド。
+   * 各 part は折りたたみ可能 (`<details>`) で、title だけ常時表示し、
+   * 詳細 body はクリックで開閉する。
+   */
+  parts?: ReleasePart[];
+};
+
+export type ReleasePart = {
+  /** 折りたたみ時に常時表示される 1 行サマリー (絵文字 + 短い見出し) */
+  title: string;
+  /** 展開時に表示される本文 (1〜数文程度の詳細) */
+  body: string;
 };
 
 export const RELEASES: ReleaseEntry[] = [
   {
     version: "1.9",
     date: "2026-04-28",
-    notes: [
-      "🔢 バージョン管理体系を変更。これまでは 1 コミット = 1 patch で運用し 1.9 系が 38 patch まで肥大していたため、これ以降は `MAJOR.MINOR (YYYY-MM-DD)` 方式に移行 (patch 廃止)。現状の 1.9 を据え置きで継続し、バグ修正・小規模調整は同じ MAJOR.MINOR で日付のみ更新、機能追加で MINOR 上げ (1.9 → 1.10)、破壊的変更で MAJOR 上げ (1.x → 2.0)。ヘッダーバッジも `v1.9 (2026-04-28)` 形式に。",
-      "📝 マクロ未登録時のプレースホルダー文を「戦闘中に使う `/p` `/say` 系のマクロや、戦術コールのテンプレ等を...」→「攻略に用いる戦術のテンプレ等を...」に変更。マクロ用途を「戦闘中の `/p` `/say` 系」に限定せず、攻略全般の戦術テンプレ用途を含む簡潔な表現に。",
-      "🔗 攻略リンクのアイコンをサイト種別で色分け。これまで全リンクが magenta の `ExternalLink` 単一表示だったのを、URL host から「Web (`Globe` / magenta) / 動画 (`Video` / cyan) / X (Twitter) (X ロゴ SVG / foreground)」の 3 区分に判定して描画。共通基盤として `src/lib/link-site.ts` (host → 種別判定) と `src/components/portal/link-site-icon.tsx` (coarse / fine 切替可能) を追加。",
-      "🎬 動画リンクのアイコンをサイト別に細分化 (fine variant)。攻略リンクの 3 区分 (web/動画/X) より細かい 5 区分に分け、YouTube → 赤 (`text-red-500`)、Twitch → 紫 (`text-violet-400`)、ニコニコ動画 → 橙 (`text-orange-300`)、X (Twitter) → X ロゴ SVG、その他 → magenta `Globe` で描画。動画カードの (1) 非 YouTube 用プレースホルダーの `Film` アイコン + 「External Video」ラベルを `LinkSiteIcon variant=\"fine\"` + サイト名ラベル (例: TWITCH / NICONICO / X / Web) に、(2) フッターの URL 行先頭 `ExternalLink` を `LinkSiteIcon variant=\"fine\"` に置換。",
-      "📐 動画カードの高さばらつきを 44px → 5px まで圧縮。description / title / footer URL の長さ差で生じていた不揃いを line-clamp + min-h で吸収: タイトル `line-clamp-2` + 行コンテナ `min-h-[2.625rem]` で常に 2 行分確保、description は条件レンダリングを廃止し常時 `<p min-h-[2.4375rem] line-clamp-2>` (空文字でも 2 行分の領域を予約)、badges 行 (FFLogs / Duration) も常時レンダリングで `min-h-[1.75rem]` を確保、URL footer は `break-all` を廃止し `truncate min-w-0` で 1 行省略表示 + `title` 属性で full URL を tooltip 表示。サイズ計測 (49 件) で全カード 349-354px に収束。",
-      "📏 動画カードを更に縦に 35px 圧縮 (350px → 315px)。Discord 取り込みバッジと FFLogs ボタンの間の余白が広すぎたため、(1) section gap を `gap-2` → `gap-1` に、(2) description の確保高を 2 行 → 1 行 (`min-h-[1.21875rem]`) に縮小。中身が 2 行に達した場合のみ `line-clamp-2` で 2 行まで伸びる挙動。range 5px の均一性は維持。",
-      "🚦 ヘッダーのバージョン + STAGE 表示に「デプロイ識別色」を導入。`VERCEL_GIT_COMMIT_SHA` (Vercel ビルド時に埋め込まれる commit SHA) を seed としてハッシュし、cyan/amber/emerald/rose/violet/orange/fuchsia の 7 色のいずれかに対応付け。push 後にページを再読込した時点で色が変わっていれば deploy が反映済みと目視確認できる。Vercel 以外 (ローカル dev 等) では `JSON.stringify(RELEASES[0])` を seed にフォールバックするので、changelog の最新エントリーを編集すれば色が変わる。テーマ切替で意味が変わらないよう Tailwind 標準色から選定。",
+    parts: [
+      {
+        title: "🔢 バージョン管理体系を MAJOR.MINOR (YYYY-MM-DD) 方式へ移行",
+        body: "これまでは 1 コミット = 1 patch で運用し 1.9 系が 38 patch まで肥大していたため、これ以降は `MAJOR.MINOR (YYYY-MM-DD)` 方式に移行 (patch 廃止)。現状の 1.9 を据え置きで継続し、バグ修正・小規模調整は同じ MAJOR.MINOR で日付のみ更新、機能追加で MINOR 上げ (1.9 → 1.10)、破壊的変更で MAJOR 上げ (1.x → 2.0)。ヘッダーバッジも `v1.9 (2026-04-28)` 形式に。",
+      },
+      {
+        title: "📝 マクロ未登録時のプレースホルダー文を簡潔化",
+        body: "「戦闘中に使う `/p` `/say` 系のマクロや、戦術コールのテンプレ等を...」→「攻略に用いる戦術のテンプレ等を...」に変更。マクロ用途を「戦闘中の `/p` `/say` 系」に限定せず、攻略全般の戦術テンプレ用途を含む簡潔な表現に。",
+      },
+      {
+        title: "🔗 攻略リンクのアイコンをサイト種別で色分け (Web / 動画 / X)",
+        body: "これまで全リンクが magenta の `ExternalLink` 単一表示だったのを、URL host から「Web (`Globe` / magenta) / 動画 (`Video` / cyan) / X (Twitter) (X ロゴ SVG / foreground)」の 3 区分に判定して描画。共通基盤として `src/lib/link-site.ts` (host → 種別判定) と `src/components/portal/link-site-icon.tsx` (coarse / fine 切替可能) を追加。",
+      },
+      {
+        title: "🎬 動画リンクのアイコンを 5 種に細分化 (YouTube / Twitch / ニコニコ / X / Web)",
+        body: "攻略リンクの 3 区分 (web/動画/X) より細かい 5 区分に分け、YouTube → 赤 (`text-red-500`)、Twitch → 紫 (`text-violet-400`)、ニコニコ動画 → 橙 (`text-orange-300`)、X (Twitter) → X ロゴ SVG、その他 → magenta `Globe` で描画。動画カードの (1) 非 YouTube 用プレースホルダーの `Film` アイコン + 「External Video」ラベルを `LinkSiteIcon variant=\"fine\"` + サイト名ラベル (例: TWITCH / NICONICO / X / Web) に、(2) フッターの URL 行先頭 `ExternalLink` を `LinkSiteIcon variant=\"fine\"` に置換。",
+      },
+      {
+        title: "📐 動画カードの高さばらつきを 44px → 5px に圧縮",
+        body: "description / title / footer URL の長さ差で生じていた不揃いを line-clamp + min-h で吸収: タイトル `line-clamp-2` + 行コンテナ `min-h-[2.625rem]` で常に 2 行分確保、description は条件レンダリングを廃止し常時 `<p min-h-[2.4375rem] line-clamp-2>` (空文字でも 2 行分の領域を予約)、badges 行 (FFLogs / Duration) も常時レンダリングで `min-h-[1.75rem]` を確保、URL footer は `break-all` を廃止し `truncate min-w-0` で 1 行省略表示 + `title` 属性で full URL を tooltip 表示。サイズ計測 (49 件) で全カード 349-354px に収束。",
+      },
+      {
+        title: "📏 動画カードを更に縦に 35px 圧縮 (350px → 315px)",
+        body: "Discord 取り込みバッジと FFLogs ボタンの間の余白が広すぎたため、(1) section gap を `gap-2` → `gap-1` に、(2) description の確保高を 2 行 → 1 行 (`min-h-[1.21875rem]`) に縮小。中身が 2 行に達した場合のみ `line-clamp-2` で 2 行まで伸びる挙動。range 5px の均一性は維持。",
+      },
+      {
+        title: "🚦 ヘッダーバッジに「デプロイ識別色」を導入 (7 色サイクル)",
+        body: "ヘッダーのバージョン + STAGE 表示に `VERCEL_GIT_COMMIT_SHA` (Vercel ビルド時に埋め込まれる commit SHA) を seed としたハッシュ → cyan / amber / emerald / rose / violet / orange / fuchsia の 7 色のいずれかを割当。push 後にページを再読込した時点で色が変わっていれば deploy が反映済みと目視確認できる。Vercel 以外 (ローカル dev 等) では `JSON.stringify(RELEASES[0])` を seed にフォールバックするので、changelog の最新エントリーを編集すれば色が変わる。テーマ切替で意味が変わらないよう Tailwind 標準色から選定。",
+      },
+      {
+        title: "🗂 更新履歴を折りたたみ + コミット単位の part 分け表示に",
+        body: "1 日に多数のコミットを積む新スキーム運用ではエントリーが縦長になりがちなため、(1) 各リリースを `<details>` で折りたたみ可能に (最新のみ default open)、(2) 1 リリース内の長文 notes を「コミット単位の part」(`title` + `body`) に分割し、part 単位でも個別に開閉できるようにした。`ReleaseEntry` 型に `parts?: ReleasePart[]` を追加 (`notes?: string[]` と排他、UI 側で優先表示)。旧エントリー (`1.9.38` 以前) は `notes` のまま動作。",
+      },
+      {
+        title: "🔀 マクロページの募集文テンプレに DnD 並び替え追加 (トップページ連動)",
+        body: "TODO #6 完了。これまでマクロページの募集文テンプレ一覧は順序固定で、並び替えはトップ (スケジュールページ) の管理ダイアログのみだったが、マクロページでも DnD 可能にした。`SortableTemplateRow` 内に `useSortable` + ドラッグハンドル (`<GripVertical>`) を追加。drag end 時はカテゴリ内の新順を arrayMove → グローバル `allLive` を走査して該当カテゴリの slot に新順を流し込む形で `setRecruitmentTemplateOrder` 呼出 → 他カテゴリの絶対位置は不変、グローバル sort_order も整合性維持。先頭テンプレ (= トップページ「募集」ボタンのコピー対象) には `★ Top` バッジ + cyan ring を表示、reorder で別の行に Top が移れば自動で badge も移動。トップページの `RecruitmentTopCopyButton` は realtime 購読しているので即時反映。",
+      },
+      {
+        title: "📦 更新履歴に「もっと見る」ボタン (5 件以降は省略)",
+        body: "新スキーム移行で changelog エントリーが増えると設定ダイアログのレイアウトが縦に間延びするため、初期表示は最新 5 件に制限。`▼ もっと見る (残り N 件)` ボタンで全件展開、`▲ 最新 5 件まで折りたたむ` で再収納できる。ローカル state なのでダイアログ閉じ → 再度開いた際は default の 5 件表示に戻る。",
+      },
     ],
   },
   {

@@ -57,6 +57,7 @@ import {
 import {
   createRecruitmentTemplate,
   deleteRecruitmentTemplate,
+  setRecruitmentTemplateOrder,
   updateRecruitmentTemplate,
   useRealtimeRecruitmentTemplates,
   type RecruitmentTemplate,
@@ -443,6 +444,76 @@ function TemplatesSection({
   } | null>(null);
   const [busy, setBusy] = useState(false);
 
+  // DnD 並び替え用 — 楽観反映でドラッグ直後に UI 即時更新、失敗時 revert
+  const [optimisticOrder, setOptimisticOrder] = useState<string[] | null>(null);
+  const orderedTemplates = useMemo(() => {
+    if (!optimisticOrder) return templates;
+    const idx = new Map(optimisticOrder.map((id, i) => [id, i] as const));
+    return [...templates].sort((a, b) => {
+      const ai = idx.get(a.id);
+      const bi = idx.get(b.id);
+      if (ai === undefined && bi === undefined) return 0;
+      if (ai === undefined) return 1;
+      if (bi === undefined) return -1;
+      return ai - bi;
+    });
+  }, [templates, optimisticOrder]);
+
+  const dndSensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 200, tolerance: 6 },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  );
+
+  /**
+   * このカテゴリ内でのドラッグを「グローバル sort_order」に反映する。
+   *
+   * macro page はカテゴリで filter したテンプレしか表示しないが、
+   * `recruitment_templates.sort_order` 自体はグローバルに連番。
+   * トップ (スケジュール) ページの「募集」ボタンはグローバル
+   * `templates[0]` をコピー対象にしているため、このカテゴリ内で
+   * 上に動かしたテンプレが偶々グローバル先頭になればトップ表示も
+   * 自動で切り替わる仕組み。
+   *
+   * 並び替えアルゴリズム:
+   *   1. このカテゴリ内の新順 (`newFiltered`) を arrayMove で算出
+   *   2. グローバル全体 (`allLive`) を頭から走査し、要素がこのカテゴリの
+   *      ものなら `newFiltered` の対応位置の id に置換、それ以外は据え置き
+   *   → 他カテゴリ要素の絶対位置は変わらず、このカテゴリの slot 内でのみ
+   *      順序が入れ替わる
+   */
+  const onDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = orderedTemplates.findIndex((t) => t.id === active.id);
+    const newIndex = orderedTemplates.findIndex((t) => t.id === over.id);
+    if (oldIndex < 0 || newIndex < 0) return;
+
+    const newFiltered = arrayMove(orderedTemplates, oldIndex, newIndex);
+    let cursor = 0;
+    const newGlobal = allLive.map((t) =>
+      t.categoryId === categoryId ? newFiltered[cursor++]!.id : t.id,
+    );
+
+    setOptimisticOrder(newFiltered.map((t) => t.id));
+    const result = await setRecruitmentTemplateOrder(newGlobal);
+    if (!result.ok) {
+      toast.error("並び替え保存失敗: " + result.reason);
+      setOptimisticOrder(null);
+      return;
+    }
+    setTimeout(() => setOptimisticOrder(null), 1500);
+  };
+
+  // Top (グローバル先頭) のテンプレ id — トップページの「募集」ボタンが
+  // コピー対象にしているテンプレ。このカテゴリにあれば badge を出して
+  // 「これがトップ表示と連動」と分かるようにする
+  const globalTopId = allLive[0]?.id ?? null;
+
   const startNew = () => setEditing({ label: "", body: "" });
   const startEdit = (t: RecruitmentTemplate) =>
     setEditing({ id: t.id, label: t.label, body: t.body });
@@ -500,29 +571,39 @@ function TemplatesSection({
         </Button>
       </header>
 
-      {templates.length === 0 ? (
+      {orderedTemplates.length === 0 ? (
         <Card className="glass flex flex-col items-center gap-2 p-6 text-center">
           <p className="text-muted-foreground text-xs leading-relaxed">
             このコンテンツに紐づく募集文テンプレートはまだ登録されていません。
             <br />
             上の「+ 追加」ボタンから登録できます。
-            <br />
-            並び替えはトップ（スケジュールページ）の管理ダイアログから。
           </p>
         </Card>
       ) : (
-        <ul className="flex flex-col gap-2">
-          {templates.map((t) => (
-            <CollapsibleTemplateRow
-              key={t.id}
-              template={t}
-              fallbackLabel={categoryName}
-              onCopy={() => copyText(t.body, t.label || categoryName)}
-              onEdit={() => startEdit(t)}
-              onDelete={() => onDelete(t)}
-            />
-          ))}
-        </ul>
+        <DndContext
+          sensors={dndSensors}
+          collisionDetection={closestCenter}
+          onDragEnd={onDragEnd}
+        >
+          <SortableContext
+            items={orderedTemplates.map((t) => t.id)}
+            strategy={verticalListSortingStrategy}
+          >
+            <ul className="flex flex-col gap-2">
+              {orderedTemplates.map((t) => (
+                <SortableTemplateRow
+                  key={t.id}
+                  template={t}
+                  fallbackLabel={categoryName}
+                  isGlobalTop={t.id === globalTopId}
+                  onCopy={() => copyText(t.body, t.label || categoryName)}
+                  onEdit={() => startEdit(t)}
+                  onDelete={() => onDelete(t)}
+                />
+              ))}
+            </ul>
+          </SortableContext>
+        </DndContext>
       )}
 
       <EditDialog
@@ -536,15 +617,19 @@ function TemplatesSection({
   );
 }
 
-function CollapsibleTemplateRow({
+function SortableTemplateRow({
   template,
   fallbackLabel,
+  isGlobalTop,
   onCopy,
   onEdit,
   onDelete,
 }: {
   template: RecruitmentTemplate;
   fallbackLabel: string;
+  /** `recruitment_templates` グローバル先頭 (sort_order 最小) のテンプレ
+      で、トップページの「募集」ボタンがコピー対象にしているもの */
+  isGlobalTop: boolean;
   onCopy: () => void;
   onEdit: () => void;
   onDelete: () => void;
@@ -554,14 +639,50 @@ function CollapsibleTemplateRow({
   // Macros stay collapsed-by-default (multi-line `/p` payloads).
   const [expanded, setExpanded] = useState(true);
   const heading = template.label || "通常募集";
+
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: template.id });
+  const dragStyle: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 10 : "auto",
+  };
+
   return (
-    <li className="rounded-md border border-border/40 bg-secondary/20">
+    <li
+      ref={setNodeRef}
+      style={dragStyle}
+      {...attributes}
+      className={
+        "rounded-md border bg-secondary/20 " +
+        (isGlobalTop
+          ? "border-[var(--neon-cyan)]/50 ring-1 ring-inset ring-[var(--neon-cyan)]/30"
+          : "border-border/40")
+      }
+    >
       <div
         className={
           "flex items-center justify-between gap-2 px-2 py-2 " +
           (expanded ? "border-b border-border/30" : "")
         }
       >
+        {/* Drag handle — クリックターゲットを expand toggle と分離 */}
+        <button
+          type="button"
+          {...listeners}
+          aria-label={`${heading} のドラッグハンドル`}
+          title="ドラッグで並び替え (グローバル順序に反映)"
+          className="inline-flex h-6 w-6 shrink-0 cursor-grab items-center justify-center rounded text-muted-foreground hover:bg-secondary/60 hover:text-foreground active:cursor-grabbing"
+        >
+          <GripVertical className="h-3.5 w-3.5" aria-hidden />
+        </button>
         <button
           type="button"
           onClick={() => setExpanded((v) => !v)}
@@ -582,6 +703,14 @@ function CollapsibleTemplateRow({
           <p className="truncate text-sm">
             {template.label || (
               <span className="text-muted-foreground/80">通常募集</span>
+            )}
+            {isGlobalTop && (
+              <span
+                className="ml-1.5 font-mono text-[9px] tracking-[0.18em] text-[var(--neon-cyan)] uppercase"
+                title="トップページ「募集」ボタンのコピー対象"
+              >
+                ★ Top
+              </span>
             )}
           </p>
         </button>

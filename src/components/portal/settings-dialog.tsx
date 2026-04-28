@@ -183,6 +183,11 @@ export function SettingsDialog() {
   } | null>(null);
   const [savingCookie, startSaveCookie] = useTransition();
   const [showChangelog, setShowChangelog] = useState(false);
+  // 更新履歴の「全件表示」トグル。default は最新 5 件のみ。「もっと見る」
+  // ボタンで残り全件を展開。エントリーが増えてもダイアログのレイアウト
+  // 崩れを防ぐ
+  const [showAllReleases, setShowAllReleases] = useState(false);
+  const RELEASES_INITIAL_LIMIT = 5;
 
   // OAuth callback handler — when the user returns from FFLogs to
   // /api/auth/fflogs/callback, we redirect back to "/" with either
@@ -1460,30 +1465,93 @@ export function SettingsDialog() {
                   {RELEASES.length === 0 ? (
                     <p className="text-muted-foreground">記録なし</p>
                   ) : (
-                    <ul className="flex flex-col gap-3">
-                      {RELEASES.map((r) => (
+                    <ul className="flex flex-col gap-2">
+                      {(showAllReleases
+                        ? RELEASES
+                        : RELEASES.slice(0, RELEASES_INITIAL_LIMIT)
+                      ).map((r, idx) => (
                         <li
-                          key={r.version}
-                          className="flex flex-col gap-1 border-l-2 border-[var(--neon-cyan)]/40 pl-2.5"
+                          key={`${r.version}|${r.date}`}
+                          className="border-l-2 border-[var(--neon-cyan)]/40 pl-2.5"
                         >
-                          <div className="flex items-baseline gap-2">
-                            <span className="font-mono text-[12px] font-bold text-[var(--neon-cyan)]">
-                              v{r.version}
-                            </span>
-                            <span className="font-mono text-[10px] text-muted-foreground">
-                              {r.date}
-                            </span>
-                          </div>
-                          <ul className="flex flex-col gap-0.5 text-[11px] text-foreground/85">
-                            {r.notes.map((n, i) => (
-                              <li key={i} className="leading-snug">
-                                ・{n}
-                              </li>
-                            ))}
-                          </ul>
+                          {/* 各リリースは <details> で折りたたみ。最新の
+                              1 件のみ default open、他は閉じた状態で開始。
+                              ▶/▼ 表示は親の [open] 状態を参照して回転 */}
+                          <details open={idx === 0} className="group/release">
+                            <summary className="flex cursor-pointer list-none items-baseline gap-2 select-none outline-none [&::-webkit-details-marker]:hidden">
+                              <span
+                                aria-hidden
+                                className="inline-block w-2 text-[10px] text-muted-foreground transition-transform duration-150 group-open/release:rotate-90"
+                              >
+                                ▶
+                              </span>
+                              <span className="font-mono text-[12px] font-bold text-[var(--neon-cyan)]">
+                                v{r.version}
+                              </span>
+                              <span className="font-mono text-[10px] text-muted-foreground">
+                                {r.date}
+                              </span>
+                              {r.parts && (
+                                <span className="font-mono text-[9px] tracking-[0.18em] text-muted-foreground/70 uppercase">
+                                  {r.parts.length} parts
+                                </span>
+                              )}
+                            </summary>
+
+                            {/* 展開時の本体: parts (新スキーム) があれば
+                                part 単位の collapsible、無ければ notes
+                                (旧スキーム) のフラットな箇条書き */}
+                            <div className="mt-1.5 ml-3 flex flex-col gap-1">
+                              {r.parts ? (
+                                r.parts.map((p, i) => (
+                                  <details
+                                    key={i}
+                                    className="group/part rounded-sm border border-border/30 bg-secondary/25"
+                                  >
+                                    <summary className="flex cursor-pointer list-none items-start gap-1.5 px-2 py-1 select-none outline-none hover:bg-secondary/40 [&::-webkit-details-marker]:hidden">
+                                      <span
+                                        aria-hidden
+                                        className="mt-[2px] inline-block w-2 text-[10px] text-muted-foreground transition-transform duration-150 group-open/part:rotate-90"
+                                      >
+                                        ▶
+                                      </span>
+                                      <span className="flex-1 text-[11px] leading-snug text-foreground/90">
+                                        {p.title}
+                                      </span>
+                                    </summary>
+                                    <p className="px-3 pt-1 pb-2 text-[11px] leading-relaxed whitespace-pre-wrap text-foreground/80">
+                                      {p.body}
+                                    </p>
+                                  </details>
+                                ))
+                              ) : (
+                                <ul className="flex flex-col gap-0.5 text-[11px] text-foreground/85">
+                                  {(r.notes ?? []).map((n, i) => (
+                                    <li key={i} className="leading-snug">
+                                      ・{n}
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
+                            </div>
+                          </details>
                         </li>
                       ))}
                     </ul>
+                  )}
+                  {/* 「もっと見る」ボタン: 6 件目以降が隠れている場合のみ
+                      表示。クリックで全件展開 / 折りたたみをトグル */}
+                  {RELEASES.length > RELEASES_INITIAL_LIMIT && (
+                    <button
+                      type="button"
+                      onClick={() => setShowAllReleases((v) => !v)}
+                      aria-expanded={showAllReleases}
+                      className="self-start font-mono text-[10px] tracking-[0.18em] text-[var(--neon-cyan)]/85 uppercase transition-colors hover:text-[var(--neon-cyan)]"
+                    >
+                      {showAllReleases
+                        ? `▲ 最新 ${RELEASES_INITIAL_LIMIT} 件まで折りたたむ`
+                        : `▼ もっと見る (残り ${RELEASES.length - RELEASES_INITIAL_LIMIT} 件)`}
+                    </button>
                   )}
                 </div>
               )}
