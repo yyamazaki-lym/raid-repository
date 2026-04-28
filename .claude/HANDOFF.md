@@ -1,4 +1,4 @@
-# Raid Repository — 引き継ぎノート (1.9.38 時点)
+# Raid Repository — 引き継ぎノート (1.9 (2026-04-28), 2f59abf 時点)
 
 ## プロジェクト概要
 
@@ -25,6 +25,9 @@
 | 1.9.37 | parseTopText が `■コメント` 直前で truncate |
 | 1.9.38 | **チップ縦中央追求を断念** (Yu Gothic UI 環境で完全解決不能と判断、symmetric `py-1` に固定) |
 | 1.9 (2026-04-28) | バージョン管理体系を `MAJOR.MINOR (YYYY-MM-DD)` 方式に変更 (patch 廃止)。コミット毎の patch 肥大を解消 |
+| 1.9 (`59122b2`) | TODO #14 完了: スケジュール取り込み時、各ユーザーのコメント (`timestamp + body` の連結 fingerprint を `localStorage` に user.userId 別に保存) が変化していれば、ヘッダーの吹き出しアイコンを amber + 右上 dot でハイライト。popover 開操作で「確認済み」 → 解除。初回は silent baseline (ノイズ抑制) |
+| 1.9 (`2f59abf`) | TODO #16 完了: 募集文テンプレ DnD をカテゴリブロック単位の sortable に再設計 (3 度目の正解)。`SortableContext.items` を group key 配列に、各 section が `useSortable`、子募集文の grip も親 section の listeners に prop drilling 接続 → 子を掴んでも親カテゴリごと追従、中の複数募集文も全部一緒に動く。`category_id` は変更せず、`sort_order` だけグループ単位で並べ替え。popover 内では intra-category 並び替えは行わない (per-category マクロページに譲る) |
+| 1.9 (`2f59abf`) | 過去日程の動画アイコンを直接外部リンクへ (詳細表 + 簡易チップ両方)。`SessionVideoLink` に `url` 追加、`buildSessionVideoLinkMap` で SELECT に `category_links.url` を伝播。`schedule-list.tsx` (isPast=true) と `schedule-past-simple.tsx` で `<a href={safeHref(videoLink.url)} target="_blank">`。upcoming は引き続きポータル内動画ページへ |
 
 ## 確定 TODO 一覧 (再開時の参照用)
 
@@ -43,9 +46,9 @@
 | 11 | ページ全体のパフォーマンス最適化 (重さを軽減) — 候補: bundle 軽量化, RSC 化, lazy mount, 画像最適化, query batching, realtime subscription 削減 等 | 中 |
 | ~~12~~ | ~~トップの運用ルール popup に編集ボタン追加~~ — 完了 (1.9 (2026-04-28)、Supabase `app_settings.schedule_top_text_override` で persistent override + オリジナル/編集後トグル + クリアボタン) | ~~小〜中~~ |
 | ~~13~~ | ~~スケジュール取り込み時の文字コード decode~~ — 完了 (1.9 (2026-04-28)、`src/lib/html-entities.ts` に共通 `decodeHtmlEntities` を切り出し、`&times;` `&divide;` `&laquo;` `&deg;` 他多数の named entity をカバー) | ~~小〜中~~ |
-| 14 | カレンダー取り込みで各人のメモに更新があった場合、視覚的に色変化させる (確認するまで継続) | 小〜中 |
+| ~~14~~ | ~~カレンダー取り込みで各人のメモに更新があった場合、視覚的に色変化させる~~ — 完了 (1.9 `59122b2`、`comment-popover.tsx` で fingerprint 比較 + amber highlight + 確認時 localStorage 更新) | ~~小〜中~~ |
 | ~~15~~ | ~~過去の活動履歴 簡易/詳細の見出し名~~ — 完了 (1.9 (2026-04-28)、`Past · 簡易ログ (日付チップ)` / `Past · 詳細ログ (出欠表)`) | ~~極小~~ |
-| 16 | DnD でアイテムをカテゴリ跨ぎで移動した時、`category_id` も追従させる (現状は sort_order のみ変更、視覚的に元カテゴリ section に残ってしまう) | 中 |
+| ~~16~~ | ~~DnD アイテムのカテゴリ跨ぎ移動~~ — 完了 (1.9 `2f59abf`、SortableContext をカテゴリブロック単位に再設計、子の grip も親 section の listeners に接続。子を掴んでも親カテゴリごと追従、中の複数募集文も全部追従) | ~~中~~ |
 | 17 | コンテンツカードに背景画像を設定可能にする (カテゴリごとに `background_image_url` 等を持たせて category-list の Card 背景に反映) | 中 |
 | ~~18~~ | ~~設定ダイアログに FF14 Lodestone へのリンクを追加~~ — 完了 (1.9 (2026-04-28)、フッター GitHub Source の隣に Link2 アイコン + "Lodestone" ラベルで配置) | ~~極小~~ |
 
@@ -146,7 +149,6 @@ dev server は `.claude/launch.json` で `portal-dev` 設定済み (port 3000)�
 ## コミット運用
 
 - すべて push まで実施 (`git push origin main`)
-- メッセージは日本語、最後に `Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>`
 - 改行は heredoc (`@'...'@` PowerShell)
 
 ## 新規会話の開始テンプレ
