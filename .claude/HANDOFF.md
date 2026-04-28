@@ -47,7 +47,7 @@
 | ~~15~~ | ~~過去の活動履歴 簡易/詳細の見出し名~~ — 完了 (1.9 (2026-04-28)、`Past · 簡易ログ (日付チップ)` / `Past · 詳細ログ (出欠表)`) | ~~極小~~ |
 | 16 | DnD でアイテムをカテゴリ跨ぎで移動した時、`category_id` も追従させる (現状は sort_order のみ変更、視覚的に元カテゴリ section に残ってしまう) | 中 |
 | 17 | コンテンツカードに背景画像を設定可能にする (カテゴリごとに `background_image_url` 等を持たせて category-list の Card 背景に反映) | 中 |
-| 18 | 設定ダイアログに FF14 Lodestone (https://jp.finalfantasyxiv.com/lodestone/) へのリンクを追加 | 極小 |
+| ~~18~~ | ~~設定ダイアログに FF14 Lodestone へのリンクを追加~~ — 完了 (1.9 (2026-04-28)、フッター GitHub Source の隣に Link2 アイコン + "Lodestone" ラベルで配置) | ~~極小~~ |
 
 ### 除外済み (再対応不要)
 

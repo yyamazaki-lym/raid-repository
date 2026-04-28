@@ -1456,6 +1456,20 @@ export function SettingsDialog() {
                   <GithubMark className="h-3 w-3" />
                   Source
                 </a>
+                {/* TODO #18 (1.9 (2026-04-28)): FF14 Lodestone への
+                    外部リンク。出欠 / 装備チェック / Mog ステーション等の
+                    公式入口として頻繁にアクセスするので、設定ダイアログ
+                    フッターに常駐させる。 */}
+                <a
+                  href="https://jp.finalfantasyxiv.com/lodestone/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="FF14 Lodestone (公式) を新しいタブで開く"
+                  className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border/60 bg-background/40 px-3 font-mono text-[10px] tracking-[0.18em] text-muted-foreground uppercase transition-colors hover:border-[var(--neon-cyan)]/60 hover:bg-secondary/40 hover:text-foreground"
+                >
+                  <Link2 className="h-3 w-3" aria-hidden />
+                  Lodestone
+                </a>
               </div>
               {showChangelog && (
                 <div className="flex flex-col gap-3 rounded-sm border border-border/40 bg-secondary/20 px-3 py-2.5 text-[11px] leading-relaxed">

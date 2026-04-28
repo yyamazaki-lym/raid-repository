@@ -123,6 +123,10 @@ export const RELEASES: ReleaseEntry[] = [
         title: "🛡 楽観 state の reset 条件を厳格化 (prop 不一致時は保持)",
         body: "上記 bug 修正の副次対応。`optimisticOverride` の reset を従来の「`topTextOverride` 変化時に問答無用 undefined」から「`optimisticOverride === topTextOverride` の時のみ undefined」に変更。これにより同期で server が予期せず別値 (典型的には null) を返してきても、ユーザーの編集後テキストを画面から消さずに保持する。RLS / ネットワーク不安定時の保険。",
       },
+      {
+        title: "🔗 設定ダイアログに FF14 Lodestone (公式) リンクを追加",
+        body: "TODO #18 完了。出欠 / 装備チェック / Mog ステーション等で頻繁にアクセスする FF14 公式 Lodestone (https://jp.finalfantasyxiv.com/lodestone/) への外部リンクを設定ダイアログのフッターに追加。GitHub Source の隣に並べて、`Link2` アイコン + 「Lodestone」ラベル + 「FF14 Lodestone (公式) を新しいタブで開く」tooltip。`target=\"_blank\" rel=\"noopener noreferrer\"` で安全に新規タブ開き。",
+      },
     ],
   },
   {
