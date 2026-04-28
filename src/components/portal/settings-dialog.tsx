@@ -183,11 +183,11 @@ export function SettingsDialog() {
   } | null>(null);
   const [savingCookie, startSaveCookie] = useTransition();
   const [showChangelog, setShowChangelog] = useState(false);
-  // 更新履歴の「全件表示」トグル。default は最新 5 件のみ。「もっと見る」
-  // ボタンで残り全件を展開。エントリーが増えてもダイアログのレイアウト
-  // 崩れを防ぐ
-  const [showAllReleases, setShowAllReleases] = useState(false);
-  const RELEASES_INITIAL_LIMIT = 5;
+  // 1.9 (2026-04-28) TODO #11: 古い changelog エントリーは source から
+  // 削除して bundle weight を削減 (`changelog.ts` には最新 5 件のみ
+  // 残置)。それ以前の履歴は GitHub commits リンクで確認可能。
+  // → 旧 `showAllReleases` / `RELEASES_INITIAL_LIMIT` の state は
+  //   不要になったので削除。
 
   // OAuth callback handler — when the user returns from FFLogs to
   // /api/auth/fflogs/callback, we redirect back to "/" with either
@@ -1480,10 +1480,7 @@ export function SettingsDialog() {
                     <p className="text-muted-foreground">記録なし</p>
                   ) : (
                     <ul className="flex flex-col gap-2">
-                      {(showAllReleases
-                        ? RELEASES
-                        : RELEASES.slice(0, RELEASES_INITIAL_LIMIT)
-                      ).map((r, idx) => (
+                      {RELEASES.map((r, idx) => (
                         <li
                           key={`${r.version}|${r.date}`}
                           className="border-l-2 border-[var(--neon-cyan)]/40 pl-2.5"
@@ -1553,20 +1550,18 @@ export function SettingsDialog() {
                       ))}
                     </ul>
                   )}
-                  {/* 「もっと見る」ボタン: 6 件目以降が隠れている場合のみ
-                      表示。クリックで全件展開 / 折りたたみをトグル */}
-                  {RELEASES.length > RELEASES_INITIAL_LIMIT && (
-                    <button
-                      type="button"
-                      onClick={() => setShowAllReleases((v) => !v)}
-                      aria-expanded={showAllReleases}
-                      className="self-start font-mono text-[10px] tracking-[0.18em] text-[var(--neon-cyan)]/85 uppercase transition-colors hover:text-[var(--neon-cyan)]"
-                    >
-                      {showAllReleases
-                        ? `▲ 最新 ${RELEASES_INITIAL_LIMIT} 件まで折りたたむ`
-                        : `▼ もっと見る (残り ${RELEASES.length - RELEASES_INITIAL_LIMIT} 件)`}
-                    </button>
-                  )}
+                  {/* 1.9 (2026-04-28) — 古い changelog エントリーは
+                      bundle weight 削減のため source から削除済み。それ
+                      以前の履歴は GitHub commits 一覧で確認可能 */}
+                  <a
+                    href="https://github.com/yyamazaki-lym/raid-repository/commits/main"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="self-start font-mono text-[10px] tracking-[0.18em] text-[var(--neon-cyan)]/85 uppercase transition-colors hover:text-[var(--neon-cyan)]"
+                    title="これ以前の更新履歴は GitHub commits で確認"
+                  >
+                    ↗ これより前の履歴を GitHub で見る
+                  </a>
                 </div>
               )}
             </div>
