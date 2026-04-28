@@ -107,6 +107,10 @@ export const RELEASES: ReleaseEntry[] = [
         title: "✏️ 運用ルール popup を inline 編集 + オリジナル/編集後トグルに刷新",
         body: "TODO #12 完了 (再修正版)。当初 iframe 経由で元サイトを開く方式に実装したが、ユーザー意図と異なり「popup 内のテキストをその場で編集 + 同期で上書きされない」必要があったため再設計。新規ストア `lib/schedule-top-text-store.ts` を追加し、Supabase `app_settings.schedule_top_text_override` キーに portal 側 override を保存。表示優先度は override > scraped。popup には (1) Pencil ボタン → textarea + 保存/キャンセル の inline 編集モード、(2) override 設定中はヘッダーに `[オリジナル] / [編集後]` トグルタブを表示し scraped と override を切り替え参照可能 (同期で上書きされた scraped と編集後の差分を確認できる)、(3) override クリア用の `RotateCcw` ボタン (確認ダイアログ付き)、(4) override 設定中は ルールバッジ右に小さい cyan dot で「編集済み」表示。サーバ側は `page.tsx` で `fetchAppSetting(SCHEDULE_TOP_TEXT_OVERRIDE_KEY)` を並列フェッチし `SchedulePageBody` → `ScheduleList` → `Legend` まで scraped と override の両方を別 props で渡す。",
       },
+      {
+        title: "🩹 運用ルール popup の保存後フリッカー / トグル非表示 / 反映遅延を修正 (3 件)",
+        body: "TODO #12 の挙動修正。報告: (a) 編集して保存すると一瞬テキストが消える、(b) 保存後トグルボタンが見当たらない、(c) 更新を掛けるまで編集前のものが表示される。原因はいずれも `router.refresh()` 完了 (= prop 更新) までの間 UI に新しい override 値が無いこと。新規ローカル state `optimisticOverride` (`undefined | null | string`) を追加し、save 直後にローカルへ即時反映 → effectiveOverride を `optimisticOverride ?? topTextOverride` で算出 → prop 更新を `useEffect` で検知して楽観 state を破棄。save 中もタブ / dot / クリアボタンの表示判定は `effectiveOverride` 基準に統一。clear 操作も同様に `setOptimisticOverride(null)` で即時 UI 反映。失敗時は `setOptimisticOverride(undefined)` で即座に prop 値へ revert。",
+      },
     ],
   },
   {

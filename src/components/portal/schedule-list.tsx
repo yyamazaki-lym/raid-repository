@@ -700,23 +700,38 @@ function Legend({
   // Local controlled-popover state for the top-text comment icon.
   const [showTopText, setShowTopText] = useState(false);
   const topTextRef = useRef<HTMLDivElement | null>(null);
-  // 表示モード: 編集後があれば default で edited を表示、無ければ scraped
-  const [view, setView] = useState<"edited" | "scraped">(
-    topTextOverride !== null ? "edited" : "scraped",
-  );
-  // override 状態が外から変わったら view も追従 (例: 別タブで保存後 refresh)
+
+  // 楽観的 override 状態: save / clear 直後に prop が更新されるまでの
+  // 間 UI を即時反映するためのローカル shadow state。
+  //   undefined: prop の `topTextOverride` をそのまま使う (通常時)
+  //   null: 「クリア中」を即時反映 (= scraped 表示に戻す)
+  //   string: 「保存中」のテキストを即時反映 (= 編集後タブで表示)
+  // prop が変化したタイミングで undefined にリセットして prop に追従。
+  const [optimisticOverride, setOptimisticOverride] = useState<
+    string | null | undefined
+  >(undefined);
+  const effectiveOverride =
+    optimisticOverride !== undefined ? optimisticOverride : topTextOverride;
   useEffect(() => {
-    setView(topTextOverride !== null ? "edited" : "scraped");
+    // prop 側が新しい値で来たら楽観 state は破棄して prop に従う。
+    setOptimisticOverride(undefined);
   }, [topTextOverride]);
+
+  // 表示モード: 編集後 (override) があれば default で edited、無ければ scraped。
+  // ユーザーがトグル切替したらその選択を尊重 (prop 変動でリセットしない)。
+  const [view, setView] = useState<"edited" | "scraped">(
+    effectiveOverride !== null ? "edited" : "scraped",
+  );
+
   // 編集モード: textarea + save / cancel
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
 
-  // 表示する text と「rule アイコンを出すか」判定
-  // どちらか一方でも値があればアイコンは出す
-  const hasAny = topTextScraped !== null || topTextOverride !== null;
-  const displayed = view === "edited" ? topTextOverride : topTextScraped;
+  // 表示する text と「rule アイコンを出すか」判定。
+  // どちらか一方でも値があればアイコンは出す。
+  const hasAny = topTextScraped !== null || effectiveOverride !== null;
+  const displayed = view === "edited" ? effectiveOverride : topTextScraped;
 
   // Click outside to close the popover. 編集中はクリック保護 (誤閉じ防止)
   useEffect(() => {
@@ -789,7 +804,7 @@ function Legend({
             >
               <MessageSquare className="h-3 w-3" aria-hidden />
               ルール
-              {topTextOverride !== null && (
+              {effectiveOverride !== null && (
                 <span
                   className="ml-0.5 inline-block h-1.5 w-1.5 rounded-full bg-[var(--neon-cyan)]"
                   title="編集済み (override 設定中)"
@@ -811,7 +826,7 @@ function Legend({
                   {!editing && (
                     <div className="flex items-center gap-1">
                       {/* オリジナル ⇔ 編集後 切替 (両方 null でない時のみ表示) */}
-                      {topTextScraped !== null && topTextOverride !== null && (
+                      {topTextScraped !== null && effectiveOverride !== null && (
                         <div
                           role="tablist"
                           aria-label="表示するテキストを切替"
@@ -864,7 +879,7 @@ function Legend({
                         編集
                       </button>
                       {/* override クリア (scraped 表示に戻す) */}
-                      {topTextOverride !== null && (
+                      {effectiveOverride !== null && (
                         <button
                           type="button"
                           onClick={async () => {
@@ -875,11 +890,13 @@ function Legend({
                             ) {
                               return;
                             }
+                            // 楽観的に「クリア済」を即時反映 → 失敗時 revert
+                            setOptimisticOverride(null);
+                            setView("scraped");
                             const r = await clearScheduleTopTextOverride();
                             if (!r.ok) {
-                              toast.error(
-                                "削除失敗: " + r.reason,
-                              );
+                              setOptimisticOverride(undefined);
+                              toast.error("削除失敗: " + r.reason);
                               return;
                             }
                             toast.success(
@@ -927,18 +944,25 @@ function Legend({
                         type="button"
                         disabled={saving}
                         onClick={async () => {
+                          // 編集中の draft を即時 UI に反映 (optimistic) し、
+                          // 編集モードを抜けて表示を「編集後」タブに切替。
+                          // refresh で prop が追いついたら useEffect が
+                          // optimistic を破棄して prop に従う。
+                          const text = draft;
+                          setOptimisticOverride(text);
+                          setView("edited");
+                          setEditing(false);
+                          setDraft("");
                           setSaving(true);
-                          const r = await setScheduleTopTextOverride(draft);
+                          const r = await setScheduleTopTextOverride(text);
                           setSaving(false);
                           if (!r.ok) {
+                            // 失敗 → optimistic を破棄して prop 表示に戻す
+                            setOptimisticOverride(undefined);
                             toast.error("保存失敗: " + r.reason);
                             return;
                           }
                           toast.success("override を保存しました");
-                          setEditing(false);
-                          setDraft("");
-                          // override を表示モードに固定して再取得
-                          setView("edited");
                           router.refresh();
                         }}
                         className="inline-flex h-6 items-center gap-1 rounded-md border border-[var(--neon-cyan)]/50 bg-[var(--neon-cyan)]/15 px-2 font-mono text-[10px] tracking-[0.18em] text-[var(--neon-cyan)] uppercase transition-colors hover:bg-[var(--neon-cyan)]/25 disabled:opacity-50"
