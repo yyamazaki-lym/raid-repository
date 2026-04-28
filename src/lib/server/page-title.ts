@@ -1,4 +1,5 @@
 import "server-only";
+import { decodeHtmlEntities } from "@/lib/html-entities";
 import { parseYouTubeId } from "@/lib/youtube";
 
 /**
@@ -63,34 +64,10 @@ export async function fetchPageTitle(url: string): Promise<string | null> {
     const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
     const raw = (ogMatch?.[1] ?? titleMatch?.[1] ?? "").trim();
     if (!raw) return null;
-    return decodeEntities(raw);
+    // 1.9 (2026-04-28): TODO #13 — `&times;` 等の named entity も
+    // デコードできるよう共通の `decodeHtmlEntities` に切替。
+    return decodeHtmlEntities(raw);
   } catch {
     return null;
   }
-}
-
-function decodeEntities(s: string): string {
-  return s
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'")
-    .replace(/&#39;/g, "'")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&hellip;/g, "…")
-    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => {
-      try {
-        return String.fromCodePoint(parseInt(hex, 16));
-      } catch {
-        return "";
-      }
-    })
-    .replace(/&#(\d+);/g, (_, num) => {
-      try {
-        return String.fromCodePoint(parseInt(num, 10));
-      } catch {
-        return "";
-      }
-    });
 }

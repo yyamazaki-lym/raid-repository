@@ -127,6 +127,10 @@ export const RELEASES: ReleaseEntry[] = [
         title: "🔗 設定ダイアログに FF14 Lodestone (公式) リンクを追加",
         body: "TODO #18 完了。出欠 / 装備チェック / Mog ステーション等で頻繁にアクセスする FF14 公式 Lodestone (https://jp.finalfantasyxiv.com/lodestone/) への外部リンクを設定ダイアログのフッターに追加。GitHub Source の隣に並べて、`Link2` アイコン + 「Lodestone」ラベル + 「FF14 Lodestone (公式) を新しいタブで開く」tooltip。`target=\"_blank\" rel=\"noopener noreferrer\"` で安全に新規タブ開き。",
       },
+      {
+        title: "🔣 取り込み文字の HTML エンティティ decode を網羅化 (TODO #13)",
+        body: "ユーザー報告: 「読み込んだ文字が文字コードのまま表示される」。実態は `&times;` などの名前付きエンティティが decoder の対象に含まれていなかったこと。3 箇所に散在していた不完全な decoder (`schedule/parse.ts` の `stripHtmlToText` と `decodeEntities`、`server/page-title.ts` の `decodeEntities`) を `src/lib/html-entities.ts` の単一実装 `decodeHtmlEntities()` に統合。`&times;` `&divide;` `&plusmn;` `&deg;` `&micro;` `&hellip;` `&mdash;` `&ndash;` `&middot;` `&bull;` `&laquo;` `&raquo;` `&lsquo;` `&rsquo;` `&ldquo;` `&rdquo;` `&sbquo;` `&bdquo;` `&sect;` `&para;` `&iexcl;` `&iquest;` `&larr;` `&uarr;` `&rarr;` `&darr;` `&harr;` `&yen;` `&pound;` `&euro;` `&cent;` `&copy;` `&reg;` `&trade;` `&hearts;` `&clubs;` `&spades;` `&diams;` 等を網羅。数値参照 (`&#NN;` / `&#xHH;`) と `&amp;` 先頭処理 (二重エンコード対応) も維持。preview で運用ルール popup の `&times;` → `×` 復号を確認。",
+      },
     ],
   },
   {

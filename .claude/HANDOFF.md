@@ -42,7 +42,7 @@
 | 10 | 動画ページ上部のクリア日時ボタンを押下時、リスト内のその日時の動画位置までスクロール (anchor jump) | 小〜中 |
 | 11 | ページ全体のパフォーマンス最適化 (重さを軽減) — 候補: bundle 軽量化, RSC 化, lazy mount, 画像最適化, query batching, realtime subscription 削減 等 | 中 |
 | ~~12~~ | ~~トップの運用ルール popup に編集ボタン追加~~ — 完了 (1.9 (2026-04-28)、Supabase `app_settings.schedule_top_text_override` で persistent override + オリジナル/編集後トグル + クリアボタン) | ~~小〜中~~ |
-| 13 | スケジュール取り込み時に文字コード化されたまま表示される文字を decode (例: 一部 user 名 / コメント中の 数値文字参照や `<img alt>` 形式絵文字) | 小〜中 |
+| ~~13~~ | ~~スケジュール取り込み時の文字コード decode~~ — 完了 (1.9 (2026-04-28)、`src/lib/html-entities.ts` に共通 `decodeHtmlEntities` を切り出し、`&times;` `&divide;` `&laquo;` `&deg;` 他多数の named entity をカバー) | ~~小〜中~~ |
 | 14 | カレンダー取り込みで各人のメモに更新があった場合、視覚的に色変化させる (確認するまで継続) | 小〜中 |
 | ~~15~~ | ~~過去の活動履歴 簡易/詳細の見出し名~~ — 完了 (1.9 (2026-04-28)、`Past · 簡易ログ (日付チップ)` / `Past · 詳細ログ (出欠表)`) | ~~極小~~ |
 | 16 | DnD でアイテムをカテゴリ跨ぎで移動した時、`category_id` も追従させる (現状は sort_order のみ変更、視覚的に元カテゴリ section に残ってしまう) | 中 |

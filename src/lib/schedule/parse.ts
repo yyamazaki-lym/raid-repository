@@ -13,6 +13,7 @@
  * `<i class="fas fa-check-square">` icon appears in every row (CSS toggles
  * its appearance based on dateStatus client-side), so it can't be the marker.
  */
+import { decodeHtmlEntities } from "@/lib/html-entities";
 
 export type Attendance = "◯" | "⏰" | "△" | "×" | "－";
 export type SessionStatus = "CANDIDATE" | "DECISION";
@@ -147,33 +148,18 @@ function parseTopText(html: string): string | null {
  *   - `<img alt="...">` replaced by its alt text — many sites
  *     (character-sheets included) use Twemoji-style image emoji
  *     where the visible character is in the `alt` attribute
+ *
+ * 1.9 (2026-04-28): 名前付きエンティティの decode を `decodeEntities`
+ * 共通実装に集約 (TODO #13)。これまで `&times;` などが popup 表示で
+ * 生のままになっていた問題を解決。
  */
 function stripHtmlToText(html: string): string {
-  return html
+  const stripped = html
     .replace(/<br\s*\/?>/gi, "\n")
     .replace(/<\/(p|div|li|h[1-6])>/gi, "\n")
     .replace(/<img\b[^>]*\balt="([^"]*)"[^>]*\/?>/gi, "$1")
-    .replace(/<[^>]*>/g, "")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex: string) => {
-      try {
-        return String.fromCodePoint(parseInt(hex, 16));
-      } catch {
-        return "";
-      }
-    })
-    .replace(/&#(\d+);/g, (_, dec: string) => {
-      try {
-        return String.fromCodePoint(parseInt(dec, 10));
-      } catch {
-        return "";
-      }
-    })
+    .replace(/<[^>]*>/g, "");
+  return decodeEntities(stripped)
     .replace(/[ \t]+/g, " ")
     .replace(/[ \t]*\n[ \t]*/g, "\n")
     .replace(/\n{3,}/g, "\n\n");
@@ -342,44 +328,10 @@ function isAttendance(s: string): s is Attendance {
 }
 
 /**
- * HTML entity decoder. Handles the named refs we've seen on the source page
- * plus generic numeric refs (&#NN; / &#xHH;) so unanticipated emoji/symbols
- * survive without us having to enumerate every possible entity.
- *
- * `&amp;` is processed first so something like `&amp;hellip;` (rare, but
- * possible if the upstream double-encodes) decodes correctly.
+ * HTML エンティティ decode の薄い wrapper。実体は `@/lib/html-entities` の
+ * `decodeHtmlEntities` に集約 (1.9 (2026-04-28) で散在していた 3 種の
+ * 不完全 decoder を統合)。`parseTopText` / `parseComments` /
+ * `parseUsers` / `parseAttendance` などこのファイル内のすべてのテキスト
+ * 抽出経路で共有して使う。
  */
-function decodeEntities(s: string): string {
-  return s
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&times;/g, "×")
-    .replace(/&hellip;/g, "…")
-    .replace(/&yen;/g, "¥")
-    .replace(/&copy;/g, "©")
-    .replace(/&reg;/g, "®")
-    .replace(/&trade;/g, "™")
-    .replace(/&mdash;/g, "—")
-    .replace(/&ndash;/g, "–")
-    .replace(/&middot;/g, "·")
-    .replace(/&hearts;/g, "♥")
-    .replace(/&#39;/g, "'")
-    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => {
-      try {
-        return String.fromCodePoint(parseInt(hex, 16));
-      } catch {
-        return "";
-      }
-    })
-    .replace(/&#(\d+);/g, (_, num) => {
-      try {
-        return String.fromCodePoint(parseInt(num, 10));
-      } catch {
-        return "";
-      }
-    });
-}
+const decodeEntities = decodeHtmlEntities;
