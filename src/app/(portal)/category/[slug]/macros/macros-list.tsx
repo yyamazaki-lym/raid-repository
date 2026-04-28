@@ -253,7 +253,7 @@ function MacrosSection({
           </span>
           <p className="font-display text-foreground text-sm">マクロ未登録</p>
           <p className="text-muted-foreground max-w-md text-xs leading-relaxed">
-            戦闘中に使う `/p` `/say` 系のマクロや、戦術コールのテンプレ等を
+            攻略に用いる `/p` `/say` 系のマクロや、戦術コールのテンプレ等を
             ここに保存できます。
           </p>
         </Card>
