@@ -57,11 +57,24 @@ export async function requireDiscordMember(): Promise<AuthorizedUser> {
  * 「全ロール必須」が要るときは `requireDiscordRolesAll` を別途追加すること。
  */
 export async function requireDiscordRoles(
-  allowedRoleIds: string[],
+  allowedRoleIds: readonly string[],
 ): Promise<AuthorizedUser> {
   const authed = await requireDiscordMember();
   if (allowedRoleIds.length === 0) return authed;
   const has = allowedRoleIds.some((r) => authed.roles.includes(r));
   if (!has) redirect("/auth/denied?reason=missing_role");
   return authed;
+}
+
+/**
+ * 認証は要求するが拒否はせず、ユーザの roles を返すだけのヘルパー。
+ * 各種「カテゴリ一覧のうち、見える分だけフィルタする」用途で使う想定。
+ *
+ * proxy.ts でゲート済みなので user は必ず存在するが、念のため未認証で
+ * 呼ばれた場合は redirect する (= ここに来る前に proxy で弾かれている
+ * はずなのであくまで安全網)。
+ */
+export async function getAuthorizedUserRoles(): Promise<string[]> {
+  const { roles } = await requireDiscordMember();
+  return roles;
 }

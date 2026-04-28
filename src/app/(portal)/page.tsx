@@ -14,6 +14,8 @@ import { buildSessionVideoLinkMap } from "@/lib/server/session-video-link";
 import { fetchAppSettings } from "@/lib/supabase/app-settings";
 import { fetchCategories } from "@/lib/supabase/categories";
 import { fetchRecruitmentTemplatesServer } from "@/lib/supabase/recruitment-templates";
+import { getAuthorizedUserRoles } from "@/lib/server/auth";
+import { filterVisibleCategories } from "@/lib/category-visibility";
 
 export const metadata = {
   title: "スケジュール",
@@ -74,6 +76,7 @@ export default async function SchedulePage() {
     holidays,
     recruitmentTemplates,
     categoriesResult,
+    userRoles,
     sessionLogsByDate,
     appSettings,
     initialMemosByDate,
@@ -82,6 +85,10 @@ export default async function SchedulePage() {
     fetchJapaneseHolidays(),
     fetchRecruitmentTemplatesServer(),
     fetchCategories(),
+    // TODO #19: role-based filtering. Categories with non-empty
+    // `requiredRoleIds` are hidden from the recruitment popover and the
+    // Ultimate-clear bookkeeping below for users without those roles.
+    getAuthorizedUserRoles(),
     fetchSessionLogsByDate(),
     // TODO #11: app_settings の必要キーを 1 SELECT で bulk 取得。
     // 旧来は schedule_url (getScheduleSourceUrl) と override
@@ -99,20 +106,20 @@ export default async function SchedulePage() {
   // slug is needed for the per-category macro-page link icons added in
   // the popover (1.9 (2026-04-28)) — clicking the icon opens
   // `/category/{slug}/macros` for full CRUD on that category's templates.
-  const recruitmentCategoryOptions = categoriesResult.ok
-    ? categoriesResult.categories.map((c) => ({
-        id: c.id,
-        name: c.name,
-        slug: c.slug,
-      }))
+  // TODO #19: filter to categories the user's Discord roles can see.
+  const visibleCategories = categoriesResult.ok
+    ? filterVisibleCategories(categoriesResult.categories, userRoles)
     : [];
+  const recruitmentCategoryOptions = visibleCategories.map((c) => ({
+    id: c.id,
+    name: c.name,
+    slug: c.slug,
+  }));
   // 1.9.16: schedule legend label switches MEMBERS → LEGENDS only when
   // the group has at least one cleared Ultimate (絶◯◯ + status=クリア済).
-  const hasUltimateClear = categoriesResult.ok
-    ? categoriesResult.categories.some(
-        (c) => c.name.startsWith("絶") && c.status === "クリア済",
-      )
-    : false;
+  const hasUltimateClear = visibleCategories.some(
+    (c) => c.name.startsWith("絶") && c.status === "クリア済",
+  );
   // Build the date-→-video map from the actual session list so the
   // 36h window matching can pick the right video for each session
   // (vs. the older naive "same JST day" approach which missed videos

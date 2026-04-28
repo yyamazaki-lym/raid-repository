@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { StatusBadge } from "./status-badge";
 import { useRealtimeCategories } from "@/lib/categories-client";
+import { filterVisibleCategories } from "@/lib/category-visibility";
 import type { Category } from "@/lib/supabase/types";
 
 const SUB_PAGES: Array<{ segment: string; label: string; Icon: LucideIcon }> = [
@@ -37,10 +38,18 @@ const SUB_PAGES: Array<{ segment: string; label: string; Icon: LucideIcon }> = [
 
 type Props = {
   initialCategories: Category[];
+  /**
+   * TODO #19: client-side filter for realtime updates. The server already
+   * filters `initialCategories`; this prop lets us keep the filter
+   * applied when the realtime hook refetches the raw list after a
+   * `categories` table mutation.
+   */
+  userRoleIds: string[];
 };
 
-export function CategorySwitcher({ initialCategories }: Props) {
-  const categories = useRealtimeCategories(initialCategories);
+export function CategorySwitcher({ initialCategories, userRoleIds }: Props) {
+  const liveAll = useRealtimeCategories(initialCategories);
+  const categories = filterVisibleCategories(liveAll, userRoleIds);
   const pathname = usePathname();
   // Controlled open state. The SiteHeader sits in the persistent
   // layout so the dropdown component instance survives route changes;

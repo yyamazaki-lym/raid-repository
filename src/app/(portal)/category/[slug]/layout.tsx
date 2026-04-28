@@ -3,6 +3,7 @@ import { ChevronLeft } from "lucide-react";
 import { SubTabs } from "@/components/portal/sub-tabs";
 import { StatusBadge } from "@/components/portal/status-badge";
 import { findCategoryBySlug } from "@/lib/supabase/categories";
+import { requireDiscordRoles } from "@/lib/server/auth";
 
 export default async function CategoryDetailLayout({
   children,
@@ -15,6 +16,14 @@ export default async function CategoryDetailLayout({
 
   const decoded = decodeURIComponent(slug);
   const category = await findCategoryBySlug(slug);
+  // TODO #19: defense-in-depth role check. The MainTabs already hide
+  // role-restricted categories from the dropdown, but a user with the
+  // bookmarked URL would otherwise still load the page. `requireDiscordRoles`
+  // redirects to /auth/denied?reason=missing_role when the intersection is
+  // empty. Empty `requiredRoleIds` (the default) bypasses the check.
+  if (category) {
+    await requireDiscordRoles(category.requiredRoleIds);
+  }
   const display = category?.name ?? decoded;
 
   return (

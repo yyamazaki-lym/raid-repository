@@ -43,6 +43,12 @@ export type CategoryRow = {
   expected_fflogs_zone_ids: number[] | null;
   /** Optional background image URL shown behind each card on /category. */
   background_image_url: string | null;
+  /**
+   * Discord role IDs allowed to view this category. NULL or empty array =
+   * visible to every guild member. Non-empty = only users whose
+   * `app_metadata.discord_roles` intersects this list can see it.
+   */
+  required_role_ids: string[] | null;
   created_at: string;
   updated_at: string;
 };
@@ -65,6 +71,11 @@ export type Category = {
   expectedFflogsZoneIds: number[];
   /** Optional background image URL shown behind the card on /category. */
   backgroundImageUrl: string | null;
+  /**
+   * Discord role IDs allowed to view this category. Empty array = visible
+   * to every guild member (default). Non-empty = role-gated.
+   */
+  requiredRoleIds: string[];
 };
 
 export function rowToCategory(row: CategoryRow): Category {
@@ -82,6 +93,7 @@ export function rowToCategory(row: CategoryRow): Category {
     firstClearAt: row.first_clear_at ?? null,
     expectedFflogsZoneIds: row.expected_fflogs_zone_ids ?? [],
     backgroundImageUrl: row.background_image_url ?? null,
+    requiredRoleIds: row.required_role_ids ?? [],
   };
 }
 
