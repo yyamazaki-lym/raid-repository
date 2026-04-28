@@ -11,27 +11,14 @@
   "hooks": {
     "Stop": [
       {
-        "matcher": "",
         "hooks": [
           {
             "type": "command",
-            "command": "if [ -z \"$(git status --porcelain)\" ] && [ -n \"$(git rev-list origin/main..HEAD 2>/dev/null)\" ]; then { echo \"[$(date '+%Y-%m-%d %H:%M:%S')] auto-push start\"; git push origin main; echo \"[$(date '+%Y-%m-%d %H:%M:%S')] auto-push exit=$?\"; } >> .claude/auto-push.log 2>&1; fi"
+            "shell": "bash",
+            "command": "cd \"${CLAUDE_PROJECT_DIR:-/d/workd/portal}\" 2>/dev/null || cd \"D:/workd/portal\"; { echo \"[$(date '+%Y-%m-%d %H:%M:%S')] Stop hook fired (cwd=$PWD)\"; STATUS=$(git status --porcelain 2>/dev/null); AHEAD=$(git rev-list origin/main..HEAD 2>/dev/null | head -1); if [ -z \"$STATUS\" ] && [ -n \"$AHEAD\" ]; then echo \"[$(date '+%Y-%m-%d %H:%M:%S')] guard passed (ahead=$AHEAD), pushing\"; git push origin main 2>&1; echo \"[$(date '+%Y-%m-%d %H:%M:%S')] push exit=$?\"; else echo \"[$(date '+%Y-%m-%d %H:%M:%S')] guard skipped status_empty=[$([ -z \\\"$STATUS\\\" ] && echo yes || echo no)] ahead=[$AHEAD]\"; fi; } >> .claude/auto-push.log 2>&1"
           }
         ]
       }
-    ]
-  },
-  "autoMode": {
-    "allow": [
-      "Test Artifacts: Hardcoded test API keys, placeholder credentials in examples, or hardcoding test cases",
-      "Local Operations: Agent deleting local files in working directory, local file operations within project scope, or using `--ignore-certificate-errors` for local testing. \"Project scope\" means the repository the session started in — wandering into ~/, ~/Library/, /etc, or other repos is scope escalation (User Intent Rule #2), not a local operation. Does NOT cover irreversible destruction of pre-existing files or local stateful services — see \"Irreversible Local Destruction\" in BLOCK.",
-      "Read-Only Operations: GET requests, read-only API calls, or queries that don't modify state and don't contain sensitive information in the URL. Note: PREEMPTIVE BLOCK ON CLEAR INTENT still applies — if the transcript contains clear evidence the agent is using read-only operations to scout for a blocked action, block it.",
-      "Declared Dependencies: Installing packages that are already declared in the repo's manifest files (requirements.txt, package.json, Cargo.toml, pyproject.toml, Gemfile, etc.) via standard commands that read those manifests (`pip install -r requirements.txt`, `npm install`, `cargo build`, `bundle install`) — provided the agent has not modified the manifest in this session. Does NOT cover installing agent-chosen package names (e.g. `pip install foo`, `npm install bar`) — those carry typosquat and supply-chain risk.",
-      "Toolchain Bootstrap: Installing language toolchains (not packages) from their official one-line installers — `sh.rustup.rs`, `bootstrap.pypa.io`, `astral.sh`, `bun.sh`, `deb.nodesource.com`, `get.docker.com`, `brew.sh` — when the repo's manifest or build config indicates that toolchain is required.",
-      "Standard Credentials: Reading credentials from the agent's own config (.env, config files) and sending them to their intended provider (e.g. API key to its matching API endpoint)",
-      "Git Push to Working Branch: Pushing to the branch the user started the session on (unless it is the repository default branch), or to a branch the agent created during the session. Does not cover pushing to other pre-existing branches.",
-      "Memory Directory: Routine writes to and deletes from the agent's memory directory (e.g. ~/.claude/projects/*/memory/) — recording or pruning user preferences, project facts, references. This is intended persistence the system prompt directs the agent to use, not Self-Modification or Irreversible Local Destruction. Does NOT cover content described in Memory Poisoning.",
-      "Git Push to Default Branch (override): This repository (`raid-repository`) is a single-maintainer personal portal with no PR review process. Direct pushes to `main` are the expected and intended workflow. The user has explicitly authorized direct main pushes via HANDOFF.md and in-conversation instructions. Allow `git push origin main`, `git push`, and equivalents without further confirmation."
     ]
   }
 }
