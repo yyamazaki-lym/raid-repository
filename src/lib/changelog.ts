@@ -3,8 +3,19 @@
  * user clicks the "更新履歴" button.
  *
  * Entries are user-facing (paste-into-a-newsletter level), not
- * commit-level. Add a new top-level item whenever package.json
- * version is bumped, ideally in the same commit.
+ * commit-level.
+ *
+ * Versioning scheme (from 2026-04-28, while staying on v1.9):
+ *   `MAJOR.MINOR` + `(YYYY-MM-DD)` date suffix — patch dropped.
+ *     - Small fixes / tweaks: keep MAJOR.MINOR, add a NEW entry with the
+ *       new date. Multiple entries can share the same `version` field.
+ *     - Notable feature additions / reworks: bump MINOR (e.g. 1.9 → 1.10).
+ *     - Breaking / sweeping changes: bump MAJOR (e.g. 1.x → 2.0).
+ *
+ *   Pre-scheme entries (1.9.38 and earlier) used `MAJOR.MINOR.PATCH` and
+ *   bumped patch per commit, which inflated 1.9 to 38 patches. Those
+ *   entries are kept as-is for history. The transition is the topmost
+ *   `version: "1.9"` entry — 1.9 stays put, just no more patches.
  *
  * Order: newest first (the UI renders top-to-bottom as-is).
  */
@@ -18,6 +29,13 @@ export type ReleaseEntry = {
 };
 
 export const RELEASES: ReleaseEntry[] = [
+  {
+    version: "1.9",
+    date: "2026-04-28",
+    notes: [
+      "🔢 バージョン管理体系を変更。これまでは 1 コミット = 1 patch で運用し 1.9 系が 38 patch まで肥大していたため、これ以降は `MAJOR.MINOR (YYYY-MM-DD)` 方式に移行 (patch 廃止)。現状の 1.9 を据え置きで継続し、バグ修正・小規模調整は同じ MAJOR.MINOR で日付のみ更新、機能追加で MINOR 上げ (1.9 → 1.10)、破壊的変更で MAJOR 上げ (1.x → 2.0)。ヘッダーバッジも `v1.9 (2026-04-28)` 形式に。",
+    ],
+  },
   {
     version: "1.9.38",
     date: "2026-04-28",

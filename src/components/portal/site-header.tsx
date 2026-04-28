@@ -3,18 +3,26 @@ import { Activity } from "lucide-react";
 import { ThemeSwitcher } from "./theme-switcher";
 import { SettingsDialog } from "./settings-dialog";
 import packageJson from "../../../package.json";
+import { RELEASES } from "@/lib/changelog";
 
 /**
  * App version for the header badge.
  *
- * Single source of truth: `package.json#version`. Bumping the package
- * file alone updates the badge — no need to keep two strings in sync.
+ * Single source of truth:
+ *   - `RELEASES[0].version` — the current MAJOR.MINOR (under new scheme)
+ *   - `RELEASES[0].date` — the date suffix
+ *   `package.json#version` is left at the final pre-scheme value
+ *   (`1.9.38`) as a historical marker; bump it only on major/minor bumps
+ *   if you also want it to reflect the new scheme.
  *
- * Versioning convention:
- *   MAJOR.MINOR.PATCH (semver-ish)
- *     PATCH  — bug fixes, small UI tweaks (1.0.0 → 1.0.1)
- *     MINOR  — page-wide overhauls or notable new features (1.0.x → 1.1.0)
- *     MAJOR  — rare, breaking changes (1.x → 2.0.0)
+ * Versioning convention (from v1.9, 2026-04-28):
+ *   `MAJOR.MINOR (YYYY-MM-DD)` — patch dropped.
+ *     MINOR — notable feature additions / reworks (1.9 → 1.10)
+ *     MAJOR — breaking / sweeping changes (1.x → 2.0)
+ *     date  — pulled from the latest changelog entry; multiple days of
+ *             small fixes share the same MAJOR.MINOR and only the date
+ *             updates.
+ *   Pre-scheme history used MAJOR.MINOR.PATCH; see `src/lib/changelog.ts`.
  *
  * Stage tag is deliberately kept inline since it changes rarely:
  *     ALPHA — internal, rough — bumped to BETA once it's daily-driver usable
@@ -22,7 +30,8 @@ import packageJson from "../../../package.json";
  *     RC    — release candidate, only show-stoppers being fixed
  *     (none) — stable
  */
-const APP_VERSION = packageJson.version;
+const APP_VERSION = RELEASES[0]?.version ?? packageJson.version;
+const APP_DATE = RELEASES[0]?.date ?? null;
 const APP_STAGE = "BETA";
 
 export function SiteHeader() {
@@ -42,7 +51,10 @@ export function SiteHeader() {
               RAID REPOSITORY
             </span>
             <span className="flex items-center gap-1.5 font-mono text-[10px] tabular-nums tracking-[0.16em] text-muted-foreground sm:text-[11px]">
-              <span>v{APP_VERSION}</span>
+              <span>
+                v{APP_VERSION}
+                {APP_DATE ? ` (${APP_DATE})` : ""}
+              </span>
               <span aria-hidden className="opacity-50">·</span>
               <span className="tracking-[0.22em]">{APP_STAGE}</span>
             </span>

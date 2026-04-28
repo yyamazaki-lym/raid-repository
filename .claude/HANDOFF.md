@@ -8,7 +8,7 @@
 - **Path**: `D:\workd\portal`
 - **Stack**: Next.js 16.2.4 (Turbopack) / React 19.2 / Supabase / Tailwind v4 / @base-ui/react / shadcn 系
 - **Deploy**: Vercel auto-deploy from `main`
-- **Current version**: `1.9.38`
+- **Current version**: `1.9 (2026-04-28)` — 新方式 (`MAJOR.MINOR (YYYY-MM-DD)`、patch 廃止) に移行。`package.json#version` は `1.9.38` を残置 (履歴マーカー)、UI は `RELEASES[0].version` + `.date` を表示
 - **重要**: `D:\workd\portal\AGENTS.md` で「Next.js 16 は破壊的変更含む。`node_modules/next/dist/docs/` を参照すべし」
 
 ## 直近の主要な変更 (1.9.21 → 1.9.38)
@@ -24,6 +24,7 @@
 | 1.9.36 | ルールボタン (運用ルール表示)、絵文字 decode (`&#xNNN;` `<img alt>`) |
 | 1.9.37 | parseTopText が `■コメント` 直前で truncate |
 | 1.9.38 | **チップ縦中央追求を断念** (Yu Gothic UI 環境で完全解決不能と判断、symmetric `py-1` に固定) |
+| 1.9 (2026-04-28) | バージョン管理体系を `MAJOR.MINOR (YYYY-MM-DD)` 方式に変更 (patch 廃止)。コミット毎の patch 肥大を解消 |
 
 ## 確定 TODO 一覧 (再開時の参照用)
 
@@ -37,6 +38,7 @@
 | 6 | 募集文テンプレート並び替え (DnD) + top 反映 | 小 |
 | 7 | スマホでのレイアウト崩れ確認 | 中 |
 | 8 | Vercel/Supabase 自動導入 (Deploy button / `.env.example` / seed) | 中 |
+| ~~9~~ | ~~バージョン番号体系の見直し~~ — 完了 (1.9 (2026-04-28) で新方式へ移行) | ~~小〜中~~ |
 
 ### 除外済み (再対応不要)
 
