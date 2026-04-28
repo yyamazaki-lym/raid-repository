@@ -21,8 +21,14 @@ import { createClient } from "@/lib/supabase/server";
  */
 
 export type SessionVideoLink = {
-  /** Path the schedule page should link to. */
+  /** Path the schedule page should link to (in-portal videos page). */
   href: string;
+  /**
+   * The actual external video URL (YouTube / Twitch / niconico / X 等).
+   * 過去日程の動画アイコンクリック時に直接外部に飛ばす用途で使用 (Logs
+   * アイコンと同じ挙動)。
+   */
+  url: string;
   /** Category name shown in the tooltip ("ヘビー級 → 動画"). */
   categoryName: string;
   /** Video title for tooltip / accessibility. */
@@ -44,6 +50,7 @@ export async function buildSessionVideoLinkMap(
   type Row = {
     id: string;
     title: string;
+    url: string;
     posted_at: string | null;
     created_at: string;
     logs_url: string | null;
@@ -55,7 +62,7 @@ export async function buildSessionVideoLinkMap(
   const { data, error } = await supabase
     .from("category_links")
     .select(
-      "id, title, posted_at, created_at, logs_url, " +
+      "id, title, url, posted_at, created_at, logs_url, " +
         "categories!inner(slug, name)",
     )
     .eq("kind", "video")
@@ -75,6 +82,7 @@ export async function buildSessionVideoLinkMap(
       return {
         id: v.id,
         title: v.title,
+        url: v.url,
         logsUrl: v.logs_url ?? null,
         categorySlug: cat.slug,
         categoryName: cat.name ?? cat.slug,
@@ -102,6 +110,7 @@ export async function buildSessionVideoLinkMap(
     used.add(match.id);
     out[s.rawDate] = {
       href: `/category/${match.categorySlug}/videos?focus=${match.id}`,
+      url: match.url,
       categoryName: match.categoryName,
       videoTitle: match.title,
       logsUrl: match.logsUrl,

@@ -155,49 +155,40 @@ export function RecruitmentTemplatesButton({ initial, categories }: Props) {
     }),
   );
 
+  // SortableContext のアイテムキー = カテゴリグループキー (categoryId
+  // か "__none__")。block 単位で `useSortable` するため、DnD 中は
+  // section 全体 (子募集文も含む) が transform で追従する。intra-
+  // category の並び替えは popover 内では行わず (per-category macros
+  // ページに譲る) 、popover はカテゴリ全体のグローバル順序の調整に
+  // 専念させる設計。
+  const groupKeys = useMemo(
+    () => grouped.map((g) => g.categoryId ?? "__none__"),
+    [grouped],
+  );
+
   const onDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
-    const activeT = ordered.find((t) => t.id === active.id);
-    const overT = ordered.find((t) => t.id === over.id);
-    if (!activeT || !overT) return;
+    const oldIndex = groupKeys.indexOf(String(active.id));
+    const newIndex = groupKeys.indexOf(String(over.id));
+    if (oldIndex < 0 || newIndex < 0) return;
 
-    // TODO #16: 同カテゴリ内 → 単純な並び替え。別カテゴリへドロップ
-    // した場合 → カテゴリ「ブロック」ごと移動 (= 子テンプレ全部を
-    // 連れて、元カテゴリ全体が移動先カテゴリの位置に)。子だけが
-    // 別カテゴリへ移籍する挙動は採らない。
-    const sameCategory = activeT.categoryId === overT.categoryId;
-
-    let next: string[];
-    let toastMessage: string | null = null;
-
-    if (sameCategory) {
-      const oldIndex = ordered.findIndex((t) => t.id === active.id);
-      const newIndex = ordered.findIndex((t) => t.id === over.id);
-      if (oldIndex < 0 || newIndex < 0) return;
-      next = arrayMove(ordered, oldIndex, newIndex).map((t) => t.id);
-    } else {
-      // ブロック移動: グループ列を作って、source カテゴリのブロックを
-      // target カテゴリの位置に arrayMove する。
-      const groups = groupByCategory(ordered);
-      const srcIdx = groups.findIndex((g) => g.categoryId === activeT.categoryId);
-      const tgtIdx = groups.findIndex((g) => g.categoryId === overT.categoryId);
-      if (srcIdx < 0 || tgtIdx < 0) return;
-      const reorderedGroups = arrayMove(groups, srcIdx, tgtIdx);
-      next = reorderedGroups.flatMap((g) => g.items.map((t) => t.id));
-      toastMessage = `「${activeT.categoryName ?? "未分類"}」を「${
-        overT.categoryName ?? "未分類"
-      }」の位置に移動しました`;
-    }
-
+    const reorderedGroups = arrayMove(grouped, oldIndex, newIndex);
+    const next = reorderedGroups.flatMap((g) => g.items.map((t) => t.id));
     setOptimisticOrder(next);
+
+    const srcName = grouped[oldIndex]?.categoryName ?? "未分類";
+    const dstName = grouped[newIndex]?.categoryName ?? "未分類";
+
     const result = await setRecruitmentTemplateOrder(next);
     if (!result.ok) {
       toast.error("並び替え保存失敗: " + result.reason);
       setOptimisticOrder(null);
       return;
     }
-    if (toastMessage) toast.success(toastMessage);
+    toast.success(
+      `「${srcName}」を「${dstName}」の位置に移動しました`,
+    );
     setTimeout(() => setOptimisticOrder(null), 1500);
   };
 
@@ -242,7 +233,7 @@ export function RecruitmentTemplatesButton({ initial, categories }: Props) {
               <span className="font-mono tracking-[0.18em] text-[var(--neon-cyan)]/80 uppercase">
                 ★ Top
               </span>
-              {" が次回開催日カードのコピー対象。ハンドルをドラッグで並び替え。"}
+              {" が次回開催日カードのコピー対象。ハンドルをドラッグでカテゴリブロックごと並び替え。"}
             </p>
             <DndContext
               sensors={sensors}
@@ -250,77 +241,27 @@ export function RecruitmentTemplatesButton({ initial, categories }: Props) {
               onDragEnd={onDragEnd}
             >
               <SortableContext
-                items={ordered.map((t) => t.id)}
+                items={groupKeys}
                 strategy={verticalListSortingStrategy}
               >
                 <div className="flex flex-col gap-1">
-                  {grouped.map(({ categoryId, categoryName, items }) => {
-                    const key = categoryId ?? "__none__";
-                    const isOpen = openCategories.has(key);
-                    const containsTop = items.some((t) => t.id === topId);
-                    const slug = categoryId ? slugById.get(categoryId) ?? null : null;
+                  {grouped.map((group) => {
+                    const key = group.categoryId ?? "__none__";
                     return (
-                      <div
+                      <SortableCategorySection
                         key={key}
-                        className="rounded-sm border border-border/40 bg-secondary/15"
-                      >
-                        <div className="flex items-center justify-between gap-1.5 px-1.5 py-1">
-                          <button
-                            type="button"
-                            onClick={() => toggleCategory(key)}
-                            aria-expanded={isOpen}
-                            aria-label={`${
-                              categoryName ?? "（コンテンツ未設定）"
-                            } のテンプレートを${isOpen ? "閉じる" : "開く"}`}
-                            className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded px-1 text-left hover:bg-secondary/40"
-                          >
-                            <ChevronDown
-                              className={cn(
-                                "h-3 w-3 shrink-0 text-muted-foreground transition-transform",
-                                isOpen ? "rotate-0" : "-rotate-90",
-                              )}
-                              aria-hidden
-                            />
-                            <span className="truncate font-mono text-[10px] tracking-[0.18em] text-muted-foreground uppercase">
-                              {categoryName ?? "（コンテンツ未設定）"}
-                            </span>
-                            <span className="font-mono text-[9px] text-muted-foreground/60">
-                              {items.length}
-                            </span>
-                            {containsTop && (
-                              <span
-                                className="font-mono text-[9px] tracking-[0.18em] text-[var(--neon-cyan)]/85 uppercase"
-                                title="このカテゴリに ★ Top のテンプレが含まれる"
-                              >
-                                ★
-                              </span>
-                            )}
-                          </button>
-                          {slug && (
-                            <a
-                              href={`/category/${slug}/macros`}
-                              title={`「${categoryName}」のマクロページを開く (新規 / 編集 / 削除)`}
-                              aria-label={`「${categoryName}」のマクロページを開く`}
-                              className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-secondary/60 hover:text-[var(--neon-cyan)]"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <ExternalLink className="h-3 w-3" aria-hidden />
-                            </a>
-                          )}
-                        </div>
-                        {isOpen && (
-                          <ul className="flex flex-col gap-0.5 border-t border-border/30 p-1">
-                            {items.map((t) => (
-                              <SortableTemplateItem
-                                key={t.id}
-                                template={t}
-                                isTop={t.id === topId}
-                                onCopy={() => copyToClipboard(t)}
-                              />
-                            ))}
-                          </ul>
-                        )}
-                      </div>
+                        groupKey={key}
+                        group={group}
+                        topId={topId}
+                        slug={
+                          group.categoryId
+                            ? slugById.get(group.categoryId) ?? null
+                            : null
+                        }
+                        isOpen={openCategories.has(key)}
+                        onToggle={() => toggleCategory(key)}
+                        onCopy={copyToClipboard}
+                      />
                     );
                   })}
                 </div>
@@ -334,18 +275,36 @@ export function RecruitmentTemplatesButton({ initial, categories }: Props) {
 }
 
 /**
- * One row inside the popover's per-category list. Drag handle on the
- * left, click anywhere else to copy the body. ★ when this is the global
- * top template (the one the next-session card's quick-copy button uses).
+ * 1 つのカテゴリブロックを丸ごと sortable 単位として扱う section
+ * (TODO #16)。section ヘッダーの grip ハンドルと、各子募集文の左端
+ * の grip ハンドルが、いずれもこの section の `useSortable` listeners
+ * に接続されている。これにより:
+ *   - section ヘッダーの grip を掴む → section 全体がドラッグ
+ *   - 子募集文の grip を掴む → やはり親 section 全体がドラッグ
+ *     (= 子だけが孤立して移動することは無い)
+ * DnD 中の transform は section 全体に適用されるので、子募集文 N 件
+ * すべてが視覚的に追従する。
+ *
+ * 子の copy ボタン (本文クリック) は drag listener と分離してあるので
+ * 通常クリックで普通にコピーできる (MouseSensor の distance:6 ガードで
+ * 短いクリックは drag にならない)。
  */
-function SortableTemplateItem({
-  template,
-  isTop,
+function SortableCategorySection({
+  groupKey,
+  group,
+  topId,
+  slug,
+  isOpen,
+  onToggle,
   onCopy,
 }: {
-  template: RecruitmentTemplate;
-  isTop: boolean;
-  onCopy: () => void;
+  groupKey: string;
+  group: TemplateGroup;
+  topId: string | null;
+  slug: string | null;
+  isOpen: boolean;
+  onToggle: () => void;
+  onCopy: (t: RecruitmentTemplate) => void;
 }) {
   const {
     attributes,
@@ -354,18 +313,118 @@ function SortableTemplateItem({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: template.id });
+  } = useSortable({ id: groupKey });
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition,
-    opacity: isDragging ? 0.5 : 1,
+    opacity: isDragging ? 0.6 : 1,
     zIndex: isDragging ? 10 : "auto",
   };
+  const containsTop = group.items.some((t) => t.id === topId);
+  const categoryName = group.categoryName;
   return (
-    <li
+    <div
       ref={setNodeRef}
       style={style}
       {...attributes}
+      className={cn(
+        "rounded-sm border border-border/40 bg-secondary/15",
+        isDragging && "shadow-[0_8px_24px_-8px_rgba(0,0,0,0.5)]",
+      )}
+    >
+      <div className="flex items-center justify-between gap-1.5 px-1.5 py-1">
+        {/* section 全体の drag handle (ヘッダー位置) */}
+        <button
+          type="button"
+          {...listeners}
+          aria-label={`${
+            categoryName ?? "（コンテンツ未設定）"
+          } のカテゴリブロックをドラッグ`}
+          title="ドラッグでこのカテゴリ全体 (中の募集文も全部) を並び替え"
+          className="inline-flex h-6 w-5 shrink-0 cursor-grab items-center justify-center rounded text-muted-foreground hover:text-foreground active:cursor-grabbing"
+        >
+          <GripVertical className="h-3 w-3" aria-hidden />
+        </button>
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={isOpen}
+          aria-label={`${
+            categoryName ?? "（コンテンツ未設定）"
+          } のテンプレートを${isOpen ? "閉じる" : "開く"}`}
+          className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded px-1 text-left hover:bg-secondary/40"
+        >
+          <ChevronDown
+            className={cn(
+              "h-3 w-3 shrink-0 text-muted-foreground transition-transform",
+              isOpen ? "rotate-0" : "-rotate-90",
+            )}
+            aria-hidden
+          />
+          <span className="truncate font-mono text-[10px] tracking-[0.18em] text-muted-foreground uppercase">
+            {categoryName ?? "（コンテンツ未設定）"}
+          </span>
+          <span className="font-mono text-[9px] text-muted-foreground/60">
+            {group.items.length}
+          </span>
+          {containsTop && (
+            <span
+              className="font-mono text-[9px] tracking-[0.18em] text-[var(--neon-cyan)]/85 uppercase"
+              title="このカテゴリに ★ Top のテンプレが含まれる"
+            >
+              ★
+            </span>
+          )}
+        </button>
+        {slug && (
+          <a
+            href={`/category/${slug}/macros`}
+            title={`「${categoryName}」のマクロページを開く (新規 / 編集 / 削除)`}
+            aria-label={`「${categoryName}」のマクロページを開く`}
+            className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-secondary/60 hover:text-[var(--neon-cyan)]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <ExternalLink className="h-3 w-3" aria-hidden />
+          </a>
+        )}
+      </div>
+      {isOpen && (
+        <ul className="flex flex-col gap-0.5 border-t border-border/30 p-1">
+          {group.items.map((t) => (
+            <TemplateRow
+              key={t.id}
+              template={t}
+              isTop={t.id === topId}
+              onCopy={() => onCopy(t)}
+              dragListeners={listeners}
+              categoryName={categoryName}
+            />
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/**
+ * 1 行分の募集文。grip は親 section の drag listener に接続されている
+ * ので、ここを掴んで動かしても section ごと動く (TODO #16)。
+ */
+function TemplateRow({
+  template,
+  isTop,
+  onCopy,
+  dragListeners,
+  categoryName,
+}: {
+  template: RecruitmentTemplate;
+  isTop: boolean;
+  onCopy: () => void;
+  dragListeners: ReturnType<typeof useSortable>["listeners"];
+  categoryName: string | null;
+}) {
+  return (
+    <li
       className={cn(
         "flex items-start gap-1 rounded-sm",
         isTop &&
@@ -374,9 +433,11 @@ function SortableTemplateItem({
     >
       <button
         type="button"
-        {...listeners}
-        aria-label={`${template.label || "通常募集"} のドラッグハンドル`}
-        title="ドラッグで並び替え (グローバル順序に反映 → トップの「募集」ボタンも自動連動)"
+        {...dragListeners}
+        aria-label={`${
+          categoryName ?? "（コンテンツ未設定）"
+        } カテゴリのドラッグハンドル (子要素から掴んでも親カテゴリごと移動)`}
+        title="ドラッグでこのカテゴリ全体 (中の募集文も全部) を並び替え"
         className="inline-flex h-7 w-5 shrink-0 cursor-grab items-center justify-center rounded text-muted-foreground hover:text-foreground active:cursor-grabbing"
       >
         <GripVertical className="h-3 w-3" aria-hidden />

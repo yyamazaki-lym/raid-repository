@@ -52,8 +52,12 @@ export const RELEASES: ReleaseEntry[] = [
     date: "2026-04-28",
     parts: [
       {
-        title: "🚚 募集文テンプレ DnD でカテゴリ跨ぎドロップ時はカテゴリ「ブロック」ごと移動 (TODO #16)",
-        body: "ヘッダーの「募集文」popover 内の DnD は global single SortableContext で、これまで sort_order しか更新していなかったため、別カテゴリセクションにドロップしても元の位置に視覚的に戻ってしまっていた。\nユーザー要望に沿った正しい挙動: 子テンプレを別カテゴリ section にドロップした場合は、子だけ移籍させるのではなく、元カテゴリ全体 (中の他のテンプレも含む) をブロックごと、ドロップ先カテゴリの位置に移動させる。\n実装:\n1. `groupByCategory` のキーを `categoryName` → `categoryId` に変更 (同名カテゴリ衝突回避 + ブロック identity を保つ目的)。`openCategories` も categoryId 化。\n2. `onDragEnd`: active と over の categoryId が同じなら従来どおり item 単位 `arrayMove`、異なるなら groups 列を作って `arrayMove(groups, srcIdx, tgtIdx)` でカテゴリブロックを並べ替え、flatMap で template id 列に戻して `setRecruitmentTemplateOrder` に渡す。\n3. category_id 自体は変更しない (個別テンプレが別カテゴリに移籍することはない)。\n4. ブロック移動成立時は toast に「『元カテゴリ』を『移動先カテゴリ』の位置に移動しました」を表示。",
+        title: "🚚 募集文テンプレの DnD をカテゴリブロック単位の sortable に再設計 (TODO #16)",
+        body: "前回 (3bc7a32) は drop 時に内部でブロック並び替えを再計算する方式だったが、ユーザー指摘の通り「DnD 中に元カテゴリ section が追従しない (drop の後に付いてくる)」UX 上の問題があった。SortableContext を child template 単位 → カテゴリブロック (group key) 単位に再設計し、各 section 自体が `useSortable` する形に変更。\n実装:\n1. SortableContext.items を group key 配列 (`categoryId ?? '__none__'`) に変更。\n2. 新コンポーネント `SortableCategorySection` でカテゴリブロックを丸ごと sortable 単位として扱う。section ヘッダー左に grip ハンドルを追加。\n3. 子募集文 (`TemplateRow`) の grip も親 section の `useSortable` listeners を prop drilling して接続。子の grip を掴んでも親 section ごとドラッグされる → 中の複数募集文が全部一緒に追従。\n4. `onDragEnd`: arrayMove(grouped, oldIndex, newIndex) → flatMap で template id 列にしてから `setRecruitmentTemplateOrder` に渡す。category_id は変更しない。\n5. popover 内では intra-category 並び替えは行わない (per-category マクロページに譲る) — popover はカテゴリ全体のグローバル順序の調整に専念。",
+      },
+      {
+        title: "🎬 過去日程の動画アイコンを直接外部リンクへ (Logs と同じ挙動)",
+        body: "出欠表 (Past) の Film アイコンは従来ポータル内の動画ページ (`/category/{slug}/videos?focus=...`) に飛んでいたが、ユーザー要望で過去日程に限り外部の動画 URL (YouTube / Twitch / niconico / X 等) を直接新規タブで開く挙動に変更 — Logs アイコンと同じ感覚で扱える。\n実装: `SessionVideoLink` に `url: string` フィールドを追加し、`buildSessionVideoLinkMap` の SELECT に `category_links.url` を追加して伝播。`schedule-list.tsx` の `SessionRow` で `isPast=true` 時のみ `<a href={safeHref(videoLink.url)} target=\"_blank\">` でレンダリング、upcoming は引き続き `<Link href={videoLink.href}>` でポータル動画ページへ。`safeHref` で http(s) チェックを通すので不正 URL 無効。",
       },
       {
         title: "🔔 各人のコメントに更新があった場合、ヘッダーの吹き出しアイコンを amber でハイライト (TODO #14)",

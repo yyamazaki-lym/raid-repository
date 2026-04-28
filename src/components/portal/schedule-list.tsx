@@ -572,16 +572,36 @@ function SessionRow({
               placeholder. */}
           {(() => {
             const logsUrl = safeHref(videoLink?.logsUrl ?? sessionLogsUrl);
+            // 過去日程の Film アイコンは Logs と同じく直接外部リンクへ
+            // (新規タブ、URL は category_links.url)。upcoming は引き続き
+            // ポータル内の動画ページへリンクする (動画は通常まだ無いが、
+            // 当日分が早めに上がっていたケースで動画一覧に飛びたい)。
+            const externalVideoUrl = isPast
+              ? safeHref(videoLink?.url)
+              : null;
             const filmSlot = videoLink ? (
-              <Link
-                href={videoLink.href}
-                prefetch={false}
-                aria-label={`${videoLink.categoryName}/動画「${videoLink.videoTitle}」を開く`}
-                title={`${videoLink.categoryName}/動画 → 「${videoLink.videoTitle}」`}
-                className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-[var(--neon-cyan)]/85 transition-all hover:bg-[var(--neon-cyan)]/15 hover:text-[var(--neon-cyan)] hover:shadow-[0_0_10px_-2px_var(--neon-cyan)]"
-              >
-                <Film className="h-3 w-3" aria-hidden />
-              </Link>
+              externalVideoUrl ? (
+                <a
+                  href={externalVideoUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label={`${videoLink.categoryName}/動画「${videoLink.videoTitle}」を新規タブで開く`}
+                  title={`${videoLink.categoryName}/動画 → 「${videoLink.videoTitle}」 (外部リンク)`}
+                  className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-[var(--neon-cyan)]/85 transition-all hover:bg-[var(--neon-cyan)]/15 hover:text-[var(--neon-cyan)] hover:shadow-[0_0_10px_-2px_var(--neon-cyan)]"
+                >
+                  <Film className="h-3 w-3" aria-hidden />
+                </a>
+              ) : (
+                <Link
+                  href={videoLink.href}
+                  prefetch={false}
+                  aria-label={`${videoLink.categoryName}/動画「${videoLink.videoTitle}」を開く`}
+                  title={`${videoLink.categoryName}/動画 → 「${videoLink.videoTitle}」`}
+                  className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-[var(--neon-cyan)]/85 transition-all hover:bg-[var(--neon-cyan)]/15 hover:text-[var(--neon-cyan)] hover:shadow-[0_0_10px_-2px_var(--neon-cyan)]"
+                >
+                  <Film className="h-3 w-3" aria-hidden />
+                </Link>
+              )
             ) : (
               <span aria-hidden className="inline-block h-5 w-5 shrink-0" />
             );
