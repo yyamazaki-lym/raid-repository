@@ -150,6 +150,7 @@ dev server は `.claude/launch.json` で `portal-dev` 設定済み (port 3000)�
 
 - すべて push まで実施 (`git push origin main`)
 - 改行は heredoc (`@'...'@` PowerShell)
+- **`git push` は sandbox でブロックされる**ため、Bash tool 呼び出し時に `dangerouslyDisableSandbox: true` を必ず付けて実行する。これを付けないと push 段階で停止し「commit はしたが push されていない」状態が残るので注意
 
 ## 新規会話の開始テンプレ
 
