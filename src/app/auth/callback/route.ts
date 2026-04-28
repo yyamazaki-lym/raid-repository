@@ -1,0 +1,112 @@
+import "server-only";
+import { type NextRequest, NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/server";
+import {
+  fetchGuildMember,
+  updateUserAppMetadata,
+} from "@/lib/server/discord-membership";
+
+/**
+ * Supabase の Discord OAuth 完了後にリダイレクトされてくるエンドポイント。
+ *
+ * フロー:
+ *   1. `?code=...` を受け取って `exchangeCodeForSession` でセッション cookie を確立
+ *   2. user.identities から Discord の provider_id (snowflake) を取り出す
+ *   3. bot token で対象 guild のメンバーかを検証 + ロール一覧取得
+ *   4. service-role で app_metadata に { discord_guild_member, discord_roles, ... } を書き込み
+ *   5. JWT を refresh して新しい app_metadata を cookie に乗せ直す
+ *   6. ?next= が指定されていればそこへ、そうでなければ "/" にリダイレクト
+ *
+ * 失敗時の挙動:
+ *   - code 欠落 → /login?error=...
+ *   - メンバーでない / Discord API エラー → signOut() してから /auth/denied
+ *     (cookie を残すと proxy ループはしないが、見た目「ログイン済みっぽい」
+ *     状態になるので明示的に消す)
+ */
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+export async function GET(req: NextRequest) {
+  const code = req.nextUrl.searchParams.get("code");
+  const next = sanitizeNextParam(req.nextUrl.searchParams.get("next"));
+
+  if (!code) {
+    return redirectTo(req, "/login", { error: "missing_code" });
+  }
+
+  const supabase = await createClient();
+
+  const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+  if (error || !data.user) {
+    return redirectTo(req, "/login", {
+      error: "exchange_failed",
+      detail: error?.message ?? "no_user",
+    });
+  }
+
+  const discordIdentity = data.user.identities?.find(
+    (i) => i.provider === "discord",
+  );
+  // Supabase の identities[].identity_data.provider_id (= Discord snowflake)
+  // を優先。フォールバックで identity_data.sub も見る。
+  const discordId =
+    (discordIdentity?.identity_data as
+      | { provider_id?: string; sub?: string }
+      | undefined)?.provider_id ??
+    (discordIdentity?.identity_data as { sub?: string } | undefined)?.sub;
+
+  if (!discordId) {
+    await supabase.auth.signOut();
+    return redirectTo(req, "/auth/denied", { reason: "no_discord_id" });
+  }
+
+  const membership = await fetchGuildMember(discordId);
+  if (!membership.ok) {
+    await supabase.auth.signOut();
+    return redirectTo(req, "/auth/denied", { reason: membership.reason });
+  }
+
+  try {
+    await updateUserAppMetadata(data.user.id, {
+      discord_id: discordId,
+      discord_guild_member: true,
+      discord_roles: membership.roles,
+      discord_member_verified_at: new Date().toISOString(),
+    });
+  } catch (e) {
+    console.error("[auth/callback] updateUserAppMetadata failed", e);
+    await supabase.auth.signOut();
+    return redirectTo(req, "/auth/denied", { reason: "metadata_write_failed" });
+  }
+
+  // app_metadata の更新は JWT に反映されないので refresh が必須。
+  // proxy.ts は user.app_metadata.discord_guild_member を見ているので、
+  // refresh しないと初回リダイレクトでまた /auth/denied に飛ばされる。
+  await supabase.auth.refreshSession();
+
+  return NextResponse.redirect(new URL(next, req.url));
+}
+
+function redirectTo(
+  req: NextRequest,
+  path: string,
+  params: Record<string, string>,
+) {
+  const url = new URL(path, req.url);
+  for (const [k, v] of Object.entries(params)) {
+    url.searchParams.set(k, v);
+  }
+  return NextResponse.redirect(url);
+}
+
+/**
+ * `?next=` の中身は攻撃者が制御できる文字列なので、相対パスかつ "/" 始まり
+ * (かつ "//" 始まりでない) にしか飛ばさない。
+ */
+function sanitizeNextParam(value: string | null): string {
+  if (!value) return "/";
+  if (!value.startsWith("/")) return "/";
+  if (value.startsWith("//")) return "/";
+  return value;
+}
