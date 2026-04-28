@@ -159,26 +159,32 @@ export function ScheduleList({
   // それ以前は折り畳む。展開ボタンで切り替え可能 (state はここに置
   // いてマウント期間中保持)。
   const [showOlderPast, setShowOlderPast] = useState(false);
-  // 2.1 (2026-04-29) hot-fix: トグル後にボタンが画面外に飛ばないよう、
-  // 押下前後の `getBoundingClientRect().top` の差分だけ window をスクロール
-  // 補正する。展開時 = ボタン上に大量の行が挿入される、畳み時 = ボタン上の
-  // 行が消える、どちらの場合もボタンの「画面上の見える Y 位置」をキープする
-  // ことで、ユーザーが追視を強いられないようにする。
+  // 2.1 (2026-04-29) hot-fix v2: トグル時にユーザの「視点」(= window.scrollY)
+  // を保つ。前バージョン (PR #8) はボタンの rect.top を保つ実装にしていたが、
+  // 展開時はボタンが下へ移動するためページが下方向に大量スクロールしてしまい、
+  // ユーザが見ていた行が画面外に追い出される事象があった (例: 2/28 で押す
+  // と最古の 2/9 まで一気に飛ぶ)。
+  //
+  // 正しい挙動: 展開しても、ユーザが見ている絶対位置 (= recentPast の中の
+  // どこか) はそのまま。展開行 (olderPast) は画面外下方に挿入され、ユーザは
+  // スクロールダウンで読みに行く。畳み時も同じく絶対位置を保つ (ドキュメント
+  // 高が縮むので、ブラウザが scroll max に clamp する場合あり)。
+  //
+  // また、押下後フォーカスがボタンに残ると一部ブラウザが auto-scroll で
+  // ボタンを viewport に入れに行くため、明示的に blur() してから scrollY
+  // を復元することでこれも抑える。
   const olderToggleBtnRef = useRef<HTMLButtonElement | null>(null);
   const onToggleOlderPast = useCallback(() => {
-    const beforeY = olderToggleBtnRef.current?.getBoundingClientRect().top;
+    const beforeScrollY = window.scrollY;
+    olderToggleBtnRef.current?.blur();
     setShowOlderPast((v) => !v);
-    if (beforeY === undefined) return;
-    // React commit → ブラウザ paint 後に位置差分を当てる。
-    // requestAnimationFrame 1 回では稀に layout がまだ確定していない
-    // ことがあるため 2 段重ねで安定化。
+    // React commit → ブラウザ paint 後に scrollY を復元。
+    // rAF 1 回だと稀に layout 反映前の値で復元してしまう (ブラウザの
+    // scroll-anchoring と競合) ため 2 段重ね。
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
-        const afterY = olderToggleBtnRef.current?.getBoundingClientRect().top;
-        if (afterY === undefined) return;
-        const delta = afterY - beforeY;
-        if (Math.abs(delta) > 1) {
-          window.scrollBy({ top: delta, behavior: "instant" });
+        if (window.scrollY !== beforeScrollY) {
+          window.scrollTo({ top: beforeScrollY, behavior: "instant" });
         }
       });
     });
