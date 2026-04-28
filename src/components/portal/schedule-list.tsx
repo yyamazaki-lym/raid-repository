@@ -718,10 +718,23 @@ function Legend({
   }, [topTextOverride]);
 
   // 表示モード: 編集後 (override) があれば default で edited、無ければ scraped。
-  // ユーザーがトグル切替したらその選択を尊重 (prop 変動でリセットしない)。
+  // ユーザーがトグル切替したらその選択を尊重するが、override の null/non-null
+  // 遷移 (= 新規保存 / 完全クリア) では view を自動追従させる。
   const [view, setView] = useState<"edited" | "scraped">(
     effectiveOverride !== null ? "edited" : "scraped",
   );
+  // override の存在状態の遷移を監視: null → non-null で edited、
+  // non-null → null で scraped にフリップ。同値での更新 (例: 同期で
+  // 同じ override が再取得された場合) は view を変えない (ユーザー選択
+  // を維持)。
+  const prevHasOverrideRef = useRef<boolean>(effectiveOverride !== null);
+  useEffect(() => {
+    const has = effectiveOverride !== null;
+    if (prevHasOverrideRef.current !== has) {
+      setView(has ? "edited" : "scraped");
+    }
+    prevHasOverrideRef.current = has;
+  }, [effectiveOverride]);
 
   // 編集モード: textarea + save / cancel
   const [editing, setEditing] = useState(false);
@@ -854,12 +867,13 @@ function Legend({
                             onClick={() => setView("edited")}
                             title="ポータル側で編集したカスタム版 (同期で上書きされない)"
                             className={
-                              "px-1.5 py-0.5 font-mono text-[9px] tracking-[0.18em] uppercase transition-colors " +
+                              "inline-flex items-center gap-0.5 px-1.5 py-0.5 font-mono text-[9px] tracking-[0.18em] uppercase transition-colors " +
                               (view === "edited"
                                 ? "bg-[var(--neon-cyan)]/25 text-foreground"
                                 : "text-muted-foreground hover:bg-secondary/50")
                             }
                           >
+                            <span className="text-[var(--neon-cyan)]">★</span>
                             編集後
                           </button>
                         </div>

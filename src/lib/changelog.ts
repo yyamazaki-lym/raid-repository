@@ -111,6 +111,10 @@ export const RELEASES: ReleaseEntry[] = [
         title: "🩹 運用ルール popup の保存後フリッカー / トグル非表示 / 反映遅延を修正 (3 件)",
         body: "TODO #12 の挙動修正。報告: (a) 編集して保存すると一瞬テキストが消える、(b) 保存後トグルボタンが見当たらない、(c) 更新を掛けるまで編集前のものが表示される。原因はいずれも `router.refresh()` 完了 (= prop 更新) までの間 UI に新しい override 値が無いこと。新規ローカル state `optimisticOverride` (`undefined | null | string`) を追加し、save 直後にローカルへ即時反映 → effectiveOverride を `optimisticOverride ?? topTextOverride` で算出 → prop 更新を `useEffect` で検知して楽観 state を破棄。save 中もタブ / dot / クリアボタンの表示判定は `effectiveOverride` 基準に統一。clear 操作も同様に `setOptimisticOverride(null)` で即時 UI 反映。失敗時は `setOptimisticOverride(undefined)` で即座に prop 値へ revert。",
       },
+      {
+        title: "🔄 同期 (refresh) 後も override が保持されるよう view 自動同期を強化",
+        body: "ユーザー報告: 「同期すると編集後のテキストが消えているように見える。同期時はオリジナルの文面を変更して、編集後のものはそのままにする。」。実装上 override は同期 (`router.refresh`) で touch されないが、view state がトグル位置にあると見え方が混乱する場合があったため、view を `effectiveOverride` の null/non-null 遷移にだけ自動追従させるロジックを追加 (`prevHasOverrideRef`)。同値の更新 (= 同期で同じ override が再取得) では view を変えずユーザー選択を維持、null → non-null (新規保存) では view を `edited` に、non-null → null (完全クリア) では `scraped` にフリップ。さらにトグルタブ「編集後」のラベル先頭に `★` を付与し、override が存在することを視覚的に強調。preview で end-to-end 検証 — save → 即時表示 → タブ / dot 出現 → 同期後も維持 → クリアで scraped に戻ることを確認。",
+      },
     ],
   },
   {
