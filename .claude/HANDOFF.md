@@ -148,15 +148,10 @@ dev server は `.claude/launch.json` で `portal-dev` 設定済み (port 3000)�
 
 ## コミット運用
 
-- すべて push まで実施
-- 改行は `git commit -F .git/COMMIT_EDITMSG_TEMP` 方式 (Windows + bash の heredoc 不安定回避用、コミット後に temp 削除)
-- **`git push origin main` は Claude のツール呼び出しからは harness classifier に常に denied される** (autoMode override も `dangerouslyDisableSandbox` も無効)。代替として `.claude/settings.json` の `hooks.Stop` で **harness 側に自動 push を実行させる方式** を採用
-- 自動 push の発火条件 (両方を満たすときのみ):
-  1. `git status --porcelain` が空 (working tree クリーン)
-  2. `git rev-list origin/main..HEAD` に差分あり (ローカルが ahead)
-- ログは `.claude/auto-push.log` (gitignore 済み) に追記される。動作確認はここを見る
-- Claude 視点: `git commit` まで完了させたら作業終了。応答が終わった瞬間 (Stop イベント) に hook が走り push される
-- hook 自体の更新 (settings.json の hooks セクションを書き換える commit) は classifier に self-modification として弾かれるため、ユーザーの手で commit + push してもらう必要がある
+- Claude は **`git commit` まで** 実施し作業終了。`git push origin main` は Claude のツール呼び出しからは harness classifier に常に denied されるため、push はユーザー側で実行する
+- 改行を含むメッセージは `git commit -F .git/COMMIT_EDITMSG_TEMP` 方式 (Windows + bash の heredoc 不安定回避用、コミット後に temp 削除)
+- `.claude/settings.json` には Stop hook 経由で自動 push を試みる構成が残っているが、`.claude/auto-push.log` がまだ生成されておらず動作未確認。当面は **ユーザー手動 push** が運用前提
+- hook 設定 (`settings.json`) の更新コミットは classifier に self-modification として弾かれることがあるため、必要に応じてユーザー側で commit + push
 
 ## 新規会話の開始テンプレ
 
