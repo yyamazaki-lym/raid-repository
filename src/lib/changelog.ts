@@ -52,6 +52,10 @@ export const RELEASES: ReleaseEntry[] = [
     date: "2026-04-28",
     parts: [
       {
+        title: "📤 コンテンツカード背景画像にローカルアップロードを追加 + 文字埋もれ修正",
+        body: "ユーザー報告: (1) 既存環境で「保存失敗: Could not find the 'background_image_url' column of 'categories' in the schema cache」 — schema.sql 未適用で起こる症状、Dashboard SQL Editor で `ALTER TABLE public.categories ADD COLUMN IF NOT EXISTS background_image_url text;` + `NOTIFY pgrst, 'reload schema';` を実行すれば解消。(2) 背景設定後、文字やアイコンが薄くなる。\n対応:\n1. `category-form-dialog.tsx` に「アップロード」ボタンを追加。Supabase Storage `category-backgrounds` バケット (public, 5MB 上限, 画像 MIME 限定) に直接 upload → public URL を取得して `backgroundImageUrl` state に流し込む。URL 直入力との併用可。クリアボタンも併設。\n2. `schema.sql` に `category-backgrounds` バケットと anon 用 RLS policy (read/insert/update/delete 全部 bucket_id 縛り) を追加。冪等。\n3. `category-list.tsx` の Card 内コンテンツ (drag handle / 中央列 / 右列) すべてに `relative z-10` を付与。これまで absolute な image / gradient overlay が paint order で content の上に来てしまい、`from-background/55 via-background/30 to-background/55` gradient が文字を半透明に覆っていた。z-index で content を上層に持ち上げて根治。",
+      },
+      {
         title: "🖼️ コンテンツカードに背景画像を設定可能にする (TODO #17)",
         body: "コンテンツ一覧 (/category) の各カードにカテゴリ別の背景画像を設定できるようにした。コンテンツ編集ダイアログに「背景画像URL」フィールドを追加し、http(s) URL を入力するとカード背景に `bg-cover bg-center` で表示される。\n実装:\n1. `categories.background_image_url text` カラムを追加 (idempotent migration)。`Category.backgroundImageUrl: string | null` を types に追加。\n2. `CategoryFormDialog` に URL 入力欄 + 入力中の小プレビュー (h-20) を追加。`validateUrl` で http(s) のみ許可、create 時は followUp update で適用。\n3. `category-list.tsx` の Card 内に `pointer-events-none absolute inset-0 bg-cover bg-center opacity-40` の image layer + `bg-gradient-to-r from-background/55 via-background/30 to-background/55` の dark gradient overlay を挿入し、テキスト・チップの可読性を確保。`isSafeUrl` で `javascript:` / `data:` URL を弾く。\n4. 空欄でリセット可能 (NULL → 背景画像なしに戻る)。supabase schema.sql の再適用が必要。",
       },

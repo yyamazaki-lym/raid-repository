@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Plus, Save, AlertTriangle, Pencil } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Plus, Save, AlertTriangle, Pencil, Upload, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { createClient } from "@/lib/supabase/client";
 import {
   Dialog,
   DialogContent,
@@ -114,8 +115,63 @@ export function CategoryFormDialog({
   const [backgroundImageUrl, setBackgroundImageUrl] = useState(
     category?.backgroundImageUrl ?? "",
   );
+  const [uploadingBg, setUploadingBg] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const onPickBackgroundFile = () => {
+    fileInputRef.current?.click();
+  };
+
+  const onBackgroundFileChange = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      setError("画像ファイルを選択してください");
+      return;
+    }
+    const MAX_BYTES = 5 * 1024 * 1024;
+    if (file.size > MAX_BYTES) {
+      setError("画像サイズは 5MB 以内にしてください");
+      return;
+    }
+
+    setError(null);
+    setUploadingBg(true);
+    try {
+      const supabase = createClient();
+      const ext = (file.name.split(".").pop() || "bin")
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, "")
+        .slice(0, 8) || "bin";
+      const path = `${slug.trim() || "untagged"}/${Date.now()}-${Math.random()
+        .toString(36)
+        .slice(2, 8)}.${ext}`;
+      const { error: upErr } = await supabase.storage
+        .from("category-backgrounds")
+        .upload(path, file, {
+          cacheControl: "3600",
+          upsert: false,
+          contentType: file.type,
+        });
+      if (upErr) {
+        setError(`アップロード失敗: ${upErr.message}`);
+        return;
+      }
+      const { data } = supabase.storage
+        .from("category-backgrounds")
+        .getPublicUrl(path);
+      setBackgroundImageUrl(data.publicUrl);
+      toast.success("画像をアップロードしました");
+    } finally {
+      setUploadingBg(false);
+    }
+  };
 
   useEffect(() => {
     if (open) {
@@ -433,21 +489,58 @@ export function CategoryFormDialog({
               htmlFor="background-image-url"
               className="text-xs text-foreground/80"
             >
-              背景画像URL（任意）
+              背景画像（任意）
             </Label>
-            <Input
-              id="background-image-url"
-              type="url"
-              inputMode="url"
-              value={backgroundImageUrl}
-              onChange={(e) => setBackgroundImageUrl(e.target.value)}
-              placeholder="https://example.com/path/to/image.jpg"
-              className="font-mono text-[12px]"
-              autoComplete="off"
-              spellCheck={false}
-            />
+            <div className="flex gap-1.5">
+              <Input
+                id="background-image-url"
+                type="url"
+                inputMode="url"
+                value={backgroundImageUrl}
+                onChange={(e) => setBackgroundImageUrl(e.target.value)}
+                placeholder="https://example.com/path/to/image.jpg"
+                className="font-mono text-[12px]"
+                autoComplete="off"
+                spellCheck={false}
+                disabled={uploadingBg}
+              />
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={onBackgroundFileChange}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={onPickBackgroundFile}
+                disabled={uploadingBg}
+                className="shrink-0 gap-1.5 font-mono text-[10px] tracking-[0.18em] uppercase"
+              >
+                {uploadingBg ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                ) : (
+                  <Upload className="h-3.5 w-3.5" aria-hidden />
+                )}
+                {uploadingBg ? "送信中" : "アップロード"}
+              </Button>
+              {backgroundImageUrl && !uploadingBg && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setBackgroundImageUrl("")}
+                  className="shrink-0 font-mono text-[10px] tracking-[0.18em] uppercase"
+                >
+                  クリア
+                </Button>
+              )}
+            </div>
             <p className="text-muted-foreground text-[11px] leading-relaxed">
-              コンテンツ一覧のカード背景に表示されます（http(s) のみ）。空欄で無効。
+              URL を直接指定するか、ローカル画像をアップロード（最大 5MB）。
+              コンテンツ一覧のカード背景に表示されます。空欄で無効。
             </p>
             {backgroundImageUrl.trim() &&
               /^https?:\/\//i.test(backgroundImageUrl.trim()) && (

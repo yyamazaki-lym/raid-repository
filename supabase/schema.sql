@@ -500,3 +500,35 @@ INSERT INTO public.categories (slug, name, status, sort_order) VALUES
   ('arc-cruiser',     'アルカディア:クルーザー級',     '練習中', 1),
   ('arc-lightheavy',  'アルカディア:ライトヘビー級',   '未着手', 2)
 ON CONFLICT (slug) DO NOTHING;
+
+-- ---- 10. Storage bucket for category background images ---------------
+-- Phase 9 (TODO #17 follow-up, 1.9 (2026-04-28)): public bucket so the
+-- category card edit dialog can upload local images and the resulting
+-- public URL is stored in `categories.background_image_url`. Anon key
+-- gets full read/write/delete via permissive RLS, matching the rest of
+-- this single-tenant app.
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('category-backgrounds', 'category-backgrounds', true)
+ON CONFLICT (id) DO UPDATE SET public = EXCLUDED.public;
+
+DROP POLICY IF EXISTS "category-backgrounds public read"  ON storage.objects;
+DROP POLICY IF EXISTS "category-backgrounds anon insert"  ON storage.objects;
+DROP POLICY IF EXISTS "category-backgrounds anon update"  ON storage.objects;
+DROP POLICY IF EXISTS "category-backgrounds anon delete"  ON storage.objects;
+
+CREATE POLICY "category-backgrounds public read"
+  ON storage.objects FOR SELECT
+  USING (bucket_id = 'category-backgrounds');
+
+CREATE POLICY "category-backgrounds anon insert"
+  ON storage.objects FOR INSERT
+  WITH CHECK (bucket_id = 'category-backgrounds');
+
+CREATE POLICY "category-backgrounds anon update"
+  ON storage.objects FOR UPDATE
+  USING (bucket_id = 'category-backgrounds')
+  WITH CHECK (bucket_id = 'category-backgrounds');
+
+CREATE POLICY "category-backgrounds anon delete"
+  ON storage.objects FOR DELETE
+  USING (bucket_id = 'category-backgrounds');

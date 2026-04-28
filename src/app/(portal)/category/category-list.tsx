@@ -310,7 +310,7 @@ function SortableCategoryCard({
           type="button"
           {...listeners}
           aria-label={`${category.name} の並び替えハンドル`}
-          className="flex shrink-0 cursor-grab items-center justify-center rounded-l-lg border-r border-border/40 bg-secondary/30 px-2 text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground active:cursor-grabbing"
+          className="relative z-10 flex shrink-0 cursor-grab items-center justify-center rounded-l-lg border-r border-border/40 bg-secondary/30 px-2 text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground active:cursor-grabbing"
         >
           <GripVertical className="h-4 w-4" aria-hidden />
         </button>
@@ -319,7 +319,7 @@ function SortableCategoryCard({
             click-anywhere behavior) above an always-visible icon row that
             short-cuts to each sub-page. Icon row is OUTSIDE the parent
             Link to keep nested-anchor invalid HTML out of the tree. */}
-        <div className="flex flex-1 flex-col">
+        <div className="relative z-10 flex flex-1 flex-col">
           <Link
             href={`/category/${category.slug}/mitigation`}
             prefetch
@@ -389,7 +389,7 @@ function SortableCategoryCard({
                 └──────────────────────┘
             +N/wk が無いカードでも `invisible` placeholder で同サイズの
             幅を確保し、⋮ が card 右端から動かないようにする。 */}
-        <div className="flex flex-col items-end justify-between gap-1 p-2">
+        <div className="relative z-10 flex flex-col items-end justify-between gap-1 p-2">
           <div className="flex flex-col items-start gap-1">
             <span
               onClick={(e) => e.stopPropagation()}
