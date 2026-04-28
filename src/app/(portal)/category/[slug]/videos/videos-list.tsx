@@ -135,10 +135,14 @@ export function VideosList({ categoryId, initial, firstClearAt }: Props) {
   // 1.9 (2026-04-28) TODO #10: クリア日時バッジをクリックで該当動画へ
   // anchor jump できるようにするため、URL ?focusDate= とは独立にローカル
   // state で focus 対象を保持 (URL を書き換えると "戻る" 履歴が汚れるため)。
-  // `manualFocusKey` は同一 id に再 focus したときも useEffect を再発火
-  // させるためのカウンター — 連打で何度でもスクロールする。
+  // `focusKey` は同一 id に再 focus したときも useEffect を再発火させる
+  // ためのカウンター — Trophy 連打や戻る後再アクセス時の dismiss 解除に使う。
   const [manualFocusId, setManualFocusId] = useState<string | null>(null);
-  const [manualFocusKey, setManualFocusKey] = useState(0);
+  const [focusKey, setFocusKey] = useState(0);
+  // ring の表示制御。focusedVideoId が解決しても、ユーザーの次の操作
+  // (枠外クリック / スクロール) で off にする。URL ?focus= / ?focusDate=
+  // 経由で来た場合も同じ扱い (ユーザー指示)。
+  const [focusActive, setFocusActive] = useState(true);
 
   const focusedVideoId = useMemo(() => {
     if (manualFocusId) return manualFocusId;
@@ -156,12 +160,19 @@ export function VideosList({ categoryId, initial, firstClearAt }: Props) {
     if (stored === "custom" || stored === "date") setSortMode(stored);
   }, []);
 
+  // focusedVideoId が解決した瞬間に focusActive を再 arm。これにより
+  // (a) Trophy 連打、(b) URL `?focus=` / `?focusDate=` で再アクセス、
+  // (c) 戻る後の navigation 復帰、いずれの経路でも ring が再表示される。
+  useEffect(() => {
+    if (!focusedVideoId) return;
+    setFocusActive(true);
+  }, [focusedVideoId, focusKey]);
+
   // Scroll the focused card into view once it mounts. Re-runs when
   // the focusedVideoId changes or when the live list arrives (since
-  // the ref is set during render of the matching card). The matching
-  // card uses a thin one-shot CSS animation for the highlight.
-  // `manualFocusKey` is included so連打 of the same クリア badge
-  // re-triggers scroll even when the resolved id doesn't change.
+  // the ref is set during render of the matching card).
+  // `focusKey` is included so連打 of the same クリア badge re-triggers
+  // scroll even when the resolved id doesn't change.
   useEffect(() => {
     if (!focusedVideoId) return;
     const el = focusedRef.current;
@@ -170,19 +181,17 @@ export function VideosList({ categoryId, initial, firstClearAt }: Props) {
       el.scrollIntoView({ behavior: "smooth", block: "center" });
     }, 50);
     return () => window.clearTimeout(id);
-  }, [focusedVideoId, live.length, manualFocusKey]);
+  }, [focusedVideoId, live.length, focusKey]);
 
-  // クリア日時バッジ経由 (manualFocus) の強調表示は「ユーザーが次の
-  // 操作 (枠外クリック / スクロール) をした時点」で解除する。`?focus=` /
-  // `?focusDate=` 経由 (URL params) は永続表示のままにしておく — 戻る
-  // で再表示する時にも強調が残っていてほしい。
-  // smooth scroll の sett 時間 (~1.5s) 内のスクロールイベントは無視するため
-  // armed フラグで遅延解除可能化。
+  // フォーカス強調 (ring) は「ユーザーが次の操作 (枠外クリック /
+  // スクロール) をした時点」で off にする。Trophy 経由 / URL 経由
+  // (?focus= / ?focusDate=) いずれも同じ挙動 (ユーザー指示)。
+  // smooth scroll が settle するまで (~1.5s) はガードして dismiss させない。
   useEffect(() => {
-    if (!manualFocusId) return;
+    if (!focusedVideoId || !focusActive) return;
     let armed = false;
     const clear = () => {
-      setManualFocusId(null);
+      setFocusActive(false);
     };
     const onScroll = () => {
       if (armed) clear();
@@ -203,7 +212,7 @@ export function VideosList({ categoryId, initial, firstClearAt }: Props) {
       window.removeEventListener("scroll", onScroll);
       document.removeEventListener("click", onClick);
     };
-  }, [manualFocusId, manualFocusKey]);
+  }, [focusedVideoId, focusActive, focusKey]);
 
   // クリア日時バッジ (Trophy) クリック時のスクロールハンドラ。
   // firstClearAt はカテゴリ初クリアの ISO timestamp (UTC 保存だが
@@ -223,7 +232,7 @@ export function VideosList({ categoryId, initial, firstClearAt }: Props) {
       return;
     }
     setManualFocusId(matched);
-    setManualFocusKey((k) => k + 1);
+    setFocusKey((k) => k + 1);
   }, [firstClearAt, findVideoIdByDate]);
   const persistSort = (mode: SortMode) => {
     setSortMode(mode);
@@ -518,7 +527,7 @@ export function VideosList({ categoryId, initial, firstClearAt }: Props) {
                   key={v.id}
                   video={v}
                   onEdit={() => setEditTarget(v)}
-                  focused={v.id === focusedVideoId}
+                  focused={focusActive && v.id === focusedVideoId}
                   refIfFocused={
                     v.id === focusedVideoId ? focusedRef : null
                   }
@@ -538,8 +547,8 @@ export function VideosList({ categoryId, initial, firstClearAt }: Props) {
               key={v.id}
               ref={v.id === focusedVideoId ? focusedRef : undefined}
               className={
-                v.id === focusedVideoId
-                  ? "animate-[pulse_1.4s_ease-out_2] rounded-lg ring-2 ring-[var(--neon-cyan)]/60 ring-offset-2 ring-offset-background"
+                focusActive && v.id === focusedVideoId
+                  ? "rounded-lg ring-2 ring-[var(--neon-cyan)]/60 ring-offset-2 ring-offset-background transition-shadow"
                   : ""
               }
             >
@@ -618,7 +627,7 @@ function SortableVideoCard({
       {...attributes}
       className={
         focused
-          ? "animate-[pulse_1.4s_ease-out_2] rounded-lg ring-2 ring-[var(--neon-cyan)]/60 ring-offset-2 ring-offset-background"
+          ? "rounded-lg ring-2 ring-[var(--neon-cyan)]/60 ring-offset-2 ring-offset-background transition-shadow"
           : ""
       }
     >
@@ -882,7 +891,7 @@ function YouTubePreview({
   }, [thumbVisible]);
 
   if (active) {
-    // youtubeEmbedUrl 自体が `?rel=0&modestbranding=1&playsinline=1` を含むので
+    // youtubeEmbedUrl は `?rel=0&modestbranding=1&playsinline=1` を含むので
     // autoplay は `&` で連結。
     const src = youtubeEmbedUrl(id) + "&autoplay=1";
     return (
@@ -890,19 +899,27 @@ function YouTubePreview({
         <iframe
           src={src}
           title={title}
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+          // 1.9 (2026-04-28): YouTube エラー 153 救済 (Zenn 記事準拠)。
+          //   - `web-share` を allow に追加 (YouTube 公式推奨)
+          //   - `referrerPolicy` を明示的に
+          //     `strict-origin-when-cross-origin` に設定。これは
+          //     YouTube が embed 元を判定するために要求する HTTP Referer
+          //     を origin 部分まで送る policy。`no-referrer` で完全に
+          //     ブロックすると embed 許可判定で「未知のサイトから」
+          //     扱いとなりエラー 153 になる。
+          //   - `frameBorder="0"` は deprecated だが YouTube 公式 share
+          //     コードに含まれているので互換性のため残す。
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+          referrerPolicy="strict-origin-when-cross-origin"
+          frameBorder="0"
           allowFullScreen
-          // Tighten the embed: don't leak the portal URL as Referer
-          // (privacy), and lazy-load when off-screen (perf).
-          referrerPolicy="no-referrer"
           loading="lazy"
           className="absolute inset-0 h-full w-full"
         />
-        {/* エラー 153 等で iframe が再生不能の場合のフォールバック。
-           uploader が embed を無効化していると iframe 内で
-           「動画プレーヤーの設定エラー」が出るが、cross-origin 制約で
-           portal 側からは検知できない。視覚的に「YouTube で開く」を常に
-           出しておくことでユーザーは即座に外部タブへ逃げられる。 */}
+        {/* uploader が embed を完全無効化している動画用フォールバック。
+           cross-origin で iframe 内のエラー 153 は portal 側からは検知
+           できないため、「YouTube で開く」を常に表示してユーザーが
+           即座に外部タブへ逃げられるようにしておく。 */}
         <a
           href={url}
           target="_blank"
