@@ -34,7 +34,6 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import {
-  setRecruitmentTemplateCategory,
   setRecruitmentTemplateOrder,
   useRealtimeRecruitmentTemplates,
   type RecruitmentTemplate,
@@ -89,40 +88,15 @@ export function RecruitmentTemplatesButton({ initial, categories }: Props) {
     () => new Map(categories.map((c) => [c.id, c.slug] as const)),
     [categories],
   );
-  // category id → name lookup. クロスカテゴリドロップ時に optimistic な
-  // categoryName を埋めるため (groupByCategory が categoryName でグルー
-  // プングするので、override を反映させないと realtime confirm までの
-  // 一瞬で旧セクションに残って見える).
-  const nameById = useMemo(
-    () => new Map(categories.map((c) => [c.id, c.name] as const)),
-    [categories],
-  );
 
   // Optimistic local order for instant DnD feedback. Server confirms via
   // realtime refetch; on failure we revert.
   const [optimisticOrder, setOptimisticOrder] = useState<string[] | null>(null);
-  // クロスカテゴリドロップを楽観的に反映するための「対象 1 件分の
-  // categoryId 上書き」(TODO #16)。`ordered` 計算の頭で `templates` の
-  // 該当 id だけ patch して、新セクションに即時表示させる。realtime が
-  // DB から最新を取り直したら勝手に追従するので、あとは override を
-  // 落とすだけで良い。
-  const [optimisticCategoryOverride, setOptimisticCategoryOverride] =
-    useState<{ id: string; categoryId: string | null } | null>(null);
 
   const ordered = useMemo(() => {
-    let base = templates;
-    if (optimisticCategoryOverride) {
-      const ov = optimisticCategoryOverride;
-      const newName = ov.categoryId ? nameById.get(ov.categoryId) ?? null : null;
-      base = templates.map((t) =>
-        t.id === ov.id
-          ? { ...t, categoryId: ov.categoryId, categoryName: newName }
-          : t,
-      );
-    }
-    if (!optimisticOrder) return base;
+    if (!optimisticOrder) return templates;
     const idx = new Map(optimisticOrder.map((id, i) => [id, i] as const));
-    return [...base].sort((a, b) => {
+    return [...templates].sort((a, b) => {
       const ai = idx.get(a.id);
       const bi = idx.get(b.id);
       if (ai === undefined && bi === undefined) return 0;
@@ -130,7 +104,7 @@ export function RecruitmentTemplatesButton({ initial, categories }: Props) {
       if (bi === undefined) return -1;
       return ai - bi;
     });
-  }, [templates, optimisticOrder, optimisticCategoryOverride, nameById]);
+  }, [templates, optimisticOrder]);
 
   const grouped = useMemo(() => groupByCategory(ordered), [ordered]);
 
@@ -138,14 +112,14 @@ export function RecruitmentTemplatesButton({ initial, categories }: Props) {
   // quick-copy button uses. Highlight it in the list and auto-expand its
   // category section.
   const topId = ordered[0]?.id ?? null;
-  const topCategoryName = ordered[0]?.categoryName ?? null;
+  const topCategoryId = ordered[0]?.categoryId ?? null;
 
   // Per-category collapsible state. Default: only the section containing
   // the current top is open; others start collapsed for compactness.
+  // キーは categoryId (null = 未分類セクション = `__none__`)。
   const [openCategories, setOpenCategories] = useState<Set<string>>(() => {
     const init = new Set<string>();
-    if (topCategoryName !== null) init.add(topCategoryName);
-    else init.add("__none__");
+    init.add(topCategoryId ?? "__none__");
     return init;
   });
 
@@ -153,14 +127,14 @@ export function RecruitmentTemplatesButton({ initial, categories }: Props) {
   // sure the new top's section is expanded so the user can see the new ★
   // without manually opening it.
   useEffect(() => {
-    const key = topCategoryName ?? "__none__";
+    const key = topCategoryId ?? "__none__";
     setOpenCategories((prev) => {
       if (prev.has(key)) return prev;
       const next = new Set(prev);
       next.add(key);
       return next;
     });
-  }, [topCategoryName]);
+  }, [topCategoryId]);
 
   const toggleCategory = (key: string) => {
     setOpenCategories((prev) => {
@@ -187,54 +161,44 @@ export function RecruitmentTemplatesButton({ initial, categories }: Props) {
     const activeT = ordered.find((t) => t.id === active.id);
     const overT = ordered.find((t) => t.id === over.id);
     if (!activeT || !overT) return;
-    const oldIndex = ordered.findIndex((t) => t.id === active.id);
-    const newIndex = ordered.findIndex((t) => t.id === over.id);
-    if (oldIndex < 0 || newIndex < 0) return;
-    const next = arrayMove(ordered, oldIndex, newIndex).map((t) => t.id);
+
+    // TODO #16: 同カテゴリ内 → 単純な並び替え。別カテゴリへドロップ
+    // した場合 → カテゴリ「ブロック」ごと移動 (= 子テンプレ全部を
+    // 連れて、元カテゴリ全体が移動先カテゴリの位置に)。子だけが
+    // 別カテゴリへ移籍する挙動は採らない。
+    const sameCategory = activeT.categoryId === overT.categoryId;
+
+    let next: string[];
+    let toastMessage: string | null = null;
+
+    if (sameCategory) {
+      const oldIndex = ordered.findIndex((t) => t.id === active.id);
+      const newIndex = ordered.findIndex((t) => t.id === over.id);
+      if (oldIndex < 0 || newIndex < 0) return;
+      next = arrayMove(ordered, oldIndex, newIndex).map((t) => t.id);
+    } else {
+      // ブロック移動: グループ列を作って、source カテゴリのブロックを
+      // target カテゴリの位置に arrayMove する。
+      const groups = groupByCategory(ordered);
+      const srcIdx = groups.findIndex((g) => g.categoryId === activeT.categoryId);
+      const tgtIdx = groups.findIndex((g) => g.categoryId === overT.categoryId);
+      if (srcIdx < 0 || tgtIdx < 0) return;
+      const reorderedGroups = arrayMove(groups, srcIdx, tgtIdx);
+      next = reorderedGroups.flatMap((g) => g.items.map((t) => t.id));
+      toastMessage = `「${activeT.categoryName ?? "未分類"}」を「${
+        overT.categoryName ?? "未分類"
+      }」の位置に移動しました`;
+    }
+
     setOptimisticOrder(next);
-
-    // TODO #16: drop 先の over template が別カテゴリのものなら、active の
-    // category_id も追従させる。これをやらないと sort_order だけ動いて、
-    // realtime refetch 後に元のカテゴリセクションに視覚的に戻ってしまう。
-    const crossCategory = activeT.categoryId !== overT.categoryId;
-    if (crossCategory) {
-      setOptimisticCategoryOverride({
-        id: activeT.id,
-        categoryId: overT.categoryId,
-      });
-    }
-
-    const ops: Promise<{ ok: true } | { ok: false; reason: string }>[] = [
-      setRecruitmentTemplateOrder(next),
-    ];
-    if (crossCategory) {
-      ops.push(
-        setRecruitmentTemplateCategory(activeT.id, overT.categoryId),
-      );
-    }
-    const results = await Promise.all(ops);
-    const failed = results.find((r) => !r.ok) as
-      | { ok: false; reason: string }
-      | undefined;
-    if (failed) {
-      toast.error("並び替え保存失敗: " + failed.reason);
+    const result = await setRecruitmentTemplateOrder(next);
+    if (!result.ok) {
+      toast.error("並び替え保存失敗: " + result.reason);
       setOptimisticOrder(null);
-      setOptimisticCategoryOverride(null);
       return;
     }
-    if (crossCategory) {
-      const targetName =
-        (overT.categoryId ? nameById.get(overT.categoryId) : null) ??
-        overT.categoryName ??
-        "未分類";
-      toast.success(
-        `「${activeT.label || "通常募集"}」を「${targetName}」に移動しました`,
-      );
-    }
-    setTimeout(() => {
-      setOptimisticOrder(null);
-      setOptimisticCategoryOverride(null);
-    }, 1500);
+    if (toastMessage) toast.success(toastMessage);
+    setTimeout(() => setOptimisticOrder(null), 1500);
   };
 
   const copyToClipboard = async (template: RecruitmentTemplate) => {
@@ -290,14 +254,10 @@ export function RecruitmentTemplatesButton({ initial, categories }: Props) {
                 strategy={verticalListSortingStrategy}
               >
                 <div className="flex flex-col gap-1">
-                  {grouped.map(({ categoryName, items }) => {
-                    const key = categoryName ?? "__none__";
+                  {grouped.map(({ categoryId, categoryName, items }) => {
+                    const key = categoryId ?? "__none__";
                     const isOpen = openCategories.has(key);
                     const containsTop = items.some((t) => t.id === topId);
-                    // Use the first template's categoryId to look up the
-                    // slug for the macro-page link icon. All items in
-                    // this group share categoryId.
-                    const categoryId = items[0]?.categoryId ?? null;
                     const slug = categoryId ? slugById.get(categoryId) ?? null : null;
                     return (
                       <div
@@ -549,23 +509,33 @@ function displayLabel(t: RecruitmentTemplate): string {
   return t.label ? `${cat} / ${t.label}` : cat;
 }
 
-function groupByCategory(
-  templates: RecruitmentTemplate[],
-): Array<{ categoryName: string | null; items: RecruitmentTemplate[] }> {
+type TemplateGroup = {
+  /** カテゴリの識別子。null = 未分類。同名カテゴリの衝突を避けるため
+   *  グルーピングは `categoryId` で行い、表示用の `categoryName` は別フィールド。 */
+  categoryId: string | null;
+  categoryName: string | null;
+  items: RecruitmentTemplate[];
+};
+
+function groupByCategory(templates: RecruitmentTemplate[]): TemplateGroup[] {
   // Preserve overall sort_order — bucket each template into its
-  // category group in encounter order.
+  // category group in encounter order. キーは categoryId (TODO #16:
+  // 同名カテゴリ衝突を避けつつブロック単位の並び替えで identity を保つため)。
   const seenOrder: (string | null)[] = [];
-  const map = new Map<string | null, RecruitmentTemplate[]>();
+  const map = new Map<
+    string | null,
+    { categoryName: string | null; items: RecruitmentTemplate[] }
+  >();
   for (const t of templates) {
-    const key = t.categoryName;
+    const key = t.categoryId;
     if (!map.has(key)) {
-      map.set(key, []);
+      map.set(key, { categoryName: t.categoryName, items: [] });
       seenOrder.push(key);
     }
-    map.get(key)!.push(t);
+    map.get(key)!.items.push(t);
   }
-  return seenOrder.map((k) => ({
-    categoryName: k,
-    items: map.get(k)!,
-  }));
+  return seenOrder.map((k) => {
+    const g = map.get(k)!;
+    return { categoryId: k, categoryName: g.categoryName, items: g.items };
+  });
 }

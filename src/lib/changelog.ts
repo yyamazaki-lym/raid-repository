@@ -52,8 +52,8 @@ export const RELEASES: ReleaseEntry[] = [
     date: "2026-04-28",
     parts: [
       {
-        title: "🚚 募集文テンプレ DnD でカテゴリ跨ぎ移動時に category_id も追従 (TODO #16)",
-        body: "ヘッダーの「募集文」popover 内の DnD は globally sorted な single SortableContext のため、別カテゴリセクションへドロップする操作自体は可能だったが、これまで sort_order しか更新していなかったため、realtime refetch 後 (groupByCategory が categoryName でグルーピング) に元のカテゴリ section に視覚的に戻ってしまっていた。\n修正: `onDragEnd` で active と over の categoryId を比較し異なれば、`setRecruitmentTemplateOrder` と並行して新規追加した `setRecruitmentTemplateCategory(id, categoryId)` を呼び出して `category_id` も更新。さらに optimistic 反映用の `optimisticCategoryOverride` state を追加し、`ordered` 計算の頭で対象 1 件の `categoryId` / `categoryName` を上書き → DnD 完了の瞬間から新セクションに表示される。クロスカテゴリ移動時は toast に移動先カテゴリ名を出して操作確認を補助。",
+        title: "🚚 募集文テンプレ DnD でカテゴリ跨ぎドロップ時はカテゴリ「ブロック」ごと移動 (TODO #16)",
+        body: "ヘッダーの「募集文」popover 内の DnD は global single SortableContext で、これまで sort_order しか更新していなかったため、別カテゴリセクションにドロップしても元の位置に視覚的に戻ってしまっていた。\nユーザー要望に沿った正しい挙動: 子テンプレを別カテゴリ section にドロップした場合は、子だけ移籍させるのではなく、元カテゴリ全体 (中の他のテンプレも含む) をブロックごと、ドロップ先カテゴリの位置に移動させる。\n実装:\n1. `groupByCategory` のキーを `categoryName` → `categoryId` に変更 (同名カテゴリ衝突回避 + ブロック identity を保つ目的)。`openCategories` も categoryId 化。\n2. `onDragEnd`: active と over の categoryId が同じなら従来どおり item 単位 `arrayMove`、異なるなら groups 列を作って `arrayMove(groups, srcIdx, tgtIdx)` でカテゴリブロックを並べ替え、flatMap で template id 列に戻して `setRecruitmentTemplateOrder` に渡す。\n3. category_id 自体は変更しない (個別テンプレが別カテゴリに移籍することはない)。\n4. ブロック移動成立時は toast に「『元カテゴリ』を『移動先カテゴリ』の位置に移動しました」を表示。",
       },
       {
         title: "🔔 各人のコメントに更新があった場合、ヘッダーの吹き出しアイコンを amber でハイライト (TODO #14)",

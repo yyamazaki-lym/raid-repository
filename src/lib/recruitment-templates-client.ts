@@ -133,24 +133,6 @@ export async function setRecruitmentTemplateOrder(
   return { ok: true };
 }
 
-/**
- * 単一テンプレートの `category_id` を更新する。グローバル popover の
- * DnD でカテゴリ跨ぎドロップを検知したときに、`setRecruitmentTemplateOrder`
- * と並行して呼び出される (TODO #16)。`null` 指定で未分類化も可能。
- */
-export async function setRecruitmentTemplateCategory(
-  id: string,
-  categoryId: string | null,
-): Promise<{ ok: true } | { ok: false; reason: string }> {
-  const supabase = createClient();
-  const { error } = await supabase
-    .from("recruitment_templates")
-    .update({ category_id: categoryId })
-    .eq("id", id);
-  if (error) return { ok: false, reason: error.message };
-  return { ok: true };
-}
-
 export async function deleteRecruitmentTemplate(
   id: string,
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
