@@ -52,6 +52,10 @@ export const RELEASES: ReleaseEntry[] = [
     date: "2026-04-28",
     parts: [
       {
+        title: "🧹 Suspense streaming + skeleton を一旦撤去 (体感比較のため)",
+        body: "ユーザー指示「いったんスケルトン待ち時間をなくしてみてほしい」。`SchedulePage` から `<Suspense>` ラッパーと `<ScheduleContent>` 中継を削除して旧来の同期 server-render に戻し、`SchedulePageSkeleton` コンポーネント自体も削除。skeleton → 実コンテンツの swap UX より「全部待つが一発で完成形が出る」体感の方が良いか比較する。Vercel Region を Tokyo (hnd1) に寄せた効果と合わせて評価予定。",
+      },
+      {
         title: "🌏 Vercel Function の Region を Tokyo (hnd1) に固定 (USA → JP) ",
         body: "`vercel.json` に `regions: [\"hnd1\"]` を追加。これまで Hobby tier のデフォルトである `iad1` (Washington DC) で Node Function が動作していた (Edge Runtime の `/` ページは無関係 — ユーザー最寄り POP で動作)。Supabase が Tokyo region のため、`/category/*` 系 (server component → デフォルト Node) と `/api/cron/*` `/api/auth/fflogs/*` `/api/page-title` は US ↔ JP の片道 ~150ms RTT がクエリ毎に発生していた。Tokyo Function に切替で 1 リクエスト内の DB 往復が ~10ms に短縮、cron 実行も Supabase 隣接で安定。FFLogs API (EU/US) は Tokyo → 海外 ~150ms と元の US → 海外より少し遅くなるが OAuth callback は 1 往復のみで影響軽微。",
       },

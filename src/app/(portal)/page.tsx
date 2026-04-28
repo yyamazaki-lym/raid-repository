@@ -1,7 +1,5 @@
-import { Suspense } from "react";
 import { ScheduleOnboarding } from "@/components/portal/schedule-onboarding";
 import { SchedulePageBody } from "@/components/portal/schedule-page-body";
-import { SchedulePageSkeleton } from "@/components/portal/schedule-page-skeleton";
 import { fetchJapaneseHolidays } from "@/lib/japanese-holidays";
 import {
   fetchSchedule,
@@ -41,23 +39,18 @@ export const metadata = {
 export const runtime = "edge";
 
 /**
- * 1.9 (2026-04-28) TODO #11: Suspense streaming で初期 paint を即時化。
+ * 1.9 (2026-04-28) — Suspense streaming + skeleton を一旦撤去。
  *
- * 旧構造: page server component が全 fetch を `await` してから render
- * する → SchedulePage 自体が 6+ DB / 外部 fetch (max ~1500ms) の解決
- * を待ち、その間 layout HTML すら client に届かない。
+ * 旧 (1.9 (2026-04-28) 初期): 主データロード (`<ScheduleContent>`) を
+ * Suspense でラップ → サーバは layout + skeleton を即時 flush し、fetch
+ * 完了後に streamed chunk で実コンテンツを置換する構造だった。
  *
- * 新構造:
- *   1. 外側 (`SchedulePage`): `getScheduleSourceUrl()` だけ await
- *      (~50ms、`React.cache` で deduped)。url 不在なら Onboarding を
- *      即返す。
- *   2. 主データロード (`<ScheduleContent>`) は Suspense でラップして
- *      lazy 評価 → サーバは即時に layout + skeleton HTML を flush。
- *   3. 裏で fetch が完了したら streamed HTML chunk として client に
- *      送られ、skeleton が実コンテンツに置換される。
- *
- * 結果: layout (header / nav) + skeleton が ~100ms で表示開始 → ユーザー
- * 体感の TTFB が大幅短縮 (1500ms → 100ms 視覚的)。
+ * しかし「skeleton → 実コンテンツ swap」の体感が「結局ロード待ちでは？」
+ * となり、ユーザー指示で旧来の synchronous server-render に戻している。
+ * 全 fetch が `Promise.all` で並列走るので合計時間は最遅 fetch に等しく、
+ * その分 skeleton 表示時間も削れている (代わりに layout も含めて全部
+ * 待つことになる)。Vercel Region を Tokyo (hnd1) へ寄せた効果も合わせ
+ * てここで体感を比較したい。
  */
 export default async function SchedulePage() {
   const url = await getScheduleSourceUrl();
@@ -76,18 +69,6 @@ export default async function SchedulePage() {
     );
   }
 
-  return (
-    <Suspense fallback={<SchedulePageSkeleton />}>
-      <ScheduleContent scheduleUrl={url} />
-    </Suspense>
-  );
-}
-
-/**
- * 主要データを await する async server component。Suspense boundary 内に
- * 置くことで、resolve 完了まで親 (page) は skeleton を表示できる。
- */
-async function ScheduleContent({ scheduleUrl }: { scheduleUrl: string }) {
   const [
     result,
     holidays,
@@ -152,7 +133,7 @@ async function ScheduleContent({ scheduleUrl }: { scheduleUrl: string }) {
     <SchedulePageBody
       result={result}
       nextResult={nextResult}
-      scheduleUrl={scheduleUrl}
+      scheduleUrl={url}
       holidays={holidays}
       recruitmentTemplates={recruitmentTemplates}
       recruitmentCategories={recruitmentCategoryOptions}
