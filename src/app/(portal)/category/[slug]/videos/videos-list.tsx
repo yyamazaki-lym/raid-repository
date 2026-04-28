@@ -652,12 +652,13 @@ function VideoCard({
         )}
       </div>
 
-      <div className="flex items-start gap-2 px-3 pb-1">
+      <div className="flex min-h-[2.625rem] items-start gap-2 px-3 pb-1">
         <a
           href={videoHref}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex-1 break-words font-display text-sm text-foreground transition-colors hover:text-[var(--neon-cyan)]"
+          title={video.title}
+          className="line-clamp-2 min-w-0 flex-1 break-words font-display text-sm text-foreground transition-colors hover:text-[var(--neon-cyan)]"
         >
           {video.title}
         </a>
@@ -672,49 +673,53 @@ function VideoCard({
         )}
         <LinkCardMenu link={video} onEdit={onEdit} />
       </div>
-      {video.description && (
-        <p className="px-3 text-xs text-muted-foreground leading-relaxed whitespace-pre-wrap">
-          {video.description}
-        </p>
-      )}
-      {(logsHref || video.durationSeconds !== null) && (
-        <div className="flex flex-wrap items-center gap-1.5 px-3">
-          {logsHref && (
-            <a
-              href={logsHref}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 rounded-sm border border-amber-400/45 bg-amber-400/10 px-2 py-1 font-mono text-[10px] tracking-[0.18em] text-amber-200 uppercase transition-colors hover:bg-amber-400/15 hover:text-amber-100"
-              title="FFLogs レポートを開く"
-            >
-              <BarChart3 className="h-3 w-3" aria-hidden />
-              FFLogs
-              <ExternalLink className="h-2.5 w-2.5 opacity-70" aria-hidden />
-            </a>
-          )}
-          {video.durationSeconds !== null && (
-            <span
-              className="inline-flex items-center gap-1 rounded-sm border border-violet-400/40 bg-violet-400/10 px-1.5 py-1 font-mono text-[10px] tracking-[0.18em] text-violet-200"
-              title={`再生時間: ${formatDurationLong(video.durationSeconds)}`}
-            >
-              <Timer className="h-2.5 w-2.5" aria-hidden />
-              {formatDurationShort(video.durationSeconds)}
-            </span>
-          )}
-        </div>
-      )}
+      {/* Description は無くても 2 行分を確保してカード高さを揃える
+          (text-xs 0.75rem × leading-relaxed 1.625 = 1.21875rem/line × 2) */}
+      <p
+        title={video.description || undefined}
+        className="line-clamp-2 min-h-[2.4375rem] px-3 text-xs text-muted-foreground leading-relaxed whitespace-pre-wrap"
+      >
+        {video.description || ""}
+      </p>
+      {/* Badges 行は内容が無くてもカード高さを揃えるため常に配置 (min-h で 1
+          行分を確保)。FFLogs と durationSeconds は両方無い動画もある */}
+      <div className="flex min-h-[1.75rem] flex-wrap items-center gap-1.5 px-3">
+        {logsHref && (
+          <a
+            href={logsHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 rounded-sm border border-amber-400/45 bg-amber-400/10 px-2 py-1 font-mono text-[10px] tracking-[0.18em] text-amber-200 uppercase transition-colors hover:bg-amber-400/15 hover:text-amber-100"
+            title="FFLogs レポートを開く"
+          >
+            <BarChart3 className="h-3 w-3" aria-hidden />
+            FFLogs
+            <ExternalLink className="h-2.5 w-2.5 opacity-70" aria-hidden />
+          </a>
+        )}
+        {video.durationSeconds !== null && (
+          <span
+            className="inline-flex items-center gap-1 rounded-sm border border-violet-400/40 bg-violet-400/10 px-1.5 py-1 font-mono text-[10px] tracking-[0.18em] text-violet-200"
+            title={`再生時間: ${formatDurationLong(video.durationSeconds)}`}
+          >
+            <Timer className="h-2.5 w-2.5" aria-hidden />
+            {formatDurationShort(video.durationSeconds)}
+          </span>
+        )}
+      </div>
       <a
         href={videoHref}
         target="_blank"
         rel="noopener noreferrer"
-        className="flex items-center gap-1 px-3 pb-3 font-mono text-[10px] break-all text-muted-foreground/70 hover:text-foreground/80"
+        title={video.url}
+        className="flex items-center gap-1 px-3 pb-3 font-mono text-[10px] text-muted-foreground/70 hover:text-foreground/80"
       >
         <LinkSiteIcon
           url={video.url}
           variant="fine"
           className="h-3 w-3 shrink-0"
         />
-        <span className="break-all">{video.url}</span>
+        <span className="min-w-0 flex-1 truncate">{video.url}</span>
       </a>
     </Card>
   );
