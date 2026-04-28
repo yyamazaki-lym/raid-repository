@@ -264,7 +264,7 @@ export function ScheduleList({
               <span className="inline-flex h-1.5 w-1.5 rounded-full bg-muted-foreground/60" />
               Past
               <span className="font-sans text-[11px] tracking-normal normal-case text-muted-foreground/85">
-                · 過去の予定
+                · 詳細ログ (出欠表)
               </span>
             </div>
             <span className="font-mono text-[11px] tabular-nums text-muted-foreground">

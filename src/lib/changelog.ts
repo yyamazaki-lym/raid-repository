@@ -99,6 +99,10 @@ export const RELEASES: ReleaseEntry[] = [
         title: "🌅 ヘッダー色を日付跨ぎでデフォルト (cyan) にリセット",
         body: "デプロイ識別色 (7 色サイクル) が「今日 deploy したかどうか」を視覚的に伝えるよう、`RELEASES[0].date` (= 当日エントリーの日付) と JST 現在日付が一致する間のみハッシュ色を表示し、翌日になったら `DEPLOY_COLORS[0]` (cyan) に戻す挙動に変更。実装: 新規クライアントコンポーネント `<DeployColorBadge>` を追加し、`useEffect` + 60s 間隔の `setInterval` で JST 日付を再評価 → `releaseDate !== today` なら default 色に切替え。SSR 初期色は server side で `Intl.DateTimeFormat` (Asia/Tokyo) を使って同じロジックで計算 → hydration mismatch なし。Next.js 16 の制約で client component の非コンポーネント export は server から呼べないため、`pickInitialColor` ロジックは site-header.tsx に inline 配置。",
       },
+      {
+        title: "🏷 過去活動履歴の見出し名を「簡易ログ / 詳細ログ」に差別化",
+        body: "TODO #15 完了。これまで簡易表示の section header が `Past · 過去の活動`、詳細表示が `Past · 過去の予定` と微差で紛らわしかったため、それぞれ `Past · 簡易ログ (日付チップ)` / `Past · 詳細ログ (出欠表)` に変更。中身の内容を補助ラベルで明示することで、見出しだけ見れば「何が表示されているか」が分かるように。",
+      },
     ],
   },
   {

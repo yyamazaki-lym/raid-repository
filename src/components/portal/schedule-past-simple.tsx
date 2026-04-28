@@ -77,7 +77,7 @@ export function SchedulePastSimple({
           <span className="inline-flex h-1.5 w-1.5 rounded-full bg-muted-foreground/60" />
           Past
           <span className="font-sans text-[11px] tracking-normal normal-case text-muted-foreground/85">
-            · 過去の活動
+            · 簡易ログ (日付チップ)
           </span>
         </div>
         <span className="font-mono text-[10px] tabular-nums text-muted-foreground/80">
