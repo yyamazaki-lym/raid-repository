@@ -569,7 +569,7 @@ function VideoCard({
   return (
     <Card
       className={
-        "glass neon-edge group flex flex-col gap-2 overflow-hidden p-0 transition-all hover:-translate-y-0.5 " +
+        "glass neon-edge group flex flex-col gap-1 overflow-hidden p-0 transition-all hover:-translate-y-0.5 " +
         (selected
           ? "ring-2 ring-rose-400/70 ring-offset-2 ring-offset-background"
           : "")
@@ -673,11 +673,14 @@ function VideoCard({
         )}
         <LinkCardMenu link={video} onEdit={onEdit} />
       </div>
-      {/* Description は無くても 2 行分を確保してカード高さを揃える
-          (text-xs 0.75rem × leading-relaxed 1.625 = 1.21875rem/line × 2) */}
+      {/* Description は無くても 1 行分を確保してカード高さを揃える
+          (text-xs 0.75rem × leading-relaxed 1.625 = 1.21875rem/line)。
+          中身が 2 行に達した場合のみ 2 行分まで伸びる (`line-clamp-2`)。
+          1.9 (2026-04-28) の Discord 取り込み〜FFLogs 間の余白圧縮要望に
+          合わせ、reservation を 2 行 → 1 行に縮小。 */}
       <p
         title={video.description || undefined}
-        className="line-clamp-2 min-h-[2.4375rem] px-3 text-xs text-muted-foreground leading-relaxed whitespace-pre-wrap"
+        className="line-clamp-2 min-h-[1.21875rem] px-3 text-xs text-muted-foreground leading-relaxed whitespace-pre-wrap"
       >
         {video.description || ""}
       </p>

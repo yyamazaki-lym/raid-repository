@@ -34,6 +34,45 @@ const APP_VERSION = RELEASES[0]?.version ?? packageJson.version;
 const APP_DATE = RELEASES[0]?.date ?? null;
 const APP_STAGE = "BETA";
 
+/**
+ * デプロイ判別用カラーサイクル。
+ *
+ * Vercel deploy が反映されたかを目視で確認できるように、ヘッダーの
+ * バージョン + STAGE 表示を 7 種の色のいずれかで描画する。同じビルドの
+ * 間は色が固定、別のビルドにデプロイが切り替わると別の色になる。
+ *
+ * Seed の優先順:
+ *   1. `VERCEL_GIT_COMMIT_SHA` — Vercel ビルド時に commit SHA を埋め込む。
+ *      コミットが変われば必ず別シードになるので push のたびに色が変わる。
+ *   2. `JSON.stringify(RELEASES[0])` — ローカル dev / Vercel 以外。
+ *      changelog の最新エントリーを編集すれば色が変わるので、同日内の
+ *      連続コミット運用 (新スキーム) ともよく合う。
+ *
+ * 7 色は dark / light 双方で識別可能な飽和度の Tailwind 標準色から選定。
+ * テーマの neon トークンは theme 切替で意味が変わるので使わない。
+ */
+const DEPLOY_COLORS = [
+  "text-cyan-400",
+  "text-amber-300",
+  "text-emerald-400",
+  "text-rose-400",
+  "text-violet-400",
+  "text-orange-300",
+  "text-fuchsia-400",
+];
+
+function deployColorIndex(): number {
+  const seed =
+    process.env.VERCEL_GIT_COMMIT_SHA ?? JSON.stringify(RELEASES[0] ?? "");
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) {
+    h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+  }
+  return h % DEPLOY_COLORS.length;
+}
+
+const DEPLOY_COLOR = DEPLOY_COLORS[deployColorIndex()];
+
 export function SiteHeader() {
   return (
     <header className="glass-bar sticky top-0 z-30">
@@ -50,7 +89,10 @@ export function SiteHeader() {
             <span className="font-display text-[13px] font-semibold tracking-[0.2em] text-foreground sm:text-sm">
               RAID REPOSITORY
             </span>
-            <span className="flex items-center gap-1.5 font-mono text-[10px] tabular-nums tracking-[0.16em] text-muted-foreground sm:text-[11px]">
+            <span
+              className={`flex items-center gap-1.5 font-mono text-[10px] tabular-nums tracking-[0.16em] sm:text-[11px] ${DEPLOY_COLOR}`}
+              title="デプロイ識別色: ビルドごとに 7 色のいずれかに変化。色が変われば deploy が反映済み"
+            >
               <span>
                 v{APP_VERSION}
                 {APP_DATE ? ` (${APP_DATE})` : ""}
