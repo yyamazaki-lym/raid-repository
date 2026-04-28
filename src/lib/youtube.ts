@@ -33,7 +33,17 @@ export function parseYouTubeId(url: string): string | null {
 }
 
 export function youtubeEmbedUrl(id: string): string {
-  return `https://www.youtube.com/embed/${id}`;
+  // youtube-nocookie.com (privacy-enhanced mode) is treated more leniently
+  // by some uploaders' embed restrictions and is the recommended host for
+  // third-party sites that don't need analytics. Combined with conservative
+  // player params:
+  //   - rel=0: no related-video sidebar from other channels at the end
+  //   - modestbranding=1: minimal YouTube logo (deprecated but harmless)
+  //   - playsinline=1: keep inline on iOS instead of fullscreening
+  // These do NOT bypass uploader-disabled embedding (error 150/153) — for
+  // those videos the user has to use the visible "YouTubeで開く" fallback
+  // button rendered alongside the iframe.
+  return `https://www.youtube-nocookie.com/embed/${id}?rel=0&modestbranding=1&playsinline=1`;
 }
 
 export function youtubeThumbnailUrl(id: string): string {

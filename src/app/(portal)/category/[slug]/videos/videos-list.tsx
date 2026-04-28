@@ -172,6 +172,39 @@ export function VideosList({ categoryId, initial, firstClearAt }: Props) {
     return () => window.clearTimeout(id);
   }, [focusedVideoId, live.length, manualFocusKey]);
 
+  // クリア日時バッジ経由 (manualFocus) の強調表示は「ユーザーが次の
+  // 操作 (枠外クリック / スクロール) をした時点」で解除する。`?focus=` /
+  // `?focusDate=` 経由 (URL params) は永続表示のままにしておく — 戻る
+  // で再表示する時にも強調が残っていてほしい。
+  // smooth scroll の sett 時間 (~1.5s) 内のスクロールイベントは無視するため
+  // armed フラグで遅延解除可能化。
+  useEffect(() => {
+    if (!manualFocusId) return;
+    let armed = false;
+    const clear = () => {
+      setManualFocusId(null);
+    };
+    const onScroll = () => {
+      if (armed) clear();
+    };
+    const onClick = (e: MouseEvent) => {
+      if (!armed) return;
+      const focusedEl = focusedRef.current;
+      if (focusedEl && focusedEl.contains(e.target as Node)) return;
+      clear();
+    };
+    const armId = window.setTimeout(() => {
+      armed = true;
+    }, 1500);
+    window.addEventListener("scroll", onScroll, { passive: true });
+    document.addEventListener("click", onClick);
+    return () => {
+      window.clearTimeout(armId);
+      window.removeEventListener("scroll", onScroll);
+      document.removeEventListener("click", onClick);
+    };
+  }, [manualFocusId, manualFocusKey]);
+
   // クリア日時バッジ (Trophy) クリック時のスクロールハンドラ。
   // firstClearAt はカテゴリ初クリアの ISO timestamp (UTC 保存だが
   // ユーザー表示は JST)。ローカルタイムゾーンで YYYY-MM-DD を
@@ -622,10 +655,28 @@ function VideoCard({
   // the form-level + server-action validators.
   const videoHref = safeHref(video.url);
   const logsHref = safeHref(video.logsUrl);
+  // 1.9 (2026-04-28): カード余白 (タイトル / 説明 / バッジ周辺の隙間など、
+  // 既存の interactive 要素以外) をクリックで動画 URL を新規タブで開く。
+  // インタラクティブな要素 (a / button / [data-card-no-nav]) 上のクリックは
+  // closest() で検知して bail out するので既存挙動を破壊しない。
+  // selectMode 中はカード全体が選択トグルなので無効化。
+  // dragListeners が付いている (= カスタム並び替えモード) でも、card 余白の
+  // ナビは敢えて止めない: ドラッグハンドルは別途 stopPropagation 済み。
+  const onCardBackgroundClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (selectMode) return;
+    if (!videoHref) return;
+    const interactive = (e.target as HTMLElement).closest(
+      "a, button, [data-card-no-nav]",
+    );
+    if (interactive) return;
+    window.open(videoHref, "_blank", "noopener,noreferrer");
+  };
   return (
     <Card
+      onClick={onCardBackgroundClick}
       className={
         "glass neon-edge group flex flex-col gap-1 overflow-hidden p-0 transition-all hover:-translate-y-0.5 " +
+        (videoHref && !selectMode ? "cursor-pointer " : "") +
         (selected
           ? "ring-2 ring-rose-400/70 ring-offset-2 ring-offset-background"
           : "")
@@ -831,10 +882,13 @@ function YouTubePreview({
   }, [thumbVisible]);
 
   if (active) {
+    // youtubeEmbedUrl 自体が `?rel=0&modestbranding=1&playsinline=1` を含むので
+    // autoplay は `&` で連結。
+    const src = youtubeEmbedUrl(id) + "&autoplay=1";
     return (
       <div className="relative aspect-video w-full bg-black">
         <iframe
-          src={youtubeEmbedUrl(id) + "?autoplay=1"}
+          src={src}
           title={title}
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
           allowFullScreen
@@ -844,6 +898,23 @@ function YouTubePreview({
           loading="lazy"
           className="absolute inset-0 h-full w-full"
         />
+        {/* エラー 153 等で iframe が再生不能の場合のフォールバック。
+           uploader が embed を無効化していると iframe 内で
+           「動画プレーヤーの設定エラー」が出るが、cross-origin 制約で
+           portal 側からは検知できない。視覚的に「YouTube で開く」を常に
+           出しておくことでユーザーは即座に外部タブへ逃げられる。 */}
+        <a
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(e) => e.stopPropagation()}
+          className="absolute top-2 right-2 inline-flex items-center gap-1 rounded-md bg-black/70 px-1.5 py-1 font-mono text-[9px] tracking-[0.18em] text-white/85 uppercase backdrop-blur-sm transition-colors hover:bg-black/90 hover:text-white"
+          aria-label="YouTube で開く"
+          title="埋め込み再生できない場合はこちらから外部タブで再生"
+        >
+          <ExternalLink className="h-3 w-3" aria-hidden />
+          YouTube
+        </a>
       </div>
     );
   }

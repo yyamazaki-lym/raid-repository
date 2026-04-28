@@ -52,6 +52,10 @@ export const RELEASES: ReleaseEntry[] = [
     date: "2026-04-28",
     parts: [
       {
+        title: "🎥 動画ページに 3 件追加改善 (embed 救済 + 余白クリック遷移 + 強調 auto-off)",
+        body: "(1) **YouTube エラー 153 の救済**: `youtubeEmbedUrl` を `youtube.com/embed/` から `youtube-nocookie.com/embed/?rel=0&modestbranding=1&playsinline=1` に変更。`-nocookie` 系は uploader 側の embed 制限が緩い場合があり、エラー 153 (動画プレーヤーの設定エラー) で再生できなかった一部動画が直る可能性がある。それでも再生不能な動画 (uploader が embed 完全無効化) 向けに、iframe アクティブ時の右上に「YouTube で開く」フォールバックボタン (ExternalLink + 'YouTube' ラベル) を常時表示 — 押下で外部タブへ即逃げられる。\n(2) **カード余白クリック → 動画 URL を新規タブで開く**: `VideoCard` ルートに `onClick` を追加し、`closest('a, button, [data-card-no-nav]')` で interactive 要素上のクリックは bail out、それ以外 (説明文・枠余白など) では `window.open(videoHref, '_blank', 'noopener,noreferrer')`。`cursor-pointer` も付与してクリック可能であることを示唆。selectMode 中はカード全体が選択トグルなので無効化。\n(3) **クリア日時バッジ強調を auto-off**: TODO #10 で実装した「Trophy → ring 強調」は永続表示だったが、ユーザーが次の操作 (枠外クリック / スクロール) をしたら強調を解除する挙動に変更。1.5s 間 (smooth scroll の settle 余裕) は dismiss を armed=false でガードし、その後 `window.scroll` / `document.click` (focused 要素外) で `setManualFocusId(null)`。`?focus=` / `?focusDate=` URL params 経由の強調は永続表示のまま (戻る → 復帰時に強調が残ってほしい想定)。",
+      },
+      {
         title: "🎬 動画ページに 3 件改善 (TODO #10 anchor jump + カスタム逆順修正 + 通信量削減)",
         body: "(1) **TODO #10 完了**: ヘッダーの初クリア (Trophy) バッジを `<button>` 化し、クリックで該当動画へ smooth scroll + ring 強調。`findVideoIdByDate(YYYY-MM-DD)` ヘルパーを切り出して URL `?focusDate=` 経由フローと共通化。連打しても scroll が再発火するよう `manualFocusKey` カウンターを `useEffect` deps に追加。\n(2) **カスタム並び替えの逆順表示を修正**: DB の `sort_order` は ASC で挿入順 (古い順) のため、これまで「日付順 → カスタム」に切替えると先頭が逆になっていた。`useMemo` で custom mode 時は `[...live].reverse()` し、日付順と同じ「新しい順」を初期表示に。DnD onDragEnd は表示順を反転して `setCategoryLinkOrder` に渡し、DB 側 `sort_order` ASC 規約も維持。\n(3) **サムネイルを viewport 近接時のみロード**: `YouTubePreview` に `IntersectionObserver` (rootMargin 200px) を追加し、画面外のサムネイルは `<Image>` を描画せず gradient プレースホルダのみ表示。スマホで縦長スクロールする際の通信量を大幅削減。観察対象が viewport 200px 以内に入ったら 1 度だけ `<Image>` を mount してそれ以後は維持 (再 fetch は browser cache に任せる)。`IntersectionObserver` 非対応環境では即座に画像を描画する fallback も用意。",
       },
