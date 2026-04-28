@@ -1,6 +1,7 @@
 "use client";
 
 import { createClient } from "@/lib/supabase/client";
+import { SCHEDULE_TOP_TEXT_OVERRIDE_KEY } from "@/lib/schedule-top-text-keys";
 
 /**
  * 運用ルール / 注意事項 (スケジュールページ上部の `topText`) の
@@ -15,9 +16,16 @@ import { createClient } from "@/lib/supabase/client";
  * Supabase の共有 `app_settings` テーブルを使用 — 固定メンバー全員に
  * 同じ override が見える。`schedule_url` など他の app_settings と同じ
  * パターン。
+ *
+ * Key 定数は server / client 両方で使うため、`"use client"` 指令を
+ * 持たない `schedule-top-text-keys.ts` に切り出して両方から import。
+ * (1.9 (2026-04-28): 当初この file 内で定義 + export していたが、
+ * `"use client"` 経由の文字列 export は server component から見ると
+ * Server Reference proxy 化されてしまい、`fetchAppSetting()` が常に
+ * null を返すバグが発生していた。独立 module 化で解決。)
  */
 
-const TOP_TEXT_OVERRIDE_KEY = "schedule_top_text_override";
+const TOP_TEXT_OVERRIDE_KEY = SCHEDULE_TOP_TEXT_OVERRIDE_KEY;
 
 export async function setScheduleTopTextOverride(
   raw: string,
@@ -66,5 +74,5 @@ export async function clearScheduleTopTextOverride(): Promise<
   return { ok: true };
 }
 
-/** server-side fetch のための key (lib/supabase/app-settings.ts と組合せる) */
-export const SCHEDULE_TOP_TEXT_OVERRIDE_KEY = TOP_TEXT_OVERRIDE_KEY;
+/* `SCHEDULE_TOP_TEXT_OVERRIDE_KEY` は `schedule-top-text-keys.ts` で定義し、
+   こちらでは re-export しない (上述の Server Reference proxy 化バグ回避)。 */

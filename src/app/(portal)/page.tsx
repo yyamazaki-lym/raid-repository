@@ -7,7 +7,7 @@ import {
   type NextSessionResult,
 } from "@/lib/schedule/next-session";
 import { getScheduleSourceUrl } from "@/lib/schedule/source-url";
-import { SCHEDULE_TOP_TEXT_OVERRIDE_KEY } from "@/lib/schedule-top-text-store";
+import { SCHEDULE_TOP_TEXT_OVERRIDE_KEY } from "@/lib/schedule-top-text-keys";
 import { fetchSessionLogsByDate } from "@/lib/server/fflogs";
 import { buildSessionVideoLinkMap } from "@/lib/server/session-video-link";
 import { fetchAppSetting } from "@/lib/supabase/app-settings";

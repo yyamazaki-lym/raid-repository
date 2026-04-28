@@ -706,15 +706,25 @@ function Legend({
   //   undefined: prop の `topTextOverride` をそのまま使う (通常時)
   //   null: 「クリア中」を即時反映 (= scraped 表示に戻す)
   //   string: 「保存中」のテキストを即時反映 (= 編集後タブで表示)
-  // prop が変化したタイミングで undefined にリセットして prop に追従。
+  // prop が「楽観値と一致」した時にのみ undefined に戻して prop に追従。
+  // prop が予期せず別値 (特に null) で来た場合は optimistic を保持し続ける
+  // ので、強制更新やネットワーク不安定時に編集後テキストが消えない。
   const [optimisticOverride, setOptimisticOverride] = useState<
     string | null | undefined
   >(undefined);
   const effectiveOverride =
     optimisticOverride !== undefined ? optimisticOverride : topTextOverride;
   useEffect(() => {
-    // prop 側が新しい値で来たら楽観 state は破棄して prop に従う。
-    setOptimisticOverride(undefined);
+    setOptimisticOverride((curr) => {
+      // 既に通常状態 (= optimistic 不在) なら何もしない
+      if (curr === undefined) return undefined;
+      // server (DB) 側の値が optimistic と一致 → save/clear が確実に
+      // 反映されたと判断できるので、楽観 state を畳んで prop に切替。
+      if (curr === topTextOverride) return undefined;
+      // 不一致 (例: prop が null で帰ってきた、別タブで別の値が保存された)
+      // → 楽観 state を保持してユーザーの編集を画面から消さない。
+      return curr;
+    });
   }, [topTextOverride]);
 
   // 表示モード: 編集後 (override) があれば default で edited、無ければ scraped。

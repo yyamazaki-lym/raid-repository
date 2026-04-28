@@ -115,6 +115,14 @@ export const RELEASES: ReleaseEntry[] = [
         title: "🔄 同期 (refresh) 後も override が保持されるよう view 自動同期を強化",
         body: "ユーザー報告: 「同期すると編集後のテキストが消えているように見える。同期時はオリジナルの文面を変更して、編集後のものはそのままにする。」。実装上 override は同期 (`router.refresh`) で touch されないが、view state がトグル位置にあると見え方が混乱する場合があったため、view を `effectiveOverride` の null/non-null 遷移にだけ自動追従させるロジックを追加 (`prevHasOverrideRef`)。同値の更新 (= 同期で同じ override が再取得) では view を変えずユーザー選択を維持、null → non-null (新規保存) では view を `edited` に、non-null → null (完全クリア) では `scraped` にフリップ。さらにトグルタブ「編集後」のラベル先頭に `★` を付与し、override が存在することを視覚的に強調。preview で end-to-end 検証 — save → 即時表示 → タブ / dot 出現 → 同期後も維持 → クリアで scraped に戻ることを確認。",
       },
+      {
+        title: "🐛 運用ルール override が DB に保存できていなかったバグを修正 (Server Reference proxy 化問題)",
+        body: "ユーザー報告: 「編集後、ページ更新を掛けても編集後の文言が消えてオリジナル表記だけになる」。原因: `SCHEDULE_TOP_TEXT_OVERRIDE_KEY` 定数を `\"use client\"` 指令付きの `schedule-top-text-store.ts` から server component (`page.tsx`) 経由で import していた。Next.js 16 の RSC では client モジュールからの非コンポーネント export は Server Reference proxy に変換されるため、文字列キーが Function オブジェクトとして渡り、`fetchAppSetting()` の `.eq(\"key\", <function>)` で常に 0 件マッチ → null が返ってきていた (= 表示時に override 無し扱い)。書込み (client→DB) は実際には成功していたため optimistic state では一見動いて見えたが、F5 で optimistic が消えると override も消えたように見える挙動になっていた。修正: 定数を独立 module `src/lib/schedule-top-text-keys.ts` (`\"use client\"` 無し) に切り出し、server / client 双方からそこを import するように変更。デバッグログ (`fetchAppSetting` 戻り値) で `key=[Function (anonymous)]` を観測して原因特定 → 修正後は F5 reload + popup open で `★編集後` タブ + cyan dot + saved override 正常表示を確認。`optimisticOverride` の reset 条件も「prop が optimistic と一致した時のみ」に変更し、不慮の null 戻りでも編集後テキストが消えないよう防御。",
+      },
+      {
+        title: "🛡 楽観 state の reset 条件を厳格化 (prop 不一致時は保持)",
+        body: "上記 bug 修正の副次対応。`optimisticOverride` の reset を従来の「`topTextOverride` 変化時に問答無用 undefined」から「`optimisticOverride === topTextOverride` の時のみ undefined」に変更。これにより同期で server が予期せず別値 (典型的には null) を返してきても、ユーザーの編集後テキストを画面から消さずに保持する。RLS / ネットワーク不安定時の保険。",
+      },
     ],
   },
   {
