@@ -52,6 +52,10 @@ export const RELEASES: ReleaseEntry[] = [
     date: "2026-04-28",
     parts: [
       {
+        title: "🎬 ポップアップ後 play 方式に変更 + 別動画を開くと前を自動 close",
+        body: "ユーザー報告: (a) 再生開始時に動画の左上が拡大されたよう (前回の aspect-ratio 修正でも改善せず)、(b) 別の動画を開いたら前のは閉じてほしい。\n(1) **autoplay=1 を撤回**: autoplay 中の YouTube プレーヤーは初期描画時に小さなビューポートでロードされ、その後拡大される過程で「左上だけクロップ拡大されたように見える」glitch を起こすことがある。ポップアップが完全に開いてからユーザーが YouTube の play ボタンを押す方式 (= autoplay 無し) にすれば、プレーヤーは正しい目標サイズで初期化される。\n(2) **activeVideoId を VideosList に lift**: 各 `YouTubePreview` の局所 `active` state を撤去し、親 `VideosList` で「いま再生中の動画 id」を 1 つだけ保持するよう再設計。`isActive` / `onActivate` / `onClose` 経由で各カードに伝播。新しいカードの play を押すと親の `activeVideoId` が更新 → 旧カードの `isActive=false` で iframe が unmount = 動画停止。理論上 1 ページ 1 アクティブのみ。\nなお iframe 内の YouTube プレーヤー UI (画面下部のコントロールバー / hover 時に出る各種オーバーレイ) は cross-origin 制約で portal 側からは隠せない。気になる場合は YouTube プレーヤー右下のフルスクリーンボタンで対応可。",
+      },
+      {
         title: "🎯 theater mode のアスペクト比崩れと背景透けを根治",
         body: "ユーザー報告: (a) マウスホバー時に横に黒いバーが何本も出る、(b) 再生開始時に動画の左上が拡大されたように見える。原因は theater mode 内側枠を `aspect-video w-[min(90vw,1400px)] max-h-[85vh]` で 3 制約 (w / max-h / aspect) を同時指定していたこと。狭高 viewport では max-h が支配して幅は 16:9 由来でなくなり、結果として iframe ボックスが 16:9 でない長方形となって中の YouTube プレーヤーが letterbox 風に左上クロップ表示されていた。さらに backdrop が `bg-black/85` (15% 透過) だったため、背景カードの hover translate animation が透けて「横の黒バー」に見えていた。\n修正: 内側枠を `style={{ width: 'min(90vw, calc(90vh * 16/9), 1400px)', aspectRatio: '16 / 9' }}` の 1 次元計算に統一 — 幅が w / h 両方の制約を同時に満たすよう min() で決まり、aspectRatio で高さを導出するので二重制約が発生しない。backdrop は `bg-black/95` で実質不透明に。`ring-1 ring-white/10` で枠も明示しポップアップ感を強化。preview 計測でアスペクト比 1.778 (= 16/9) を確認。",
       },

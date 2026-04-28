@@ -81,6 +81,9 @@ export function VideosList({ categoryId, initial, firstClearAt }: Props) {
   const live = useRealtimeCategoryLinks(categoryId, "video", initial);
   const [editTarget, setEditTarget] = useState<CategoryLink | null>(null);
   const [optimistic, setOptimistic] = useState<string[] | null>(null);
+  // ページ全体で「いま再生中の動画」を 1 つだけ保持する。別の動画カードで
+  // 再生を開くと前のは自動で閉じる (= iframe unmount = 再生停止)。
+  const [activeVideoId, setActiveVideoId] = useState<string | null>(null);
   // Multi-select state (1.9.15): toggling on switches each card into a
   // selectable mode. Card body click stops opening YouTube; instead it
   // toggles the row's selection. Header gains a delete button when
@@ -535,6 +538,9 @@ export function VideosList({ categoryId, initial, firstClearAt }: Props) {
                   selectMode={selectMode}
                   selected={selectedIds.has(v.id)}
                   onToggleSelect={() => toggleSelected(v.id)}
+                  isActive={activeVideoId === v.id}
+                  onActivate={() => setActiveVideoId(v.id)}
+                  onClose={() => setActiveVideoId(null)}
                 />
               ))}
             </ul>
@@ -559,6 +565,9 @@ export function VideosList({ categoryId, initial, firstClearAt }: Props) {
                 selectMode={selectMode}
                 selected={selectedIds.has(v.id)}
                 onToggleSelect={() => toggleSelected(v.id)}
+                isActive={activeVideoId === v.id}
+                onActivate={() => setActiveVideoId(v.id)}
+                onClose={() => setActiveVideoId(null)}
               />
             </li>
           ))}
@@ -586,6 +595,9 @@ function SortableVideoCard({
   selectMode = false,
   selected = false,
   onToggleSelect,
+  isActive = false,
+  onActivate,
+  onClose,
 }: {
   video: CategoryLink;
   onEdit: () => void;
@@ -594,6 +606,9 @@ function SortableVideoCard({
   selectMode?: boolean;
   selected?: boolean;
   onToggleSelect?: () => void;
+  isActive?: boolean;
+  onActivate?: () => void;
+  onClose?: () => void;
 }) {
   const {
     attributes,
@@ -639,6 +654,9 @@ function SortableVideoCard({
         selectMode={selectMode}
         selected={selected}
         onToggleSelect={onToggleSelect}
+        isActive={isActive}
+        onActivate={onActivate}
+        onClose={onClose}
       />
     </li>
   );
@@ -651,6 +669,9 @@ function VideoCard({
   selectMode = false,
   selected = false,
   onToggleSelect,
+  isActive = false,
+  onActivate,
+  onClose,
 }: {
   video: CategoryLink;
   onEdit: () => void;
@@ -658,6 +679,9 @@ function VideoCard({
   selectMode?: boolean;
   selected?: boolean;
   onToggleSelect?: () => void;
+  isActive?: boolean;
+  onActivate?: () => void;
+  onClose?: () => void;
 }) {
   const ytId = parseYouTubeId(video.url);
   // safeHref returns undefined for non-http(s) values, which renders the
@@ -694,7 +718,14 @@ function VideoCard({
     >
       <div className="relative">
         {ytId ? (
-          <YouTubePreview id={ytId} url={video.url} title={video.title} />
+          <YouTubePreview
+            id={ytId}
+            url={video.url}
+            title={video.title}
+            isActive={isActive}
+            onActivate={onActivate}
+            onClose={onClose}
+          />
         ) : (
           <a
             href={videoHref}
@@ -859,12 +890,25 @@ function YouTubePreview({
   id,
   url,
   title,
+  isActive,
+  onActivate,
+  onClose,
 }: {
   id: string;
   url: string;
   title: string;
+  isActive: boolean;
+  onActivate?: () => void;
+  onClose?: () => void;
 }) {
-  const [active, setActive] = useState(false);
+  // 「再生中」状態は親 (VideosList) で 1 つだけ保持する設計。別カードで
+  // 再生開始 → 親が activeVideoId を更新 → 旧カードの isActive が false に
+  // なって iframe が unmount → 旧動画停止。
+  const active = isActive;
+  const setActive = (next: boolean) => {
+    if (next) onActivate?.();
+    else onClose?.();
+  };
   const [thumbVisible, setThumbVisible] = useState(false);
   const containerRef = useRef<HTMLButtonElement | null>(null);
 
@@ -908,9 +952,12 @@ function YouTubePreview({
   }, [active]);
 
   if (active) {
-    // youtubeEmbedUrl は `?rel=0&modestbranding=1&playsinline=1` を含むので
-    // autoplay は `&` で連結。
-    const src = youtubeEmbedUrl(id) + "&autoplay=1";
+    // 1.9 (2026-04-28): autoplay=1 を撤回。autoplay 中の YouTube プレーヤーは
+    // 初期描画時に小さなビューポートでロードされ、その後拡大される過程で
+    // 「左上だけクロップ拡大されたように見える」glitch を起こすことがある。
+    // ポップアップが完全に開いてからユーザーが YouTube の play ボタンを
+    // 押す方式にすれば、プレーヤーは正しい目標サイズで初期化される。
+    const src = youtubeEmbedUrl(id);
     return (
       <>
         {/* カード内の元の枠は「再生中」プレースホルダだけ残してレイアウトを
