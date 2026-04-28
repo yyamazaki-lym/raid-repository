@@ -52,6 +52,14 @@ export const RELEASES: ReleaseEntry[] = [
     date: "2026-04-28",
     parts: [
       {
+        title: "🌏 Vercel Function の Region を Tokyo (hnd1) に固定 (USA → JP) ",
+        body: "`vercel.json` に `regions: [\"hnd1\"]` を追加。これまで Hobby tier のデフォルトである `iad1` (Washington DC) で Node Function が動作していた (Edge Runtime の `/` ページは無関係 — ユーザー最寄り POP で動作)。Supabase が Tokyo region のため、`/category/*` 系 (server component → デフォルト Node) と `/api/cron/*` `/api/auth/fflogs/*` `/api/page-title` は US ↔ JP の片道 ~150ms RTT がクエリ毎に発生していた。Tokyo Function に切替で 1 リクエスト内の DB 往復が ~10ms に短縮、cron 実行も Supabase 隣接で安定。FFLogs API (EU/US) は Tokyo → 海外 ~150ms と元の US → 海外より少し遅くなるが OAuth callback は 1 往復のみで影響軽微。",
+      },
+      {
+        title: "🩹 Suspense streaming スケルトンのボタン枠ズレを修正",
+        body: "ユーザー報告: 「Loading 時に表示される文字が枠からずれている」。原因: `SchedulePageSkeleton` のヘッダー右側 4 ボタンの 4 つ目を `h-8 w-24` (96px) で placeholder していたため、実 layout (4 つすべて `h-8 w-8` = 32px) に切り替わる瞬間に 64px の横方向シフトが発生していた。さらに `items-baseline gap-3` を実 layout の `items-center gap-2` に揃え、左側 heading placeholder にも `min-w-0 flex-1` を付与。次回開催日 card も `px-4 py-5` → `p-3 sm:p-4`、icon `h-9 w-9` → `h-8 w-8` で実 `NextSessionCard` の Frame と一致させ、行ごとの 6 chip 装飾は狭幅 viewport では実際には見えないため簡素な 1 placeholder に変更。これでスケルトン → 実コンテンツの swap 時の layout shift がほぼゼロに。",
+      },
+      {
         title: "🔢 バージョン管理体系を MAJOR.MINOR (YYYY-MM-DD) 方式へ移行",
         body: "これまでは 1 コミット = 1 patch で運用し 1.9 系が 38 patch まで肥大していたため、これ以降は `MAJOR.MINOR (YYYY-MM-DD)` 方式に移行 (patch 廃止)。現状の 1.9 を据え置きで継続し、バグ修正・小規模調整は同じ MAJOR.MINOR で日付のみ更新、機能追加で MINOR 上げ (1.9 → 1.10)、破壊的変更で MAJOR 上げ (1.x → 2.0)。ヘッダーバッジも `v1.9 (2026-04-28)` 形式に。",
       },
