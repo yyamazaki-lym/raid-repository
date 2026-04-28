@@ -104,8 +104,8 @@ export const RELEASES: ReleaseEntry[] = [
         body: "TODO #15 完了。これまで簡易表示の section header が `Past · 過去の活動`、詳細表示が `Past · 過去の予定` と微差で紛らわしかったため、それぞれ `Past · 簡易ログ (日付チップ)` / `Past · 詳細ログ (出欠表)` に変更。中身の内容を補助ラベルで明示することで、見出しだけ見れば「何が表示されているか」が分かるように。",
       },
       {
-        title: "✏️ 運用ルール popup に「編集」ボタン追加 (元サイトを iframe で開く)",
-        body: "TODO #12 完了。これまで運用ルール / 注意事項は read-only の表示のみで、編集には別タブで元サイトを開く必要があった。popup ヘッダー右に `Pencil` アイコン付きの「編集」ボタンを追加し、クリックで `ScheduleEditFrameDialog` を起動 → schedule URL を iframe で表示してそのまま元サイト側のコメント / 注意事項エリアを編集できるように。`Legend` コンポーネントに `onEditRules?: (() => void) | null` props を追加し、親 (`ScheduleList`) で `scheduleUrl` がセットされている時のみ callback を渡す。",
+        title: "✏️ 運用ルール popup を inline 編集 + オリジナル/編集後トグルに刷新",
+        body: "TODO #12 完了 (再修正版)。当初 iframe 経由で元サイトを開く方式に実装したが、ユーザー意図と異なり「popup 内のテキストをその場で編集 + 同期で上書きされない」必要があったため再設計。新規ストア `lib/schedule-top-text-store.ts` を追加し、Supabase `app_settings.schedule_top_text_override` キーに portal 側 override を保存。表示優先度は override > scraped。popup には (1) Pencil ボタン → textarea + 保存/キャンセル の inline 編集モード、(2) override 設定中はヘッダーに `[オリジナル] / [編集後]` トグルタブを表示し scraped と override を切り替え参照可能 (同期で上書きされた scraped と編集後の差分を確認できる)、(3) override クリア用の `RotateCcw` ボタン (確認ダイアログ付き)、(4) override 設定中は ルールバッジ右に小さい cyan dot で「編集済み」表示。サーバ側は `page.tsx` で `fetchAppSetting(SCHEDULE_TOP_TEXT_OVERRIDE_KEY)` を並列フェッチし `SchedulePageBody` → `ScheduleList` → `Legend` まで scraped と override の両方を別 props で渡す。",
       },
     ],
   },

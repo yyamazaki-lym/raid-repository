@@ -64,6 +64,11 @@ type Props = {
    * → LEGENDS swap (1.9.16).
    */
   hasUltimateClear?: boolean;
+  /**
+   * 運用ルール / 注意事項のローカル override (`schedule_top_text_override`)。
+   * 設定済みなら scraped 値 (`result.data.topText`) より優先表示。
+   */
+  topTextOverride?: string | null;
 };
 
 export function SchedulePageBody({
@@ -76,6 +81,7 @@ export function SchedulePageBody({
   sessionVideoLinks,
   sessionLogsByDate,
   hasUltimateClear = false,
+  topTextOverride = null,
 }: Props) {
   // Two-toggle state: simple list (top) and detailed table (bottom).
   // Both default to off; pinned values persist via localStorage.
@@ -204,6 +210,7 @@ export function SchedulePageBody({
         sessionVideoLinks={sessionVideoLinks}
         sessionLogsByDate={sessionLogsByDate}
         hasUltimateClear={hasUltimateClear}
+        topTextOverride={topTextOverride}
       />
     </div>
   );

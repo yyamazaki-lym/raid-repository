@@ -7,8 +7,10 @@ import {
   type NextSessionResult,
 } from "@/lib/schedule/next-session";
 import { getScheduleSourceUrl } from "@/lib/schedule/source-url";
+import { SCHEDULE_TOP_TEXT_OVERRIDE_KEY } from "@/lib/schedule-top-text-store";
 import { fetchSessionLogsByDate } from "@/lib/server/fflogs";
 import { buildSessionVideoLinkMap } from "@/lib/server/session-video-link";
+import { fetchAppSetting } from "@/lib/supabase/app-settings";
 import { fetchCategories } from "@/lib/supabase/categories";
 import { fetchRecruitmentTemplatesServer } from "@/lib/supabase/recruitment-templates";
 
@@ -39,12 +41,17 @@ export default async function SchedulePage() {
     recruitmentTemplates,
     categoriesResult,
     sessionLogsByDate,
+    topTextOverride,
   ] = await Promise.all([
     fetchSchedule(),
     fetchJapaneseHolidays(),
     fetchRecruitmentTemplatesServer(),
     fetchCategories(),
     fetchSessionLogsByDate(),
+    // 1.9 (2026-04-28): 運用ルール / 注意事項のローカル override。
+    // 設定済みなら scraped 値より優先表示 (ScheduleList → Legend で
+    // override flag 付きで描画される)。
+    fetchAppSetting(SCHEDULE_TOP_TEXT_OVERRIDE_KEY),
   ]);
   // Slim category list passed to the recruitment popover. id+name+slug:
   // slug is needed for the per-category macro-page link icons added in
@@ -91,6 +98,7 @@ export default async function SchedulePage() {
       sessionVideoLinks={sessionVideoLinks}
       sessionLogsByDate={sessionLogsByDate}
       hasUltimateClear={hasUltimateClear}
+      topTextOverride={topTextOverride}
     />
   );
 }

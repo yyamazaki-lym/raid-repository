@@ -5,15 +5,23 @@ import {
   CalendarX2,
   AlertTriangle,
   BarChart3,
+  Check,
   Film,
   Loader2,
   MessageSquare,
   Pencil,
   RefreshCw,
+  RotateCcw,
+  X,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { CommentPopover } from "./comment-popover";
 import { ScheduleEditFrameDialog } from "./schedule-edit-frame-dialog";
+import { toast } from "sonner";
+import {
+  clearScheduleTopTextOverride,
+  setScheduleTopTextOverride,
+} from "@/lib/schedule-top-text-store";
 import {
   SessionMemoDot,
   SessionMemoPopover,
@@ -96,6 +104,13 @@ type Props = {
    * legend label MEMBERS → LEGENDS swap (1.9.16). Default false.
    */
   hasUltimateClear?: boolean;
+  /**
+   * 運用ルール / 注意事項のローカル override (Supabase
+   * `app_settings.schedule_top_text_override`)。設定済みなら scraped
+   * `result.data.topText` より優先表示。Legend popup 内の「編集」ボタンで
+   * 上書き可能。
+   */
+  topTextOverride?: string | null;
 };
 
 export function ScheduleList({
@@ -107,6 +122,7 @@ export function ScheduleList({
   sessionVideoLinks,
   sessionLogsByDate,
   hasUltimateClear = false,
+  topTextOverride = null,
 }: Props) {
   // 1.9.13: replace `target="_blank"` external nav with an in-portal
   // iframe overlay. Tapping a username header or per-session attendance
@@ -212,16 +228,12 @@ export function ScheduleList({
           hasUltimateClear={hasUltimateClear}
           onRefresh={refreshSchedule}
           refreshing={refreshing}
-          topText={result.data.topText ?? null}
-          onEditRules={
-            scheduleUrl
-              ? () =>
-                  openEditFrame(
-                    scheduleUrl,
-                    "運用ルール / 注意事項を編集",
-                  )
-              : null
-          }
+          /* オリジナル (元サイトから取り込み) */
+          topTextScraped={result.data.topText ?? null}
+          /* 編集後 (Supabase app_settings.schedule_top_text_override)。
+             同期で上書きされないので、運用ルールを portal 側で
+             カスタマイズしてもそのまま残る。 */
+          topTextOverride={topTextOverride}
         />
         <div className="overflow-x-auto">
           <table className="w-full min-w-[640px] border-collapse text-left text-sm">
@@ -669,34 +681,51 @@ function Legend({
   hasUltimateClear = false,
   onRefresh,
   refreshing = false,
-  topText = null,
-  onEditRules = null,
+  topTextScraped = null,
+  topTextOverride = null,
 }: {
   hasUltimateClear?: boolean;
   /** Called when the user clicks the refresh button at the right end. */
   onRefresh?: () => void;
   /** Show a spinning loader while the refresh transition is pending. */
   refreshing?: boolean;
-  /** Free-form text from the top of the source schedule page (e.g.
-   * operation rules). When non-null, a clickable MessageSquare icon is
-   * shown next to the 未回答 entry → opens a popover with the text. */
-  topText?: string | null;
-  /** Optional callback for the 「編集」 button inside the rules popover.
-   * Provided by the parent only when a `scheduleUrl` is configured —
-   * clicking opens the source schedule page in the in-portal iframe
-   * dialog so the user can edit the comment / 注意事項 area there. */
-  onEditRules?: (() => void) | null;
+  /** 元サイトから取り込んだオリジナル運用ルール / 注意事項。同期のたびに
+   * 最新のものに更新される。 */
+  topTextScraped?: string | null;
+  /** Portal 側で編集された override (`app_settings.schedule_top_text_override`)。
+   * 同期では上書きされない。トグルボタンで scraped 表示と切り替え可能。 */
+  topTextOverride?: string | null;
 }) {
+  const router = useRouter();
   // Local controlled-popover state for the top-text comment icon.
   const [showTopText, setShowTopText] = useState(false);
   const topTextRef = useRef<HTMLDivElement | null>(null);
-  // Click outside to close the popover.
+  // 表示モード: 編集後があれば default で edited を表示、無ければ scraped
+  const [view, setView] = useState<"edited" | "scraped">(
+    topTextOverride !== null ? "edited" : "scraped",
+  );
+  // override 状態が外から変わったら view も追従 (例: 別タブで保存後 refresh)
+  useEffect(() => {
+    setView(topTextOverride !== null ? "edited" : "scraped");
+  }, [topTextOverride]);
+  // 編集モード: textarea + save / cancel
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  // 表示する text と「rule アイコンを出すか」判定
+  // どちらか一方でも値があればアイコンは出す
+  const hasAny = topTextScraped !== null || topTextOverride !== null;
+  const displayed = view === "edited" ? topTextOverride : topTextScraped;
+
+  // Click outside to close the popover. 編集中はクリック保護 (誤閉じ防止)
   useEffect(() => {
     if (!showTopText) return;
     const onDocClick = (e: MouseEvent) => {
       const t = e.target as Node | null;
       if (!t) return;
       if (topTextRef.current && topTextRef.current.contains(t)) return;
+      if (editing) return; // 編集中は閉じない
       setShowTopText(false);
     };
     const handle = setTimeout(() => {
@@ -706,7 +735,7 @@ function Legend({
       clearTimeout(handle);
       document.removeEventListener("mousedown", onDocClick);
     };
-  }, [showTopText]);
+  }, [showTopText, editing]);
   // 1.9.16: ラベル "MEMBERS" デフォルト、絶クリア達成済みの固定なら
   // "LEGENDS" 表記に昇格 (称号として)。
   const label = hasUltimateClear ? "Legends" : "Members";
@@ -745,7 +774,7 @@ function Legend({
           ボタンの popover は right-0 で button right-edge 揃えに
           開くので、画面右端からの overflow を防げる。 */}
       <div className="ml-auto flex items-center gap-1.5">
-        {topText && (
+        {hasAny && (
           <span className="relative inline-flex">
             <button
               type="button"
@@ -760,6 +789,13 @@ function Legend({
             >
               <MessageSquare className="h-3 w-3" aria-hidden />
               ルール
+              {topTextOverride !== null && (
+                <span
+                  className="ml-0.5 inline-block h-1.5 w-1.5 rounded-full bg-[var(--neon-cyan)]"
+                  title="編集済み (override 設定中)"
+                  aria-hidden
+                />
+              )}
             </button>
             {showTopText && (
               <div
@@ -768,29 +804,159 @@ function Legend({
                 aria-label="運用ルール / 注意事項"
                 className="glass-popup absolute top-full right-0 z-40 mt-1 w-[min(36rem,calc(100vw-2rem))] rounded-lg border border-[var(--neon-violet)]/35 px-3.5 py-3 text-[12px] leading-relaxed text-foreground/85 shadow-[0_12px_40px_-16px_rgba(167,139,250,0.45),0_2px_8px_-2px_rgba(0,0,0,0.4)]"
               >
-                <div className="mb-2 flex items-center justify-between gap-2">
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                   <p className="font-mono text-[10px] tracking-[0.22em] text-[var(--neon-violet)]/85 uppercase">
                     運用ルール / 注意事項
                   </p>
-                  {onEditRules && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowTopText(false);
-                        onEditRules();
-                      }}
-                      aria-label="運用ルール / 注意事項を編集 (元サイトを iframe で開く)"
-                      title="元サイトを iframe で開いて編集"
-                      className="inline-flex h-6 items-center gap-1 rounded-md border border-[var(--neon-violet)]/40 bg-[var(--neon-violet)]/10 px-2 font-mono text-[10px] tracking-[0.18em] text-[var(--neon-violet)]/90 uppercase transition-colors hover:border-[var(--neon-violet)]/70 hover:bg-[var(--neon-violet)]/20"
-                    >
-                      <Pencil className="h-3 w-3" aria-hidden />
-                      編集
-                    </button>
+                  {!editing && (
+                    <div className="flex items-center gap-1">
+                      {/* オリジナル ⇔ 編集後 切替 (両方 null でない時のみ表示) */}
+                      {topTextScraped !== null && topTextOverride !== null && (
+                        <div
+                          role="tablist"
+                          aria-label="表示するテキストを切替"
+                          className="inline-flex overflow-hidden rounded-md border border-border/50"
+                        >
+                          <button
+                            type="button"
+                            role="tab"
+                            aria-selected={view === "scraped"}
+                            onClick={() => setView("scraped")}
+                            title="元サイトから取り込んだ最新のテキスト"
+                            className={
+                              "px-1.5 py-0.5 font-mono text-[9px] tracking-[0.18em] uppercase transition-colors " +
+                              (view === "scraped"
+                                ? "bg-[var(--neon-violet)]/25 text-foreground"
+                                : "text-muted-foreground hover:bg-secondary/50")
+                            }
+                          >
+                            オリジナル
+                          </button>
+                          <button
+                            type="button"
+                            role="tab"
+                            aria-selected={view === "edited"}
+                            onClick={() => setView("edited")}
+                            title="ポータル側で編集したカスタム版 (同期で上書きされない)"
+                            className={
+                              "px-1.5 py-0.5 font-mono text-[9px] tracking-[0.18em] uppercase transition-colors " +
+                              (view === "edited"
+                                ? "bg-[var(--neon-cyan)]/25 text-foreground"
+                                : "text-muted-foreground hover:bg-secondary/50")
+                            }
+                          >
+                            編集後
+                          </button>
+                        </div>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          // 編集 = override の編集。下敷きは現在表示中のテキスト
+                          setDraft(displayed ?? "");
+                          setEditing(true);
+                        }}
+                        aria-label="運用ルール / 注意事項を編集 (override に保存)"
+                        title="override として編集 (元サイトには影響しない、同期でも上書きされない)"
+                        className="inline-flex h-6 items-center gap-1 rounded-md border border-[var(--neon-violet)]/40 bg-[var(--neon-violet)]/10 px-2 font-mono text-[10px] tracking-[0.18em] text-[var(--neon-violet)]/90 uppercase transition-colors hover:border-[var(--neon-violet)]/70 hover:bg-[var(--neon-violet)]/20"
+                      >
+                        <Pencil className="h-3 w-3" aria-hidden />
+                        編集
+                      </button>
+                      {/* override クリア (scraped 表示に戻す) */}
+                      {topTextOverride !== null && (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            if (
+                              !window.confirm(
+                                "編集後の override を削除して、元サイトのテキスト表示に戻しますか?",
+                              )
+                            ) {
+                              return;
+                            }
+                            const r = await clearScheduleTopTextOverride();
+                            if (!r.ok) {
+                              toast.error(
+                                "削除失敗: " + r.reason,
+                              );
+                              return;
+                            }
+                            toast.success(
+                              "override を削除し、元サイトの表示に戻しました",
+                            );
+                            router.refresh();
+                          }}
+                          aria-label="override を削除して元サイトの表示に戻す"
+                          title="override を削除"
+                          className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-rose-300/40 text-rose-300 transition-colors hover:bg-rose-500/15 hover:text-rose-200"
+                        >
+                          <RotateCcw className="h-3 w-3" aria-hidden />
+                        </button>
+                      )}
+                    </div>
                   )}
                 </div>
-                <pre className="whitespace-pre-wrap break-words font-sans text-[12px] leading-relaxed">
-                  {topText}
-                </pre>
+                {editing ? (
+                  <div className="flex flex-col gap-2">
+                    <textarea
+                      value={draft}
+                      onChange={(e) => setDraft(e.target.value)}
+                      rows={Math.min(
+                        Math.max(draft.split("\n").length, 4),
+                        14,
+                      )}
+                      className="w-full rounded-md border border-input bg-background/30 p-2 font-sans text-[12px] leading-relaxed focus:outline-none focus:ring-2 focus:ring-[var(--neon-cyan)]/40"
+                      spellCheck={false}
+                      autoFocus
+                    />
+                    <div className="flex items-center justify-end gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditing(false);
+                          setDraft("");
+                        }}
+                        disabled={saving}
+                        className="inline-flex h-6 items-center gap-1 rounded-md border border-border/60 px-2 font-mono text-[10px] tracking-[0.18em] text-muted-foreground uppercase transition-colors hover:bg-secondary/40 disabled:opacity-50"
+                      >
+                        <X className="h-3 w-3" aria-hidden />
+                        キャンセル
+                      </button>
+                      <button
+                        type="button"
+                        disabled={saving}
+                        onClick={async () => {
+                          setSaving(true);
+                          const r = await setScheduleTopTextOverride(draft);
+                          setSaving(false);
+                          if (!r.ok) {
+                            toast.error("保存失敗: " + r.reason);
+                            return;
+                          }
+                          toast.success("override を保存しました");
+                          setEditing(false);
+                          setDraft("");
+                          // override を表示モードに固定して再取得
+                          setView("edited");
+                          router.refresh();
+                        }}
+                        className="inline-flex h-6 items-center gap-1 rounded-md border border-[var(--neon-cyan)]/50 bg-[var(--neon-cyan)]/15 px-2 font-mono text-[10px] tracking-[0.18em] text-[var(--neon-cyan)] uppercase transition-colors hover:bg-[var(--neon-cyan)]/25 disabled:opacity-50"
+                      >
+                        {saving ? (
+                          <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
+                        ) : (
+                          <Check className="h-3 w-3" aria-hidden />
+                        )}
+                        保存
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <pre className="whitespace-pre-wrap break-words font-sans text-[12px] leading-relaxed">
+                    {displayed ?? "（テキストなし）"}
+                  </pre>
+                )}
               </div>
             )}
           </span>
