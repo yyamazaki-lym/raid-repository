@@ -52,6 +52,10 @@ export const RELEASES: ReleaseEntry[] = [
     date: "2026-04-29",
     parts: [
       {
+        title: "🔁 2 ヶ月畳みボタン押下時のスクロール固定 + サインアウトを設定ダイアログ内に移設",
+        body: "ユーザー報告 + 要望: (1) 「2 ヶ月以上前を表示」ボタン押下時、展開された行が大量に挿入されてボタンが画面外 (下方) に流されてしまい、その後の操作 (例: 畳む) に再スクロールが必要だった。(2) サインアウトボタンは頻度が低いのでヘッダーに常駐するほどではなく、設定ダイアログの中に入れたい。\n\n修正:\n1. `schedule-list.tsx`: トグル前にボタンの `getBoundingClientRect().top` を控え、状態更新後 (rAF 2 段) で再取得し差分を `window.scrollBy({ behavior: 'instant' })` で当てる。展開時 = 上に行が積まれてもボタンの画面 Y 位置は不変、畳み時 = 上の行が消えてもボタンの画面 Y 位置は不変、というアンカー挙動。\n2. `settings-dialog.tsx` のフッター (Changelog / Source / Lodestone と同じ行) に `<form action='/auth/sign-out'>` のサインアウトボタンを追加。誤クリック防止の confirm を `onSubmit` で挟む。色は rose 系で「破壊的操作」感を出す。\n3. `site-header.tsx` から `<SignOutButton />` を撤去。`sign-out-button.tsx` ファイル自体も削除 (PR #6 で追加したばかりだが、本 PR で吸収)。",
+      },
+      {
         title: "📚 過去日程の詳細ログで 2 ヶ月以上前を畳む",
         body: "ユーザー要望: 過去詳細ログ (出欠表) は年月が経つほど縦に長くなるが、普段は最近の数試合分しか参照しないので、2 ヶ月以上前はデフォルト非表示にしてほしい。\n\n実装:\n1. `schedule-list.tsx` で `renderedPast` を `recentPast` (≤ 60 日) と `olderPast` (> 60 日) に split。閾値は `60 * 24 * 60 * 60 * 1000 ms` = 約 2 ヶ月。\n2. `recentPast` は常時テーブルに描画。`olderPast` は state `showOlderPast` (default false) で展開を制御。\n3. テーブル末尾に「2 ヶ月以上前を表示 (N 件)」ボタンを追加 (toggleable)。展開後は「畳む」表示に切り替え + ChevronUp / ChevronDown でアフォーダンス。\n4. ヘッダーの件数表示は `直近 X 件 / 全 Y 件` (畳まれた状態) と `Y 件` (展開状態) で切替。\n\n2 ヶ月以下の過去ログだけのときはボタンも出ない (= 全件表示で従来 UX)。",
       },

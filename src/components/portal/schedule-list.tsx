@@ -159,6 +159,30 @@ export function ScheduleList({
   // それ以前は折り畳む。展開ボタンで切り替え可能 (state はここに置
   // いてマウント期間中保持)。
   const [showOlderPast, setShowOlderPast] = useState(false);
+  // 2.1 (2026-04-29) hot-fix: トグル後にボタンが画面外に飛ばないよう、
+  // 押下前後の `getBoundingClientRect().top` の差分だけ window をスクロール
+  // 補正する。展開時 = ボタン上に大量の行が挿入される、畳み時 = ボタン上の
+  // 行が消える、どちらの場合もボタンの「画面上の見える Y 位置」をキープする
+  // ことで、ユーザーが追視を強いられないようにする。
+  const olderToggleBtnRef = useRef<HTMLButtonElement | null>(null);
+  const onToggleOlderPast = useCallback(() => {
+    const beforeY = olderToggleBtnRef.current?.getBoundingClientRect().top;
+    setShowOlderPast((v) => !v);
+    if (beforeY === undefined) return;
+    // React commit → ブラウザ paint 後に位置差分を当てる。
+    // requestAnimationFrame 1 回では稀に layout がまだ確定していない
+    // ことがあるため 2 段重ねで安定化。
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const afterY = olderToggleBtnRef.current?.getBoundingClientRect().top;
+        if (afterY === undefined) return;
+        const delta = afterY - beforeY;
+        if (Math.abs(delta) > 1) {
+          window.scrollBy({ top: delta, behavior: "instant" });
+        }
+      });
+    });
+  }, []);
 
   if (!result.ok) {
     return (
@@ -363,8 +387,9 @@ export function ScheduleList({
                       className="border-t border-border/40 bg-secondary/10 px-3 py-2 text-center"
                     >
                       <button
+                        ref={olderToggleBtnRef}
                         type="button"
-                        onClick={() => setShowOlderPast((v) => !v)}
+                        onClick={onToggleOlderPast}
                         className="inline-flex items-center gap-1.5 rounded-md border border-border/40 bg-background/30 px-3 py-1 font-mono text-[11px] tracking-[0.18em] text-muted-foreground uppercase transition-colors hover:border-[var(--neon-cyan)]/60 hover:text-foreground"
                         aria-expanded={showOlderPast}
                       >

@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { Activity } from "lucide-react";
 import { ThemeSwitcher } from "./theme-switcher";
-import { SignOutButton } from "./sign-out-button";
 // 1.9 (2026-04-28) TODO #11: SettingsDialog (~1601 行 + MaintenanceMenu
 // ~880 行) は開いた時だけ必要なので、`next/dynamic` 経由で別 chunk 化
 // した lazy ラッパー (`settings-dialog-lazy.tsx`) を使う。初期ページ
@@ -139,8 +138,8 @@ export function SiteHeader() {
 
         <div className="ml-auto flex items-center gap-2">
           <ThemeSwitcher />
+          {/* サインアウトは設定ダイアログ内に移設 (2.1 2026-04-29)。 */}
           <SettingsDialog />
-          <SignOutButton />
           <span
             aria-hidden
             className="hidden h-2 w-2 animate-pulse rounded-full bg-[var(--neon-cyan)] shadow-[0_0_10px_var(--neon-cyan)] sm:inline-block"
