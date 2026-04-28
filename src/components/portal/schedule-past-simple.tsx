@@ -199,17 +199,40 @@ function DateChip({
           {monthDay}（{session.dayOfWeek}）
         </span>
       </SessionMemoPopover>
-      {videoLink && (
-        <Link
-          href={videoLink.href}
-          prefetch={false}
-          aria-label={`${videoLink.categoryName}/動画「${videoLink.videoTitle}」を開く`}
-          title={`${videoLink.categoryName}/動画 → 「${videoLink.videoTitle}」`}
-          className="inline-flex h-4 w-4 items-center justify-center rounded text-current/75 transition-all hover:bg-current/15 hover:text-current"
-        >
-          <Film className="h-2.5 w-2.5" aria-hidden />
-        </Link>
-      )}
+      {videoLink && (() => {
+        // 簡易ログのチップは「過去日程」のみを描画 (recent fileter で
+        // 確定済み)。詳細テーブルと同じく、Film アイコンクリックは
+        // ポータル内動画ページではなく直接外部 URL を新規タブで開く
+        // (Logs アイコンと同じ挙動)。`safeHref` を通すことで http(s)
+        // 以外の URL が混入しても DOM に到達しない。`url` が無い古い
+        // データに備えて従来 `href` への Link を fallback として残す。
+        const externalUrl = safeHref(videoLink.url);
+        if (externalUrl) {
+          return (
+            <a
+              href={externalUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label={`${videoLink.categoryName}/動画「${videoLink.videoTitle}」を新規タブで開く`}
+              title={`${videoLink.categoryName}/動画 → 「${videoLink.videoTitle}」 (外部リンク)`}
+              className="inline-flex h-4 w-4 items-center justify-center rounded text-current/75 transition-all hover:bg-current/15 hover:text-current"
+            >
+              <Film className="h-2.5 w-2.5" aria-hidden />
+            </a>
+          );
+        }
+        return (
+          <Link
+            href={videoLink.href}
+            prefetch={false}
+            aria-label={`${videoLink.categoryName}/動画「${videoLink.videoTitle}」を開く`}
+            title={`${videoLink.categoryName}/動画 → 「${videoLink.videoTitle}」`}
+            className="inline-flex h-4 w-4 items-center justify-center rounded text-current/75 transition-all hover:bg-current/15 hover:text-current"
+          >
+            <Film className="h-2.5 w-2.5" aria-hidden />
+          </Link>
+        );
+      })()}
       {(() => {
         // Same priority as schedule-list: video.logs_url first, then
         // session-level fallback. Lets the chip surface a Logs icon
