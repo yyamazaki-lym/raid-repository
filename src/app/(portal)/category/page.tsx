@@ -12,7 +12,6 @@ import {
   fetchTimeToClearByCategory,
 } from "@/lib/server/categories-actions";
 import { getAuthorizedUserRoles } from "@/lib/server/auth";
-import { filterVisibleCategories } from "@/lib/category-visibility";
 import { CategoryList } from "./category-list";
 
 export const metadata = {
@@ -28,12 +27,12 @@ export default async function CategoryIndexPage() {
       fetchPracticeSecondsByCategory(),
       fetchTimeToClearByCategory(),
     ]);
-  // TODO #19: hide categories the user's roles can't view. Cards still
-  // exist in the DB and admins (= every guild member with edit access in
-  // V1) can see them once their role intersection allows.
-  const visible = result.ok
-    ? filterVisibleCategories(result.categories, userRoles)
-    : result.categories;
+  // 2.0 (2026-04-29): /category index は管理ビューとして全件表示する。
+  // 直前 PR (#3) ではここでもフィルタしていたが、ロール制限を付けた
+  // カテゴリを後で undo するために編集ダイアログへ到達する経路が必要
+  // なため、index ではフィルタを外す。代わりに category-list.tsx 側で
+  // 自分が見えないカードに 🔒 + ロールバッジを出して視認性を確保。
+  // MainTabs ドロップダウンと subpage 直アクセスは引き続きロール gate。
 
   return (
     <div className="flex flex-col gap-6">
@@ -71,7 +70,7 @@ export default async function CategoryIndexPage() {
       )}
 
       <CategoryList
-        initialCategories={visible}
+        initialCategories={result.categories}
         userRoleIds={userRoles}
         recentImportCounts={recentCounts}
         practiceSecondsByCategory={practiceSeconds}

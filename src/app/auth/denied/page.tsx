@@ -22,8 +22,10 @@ export default async function DeniedPage({
       {isMissingRole ? (
         // TODO #19: role-gated category. The user is authenticated and a
         // guild member but lacks any of the category's `requiredRoleIds`.
+        // 1 行目は「です」を省いて言い切り型に — max-w-md の幅で 2 行折り
+        // 返しになると「です。」だけが孤立して見苦しくなるため。
         <p className="text-sm text-muted-foreground">
-          このコンテンツは特定の Discord ロールを持つメンバー限定です。
+          このコンテンツは特定の Discord ロールを持つメンバー限定。
           <br />
           サーバー管理者にロール付与を依頼してください。
         </p>

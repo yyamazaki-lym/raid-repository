@@ -53,6 +53,7 @@
 | ~~18~~ | ~~設定ダイアログに FF14 Lodestone へのリンクを追加~~ — 完了 (1.9 (2026-04-28)、フッター GitHub Source の隣に Link2 アイコン + "Lodestone" ラベルで配置) | ~~極小~~ |
 | ~~19~~ | ~~ロール単位で見られるページを分けたい~~ — 完了 (2.0 (2026-04-28)、`categories.required_role_ids` 列追加 + `CategoryFormDialog` のチェックボックス UI + bot token で `/guilds/{id}/roles` を React.cache 取得 + `filterVisibleCategories` で MainTabs/Switcher/index/popover に適用 + `[slug]/layout.tsx` で `requireDiscordRoles()` 直アクセスガード + `/auth/denied?reason=missing_role` UX) | ~~中~~ |
 | 20 | Vercel ドメイン変更 (`raid-repository.vercel.app` から好きな名前 / カスタムドメインへ) — Vercel Project Settings → Domains で実施。Discord Developer Portal の Redirects、Supabase Authentication の Site URL / Redirect URLs にも新ドメインを追加する必要あり | 小 |
+| 21 | カテゴリ編集を「admin ロール持ちのみ」に制限 — 現状はゲストでも編集ダイアログから `required_role_ids` を空にできてしまう (= ロール gate を自分で外せる)。`DISCORD_ADMIN_ROLE_IDS` env を導入し、create / update / delete を `requireDiscordRoles(adminRoleIds)` でガード + UI 側を read-only 化。Supabase RLS まで絞るか middleware だけで防ぐかは別途判断 | 中 |
 
 ### 除外済み (再対応不要)
 

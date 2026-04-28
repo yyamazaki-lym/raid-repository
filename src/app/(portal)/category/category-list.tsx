@@ -6,6 +6,7 @@ import { useMemo, useState } from "react";
 import {
   GripVertical,
   Layers,
+  Lock,
   MoreVertical,
   Trash2,
   Pencil,
@@ -60,9 +61,10 @@ import {
   updateCategoryStatus,
   useRealtimeCategories,
 } from "@/lib/categories-client";
-import { filterVisibleCategories } from "@/lib/category-visibility";
+import { isCategoryVisibleToRoles } from "@/lib/category-visibility";
 import type { Category, CategoryStatus } from "@/lib/supabase/types";
 import { isSafeUrl } from "@/lib/url-safe";
+import { cn } from "@/lib/utils";
 
 type Props = {
   initialCategories: Category[];
@@ -93,10 +95,11 @@ export function CategoryList({
 }: Props) {
   const router = useRouter();
   // Realtime hook keeps the list in sync with DB changes from any client.
-  // Filter post-realtime so newly-added role-restricted categories don't
-  // briefly appear before the next page navigation.
-  const liveAll = useRealtimeCategories(initialCategories);
-  const live = filterVisibleCategories(liveAll, userRoleIds);
+  // 2.0 (2026-04-29): /category index は管理ビューとして全件を出すので
+  // ここでは role フィルタしない (= 自分が見えないカードも表示)。代わり
+  // に各カードに「rolesVisible」を渡し、見えないものは 🔒 + ロール ID
+  // バッジで描画して、編集ダイアログから undo できる経路を残す。
+  const live = useRealtimeCategories(initialCategories);
   // Local mirror so DnD can rearrange optimistically without waiting on
   // round-trip+realtime — Realtime overwrites once the server confirms.
   const [optimisticOrder, setOptimisticOrder] = useState<string[] | null>(null);
@@ -221,6 +224,7 @@ export function CategoryList({
               <SortableCategoryCard
                 key={cat.id}
                 category={cat}
+                viewerCanSee={isCategoryVisibleToRoles(cat, userRoleIds)}
                 recentImports={recentImportCounts[cat.id] ?? 0}
                 practiceSeconds={practiceSecondsByCategory[cat.id] ?? 0}
                 timeToClearSeconds={timeToClearByCategory[cat.id] ?? 0}
@@ -247,6 +251,7 @@ export function CategoryList({
 
 function SortableCategoryCard({
   category,
+  viewerCanSee,
   recentImports,
   practiceSeconds,
   timeToClearSeconds,
@@ -255,6 +260,13 @@ function SortableCategoryCard({
   onDelete,
 }: {
   category: Category;
+  /**
+   * 2.0 (2026-04-29): false の場合、このカードは閲覧 (subpage 遷移)
+   * できないユーザに表示されている (= 管理ビュー枠での表示)。視覚的
+   * に🔒+ロール ID 数バッジを出して、誤って subpage にナビゲート
+   * しないよう抑制し、編集メニュー (⋮) からの undo 経路を促す。
+   */
+  viewerCanSee: boolean;
   recentImports: number;
   practiceSeconds: number;
   timeToClearSeconds: number;
@@ -301,7 +313,15 @@ function SortableCategoryCard({
 
   return (
     <li ref={setNodeRef} style={style} {...attributes}>
-      <Card className="glass neon-edge group relative flex items-stretch gap-2 p-0 transition-transform hover:-translate-y-0.5">
+      <Card
+        className={cn(
+          "glass neon-edge group relative flex items-stretch gap-2 p-0 transition-transform hover:-translate-y-0.5",
+          // 2.0 (2026-04-29): viewer cannot view → 視覚的に「ロック中」を
+          // 示すため彩度を落とす + 枠を amber 寄りにずらす。クリックすると
+          // /auth/denied に飛ぶが、編集メニューから role 解除可能。
+          !viewerCanSee && "opacity-70 ring-1 ring-amber-400/30",
+        )}
+      >
         {bgImageUrl && (
           <>
             <div
@@ -340,6 +360,15 @@ function SortableCategoryCard({
               <p className="font-display text-foreground text-sm leading-tight tracking-[0.04em]">
                 {category.name}
               </p>
+              {!viewerCanSee && (
+                <span
+                  className="inline-flex shrink-0 items-center gap-1 rounded-sm border border-amber-400/40 bg-amber-400/10 px-1.5 py-px font-mono text-[9px] tracking-[0.18em] text-amber-200 uppercase"
+                  title={`このコンテンツは ${category.requiredRoleIds.length} 個のロールに制限されています (あなたは閲覧不可)`}
+                >
+                  <Lock className="h-2.5 w-2.5" aria-hidden />
+                  {category.requiredRoleIds.length}
+                </span>
+              )}
             </div>
             <div className="mt-1 flex flex-wrap items-center justify-between gap-2 font-mono text-[11px] tracking-[0.18em] uppercase">
               <p className="text-muted-foreground">/{category.slug}</p>

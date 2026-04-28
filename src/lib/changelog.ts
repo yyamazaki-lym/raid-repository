@@ -49,6 +49,16 @@ export type ReleasePart = {
 export const RELEASES: ReleaseEntry[] = [
   {
     version: "2.0",
+    date: "2026-04-29",
+    parts: [
+      {
+        title: "🔓 ロール制限カテゴリの「戻せない」問題を解消 + 拒否ページの折返し修正",
+        body: "ユーザー報告 (PR #3 リリース後): (1) 自分が持っていないロールを設定して保存すると、そのカードが /category 一覧から消えて編集ダイアログに到達できなくなる「詰み」状態 (= ロール制限を後で undo できない)、(2) /auth/denied の「メンバー限定です。」が幅 max-w-md で 2 行折返しになり「です。」だけが孤立して見栄えが悪い。\n\n修正:\n1. /category index ページは「管理ビュー」と位置付け、ロール制限の有無に関わらず**全カテゴリを表示**する方針に変更 (page.tsx で `filterVisibleCategories` 呼び出しを撤去)。MainTabs ドロップダウン / カテゴリ subpage 直アクセスはこれまで通りロールで gate。\n2. category-list.tsx で自分が見えないカードに **🔒 + 制限ロール ID 数バッジ**を表示し、`opacity-70 + ring-amber-400/30` で視覚的にロック中を示す。クリックすれば /auth/denied に飛ぶが、編集メニュー (⋮ → 編集) は常時アクセス可能なので必ず undo できる。\n3. denied ページの 1 行目の文末「です」を取り、「このコンテンツは特定の Discord ロールを持つメンバー限定。」と言い切り型に変更。max-w-md の 2 行折返しでも見映えが崩れない。\n\n既知の限界 (TODO #21 として記録): カテゴリ編集自体は誰でもできるため、ゲストでもダイアログから `required_role_ids` を空にして閲覧可能化できる = 現状のロール制御は「視認性によるソフト制限」止まり。本格運用には DISCORD_ADMIN_ROLE_IDS env と admin 限定の編集ガードが必要。",
+      },
+    ],
+  },
+  {
+    version: "2.0",
     date: "2026-04-28",
     parts: [
       {
