@@ -143,6 +143,10 @@ export const RELEASES: ReleaseEntry[] = [
         title: "🗂 更新履歴を最新 5 件のみに絞り、それ以前は GitHub commits リンクへ (bundle 軽量化)",
         body: "ユーザー提案: 「更新履歴に関しては直近5件のみでそれ以降は省略かどこかへのリンクでもいいかもしれない」。`changelog.ts` の `RELEASES` から古い 84 件 (1.9.34 ～ 1.0.0) を削除し最新 5 件のみ残置 — ファイル 984 → 179 行に縮小。SettingsDialog chunk のサイズが大幅に減るので、設定を開いた時の応答性も向上。古い履歴は GitHub commits ページ (`/commits/main`) に外部リンクで誘導 (各コミットメッセージに version + 内容が記録済みのため代替手段として十分)。`showAllReleases` state と `RELEASES_INITIAL_LIMIT` 定数も役目が無くなったので撤去。",
       },
+      {
+        title: "🚀 / ページを Edge Runtime 化 + 5 分毎の warm-up cron でコールドスタート抑制",
+        body: "Vercel Free tier の Node.js Function は数分アクセスがないと sleep し、復帰に 500ms-1.5s かかってリロードの「引っ掛かり」体感の主因になっていた。対策 2 段:\n(1) `/` ルートを Edge Runtime に切替 (`export const runtime = \"edge\"`)。Edge Function は cold start ~50ms 程度で Node の数分の一。互換性のため `fflogs-oauth.ts` の `Buffer.from(...).toString(\"base64\")` を `btoa()` (Web 標準) に置換 — Node でも Edge でも動く。Build 検証で他の Node-only API は不在を確認。`/api/auth/fflogs/callback` 等の API ルートは Node Runtime のまま (route 単位で独立)。\n(2) `/api/health` を Edge で新設 (DB / 外部 fetch なし、軽量 JSON)。GitHub Actions ワークフロー `.github/workflows/warmup.yml` を追加し、5 分毎に repo secret `WARMUP_URL` (= `https://<deploy>/api/health`) を curl で叩く。これで `/` と同じ Function プールが常に warm。GitHub Actions Free tier は public repo で実質無料、月 8640 回のジョブも 1 回 ~10s で 2000 分以内に収まる。",
+      },
     ],
   },
   {

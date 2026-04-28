@@ -19,6 +19,25 @@ export const metadata = {
   title: "スケジュール",
 };
 
+/**
+ * 1.9 (2026-04-28) TODO #11: Edge Runtime 化でコールドスタートを短縮。
+ *
+ * Vercel Free tier では Node.js Function に 500ms〜1.5s のコールド
+ * スタートペナルティがあるが、Edge Function は ~50ms。リロード時の
+ * 「引っ掛かり」体感の主要因なのでまず Edge を試す。
+ *
+ * 互換性チェック済み:
+ *   - `@supabase/ssr` server client: Edge 公式対応
+ *   - `next/headers` cookies(): Edge 対応
+ *   - 外部 fetch (character-sheets / fflogs / 祝日 API): Edge 対応
+ *   - `Buffer.from(...).toString("base64")` を `btoa()` に置換済み
+ *     (`fflogs-oauth.ts` の OAuth Basic 認証ヘッダー)
+ *
+ * 別ルート (/api/auth/fflogs/callback など) は Node Runtime 維持。
+ * runtime config は per-route なので独立に運用できる。
+ */
+export const runtime = "edge";
+
 export default async function SchedulePage() {
   const url = await getScheduleSourceUrl();
 

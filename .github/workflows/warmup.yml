@@ -1,0 +1,41 @@
+# 1.9 (2026-04-28) TODO #11: Vercel Free tier の Function コールド
+# スタートを抑制する warm-up cron。
+#
+# `/api/health` を 5 分毎に GET することで `/` と同じ Edge Function プール
+# が常に warm 状態になり、ユーザーがリロードしたときの体感の重さを軽減。
+#
+# Vercel の cron 機能 (vercel.json) は Pro tier 以上の制限があるが、
+# GitHub Actions の cron は public repo であれば実質無料 (1 ジョブあたり
+# ~10s で済むので 5 分毎 = 月 8640 回 × 10s = ~24h、Free tier 2000 分の
+# 範囲内)。
+#
+# `WARMUP_URL` を repo Secrets に登録: 例 `https://raid-repository.vercel.app/api/health`
+
+name: warmup-vercel
+
+on:
+  schedule:
+    # 5 分毎に発火 (UTC、cron 構文)。GitHub の cron は scheduling 精度が
+    # 低めで実際には数分遅延することがあるが warm-up 用途には十分。
+    - cron: "*/5 * * * *"
+  # 手動でも発火できるようにしておく (Actions タブから "Run workflow")
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: GET /api/health
+        env:
+          WARMUP_URL: ${{ secrets.WARMUP_URL }}
+        run: |
+          if [ -z "$WARMUP_URL" ]; then
+            echo "WARMUP_URL secret is not set — skipping ping"
+            exit 0
+          fi
+          # -fsS: fail on HTTP error, silent except on error.
+          # --max-time 30: hard timeout (cold start may take a moment).
+          # 5xx 等のサーバエラーは Action 失敗扱いにして気付けるように
+          # する (-f flag)。
+          curl -fsS --max-time 30 "$WARMUP_URL"

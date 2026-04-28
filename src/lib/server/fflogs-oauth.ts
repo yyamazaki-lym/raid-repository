@@ -143,9 +143,9 @@ export async function exchangeCodeForTokens(
   // credentials returned `invalid_client` in the wild). Switch to the
   // Authorization: Basic <base64(id:secret)> header form which is the
   // strict OAuth 2.0 spec preference.
-  const basicAuth = Buffer.from(
-    `${creds.clientId}:${creds.clientSecret}`,
-  ).toString("base64");
+  // 1.9 (2026-04-28) TODO #11: Edge Runtime 化のため Buffer.from を
+  // btoa (web 標準) に置換。Node でも Edge でも動く。
+  const basicAuth = btoa(`${creds.clientId}:${creds.clientSecret}`);
   const body = new URLSearchParams({
     grant_type: "authorization_code",
     code,
@@ -223,9 +223,9 @@ async function refreshTokens(
   if (!creds) return null;
   // Same Basic-Auth pattern as the code-exchange path — FFLogs's
   // token endpoint rejects body-form credentials with invalid_client.
-  const basicAuth = Buffer.from(
-    `${creds.clientId}:${creds.clientSecret}`,
-  ).toString("base64");
+  // 1.9 (2026-04-28) TODO #11: Edge Runtime 化のため Buffer.from を
+  // btoa (web 標準) に置換。Node でも Edge でも動く。
+  const basicAuth = btoa(`${creds.clientId}:${creds.clientSecret}`);
   const body = new URLSearchParams({
     grant_type: "refresh_token",
     refresh_token: refreshToken,
