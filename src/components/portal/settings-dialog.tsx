@@ -1511,10 +1511,14 @@ export function SettingsDialog() {
 
                             {/* 展開時の本体: parts (新スキーム) があれば
                                 part 単位の collapsible、無ければ notes
-                                (旧スキーム) のフラットな箇条書き */}
+                                (旧スキーム) のフラットな箇条書き。
+                                1.9 (2026-04-28) TODO #11: 各 release 内の
+                                parts も最新 5 個に制限して表示を絞る。
+                                (大項目: 5 件、小項目: 5 件 / 大項目) */}
                             <div className="mt-1.5 ml-3 flex flex-col gap-1">
                               {r.parts ? (
-                                r.parts.map((p, i) => (
+                                <>
+                                {r.parts.slice(0, 5).map((p, i) => (
                                   <details
                                     key={i}
                                     className="group/part rounded-sm border border-border/30 bg-secondary/25"
@@ -1534,7 +1538,13 @@ export function SettingsDialog() {
                                       {p.body}
                                     </p>
                                   </details>
-                                ))
+                                ))}
+                                {r.parts.length > 5 && (
+                                  <p className="ml-2 font-mono text-[9px] tracking-[0.18em] text-muted-foreground/70 uppercase">
+                                    … +{r.parts.length - 5} more
+                                  </p>
+                                )}
+                                </>
                               ) : (
                                 <ul className="flex flex-col gap-0.5 text-[11px] text-foreground/85">
                                   {(r.notes ?? []).map((n, i) => (
