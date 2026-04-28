@@ -1,5 +1,8 @@
 import { AlertTriangle } from "lucide-react";
 import { Card } from "@/components/ui/card";
+// Server component — `next/dynamic({ ssr: false })` は server 側で
+// 動かないので、ここは static import のまま (client チャンクには
+// `category-list.tsx` 経由の `category-form-dialog-lazy` 分割が効く)。
 import { CategoryFormDialog } from "@/components/portal/category-form-dialog";
 import { MaintenanceMenu } from "@/components/portal/maintenance-menu";
 import { fetchCategories } from "@/lib/supabase/categories";

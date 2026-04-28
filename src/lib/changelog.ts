@@ -131,6 +131,10 @@ export const RELEASES: ReleaseEntry[] = [
         title: "🔣 取り込み文字の HTML エンティティ decode を網羅化 (TODO #13)",
         body: "ユーザー報告: 「読み込んだ文字が文字コードのまま表示される」。実態は `&times;` などの名前付きエンティティが decoder の対象に含まれていなかったこと。3 箇所に散在していた不完全な decoder (`schedule/parse.ts` の `stripHtmlToText` と `decodeEntities`、`server/page-title.ts` の `decodeEntities`) を `src/lib/html-entities.ts` の単一実装 `decodeHtmlEntities()` に統合。`&times;` `&divide;` `&plusmn;` `&deg;` `&micro;` `&hellip;` `&mdash;` `&ndash;` `&middot;` `&bull;` `&laquo;` `&raquo;` `&lsquo;` `&rsquo;` `&ldquo;` `&rdquo;` `&sbquo;` `&bdquo;` `&sect;` `&para;` `&iexcl;` `&iquest;` `&larr;` `&uarr;` `&rarr;` `&darr;` `&harr;` `&yen;` `&pound;` `&euro;` `&cent;` `&copy;` `&reg;` `&trade;` `&hearts;` `&clubs;` `&spades;` `&diams;` 等を網羅。数値参照 (`&#NN;` / `&#xHH;`) と `&amp;` 先頭処理 (二重エンコード対応) も維持。preview で運用ルール popup の `&times;` → `×` 復号を確認。",
       },
+      {
+        title: "⚡ 重いダイアログ系を `next/dynamic` で別 chunk 化してリロード時間短縮 (TODO #11)",
+        body: "ユーザー報告: 「全体的にページが重い、リロードに時間がかかる」。原因の一つ: `SettingsDialog` (~1601 行 + 内包する `MaintenanceMenu` ~880 行) が `site-header` 経由で全ページの初期 client bundle に常時混入していた。同様に `CategoryFormDialog` (~487 行) と `LinkFormDialog` (~338 行) も category 系ページに eager load されていた。それぞれ `*-lazy.tsx` の薄い wrapper で `next/dynamic({ ssr: false })` 化し、初期 paint の bundle から外して別 chunk で並行 fetch。ボタン表示は ms オーダーの遅延が出るが critical path 外なので許容。trigger ボタンが現れる前に「Settings/コンテンツ追加/リンク追加」を押す可能性は実質ゼロ。`page.tsx` (server component) からは `ssr: false` が使えないので静的 import のままだが、client 側の `category-list.tsx` / `strategy-list.tsx` / `videos-list.tsx` 経由分はすべて lazy 化された (chunk split は client 側 import の有無で判定されるため)。",
+      },
     ],
   },
   {

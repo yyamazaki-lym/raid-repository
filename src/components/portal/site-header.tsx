@@ -1,7 +1,11 @@
 import Link from "next/link";
 import { Activity } from "lucide-react";
 import { ThemeSwitcher } from "./theme-switcher";
-import { SettingsDialog } from "./settings-dialog";
+// 1.9 (2026-04-28) TODO #11: SettingsDialog (~1601 行 + MaintenanceMenu
+// ~880 行) は開いた時だけ必要なので、`next/dynamic` 経由で別 chunk 化
+// した lazy ラッパー (`settings-dialog-lazy.tsx`) を使う。初期ページ
+// ロードの client bundle から外して reload を軽くする。
+import { SettingsDialog } from "./settings-dialog-lazy";
 import { DeployColorBadge } from "./deploy-color-badge";
 import packageJson from "../../../package.json";
 import { RELEASES } from "@/lib/changelog";

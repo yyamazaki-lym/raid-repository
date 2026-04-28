@@ -47,7 +47,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { StatusBadge } from "@/components/portal/status-badge";
-import { CategoryFormDialog } from "@/components/portal/category-form-dialog";
+// 1.9 (2026-04-28) TODO #11: lazy 化で初期 client bundle から外す
+import { CategoryFormDialog } from "@/components/portal/category-form-dialog-lazy";
 import {
   formatDurationLong,
   formatDurationShort,
