@@ -111,6 +111,9 @@ export function CategoryFormDialog({
   const [firstClearDate, setFirstClearDate] = useState(
     isoToDateInput(category?.firstClearAt ?? null),
   );
+  const [backgroundImageUrl, setBackgroundImageUrl] = useState(
+    category?.backgroundImageUrl ?? "",
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -125,6 +128,7 @@ export function CategoryFormDialog({
       setDiscordVideo(category?.discordVideoChannelId ?? "");
       setDiscordEnabled(category?.discordImportEnabled ?? true);
       setFirstClearDate(isoToDateInput(category?.firstClearAt ?? null));
+      setBackgroundImageUrl(category?.backgroundImageUrl ?? "");
       setError(null);
     }
   }, [open, category]);
@@ -149,6 +153,7 @@ export function CategoryFormDialog({
     const trimmedLoot = lootUrl.trim();
     const trimmedDiscordStrategy = discordStrategy.trim();
     const trimmedDiscordVideo = discordVideo.trim();
+    const trimmedBackgroundImage = backgroundImageUrl.trim();
 
     if (!trimmedName) return setError("名前を入力してください");
     if (!trimmedSlug || !SLUG_RE.test(trimmedSlug)) {
@@ -160,6 +165,8 @@ export function CategoryFormDialog({
     if (mitigationErr) return setError("軽減表URL: " + mitigationErr);
     const lootErr = validateUrl(trimmedLoot);
     if (lootErr) return setError("ロット管理URL: " + lootErr);
+    const bgImageErr = validateUrl(trimmedBackgroundImage);
+    if (bgImageErr) return setError("背景画像URL: " + bgImageErr);
 
     // Discord channel IDs are 17–20 digit snowflakes.
     const SNOWFLAKE_RE = /^\d{17,20}$/;
@@ -182,6 +189,7 @@ export function CategoryFormDialog({
       discord_video_channel_id: trimmedDiscordVideo || null,
       discord_import_enabled: discordEnabled,
       first_clear_at: firstClearIso,
+      background_image_url: trimmedBackgroundImage || null,
     };
 
     const result = isEdit
@@ -199,6 +207,8 @@ export function CategoryFormDialog({
           if (trimmedMitigation) followUp.mitigation_sheet_url = trimmedMitigation;
           if (trimmedLoot) followUp.loot_sheet_url = trimmedLoot;
           if (firstClearIso) followUp.first_clear_at = firstClearIso;
+          if (trimmedBackgroundImage)
+            followUp.background_image_url = trimmedBackgroundImage;
           if (Object.keys(followUp).length > 0) {
             await updateCategory(r.category.id, followUp);
           }
@@ -417,6 +427,39 @@ export function CategoryFormDialog({
               </p>
             </div>
           </label>
+
+          <div className="flex flex-col gap-1.5 border-t border-border/30 pt-4">
+            <Label
+              htmlFor="background-image-url"
+              className="text-xs text-foreground/80"
+            >
+              背景画像URL（任意）
+            </Label>
+            <Input
+              id="background-image-url"
+              type="url"
+              inputMode="url"
+              value={backgroundImageUrl}
+              onChange={(e) => setBackgroundImageUrl(e.target.value)}
+              placeholder="https://example.com/path/to/image.jpg"
+              className="font-mono text-[12px]"
+              autoComplete="off"
+              spellCheck={false}
+            />
+            <p className="text-muted-foreground text-[11px] leading-relaxed">
+              コンテンツ一覧のカード背景に表示されます（http(s) のみ）。空欄で無効。
+            </p>
+            {backgroundImageUrl.trim() &&
+              /^https?:\/\//i.test(backgroundImageUrl.trim()) && (
+                <div
+                  aria-hidden
+                  className="mt-1 h-20 w-full overflow-hidden rounded-md border border-border/40 bg-cover bg-center"
+                  style={{
+                    backgroundImage: `url(${backgroundImageUrl.trim()})`,
+                  }}
+                />
+              )}
+          </div>
 
           <div className="flex flex-col gap-1.5 border-t border-border/30 pt-4">
             <Label htmlFor="first-clear" className="text-xs text-foreground/80">

@@ -41,6 +41,8 @@ export type CategoryRow = {
    * auto-link feature filters reports by these zone IDs to prevent
    * cross-content mismatches. Empty/null = fall back to fuzzy matching. */
   expected_fflogs_zone_ids: number[] | null;
+  /** Optional background image URL shown behind each card on /category. */
+  background_image_url: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -61,6 +63,8 @@ export type Category = {
   firstClearAt: string | null;
   /** FFLogs zone IDs (e.g. [65, 66]) that this content is. Empty array = unset. */
   expectedFflogsZoneIds: number[];
+  /** Optional background image URL shown behind the card on /category. */
+  backgroundImageUrl: string | null;
 };
 
 export function rowToCategory(row: CategoryRow): Category {
@@ -77,6 +81,7 @@ export function rowToCategory(row: CategoryRow): Category {
     discordImportEnabled: row.discord_import_enabled ?? true,
     firstClearAt: row.first_clear_at ?? null,
     expectedFflogsZoneIds: row.expected_fflogs_zone_ids ?? [],
+    backgroundImageUrl: row.background_image_url ?? null,
   };
 }
 

@@ -61,6 +61,7 @@ import {
   useRealtimeCategories,
 } from "@/lib/categories-client";
 import type { Category, CategoryStatus } from "@/lib/supabase/types";
+import { isSafeUrl } from "@/lib/url-safe";
 
 type Props = {
   initialCategories: Category[];
@@ -279,9 +280,32 @@ function SortableCategoryCard({
       category.status === "休止中" ||
       category.status === "クリア済");
 
+  // Background image (TODO #17): paint behind the card's glass surface so
+  // text and chips remain readable. Validated via `isSafeUrl` to prevent
+  // `javascript:` / `data:` URLs from being injected via category edit.
+  const bgImageUrl =
+    category.backgroundImageUrl && isSafeUrl(category.backgroundImageUrl)
+      ? category.backgroundImageUrl
+      : null;
+
   return (
     <li ref={setNodeRef} style={style} {...attributes}>
       <Card className="glass neon-edge group relative flex items-stretch gap-2 p-0 transition-transform hover:-translate-y-0.5">
+        {bgImageUrl && (
+          <>
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-0 rounded-xl bg-cover bg-center opacity-40"
+              style={{ backgroundImage: `url(${bgImageUrl})` }}
+            />
+            {/* Dark gradient overlay so foreground text/badges remain
+                readable regardless of image brightness. */}
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-0 rounded-xl bg-gradient-to-r from-background/55 via-background/30 to-background/55"
+            />
+          </>
+        )}
         <button
           type="button"
           {...listeners}

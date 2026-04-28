@@ -49,7 +49,7 @@
 | ~~14~~ | ~~カレンダー取り込みで各人のメモに更新があった場合、視覚的に色変化させる~~ — 完了 (1.9 `59122b2`、`comment-popover.tsx` で fingerprint 比較 + amber highlight + 確認時 localStorage 更新) | ~~小〜中~~ |
 | ~~15~~ | ~~過去の活動履歴 簡易/詳細の見出し名~~ — 完了 (1.9 (2026-04-28)、`Past · 簡易ログ (日付チップ)` / `Past · 詳細ログ (出欠表)`) | ~~極小~~ |
 | ~~16~~ | ~~DnD アイテムのカテゴリ跨ぎ移動~~ — 完了 (1.9 `2f59abf`、SortableContext をカテゴリブロック単位に再設計、子の grip も親 section の listeners に接続。子を掴んでも親カテゴリごと追従、中の複数募集文も全部追従) | ~~中~~ |
-| 17 | コンテンツカードに背景画像を設定可能にする (カテゴリごとに `background_image_url` 等を持たせて category-list の Card 背景に反映) | 中 |
+| ~~17~~ | ~~コンテンツカードに背景画像を設定可能にする~~ — 完了 (1.9 (2026-04-28)、`categories.background_image_url` 列追加 + 編集ダイアログに URL 入力 + Card に image layer + dark gradient overlay。`isSafeUrl` で http(s) のみ許可、`schema.sql` 再適用が必要) | ~~中~~ |
 | ~~18~~ | ~~設定ダイアログに FF14 Lodestone へのリンクを追加~~ — 完了 (1.9 (2026-04-28)、フッター GitHub Source の隣に Link2 アイコン + "Lodestone" ラベルで配置) | ~~極小~~ |
 
 ### 除外済み (再対応不要)

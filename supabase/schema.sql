@@ -57,7 +57,11 @@ ALTER TABLE public.categories
   -- happen on the same date. Empty / NULL = fall back to fuzzy bilingual
   -- group matching. Find zone IDs from any FFLogs report URL of that
   -- content (the report's zone field in the API response).
-  ADD COLUMN IF NOT EXISTS expected_fflogs_zone_ids      integer[];
+  ADD COLUMN IF NOT EXISTS expected_fflogs_zone_ids      integer[],
+  -- Phase 9 (TODO #17, 1.9 (2026-04-28)): optional background image URL
+  -- shown behind each card on /category. Free-form `text` URL — http(s)
+  -- only at the UI layer (`safeHref`). NULL = no background image (default).
+  ADD COLUMN IF NOT EXISTS background_image_url          text;
 
 -- Phase 8.1 (1.9.10): track whether category_links.logs_url was set by
 -- automated FFLogs sync ('auto') or by manual user edit ('manual'). This

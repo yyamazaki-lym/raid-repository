@@ -52,6 +52,10 @@ export const RELEASES: ReleaseEntry[] = [
     date: "2026-04-28",
     parts: [
       {
+        title: "🖼️ コンテンツカードに背景画像を設定可能にする (TODO #17)",
+        body: "コンテンツ一覧 (/category) の各カードにカテゴリ別の背景画像を設定できるようにした。コンテンツ編集ダイアログに「背景画像URL」フィールドを追加し、http(s) URL を入力するとカード背景に `bg-cover bg-center` で表示される。\n実装:\n1. `categories.background_image_url text` カラムを追加 (idempotent migration)。`Category.backgroundImageUrl: string | null` を types に追加。\n2. `CategoryFormDialog` に URL 入力欄 + 入力中の小プレビュー (h-20) を追加。`validateUrl` で http(s) のみ許可、create 時は followUp update で適用。\n3. `category-list.tsx` の Card 内に `pointer-events-none absolute inset-0 bg-cover bg-center opacity-40` の image layer + `bg-gradient-to-r from-background/55 via-background/30 to-background/55` の dark gradient overlay を挿入し、テキスト・チップの可読性を確保。`isSafeUrl` で `javascript:` / `data:` URL を弾く。\n4. 空欄でリセット可能 (NULL → 背景画像なしに戻る)。supabase schema.sql の再適用が必要。",
+      },
+      {
         title: "🚚 募集文テンプレの DnD をカテゴリブロック単位の sortable に再設計 (TODO #16)",
         body: "前回 (3bc7a32) は drop 時に内部でブロック並び替えを再計算する方式だったが、ユーザー指摘の通り「DnD 中に元カテゴリ section が追従しない (drop の後に付いてくる)」UX 上の問題があった。SortableContext を child template 単位 → カテゴリブロック (group key) 単位に再設計し、各 section 自体が `useSortable` する形に変更。\n実装:\n1. SortableContext.items を group key 配列 (`categoryId ?? '__none__'`) に変更。\n2. 新コンポーネント `SortableCategorySection` でカテゴリブロックを丸ごと sortable 単位として扱う。section ヘッダー左に grip ハンドルを追加。\n3. 子募集文 (`TemplateRow`) の grip も親 section の `useSortable` listeners を prop drilling して接続。子の grip を掴んでも親 section ごとドラッグされる → 中の複数募集文が全部一緒に追従。\n4. `onDragEnd`: arrayMove(grouped, oldIndex, newIndex) → flatMap で template id 列にしてから `setRecruitmentTemplateOrder` に渡す。category_id は変更しない。\n5. popover 内では intra-category 並び替えは行わない (per-category マクロページに譲る) — popover はカテゴリ全体のグローバル順序の調整に専念。",
       },
