@@ -8,6 +8,7 @@ import {
   Film,
   Loader2,
   MessageSquare,
+  Pencil,
   RefreshCw,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
@@ -212,6 +213,15 @@ export function ScheduleList({
           onRefresh={refreshSchedule}
           refreshing={refreshing}
           topText={result.data.topText ?? null}
+          onEditRules={
+            scheduleUrl
+              ? () =>
+                  openEditFrame(
+                    scheduleUrl,
+                    "運用ルール / 注意事項を編集",
+                  )
+              : null
+          }
         />
         <div className="overflow-x-auto">
           <table className="w-full min-w-[640px] border-collapse text-left text-sm">
@@ -660,6 +670,7 @@ function Legend({
   onRefresh,
   refreshing = false,
   topText = null,
+  onEditRules = null,
 }: {
   hasUltimateClear?: boolean;
   /** Called when the user clicks the refresh button at the right end. */
@@ -670,6 +681,11 @@ function Legend({
    * operation rules). When non-null, a clickable MessageSquare icon is
    * shown next to the 未回答 entry → opens a popover with the text. */
   topText?: string | null;
+  /** Optional callback for the 「編集」 button inside the rules popover.
+   * Provided by the parent only when a `scheduleUrl` is configured —
+   * clicking opens the source schedule page in the in-portal iframe
+   * dialog so the user can edit the comment / 注意事項 area there. */
+  onEditRules?: (() => void) | null;
 }) {
   // Local controlled-popover state for the top-text comment icon.
   const [showTopText, setShowTopText] = useState(false);
@@ -752,9 +768,26 @@ function Legend({
                 aria-label="運用ルール / 注意事項"
                 className="glass-popup absolute top-full right-0 z-40 mt-1 w-[min(36rem,calc(100vw-2rem))] rounded-lg border border-[var(--neon-violet)]/35 px-3.5 py-3 text-[12px] leading-relaxed text-foreground/85 shadow-[0_12px_40px_-16px_rgba(167,139,250,0.45),0_2px_8px_-2px_rgba(0,0,0,0.4)]"
               >
-                <p className="mb-2 font-mono text-[10px] tracking-[0.22em] text-[var(--neon-violet)]/85 uppercase">
-                  運用ルール / 注意事項
-                </p>
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <p className="font-mono text-[10px] tracking-[0.22em] text-[var(--neon-violet)]/85 uppercase">
+                    運用ルール / 注意事項
+                  </p>
+                  {onEditRules && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowTopText(false);
+                        onEditRules();
+                      }}
+                      aria-label="運用ルール / 注意事項を編集 (元サイトを iframe で開く)"
+                      title="元サイトを iframe で開いて編集"
+                      className="inline-flex h-6 items-center gap-1 rounded-md border border-[var(--neon-violet)]/40 bg-[var(--neon-violet)]/10 px-2 font-mono text-[10px] tracking-[0.18em] text-[var(--neon-violet)]/90 uppercase transition-colors hover:border-[var(--neon-violet)]/70 hover:bg-[var(--neon-violet)]/20"
+                    >
+                      <Pencil className="h-3 w-3" aria-hidden />
+                      編集
+                    </button>
+                  )}
+                </div>
                 <pre className="whitespace-pre-wrap break-words font-sans text-[12px] leading-relaxed">
                   {topText}
                 </pre>

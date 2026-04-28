@@ -103,6 +103,10 @@ export const RELEASES: ReleaseEntry[] = [
         title: "🏷 過去活動履歴の見出し名を「簡易ログ / 詳細ログ」に差別化",
         body: "TODO #15 完了。これまで簡易表示の section header が `Past · 過去の活動`、詳細表示が `Past · 過去の予定` と微差で紛らわしかったため、それぞれ `Past · 簡易ログ (日付チップ)` / `Past · 詳細ログ (出欠表)` に変更。中身の内容を補助ラベルで明示することで、見出しだけ見れば「何が表示されているか」が分かるように。",
       },
+      {
+        title: "✏️ 運用ルール popup に「編集」ボタン追加 (元サイトを iframe で開く)",
+        body: "TODO #12 完了。これまで運用ルール / 注意事項は read-only の表示のみで、編集には別タブで元サイトを開く必要があった。popup ヘッダー右に `Pencil` アイコン付きの「編集」ボタンを追加し、クリックで `ScheduleEditFrameDialog` を起動 → schedule URL を iframe で表示してそのまま元サイト側のコメント / 注意事項エリアを編集できるように。`Legend` コンポーネントに `onEditRules?: (() => void) | null` props を追加し、親 (`ScheduleList`) で `scheduleUrl` がセットされている時のみ callback を渡す。",
+      },
     ],
   },
   {
