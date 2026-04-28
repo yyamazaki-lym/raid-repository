@@ -6,6 +6,8 @@ import {
   AlertTriangle,
   BarChart3,
   Check,
+  ChevronDown,
+  ChevronUp,
   Film,
   Loader2,
   MessageSquare,
@@ -151,6 +153,13 @@ export function ScheduleList({
     });
   }, [router]);
 
+  // 2.1 (2026-04-29): 詳細過去日程の 2 ヶ月以上前は初期非表示。
+  // Past リストは年月が経つほど縦に長くなるが、最近の数試合分しか
+  // 普段は参照しないので、デフォルトでは直近 2 ヶ月までを表示し、
+  // それ以前は折り畳む。展開ボタンで切り替え可能 (state はここに置
+  // いてマウント期間中保持)。
+  const [showOlderPast, setShowOlderPast] = useState(false);
+
   if (!result.ok) {
     return (
       <Card className="glass flex flex-col items-center gap-3 border-destructive/40 p-8 text-center">
@@ -177,6 +186,17 @@ export function ScheduleList({
   // most-recent past sits at the top of the detail table — reads as
   // "what happened most recently" first.
   const renderedPast = showDetailedPast ? past : [];
+  // 2.1 (2026-04-29): split into "recent" (≤ 60 days ago) and "older"
+  // for the fold UX. cutoff は描画時点の Date.now なので、ページが
+  // 長時間開きっぱなしでも問題なし (再 render で更新される)。
+  const PAST_FOLD_THRESHOLD_MS = 60 * 24 * 60 * 60 * 1000;
+  const pastCutoffMs = Date.now() - PAST_FOLD_THRESHOLD_MS;
+  const recentPast = renderedPast.filter(
+    (s) => s.date.getTime() >= pastCutoffMs,
+  );
+  const olderPast = renderedPast.filter(
+    (s) => s.date.getTime() < pastCutoffMs,
+  );
 
   if (upcoming.length === 0 && renderedPast.length === 0) {
     return (
@@ -282,7 +302,9 @@ export function ScheduleList({
       {/* Past sessions — separate card so the visual break is unmistakable.
           Hidden until the user enables the detail toggle. The "確定"
           column is dropped here since past sessions were all held.
-          Manual snapshot trigger lives in the settings dialog now. */}
+          Manual snapshot trigger lives in the settings dialog now.
+          2.1 (2026-04-29): 2 ヶ月以上前の行はデフォルト畳み、ボタンで
+          展開できる UX に変更。直近 2 ヶ月の行は常時表示。 */}
       {showDetailedPast && renderedPast.length > 0 && (
         <Card className="glass overflow-hidden p-0">
           <header className="flex items-center justify-between gap-2 border-b border-border/40 bg-secondary/20 px-3 py-2">
@@ -294,14 +316,16 @@ export function ScheduleList({
               </span>
             </div>
             <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
-              {renderedPast.length} 件
+              {showOlderPast || olderPast.length === 0
+                ? `${renderedPast.length} 件`
+                : `直近 ${recentPast.length} 件 / 全 ${renderedPast.length} 件`}
             </span>
           </header>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[640px] border-collapse text-left text-sm">
               {tableHead(false)}
               <tbody>
-                {renderedPast.map((s) => (
+                {recentPast.map((s) => (
                   <SessionRow
                     key={s.rawDate}
                     session={s}
@@ -316,6 +340,49 @@ export function ScheduleList({
                     initialMemos={initialMemosByDate[s.rawDate]}
                   />
                 ))}
+                {olderPast.length > 0 && showOlderPast &&
+                  olderPast.map((s) => (
+                    <SessionRow
+                      key={s.rawDate}
+                      session={s}
+                      users={users}
+                      isPast
+                      holidays={holidays}
+                      showDecided={false}
+                      videoLink={lookupVideoLink(s, sessionVideoLinks)}
+                      sessionLogsUrl={sessionLogsByDate?.[s.rawDate] ?? null}
+                      scheduleUrl={scheduleUrl}
+                      onOpenEditFrame={openEditFrame}
+                      initialMemos={initialMemosByDate[s.rawDate]}
+                    />
+                  ))}
+                {olderPast.length > 0 && (
+                  <tr>
+                    <td
+                      colSpan={1 + users.length}
+                      className="border-t border-border/40 bg-secondary/10 px-3 py-2 text-center"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => setShowOlderPast((v) => !v)}
+                        className="inline-flex items-center gap-1.5 rounded-md border border-border/40 bg-background/30 px-3 py-1 font-mono text-[11px] tracking-[0.18em] text-muted-foreground uppercase transition-colors hover:border-[var(--neon-cyan)]/60 hover:text-foreground"
+                        aria-expanded={showOlderPast}
+                      >
+                        {showOlderPast ? (
+                          <>
+                            <ChevronUp className="h-3 w-3" aria-hidden />
+                            2 ヶ月以上前を畳む
+                          </>
+                        ) : (
+                          <>
+                            <ChevronDown className="h-3 w-3" aria-hidden />
+                            2 ヶ月以上前を表示 ({olderPast.length} 件)
+                          </>
+                        )}
+                      </button>
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>

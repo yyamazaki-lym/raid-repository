@@ -52,6 +52,10 @@ export const RELEASES: ReleaseEntry[] = [
     date: "2026-04-29",
     parts: [
       {
+        title: "📚 過去日程の詳細ログで 2 ヶ月以上前を畳む",
+        body: "ユーザー要望: 過去詳細ログ (出欠表) は年月が経つほど縦に長くなるが、普段は最近の数試合分しか参照しないので、2 ヶ月以上前はデフォルト非表示にしてほしい。\n\n実装:\n1. `schedule-list.tsx` で `renderedPast` を `recentPast` (≤ 60 日) と `olderPast` (> 60 日) に split。閾値は `60 * 24 * 60 * 60 * 1000 ms` = 約 2 ヶ月。\n2. `recentPast` は常時テーブルに描画。`olderPast` は state `showOlderPast` (default false) で展開を制御。\n3. テーブル末尾に「2 ヶ月以上前を表示 (N 件)」ボタンを追加 (toggleable)。展開後は「畳む」表示に切り替え + ChevronUp / ChevronDown でアフォーダンス。\n4. ヘッダーの件数表示は `直近 X 件 / 全 Y 件` (畳まれた状態) と `Y 件` (展開状態) で切替。\n\n2 ヶ月以下の過去ログだけのときはボタンも出ない (= 全件表示で従来 UX)。",
+      },
+      {
         title: "🔁 カテゴリ編集後の UI 即時反映 + サインアウト確認ダイアログ",
         body: "ユーザー報告 (PR #5 リリース後): (1) 編集ダイアログで保存しても、ロール制限の追加/解除が UI に即時反映されず F5 (page reload) しないと変化が見えない、(2) サインアウトボタンが誤タップで一発サインアウトしてしまう。\n\n修正:\n1. `categories-actions.ts` の Server Action 群すべてで `revalidatePath('/category')` + `revalidatePath('/')` を呼ぶ helper を追加。Server Action 経由になって以降 Realtime に頼り切れていなかった部分を明示的に invalidate。\n2. `category-form-dialog.tsx` の保存成功時、および `category-list.tsx` の `onChangeStatus` 後に `router.refresh()` を呼んで RSC を再実行。Realtime + revalidate + router.refresh の三重で UI 即時反映を担保。\n3. SiteHeader のサインアウトボタンを client component (`sign-out-button.tsx`) に切り出し、`onSubmit` で `window.confirm('サインアウトしますか?')` を挟む。OK で /auth/sign-out POST、Cancel で何も起こらない。JS 無し環境でも form action は機能する progressive enhancement。",
       },
