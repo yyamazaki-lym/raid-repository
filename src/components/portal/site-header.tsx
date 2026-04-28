@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Activity } from "lucide-react";
 import { ThemeSwitcher } from "./theme-switcher";
 import { SettingsDialog } from "./settings-dialog";
+import { DeployColorBadge } from "./deploy-color-badge";
 import packageJson from "../../../package.json";
 import { RELEASES } from "@/lib/changelog";
 
@@ -50,6 +51,11 @@ const APP_STAGE = "BETA";
  *
  * 7 色は dark / light 双方で識別可能な飽和度の Tailwind 標準色から選定。
  * テーマの neon トークンは theme 切替で意味が変わるので使わない。
+ *
+ * 1.9 (2026-04-29): 日付跨ぎでサイクル先頭の cyan にリセット。
+ * `RELEASES[0].date` (= 当日エントリー) と JST 現在日付が一致する間のみ
+ * ハッシュ色を使い、翌日になったら `DEPLOY_COLORS[0]` (cyan) に戻す。
+ * 「今日の deploy がある = ユニーク色」「無い = 静かな状態 = cyan」。
  */
 const DEPLOY_COLORS = [
   "text-cyan-400",
@@ -71,7 +77,28 @@ function deployColorIndex(): number {
   return h % DEPLOY_COLORS.length;
 }
 
-const DEPLOY_COLOR = DEPLOY_COLORS[deployColorIndex()];
+const HASH_COLOR = DEPLOY_COLORS[deployColorIndex()]!;
+const DEFAULT_COLOR = DEPLOY_COLORS[0]!;
+
+/**
+ * SSR 用の初期色計算 (server component なので request 時に評価される)。
+ * client 側の `DeployColorBadge` 内 useEffect でも同じロジックを再評価
+ * するため hydration mismatch しない (両者とも JST 日付ベース)。
+ *
+ * Note: Next.js 16 では `"use client"` ファイルからの非コンポーネント
+ * export は server component から呼べないため、ここに同じ関数を duplicate
+ * している (5 行程度なのでコピーが妥当)。
+ */
+function pickInitialColor(): string {
+  if (APP_DATE === null) return DEFAULT_COLOR;
+  const today = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+  return today === APP_DATE ? HASH_COLOR : DEFAULT_COLOR;
+}
 
 export function SiteHeader() {
   return (
@@ -89,9 +116,11 @@ export function SiteHeader() {
             <span className="font-display text-[13px] font-semibold tracking-[0.2em] text-foreground sm:text-sm">
               RAID REPOSITORY
             </span>
-            <span
-              className={`flex items-center gap-1.5 font-mono text-[10px] tabular-nums tracking-[0.16em] sm:text-[11px] ${DEPLOY_COLOR}`}
-              title="デプロイ識別色: ビルドごとに 7 色のいずれかに変化。色が変われば deploy が反映済み"
+            <DeployColorBadge
+              hashColor={HASH_COLOR}
+              defaultColor={DEFAULT_COLOR}
+              releaseDate={APP_DATE}
+              initialColor={pickInitialColor()}
             >
               <span>
                 v{APP_VERSION}
@@ -99,7 +128,7 @@ export function SiteHeader() {
               </span>
               <span aria-hidden className="opacity-50">·</span>
               <span className="tracking-[0.22em]">{APP_STAGE}</span>
-            </span>
+            </DeployColorBadge>
           </div>
         </Link>
 
