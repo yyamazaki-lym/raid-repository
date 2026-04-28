@@ -14,6 +14,7 @@ import {
   FileClock,
   BarChart3,
   Link2,
+  LogOut,
   X,
 } from "lucide-react";
 
@@ -1470,6 +1471,28 @@ export function SettingsDialog() {
                   <Link2 className="h-3 w-3" aria-hidden />
                   Lodestone
                 </a>
+                {/* 2.1 (2026-04-29): サインアウトボタンは頻度が低いため
+                    SiteHeader から本ダイアログ内に移設。誤クリック防止
+                    のため confirm を経由してから /auth/sign-out POST。 */}
+                <form
+                  action="/auth/sign-out"
+                  method="post"
+                  className="inline-flex"
+                  onSubmit={(e) => {
+                    if (!window.confirm("サインアウトしますか?")) {
+                      e.preventDefault();
+                    }
+                  }}
+                >
+                  <button
+                    type="submit"
+                    title="サインアウト"
+                    className="inline-flex h-8 items-center gap-1.5 rounded-md border border-rose-400/30 bg-rose-400/5 px-3 font-mono text-[10px] tracking-[0.18em] text-rose-300 uppercase transition-colors hover:border-rose-400/60 hover:bg-rose-400/10 hover:text-rose-200"
+                  >
+                    <LogOut className="h-3 w-3" aria-hidden />
+                    Sign out
+                  </button>
+                </form>
               </div>
               {showChangelog && (
                 <div className="flex flex-col gap-3 rounded-sm border border-border/40 bg-secondary/20 px-3 py-2.5 text-[11px] leading-relaxed">
