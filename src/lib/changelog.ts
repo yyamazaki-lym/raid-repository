@@ -36,6 +36,7 @@ export const RELEASES: ReleaseEntry[] = [
       "🔢 バージョン管理体系を変更。これまでは 1 コミット = 1 patch で運用し 1.9 系が 38 patch まで肥大していたため、これ以降は `MAJOR.MINOR (YYYY-MM-DD)` 方式に移行 (patch 廃止)。現状の 1.9 を据え置きで継続し、バグ修正・小規模調整は同じ MAJOR.MINOR で日付のみ更新、機能追加で MINOR 上げ (1.9 → 1.10)、破壊的変更で MAJOR 上げ (1.x → 2.0)。ヘッダーバッジも `v1.9 (2026-04-28)` 形式に。",
       "📝 マクロ未登録時のプレースホルダー文を「戦闘中に使う `/p` `/say` 系のマクロや、戦術コールのテンプレ等を...」→「攻略に用いる戦術のテンプレ等を...」に変更。マクロ用途を「戦闘中の `/p` `/say` 系」に限定せず、攻略全般の戦術テンプレ用途を含む簡潔な表現に。",
       "🔗 攻略リンクのアイコンをサイト種別で色分け。これまで全リンクが magenta の `ExternalLink` 単一表示だったのを、URL host から「Web (`Globe` / magenta) / 動画 (`Video` / cyan) / X (Twitter) (X ロゴ SVG / foreground)」の 3 区分に判定して描画。共通基盤として `src/lib/link-site.ts` (host → 種別判定) と `src/components/portal/link-site-icon.tsx` (coarse / fine 切替可能) を追加。",
+      "🎬 動画リンクのアイコンをサイト別に細分化 (fine variant)。攻略リンクの 3 区分 (web/動画/X) より細かい 5 区分に分け、YouTube → 赤 (`text-red-500`)、Twitch → 紫 (`text-violet-400`)、ニコニコ動画 → 橙 (`text-orange-300`)、X (Twitter) → X ロゴ SVG、その他 → magenta `Globe` で描画。動画カードの (1) 非 YouTube 用プレースホルダーの `Film` アイコン + 「External Video」ラベルを `LinkSiteIcon variant=\"fine\"` + サイト名ラベル (例: TWITCH / NICONICO / X / Web) に、(2) フッターの URL 行先頭 `ExternalLink` を `LinkSiteIcon variant=\"fine\"` に置換。",
     ],
   },
   {

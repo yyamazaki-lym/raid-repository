@@ -18,6 +18,8 @@ import {
   CheckSquare,
   Square,
 } from "lucide-react";
+import { LinkSiteIcon } from "@/components/portal/link-site-icon";
+import { LINK_SITE_LABEL, detectLinkSite } from "@/lib/link-site";
 import { toast } from "sonner";
 import {
   DndContext,
@@ -584,9 +586,13 @@ function VideoCard({
             className="grid aspect-video place-items-center bg-secondary/30 text-muted-foreground transition-colors hover:bg-secondary/50 hover:text-foreground"
           >
             <div className="flex flex-col items-center gap-2">
-              <Film className="h-8 w-8" aria-hidden />
+              <LinkSiteIcon
+                url={video.url}
+                variant="fine"
+                className="h-8 w-8"
+              />
               <span className="font-mono text-[10px] tracking-[0.18em] uppercase">
-                External Video
+                {LINK_SITE_LABEL[detectLinkSite(video.url)]}
               </span>
             </div>
           </a>
@@ -703,7 +709,11 @@ function VideoCard({
         rel="noopener noreferrer"
         className="flex items-center gap-1 px-3 pb-3 font-mono text-[10px] break-all text-muted-foreground/70 hover:text-foreground/80"
       >
-        <ExternalLink className="h-3 w-3 shrink-0" aria-hidden />
+        <LinkSiteIcon
+          url={video.url}
+          variant="fine"
+          className="h-3 w-3 shrink-0"
+        />
         <span className="break-all">{video.url}</span>
       </a>
     </Card>
