@@ -11,7 +11,7 @@ import { SCHEDULE_TOP_TEXT_OVERRIDE_KEY } from "@/lib/schedule-top-text-keys";
 import { fetchSessionLogsByDate } from "@/lib/server/fflogs";
 import { fetchScheduleMemosByDateBulk } from "@/lib/server/schedule-memos-fetch";
 import { buildSessionVideoLinkMap } from "@/lib/server/session-video-link";
-import { fetchAppSetting } from "@/lib/supabase/app-settings";
+import { fetchAppSettings } from "@/lib/supabase/app-settings";
 import { fetchCategories } from "@/lib/supabase/categories";
 import { fetchRecruitmentTemplatesServer } from "@/lib/supabase/recruitment-templates";
 
@@ -42,7 +42,7 @@ export default async function SchedulePage() {
     recruitmentTemplates,
     categoriesResult,
     sessionLogsByDate,
-    topTextOverride,
+    appSettings,
     initialMemosByDate,
   ] = await Promise.all([
     fetchSchedule(),
@@ -50,15 +50,18 @@ export default async function SchedulePage() {
     fetchRecruitmentTemplatesServer(),
     fetchCategories(),
     fetchSessionLogsByDate(),
-    // 1.9 (2026-04-28): 運用ルール / 注意事項のローカル override。
-    // 設定済みなら scraped 値より優先表示 (ScheduleList → Legend で
-    // override flag 付きで描画される)。
-    fetchAppSetting(SCHEDULE_TOP_TEXT_OVERRIDE_KEY),
+    // TODO #11: app_settings の必要キーを 1 SELECT で bulk 取得。
+    // 旧来は schedule_url (getScheduleSourceUrl) と override
+    // (fetchAppSetting) の 2 round-trip だった。`React.cache` 経由で
+    // 同一 render 内の重複呼び出しは元々統合されていたが、別キーは
+    // 別 SELECT になっていたため `.in('key', [...])` で 1 回に統合。
+    fetchAppSettings([SCHEDULE_TOP_TEXT_OVERRIDE_KEY]),
     // TODO #11: 全 memos を一括 prefetch して各 chip / row が個別に
     // SELECT クエリを発行するのを回避。30+ 行ある状況で memo バッジが
     // 「遅れて表示」される体感の主因だった。
     fetchScheduleMemosByDateBulk(),
   ]);
+  const topTextOverride = appSettings[SCHEDULE_TOP_TEXT_OVERRIDE_KEY] ?? null;
   // Slim category list passed to the recruitment popover. id+name+slug:
   // slug is needed for the per-category macro-page link icons added in
   // the popover (1.9 (2026-04-28)) — clicking the icon opens
