@@ -51,6 +51,7 @@
 | ~~16~~ | ~~DnD アイテムのカテゴリ跨ぎ移動~~ — 完了 (1.9 `2f59abf`、SortableContext をカテゴリブロック単位に再設計、子の grip も親 section の listeners に接続。子を掴んでも親カテゴリごと追従、中の複数募集文も全部追従) | ~~中~~ |
 | ~~17~~ | ~~コンテンツカードに背景画像を設定可能にする~~ — 完了 (1.9 (2026-04-28)、`categories.background_image_url` 列追加 + 編集ダイアログに URL 入力 + Card に image layer + dark gradient overlay。`isSafeUrl` で http(s) のみ許可、`schema.sql` 再適用が必要) | ~~中~~ |
 | ~~18~~ | ~~設定ダイアログに FF14 Lodestone へのリンクを追加~~ — 完了 (1.9 (2026-04-28)、フッター GitHub Source の隣に Link2 アイコン + "Lodestone" ラベルで配置) | ~~極小~~ |
+| 19 | ロール単位で見られるページを分けたい — Discord ロール ID で出し分け。本 PR (#1) で `app_metadata.discord_roles` 保存 + `requireDiscordRoles([...])` ヘルパーまでは仕込み済み。残り: `categories` テーブルに `required_role_ids text[]` 列追加 + 編集ダイアログでロール選択 UI + ページレンダリング時のガード呼び出し + ロール一覧を Supabase からどう拾うか (静的に env or `/guilds/{id}/roles` を bot token で取得してキャッシュ) を決める | 中 |
 
 ### 除外済み (再対応不要)
 
