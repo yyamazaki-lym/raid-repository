@@ -197,9 +197,14 @@ export function useRealtimeScheduleMemos(
       )
       .subscribe();
 
-    // Initial fetch — without this the hook only ever populates via
-    // postgres_changes events, so existing memos never appeared.
-    void refetch();
+    // 初回 fetch: server から initial に prefetch 済 memos が降ってきて
+    // いれば省略 (TODO #11 対応 — N 個の SELECT が並列で走るのを回避)。
+    // initial が空配列なら念のため refetch して既存メモを取りに行く
+    // (server prefetch を無効化した経路や、新しく追加された rawDate
+    // に対するフォールバック)。
+    if (initial.length === 0) {
+      void refetch();
+    }
 
     return () => {
       try {
@@ -208,7 +213,7 @@ export function useRealtimeScheduleMemos(
         console.warn("[schedule-memos] removeChannel error:", e);
       }
     };
-  }, [id, rawDate, refetch]);
+  }, [id, rawDate, refetch, initial.length]);
 
   return { memos, refetch };
 }

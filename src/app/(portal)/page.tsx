@@ -9,6 +9,7 @@ import {
 import { getScheduleSourceUrl } from "@/lib/schedule/source-url";
 import { SCHEDULE_TOP_TEXT_OVERRIDE_KEY } from "@/lib/schedule-top-text-keys";
 import { fetchSessionLogsByDate } from "@/lib/server/fflogs";
+import { fetchScheduleMemosByDateBulk } from "@/lib/server/schedule-memos-fetch";
 import { buildSessionVideoLinkMap } from "@/lib/server/session-video-link";
 import { fetchAppSetting } from "@/lib/supabase/app-settings";
 import { fetchCategories } from "@/lib/supabase/categories";
@@ -42,6 +43,7 @@ export default async function SchedulePage() {
     categoriesResult,
     sessionLogsByDate,
     topTextOverride,
+    initialMemosByDate,
   ] = await Promise.all([
     fetchSchedule(),
     fetchJapaneseHolidays(),
@@ -52,6 +54,10 @@ export default async function SchedulePage() {
     // 設定済みなら scraped 値より優先表示 (ScheduleList → Legend で
     // override flag 付きで描画される)。
     fetchAppSetting(SCHEDULE_TOP_TEXT_OVERRIDE_KEY),
+    // TODO #11: 全 memos を一括 prefetch して各 chip / row が個別に
+    // SELECT クエリを発行するのを回避。30+ 行ある状況で memo バッジが
+    // 「遅れて表示」される体感の主因だった。
+    fetchScheduleMemosByDateBulk(),
   ]);
   // Slim category list passed to the recruitment popover. id+name+slug:
   // slug is needed for the per-category macro-page link icons added in
@@ -99,6 +105,7 @@ export default async function SchedulePage() {
       sessionLogsByDate={sessionLogsByDate}
       hasUltimateClear={hasUltimateClear}
       topTextOverride={topTextOverride}
+      initialMemosByDate={initialMemosByDate}
     />
   );
 }

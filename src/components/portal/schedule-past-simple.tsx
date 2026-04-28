@@ -52,12 +52,15 @@ export function SchedulePastSimple({
   holidays,
   sessionVideoLinks,
   sessionLogsByDate,
+  initialMemosByDate = {},
 }: {
   sessions: ScheduleSession[];
   holidays?: JapaneseHolidaysMap;
   sessionVideoLinks?: Record<string, SessionVideoLink>;
   /** FFLogs URLs keyed by `rawDate` — fallback when no video. */
   sessionLogsByDate?: Record<string, string>;
+  /** TODO #11: server prefetched memos (rawDate → memos[]) */
+  initialMemosByDate?: Record<string, ScheduleSessionMemo[]>;
 }) {
   const cutoff = Date.now() - STILL_RELEVANT_MS;
   // Filter to past, sort newest-first, take 10. Newest-first display
@@ -92,6 +95,7 @@ export function SchedulePastSimple({
             holidays={holidays}
             videoLink={sessionVideoLinks?.[s.rawDate] ?? null}
             sessionLogsUrl={sessionLogsByDate?.[s.rawDate] ?? null}
+            initialMemos={initialMemosByDate[s.rawDate] ?? EMPTY_MEMOS}
           />
         ))}
       </ul>
@@ -104,16 +108,18 @@ function DateChip({
   holidays,
   videoLink,
   sessionLogsUrl,
+  initialMemos,
 }: {
   session: ScheduleSession;
   holidays?: JapaneseHolidaysMap;
   videoLink: SessionVideoLink | null;
   /** Fallback FFLogs URL for sessions without a matching video. */
   sessionLogsUrl: string | null;
+  initialMemos: ScheduleSessionMemo[];
 }) {
   const { memos, refetch: refetchMemos } = useRealtimeScheduleMemos(
     session.rawDate,
-    EMPTY_MEMOS,
+    initialMemos,
   );
   // Ref to the popover so the (separately-rendered) memo dot can
   // open it. Keeping the dot outside the popover wrapper preserves

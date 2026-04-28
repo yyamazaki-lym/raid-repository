@@ -11,6 +11,7 @@ import { ScheduleList } from "./schedule-list";
 import { SchedulePastSimple } from "./schedule-past-simple";
 import type { JapaneseHolidaysMap } from "@/lib/japanese-holidays";
 import type { RecruitmentTemplate } from "@/lib/recruitment-templates-client";
+import type { ScheduleSessionMemo } from "@/lib/schedule-memos-client";
 import type { NextSessionResult, ScheduleFetchResult } from "@/lib/schedule/next-session";
 import type { SessionVideoLink } from "@/lib/server/session-video-link";
 
@@ -69,6 +70,13 @@ type Props = {
    * 設定済みなら scraped 値 (`result.data.topText`) より優先表示。
    */
   topTextOverride?: string | null;
+  /**
+   * TODO #11: server で一括 prefetch した memos (rawDate → memos[])。
+   * 各 chip / row が個別 SELECT をかけずにここから初期表示できるので
+   * メモバッジが即時に表示される。realtime subscription は live 更新
+   * 用にそのまま維持。
+   */
+  initialMemosByDate?: Record<string, ScheduleSessionMemo[]>;
 };
 
 export function SchedulePageBody({
@@ -82,6 +90,7 @@ export function SchedulePageBody({
   sessionLogsByDate,
   hasUltimateClear = false,
   topTextOverride = null,
+  initialMemosByDate = {},
 }: Props) {
   // Two-toggle state: simple list (top) and detailed table (bottom).
   // Both default to off; pinned values persist via localStorage.
@@ -199,6 +208,7 @@ export function SchedulePageBody({
           holidays={holidays}
           sessionVideoLinks={sessionVideoLinks}
           sessionLogsByDate={sessionLogsByDate}
+          initialMemosByDate={initialMemosByDate}
         />
       )}
 
@@ -211,6 +221,7 @@ export function SchedulePageBody({
         sessionLogsByDate={sessionLogsByDate}
         hasUltimateClear={hasUltimateClear}
         topTextOverride={topTextOverride}
+        initialMemosByDate={initialMemosByDate}
       />
     </div>
   );

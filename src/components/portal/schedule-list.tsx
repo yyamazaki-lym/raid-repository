@@ -111,6 +111,8 @@ type Props = {
    * 上書き可能。
    */
   topTextOverride?: string | null;
+  /** TODO #11: server prefetch した memos (rawDate → memos[]) */
+  initialMemosByDate?: Record<string, import("@/lib/schedule-memos-client").ScheduleSessionMemo[]>;
 };
 
 export function ScheduleList({
@@ -123,6 +125,7 @@ export function ScheduleList({
   sessionLogsByDate,
   hasUltimateClear = false,
   topTextOverride = null,
+  initialMemosByDate = {},
 }: Props) {
   // 1.9.13: replace `target="_blank"` external nav with an in-portal
   // iframe overlay. Tapping a username header or per-session attendance
@@ -249,6 +252,7 @@ export function ScheduleList({
                   sessionLogsUrl={sessionLogsByDate?.[s.rawDate] ?? null}
                   scheduleUrl={scheduleUrl}
                   onOpenEditFrame={openEditFrame}
+                  initialMemos={initialMemosByDate[s.rawDate]}
                 />
               ))}
               {upcoming.length === 0 && (
@@ -309,6 +313,7 @@ export function ScheduleList({
                     sessionLogsUrl={sessionLogsByDate?.[s.rawDate] ?? null}
                     scheduleUrl={scheduleUrl}
                     onOpenEditFrame={openEditFrame}
+                    initialMemos={initialMemosByDate[s.rawDate]}
                   />
                 ))}
               </tbody>
@@ -455,6 +460,7 @@ function SessionRow({
   sessionLogsUrl = null,
   scheduleUrl,
   onOpenEditFrame,
+  initialMemos,
 }: {
   session: ScheduleSession;
   users: ScheduleUser[];
@@ -478,11 +484,13 @@ function SessionRow({
   scheduleUrl?: string | null;
   /** Open the in-portal iframe dialog for the given URL. */
   onOpenEditFrame: (url: string, title: string) => void;
+  /** TODO #11: server prefetch した memos (該当 rawDate 分) */
+  initialMemos?: import("@/lib/schedule-memos-client").ScheduleSessionMemo[];
 }) {
   const decided = session.status === "DECISION";
   const { memos, refetch: refetchMemos } = useRealtimeScheduleMemos(
     session.rawDate,
-    EMPTY_MEMOS,
+    initialMemos ?? EMPTY_MEMOS,
   );
   // Ref so the (separately-rendered) memo dot can open the popover.
   const popoverRef = useRef<SessionMemoPopoverHandle>(null);

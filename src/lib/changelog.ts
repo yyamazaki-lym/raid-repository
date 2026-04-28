@@ -135,6 +135,10 @@ export const RELEASES: ReleaseEntry[] = [
         title: "⚡ 重いダイアログ系を `next/dynamic` で別 chunk 化してリロード時間短縮 (TODO #11)",
         body: "ユーザー報告: 「全体的にページが重い、リロードに時間がかかる」。原因の一つ: `SettingsDialog` (~1601 行 + 内包する `MaintenanceMenu` ~880 行) が `site-header` 経由で全ページの初期 client bundle に常時混入していた。同様に `CategoryFormDialog` (~487 行) と `LinkFormDialog` (~338 行) も category 系ページに eager load されていた。それぞれ `*-lazy.tsx` の薄い wrapper で `next/dynamic({ ssr: false })` 化し、初期 paint の bundle から外して別 chunk で並行 fetch。ボタン表示は ms オーダーの遅延が出るが critical path 外なので許容。trigger ボタンが現れる前に「Settings/コンテンツ追加/リンク追加」を押す可能性は実質ゼロ。`page.tsx` (server component) からは `ssr: false` が使えないので静的 import のままだが、client 側の `category-list.tsx` / `strategy-list.tsx` / `videos-list.tsx` 経由分はすべて lazy 化された (chunk split は client 側 import の有無で判定されるため)。",
       },
+      {
+        title: "⚡ スケジュール page の memo を server prefetch して N 個の SELECT クエリを回避 (TODO #11)",
+        body: "ユーザー報告: 「過去簡易ログのメモや動画アイコンが遅れて表示」。原因: 各 `<DateChip>` (簡易 ~7 件) と `<SessionRow>` (詳細 ~30+ 件) が個別に `useRealtimeScheduleMemos` を呼び、mount 時に SELECT クエリを発行していた。30+ 並列 SELECT のためメモバッジが順次表示されていた。修正: 新規 server-side `fetchScheduleMemosByDateBulk()` で全 memo を一括取得し、`page.tsx` の `Promise.all` に追加。`Record<rawDate, ScheduleSessionMemo[]>` を `SchedulePageBody` → `SchedulePastSimple` / `ScheduleList` に props で降して各 chip / row に渡す。クライアント hook は `initial.length === 0` の時だけ refetch するよう改修して N 並列 SELECT を撤廃。Realtime subscription は維持 (live 更新用) なので保存・更新後の同期動作は不変。",
+      },
     ],
   },
   {
