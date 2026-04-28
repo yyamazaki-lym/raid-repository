@@ -52,6 +52,10 @@ export const RELEASES: ReleaseEntry[] = [
     date: "2026-04-28",
     parts: [
       {
+        title: "↩️ 動画ページの theater mode (ポップアップ拡大) を撤去 — シンプルなカード内 inline 再生に戻す",
+        body: "theater mode 化 (fixed overlay でポップアップ拡大) は数回の修正を経ても再生中マウスホバーで再生不能になる挙動が解消できなかったため断念し、旧来のシンプルなカード内 inline 再生に戻した。autoplay=1 は維持してクリック 1 回で再生開始できる。`activeVideoId` を親 `VideosList` に lift する設計はそのまま残し、別カードで再生 → 前のカードの iframe が unmount = 動画停止 (1 ページ 1 アクティブ) は維持。lazy thumbnail (`IntersectionObserver`) も維持。今後フルスクリーン化はユーザーが YouTube プレーヤーの右下ボタンで対応する想定。",
+      },
+      {
         title: "🎬 ポップアップ後 play 方式に変更 + 別動画を開くと前を自動 close",
         body: "ユーザー報告: (a) 再生開始時に動画の左上が拡大されたよう (前回の aspect-ratio 修正でも改善せず)、(b) 別の動画を開いたら前のは閉じてほしい。\n(1) **autoplay=1 を撤回**: autoplay 中の YouTube プレーヤーは初期描画時に小さなビューポートでロードされ、その後拡大される過程で「左上だけクロップ拡大されたように見える」glitch を起こすことがある。ポップアップが完全に開いてからユーザーが YouTube の play ボタンを押す方式 (= autoplay 無し) にすれば、プレーヤーは正しい目標サイズで初期化される。\n(2) **activeVideoId を VideosList に lift**: 各 `YouTubePreview` の局所 `active` state を撤去し、親 `VideosList` で「いま再生中の動画 id」を 1 つだけ保持するよう再設計。`isActive` / `onActivate` / `onClose` 経由で各カードに伝播。新しいカードの play を押すと親の `activeVideoId` が更新 → 旧カードの `isActive=false` で iframe が unmount = 動画停止。理論上 1 ページ 1 アクティブのみ。\nなお iframe 内の YouTube プレーヤー UI (画面下部のコントロールバー / hover 時に出る各種オーバーレイ) は cross-origin 制約で portal 側からは隠せない。気になる場合は YouTube プレーヤー右下のフルスクリーンボタンで対応可。",
       },

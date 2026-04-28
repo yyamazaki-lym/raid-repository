@@ -17,7 +17,6 @@ import {
   Trash2,
   CheckSquare,
   Square,
-  X,
 } from "lucide-react";
 import { LinkSiteIcon } from "@/components/portal/link-site-icon";
 import { LINK_SITE_LABEL, detectLinkSite } from "@/lib/link-site";
@@ -935,109 +934,41 @@ function YouTubePreview({
     return () => observer.disconnect();
   }, [thumbVisible]);
 
-  // ESC で再生モーダルを閉じる (theater mode)。
-  // `document.body.style.overflow = "hidden"` で背景スクロールを止めると、
-  // スクロールバー幅 (~15px) の出入りで viewport が瞬間的に幅変化 → カード
-  // grid 全体が再レイアウトされてちらつき・操作不能になるケースがあったので
-  // 撤回。背景スクロールは許容し、必要なら content の natural scroll に任せる。
-  useEffect(() => {
-    if (!active) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setActive(false);
-    };
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [active]);
-
   if (active) {
-    // 1.9 (2026-04-28): autoplay=1 を撤回。autoplay 中の YouTube プレーヤーは
-    // 初期描画時に小さなビューポートでロードされ、その後拡大される過程で
-    // 「左上だけクロップ拡大されたように見える」glitch を起こすことがある。
-    // ポップアップが完全に開いてからユーザーが YouTube の play ボタンを
-    // 押す方式にすれば、プレーヤーは正しい目標サイズで初期化される。
-    const src = youtubeEmbedUrl(id);
+    // シンプルなカード内 inline 再生に戻す (1.9 (2026-04-28))。
+    // theater mode (fixed overlay でポップアップ拡大) は再生中の YouTube
+    // プレーヤー UI と相互作用してマウスホバー時に再生不能になる挙動が
+    // ユーザー環境で再現したため撤去。autoplay=1 でクリック 1 回で再生開始。
+    const src = youtubeEmbedUrl(id) + "&autoplay=1";
     return (
-      <>
-        {/* カード内の元の枠は「再生中」プレースホルダだけ残してレイアウトを
-           維持。実際の iframe は下の fixed オーバーレイで描画する。 */}
-        <div className="relative aspect-video w-full bg-black">
-          <span className="absolute inset-0 grid place-items-center font-mono text-[10px] tracking-[0.22em] text-white/50 uppercase">
-            <span className="inline-flex items-center gap-1.5">
-              <Play className="h-3 w-3 fill-white/60" aria-hidden />
-              再生中…
-            </span>
-          </span>
-        </div>
-        {/* Theater mode: viewport を覆う backdrop 上で iframe を拡大表示。
-           上部の sticky header / nav に被らないよう z-50 + fixed inset-0
-           で配置。背景クリックと右上 × ボタンと ESC キーで閉じる。
-           背景は完全不透明 (bg-black/98) で背景カードのホバー animation 等
-           が透けて見えるのを防ぐ (透けて見えると「横に黒いバーが何本も出る」
-           現象の原因になっていた)。 */}
-        <div
-          className="fixed inset-0 z-50 grid place-items-center bg-black/95 p-4 sm:p-6"
-          onClick={() => setActive(false)}
-          role="dialog"
-          aria-modal="true"
-          aria-label={`${title} を theater mode で再生中`}
+      <div className="relative aspect-video w-full bg-black">
+        <iframe
+          src={src}
+          title={title}
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+          referrerPolicy="strict-origin-when-cross-origin"
+          frameBorder="0"
+          allowFullScreen
+          loading="lazy"
+          className="absolute inset-0 h-full w-full"
+        />
+        {/* uploader が embed を完全無効化している動画用フォールバック。
+           cross-origin で iframe 内のエラー 153 は portal 側からは検知
+           できないため、「YouTube で開く」を常に表示してユーザーが
+           即座に外部タブへ逃げられるようにしておく。 */}
+        <a
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(e) => e.stopPropagation()}
+          className="absolute top-2 right-2 inline-flex items-center gap-1 rounded-md bg-black/70 px-1.5 py-1 font-mono text-[9px] tracking-[0.18em] text-white/85 uppercase backdrop-blur-sm transition-colors hover:bg-black/90 hover:text-white"
+          aria-label="YouTube で開く"
+          title="埋め込み再生できない場合はこちらから外部タブで再生"
         >
-          {/* サイズは「幅と高さの両方が viewport 内に収まる」ようにを
-             幅側だけで計算: `min(90vw, calc(90vh * 16/9), 1400px)`。
-             これに `aspectRatio: 16/9` を組み合わせて高さは width から
-             導出 (max-height との二重制約を避けることで、「動画の左上だけ
-             拡大されて見える」アスペクト比崩れを根治)。 */}
-          <div
-            style={{
-              width: "min(90vw, calc(90vh * 16 / 9), 1400px)",
-              aspectRatio: "16 / 9",
-            }}
-            className="relative shadow-2xl shadow-black/80 ring-1 ring-white/10"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <iframe
-              src={src}
-              title={title}
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-              referrerPolicy="strict-origin-when-cross-origin"
-              frameBorder="0"
-              allowFullScreen
-              loading="lazy"
-              className="absolute inset-0 h-full w-full"
-            />
-            {/* 操作行を iframe 上にオーバーレイ配置 (旧: -top-10 で枠外
-               に出していたが viewport 上端で切れていたので iframe 内
-               top-right に変更)。 */}
-            <div className="absolute top-2 right-2 z-10 flex items-center gap-2">
-              <a
-                href={url}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={(e) => e.stopPropagation()}
-                className="inline-flex items-center gap-1 rounded-md bg-black/75 px-2 py-1 font-mono text-[10px] tracking-[0.18em] text-white/85 uppercase transition-colors hover:bg-black/90 hover:text-white"
-                aria-label="YouTube で開く"
-                title="埋め込み再生できない場合はこちらから外部タブで再生"
-              >
-                <ExternalLink className="h-3 w-3" aria-hidden />
-                YouTube
-              </a>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setActive(false);
-                }}
-                className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-black/75 text-white/85 transition-colors hover:bg-black/90 hover:text-white"
-                aria-label="再生を閉じる"
-                title="再生を閉じる (ESC)"
-              >
-                <X className="h-4 w-4" aria-hidden />
-              </button>
-            </div>
-          </div>
-        </div>
-      </>
+          <ExternalLink className="h-3 w-3" aria-hidden />
+          YouTube
+        </a>
+      </div>
     );
   }
 
