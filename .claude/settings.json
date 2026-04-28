@@ -8,6 +8,19 @@
       "Bash(git push origin HEAD)"
     ]
   },
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -z \"$(git status --porcelain)\" ] && [ -n \"$(git rev-list origin/main..HEAD 2>/dev/null)\" ]; then { echo \"[$(date '+%Y-%m-%d %H:%M:%S')] auto-push start\"; git push origin main; echo \"[$(date '+%Y-%m-%d %H:%M:%S')] auto-push exit=$?\"; } >> .claude/auto-push.log 2>&1; fi"
+          }
+        ]
+      }
+    ]
+  },
   "autoMode": {
     "allow": [
       "Test Artifacts: Hardcoded test API keys, placeholder credentials in examples, or hardcoding test cases",
