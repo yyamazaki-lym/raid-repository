@@ -52,6 +52,10 @@ export const RELEASES: ReleaseEntry[] = [
     date: "2026-04-28",
     parts: [
       {
+        title: "🔔 各人のコメントに更新があった場合、ヘッダーの吹き出しアイコンを amber でハイライト (TODO #14)",
+        body: "スケジュール取り込み時、各ユーザーのコメント (一言) が前回見たときから変わっていれば、ヘッダー名の右にある吹き出しアイコンの枠 / 背景を amber 化し、右上に小さな amber ドットを表示。クリック (popover を開く操作) で「確認済み」とみなし highlight を解除する。確認しない限り継続表示。\n判定は `timestamp + body` の連結 fingerprint を `localStorage` に user.userId 別に保存して比較。初回表示 (stored が null) はノイズ抑制のため silent baseline として現値だけ保存し、その後の変化のみ highlight する。localStorage 不可環境 (private mode 等) では何もしない。",
+      },
+      {
         title: "↩️ 動画ページの theater mode (ポップアップ拡大) を撤去 — シンプルなカード内 inline 再生に戻す",
         body: "theater mode 化 (fixed overlay でポップアップ拡大) は数回の修正を経ても再生中マウスホバーで再生不能になる挙動が解消できなかったため断念し、旧来のシンプルなカード内 inline 再生に戻した。autoplay=1 は維持してクリック 1 回で再生開始できる。`activeVideoId` を親 `VideosList` に lift する設計はそのまま残し、別カードで再生 → 前のカードの iframe が unmount = 動画停止 (1 ページ 1 アクティブ) は維持。lazy thumbnail (`IntersectionObserver`) も維持。今後フルスクリーン化はユーザーが YouTube プレーヤーの右下ボタンで対応する想定。",
       },
