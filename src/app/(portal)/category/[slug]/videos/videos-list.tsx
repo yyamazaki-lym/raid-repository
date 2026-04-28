@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Image from "next/image";
 import {
@@ -107,28 +107,45 @@ export function VideosList({ categoryId, initial, firstClearAt }: Props) {
   const focusDate = searchParams.get("focusDate");
   const focusedRef = useRef<HTMLLIElement | null>(null);
 
-  // Resolve focusDate → focused video id by scanning the live list.
-  // Title-extracted date (the actual raid day) takes priority over
-  // posted_at, matching the same convention as the backfill logic.
+  // Resolve a YYYY-MM-DD date string to the matching video id by
+  // scanning the live list. Title-extracted date (the actual raid day)
+  // takes priority over posted_at / created_at, matching the same
+  // convention as the backfill logic.
+  const findVideoIdByDate = useCallback(
+    (dateIso: string): string | null => {
+      for (const v of live) {
+        const fallbackYear = v.postedAt
+          ? new Date(v.postedAt).getUTCFullYear()
+          : new Date(v.createdAt).getUTCFullYear();
+        const titleD = extractDateFromTitle(v.title, fallbackYear);
+        if (titleD) {
+          const iso = `${titleD.y}-${String(titleD.m).padStart(2, "0")}-${String(titleD.d).padStart(2, "0")}`;
+          if (iso === dateIso) return v.id;
+        } else if (v.postedAt && v.postedAt.startsWith(dateIso)) {
+          return v.id;
+        } else if (v.createdAt.startsWith(dateIso)) {
+          return v.id;
+        }
+      }
+      return null;
+    },
+    [live],
+  );
+
+  // 1.9 (2026-04-28) TODO #10: クリア日時バッジをクリックで該当動画へ
+  // anchor jump できるようにするため、URL ?focusDate= とは独立にローカル
+  // state で focus 対象を保持 (URL を書き換えると "戻る" 履歴が汚れるため)。
+  // `manualFocusKey` は同一 id に再 focus したときも useEffect を再発火
+  // させるためのカウンター — 連打で何度でもスクロールする。
+  const [manualFocusId, setManualFocusId] = useState<string | null>(null);
+  const [manualFocusKey, setManualFocusKey] = useState(0);
+
   const focusedVideoId = useMemo(() => {
+    if (manualFocusId) return manualFocusId;
     if (focusId) return focusId;
     if (!focusDate) return null;
-    for (const v of live) {
-      const fallbackYear = v.postedAt
-        ? new Date(v.postedAt).getUTCFullYear()
-        : new Date(v.createdAt).getUTCFullYear();
-      const titleD = extractDateFromTitle(v.title, fallbackYear);
-      if (titleD) {
-        const iso = `${titleD.y}-${String(titleD.m).padStart(2, "0")}-${String(titleD.d).padStart(2, "0")}`;
-        if (iso === focusDate) return v.id;
-      } else if (v.postedAt && v.postedAt.startsWith(focusDate)) {
-        return v.id;
-      } else if (v.createdAt.startsWith(focusDate)) {
-        return v.id;
-      }
-    }
-    return null;
-  }, [focusId, focusDate, live]);
+    return findVideoIdByDate(focusDate);
+  }, [manualFocusId, focusId, focusDate, findVideoIdByDate]);
   // Sort mode lives in localStorage so the user's choice survives reloads.
   // Default to date (newest-first) — matches the request to view videos
   // chronologically; switching to custom enables DnD reordering.
@@ -143,6 +160,8 @@ export function VideosList({ categoryId, initial, firstClearAt }: Props) {
   // the focusedVideoId changes or when the live list arrives (since
   // the ref is set during render of the matching card). The matching
   // card uses a thin one-shot CSS animation for the highlight.
+  // `manualFocusKey` is included so連打 of the same クリア badge
+  // re-triggers scroll even when the resolved id doesn't change.
   useEffect(() => {
     if (!focusedVideoId) return;
     const el = focusedRef.current;
@@ -151,7 +170,28 @@ export function VideosList({ categoryId, initial, firstClearAt }: Props) {
       el.scrollIntoView({ behavior: "smooth", block: "center" });
     }, 50);
     return () => window.clearTimeout(id);
-  }, [focusedVideoId, live.length]);
+  }, [focusedVideoId, live.length, manualFocusKey]);
+
+  // クリア日時バッジ (Trophy) クリック時のスクロールハンドラ。
+  // firstClearAt はカテゴリ初クリアの ISO timestamp (UTC 保存だが
+  // ユーザー表示は JST)。ローカルタイムゾーンで YYYY-MM-DD を
+  // 構築して `findVideoIdByDate` に渡す — これで extractDateFromTitle
+  // が拾う JST 日付と一致しやすい。該当動画が無ければ toast で通知。
+  const onJumpToFirstClear = useCallback(() => {
+    if (!firstClearAt) return;
+    const d = new Date(firstClearAt);
+    const iso =
+      `${d.getFullYear()}-` +
+      `${String(d.getMonth() + 1).padStart(2, "0")}-` +
+      `${String(d.getDate()).padStart(2, "0")}`;
+    const matched = findVideoIdByDate(iso);
+    if (!matched) {
+      toast.error(`${iso} のクリア動画が見つかりませんでした`);
+      return;
+    }
+    setManualFocusId(matched);
+    setManualFocusKey((k) => k + 1);
+  }, [firstClearAt, findVideoIdByDate]);
   const persistSort = (mode: SortMode) => {
     setSortMode(mode);
     try {
@@ -170,17 +210,26 @@ export function VideosList({ categoryId, initial, firstClearAt }: Props) {
         return cmp !== 0 ? cmp : a.sortOrder - b.sortOrder;
       });
     }
-    // Custom mode — apply optimistic order if present, otherwise sort_order.
-    if (!optimistic) return live;
-    const idx = new Map(optimistic.map((id, i) => [id, i] as const));
-    return [...live].sort((a, b) => {
-      const ai = idx.get(a.id);
-      const bi = idx.get(b.id);
-      if (ai === undefined && bi === undefined) return 0;
-      if (ai === undefined) return 1;
-      if (bi === undefined) return -1;
-      return ai - bi;
-    });
+    // Custom mode — DB stores `sort_order` ascending so insertion order is
+    // 0, 1, 2, ... (oldest first). Date 並び順 (default) is newest-first
+    // by createdAt, so just returning DB order would visually flip the
+    // list when the user toggles date → custom. Reverse here so custom mode
+    // shares the same top-of-list direction as date mode (newest at top)
+    // while still respecting whatever DnD reorder the user has applied.
+    // `optimistic` is stored in display order (= sort_order DESC) so it can
+    // be applied as-is.
+    if (optimistic) {
+      const idx = new Map(optimistic.map((id, i) => [id, i] as const));
+      return [...live].sort((a, b) => {
+        const ai = idx.get(a.id);
+        const bi = idx.get(b.id);
+        if (ai === undefined && bi === undefined) return 0;
+        if (ai === undefined) return 1;
+        if (bi === undefined) return -1;
+        return ai - bi;
+      });
+    }
+    return [...live].reverse();
   }, [live, optimistic, sortMode]);
 
   const sensors = useSensors(
@@ -200,9 +249,12 @@ export function VideosList({ categoryId, initial, firstClearAt }: Props) {
     const newIndex = videos.findIndex((v) => v.id === over.id);
     if (oldIndex < 0 || newIndex < 0) return;
 
-    const next = arrayMove(videos, oldIndex, newIndex).map((v) => v.id);
-    setOptimistic(next);
-    const result = await setCategoryLinkOrder(next);
+    // `videos` is in display order (newest-at-top). After arrayMove, the
+    // result is also in display order. Persist by reversing so DB
+    // `sort_order` keeps its ASC convention (smallest = bottom of list).
+    const nextDisplay = arrayMove(videos, oldIndex, newIndex).map((v) => v.id);
+    setOptimistic(nextDisplay);
+    const result = await setCategoryLinkOrder([...nextDisplay].reverse());
     if (!result.ok) {
       toast.error("並び替えの保存に失敗: " + result.reason);
       setOptimistic(null);
@@ -273,13 +325,16 @@ export function VideosList({ categoryId, initial, firstClearAt }: Props) {
             </span>
           )}
           {firstClearAt && (
-            <span
-              className="inline-flex items-center gap-1 rounded-sm border border-amber-400/45 bg-amber-400/10 px-1.5 py-px text-[9px] text-amber-200 normal-case"
-              title={`初クリア: ${formatFirstClear(firstClearAt, "long")}`}
+            <button
+              type="button"
+              onClick={onJumpToFirstClear}
+              className="inline-flex items-center gap-1 rounded-sm border border-amber-400/45 bg-amber-400/10 px-1.5 py-px text-[9px] text-amber-200 normal-case transition-colors hover:border-amber-400/70 hover:bg-amber-400/20 hover:text-amber-100 focus-visible:ring-2 focus-visible:ring-amber-400/50 focus-visible:outline-none"
+              title={`初クリア: ${formatFirstClear(firstClearAt, "long")} (クリックで動画へジャンプ)`}
+              aria-label={`${formatFirstClear(firstClearAt, "long")} のクリア動画へスクロール`}
             >
               <Trophy className="h-2.5 w-2.5" aria-hidden />
               {formatFirstClear(firstClearAt, "short")}
-            </span>
+            </button>
           )}
           {videos.length > 1 && sortMode === "custom" && (
             <span className="text-muted-foreground/60">
@@ -732,6 +787,12 @@ function VideoCard({
 /**
  * Click-to-load YouTube preview. Avoids embedding N iframes upfront so the
  * page stays fast — only the cards the user clicks become full <iframe>s.
+ *
+ * 1.9 (2026-04-28): viewport 近接前はサムネイル <Image> も描画しない
+ * (= 通信を発生させない)。`IntersectionObserver` で「画面外 200px まで
+ * 近づいたら」フラグを立て、初描画。狭幅の縦長スクロールでもページに
+ * 入ってくる動画分だけ通信が発生する形に。1 度 true になったら以後は
+ * 維持 (再 fetch は browser cache に任せる)。
  */
 function YouTubePreview({
   id,
@@ -743,6 +804,31 @@ function YouTubePreview({
   title: string;
 }) {
   const [active, setActive] = useState(false);
+  const [thumbVisible, setThumbVisible] = useState(false);
+  const containerRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    if (thumbVisible) return;
+    const el = containerRef.current;
+    if (!el) return;
+    // Older browsers / SSR fallback: draw thumbnail immediately so the
+    // user never sees a blank box. Modern browsers proceed via IO.
+    if (typeof IntersectionObserver === "undefined") {
+      setThumbVisible(true);
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          setThumbVisible(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: "200px" },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [thumbVisible]);
 
   if (active) {
     return (
@@ -764,19 +850,31 @@ function YouTubePreview({
 
   return (
     <button
+      ref={containerRef}
       type="button"
       onClick={() => setActive(true)}
       className="group/play relative aspect-video w-full overflow-hidden bg-black"
       aria-label={`${title} を再生`}
     >
-      <Image
-        src={youtubeThumbnailUrl(id)}
-        alt={title}
-        fill
-        sizes="(min-width: 640px) 50vw, 100vw"
-        className="object-cover opacity-90 transition-opacity group-hover/play:opacity-100"
-        unoptimized
-      />
+      {thumbVisible ? (
+        <Image
+          src={youtubeThumbnailUrl(id)}
+          alt={title}
+          fill
+          sizes="(min-width: 640px) 50vw, 100vw"
+          className="object-cover opacity-90 transition-opacity group-hover/play:opacity-100"
+          loading="lazy"
+          unoptimized
+        />
+      ) : (
+        // viewport 近接前のプレースホルダ — 同じ aspect ratio で枠だけ確保
+        // し画像は読み込まない。subtle gradient で「動画カード」と分かる
+        // だけの最小限の描画。
+        <span
+          aria-hidden
+          className="absolute inset-0 bg-gradient-to-br from-black via-zinc-900/60 to-zinc-800/50"
+        />
+      )}
       <span className="absolute inset-0 grid place-items-center bg-gradient-to-t from-black/60 via-transparent to-transparent">
         <span className="grid h-12 w-12 place-items-center rounded-full bg-black/70 text-white shadow-[0_0_24px_-4px_rgba(255,255,255,0.6)] transition-transform group-hover/play:scale-110">
           <Play className="h-5 w-5 fill-white" aria-hidden />

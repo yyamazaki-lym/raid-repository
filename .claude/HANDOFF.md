@@ -39,7 +39,7 @@
 | 7 | スマホでのレイアウト崩れ確認 | 中 |
 | 8 | Vercel/Supabase 自動導入 (Deploy button / `.env.example` / seed) | 中 |
 | ~~9~~ | ~~バージョン番号体系の見直し~~ — 完了 (1.9 (2026-04-28) で新方式へ移行) | ~~小〜中~~ |
-| 10 | 動画ページ上部のクリア日時ボタンを押下時、リスト内のその日時の動画位置までスクロール (anchor jump) | 小〜中 |
+| ~~10~~ | ~~動画ページ上部のクリア日時ボタンを押下時、リスト内のその日時の動画位置までスクロール (anchor jump)~~ — 完了 (1.9 (2026-04-28)、Trophy バッジを `<button>` 化、`findVideoIdByDate` ヘルパー共通化) | ~~小〜中~~ |
 | 11 | ページ全体のパフォーマンス最適化 (重さを軽減) — 候補: bundle 軽量化, RSC 化, lazy mount, 画像最適化, query batching, realtime subscription 削減 等 | 中 |
 | ~~12~~ | ~~トップの運用ルール popup に編集ボタン追加~~ — 完了 (1.9 (2026-04-28)、Supabase `app_settings.schedule_top_text_override` で persistent override + オリジナル/編集後トグル + クリアボタン) | ~~小〜中~~ |
 | ~~13~~ | ~~スケジュール取り込み時の文字コード decode~~ — 完了 (1.9 (2026-04-28)、`src/lib/html-entities.ts` に共通 `decodeHtmlEntities` を切り出し、`&times;` `&divide;` `&laquo;` `&deg;` 他多数の named entity をカバー) | ~~小〜中~~ |

@@ -52,6 +52,10 @@ export const RELEASES: ReleaseEntry[] = [
     date: "2026-04-28",
     parts: [
       {
+        title: "🎬 動画ページに 3 件改善 (TODO #10 anchor jump + カスタム逆順修正 + 通信量削減)",
+        body: "(1) **TODO #10 完了**: ヘッダーの初クリア (Trophy) バッジを `<button>` 化し、クリックで該当動画へ smooth scroll + ring 強調。`findVideoIdByDate(YYYY-MM-DD)` ヘルパーを切り出して URL `?focusDate=` 経由フローと共通化。連打しても scroll が再発火するよう `manualFocusKey` カウンターを `useEffect` deps に追加。\n(2) **カスタム並び替えの逆順表示を修正**: DB の `sort_order` は ASC で挿入順 (古い順) のため、これまで「日付順 → カスタム」に切替えると先頭が逆になっていた。`useMemo` で custom mode 時は `[...live].reverse()` し、日付順と同じ「新しい順」を初期表示に。DnD onDragEnd は表示順を反転して `setCategoryLinkOrder` に渡し、DB 側 `sort_order` ASC 規約も維持。\n(3) **サムネイルを viewport 近接時のみロード**: `YouTubePreview` に `IntersectionObserver` (rootMargin 200px) を追加し、画面外のサムネイルは `<Image>` を描画せず gradient プレースホルダのみ表示。スマホで縦長スクロールする際の通信量を大幅削減。観察対象が viewport 200px 以内に入ったら 1 度だけ `<Image>` を mount してそれ以後は維持 (再 fetch は browser cache に任せる)。`IntersectionObserver` 非対応環境では即座に画像を描画する fallback も用意。",
+      },
+      {
         title: "🧹 Suspense streaming + skeleton を一旦撤去 (体感比較のため)",
         body: "ユーザー指示「いったんスケルトン待ち時間をなくしてみてほしい」。`SchedulePage` から `<Suspense>` ラッパーと `<ScheduleContent>` 中継を削除して旧来の同期 server-render に戻し、`SchedulePageSkeleton` コンポーネント自体も削除。skeleton → 実コンテンツの swap UX より「全部待つが一発で完成形が出る」体感の方が良いか比較する。Vercel Region を Tokyo (hnd1) に寄せた効果と合わせて評価予定。",
       },
