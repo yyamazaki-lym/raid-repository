@@ -93,6 +93,27 @@ export type CategoryUpdatePatch = Partial<{
   required_role_ids: string[] | null;
 }>;
 
+/**
+ * 2.1 (2026-04-29) hot-fix: server-side cache を invalidate するヘルパー。
+ *
+ * 旧来は anon key の direct write で Supabase Realtime が postgres_changes
+ * を browser に流していた。Server Action 経由になっても Realtime 自体は
+ * 動くはずだが、ユーザー報告で「更新後ページ更新しないと UI 反映されない」
+ * 事象があるため、念のため Next.js の server-side data cache も叩いて
+ * RSC を再実行できるよう /category と / を revalidate する。
+ *
+ * 実際の UI 反映は client 側の `router.refresh()` (dialog onSubmit) と
+ * Realtime の二重で担保される。
+ */
+function revalidateCategoryPages() {
+  try {
+    revalidatePath("/category");
+    revalidatePath("/");
+  } catch {
+    // best-effort
+  }
+}
+
 export async function createCategoryAction(
   input: CategoryCreateInput,
 ): Promise<
@@ -125,6 +146,7 @@ export async function createCategoryAction(
   if (error || !data) {
     return { ok: false, reason: error?.message ?? "unknown error" };
   }
+  revalidateCategoryPages();
   return { ok: true, category: rowToCategory(data as CategoryRow) };
 }
 
@@ -141,6 +163,7 @@ export async function updateCategoryAction(
     .update(patch)
     .eq("id", id);
   if (error) return { ok: false, reason: error.message };
+  revalidateCategoryPages();
   return { ok: true };
 }
 
@@ -153,6 +176,7 @@ export async function deleteCategoryAction(
   const supabase = await createClient();
   const { error } = await supabase.from("categories").delete().eq("id", id);
   if (error) return { ok: false, reason: error.message };
+  revalidateCategoryPages();
   return { ok: true };
 }
 
@@ -170,6 +194,7 @@ export async function setCategoryOrderAction(
   const results = await Promise.all(updates);
   const failed = results.find((r) => r.error);
   if (failed?.error) return { ok: false, reason: failed.error.message };
+  revalidateCategoryPages();
   return { ok: true };
 }
 
@@ -186,6 +211,7 @@ export async function updateCategoryStatusAction(
     .update({ status })
     .eq("id", id);
   if (error) return { ok: false, reason: error.message };
+  revalidateCategoryPages();
   return { ok: true };
 }
 
