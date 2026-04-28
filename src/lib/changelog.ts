@@ -52,6 +52,10 @@ export const RELEASES: ReleaseEntry[] = [
     date: "2026-04-28",
     parts: [
       {
+        title: "🚚 募集文テンプレ DnD でカテゴリ跨ぎ移動時に category_id も追従 (TODO #16)",
+        body: "ヘッダーの「募集文」popover 内の DnD は globally sorted な single SortableContext のため、別カテゴリセクションへドロップする操作自体は可能だったが、これまで sort_order しか更新していなかったため、realtime refetch 後 (groupByCategory が categoryName でグルーピング) に元のカテゴリ section に視覚的に戻ってしまっていた。\n修正: `onDragEnd` で active と over の categoryId を比較し異なれば、`setRecruitmentTemplateOrder` と並行して新規追加した `setRecruitmentTemplateCategory(id, categoryId)` を呼び出して `category_id` も更新。さらに optimistic 反映用の `optimisticCategoryOverride` state を追加し、`ordered` 計算の頭で対象 1 件の `categoryId` / `categoryName` を上書き → DnD 完了の瞬間から新セクションに表示される。クロスカテゴリ移動時は toast に移動先カテゴリ名を出して操作確認を補助。",
+      },
+      {
         title: "🔔 各人のコメントに更新があった場合、ヘッダーの吹き出しアイコンを amber でハイライト (TODO #14)",
         body: "スケジュール取り込み時、各ユーザーのコメント (一言) が前回見たときから変わっていれば、ヘッダー名の右にある吹き出しアイコンの枠 / 背景を amber 化し、右上に小さな amber ドットを表示。クリック (popover を開く操作) で「確認済み」とみなし highlight を解除する。確認しない限り継続表示。\n判定は `timestamp + body` の連結 fingerprint を `localStorage` に user.userId 別に保存して比較。初回表示 (stored が null) はノイズ抑制のため silent baseline として現値だけ保存し、その後の変化のみ highlight する。localStorage 不可環境 (private mode 等) では何もしない。",
       },

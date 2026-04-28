@@ -34,6 +34,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import {
+  setRecruitmentTemplateCategory,
   setRecruitmentTemplateOrder,
   useRealtimeRecruitmentTemplates,
   type RecruitmentTemplate,
@@ -88,15 +89,40 @@ export function RecruitmentTemplatesButton({ initial, categories }: Props) {
     () => new Map(categories.map((c) => [c.id, c.slug] as const)),
     [categories],
   );
+  // category id → name lookup. クロスカテゴリドロップ時に optimistic な
+  // categoryName を埋めるため (groupByCategory が categoryName でグルー
+  // プングするので、override を反映させないと realtime confirm までの
+  // 一瞬で旧セクションに残って見える).
+  const nameById = useMemo(
+    () => new Map(categories.map((c) => [c.id, c.name] as const)),
+    [categories],
+  );
 
   // Optimistic local order for instant DnD feedback. Server confirms via
   // realtime refetch; on failure we revert.
   const [optimisticOrder, setOptimisticOrder] = useState<string[] | null>(null);
+  // クロスカテゴリドロップを楽観的に反映するための「対象 1 件分の
+  // categoryId 上書き」(TODO #16)。`ordered` 計算の頭で `templates` の
+  // 該当 id だけ patch して、新セクションに即時表示させる。realtime が
+  // DB から最新を取り直したら勝手に追従するので、あとは override を
+  // 落とすだけで良い。
+  const [optimisticCategoryOverride, setOptimisticCategoryOverride] =
+    useState<{ id: string; categoryId: string | null } | null>(null);
 
   const ordered = useMemo(() => {
-    if (!optimisticOrder) return templates;
+    let base = templates;
+    if (optimisticCategoryOverride) {
+      const ov = optimisticCategoryOverride;
+      const newName = ov.categoryId ? nameById.get(ov.categoryId) ?? null : null;
+      base = templates.map((t) =>
+        t.id === ov.id
+          ? { ...t, categoryId: ov.categoryId, categoryName: newName }
+          : t,
+      );
+    }
+    if (!optimisticOrder) return base;
     const idx = new Map(optimisticOrder.map((id, i) => [id, i] as const));
-    return [...templates].sort((a, b) => {
+    return [...base].sort((a, b) => {
       const ai = idx.get(a.id);
       const bi = idx.get(b.id);
       if (ai === undefined && bi === undefined) return 0;
@@ -104,7 +130,7 @@ export function RecruitmentTemplatesButton({ initial, categories }: Props) {
       if (bi === undefined) return -1;
       return ai - bi;
     });
-  }, [templates, optimisticOrder]);
+  }, [templates, optimisticOrder, optimisticCategoryOverride, nameById]);
 
   const grouped = useMemo(() => groupByCategory(ordered), [ordered]);
 
@@ -158,18 +184,57 @@ export function RecruitmentTemplatesButton({ initial, categories }: Props) {
   const onDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
+    const activeT = ordered.find((t) => t.id === active.id);
+    const overT = ordered.find((t) => t.id === over.id);
+    if (!activeT || !overT) return;
     const oldIndex = ordered.findIndex((t) => t.id === active.id);
     const newIndex = ordered.findIndex((t) => t.id === over.id);
     if (oldIndex < 0 || newIndex < 0) return;
     const next = arrayMove(ordered, oldIndex, newIndex).map((t) => t.id);
     setOptimisticOrder(next);
-    const result = await setRecruitmentTemplateOrder(next);
-    if (!result.ok) {
-      toast.error("並び替え保存失敗: " + result.reason);
+
+    // TODO #16: drop 先の over template が別カテゴリのものなら、active の
+    // category_id も追従させる。これをやらないと sort_order だけ動いて、
+    // realtime refetch 後に元のカテゴリセクションに視覚的に戻ってしまう。
+    const crossCategory = activeT.categoryId !== overT.categoryId;
+    if (crossCategory) {
+      setOptimisticCategoryOverride({
+        id: activeT.id,
+        categoryId: overT.categoryId,
+      });
+    }
+
+    const ops: Promise<{ ok: true } | { ok: false; reason: string }>[] = [
+      setRecruitmentTemplateOrder(next),
+    ];
+    if (crossCategory) {
+      ops.push(
+        setRecruitmentTemplateCategory(activeT.id, overT.categoryId),
+      );
+    }
+    const results = await Promise.all(ops);
+    const failed = results.find((r) => !r.ok) as
+      | { ok: false; reason: string }
+      | undefined;
+    if (failed) {
+      toast.error("並び替え保存失敗: " + failed.reason);
       setOptimisticOrder(null);
+      setOptimisticCategoryOverride(null);
       return;
     }
-    setTimeout(() => setOptimisticOrder(null), 1500);
+    if (crossCategory) {
+      const targetName =
+        (overT.categoryId ? nameById.get(overT.categoryId) : null) ??
+        overT.categoryName ??
+        "未分類";
+      toast.success(
+        `「${activeT.label || "通常募集"}」を「${targetName}」に移動しました`,
+      );
+    }
+    setTimeout(() => {
+      setOptimisticOrder(null);
+      setOptimisticCategoryOverride(null);
+    }, 1500);
   };
 
   const copyToClipboard = async (template: RecruitmentTemplate) => {
