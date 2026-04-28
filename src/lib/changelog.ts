@@ -52,6 +52,10 @@ export const RELEASES: ReleaseEntry[] = [
     date: "2026-04-28",
     parts: [
       {
+        title: "🎯 theater mode のアスペクト比崩れと背景透けを根治",
+        body: "ユーザー報告: (a) マウスホバー時に横に黒いバーが何本も出る、(b) 再生開始時に動画の左上が拡大されたように見える。原因は theater mode 内側枠を `aspect-video w-[min(90vw,1400px)] max-h-[85vh]` で 3 制約 (w / max-h / aspect) を同時指定していたこと。狭高 viewport では max-h が支配して幅は 16:9 由来でなくなり、結果として iframe ボックスが 16:9 でない長方形となって中の YouTube プレーヤーが letterbox 風に左上クロップ表示されていた。さらに backdrop が `bg-black/85` (15% 透過) だったため、背景カードの hover translate animation が透けて「横の黒バー」に見えていた。\n修正: 内側枠を `style={{ width: 'min(90vw, calc(90vh * 16/9), 1400px)', aspectRatio: '16 / 9' }}` の 1 次元計算に統一 — 幅が w / h 両方の制約を同時に満たすよう min() で決まり、aspectRatio で高さを導出するので二重制約が発生しない。backdrop は `bg-black/95` で実質不透明に。`ring-1 ring-white/10` で枠も明示しポップアップ感を強化。preview 計測でアスペクト比 1.778 (= 16/9) を確認。",
+      },
+      {
         title: "🪟 theater mode を 3 件改善 (上部見切れ修正 + 自動サイズ調整 + ちらつき解消)",
         body: "ユーザー報告: (a) 上部の操作ボタンが見切れる、(b) ブラウザ幅で自動調整したい、(c) 再生後に画面がちらついて操作不能になる。\n(1) **上部見切れ修正**: 操作ボタン (YouTube リンク + × 閉じる) を `-top-10 right-0` (iframe の枠外上) → `top-2 right-2 z-10` (iframe 上にオーバーレイ) へ移動。viewport 上端で切れる問題が解消。\n(2) **ブラウザ幅で自動サイズ**: 内側枠を `max-w-6xl` 固定 → `w-[min(90vw,1400px)]` に変更。広い画面 (>1556px) では最大 1400px、狭い画面では viewport の 90% を採用。`max-h-[85vh]` で縦長 portrait viewport でもはみ出さない。`aspect-video` で 16:9 維持。グリッドのカード幅 (sm:cols-2 ≈ 640px) より少し大きい〜2x の theater 表示に。\n(3) **ちらつき解消**: 原因は `document.body.style.overflow = 'hidden'` でスクロールバー幅 (~15px) が出入りし viewport 幅が瞬間変化 → カード grid 全体が再レイアウトされていたこと。background scroll の抑止を撤回し、ESC リスナーのみ残す。`backdrop-blur-sm` も重い repaint を誘発するため削除。`bg-black/85` だけのシンプルな backdrop に。",
       },

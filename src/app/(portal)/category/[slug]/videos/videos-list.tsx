@@ -926,21 +926,27 @@ function YouTubePreview({
         {/* Theater mode: viewport を覆う backdrop 上で iframe を拡大表示。
            上部の sticky header / nav に被らないよう z-50 + fixed inset-0
            で配置。背景クリックと右上 × ボタンと ESC キーで閉じる。
-           `backdrop-blur` は重い repaint を誘発するため使わず、bg-black/85
-           のみに留める。 */}
+           背景は完全不透明 (bg-black/98) で背景カードのホバー animation 等
+           が透けて見えるのを防ぐ (透けて見えると「横に黒いバーが何本も出る」
+           現象の原因になっていた)。 */}
         <div
-          className="fixed inset-0 z-50 grid place-items-center bg-black/85 p-4"
+          className="fixed inset-0 z-50 grid place-items-center bg-black/95 p-4 sm:p-6"
           onClick={() => setActive(false)}
           role="dialog"
           aria-modal="true"
           aria-label={`${title} を theater mode で再生中`}
         >
-          {/* iframe の枠サイズ: ブラウザ幅に応じて自動調整。`min(90vw, 1400px)`
-             で広い画面では最大 1400px、狭い画面では viewport の 90% を
-             採用して「カード幅 + α (1.5〜2x)」程度の拡大表示に。`max-h-[80vh]`
-             で縦長 portrait viewport でもはみ出さない。aspect-video で 16:9。 */}
+          {/* サイズは「幅と高さの両方が viewport 内に収まる」ようにを
+             幅側だけで計算: `min(90vw, calc(90vh * 16/9), 1400px)`。
+             これに `aspectRatio: 16/9` を組み合わせて高さは width から
+             導出 (max-height との二重制約を避けることで、「動画の左上だけ
+             拡大されて見える」アスペクト比崩れを根治)。 */}
           <div
-            className="relative aspect-video w-[min(90vw,1400px)] max-h-[85vh] shadow-2xl shadow-black/80"
+            style={{
+              width: "min(90vw, calc(90vh * 16 / 9), 1400px)",
+              aspectRatio: "16 / 9",
+            }}
+            className="relative shadow-2xl shadow-black/80 ring-1 ring-white/10"
             onClick={(e) => e.stopPropagation()}
           >
             <iframe
@@ -954,9 +960,8 @@ function YouTubePreview({
               className="absolute inset-0 h-full w-full"
             />
             {/* 操作行を iframe 上にオーバーレイ配置 (旧: -top-10 で枠外
-               に出していたが、padding と組み合わせると viewport 上端で
-               切れていたので iframe 内 top-right に変更)。視認性のため
-               半透明の暗背景を保持。 */}
+               に出していたが viewport 上端で切れていたので iframe 内
+               top-right に変更)。 */}
             <div className="absolute top-2 right-2 z-10 flex items-center gap-2">
               <a
                 href={url}
