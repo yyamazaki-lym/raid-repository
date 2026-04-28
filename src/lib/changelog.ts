@@ -52,6 +52,10 @@ export const RELEASES: ReleaseEntry[] = [
     date: "2026-04-28",
     parts: [
       {
+        title: "🪟 theater mode を 3 件改善 (上部見切れ修正 + 自動サイズ調整 + ちらつき解消)",
+        body: "ユーザー報告: (a) 上部の操作ボタンが見切れる、(b) ブラウザ幅で自動調整したい、(c) 再生後に画面がちらついて操作不能になる。\n(1) **上部見切れ修正**: 操作ボタン (YouTube リンク + × 閉じる) を `-top-10 right-0` (iframe の枠外上) → `top-2 right-2 z-10` (iframe 上にオーバーレイ) へ移動。viewport 上端で切れる問題が解消。\n(2) **ブラウザ幅で自動サイズ**: 内側枠を `max-w-6xl` 固定 → `w-[min(90vw,1400px)]` に変更。広い画面 (>1556px) では最大 1400px、狭い画面では viewport の 90% を採用。`max-h-[85vh]` で縦長 portrait viewport でもはみ出さない。`aspect-video` で 16:9 維持。グリッドのカード幅 (sm:cols-2 ≈ 640px) より少し大きい〜2x の theater 表示に。\n(3) **ちらつき解消**: 原因は `document.body.style.overflow = 'hidden'` でスクロールバー幅 (~15px) が出入りし viewport 幅が瞬間変化 → カード grid 全体が再レイアウトされていたこと。background scroll の抑止を撤回し、ESC リスナーのみ残す。`backdrop-blur-sm` も重い repaint を誘発するため削除。`bg-black/85` だけのシンプルな backdrop に。",
+      },
+      {
         title: "🎭 動画ページ内再生を theater mode で拡大表示 (sticky header に被らない)",
         body: "PC で動画をページ内再生したときに上部の固定 header / nav に被って小さく窮屈に見えていたため、再生時は viewport を覆う backdrop 上に iframe を最大表示する theater mode を採用。`fixed inset-0 z-50` の dialog 内に iframe を配置し、`max-w-6xl aspect-video` で 16:9 を維持しつつ大きく描画。本体カードには「再生中…」プレースホルダだけ残してレイアウトシフトを抑制。閉じる手段は (1) `Escape` キー (2) 背景 (backdrop) クリック (3) 右上 × ボタン の 3 系統。再生中は `document.body.style.overflow = 'hidden'` で背景スクロールを抑止。`aria-modal=\"true\"` + `role=\"dialog\"` を付与してアクセシビリティ確保。",
       },

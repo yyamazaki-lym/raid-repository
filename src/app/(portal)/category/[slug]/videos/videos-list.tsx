@@ -891,18 +891,19 @@ function YouTubePreview({
     return () => observer.disconnect();
   }, [thumbVisible]);
 
-  // ESC で再生モーダルを閉じる + body スクロール抑止 (theater mode)
+  // ESC で再生モーダルを閉じる (theater mode)。
+  // `document.body.style.overflow = "hidden"` で背景スクロールを止めると、
+  // スクロールバー幅 (~15px) の出入りで viewport が瞬間的に幅変化 → カード
+  // grid 全体が再レイアウトされてちらつき・操作不能になるケースがあったので
+  // 撤回。背景スクロールは許容し、必要なら content の natural scroll に任せる。
   useEffect(() => {
     if (!active) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setActive(false);
     };
     document.addEventListener("keydown", onKey);
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
     return () => {
       document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = prevOverflow;
     };
   }, [active]);
 
@@ -922,34 +923,29 @@ function YouTubePreview({
             </span>
           </span>
         </div>
-        {/* Theater mode: viewport を覆う backdrop 上で iframe を最大表示。
+        {/* Theater mode: viewport を覆う backdrop 上で iframe を拡大表示。
            上部の sticky header / nav に被らないよう z-50 + fixed inset-0
-           で配置。max-w/max-h で 16:9 を維持しつつ枠余白を取る。
-           背景クリックと右上 × ボタンと ESC キーで閉じる。 */}
+           で配置。背景クリックと右上 × ボタンと ESC キーで閉じる。
+           `backdrop-blur` は重い repaint を誘発するため使わず、bg-black/85
+           のみに留める。 */}
         <div
-          className="fixed inset-0 z-50 grid place-items-center bg-black/85 p-4 backdrop-blur-sm sm:p-8"
+          className="fixed inset-0 z-50 grid place-items-center bg-black/85 p-4"
           onClick={() => setActive(false)}
           role="dialog"
           aria-modal="true"
           aria-label={`${title} を theater mode で再生中`}
         >
+          {/* iframe の枠サイズ: ブラウザ幅に応じて自動調整。`min(90vw, 1400px)`
+             で広い画面では最大 1400px、狭い画面では viewport の 90% を
+             採用して「カード幅 + α (1.5〜2x)」程度の拡大表示に。`max-h-[80vh]`
+             で縦長 portrait viewport でもはみ出さない。aspect-video で 16:9。 */}
           <div
-            className="relative aspect-video w-full max-w-6xl shadow-2xl shadow-black/80"
+            className="relative aspect-video w-[min(90vw,1400px)] max-h-[85vh] shadow-2xl shadow-black/80"
             onClick={(e) => e.stopPropagation()}
           >
             <iframe
               src={src}
               title={title}
-              // 1.9 (2026-04-28): YouTube エラー 153 救済 (Zenn 記事準拠)。
-              //   - `web-share` を allow に追加 (YouTube 公式推奨)
-              //   - `referrerPolicy` を明示的に
-              //     `strict-origin-when-cross-origin` に設定。これは
-              //     YouTube が embed 元を判定するために要求する HTTP Referer
-              //     を origin 部分まで送る policy。`no-referrer` で完全に
-              //     ブロックすると embed 許可判定で「未知のサイトから」
-              //     扱いとなりエラー 153 になる。
-              //   - `frameBorder="0"` は deprecated だが YouTube 公式 share
-              //     コードに含まれているので互換性のため残す。
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
               referrerPolicy="strict-origin-when-cross-origin"
               frameBorder="0"
@@ -957,15 +953,17 @@ function YouTubePreview({
               loading="lazy"
               className="absolute inset-0 h-full w-full"
             />
-            {/* 右上の操作行: 「YouTube で開く」と「閉じる」を縦に重ねず
-               横並びで一行に。 */}
-            <div className="absolute -top-10 right-0 flex items-center gap-2">
+            {/* 操作行を iframe 上にオーバーレイ配置 (旧: -top-10 で枠外
+               に出していたが、padding と組み合わせると viewport 上端で
+               切れていたので iframe 内 top-right に変更)。視認性のため
+               半透明の暗背景を保持。 */}
+            <div className="absolute top-2 right-2 z-10 flex items-center gap-2">
               <a
                 href={url}
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={(e) => e.stopPropagation()}
-                className="inline-flex items-center gap-1 rounded-md bg-black/70 px-2 py-1 font-mono text-[10px] tracking-[0.18em] text-white/85 uppercase backdrop-blur-sm transition-colors hover:bg-black/90 hover:text-white"
+                className="inline-flex items-center gap-1 rounded-md bg-black/75 px-2 py-1 font-mono text-[10px] tracking-[0.18em] text-white/85 uppercase transition-colors hover:bg-black/90 hover:text-white"
                 aria-label="YouTube で開く"
                 title="埋め込み再生できない場合はこちらから外部タブで再生"
               >
@@ -978,7 +976,7 @@ function YouTubePreview({
                   e.stopPropagation();
                   setActive(false);
                 }}
-                className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-black/70 text-white/85 backdrop-blur-sm transition-colors hover:bg-black/90 hover:text-white"
+                className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-black/75 text-white/85 transition-colors hover:bg-black/90 hover:text-white"
                 aria-label="再生を閉じる"
                 title="再生を閉じる (ESC)"
               >
