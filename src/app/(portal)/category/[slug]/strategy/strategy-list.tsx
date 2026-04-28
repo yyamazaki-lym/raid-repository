@@ -1,8 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ExternalLink, BookOpen, GripVertical, MessageCircle } from "lucide-react";
+import { BookOpen, GripVertical, MessageCircle } from "lucide-react";
 import { toast } from "sonner";
+import { LinkSiteIcon } from "@/components/portal/link-site-icon";
 import {
   DndContext,
   KeyboardSensor,
@@ -185,9 +186,10 @@ function SortableStrategyCard({
               rel="noopener noreferrer"
               className="flex flex-1 items-start gap-2"
             >
-              <ExternalLink
-                className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--neon-magenta)]"
-                aria-hidden
+              <LinkSiteIcon
+                url={link.url}
+                variant="coarse"
+                className="mt-0.5 h-3.5 w-3.5 shrink-0"
               />
               <span className="flex-1 break-words font-display text-sm text-foreground group-hover:text-[var(--neon-cyan)]">
                 {link.title}
