@@ -11,6 +11,8 @@ import {
   fetchRecentImportCountsByCategory,
   fetchTimeToClearByCategory,
 } from "@/lib/server/categories-actions";
+import { getAuthorizedUserRoles } from "@/lib/server/auth";
+import { filterVisibleCategories } from "@/lib/category-visibility";
 import { CategoryList } from "./category-list";
 
 export const metadata = {
@@ -18,12 +20,20 @@ export const metadata = {
 };
 
 export default async function CategoryIndexPage() {
-  const [result, recentCounts, practiceSeconds, timeToClear] = await Promise.all([
-    fetchCategories(),
-    fetchRecentImportCountsByCategory(7),
-    fetchPracticeSecondsByCategory(),
-    fetchTimeToClearByCategory(),
-  ]);
+  const [result, userRoles, recentCounts, practiceSeconds, timeToClear] =
+    await Promise.all([
+      fetchCategories(),
+      getAuthorizedUserRoles(),
+      fetchRecentImportCountsByCategory(7),
+      fetchPracticeSecondsByCategory(),
+      fetchTimeToClearByCategory(),
+    ]);
+  // TODO #19: hide categories the user's roles can't view. Cards still
+  // exist in the DB and admins (= every guild member with edit access in
+  // V1) can see them once their role intersection allows.
+  const visible = result.ok
+    ? filterVisibleCategories(result.categories, userRoles)
+    : result.categories;
 
   return (
     <div className="flex flex-col gap-6">
@@ -61,7 +71,8 @@ export default async function CategoryIndexPage() {
       )}
 
       <CategoryList
-        initialCategories={result.categories}
+        initialCategories={visible}
+        userRoleIds={userRoles}
         recentImportCounts={recentCounts}
         practiceSecondsByCategory={practiceSeconds}
         timeToClearByCategory={timeToClear}

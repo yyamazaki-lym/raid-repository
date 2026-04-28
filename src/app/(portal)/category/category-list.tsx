@@ -60,11 +60,18 @@ import {
   updateCategoryStatus,
   useRealtimeCategories,
 } from "@/lib/categories-client";
+import { filterVisibleCategories } from "@/lib/category-visibility";
 import type { Category, CategoryStatus } from "@/lib/supabase/types";
 import { isSafeUrl } from "@/lib/url-safe";
 
 type Props = {
   initialCategories: Category[];
+  /**
+   * TODO #19: Discord role IDs the current user has, used to keep
+   * realtime updates filtered (initialCategories is already filtered
+   * server-side).
+   */
+  userRoleIds: string[];
   /** Map of category.id → number of Discord-imported links in the last 7d. */
   recentImportCounts?: Record<string, number>;
   /** Map of category.id → sum of all video durations in seconds. */
@@ -79,13 +86,17 @@ type Props = {
 
 export function CategoryList({
   initialCategories,
+  userRoleIds,
   recentImportCounts = {},
   practiceSecondsByCategory = {},
   timeToClearByCategory = {},
 }: Props) {
   const router = useRouter();
   // Realtime hook keeps the list in sync with DB changes from any client.
-  const live = useRealtimeCategories(initialCategories);
+  // Filter post-realtime so newly-added role-restricted categories don't
+  // briefly appear before the next page navigation.
+  const liveAll = useRealtimeCategories(initialCategories);
+  const live = filterVisibleCategories(liveAll, userRoleIds);
   // Local mirror so DnD can rearrange optimistically without waiting on
   // round-trip+realtime — Realtime overwrites once the server confirms.
   const [optimisticOrder, setOptimisticOrder] = useState<string[] | null>(null);

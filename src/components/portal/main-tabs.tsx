@@ -10,8 +10,17 @@ import type { Category } from "@/lib/supabase/types";
 
 export function MainTabs({
   initialCategories,
+  userRoleIds,
 }: {
   initialCategories: Category[];
+  /**
+   * TODO #19: realtime category updates re-fetch the full list, but the
+   * client doesn't know which roles the user has unless we pass them
+   * down. CategorySwitcher uses this to filter realtime updates so a
+   * newly-added role-restricted category doesn't briefly appear before
+   * the next page navigation.
+   */
+  userRoleIds: string[];
 }) {
   const pathname = usePathname();
   const scheduleActive = pathname === "/";
@@ -56,7 +65,10 @@ export function MainTabs({
           </li>
 
           <li className="shrink-0">
-            <CategorySwitcher initialCategories={initialCategories} />
+            <CategorySwitcher
+              initialCategories={initialCategories}
+              userRoleIds={userRoleIds}
+            />
           </li>
         </ul>
       </div>

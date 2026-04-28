@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Plus, Save, AlertTriangle, Pencil, Upload, Loader2 } from "lucide-react";
+import { Plus, Save, AlertTriangle, Pencil, Upload, Loader2, Shield } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
@@ -25,6 +25,8 @@ import {
   createCategory,
   updateCategory,
 } from "@/lib/categories-client";
+import { fetchAvailableGuildRoles } from "@/lib/server/categories-actions";
+import type { DiscordGuildRole } from "@/lib/server/discord-roles";
 import { cn } from "@/lib/utils";
 
 const SLUG_RE = /^[a-z0-9][a-z0-9-]{1,40}[a-z0-9]?$/;
@@ -120,6 +122,17 @@ export function CategoryFormDialog({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // TODO #19: role gating. `selectedRoleIds` is the working set; on save
+  // it's persisted as `required_role_ids`. Empty array = open to all
+  // guild members. `availableRoles` is fetched from Discord on open via
+  // a Server Action (bot-token-backed) — failure leaves an empty list
+  // and the section degrades to "ロール一覧を取得できません" hint.
+  const [selectedRoleIds, setSelectedRoleIds] = useState<string[]>(
+    category?.requiredRoleIds ?? [],
+  );
+  const [availableRoles, setAvailableRoles] = useState<DiscordGuildRole[]>([]);
+  const [rolesLoading, setRolesLoading] = useState(false);
+
   const onPickBackgroundFile = () => {
     fileInputRef.current?.click();
   };
@@ -185,9 +198,40 @@ export function CategoryFormDialog({
       setDiscordEnabled(category?.discordImportEnabled ?? true);
       setFirstClearDate(isoToDateInput(category?.firstClearAt ?? null));
       setBackgroundImageUrl(category?.backgroundImageUrl ?? "");
+      setSelectedRoleIds(category?.requiredRoleIds ?? []);
       setError(null);
     }
   }, [open, category]);
+
+  // Fetch the Discord guild role list once per dialog open. Server Action
+  // re-validates auth so we can call it from a client component without
+  // exposing the bot token. Failures (missing env, Discord 403/5xx) are
+  // swallowed to an empty array — the UI handles that case below.
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    setRolesLoading(true);
+    fetchAvailableGuildRoles()
+      .then((roles) => {
+        if (cancelled) return;
+        setAvailableRoles(roles);
+      })
+      .catch((e) => {
+        console.warn("[category-form] fetch roles failed", e);
+      })
+      .finally(() => {
+        if (!cancelled) setRolesLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
+  const toggleRole = (id: string) => {
+    setSelectedRoleIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
+  };
 
   const validateUrl = (raw: string): string | null => {
     if (!raw.trim()) return null;
@@ -246,6 +290,7 @@ export function CategoryFormDialog({
       discord_import_enabled: discordEnabled,
       first_clear_at: firstClearIso,
       background_image_url: trimmedBackgroundImage || null,
+      required_role_ids: selectedRoleIds.length > 0 ? selectedRoleIds : null,
     };
 
     const result = isEdit
@@ -265,6 +310,8 @@ export function CategoryFormDialog({
           if (firstClearIso) followUp.first_clear_at = firstClearIso;
           if (trimmedBackgroundImage)
             followUp.background_image_url = trimmedBackgroundImage;
+          if (selectedRoleIds.length > 0)
+            followUp.required_role_ids = selectedRoleIds;
           if (Object.keys(followUp).length > 0) {
             await updateCategory(r.category.id, followUp);
           }
@@ -552,6 +599,78 @@ export function CategoryFormDialog({
                   }}
                 />
               )}
+          </div>
+
+          <div className="flex flex-col gap-1.5 border-t border-border/30 pt-4">
+            <Label className="flex items-center gap-1.5 text-xs text-foreground/80">
+              <Shield className="h-3 w-3" aria-hidden />
+              閲覧可能ロール（任意）
+            </Label>
+            <p className="text-muted-foreground text-[11px] leading-relaxed">
+              選択したロールのいずれか 1 つを持つ Discord メンバーのみが、このコンテンツのページを開けます。
+              何も選択しなければ全メンバーが閲覧可能です。
+            </p>
+            {rolesLoading ? (
+              <div className="flex items-center gap-2 px-3 py-2 text-[11px] text-muted-foreground">
+                <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
+                ロール一覧を読み込み中…
+              </div>
+            ) : availableRoles.length === 0 ? (
+              <div className="rounded-md border border-border/30 bg-secondary/20 px-3 py-2 text-[11px] text-muted-foreground">
+                ロール一覧を取得できませんでした
+                <span className="opacity-60">
+                  （DISCORD_BOT_TOKEN / DISCORD_GUILD_ID 未設定 or bot 権限不足）
+                </span>
+              </div>
+            ) : (
+              <div className="flex max-h-44 flex-col gap-0.5 overflow-y-auto rounded-md border border-border/30 bg-secondary/10 p-1">
+                {availableRoles.map((role) => {
+                  const checked = selectedRoleIds.includes(role.id);
+                  return (
+                    <label
+                      key={role.id}
+                      className={cn(
+                        "flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-xs transition-colors hover:bg-secondary/30",
+                        checked && "bg-[var(--neon-cyan)]/10",
+                      )}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleRole(role.id)}
+                        className="h-3.5 w-3.5 cursor-pointer accent-[var(--neon-cyan)]"
+                      />
+                      {role.color > 0 && (
+                        <span
+                          aria-hidden
+                          className="h-2.5 w-2.5 shrink-0 rounded-full border border-border/40"
+                          style={{
+                            backgroundColor: `#${role.color
+                              .toString(16)
+                              .padStart(6, "0")}`,
+                          }}
+                        />
+                      )}
+                      <span className="min-w-0 flex-1 truncate">{role.name}</span>
+                      {role.managed && (
+                        <span className="shrink-0 rounded border border-border/40 px-1 text-[9px] tracking-[0.16em] text-muted-foreground uppercase">
+                          managed
+                        </span>
+                      )}
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+            {selectedRoleIds.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setSelectedRoleIds([])}
+                className="self-start font-mono text-[10px] tracking-[0.18em] text-muted-foreground uppercase hover:text-foreground"
+              >
+                選択をクリア
+              </button>
+            )}
           </div>
 
           <div className="flex flex-col gap-1.5 border-t border-border/30 pt-4">

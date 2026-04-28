@@ -1,18 +1,29 @@
 import { SiteHeader } from "@/components/portal/site-header";
 import { MainTabs } from "@/components/portal/main-tabs";
 import { fetchCategories } from "@/lib/supabase/categories";
+import { getAuthorizedUserRoles } from "@/lib/server/auth";
+import { filterVisibleCategories } from "@/lib/category-visibility";
 
 export default async function PortalLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   // Fetch once per request — `fetchCategories` is React-cached so the
   // category page / sub-tab layout don't repeat the query.
-  const result = await fetchCategories();
+  // TODO #19: filter the list to categories the user's Discord roles can
+  // see. Categories with `requiredRoleIds = []` (default) are visible to
+  // everyone; non-empty arrays restrict to role intersection.
+  const [result, userRoles] = await Promise.all([
+    fetchCategories(),
+    getAuthorizedUserRoles(),
+  ]);
+  const visible = result.ok
+    ? filterVisibleCategories(result.categories, userRoles)
+    : result.categories;
 
   return (
     <>
       <SiteHeader />
-      <MainTabs initialCategories={result.categories} />
+      <MainTabs initialCategories={visible} userRoleIds={userRoles} />
       {/* 1.9.30: max-width を 6xl (1152px) → 5xl (1024px) に絞る。
           PC 横幅が広すぎてカードや表が間延びして見える、という
           ユーザー指摘への対応。最も広いレイアウトでも 1024px に収まる

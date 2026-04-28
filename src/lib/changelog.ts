@@ -48,6 +48,20 @@ export type ReleasePart = {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    version: "2.0",
+    date: "2026-04-28",
+    parts: [
+      {
+        title: "🛡️ ロール単位のページ閲覧制御 (TODO #19)",
+        body: "Discord サーバー内の権限階層 (本垢 / サブ垢 / ゲスト等) に合わせて、コンテンツカード単位で「特定ロール持ちのみ閲覧可」を設定できるようにした。\n\n実装:\n1. `categories.required_role_ids text[]` カラムを追加 (空 / NULL = 全メンバー閲覧可、非空 = 指定ロールのいずれか 1 つ持っていれば閲覧可)。`Category.requiredRoleIds: string[]` を types に追加。\n2. `src/lib/server/discord-roles.ts` で bot token を使い `GET /guilds/{id}/roles` を取得 (React.cache で同一リクエスト内シェア)。Server Action `fetchAvailableGuildRoles()` から CategoryFormDialog に流す。\n3. `CategoryFormDialog` に「閲覧可能ロール」セクションを追加。チェックボックス UI でロールを選択 + Discord のロール色を `<span>` でプレビュー、managed (bot) ロールは badge で示す。空選択でクリアボタン。\n4. `src/lib/category-visibility.ts` に `filterVisibleCategories(cats, userRoleIds)` ヘルパー。MainTabs / CategorySwitcher (realtime 後) / category index / 募集ポップオーバー / Ultimate clear 集計の全ヶ所で適用。\n5. defense-in-depth: `/category/[slug]/layout.tsx` で `requireDiscordRoles(category.requiredRoleIds)` を呼び、URL 直アクセスでもガード。`requiredRoleIds = []` のときはスルー。\n6. `/auth/denied?reason=missing_role` のメッセージを「ロール付与を管理者に依頼」「別アカでログイン」「スケジュールへ戻る」へ条件分岐。\n7. `supabase/schema.sql` 再適用が必要。",
+      },
+      {
+        title: "🔐 サイト全体を Discord メンバー限定に (PR #1)",
+        body: "URL を知っている人なら誰でも見られた状態を解消し、Discord 指定 guild のメンバーのみがログインできるアクセスゲートを追加。\n\n実装:\n1. Next.js 16 の `proxy.ts` (旧 `middleware.ts` 名) でサイト全体のリクエストをゲート。Supabase Discord OAuth でログイン → `/auth/callback` で bot token を使い対象 guild の membership + roles を取得 → service-role で `auth.users.app_metadata` (`discord_guild_member`, `discord_roles`) に書き込み → JWT を refresh、というフロー。proxy 自体は cookie 内 JWT の `app_metadata` を見るだけなので毎リクエストで Discord API は叩かない。\n2. 公開ルート (proxy で素通し): `/login`, `/auth/{callback,denied,sign-out}`, `/api/cron/*`, `/api/health`。それ以外 (`/api/*` 含む) は全部ゲート対象。\n3. SiteHeader にサインアウトアイコン追加。`requireDiscordMember()` / `requireDiscordRoles()` ヘルパー (`src/lib/server/auth.ts`) を Server Action / Route Handler 用 defense-in-depth として併設。\n4. 必要 env: `SUPABASE_SERVICE_ROLE_KEY`, `DISCORD_GUILD_ID`, `DISCORD_BOT_TOKEN` (+ Supabase の Discord プロバイダ有効化、Discord Developer Portal で Redirects に Supabase callback 登録、Supabase Authentication の Site URL / Redirect URLs を本番 + ローカル両方に設定)。詳細は `.env.local.example`。",
+      },
+    ],
+  },
+  {
     version: "1.9",
     date: "2026-04-28",
     parts: [

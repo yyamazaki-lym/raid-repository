@@ -32,6 +32,20 @@ import {
 import { videoBelongsToCategory } from "@/lib/content-groups";
 import { extractDateFromTitle } from "@/lib/title-date";
 import { createClient } from "@/lib/supabase/server";
+import {
+  fetchGuildRoles,
+  type DiscordGuildRole,
+} from "./discord-roles";
+
+/**
+ * Server Action: fetch the Discord guild's role list for the category
+ * edit dialog. Returns an empty array when bot/guild env vars are
+ * missing, so the UI degrades gracefully (the role section just hides
+ * its options instead of crashing).
+ */
+export async function fetchAvailableGuildRoles(): Promise<DiscordGuildRole[]> {
+  return fetchGuildRoles();
+}
 
 export type ImportNowItem = {
   category: string;

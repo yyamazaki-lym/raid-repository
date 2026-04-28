@@ -98,6 +98,7 @@ export async function updateCategory(
     discord_import_enabled: boolean;
     first_clear_at: string | null;
     background_image_url: string | null;
+    required_role_ids: string[] | null;
   }>,
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
   const supabase = createClient();

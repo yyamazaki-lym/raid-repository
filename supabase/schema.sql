@@ -61,7 +61,14 @@ ALTER TABLE public.categories
   -- Phase 9 (TODO #17, 1.9 (2026-04-28)): optional background image URL
   -- shown behind each card on /category. Free-form `text` URL — http(s)
   -- only at the UI layer (`safeHref`). NULL = no background image (default).
-  ADD COLUMN IF NOT EXISTS background_image_url          text;
+  ADD COLUMN IF NOT EXISTS background_image_url          text,
+  -- Phase 10 (TODO #19, 2.0 (2026-04-28)): per-category Discord role gating.
+  -- When NULL or empty array, the category is visible to all guild members.
+  -- When non-empty, only users whose `auth.users.app_metadata.discord_roles`
+  -- contains at least one of these IDs can see / open the category.
+  -- Role IDs are Discord snowflakes (text) fetched via the bot from
+  -- `GET /guilds/{id}/roles` and selected in the category edit dialog.
+  ADD COLUMN IF NOT EXISTS required_role_ids             text[];
 
 -- Phase 8.1 (1.9.10): track whether category_links.logs_url was set by
 -- automated FFLogs sync ('auto') or by manual user edit ('manual'). This
