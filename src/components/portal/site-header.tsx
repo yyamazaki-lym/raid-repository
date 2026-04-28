@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Activity } from "lucide-react";
+import { Activity, LogOut } from "lucide-react";
 import { ThemeSwitcher } from "./theme-switcher";
 // 1.9 (2026-04-28) TODO #11: SettingsDialog (~1601 行 + MaintenanceMenu
 // ~880 行) は開いた時だけ必要なので、`next/dynamic` 経由で別 chunk 化
@@ -139,6 +139,16 @@ export function SiteHeader() {
         <div className="ml-auto flex items-center gap-2">
           <ThemeSwitcher />
           <SettingsDialog />
+          <form action="/auth/sign-out" method="post">
+            <button
+              type="submit"
+              aria-label="サインアウト"
+              title="サインアウト"
+              className="grid h-9 w-9 place-items-center rounded-md border border-border/40 bg-background/40 text-muted-foreground transition hover:bg-background/60 hover:text-foreground"
+            >
+              <LogOut className="h-4 w-4" aria-hidden />
+            </button>
+          </form>
           <span
             aria-hidden
             className="hidden h-2 w-2 animate-pulse rounded-full bg-[var(--neon-cyan)] shadow-[0_0_10px_var(--neon-cyan)] sm:inline-block"
