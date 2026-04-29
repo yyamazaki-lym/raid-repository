@@ -165,13 +165,14 @@ async function importChannel(
     };
   }
 
-  // TODO #37 v3 (2.1, 2026-04-29): strategy チャンネルから取得した
-  // messages を流用して、軽減表 / ロット URL の自動紐付けを試行する。
-  // helper は完全に self-contained (内部 try/catch) で、何が起きても
-  // 親 import を止めない。Discord 側の追加 fetch は発生しない。
-  if (kind === "strategy") {
-    await maybeAutoLinkSheetUrls(cat, messages);
-  }
+  // TODO #37 v4 (2.1, 2026-04-29): auto-link helper の呼び出しを
+  // 一時的に切る。v1〜v3 でも import が "Page Error" を返す症状が
+  // 解消しなかったため、まず helper が原因かどうかを bisect する目的。
+  // ユーザー検証後、helper が無罪なら他箇所を調査する。
+  // if (kind === "strategy") {
+  //   await maybeAutoLinkSheetUrls(cat, messages);
+  // }
+  void maybeAutoLinkSheetUrls;
 
   // 2. Extract URLs (oldest first for chronological insertion).
   type Candidate = { url: string; postedBy: string; postedAt: string };
