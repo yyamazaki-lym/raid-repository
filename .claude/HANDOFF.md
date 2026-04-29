@@ -38,7 +38,7 @@
 | 20 | Vercel ドメイン変更 (`raid-repository.vercel.app` から好きな名前 / カスタムドメインへ) — Vercel Project Settings → Domains で実施。Discord Developer Portal の Redirects、Supabase Authentication の Site URL / Redirect URLs にも新ドメインを追加する必要あり | 小 |
 | 23 | サイト全体のデータ初期化ボタン (設定ダイアログ内、ADMIN 権限のみ、2 度確認ダイアログ) — `categories` `category_links` `app_settings` 等のユーザーデータを TRUNCATE して初期状態に戻す。デプロイ初期や検証時の rebuild 用。Server Action で全テーブルを削除 → 2 段階確認 (1回目「本当に初期化?」、2回目「データ全消去確認、入力欄に `INITIALIZE` と打ってください」) | 中 |
 | 29 | GitHub About / topics の定期メンテ — 大型機能追加時に repo の Description / Topics を最新化する。`gh repo edit yyamazaki-lym/raid-repository --description "..." --add-topic ...` で更新可。2.1 (2026-04-29) 時点で description/topics は `discord-oauth/ffxiv/nextjs/raid/supabase/tailwind/typescript/vercel` まで更新済み (継続項目として残置) | 極小 |
-| 36 | **🔒 [security]** Supabase RLS を `auth.uid()` ベースに締める — 現状全テーブル `USING (true)` で誰でも anon key で全件 CRUD 可能。Discord OAuth で `auth.users` に session があるユーザーのみ SELECT 許可、書き込みは admin role を要求する RLS function を作成。最大規模の変更で migration 計画が必要 | 大 |
+| 36 | **🔒 [security] phase 2** Supabase RLS で admin write 限定 — phase 1 (2.1, 2026-04-29) で書き込みを `TO authenticated` に絞り済み。phase 2 は admin role を `auth.jwt()->'app_metadata'->>'is_admin'` 等で判定する RLS 関数を作り、認証済みでも非 admin の書き込みを RLS で阻止する。OAuth callback で `is_admin` 計算 → app_metadata に書き込む変更が必要 | 中 |
 | 37 | カテゴリ編集ダイアログで「攻略チャンネル ID から自動紐付け」 — Discord の攻略チャンネルに投稿された URL を import したとき、その中に `docs.google.com/spreadsheets/...` の URL が含まれていれば軽減表 (mitigation_sheet_url) / ロット管理 (loot_sheet_url) として自動セットする。判別ヒューリスティックは title / 周辺テキストの「軽減」「ロット」キーワード or sheet 名前。ユーザーが手で `category-form-dialog` の URL 欄に貼り付ける手間を削減。既存の `importDiscordNow` (動画+strategy 取り込み) のフローに hook を追加 | 中 |
 
 ## 完了済み TODO アーカイブ
@@ -72,6 +72,7 @@
 | ~~34~~ | **🔒 [security]** Storage bucket `category-backgrounds` 強化 — `file_size_limit = 5MB` + `allowed_mime_types = [png,jpeg,webp,gif]` を bucket レベル強制 (SVG は XSS ベクタなので除外)、anon UPDATE/DELETE policy 撤去、public read + anon insert のみ残置 | 2.1 (2026-04-29) |
 | ~~33~~ | **🔒 [security]** CSP 段階導入 — Report-Only で投入 (フェーズ 2) → 1 セッション後 enforce に切替 (フェーズ 3)。production では `'unsafe-eval'` を削除、dev mode (HMR / Turbopack) では維持。directives は `next.config.ts` の `cspDirectives` 定数 | 2.1 (2026-04-29) |
 | ~~35~~ | **🔒 [security]** FFLogs token 暗号化保管 — 新 `secrets` テーブル (RLS で anon/authenticated 完全 deny、service role 専用) + AES-256-GCM (Web Crypto API) で `iv:tag:ciphertext` 形式保管。`SECRET_ENCRYPTION_KEY` 未設定時は旧 `app_settings` 平文 fallback で graceful 動作。env 設定 + 再保存で自動移行。 access_token / refresh_token / session_cookie が対象。expires_at / user_name は機密度低なので app_settings 平文継続 | 2.1 (2026-04-29) |
+| ~~36 phase 1~~ | **🔒 [security]** RLS で書き込みを authenticated 限定 — 全テーブル INSERT/UPDATE/DELETE policy を `TO anon, authenticated` から `TO authenticated` に変更。Discord OAuth で Supabase session を持つユーザーのみ書き込み可。anon key REST 直叩きでアプリ層 admin gate をバイパスする攻撃を遮断。SELECT は維持 (Realtime / 公開読み取り温存)。dev bypass は `SUPABASE_SERVICE_ROLE_KEY` で server-side createClient を service role 切替 → RLS バイパス。Storage bucket `category-backgrounds` も `authenticated insert` 専用に。 phase 2 で admin write を RLS でも限定する想定 (TODO #36 残置) | 2.1 (2026-04-29) |
 
 ### 除外済み (再対応不要)
 

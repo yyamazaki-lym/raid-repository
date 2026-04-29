@@ -399,7 +399,26 @@ CREATE TABLE IF NOT EXISTS public.tags (
 CREATE INDEX IF NOT EXISTS tags_target_idx
   ON public.tags(target_type, target_id);
 
--- ---- 7. RLS — fully open for the anon key -----------------------------
+-- ---- 7. RLS — SELECT 解放 / 書き込みは authenticated のみ -------------
+-- TODO #36 phase 1 (2.1, 2026-04-29):
+--   旧設計: anon key (= unsigned-in client) からも全テーブル CRUD 可
+--   新設計: SELECT は anon + authenticated 解放 (Realtime / public read を
+--           壊さないため)、INSERT/UPDATE/DELETE は authenticated 専用。
+--   Discord OAuth callback で Supabase auth session が確立したユーザー
+--   のみ書き込み可能になり、anon key REST 直叩きでアプリ層 admin gate を
+--   バイパスする攻撃 (HANDOFF security TODO #36) を遮断できる。
+--
+-- アプリ層の admin role 制限 (`assertAdminResult`) は引き続き Server
+-- Action の入口でかかるので、どの authenticated ユーザーでも好き勝手
+-- 書き込めるわけではない (二重防御)。
+--
+-- 将来 phase 2 で `auth.jwt()->'app_metadata'->>'is_admin' = 'true'`
+-- 等を WITH CHECK に組み込んで RLS でも admin 限定にできる。
+--
+-- dev bypass 環境 (`DEV_AUTH_BYPASS=true`) では Supabase auth session を
+-- 持たないため、`createClient()` 側で `SUPABASE_SERVICE_ROLE_KEY` 経由
+-- の service role client に切替えて RLS をバイパスする。production では
+-- `NODE_ENV=production` でこの分岐は走らない。
 
 ALTER TABLE public.categories             ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.category_links         ENABLE ROW LEVEL SECURITY;
@@ -434,23 +453,26 @@ BEGIN
       policy_name := t || '_anon_' || op;
       EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', policy_name, t);
       IF op = 'select' THEN
+        -- SELECT は anon にも開放: Realtime subscribe や server-side
+        -- 公開読み取り (next-session.ts 等) を壊さないため。
         EXECUTE format(
           'CREATE POLICY %I ON public.%I FOR SELECT TO anon, authenticated USING (true)',
           policy_name, t
         );
       ELSIF op = 'insert' THEN
+        -- 書き込みは authenticated 専用 (TODO #36 phase 1)。
         EXECUTE format(
-          'CREATE POLICY %I ON public.%I FOR INSERT TO anon, authenticated WITH CHECK (true)',
+          'CREATE POLICY %I ON public.%I FOR INSERT TO authenticated WITH CHECK (true)',
           policy_name, t
         );
       ELSIF op = 'update' THEN
         EXECUTE format(
-          'CREATE POLICY %I ON public.%I FOR UPDATE TO anon, authenticated USING (true) WITH CHECK (true)',
+          'CREATE POLICY %I ON public.%I FOR UPDATE TO authenticated USING (true) WITH CHECK (true)',
           policy_name, t
         );
       ELSIF op = 'delete' THEN
         EXECUTE format(
-          'CREATE POLICY %I ON public.%I FOR DELETE TO anon, authenticated USING (true)',
+          'CREATE POLICY %I ON public.%I FOR DELETE TO authenticated USING (true)',
           policy_name, t
         );
       END IF;
@@ -578,19 +600,25 @@ ON CONFLICT (id) DO UPDATE SET
   file_size_limit = EXCLUDED.file_size_limit,
   allowed_mime_types = EXCLUDED.allowed_mime_types;
 
-DROP POLICY IF EXISTS "category-backgrounds public read"  ON storage.objects;
-DROP POLICY IF EXISTS "category-backgrounds anon insert"  ON storage.objects;
-DROP POLICY IF EXISTS "category-backgrounds anon update"  ON storage.objects;
-DROP POLICY IF EXISTS "category-backgrounds anon delete"  ON storage.objects;
+DROP POLICY IF EXISTS "category-backgrounds public read"          ON storage.objects;
+DROP POLICY IF EXISTS "category-backgrounds anon insert"          ON storage.objects;
+DROP POLICY IF EXISTS "category-backgrounds anon update"          ON storage.objects;
+DROP POLICY IF EXISTS "category-backgrounds anon delete"          ON storage.objects;
+DROP POLICY IF EXISTS "category-backgrounds authenticated insert" ON storage.objects;
 
 CREATE POLICY "category-backgrounds public read"
   ON storage.objects FOR SELECT
   USING (bucket_id = 'category-backgrounds');
 
-CREATE POLICY "category-backgrounds anon insert"
+-- TODO #36 phase 1 (2.1, 2026-04-29): INSERT は authenticated のみに
+-- 絞る。Discord OAuth で Supabase session を持つユーザーだけがアップ
+-- ロード可能。アプリ UI は category-form-dialog から admin が叩くため
+-- 実質 admin のみ。
+CREATE POLICY "category-backgrounds authenticated insert"
   ON storage.objects FOR INSERT
+  TO authenticated
   WITH CHECK (bucket_id = 'category-backgrounds');
--- NOTE: anon UPDATE / anon DELETE は撤去。Discord OAuth 経由でアプリ
--- に来たユーザーでも anon key の Storage 直接操作はできない (admin
--- Server Action 経由のみ可、未実装なので現状は完全 read-only + insert
--- のみ)。古い画像のクリーンアップは将来 admin Server Action で対応。
+-- NOTE: anon UPDATE / anon DELETE は撤去 (TODO #34)。anon INSERT も
+-- TODO #36 phase 1 で削除して authenticated 限定にした。古い画像の
+-- クリーンアップは将来 admin Server Action で対応 (現状は新 path 別名
+-- でアップロード→旧画像はオブジェクトストレージに残置)。
