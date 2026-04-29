@@ -1246,18 +1246,25 @@ function contentMismatchPenalty(
     return 1;
   }
 
-  // 1.9.13 STRICTER: when the VIDEO side classifies (high-confidence —
-  // the user hand-labeled the category) but the report does NOT, that's
-  // strong evidence the report is from an unrelated content. Bigram
-  // fallback used to return 0.5 (ambiguous) here, which let same-day
-  // cross-content reports slip through. Reject instead.
+  // 2.1 (2026-04-29) TODO #45: 旧 1.9.13 では「Video カテゴリ分類可 +
+  // Report 分類不能 → REJECT」だったが、これだと HTML scrape 由来の
+  // レポート (`zoneName=null` + ユーザー個人タイトル「Day 5」「練習」
+  // 等で CONTENT_GROUPS に当たらない) が全件リジェクトされ、絶竜詩戦争
+  // / 絶アレキサンダー / ライトヘビー級 などキーワード明示型カテゴリ
+  // でも紐づきが 0 になっていた。
   //
-  // Conversely, video-unclassified + report-classified is rarer (videos
-  // often have weak titles like "練習会"); keep that as ambiguous so we
-  // don't lose legitimate matches when category naming is non-standard.
+  // 緩和方針: ユーザーが動画をそのカテゴリに登録した時点で「video の
+  // コンテンツはカテゴリで確定済み」と扱う。Report が分類不能なら
+  // 「曖昧 (0.5)」で残し、同日マッチで採用させる。Report が **別** の
+  // グループに分類できる場合の reject (l.1240-1247) は据え置きなので、
+  // 同日に LH 級と Cruiser 級両方の raid を録ったときのクロス紐づけは
+  // 依然防止される (= 1.9.13 の本来の意図はキープ)。
+  //
+  // 残るリスク: 同日に分類不能な report と複数 tier 動画があると、
+  // カテゴリが違う動画に付く可能性。実運用では稀。
   const vCatGroups = findContentGroups(videoCategoryName ?? "");
   if (vCatGroups.size > 0 && rGroups.size === 0) {
-    return 1;
+    return 0.5;
   }
 
   // Bigram fallback for at least one unclassified side.

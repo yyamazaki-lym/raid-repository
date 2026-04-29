@@ -4,6 +4,23 @@ import { fetchCategories } from "@/lib/supabase/categories";
 import { getAuthorizedUserRoles } from "@/lib/server/auth";
 import { filterVisibleCategories } from "@/lib/category-visibility";
 
+/**
+ * 2.1 (2026-04-29) TODO #45: 全ポータルページを Edge Runtime に統一。
+ *
+ * Server Action は呼び出し元ページの runtime で実行される仕様のため、
+ * 旧構成では TOP (`page.tsx` が `runtime = "edge"`) からの linkFflogsReports
+ * は Edge IP、`/category/...` 等からは Node Lambda IP で fflogs.com に
+ * fetch していた。Vercel の Node Lambda IP 帯は Cloudflare の bot 判定で
+ * 403 を引きやすく、HTML scrape による Unlisted/Private レポート取得が
+ * ページによって失敗する原因になっていた。
+ *
+ * Layout 配下の全 page は明示しない限りこの runtime を継承する。子 page
+ * 側で `export const runtime = "nodejs"` を明示すれば個別に上書き可能。
+ * Edge 互換性は TOP `page.tsx` で既に検証済 (Supabase ssr / fetch /
+ * cookies() / fflogs OAuth Basic は btoa で Edge 対応)。
+ */
+export const runtime = "edge";
+
 export default async function PortalLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
