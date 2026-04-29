@@ -366,94 +366,113 @@ async function maybeAutoLinkSheetUrls(
   channelId: string,
   botToken: string,
 ): Promise<void> {
-  // Skip the network round-trip entirely if both columns are already set.
-  if (cat.mitigationSheetUrl && cat.lootSheetUrl) return;
-
-  let messages: DiscordMessage[];
+  // Wrap the whole helper so a malformed Discord response or unexpected
+  // shape can NEVER kill the parent runDiscordImport. The auto-link is
+  // a best-effort enhancement; the link import itself must still
+  // succeed even if this errors.
   try {
-    const res = await fetch(
-      `https://discord.com/api/v10/channels/${channelId}/messages?limit=100`,
-      {
-        headers: {
-          Authorization: `Bot ${botToken}`,
-          "User-Agent": "RaidRepositoryBot/0.1",
+    // Skip the network round-trip entirely if both columns are set.
+    if (cat.mitigationSheetUrl && cat.lootSheetUrl) return;
+
+    let messages: unknown;
+    try {
+      const res = await fetch(
+        `https://discord.com/api/v10/channels/${channelId}/messages?limit=100`,
+        {
+          headers: {
+            Authorization: `Bot ${botToken}`,
+            "User-Agent": "RaidRepositoryBot/0.1",
+          },
+          signal: AbortSignal.timeout(15000),
         },
-        signal: AbortSignal.timeout(15000),
-      },
-    );
-    if (!res.ok) return;
-    messages = (await res.json()) as DiscordMessage[];
-  } catch {
-    return;
-  }
-
-  const SHEET_URL_RE =
-    /https?:\/\/docs\.google\.com\/spreadsheets\/[^\s<>"'\])]+/;
-  const MITIGATION_RE = /軽減(表)?/;
-  // 「ロット」のみ (例: 「ロット表」「ロット管理」「分配ロット」) を広く拾う。
-  // 「ロット管理」だけに限定すると一般的な「ロット表」を取りこぼす。
-  const LOOT_RE = /ロット/;
-
-  let mitigationUrl: string | null = null;
-  let lootUrl: string | null = null;
-
-  for (const m of messages) {
-    if (
-      (cat.mitigationSheetUrl || mitigationUrl) &&
-      (cat.lootSheetUrl || lootUrl)
-    ) {
-      break;
+      );
+      if (!res.ok) return;
+      messages = await res.json();
+    } catch {
+      return;
     }
-    for (const rawLine of m.content.split(/\r?\n/)) {
-      const urlMatch = rawLine.match(SHEET_URL_RE);
-      if (!urlMatch) continue;
-      const url = stripTrailingPunctuation(urlMatch[0]);
-      if (!url) continue;
+    // Discord returns error responses as JSON objects on success-coded
+    // responses in some edge cases; bail unless we got a proper array.
+    if (!Array.isArray(messages)) return;
+
+    const SHEET_URL_RE =
+      /https?:\/\/docs\.google\.com\/spreadsheets\/[^\s<>"'\]\)]+/;
+    const MITIGATION_RE = /軽減(表)?/;
+    // 「ロット」だけマッチ (例: 「ロット表」「ロット管理」「分配ロット」)。
+    // 「ロット管理」固定だと一般的な「ロット表」を取りこぼすため広め。
+    const LOOT_RE = /ロット/;
+
+    let mitigationUrl: string | null = null;
+    let lootUrl: string | null = null;
+
+    for (const m of messages as DiscordMessage[]) {
       if (
-        !cat.mitigationSheetUrl &&
-        !mitigationUrl &&
-        MITIGATION_RE.test(rawLine)
+        (cat.mitigationSheetUrl || mitigationUrl) &&
+        (cat.lootSheetUrl || lootUrl)
       ) {
-        mitigationUrl = url;
+        break;
       }
-      if (!cat.lootSheetUrl && !lootUrl && LOOT_RE.test(rawLine)) {
-        lootUrl = url;
+      // Defensive: webhook / system messages can have null/undefined
+      // content even though the Discord docs say it's always a string.
+      const content = typeof m?.content === "string" ? m.content : "";
+      if (!content) continue;
+      for (const rawLine of content.split(/\r?\n/)) {
+        const urlMatch = rawLine.match(SHEET_URL_RE);
+        if (!urlMatch) continue;
+        const url = stripTrailingPunctuation(urlMatch[0]);
+        if (!url) continue;
+        if (
+          !cat.mitigationSheetUrl &&
+          !mitigationUrl &&
+          MITIGATION_RE.test(rawLine)
+        ) {
+          mitigationUrl = url;
+        }
+        if (!cat.lootSheetUrl && !lootUrl && LOOT_RE.test(rawLine)) {
+          lootUrl = url;
+        }
       }
     }
-  }
 
-  if (!mitigationUrl && !lootUrl) return;
+    if (!mitigationUrl && !lootUrl) return;
 
-  const supabase = await createClient();
-  // Issue per-kind UPDATEs so each WHERE clause carries the correct
-  // `IS NULL` guard. Race-safe: a manual save mid-import that fills the
-  // column will cause the matching UPDATE to no-op rather than clobber.
-  if (mitigationUrl) {
-    const { error } = await supabase
-      .from("categories")
-      .update({ mitigation_sheet_url: mitigationUrl })
-      .eq("id", cat.id)
-      .is("mitigation_sheet_url", null);
-    if (error) {
-      console.warn(
-        "[discord-import] auto-link mitigation_sheet_url failed",
-        cat.slug,
-        error.message,
-      );
+    const supabase = await createClient();
+    // Issue per-kind UPDATEs so each WHERE clause carries the correct
+    // `IS NULL` guard. Race-safe: a manual save mid-import that fills
+    // the column will make the UPDATE a no-op instead of clobbering.
+    if (mitigationUrl) {
+      const { error } = await supabase
+        .from("categories")
+        .update({ mitigation_sheet_url: mitigationUrl })
+        .eq("id", cat.id)
+        .is("mitigation_sheet_url", null);
+      if (error) {
+        console.warn(
+          "[discord-import] auto-link mitigation_sheet_url failed",
+          cat.slug,
+          error.message,
+        );
+      }
     }
-  }
-  if (lootUrl) {
-    const { error } = await supabase
-      .from("categories")
-      .update({ loot_sheet_url: lootUrl })
-      .eq("id", cat.id)
-      .is("loot_sheet_url", null);
-    if (error) {
-      console.warn(
-        "[discord-import] auto-link loot_sheet_url failed",
-        cat.slug,
-        error.message,
-      );
+    if (lootUrl) {
+      const { error } = await supabase
+        .from("categories")
+        .update({ loot_sheet_url: lootUrl })
+        .eq("id", cat.id)
+        .is("loot_sheet_url", null);
+      if (error) {
+        console.warn(
+          "[discord-import] auto-link loot_sheet_url failed",
+          cat.slug,
+          error.message,
+        );
+      }
     }
+  } catch (err) {
+    console.warn(
+      "[discord-import] auto-link helper threw",
+      cat.slug,
+      String(err),
+    );
   }
 }
