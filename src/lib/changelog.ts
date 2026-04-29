@@ -52,6 +52,10 @@ export const RELEASES: ReleaseEntry[] = [
     date: "2026-04-29",
     parts: [
       {
+        title: "📎 攻略チャンネルから軽減表 / ロット sheet URL を自動紐付け (TODO #37)",
+        body: "Discord 攻略情報チャンネルの取り込み (`importDiscordNow` / cron) フローで、メッセージ本文から `軽減表` / `ロット` キーワードと `docs.google.com/spreadsheets/...` URL を検出し、カテゴリの `mitigation_sheet_url` / `loot_sheet_url` 列に自動セットする。手動で URL を貼り直す手間を省く目的。\n\n**検出ロジック** (`discord-import.ts:maybeAutoLinkSheetUrls`):\n- 取り込み対象は **strategy チャンネル** のみ。video チャンネルは無関係なので走査しない。\n- メッセージを **行単位** で走査 (`m.content.split(/\\r?\\n/)`)。1 メッセージに「軽減表 ... URL_A\\nロット管理 ... URL_B」が両方あるパターンを正しく分離するため per-message ではなく per-line。\n- 各行に対し:\n  1. `https?://docs.google.com/spreadsheets/...` URL が含まれるか\n  2. `軽減(表)?` 正規表現にマッチすれば mitigation 候補、`ロット` (= 管理 / 表 / 分配 含む) にマッチすれば loot 候補\n- Discord は newest-first で返すので、最初に見つかった URL が「最新の貼り付け」= 採用。後続のメッセージ (古い) は無視。\n\n**書き込みポリシー**:\n- 既に `mitigationSheetUrl` / `lootSheetUrl` が設定済みのカテゴリは、その列の自動更新をスキップ (走査自体もしない)。手動で貼った URL を Discord 取り込みで上書きしない。\n- UPDATE は kind 別に分け、各 WHERE 句に `IS NULL` guard を付与。import 中に管理者が UI から手動保存した場合に no-op として安全に取り扱う。\n- 失敗時は `console.warn` で server log に残し、import 全体は止めない (link 取り込み本来のジョブを優先)。\n\n**hook 位置**: `runDiscordImport` の strategy チャンネル取り込み完了直後。link 取り込みの fetch とは別に再 fetch する (= 100 件目までを 2 回叩く) シンプル実装。フォロー次第では 1 回 fetch に統合してもよいが、性能上問題ないので分離して責務を明確にしてある。",
+      },
+      {
         title: "🖼 軽減表 / ロット iframe にズームトグル追加 (TODO #43)",
         body: "軽減表 / ロット管理サブタブで Google Sheets を埋め込む際、Sheets 標準ズームではフレームに収まらず横スクロールが必要だった問題を解消。\n\n**仕様**: 右上 toolbar に倍率ボタン (現在値 % 表示) を追加。kind ごとにプリセットとデフォルトを分離 (ユーザー指示):\n\n- 軽減表: デフォルト 80%、循環は 80% → 90% → 100%。80% 未満では文字が潰れて読めないため除外。\n- ロット管理: デフォルト 75%、循環は 50% → 60% → 75% → 90% → 100%。シートが横長になりがちなので低倍率も許容。\n\n選択は `localStorage[\"raid-portal:sheet-iframe-scale:<kind>\"]` に kind 別に保存。カテゴリ間 / セッション間で永続。\n\n**実装**: `SheetIframe` を server component として残しつつ、interactive 部分を新規 client component `SheetIframeFrame` に切り出し。inverse-sized iframe (`width: 100/scale %`) に `transform: scale(N)` を当てる旧来手法を踏襲しつつ、scale 値を state で持つ。100% 時はオーバーサイズ不要で透過 (`transform: none`)。",
       },

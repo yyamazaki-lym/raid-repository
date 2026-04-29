@@ -44,7 +44,6 @@
 | 11 | ページ全体のパフォーマンス最適化 — bundle 軽量化 / RSC 化 / lazy mount / 画像最適化 / query batching / realtime 削減 等 | 中 |
 | 20 | Vercel ドメイン変更 — Project Settings → Domains。Discord Developer / Supabase Auth の Redirect URLs にも反映必要 | 小 |
 | 23 | サイト全体のデータ初期化ボタン (admin 限定、2 段階確認: 1 回目「本当に初期化?」、2 回目「`INITIALIZE` と入力」) | 中 |
-| 37 | カテゴリ編集ダイアログで「攻略チャンネル ID から sheet URL 自動紐付け」 — Discord メッセージの `docs.google.com/spreadsheets/...` を軽減表 / ロット URL に自動セット。`importDiscordNow` フローに hook | 中 |
 | 38 | スケジュール追加機能 — portal 内から開催候補日を追加する UI が無い。日付 + 時間帯 + 参加可否を入力 → DB 保存 → 描画。TODO #2 と統合可 | 中〜大 |
 
 ## 完了済み TODO アーカイブ
@@ -78,6 +77,7 @@
 | 43 | 🖼 SheetIframe にズームトグル — デフォルト 60%、50/60/75/90/100% を循環、localStorage 永続化 |
 | 44 | 📅 スケジュール出欠セル → iframe スクロールジャンプ — `targetOffsetPx` 経由で `BASE + index * ROW_HEIGHT` ヒューリスティックを translateY clip に注入。3-way トグル (該当日 / 中央 / 上) |
 | 29 | 🏷 GitHub About / topics 更新 — 2.1 機能反映 |
+| 37 | 📎 攻略チャンネル取り込み時に sheet URL 自動紐付け — `軽減表` / `ロット` キーワード + `docs.google.com/spreadsheets` を per-line 検出、`mitigation_sheet_url` / `loot_sheet_url` が NULL のときのみ更新 (race-safe `IS NULL` guard) |
 
 ### 1.9 / 2.0 (2026-04-28)
 

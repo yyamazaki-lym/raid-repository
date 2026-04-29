@@ -110,6 +110,12 @@ export async function runDiscordImport(): Promise<{
       results.push(
         await importChannel(cat, cat.discordStrategyChannelId, "strategy", botToken),
       );
+      // TODO #37 (2.1, 2026-04-29): in addition to feeding the link
+      // list, scan the strategy channel for "軽減表" / "ロット" keywords
+      // adjacent to a Google Sheets URL and auto-set the per-category
+      // sheet URLs. Skipped silently when the category already has the
+      // URL set (don't clobber manual choices).
+      await maybeAutoLinkSheetUrls(cat, cat.discordStrategyChannelId, botToken);
     }
     if (cat.discordVideoChannelId) {
       results.push(
@@ -335,4 +341,119 @@ async function importChannel(
 
 function stripTrailingPunctuation(url: string): string {
   return url.replace(/[)\].,!?;:'"]+$/, "");
+}
+
+/**
+ * TODO #37: scan the strategy channel for "軽減表" / "ロット" keywords
+ * adjacent to a Google Sheets URL, and auto-fill the category's
+ * `mitigation_sheet_url` / `loot_sheet_url` columns when they are still
+ * null. Already-set columns are NEVER overwritten so manual choices
+ * survive future imports.
+ *
+ * Detection is per-line rather than per-message because a single Discord
+ * post often lists both URLs on separate lines (e.g.
+ *   `軽減表: https://docs.google.com/spreadsheets/d/...`
+ *   `ロット管理: https://docs.google.com/spreadsheets/d/...`
+ * ). Per-message scanning would falsely cross-link them.
+ *
+ * Discord returns messages newest-first, and we iterate in that order:
+ * the FIRST keyword match per kind wins. Pinned / quote-formatted
+ * messages don't get any special handling — whatever Discord sends back
+ * is what we read.
+ */
+async function maybeAutoLinkSheetUrls(
+  cat: Category,
+  channelId: string,
+  botToken: string,
+): Promise<void> {
+  // Skip the network round-trip entirely if both columns are already set.
+  if (cat.mitigationSheetUrl && cat.lootSheetUrl) return;
+
+  let messages: DiscordMessage[];
+  try {
+    const res = await fetch(
+      `https://discord.com/api/v10/channels/${channelId}/messages?limit=100`,
+      {
+        headers: {
+          Authorization: `Bot ${botToken}`,
+          "User-Agent": "RaidRepositoryBot/0.1",
+        },
+        signal: AbortSignal.timeout(15000),
+      },
+    );
+    if (!res.ok) return;
+    messages = (await res.json()) as DiscordMessage[];
+  } catch {
+    return;
+  }
+
+  const SHEET_URL_RE =
+    /https?:\/\/docs\.google\.com\/spreadsheets\/[^\s<>"'\])]+/;
+  const MITIGATION_RE = /軽減(表)?/;
+  // 「ロット」のみ (例: 「ロット表」「ロット管理」「分配ロット」) を広く拾う。
+  // 「ロット管理」だけに限定すると一般的な「ロット表」を取りこぼす。
+  const LOOT_RE = /ロット/;
+
+  let mitigationUrl: string | null = null;
+  let lootUrl: string | null = null;
+
+  for (const m of messages) {
+    if (
+      (cat.mitigationSheetUrl || mitigationUrl) &&
+      (cat.lootSheetUrl || lootUrl)
+    ) {
+      break;
+    }
+    for (const rawLine of m.content.split(/\r?\n/)) {
+      const urlMatch = rawLine.match(SHEET_URL_RE);
+      if (!urlMatch) continue;
+      const url = stripTrailingPunctuation(urlMatch[0]);
+      if (!url) continue;
+      if (
+        !cat.mitigationSheetUrl &&
+        !mitigationUrl &&
+        MITIGATION_RE.test(rawLine)
+      ) {
+        mitigationUrl = url;
+      }
+      if (!cat.lootSheetUrl && !lootUrl && LOOT_RE.test(rawLine)) {
+        lootUrl = url;
+      }
+    }
+  }
+
+  if (!mitigationUrl && !lootUrl) return;
+
+  const supabase = await createClient();
+  // Issue per-kind UPDATEs so each WHERE clause carries the correct
+  // `IS NULL` guard. Race-safe: a manual save mid-import that fills the
+  // column will cause the matching UPDATE to no-op rather than clobber.
+  if (mitigationUrl) {
+    const { error } = await supabase
+      .from("categories")
+      .update({ mitigation_sheet_url: mitigationUrl })
+      .eq("id", cat.id)
+      .is("mitigation_sheet_url", null);
+    if (error) {
+      console.warn(
+        "[discord-import] auto-link mitigation_sheet_url failed",
+        cat.slug,
+        error.message,
+      );
+    }
+  }
+  if (lootUrl) {
+    const { error } = await supabase
+      .from("categories")
+      .update({ loot_sheet_url: lootUrl })
+      .eq("id", cat.id)
+      .is("loot_sheet_url", null);
+    if (error) {
+      console.warn(
+        "[discord-import] auto-link loot_sheet_url failed",
+        cat.slug,
+        error.message,
+      );
+    }
+  }
 }
