@@ -395,96 +395,35 @@ export function MaintenanceMenu() {
           {pending
             ? pendingKind === "all"
               ? allPhase === "discord"
-                ? "全部 ① 取り込み中…"
+                ? "更新 ① Discord 取込中…"
                 : allPhase === "videoMeta"
                   ? videoMetaProgress
                     ? videoMetaProgress.phase === "duration"
-                      ? `全部 ② 動画時間 ${videoMetaProgress.processed}/${videoMetaProgress.total}`
-                      : "全部 ② 投稿日時取得中…"
-                    : "全部 ② メタデータ取得中…"
+                      ? videoMetaProgress.total > 0
+                        ? `更新 ② 動画情報 ${videoMetaProgress.processed}/${videoMetaProgress.total} (${Math.floor((videoMetaProgress.processed / videoMetaProgress.total) * 100)}%)`
+                        : `更新 ② 動画情報 ${videoMetaProgress.processed} 件`
+                      : "更新 ② 投稿日時取得中…"
+                    : "更新 ② 動画メタ取得中…"
                   : allPhase === "firstClear"
-                    ? "全部 ③ クリア再計算…"
-                    : "全部実行中…"
-              : pendingKind === "discord"
-                ? "取り込み中…"
-                : pendingKind === "videoMeta" ||
-                    pendingKind === "videoMetaForceRefresh"
-                  ? videoMetaProgress
-                    ? videoMetaProgress.phase === "duration"
-                      ? `${pendingKind === "videoMetaForceRefresh" ? "再取得" : "動画時間"} ${videoMetaProgress.processed}/${videoMetaProgress.total}`
-                      : "投稿日時取得中…"
-                    : "メタデータ取得中…"
-                  : pendingKind === "diagnoseYoutube"
-                    ? "YouTube 診断中…"
-                    : "再スキャン中…"
-            : "メンテナンス"}
+                    ? "更新 ③ クリア再計算中…"
+                    : "更新中…"
+              : pendingKind === "diagnoseYoutube"
+                ? "YouTube 診断中…"
+                : "実行中…"
+            : "更新"}
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" sideOffset={4} className="glass-popup min-w-60">
+        <DropdownMenuContent align="end" sideOffset={4} className="glass-popup min-w-72">
           <DropdownMenuItem
             onClick={() => run("all")}
             className="flex cursor-pointer items-start gap-2"
           >
             <Settings2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-300" aria-hidden />
             <div className="flex flex-col gap-0.5">
-              <span className="text-sm font-semibold">全部実行</span>
+              <span className="text-sm font-semibold">最新情報を取り込んで再計算</span>
               <span className="text-[10px] text-muted-foreground leading-snug">
-                Discord 取り込み → 動画メタデータ → クリア日時/時間 を順次実行
-              </span>
-            </div>
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem
-            onClick={() => run("discord")}
-            className="flex cursor-pointer items-start gap-2"
-          >
-            <Cloud className="mt-0.5 h-3.5 w-3.5 shrink-0 text-cyan-300" aria-hidden />
-            <div className="flex flex-col gap-0.5">
-              <span className="text-sm">Discord 取り込み</span>
-              <span className="text-[10px] text-muted-foreground leading-snug">
-                各チャンネルの最新メッセージから URL を取得
-              </span>
-            </div>
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem
-            onClick={() => run("videoMeta")}
-            className="flex cursor-pointer items-start gap-2"
-          >
-            <Timer className="mt-0.5 h-3.5 w-3.5 shrink-0 text-violet-300" aria-hidden />
-            <div className="flex flex-col gap-0.5">
-              <span className="text-sm">動画時間 + 投稿日時を取得</span>
-              <span className="text-[10px] text-muted-foreground leading-snug">
-                YouTube から duration / uploadDate を一括取得 +
-                Discord メッセージから posted_at を埋める
-              </span>
-            </div>
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={() => run("videoMetaForceRefresh")}
-            className="flex cursor-pointer items-start gap-2"
-          >
-            <Timer className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-300" aria-hidden />
-            <div className="flex flex-col gap-0.5">
-              <span className="text-sm">投稿日時を YouTube から再取得 (全動画)</span>
-              <span className="text-[10px] text-muted-foreground leading-snug">
-                Discord 時刻ベースで誤って取り込み日になっている動画を、
-                YouTube uploadDate で全件上書き (TODO #22 修復用)
-              </span>
-            </div>
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={() => run("firstClearForce")}
-            className="flex cursor-pointer items-start gap-2"
-          >
-            <Trophy
-              className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-300"
-              aria-hidden
-            />
-            <div className="flex flex-col gap-0.5">
-              <span className="text-sm">クリア日時 / クリア時間の取得</span>
-              <span className="text-[10px] text-muted-foreground leading-snug">
-                各コンテンツのクリア日と「クリアまでの累計時間」を再計算
-                (手動設定値も上書きされます)
+                ① Discord から新着動画/攻略を取り込み<br />
+                ② 各動画の再生時間と投稿日時を取得 (タイトル日付 fallback)<br />
+                ③ コンテンツ毎の初クリア日時とクリアまでの累計時間を再計算
               </span>
             </div>
           </DropdownMenuItem>
@@ -500,7 +439,7 @@ export function MaintenanceMenu() {
             <div className="flex flex-col gap-0.5">
               <span className="text-sm">YouTube 取得テスト (1 件)</span>
               <span className="text-[10px] text-muted-foreground leading-snug">
-                指定 URL の duration / uploadDate がなぜ取得できないか診断
+                指定 URL の duration / uploadDate が取れない場合の診断
               </span>
             </div>
           </DropdownMenuItem>
@@ -706,10 +645,6 @@ function VideoMetaPanel({
           )}
         </section>
       </div>
-      <p className="mt-2 text-[10px] text-muted-foreground leading-relaxed">
-        ⚡ この後「クリア日時を強制再計算」を実行すると、正しい
-        posted_at で計算されます
-      </p>
     </>
   );
 }

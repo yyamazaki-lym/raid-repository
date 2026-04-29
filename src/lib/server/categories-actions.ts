@@ -30,8 +30,37 @@ import {
   isFirstFloorPracticeTitle,
 } from "@/lib/clear-detection";
 import { videoBelongsToCategory } from "@/lib/content-groups";
-import { extractDateFromTitle } from "@/lib/title-date";
+import { extractDateFromTitle, titleDateToIso } from "@/lib/title-date";
 import { createClient } from "@/lib/supabase/server";
+
+/**
+ * 2.1 (2026-04-29): 動画の posted_at を決定する優先度ロジック。
+ *   1. タイトル日付 (extractDateFromTitle, JST 22:00 ISO) — 最も信頼度高
+ *   2. YouTube uploadDate (meta.uploadDate) — publisher 提供日
+ *   3. null (= 既存値を維持)
+ *
+ * Vercel IP の bot 検出で YouTube scrape が頻繁に失敗するため、
+ * タイトルから日付が取れる動画はそれを優先採用 (ユーザー要望、
+ * 2026-04-29)。タイトルにも YouTube にも日付が無い場合は既存値を
+ * いじらない (Discord 時刻フォールバックは別経路で残している)。
+ */
+function resolvePostedAt(
+  title: string,
+  meta: { uploadDate: string | null },
+  existing: string | null,
+): string | null {
+  // Year-less タイトル ("4/1" 等) のための fallbackYear: YouTube 値があれば
+  // それ、無ければ既存 posted_at の年。
+  const youtubeYear = meta.uploadDate
+    ? new Date(meta.uploadDate).getUTCFullYear()
+    : null;
+  const existingYear = existing ? new Date(existing).getUTCFullYear() : null;
+  const fallbackYear = youtubeYear ?? existingYear ?? undefined;
+  const titleIso = titleDateToIso(title, fallbackYear);
+  if (titleIso) return titleIso;
+  if (meta.uploadDate) return meta.uploadDate;
+  return null;
+}
 import {
   fetchGuildRoles,
   type DiscordGuildRole,
@@ -1026,7 +1055,7 @@ export async function backfillVideoDurations(): Promise<DurationBackfillResult> 
   // posted_at would be left behind permanently.
   const { data, error } = await supabase
     .from("category_links")
-    .select("id, url, duration_seconds, posted_at")
+    .select("id, url, title, duration_seconds, posted_at")
     .eq("kind", "video")
     .or("duration_seconds.is.null,posted_at.is.null");
   if (error || !data) {
@@ -1058,8 +1087,17 @@ export async function backfillVideoDurations(): Promise<DurationBackfillResult> 
       const meta = await fetchYouTubeMeta(row.url as string);
       const needsDuration =
         row.duration_seconds === null && meta.durationSeconds !== null;
-      // TODO #22 追加対応: posted_at は uploadDate が取れたら常に上書き。
-      const needsPostedAt = meta.uploadDate !== null;
+      // 2.1 (2026-04-29): posted_at は タイトル日付 → YouTube uploadDate
+      // の優先度で解決し、現在値と異なれば上書き。YouTube 取得失敗時も
+      // タイトルから日付が取れれば反映される (= Vercel の bot 検出で
+      // YouTube が動かなくてもクリア紐付けが復旧する)。
+      const newPostedAt = resolvePostedAt(
+        row.title as string,
+        meta,
+        (row.posted_at as string | null) ?? null,
+      );
+      const needsPostedAt =
+        newPostedAt !== null && newPostedAt !== (row.posted_at ?? null);
       if (!needsDuration && !needsPostedAt) {
         // Either non-YouTube, or scrape didn't return useful data, or
         // the row already has the value we'd write. Bucket as "skipped".
@@ -1067,7 +1105,7 @@ export async function backfillVideoDurations(): Promise<DurationBackfillResult> 
       }
       const update: { duration_seconds?: number; posted_at?: string } = {};
       if (needsDuration) update.duration_seconds = meta.durationSeconds!;
-      if (needsPostedAt) update.posted_at = meta.uploadDate!;
+      if (needsPostedAt) update.posted_at = newPostedAt!;
       const { error: updErr } = await supabase
         .from("category_links")
         .update(update)
@@ -1169,7 +1207,7 @@ export async function backfillVideoDurationsChunk(opts: {
   // we've already attempted in earlier iterations of this loop.
   let baseQ = supabase
     .from("category_links")
-    .select("id, url, duration_seconds, posted_at")
+    .select("id, url, title, duration_seconds, posted_at")
     .eq("kind", "video");
   if (!force) {
     baseQ = baseQ.or("duration_seconds.is.null,posted_at.is.null");
@@ -1212,12 +1250,19 @@ export async function backfillVideoDurationsChunk(opts: {
       const meta = await fetchYouTubeMeta(row.url as string);
       const needsDuration =
         row.duration_seconds === null && meta.durationSeconds !== null;
-      // TODO #22 追加対応: posted_at は uploadDate が取れたら常に上書き。
-      const needsPostedAt = meta.uploadDate !== null;
+      // 2.1 (2026-04-29): posted_at は タイトル日付 → YouTube uploadDate
+      // の優先度で解決 (詳細は resolvePostedAt 定義部参照)。
+      const newPostedAt = resolvePostedAt(
+        row.title as string,
+        meta,
+        (row.posted_at as string | null) ?? null,
+      );
+      const needsPostedAt =
+        newPostedAt !== null && newPostedAt !== (row.posted_at ?? null);
       if (!needsDuration && !needsPostedAt) return "skipped";
       const update: { duration_seconds?: number; posted_at?: string } = {};
       if (needsDuration) update.duration_seconds = meta.durationSeconds!;
-      if (needsPostedAt) update.posted_at = meta.uploadDate!;
+      if (needsPostedAt) update.posted_at = newPostedAt!;
       const { error: updErr } = await supabase
         .from("category_links")
         .update(update)

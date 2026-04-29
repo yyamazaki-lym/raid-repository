@@ -176,14 +176,28 @@ export function VideosList({ categoryId, initial, firstClearAt }: Props) {
   // the ref is set during render of the matching card).
   // `focusKey` is included so連打 of the same クリア badge re-triggers
   // scroll even when the resolved id doesn't change.
+  //
+  // 2.1 (2026-04-29): 遷移直後 (router.push) は Next.js 16 のレイアウト
+  // 安定化と競合してスクロールが効かないことがあったため、長めの
+  // delay (300ms) + rAF 2 段で安定化を待ってから scrollIntoView する。
+  // 呼び出し元 (category-list.tsx) は `router.push(..., {scroll:false})`
+  // で auto-scroll-to-top を抑止している前提。
   useEffect(() => {
     if (!focusedVideoId) return;
-    const el = focusedRef.current;
-    if (!el) return;
-    const id = window.setTimeout(() => {
-      el.scrollIntoView({ behavior: "smooth", block: "center" });
-    }, 50);
-    return () => window.clearTimeout(id);
+    let rafId = 0;
+    const timeoutId = window.setTimeout(() => {
+      rafId = window.requestAnimationFrame(() => {
+        rafId = window.requestAnimationFrame(() => {
+          const el = focusedRef.current;
+          if (!el) return;
+          el.scrollIntoView({ behavior: "smooth", block: "center" });
+        });
+      });
+    }, 300);
+    return () => {
+      window.clearTimeout(timeoutId);
+      if (rafId) window.cancelAnimationFrame(rafId);
+    };
   }, [focusedVideoId, live.length, focusKey]);
 
   // フォーカス強調 (ring) は「ユーザーが次の操作 (枠外クリック /

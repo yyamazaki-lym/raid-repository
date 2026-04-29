@@ -55,6 +55,8 @@
 | 20 | Vercel ドメイン変更 (`raid-repository.vercel.app` から好きな名前 / カスタムドメインへ) — Vercel Project Settings → Domains で実施。Discord Developer Portal の Redirects、Supabase Authentication の Site URL / Redirect URLs にも新ドメインを追加する必要あり | 小 |
 | ~~21~~ | ~~カテゴリ編集を「admin ロール持ちのみ」に制限~~ — 完了 (2.1 (2026-04-29)、`DISCORD_ADMIN_ROLE_IDS` env 追加 + `userIsAdmin` / `assertAdminResult` ヘルパー + `categories-actions.ts` に admin-gated Server Action 追加 + `categories-client.ts` を Server Action 経由に切替 + `/category` index で非 admin に編集 UI 非表示 + `/auth/denied?reason=not_admin` UX。Supabase RLS は依然 anon open なので REST 直接攻撃は別 PR で RLS 締めて対応) | ~~中~~ |
 | ~~22~~ | ~~スケジュール ↔ 動画の紐付けがタイトル日付を見ていない~~ — 完了 (2.1 (2026-04-29)、`src/lib/server/session-video-link.ts` を「動画日付 == セッション JST 同日」方式に変更。日付解決は タイトル日付 → posted_at の JST 日付 → スキップ の優先度。`created_at` は使わず ±36h ウィンドウは撤廃) | ~~小~~ |
+| 23 | サイト全体のデータ初期化ボタン (設定ダイアログ内、ADMIN 権限のみ、2 度確認ダイアログ) — `categories` `category_links` `app_settings` 等のユーザーデータを TRUNCATE して初期状態に戻す。デプロイ初期や検証時の rebuild 用。Server Action で全テーブルを削除 → `setSessionStorage('init_confirm_at', now)` 等で 2 段階確認 (1回目「本当に初期化?」、2回目「データ全消去確認、入力欄に `INITIALIZE` と打ってください」) | 中 |
+| 24 | 過去日程の表示を「開催確定日 (DECISION)」のみに絞る — 現在は候補日 (CANDIDATE) も過去ログに含まれてしまい、結果ノイズが多い。`schedule-list.tsx` / `schedule-past-simple.tsx` の過去側 filter を `status === "DECISION"` 限定に。出欠記号と日時はそのまま、候補だけ過去から除外 | 小 |
 
 ### 除外済み (再対応不要)
 

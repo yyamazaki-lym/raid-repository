@@ -396,6 +396,9 @@ function SortableCategoryCard({
             <div className="mt-1 flex flex-wrap items-center justify-between gap-2 font-mono text-[11px] tracking-[0.18em] uppercase">
               <p className="text-muted-foreground">/{category.slug}</p>
               <div className="flex flex-wrap items-center gap-1">
+                {/* 2.1 (2026-04-29): Trophy / Hourglass はすべて Card
+                    右カラムへ移設し「Status と同列、上側に揃える」
+                    要望に対応。中段は累計練習時間 (Timer) のみ。 */}
                 {showPracticeTime && (
                   <span
                     className="inline-flex items-center gap-1 rounded-sm border border-violet-400/40 bg-violet-400/10 px-1.5 py-px text-[9px] text-violet-200"
@@ -403,19 +406,6 @@ function SortableCategoryCard({
                   >
                     <Timer className="h-2.5 w-2.5" aria-hidden />
                     {formatDurationShort(practiceSeconds)}
-                  </span>
-                )}
-                {/* 2.1 (2026-04-29): Trophy バッジは Card 右カラム
-                    (Status と同列、右端揃え) に移動した。`<Link>` 内
-                    ネストが Next.js 16 ルータと干渉してナビゲーション
-                    が壊れていた regression の解消も兼ねる。 */}
-                {timeToClearSeconds > 0 && category.firstClearAt && (
-                  <span
-                    className="inline-flex items-center gap-1 rounded-sm border border-emerald-400/45 bg-emerald-400/10 px-1.5 py-px text-[9px] text-emerald-200"
-                    title={`クリアまでの累計時間: ${formatDurationLong(timeToClearSeconds)}`}
-                  >
-                    <Hourglass className="h-2.5 w-2.5" aria-hidden />
-                    →{formatDurationShort(timeToClearSeconds)}
                   </span>
                 )}
               </div>
@@ -428,13 +418,15 @@ function SortableCategoryCard({
         {/* 1.9.23 / 2.1 (2026-04-29) 右カラムレイアウト。
                 ┌──────────────────────┐
                 │            [Status]  │  ← StatusBadge
-                │   [Trophy YYYY/MM/DD]│  ← クリア日 (右端揃え、ボタン)
+                │   [Trophy YYYY/MM/DD]│  ← クリア日 (ボタン)
+                │     [Hourglass time] │  ← クリアまでの累計時間
                 │       [+N/wk] [⋮]    │  ← +N/wk と ⋮ の横並び
                 └──────────────────────┘
-            内側 div は `items-end` で右端揃え、Trophy / Status の
-            ボタン右端を視覚的に揃える。+N/wk が無いカードでも
-            `invisible` placeholder で同サイズの幅を確保し、⋮ が
-            card 右端から動かないようにする。 */}
+            「上側に揃える」要望に対応するため、内側 div は `items-end`
+            で右端揃え、Status / Trophy / Hourglass を上から順に縦積み。
+            Trophy/Hourglass/+N/wk が無いカードでも `invisible`
+            placeholder で同サイズの行を確保し、カード全体の高さ
+            (= ばらつき) を固定する (ユーザー要望、2026-04-29)。 */}
         <div className="relative z-10 flex flex-col items-end justify-between gap-1 p-2">
           <div className="flex flex-col items-end gap-1">
             <span
@@ -448,17 +440,21 @@ function SortableCategoryCard({
                 variant="compact"
               />
             </span>
-            {category.firstClearAt && (
+            {category.firstClearAt ? (
               <button
                 type="button"
                 onClick={(e) => {
                   // 2.1 (2026-04-29): Trophy を <Link> 外に移したので
                   // preventDefault は不要。Card 自身に handler は無いが
                   // 念のため stopPropagation で伝播を抑止。
+                  // `scroll: false` は Next.js 16 が遷移時に top へ
+                  // auto-scroll するのを抑止し、videos-list.tsx 側の
+                  // scrollIntoView を効かせるための指定。
                   e.stopPropagation();
                   const iso = category.firstClearAt!.slice(0, 10);
                   router.push(
                     `/category/${category.slug}/videos?focusDate=${iso}`,
+                    { scroll: false },
                   );
                 }}
                 className="inline-flex items-center gap-1 rounded-sm border border-amber-400/45 bg-amber-400/10 px-1.5 py-px font-mono text-[9px] tracking-[0.18em] text-amber-200 uppercase transition-colors hover:border-amber-400/80 hover:bg-amber-400/20"
@@ -467,6 +463,33 @@ function SortableCategoryCard({
                 <Trophy className="h-2.5 w-2.5" aria-hidden />
                 {formatFirstClear(category.firstClearAt, "short")}
               </button>
+            ) : (
+              // Trophy が無いカードでもサイズを揃える placeholder。
+              <span
+                aria-hidden
+                className="invisible inline-flex items-center gap-1 rounded-sm border px-1.5 py-px font-mono text-[9px] tracking-[0.18em] uppercase"
+              >
+                <Trophy className="h-2.5 w-2.5" aria-hidden />
+                0000-00-00
+              </span>
+            )}
+            {timeToClearSeconds > 0 && category.firstClearAt ? (
+              <span
+                className="inline-flex items-center gap-1 rounded-sm border border-emerald-400/45 bg-emerald-400/10 px-1.5 py-px font-mono text-[9px] tracking-[0.18em] text-emerald-200 uppercase"
+                title={`クリアまでの累計時間: ${formatDurationLong(timeToClearSeconds)}`}
+              >
+                <Hourglass className="h-2.5 w-2.5" aria-hidden />
+                →{formatDurationShort(timeToClearSeconds)}
+              </span>
+            ) : (
+              // Hourglass が無いカードでもサイズを揃える placeholder。
+              <span
+                aria-hidden
+                className="invisible inline-flex items-center gap-1 rounded-sm border px-1.5 py-px font-mono text-[9px] tracking-[0.18em] uppercase"
+              >
+                <Hourglass className="h-2.5 w-2.5" aria-hidden />
+                →000h
+              </span>
             )}
             <div className="flex items-center gap-1">
               {recentImports > 0 ? (
