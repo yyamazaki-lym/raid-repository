@@ -11,19 +11,26 @@ import { SheetUrlUnlinkButton } from "./sheet-url-unlink-button";
  * Google Sheets embeds render at 100% by default which spills outside
  * the dialog frame. We scale the iframe down (and over-size the inner
  * width/height) so the content fits in view by default, with a button
- * to cycle through preset scales. The choice persists per-browser so
- * users keep their preferred fit across navigation.
+ * to cycle through preset scales. The choice persists per-browser per
+ * kind so users keep their preferred fit across navigation.
+ *
+ * Per-kind defaults (user feedback 2026-04-29):
+ *   mitigation: default 80% — below this the cell text is too small to
+ *               read on most layouts. Cycle restricts to [80, 90, 100].
+ *   loot:       default 75% — typical loot sheets fit at 75% out-of-the
+ *               box; allow zooming further out for very wide sheets.
+ *               Cycle is the full preset list [50, 60, 75, 90, 100].
  */
-const SCALE_PRESETS = [0.5, 0.6, 0.75, 0.9, 1] as const;
-type ScalePreset = (typeof SCALE_PRESETS)[number];
-const DEFAULT_SCALE: ScalePreset = 0.6;
-const STORAGE_KEY = "raid-portal:sheet-iframe-scale";
-
-function isPreset(v: unknown): v is ScalePreset {
-  return (
-    typeof v === "number" && (SCALE_PRESETS as readonly number[]).includes(v)
-  );
-}
+const PRESETS_BY_KIND = {
+  mitigation: [0.8, 0.9, 1] as const,
+  loot: [0.5, 0.6, 0.75, 0.9, 1] as const,
+} as const;
+const DEFAULT_BY_KIND = {
+  mitigation: 0.8,
+  loot: 0.75,
+} as const;
+type SheetKind = keyof typeof PRESETS_BY_KIND;
+const STORAGE_KEY_PREFIX = "raid-portal:sheet-iframe-scale";
 
 export function SheetIframeFrame({
   url,
@@ -36,30 +43,47 @@ export function SheetIframeFrame({
   url: string;
   title: string;
   categoryId?: string;
-  kind?: "mitigation" | "loot";
+  kind?: SheetKind;
   canEdit?: boolean;
 }) {
-  const [scale, setScale] = useState<ScalePreset>(DEFAULT_SCALE);
+  // Fall back to "loot" preset family when kind is missing — its preset
+  // list is a strict superset, so behavior degrades gracefully.
+  const effectiveKind: SheetKind = kind ?? "loot";
+  const presets = PRESETS_BY_KIND[effectiveKind];
+  const defaultScale = DEFAULT_BY_KIND[effectiveKind];
+  const storageKey = `${STORAGE_KEY_PREFIX}:${effectiveKind}`;
+  const isPreset = (v: unknown): v is number =>
+    typeof v === "number" && (presets as readonly number[]).includes(v);
 
-  // Hydrate persisted choice on mount. Server render uses DEFAULT_SCALE
+  const [scale, setScale] = useState<number>(defaultScale);
+
+  // Hydrate persisted choice on mount. Server render uses defaultScale
   // so the initial markup is stable; we only nudge it after hydration.
   useEffect(() => {
     try {
-      const raw = window.localStorage.getItem(STORAGE_KEY);
+      const raw = window.localStorage.getItem(storageKey);
       if (raw === null) return;
       const parsed = Number(raw);
       if (isPreset(parsed)) setScale(parsed);
     } catch {
       // ignore: storage may be disabled / corrupted
     }
-  }, []);
+    // storageKey changes only when kind changes, which triggers a fresh
+    // hydration for the new kind.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storageKey]);
 
   const cycleScale = () => {
     setScale((curr) => {
-      const i = SCALE_PRESETS.indexOf(curr);
-      const next = SCALE_PRESETS[(i + 1) % SCALE_PRESETS.length]!;
+      const i = presets.indexOf(curr as never);
+      // If `curr` isn't in the active preset list (e.g. kind changed),
+      // restart from the default for this kind.
+      const next =
+        i < 0
+          ? defaultScale
+          : presets[(i + 1) % presets.length]!;
       try {
-        window.localStorage.setItem(STORAGE_KEY, String(next));
+        window.localStorage.setItem(storageKey, String(next));
       } catch {
         // ignore
       }

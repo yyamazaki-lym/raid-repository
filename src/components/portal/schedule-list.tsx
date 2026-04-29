@@ -762,27 +762,84 @@ function SessionRow({
       </th>
       {showDecided && (
         <td className="px-1 py-2 text-center align-middle">
-          {decided ? (
-            // 確定 = 日程が確定した = 一目で識別できる emerald バッジ。
-            // ヘッダーの「確定」テキストと文字位置を揃えるため、
-            // チェックマーク等のアイコンは付けず「確定」テキストだけを
-            // 中央配置する。色 + 枠 + glow で十分視覚化できる。
-            <span
-              aria-label="日程確定"
-              title="日程確定"
-              className="inline-flex h-6 items-center justify-center rounded-md border border-emerald-400/60 bg-emerald-400/15 px-2 font-mono text-[10px] font-bold tracking-[0.16em] text-emerald-300 uppercase shadow-[0_0_12px_-3px_rgb(52_211_153)]"
-            >
-              確定
-            </span>
-          ) : (
-            <span
-              aria-hidden
-              title="未確定"
-              className="inline-flex h-6 items-center justify-center text-muted-foreground/40"
-            >
-              ·
-            </span>
-          )}
+          {(() => {
+            // TODO #44 (2.1, 2026-04-29 v2): clicking the 確定 cell
+            // (either the green badge or the · placeholder) opens the
+            // schedule list URL in the iframe dialog, clipped so the
+            // matching date row sits near the top. Uses the same
+            // translateY heuristic as the per-user edit dialog because
+            // cross-origin iframes can't be scripted.
+            //   offset = MID_BASE + (upcomingIndex - 1) * ROW_HEIGHT
+            // MID_BASE = 280 matches the legacy "mid" landing zone (=
+            // skips character-sheets header). ROW_HEIGHT = 36 is the
+            // observed row pitch in the list view; tune if upstream
+            // layout drifts.
+            const targetOffset =
+              typeof upcomingIndex === "number"
+                ? Math.max(0, 280 + (upcomingIndex - 1) * 36)
+                : null;
+            const dateLabel =
+              session.rawDate.split(" ")[0] ?? session.rawDate;
+            const safeScheduleUrl = scheduleUrl ?? null;
+            const openTarget = () => {
+              if (!safeScheduleUrl) return;
+              onOpenEditFrame(
+                safeScheduleUrl,
+                `スケジュール (${dateLabel} の行へ移動)`,
+                targetOffset,
+              );
+            };
+            const sharedClass =
+              "inline-flex h-6 items-center justify-center rounded-md transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--neon-cyan)]/60";
+
+            if (decided) {
+              const badge = (
+                <span
+                  aria-label="日程確定"
+                  title={
+                    safeScheduleUrl
+                      ? `日程確定 — クリックで ${dateLabel} の行までスクロール`
+                      : "日程確定"
+                  }
+                  className="inline-flex h-6 items-center justify-center rounded-md border border-emerald-400/60 bg-emerald-400/15 px-2 font-mono text-[10px] font-bold tracking-[0.16em] text-emerald-300 uppercase shadow-[0_0_12px_-3px_rgb(52_211_153)]"
+                >
+                  確定
+                </span>
+              );
+              return safeScheduleUrl ? (
+                <button
+                  type="button"
+                  onClick={openTarget}
+                  className={`${sharedClass} hover:scale-105`}
+                  aria-label={`スケジュール元サイトの ${dateLabel} の行を開く`}
+                >
+                  {badge}
+                </button>
+              ) : (
+                badge
+              );
+            }
+            // 未確定 (·): クリックで同じく該当日にスクロール
+            return safeScheduleUrl ? (
+              <button
+                type="button"
+                onClick={openTarget}
+                title={`未確定 — クリックで ${dateLabel} の行までスクロール`}
+                aria-label={`スケジュール元サイトの ${dateLabel} の行を開く`}
+                className={`${sharedClass} px-2 text-muted-foreground/40 hover:bg-secondary/40 hover:text-foreground/80`}
+              >
+                ·
+              </button>
+            ) : (
+              <span
+                aria-hidden
+                title="未確定"
+                className="inline-flex h-6 items-center justify-center text-muted-foreground/40"
+              >
+                ·
+              </span>
+            );
+          })()}
         </td>
       )}
       {users.map((u) => {
@@ -820,14 +877,6 @@ function SessionRow({
                   onOpenEditFrame(
                     editUrl,
                     `${u.name} の出欠を編集 (${dateLabel} を含む)`,
-                    // TODO #44: pass per-date offset for upcoming rows.
-                    // 280 は legacy "mid" (ヘッダー / 概要セクション分),
-                    // 36px/row は character-sheets の日付行のおおよその
-                    // 高さ (実測ヒューリスティック)。少し上に余裕を残す
-                    // ために -1 行分を引いている。
-                    typeof upcomingIndex === "number"
-                      ? Math.max(0, 280 + (upcomingIndex - 1) * 36)
-                      : null,
                   )
                 }
                 title={`${u.name} の出欠をその場で編集 (${dateLabel} を含む全日程)`}
