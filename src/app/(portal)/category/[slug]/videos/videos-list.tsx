@@ -171,32 +171,52 @@ export function VideosList({ categoryId, initial, firstClearAt }: Props) {
     setFocusActive(true);
   }, [focusedVideoId, focusKey]);
 
+  // 2.1 (2026-04-29) v2: URL の focus 系パラメータが乗った遷移時は
+  // focusKey を毎回更新してスクロール useEffect を再発火させる。これ
+  // により、同じ ?focusDate=ISO で戻る → 再訪問のケース (focusedVideoId
+  // が変わらず、live.length も同じ) でも scrollIntoView が走る。
+  useEffect(() => {
+    if (!focusId && !focusDate) return;
+    setFocusKey((k) => k + 1);
+  }, [focusId, focusDate]);
+
   // Scroll the focused card into view once it mounts. Re-runs when
   // the focusedVideoId changes or when the live list arrives (since
   // the ref is set during render of the matching card).
   // `focusKey` is included so連打 of the same クリア badge re-triggers
   // scroll even when the resolved id doesn't change.
   //
-  // 2.1 (2026-04-29): 遷移直後 (router.push) は Next.js 16 のレイアウト
-  // 安定化と競合してスクロールが効かないことがあったため、長めの
-  // delay (300ms) + rAF 2 段で安定化を待ってから scrollIntoView する。
-  // 呼び出し元 (category-list.tsx) は `router.push(..., {scroll:false})`
-  // で auto-scroll-to-top を抑止している前提。
+  // 2.1 (2026-04-29) v2: ユーザー報告で「クリア日時バッジ経由の遷移で
+  // スクロールが効かない」ケースが残っていた。Next.js 16 / Turbopack の
+  // ページ遷移後レイアウト確定はカテゴリやネットワーク状況で 100ms〜
+  // 1.5s と幅があり、固定 300ms タイマーでは間に合わないシナリオが
+  // ある。
+  //
+  // 対策: 複数タイミング (100 / 400 / 800 / 1500ms) で「ref があり、
+  // 高さが確定している」かを試行し、最初に成功したらそれ以降は
+  // スキップする re-try パターンに変更。smooth scroll が二重発火しない
+  // よう `done` フラグで一度だけ実行。呼び出し元 (category-list.tsx)
+  // は引き続き `router.push(..., {scroll:false})` 前提。
   useEffect(() => {
     if (!focusedVideoId) return;
-    let rafId = 0;
-    const timeoutId = window.setTimeout(() => {
-      rafId = window.requestAnimationFrame(() => {
-        rafId = window.requestAnimationFrame(() => {
-          const el = focusedRef.current;
-          if (!el) return;
-          el.scrollIntoView({ behavior: "smooth", block: "center" });
-        });
-      });
-    }, 300);
+    let done = false;
+    let cancelled = false;
+    const tryScroll = () => {
+      if (cancelled || done) return;
+      const el = focusedRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      // height === 0 はカードが render 完了していない (lazy mount /
+      // 親が collapsed 等)。次の試行に持ち越す。
+      if (rect.height === 0) return;
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      done = true;
+    };
+    const delays = [100, 400, 800, 1500];
+    const timeouts = delays.map((d) => window.setTimeout(tryScroll, d));
     return () => {
-      window.clearTimeout(timeoutId);
-      if (rafId) window.cancelAnimationFrame(rafId);
+      cancelled = true;
+      for (const id of timeouts) window.clearTimeout(id);
     };
   }, [focusedVideoId, live.length, focusKey]);
 
