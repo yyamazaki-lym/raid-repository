@@ -2,7 +2,11 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import {
+  fetchPracticeSecondsByCategory,
+  fetchTimeToClearByCategory,
+} from "@/lib/server/categories-actions";
 import {
   GripVertical,
   Layers,
@@ -96,8 +100,8 @@ export function CategoryList({
   userRoleIds,
   canEdit,
   recentImportCounts = {},
-  practiceSecondsByCategory = {},
-  timeToClearByCategory = {},
+  practiceSecondsByCategory: initialPracticeSeconds = {},
+  timeToClearByCategory: initialTimeToClear = {},
 }: Props) {
   const router = useRouter();
   // Realtime hook keeps the list in sync with DB changes from any client.
@@ -106,6 +110,39 @@ export function CategoryList({
   // に各カードに「rolesVisible」を渡し、見えないものは 🔒 + ロール ID
   // バッジで描画して、編集ダイアログから undo できる経路を残す。
   const live = useRealtimeCategories(initialCategories);
+
+  // 2.1 (2026-04-29) v5: practice / time-to-clear の集計は SSR では
+  // 重く Hobby plan の Edge function 上限に押し当てる原因 (= "Page Error")
+  // になりがちだったため、page.tsx 側の Promise.all から外し、ここで
+  // mount 後に lazy fetch する。初期表示はバッジ無しで一瞬空欄、その後
+  // fetch 完了で各カードに値が入る (placeholder で高さは固定済)。
+  // initial が prop 経由で渡されている場合 (将来的に SSR が軽量化されて
+  // 復活した場合) は その値で開始する。
+  const [practiceSecondsByCategory, setPracticeSecondsByCategory] = useState<
+    Record<string, number>
+  >(initialPracticeSeconds);
+  const [timeToClearByCategory, setTimeToClearByCategory] = useState<
+    Record<string, number>
+  >(initialTimeToClear);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [p, t] = await Promise.all([
+          fetchPracticeSecondsByCategory(),
+          fetchTimeToClearByCategory(),
+        ]);
+        if (cancelled) return;
+        setPracticeSecondsByCategory(p);
+        setTimeToClearByCategory(t);
+      } catch {
+        // 取得失敗は無視 — バッジが空のままになるだけで他機能には影響しない
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   // Local mirror so DnD can rearrange optimistically without waiting on
   // round-trip+realtime — Realtime overwrites once the server confirms.
   const [optimisticOrder, setOptimisticOrder] = useState<string[] | null>(null);

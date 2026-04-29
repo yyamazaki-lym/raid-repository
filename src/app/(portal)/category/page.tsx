@@ -6,11 +6,7 @@ import { Card } from "@/components/ui/card";
 import { CategoryFormDialog } from "@/components/portal/category-form-dialog";
 import { MaintenanceMenu } from "@/components/portal/maintenance-menu";
 import { fetchCategories } from "@/lib/supabase/categories";
-import {
-  fetchPracticeSecondsByCategory,
-  fetchRecentImportCountsByCategory,
-  fetchTimeToClearByCategory,
-} from "@/lib/server/categories-actions";
+import { fetchRecentImportCountsByCategory } from "@/lib/server/categories-actions";
 import {
   getAuthorizedUserRoles,
   userIsAdmin,
@@ -22,14 +18,16 @@ export const metadata = {
 };
 
 export default async function CategoryIndexPage() {
-  const [result, userRoles, recentCounts, practiceSeconds, timeToClear] =
-    await Promise.all([
-      fetchCategories(),
-      getAuthorizedUserRoles(),
-      fetchRecentImportCountsByCategory(7),
-      fetchPracticeSecondsByCategory(),
-      fetchTimeToClearByCategory(),
-    ]);
+  // 2.1 (2026-04-29) v5: practice / time-to-clear の集計はカード上の
+  // バッジ表示用なので「初期表示時点で必須」ではない。Hobby plan の
+  // Edge function 上限を SSR データ取得で食い潰さないよう client lazy
+  // fetch (category-list.tsx の useEffect) に逃がした。recentCounts は
+  // 軽量 (date filtered subset) なので SSR のまま据置。
+  const [result, userRoles, recentCounts] = await Promise.all([
+    fetchCategories(),
+    getAuthorizedUserRoles(),
+    fetchRecentImportCountsByCategory(7),
+  ]);
   // 2.0 (2026-04-29): /category index は管理ビューとして全件表示する。
   // 直前 PR (#3) ではここでもフィルタしていたが、ロール制限を付けた
   // カテゴリを後で undo するために編集ダイアログへ到達する経路が必要
@@ -81,8 +79,6 @@ export default async function CategoryIndexPage() {
         userRoleIds={userRoles}
         canEdit={canEdit}
         recentImportCounts={recentCounts}
-        practiceSecondsByCategory={practiceSeconds}
-        timeToClearByCategory={timeToClear}
       />
     </div>
   );

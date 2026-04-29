@@ -83,13 +83,19 @@ export async function runDiscordImport(): Promise<{
   }
 
   const categories = (rows ?? []).map((r) => rowToCategory(r as CategoryRow));
-  const results: ImportResult[] = [];
 
-  for (const cat of categories) {
+  // 2.1 (2026-04-29) v5: カテゴリ間を並列処理化。Hobby plan の Edge
+  // function 上限 (25s) に N カテゴリ × (Discord 100 件 fetch + URL
+  // enrich + insert) を順次実行で当てるとタイムアウト → "Page Error"。
+  // Discord rate limit は per-channel 5 req/sec。別チャンネルは並列で
+  // 叩いても問題ない (global 50 req/sec まで余裕)。同カテゴリ内の
+  // strategy / video は順次のままにし、カテゴリ間でのみ並列化することで
+  // rate limit リスクを最小化。
+  const tasks = categories.map(async (cat): Promise<ImportResult[]> => {
+    const out: ImportResult[] = [];
     if (!cat.discordImportEnabled) {
-      // Skip but record so the UI can show "X paused, Y processed".
       if (cat.discordStrategyChannelId) {
-        results.push({
+        out.push({
           category: cat.slug,
           kind: "strategy",
           ok: true,
@@ -97,28 +103,49 @@ export async function runDiscordImport(): Promise<{
         });
       }
       if (cat.discordVideoChannelId) {
-        results.push({
+        out.push({
           category: cat.slug,
           kind: "video",
           ok: true,
           skipped: "disabled",
         });
       }
-      continue;
+      return out;
     }
     if (cat.discordStrategyChannelId) {
-      // TODO #37 v3 (2.1, 2026-04-29): auto-link は importChannel 内部で
-      // 既に fetch 済みの messages を再利用する設計に変更。旧設計
-      // (channel 2 回 fetch) は Vercel function timeout / Discord rate
-      // limit に当たって import 全体が "Page Error" を返す原因に
-      // なっていた。
-      results.push(
-        await importChannel(cat, cat.discordStrategyChannelId, "strategy", botToken),
+      out.push(
+        await importChannel(
+          cat,
+          cat.discordStrategyChannelId,
+          "strategy",
+          botToken,
+        ),
       );
     }
     if (cat.discordVideoChannelId) {
-      results.push(
-        await importChannel(cat, cat.discordVideoChannelId, "video", botToken),
+      out.push(
+        await importChannel(
+          cat,
+          cat.discordVideoChannelId,
+          "video",
+          botToken,
+        ),
+      );
+    }
+    return out;
+  });
+
+  // Promise.allSettled で 1 カテゴリの failure が他をブロックしない
+  // ことを保証。fulfilled な戻り値だけ平坦化して返す。
+  const settled = await Promise.allSettled(tasks);
+  const results: ImportResult[] = [];
+  for (const r of settled) {
+    if (r.status === "fulfilled") {
+      results.push(...r.value);
+    } else {
+      console.warn(
+        "[discord-import] category task rejected",
+        String(r.reason),
       );
     }
   }
