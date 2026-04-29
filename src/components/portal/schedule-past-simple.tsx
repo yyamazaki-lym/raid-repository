@@ -63,10 +63,17 @@ export function SchedulePastSimple({
   initialMemosByDate?: Record<string, ScheduleSessionMemo[]>;
 }) {
   const cutoff = Date.now() - STILL_RELEVANT_MS;
-  // 過去側は「開催確定 (DECISION)」のみを残す。CANDIDATE は流れた候補
-  // 日でしかなく、過去ログに出てもノイズなので除外する (TODO #24)。
+  // 過去側はノイズ候補日 (誰も ◯ していない CANDIDATE) を除外しつつ、
+  // 実際に開催された日 (◯ が 1 つでもある) は status が CANDIDATE でも
+  // 残す (TODO #24)。character-sheets の HTML は aged out すると
+  // dateStatus を落とすため、parser は CANDIDATE 扱いになる。出席実績
+  // を fallback シグナルにすれば DECISION 限定より過剰除外を回避できる。
   const recent = [...sessions]
-    .filter((s) => s.date.getTime() < cutoff && s.status === "DECISION")
+    .filter((s) => {
+      if (s.date.getTime() >= cutoff) return false;
+      if (s.status === "DECISION") return true;
+      return Object.values(s.attendances).some((a) => a === "◯");
+    })
     .sort((a, b) => b.date.getTime() - a.date.getTime())
     .slice(0, SIMPLE_LIMIT);
 

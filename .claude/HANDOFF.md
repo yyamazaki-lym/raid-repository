@@ -63,8 +63,8 @@
 | ~~26~~ | カード編集にコンテンツ説明文 (description) フィールド — `categories.description` + `[slug]/layout.tsx` ヘッダー直下表示 | 2.1 (2026-04-29) |
 | ~~27~~ | /category ページ上部の説明文に「動画など」追加 (当初『カード編集から動画追加』と誤解釈、UI 撤去済み) | 2.1 (2026-04-29) |
 | ~~28~~ | Status の右端を Trophy と揃える — `SubPageShortcuts` の右パディングのみ調整 | 2.1 (2026-04-29) |
-| ~~24~~ | 過去日程の表示を「開催確定日 (DECISION)」のみに絞る — `schedule-list.tsx` の `splitSessions` と `schedule-past-simple.tsx` の `recent` filter に `status === "DECISION"` を追加 | 2.1 (2026-04-29) |
-| ~~30~~ | 紅蓮 (Stormblood) テーマの彩度/明度を下げて薄く — `app/globals.css` の `.dark.theme-stormblood` を全域で chroma 圧縮 (primary `0.27→0.16`、background も `0.04→0.025`)、lightness を僅かに上げて目に優しい紅蓮に再調整 | 2.1 (2026-04-29) |
+| ~~24~~ | 過去日程の表示を「開催確定日 (DECISION) または ◯ 出席 1 名以上」に絞る — `schedule-list.tsx` の `splitSessions` と `schedule-past-simple.tsx` の `recent` filter を更新。character-sheets が aged out 行の `dateStatus` を空にする仕様 (parser が CANDIDATE バケット) のため、出席実績を fallback シグナルにすることで「実際に開催された日」を取りこぼさず、無人 CANDIDATE (流れた候補日) のみ除外する仕様に落ち着いた | 2.1 (2026-04-29) |
+| ~~30~~ | 紅蓮 (Stormblood) テーマの彩度/明度を下げて薄く + 出欠 × (rose-400) と差別化 — `app/globals.css` の `.dark.theme-stormblood` を hue `22 → 38-40` (deep ember 寄り) に振り、accent も `45 → 60` (amber 寄り)、primary chroma `0.27 → 0.17` で再調整。前回 chroma 圧縮のみで hue 据え置きだったため × マーカーと色相被り → ember 系 hue で解消 | 2.1 (2026-04-29) |
 
 ### 除外済み (再対応不要)
 

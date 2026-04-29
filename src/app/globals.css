@@ -229,49 +229,52 @@
   --frost: oklch(0.96 0.04 230);
 }
 
-/* ===== Stormblood — 紅蓮のリベレーター (muted blood + dim ember) =====
- * 2.1 (2026-04-29) 以降: 旧設計が「赤すぎる」というユーザー指摘 (TODO #30)
- * を受け、彩度・明度を全体的に下げて落ち着いた紅蓮に再調整。深紅の identity
- * は残しつつ、ARR/DT/EW 等と同程度の視覚的負荷に揃える。
- * Differentiated from ARR by: near-black background, dimmed crimson primary
- * (vs ARR's gold-emerald palette), and a softer ember orange accent. */
+/* ===== Stormblood — 紅蓮のリベレーター (deep ember, shifted off-rose) =====
+ * 2.1 (2026-04-29) 以降: 旧設計が「赤すぎる」+「出欠 × (rose-400) と被って
+ * 見分けが付かない」というユーザー指摘 (TODO #30) を受け、hue を 22 (rose
+ * 寄り赤) → 38 前後 (深いオレンジ ember) に振り、彩度・明度も下げて落ち着
+ * いた紅蓮に再調整。深紅の identity は「燃え尽き残光 (deep ember)」の
+ * イメージで残しつつ、Tailwind rose-400 (≈ hue 0-5) の attendance × と
+ * 視覚的に明確に区別できる。
+ * Differentiated from EW (peach, L=0.8) by L=0.6 + 高彩度の暖色寄り、
+ * ARR/DT (gold/emerald) からは hue 範囲が離れているので衝突しない。 */
 .dark.theme-stormblood {
-  --background: oklch(0.1 0.025 25);
-  --foreground: oklch(0.95 0.02 30);
-  --card: oklch(0.15 0.04 25);
-  --card-foreground: oklch(0.95 0.02 30);
-  --popover: oklch(0.13 0.035 25);
-  --popover-foreground: oklch(0.95 0.02 30);
-  --primary: oklch(0.6 0.16 22);             /* muted crimson */
-  --primary-foreground: oklch(0.99 0.015 30);
-  --secondary: oklch(0.24 0.06 25);
-  --secondary-foreground: oklch(0.95 0.02 30);
-  --muted: oklch(0.2 0.045 25);
-  --muted-foreground: oklch(0.74 0.05 35);
-  --accent: oklch(0.72 0.13 45);             /* softened ember */
-  --accent-foreground: oklch(0.13 0.04 25);
+  --background: oklch(0.11 0.022 40);
+  --foreground: oklch(0.95 0.025 60);
+  --card: oklch(0.16 0.04 40);
+  --card-foreground: oklch(0.95 0.025 60);
+  --popover: oklch(0.14 0.035 40);
+  --popover-foreground: oklch(0.95 0.025 60);
+  --primary: oklch(0.66 0.17 40);            /* deep ember (orange-red) */
+  --primary-foreground: oklch(0.13 0.03 40);
+  --secondary: oklch(0.25 0.06 40);
+  --secondary-foreground: oklch(0.95 0.025 60);
+  --muted: oklch(0.21 0.045 40);
+  --muted-foreground: oklch(0.76 0.06 55);
+  --accent: oklch(0.78 0.14 60);             /* warm ember highlight (amber-leaning) */
+  --accent-foreground: oklch(0.13 0.04 40);
   --destructive: oklch(0.62 0.2 27);
-  --border: oklch(0.95 0.04 30 / 14%);
-  --input: oklch(0.95 0.04 30 / 18%);
-  --ring: oklch(0.6 0.16 22);
-  --chart-1: oklch(0.6 0.16 22);
-  --chart-2: oklch(0.72 0.13 45);
-  --chart-3: oklch(0.5 0.13 18);
-  --chart-4: oklch(0.83 0.1 55);
-  --chart-5: oklch(0.45 0.12 18);
-  --sidebar: oklch(0.13 0.035 25);
-  --sidebar-foreground: oklch(0.95 0.02 30);
-  --sidebar-primary: oklch(0.6 0.16 22);
-  --sidebar-primary-foreground: oklch(0.99 0.015 30);
-  --sidebar-accent: oklch(0.24 0.06 25);
-  --sidebar-accent-foreground: oklch(0.95 0.02 30);
-  --sidebar-border: oklch(0.95 0.04 30 / 14%);
-  --sidebar-ring: oklch(0.6 0.16 22);
+  --border: oklch(0.95 0.05 60 / 14%);
+  --input: oklch(0.95 0.05 60 / 18%);
+  --ring: oklch(0.66 0.17 40);
+  --chart-1: oklch(0.66 0.17 40);
+  --chart-2: oklch(0.78 0.14 60);
+  --chart-3: oklch(0.55 0.15 30);
+  --chart-4: oklch(0.84 0.11 70);
+  --chart-5: oklch(0.5 0.13 35);
+  --sidebar: oklch(0.14 0.035 40);
+  --sidebar-foreground: oklch(0.95 0.025 60);
+  --sidebar-primary: oklch(0.66 0.17 40);
+  --sidebar-primary-foreground: oklch(0.13 0.03 40);
+  --sidebar-accent: oklch(0.25 0.06 40);
+  --sidebar-accent-foreground: oklch(0.95 0.025 60);
+  --sidebar-border: oklch(0.95 0.05 60 / 14%);
+  --sidebar-ring: oklch(0.66 0.17 40);
 
-  --neon-cyan: oklch(0.6 0.16 22);           /* muted crimson */
-  --neon-magenta: oklch(0.72 0.13 45);       /* softened ember */
-  --neon-violet: oklch(0.5 0.13 18);         /* dim blood */
-  --frost: oklch(0.83 0.1 55);               /* warm ember highlight (toned down) */
+  --neon-cyan: oklch(0.66 0.17 40);          /* deep ember */
+  --neon-magenta: oklch(0.78 0.14 60);       /* warm amber highlight */
+  --neon-violet: oklch(0.55 0.15 30);        /* dim blood-ember */
+  --frost: oklch(0.85 0.1 65);               /* hot ember highlight */
 }
 
 /* ===== Shadowbringers — 漆黒のヴィランズ (jet black + aether glow) ===== */

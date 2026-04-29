@@ -52,8 +52,8 @@ export const RELEASES: ReleaseEntry[] = [
     date: "2026-04-29",
     parts: [
       {
-        title: "🌒 過去日程は確定日のみ + 紅蓮テーマを落ち着いた色味に (TODO #24, #30)",
-        body: "未完了 TODO の小粒 2 件をまとめて対応:\n\n**TODO #24 — 過去日程は『開催確定』のみ表示**: スケジュール表 (`schedule-list.tsx`) と簡易ログ (`schedule-past-simple.tsx`) の過去側フィルタを `status === \"DECISION\"` 限定に変更。流れた候補日 (CANDIDATE) は過去ログに残してもノイズにしかならないので除外。出欠記号と日時はそのまま、確定して実際に開催された日だけが履歴として残る。\n\n**TODO #30 — 紅蓮 (Stormblood) テーマの彩度・明度を低減**: 「赤すぎる」というユーザー指摘を受けて `app/globals.css` の `.dark.theme-stormblood` を再調整。primary chroma を `0.27 → 0.16`、background lightness を `0.08 → 0.10`、 chroma も全般に `0.04 → 0.025` 程度まで圧縮。深紅の identity は残しつつ、ARR/DT/EW と同程度の視覚負荷に揃えた。Hue は `22 → 25` で僅かに橙寄りに振り、ember accent も `0.20 → 0.13` に弱めて目に優しいトーンに。",
+        title: "🩹 TODO #24/#30 のフォローアップ修正",
+        body: "前 commit のリグレッションをまとめて修正:\n\n**TODO #24 — 過去日程フィルタ過剰除外の修正**: ユーザー報告「過去の開催日程が表示されなくなった」。原因は character-sheets 側の HTML が aged out 行の `dateStatus` 属性を空にする仕様で、parser がそれを CANDIDATE にバケットしてしまうため、`status === \"DECISION\"` 限定のフィルタだと実際に開催された過去日まで全部消えていた。\n\n修正: 過去側フィルタを「`status === \"DECISION\"` または ◯ 出席が 1 名以上ある」に緩める。これで character-sheets が status を落とした古い行も、出席者がいる = 実際に開催された判定で履歴に残せる。完全な無人 CANDIDATE (= 流れた候補日) のみが除外される本来の趣旨どおりに。\n\n**TODO #30 — Stormblood の hue を ember 寄りに振り直し**: ユーザー報告「赤色が出欠の × と被るので分かりやすい色に」。前 commit は chroma を下げただけで hue 22 (≈ rose-red) のまま、Tailwind `rose-400` (hue ≈ 0) の × マーカーと色相が近接していた。\n\n修正: `.dark.theme-stormblood` の hue を `22 → 38-40` (deep ember / 燃え尽き残光) に振り、accent も `45 → 60` (amber 寄り) に。primary lightness は `0.6 → 0.66` に微増させてカード内の text/icon 視認性も向上。深紅 identity は「ember (残火) の暖色赤」として継承しつつ、出欠 × (rose) と明確に区別できる。",
       },
       {
         title: "📝 /category 説明文更新 + ダイアログヘッダー更新 + ロールセクション折りたたみ + 動画追加 UI 撤去",

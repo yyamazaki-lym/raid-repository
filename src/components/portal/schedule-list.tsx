@@ -1184,10 +1184,17 @@ function splitSessions(
   const upcoming: ScheduleSession[] = [];
   const past: ScheduleSession[] = [];
   for (const s of sessions) {
-    if (s.date.getTime() >= cutoff) upcoming.push(s);
-    // 過去側は開催確定 (DECISION) のみ。流れた候補日 (CANDIDATE) は
-    // 過去ログに出てもノイズなので除外する (TODO #24)。
-    else if (s.status === "DECISION") past.push(s);
+    if (s.date.getTime() >= cutoff) {
+      upcoming.push(s);
+      continue;
+    }
+    // 過去側はノイズ候補日 (誰も ◯ していない CANDIDATE) を除外しつつ、
+    // 実際に開催された日 (◯ が 1 つでもある) は status が CANDIDATE でも
+    // 残す (TODO #24)。character-sheets の HTML は aged out すると
+    // dateStatus を落とすため、parser は CANDIDATE 扱いになる。出席実績
+    // を fallback シグナルにすれば DECISION 限定より過剰除外を回避できる。
+    if (s.status === "DECISION") past.push(s);
+    else if (Object.values(s.attendances).some((a) => a === "◯")) past.push(s);
   }
   upcoming.sort((a, b) => a.date.getTime() - b.date.getTime());
   past.sort((a, b) => b.date.getTime() - a.date.getTime());
