@@ -1,6 +1,7 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { dbError } from "@/lib/server/db-error";
+import { pmap } from "@/lib/server/youtube-duration";
 
 /**
  * One-shot backfill for `category_links.posted_at` using the original
@@ -90,6 +91,44 @@ export async function backfillPostedAtFromDiscord(): Promise<PostedAtBackfillRes
     };
   }
 
+  // 2.1 (2026-04-30): Vercel Hobby plan の Edge function 25s 上限に
+  // 抵触しないよう、(category, kind) チャンネルを並列処理。1 channel
+  // あたり Discord fetch (1-2s) + bulk SELECT (1) + per-URL UPDATE pmap
+  // でほぼ < 5s に収まる想定。並列度 4 で全 channel を約 N/4 × 5s で完了。
+  type ChannelTask = {
+    categoryId: string;
+    categorySlug: string;
+    kind: "strategy" | "video";
+    channelId: string;
+  };
+  const tasks: ChannelTask[] = [];
+  for (const cat of cats) {
+    for (const kind of ["strategy", "video"] as const) {
+      const channelId =
+        kind === "strategy"
+          ? (cat.discord_strategy_channel_id as string | null)
+          : (cat.discord_video_channel_id as string | null);
+      if (!channelId) continue;
+      tasks.push({
+        categoryId: cat.id as string,
+        categorySlug: cat.slug as string,
+        kind,
+        channelId,
+      });
+    }
+  }
+
+  const channelDetails = await pmap(tasks, 4, async (t) =>
+    processChannel(
+      supabase,
+      botToken,
+      t.categoryId,
+      t.categorySlug,
+      t.kind,
+      t.channelId,
+    ),
+  );
+
   const result: PostedAtBackfillResult = {
     ok: true,
     scannedMessages: 0,
@@ -98,38 +137,22 @@ export async function backfillPostedAtFromDiscord(): Promise<PostedAtBackfillRes
     updated: 0,
     channels: [],
   };
-
-  for (const cat of cats) {
-    for (const kind of ["strategy", "video"] as const) {
-      const channelId =
-        kind === "strategy"
-          ? (cat.discord_strategy_channel_id as string | null)
-          : (cat.discord_video_channel_id as string | null);
-      if (!channelId) continue;
-
-      const channelDetail = await processChannel(
-        supabase,
-        botToken,
-        cat.id as string,
-        cat.slug as string,
-        kind,
-        channelId,
-      );
-      result.scannedMessages += channelDetail.scanned;
-      result.scannedUrls += channelDetail.scannedUrls;
-      result.matched += channelDetail.matched;
-      result.updated += channelDetail.updated;
-      result.channels.push({
-        categorySlug: cat.slug as string,
-        kind,
-        ok: channelDetail.ok,
-        reason: channelDetail.reason,
-        scanned: channelDetail.scanned,
-        updated: channelDetail.updated,
-      });
-    }
+  for (let i = 0; i < tasks.length; i++) {
+    const t = tasks[i]!;
+    const d = channelDetails[i]!;
+    result.scannedMessages += d.scanned;
+    result.scannedUrls += d.scannedUrls;
+    result.matched += d.matched;
+    result.updated += d.updated;
+    result.channels.push({
+      categorySlug: t.categorySlug,
+      kind: t.kind,
+      ok: d.ok,
+      reason: d.reason,
+      scanned: d.scanned,
+      updated: d.updated,
+    });
   }
-
   return result;
 }
 
@@ -207,39 +230,54 @@ async function processChannel(
     };
   }
 
-  // 3. For each URL, update the matching category_links row IF
-  //    posted_at is currently NULL. Best-effort — failures per URL
-  //    don't fail the whole backfill.
-  let matched = 0;
-  let updated = 0;
-  for (const [url, timestamp] of urlToTimestamp) {
-    const { data: rows, error: selErr } = await supabase
-      .from("category_links")
-      .select("id, posted_at")
-      .eq("category_id", categoryId)
-      .eq("kind", kind)
-      .eq("url", url);
-    if (selErr || !rows || rows.length === 0) continue;
-    matched += rows.length;
-    for (const row of rows) {
-      if (row.posted_at) continue; // already set, never overwrite
-      const { error: updErr } = await supabase
-        .from("category_links")
-        .update({ posted_at: timestamp })
-        .eq("id", row.id as string)
-        .is("posted_at", null);
-      if (updErr) {
-        console.warn(
-          "[postedat-backfill] update failed",
-          categorySlug,
-          url,
-          updErr.message,
-        );
-        continue;
-      }
-      updated += 1;
-    }
+  // 3. Bulk SELECT all matching rows for this channel in 1 query
+  //    (旧: per-URL に SELECT を打っていたため URL 数だけ往復が発生)、
+  //    posted_at が NULL の行を pmap で並列 UPDATE。Best-effort —
+  //    失敗した行は warn を出して次に進む。
+  const urls = Array.from(urlToTimestamp.keys());
+  const { data: rows, error: selErr } = await supabase
+    .from("category_links")
+    .select("id, url, posted_at")
+    .eq("category_id", categoryId)
+    .eq("kind", kind)
+    .in("url", urls);
+  if (selErr || !rows) {
+    return {
+      ok: false,
+      reason: dbError("動画行取得", selErr),
+      scanned: messages.length,
+      scannedUrls: urlToTimestamp.size,
+      matched: 0,
+      updated: 0,
+    };
   }
+  const matched = rows.length;
+  const targets = rows
+    .filter((r) => !r.posted_at)
+    .map((r) => ({
+      id: r.id as string,
+      url: r.url as string,
+      timestamp: urlToTimestamp.get(r.url as string)!,
+    }))
+    .filter((t) => !!t.timestamp);
+  const updateOutcomes = await pmap(targets, 6, async (t) => {
+    const { error: updErr } = await supabase
+      .from("category_links")
+      .update({ posted_at: t.timestamp })
+      .eq("id", t.id)
+      .is("posted_at", null);
+    if (updErr) {
+      console.warn(
+        "[postedat-backfill] update failed",
+        categorySlug,
+        t.url,
+        updErr.message,
+      );
+      return false;
+    }
+    return true;
+  });
+  const updated = updateOutcomes.filter(Boolean).length;
 
   return {
     ok: true,

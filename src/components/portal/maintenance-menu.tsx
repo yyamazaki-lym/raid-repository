@@ -409,7 +409,7 @@ export function MaintenanceMenu() {
       {result && (
         <div
           ref={popupRef}
-          className="glass-popup relative z-30 w-full max-w-md rounded-md p-3 sm:absolute sm:top-full sm:right-0 sm:mt-2"
+          className="glass-popup relative z-30 max-h-[70vh] w-full max-w-md overflow-y-auto rounded-md p-3 sm:absolute sm:top-full sm:right-0 sm:mt-2"
         >
           <button
             type="button"

@@ -186,37 +186,53 @@ export function VideosList({ categoryId, initial, firstClearAt }: Props) {
   // `focusKey` is included so連打 of the same クリア badge re-triggers
   // scroll even when the resolved id doesn't change.
   //
-  // 2.1 (2026-04-29) v2: ユーザー報告で「クリア日時バッジ経由の遷移で
-  // スクロールが効かない」ケースが残っていた。Next.js 16 / Turbopack の
-  // ページ遷移後レイアウト確定はカテゴリやネットワーク状況で 100ms〜
-  // 1.5s と幅があり、固定 300ms タイマーでは間に合わないシナリオが
-  // ある。
+  // 2.1 (2026-04-30) v3: 旧 v2 の固定タイマー 4 段階 (100/400/800/1500ms)
+  // では production の遅い回線 / lazy mount で 1500ms 越えになるケースを
+  // カバーできず再びスクロール抜けが発生していた。改善:
+  //   - rAF で ref 出現を polling し、現れたら ResizeObserver で
+  //     「高さ > 0」になった瞬間に scrollIntoView。
+  //   - 念のためタイマーも 50/200/500/900/1500/2500/4000ms と長めに張り、
+  //     Observer が動かない環境のフォールバックを残す。
+  //   - `done` フラグで二重発火を抑止。
   //
-  // 対策: 複数タイミング (100 / 400 / 800 / 1500ms) で「ref があり、
-  // 高さが確定している」かを試行し、最初に成功したらそれ以降は
-  // スキップする re-try パターンに変更。smooth scroll が二重発火しない
-  // よう `done` フラグで一度だけ実行。呼び出し元 (category-list.tsx)
-  // は引き続き `router.push(..., {scroll:false})` 前提。
+  // 呼び出し元 (category-list.tsx) は引き続き `router.push(..., {scroll:false})`
+  // 前提 (Next.js 16 の遷移時 top auto-scroll を抑止)。
   useEffect(() => {
     if (!focusedVideoId) return;
     let done = false;
     let cancelled = false;
-    const tryScroll = () => {
-      if (cancelled || done) return;
+    const tryScroll = (): boolean => {
+      if (cancelled || done) return false;
       const el = focusedRef.current;
-      if (!el) return;
+      if (!el) return false;
       const rect = el.getBoundingClientRect();
-      // height === 0 はカードが render 完了していない (lazy mount /
-      // 親が collapsed 等)。次の試行に持ち越す。
-      if (rect.height === 0) return;
+      if (rect.height === 0) return false;
       el.scrollIntoView({ behavior: "smooth", block: "center" });
       done = true;
+      return true;
     };
-    const delays = [100, 400, 800, 1500];
+    const delays = [50, 200, 500, 900, 1500, 2500, 4000];
     const timeouts = delays.map((d) => window.setTimeout(tryScroll, d));
+    const obs = new ResizeObserver(() => {
+      if (tryScroll()) obs.disconnect();
+    });
+    let rafId: number | null = null;
+    const pollRef = () => {
+      if (cancelled || done) return;
+      const el = focusedRef.current;
+      if (el) {
+        obs.observe(el);
+        tryScroll();
+        return;
+      }
+      rafId = requestAnimationFrame(pollRef);
+    };
+    rafId = requestAnimationFrame(pollRef);
     return () => {
       cancelled = true;
       for (const id of timeouts) window.clearTimeout(id);
+      if (rafId !== null) cancelAnimationFrame(rafId);
+      obs.disconnect();
     };
   }, [focusedVideoId, live.length, focusKey]);
 
