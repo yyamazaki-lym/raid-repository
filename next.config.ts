@@ -56,10 +56,12 @@ const cspDirectives = [
   scriptSrc,
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' data: https://fonts.gstatic.com",
-  // i.ytimg.com: YouTube サムネ (next/image の remotePatterns と一致)
-  // *.supabase.co: storage public URL (`category-backgrounds` bucket)
-  // cdn.discordapp.com: Discord avatar (将来 user 表示で使う想定で先に許可)
-  "img-src 'self' data: blob: https://i.ytimg.com https://*.supabase.co https://cdn.discordapp.com",
+  // ユーザーがカテゴリ背景画像を任意の HTTPS ホスト (imgur 等) から
+  // 貼るユースケース (TODO #17) があるため、img-src は `https:` 全許可。
+  // CSP の他 directive (script/connect 等) は厳格に維持しているので、
+  // 画像のみ広く開いても XSS / data exfil の実害は限定的。
+  // self / data: / blob: は引き続き明示。
+  "img-src 'self' data: blob: https:",
   // Supabase REST + Realtime WebSocket。ホストは *.supabase.co で固定。
   "connect-src 'self' https://*.supabase.co wss://*.supabase.co",
   // 軽減表 / ロット管理 (docs.google.com) + character-sheets スケジュール

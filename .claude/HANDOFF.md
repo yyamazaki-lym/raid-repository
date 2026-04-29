@@ -40,6 +40,10 @@
 | 29 | GitHub About / topics の定期メンテ — 大型機能追加時に repo の Description / Topics を最新化する。`gh repo edit yyamazaki-lym/raid-repository --description "..." --add-topic ...` で更新可。2.1 (2026-04-29) 時点で description/topics は `discord-oauth/ffxiv/nextjs/raid/supabase/tailwind/typescript/vercel` まで更新済み (継続項目として残置) | 極小 |
 | 37 | カテゴリ編集ダイアログで「攻略チャンネル ID から自動紐付け」 — Discord の攻略チャンネルに投稿された URL を import したとき、その中に `docs.google.com/spreadsheets/...` の URL が含まれていれば軽減表 (mitigation_sheet_url) / ロット管理 (loot_sheet_url) として自動セットする。判別ヒューリスティックは title / 周辺テキストの「軽減」「ロット」キーワード or sheet 名前。ユーザーが手で `category-form-dialog` の URL 欄に貼り付ける手間を削減。既存の `importDiscordNow` (動画+strategy 取り込み) のフローに hook を追加 | 中 |
 | 38 | **スケジュール追加機能** — 現状はトップにスケジュール表 (character-sheets HTML scrape) があるだけで、portal 内から新しい開催候補日を追加する UI が無い。日付 + 時間帯 + 参加可否を入力 → `schedule_past_sessions` (or 専用 future テーブル) に保存して描画する。TODO #2 の「スケジュール表自前実装」と統合可能。設計検討: a) character-sheets を残しつつ portal 専用候補日を上乗せ、b) character-sheets を完全代替する自前 UI に振る、c) Discord scheduled events 連携 | 中〜大 |
+| 39 | **「本日」バッジを「挑戦中」に変えて色差別化** — スケジュールページ上部の次回開催カード (`next-session-card.tsx`) で、現在 `本日` バッジが終日同色。開催時間帯 (start time → end time) の間は「挑戦中」表記 + 色を変えて (例: green/cyan の発光 → red/magenta 強調) 進行中であることを視覚的に示したい | 小 |
+| 40 | **🔒 [security]** Rate limit 追加 — `/auth/callback` (Discord OAuth) と `/api/cron/*` に rate limit 無しで連続呼び出しされると Discord API quota (120/min) を枯渇させてサイト全体の OAuth が止まるリスク。Vercel Edge Middleware の rate limit or Upstash Redis ベースで実装 | 中 |
+| 41 | **🔒 [security]** Server Action のエラーメッセージを汎用化 — `categories-actions.ts` 等で `reason: error.message` で生 PG エラー (column 名 / FK 違反 / RLS deny の Postgres コード) が client に漏洩する箇所がある。攻撃者に DB スキーマ情報を与えるリスク。「更新失敗」等の汎用メッセージに置換、詳細は server-side console.warn のみに残す | 小 |
+| 42 | **コンテンツカード背景画像のリセット問題調査** — ユーザー報告「設定した画像が一部以外リセットされている」。直近の CSP enforce (TODO #33) で img-src が `*.supabase.co` 限定 → imgur 等の他ホストの画像が CSP ブロックされた可能性。本 commit で `img-src https:` 全許可に緩和。それでも解決しない場合は DB の `background_image_url` カラムが実際に NULL 化されている別原因を調査 | 観察中 |
 
 ## 完了済み TODO アーカイブ
 
