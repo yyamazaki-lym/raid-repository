@@ -38,6 +38,8 @@
 | 20 | Vercel ドメイン変更 (`raid-repository.vercel.app` から好きな名前 / カスタムドメインへ) — Vercel Project Settings → Domains で実施。Discord Developer Portal の Redirects、Supabase Authentication の Site URL / Redirect URLs にも新ドメインを追加する必要あり | 小 |
 | 23 | サイト全体のデータ初期化ボタン (設定ダイアログ内、ADMIN 権限のみ、2 度確認ダイアログ) — `categories` `category_links` `app_settings` 等のユーザーデータを TRUNCATE して初期状態に戻す。デプロイ初期や検証時の rebuild 用。Server Action で全テーブルを削除 → 2 段階確認 (1回目「本当に初期化?」、2回目「データ全消去確認、入力欄に `INITIALIZE` と打ってください」) | 中 |
 | 24 | 過去日程の表示を「開催確定日 (DECISION)」のみに絞る — 現在は候補日 (CANDIDATE) も過去ログに含まれてしまい、結果ノイズが多い。`schedule-list.tsx` / `schedule-past-simple.tsx` の過去側 filter を `status === "DECISION"` 限定に。出欠記号と日時はそのまま、候補だけ過去から除外 | 小 |
+| 29 | GitHub About / topics の定期メンテ — 大型機能追加時に repo の Description / Topics を最新化する。`gh repo edit yyamazaki-lym/raid-repository --description "..." --add-topic ...` で更新可。直近は 2.1 (2026-04-29) で `discord-oauth` topic 等を追加済み | 極小 |
+| 30 | 紅蓮 (Stormblood) テーマが赤すぎるので彩度/明度を下げて薄く — `app/globals.css` 等の色トークンを探して該当テーマ variant の rose/red 系を調整。プレビューしながらバランス確認 | 小 |
 
 ## 完了済み TODO アーカイブ
 
