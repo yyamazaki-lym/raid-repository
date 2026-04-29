@@ -353,10 +353,7 @@ export function MaintenanceMenu() {
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-64">
           <DropdownMenuItem
-            onSelect={(e) => {
-              e.preventDefault();
-              run("discord");
-            }}
+            onClick={() => run("discord")}
             disabled={pending}
             className="flex flex-col items-start gap-0.5"
           >
@@ -373,10 +370,7 @@ export function MaintenanceMenu() {
             </span>
           </DropdownMenuItem>
           <DropdownMenuItem
-            onSelect={(e) => {
-              e.preventDefault();
-              run("videoMeta");
-            }}
+            onClick={() => run("videoMeta")}
             disabled={pending}
             className="flex flex-col items-start gap-0.5"
           >
@@ -393,10 +387,7 @@ export function MaintenanceMenu() {
             </span>
           </DropdownMenuItem>
           <DropdownMenuItem
-            onSelect={(e) => {
-              e.preventDefault();
-              run("firstClearForce");
-            }}
+            onClick={() => run("firstClearForce")}
             disabled={pending}
             className="flex flex-col items-start gap-0.5"
           >
