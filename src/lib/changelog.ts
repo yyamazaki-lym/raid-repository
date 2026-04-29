@@ -52,6 +52,10 @@ export const RELEASES: ReleaseEntry[] = [
     date: "2026-04-29",
     parts: [
       {
+        title: "🎯 TODO #24 さらに修正: ◯ fallback を撤去して DECISION 限定に",
+        body: "ユーザー報告: 「4/27(月)・4/28(火) が過去日程に出るが実際は開催していない、Discord 側にも該当メッセージがない」。\n\n原因: 直前 commit で「◯ 出席が 1 名以上なら過去に表示」という fallback シグナルを入れていたが、character-sheets の ◯ は『参加可投票』であって実際の出席記録ではない (legend: ◯=参加可, ⏰=遅刻, △=要相談, ×=不可, －=未回答)。流れた候補日でもメンバーが事前に「参加可」を入れていれば ◯ が残るため、未開催日が past に紛れ込んでしまっていた。\n\n修正: `schedule-list.tsx` / `schedule-past-simple.tsx` の過去フィルタを `status === \"DECISION\"` のみに戻す。aged out で character-sheets が DECISION を落としても、`mergeStoredPastSessions` が Discord 取り込み / snapshot 由来行を DECISION 扱いで補完するので「実開催だが char-sheets に残っていない」過去日も拾える設計。",
+      },
+      {
         title: "🧹 TODO #24 続報: Discord 取り込みの過去表示 + 未来日時クリーンアップ",
         body: "ユーザー報告: 「Discord から取り込んだ日時が過去日程に表示されていない、開催日時ではない 27/28 日が表示される、DB に未来日時が残っている」。\n\n原因:\n1. `next-session.ts:138` で Discord 取り込み行を一律 `CANDIDATE` 扱いにしていたため、attendances が空の Discord 由来エントリは新フィルタ「DECISION または ◯ 1 名以上」を全部弾いていた。\n2. `discord-schedule.ts` が未来日時の本日メッセージ (bot が翌日通知を先行投稿したケース等) を無条件で `schedule_past_sessions` に insert しており、後日 past 化すると「実際は開催されていない日」がノイズとして表示されていた。\n\n修正:\n- **Discord 取り込み = DECISION 扱い**: `mergeStoredPastSessions` の status を CANDIDATE → DECISION に変更。Discord 通知は「announce された開催確定セッション」なので DECISION 扱いが正しい。`pickNextDecision` は past を弾くため次回確定の誤選択にはならない。\n- **未来日時行を merge 時にスキップ**: 万一 DB に未来 parsed_date が残っていても、表示時にもう一度ガードして past リストに混ざらないように。\n- **importer が未来日時を insert しない**: `importDiscordScheduleHistory` で `dt > now` を skip し、結果に `skippedFuture` を返す。\n- **既存未来行を import 時に自動クリーンアップ**: `schedule_past_sessions` の `parsed_date > now` 行を import の冒頭で DELETE。`cleanedFuture` 件数を結果に返す。\n- **設定ダイアログ表示も拡張**: import 結果パネルに「未来日時 skip / cleanup」件数を表示。",
       },

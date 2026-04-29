@@ -1188,13 +1188,12 @@ function splitSessions(
       upcoming.push(s);
       continue;
     }
-    // 過去側はノイズ候補日 (誰も ◯ していない CANDIDATE) を除外しつつ、
-    // 実際に開催された日 (◯ が 1 つでもある) は status が CANDIDATE でも
-    // 残す (TODO #24)。character-sheets の HTML は aged out すると
-    // dateStatus を落とすため、parser は CANDIDATE 扱いになる。出席実績
-    // を fallback シグナルにすれば DECISION 限定より過剰除外を回避できる。
+    // 過去側は「開催確定 (DECISION)」のみ表示。◯ は『参加可投票』であっ
+    // て実際に開催された記録ではないので fallback に使えない (流れた候補
+    // 日にも投票が残るため、◯ 許可するとノイズが増える)。aged out で
+    // DECISION が落ちた分は `mergeStoredPastSessions` 経由で Discord 取
+    // り込み / snapshot 行が DECISION 扱いで補完する (TODO #24)。
     if (s.status === "DECISION") past.push(s);
-    else if (Object.values(s.attendances).some((a) => a === "◯")) past.push(s);
   }
   upcoming.sort((a, b) => a.date.getTime() - b.date.getTime());
   past.sort((a, b) => b.date.getTime() - a.date.getTime());

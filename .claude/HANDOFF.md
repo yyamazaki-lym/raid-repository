@@ -63,7 +63,7 @@
 | ~~26~~ | カード編集にコンテンツ説明文 (description) フィールド — `categories.description` + `[slug]/layout.tsx` ヘッダー直下表示 | 2.1 (2026-04-29) |
 | ~~27~~ | /category ページ上部の説明文に「動画など」追加 (当初『カード編集から動画追加』と誤解釈、UI 撤去済み) | 2.1 (2026-04-29) |
 | ~~28~~ | Status の右端を Trophy と揃える — `SubPageShortcuts` の右パディングのみ調整 | 2.1 (2026-04-29) |
-| ~~24~~ | 過去日程の表示を「DECISION または ◯ 出席 1 名以上」に絞る + Discord 取り込みを DECISION 扱い + DB 未来日時クリーンアップ — `schedule-list.tsx` / `schedule-past-simple.tsx` のフィルタ更新に加え、`next-session.ts` の `mergeStoredPastSessions` で Discord/snapshot 由来行を DECISION でマージ + 未来日時行を skip。`discord-schedule.ts` 側でも未来日時の insert ガード + 既存未来行の DELETE クリーンアップ (`skippedFuture` / `cleanedFuture` 結果フィールド)。`settings-dialog.tsx` の import 結果パネルにも件数表示 | 2.1 (2026-04-29) |
+| ~~24~~ | 過去日程の表示を「DECISION のみ」に絞る + Discord 取り込みを DECISION 扱い + DB 未来日時クリーンアップ — `schedule-list.tsx` / `schedule-past-simple.tsx` の過去フィルタを `status === "DECISION"` 限定に。◯ は『参加可投票』であって実出席記録ではないため fallback に使えない (流れた候補日にも投票が残る)。aged out 行は `mergeStoredPastSessions` が Discord/snapshot 由来行を DECISION 扱いで補完。`discord-schedule.ts` 側でも未来日時の insert ガード + 既存未来行の DELETE クリーンアップ (`skippedFuture` / `cleanedFuture`)。`settings-dialog.tsx` の import 結果パネルにも件数表示 | 2.1 (2026-04-29) |
 | ~~30~~ | 紅蓮 (Stormblood) テーマの彩度/明度を下げて薄く + 出欠 × (rose-400) と差別化 — `app/globals.css` の `.dark.theme-stormblood` を hue `22 → 38-40` (deep ember 寄り) に振り、accent も `45 → 60` (amber 寄り)、primary chroma `0.27 → 0.17` で再調整。前回 chroma 圧縮のみで hue 据え置きだったため × マーカーと色相被り → ember 系 hue で解消 | 2.1 (2026-04-29) |
 
 ### 除外済み (再対応不要)
