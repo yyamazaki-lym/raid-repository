@@ -1392,7 +1392,6 @@ async function linkReportsToVideos(
     .filter((v): v is NonNullable<typeof v> => v !== null)
     .sort((a, b) => a.sortKey - b.sortKey);
 
-  const usedReports = new Set<string>();
   const details: FflogsLinkDetail[] = [];
   let matched = 0;
 
@@ -1401,6 +1400,13 @@ async function linkReportsToVideos(
   // 一致」 だけで判定。±時間ウィンドウ / RAID_HOUR_JST / SMALL_PENALTY
   // 等の複雑な scoring は撤廃。日付一致が原則、同日複数候補のとき
   // のみコンテンツ照合 (別グループはリジェクト) でフィルタ。
+  //
+  // 2.1 (2026-04-29) TODO #45: 1 レポート → 複数動画の紐づけを許容。
+  // 旧設計では `usedReports` で 1 レポート = 1 動画 にしていたが、
+  // ユーザー運用 (raid セッション全体を 1 ログにまとめて記録、動画は
+  // 「クリア / ふくしゅう / れんしゅう」と分けて投稿) では同日複数
+  // 動画から同一 Logs URL に飛ばしたいケースが多い、というユーザー
+  // 指示。各動画は依然 1 レポートにしか紐づかない (`usedVideos`)。
   const HOUR_MS = 60 * 60 * 1000;
   const sameJstDay = (
     a: { y: number; m: number; d: number },
@@ -1453,7 +1459,6 @@ async function linkReportsToVideos(
   for (const pair of pairs) {
     const vId = pair.video.id as string;
     if (usedVideos.has(vId)) continue;
-    if (usedReports.has(pair.report.id)) continue;
     const logsUrl = `https://www.fflogs.com/reports/${pair.report.id}`;
     const { error } = await supabase
       .from("category_links")
@@ -1464,7 +1469,6 @@ async function linkReportsToVideos(
       console.warn("[fflogs-link/video] update failed", vId, error.message);
       continue;
     }
-    usedReports.add(pair.report.id);
     usedVideos.add(vId);
     matched += 1;
     // Re-use the same titleDate that scoring used.
