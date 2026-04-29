@@ -41,6 +41,7 @@
 | 33 | **🔒 [security]** CSP enforce 切替 — Report-Only で投入済 (2.1, 2026-04-29)。本番 1 週間運用 → DevTools violation report 確認 → 不足 origin 追加 → ヘッダー名を `Content-Security-Policy` に切替 (= enforce)。enforce 切替時に `'unsafe-eval'` 削除も検討 (本番不要なケース多い)。directives は `next.config.ts` の `cspDirectives` 定数 | 小 (運用待ち) |
 | 35 | **🔒 [security]** FFLogs session cookie / OAuth tokens を `app_settings` 平文保存から脱却 — 専用テーブル `secrets` に分離、Postgres `pgcrypto` で暗号化 (encryption key は env)。RLS で SELECT を service role のみに絞る。書き込み Server Action は admin gate 維持 | 中 |
 | 36 | **🔒 [security]** Supabase RLS を `auth.uid()` ベースに締める — 現状全テーブル `USING (true)` で誰でも anon key で全件 CRUD 可能。Discord OAuth で `auth.users` に session があるユーザーのみ SELECT 許可、書き込みは admin role を要求する RLS function を作成。最大規模の変更で migration 計画が必要 | 大 |
+| 37 | カテゴリ編集ダイアログで「攻略チャンネル ID から自動紐付け」 — Discord の攻略チャンネルに投稿された URL を import したとき、その中に `docs.google.com/spreadsheets/...` の URL が含まれていれば軽減表 (mitigation_sheet_url) / ロット管理 (loot_sheet_url) として自動セットする。判別ヒューリスティックは title / 周辺テキストの「軽減」「ロット」キーワード or sheet 名前。ユーザーが手で `category-form-dialog` の URL 欄に貼り付ける手間を削減。既存の `importDiscordNow` (動画+strategy 取り込み) のフローに hook を追加 | 中 |
 
 ## 完了済み TODO アーカイブ
 
