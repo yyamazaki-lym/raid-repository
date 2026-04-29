@@ -44,11 +44,28 @@ function isPublicPath(pathname: string): boolean {
   return PUBLIC_PREFIXES.some((prefix) => pathname.startsWith(prefix));
 }
 
+// Dev-only bypass: `DEV_AUTH_BYPASS=true` + `NODE_ENV !== "production"` で
+// Discord guild membership / login チェックを丸ごと skip する。本番ビルド
+// では `NODE_ENV === "production"` で必ず無効化される (二重ガード) ため、
+// 万一 env が漏れても Vercel 側ではバイパスは効かない。
+function isDevAuthBypassEnabled(): boolean {
+  return (
+    process.env.NODE_ENV !== "production" &&
+    process.env.DEV_AUTH_BYPASS === "true"
+  );
+}
+
 export async function proxy(request: NextRequest) {
   const { user, response } = await updateSession(request);
   const { pathname, search } = request.nextUrl;
 
   if (isPublicPath(pathname)) {
+    return response;
+  }
+
+  // Dev bypass: ログイン状態 / guild membership を一切問わずにそのまま通す。
+  // この経路を取るのはローカル開発時のみ (NODE_ENV ガード済み)。
+  if (isDevAuthBypassEnabled()) {
     return response;
   }
 

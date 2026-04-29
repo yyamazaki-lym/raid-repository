@@ -191,7 +191,11 @@ node ./node_modules/typescript/bin/tsc --noEmit
 node ./node_modules/next/dist/bin/next build
 ```
 
-dev server は `.claude/launch.json` で `portal-dev` 設定済み (port 3000)。Claude Preview から起動可能。Discord OAuth ゲートで `/login` リダイレクトされる点に注意 — preview 内の auth テストは難しいので、ローカル動作確認は schedule page (top) 以外は限定的。
+dev server は `.claude/launch.json` で `portal-dev` 設定済み (port 3000)。Claude Preview から起動可能。
+
+**ローカル env セットアップ** (worktree 含む): `.env.local` を main repo (`D:\workd\portal\.env.local`) からコピー。`.env*` は gitignore 済なので worktree でも commit には混ざらない。
+
+**Discord OAuth gate のバイパス** (2.1+): `.env.local` に `DEV_AUTH_BYPASS=true` を立てると `NODE_ENV !== "production"` のときだけ proxy / auth が偽 admin ユーザーで短絡する。これでローカル preview から全画面にアクセス可能。`DEV_AUTH_BYPASS_NON_ADMIN=true` を追加すると roles=[] の偽ユーザーになり non-admin 視点も試せる。Vercel 本番では NODE_ENV ガードで必ず無効化される (二重ガード)。詳細は `.env.local.example` 参照。
 
 ## コミット & Push 運用
 

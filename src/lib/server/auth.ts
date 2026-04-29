@@ -30,7 +30,38 @@ export type AuthorizedUser = {
   roles: string[];
 };
 
+/**
+ * Dev-only bypass: `DEV_AUTH_BYPASS=true` + `NODE_ENV !== "production"`
+ * で Discord guild membership チェックを丸ごと skip し、admin ロールを
+ * 持つ偽ユーザーを返す。本番ビルドでは NODE_ENV ガードで必ず無効化。
+ *
+ * 偽ユーザーの roles には `DISCORD_ADMIN_ROLE_IDS` env の全 ID を入れる
+ * ので admin gate も自動で通る。non-admin 視点を試したい場合は
+ * `DEV_AUTH_BYPASS_NON_ADMIN=true` を追加で立てて roles を空にする。
+ */
+function devAuthBypassUser(): AuthorizedUser | null {
+  if (
+    process.env.NODE_ENV === "production" ||
+    process.env.DEV_AUTH_BYPASS !== "true"
+  ) {
+    return null;
+  }
+  const adminIds = getAdminRoleIds();
+  const roles =
+    process.env.DEV_AUTH_BYPASS_NON_ADMIN === "true" ? [] : adminIds;
+  return {
+    // Stable fake UUID-ish so any downstream code that keys on userId
+    // sees a consistent identity across requests.
+    userId: "00000000-0000-0000-0000-000000000dev",
+    discordId: "dev-bypass-discord-id",
+    roles,
+  };
+}
+
 export async function requireDiscordMember(): Promise<AuthorizedUser> {
+  const bypass = devAuthBypassUser();
+  if (bypass) return bypass;
+
   const supabase = await createClient();
   const {
     data: { user },
