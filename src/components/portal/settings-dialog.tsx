@@ -282,7 +282,7 @@ export function SettingsDialog({ canEdit }: { canEdit: boolean }) {
       const r = await importPastScheduleFromDiscord();
       setImportResult(r);
       if (!r.ok) {
-        toast.error("取り込み失敗: " + (r.reason ?? "unknown"));
+        toast.error("取り込み失敗: " + (r.reason ?? "原因不明"));
         return;
       }
       toast.success(
@@ -301,7 +301,7 @@ export function SettingsDialog({ canEdit }: { canEdit: boolean }) {
     startCount(async () => {
       const r = await countStoredPastSessions();
       setStoredInfo(r);
-      if (!r.ok) toast.error("件数取得失敗: " + (r.reason ?? "unknown"));
+      if (!r.ok) toast.error("件数取得失敗: " + (r.reason ?? "原因不明"));
     });
   };
 
@@ -312,7 +312,7 @@ export function SettingsDialog({ canEdit }: { canEdit: boolean }) {
     startDeleteRow(async () => {
       const r = await deleteStoredPastSession(rawDate);
       if (!r.ok) {
-        toast.error("削除失敗: " + (r.reason ?? "unknown"));
+        toast.error("削除失敗: " + (r.reason ?? "原因不明"));
         return;
       }
       toast.success(`削除しました: ${rawDate}`);
@@ -329,7 +329,7 @@ export function SettingsDialog({ canEdit }: { canEdit: boolean }) {
       const r = await snapshotScheduleNow();
       setSnapshotResult(r);
       if (!r.ok) {
-        toast.error("スナップショット失敗: " + (r.reason ?? "unknown"));
+        toast.error("スナップショット失敗: " + (r.reason ?? "原因不明"));
         return;
       }
       toast.success(
@@ -347,7 +347,7 @@ export function SettingsDialog({ canEdit }: { canEdit: boolean }) {
       const r = await linkFflogsReports();
       setLogsResult(r);
       if (!r.ok) {
-        toast.error("FFLogs 連動失敗: " + (r.reason ?? "unknown"));
+        toast.error("FFLogs 連動失敗: " + (r.reason ?? "原因不明"));
         return;
       }
       const totalMatched = r.matched + r.sessionsMatched;
@@ -596,7 +596,7 @@ export function SettingsDialog({ canEdit }: { canEdit: boolean }) {
                     </>
                   ) : (
                     <p className="text-rose-300">
-                      エラー: {importResult.reason ?? "unknown"}
+                      エラー: {importResult.reason ?? "原因不明"}
                     </p>
                   )}
                 </div>
@@ -626,7 +626,7 @@ export function SettingsDialog({ canEdit }: { canEdit: boolean }) {
                   </>
                 ) : (
                   <p className="text-rose-300">
-                    エラー: {snapshotResult.reason ?? "unknown"}
+                    エラー: {snapshotResult.reason ?? "原因不明"}
                   </p>
                 )}
               </div>
@@ -684,7 +684,7 @@ export function SettingsDialog({ canEdit }: { canEdit: boolean }) {
                   </>
                 ) : (
                   <p className="text-rose-300">
-                    エラー: {storedInfo.reason ?? "unknown"}
+                    エラー: {storedInfo.reason ?? "原因不明"}
                   </p>
                 )}
               </div>
@@ -1058,7 +1058,7 @@ export function SettingsDialog({ canEdit }: { canEdit: boolean }) {
                     startClearLogs(async () => {
                       const r = await clearAllFflogsLinks();
                       if (!r.ok) {
-                        toast.error("クリア失敗: " + (r.reason ?? "unknown"));
+                        toast.error("クリア失敗: " + (r.reason ?? "原因不明"));
                         return;
                       }
                       toast.success(
@@ -1486,7 +1486,7 @@ export function SettingsDialog({ canEdit }: { canEdit: boolean }) {
                     </>
                   ) : (
                     <p className="text-rose-300">
-                      エラー: {logsResult.reason ?? "unknown"}
+                      エラー: {logsResult.reason ?? "原因不明"}
                     </p>
                   )}
                 </div>

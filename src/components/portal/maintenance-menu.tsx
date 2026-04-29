@@ -153,7 +153,7 @@ export function MaintenanceMenu() {
         forceRefresh: force,
       });
       if (!r.ok) {
-        durFatal = r.reason ?? "unknown";
+        durFatal = r.reason ?? "原因不明";
         break;
       }
       if (iter === 0 && typeof r.totalPending === "number") {
@@ -267,7 +267,7 @@ export function MaintenanceMenu() {
         if (kind === "discord") {
           const r = await importDiscordNow();
           if (!r.ok) {
-            toast.error("Discord 取り込み失敗: " + (r.reason ?? "unknown"));
+            toast.error("Discord 取り込み失敗: " + (r.reason ?? "原因不明"));
             return;
           }
           const summary =
@@ -298,11 +298,11 @@ export function MaintenanceMenu() {
           const { durations: dur, postedAt: posted } =
             await runVideoMetaPhase(force);
           if (!dur.ok) {
-            toast.error("動画時間取得失敗: " + (dur.reason ?? "unknown"));
+            toast.error("動画時間取得失敗: " + (dur.reason ?? "原因不明"));
             return;
           }
           if (!posted.ok) {
-            toast.error("投稿日時取得失敗: " + (posted.reason ?? "unknown"));
+            toast.error("投稿日時取得失敗: " + (posted.reason ?? "原因不明"));
             setResult({
               kind: "videoMeta",
               data: { durations: dur, postedAt: posted },
@@ -330,7 +330,7 @@ export function MaintenanceMenu() {
             overwrite: true,
           });
           if (!r.ok) {
-            toast.error("スキャン失敗: " + (r.reason ?? "unknown"));
+            toast.error("スキャン失敗: " + (r.reason ?? "原因不明"));
             return;
           }
           toast.success(
@@ -469,7 +469,7 @@ function DiscordIcon({ item }: { item: ImportNowItem }) {
 }
 
 function describeDiscord(it: ImportNowItem): string {
-  if (!it.ok) return `エラー: ${it.reason ?? "unknown"}`;
+  if (!it.ok) return `エラー: ${it.reason ?? "原因不明"}`;
   if (it.skipped === "disabled") return "一時停止中";
   if (it.scanned === 0) return "URL 検出できず（チャンネル空 or Bot 不可）";
   if (it.failed > 0)

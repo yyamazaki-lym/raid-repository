@@ -1,128 +1,136 @@
-# Raid Repository — 引き継ぎノート (2.1 (2026-04-29) 時点)
+# Raid Repository — 引き継ぎノート
+
+> 2.1 (2026-04-29) 時点。アーカイブ詳細は `src/lib/changelog.ts` を参照。
 
 ## プロジェクト概要
 
 **Raid Repository** — FFXIV レイド固定向け portal (Next.js 16 + Supabase, single-tenant)
 
-- **Repo**: `https://github.com/yyamazaki-lym/raid-repository`
+- **Repo**: https://github.com/yyamazaki-lym/raid-repository
 - **Path**: `D:\workd\portal`
 - **Stack**: Next.js 16.2.4 (Turbopack) / React 19.2 / Supabase / Tailwind v4 / @base-ui/react / shadcn 系
 - **Deploy**: Vercel auto-deploy from `main`
-- **Current version**: `2.1 (2026-04-29)` — Discord OAuth ゲート + admin ロール gating + 動画 ↔ スケジュール紐付け再設計 + カード layout 整理 を含む大型 release。`package.json#version` は `1.9.38` を残置 (履歴マーカー)、UI は `RELEASES[0].version` + `.date` を表示
-- **重要**: `D:\workd\portal\AGENTS.md` で「Next.js 16 は破壊的変更含む。`node_modules/next/dist/docs/` を参照すべし」
-- **🔄 schema 再実行が必要** (TODO #45 完了対応): `supabase/schema.sql` に `categories.fflogs_match_keywords text[]` 列を追加済。Supabase の SQL Editor で同ファイルを再実行してください。再実行は IF NOT EXISTS ガードで冪等。実行後、カテゴリ編集ダイアログ (admin) に「FFLogs マッチワード」入力欄が機能する
+- **Version**: `2.1 (2026-04-29)` — Discord OAuth ゲート + admin 限定編集 + 動画↔スケジュール紐付け再設計 + セキュリティ強化 6 段。`package.json#version` は `1.9.38` のまま (履歴マーカー)、UI は `RELEASES[0].version + .date` を表示
+- **Next.js 16 注意**: 破壊的変更含む。`node_modules/next/dist/docs/` を参照すること (詳細は `AGENTS.md`)
+
+## 🔄 保留オペレーション (デプロイ後 1 度実行)
+
+| 項目 | 必要操作 |
+|---|---|
+| TODO #45 schema 列追加 | Supabase SQL Editor で `supabase/schema.sql` を再実行 (`IF NOT EXISTS` で冪等)。実行後、カテゴリ編集の「FFLogs マッチワード」欄が機能 |
 
 ## 🚨 新規会話開始時のルーチン
 
-**新規会話の最初は必ず以下を実行**:
-
 1. このファイル全体を読み込む (`Read .claude/HANDOFF.md`)
-2. **「未完了 TODO 一覧」section を画面に表示**してユーザーに見せる (冒頭参考用)
+2. **「未完了 TODO 一覧」**を表示してユーザーに見せる
 3. ユーザーから具体的な要望が来るのを待つ
 
-新規会話を開く側 (ユーザー) のテンプレ:
-
+ユーザー側のテンプレ:
 ```
 このリポは Raid Repository (Next.js 16 + Supabase)。
 .claude/HANDOFF.md を読んで TODO 一覧を表示してから作業してください。
 ```
 
-## 未完了 TODO 一覧 (優先表示)
+## 未完了 TODO 一覧
 
 | # | 項目 | 規模 |
 |---|---|---|
 | 1 | 同日複数 Logs/動画 のプルダウン選択式 | 中 (schema 設計含む) |
 | 2 | スケジュール表自前実装 (作成/編集/確定/Discord 通知) | 大 |
 | 7 | スマホでのレイアウト崩れ確認 | 中 |
-| 8 | Vercel/Supabase 自動導入 (Deploy button / `.env.example` / seed) — 加えて、導入後に GitHub Pages / 別 Vercel project 等で「公開モックサイト (デモ用、ダミーデータ入り)」を別途作れるか検証する。実機データを伏せたサンプル portal をフォーク前のショールームとして見せたい | 中 |
-| 11 | ページ全体のパフォーマンス最適化 (重さを軽減) — 候補: bundle 軽量化, RSC 化, lazy mount, 画像最適化, query batching, realtime subscription 削減 等 | 中 |
-| 20 | Vercel ドメイン変更 (`raid-repository.vercel.app` から好きな名前 / カスタムドメインへ) — Vercel Project Settings → Domains で実施。Discord Developer Portal の Redirects、Supabase Authentication の Site URL / Redirect URLs にも新ドメインを追加する必要あり | 小 |
-| 23 | サイト全体のデータ初期化ボタン (設定ダイアログ内、ADMIN 権限のみ、2 度確認ダイアログ) — `categories` `category_links` `app_settings` 等のユーザーデータを TRUNCATE して初期状態に戻す。デプロイ初期や検証時の rebuild 用。Server Action で全テーブルを削除 → 2 段階確認 (1回目「本当に初期化?」、2回目「データ全消去確認、入力欄に `INITIALIZE` と打ってください」) | 中 |
-| 29 | GitHub About / topics の定期メンテ — 大型機能追加時に repo の Description / Topics を最新化する。`gh repo edit yyamazaki-lym/raid-repository --description "..." --add-topic ...` で更新可。2.1 (2026-04-29) 時点で description/topics は `discord-oauth/ffxiv/nextjs/raid/supabase/tailwind/typescript/vercel` まで更新済み (継続項目として残置) | 極小 |
-| 37 | カテゴリ編集ダイアログで「攻略チャンネル ID から自動紐付け」 — Discord の攻略チャンネルに投稿された URL を import したとき、その中に `docs.google.com/spreadsheets/...` の URL が含まれていれば軽減表 (mitigation_sheet_url) / ロット管理 (loot_sheet_url) として自動セットする。判別ヒューリスティックは title / 周辺テキストの「軽減」「ロット」キーワード or sheet 名前。ユーザーが手で `category-form-dialog` の URL 欄に貼り付ける手間を削減。既存の `importDiscordNow` (動画+strategy 取り込み) のフローに hook を追加 | 中 |
-| 38 | **スケジュール追加機能** — 現状はトップにスケジュール表 (character-sheets HTML scrape) があるだけで、portal 内から新しい開催候補日を追加する UI が無い。日付 + 時間帯 + 参加可否を入力 → `schedule_past_sessions` (or 専用 future テーブル) に保存して描画する。TODO #2 の「スケジュール表自前実装」と統合可能。設計検討: a) character-sheets を残しつつ portal 専用候補日を上乗せ、b) character-sheets を完全代替する自前 UI に振る、c) Discord scheduled events 連携 | 中〜大 |
-| 39 | **「本日」バッジを「挑戦中」に変えて色差別化** — スケジュールページ上部の次回開催カード (`next-session-card.tsx`) で、現在 `本日` バッジが終日同色。開催時間帯 (start time → end time) の間は「挑戦中」表記 + 色を変えて (例: green/cyan の発光 → red/magenta 強調) 進行中であることを視覚的に示したい | 小 |
-| 43 | **軽減表 / ロット管理表のデフォルト iframe 縮尺調整** — `SheetIframe` 表示時、Google Sheets の標準ズームだと枠に収まらず横スクロール / 余白が出る。シート読み込み時に iframe サイズへフィットする縮尺 (例: `transform: scale(...)` 自動計算 or Sheets の `widget=true&headers=false&range=A1:N40` 等のクエリ追加) をデフォルトにしたい。`mitigation_sheet_url` / `loot_sheet_url` 両対象 | 中 |
-| 44 | **スケジュール日程リストから日程位置への iframe ジャンプ** — 未確定の `-` または確定済みの〇/×/△を押した時、iframe (character-sheets スケジュール管理) を開いて該当日程まで自動スクロールさせたい。`〇×` 等を押した時の編集挙動と同様。実装案: schedule-edit-frame-dialog 側で `postMessage` or hash anchor (`#row-YYYYMMDD` 等) で日程位置を指定し iframe 内に scroll。character-sheets 側がアンカーをサポートしていない場合は postMessage + 内部 query DOM 走査の代替案も要検討 | 中 |
+| 8 | Vercel/Supabase 自動導入 (Deploy button / `.env.example` / seed)。導入後の公開モックサイト (デモ用ダミーデータ) も検証 | 中 |
+| 11 | ページ全体のパフォーマンス最適化 — bundle 軽量化 / RSC 化 / lazy mount / 画像最適化 / query batching / realtime 削減 等 | 中 |
+| 20 | Vercel ドメイン変更 — Project Settings → Domains。Discord Developer / Supabase Auth の Redirect URLs にも反映必要 | 小 |
+| 23 | サイト全体のデータ初期化ボタン (admin 限定、2 段階確認: 1 回目「本当に初期化?」、2 回目「`INITIALIZE` と入力」) | 中 |
+| 29 | GitHub About / topics の定期メンテ — 大型機能追加時に `gh repo edit --description --add-topic` で更新 | 極小 |
+| 37 | カテゴリ編集ダイアログで「攻略チャンネル ID から sheet URL 自動紐付け」 — Discord メッセージの `docs.google.com/spreadsheets/...` を軽減表 / ロット URL に自動セット。`importDiscordNow` フローに hook | 中 |
+| 38 | スケジュール追加機能 — portal 内から開催候補日を追加する UI が無い。日付 + 時間帯 + 参加可否を入力 → DB 保存 → 描画。TODO #2 と統合可 | 中〜大 |
+| 39 | 「本日」バッジを「挑戦中」に変えて色差別化 — 開催時間帯のみ別色 (例: red/magenta) で進行中を表現 | 小 |
+| 43 | 軽減表 / ロット管理表のデフォルト iframe 縮尺調整 — Sheets の標準ズームだと枠に収まらず、自動フィット縮尺をデフォルトに | 中 |
+| 44 | スケジュール日程リストから iframe ジャンプ — 未確定 `-` / 確定 〇× 押下時、character-sheets iframe を該当日程までスクロール (postMessage or hash anchor) | 中 |
 
 ## 完了済み TODO アーカイブ
 
+> 詳細は `src/lib/changelog.ts` 参照。
+
+### 2.1 (2026-04-29)
+
+| # | 項目 |
+|---|---|
+| 21 | カテゴリ編集を admin ロール限定に — `DISCORD_ADMIN_ROLE_IDS` env + `assertAdminResult` |
+| 22 | 動画 ↔ スケジュール紐付けをタイトル日付ベースに刷新 — `posted_at` 解決順は タイトル日付 → YouTube uploadDate → 既存値 |
+| 24 | 過去日程は Discord/snapshot を authoritative source に + 個別削除 UI — 過去フィルタは `DECISION` 限定、未来日時 insert ガード追加 |
+| 25 | カード編集に「クリアまでの累計時間」手動入力欄 — `manual_time_to_clear_seconds` ?? 自動計算 |
+| 26 | カード編集に「説明文」フィールド追加 — `[slug]/layout.tsx` ヘッダー直下表示 |
+| 27 | /category ページ説明文に「動画など」追加 |
+| 28 | Status 右端を Trophy と揃える |
+| 30 | 紅蓮テーマの hue/chroma 再調整 — × マーカー (rose-400) との色相被り解消 |
+| 31 | 軽減表 / ロット管理ページの紐付け解除 UI + 軽減表テンプレ案内 |
+| 32 | 🔒 セキュリティレスポンスヘッダー追加 — XFO / HSTS / Referrer-Policy / nosniff / Permissions-Policy |
+| 33 | 🔒 CSP 段階導入 — Report-Only → enforce、production で `'unsafe-eval'` 削除 |
+| 34 | 🔒 Storage bucket 強化 — file_size_limit 5MB + mime 制限 + anon UPDATE/DELETE 撤去 |
+| 35 | 🔒 FFLogs token 暗号化保管 — 新 `secrets` テーブル + AES-256-GCM (Web Crypto) |
+| 36 phase 1 | 🔒 RLS で書き込みを authenticated 限定 |
+| 36 phase 2 | 🔒 RLS で書き込みを `is_admin` claim 限定 |
+| 40 | 🔒 Rate limit 追加 — `/auth/callback` + `/api/cron/*` に in-memory 固定ウィンドウ (10 req / 30 sec) |
+| 41 | 🔒 Server Action のエラーメッセージ汎用化 — `dbError(label, error)` ヘルパー |
+| 42 | 背景画像リセット問題 — CSP `img-src` 緩和で正常化 |
+| 45 | 🔍 FFLogs Logs 取り込みの 2 段階バグ修正 — (a) 全ポータル Edge runtime 化で Cloudflare 403 回避、(b) matcher 緩和 + 1 レポート → 同日複数動画 OK + カスタムマッチワード機能 |
+
+### 1.9 / 2.0 (2026-04-28)
+
 | # | 項目 | 完了時 |
 |---|---|---|
-| ~~3~~ | 攻略リンクのサイト別アイコン (Web / 動画 / X) — `<LinkSiteIcon variant="coarse">` | 1.9 (2026-04-28) |
-| ~~4~~ | 動画リンクのサイト別アイコン (YouTube / Twitch / ニコニコ / X) — `<LinkSiteIcon variant="fine">` | 1.9 (2026-04-28) |
-| ~~5~~ | マクロの説明文変更 | 1.9 (2026-04-28) |
-| ~~6~~ | 募集文テンプレート並び替え (DnD) + top 反映 — マクロページにも DnD、グローバル sort_order、Top 行 ★ Top バッジ | 1.9 (2026-04-28) |
-| ~~9~~ | バージョン番号体系の見直し (`MAJOR.MINOR (YYYY-MM-DD)` に移行、patch 廃止) | 1.9 (2026-04-28) |
-| ~~10~~ | 動画ページ上部のクリア日時ボタン押下で該当動画にスクロール (anchor jump) — Trophy `<button>` 化、`findVideoIdByDate` ヘルパー | 1.9 (2026-04-28) |
-| ~~12~~ | トップの運用ルール popup に編集ボタン追加 — `app_settings.schedule_top_text_override` で persistent override | 1.9 (2026-04-28) |
-| ~~13~~ | スケジュール取り込み時の文字コード decode — `src/lib/html-entities.ts` に集約 | 1.9 (2026-04-28) |
-| ~~14~~ | カレンダー取り込みでメモ更新時の視覚ハイライト — `comment-popover.tsx` で fingerprint 比較 + amber + dot | 1.9 `59122b2` |
-| ~~15~~ | 過去の活動履歴の見出し名 — `Past · 簡易ログ` / `Past · 詳細ログ` | 1.9 (2026-04-28) |
-| ~~16~~ | DnD アイテムのカテゴリ跨ぎ移動 — SortableContext をカテゴリブロック単位に再設計 | 1.9 `2f59abf` |
-| ~~17~~ | コンテンツカードに背景画像を設定可能に — `categories.background_image_url` + storage bucket | 1.9 (2026-04-28) |
-| ~~18~~ | 設定ダイアログに FF14 Lodestone へのリンク追加 | 1.9 (2026-04-28) |
-| ~~19~~ | ロール単位ページ閲覧制御 — `categories.required_role_ids` + Discord OAuth + role check | 2.0 (2026-04-28) |
-| ~~21~~ | カテゴリ編集を「admin ロール持ちのみ」に制限 — `DISCORD_ADMIN_ROLE_IDS` env + `assertAdminResult` + Server Action 経由 | 2.1 (2026-04-29) |
-| ~~22~~ | スケジュール ↔ 動画の紐付けがタイトル日付を見ていない — `session-video-link.ts` を「動画日付 == セッション JST 同日」方式に変更。日付解決は タイトル日付 → posted_at の JST 日付 → スキップ の優先度。`posted_at` の取得元も Title-date → YouTube uploadDate の優先度に反転 | 2.1 (2026-04-29) |
-| ~~25~~ | カード編集にクリア時間 (timeToClearSeconds) 手動入力欄 — `categories.manual_time_to_clear_seconds` + `manualTimeToClearSeconds ?? computed` 優先 | 2.1 (2026-04-29) |
-| ~~26~~ | カード編集にコンテンツ説明文 (description) フィールド — `categories.description` + `[slug]/layout.tsx` ヘッダー直下表示 | 2.1 (2026-04-29) |
-| ~~27~~ | /category ページ上部の説明文に「動画など」追加 (当初『カード編集から動画追加』と誤解釈、UI 撤去済み) | 2.1 (2026-04-29) |
-| ~~28~~ | Status の右端を Trophy と揃える — `SubPageShortcuts` の右パディングのみ調整 | 2.1 (2026-04-29) |
-| ~~24~~ | 過去日程は Discord/snapshot を authoritative source として表示 + 個別削除 UI — 過去フィルタは `status === "DECISION"` 限定 + `mergeStoredPastSessions` で **char-sheets のみで stored に無い過去行は破棄**。char-sheets が実際は流した日でも DECISION マーカーを残すケースを排除。`discord-schedule.ts` は未来日時 insert ガード + 既存未来行 DELETE クリーンアップ。settings dialog → DB 保存件数ボタンで直近 20 件を表示、各行 × で個別削除可 (`deleteStoredPastSession` Server Action)。100 件ローテで元 Discord メッセージが落ちた古い stored 行や、誤って入った行を除去できる | 2.1 (2026-04-29) |
-| ~~30~~ | 紅蓮 (Stormblood) テーマの彩度/明度を下げて薄く + 出欠 × (rose-400) と差別化 — `app/globals.css` の `.dark.theme-stormblood` を hue `22 → 38-40` (deep ember 寄り) に振り、accent も `45 → 60` (amber 寄り)、primary chroma `0.27 → 0.17` で再調整。前回 chroma 圧縮のみで hue 据え置きだったため × マーカーと色相被り → ember 系 hue で解消 | 2.1 (2026-04-29) |
-| ~~31~~ | 軽減表 / ロット管理ページのスプレッドシート紐付け解除 UI + 軽減表テンプレ案内 — `SheetUrlUnlinkButton` を新規追加し `SheetIframe` の toolbar に admin 限定表示 (`updateCategory({ mitigation_sheet_url/loot_sheet_url: null })` で解除)。軽減表 onboarding には lastagous 氏のコピー元シート + note 使い方ガイドへのリンク追加 | 2.1 (2026-04-29) |
-| ~~32~~ | **🔒 [security]** セキュリティレスポンスヘッダー追加 — `next.config.ts` の `headers()` で全パスに `X-Frame-Options: DENY` / `HSTS max-age=15552000` / `Referrer-Policy strict-origin-when-cross-origin` / `X-Content-Type-Options: nosniff` / `Permissions-Policy` (camera/microphone/geolocation 等を全 OFF) を付与 | 2.1 (2026-04-29) |
-| ~~34~~ | **🔒 [security]** Storage bucket `category-backgrounds` 強化 — `file_size_limit = 5MB` + `allowed_mime_types = [png,jpeg,webp,gif]` を bucket レベル強制 (SVG は XSS ベクタなので除外)、anon UPDATE/DELETE policy 撤去、public read + anon insert のみ残置 | 2.1 (2026-04-29) |
-| ~~33~~ | **🔒 [security]** CSP 段階導入 — Report-Only で投入 (フェーズ 2) → 1 セッション後 enforce に切替 (フェーズ 3)。production では `'unsafe-eval'` を削除、dev mode (HMR / Turbopack) では維持。directives は `next.config.ts` の `cspDirectives` 定数 | 2.1 (2026-04-29) |
-| ~~35~~ | **🔒 [security]** FFLogs token 暗号化保管 — 新 `secrets` テーブル (RLS で anon/authenticated 完全 deny、service role 専用) + AES-256-GCM (Web Crypto API) で `iv:tag:ciphertext` 形式保管。`SECRET_ENCRYPTION_KEY` 未設定時は旧 `app_settings` 平文 fallback で graceful 動作。env 設定 + 再保存で自動移行。 access_token / refresh_token / session_cookie が対象。expires_at / user_name は機密度低なので app_settings 平文継続 | 2.1 (2026-04-29) |
-| ~~36 phase 1~~ | **🔒 [security]** RLS で書き込みを authenticated 限定 — 全テーブル INSERT/UPDATE/DELETE policy を `TO anon, authenticated` から `TO authenticated` に変更。Discord OAuth で Supabase session を持つユーザーのみ書き込み可。anon key REST 直叩きでアプリ層 admin gate をバイパスする攻撃を遮断。SELECT は維持 (Realtime / 公開読み取り温存)。dev bypass は `SUPABASE_SERVICE_ROLE_KEY` で server-side createClient を service role 切替 → RLS バイパス。Storage bucket `category-backgrounds` も `authenticated insert` 専用に | 2.1 (2026-04-29) |
-| ~~36 phase 2~~ | **🔒 [security]** RLS で書き込みを admin 限定 — INSERT/UPDATE/DELETE policy に `(auth.jwt() -> 'app_metadata' ->> 'is_admin') = 'true'` を組み込み、admin role 持ちのみ書き込み可。OAuth callback で `is_admin = userIsAdmin(roles)` を計算して `app_metadata` に書き込み、Supabase JWT に同梱されて RLS から参照可能。`DISCORD_ADMIN_ROLE_IDS` env 未設定時は backward compat で全員 admin。既存 user の grace period: 旧 JWT には claim 無しで write 拒否 → 1h の auto-refresh または再ログインで解決。Storage bucket も同条件追加 | 2.1 (2026-04-29) |
-| ~~41~~ | **🔒 [security]** Server Action のエラーメッセージを汎用化 — 新ヘルパー `src/lib/server/db-error.ts` (`dbError(label, error)`) を追加し、Postgres 生エラー (column 名 / FK 違反 / RLS deny コード) を「{label}に失敗しました」の汎用文言に置換。詳細は `console.warn("[db-error] {label}:", detail)` で server log に残す。対象: categories-actions.ts (CRUD / backfill / app_settings 系)、discord-import.ts、discord-postedat-backfill.ts、discord-schedule.ts、fflogs-oauth.ts、schedule-snapshot.ts、secret-store.ts。FFLogs GraphQL API のエラーは外部 API のもので DB スキーマ非依存のため温存 | 2.1 (2026-04-29) |
-| ~~40~~ | **🔒 [security]** Rate limit 追加 — `proxy.ts` (Node.js runtime デフォルト) に in-memory 固定ウィンドウ rate limiter を session refresh 前段に挿入。`/auth/callback` (10 req / 30 sec)、`/api/cron/*` (10 req / 30 sec)。実装は `src/lib/rate-limit.ts`。`x-forwarded-for` 先頭で client IP を取り、Map<scope:ip, {count, resetAt}> で管理。MAX_BUCKETS=5000 超過時に expire 済みエントリ掃除。Vercel function instance 跨ぎでは状態非共有なので「per-instance per-IP」相当 (シンプル版で OK の判断、Upstash Redis は将来検討)。429 Too Many Requests + `Retry-After` header を返す | 2.1 (2026-04-29) |
-| ~~42~~ | **コンテンツカード背景画像のリセット問題** — CSP enforce (TODO #33) で `img-src 'self' *.supabase.co` が原因で imgur 等の他ホスト画像がブロックされていた。`img-src https:` 全許可に緩和済み (3fb573f)。ユーザー確認で正常化したため close | 2.1 (2026-04-29) |
-| ~~45~~ | **🔍 FFLogs Logs 取り込み 2 段階バグ** — ユーザー診断で発覚: (a) 「TOP からは 455 件取れるが他ページからは 12 件 (古い Public のみ)」、(b) 「TOP で 455 件取れても紐づき 0 件」。原因 (a): Server Action は呼び出し元ページの runtime で実行される仕様で、TOP のみ `runtime = "edge"` だったため Edge IP / 他ページは Node Lambda IP で fflogs.com に fetch、Cloudflare bot 判定で 403。原因 (b): `contentMismatchPenalty` で「Video カテゴリ分類可 + Report 分類不能 → REJECT (1)」だったが、HTML scrape 由来 Report は zoneName=null + ユーザー個人タイトルで CONTENT_GROUPS に当たらず全リジェクトされていた。**修正**: (a) `(portal)/layout.tsx` に `runtime = "edge"` を追加し全ポータルページを Edge 統一 (build verify 済)、(b) 該当 reject を `0.5` (曖昧) に緩和し「ユーザーがそのカテゴリに動画を登録した時点で video のコンテンツは確定」という非対称信頼に。同日 cross-tier クロス紐づけの保護 (1.9.13 本来の意図) は据え置きで保持。**事前対応**: 7d701d2 で「scrape 成功時のみ session cookie auto-delete」(403 で cookie だけ消費される事故防止) も合わせて入れ済 | 2.1 (2026-04-29) |
+| 3, 4 | サイト別アイコン (web/動画/X、YouTube/Twitch/etc) | 1.9 |
+| 5, 6 | マクロ説明文変更 + テンプレ DnD 並び替え | 1.9 |
+| 9 | バージョン番号体系を `MAJOR.MINOR (YYYY-MM-DD)` に変更 | 1.9 |
+| 10 | クリア日時ボタンで動画にスクロール (anchor jump) | 1.9 |
+| 12 | 運用ルール popup に編集ボタン (override 永続化) | 1.9 |
+| 13 | スケジュール取り込みの文字コード decode | 1.9 |
+| 14 | カレンダーのメモ更新ハイライト | 1.9 |
+| 15 | 過去履歴の見出し名 (`Past · 簡易ログ` / `Past · 詳細ログ`) | 1.9 |
+| 16 | DnD のカテゴリ跨ぎ移動 | 1.9 |
+| 17 | カードに背景画像設定 + storage bucket | 1.9 |
+| 18 | 設定ダイアログに Lodestone リンク | 1.9 |
+| 19 | ロール単位ページ閲覧制御 (Discord OAuth + 役職判定) | 2.0 |
 
 ### 除外済み (再対応不要)
 
-- ~~top の「断絶」 Ultimate clear 表記~~ (異例ケース)
-- ~~Vercel デプロイ確認~~ (1 回きり)
-- ~~ヘビー級クリア取得~~ (取得済み)
-- ~~チップ縦中央~~ (1.9.38 で終了、symmetric `py-1` に固定)
-- ~~診断ツール (YouTube 取得テスト UI)~~ (2.1 (2026-04-29) で撤去、`YOUTUBE_API_KEY` 設定で限定公開動画も取得可能になったため)
-
-## 直近の主要な変更 (2.0 / 2.1)
-
-| Ver | 概要 |
-|---|---|
-| 2.0 (2026-04-28) | TODO #19: Discord OAuth ゲート全体導入 + ロール単位ページ閲覧制御。`/auth/callback` で `app_metadata.discord_guild_member` / `discord_roles` を JWT 同梱、`proxy.ts` (旧 middleware) で全 page を gate |
-| 2.1 (2026-04-29) | TODO #21: admin ロール限定編集 (`DISCORD_ADMIN_ROLE_IDS` env)、TODO #22: 動画紐付けタイトル日付ベース化 + posted_at 取得元 YouTube 優先、TODO #25-28: カード編集ダイアログ拡張 (description / manual time / Status 揃え)、メンテメニュー単独ボタン化、`<details>` でロールセクション折りたたみ、TODO #24: 過去日程は DECISION のみ表示、TODO #30: 紅蓮テーマ彩度/明度を低減、TODO #41: Server Action エラー汎用化 (dbError ヘルパー)、TODO #40: `/auth/callback` + `/api/cron/*` に in-memory rate limit、TODO #42: 背景画像 CSP 緩和で正常化 |
+- top の「断絶」 Ultimate clear 表記 (異例ケース)
+- Vercel デプロイ確認 (1 回きり)
+- ヘビー級クリア取得 (取得済み)
+- チップ縦中央揃え (1.9.38 で symmetric `py-1` に固定)
+- 診断ツール (YouTube 取得テスト UI) — 2.1 で撤去 (`YOUTUBE_API_KEY` 設定で限定公開動画も取れるため)
 
 ## アーキテクチャ重要ポイント
 
-### スケジュール↔動画紐付け (2.1+ シンプル版)
+### スケジュール ↔ 動画紐付け (2.1+)
 
-- **マッチ条件**: 動画日付 (タイトル → `posted_at` の JST 日付 → スキップ の優先度) == セッションの JST カレンダー日
-- **`posted_at` 解決**: タイトル日付 (`titleDateToIso`) → YouTube uploadDate → 既存値維持 の優先度 (`resolvePostedAt` in `categories-actions.ts`)
-- **撤廃済**: ±36h ウィンドウ / `created_at` フォールバック / Discord 時刻優先設計 (古い動画の誤紐付け原因だった)
+- **マッチ条件**: 動画日付 (タイトル → `posted_at` JST 日付 → スキップ) == セッションの JST カレンダー日
+- **`posted_at` 解決順**: タイトル日付 → YouTube uploadDate → 既存値維持 (`resolvePostedAt` in `categories-actions.ts`)
+- **撤廃済**: ±36h ウィンドウ / `created_at` フォールバック / Discord 時刻優先 (古い動画の誤紐付けの原因だった)
 
-### FFLogs マッチング (1.9.24+ シンプル版)
+### FFLogs マッチング (2.1+)
 
 - **マッチ条件**: 動画タイトル日付 == レポートの JST カレンダー日 + `contentMismatchPenalty !== 1`
-- **sort**: greedy global pair sort、tie-breaker は `report.startMs` ascending
-- HTML scrape は `extractTimestampMs` (`src/lib/server/fflogs.ts:474`) で priority + closest 選択
-- **HTML scrape の UA は実 Chrome 風** (2.1+): `Mozilla/5.0 (Windows NT 10.0; Win64; x64) ... Chrome/124.0.0.0 ...` + `Sec-Fetch-*` / `Sec-Ch-Ua-*` / `Referer` / `Accept-Encoding` 一式付与。旧 UA `Mozilla/5.0 (compatible; RaidRepository/...)` は Cloudflare 判定で 403 を引いていた。それでも 403 が続く場合は Vercel IP block で API 経由不能、手動 URL 貼り付けか Public 化で対応
+- **緩和**: 「Video カテゴリ分類可 + Report 分類不能」は `0.5` (曖昧採用) に緩和 (TODO #45)
+- **カスタムマッチワード**: カテゴリ毎に `fflogs_match_keywords` を設定可、part 一致で cross-group reject を override (TODO #45)
+- **同日複数動画**: 1 レポート → N 動画への紐づけ可 (`usedReports` 撤廃、TODO #45)
+- **取得経路**: v2 GraphQL (Public のみ、最大 25 ページ) + HTML scrape (Public + Unlisted + Private、session cookie 必要、scrape 成功時のみ cookie auto-delete)
+- **runtime**: 全ポータルページが Edge runtime — Vercel Edge IP は Cloudflare bot 判定をすり抜けやすい (Node Lambda IP は 403 になりがち)
+- **HTML scrape UA**: 実 Chrome 風 (`Sec-Fetch-*` / `Sec-Ch-Ua-*` / `Referer` 等付与)。それでも 403 が続く場合は手動 URL 貼り付けか Public 化で対応
 
 ### コンテンツ分類 (`@/lib/content-groups.ts`)
 
 - `CONTENT_GROUPS` (15 グループ、絶 / 零式各 tier / Arcadion / Criterion 等)
 - `normalizeContentText` で全角→半角コロン正規化
 - 略称対応: `LH級` `クル級` `ヘビ級` `ウェル級`
+- カスタム override: カテゴリ毎の `fflogs_match_keywords` (TODO #45)
 
 ### クリア検出 (`@/lib/clear-detection.ts`)
 
-- `isClearTitleForCategory(title, categoryName)`:
-  - 絶 / 4人用 → 単純なクリアキーワード
+- `isClearTitleForCategory`:
+  - 絶 / 4 人用 → 単純なクリアキーワード
   - 零式 → 「4 層 / 四層 / P4S / P8S / P12S / M4S / M8S」 + クリア両方必要
 - `isFirstFloorPracticeTitle` で「みなしクリア時間」の起点判定
 
@@ -130,72 +138,92 @@
 
 - `isSafeUrl` / `safeHref` / `assertSafeUrl` で http(s) のみ通す
 
-### 認証 / 認可 (2.0+)
+### 認証 / 認可 (2.1+)
 
-- **全体ゲート**: `proxy.ts` (Next.js 16 で `middleware.ts` から改名) で `app_metadata.discord_guild_member === true` を要求
-- **ロール gate**: `categories.required_role_ids` を `[slug]/layout.tsx` の `requireDiscordRoles()` で照合 (defense-in-depth)
-- **Admin gate** (2.1+ 拡張): `DISCORD_ADMIN_ROLE_IDS` env のロールを持つユーザーのみ DB 書き込み系操作可。`assertAdminResult()` を以下に適用済み:
-  - `category` CRUD (create/update/delete/reorder/status)
-  - `category_links` CRUD (createCategoryLinkAction / updateCategoryLinkAction / deleteCategoryLinkAction / setCategoryLinkOrderAction)
-  - `app_settings` 系 (setScheduleUrlAction / setDiscordScheduleChannelIdAction / setFflogsUsernameAction / setFflogsSessionCookie)
-  - スケジュール系 (importPastScheduleFromDiscord / snapshotScheduleNow / deleteStoredPastSession)
-  - FFLogs 系 (linkFflogsReports / clearAllFflogsLinks / disconnectFflogsOAuthAction / setSessionLogsUrl)
-  - 動画メタ系 (importDiscordNow / backfillVideoDurations(Chunk) / backfillPostedAtFromDiscordChannels)
-- **RLS write 限定** (TODO #36, 2.1+): SELECT は anon + authenticated 全開、INSERT/UPDATE/DELETE は `auth.jwt()->'app_metadata'->>'is_admin' = 'true'` (= Discord OAuth 通過 + admin role 持ち) のみ。OAuth callback で `is_admin` claim を `app_metadata` に書く。dev bypass は service role で RLS バイパス。Storage bucket も同条件
-- **UI 連動**: `site-header.tsx` を server component 化し `getCurrentUserCanEdit()` を `<SettingsDialog canEdit>` に渡す。非 admin は settings dialog 内のフォーム / メンテメニュー / カテゴリメニューが全部非表示
-- **Supabase RLS**: 依然 anon フル open。本気の防御は別 PR で `auth.uid()` ベースに締めること (TODO 残)。現状は server action 経由の admin gate がアプリ層の主防御
+防御層 4 段:
+
+| 層 | 手段 | コード |
+|---|---|---|
+| 1. 全リクエスト | Discord OAuth gate | `proxy.ts` (旧 middleware.ts、`app_metadata.discord_guild_member` チェック) |
+| 2. ページ単位 | ロール gate | `[slug]/layout.tsx` の `requireDiscordRoles()` |
+| 3. アプリ層 | Server Action 入口の admin gate | `assertAdminResult()` (categories CRUD / app_settings / FFLogs / 動画メタ系すべて) |
+| 4. DB 層 | RLS write 制限 | `auth.jwt()->'app_metadata'->>'is_admin' = 'true'` (Storage bucket も同条件) |
+
+- **dev bypass**: `.env.local` に `DEV_AUTH_BYPASS=true` + `NODE_ENV !== production` で proxy / auth を偽 admin で短絡。`DEV_AUTH_BYPASS_NON_ADMIN=true` を追加すると roles=[] の偽ユーザーで non-admin 視点も試せる。本番は NODE_ENV ガードで必ず無効
+- **Service role bypass**: `SUPABASE_SERVICE_ROLE_KEY` 設定で server-side createClient が service role に切替 → RLS バイパス (dev 用)
+- **Admin role 判定**: `DISCORD_ADMIN_ROLE_IDS` env 未設定なら全員 admin (backward compat)
 
 ### YouTube メタデータ取得 (2.1+)
 
-- **優先度**: YouTube Data API v3 (`YOUTUBE_API_KEY` 設定時) → HTML scrape (consent cookie 付き、Vercel IP の bot 検出で fail することあり)
-- **限定公開対応**: API key で unlisted 動画も取得可。private (uploader しか見れない) は不可
-- **Title-date fallback**: YouTube 取得失敗時もタイトル日付があれば `posted_at` に書く (`resolvePostedAt`)
+- **優先順**: YouTube Data API v3 (`YOUTUBE_API_KEY` 設定時) → HTML scrape (consent cookie、Vercel IP の bot 検出で fail することあり)
+- **限定公開対応**: API key で unlisted も取得可。private (uploader 限定) は不可
+- **Title-date fallback**: YouTube 取得失敗時もタイトル日付があれば `posted_at` に書く
+
+### Rate limit (`@/lib/rate-limit.ts`、TODO #40)
+
+- `/auth/callback` 10 req / 30 sec、`/api/cron/*` 10 req / 30 sec
+- 固定ウィンドウ Map ベース、IP は `x-forwarded-for` 先頭採用
+- Vercel function instance 跨ぎでは状態非共有 (per-instance per-IP)。本気の分散制限は Upstash Redis 等が必要
+
+### Server Action エラー汎用化 (`@/lib/server/db-error.ts`、TODO #41)
+
+- `dbError(label, error)` で「{label}に失敗しました」を返し、生 PG エラーは `console.warn("[db-error] {label}:", detail)` で server log のみに残す
+- 該当 server file は categories-actions / discord-import / discord-postedat-backfill / discord-schedule / fflogs-oauth / schedule-snapshot / secret-store
 
 ## 既知のペインポイント (再触らない方が良い)
 
-- **チップ縦中央揃え**: 1.9.28-1.9.37 で 10 回試行、Yu Gothic UI font metrics の固有差異で完全解決不能。1.9.38 でシンプル版に固定済み。再度触る場合はユーザー明示要請がない限り避ける
-- **FFLogs マッチング**: 1.9.4-1.9.25 で大量パッチ、現在 1.9.24 で安定
-- **Status 右端揃え (Card layout)**: flex-col 化で完全に揃えようとしたら他の崩れが出たため `padding` 調整で妥協 (TODO #28)。再度 layout 変更を試みる場合は revert 履歴 (`d7cdecd` 等) を確認
+| 領域 | 経緯 |
+|---|---|
+| チップ縦中央揃え | 1.9.28-1.9.37 で 10 回試行、Yu Gothic UI font metrics の固有差異で完全解決不能。1.9.38 で symmetric `py-1` に固定 |
+| FFLogs マッチング | 1.9.4-1.9.25 で大量パッチ、現在 (2.1) 安定 |
+| Status 右端揃え (Card layout) | flex-col 化で完全揃えは他の崩れを誘発、`padding` 調整で妥協済み (TODO #28)。再調整は revert 履歴 (`d7cdecd` 等) を確認 |
 
 ## 主要ファイル (navigation 用)
 
 ```
 src/
-├── app/(portal)/
-│   ├── page.tsx                          # スケジュールページ (top)
-│   ├── category/page.tsx                 # コンテンツ一覧
-│   ├── category/category-list.tsx        # カードレイアウト (右カラム = Trophy / Hourglass / +N/wk / ⋮、icon 行末に Status)
-│   └── category/[slug]/
-│       ├── layout.tsx                    # category 詳細レイアウト + description 表示 + role gate
-│       ├── videos/videos-list.tsx        # 動画リスト + 統計バッジ + 複数選択削除 + scroll-to-focus
-│       ├── macros/macros-list.tsx        # マクロ + 募集文テンプレ
-│       └── ...
+├── app/
+│   ├── (portal)/
+│   │   ├── layout.tsx                  # 全ポータル Edge runtime 設定 (TODO #45)
+│   │   ├── page.tsx                    # スケジュールページ (top)
+│   │   ├── category/page.tsx           # コンテンツ一覧
+│   │   ├── category/category-list.tsx  # カードレイアウト
+│   │   └── category/[slug]/
+│   │       ├── layout.tsx              # 詳細レイアウト + role gate
+│   │       ├── videos/videos-list.tsx
+│   │       ├── macros/macros-list.tsx
+│   │       └── ...
+│   ├── auth/                           # OAuth callback / sign-out / denied
+│   └── api/                            # cron / health / fflogs OAuth / page-title
 ├── components/portal/
-│   ├── schedule-list.tsx                 # 出席表 (凡例 + 更新 + ルール)
-│   ├── schedule-past-simple.tsx          # 過去簡易チップ
-│   ├── schedule-edit-frame-dialog.tsx    # iframe 内インライン編集
-│   ├── next-session-card.tsx             # 次回開催日カード
-│   ├── settings-dialog.tsx               # 設定 + FFLogs 連動 + 更新履歴 + サインアウト
-│   ├── maintenance-menu.tsx              # メンテナンス (単独ボタン、「最新情報を取り込んで再計算」)
-│   ├── category-form-dialog.tsx          # カテゴリ編集 (description / manual time / role 折りたたみ)
-│   └── session-memo-popover.tsx          # メモ機能
+│   ├── schedule-list.tsx               # 出席表 (凡例 + 更新 + ルール)
+│   ├── schedule-past-simple.tsx        # 過去簡易チップ
+│   ├── schedule-edit-frame-dialog.tsx  # iframe 内インライン編集
+│   ├── next-session-card.tsx           # 次回開催日カード
+│   ├── settings-dialog.tsx             # 設定 + FFLogs 連動 + 更新履歴 + サインアウト
+│   ├── maintenance-menu.tsx            # メンテナンス (Discord 取り込み + duration / posted_at backfill + クリア再計算)
+│   ├── category-form-dialog.tsx        # カテゴリ編集 (description / manual time / role / FFLogs マッチワード)
+│   └── session-memo-popover.tsx        # 日付メモ + Logs URL 手動入力
 ├── lib/
 │   ├── server/
-│   │   ├── fflogs.ts                     # FFLogs マッチャ
-│   │   ├── categories-actions.ts         # admin-gated Server Actions / backfill / fetchTimeToClear / resolvePostedAt
-│   │   ├── session-video-link.ts         # スケジュール↔動画紐付け (タイトル日付ベース)
-│   │   ├── auth.ts                       # requireDiscordRoles / assertAdminResult / userIsAdmin
+│   │   ├── fflogs.ts                   # FFLogs マッチャ + HTML scrape
+│   │   ├── categories-actions.ts       # admin-gated Server Actions
+│   │   ├── session-video-link.ts       # スケジュール↔動画紐付け
+│   │   ├── auth.ts                     # requireDiscordRoles / assertAdminResult / userIsAdmin
+│   │   ├── db-error.ts                 # 汎用エラー文言ヘルパー (TODO #41)
+│   │   ├── secret-store.ts             # 暗号化 secret CRUD (TODO #35)
 │   │   └── ...
 │   ├── schedule/
-│   │   ├── parse.ts                      # parseSchedule + parseTopText
-│   │   └── next-session.ts               # fetchSchedule
-│   ├── clear-detection.ts                # tier-aware クリア検出
-│   ├── content-groups.ts                 # CONTENT_GROUPS + classifier
-│   ├── title-date.ts                     # extractDateFromTitle / titleDateToIso
-│   ├── duration-format.ts                # 時間 / クリア日 formatter
-│   ├── url-safe.ts                       # safeHref / isSafeUrl
-│   └── changelog.ts                      # 更新履歴 (UI に表示)
-└── proxy.ts                              # Discord OAuth gate (旧 middleware.ts)
+│   │   ├── parse.ts                    # parseSchedule + parseTopText
+│   │   └── next-session.ts             # fetchSchedule
+│   ├── clear-detection.ts              # tier-aware クリア検出
+│   ├── content-groups.ts               # CONTENT_GROUPS + classifier
+│   ├── title-date.ts                   # extractDateFromTitle / titleDateToIso
+│   ├── duration-format.ts              # 時間 / クリア日 formatter
+│   ├── url-safe.ts                     # safeHref / isSafeUrl
+│   ├── rate-limit.ts                   # in-memory 固定ウィンドウ (TODO #40)
+│   └── changelog.ts                    # 更新履歴 (UI 表示)
+└── proxy.ts                            # Discord OAuth gate (旧 middleware.ts) + rate limit
 ```
 
 ## 開発コマンド
@@ -208,11 +236,11 @@ node ./node_modules/typescript/bin/tsc --noEmit
 node ./node_modules/next/dist/bin/next build
 ```
 
-dev server は `.claude/launch.json` で `portal-dev` 設定済み (port 3000)。Claude Preview から起動可能。
+dev server は `.claude/launch.json` の `portal-dev` 設定 (port 3000)。Claude Preview から起動可能。
 
-**ローカル env セットアップ** (worktree 含む): `.env.local` を main repo (`D:\workd\portal\.env.local`) からコピー。`.env*` は gitignore 済なので worktree でも commit には混ざらない。
+**ローカル env**: `.env.local` を main repo (`D:\workd\portal\.env.local`) からコピー。`.env*` は gitignore 済 (worktree でも commit に混ざらない)。
 
-**Discord OAuth gate のバイパス** (2.1+): `.env.local` に `DEV_AUTH_BYPASS=true` を立てると `NODE_ENV !== "production"` のときだけ proxy / auth が偽 admin ユーザーで短絡する。これでローカル preview から全画面にアクセス可能。`DEV_AUTH_BYPASS_NON_ADMIN=true` を追加すると roles=[] の偽ユーザーになり non-admin 視点も試せる。Vercel 本番では NODE_ENV ガードで必ず無効化される (二重ガード)。詳細は `.env.local.example` 参照。
+**Discord OAuth gate のバイパス**: `.env.local` に `DEV_AUTH_BYPASS=true` を立てると `NODE_ENV !== "production"` のときだけ偽 admin で短絡。`DEV_AUTH_BYPASS_NON_ADMIN=true` で roles=[] にして non-admin 視点を確認可能。詳細は `.env.local.example` 参照。
 
 ## コミット & Push 運用
 
@@ -221,29 +249,33 @@ dev server は `.claude/launch.json` で `portal-dev` 設定済み (port 3000)�
 1. ユーザー要望を実装 → 型チェック (`tsc --noEmit`) → コミット
 2. `git commit` 直後に `git push origin main` を **自動実行**
 3. push 結果 (commit range) をユーザーに報告して **事後確認**
-4. ブロックされた場合 (タイミング依存で稀) のみユーザー手動 push を依頼
 
-**コミットメッセージ作成**:
+**コミットメッセージ作成 (改行ありの場合)**:
 
-- 改行を含むメッセージは PowerShell の `Out-File -Encoding utf8` だと **BOM が混入する** ので、必ず以下を使う:
-  ```powershell
-  [System.IO.File]::WriteAllText("$pwd\.git\COMMIT_EDITMSG_TEMP", $msg, (New-Object System.Text.UTF8Encoding $false))
-  git commit -F .git/COMMIT_EDITMSG_TEMP
-  Remove-Item .git/COMMIT_EDITMSG_TEMP
-  ```
-- もし BOM 混入の commit を作ってしまったら `git commit --amend -F .git/COMMIT_EDITMSG_TEMP` で修正 (push 前)
-- Bash の heredoc は Windows 環境で不安定なので避ける
+PowerShell の `Out-File -Encoding utf8` だと BOM が混入するので必ず以下の方式:
+
+```powershell
+$path = 'D:/workd/portal/.git/COMMIT_EDITMSG_TEMP'  # worktree の場合は実 gitdir パス
+[System.IO.File]::WriteAllText($path, $msg, (New-Object System.Text.UTF8Encoding $false))
+git commit -F $path
+Remove-Item $path
+```
+
+worktree 配下では実 gitdir が `.git/worktrees/<name>/` にあるので、そこへ書く (例: `D:/workd/portal/.git/worktrees/foo/COMMIT_EDITMSG_TEMP`)。
+
+- BOM 混入 commit を作ってしまったら `git commit --amend -F <path>` (push 前のみ)
+- Bash の heredoc は Windows で不安定なので避ける
 
 **環境注意**:
 
-- **Claude Desktop 環境では `.claude/settings.json` の hooks は実行されない** (Desktop の仕様、CLI 版なら動く)。Stop hook の自動 push は期待しない、Claude が直接 push する
-- 連続コミット時は cwd が `D:\workd\portal` から外れることがあるので、PowerShell の場合は冒頭に `Set-Location D:\workd\portal` を入れる
+- Claude Desktop は `.claude/settings.json` の hooks が動かない (CLI 版のみ)。Stop hook の自動 push は期待せず、Claude が直接 push する
+- 連続コミット時は cwd が `D:\workd\portal` から外れることがあるので、PowerShell では冒頭に `Set-Location D:\workd\portal\.claude\worktrees\<name>` を入れる
 
 **revert / 履歴整理**:
 
-- 既存 commit を revert したい場合は `git revert --no-edit <hash>` で新 commit として打ち消す (`reset --hard` は使わない方針)
-- HANDOFF.md の追記が revert で巻き戻ったら再追記する (revert で消えても push 済みなら GitHub に履歴は残る)
+- 既存 commit を取り消したい場合は `git revert --no-edit <hash>` で新 commit として打ち消す (`reset --hard` は使わない方針)
+- HANDOFF.md の追記が revert で巻き戻ったら再追記 (push 済なら GitHub に履歴は残る)
 
 ## バージョン更新
 
-`src/lib/changelog.ts` の `RELEASES[0]` に新しいエントリを追加 (or 当日中に複数 part を追加)。`MAJOR.MINOR (YYYY-MM-DD)` 方式、patch は使わない。
+`src/lib/changelog.ts` の `RELEASES[0]` に新エントリ追加 (or 当日中に複数 part を追加)。`MAJOR.MINOR (YYYY-MM-DD)` 方式、patch は使わない。

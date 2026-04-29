@@ -54,12 +54,23 @@ FF14 レイド固定向けポータル — スケジュール / 軽減表 / ロ�
 ## Tech
 
 - Next.js 16 + React 19 + Tailwind CSS v4
-- Supabase (Postgres + Realtime; RLS 全開放、anon key 運用)
+- Supabase (Postgres + Realtime; RLS は SELECT 開放 / 書き込みは admin ロール限定 + Discord OAuth ゲート)
 - shadcn/ui + Base UI primitives
 - @dnd-kit (DnD 並べ替え)
 - motion (タブアニメーション)
 - Vercel auto-deploy from GitHub `main`
 - Vercel Cron Jobs (Discord 取り込み)
+
+### セキュリティ防御層
+
+2.1 で 4 段の多重防御を導入済:
+
+1. **proxy.ts**: Discord OAuth gate — guild メンバー以外を `/login` / `/auth/denied` にリダイレクト
+2. **ページ単位**: `categories.required_role_ids` で個別カテゴリへのロール制限
+3. **Server Action 入口**: `assertAdminResult()` で admin ロール限定 (categories CRUD / app_settings / FFLogs / 動画メタ系すべて)
+4. **DB 層 (RLS)**: INSERT/UPDATE/DELETE は `auth.jwt()->'app_metadata'->>'is_admin' = 'true'` を要求。SELECT は anon + authenticated 全開 (公開読み取り温存)
+
+その他: CSP / HSTS / X-Frame-Options / Referrer-Policy / Permissions-Policy 全付与、`/auth/callback` + `/api/cron/*` に rate limit、FFLogs token は AES-256-GCM 暗号化保管 (`secrets` テーブル)、Server Action の DB エラー文言は汎用化済 (生 PG エラー漏洩防止)。
 
 ## Setup for your raid group
 
@@ -113,13 +124,14 @@ FF14 レイド固定向けポータル — スケジュール / 軽減表 / ロ�
 #### 2-3. 認証情報を取得
 
 1. 左メニュー **Settings**（歯車）→ **API**
-2. 以下の**2つの値**をコピーしてメモ（次のステップで使う）：
+2. 以下の **3 つの値**をコピーしてメモ（次のステップで使う）：
    | 項目 | 場所 |
    |---|---|
    | **Project URL** | Project URL 欄（`https://xxxxx.supabase.co` 形式） |
    | **anon public** key | Project API keys → `anon` `public` 行の長い文字列 |
+   | **service_role** key | 同上 → `service_role` 行 |
 
-> ⚠️ `service_role` key は使わないでください（管理者権限なので公開すると危険）。
+> ⚠️ `service_role` key は **絶対にブラウザ側に出さない**でください（RLS をバイパスする全権限キー）。Vercel の Environment Variables (server-only) に登録するのみで、`NEXT_PUBLIC_` プレフィックスは付けない。サーバー側の `/auth/callback` で Discord メンバーシップ判定を `app_metadata` に書き込むために必要。
 
 ---
 
@@ -138,14 +150,35 @@ FF14 レイド固定向けポータル — スケジュール / 軽減表 / ロ�
 
 #### 3-2. 環境変数を設定
 
-**Environment Variables** セクションを展開：
+**Environment Variables** セクションを展開して以下を登録（必須/任意の区別は `.env.local.example` に詳細あり、すべて Production / Preview / Development 全部にチェック）。
 
-| Name | Value | Environments |
+#### 必須
+
+| Name | Value | 用途 |
 |---|---|---|
-| `NEXT_PUBLIC_SUPABASE_URL` | 2-3 の Project URL | Production / Preview / Development 全部 |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | 2-3 の anon key | Production / Preview / Development 全部 |
+| `NEXT_PUBLIC_SUPABASE_URL` | 2-3 の Project URL | DB 接続 |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | 2-3 の anon key | DB 接続 (read 専用相当、書き込みは RLS で admin 限定) |
+| `SUPABASE_SERVICE_ROLE_KEY` | 2-3 の service_role key | OAuth callback で `app_metadata` 書き込み + secret 暗号化テーブル ([⚠️ NEVER expose to browser](#)) |
+| `DISCORD_BOT_TOKEN` | Discord Bot トークン (5-1 で取得) | OAuth gate で guild メンバーシップ判定 + 自動取り込み |
+| `DISCORD_GUILD_ID` | Discord サーバー ID | OAuth gate のメンバー判定対象 |
 
-各行で **Add** をクリックして登録。
+`SUPABASE_SERVICE_ROLE_KEY` 等の **server-only** 変数は `NEXT_PUBLIC_` プレフィックスを **絶対付けない**。付けるとブラウザバンドルに含まれて漏洩します。
+
+#### 推奨 / 任意
+
+| Name | Value | 用途 |
+|---|---|---|
+| `DISCORD_ADMIN_ROLE_IDS` | カンマ区切り Discord ロール ID | カテゴリ編集等を admin ロール所有者のみに制限 (未設定 = 全員 admin、後方互換) |
+| `CRON_SECRET` | 32 文字以上のランダム文字列 | Vercel Cron 認証 |
+| `YOUTUBE_API_KEY` | YouTube Data API v3 キー | 限定公開動画の duration / uploadDate 取得 (未設定だと HTML scrape fallback、Vercel IP の bot 検出で失敗することあり) |
+| `SECRET_ENCRYPTION_KEY` | 64 文字 hex (`openssl rand -hex 32`) | FFLogs token 等の AES-256-GCM 暗号化保管 (未設定だと旧 `app_settings` 平文保存にフォールバック) |
+| `FFLOGS_API_KEY` | FFLogs API v1 キー | レポート ↔ 動画 自動マッチ |
+
+#### Discord OAuth (ダッシュボード設定のみ、env なし)
+
+1. Discord Developer Portal → アプリケーション → OAuth2 → Redirects に `https://YOUR_PROJECT_REF.supabase.co/auth/v1/callback` を追加
+2. Supabase ダッシュボード → Authentication → Providers → Discord を有効化、Discord Client ID / Secret を貼り付け
+3. Supabase ダッシュボード → Authentication → URL Configuration → Redirect URLs に `https://YOUR_VERCEL_DOMAIN/auth/callback` と `http://localhost:3000/auth/callback` を追加
 
 #### 3-3. デプロイ実行
 
