@@ -306,6 +306,17 @@ export async function importDiscordNow(): Promise<{
   totalFailed: number;
   items: ImportNowItem[];
 }> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) {
+    return {
+      ok: false,
+      reason: "ADMIN ロールが必要です",
+      totalScanned: 0,
+      totalInserted: 0,
+      totalFailed: 0,
+      items: [],
+    };
+  }
   const result = await runDiscordImport();
   if (!result.ok) {
     return {
@@ -626,6 +637,17 @@ export async function backfillFirstClearFromExistingVideos(
  * the new rows immediately without a hard reload.
  */
 export async function importPastScheduleFromDiscord(): Promise<ScheduleHistoryImportResult> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) {
+    return {
+      ok: false,
+      reason: "ADMIN ロールが必要です",
+      scanned: 0,
+      parsed: 0,
+      inserted: 0,
+      duplicates: 0,
+    };
+  }
   const result = await importDiscordScheduleHistory();
   if (result.ok && result.inserted > 0) {
     try {
@@ -651,6 +673,19 @@ export type ScheduleSnapshotResult = {
  * report's start timestamp). Each report claims at most one video.
  */
 export async function linkFflogsReports(): Promise<FflogsLinkResult> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) {
+    return {
+      ok: false,
+      reason: "ADMIN ロールが必要です",
+      reportsScanned: 0,
+      videosScanned: 0,
+      matched: 0,
+      sessionsScanned: 0,
+      sessionsMatched: 0,
+      details: [],
+    };
+  }
   const result = await linkFflogsReportsToVideos();
   if (result.ok && (result.matched > 0 || result.sessionsMatched > 0)) {
     try {
@@ -680,6 +715,8 @@ export async function fetchFflogsOAuthStatus(): Promise<{
 export async function disconnectFflogsOAuthAction(): Promise<
   { ok: true } | { ok: false; reason: string }
 > {
+  const auth = await assertAdminResult();
+  if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
   return disconnectFflogsOAuth();
 }
 
@@ -701,6 +738,8 @@ export async function disconnectFflogsOAuthAction(): Promise<
 export async function setFflogsSessionCookie(
   raw: string,
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
   const trimmed = raw.trim();
   const supabase = await createClient();
   if (!trimmed) {
@@ -755,6 +794,15 @@ export async function clearAllFflogsLinks(): Promise<{
   videosCleared: number;
   sessionsCleared: number;
 }> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) {
+    return {
+      ok: false,
+      reason: "ADMIN ロールが必要です",
+      videosCleared: 0,
+      sessionsCleared: 0,
+    };
+  }
   const supabase = await createClient();
   const { data: vids, error: vidsErr } = await supabase
     .from("category_links")
@@ -817,6 +865,8 @@ export async function setSessionLogsUrl(
     dayOfWeek: string;
   },
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
   const trimmedDate = rawDate.trim();
   if (!trimmedDate) {
     return { ok: false, reason: "rawDate が空です" };
@@ -891,6 +941,16 @@ export async function setSessionLogsUrl(
  * Cron at 21:50 JST (just before raid time, latest answers in).
  */
 export async function snapshotScheduleNow(): Promise<ScheduleSnapshotResult> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) {
+    return {
+      ok: false,
+      reason: "ADMIN ロールが必要です",
+      scanned: 0,
+      inserted: 0,
+      updated: 0,
+    };
+  }
   const result = await runScheduleSnapshot();
   if (result.ok) {
     try {
@@ -958,6 +1018,8 @@ export async function deleteStoredPastSession(rawDate: string): Promise<{
   ok: boolean;
   reason?: string;
 }> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
   const trimmed = rawDate?.trim();
   if (!trimmed) return { ok: false, reason: "raw_date is empty" };
   const supabase = await createClient();
@@ -970,6 +1032,275 @@ export async function deleteStoredPastSession(rawDate: string): Promise<{
 }
 
 /**
+ * Server Action wrappers for `app_settings` writes (schedule URL,
+ * Discord channel ID, FFLogs username) — assertAdminResult-gated.
+ *
+ * 旧設計では `schedule-url-store.ts` の "use client" 経由で anon key
+ * 直接書き込みしていたため、RLS が締まっていない (HANDOFF 既知) この
+ * リポでは誰でも書き換え可能だった。これを admin gate するため、書き
+ * 込み path だけ server action 化。reader (client 側 SELECT) は anon
+ * key で読めれば良いので schedule-url-store.ts に残置。
+ */
+export async function setScheduleUrlAction(
+  rawUrl: string,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
+  const url = rawUrl.trim();
+  if (!url) return { ok: false, reason: "URLを入力してください" };
+  if (!/^https?:\/\//i.test(url)) {
+    return { ok: false, reason: "http:// または https:// で始めてください" };
+  }
+  try {
+    new URL(url);
+  } catch {
+    return { ok: false, reason: "URLの形式が正しくありません" };
+  }
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("app_settings")
+    .upsert({ key: "schedule_url", value: url }, { onConflict: "key" });
+  if (error) return { ok: false, reason: error.message };
+  try {
+    revalidatePath("/");
+  } catch {
+    // best-effort
+  }
+  return { ok: true };
+}
+
+export async function setDiscordScheduleChannelIdAction(
+  rawId: string,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
+  const id = rawId.trim();
+  const supabase = await createClient();
+  if (!id) {
+    const { error } = await supabase
+      .from("app_settings")
+      .delete()
+      .eq("key", "discord_schedule_channel_id");
+    if (error) return { ok: false, reason: error.message };
+    return { ok: true };
+  }
+  if (!/^\d{17,20}$/.test(id)) {
+    return { ok: false, reason: "チャンネル ID は 17〜20 桁の数字です" };
+  }
+  const { error } = await supabase
+    .from("app_settings")
+    .upsert(
+      { key: "discord_schedule_channel_id", value: id },
+      { onConflict: "key" },
+    );
+  if (error) return { ok: false, reason: error.message };
+  return { ok: true };
+}
+
+/**
+ * Server-action wrappers for `category_links` CRUD — assertAdminResult-gated.
+ *
+ * 旧設計では `lib/category-links-client.ts` の "use client" 経由で anon
+ * key 直接書き込みしていたため、RLS が締まっていない (HANDOFF 既知)
+ * このリポでは誰でも書き換え可能だった。これを admin gate するため、
+ * 書き込み path だけ server action 化。`useRealtimeCategoryLinks` の
+ * subscription / refetch は read-only なので client 側に残置。
+ */
+export async function createCategoryLinkAction(input: {
+  categoryId: string;
+  kind: "strategy" | "video";
+  title: string;
+  url: string;
+  description?: string;
+  logsUrl?: string | null;
+}): Promise<{ ok: true; linkId: string } | { ok: false; reason: string }> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
+  const { isSafeUrl } = await import("@/lib/url-safe");
+  if (!isSafeUrl(input.url)) {
+    return {
+      ok: false,
+      reason:
+        "URL は http:// または https:// で始まる正しい URL である必要があります",
+    };
+  }
+  if (input.logsUrl && !isSafeUrl(input.logsUrl)) {
+    return {
+      ok: false,
+      reason:
+        "Logs URL は http:// または https:// で始まる正しい URL である必要があります",
+    };
+  }
+  const supabase = await createClient();
+  const { data: maxRow } = await supabase
+    .from("category_links")
+    .select("sort_order")
+    .eq("category_id", input.categoryId)
+    .eq("kind", input.kind)
+    .order("sort_order", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const nextOrder = ((maxRow?.sort_order as number | undefined) ?? -1) + 1;
+  const { data, error } = await supabase
+    .from("category_links")
+    .insert({
+      category_id: input.categoryId,
+      kind: input.kind,
+      title: input.title,
+      url: input.url,
+      description: input.description ?? null,
+      logs_url: input.logsUrl ?? null,
+      logs_url_source: "manual",
+      sort_order: nextOrder,
+    })
+    .select("id")
+    .single();
+  if (error || !data) {
+    return { ok: false, reason: error?.message ?? "unknown error" };
+  }
+  return { ok: true, linkId: data.id as string };
+}
+
+export async function updateCategoryLinkAction(
+  id: string,
+  patch: Partial<{
+    title: string;
+    url: string;
+    description: string | null;
+    logs_url: string | null;
+  }>,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
+  const { isSafeUrl } = await import("@/lib/url-safe");
+  if (patch.url !== undefined && !isSafeUrl(patch.url)) {
+    return {
+      ok: false,
+      reason:
+        "URL は http:// または https:// で始まる正しい URL である必要があります",
+    };
+  }
+  if (
+    patch.logs_url !== undefined &&
+    patch.logs_url !== null &&
+    !isSafeUrl(patch.logs_url)
+  ) {
+    return {
+      ok: false,
+      reason:
+        "Logs URL は http:// または https:// で始まる正しい URL である必要があります",
+    };
+  }
+  const supabase = await createClient();
+  const dbPatch: Record<string, unknown> = { ...patch };
+  if ("logs_url" in patch) {
+    dbPatch.logs_url_source = "manual";
+  }
+  const { error } = await supabase
+    .from("category_links")
+    .update(dbPatch)
+    .eq("id", id);
+  if (error) return { ok: false, reason: error.message };
+  return { ok: true };
+}
+
+export async function deleteCategoryLinkAction(
+  id: string,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("category_links")
+    .delete()
+    .eq("id", id);
+  if (error) return { ok: false, reason: error.message };
+  return { ok: true };
+}
+
+export async function setCategoryLinkOrderAction(
+  orderedIds: string[],
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
+  const supabase = await createClient();
+  const results = await Promise.all(
+    orderedIds.map((id, index) =>
+      supabase
+        .from("category_links")
+        .update({ sort_order: index })
+        .eq("id", id),
+    ),
+  );
+  const failed = results.find((r) => r.error);
+  if (failed?.error) return { ok: false, reason: failed.error.message };
+  return { ok: true };
+}
+
+export async function setFflogsUsernameAction(
+  raw: string,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
+  const trimmed = raw.trim();
+  const supabase = await createClient();
+  if (!trimmed) {
+    const { error } = await supabase
+      .from("app_settings")
+      .delete()
+      .eq("key", "fflogs_username");
+    if (error) return { ok: false, reason: error.message };
+    return { ok: true };
+  }
+  // URL で渡された場合は表示名部分を抽出 (旧 parseFflogsDisplayName 同等)
+  let value = trimmed;
+  if (/fflogs\.com/i.test(trimmed)) {
+    try {
+      const u = new URL(trimmed);
+      const segs = u.pathname.split("/").filter(Boolean);
+      const userIdx = segs.indexOf("user");
+      if (userIdx < 0 || userIdx + 1 >= segs.length) {
+        return { ok: false, reason: "URL から表示名を抽出できませんでした" };
+      }
+      const next = segs[userIdx + 1]!;
+      if (next === "reports-list") {
+        return {
+          ok: false,
+          reason:
+            "URL 末尾の数字 ID は API で使えません — fflogs.com/profile で表示名を確認してください",
+        };
+      }
+      const name = decodeURIComponent(next);
+      if (/^\d+$/.test(name)) {
+        return {
+          ok: false,
+          reason: "数値 ID ではなく表示名（display name）を入力してください",
+        };
+      }
+      value = name;
+    } catch {
+      return { ok: false, reason: "URL 形式不正" };
+    }
+  } else {
+    const cleaned = trimmed.replace(/^[\s"']+|[\s"']+$/g, "");
+    if (!cleaned) return { ok: false, reason: "空文字は受け付けません" };
+    if (/^\d+$/.test(cleaned)) {
+      return {
+        ok: false,
+        reason:
+          "数値 ID ではなく表示名を入力してください（fflogs.com/profile の見出しに記載）",
+      };
+    }
+    value = cleaned;
+  }
+  const { error } = await supabase
+    .from("app_settings")
+    .upsert({ key: "fflogs_username", value }, { onConflict: "key" });
+  if (error) return { ok: false, reason: error.message };
+  return { ok: true };
+}
+
+/**
  * Server Action: backfill `category_links.posted_at` from each
  * configured Discord channel's recent message timestamps. Run this
  * before "クリア日時を強制再計算" so the recomputed first-clear dates
@@ -977,6 +1308,18 @@ export async function deleteStoredPastSession(rawDate: string): Promise<{
  * is the same for everything imported in one cron run).
  */
 export async function backfillPostedAtFromDiscordChannels(): Promise<PostedAtBackfillResult> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) {
+    return {
+      ok: false,
+      reason: "ADMIN ロールが必要です",
+      scannedMessages: 0,
+      scannedUrls: 0,
+      matched: 0,
+      updated: 0,
+      channels: [],
+    };
+  }
   return backfillPostedAtFromDiscord();
 }
 
@@ -1083,6 +1426,17 @@ export async function diagnoseYouTubeUrl(
  * for groups with hundreds of historical videos.
  */
 export async function backfillVideoDurations(): Promise<DurationBackfillResult> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) {
+    return {
+      ok: false,
+      reason: "ADMIN ロールが必要です",
+      scanned: 0,
+      filled: 0,
+      failed: 0,
+      skippedNonYoutube: 0,
+    };
+  }
   const supabase = await createClient();
   // Pull rows that are missing EITHER column. Without OR, a row that
   // already has duration_seconds (filled in a prior run) but NULL
@@ -1205,6 +1559,18 @@ export async function backfillVideoDurationsChunk(opts: {
   /** True when there are no more pending rows beyond this chunk. */
   done: boolean;
 }> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) {
+    return {
+      ok: false,
+      reason: "ADMIN ロールが必要です",
+      filled: 0,
+      failed: 0,
+      skippedNonYoutube: 0,
+      lastProcessedId: null,
+      done: true,
+    };
+  }
   const supabase = await createClient();
   const BATCH_SIZE = 16;
   const FETCH_CONCURRENCY = 8;

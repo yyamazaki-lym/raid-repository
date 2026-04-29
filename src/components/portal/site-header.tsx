@@ -9,6 +9,7 @@ import { SettingsDialog } from "./settings-dialog-lazy";
 import { DeployColorBadge } from "./deploy-color-badge";
 import packageJson from "../../../package.json";
 import { RELEASES } from "@/lib/changelog";
+import { getCurrentUserCanEdit } from "@/lib/server/auth";
 
 /**
  * App version for the header badge.
@@ -104,7 +105,12 @@ function pickInitialColor(): string {
   return today === APP_DATE ? HASH_COLOR : DEFAULT_COLOR;
 }
 
-export function SiteHeader() {
+export async function SiteHeader() {
+  // ADMIN ロールでなければ設定ダイアログ内の書き込み系 UI は非表示
+  // (TODO #21 follow-up)。Server Action 側でも assertAdminResult で
+  // 二重に守るが、UI が露出していると non-admin が触って失敗 toast を
+  // 食らうので、見せないのが本来の意図。
+  const canEdit = await getCurrentUserCanEdit();
   return (
     <header className="glass-bar sticky top-0 z-30">
       <div className="mx-auto flex h-14 max-w-5xl items-center gap-3 px-4 sm:h-16 sm:px-6">
@@ -139,7 +145,7 @@ export function SiteHeader() {
         <div className="ml-auto flex items-center gap-2">
           <ThemeSwitcher />
           {/* サインアウトは設定ダイアログ内に移設 (2.1 2026-04-29)。 */}
-          <SettingsDialog />
+          <SettingsDialog canEdit={canEdit} />
           <span
             aria-hidden
             className="hidden h-2 w-2 animate-pulse rounded-full bg-[var(--neon-cyan)] shadow-[0_0_10px_var(--neon-cyan)] sm:inline-block"

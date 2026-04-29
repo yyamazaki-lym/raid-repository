@@ -249,7 +249,10 @@ export function ScheduleList({
   // adjacent columns. Users get a min-width so name length doesn't
   // shift the table layout between rows / between the upcoming and
   // past tables.
-  const tableHead = (showDecided: boolean) => (
+  // 過去詳細表ではユーザー名横のメモアイコン (CommentPopover) を出さない
+  // — 過去日のヘッダーで毎回メモが目に入って情報過多になっていたのを
+  // 解消する (ユーザー要望)。upcoming は引き続きメモを出す。
+  const tableHead = (showDecided: boolean, showComments = true) => (
     <thead>
       <tr className="border-b border-border/60 font-mono text-[10px] tracking-[0.22em] text-muted-foreground uppercase">
         <th scope="col" className="pl-3 pr-1 py-2.5">
@@ -264,7 +267,9 @@ export function ScheduleList({
           <UserHeaderCell
             key={u.userId}
             user={u}
-            comments={commentsByAuthor.get(u.name) ?? []}
+            comments={
+              showComments ? (commentsByAuthor.get(u.name) ?? []) : []
+            }
             editUrl={buildEditUrl(scheduleUrl, u.userId)}
             onOpenEditFrame={openEditFrame}
           />
@@ -353,7 +358,7 @@ export function ScheduleList({
           </header>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[640px] border-collapse text-left text-sm">
-              {tableHead(false)}
+              {tableHead(false, false)}
               <tbody>
                 {recentPast.map((s) => (
                   <SessionRow

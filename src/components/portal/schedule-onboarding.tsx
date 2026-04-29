@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { setScheduleUrl } from "@/lib/schedule-url-store";
+import { setScheduleUrlAction } from "@/lib/server/categories-actions";
 
 /**
  * Onboarding card shown on the schedule page when no source URL is configured.
@@ -24,7 +24,7 @@ export function ScheduleOnboarding() {
   const onSave = async () => {
     setError(null);
     setBusy(true);
-    const result = await setScheduleUrl(url);
+    const result = await setScheduleUrlAction(url);
     setBusy(false);
     if (!result.ok) {
       setError(result.reason ?? "保存に失敗しました");

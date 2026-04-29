@@ -38,6 +38,7 @@
 | 20 | Vercel ドメイン変更 (`raid-repository.vercel.app` から好きな名前 / カスタムドメインへ) — Vercel Project Settings → Domains で実施。Discord Developer Portal の Redirects、Supabase Authentication の Site URL / Redirect URLs にも新ドメインを追加する必要あり | 小 |
 | 23 | サイト全体のデータ初期化ボタン (設定ダイアログ内、ADMIN 権限のみ、2 度確認ダイアログ) — `categories` `category_links` `app_settings` 等のユーザーデータを TRUNCATE して初期状態に戻す。デプロイ初期や検証時の rebuild 用。Server Action で全テーブルを削除 → 2 段階確認 (1回目「本当に初期化?」、2回目「データ全消去確認、入力欄に `INITIALIZE` と打ってください」) | 中 |
 | 29 | GitHub About / topics の定期メンテ — 大型機能追加時に repo の Description / Topics を最新化する。`gh repo edit yyamazaki-lym/raid-repository --description "..." --add-topic ...` で更新可。2.1 (2026-04-29) 時点で description/topics は `discord-oauth/ffxiv/nextjs/raid/supabase/tailwind/typescript/vercel` まで更新済み (継続項目として残置) | 極小 |
+| 31 | 軽減表 / ロット管理ページでスプレッドシートの紐付けを解除する仕組みを追加 — 現状 strategy/loot リンクは「追加」「編集」しかできず、誤って紐付けたときに外す UI が無い。link-card-menu に「紐付け解除」項目を追加するか、編集ダイアログから URL クリアできるようにする (admin のみ操作可)。`category_links` 行の `url` を削除する or 行ごと DELETE する仕様検討 | 小 |
 
 ## 完了済み TODO アーカイブ
 
@@ -117,8 +118,15 @@
 
 - **全体ゲート**: `proxy.ts` (Next.js 16 で `middleware.ts` から改名) で `app_metadata.discord_guild_member === true` を要求
 - **ロール gate**: `categories.required_role_ids` を `[slug]/layout.tsx` の `requireDiscordRoles()` で照合 (defense-in-depth)
-- **Admin gate**: `DISCORD_ADMIN_ROLE_IDS` env のロールを持つユーザーのみ category 編集可。Server Action で `assertAdminResult()` チェック
-- **Supabase RLS**: 依然 anon フル open。本気の防御は別 PR で `auth.uid()` ベースに締めること (TODO 残)
+- **Admin gate** (2.1+ 拡張): `DISCORD_ADMIN_ROLE_IDS` env のロールを持つユーザーのみ DB 書き込み系操作可。`assertAdminResult()` を以下に適用済み:
+  - `category` CRUD (create/update/delete/reorder/status)
+  - `category_links` CRUD (createCategoryLinkAction / updateCategoryLinkAction / deleteCategoryLinkAction / setCategoryLinkOrderAction)
+  - `app_settings` 系 (setScheduleUrlAction / setDiscordScheduleChannelIdAction / setFflogsUsernameAction / setFflogsSessionCookie)
+  - スケジュール系 (importPastScheduleFromDiscord / snapshotScheduleNow / deleteStoredPastSession)
+  - FFLogs 系 (linkFflogsReports / clearAllFflogsLinks / disconnectFflogsOAuthAction / setSessionLogsUrl)
+  - 動画メタ系 (importDiscordNow / backfillVideoDurations(Chunk) / backfillPostedAtFromDiscordChannels)
+- **UI 連動**: `site-header.tsx` を server component 化し `getCurrentUserCanEdit()` を `<SettingsDialog canEdit>` に渡す。非 admin は settings dialog 内のフォーム / メンテメニュー / カテゴリメニューが全部非表示
+- **Supabase RLS**: 依然 anon フル open。本気の防御は別 PR で `auth.uid()` ベースに締めること (TODO 残)。現状は server action 経由の admin gate がアプリ層の主防御
 
 ### YouTube メタデータ取得 (2.1+)
 

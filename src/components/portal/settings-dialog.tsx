@@ -52,9 +52,6 @@ import {
   getDiscordScheduleChannelId,
   getFflogsUsername,
   getScheduleUrlFromDb,
-  setDiscordScheduleChannelId,
-  setFflogsUsername,
-  setScheduleUrl,
 } from "@/lib/schedule-url-store";
 import {
   clearAllFflogsLinks,
@@ -65,7 +62,10 @@ import {
   getFflogsSessionCookieStatus,
   importPastScheduleFromDiscord,
   linkFflogsReports,
+  setDiscordScheduleChannelIdAction,
   setFflogsSessionCookie,
+  setFflogsUsernameAction,
+  setScheduleUrlAction,
   snapshotScheduleNow,
   type ScheduleSnapshotResult,
 } from "@/lib/server/categories-actions";
@@ -145,7 +145,7 @@ type ScheduleHistoryImportResult = {
  *      session dates so the schedule UI can show history that has
  *      aged out of character-sheets
  */
-export function SettingsDialog() {
+export function SettingsDialog({ canEdit }: { canEdit: boolean }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [url, setUrl] = useState("");
@@ -259,13 +259,13 @@ export function SettingsDialog() {
   const onSave = async () => {
     setBusy(true);
     // Save URL first; if URL save fails, don't bother with the rest.
-    const urlResult = await setScheduleUrl(url);
+    const urlResult = await setScheduleUrlAction(url);
     if (!urlResult.ok) {
       setBusy(false);
       toast.error("URL: " + urlResult.reason);
       return;
     }
-    const channelResult = await setDiscordScheduleChannelId(channelId);
+    const channelResult = await setDiscordScheduleChannelIdAction(channelId);
     setBusy(false);
     if (!channelResult.ok) {
       toast.error("チャンネルID: " + channelResult.reason);
@@ -393,7 +393,14 @@ export function SettingsDialog() {
             (80svh) while desktop stays at 70svh so the dialog doesn't
             dominate the viewport on large monitors. */}
         <div className="flex max-h-[80svh] flex-col gap-5 overflow-y-auto p-5 sm:max-h-[70svh]">
-          {/* Schedule URL */}
+          {!canEdit && (
+            <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] leading-relaxed text-amber-200">
+              スケジュール / FFLogs / DB 編集系の設定は ADMIN ロールを持つ
+              ユーザーのみ操作できます。閲覧専用モードで表示中です。
+            </div>
+          )}
+          {/* Schedule URL — admin only */}
+          {canEdit && (
           <section className="flex flex-col gap-3">
             <header className="flex items-center gap-2 border-b border-border/30 pb-2">
               <Calendar className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
@@ -473,8 +480,10 @@ export function SettingsDialog() {
               </p>
             </div>
           </section>
+          )}
 
-          {/* Discord schedule history */}
+          {/* Discord schedule history — admin only */}
+          {canEdit && (
           <section className="flex flex-col gap-3">
             <header className="flex items-center gap-2 border-b border-border/30 pb-2">
               <History className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
@@ -681,8 +690,11 @@ export function SettingsDialog() {
               </div>
             )}
           </section>
+          )}
 
-          {/* FFLogs section — three sources stacked:
+          {/* FFLogs section — header + footer (changelog / signout) は
+              全員に表示。フォーム本体だけ canEdit で gate。
+              三 sources スタック:
               ① v1 表示名 (基本・常時表示) — Public のみ取得
               ② v2 OAuth (オプション・畳んで表示)
               ③ Session Cookie (オプション・Private/Unlisted 用、畳んで表示) */}
@@ -694,6 +706,8 @@ export function SettingsDialog() {
               </span>
             </header>
 
+            {canEdit && (
+            <>
             {/* v1 表示名 (基本) — Public レポートを取得する最も簡単な
                 方法。FFLOGS_API_KEY env var (v1 Public Key) のみ必要、
                 ブラウザでの操作不要。 */}
@@ -734,7 +748,7 @@ export function SettingsDialog() {
                   size="sm"
                   onClick={() => {
                     startSaveUsername(async () => {
-                      const r = await setFflogsUsername(fflogsUsername);
+                      const r = await setFflogsUsernameAction(fflogsUsername);
                       if (!r.ok) {
                         toast.error("表示名保存失敗: " + r.reason);
                         return;
@@ -1478,6 +1492,8 @@ export function SettingsDialog() {
                 </div>
               )}
             </div>
+            </>
+            )}
 
             <div className="flex flex-col gap-2 border-t border-border/30 pt-3">
               {/* 更新履歴ボタン + GitHub リポジトリへのリンクを横並び。

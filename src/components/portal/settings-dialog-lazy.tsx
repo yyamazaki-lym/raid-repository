@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import type React from "react";
 
 /**
  * 1.9 (2026-04-28) — TODO #11 (パフォーマンス最適化):
@@ -18,10 +19,11 @@ import dynamic from "next/dynamic";
  * trade-off: ボタン自体の表示にも一瞬 (ms オーダー) の遅延が出る可能性
  * あり。ヘッダーのボタンは critical path ではないので許容。
  */
-export const SettingsDialog = dynamic(
-  () =>
-    import("./settings-dialog").then((m) => ({
-      default: m.SettingsDialog,
-    })),
-  { ssr: false },
-);
+export const SettingsDialog: React.ComponentType<{ canEdit: boolean }> =
+  dynamic(
+    () =>
+      import("./settings-dialog").then((m) => ({
+        default: m.SettingsDialog,
+      })),
+    { ssr: false },
+  );

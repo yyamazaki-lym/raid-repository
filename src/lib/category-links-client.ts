@@ -4,9 +4,14 @@ import { useEffect, useId, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { isClearTitleForCategory } from "@/lib/clear-detection";
 import { maybeSetFirstClearAt } from "@/lib/categories-client";
-import { enrichVideoLinkDuration } from "@/lib/server/categories-actions";
+import {
+  createCategoryLinkAction,
+  deleteCategoryLinkAction,
+  enrichVideoLinkDuration,
+  setCategoryLinkOrderAction,
+  updateCategoryLinkAction,
+} from "@/lib/server/categories-actions";
 import { parseYouTubeId } from "@/lib/youtube";
-import { isSafeUrl } from "@/lib/url-safe";
 import {
   rowToCategoryLink,
   type CategoryLink,
@@ -15,11 +20,13 @@ import {
 } from "@/lib/supabase/types";
 
 /**
- * Client mutations + Realtime hook for `category_links`.
+ * Client wrappers + Realtime hook for `category_links`.
  *
- * Same pattern as `categories-client.ts` — a category-scoped subscription
- * refetches the link list on any change, and CRUD calls go directly to the
- * REST API (RLS allows anon).
+ * 2.1 (2026-04-29) 以降: 書き込みは ADMIN gate 付きの server action
+ * (`*Action`) を経由する。旧 anon key 直書きは RLS 未締めで誰でも書き
+ * 込めていたため、設定書き込みと同様に server 側で `assertAdminResult()`
+ * で gate するようにした。realtime subscription / refetch は読み取りのみ
+ * なので supabase client のまま。
  */
 
 export async function createCategoryLink(input: {
@@ -30,63 +37,26 @@ export async function createCategoryLink(input: {
   description?: string;
   logsUrl?: string | null;
 }): Promise<{ ok: true; link: CategoryLink } | { ok: false; reason: string }> {
-  // Defense in depth: the link form already validates client-side, but
-  // the anon key is exposed in the browser bundle so a direct caller
-  // could bypass. Reject obviously-bad URLs (non-http(s) schemes etc).
-  if (!isSafeUrl(input.url)) {
-    return {
-      ok: false,
-      reason:
-        "URL は http:// または https:// で始まる正しい URL である必要があります",
-    };
-  }
-  if (input.logsUrl && !isSafeUrl(input.logsUrl)) {
-    return {
-      ok: false,
-      reason:
-        "Logs URL は http:// または https:// で始まる正しい URL である必要があります",
-    };
-  }
+  const created = await createCategoryLinkAction(input);
+  if (!created.ok) return created;
+  // server action returns id only; refetch the row so callers get the
+  // full CategoryLink shape (CategoryLinkRow → CategoryLink mapping).
   const supabase = createClient();
-  // New entries appended to end (max sort_order + 1 within this category+kind).
-  const { data: maxRow } = await supabase
-    .from("category_links")
-    .select("sort_order")
-    .eq("category_id", input.categoryId)
-    .eq("kind", input.kind)
-    .order("sort_order", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  const nextOrder = ((maxRow?.sort_order as number | undefined) ?? -1) + 1;
-
   const { data, error } = await supabase
     .from("category_links")
-    .insert({
-      category_id: input.categoryId,
-      kind: input.kind,
-      title: input.title,
-      url: input.url,
-      description: input.description ?? null,
-      logs_url: input.logsUrl ?? null,
-      // Any logs_url set via the form is by definition user-curated.
-      logs_url_source: "manual",
-      sort_order: nextOrder,
-    })
     .select("*")
+    .eq("id", created.linkId)
     .single();
   if (error || !data) {
-    return { ok: false, reason: error?.message ?? "unknown error" };
+    return { ok: false, reason: error?.message ?? "row fetch failed" };
   }
   const link = rowToCategoryLink(data as CategoryLinkRow);
 
   // Auto-detect first clear: if this is a video and the title is a
-  // category-appropriate clear (1.9.16), fill `first_clear_at` (only
-  // if currently NULL). Savage tiers require "4 層" + クリアキーワード
-  // — earlier-floor clears no longer prematurely set the date.
+  // category-appropriate clear, fill `first_clear_at` (only if NULL).
   // Best-effort — don't fail the insert if this side-effect errors.
   if (link.kind === "video") {
     try {
-      // Need the category name for tier-aware detection; fetch it.
       const { data: catRow } = await supabase
         .from("categories")
         .select("name")
@@ -104,10 +74,8 @@ export async function createCategoryLink(input: {
     }
   }
 
-  // Auto-fetch YouTube duration for video links. Server-side via a Server
-  // Action so credentials/User-Agent stay off the browser. Best-effort —
-  // failures leave duration_seconds NULL and the user can retry via the
-  // backfill button later.
+  // Auto-fetch YouTube duration for video links. Server-side via a
+  // Server Action so credentials/User-Agent stay off the browser.
   if (link.kind === "video" && parseYouTubeId(link.url)) {
     try {
       await enrichVideoLinkDuration(link.id, link.url);
@@ -127,51 +95,13 @@ export async function updateCategoryLink(
     logs_url: string | null;
   }>,
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
-  // Defense in depth: same scheme check as createCategoryLink. Only
-  // validate fields that are actually present in the patch.
-  if (patch.url !== undefined && !isSafeUrl(patch.url)) {
-    return {
-      ok: false,
-      reason:
-        "URL は http:// または https:// で始まる正しい URL である必要があります",
-    };
-  }
-  if (
-    patch.logs_url !== undefined &&
-    patch.logs_url !== null &&
-    !isSafeUrl(patch.logs_url)
-  ) {
-    return {
-      ok: false,
-      reason:
-        "Logs URL は http:// または https:// で始まる正しい URL である必要があります",
-    };
-  }
-  const supabase = createClient();
-  // If the patch touches `logs_url`, also flip the source to 'manual'
-  // so it isn't wiped by the next FFLogs auto-sync.
-  const dbPatch: Record<string, unknown> = { ...patch };
-  if ("logs_url" in patch) {
-    dbPatch.logs_url_source = "manual";
-  }
-  const { error } = await supabase
-    .from("category_links")
-    .update(dbPatch)
-    .eq("id", id);
-  if (error) return { ok: false, reason: error.message };
-  return { ok: true };
+  return updateCategoryLinkAction(id, patch);
 }
 
 export async function deleteCategoryLink(
   id: string,
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
-  const supabase = createClient();
-  const { error } = await supabase
-    .from("category_links")
-    .delete()
-    .eq("id", id);
-  if (error) return { ok: false, reason: error.message };
-  return { ok: true };
+  return deleteCategoryLinkAction(id);
 }
 
 /**
@@ -181,18 +111,7 @@ export async function deleteCategoryLink(
 export async function setCategoryLinkOrder(
   orderedIds: string[],
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
-  const supabase = createClient();
-  const results = await Promise.all(
-    orderedIds.map((id, index) =>
-      supabase
-        .from("category_links")
-        .update({ sort_order: index })
-        .eq("id", id),
-    ),
-  );
-  const failed = results.find((r) => r.error);
-  if (failed?.error) return { ok: false, reason: failed.error.message };
-  return { ok: true };
+  return setCategoryLinkOrderAction(orderedIds);
 }
 
 /**
