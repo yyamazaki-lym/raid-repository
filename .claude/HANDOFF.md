@@ -54,7 +54,7 @@
 | ~~19~~ | ~~ロール単位で見られるページを分けたい~~ — 完了 (2.0 (2026-04-28)、`categories.required_role_ids` 列追加 + `CategoryFormDialog` のチェックボックス UI + bot token で `/guilds/{id}/roles` を React.cache 取得 + `filterVisibleCategories` で MainTabs/Switcher/index/popover に適用 + `[slug]/layout.tsx` で `requireDiscordRoles()` 直アクセスガード + `/auth/denied?reason=missing_role` UX) | ~~中~~ |
 | 20 | Vercel ドメイン変更 (`raid-repository.vercel.app` から好きな名前 / カスタムドメインへ) — Vercel Project Settings → Domains で実施。Discord Developer Portal の Redirects、Supabase Authentication の Site URL / Redirect URLs にも新ドメインを追加する必要あり | 小 |
 | ~~21~~ | ~~カテゴリ編集を「admin ロール持ちのみ」に制限~~ — 完了 (2.1 (2026-04-29)、`DISCORD_ADMIN_ROLE_IDS` env 追加 + `userIsAdmin` / `assertAdminResult` ヘルパー + `categories-actions.ts` に admin-gated Server Action 追加 + `categories-client.ts` を Server Action 経由に切替 + `/category` index で非 admin に編集 UI 非表示 + `/auth/denied?reason=not_admin` UX。Supabase RLS は依然 anon open なので REST 直接攻撃は別 PR で RLS 締めて対応) | ~~中~~ |
-| 22 | スケジュール ↔ 動画の紐付けがタイトル日付を見ていない — 現状は `posted_at` (無ければ `created_at`) ベースで「セッション開始 ± 36h 内に投稿された動画」を選ぶため、古い動画 (例: 2023 年録画) を後から DB に追加すると、追加日時のセッションに誤紐付けされる。修正: `extractDateFromTitle(title)` でタイトル内の日付を**優先**して使う ([src/lib/server/session-video-link.ts](src/lib/server/session-video-link.ts) の `videoEntries` 構築箇所)。**ユーザー要望追記 (2026-04-29)**: 日付がタイトルから抽出できない動画は、セッションに紐づけずスキップする (= 誤マッチを生むくらいなら何も出さない) | 小 |
+| ~~22~~ | ~~スケジュール ↔ 動画の紐付けがタイトル日付を見ていない~~ — 完了 (2.1 (2026-04-29)、`src/lib/server/session-video-link.ts` を「動画日付 == セッション JST 同日」方式に変更。日付解決は タイトル日付 → posted_at の JST 日付 → スキップ の優先度。`created_at` は使わず ±36h ウィンドウは撤廃) | ~~小~~ |
 
 ### 除外済み (再対応不要)
 

@@ -1,23 +1,35 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
+import { extractDateFromTitle } from "@/lib/title-date";
 
 /**
- * Match each schedule session to the most likely video — the one
- * uploaded within ~36h of session start. The previous "same JST day"
- * heuristic missed common cases where the video was uploaded the
- * morning AFTER a late-night session.
+ * Match each schedule session to its recording by comparing
+ * **video date == session JST calendar date**.
+ *
+ * Per-video date resolution (highest priority first):
+ *   1. `extractDateFromTitle(title)` — タイトル内に書かれた日付
+ *      (例: 「【2026/04/01】」「2026 04 01」「4月1日」)。
+ *      ユーザーが手で書く raid date なので最も信頼できる。
+ *   2. `posted_at` の JST 日付 — YouTube/Discord から取得した
+ *      実アップロード/投稿日時。raid 当日 or 翌日朝のことが多く、
+ *      タイトルに日付が無い場合のフォールバックとして許容。
+ *   3. それ以外は **スキップ** (created_at は単なる DB 行作成時刻で
+ *      信頼性が低いため使わない)。
  *
  * Match rule:
  *   - kind = 'video'
- *   - posted_at (or created_at fallback) within
- *     [session.date, session.date + 36h]
- *   - Earliest matching video wins
- *   - Each video matches at most one session (used-set), so two
- *     adjacent sessions don't both link to the same recording
+ *   - video の解決済み JST Y/M/D == session の JST Y/M/D
+ *   - 同日に複数候補があるときは `posted_at asc` で最も古いものが勝つ
+ *   - 各 video は最大 1 セッションに紐付く (used-set)
  *
  * Output is keyed by `session.rawDate` (the original schedule label)
  * so the consumer just does `map[session.rawDate]` — no timezone math
  * on the client side.
+ *
+ * History: 旧版は `posted_at` ± 36h ウィンドウで紐付けていたが、
+ * 古い動画 (例: 2023 年録画) を後から DB に追加すると、追加時刻ベースで
+ * 直近セッションに誤紐付けされる事故があり (TODO #22)、日付一致方式に
+ * 切替えた。
  */
 
 export type SessionVideoLink = {
@@ -37,9 +49,19 @@ export type SessionVideoLink = {
   logsUrl: string | null;
 };
 
-const MATCH_WINDOW_MS = 36 * 60 * 60 * 1000;
+const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
 
 type SessionLite = { rawDate: string; date: Date };
+
+/** Convert a UTC instant to its JST calendar Y/M/D. */
+function toJstYmd(ms: number): { y: number; m: number; d: number } {
+  const j = new Date(ms + JST_OFFSET_MS);
+  return {
+    y: j.getUTCFullYear(),
+    m: j.getUTCMonth() + 1,
+    d: j.getUTCDate(),
+  };
+}
 
 export async function buildSessionVideoLinkMap(
   sessions: SessionLite[],
@@ -52,7 +74,6 @@ export async function buildSessionVideoLinkMap(
     title: string;
     url: string;
     posted_at: string | null;
-    created_at: string;
     logs_url: string | null;
     categories:
       | { slug: string; name: string }
@@ -62,23 +83,32 @@ export async function buildSessionVideoLinkMap(
   const { data, error } = await supabase
     .from("category_links")
     .select(
-      "id, title, url, posted_at, created_at, logs_url, " +
+      "id, title, url, posted_at, logs_url, " +
         "categories!inner(slug, name)",
     )
     .eq("kind", "video")
-    .order("posted_at", { ascending: true })
+    .order("posted_at", { ascending: true, nullsFirst: false })
     .order("created_at", { ascending: true });
   if (error || !data) return {};
   const videos = data as unknown as Row[];
 
-  // Pre-compute each video's effective timestamp once.
+  // Resolve each video to a JST calendar date. Drop videos whose date
+  // can't be resolved — we'd rather link nothing than mis-link by a
+  // weak signal.
   const videoEntries = videos
     .map((v) => {
-      const ts = v.posted_at ?? v.created_at;
-      const tMs = new Date(ts).getTime();
-      if (Number.isNaN(tMs)) return null;
       const cat = Array.isArray(v.categories) ? v.categories[0] : v.categories;
       if (!cat?.slug) return null;
+
+      const postedMs = v.posted_at ? new Date(v.posted_at).getTime() : NaN;
+      const postedJst = Number.isNaN(postedMs) ? null : toJstYmd(postedMs);
+
+      // Year-less title formats ("4/1") need a year hint — use posted_at's
+      // JST year when we have it.
+      const titleD = extractDateFromTitle(v.title, postedJst?.y);
+      const ymd = titleD ?? postedJst;
+      if (!ymd) return null;
+
       return {
         id: v.id,
         title: v.title,
@@ -86,7 +116,7 @@ export async function buildSessionVideoLinkMap(
         logsUrl: v.logs_url ?? null,
         categorySlug: cat.slug,
         categoryName: cat.name ?? cat.slug,
-        ts: tMs,
+        ...ymd,
       };
     })
     .filter((v): v is NonNullable<typeof v> => v !== null);
@@ -100,11 +130,9 @@ export async function buildSessionVideoLinkMap(
   const used = new Set<string>();
   const out: Record<string, SessionVideoLink> = {};
   for (const s of sortedSessions) {
-    const start = s.date.getTime();
-    const end = start + MATCH_WINDOW_MS;
-    // Earliest unused video whose timestamp falls in the window.
+    const sj = toJstYmd(s.date.getTime());
     const match = videoEntries.find(
-      (v) => !used.has(v.id) && v.ts >= start && v.ts <= end,
+      (v) => !used.has(v.id) && v.y === sj.y && v.m === sj.m && v.d === sj.d,
     );
     if (!match) continue;
     used.add(match.id);
