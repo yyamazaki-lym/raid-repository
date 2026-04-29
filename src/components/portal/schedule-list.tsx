@@ -865,18 +865,29 @@ function SessionRow({
             {att}
           </span>
         );
+        // 過去日程の出欠セルは button にしない (ユーザー要望 2026-04-29 v2):
+        // 過去の `－` 等を誤クリックすると character-sheets の編集 iframe
+        // が開いて遷移してしまうため、past 行は記録としての表示のみに固定。
+        // 編集 (= upcoming 全日程の入力) はユーザー名ヘッダーと upcoming
+        // 行の出欠セルから引き続きアクセス可能。
+        const clickable = Boolean(editUrl) && !isPast;
         return (
           <td key={u.userId} className="px-1.5 py-2 align-middle text-center">
-            {editUrl ? (
+            {clickable && editUrl ? (
               // ボタン化 (1.9.13): その場でインライン iframe ダイアログを
               // 開いて出欠を編集。タブ移動なしで戻れる。hover の scale +
               // focus ring で「タップ可能」のフィードバックを残す。
+              // 2.1+ (TODO #44 v2): upcoming 行は per-date offset を渡し、
+              // 該当日の入力行近くで iframe が開くようにする。
               <button
                 type="button"
                 onClick={() =>
                   onOpenEditFrame(
                     editUrl,
                     `${u.name} の出欠を編集 (${dateLabel} を含む)`,
+                    typeof upcomingIndex === "number"
+                      ? Math.max(0, 280 + (upcomingIndex - 1) * 36)
+                      : null,
                   )
                 }
                 title={`${u.name} の出欠をその場で編集 (${dateLabel} を含む全日程)`}
