@@ -2,7 +2,17 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Save, AlertTriangle, Pencil, Upload, Loader2, Shield } from "lucide-react";
+import {
+  Plus,
+  Save,
+  AlertTriangle,
+  Pencil,
+  Upload,
+  Loader2,
+  Shield,
+  Hourglass,
+  Film,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
@@ -17,6 +27,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   ALL_STATUSES,
   type Category,
@@ -26,6 +37,7 @@ import {
   createCategory,
   updateCategory,
 } from "@/lib/categories-client";
+import { createCategoryLink } from "@/lib/category-links-client";
 import { fetchAvailableGuildRoles } from "@/lib/server/categories-actions";
 import type { DiscordGuildRole } from "@/lib/server/discord-roles";
 import { cn } from "@/lib/utils";
@@ -124,6 +136,32 @@ export function CategoryFormDialog({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // TODO #26 (2.1, 2026-04-29): 自由記述の説明文。空欄なら DB 保存時 null。
+  const [description, setDescription] = useState(category?.description ?? "");
+
+  // TODO #25 (2.1, 2026-04-29): クリアまでの累計時間 (秒) の手動入力。
+  // UI は時間/分の 2 入力で扱い、秒換算で保存。両方 0/空 → null として
+  // 保存し、自動計算 (動画 duration 集計) を優先させる。
+  const initialManualHours = category?.manualTimeToClearSeconds
+    ? Math.floor(category.manualTimeToClearSeconds / 3600)
+    : 0;
+  const initialManualMinutes = category?.manualTimeToClearSeconds
+    ? Math.floor((category.manualTimeToClearSeconds % 3600) / 60)
+    : 0;
+  const [manualHours, setManualHours] = useState<string>(
+    initialManualHours > 0 ? String(initialManualHours) : "",
+  );
+  const [manualMinutes, setManualMinutes] = useState<string>(
+    initialManualMinutes > 0 ? String(initialManualMinutes) : "",
+  );
+
+  // TODO #27 (2.1, 2026-04-29): カード編集ダイアログから動画を直接追加。
+  // 編集モード (= category id がある) のときのみ表示。createCategoryLink
+  // を即時呼び出し、成功で各 input をクリア + toast。複数追加可。
+  const [newVideoUrl, setNewVideoUrl] = useState("");
+  const [newVideoTitle, setNewVideoTitle] = useState("");
+  const [addingVideo, setAddingVideo] = useState(false);
+
   // TODO #19: role gating. `selectedRoleIds` is the working set; on save
   // it's persisted as `required_role_ids`. Empty array = open to all
   // guild members. `availableRoles` is fetched from Discord on open via
@@ -201,6 +239,18 @@ export function CategoryFormDialog({
       setFirstClearDate(isoToDateInput(category?.firstClearAt ?? null));
       setBackgroundImageUrl(category?.backgroundImageUrl ?? "");
       setSelectedRoleIds(category?.requiredRoleIds ?? []);
+      setDescription(category?.description ?? "");
+      const ih = category?.manualTimeToClearSeconds
+        ? Math.floor(category.manualTimeToClearSeconds / 3600)
+        : 0;
+      const im = category?.manualTimeToClearSeconds
+        ? Math.floor((category.manualTimeToClearSeconds % 3600) / 60)
+        : 0;
+      setManualHours(ih > 0 ? String(ih) : "");
+      setManualMinutes(im > 0 ? String(im) : "");
+      setNewVideoUrl("");
+      setNewVideoTitle("");
+      setAddingVideo(false);
       setError(null);
     }
   }, [open, category]);
@@ -247,6 +297,50 @@ export function CategoryFormDialog({
     }
   };
 
+  // TODO #27 (2.1, 2026-04-29): 編集中カードに直接動画を追加。
+  // createCategoryLink は内部で is-clear 判定 + YouTube enrich を実行する
+  // ので、ここでは URL + Title を渡すだけで良い。Server Action 経由の
+  // YouTube 取得が走るので、タイトルが空なら最低限 URL ベースの placeholder
+  // を入れて DB 制約 (NOT NULL) をクリア。
+  const onAddVideo = async () => {
+    if (!isEdit || !category) return;
+    setError(null);
+    const url = newVideoUrl.trim();
+    if (!url) {
+      setError("動画 URL を入力してください");
+      return;
+    }
+    if (!/^https?:\/\//i.test(url)) {
+      setError("動画 URL は http:// または https:// で始めてください");
+      return;
+    }
+    let title = newVideoTitle.trim();
+    if (!title) {
+      // タイトル未入力なら URL から雑に生成 (後で動画ページで編集可能)。
+      title = url.replace(/^https?:\/\//i, "").slice(0, 60);
+    }
+    setAddingVideo(true);
+    try {
+      const result = await createCategoryLink({
+        categoryId: category.id,
+        kind: "video",
+        title,
+        url,
+      });
+      if (!result.ok) {
+        setError(`動画追加失敗: ${result.reason}`);
+        return;
+      }
+      toast.success("動画を追加しました");
+      setNewVideoUrl("");
+      setNewVideoTitle("");
+      // 一覧側 RSC も再取得 (累計時間バッジ等への即時反映)
+      router.refresh();
+    } finally {
+      setAddingVideo(false);
+    }
+  };
+
   const onSubmit = async () => {
     setError(null);
     const trimmedName = name.trim();
@@ -281,6 +375,15 @@ export function CategoryFormDialog({
 
     setBusy(true);
     const firstClearIso = dateInputToIso(firstClearDate);
+    // TODO #25: 手動クリア時間。両方とも空 (or 0) のときは null として保存し、
+    // 自動計算側を優先させる。負値 / 非数値は 0 扱い。
+    const hourNum = Number.parseInt(manualHours.trim() || "0", 10);
+    const minuteNum = Number.parseInt(manualMinutes.trim() || "0", 10);
+    const safeHour = Number.isFinite(hourNum) && hourNum >= 0 ? hourNum : 0;
+    const safeMinute =
+      Number.isFinite(minuteNum) && minuteNum >= 0 ? minuteNum : 0;
+    const manualSeconds = safeHour * 3600 + safeMinute * 60;
+    const trimmedDescription = description.trim();
     const patch = {
       name: trimmedName,
       slug: trimmedSlug,
@@ -293,6 +396,8 @@ export function CategoryFormDialog({
       first_clear_at: firstClearIso,
       background_image_url: trimmedBackgroundImage || null,
       required_role_ids: selectedRoleIds.length > 0 ? selectedRoleIds : null,
+      description: trimmedDescription || null,
+      manual_time_to_clear_seconds: manualSeconds > 0 ? manualSeconds : null,
     };
 
     const result = isEdit
@@ -314,6 +419,9 @@ export function CategoryFormDialog({
             followUp.background_image_url = trimmedBackgroundImage;
           if (selectedRoleIds.length > 0)
             followUp.required_role_ids = selectedRoleIds;
+          if (trimmedDescription) followUp.description = trimmedDescription;
+          if (manualSeconds > 0)
+            followUp.manual_time_to_clear_seconds = manualSeconds;
           if (Object.keys(followUp).length > 0) {
             await updateCategory(r.category.id, followUp);
           }
@@ -410,6 +518,24 @@ export function CategoryFormDialog({
             <p className="text-muted-foreground text-[11px] leading-relaxed">
               URLパスに使われます — 半角英数字とハイフンのみ。
               {isEdit && "（編集不可）"}
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="category-description" className="text-xs text-foreground/80">
+              説明文（任意）
+            </Label>
+            <Textarea
+              id="category-description"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="例: 絶アレキサンダー討滅戦 — 2024 年から練習開始"
+              rows={2}
+              className="text-sm"
+              spellCheck={false}
+            />
+            <p className="text-muted-foreground text-[11px] leading-relaxed">
+              コンテンツ詳細ページ上部に表示されます。空欄なら非表示。
             </p>
           </div>
 
@@ -708,6 +834,111 @@ export function CategoryFormDialog({
               一度設定された後は自動上書きされません。
             </p>
           </div>
+
+          {/* TODO #25 (2.1, 2026-04-29): 手動クリア時間 (累計練習時間) 入力欄。
+              空欄 / 0 のままなら自動計算 (動画 duration 集計) を優先表示。 */}
+          <div className="flex flex-col gap-1.5 border-t border-border/30 pt-4">
+            <Label className="flex items-center gap-1.5 text-xs text-foreground/80">
+              <Hourglass className="h-3 w-3" aria-hidden />
+              クリアまでの累計時間（任意・手動上書き）
+            </Label>
+            <div className="flex items-center gap-2">
+              <Input
+                id="manual-clear-hours"
+                type="number"
+                inputMode="numeric"
+                min={0}
+                max={9999}
+                value={manualHours}
+                onChange={(e) => setManualHours(e.target.value)}
+                placeholder="0"
+                className="w-20 font-mono text-[12px]"
+                autoComplete="off"
+              />
+              <span className="text-xs text-muted-foreground">時間</span>
+              <Input
+                id="manual-clear-minutes"
+                type="number"
+                inputMode="numeric"
+                min={0}
+                max={59}
+                value={manualMinutes}
+                onChange={(e) => setManualMinutes(e.target.value)}
+                placeholder="0"
+                className="w-20 font-mono text-[12px]"
+                autoComplete="off"
+              />
+              <span className="text-xs text-muted-foreground">分</span>
+              {(manualHours.trim() || manualMinutes.trim()) && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setManualHours("");
+                    setManualMinutes("");
+                  }}
+                  className="font-mono text-[10px] tracking-[0.18em] uppercase"
+                >
+                  クリア
+                </Button>
+              )}
+            </div>
+            <p className="text-muted-foreground text-[11px] leading-relaxed">
+              YouTube から duration が取得できない動画 (限定公開等) があると
+              自動計算が欠落するため、手動値を入れるとそちらが優先表示されます。
+              空欄なら自動集計を使用。
+            </p>
+          </div>
+
+          {/* TODO #27 (2.1, 2026-04-29): カード編集中に動画を直接追加。
+              編集モードのみ表示 (新規作成中は category id がまだ無い)。 */}
+          {isEdit && category && (
+            <div className="flex flex-col gap-1.5 border-t border-border/30 pt-4">
+              <Label className="flex items-center gap-1.5 text-xs text-foreground/80">
+                <Film className="h-3 w-3" aria-hidden />
+                動画を追加（任意・複数追加可）
+              </Label>
+              <Input
+                value={newVideoUrl}
+                onChange={(e) => setNewVideoUrl(e.target.value)}
+                placeholder="https://www.youtube.com/watch?v=..."
+                className="font-mono text-[12px]"
+                autoComplete="off"
+                spellCheck={false}
+                disabled={addingVideo}
+              />
+              <Input
+                value={newVideoTitle}
+                onChange={(e) => setNewVideoTitle(e.target.value)}
+                placeholder="タイトル (空欄なら URL から自動生成)"
+                className="text-[12px]"
+                autoComplete="off"
+                spellCheck={false}
+                disabled={addingVideo}
+              />
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={onAddVideo}
+                  disabled={addingVideo || !newVideoUrl.trim()}
+                  className="gap-1.5 font-mono text-[10px] tracking-[0.18em] uppercase"
+                >
+                  {addingVideo ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                  ) : (
+                    <Plus className="h-3.5 w-3.5" aria-hidden />
+                  )}
+                  動画追加
+                </Button>
+                <p className="text-muted-foreground text-[11px] leading-relaxed">
+                  追加後は動画ページで詳細編集できます。YouTube は duration / 投稿日時を自動取得します。
+                </p>
+              </div>
+            </div>
+          )}
 
           {error && (
             <div className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive-foreground/90">

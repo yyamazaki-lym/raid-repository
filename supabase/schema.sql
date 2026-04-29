@@ -68,7 +68,16 @@ ALTER TABLE public.categories
   -- contains at least one of these IDs can see / open the category.
   -- Role IDs are Discord snowflakes (text) fetched via the bot from
   -- `GET /guilds/{id}/roles` and selected in the category edit dialog.
-  ADD COLUMN IF NOT EXISTS required_role_ids             text[];
+  ADD COLUMN IF NOT EXISTS required_role_ids             text[],
+  -- Phase 11 (TODO #26, 2.1 (2026-04-29)): free-form 説明文 (description)。
+  -- 例: 「絶バハムート討滅戦 — TODO」「LH 級零式 — 8 月から練習開始」。
+  -- カテゴリ詳細ページのヘッダー下に短文として表示。
+  ADD COLUMN IF NOT EXISTS description                   text,
+  -- Phase 11 (TODO #25, 2.1 (2026-04-29)): 手動入力のクリアまでの累計時間。
+  -- 動画 duration_seconds が NULL のままで自動計算が成立しない場合の
+  -- 上書き値。`Hourglass` 表示は `manual_time_to_clear_seconds ?? 自動計算`
+  -- の優先度で参照する。
+  ADD COLUMN IF NOT EXISTS manual_time_to_clear_seconds  integer;
 
 -- Phase 8.1 (1.9.10): track whether category_links.logs_url was set by
 -- automated FFLogs sync ('auto') or by manual user edit ('manual'). This

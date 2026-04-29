@@ -50,6 +50,14 @@ export default async function CategoryDetailLayout({
         )}
       </div>
 
+      {/* TODO #26 (2.1, 2026-04-29): 自由記述の説明文。空欄なら描画しない。
+          whitespace-pre-line で改行を維持。 */}
+      {category?.description && (
+        <p className="text-muted-foreground text-xs leading-relaxed whitespace-pre-line">
+          {category.description}
+        </p>
+      )}
+
       <SubTabs baseHref={`/category/${slug}`} />
 
       <div>{children}</div>

@@ -49,6 +49,13 @@ export type CategoryRow = {
    * `app_metadata.discord_roles` intersects this list can see it.
    */
   required_role_ids: string[] | null;
+  /** TODO #26 (2.1, 2026-04-29): 自由記述の説明文。空欄可。 */
+  description: string | null;
+  /**
+   * TODO #25 (2.1, 2026-04-29): 手動上書きの「クリアまでの累計時間 (秒)」。
+   * NULL のときは動画 duration の自動集計値が使われる。
+   */
+  manual_time_to_clear_seconds: number | null;
   created_at: string;
   updated_at: string;
 };
@@ -76,6 +83,13 @@ export type Category = {
    * to every guild member (default). Non-empty = role-gated.
    */
   requiredRoleIds: string[];
+  /** 自由記述の説明文 (TODO #26)。空欄なら null。 */
+  description: string | null;
+  /**
+   * 手動上書きのクリアまでの累計時間 (秒)。NULL のときは動画 duration の
+   * 自動集計値が使われる (TODO #25)。
+   */
+  manualTimeToClearSeconds: number | null;
 };
 
 export function rowToCategory(row: CategoryRow): Category {
@@ -94,6 +108,8 @@ export function rowToCategory(row: CategoryRow): Category {
     expectedFflogsZoneIds: row.expected_fflogs_zone_ids ?? [],
     backgroundImageUrl: row.background_image_url ?? null,
     requiredRoleIds: row.required_role_ids ?? [],
+    description: row.description ?? null,
+    manualTimeToClearSeconds: row.manual_time_to_clear_seconds ?? null,
   };
 }
 

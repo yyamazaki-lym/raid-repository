@@ -120,6 +120,10 @@ export type CategoryUpdatePatch = Partial<{
   first_clear_at: string | null;
   background_image_url: string | null;
   required_role_ids: string[] | null;
+  /** TODO #26 (2.1): 自由記述の説明文。空文字 → null として保存。 */
+  description: string | null;
+  /** TODO #25 (2.1): 手動入力のクリアまでの累計時間 (秒)。NULL = 自動計算優先。 */
+  manual_time_to_clear_seconds: number | null;
 }>;
 
 /**

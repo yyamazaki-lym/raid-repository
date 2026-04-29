@@ -318,6 +318,12 @@ function SortableCategoryCard({
   // 自体は将来 tooltip 等で使えるよう一旦残置 (= データロードは継続)。
   void practiceSeconds;
 
+  // TODO #25 (2.1, 2026-04-29): 手動入力のクリア時間が設定されていれば
+  // 自動集計より優先表示。Hourglass バッジが「動画 duration が NULL の
+  // ままで自動計算が低めに出る」事象を回避できる。
+  const effectiveTimeToClearSeconds =
+    category.manualTimeToClearSeconds ?? timeToClearSeconds;
+
   // Background image (TODO #17): paint behind the card's glass surface so
   // text and chips remain readable. Validated via `isSafeUrl` to prevent
   // `javascript:` / `data:` URLs from being injected via category edit.
@@ -457,19 +463,22 @@ function SortableCategoryCard({
                 0000-00-00
               </span>
             )}
-            {timeToClearSeconds > 0 && category.firstClearAt ? (
+            {effectiveTimeToClearSeconds > 0 && category.firstClearAt ? (
               <span
-                className="inline-flex items-center gap-1 rounded-sm border border-emerald-400/45 bg-emerald-400/10 px-1.5 py-px font-mono text-[9px] tracking-[0.18em] text-emerald-200 uppercase"
-                title={`クリアまでの累計時間: ${formatDurationLong(timeToClearSeconds)}`}
+                // 2.1 (2026-04-29): 累計時間の "21h5m" は uppercase だと
+                // "21H5M" になり H/M 等のアルファベットが圧縮されて見える
+                // ので uppercase を外し小文字維持。
+                className="inline-flex items-center gap-1 rounded-sm border border-emerald-400/45 bg-emerald-400/10 px-1.5 py-px font-mono text-[9px] tracking-[0.18em] text-emerald-200"
+                title={`クリアまでの累計時間: ${formatDurationLong(effectiveTimeToClearSeconds)}${category.manualTimeToClearSeconds !== null ? " (手動入力)" : ""}`}
               >
                 <Hourglass className="h-2.5 w-2.5" aria-hidden />
-                →{formatDurationShort(timeToClearSeconds)}
+                →{formatDurationShort(effectiveTimeToClearSeconds)}
               </span>
             ) : (
               // Hourglass が無いカードでもサイズを揃える placeholder。
               <span
                 aria-hidden
-                className="invisible inline-flex items-center gap-1 rounded-sm border px-1.5 py-px font-mono text-[9px] tracking-[0.18em] uppercase"
+                className="invisible inline-flex items-center gap-1 rounded-sm border px-1.5 py-px font-mono text-[9px] tracking-[0.18em]"
               >
                 <Hourglass className="h-2.5 w-2.5" aria-hidden />
                 →000h
@@ -532,7 +541,10 @@ function SubPageShortcuts({
   return (
     <nav
       aria-label="サブページへのショートカット"
-      className="flex items-center gap-1 px-3 pt-1 pb-3"
+      // 2.1 (2026-04-29): 右パディングを `pr-2` (右カラム `p-2` と同値) に
+      // 揃え、Status の右端を Trophy/Hourglass の右端と一致させる
+      // (= レイアウト変更なし、padding のみ調整)。
+      className="flex items-center gap-1 pt-1 pr-2 pb-3 pl-3"
     >
       {SUB_PAGES.map((p) => (
         <Link
