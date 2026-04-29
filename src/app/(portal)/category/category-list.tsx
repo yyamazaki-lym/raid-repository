@@ -330,7 +330,7 @@ function SortableCategoryCard({
     <li ref={setNodeRef} style={style} {...attributes}>
       <Card
         className={cn(
-          "glass neon-edge group relative flex flex-col p-0 transition-transform hover:-translate-y-0.5",
+          "glass neon-edge group relative flex items-stretch gap-2 p-0 transition-transform hover:-translate-y-0.5",
           // 2.0 (2026-04-29): viewer cannot view → 視覚的に「ロック中」を
           // 示すため彩度を落とす + 枠を amber 寄りにずらす。クリックすると
           // /auth/denied に飛ぶが、編集メニューから role 解除可能。
@@ -352,49 +352,65 @@ function SortableCategoryCard({
             />
           </>
         )}
-        {/* 2.1 (2026-04-29): Card を flex-col に再構成し SubPageShortcuts
-            (icon 行) を card 全幅に。`ml-auto` で右寄せした Status の
-            右端を Trophy/Hourglass の右端 (= card 右 0.5rem 内側) と
-            揃えるため、bottom row に `pr-2` を指定。 */}
-        <div className="relative z-10 flex items-stretch gap-2">
-          {canEdit && (
-            <button
-              type="button"
-              {...listeners}
-              aria-label={`${category.name} の並び替えハンドル`}
-              className="flex shrink-0 cursor-grab items-center justify-center rounded-l-lg border-r border-border/40 bg-secondary/30 px-2 text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground active:cursor-grabbing"
-            >
-              <GripVertical className="h-4 w-4" aria-hidden />
-            </button>
-          )}
+        {canEdit && (
+          <button
+            type="button"
+            {...listeners}
+            aria-label={`${category.name} の並び替えハンドル`}
+            className="relative z-10 flex shrink-0 cursor-grab items-center justify-center rounded-l-lg border-r border-border/40 bg-secondary/30 px-2 text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground active:cursor-grabbing"
+          >
+            <GripVertical className="h-4 w-4" aria-hidden />
+          </button>
+        )}
 
-          {/* Middle column: name+slug only (icon 行は外に出した) */}
-          <div className="flex flex-1 flex-col">
-            <Link
-              href={`/category/${category.slug}/mitigation`}
-              prefetch
-              className="flex flex-col gap-1 px-4 pt-4 pb-1"
-            >
-              <div className="flex items-start justify-between gap-2">
-                <p className="font-display text-foreground text-sm leading-tight tracking-[0.04em]">
-                  {category.name}
-                </p>
-                {!viewerCanSee && (
-                  <span
-                    className="inline-flex shrink-0 items-center gap-1 rounded-sm border border-amber-400/40 bg-amber-400/10 px-1.5 py-px font-mono text-[9px] tracking-[0.18em] text-amber-200 uppercase"
-                    title={`このコンテンツは ${category.requiredRoleIds.length} 個のロールに制限されています (あなたは閲覧不可)`}
-                  >
-                    <Lock className="h-2.5 w-2.5" aria-hidden />
-                    {category.requiredRoleIds.length}
-                  </span>
-                )}
-              </div>
-              <p className="mt-1 font-mono text-[11px] tracking-[0.18em] text-muted-foreground uppercase">
-                /{category.slug}
+        {/* Middle column: name+slug+badges (one Link for the default-action
+            click-anywhere behavior) above an always-visible icon row that
+            short-cuts to each sub-page. Icon row is OUTSIDE the parent
+            Link to keep nested-anchor invalid HTML out of the tree. */}
+        <div className="relative z-10 flex flex-1 flex-col">
+          <Link
+            href={`/category/${category.slug}/mitigation`}
+            prefetch
+            className="flex flex-col gap-1 px-4 pt-4 pb-1"
+          >
+            <div className="flex items-start justify-between gap-2">
+              <p className="font-display text-foreground text-sm leading-tight tracking-[0.04em]">
+                {category.name}
               </p>
-              {/* Timer (累計練習時間) は card 上に出さない方針 */}
-            </Link>
-          </div>
+              {!viewerCanSee && (
+                <span
+                  className="inline-flex shrink-0 items-center gap-1 rounded-sm border border-amber-400/40 bg-amber-400/10 px-1.5 py-px font-mono text-[9px] tracking-[0.18em] text-amber-200 uppercase"
+                  title={`このコンテンツは ${category.requiredRoleIds.length} 個のロールに制限されています (あなたは閲覧不可)`}
+                >
+                  <Lock className="h-2.5 w-2.5" aria-hidden />
+                  {category.requiredRoleIds.length}
+                </span>
+              )}
+            </div>
+            <p className="mt-1 font-mono text-[11px] tracking-[0.18em] text-muted-foreground uppercase">
+              /{category.slug}
+            </p>
+            {/* 2.1 (2026-04-29): Timer (累計練習時間) は card 上に出さない
+                方針 (ユーザー要望)。Trophy + Hourglass のみ右カラムで表示。 */}
+          </Link>
+
+          <SubPageShortcuts
+            slug={category.slug}
+            statusSlot={
+              <span
+                onClick={(e) => e.stopPropagation()}
+                onKeyDown={(e) => e.stopPropagation()}
+              >
+                <StatusBadge
+                  status={category.status}
+                  onChange={canEdit ? onChangeStatus : undefined}
+                  readOnly={!canEdit}
+                  variant="compact"
+                />
+              </span>
+            }
+          />
+        </div>
 
         {/* 2.1 (2026-04-29) 右カラムレイアウト (Status は SubPageShortcuts
             行に移設済み)。
@@ -481,27 +497,6 @@ function SortableCategoryCard({
             </div>
           </div>
         </div>
-        </div>{/* end of top row */}
-
-        {/* Bottom row: SubPageShortcuts (full card width). 右パディング
-            `pr-2` は右上 Trophy/Hourglass の右オフセット (= 右カラム
-            `p-2`) と一致させ、Status の右端を Trophy 右端と揃える。 */}
-        <SubPageShortcuts
-          slug={category.slug}
-          statusSlot={
-            <span
-              onClick={(e) => e.stopPropagation()}
-              onKeyDown={(e) => e.stopPropagation()}
-            >
-              <StatusBadge
-                status={category.status}
-                onChange={canEdit ? onChangeStatus : undefined}
-                readOnly={!canEdit}
-                variant="compact"
-              />
-            </span>
-          }
-        />
       </Card>
     </li>
   );
@@ -537,7 +532,7 @@ function SubPageShortcuts({
   return (
     <nav
       aria-label="サブページへのショートカット"
-      className="relative z-10 flex items-center gap-1 pt-1 pr-2 pb-3 pl-3"
+      className="flex items-center gap-1 px-3 pt-1 pb-3"
     >
       {SUB_PAGES.map((p) => (
         <Link
