@@ -113,8 +113,15 @@ async function mergeStoredPastSessions(
 
   const existingRawDates = new Set(parsed.sessions.map((s) => s.rawDate));
   const additions: ScheduleSession[] = [];
+  // 未来日時の DB 行は概念的に schedule_past_sessions に居るべきでは
+  // ない (importer 側のバリデーション不足で混入したケース)。past 化
+  // してから表示されると「実開催してない日」が紛れ込むので merge 時
+  // にもう一度ガード。
+  const nowMs = Date.now();
   for (const s of stored) {
     if (existingRawDates.has(s.rawDate)) continue;
+    const dateMs = new Date(s.parsedDate).getTime();
+    if (Number.isFinite(dateMs) && dateMs > nowMs) continue;
 
     // Convert snapshot attendances (name-keyed) to userId-keyed for
     // the live render. Names not in the current user list are skipped.
@@ -132,10 +139,13 @@ async function mergeStoredPastSessions(
       dayOfWeek: s.dayOfWeek,
       startTime: s.startTime,
       endTime: s.endTime,
-      // We don't know whether these were decided sessions; mark as
-      // CANDIDATE so we don't accidentally pick them as "next confirmed"
-      // (they're all in the past anyway, but be defensive).
-      status: "CANDIDATE",
+      // Discord 通知 / スナップショット由来の行は「実際に announce
+      // された開催確定セッション」なので DECISION 扱いにする。CANDIDATE
+      // にしていた旧設計だと、`schedule-past-simple.tsx` 等の
+      // `status === DECISION` フィルタで全部除外されてしまっていた。
+      // pickNextDecision は `s.date < cutoff` で past を弾くので、過去
+      // 行を DECISION にしても "next confirmed" の誤選択は起こらない。
+      status: "DECISION",
       attendances: attendances as ParsedSchedule["sessions"][number]["attendances"],
     });
   }

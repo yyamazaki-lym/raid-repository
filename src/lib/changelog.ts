@@ -52,6 +52,10 @@ export const RELEASES: ReleaseEntry[] = [
     date: "2026-04-29",
     parts: [
       {
+        title: "🧹 TODO #24 続報: Discord 取り込みの過去表示 + 未来日時クリーンアップ",
+        body: "ユーザー報告: 「Discord から取り込んだ日時が過去日程に表示されていない、開催日時ではない 27/28 日が表示される、DB に未来日時が残っている」。\n\n原因:\n1. `next-session.ts:138` で Discord 取り込み行を一律 `CANDIDATE` 扱いにしていたため、attendances が空の Discord 由来エントリは新フィルタ「DECISION または ◯ 1 名以上」を全部弾いていた。\n2. `discord-schedule.ts` が未来日時の本日メッセージ (bot が翌日通知を先行投稿したケース等) を無条件で `schedule_past_sessions` に insert しており、後日 past 化すると「実際は開催されていない日」がノイズとして表示されていた。\n\n修正:\n- **Discord 取り込み = DECISION 扱い**: `mergeStoredPastSessions` の status を CANDIDATE → DECISION に変更。Discord 通知は「announce された開催確定セッション」なので DECISION 扱いが正しい。`pickNextDecision` は past を弾くため次回確定の誤選択にはならない。\n- **未来日時行を merge 時にスキップ**: 万一 DB に未来 parsed_date が残っていても、表示時にもう一度ガードして past リストに混ざらないように。\n- **importer が未来日時を insert しない**: `importDiscordScheduleHistory` で `dt > now` を skip し、結果に `skippedFuture` を返す。\n- **既存未来行を import 時に自動クリーンアップ**: `schedule_past_sessions` の `parsed_date > now` 行を import の冒頭で DELETE。`cleanedFuture` 件数を結果に返す。\n- **設定ダイアログ表示も拡張**: import 結果パネルに「未来日時 skip / cleanup」件数を表示。",
+      },
+      {
         title: "🩹 TODO #24/#30 のフォローアップ修正",
         body: "前 commit のリグレッションをまとめて修正:\n\n**TODO #24 — 過去日程フィルタ過剰除外の修正**: ユーザー報告「過去の開催日程が表示されなくなった」。原因は character-sheets 側の HTML が aged out 行の `dateStatus` 属性を空にする仕様で、parser がそれを CANDIDATE にバケットしてしまうため、`status === \"DECISION\"` 限定のフィルタだと実際に開催された過去日まで全部消えていた。\n\n修正: 過去側フィルタを「`status === \"DECISION\"` または ◯ 出席が 1 名以上ある」に緩める。これで character-sheets が status を落とした古い行も、出席者がいる = 実際に開催された判定で履歴に残せる。完全な無人 CANDIDATE (= 流れた候補日) のみが除外される本来の趣旨どおりに。\n\n**TODO #30 — Stormblood の hue を ember 寄りに振り直し**: ユーザー報告「赤色が出欠の × と被るので分かりやすい色に」。前 commit は chroma を下げただけで hue 22 (≈ rose-red) のまま、Tailwind `rose-400` (hue ≈ 0) の × マーカーと色相が近接していた。\n\n修正: `.dark.theme-stormblood` の hue を `22 → 38-40` (deep ember / 燃え尽き残光) に振り、accent も `45 → 60` (amber 寄り) に。primary lightness は `0.6 → 0.66` に微増させてカード内の text/icon 視認性も向上。深紅 identity は「ember (残火) の暖色赤」として継承しつつ、出欠 × (rose) と明確に区別できる。",
       },

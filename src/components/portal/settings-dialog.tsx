@@ -127,6 +127,10 @@ type ScheduleHistoryImportResult = {
   parsed: number;
   inserted: number;
   duplicates: number;
+  /** Of `parsed`, how many were skipped because parsed_date is in the future. */
+  skippedFuture?: number;
+  /** Pre-existing future-dated rows deleted during this import as cleanup. */
+  cleanedFuture?: number;
 };
 
 /**
@@ -550,10 +554,15 @@ export function SettingsDialog() {
                         scanned {importResult.scanned} / 検出{" "}
                         {importResult.parsed} / 新規 {importResult.inserted} /
                         重複 {importResult.duplicates}
+                        {(importResult.skippedFuture ?? 0) > 0 &&
+                          ` / 未来日時 skip ${importResult.skippedFuture}`}
+                        {(importResult.cleanedFuture ?? 0) > 0 &&
+                          ` / 未来日時 cleanup ${importResult.cleanedFuture}`}
                       </p>
                       <p className="text-muted-foreground text-[10px]">
                         Discord は最新 100 件まで取得します（必要なら時間を
-                        おいて再実行）。
+                        おいて再実行）。未来日時の通知メッセージは過去日程に
+                        混ざらないよう自動で除外・クリーンアップされます。
                       </p>
                     </>
                   ) : (
