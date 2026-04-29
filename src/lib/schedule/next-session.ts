@@ -86,14 +86,22 @@ export async function fetchSchedule(): Promise<ScheduleFetchResult> {
 }
 
 /**
- * Merge `schedule_past_sessions` rows into the parsed schedule. Dedupes
- * by `rawDate` — character-sheets data wins when the same session
- * appears in both (it has full attendance info, and is more current).
+ * Merge `schedule_past_sessions` rows into the parsed schedule.
  *
- * For DB-only entries, snapshotted attendance (keyed by participant
- * name) is mapped back to the current users' userIds. Names that no
- * longer exist in the current user list are dropped — it's a graceful
- * degrade for cases where someone left the static.
+ * 設計方針 (TODO #24): 過去日程は Discord 取り込み / snapshot を
+ * authoritative source とする。character-sheets HTML は実際は流した
+ * 日でも DECISION マーカーが残っていることがあり (固定メンバーが
+ * source page を手動で更新しないため)、それを信用すると未開催日が
+ * past に紛れ込む。Discord 通知 (本日YYYY/MM/DD...) は実開催の証拠
+ * なので、これと snapshot 由来行のみを「実開催」とみなす。
+ *
+ * - **未来 (date >= cutoff)**: char-sheets をそのまま採用 (出欠表は
+ *   live ソースが正)。Discord/snapshot は past 専用なので考慮外。
+ * - **過去 (date < cutoff)**: stored (Discord/snapshot) 由来行のみ
+ *   採用。char-sheets 由来の過去行は破棄。char-sheets と stored で
+ *   rawDate が一致した場合は char-sheets の attendance データを保持
+ *   (出欠記号が live data の方が正確) しつつ「verified by import」と
+ *   して past に残す。
  */
 async function mergeStoredPastSessions(
   parsed: ParsedSchedule,
@@ -102,29 +110,53 @@ async function mergeStoredPastSessions(
   try {
     stored = await fetchStoredPastSessions();
   } catch {
-    return parsed; // best-effort merge
+    return parsed; // best-effort merge — return raw on DB failure
   }
-  if (stored.length === 0) return parsed;
 
   // Index current users by name so snapshot attendance (which is
   // name-keyed for stability across userId changes) can be mapped
   // into the parsed user table.
   const userIdByName = new Map(parsed.users.map((u) => [u.name, u.userId]));
 
-  const existingRawDates = new Set(parsed.sessions.map((s) => s.rawDate));
-  const additions: ScheduleSession[] = [];
-  // 未来日時の DB 行は概念的に schedule_past_sessions に居るべきでは
-  // ない (importer 側のバリデーション不足で混入したケース)。past 化
-  // してから表示されると「実開催してない日」が紛れ込むので merge 時
-  // にもう一度ガード。
   const nowMs = Date.now();
-  for (const s of stored) {
-    if (existingRawDates.has(s.rawDate)) continue;
-    const dateMs = new Date(s.parsedDate).getTime();
-    if (Number.isFinite(dateMs) && dateMs > nowMs) continue;
+  const cutoffMs = nowMs - 6 * 60 * 60 * 1000;
 
-    // Convert snapshot attendances (name-keyed) to userId-keyed for
-    // the live render. Names not in the current user list are skipped.
+  // 未来日時の stored 行は概念的に schedule_past_sessions に居るべき
+  // ではない (importer 側のバリデーション不足で混入したケース)。past
+  // 化してから表示されると「実開催してない日」が紛れ込むので merge
+  // 時にもう一度ガード。
+  const validStored = stored.filter((s) => {
+    const dateMs = new Date(s.parsedDate).getTime();
+    return Number.isFinite(dateMs) && dateMs <= nowMs;
+  });
+  const verifiedRawDates = new Set(validStored.map((s) => s.rawDate));
+
+  // char-sheets セッション: 未来はそのまま、過去は verified だった
+  // ら DECISION 扱いで残す (出欠記号は char-sheets 側の方が新しい /
+  // 正確なので維持)、verified でなければ past から除外。
+  const charSheetsKept: ScheduleSession[] = [];
+  for (const s of parsed.sessions) {
+    if (s.date.getTime() >= cutoffMs) {
+      charSheetsKept.push(s);
+      continue;
+    }
+    if (verifiedRawDates.has(s.rawDate)) {
+      // Live char-sheets row backed by Discord/snapshot evidence — keep
+      // attendances but force DECISION (aged out rows lose dateStatus).
+      charSheetsKept.push({ ...s, status: "DECISION" });
+    }
+    // それ以外の char-sheets 過去行は捨てる。
+  }
+
+  // stored 行のうち char-sheets で既出ではないものを additions として
+  // 追加 (char-sheets と一致するものは上で残しているので skip)。
+  const charSheetsRawDates = new Set(parsed.sessions.map((s) => s.rawDate));
+  const additions: ScheduleSession[] = [];
+  for (const s of validStored) {
+    if (charSheetsRawDates.has(s.rawDate)) continue;
+
+    // Convert snapshot attendances (name-keyed) to userId-keyed for the
+    // live render. Names not in the current user list are skipped.
     const attendances: Record<string, string> = {};
     if (s.attendances) {
       for (const [name, sym] of Object.entries(s.attendances)) {
@@ -140,18 +172,17 @@ async function mergeStoredPastSessions(
       startTime: s.startTime,
       endTime: s.endTime,
       // Discord 通知 / スナップショット由来の行は「実際に announce
-      // された開催確定セッション」なので DECISION 扱いにする。CANDIDATE
-      // にしていた旧設計だと、`schedule-past-simple.tsx` 等の
-      // `status === DECISION` フィルタで全部除外されてしまっていた。
-      // pickNextDecision は `s.date < cutoff` で past を弾くので、過去
-      // 行を DECISION にしても "next confirmed" の誤選択は起こらない。
+      // された開催確定セッション」なので DECISION 扱い。pickNextDecision
+      // は date < cutoff で past を弾くので "next confirmed" の誤選択
+      // にはならない。
       status: "DECISION",
       attendances: attendances as ParsedSchedule["sessions"][number]["attendances"],
     });
   }
+
   return {
     ...parsed,
-    sessions: [...parsed.sessions, ...additions],
+    sessions: [...charSheetsKept, ...additions],
   };
 }
 

@@ -52,6 +52,10 @@ export const RELEASES: ReleaseEntry[] = [
     date: "2026-04-29",
     parts: [
       {
+        title: "🛡 TODO #24 続報 2: 過去日程は Discord/snapshot を authoritative source に + FFLogs scraper UA を実ブラウザ化",
+        body: "ユーザー報告: 「4/27(月)/4/28(火) がまだ過去に出る」「FFLogs Logs バッジが付かない」。\n\n**過去日程フィルタの再設計**: 直前 commit で過去フィルタを `status === \"DECISION\"` 限定にしたが、char-sheets HTML が実際は流した日でも DECISION マーカーを保持し続けるケース (固定が source page を手動更新しない) で未開催日が past に紛れ込んでいた。\n\n修正: `mergeStoredPastSessions` を再設計。過去 (date < cutoff) は **Discord 取り込み / snapshot 由来行のみ authoritative** とする。char-sheets と stored で rawDate が一致したら DECISION 扱いで残す (出欠記号は char-sheets 側を維持) が、char-sheets のみで stored に無い過去行は破棄する。未来 (upcoming) は char-sheets をそのまま採用。これで「Discord に通知が無い = 実開催されていない」を強い signal として past から除外できる。\n\n**FFLogs HTML scraper の UA を実 Chrome 風に変更**: ユーザー画面で `fflogs HTML scrape 403 (page 1)` が出ていた。旧 UA は `Mozilla/5.0 (compatible; RaidRepository/1.0; ...)` で Cloudflare bot 判定に弾かれていたため、実 Chrome 124 の UA + Sec-Fetch-* / Sec-Ch-Ua-* / Referer / Accept-Encoding 等のブラウザ標準ヘッダー一式を付与して自然なナビゲーション風に偽装。これで cookie 認証が通れば Private/Unlisted の最近のレポートも取得可能になる見込み。\n\n**注**: それでも 403 が続く場合は Vercel IP 帯が完全に block されている可能性が高く、その場合は (a) スケジュール上の日付ポップオーバーから手動 URL 貼り付け、(b) FFLogs 側で対象レポートを Public に変更、のどちらかで個別対応してください。",
+      },
+      {
         title: "🎯 TODO #24 さらに修正: ◯ fallback を撤去して DECISION 限定に",
         body: "ユーザー報告: 「4/27(月)・4/28(火) が過去日程に出るが実際は開催していない、Discord 側にも該当メッセージがない」。\n\n原因: 直前 commit で「◯ 出席が 1 名以上なら過去に表示」という fallback シグナルを入れていたが、character-sheets の ◯ は『参加可投票』であって実際の出席記録ではない (legend: ◯=参加可, ⏰=遅刻, △=要相談, ×=不可, －=未回答)。流れた候補日でもメンバーが事前に「参加可」を入れていれば ◯ が残るため、未開催日が past に紛れ込んでしまっていた。\n\n修正: `schedule-list.tsx` / `schedule-past-simple.tsx` の過去フィルタを `status === \"DECISION\"` のみに戻す。aged out で character-sheets が DECISION を落としても、`mergeStoredPastSessions` が Discord 取り込み / snapshot 由来行を DECISION 扱いで補完するので「実開催だが char-sheets に残っていない」過去日も拾える設計。",
       },
