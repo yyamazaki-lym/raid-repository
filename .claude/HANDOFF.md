@@ -46,6 +46,7 @@
 | 23 | サイト全体のデータ初期化ボタン (admin 限定、2 段階確認: 1 回目「本当に初期化?」、2 回目「`INITIALIZE` と入力」) | 中 |
 | 38 | スケジュール追加機能 — portal 内から開催候補日を追加する UI が無い。日付 + 時間帯 + 参加可否を入力 → DB 保存 → 描画。TODO #2 と統合可 | 中〜大 |
 | 46 | 開催日が過去リストに載らない — 2026-04-29 が開催日だったが「過去の活動」に表示されていない。`mergeStoredPastSessions` の DECISION 判定 / Discord 取り込み済か / `schedule_past_sessions` テーブルに行が残っているかを切り分け要 | 小〜中 |
+| 47 | 動画お気に入り機能 + ソートで「お気に入りのみ」表示。`category_links` に boolean 列追加 → 動画カードに star トグル → videos-list の sort モードに「お気に入り」追加 | 中 (schema 変更含む) |
 
 ## 完了済み TODO アーカイブ
 
