@@ -10,7 +10,7 @@
 - **Path**: `D:\workd\portal`
 - **Stack**: Next.js 16.2.4 (Turbopack) / React 19.2 / Supabase / Tailwind v4 / @base-ui/react / shadcn 系
 - **Deploy**: Vercel auto-deploy from `main`
-- **Version**: `2.1 (2026-04-29)` — Discord OAuth ゲート + admin 限定編集 + 動画↔スケジュール紐付け再設計 + セキュリティ強化 6 段。`package.json#version` は `1.9.38` のまま (履歴マーカー)、UI は `RELEASES[0].version + .date` を表示
+- **Version**: `2.1 (2026-04-30)` — Discord OAuth ゲート + admin 限定編集 + 動画↔スケジュール紐付け再設計 + セキュリティ強化 6 段。`package.json#version` は `1.9.38` のまま (履歴マーカー)、UI は `RELEASES[0].version + .date` を表示
 - **Next.js 16 注意**: 破壊的変更含む。`node_modules/next/dist/docs/` を参照すること (詳細は `AGENTS.md`)
 
 ## 🔄 保留オペレーション
@@ -45,6 +45,7 @@
 | 20 | Vercel ドメイン変更 — Project Settings → Domains。Discord Developer / Supabase Auth の Redirect URLs にも反映必要 | 小 |
 | 23 | サイト全体のデータ初期化ボタン (admin 限定、2 段階確認: 1 回目「本当に初期化?」、2 回目「`INITIALIZE` と入力」) | 中 |
 | 38 | スケジュール追加機能 — portal 内から開催候補日を追加する UI が無い。日付 + 時間帯 + 参加可否を入力 → DB 保存 → 描画。TODO #2 と統合可 | 中〜大 |
+| 46 | 開催日が過去リストに載らない — 2026-04-29 が開催日だったが「過去の活動」に表示されていない。`mergeStoredPastSessions` の DECISION 判定 / Discord 取り込み済か / `schedule_past_sessions` テーブルに行が残っているかを切り分け要 | 小〜中 |
 
 ## 完了済み TODO アーカイブ
 

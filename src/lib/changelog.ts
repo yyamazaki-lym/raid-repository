@@ -49,8 +49,12 @@ export type ReleasePart = {
 export const RELEASES: ReleaseEntry[] = [
   {
     version: "2.1",
-    date: "2026-04-29",
+    date: "2026-04-30",
     parts: [
+      {
+        title: "⚙ メンテナンスメニューを DropdownMenu に集約 + Hobby plan 25s 上限対応で 3 phase 個別実行に分割",
+        body: "**背景**: 旧 `メンテナンス` セクションは「最新情報を取り込んで再計算」単一ボタンで Discord 取り込み → 動画メタ取得 → クリア再計算を順次実行する設計だったが、Vercel Hobby plan の Edge function 25s 上限を超えて `Page Error` が返るケースが発生していた。あわせてユーザー要望「3 ボタンを別個に出すのではなくメンテナンスメニューに集約したい」も並行。\n\n**修正**:\n\n1. **取り込み並列化** (`discord-import.ts`): strategy / video チャンネル fetch を `Promise.all` で並列化。1 ボタンあたり数秒短縮。\n2. **メンテメニューを DropdownMenu 化** (`maintenance-menu.tsx`): トリガーボタン 1 つ + メニュー内に ① Discord 取込 / ② 動画メタ取得 / ③ クリア再計算 を縦並びで表示。各 phase が独立して走るので 1 ボタンあたりの実行時間は十分短い。`pending` 中はトリガーラベルが「① Discord 取込中…」「② 動画情報 X/Y (N%)」のように切り替わる。\n3. **DropdownMenuItem ハンドラ修正**: 当初 Radix UI 流の `onSelect={(e) => { e.preventDefault(); run(...) }}` を渡していたが、本プロジェクトは base-ui の Menu API (`MenuItem` は `onClick` のみ) を使用しており全く反応しなかった。3 ボタン全てを `onClick={() => run(...)}` に修正してメニューが本来の動作に。",
+      },
       {
         title: "📎 攻略チャンネルから軽減表 / ロット sheet URL を自動紐付け (TODO #37)",
         body: "Discord 攻略情報チャンネルの取り込み (`importDiscordNow` / cron) フローで、メッセージ本文から `軽減表` / `ロット` キーワードと `docs.google.com/spreadsheets/...` URL を検出し、カテゴリの `mitigation_sheet_url` / `loot_sheet_url` 列に自動セットする。手動で URL を貼り直す手間を省く目的。\n\n**検出ロジック** (`discord-import.ts:maybeAutoLinkSheetUrls`):\n- 取り込み対象は **strategy チャンネル** のみ。video チャンネルは無関係なので走査しない。\n- メッセージを **行単位** で走査 (`m.content.split(/\\r?\\n/)`)。1 メッセージに「軽減表 ... URL_A\\nロット管理 ... URL_B」が両方あるパターンを正しく分離するため per-message ではなく per-line。\n- 各行に対し:\n  1. `https?://docs.google.com/spreadsheets/...` URL が含まれるか\n  2. `軽減(表)?` 正規表現にマッチすれば mitigation 候補、`ロット` (= 管理 / 表 / 分配 含む) にマッチすれば loot 候補\n- Discord は newest-first で返すので、最初に見つかった URL が「最新の貼り付け」= 採用。後続のメッセージ (古い) は無視。\n\n**書き込みポリシー**:\n- 既に `mitigationSheetUrl` / `lootSheetUrl` が設定済みのカテゴリは、その列の自動更新をスキップ (走査自体もしない)。手動で貼った URL を Discord 取り込みで上書きしない。\n- UPDATE は kind 別に分け、各 WHERE 句に `IS NULL` guard を付与。import 中に管理者が UI から手動保存した場合に no-op として安全に取り扱う。\n- 失敗時は `console.warn` で server log に残し、import 全体は止めない (link 取り込み本来のジョブを優先)。\n\n**hook 位置**: `runDiscordImport` の strategy チャンネル取り込み完了直後。link 取り込みの fetch とは別に再 fetch する (= 100 件目までを 2 回叩く) シンプル実装。フォロー次第では 1 回 fetch に統合してもよいが、性能上問題ないので分離して責務を明確にしてある。",
