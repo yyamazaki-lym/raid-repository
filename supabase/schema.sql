@@ -517,6 +517,39 @@ INSERT INTO public.categories (slug, name, status, sort_order) VALUES
   ('arc-lightheavy',  'アルカディア:ライトヘビー級',   '未着手', 2)
 ON CONFLICT (slug) DO NOTHING;
 
+-- ---- 9.5. Secrets table (TODO #35, 2.1) -----------------------------
+-- 機密値 (FFLogs session cookie / OAuth access+refresh token 等) を
+-- AES-256-GCM で暗号化して保管する専用テーブル。アプリ側で encrypt
+-- してから INSERT、SELECT 後に decrypt する仕組み。
+--
+-- 旧設計では `app_settings` に平文で保存していたが、当 repo は RLS
+-- が `USING (true)` で全開なため anon key を持つ任意のユーザーが
+-- `SELECT value FROM app_settings WHERE key='fflogs_session_cookie'`
+-- で盗聴可能だった (HANDOFF security TODO #35)。
+--
+-- このテーブルは RLS で anon を完全 deny にし、書き込みは service
+-- role 経由 (server-side) のみ。SELECT も service role 必須なので、
+-- ブラウザ JS から ciphertext すら触れない設計。
+CREATE TABLE IF NOT EXISTS secrets (
+  key text PRIMARY KEY,
+  -- ciphertext は base64 + IV + auth tag を `iv:tag:ciphertext` 形式
+  -- (各 base64) で連結したものを保存。アプリ側で解釈する。
+  encrypted_value text NOT NULL,
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+ALTER TABLE secrets ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "secrets deny all anon" ON secrets;
+-- anon (含 authenticated 一般) を完全に拒否。service role はそもそも
+-- RLS をバイパスする (Postgres superuser 相当) ので server からは
+-- 読み書き可能。
+CREATE POLICY "secrets deny all anon"
+  ON secrets FOR ALL
+  TO anon, authenticated
+  USING (false)
+  WITH CHECK (false);
+
 -- ---- 10. Storage bucket for category background images ---------------
 -- Phase 9 (TODO #17 follow-up, 1.9 (2026-04-28)): public bucket so the
 -- category card edit dialog can upload local images and the resulting

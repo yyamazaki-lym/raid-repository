@@ -913,11 +913,16 @@ export async function linkFflogsReportsToVideos(): Promise<FflogsLinkResult> {
   }
 
   // Read all sources' configuration.
-  const [username, oauthToken, sessionCookie] = await Promise.all([
+  // session cookie は secrets テーブル (暗号化) を優先、無ければ
+  // 旧 app_settings の plaintext fallback (TODO #35 移行期)。
+  const { getSecretValue } = await import("./secret-store");
+  const [username, oauthToken, encryptedCookie] = await Promise.all([
     fetchAppSetting("fflogs_username"),
     getValidFflogsOAuthToken(),
-    fetchAppSetting("fflogs_session_cookie"),
+    getSecretValue("fflogs_session_cookie"),
   ]);
+  const sessionCookie =
+    encryptedCookie ?? (await fetchAppSetting("fflogs_session_cookie"));
 
   // At least one source must be configured.
   if (!username && !oauthToken) {
@@ -992,12 +997,19 @@ export async function linkFflogsReportsToVideos(): Promise<FflogsLinkResult> {
       );
       if (cookieUsed) {
         // Auto-delete the cookie after use — one-time-use semantics.
+        // 新 secrets テーブルと旧 app_settings の両方を消す (移行期)。
         try {
           const cleanupClient = await createClient();
           await cleanupClient
             .from("app_settings")
             .delete()
             .eq("key", "fflogs_session_cookie");
+        } catch {
+          // best-effort
+        }
+        try {
+          const { deleteSecretValue } = await import("./secret-store");
+          await deleteSecretValue("fflogs_session_cookie");
         } catch {
           // best-effort
         }

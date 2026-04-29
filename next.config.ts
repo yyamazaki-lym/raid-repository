@@ -24,17 +24,16 @@ import type { NextConfig } from "next";
  */
 
 /**
- * CSP (TODO #33, 2.1+) — まず Content-Security-Policy-Report-Only で
- * 本番投入する。違反があってもブラウザは block せずコンソールに記録
- * するだけなので、実 UI を壊さずに「足りない origin」を発見できる。
+ * CSP (TODO #33, 2.1+) — Report-Only で 1 段目投入後、本実装で enforce
+ * 切替 (`Content-Security-Policy` ヘッダー)。
  *
- * 1 週間運用 → DevTools の violation を確認 → 不足 origin を追加 →
- * `Content-Security-Policy-Report-Only` のキーを `Content-Security-Policy`
- * に切り替えて enforce、という段階導入の想定。
+ * dev mode (Next.js + Turbopack) は HMR / Fast Refresh で eval 系を
+ * 使うため `'unsafe-eval'` が必要だが、production build では eval は
+ * 不要なので外して攻撃面を狭める (production-only tighten)。
  *
  * 主要な許可先:
- * - script-src: self + unsafe-inline (theme pre-hydration script + Next.js
- *   hydration) + unsafe-eval (Next.js / React DevTools / Turbopack)
+ * - script-src: self + unsafe-inline (theme pre-hydration script) +
+ *   ([dev のみ] unsafe-eval)
  * - style-src: self + unsafe-inline (Tailwind v4 + styled-jsx) + Google Fonts
  * - font-src: self + data: (next/font fallback) + Google Fonts CDN
  * - img-src: self + data:/blob: + YouTube サムネ + Supabase Storage
@@ -44,13 +43,17 @@ import type { NextConfig } from "next";
  * - frame-ancestors 'none' / object-src 'none' / base-uri 'self' /
  *   form-action 'self' で残りの攻撃面を最小化
  * - upgrade-insecure-requests で http→https を自動昇格
+ *
+ * 万一 enforce 切替で UI が壊れた場合は Report-Only に戻し、不足
+ * origin を追加してから再 enforce する手順 (changelog 参照)。
  */
+const isProduction = process.env.NODE_ENV === "production";
+const scriptSrc = isProduction
+  ? "script-src 'self' 'unsafe-inline'"
+  : "script-src 'self' 'unsafe-inline' 'unsafe-eval'";
 const cspDirectives = [
   "default-src 'self'",
-  // 'unsafe-inline' は theme pre-hydration script で必須、'unsafe-eval' は
-  // Next.js / React の internal で使われている可能性があるため当面残す。
-  // 段階 2 で nonce ベース化できれば 'unsafe-inline' を外す。
-  "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+  scriptSrc,
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' data: https://fonts.gstatic.com",
   // i.ytimg.com: YouTube サムネ (next/image の remotePatterns と一致)
@@ -92,10 +95,12 @@ const securityHeaders = [
       "interest-cohort=()",
     ].join(", "),
   },
-  // Report-Only モードで運用 → 1 週間 violation 観察後に enforce に切替。
-  // Enforce 切替時はキーを `Content-Security-Policy` に変更するだけ。
+  // Enforce mode (TODO #33 second phase, 2.1, 2026-04-29). 違反は
+  // ブラウザが block する。万一 UI が壊れた場合はキーを
+  // `Content-Security-Policy-Report-Only` に戻して原因 origin を
+  // `cspDirectives` に追加してから再 enforce する。
   {
-    key: "Content-Security-Policy-Report-Only",
+    key: "Content-Security-Policy",
     value: cspDirectives.join("; "),
   },
 ];

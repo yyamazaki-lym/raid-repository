@@ -742,21 +742,31 @@ export async function setFflogsSessionCookie(
   if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
   const trimmed = raw.trim();
   const supabase = await createClient();
+  // 既存 plaintext (旧 app_settings) は念のため常に消す。新 secrets
+  // テーブル側で暗号化保存し直す or clear を実行 (TODO #35)。
+  await supabase
+    .from("app_settings")
+    .delete()
+    .eq("key", "fflogs_session_cookie");
+
   if (!trimmed) {
-    const { error } = await supabase
-      .from("app_settings")
-      .delete()
-      .eq("key", "fflogs_session_cookie");
-    if (error) return { ok: false, reason: error.message };
+    // clear: secrets 側も消す
+    const { deleteSecretValue } = await import("./secret-store");
+    await deleteSecretValue("fflogs_session_cookie");
     return { ok: true };
   }
-  const { error } = await supabase
-    .from("app_settings")
-    .upsert(
-      { key: "fflogs_session_cookie", value: trimmed },
-      { onConflict: "key" },
-    );
-  if (error) return { ok: false, reason: error.message };
+
+  const { setSecretValue } = await import("./secret-store");
+  const stored = await setSecretValue("fflogs_session_cookie", trimmed);
+  if (!stored.ok) {
+    return {
+      ok: false,
+      reason:
+        "暗号化保存に失敗: " +
+        stored.reason +
+        " (SECRET_ENCRYPTION_KEY と SUPABASE_SERVICE_ROLE_KEY を env に設定してください)",
+    };
+  }
   return { ok: true };
 }
 
@@ -764,6 +774,15 @@ export async function getFflogsSessionCookieStatus(): Promise<{
   set: boolean;
   preview: string | null;
 }> {
+  // secrets テーブル (暗号化) を優先、無ければ旧 app_settings (平文)
+  // を fallback として確認。preview だけ返すので decrypt 結果は捨てる。
+  const { getSecretValue } = await import("./secret-store");
+  const encrypted = await getSecretValue("fflogs_session_cookie");
+  if (encrypted) {
+    const preview =
+      encrypted.length > 40 ? encrypted.slice(0, 40) + "…" : encrypted;
+    return { set: true, preview };
+  }
   const supabase = await createClient();
   const { data } = await supabase
     .from("app_settings")
@@ -772,8 +791,6 @@ export async function getFflogsSessionCookieStatus(): Promise<{
     .maybeSingle();
   const value = (data?.value as string | null | undefined) ?? null;
   if (!value) return { set: false, preview: null };
-  // Preview just enough to confirm a cookie is stored, without
-  // exposing the full value.
   const preview = value.length > 40 ? value.slice(0, 40) + "…" : value;
   return { set: true, preview };
 }

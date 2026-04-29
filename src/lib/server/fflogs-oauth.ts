@@ -1,6 +1,11 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { fetchAppSetting } from "@/lib/supabase/app-settings";
+import {
+  deleteSecretValue,
+  getSecretValue,
+  setSecretValue,
+} from "./secret-store";
 
 /**
  * FFLogs v2 OAuth (Authorization Code Flow) helpers.
@@ -29,10 +34,12 @@ import { fetchAppSetting } from "@/lib/supabase/app-settings";
  *   - http://localhost:3000/api/auth/fflogs/callback
  *   - https://<your-prod-host>/api/auth/fflogs/callback
  *
- * SECURITY NOTE: tokens are stored in `app_settings` which has open
- * RLS for `anon`. For a small private固定 this is acceptable (members
- * trust each other), but if you intend to expand access, lock the
- * `fflogs_oauth_*` keys behind a stricter RLS policy.
+ * SECURITY (TODO #35, 2.1+): access_token / refresh_token は新
+ * `secrets` テーブルに AES-256-GCM 暗号化して保存する (server-side
+ * service role 経由でのみ読み書き可)。expires_at / user_name は
+ * 機密度が低いので従来どおり `app_settings` 平文。旧 `app_settings`
+ * の plaintext token は読み取り fallback として 1 度だけ使い、書き
+ * 込み時に消す (= 自動移行)。
  */
 
 export const OAUTH_AUTHORIZE_URL = "https://www.fflogs.com/oauth/authorize";
@@ -268,11 +275,19 @@ async function refreshTokens(
 
 /** Read stored tokens and refresh if within 60 seconds of expiry. */
 export async function getValidFflogsOAuthToken(): Promise<string | null> {
-  const [accessToken, refreshToken, expiresAtStr] = await Promise.all([
-    fetchAppSetting(KEY_ACCESS),
-    fetchAppSetting(KEY_REFRESH),
-    fetchAppSetting(KEY_EXPIRES),
-  ]);
+  // 新 secrets (暗号化) を優先、無ければ app_settings (旧 plaintext)
+  // を fallback として読む。secrets が読めない or 鍵未設定 の場合は
+  // ともに `null` で plaintext fallback に流れる。
+  const [encAccess, encRefresh, plainAccess, plainRefresh, expiresAtStr] =
+    await Promise.all([
+      getSecretValue(KEY_ACCESS),
+      getSecretValue(KEY_REFRESH),
+      fetchAppSetting(KEY_ACCESS),
+      fetchAppSetting(KEY_REFRESH),
+      fetchAppSetting(KEY_EXPIRES),
+    ]);
+  const accessToken = encAccess ?? plainAccess;
+  const refreshToken = encRefresh ?? plainRefresh;
   if (!accessToken || !refreshToken || !expiresAtStr) return null;
   const expiresAt = new Date(expiresAtStr).getTime();
   if (Number.isNaN(expiresAt)) return null;
@@ -299,19 +314,21 @@ export async function getFflogsOAuthStatus(): Promise<{
   } catch {
     // best-effort
   }
-  const [accessToken, userName, expiresAt] = await Promise.all([
+  // access token は secrets (新) → app_settings (旧 fallback) の順で確認。
+  const [encAccess, plainAccess, userName, expiresAt] = await Promise.all([
+    getSecretValue(KEY_ACCESS),
     fetchAppSetting(KEY_ACCESS),
     fetchAppSetting(KEY_USER_NAME),
     fetchAppSetting(KEY_EXPIRES),
   ]);
   return {
-    connected: Boolean(accessToken),
+    connected: Boolean(encAccess ?? plainAccess),
     userName: userName ?? null,
     expiresAt: expiresAt ?? null,
   };
 }
 
-/** Disconnect — clears all OAuth state from app_settings. */
+/** Disconnect — clears all OAuth state from app_settings + secrets. */
 export async function disconnectFflogsOAuth(): Promise<{
   ok: true;
 } | { ok: false; reason: string }> {
@@ -327,19 +344,45 @@ export async function disconnectFflogsOAuth(): Promise<{
       KEY_STATE_PENDING,
     ]);
   if (error) return { ok: false, reason: error.message };
+  // 新 secrets テーブルからも消す (best-effort)。
+  await deleteSecretValue(KEY_ACCESS);
+  await deleteSecretValue(KEY_REFRESH);
   return { ok: true };
 }
 
 async function persistTokens(tokens: OAuthTokens): Promise<void> {
   const supabase = await createClient();
+  // 機密 token は新 secrets (暗号化) に保存。
+  const accessRes = await setSecretValue(KEY_ACCESS, tokens.accessToken);
+  const refreshRes = await setSecretValue(KEY_REFRESH, tokens.refreshToken);
+  // expiresAt は機密度低なので app_settings (平文) に残す。
   await supabase.from("app_settings").upsert(
-    [
-      { key: KEY_ACCESS, value: tokens.accessToken },
-      { key: KEY_REFRESH, value: tokens.refreshToken },
-      { key: KEY_EXPIRES, value: tokens.expiresAt },
-    ],
+    [{ key: KEY_EXPIRES, value: tokens.expiresAt }],
     { onConflict: "key" },
   );
+  if (accessRes.ok && refreshRes.ok) {
+    // secrets に書けたら旧 plaintext は片付ける (移行)。
+    await supabase
+      .from("app_settings")
+      .delete()
+      .in("key", [KEY_ACCESS, KEY_REFRESH]);
+  } else {
+    // SECRET_ENCRYPTION_KEY 未設定など暗号化保存に失敗した場合は
+    // 旧 app_settings (平文) に書いて従来どおり動かす (graceful
+    // degrade)。env 設定後の再保存で自動移行できる。
+    console.warn(
+      "[fflogs-oauth] secrets 保存失敗、app_settings 平文 fallback:",
+      accessRes,
+      refreshRes,
+    );
+    await supabase.from("app_settings").upsert(
+      [
+        { key: KEY_ACCESS, value: tokens.accessToken },
+        { key: KEY_REFRESH, value: tokens.refreshToken },
+      ],
+      { onConflict: "key" },
+    );
+  }
 }
 
 /**
