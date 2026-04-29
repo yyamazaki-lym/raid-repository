@@ -57,6 +57,10 @@
 | ~~22~~ | ~~スケジュール ↔ 動画の紐付けがタイトル日付を見ていない~~ — 完了 (2.1 (2026-04-29)、`src/lib/server/session-video-link.ts` を「動画日付 == セッション JST 同日」方式に変更。日付解決は タイトル日付 → posted_at の JST 日付 → スキップ の優先度。`created_at` は使わず ±36h ウィンドウは撤廃) | ~~小~~ |
 | 23 | サイト全体のデータ初期化ボタン (設定ダイアログ内、ADMIN 権限のみ、2 度確認ダイアログ) — `categories` `category_links` `app_settings` 等のユーザーデータを TRUNCATE して初期状態に戻す。デプロイ初期や検証時の rebuild 用。Server Action で全テーブルを削除 → `setSessionStorage('init_confirm_at', now)` 等で 2 段階確認 (1回目「本当に初期化?」、2回目「データ全消去確認、入力欄に `INITIALIZE` と打ってください」) | 中 |
 | 24 | 過去日程の表示を「開催確定日 (DECISION)」のみに絞る — 現在は候補日 (CANDIDATE) も過去ログに含まれてしまい、結果ノイズが多い。`schedule-list.tsx` / `schedule-past-simple.tsx` の過去側 filter を `status === "DECISION"` 限定に。出欠記号と日時はそのまま、候補だけ過去から除外 | 小 |
+| 25 | カード編集ダイアログにクリア時間 (timeToClearSeconds) の手動入力欄追加 — YouTube 取得失敗等で動画 duration が NULL の場合に自動計算では cumulative time が出ない。手動値が設定されていればそちらを優先表示する仕組み。新規列 `manual_time_to_clear_seconds`、Hourglass 表示で `manual_time_to_clear_seconds ?? computed_value` の順で参照 | 中 |
+| 26 | カード編集ダイアログにコンテンツ説明文 (description) フィールド追加 — 各 category に短い説明テキスト (例: 「絶バハムート討滅戦 — TODO」) を持たせる。新規列 `description`、card または詳細ページに表示。編集ダイアログに textarea | 小〜中 |
+| 27 | カード編集ダイアログから動画も追加できる導線 — 現状は category 詳細 → videos sub-page に遷移してから add する 2 ステップ。category 編集ダイアログ内に「+動画追加」ボタンと簡易フォームを置いて 1 ダイアログで完結させたい | 小〜中 |
+| 28 | カードの Status (クリア済) ボタン右端を Trophy (クリア日) と完全に揃える — 2026-04-29 に flex-col 化で試したが他レイアウト崩れを誘発したため revert。微小ずれは残置 (icon 行の右パディング 0.75rem vs 右カラム 0.5rem の差)。きれいに揃えるなら Card 構造を flex-col 再設計するか Status を右カラム下段へ移設するか要検討 | 小 |
 
 ### 除外済み (再対応不要)
 
