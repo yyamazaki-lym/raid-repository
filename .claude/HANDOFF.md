@@ -33,7 +33,7 @@
 | 1 | 同日複数 Logs/動画 のプルダウン選択式 | 中 (schema 設計含む) |
 | 2 | スケジュール表自前実装 (作成/編集/確定/Discord 通知) | 大 |
 | 7 | スマホでのレイアウト崩れ確認 | 中 |
-| 8 | Vercel/Supabase 自動導入 (Deploy button / `.env.example` / seed) | 中 |
+| 8 | Vercel/Supabase 自動導入 (Deploy button / `.env.example` / seed) — 加えて、導入後に GitHub Pages / 別 Vercel project 等で「公開モックサイト (デモ用、ダミーデータ入り)」を別途作れるか検証する。実機データを伏せたサンプル portal をフォーク前のショールームとして見せたい | 中 |
 | 11 | ページ全体のパフォーマンス最適化 (重さを軽減) — 候補: bundle 軽量化, RSC 化, lazy mount, 画像最適化, query batching, realtime subscription 削減 等 | 中 |
 | 20 | Vercel ドメイン変更 (`raid-repository.vercel.app` から好きな名前 / カスタムドメインへ) — Vercel Project Settings → Domains で実施。Discord Developer Portal の Redirects、Supabase Authentication の Site URL / Redirect URLs にも新ドメインを追加する必要あり | 小 |
 | 23 | サイト全体のデータ初期化ボタン (設定ダイアログ内、ADMIN 権限のみ、2 度確認ダイアログ) — `categories` `category_links` `app_settings` 等のユーザーデータを TRUNCATE して初期状態に戻す。デプロイ初期や検証時の rebuild 用。Server Action で全テーブルを削除 → 2 段階確認 (1回目「本当に初期化?」、2回目「データ全消去確認、入力欄に `INITIALIZE` と打ってください」) | 中 |
@@ -41,9 +41,8 @@
 | 37 | カテゴリ編集ダイアログで「攻略チャンネル ID から自動紐付け」 — Discord の攻略チャンネルに投稿された URL を import したとき、その中に `docs.google.com/spreadsheets/...` の URL が含まれていれば軽減表 (mitigation_sheet_url) / ロット管理 (loot_sheet_url) として自動セットする。判別ヒューリスティックは title / 周辺テキストの「軽減」「ロット」キーワード or sheet 名前。ユーザーが手で `category-form-dialog` の URL 欄に貼り付ける手間を削減。既存の `importDiscordNow` (動画+strategy 取り込み) のフローに hook を追加 | 中 |
 | 38 | **スケジュール追加機能** — 現状はトップにスケジュール表 (character-sheets HTML scrape) があるだけで、portal 内から新しい開催候補日を追加する UI が無い。日付 + 時間帯 + 参加可否を入力 → `schedule_past_sessions` (or 専用 future テーブル) に保存して描画する。TODO #2 の「スケジュール表自前実装」と統合可能。設計検討: a) character-sheets を残しつつ portal 専用候補日を上乗せ、b) character-sheets を完全代替する自前 UI に振る、c) Discord scheduled events 連携 | 中〜大 |
 | 39 | **「本日」バッジを「挑戦中」に変えて色差別化** — スケジュールページ上部の次回開催カード (`next-session-card.tsx`) で、現在 `本日` バッジが終日同色。開催時間帯 (start time → end time) の間は「挑戦中」表記 + 色を変えて (例: green/cyan の発光 → red/magenta 強調) 進行中であることを視覚的に示したい | 小 |
-| 40 | **🔒 [security]** Rate limit 追加 — `/auth/callback` (Discord OAuth) と `/api/cron/*` に rate limit 無しで連続呼び出しされると Discord API quota (120/min) を枯渇させてサイト全体の OAuth が止まるリスク。Vercel Edge Middleware の rate limit or Upstash Redis ベースで実装 | 中 |
-| 41 | **🔒 [security]** Server Action のエラーメッセージを汎用化 — `categories-actions.ts` 等で `reason: error.message` で生 PG エラー (column 名 / FK 違反 / RLS deny の Postgres コード) が client に漏洩する箇所がある。攻撃者に DB スキーマ情報を与えるリスク。「更新失敗」等の汎用メッセージに置換、詳細は server-side console.warn のみに残す | 小 |
-| 42 | **コンテンツカード背景画像のリセット問題調査** — ユーザー報告「設定した画像が一部以外リセットされている」。直近の CSP enforce (TODO #33) で img-src が `*.supabase.co` 限定 → imgur 等の他ホストの画像が CSP ブロックされた可能性。本 commit で `img-src https:` 全許可に緩和。それでも解決しない場合は DB の `background_image_url` カラムが実際に NULL 化されている別原因を調査 | 観察中 |
+| 43 | **軽減表 / ロット管理表のデフォルト iframe 縮尺調整** — `SheetIframe` 表示時、Google Sheets の標準ズームだと枠に収まらず横スクロール / 余白が出る。シート読み込み時に iframe サイズへフィットする縮尺 (例: `transform: scale(...)` 自動計算 or Sheets の `widget=true&headers=false&range=A1:N40` 等のクエリ追加) をデフォルトにしたい。`mitigation_sheet_url` / `loot_sheet_url` 両対象 | 中 |
+| 44 | **スケジュール日程リストから日程位置への iframe ジャンプ** — 未確定の `-` または確定済みの〇/×/△を押した時、iframe (character-sheets スケジュール管理) を開いて該当日程まで自動スクロールさせたい。`〇×` 等を押した時の編集挙動と同様。実装案: schedule-edit-frame-dialog 側で `postMessage` or hash anchor (`#row-YYYYMMDD` 等) で日程位置を指定し iframe 内に scroll。character-sheets 側がアンカーをサポートしていない場合は postMessage + 内部 query DOM 走査の代替案も要検討 | 中 |
 
 ## 完了済み TODO アーカイブ
 
@@ -78,6 +77,9 @@
 | ~~35~~ | **🔒 [security]** FFLogs token 暗号化保管 — 新 `secrets` テーブル (RLS で anon/authenticated 完全 deny、service role 専用) + AES-256-GCM (Web Crypto API) で `iv:tag:ciphertext` 形式保管。`SECRET_ENCRYPTION_KEY` 未設定時は旧 `app_settings` 平文 fallback で graceful 動作。env 設定 + 再保存で自動移行。 access_token / refresh_token / session_cookie が対象。expires_at / user_name は機密度低なので app_settings 平文継続 | 2.1 (2026-04-29) |
 | ~~36 phase 1~~ | **🔒 [security]** RLS で書き込みを authenticated 限定 — 全テーブル INSERT/UPDATE/DELETE policy を `TO anon, authenticated` から `TO authenticated` に変更。Discord OAuth で Supabase session を持つユーザーのみ書き込み可。anon key REST 直叩きでアプリ層 admin gate をバイパスする攻撃を遮断。SELECT は維持 (Realtime / 公開読み取り温存)。dev bypass は `SUPABASE_SERVICE_ROLE_KEY` で server-side createClient を service role 切替 → RLS バイパス。Storage bucket `category-backgrounds` も `authenticated insert` 専用に | 2.1 (2026-04-29) |
 | ~~36 phase 2~~ | **🔒 [security]** RLS で書き込みを admin 限定 — INSERT/UPDATE/DELETE policy に `(auth.jwt() -> 'app_metadata' ->> 'is_admin') = 'true'` を組み込み、admin role 持ちのみ書き込み可。OAuth callback で `is_admin = userIsAdmin(roles)` を計算して `app_metadata` に書き込み、Supabase JWT に同梱されて RLS から参照可能。`DISCORD_ADMIN_ROLE_IDS` env 未設定時は backward compat で全員 admin。既存 user の grace period: 旧 JWT には claim 無しで write 拒否 → 1h の auto-refresh または再ログインで解決。Storage bucket も同条件追加 | 2.1 (2026-04-29) |
+| ~~41~~ | **🔒 [security]** Server Action のエラーメッセージを汎用化 — 新ヘルパー `src/lib/server/db-error.ts` (`dbError(label, error)`) を追加し、Postgres 生エラー (column 名 / FK 違反 / RLS deny コード) を「{label}に失敗しました」の汎用文言に置換。詳細は `console.warn("[db-error] {label}:", detail)` で server log に残す。対象: categories-actions.ts (CRUD / backfill / app_settings 系)、discord-import.ts、discord-postedat-backfill.ts、discord-schedule.ts、fflogs-oauth.ts、schedule-snapshot.ts、secret-store.ts。FFLogs GraphQL API のエラーは外部 API のもので DB スキーマ非依存のため温存 | 2.1 (2026-04-29) |
+| ~~40~~ | **🔒 [security]** Rate limit 追加 — `proxy.ts` (Node.js runtime デフォルト) に in-memory 固定ウィンドウ rate limiter を session refresh 前段に挿入。`/auth/callback` (10 req / 30 sec)、`/api/cron/*` (10 req / 30 sec)。実装は `src/lib/rate-limit.ts`。`x-forwarded-for` 先頭で client IP を取り、Map<scope:ip, {count, resetAt}> で管理。MAX_BUCKETS=5000 超過時に expire 済みエントリ掃除。Vercel function instance 跨ぎでは状態非共有なので「per-instance per-IP」相当 (シンプル版で OK の判断、Upstash Redis は将来検討)。429 Too Many Requests + `Retry-After` header を返す | 2.1 (2026-04-29) |
+| ~~42~~ | **コンテンツカード背景画像のリセット問題** — CSP enforce (TODO #33) で `img-src 'self' *.supabase.co` が原因で imgur 等の他ホスト画像がブロックされていた。`img-src https:` 全許可に緩和済み (3fb573f)。ユーザー確認で正常化したため close | 2.1 (2026-04-29) |
 
 ### 除外済み (再対応不要)
 
@@ -92,7 +94,7 @@
 | Ver | 概要 |
 |---|---|
 | 2.0 (2026-04-28) | TODO #19: Discord OAuth ゲート全体導入 + ロール単位ページ閲覧制御。`/auth/callback` で `app_metadata.discord_guild_member` / `discord_roles` を JWT 同梱、`proxy.ts` (旧 middleware) で全 page を gate |
-| 2.1 (2026-04-29) | TODO #21: admin ロール限定編集 (`DISCORD_ADMIN_ROLE_IDS` env)、TODO #22: 動画紐付けタイトル日付ベース化 + posted_at 取得元 YouTube 優先、TODO #25-28: カード編集ダイアログ拡張 (description / manual time / Status 揃え)、メンテメニュー単独ボタン化、`<details>` でロールセクション折りたたみ、TODO #24: 過去日程は DECISION のみ表示、TODO #30: 紅蓮テーマ彩度/明度を低減 |
+| 2.1 (2026-04-29) | TODO #21: admin ロール限定編集 (`DISCORD_ADMIN_ROLE_IDS` env)、TODO #22: 動画紐付けタイトル日付ベース化 + posted_at 取得元 YouTube 優先、TODO #25-28: カード編集ダイアログ拡張 (description / manual time / Status 揃え)、メンテメニュー単独ボタン化、`<details>` でロールセクション折りたたみ、TODO #24: 過去日程は DECISION のみ表示、TODO #30: 紅蓮テーマ彩度/明度を低減、TODO #41: Server Action エラー汎用化 (dbError ヘルパー)、TODO #40: `/auth/callback` + `/api/cron/*` に in-memory rate limit、TODO #42: 背景画像 CSP 緩和で正常化 |
 
 ## アーキテクチャ重要ポイント
 
