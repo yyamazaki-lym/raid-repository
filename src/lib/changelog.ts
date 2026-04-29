@@ -52,6 +52,10 @@ export const RELEASES: ReleaseEntry[] = [
     date: "2026-04-29",
     parts: [
       {
+        title: "🧹 カード layout 再調整 (Status を icon 行に / Trophy + Hourglass のみ右上) + メンテを単独ボタンに",
+        body: "前回の調整 (Status/Trophy/Hourglass を右上揃え) が想定外配置だったためユーザー要望に合わせ再構成:\n\n1. Status (クリア済バッジ) を `SubPageShortcuts` 行 (mitigation/loot/strategy/videos/macros アイコン行) の右端に移設。`SubPageShortcuts` に `statusSlot` props を追加し `ml-auto` で右寄せ。\n2. 中段の Timer (累計練習時間) はカード上から削除 (ユーザー要望「カード表示はクリアまでの累計時間のみで良い」)。データ load (`practiceSecondsByCategory`) は将来の tooltip 等のため残置。\n3. 右カラム上段は Trophy + Hourglass のみ (placeholder で高さ固定)。\n4. メンテメニューを単独ボタンに簡素化 (DropdownMenu wrapper 撤去)。`Cloud / Timer / Stethoscope / DropdownMenu*` import / `diagnoseYoutube` action / `DiagnosePanel` を削除。診断ツールは YouTube API key 設定で限定公開動画も取れる見込みのため不要と判断。\n5. AllPanel の YouTube fail バナーを「全件 fail (= Vercel bot 弾き)」と「部分 fail (= unlisted 動画混在)」で表示分岐。両方とも `YOUTUBE_API_KEY` 設定で改善することを案内。\n6. `.env.local.example` の `YOUTUBE_API_KEY` コメントを「サーバー側 1 回のみ admin 設定で全動画カバー、各メンバー設定不要」と明記。private 動画は不可な点も追記。",
+      },
+      {
         title: "🧰 メンテ 1 ボタン化 + クリア累計時間/Trophy を上揃え + カードサイズ固定 + Trophy 遷移スクロール修正",
         body: "ユーザー要望 5 件を一括対応:\n\n1. **メンテメニュー 1 ボタン化**: 個別の Discord 取込/動画メタ/クリア再計算/force refresh 項目を撤去し「最新情報を取り込んで再計算」(① Discord 取込 → ② 動画情報 → ③ クリア再計算) の単一項目に集約。`YouTube 取得テスト` だけ診断用に残置。トリガラベルに「更新 ② 動画情報 5/281 (1.8%)」のような % 進捗表示。\n2. **タイトル日付 fallback で posted_at 復旧**: Vercel IP の bot 検出で YouTube が 0 件しか取れない問題に対応。`categories-actions.ts` の `resolvePostedAt(title, meta, existing)` ヘルパーで タイトル日付 (`titleDateToIso`) → YouTube uploadDate → 既存維持 の優先度で解決。タイトルに『【2024 08 22】』等の日付があれば YouTube 失敗時もクリア紐付けが復旧する。SELECT に `title` を追加。\n3. **Status / Trophy / Hourglass を上揃え**: `category-list.tsx` の中段から Hourglass を撤去し、右カラムに Status / Trophy / Hourglass / +N/wk+⋮ の 4 段縦積みで配置。すべて `items-end` で右端揃え。\n4. **カードサイズ固定**: Trophy / Hourglass / +N/wk が無いカードでも `invisible` placeholder 行を入れてカード高を一定に。\n5. **Trophy → 動画スクロール復旧**: Next.js 16 の遷移 auto-scroll-to-top が `scrollIntoView` を上書きしていた問題に対応。`router.push(url, { scroll: false })` を指定 + `videos-list.tsx` の delay を 50ms → 300ms + `requestAnimationFrame` 2 段で安定化。",
       },

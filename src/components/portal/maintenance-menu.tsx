@@ -3,11 +3,8 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Cloud,
   Loader2,
   Settings2,
-  Stethoscope,
-  Timer,
   Trophy,
   X,
   CheckCircle2,
@@ -17,22 +14,13 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
   backfillFirstClearFromExistingVideos,
   backfillPostedAtFromDiscordChannels,
   backfillVideoDurationsChunk,
-  diagnoseYouTubeUrl,
   importDiscordNow,
   type BackfillResult,
   type DurationBackfillResult,
   type ImportNowItem,
-  type YouTubeDiagnosticResult,
 } from "@/lib/server/categories-actions";
 
 // Inline type since "use server" modules can't re-export pure types.
@@ -70,8 +58,7 @@ type ActionKind =
   | "discord"
   | "videoMeta"
   | "videoMetaForceRefresh"
-  | "firstClearForce"
-  | "diagnoseYoutube";
+  | "firstClearForce";
 
 type Result =
   | { kind: "discord"; data: { items: ImportNowItem[] } }
@@ -83,7 +70,6 @@ type Result =
       };
     }
   | { kind: "firstClear"; data: BackfillResult; force: boolean }
-  | { kind: "diagnose"; data: YouTubeDiagnosticResult }
   | {
       kind: "all";
       data: {
@@ -339,23 +325,6 @@ export function MaintenanceMenu() {
           router.refresh();
           return;
         }
-        if (kind === "diagnoseYoutube") {
-          const url = window.prompt(
-            "診断する YouTube URL を入力してください\n(動画ページ上の URL をコピペ — 各取得ステップの結果が表示されます)",
-            "https://www.youtube.com/watch?v=",
-          );
-          if (!url) return;
-          const r = await diagnoseYouTubeUrl(url);
-          if (r.durationSeconds || r.uploadDate) {
-            toast.success(
-              `取得成功: duration=${r.durationSeconds}s upload=${r.uploadDate?.slice(0, 10) ?? "—"}`,
-            );
-          } else {
-            toast.error("取得失敗 — 詳細はパネルで確認");
-          }
-          setResult({ kind: "diagnose", data: r });
-          return;
-        }
         if (kind === "firstClearForce") {
           const r = await backfillFirstClearFromExistingVideos({
             overwrite: true,
@@ -381,70 +350,40 @@ export function MaintenanceMenu() {
 
   return (
     <div className="relative flex flex-col gap-2">
-      <DropdownMenu>
-        <DropdownMenuTrigger
-          className="inline-flex items-center gap-1.5 rounded-md border border-border/60 bg-background/30 px-3 py-1.5 font-mono text-[11px] tracking-[0.18em] text-muted-foreground uppercase transition-colors hover:border-[var(--neon-cyan)]/60 hover:text-foreground disabled:opacity-60"
-          disabled={pending}
-          aria-label="メンテナンスメニュー"
-        >
-          {pending ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
-          ) : (
-            <Settings2 className="h-3.5 w-3.5" aria-hidden />
-          )}
-          {pending
-            ? pendingKind === "all"
-              ? allPhase === "discord"
-                ? "更新 ① Discord 取込中…"
-                : allPhase === "videoMeta"
-                  ? videoMetaProgress
-                    ? videoMetaProgress.phase === "duration"
-                      ? videoMetaProgress.total > 0
-                        ? `更新 ② 動画情報 ${videoMetaProgress.processed}/${videoMetaProgress.total} (${Math.floor((videoMetaProgress.processed / videoMetaProgress.total) * 100)}%)`
-                        : `更新 ② 動画情報 ${videoMetaProgress.processed} 件`
-                      : "更新 ② 投稿日時取得中…"
-                    : "更新 ② 動画メタ取得中…"
-                  : allPhase === "firstClear"
-                    ? "更新 ③ クリア再計算中…"
-                    : "更新中…"
-              : pendingKind === "diagnoseYoutube"
-                ? "YouTube 診断中…"
-                : "実行中…"
-            : "更新"}
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" sideOffset={4} className="glass-popup min-w-72">
-          <DropdownMenuItem
-            onClick={() => run("all")}
-            className="flex cursor-pointer items-start gap-2"
-          >
-            <Settings2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-300" aria-hidden />
-            <div className="flex flex-col gap-0.5">
-              <span className="text-sm font-semibold">最新情報を取り込んで再計算</span>
-              <span className="text-[10px] text-muted-foreground leading-snug">
-                ① Discord から新着動画/攻略を取り込み<br />
-                ② 各動画の再生時間と投稿日時を取得 (タイトル日付 fallback)<br />
-                ③ コンテンツ毎の初クリア日時とクリアまでの累計時間を再計算
-              </span>
-            </div>
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem
-            onClick={() => run("diagnoseYoutube")}
-            className="flex cursor-pointer items-start gap-2"
-          >
-            <Stethoscope
-              className="mt-0.5 h-3.5 w-3.5 shrink-0 text-zinc-300"
-              aria-hidden
-            />
-            <div className="flex flex-col gap-0.5">
-              <span className="text-sm">YouTube 取得テスト (1 件)</span>
-              <span className="text-[10px] text-muted-foreground leading-snug">
-                指定 URL の duration / uploadDate が取れない場合の診断
-              </span>
-            </div>
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+      {/* 2.1 (2026-04-29): メンテメニューを単独ボタンに簡素化。
+          診断ツールは問題解決後に撤去 (ユーザー要望)、現在は YouTube
+          API key 設定で限定公開動画も取れる見込みなので不要となる。 */}
+      <button
+        type="button"
+        onClick={() => run("all")}
+        disabled={pending}
+        className="inline-flex items-center gap-1.5 rounded-md border border-border/60 bg-background/30 px-3 py-1.5 font-mono text-[11px] tracking-[0.18em] text-muted-foreground uppercase transition-colors hover:border-[var(--neon-cyan)]/60 hover:text-foreground disabled:opacity-60"
+        aria-label="最新情報を取り込んで再計算"
+        title="① Discord から新着取り込み → ② 動画の再生時間と投稿日時を取得 → ③ クリア日時 / 累計時間を再計算"
+      >
+        {pending ? (
+          <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+        ) : (
+          <Settings2 className="h-3.5 w-3.5" aria-hidden />
+        )}
+        {pending
+          ? pendingKind === "all"
+            ? allPhase === "discord"
+              ? "更新 ① Discord 取込中…"
+              : allPhase === "videoMeta"
+                ? videoMetaProgress
+                  ? videoMetaProgress.phase === "duration"
+                    ? videoMetaProgress.total > 0
+                      ? `更新 ② 動画情報 ${videoMetaProgress.processed}/${videoMetaProgress.total} (${Math.floor((videoMetaProgress.processed / videoMetaProgress.total) * 100)}%)`
+                      : `更新 ② 動画情報 ${videoMetaProgress.processed} 件`
+                    : "更新 ② 投稿日時取得中…"
+                  : "更新 ② 動画メタ取得中…"
+                : allPhase === "firstClear"
+                  ? "更新 ③ クリア再計算中…"
+                  : "更新中…"
+            : "実行中…"
+          : "更新"}
+      </button>
 
       {result && (
         <div
@@ -471,9 +410,6 @@ export function MaintenanceMenu() {
           )}
           {result.kind === "firstClear" && (
             <FirstClearPanel data={result.data} force={result.force} />
-          )}
-          {result.kind === "diagnose" && (
-            <DiagnosePanel data={result.data} />
           )}
           {result.kind === "all" && (
             <AllPanel
@@ -810,140 +746,6 @@ function formatHM(seconds: number): string {
   return `${hours}h${minutes}m`;
 }
 
-/**
- * 1.9.21: re-introduced YouTube diagnose panel. Surfaces per-host
- * attempt logs (status, html size, which strategy matched, page
- * markers like consent gate / sign-in wall) so the user can see WHY
- * the bulk YouTube backfill returned 0 fills — typically a Vercel-
- * side bot detection / consent gate / IP block issue.
- */
-function DiagnosePanel({ data }: { data: YouTubeDiagnosticResult }) {
-  return (
-    <>
-      <p className="mb-2 pr-6 font-mono text-[10px] tracking-[0.2em] text-muted-foreground uppercase">
-        YouTube 取得テスト
-      </p>
-      <p className="mb-2 break-all font-mono text-[10px] text-muted-foreground">
-        {data.url}
-      </p>
-      <ul className="flex flex-col gap-1 text-[11px] leading-relaxed">
-        <li className="flex items-baseline gap-2">
-          <span className="font-mono text-muted-foreground">duration</span>
-          <span className="font-mono text-foreground">
-            {data.durationSeconds === null ? "—" : `${data.durationSeconds}s`}
-          </span>
-        </li>
-        <li className="flex items-baseline gap-2">
-          <span className="font-mono text-muted-foreground">uploadDate</span>
-          <span className="font-mono text-foreground">
-            {data.uploadDate ?? "—"}
-          </span>
-        </li>
-      </ul>
-      <p className="mt-3 mb-1 font-mono text-[10px] tracking-[0.2em] text-muted-foreground uppercase">
-        試行ログ
-      </p>
-      <ul className="flex flex-col gap-1 text-[10px] leading-relaxed">
-        {data.attempts.map((a, i) => (
-          <li
-            key={i}
-            className="rounded-sm border border-border/40 bg-secondary/20 px-2 py-1 font-mono"
-          >
-            <div>
-              <span className="text-muted-foreground">{a.host}</span>
-              <span className="ml-2">
-                status=
-                <span
-                  className={
-                    typeof a.status === "number" && a.status === 200
-                      ? "text-emerald-300"
-                      : "text-rose-300"
-                  }
-                >
-                  {a.status}
-                </span>
-              </span>
-              {a.htmlSize !== null && (
-                <span className="ml-2 text-muted-foreground">
-                  size={a.htmlSize}
-                </span>
-              )}
-              {a.matchedStrategy && (
-                <span className="ml-2 text-emerald-300">
-                  via {a.matchedStrategy}
-                </span>
-              )}
-            </div>
-            <div>
-              length=
-              <span
-                className={
-                  a.foundLength ? "text-emerald-300" : "text-rose-300"
-                }
-              >
-                {a.foundLength ? "OK" : "NONE"}
-              </span>
-              <span className="ml-2">
-                upload=
-                <span
-                  className={
-                    a.foundUpload ? "text-emerald-300" : "text-rose-300"
-                  }
-                >
-                  {a.foundUpload ? "OK" : "NONE"}
-                </span>
-              </span>
-            </div>
-            {a.pageMarkers && (
-              <div className="text-muted-foreground break-words">
-                player=
-                <span
-                  className={
-                    a.pageMarkers.hasPlayerResponse
-                      ? "text-emerald-300"
-                      : "text-rose-300"
-                  }
-                >
-                  {a.pageMarkers.hasPlayerResponse ? "Y" : "N"}
-                </span>{" "}
-                ldjson=
-                <span
-                  className={
-                    a.pageMarkers.hasLdJson
-                      ? "text-emerald-300"
-                      : "text-rose-300"
-                  }
-                >
-                  {a.pageMarkers.hasLdJson ? "Y" : "N"}
-                </span>{" "}
-                meta=
-                <span
-                  className={
-                    a.pageMarkers.hasItempropDuration
-                      ? "text-emerald-300"
-                      : "text-rose-300"
-                  }
-                >
-                  {a.pageMarkers.hasItempropDuration ? "Y" : "N"}
-                </span>
-                {a.pageMarkers.hasConsentText && (
-                  <span className="ml-2 text-amber-300">consent!</span>
-                )}
-                {a.pageMarkers.hasSignInWall && (
-                  <span className="ml-2 text-amber-300">signin!</span>
-                )}
-              </div>
-            )}
-            {a.note && (
-              <div className="text-amber-300 break-words">{a.note}</div>
-            )}
-          </li>
-        ))}
-      </ul>
-    </>
-  );
-}
-
 function formatLong(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
@@ -970,7 +772,13 @@ function AllPanel({
   postedAt: PostedAtBackfillResult;
   firstClear: BackfillResult;
 }) {
-  const youtubeNoFill =
+  // YouTube が一部しか取れていないケースの hint 用閾値。完全 0 件
+  // (Vercel 全弾き) と部分失敗 (限定公開動画混在) で表示分岐。
+  const youtubePartialFail =
+    durations.ok &&
+    durations.scanned > 0 &&
+    durations.filled < durations.scanned;
+  const youtubeAllFail =
     durations.ok && durations.scanned > 0 && durations.filled === 0;
   return (
     <div className="flex flex-col gap-4">
@@ -982,13 +790,21 @@ function AllPanel({
       </section>
       <section className="border-t border-border/30 pt-2">
         <VideoMetaPanel durations={durations} postedAt={postedAt} />
-        {youtubeNoFill && (
+        {youtubeAllFail ? (
           <p className="mt-2 rounded-sm border border-amber-400/40 bg-amber-400/10 p-2 text-[10px] leading-relaxed text-amber-200">
-            ⚠ YouTube から 0 件しか取得できませんでした。Vercel 側 IP の bot
-            検出 / consent ゲート / sign-in ウォールが疑われます。「YouTube
-            取得テスト」で 1 件診断するとページマーカー情報が取れます。
+            ⚠ YouTube から 0 件しか取得できませんでした。Vercel 側 IP の
+            bot 検出 / consent / sign-in ゲートが疑われます。Vercel の
+            環境変数に <code className="font-mono">YOUTUBE_API_KEY</code>
+            を設定するとデータ API 経由で安定取得できます。
           </p>
-        )}
+        ) : youtubePartialFail ? (
+          <p className="mt-2 rounded-sm border border-zinc-400/30 bg-zinc-400/5 p-2 text-[10px] leading-relaxed text-muted-foreground">
+            一部の動画 ({durations.scanned - durations.filled} 件) で取得
+            失敗。限定公開 (unlisted) 動画は{" "}
+            <code className="font-mono">YOUTUBE_API_KEY</code>{" "}
+            (Vercel 環境変数) を設定すると取得可能になります。
+          </p>
+        ) : null}
       </section>
       <section className="border-t border-border/30 pt-2">
         <FirstClearPanel data={firstClear} force={true} />

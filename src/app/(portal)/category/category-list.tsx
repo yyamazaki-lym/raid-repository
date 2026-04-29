@@ -11,7 +11,6 @@ import {
   Trash2,
   Pencil,
   Trophy,
-  Timer,
   Hourglass,
   ShieldHalf,
   Dice5,
@@ -314,15 +313,10 @@ function SortableCategoryCard({
     zIndex: isDragging ? 10 : "auto",
   };
 
-  // "Practice time" badge — only meaningful for categories that the
-  // group has actually engaged with. 未着手 has no practice time by
-  // definition; the other three statuses show the cumulative video
-  // total when there's data to show.
-  const showPracticeTime =
-    practiceSeconds > 0 &&
-    (category.status === "練習中" ||
-      category.status === "休止中" ||
-      category.status === "クリア済");
+  // 2.1 (2026-04-29): Timer (累計練習時間) はカード上に表示しない方針に
+  // 変更したため `showPracticeTime` フラグも廃止。`practiceSeconds` prop
+  // 自体は将来 tooltip 等で使えるよう一旦残置 (= データロードは継続)。
+  void practiceSeconds;
 
   // Background image (TODO #17): paint behind the card's glass surface so
   // text and chips remain readable. Validated via `isSafeUrl` to prevent
@@ -393,53 +387,43 @@ function SortableCategoryCard({
                 </span>
               )}
             </div>
-            <div className="mt-1 flex flex-wrap items-center justify-between gap-2 font-mono text-[11px] tracking-[0.18em] uppercase">
-              <p className="text-muted-foreground">/{category.slug}</p>
-              <div className="flex flex-wrap items-center gap-1">
-                {/* 2.1 (2026-04-29): Trophy / Hourglass はすべて Card
-                    右カラムへ移設し「Status と同列、上側に揃える」
-                    要望に対応。中段は累計練習時間 (Timer) のみ。 */}
-                {showPracticeTime && (
-                  <span
-                    className="inline-flex items-center gap-1 rounded-sm border border-violet-400/40 bg-violet-400/10 px-1.5 py-px text-[9px] text-violet-200"
-                    title={`累計練習時間: ${formatDurationLong(practiceSeconds)}`}
-                  >
-                    <Timer className="h-2.5 w-2.5" aria-hidden />
-                    {formatDurationShort(practiceSeconds)}
-                  </span>
-                )}
-              </div>
-            </div>
+            <p className="mt-1 font-mono text-[11px] tracking-[0.18em] text-muted-foreground uppercase">
+              /{category.slug}
+            </p>
+            {/* 2.1 (2026-04-29): Timer (累計練習時間) は card 上に出さない
+                方針 (ユーザー要望)。Trophy + Hourglass のみ右カラムで表示。 */}
           </Link>
 
-          <SubPageShortcuts slug={category.slug} />
+          <SubPageShortcuts
+            slug={category.slug}
+            statusSlot={
+              <span
+                onClick={(e) => e.stopPropagation()}
+                onKeyDown={(e) => e.stopPropagation()}
+              >
+                <StatusBadge
+                  status={category.status}
+                  onChange={canEdit ? onChangeStatus : undefined}
+                  readOnly={!canEdit}
+                  variant="compact"
+                />
+              </span>
+            }
+          />
         </div>
 
-        {/* 1.9.23 / 2.1 (2026-04-29) 右カラムレイアウト。
+        {/* 2.1 (2026-04-29) 右カラムレイアウト (Status は SubPageShortcuts
+            行に移設済み)。
                 ┌──────────────────────┐
-                │            [Status]  │  ← StatusBadge
                 │   [Trophy YYYY/MM/DD]│  ← クリア日 (ボタン)
                 │     [Hourglass time] │  ← クリアまでの累計時間
                 │       [+N/wk] [⋮]    │  ← +N/wk と ⋮ の横並び
                 └──────────────────────┘
-            「上側に揃える」要望に対応するため、内側 div は `items-end`
-            で右端揃え、Status / Trophy / Hourglass を上から順に縦積み。
-            Trophy/Hourglass/+N/wk が無いカードでも `invisible`
-            placeholder で同サイズの行を確保し、カード全体の高さ
-            (= ばらつき) を固定する (ユーザー要望、2026-04-29)。 */}
+            すべて `items-end` で右端揃え。Trophy/Hourglass/+N/wk が
+            無いカードでも `invisible` placeholder で行を確保しカード
+            高さを固定 (ユーザー要望、2026-04-29)。 */}
         <div className="relative z-10 flex flex-col items-end justify-between gap-1 p-2">
           <div className="flex flex-col items-end gap-1">
-            <span
-              onClick={(e) => e.stopPropagation()}
-              onKeyDown={(e) => e.stopPropagation()}
-            >
-              <StatusBadge
-                status={category.status}
-                onChange={canEdit ? onChangeStatus : undefined}
-                readOnly={!canEdit}
-                variant="compact"
-              />
-            </span>
             {category.firstClearAt ? (
               <button
                 type="button"
@@ -537,7 +521,14 @@ const SUB_PAGES: Array<{ segment: string; label: string; Icon: LucideIcon }> = [
   { segment: "macros", label: "マクロ", Icon: Terminal },
 ];
 
-function SubPageShortcuts({ slug }: { slug: string }) {
+function SubPageShortcuts({
+  slug,
+  statusSlot,
+}: {
+  slug: string;
+  /** 2.1 (2026-04-29): 行の右端に StatusBadge を配置するためのスロット。 */
+  statusSlot?: React.ReactNode;
+}) {
   return (
     <nav
       aria-label="サブページへのショートカット"
@@ -555,6 +546,7 @@ function SubPageShortcuts({ slug }: { slug: string }) {
           <p.Icon className="h-3.5 w-3.5" aria-hidden />
         </Link>
       ))}
+      {statusSlot && <span className="ml-auto">{statusSlot}</span>}
     </nav>
   );
 }
