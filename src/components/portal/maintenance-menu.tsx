@@ -66,6 +66,7 @@ type PostedAtBackfillResult = {
  * simpler), and the per-URL diagnose tester (rarely useful).
  */
 type ActionKind =
+  | "all"
   | "discord"
   | "videoMeta"
   | "videoMetaForceRefresh"
@@ -82,7 +83,16 @@ type Result =
       };
     }
   | { kind: "firstClear"; data: BackfillResult; force: boolean }
-  | { kind: "diagnose"; data: YouTubeDiagnosticResult };
+  | { kind: "diagnose"; data: YouTubeDiagnosticResult }
+  | {
+      kind: "all";
+      data: {
+        discord: { items: ImportNowItem[] };
+        durations: DurationBackfillResult;
+        postedAt: PostedAtBackfillResult;
+        firstClear: BackfillResult;
+      };
+    };
 
 /**
  * 1.9.21: live progress shown next to the dropdown trigger while
@@ -95,6 +105,12 @@ type VideoMetaProgress = {
   total: number;
 };
 
+/**
+ * 2.1 (2026-04-29): "全部実行" 用のフェーズインジケータ。各フェーズ名を
+ * トリガーラベルに反映 (「全部実行: ① Discord 取り込み中…」のように)。
+ */
+type AllProgressPhase = "discord" | "videoMeta" | "firstClear";
+
 export function MaintenanceMenu() {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -103,6 +119,8 @@ export function MaintenanceMenu() {
   // 1.9.21: live progress for videoMeta. null while idle.
   const [videoMetaProgress, setVideoMetaProgress] =
     useState<VideoMetaProgress | null>(null);
+  // 2.1 (2026-04-29): "全部実行" 進行フェーズ。null = 全部実行ではない / 待機中。
+  const [allPhase, setAllPhase] = useState<AllProgressPhase | null>(null);
   const popupRef = useRef<HTMLDivElement | null>(null);
 
   // Click-outside-to-dismiss for the result popup.
@@ -123,11 +141,143 @@ export function MaintenanceMenu() {
     };
   }, [result]);
 
+  // ---- Phase helpers (called by individual + "all" handlers) ----
+
+  /**
+   * Run the chunked YouTube backfill loop, updating
+   * `videoMetaProgress` as each chunk completes. Returns the
+   * accumulated `DurationBackfillResult`.
+   */
+  const runVideoMetaPhase = async (
+    force: boolean,
+  ): Promise<{
+    durations: DurationBackfillResult;
+    postedAt: PostedAtBackfillResult;
+  }> => {
+    let totalScanned = 0;
+    let totFilled = 0;
+    let totFailed = 0;
+    let totSkipped = 0;
+    let total = 0;
+    let lastId: string | null = null;
+    let durFatal: string | undefined;
+    for (let iter = 0; iter < 500; iter++) {
+      const r = await backfillVideoDurationsChunk({
+        afterId: lastId,
+        forceRefresh: force,
+      });
+      if (!r.ok) {
+        durFatal = r.reason ?? "unknown";
+        break;
+      }
+      if (iter === 0 && typeof r.totalPending === "number") {
+        total = r.totalPending;
+        setVideoMetaProgress({
+          phase: "duration",
+          processed: 0,
+          total,
+        });
+      }
+      const inc = r.filled + r.failed + r.skippedNonYoutube;
+      totalScanned += inc;
+      totFilled += r.filled;
+      totFailed += r.failed;
+      totSkipped += r.skippedNonYoutube;
+      setVideoMetaProgress({
+        phase: "duration",
+        processed: totalScanned,
+        total: Math.max(total, totalScanned),
+      });
+      if (r.done) break;
+      if (r.lastProcessedId === null) break;
+      lastId = r.lastProcessedId;
+    }
+    const dur: DurationBackfillResult = durFatal
+      ? {
+          ok: false,
+          reason: durFatal,
+          scanned: totalScanned,
+          filled: totFilled,
+          failed: totFailed,
+          skippedNonYoutube: totSkipped,
+        }
+      : {
+          ok: true,
+          scanned: totalScanned,
+          filled: totFilled,
+          failed: totFailed,
+          skippedNonYoutube: totSkipped,
+        };
+
+    let posted: PostedAtBackfillResult;
+    if (force || !dur.ok) {
+      // Force refresh: YouTube uploadDate を真とするので Discord
+      // 時刻フォールバックは呼ばない。dur 失敗時もスキップ。
+      posted = {
+        ok: true,
+        scannedMessages: 0,
+        scannedUrls: 0,
+        matched: 0,
+        updated: 0,
+        channels: [],
+      };
+    } else {
+      setVideoMetaProgress({ phase: "postedAt", processed: 0, total: 0 });
+      posted = await backfillPostedAtFromDiscordChannels();
+    }
+    setVideoMetaProgress(null);
+    return { durations: dur, postedAt: posted };
+  };
+
   const run = (kind: ActionKind) => {
     setResult(null);
     setPendingKind(kind);
     startTransition(async () => {
       try {
+        if (kind === "all") {
+          // 2.1 (2026-04-29): 「全部実行」フロー。Discord 取り込み →
+          // 動画メタデータ取得 → クリア日時/時間再計算 を順に実行し、
+          // それぞれの結果を 1 パネルにまとめて表示。各フェーズで失敗
+          // しても次に進む (= 部分成功でも有用な情報を出す)。
+          // Phase 1: Discord
+          setAllPhase("discord");
+          const dRes = await importDiscordNow();
+          // Phase 2: 動画メタデータ (force=false で日常運用相当)
+          setAllPhase("videoMeta");
+          const meta = await runVideoMetaPhase(false);
+          // Phase 3: クリア日時/時間再計算
+          setAllPhase("firstClear");
+          const fcRes = await backfillFirstClearFromExistingVideos({
+            overwrite: true,
+          });
+          setAllPhase(null);
+
+          const summaryParts: string[] = [];
+          if (dRes.ok && dRes.totalInserted > 0)
+            summaryParts.push(`Discord +${dRes.totalInserted}`);
+          if (meta.durations.ok && meta.durations.filled > 0)
+            summaryParts.push(`動画時間 ${meta.durations.filled}`);
+          if (meta.postedAt.ok && meta.postedAt.updated > 0)
+            summaryParts.push(`投稿日時 ${meta.postedAt.updated}`);
+          if (fcRes.ok && fcRes.filled > 0)
+            summaryParts.push(`クリア ${fcRes.filled}`);
+          if (summaryParts.length > 0) {
+            toast.success(summaryParts.join(" / "));
+          } else {
+            toast.success("全部実行 完了 (更新なし)");
+          }
+          setResult({
+            kind: "all",
+            data: {
+              discord: { items: dRes.ok ? dRes.items : [] },
+              durations: meta.durations,
+              postedAt: meta.postedAt,
+              firstClear: fcRes,
+            },
+          });
+          router.refresh();
+          return;
+        }
         if (kind === "discord") {
           const r = await importDiscordNow();
           if (!r.ok) {
@@ -159,98 +309,12 @@ export function MaintenanceMenu() {
             );
             if (!ok) return;
           }
-          // 1.9.21: chunked YouTube duration backfill with live progress
-          // updates. We loop over `backfillVideoDurationsChunk()` until
-          // it reports done=true; each iteration updates the progress
-          // counter so the dropdown shows "X / Y 件" instead of an
-          // indefinite spinner.
-          let totalScanned = 0;
-          let totFilled = 0;
-          let totFailed = 0;
-          let totSkipped = 0;
-          let total = 0;
-          let lastId: string | null = null;
-          let durFatal: string | undefined;
-          // Safety: bail out if we ever process 0 rows in a chunk
-          // (shouldn't happen with the cursor-by-id design, but
-          // guards against an infinite loop if the server flakes).
-          for (let iter = 0; iter < 500; iter++) {
-            const r = await backfillVideoDurationsChunk({
-              afterId: lastId,
-              forceRefresh: force,
-            });
-            if (!r.ok) {
-              durFatal = r.reason ?? "unknown";
-              break;
-            }
-            if (iter === 0 && typeof r.totalPending === "number") {
-              total = r.totalPending;
-              setVideoMetaProgress({
-                phase: "duration",
-                processed: 0,
-                total,
-              });
-            }
-            const inc = r.filled + r.failed + r.skippedNonYoutube;
-            totalScanned += inc;
-            totFilled += r.filled;
-            totFailed += r.failed;
-            totSkipped += r.skippedNonYoutube;
-            setVideoMetaProgress({
-              phase: "duration",
-              processed: totalScanned,
-              total: Math.max(total, totalScanned),
-            });
-            if (r.done) break;
-            if (r.lastProcessedId === null) break; // safety
-            lastId = r.lastProcessedId;
-          }
-          const dur: DurationBackfillResult = durFatal
-            ? {
-                ok: false,
-                reason: durFatal,
-                scanned: totalScanned,
-                filled: totFilled,
-                failed: totFailed,
-                skippedNonYoutube: totSkipped,
-              }
-            : {
-                ok: true,
-                scanned: totalScanned,
-                filled: totFilled,
-                failed: totFailed,
-                skippedNonYoutube: totSkipped,
-              };
+          const { durations: dur, postedAt: posted } =
+            await runVideoMetaPhase(force);
           if (!dur.ok) {
             toast.error("動画時間取得失敗: " + (dur.reason ?? "unknown"));
-            setVideoMetaProgress(null);
             return;
           }
-
-          // Discord posted_at — Force refresh モードでは Discord 時刻を
-          // 上書きしないようスキップ (YouTube uploadDate を真とするのが
-          // 主目的のため、Discord 時刻フォールバックは趣旨に反する)。
-          // 通常モードでは YouTube が取得失敗した行の posted_at を Discord
-          // メッセージ時刻で埋めるフォールバックとして引き続き呼ぶ。
-          let posted: PostedAtBackfillResult;
-          if (force) {
-            posted = {
-              ok: true,
-              scannedMessages: 0,
-              scannedUrls: 0,
-              matched: 0,
-              updated: 0,
-              channels: [],
-            };
-          } else {
-            setVideoMetaProgress({
-              phase: "postedAt",
-              processed: 0,
-              total: 0,
-            });
-            posted = await backfillPostedAtFromDiscordChannels();
-          }
-          setVideoMetaProgress(null);
           if (!posted.ok) {
             toast.error("投稿日時取得失敗: " + (posted.reason ?? "unknown"));
             setResult({
@@ -329,21 +393,46 @@ export function MaintenanceMenu() {
             <Settings2 className="h-3.5 w-3.5" aria-hidden />
           )}
           {pending
-            ? pendingKind === "discord"
-              ? "取り込み中…"
-              : pendingKind === "videoMeta" ||
-                  pendingKind === "videoMetaForceRefresh"
-                ? videoMetaProgress
-                  ? videoMetaProgress.phase === "duration"
-                    ? `${pendingKind === "videoMetaForceRefresh" ? "再取得" : "動画時間"} ${videoMetaProgress.processed}/${videoMetaProgress.total}`
-                    : "投稿日時取得中…"
-                  : "メタデータ取得中…"
-                : pendingKind === "diagnoseYoutube"
-                  ? "YouTube 診断中…"
-                  : "再スキャン中…"
+            ? pendingKind === "all"
+              ? allPhase === "discord"
+                ? "全部 ① 取り込み中…"
+                : allPhase === "videoMeta"
+                  ? videoMetaProgress
+                    ? videoMetaProgress.phase === "duration"
+                      ? `全部 ② 動画時間 ${videoMetaProgress.processed}/${videoMetaProgress.total}`
+                      : "全部 ② 投稿日時取得中…"
+                    : "全部 ② メタデータ取得中…"
+                  : allPhase === "firstClear"
+                    ? "全部 ③ クリア再計算…"
+                    : "全部実行中…"
+              : pendingKind === "discord"
+                ? "取り込み中…"
+                : pendingKind === "videoMeta" ||
+                    pendingKind === "videoMetaForceRefresh"
+                  ? videoMetaProgress
+                    ? videoMetaProgress.phase === "duration"
+                      ? `${pendingKind === "videoMetaForceRefresh" ? "再取得" : "動画時間"} ${videoMetaProgress.processed}/${videoMetaProgress.total}`
+                      : "投稿日時取得中…"
+                    : "メタデータ取得中…"
+                  : pendingKind === "diagnoseYoutube"
+                    ? "YouTube 診断中…"
+                    : "再スキャン中…"
             : "メンテナンス"}
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" sideOffset={4} className="glass-popup min-w-60">
+          <DropdownMenuItem
+            onClick={() => run("all")}
+            className="flex cursor-pointer items-start gap-2"
+          >
+            <Settings2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-300" aria-hidden />
+            <div className="flex flex-col gap-0.5">
+              <span className="text-sm font-semibold">全部実行</span>
+              <span className="text-[10px] text-muted-foreground leading-snug">
+                Discord 取り込み → 動画メタデータ → クリア日時/時間 を順次実行
+              </span>
+            </div>
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
           <DropdownMenuItem
             onClick={() => run("discord")}
             className="flex cursor-pointer items-start gap-2"
@@ -446,6 +535,14 @@ export function MaintenanceMenu() {
           )}
           {result.kind === "diagnose" && (
             <DiagnosePanel data={result.data} />
+          )}
+          {result.kind === "all" && (
+            <AllPanel
+              discord={result.data.discord.items}
+              durations={result.data.durations}
+              postedAt={result.data.postedAt}
+              firstClear={result.data.firstClear}
+            />
           )}
         </div>
       )}
@@ -920,4 +1017,47 @@ function formatLong(iso: string): string {
   const day = String(d.getDate()).padStart(2, "0");
   const wd = ["日", "月", "火", "水", "木", "金", "土"][d.getDay()];
   return `${y}-${m}-${day} (${wd})`;
+}
+
+/**
+ * 2.1 (2026-04-29): 「全部実行」結果パネル。Discord 取り込み / 動画
+ * メタデータ / クリア再計算の 3 サブパネルを縦に積んで表示する。
+ * YouTube 取得が 0 件のときは原因診断のヒントも表示。
+ */
+function AllPanel({
+  discord,
+  durations,
+  postedAt,
+  firstClear,
+}: {
+  discord: ImportNowItem[];
+  durations: DurationBackfillResult;
+  postedAt: PostedAtBackfillResult;
+  firstClear: BackfillResult;
+}) {
+  const youtubeNoFill =
+    durations.ok && durations.scanned > 0 && durations.filled === 0;
+  return (
+    <div className="flex flex-col gap-4">
+      <p className="pr-6 font-mono text-[10px] tracking-[0.2em] text-emerald-200/85 uppercase">
+        全部実行 — 結果サマリ
+      </p>
+      <section className="border-t border-border/30 pt-2">
+        <DiscordPanel items={discord} />
+      </section>
+      <section className="border-t border-border/30 pt-2">
+        <VideoMetaPanel durations={durations} postedAt={postedAt} />
+        {youtubeNoFill && (
+          <p className="mt-2 rounded-sm border border-amber-400/40 bg-amber-400/10 p-2 text-[10px] leading-relaxed text-amber-200">
+            ⚠ YouTube から 0 件しか取得できませんでした。Vercel 側 IP の bot
+            検出 / consent ゲート / sign-in ウォールが疑われます。「YouTube
+            取得テスト」で 1 件診断するとページマーカー情報が取れます。
+          </p>
+        )}
+      </section>
+      <section className="border-t border-border/30 pt-2">
+        <FirstClearPanel data={firstClear} force={true} />
+      </section>
+    </div>
+  );
 }

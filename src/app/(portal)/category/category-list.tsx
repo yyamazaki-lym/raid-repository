@@ -405,30 +405,10 @@ function SortableCategoryCard({
                     {formatDurationShort(practiceSeconds)}
                   </span>
                 )}
-                {category.firstClearAt && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      // 1.9.18: クリア日バッジをクリックすると、その
-                      // 日付の動画ページに遷移して該当行をハイライト。
-                      // 親 <Link> (mitigation) に伝播しないよう stop。
-                      e.stopPropagation();
-                      e.preventDefault();
-                      const iso = category.firstClearAt!.slice(0, 10);
-                      router.push(
-                        `/category/${category.slug}/videos?focusDate=${iso}`,
-                      );
-                    }}
-                    className="inline-flex items-center gap-1 rounded-sm border border-amber-400/45 bg-amber-400/10 px-1.5 py-px text-[9px] text-amber-200 transition-colors hover:border-amber-400/80 hover:bg-amber-400/20"
-                    title={`初クリア: ${formatFirstClear(category.firstClearAt, "long")} (クリックでクリア日の動画へジャンプ)`}
-                  >
-                    <Trophy className="h-2.5 w-2.5" aria-hidden />
-                    {formatFirstClear(category.firstClearAt, "short")}
-                  </button>
-                )}
-                {/* 1.9.18: クリア日 (Trophy) の右隣にクリアまでの累計
-                    時間 (Hourglass) を移動。論理順は「いつクリアした
-                    → かかった時間」が自然なため。 */}
+                {/* 2.1 (2026-04-29): Trophy バッジは Card 右カラム
+                    (Status と同列、右端揃え) に移動した。`<Link>` 内
+                    ネストが Next.js 16 ルータと干渉してナビゲーション
+                    が壊れていた regression の解消も兼ねる。 */}
                 {timeToClearSeconds > 0 && category.firstClearAt && (
                   <span
                     className="inline-flex items-center gap-1 rounded-sm border border-emerald-400/45 bg-emerald-400/10 px-1.5 py-px text-[9px] text-emerald-200"
@@ -445,15 +425,18 @@ function SortableCategoryCard({
           <SubPageShortcuts slug={category.slug} />
         </div>
 
-        {/* 1.9.23: 右カラムレイアウト。
+        {/* 1.9.23 / 2.1 (2026-04-29) 右カラムレイアウト。
                 ┌──────────────────────┐
-                │            [Status]  │  ← StatusBadge (内側左寄せ)
+                │            [Status]  │  ← StatusBadge
+                │   [Trophy YYYY/MM/DD]│  ← クリア日 (右端揃え、ボタン)
                 │       [+N/wk] [⋮]    │  ← +N/wk と ⋮ の横並び
                 └──────────────────────┘
-            +N/wk が無いカードでも `invisible` placeholder で同サイズの
-            幅を確保し、⋮ が card 右端から動かないようにする。 */}
+            内側 div は `items-end` で右端揃え、Trophy / Status の
+            ボタン右端を視覚的に揃える。+N/wk が無いカードでも
+            `invisible` placeholder で同サイズの幅を確保し、⋮ が
+            card 右端から動かないようにする。 */}
         <div className="relative z-10 flex flex-col items-end justify-between gap-1 p-2">
-          <div className="flex flex-col items-start gap-1">
+          <div className="flex flex-col items-end gap-1">
             <span
               onClick={(e) => e.stopPropagation()}
               onKeyDown={(e) => e.stopPropagation()}
@@ -465,6 +448,26 @@ function SortableCategoryCard({
                 variant="compact"
               />
             </span>
+            {category.firstClearAt && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  // 2.1 (2026-04-29): Trophy を <Link> 外に移したので
+                  // preventDefault は不要。Card 自身に handler は無いが
+                  // 念のため stopPropagation で伝播を抑止。
+                  e.stopPropagation();
+                  const iso = category.firstClearAt!.slice(0, 10);
+                  router.push(
+                    `/category/${category.slug}/videos?focusDate=${iso}`,
+                  );
+                }}
+                className="inline-flex items-center gap-1 rounded-sm border border-amber-400/45 bg-amber-400/10 px-1.5 py-px font-mono text-[9px] tracking-[0.18em] text-amber-200 uppercase transition-colors hover:border-amber-400/80 hover:bg-amber-400/20"
+                title={`初クリア: ${formatFirstClear(category.firstClearAt, "long")} (クリックでクリア日の動画へジャンプ)`}
+              >
+                <Trophy className="h-2.5 w-2.5" aria-hidden />
+                {formatFirstClear(category.firstClearAt, "short")}
+              </button>
+            )}
             <div className="flex items-center gap-1">
               {recentImports > 0 ? (
                 <span
