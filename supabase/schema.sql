@@ -77,7 +77,16 @@ ALTER TABLE public.categories
   -- 動画 duration_seconds が NULL のままで自動計算が成立しない場合の
   -- 上書き値。`Hourglass` 表示は `manual_time_to_clear_seconds ?? 自動計算`
   -- の優先度で参照する。
-  ADD COLUMN IF NOT EXISTS manual_time_to_clear_seconds  integer;
+  ADD COLUMN IF NOT EXISTS manual_time_to_clear_seconds  integer,
+  -- Phase 12 (TODO #45, 2.1 (2026-04-29)): FFLogs auto-link 用カスタム
+  -- マッチワード。CONTENT_GROUPS の標準キーワード (例: 「ライトヘビー級」
+  -- 「M3S」「LH 級」) でも分類できないユーザー独自の report タイトル
+  -- (例: 「4 層しょーか」「LH しょか」「練習会」) を強制マッチさせる
+  -- ためのエスケープ弁。配列内のいずれかの文字列が report の
+  -- title / zoneName に含まれていれば、cross-group reject を override
+  -- して score=0 (確信マッチ) として扱う。部分一致 + 大文字小文字無視。
+  -- 空配列 / NULL = 従来挙動。
+  ADD COLUMN IF NOT EXISTS fflogs_match_keywords         text[];
 
 -- Phase 8.1 (1.9.10): track whether category_links.logs_url was set by
 -- automated FFLogs sync ('auto') or by manual user edit ('manual'). This

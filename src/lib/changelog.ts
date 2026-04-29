@@ -52,6 +52,10 @@ export const RELEASES: ReleaseEntry[] = [
     date: "2026-04-29",
     parts: [
       {
+        title: "🔑 カテゴリ編集に「FFLogs マッチワード」追加 (TODO #45)",
+        body: "標準コンテンツ分類 (CONTENT_GROUPS) で拾えないユーザー独自の FFLogs report 命名を救済する escape hatch を追加。\n\n**背景**: ユーザー指摘 — LH 級カテゴリで 24 本中 4 本しか紐づかない (うち 1 本は手動らしい = auto match 実質 3 本)。原因は report タイトルが「4 層しょーか」「LH しょか」のような独自命名で、CONTENT_GROUPS の標準キーワード (「ライトヘビー級」「M3S」「LH 級」) に当たらないため `rGroups = empty` になり、緩和ルールでも score=0.5 (曖昧) 止まり。さらに report タイトルがたまたま「ヘビー級」(ライト無し) を含むと group 12 (Heavyweight) に分類されて cross-group reject の餌食に。\n\n**仕様**: カテゴリ編集ダイアログ (admin 限定) に新フィールド「FFLogs マッチワード」を追加。カンマ区切りで複数キーワードを登録 (例: `4層しょーか, LH しょか, M4S`)。FFLogs auto-link で同日候補を評価する際、このカテゴリの動画 × 該当 report の組について report の `zoneName + title` 結合文字列に **いずれかのキーワードが部分一致** (大小文字無視) すれば、cross-group reject を override して **score=0 (確信マッチ)** として扱う。\n\n**実装**:\n- DB: `categories.fflogs_match_keywords text[]` 列追加 (`schema.sql` 再実行が必要)\n- 型: `Category.fflogsMatchKeywords: string[]` / Row 側 `fflogs_match_keywords: string[] | null`\n- Server Action: `updateCategoryAction` の `CategoryUpdatePatch` ホワイトリスト拡張\n- UI: `category-form-dialog` に textarea 追加 (累計時間入力欄の下、カンマ / 読点 / 改行で分割保存、空配列 / null = 従来挙動)\n- Matcher: `linkReportsToVideos` の `scoreCandidate` で `contentMismatchPenalty` 評価前に override チェック\n\n**注**: スキーマ変更を含むので Supabase の SQL Editor で `supabase/schema.sql` 再実行が必要。実行後、admin ロール所持者がカテゴリ編集ダイアログで該当キーワードを登録 → 「FFLogs と動画を連動」を再実行すれば紐づきが増える。",
+      },
+      {
         title: "🔗 FFLogs auto-link: 1 レポート → 同日複数動画 OK に緩和",
         body: "ユーザー運用観察: 1 raid セッションを ACT で 1 ログにまとめて記録 → 動画は「4層クリア」「4層ふくしゅう」「1〜3 層消化」と複数本に分けてアップ、というパターンが多い。旧 matcher は `usedReports` set で 1 レポート = 1 動画 に縛っていたため、同日 N 本のうち先頭 1 本にしか Logs ボタンが付かない仕様だった。\n\n**修正**: `linkReportsToVideos` から `usedReports` 制約を撤去 (`fflogs.ts:1395, 1456, 1467`)。各動画は依然 1 レポートにしか紐づかない (`usedVideos` は維持)、ただし 1 レポートが複数の同日動画に貼られることを許容する。\n\n**影響**: 同日に分類不能 report が 1 本あって LH と DSR の動画が混在しているケースで、その report が両方の動画に紐づく可能性 — ユーザー指示「同日複数動画の Logs 紐づきは許容、Logs 仕様上同一ログに複数コンテンツがあることも多い」を踏まえての受容。\n\n**`linkReportsToSessions` (過去予定 ↔ レポート) は据え置き**: 1 calendar day = 1 session 行 + 通常 1 report が普通なので 1:1 制約のまま。",
       },

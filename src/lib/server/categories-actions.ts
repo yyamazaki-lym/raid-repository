@@ -125,6 +125,13 @@ export type CategoryUpdatePatch = Partial<{
   description: string | null;
   /** TODO #25 (2.1): 手動入力のクリアまでの累計時間 (秒)。NULL = 自動計算優先。 */
   manual_time_to_clear_seconds: number | null;
+  /**
+   * TODO #45 (2.1): FFLogs auto-link カスタムマッチワード。配列内の
+   * いずれかが report.title / zoneName に部分一致 (大小文字無視) すれば
+   * cross-group reject を override して確信マッチ扱い。空配列 / NULL =
+   * 従来挙動。重複・空白文字列は呼び出し側で除去想定。
+   */
+  fflogs_match_keywords: string[] | null;
 }>;
 
 /**

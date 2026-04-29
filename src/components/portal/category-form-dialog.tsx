@@ -153,6 +153,15 @@ export function CategoryFormDialog({
     initialManualMinutes > 0 ? String(initialManualMinutes) : "",
   );
 
+  // TODO #45 (2.1, 2026-04-29): FFLogs auto-link 用カスタムマッチワード。
+  // カンマ区切りで textarea に表示、保存時に分割 + trim + 重複除去。
+  // 空文字なら null として保存し従来挙動に戻す。
+  const matchKeywordsToString = (kws: string[] | null | undefined) =>
+    (kws ?? []).join(", ");
+  const [matchKeywordsInput, setMatchKeywordsInput] = useState<string>(
+    matchKeywordsToString(category?.fflogsMatchKeywords),
+  );
+
 
   // TODO #19: role gating. `selectedRoleIds` is the working set; on save
   // it's persisted as `required_role_ids`. Empty array = open to all
@@ -240,6 +249,9 @@ export function CategoryFormDialog({
         : 0;
       setManualHours(ih > 0 ? String(ih) : "");
       setManualMinutes(im > 0 ? String(im) : "");
+      setMatchKeywordsInput(
+        matchKeywordsToString(category?.fflogsMatchKeywords),
+      );
       setError(null);
     }
   }, [open, category]);
@@ -329,6 +341,15 @@ export function CategoryFormDialog({
       Number.isFinite(minuteNum) && minuteNum >= 0 ? minuteNum : 0;
     const manualSeconds = safeHour * 3600 + safeMinute * 60;
     const trimmedDescription = description.trim();
+    // TODO #45 (2.1): カンマ区切り文字列 → string[] 変換。trim、空除去、重複除去。
+    const parsedKeywords = Array.from(
+      new Set(
+        matchKeywordsInput
+          .split(/[,、，\n]/)
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0),
+      ),
+    );
     const patch = {
       name: trimmedName,
       slug: trimmedSlug,
@@ -343,6 +364,7 @@ export function CategoryFormDialog({
       required_role_ids: selectedRoleIds.length > 0 ? selectedRoleIds : null,
       description: trimmedDescription || null,
       manual_time_to_clear_seconds: manualSeconds > 0 ? manualSeconds : null,
+      fflogs_match_keywords: parsedKeywords.length > 0 ? parsedKeywords : null,
     };
 
     const result = isEdit
@@ -367,6 +389,8 @@ export function CategoryFormDialog({
           if (trimmedDescription) followUp.description = trimmedDescription;
           if (manualSeconds > 0)
             followUp.manual_time_to_clear_seconds = manualSeconds;
+          if (parsedKeywords.length > 0)
+            followUp.fflogs_match_keywords = parsedKeywords;
           if (Object.keys(followUp).length > 0) {
             await updateCategory(r.category.id, followUp);
           }
@@ -847,6 +871,35 @@ export function CategoryFormDialog({
               YouTube から duration が取得できない動画 (限定公開等) があると
               自動計算が欠落するため、手動値を入れるとそちらが優先表示されます。
               空欄なら自動集計を使用。
+            </p>
+          </div>
+
+          {/* TODO #45 (2.1, 2026-04-29): FFLogs auto-link カスタムマッチ
+              ワード。標準キーワード (CONTENT_GROUPS) で分類できないユーザー
+              独自の report 命名 (例: 「4 層しょーか」「LH しょか」) を
+              紐づくよう救済する escape hatch。空欄なら従来挙動。 */}
+          <div className="flex flex-col gap-1.5 border-t border-border/30 pt-4">
+            <Label
+              htmlFor="fflogs-match-keywords"
+              className="text-xs text-foreground/80"
+            >
+              FFLogs マッチワード（任意）
+            </Label>
+            <textarea
+              id="fflogs-match-keywords"
+              value={matchKeywordsInput}
+              onChange={(e) => setMatchKeywordsInput(e.target.value)}
+              placeholder="例: 4層しょーか, LH しょか, M4S"
+              className="min-h-[2.4rem] w-full resize-y rounded-md border border-border/60 bg-background/40 px-2.5 py-1.5 font-mono text-[12px] leading-relaxed outline-none transition-colors placeholder:text-muted-foreground focus:border-[var(--neon-cyan)]/60"
+              autoComplete="off"
+              rows={2}
+            />
+            <p className="text-muted-foreground text-[11px] leading-relaxed">
+              カンマ区切りで複数指定可。レポートの zone / タイトルに
+              いずれかが部分一致 (大小文字無視) すれば、自動紐づけ時の
+              コンテンツ判定でこのカテゴリのものとして採用されます。
+              標準キーワード (例: 「ライトヘビー級」「M3S」) でマッチ
+              しないユーザー独自命名のレポートを救済する用途。
             </p>
           </div>
 

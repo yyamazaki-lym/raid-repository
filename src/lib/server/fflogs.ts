@@ -1320,7 +1320,7 @@ async function linkReportsToVideos(
   const { data: videos } = await supabase
     .from("category_links")
     .select(
-      "id, title, posted_at, created_at, logs_url, category:categories(id, name)",
+      "id, title, posted_at, created_at, logs_url, category:categories(id, name, fflogs_match_keywords)",
     )
     .eq("kind", "video")
     .is("logs_url", null);
@@ -1374,19 +1374,22 @@ async function linkReportsToVideos(
         titleDate.d,
       );
       const cat = (v as { category?: unknown }).category as
-        | { name?: string | null }
-        | { name?: string | null }[]
+        | { name?: string | null; fflogs_match_keywords?: string[] | null }
+        | { name?: string | null; fflogs_match_keywords?: string[] | null }[]
         | null
         | undefined;
-      const categoryName = Array.isArray(cat)
-        ? (cat[0]?.name ?? null)
-        : (cat?.name ?? null);
+      const catObj = Array.isArray(cat) ? (cat[0] ?? null) : (cat ?? null);
+      const categoryName = catObj?.name ?? null;
+      const matchKeywords = (catObj?.fflogs_match_keywords ?? [])
+        .map((s) => (s ?? "").trim().toLowerCase())
+        .filter((s) => s.length > 0);
       return {
         ...v,
         tMs: postedTMs, // kept for diag display only — not used in scoring
         titleDate,
         sortKey,
         categoryName,
+        matchKeywords,
       };
     })
     .filter((v): v is NonNullable<typeof v> => v !== null)
@@ -1417,11 +1420,26 @@ async function linkReportsToVideos(
       titleDate: { y: number; m: number; d: number };
       categoryName: string | null;
       title: string | null;
+      matchKeywords: string[];
     },
     report: FflogsReport,
   ): { score: number } => {
     const reportDate = jstCalendarDate(report.startMs);
     if (!sameJstDay(video.titleDate, reportDate)) return { score: Infinity };
+    // 2.1 (2026-04-29) TODO #45: カスタムマッチワード override。
+    // カテゴリ編集で設定したキーワードが report の zoneName / title に
+    // 部分一致 (大小文字無視) すれば cross-group reject を override
+    // して確信マッチ扱い。CONTENT_GROUPS 標準キーワードに当たらない
+    // ユーザー独自のレポート命名 (例: 「4 層しょーか」) を救済する。
+    if (video.matchKeywords.length > 0) {
+      const reportText = [report.zoneName, report.title]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      if (video.matchKeywords.some((kw) => reportText.includes(kw))) {
+        return { score: 0 };
+      }
+    }
     const mismatch = contentMismatchPenalty(
       video.categoryName,
       video.title,

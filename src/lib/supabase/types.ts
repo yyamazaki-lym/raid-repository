@@ -56,6 +56,13 @@ export type CategoryRow = {
    * NULL のときは動画 duration の自動集計値が使われる。
    */
   manual_time_to_clear_seconds: number | null;
+  /**
+   * TODO #45 (2.1, 2026-04-29): FFLogs auto-link 用カスタムマッチワード。
+   * 配列内のいずれかが report.title / zoneName に部分一致すれば、
+   * cross-group reject を override して確信マッチ扱いする。NULL/空 で
+   * 従来挙動。
+   */
+  fflogs_match_keywords: string[] | null;
   created_at: string;
   updated_at: string;
 };
@@ -90,6 +97,12 @@ export type Category = {
    * 自動集計値が使われる (TODO #25)。
    */
   manualTimeToClearSeconds: number | null;
+  /**
+   * FFLogs auto-link 用カスタムマッチワード (TODO #45)。空配列なら従来挙動。
+   * 設定すると、配列内のいずれかが report タイトル / zoneName に部分一致した
+   * とき (大小文字無視) cross-group reject を override してマッチ扱い。
+   */
+  fflogsMatchKeywords: string[];
 };
 
 export function rowToCategory(row: CategoryRow): Category {
@@ -110,6 +123,7 @@ export function rowToCategory(row: CategoryRow): Category {
     requiredRoleIds: row.required_role_ids ?? [],
     description: row.description ?? null,
     manualTimeToClearSeconds: row.manual_time_to_clear_seconds ?? null,
+    fflogsMatchKeywords: row.fflogs_match_keywords ?? [],
   };
 }
 

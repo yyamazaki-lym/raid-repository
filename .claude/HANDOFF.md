@@ -10,6 +10,7 @@
 - **Deploy**: Vercel auto-deploy from `main`
 - **Current version**: `2.1 (2026-04-29)` — Discord OAuth ゲート + admin ロール gating + 動画 ↔ スケジュール紐付け再設計 + カード layout 整理 を含む大型 release。`package.json#version` は `1.9.38` を残置 (履歴マーカー)、UI は `RELEASES[0].version` + `.date` を表示
 - **重要**: `D:\workd\portal\AGENTS.md` で「Next.js 16 は破壊的変更含む。`node_modules/next/dist/docs/` を参照すべし」
+- **🔄 schema 再実行が必要** (TODO #45 完了対応): `supabase/schema.sql` に `categories.fflogs_match_keywords text[]` 列を追加済。Supabase の SQL Editor で同ファイルを再実行してください。再実行は IF NOT EXISTS ガードで冪等。実行後、カテゴリ編集ダイアログ (admin) に「FFLogs マッチワード」入力欄が機能する
 
 ## 🚨 新規会話開始時のルーチン
 
