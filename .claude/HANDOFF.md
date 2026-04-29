@@ -152,10 +152,10 @@ dev server は `.claude/launch.json` で `portal-dev` 設定済み (port 3000)�
 
 ## コミット運用
 
-- Claude が `git commit` を作成 → ユーザーが手動で `git push origin main` を実行
+- Claude が `git commit` を作成 → 続けて `git push origin main` を自動実行 → push 結果 (commit range) をユーザーに報告して事後確認
+- push がタイミング依存で classifier にブロックされた場合のみ、ユーザー手動 push を依頼
 - Claude Desktop 環境では `.claude/settings.json` の hooks は実行されない (Desktop の仕様、CLI 版なら動く)
-- Claude のツール経由で `git push origin main` を試みると classifier に時々ブロックされる (タイミング依存)
-- 改行は `git commit -F .git/COMMIT_EDITMSG_TEMP` 方式 (Windows + bash の heredoc 不安定回避、commit 後 temp 削除)
+- 改行は `git commit -F .git/COMMIT_EDITMSG_TEMP` 方式 (Windows + bash の heredoc 不安定回避、commit 後 temp 削除)。PowerShell の `Out-File -Encoding utf8` は BOM 付きなので `[System.IO.File]::WriteAllText(..., (New-Object System.Text.UTF8Encoding $false))` 推奨
 - `.claude/settings.json` に Stop hook 残置 (実害無し、CLI 切替時に有効化)
 
 ## 新規会話の開始テンプレ
