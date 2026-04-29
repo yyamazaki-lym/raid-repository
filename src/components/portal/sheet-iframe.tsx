@@ -1,6 +1,7 @@
 import { ExternalLink, Settings, AlertTriangle } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { safeHref } from "@/lib/url-safe";
+import { SheetUrlUnlinkButton } from "./sheet-url-unlink-button";
 
 /**
  * Shared iframe view for the mitigation / loot sub-tabs.
@@ -8,16 +9,27 @@ import { safeHref } from "@/lib/url-safe";
  * The wrapper scales the iframe to 80% (matches the schedule page pattern)
  * so spreadsheets render with more rows visible. Users can always tap
  * "元サイトを開く" to view at native size.
+ *
+ * `categoryId` + `kind` + `canEdit` を受け取ると admin に「紐付け解除」
+ * ボタンを表示する (TODO #31)。これらが渡されない場合は従来どおり
+ * 解除 UI 無しで描画する (= 後方互換)。
  */
 export function SheetIframe({
   url,
   title,
   emptyHint,
+  categoryId,
+  kind,
+  canEdit,
 }: {
   url: string | null;
   title: string;
   /** Markdown-ish hint shown when no URL is configured. */
   emptyHint: string;
+  /** When set together with `kind` and `canEdit=true`, show an unlink button. */
+  categoryId?: string;
+  kind?: "mitigation" | "loot";
+  canEdit?: boolean;
 }) {
   if (!url) {
     return (
@@ -65,7 +77,10 @@ export function SheetIframe({
         marginRight: "calc(50% - 50vw + 1rem)",
       }}
     >
-      <div className="flex items-center justify-end px-4 sm:px-6">
+      <div className="flex items-center justify-end gap-2 px-4 sm:px-6">
+        {canEdit && categoryId && kind && (
+          <SheetUrlUnlinkButton categoryId={categoryId} kind={kind} />
+        )}
         <a
           href={safeUrl}
           target="_blank"

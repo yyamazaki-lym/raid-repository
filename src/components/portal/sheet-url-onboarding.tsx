@@ -7,6 +7,8 @@ import {
   ShieldHalf,
   Save,
   AlertTriangle,
+  ExternalLink,
+  Copy,
   type LucideIcon,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -33,6 +35,22 @@ const KIND_COLUMN: Record<Kind, "mitigation_sheet_url" | "loot_sheet_url"> = {
   loot: "loot_sheet_url",
 };
 
+// 軽減表のテンプレート (lastagous 氏作成) — 自分の Google Drive に
+// コピーして使う前提のシートと、使い方の解説 note 記事。
+// loot 用は今のところ無い (none = guidance なし)。
+const KIND_TEMPLATE: Record<
+  Kind,
+  { sourceUrl: string; guideUrl: string; authorLabel: string } | null
+> = {
+  mitigation: {
+    sourceUrl:
+      "https://docs.google.com/spreadsheets/d/1XyqgesLFTW8cPerwZWUgfdqQlhD9Pogyr2XG7Hs5IYU/edit",
+    guideUrl: "https://note.com/lastagous/n/nbf3054a2be78",
+    authorLabel: "lastagous 氏",
+  },
+  loot: null,
+};
+
 /**
  * Inline URL register form shown on the mitigation / loot sub-tab when no
  * sheet URL is set on the parent category. Avoids forcing users to detour
@@ -54,6 +72,7 @@ export function SheetUrlOnboarding({
 
   const Icon = KIND_ICON[kind];
   const label = KIND_LABEL[kind];
+  const template = KIND_TEMPLATE[kind];
 
   const onSave = async () => {
     setError(null);
@@ -121,6 +140,39 @@ export function SheetUrlOnboarding({
             Google Sheets の「ウェブに公開」/「埋め込み」URLか、共有URLを指定してください。
           </p>
         </div>
+
+        {template && (
+          <div className="flex flex-col gap-2 rounded-md border border-[var(--neon-cyan)]/30 bg-[var(--neon-cyan)]/5 px-3 py-2.5">
+            <p className="font-mono text-[10px] tracking-[0.18em] text-[var(--neon-cyan)]/85 uppercase">
+              テンプレート ({template.authorLabel} 提供)
+            </p>
+            <p className="text-foreground/85 text-[11px] leading-relaxed">
+              下記のスプレッドシートを自分の Google Drive にコピーして
+              編集 → 共有 URL をここに貼り付けてください。テンプレ作成
+              者の使い方解説も併せて参考に。
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              <a
+                href={template.sourceUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 rounded-md border border-[var(--neon-cyan)]/40 bg-background/40 px-2.5 py-1 font-mono text-[10px] tracking-[0.18em] text-[var(--neon-cyan)] uppercase transition-colors hover:border-[var(--neon-cyan)]/80 hover:bg-[var(--neon-cyan)]/10"
+              >
+                <Copy className="h-3 w-3" aria-hidden />
+                コピー元シート
+              </a>
+              <a
+                href={template.guideUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 rounded-md border border-amber-400/40 bg-background/40 px-2.5 py-1 font-mono text-[10px] tracking-[0.18em] text-amber-300 uppercase transition-colors hover:border-amber-300/80 hover:bg-amber-400/10"
+              >
+                <ExternalLink className="h-3 w-3" aria-hidden />
+                使い方 (note)
+              </a>
+            </div>
+          </div>
+        )}
 
         {error && (
           <div className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive-foreground/90">

@@ -1,6 +1,7 @@
 import { SheetIframe } from "@/components/portal/sheet-iframe";
 import { SheetUrlOnboarding } from "@/components/portal/sheet-url-onboarding";
 import { findCategoryBySlug } from "@/lib/supabase/categories";
+import { getCurrentUserCanEdit } from "@/lib/server/auth";
 
 export const metadata = {
   title: "ロット管理",
@@ -12,7 +13,10 @@ export default async function LootPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const category = await findCategoryBySlug(slug);
+  const [category, canEdit] = await Promise.all([
+    findCategoryBySlug(slug),
+    getCurrentUserCanEdit(),
+  ]);
 
   if (!category) {
     return (
@@ -37,6 +41,9 @@ export default async function LootPage({
       url={category.lootSheetUrl}
       title="ロット管理"
       emptyHint=""
+      categoryId={category.id}
+      kind="loot"
+      canEdit={canEdit}
     />
   );
 }
