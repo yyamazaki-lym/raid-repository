@@ -11,7 +11,6 @@ import {
   Loader2,
   Shield,
   Hourglass,
-  Film,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -37,7 +36,6 @@ import {
   createCategory,
   updateCategory,
 } from "@/lib/categories-client";
-import { createCategoryLink } from "@/lib/category-links-client";
 import { fetchAvailableGuildRoles } from "@/lib/server/categories-actions";
 import type { DiscordGuildRole } from "@/lib/server/discord-roles";
 import { cn } from "@/lib/utils";
@@ -155,12 +153,6 @@ export function CategoryFormDialog({
     initialManualMinutes > 0 ? String(initialManualMinutes) : "",
   );
 
-  // TODO #27 (2.1, 2026-04-29): カード編集ダイアログから動画を直接追加。
-  // 編集モード (= category id がある) のときのみ表示。createCategoryLink
-  // を即時呼び出し、成功で各 input をクリア + toast。複数追加可。
-  const [newVideoUrl, setNewVideoUrl] = useState("");
-  const [newVideoTitle, setNewVideoTitle] = useState("");
-  const [addingVideo, setAddingVideo] = useState(false);
 
   // TODO #19: role gating. `selectedRoleIds` is the working set; on save
   // it's persisted as `required_role_ids`. Empty array = open to all
@@ -248,9 +240,6 @@ export function CategoryFormDialog({
         : 0;
       setManualHours(ih > 0 ? String(ih) : "");
       setManualMinutes(im > 0 ? String(im) : "");
-      setNewVideoUrl("");
-      setNewVideoTitle("");
-      setAddingVideo(false);
       setError(null);
     }
   }, [open, category]);
@@ -294,50 +283,6 @@ export function CategoryFormDialog({
       return null;
     } catch {
       return "URLの形式が正しくありません";
-    }
-  };
-
-  // TODO #27 (2.1, 2026-04-29): 編集中カードに直接動画を追加。
-  // createCategoryLink は内部で is-clear 判定 + YouTube enrich を実行する
-  // ので、ここでは URL + Title を渡すだけで良い。Server Action 経由の
-  // YouTube 取得が走るので、タイトルが空なら最低限 URL ベースの placeholder
-  // を入れて DB 制約 (NOT NULL) をクリア。
-  const onAddVideo = async () => {
-    if (!isEdit || !category) return;
-    setError(null);
-    const url = newVideoUrl.trim();
-    if (!url) {
-      setError("動画 URL を入力してください");
-      return;
-    }
-    if (!/^https?:\/\//i.test(url)) {
-      setError("動画 URL は http:// または https:// で始めてください");
-      return;
-    }
-    let title = newVideoTitle.trim();
-    if (!title) {
-      // タイトル未入力なら URL から雑に生成 (後で動画ページで編集可能)。
-      title = url.replace(/^https?:\/\//i, "").slice(0, 60);
-    }
-    setAddingVideo(true);
-    try {
-      const result = await createCategoryLink({
-        categoryId: category.id,
-        kind: "video",
-        title,
-        url,
-      });
-      if (!result.ok) {
-        setError(`動画追加失敗: ${result.reason}`);
-        return;
-      }
-      toast.success("動画を追加しました");
-      setNewVideoUrl("");
-      setNewVideoTitle("");
-      // 一覧側 RSC も再取得 (累計時間バッジ等への即時反映)
-      router.refresh();
-    } finally {
-      setAddingVideo(false);
     }
   };
 
@@ -480,7 +425,7 @@ export function CategoryFormDialog({
             </DialogTitle>
             <DialogDescription className="text-xs">
               {isEdit
-                ? "コンテンツ情報・スプレッドシートURLを編集"
+                ? "コンテンツの情報・URL・ロール制限・クリア記録などを編集"
                 : "新しいレイドコンテンツを追加します"}
             </DialogDescription>
           </div>
@@ -733,77 +678,91 @@ export function CategoryFormDialog({
               )}
           </div>
 
-          <div className="flex flex-col gap-1.5 border-t border-border/30 pt-4">
-            <Label className="flex items-center gap-1.5 text-xs text-foreground/80">
+          {/* 2.1 (2026-04-29): 閲覧可能ロールは大きい UI なので初期状態で
+              折りたたむ。`<details>` (open 属性なし) で素直な native 折り
+              たたみ。選択済みロールがある場合は要素数バッジを summary に
+              出して「設定中ですよ」のヒントを残す。 */}
+          <details className="flex flex-col gap-1.5 border-t border-border/30 pt-4">
+            <summary className="flex cursor-pointer items-center gap-1.5 text-xs text-foreground/80 list-none [&::-webkit-details-marker]:hidden">
               <Shield className="h-3 w-3" aria-hidden />
               閲覧可能ロール（任意）
-            </Label>
-            <p className="text-muted-foreground text-[11px] leading-relaxed">
-              選択したロールのいずれか 1 つを持つ Discord メンバーのみが、このコンテンツのページを開けます。
-              何も選択しなければ全メンバーが閲覧可能です。
-            </p>
-            {rolesLoading ? (
-              <div className="flex items-center gap-2 px-3 py-2 text-[11px] text-muted-foreground">
-                <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
-                ロール一覧を読み込み中…
-              </div>
-            ) : availableRoles.length === 0 ? (
-              <div className="rounded-md border border-border/30 bg-secondary/20 px-3 py-2 text-[11px] text-muted-foreground">
-                ロール一覧を取得できませんでした
-                <span className="opacity-60">
-                  （DISCORD_BOT_TOKEN / DISCORD_GUILD_ID 未設定 or bot 権限不足）
+              {selectedRoleIds.length > 0 && (
+                <span className="inline-flex items-center rounded-sm border border-[var(--neon-cyan)]/40 bg-[var(--neon-cyan)]/10 px-1.5 py-px font-mono text-[9px] tracking-[0.18em] text-[var(--neon-cyan)] uppercase">
+                  {selectedRoleIds.length} 選択中
                 </span>
-              </div>
-            ) : (
-              <div className="flex max-h-44 flex-col gap-0.5 overflow-y-auto rounded-md border border-border/30 bg-secondary/10 p-1">
-                {availableRoles.map((role) => {
-                  const checked = selectedRoleIds.includes(role.id);
-                  return (
-                    <label
-                      key={role.id}
-                      className={cn(
-                        "flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-xs transition-colors hover:bg-secondary/30",
-                        checked && "bg-[var(--neon-cyan)]/10",
-                      )}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() => toggleRole(role.id)}
-                        className="h-3.5 w-3.5 cursor-pointer accent-[var(--neon-cyan)]"
-                      />
-                      {role.color > 0 && (
-                        <span
-                          aria-hidden
-                          className="h-2.5 w-2.5 shrink-0 rounded-full border border-border/40"
-                          style={{
-                            backgroundColor: `#${role.color
-                              .toString(16)
-                              .padStart(6, "0")}`,
-                          }}
+              )}
+              <span className="ml-auto font-mono text-[10px] tracking-[0.18em] text-muted-foreground uppercase">
+                クリックで展開
+              </span>
+            </summary>
+            <div className="mt-2 flex flex-col gap-1.5">
+              <p className="text-muted-foreground text-[11px] leading-relaxed">
+                選択したロールのいずれか 1 つを持つ Discord メンバーのみが、このコンテンツのページを開けます。
+                何も選択しなければ全メンバーが閲覧可能です。
+              </p>
+              {rolesLoading ? (
+                <div className="flex items-center gap-2 px-3 py-2 text-[11px] text-muted-foreground">
+                  <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
+                  ロール一覧を読み込み中…
+                </div>
+              ) : availableRoles.length === 0 ? (
+                <div className="rounded-md border border-border/30 bg-secondary/20 px-3 py-2 text-[11px] text-muted-foreground">
+                  ロール一覧を取得できませんでした
+                  <span className="opacity-60">
+                    （DISCORD_BOT_TOKEN / DISCORD_GUILD_ID 未設定 or bot 権限不足）
+                  </span>
+                </div>
+              ) : (
+                <div className="flex max-h-44 flex-col gap-0.5 overflow-y-auto rounded-md border border-border/30 bg-secondary/10 p-1">
+                  {availableRoles.map((role) => {
+                    const checked = selectedRoleIds.includes(role.id);
+                    return (
+                      <label
+                        key={role.id}
+                        className={cn(
+                          "flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-xs transition-colors hover:bg-secondary/30",
+                          checked && "bg-[var(--neon-cyan)]/10",
+                        )}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleRole(role.id)}
+                          className="h-3.5 w-3.5 cursor-pointer accent-[var(--neon-cyan)]"
                         />
-                      )}
-                      <span className="min-w-0 flex-1 truncate">{role.name}</span>
-                      {role.managed && (
-                        <span className="shrink-0 rounded border border-border/40 px-1 text-[9px] tracking-[0.16em] text-muted-foreground uppercase">
-                          managed
-                        </span>
-                      )}
-                    </label>
-                  );
-                })}
-              </div>
-            )}
-            {selectedRoleIds.length > 0 && (
-              <button
-                type="button"
-                onClick={() => setSelectedRoleIds([])}
-                className="self-start font-mono text-[10px] tracking-[0.18em] text-muted-foreground uppercase hover:text-foreground"
-              >
-                選択をクリア
-              </button>
-            )}
-          </div>
+                        {role.color > 0 && (
+                          <span
+                            aria-hidden
+                            className="h-2.5 w-2.5 shrink-0 rounded-full border border-border/40"
+                            style={{
+                              backgroundColor: `#${role.color
+                                .toString(16)
+                                .padStart(6, "0")}`,
+                            }}
+                          />
+                        )}
+                        <span className="min-w-0 flex-1 truncate">{role.name}</span>
+                        {role.managed && (
+                          <span className="shrink-0 rounded border border-border/40 px-1 text-[9px] tracking-[0.16em] text-muted-foreground uppercase">
+                            managed
+                          </span>
+                        )}
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+              {selectedRoleIds.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedRoleIds([])}
+                  className="self-start font-mono text-[10px] tracking-[0.18em] text-muted-foreground uppercase hover:text-foreground"
+                >
+                  選択をクリア
+                </button>
+              )}
+            </div>
+          </details>
 
           <div className="flex flex-col gap-1.5 border-t border-border/30 pt-4">
             <Label htmlFor="first-clear" className="text-xs text-foreground/80">
@@ -890,55 +849,6 @@ export function CategoryFormDialog({
               空欄なら自動集計を使用。
             </p>
           </div>
-
-          {/* TODO #27 (2.1, 2026-04-29): カード編集中に動画を直接追加。
-              編集モードのみ表示 (新規作成中は category id がまだ無い)。 */}
-          {isEdit && category && (
-            <div className="flex flex-col gap-1.5 border-t border-border/30 pt-4">
-              <Label className="flex items-center gap-1.5 text-xs text-foreground/80">
-                <Film className="h-3 w-3" aria-hidden />
-                動画を追加（任意・複数追加可）
-              </Label>
-              <Input
-                value={newVideoUrl}
-                onChange={(e) => setNewVideoUrl(e.target.value)}
-                placeholder="https://www.youtube.com/watch?v=..."
-                className="font-mono text-[12px]"
-                autoComplete="off"
-                spellCheck={false}
-                disabled={addingVideo}
-              />
-              <Input
-                value={newVideoTitle}
-                onChange={(e) => setNewVideoTitle(e.target.value)}
-                placeholder="タイトル (空欄なら URL から自動生成)"
-                className="text-[12px]"
-                autoComplete="off"
-                spellCheck={false}
-                disabled={addingVideo}
-              />
-              <div className="flex items-center gap-2">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={onAddVideo}
-                  disabled={addingVideo || !newVideoUrl.trim()}
-                  className="gap-1.5 font-mono text-[10px] tracking-[0.18em] uppercase"
-                >
-                  {addingVideo ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
-                  ) : (
-                    <Plus className="h-3.5 w-3.5" aria-hidden />
-                  )}
-                  動画追加
-                </Button>
-                <p className="text-muted-foreground text-[11px] leading-relaxed">
-                  追加後は動画ページで詳細編集できます。YouTube は duration / 投稿日時を自動取得します。
-                </p>
-              </div>
-            </div>
-          )}
 
           {error && (
             <div className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive-foreground/90">

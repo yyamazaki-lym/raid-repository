@@ -52,6 +52,10 @@ export const RELEASES: ReleaseEntry[] = [
     date: "2026-04-29",
     parts: [
       {
+        title: "📝 /category 説明文更新 + ダイアログヘッダー更新 + ロールセクション折りたたみ + 動画追加 UI 撤去",
+        body: "ユーザー要望をまとめて反映:\n\n1. ``/category`` 上部の Contents 見出し下の説明文を「軽減・ロット・攻略情報・動画などを切り替えます。」に更新 (動画タブの追加に合わせ)。\n2. CategoryFormDialog の編集モード時の DialogDescription を「コンテンツの情報・URL・ロール制限・クリア記録などを編集」に更新 (フィールド増加に合わせ)。\n3. 「閲覧可能ロール」セクションを ``<details>`` で折りたたみ化、初期状態は閉じる。選択中ロールがあれば summary に「N 選択中」バッジ表示で『設定中』のヒントを残す。\n4. 直前の commit で実装した「カード編集ダイアログから動画追加」UI (URL + タイトル + 「+動画追加」ボタン) はユーザー本来の意図と異なっていたため撤去。state / handler / `Film` icon import / `createCategoryLink` import すべて削除。",
+      },
+      {
         title: "🧩 TODO #25-27 実装 (説明文 / 手動クリア時間 / 動画追加) + #28 padding で右端揃え + 累計時間 lowercase",
         body: "ユーザー要望に基づきカード編集ダイアログ拡張 + 微調整:\n\n**TODO #25 — 手動クリア時間入力**: `categories.manual_time_to_clear_seconds` 列追加。CategoryFormDialog に「時間/分」の 2 入力欄を追加。card 表示は `manualTimeToClearSeconds ?? computedValue` の優先度。手動値が設定されているとき tooltip に「(手動入力)」表示。YouTube duration が NULL のままで自動計算が低めに出る場合の補完用途。\n\n**TODO #26 — コンテンツ説明文**: `categories.description` 列追加。CategoryFormDialog に textarea (2 行) 追加。`/category/[slug]/layout.tsx` のヘッダー直下に `whitespace-pre-line` で表示 (空欄なら非表示)。\n\n**TODO #27 — カード編集から動画追加**: 編集ダイアログ末尾に「動画追加」セクションを追加。URL + タイトル (空欄時は URL から自動生成) を入力 → 「+動画追加」ボタンで `createCategoryLink` を即時呼び出し。複数追加可、追加後は input がクリアされる。YouTube は内部で duration / uploadDate を自動取得。\n\n**TODO #28 — Status 右端揃え**: 大きなレイアウト変更を避けて、`SubPageShortcuts` の右パディングを `px-3` → `pl-3 pr-2` (= 右カラム `p-2` と同値) に変更。これで Status (icon 行右端) と Trophy/Hourglass (右カラム右端) が同じ右オフセット (= card 右端から 0.5rem) で揃う。\n\n**累計時間バッジの圧縮見え修正**: Hourglass バッジの `uppercase` を撤去。`21h5m` → `21H5M` の uppercase で H/M アルファベットが圧縮されて見える問題を解消、lowercase 維持で読みやすく。\n\n**注**: schema 変更を含むため Supabase の SQL Editor で `supabase/schema.sql` を再実行してください。`categories` に `description text` と `manual_time_to_clear_seconds integer` 列が追加されます。",
       },

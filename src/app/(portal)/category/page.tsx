@@ -49,7 +49,7 @@ export default async function CategoryIndexPage() {
             Contents
           </h1>
           <p className="text-muted-foreground mt-1 text-sm">
-            レイドコンテンツ単位で、軽減・ロット・攻略情報を切り替えます。
+            レイドコンテンツ単位で、軽減・ロット・攻略情報・動画などを切り替えます。
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">

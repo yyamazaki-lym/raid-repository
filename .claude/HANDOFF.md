@@ -59,7 +59,7 @@
 | 24 | 過去日程の表示を「開催確定日 (DECISION)」のみに絞る — 現在は候補日 (CANDIDATE) も過去ログに含まれてしまい、結果ノイズが多い。`schedule-list.tsx` / `schedule-past-simple.tsx` の過去側 filter を `status === "DECISION"` 限定に。出欠記号と日時はそのまま、候補だけ過去から除外 | 小 |
 | ~~25~~ | ~~カード編集ダイアログにクリア時間の手動入力欄追加~~ — 完了 (2.1 (2026-04-29)、`categories.manual_time_to_clear_seconds` 列追加 + ダイアログに時間/分 2 入力 + card 表示は `manualTimeToClearSeconds ?? computed` 優先) | ~~中~~ |
 | ~~26~~ | ~~カード編集ダイアログにコンテンツ説明文 (description) フィールド追加~~ — 完了 (2.1 (2026-04-29)、`categories.description` 列追加 + textarea 入力 + `/category/[slug]/layout.tsx` ヘッダー直下に表示) | ~~小〜中~~ |
-| ~~27~~ | ~~カード編集ダイアログから動画も追加できる導線~~ — 完了 (2.1 (2026-04-29)、ダイアログ末尾に URL + タイトル + 「+動画追加」ボタン。`createCategoryLink` 即時呼び出し、内部で is-clear 判定 / YouTube enrich を実行) | ~~小〜中~~ |
+| ~~27~~ | ~~/category ページ上部の説明文に「動画など」追加~~ — 完了 (2.1 (2026-04-29)、当初は『カード編集から動画追加』と誤解釈して実装したが、本来の意図は `category/page.tsx` の説明文訂正だったため動画追加 UI は撤去し説明文のみ更新) | ~~極小~~ |
 | ~~28~~ | ~~Status の右端を Trophy と揃える~~ — 完了 (2.1 (2026-04-29)、`SubPageShortcuts` の `px-3` → `pl-3 pr-2` で右カラム `p-2` と一致。layout 変更なし) | ~~小~~ |
 
 ### 除外済み (再対応不要)
