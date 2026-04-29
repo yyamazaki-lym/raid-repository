@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { updateSession } from "@/lib/supabase/middleware";
+import { checkRateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
 
 /**
  * サイト全体を Discord メンバー限定にする proxy。
@@ -44,6 +45,57 @@ function isPublicPath(pathname: string): boolean {
   return PUBLIC_PREFIXES.some((prefix) => pathname.startsWith(prefix));
 }
 
+/**
+ * TODO #40 (2.1): per-IP rate limit を適用する route と上限。
+ *
+ * - /auth/callback: Discord OAuth callback。連続呼び出しされると
+ *   Discord API quota (120/min) が枯渇し、正規ユーザーの OAuth が
+ *   止まる。10 req / 30 sec で十分 (正常 flow は 1 〜 2 回)。
+ * - /api/cron/*: CRON_SECRET で認証されているが、誤った Bearer で
+ *   叩かれた場合でも認証チェック前段に rate limit を入れて課金 /
+ *   ログ汚染を抑える。Vercel cron は 1 路線につき秒単位連打しない
+ *   ので 10 req / 30 sec で実害無し。
+ *
+ * windowMs は短めにして「一時的な burst から守る」だけに使う。
+ * 長期的な abuse は Vercel WAF / Upstash Redis に任せる方針。
+ */
+type RateLimitRule = {
+  scope: string;
+  match: (pathname: string) => boolean;
+  limit: number;
+  windowMs: number;
+};
+
+const RATE_LIMIT_RULES: RateLimitRule[] = [
+  {
+    scope: "auth-callback",
+    match: (p) => p === "/auth/callback",
+    limit: 10,
+    windowMs: 30_000,
+  },
+  {
+    scope: "api-cron",
+    match: (p) => p.startsWith("/api/cron/"),
+    limit: 10,
+    windowMs: 30_000,
+  },
+];
+
+function applyRateLimit(request: NextRequest): NextResponse | null {
+  const rule = RATE_LIMIT_RULES.find((r) => r.match(request.nextUrl.pathname));
+  if (!rule) return null;
+  const ip = clientIpFromHeaders(request.headers);
+  const result = checkRateLimit(rule.scope, ip, rule.limit, rule.windowMs);
+  if (result.allowed) return null;
+  return new NextResponse("Too Many Requests", {
+    status: 429,
+    headers: {
+      "Retry-After": String(result.retryAfterSeconds),
+      "Cache-Control": "no-store",
+    },
+  });
+}
+
 // Dev-only bypass: `DEV_AUTH_BYPASS=true` + `NODE_ENV !== "production"` で
 // Discord guild membership / login チェックを丸ごと skip する。本番ビルド
 // では `NODE_ENV === "production"` で必ず無効化される (二重ガード) ため、
@@ -56,6 +108,12 @@ function isDevAuthBypassEnabled(): boolean {
 }
 
 export async function proxy(request: NextRequest) {
+  // TODO #40: rate limit は session refresh より前段で評価して、
+  // 攻撃時に Supabase への往復も抑える。dev bypass は意図的に rate
+  // limit より後に置いて、ローカル開発で 429 を踏まないようにする。
+  const limited = applyRateLimit(request);
+  if (limited) return limited;
+
   const { user, response } = await updateSession(request);
   const { pathname, search } = request.nextUrl;
 
