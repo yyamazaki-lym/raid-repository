@@ -155,30 +155,65 @@ export function RecruitmentTemplatesButton({ initial, categories }: Props) {
     }),
   );
 
-  // SortableContext のアイテムキー = カテゴリグループキー (categoryId
-  // か "__none__")。block 単位で `useSortable` するため、DnD 中は
-  // section 全体 (子募集文も含む) が transform で追従する。intra-
-  // category の並び替えは popover 内では行わず (per-category macros
-  // ページに譲る) 、popover はカテゴリ全体のグローバル順序の調整に
-  // 専念させる設計。
+  // 上位 SortableContext のキー = カテゴリグループキー (categoryId
+  // か "__none__")。block 単位の useSortable で section ごと並び替え。
+  // 2.1 (2026-04-29) v2: 旧仕様では intra-category 並び替えを macros
+  // ページに譲っていたが、ユーザー要望で popover 内でも row 単位 DnD を
+  // 可能にした。各カテゴリブロック内に個別 SortableContext を nest し、
+  // 行 grip は当該行のみを動かす (cross-category drag も flat list で
+  // 反映 → groupBy 再描画で結果的に同 category に戻る)。
   const groupKeys = useMemo(
     () => grouped.map((g) => g.categoryId ?? "__none__"),
     [grouped],
   );
+  const groupKeySet = useMemo(() => new Set(groupKeys), [groupKeys]);
 
   const onDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
-    const oldIndex = groupKeys.indexOf(String(active.id));
-    const newIndex = groupKeys.indexOf(String(over.id));
+    const aId = String(active.id);
+    const oId = String(over.id);
+
+    // active が groupKey (= category) → カテゴリブロック並び替え
+    if (groupKeySet.has(aId)) {
+      // category を row の上にドロップした場合は no-op
+      if (!groupKeySet.has(oId)) return;
+      const oldIndex = groupKeys.indexOf(aId);
+      const newIndex = groupKeys.indexOf(oId);
+      if (oldIndex < 0 || newIndex < 0) return;
+
+      const reorderedGroups = arrayMove(grouped, oldIndex, newIndex);
+      const next = reorderedGroups.flatMap((g) =>
+        g.items.map((t) => t.id),
+      );
+      setOptimisticOrder(next);
+
+      const srcName = grouped[oldIndex]?.categoryName ?? "未分類";
+      const dstName = grouped[newIndex]?.categoryName ?? "未分類";
+
+      const result = await setRecruitmentTemplateOrder(next);
+      if (!result.ok) {
+        toast.error("並び替え保存失敗: " + result.reason);
+        setOptimisticOrder(null);
+        return;
+      }
+      toast.success(
+        `「${srcName}」を「${dstName}」の位置に移動しました`,
+      );
+      setTimeout(() => setOptimisticOrder(null), 1500);
+      return;
+    }
+
+    // active が template id → 行単位 (intra-category) 並び替え。
+    // row を category ヘッダーにドロップした場合は no-op。
+    if (groupKeySet.has(oId)) return;
+
+    const flat = ordered.map((t) => t.id);
+    const oldIndex = flat.indexOf(aId);
+    const newIndex = flat.indexOf(oId);
     if (oldIndex < 0 || newIndex < 0) return;
-
-    const reorderedGroups = arrayMove(grouped, oldIndex, newIndex);
-    const next = reorderedGroups.flatMap((g) => g.items.map((t) => t.id));
+    const next = arrayMove(flat, oldIndex, newIndex);
     setOptimisticOrder(next);
-
-    const srcName = grouped[oldIndex]?.categoryName ?? "未分類";
-    const dstName = grouped[newIndex]?.categoryName ?? "未分類";
 
     const result = await setRecruitmentTemplateOrder(next);
     if (!result.ok) {
@@ -186,9 +221,7 @@ export function RecruitmentTemplatesButton({ initial, categories }: Props) {
       setOptimisticOrder(null);
       return;
     }
-    toast.success(
-      `「${srcName}」を「${dstName}」の位置に移動しました`,
-    );
+    toast.success("並び順を保存しました");
     setTimeout(() => setOptimisticOrder(null), 1500);
   };
 
@@ -275,19 +308,18 @@ export function RecruitmentTemplatesButton({ initial, categories }: Props) {
 }
 
 /**
- * 1 つのカテゴリブロックを丸ごと sortable 単位として扱う section
- * (TODO #16)。section ヘッダーの grip ハンドルと、各子募集文の左端
- * の grip ハンドルが、いずれもこの section の `useSortable` listeners
- * に接続されている。これにより:
- *   - section ヘッダーの grip を掴む → section 全体がドラッグ
- *   - 子募集文の grip を掴む → やはり親 section 全体がドラッグ
- *     (= 子だけが孤立して移動することは無い)
- * DnD 中の transform は section 全体に適用されるので、子募集文 N 件
- * すべてが視覚的に追従する。
+ * 1 つのカテゴリブロックを sortable 単位として扱う section (TODO #16)。
  *
- * 子の copy ボタン (本文クリック) は drag listener と分離してあるので
- * 通常クリックで普通にコピーできる (MouseSensor の distance:6 ガードで
- * 短いクリックは drag にならない)。
+ * 2.1 (2026-04-29) v2:
+ *   - section ヘッダー grip = カテゴリ全体の並び替え (従来通り)
+ *   - section 内に nested SortableContext を持ち、各行は個別の row
+ *     drag handle を持つ → カテゴリ内の row 単位並び替えが popover 内
+ *     から可能 (ユーザー要望)
+ *   - transform を `CSS.Translate.toString` に変更。`CSS.Transform`
+ *     は scaleX / scaleY を含んでおり、ドラッグ中のセクションが他
+ *     セクションのサイズに合わせてスケールしてしまい「文字が拡大縮小
+ *     する」見た目バグが出ていた (ユーザー報告)。translate のみ反映
+ *     することでこれを解消。
  */
 function SortableCategorySection({
   groupKey,
@@ -315,13 +347,17 @@ function SortableCategorySection({
     isDragging,
   } = useSortable({ id: groupKey });
   const style: React.CSSProperties = {
-    transform: CSS.Transform.toString(transform),
+    transform: CSS.Translate.toString(transform),
     transition,
     opacity: isDragging ? 0.6 : 1,
     zIndex: isDragging ? 10 : "auto",
   };
   const containsTop = group.items.some((t) => t.id === topId);
   const categoryName = group.categoryName;
+  const rowIds = useMemo(
+    () => group.items.map((t) => t.id),
+    [group.items],
+  );
   return (
     <div
       ref={setNodeRef}
@@ -389,55 +425,74 @@ function SortableCategorySection({
         )}
       </div>
       {isOpen && (
-        <ul className="flex flex-col gap-0.5 border-t border-border/30 p-1">
-          {group.items.map((t) => (
-            <TemplateRow
-              key={t.id}
-              template={t}
-              isTop={t.id === topId}
-              onCopy={() => onCopy(t)}
-              dragListeners={listeners}
-              categoryName={categoryName}
-            />
-          ))}
-        </ul>
+        <SortableContext
+          items={rowIds}
+          strategy={verticalListSortingStrategy}
+        >
+          <ul className="flex flex-col gap-0.5 border-t border-border/30 p-1">
+            {group.items.map((t) => (
+              <SortableTemplateRow
+                key={t.id}
+                template={t}
+                isTop={t.id === topId}
+                onCopy={() => onCopy(t)}
+              />
+            ))}
+          </ul>
+        </SortableContext>
       )}
     </div>
   );
 }
 
 /**
- * 1 行分の募集文。grip は親 section の drag listener に接続されている
- * ので、ここを掴んで動かしても section ごと動く (TODO #16)。
+ * 1 行分の募集文 (2.1 v2 で sortable 化)。row 自身が useSortable を
+ * 持ち、grip ハンドルで行単位の並び替えが可能。親 section の DnD と
+ * 同居するため、上位 onDragEnd で active.id が groupKey か template
+ * id かを判別して挙動を分岐させている。
  */
-function TemplateRow({
+function SortableTemplateRow({
   template,
   isTop,
   onCopy,
-  dragListeners,
-  categoryName,
 }: {
   template: RecruitmentTemplate;
   isTop: boolean;
   onCopy: () => void;
-  dragListeners: ReturnType<typeof useSortable>["listeners"];
-  categoryName: string | null;
 }) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: template.id });
+  const style: React.CSSProperties = {
+    transform: CSS.Translate.toString(transform),
+    transition,
+    opacity: isDragging ? 0.6 : 1,
+    zIndex: isDragging ? 10 : "auto",
+  };
   return (
     <li
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
       className={cn(
         "flex items-start gap-1 rounded-sm",
         isTop &&
           "bg-[var(--neon-cyan)]/8 ring-1 ring-inset ring-[var(--neon-cyan)]/30",
+        isDragging && "shadow-[0_4px_12px_-4px_rgba(0,0,0,0.5)]",
       )}
     >
       <button
         type="button"
-        {...dragListeners}
-        aria-label={`${
-          categoryName ?? "（コンテンツ未設定）"
-        } カテゴリのドラッグハンドル (子要素から掴んでも親カテゴリごと移動)`}
-        title="ドラッグでこのカテゴリ全体 (中の募集文も全部) を並び替え"
+        {...listeners}
+        aria-label={`「${
+          template.label || "通常募集"
+        }」を行単位でドラッグ並び替え`}
+        title="ドラッグでこの行を並び替え"
         className="inline-flex h-7 w-5 shrink-0 cursor-grab items-center justify-center rounded text-muted-foreground hover:text-foreground active:cursor-grabbing"
       >
         <GripVertical className="h-3 w-3" aria-hidden />
