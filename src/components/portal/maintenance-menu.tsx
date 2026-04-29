@@ -11,8 +11,15 @@ import {
   AlertTriangle,
   XCircle,
   Info,
+  ChevronDown,
 } from "lucide-react";
 import { toast } from "sonner";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   backfillFirstClearFromExistingVideos,
   backfillPostedAtFromDiscordChannels,
@@ -53,8 +60,11 @@ type PostedAtBackfillResult = {
  * mistake), the NULL-only firstClear action (always overwrite now —
  * simpler), and the per-URL diagnose tester (rarely useful).
  */
+// 2.1 (2026-04-29) v6: Vercel Hobby plan の Edge function 上限 (25s) に
+// 対応するため「全部実行」を撤廃し、3 個別ボタンに分割。各 phase が単独で
+// 走るので 1 ボタンあたりの実行時間は十分短い (Discord 取り込みは並列化
+// 後数秒、メタデータは chunked、firstClear は数秒)。
 type ActionKind =
-  | "all"
   | "discord"
   | "videoMeta"
   | "videoMetaForceRefresh"
@@ -69,16 +79,7 @@ type Result =
         postedAt: PostedAtBackfillResult;
       };
     }
-  | { kind: "firstClear"; data: BackfillResult; force: boolean }
-  | {
-      kind: "all";
-      data: {
-        discord: { items: ImportNowItem[] };
-        durations: DurationBackfillResult;
-        postedAt: PostedAtBackfillResult;
-        firstClear: BackfillResult;
-      };
-    };
+  | { kind: "firstClear"; data: BackfillResult; force: boolean };
 
 /**
  * 1.9.21: live progress shown next to the dropdown trigger while
@@ -91,12 +92,6 @@ type VideoMetaProgress = {
   total: number;
 };
 
-/**
- * 2.1 (2026-04-29): "全部実行" 用のフェーズインジケータ。各フェーズ名を
- * トリガーラベルに反映 (「全部実行: ① Discord 取り込み中…」のように)。
- */
-type AllProgressPhase = "discord" | "videoMeta" | "firstClear";
-
 export function MaintenanceMenu() {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -105,8 +100,6 @@ export function MaintenanceMenu() {
   // 1.9.21: live progress for videoMeta. null while idle.
   const [videoMetaProgress, setVideoMetaProgress] =
     useState<VideoMetaProgress | null>(null);
-  // 2.1 (2026-04-29): "全部実行" 進行フェーズ。null = 全部実行ではない / 待機中。
-  const [allPhase, setAllPhase] = useState<AllProgressPhase | null>(null);
   const popupRef = useRef<HTMLDivElement | null>(null);
 
   // Click-outside-to-dismiss for the result popup.
@@ -220,50 +213,6 @@ export function MaintenanceMenu() {
     setPendingKind(kind);
     startTransition(async () => {
       try {
-        if (kind === "all") {
-          // 2.1 (2026-04-29): 「全部実行」フロー。Discord 取り込み →
-          // 動画メタデータ取得 → クリア日時/時間再計算 を順に実行し、
-          // それぞれの結果を 1 パネルにまとめて表示。各フェーズで失敗
-          // しても次に進む (= 部分成功でも有用な情報を出す)。
-          // Phase 1: Discord
-          setAllPhase("discord");
-          const dRes = await importDiscordNow();
-          // Phase 2: 動画メタデータ (force=false で日常運用相当)
-          setAllPhase("videoMeta");
-          const meta = await runVideoMetaPhase(false);
-          // Phase 3: クリア日時/時間再計算
-          setAllPhase("firstClear");
-          const fcRes = await backfillFirstClearFromExistingVideos({
-            overwrite: true,
-          });
-          setAllPhase(null);
-
-          const summaryParts: string[] = [];
-          if (dRes.ok && dRes.totalInserted > 0)
-            summaryParts.push(`Discord +${dRes.totalInserted}`);
-          if (meta.durations.ok && meta.durations.filled > 0)
-            summaryParts.push(`動画時間 ${meta.durations.filled}`);
-          if (meta.postedAt.ok && meta.postedAt.updated > 0)
-            summaryParts.push(`投稿日時 ${meta.postedAt.updated}`);
-          if (fcRes.ok && fcRes.filled > 0)
-            summaryParts.push(`クリア ${fcRes.filled}`);
-          if (summaryParts.length > 0) {
-            toast.success(summaryParts.join(" / "));
-          } else {
-            toast.success("全部実行 完了 (更新なし)");
-          }
-          setResult({
-            kind: "all",
-            data: {
-              discord: { items: dRes.ok ? dRes.items : [] },
-              durations: meta.durations,
-              postedAt: meta.postedAt,
-              firstClear: fcRes,
-            },
-          });
-          router.refresh();
-          return;
-        }
         if (kind === "discord") {
           const r = await importDiscordNow();
           if (!r.ok) {
@@ -348,42 +297,123 @@ export function MaintenanceMenu() {
     });
   };
 
+  // 各ボタンのラベル・aria 文言をまとめて生成。pending 中は当該 kind に
+  // ローダーを出し、それ以外はラベル維持 (ボタン disabled で同時実行防止)。
+  const isThisPending = (k: ActionKind) => pending && pendingKind === k;
+  const videoMetaProgressLabel = (() => {
+    if (!videoMetaProgress) return "② メタ取込中…";
+    if (videoMetaProgress.phase === "duration") {
+      if (videoMetaProgress.total > 0) {
+        const pct = Math.floor(
+          (videoMetaProgress.processed / videoMetaProgress.total) * 100,
+        );
+        return `② 動画情報 ${videoMetaProgress.processed}/${videoMetaProgress.total} (${pct}%)`;
+      }
+      return `② 動画情報 ${videoMetaProgress.processed} 件`;
+    }
+    return "② 投稿日時取得中…";
+  })();
+
+  // pending 中はトリガーボタン側に該当ラベルを出す。実行中の phase が
+  // 何かは見える方がユーザーの安心になるため、ラベル切替で表現。
+  const triggerLabel = (() => {
+    if (!pending) return "メンテナンス";
+    if (pendingKind === "discord") return "① Discord 取込中…";
+    if (pendingKind === "firstClearForce") return "③ クリア再計算中…";
+    if (
+      pendingKind === "videoMeta" ||
+      pendingKind === "videoMetaForceRefresh"
+    )
+      return videoMetaProgressLabel;
+    return "実行中…";
+  })();
+
   return (
     <div className="relative flex flex-col gap-2">
-      {/* 2.1 (2026-04-29): メンテメニューを単独ボタンに簡素化。
-          診断ツールは問題解決後に撤去 (ユーザー要望)、現在は YouTube
-          API key 設定で限定公開動画も取れる見込みなので不要となる。 */}
-      <button
-        type="button"
-        onClick={() => run("all")}
-        disabled={pending}
-        className="inline-flex items-center gap-1.5 rounded-md border border-border/60 bg-background/30 px-3 py-1.5 font-mono text-[11px] tracking-[0.18em] text-muted-foreground uppercase transition-colors hover:border-[var(--neon-cyan)]/60 hover:text-foreground disabled:opacity-60"
-        aria-label="最新情報を取り込んで再計算"
-        title="① Discord から新着取り込み → ② 動画の再生時間と投稿日時を取得 → ③ クリア日時 / 累計時間を再計算"
-      >
-        {pending ? (
-          <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
-        ) : (
-          <Settings2 className="h-3.5 w-3.5" aria-hidden />
-        )}
-        {pending
-          ? pendingKind === "all"
-            ? allPhase === "discord"
-              ? "更新 ① Discord 取込中…"
-              : allPhase === "videoMeta"
-                ? videoMetaProgress
-                  ? videoMetaProgress.phase === "duration"
-                    ? videoMetaProgress.total > 0
-                      ? `更新 ② 動画情報 ${videoMetaProgress.processed}/${videoMetaProgress.total} (${Math.floor((videoMetaProgress.processed / videoMetaProgress.total) * 100)}%)`
-                      : `更新 ② 動画情報 ${videoMetaProgress.processed} 件`
-                    : "更新 ② 投稿日時取得中…"
-                  : "更新 ② 動画メタ取得中…"
-                : allPhase === "firstClear"
-                  ? "更新 ③ クリア再計算中…"
-                  : "更新中…"
-            : "実行中…"
-          : "更新"}
-      </button>
+      {/* 2.1 (2026-04-29) v6: Hobby plan の Edge function 上限 (25s) で
+          全部実行が "Page Error" を返していたため各 phase を独立化。
+          v7: ヘッダー圧迫を避けるため DropdownMenu に集約 (ユーザー要望)。
+          トリガーは 1 ボタン、メニュー内に ① / ② / ③ を縦並び表示。 */}
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          disabled={pending}
+          aria-label="メンテナンスメニューを開く"
+          title="Discord 取込 / 動画メタ / クリア再計算"
+          className="inline-flex items-center gap-1.5 rounded-md border border-border/60 bg-background/30 px-3 py-1.5 font-mono text-[11px] tracking-[0.18em] text-muted-foreground uppercase transition-colors hover:border-[var(--neon-cyan)]/60 hover:text-foreground disabled:opacity-60"
+        >
+          {pending ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+          ) : (
+            <Settings2 className="h-3.5 w-3.5" aria-hidden />
+          )}
+          {triggerLabel}
+          {!pending && (
+            <ChevronDown className="h-3 w-3 opacity-70" aria-hidden />
+          )}
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-64">
+          <DropdownMenuItem
+            onSelect={(e) => {
+              e.preventDefault();
+              run("discord");
+            }}
+            disabled={pending}
+            className="flex flex-col items-start gap-0.5"
+          >
+            <span className="flex items-center gap-1.5 font-mono text-[12px]">
+              {isThisPending("discord") ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+              ) : (
+                <Settings2 className="h-3.5 w-3.5" aria-hidden />
+              )}
+              ① Discord 取込
+            </span>
+            <span className="pl-5 text-[10px] text-muted-foreground">
+              攻略情報 / 動画チャンネルから新着 URL を取り込み
+            </span>
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onSelect={(e) => {
+              e.preventDefault();
+              run("videoMeta");
+            }}
+            disabled={pending}
+            className="flex flex-col items-start gap-0.5"
+          >
+            <span className="flex items-center gap-1.5 font-mono text-[12px]">
+              {isThisPending("videoMeta") ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+              ) : (
+                <Settings2 className="h-3.5 w-3.5" aria-hidden />
+              )}
+              ② 動画メタ取得
+            </span>
+            <span className="pl-5 text-[10px] text-muted-foreground">
+              YouTube 再生時間 + Discord 投稿日時
+            </span>
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onSelect={(e) => {
+              e.preventDefault();
+              run("firstClearForce");
+            }}
+            disabled={pending}
+            className="flex flex-col items-start gap-0.5"
+          >
+            <span className="flex items-center gap-1.5 font-mono text-[12px]">
+              {isThisPending("firstClearForce") ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+              ) : (
+                <Trophy className="h-3.5 w-3.5 text-amber-300" aria-hidden />
+              )}
+              ③ クリア再計算
+            </span>
+            <span className="pl-5 text-[10px] text-muted-foreground">
+              クリア日時 + 累計時間を上書き再計算
+            </span>
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
 
       {result && (
         <div
@@ -410,14 +440,6 @@ export function MaintenanceMenu() {
           )}
           {result.kind === "firstClear" && (
             <FirstClearPanel data={result.data} force={result.force} />
-          )}
-          {result.kind === "all" && (
-            <AllPanel
-              discord={result.data.discord.items}
-              durations={result.data.durations}
-              postedAt={result.data.postedAt}
-              firstClear={result.data.firstClear}
-            />
           )}
         </div>
       )}
@@ -756,59 +778,3 @@ function formatLong(iso: string): string {
   return `${y}-${m}-${day} (${wd})`;
 }
 
-/**
- * 2.1 (2026-04-29): 「全部実行」結果パネル。Discord 取り込み / 動画
- * メタデータ / クリア再計算の 3 サブパネルを縦に積んで表示する。
- * YouTube 取得が 0 件のときは原因診断のヒントも表示。
- */
-function AllPanel({
-  discord,
-  durations,
-  postedAt,
-  firstClear,
-}: {
-  discord: ImportNowItem[];
-  durations: DurationBackfillResult;
-  postedAt: PostedAtBackfillResult;
-  firstClear: BackfillResult;
-}) {
-  // YouTube が一部しか取れていないケースの hint 用閾値。完全 0 件
-  // (Vercel 全弾き) と部分失敗 (限定公開動画混在) で表示分岐。
-  const youtubePartialFail =
-    durations.ok &&
-    durations.scanned > 0 &&
-    durations.filled < durations.scanned;
-  const youtubeAllFail =
-    durations.ok && durations.scanned > 0 && durations.filled === 0;
-  return (
-    <div className="flex flex-col gap-4">
-      <p className="pr-6 font-mono text-[10px] tracking-[0.2em] text-emerald-200/85 uppercase">
-        全部実行 — 結果サマリ
-      </p>
-      <section className="border-t border-border/30 pt-2">
-        <DiscordPanel items={discord} />
-      </section>
-      <section className="border-t border-border/30 pt-2">
-        <VideoMetaPanel durations={durations} postedAt={postedAt} />
-        {youtubeAllFail ? (
-          <p className="mt-2 rounded-sm border border-amber-400/40 bg-amber-400/10 p-2 text-[10px] leading-relaxed text-amber-200">
-            ⚠ YouTube から 0 件しか取得できませんでした。Vercel 側 IP の
-            bot 検出 / consent / sign-in ゲートが疑われます。Vercel の
-            環境変数に <code className="font-mono">YOUTUBE_API_KEY</code>
-            を設定するとデータ API 経由で安定取得できます。
-          </p>
-        ) : youtubePartialFail ? (
-          <p className="mt-2 rounded-sm border border-zinc-400/30 bg-zinc-400/5 p-2 text-[10px] leading-relaxed text-muted-foreground">
-            一部の動画 ({durations.scanned - durations.filled} 件) で取得
-            失敗。限定公開 (unlisted) 動画は{" "}
-            <code className="font-mono">YOUTUBE_API_KEY</code>{" "}
-            (Vercel 環境変数) を設定すると取得可能になります。
-          </p>
-        ) : null}
-      </section>
-      <section className="border-t border-border/30 pt-2">
-        <FirstClearPanel data={firstClear} force={true} />
-      </section>
-    </div>
-  );
-}
