@@ -396,8 +396,15 @@ export function VideosList({ categoryId, initial, firstClearAt }: Props) {
             </button>
           )}
           {videos.length > 1 && sortMode === "custom" && (
-            <span className="text-muted-foreground/60">
-              · ドラッグで並び替え
+            // 2.1 (2026-04-29): "·" 文字はフォント依存で baseline が
+            // 微妙にズレるので円形 div の bullet に置換し、隣接する
+            // バッジ群と垂直中央が確実に揃うようにする。
+            <span className="inline-flex items-center gap-1.5 text-muted-foreground/60">
+              <span
+                aria-hidden
+                className="inline-block h-1 w-1 rounded-full bg-current"
+              />
+              ドラッグで並び替え
             </span>
           )}
         </div>
