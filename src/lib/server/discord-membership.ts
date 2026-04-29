@@ -60,6 +60,15 @@ export type AppMetadataUpdate = {
   discord_guild_member: boolean;
   discord_roles: string[];
   discord_member_verified_at: string;
+  /**
+   * TODO #36 phase 2 (2.1+): admin かどうかの計算結果を JWT に同梱
+   * させて、Postgres RLS から `auth.jwt()->'app_metadata'->>'is_admin'`
+   * で参照できるようにする。`getAdminRoleIds()` の結果と `discord_roles`
+   * の交差で計算する (auth.ts の userIsAdmin と同じロジック)。
+   * 環境変数 `DISCORD_ADMIN_ROLE_IDS` 未設定時は backward compat で
+   * `true` (= 全員 admin) を入れる。
+   */
+  is_admin: boolean;
 };
 
 /**

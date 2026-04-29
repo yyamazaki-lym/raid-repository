@@ -5,6 +5,7 @@ import {
   fetchGuildMember,
   updateUserAppMetadata,
 } from "@/lib/server/discord-membership";
+import { userIsAdmin } from "@/lib/server/auth";
 
 /**
  * Supabase の Discord OAuth 完了後にリダイレクトされてくるエンドポイント。
@@ -68,11 +69,17 @@ export async function GET(req: NextRequest) {
   }
 
   try {
+    // TODO #36 phase 2: is_admin を JWT に同梱して RLS から参照可能に。
+    // `userIsAdmin` は env `DISCORD_ADMIN_ROLE_IDS` 未設定時 true を返す
+    // (backward compat) ので、その挙動も自動的に JWT 経由で RLS に
+    // 伝播する。
+    const isAdmin = userIsAdmin(membership.roles);
     await updateUserAppMetadata(data.user.id, {
       discord_id: discordId,
       discord_guild_member: true,
       discord_roles: membership.roles,
       discord_member_verified_at: new Date().toISOString(),
+      is_admin: isAdmin,
     });
   } catch (e) {
     console.error("[auth/callback] updateUserAppMetadata failed", e);

@@ -399,21 +399,28 @@ CREATE TABLE IF NOT EXISTS public.tags (
 CREATE INDEX IF NOT EXISTS tags_target_idx
   ON public.tags(target_type, target_id);
 
--- ---- 7. RLS — SELECT 解放 / 書き込みは authenticated のみ -------------
--- TODO #36 phase 1 (2.1, 2026-04-29):
---   旧設計: anon key (= unsigned-in client) からも全テーブル CRUD 可
---   新設計: SELECT は anon + authenticated 解放 (Realtime / public read を
---           壊さないため)、INSERT/UPDATE/DELETE は authenticated 専用。
---   Discord OAuth callback で Supabase auth session が確立したユーザー
---   のみ書き込み可能になり、anon key REST 直叩きでアプリ層 admin gate を
---   バイパスする攻撃 (HANDOFF security TODO #36) を遮断できる。
+-- ---- 7. RLS — SELECT 解放 / 書き込みは admin (is_admin claim) のみ ----
+-- TODO #36 phase 1 (2.1, 2026-04-29): 書き込みを `TO authenticated` に。
+-- TODO #36 phase 2 (2.1, 2026-04-29): さらに `auth.jwt()->>is_admin` を
+--   WITH CHECK に組み込み、RLS 層でも admin role を要求する。
 --
--- アプリ層の admin role 制限 (`assertAdminResult`) は引き続き Server
--- Action の入口でかかるので、どの authenticated ユーザーでも好き勝手
--- 書き込めるわけではない (二重防御)。
+--   設計:
+--   - SELECT: anon + authenticated 解放 (Realtime / 公開読み取り温存)
+--   - INSERT/UPDATE/DELETE: authenticated かつ
+--     `auth.jwt()->'app_metadata'->>'is_admin' = 'true'` のときのみ通す
+--   - is_admin は OAuth callback で `DISCORD_ADMIN_ROLE_IDS` env と
+--     `discord_roles` の交差で計算され、`auth.users.app_metadata.is_admin`
+--     に書き込まれる。Supabase が JWT を発行する際 app_metadata 全体が
+--     claim として同梱される。
+--   - 環境変数未設定時は `userIsAdmin()` が `true` を返すので backward
+--     compat (= 既存運用は変わらない)。
 --
--- 将来 phase 2 で `auth.jwt()->'app_metadata'->>'is_admin' = 'true'`
--- 等を WITH CHECK に組み込んで RLS でも admin 限定にできる。
+--   既存 user の JWT が古い (is_admin claim 無し) 場合、RLS は false 扱
+--   いで write を deny する。1 時間以内の auto-refresh で claim が乗っ
+--   てくる、もしくはサインアウト → 再ログインで即時解決。
+--
+-- アプリ層の admin role 制限 (`assertAdminResult`) は Server Action の
+-- 入口で引き続きかかる (三重防御: proxy gate / app admin gate / RLS)。
 --
 -- dev bypass 環境 (`DEV_AUTH_BYPASS=true`) では Supabase auth session を
 -- 持たないため、`createClient()` 側で `SUPABASE_SERVICE_ROLE_KEY` 経由
@@ -460,19 +467,21 @@ BEGIN
           policy_name, t
         );
       ELSIF op = 'insert' THEN
-        -- 書き込みは authenticated 専用 (TODO #36 phase 1)。
+        -- 書き込みは authenticated + is_admin claim (TODO #36 phase 2)。
+        -- `auth.jwt() -> 'app_metadata' ->> 'is_admin'` は text なので
+        -- 文字列 'true' と比較。NULL の場合 (claim 無し) は deny。
         EXECUTE format(
-          'CREATE POLICY %I ON public.%I FOR INSERT TO authenticated WITH CHECK (true)',
+          $sql$CREATE POLICY %I ON public.%I FOR INSERT TO authenticated WITH CHECK ((auth.jwt() -> 'app_metadata' ->> 'is_admin') = 'true')$sql$,
           policy_name, t
         );
       ELSIF op = 'update' THEN
         EXECUTE format(
-          'CREATE POLICY %I ON public.%I FOR UPDATE TO authenticated USING (true) WITH CHECK (true)',
+          $sql$CREATE POLICY %I ON public.%I FOR UPDATE TO authenticated USING ((auth.jwt() -> 'app_metadata' ->> 'is_admin') = 'true') WITH CHECK ((auth.jwt() -> 'app_metadata' ->> 'is_admin') = 'true')$sql$,
           policy_name, t
         );
       ELSIF op = 'delete' THEN
         EXECUTE format(
-          'CREATE POLICY %I ON public.%I FOR DELETE TO authenticated USING (true)',
+          $sql$CREATE POLICY %I ON public.%I FOR DELETE TO authenticated USING ((auth.jwt() -> 'app_metadata' ->> 'is_admin') = 'true')$sql$,
           policy_name, t
         );
       END IF;
@@ -610,14 +619,17 @@ CREATE POLICY "category-backgrounds public read"
   ON storage.objects FOR SELECT
   USING (bucket_id = 'category-backgrounds');
 
--- TODO #36 phase 1 (2.1, 2026-04-29): INSERT は authenticated のみに
--- 絞る。Discord OAuth で Supabase session を持つユーザーだけがアップ
--- ロード可能。アプリ UI は category-form-dialog から admin が叩くため
--- 実質 admin のみ。
+-- TODO #36 phase 1 (2.1, 2026-04-29): INSERT は authenticated のみ。
+-- TODO #36 phase 2 (2.1, 2026-04-29): さらに is_admin claim も要求。
+-- Discord OAuth callback で `is_admin` が true で書かれたユーザー
+-- (= DISCORD_ADMIN_ROLE_IDS のロール持ち) のみアップロード可能。
 CREATE POLICY "category-backgrounds authenticated insert"
   ON storage.objects FOR INSERT
   TO authenticated
-  WITH CHECK (bucket_id = 'category-backgrounds');
+  WITH CHECK (
+    bucket_id = 'category-backgrounds'
+    AND (auth.jwt() -> 'app_metadata' ->> 'is_admin') = 'true'
+  );
 -- NOTE: anon UPDATE / anon DELETE は撤去 (TODO #34)。anon INSERT も
 -- TODO #36 phase 1 で削除して authenticated 限定にした。古い画像の
 -- クリーンアップは将来 admin Server Action で対応 (現状は新 path 別名
