@@ -152,10 +152,11 @@ dev server は `.claude/launch.json` で `portal-dev` 設定済み (port 3000)�
 
 ## コミット運用
 
-- Claude は **`git commit` まで** 実施し作業終了。`git push origin main` は Claude のツール呼び出しからは harness classifier に常に denied されるため、push はユーザー側で実行する
-- 改行を含むメッセージは `git commit -F .git/COMMIT_EDITMSG_TEMP` 方式 (Windows + bash の heredoc 不安定回避用、コミット後に temp 削除)
-- `.claude/settings.json` には Stop hook 経由で自動 push を試みる構成が残っているが、`.claude/auto-push.log` がまだ生成されておらず動作未確認。当面は **ユーザー手動 push** が運用前提
-- hook 設定 (`settings.json`) の更新コミットは classifier に self-modification として弾かれることがあるため、必要に応じてユーザー側で commit + push
+- Claude が `git commit` を作成 → ユーザーが手動で `git push origin main` を実行
+- Claude Desktop 環境では `.claude/settings.json` の hooks は実行されない (Desktop の仕様、CLI 版なら動く)
+- Claude のツール経由で `git push origin main` を試みると classifier に時々ブロックされる (タイミング依存)
+- 改行は `git commit -F .git/COMMIT_EDITMSG_TEMP` 方式 (Windows + bash の heredoc 不安定回避、commit 後 temp 削除)
+- `.claude/settings.json` に Stop hook 残置 (実害無し、CLI 切替時に有効化)
 
 ## 新規会話の開始テンプレ
 
