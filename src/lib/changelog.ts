@@ -52,6 +52,10 @@ export const RELEASES: ReleaseEntry[] = [
     date: "2026-04-29",
     parts: [
       {
+        title: "🌒 過去日程は確定日のみ + 紅蓮テーマを落ち着いた色味に (TODO #24, #30)",
+        body: "未完了 TODO の小粒 2 件をまとめて対応:\n\n**TODO #24 — 過去日程は『開催確定』のみ表示**: スケジュール表 (`schedule-list.tsx`) と簡易ログ (`schedule-past-simple.tsx`) の過去側フィルタを `status === \"DECISION\"` 限定に変更。流れた候補日 (CANDIDATE) は過去ログに残してもノイズにしかならないので除外。出欠記号と日時はそのまま、確定して実際に開催された日だけが履歴として残る。\n\n**TODO #30 — 紅蓮 (Stormblood) テーマの彩度・明度を低減**: 「赤すぎる」というユーザー指摘を受けて `app/globals.css` の `.dark.theme-stormblood` を再調整。primary chroma を `0.27 → 0.16`、background lightness を `0.08 → 0.10`、 chroma も全般に `0.04 → 0.025` 程度まで圧縮。深紅の identity は残しつつ、ARR/DT/EW と同程度の視覚負荷に揃えた。Hue は `22 → 25` で僅かに橙寄りに振り、ember accent も `0.20 → 0.13` に弱めて目に優しいトーンに。",
+      },
+      {
         title: "📝 /category 説明文更新 + ダイアログヘッダー更新 + ロールセクション折りたたみ + 動画追加 UI 撤去",
         body: "ユーザー要望をまとめて反映:\n\n1. ``/category`` 上部の Contents 見出し下の説明文を「軽減・ロット・攻略情報・動画などを切り替えます。」に更新 (動画タブの追加に合わせ)。\n2. CategoryFormDialog の編集モード時の DialogDescription を「コンテンツの情報・URL・ロール制限・クリア記録などを編集」に更新 (フィールド増加に合わせ)。\n3. 「閲覧可能ロール」セクションを ``<details>`` で折りたたみ化、初期状態は閉じる。選択中ロールがあれば summary に「N 選択中」バッジ表示で『設定中』のヒントを残す。\n4. 直前の commit で実装した「カード編集ダイアログから動画追加」UI (URL + タイトル + 「+動画追加」ボタン) はユーザー本来の意図と異なっていたため撤去。state / handler / `Film` icon import / `createCategoryLink` import すべて削除。",
       },

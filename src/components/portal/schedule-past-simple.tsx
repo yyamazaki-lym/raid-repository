@@ -63,11 +63,10 @@ export function SchedulePastSimple({
   initialMemosByDate?: Record<string, ScheduleSessionMemo[]>;
 }) {
   const cutoff = Date.now() - STILL_RELEVANT_MS;
-  // Filter to past, sort newest-first, take 10. Newest-first display
-  // means the chip you most likely care about (yesterday's session)
-  // sits at the leftmost / start of the row.
+  // 過去側は「開催確定 (DECISION)」のみを残す。CANDIDATE は流れた候補
+  // 日でしかなく、過去ログに出てもノイズなので除外する (TODO #24)。
   const recent = [...sessions]
-    .filter((s) => s.date.getTime() < cutoff)
+    .filter((s) => s.date.getTime() < cutoff && s.status === "DECISION")
     .sort((a, b) => b.date.getTime() - a.date.getTime())
     .slice(0, SIMPLE_LIMIT);
 

@@ -229,47 +229,49 @@
   --frost: oklch(0.96 0.04 230);
 }
 
-/* ===== Stormblood — 紅蓮のリベレーター (blood + ember + near-black) =====
- * Differentiated from ARR by: near-black background (much darker), bright
- * saturated crimson primary (vs ARR's dulled antique gold), and an ember
- * orange accent (vs ARR's wine red and DT's emerald). No gold in this theme. */
+/* ===== Stormblood — 紅蓮のリベレーター (muted blood + dim ember) =====
+ * 2.1 (2026-04-29) 以降: 旧設計が「赤すぎる」というユーザー指摘 (TODO #30)
+ * を受け、彩度・明度を全体的に下げて落ち着いた紅蓮に再調整。深紅の identity
+ * は残しつつ、ARR/DT/EW 等と同程度の視覚的負荷に揃える。
+ * Differentiated from ARR by: near-black background, dimmed crimson primary
+ * (vs ARR's gold-emerald palette), and a softer ember orange accent. */
 .dark.theme-stormblood {
-  --background: oklch(0.08 0.04 22);
-  --foreground: oklch(0.96 0.03 30);
-  --card: oklch(0.13 0.07 22);
-  --card-foreground: oklch(0.96 0.03 30);
-  --popover: oklch(0.11 0.06 22);
-  --popover-foreground: oklch(0.96 0.03 30);
-  --primary: oklch(0.62 0.27 22);            /* bright crimson */
-  --primary-foreground: oklch(0.99 0.02 30);
-  --secondary: oklch(0.22 0.1 22);
-  --secondary-foreground: oklch(0.96 0.03 30);
-  --muted: oklch(0.18 0.07 22);
-  --muted-foreground: oklch(0.76 0.07 35);
-  --accent: oklch(0.74 0.2 45);              /* ember orange (NOT gold) */
-  --accent-foreground: oklch(0.13 0.06 22);
-  --destructive: oklch(0.62 0.24 27);
-  --border: oklch(0.95 0.06 30 / 14%);
-  --input: oklch(0.95 0.06 30 / 18%);
-  --ring: oklch(0.62 0.27 22);
-  --chart-1: oklch(0.62 0.27 22);
-  --chart-2: oklch(0.74 0.2 45);
-  --chart-3: oklch(0.5 0.22 15);
-  --chart-4: oklch(0.85 0.16 55);
-  --chart-5: oklch(0.4 0.2 18);
-  --sidebar: oklch(0.11 0.06 22);
-  --sidebar-foreground: oklch(0.96 0.03 30);
-  --sidebar-primary: oklch(0.62 0.27 22);
-  --sidebar-primary-foreground: oklch(0.99 0.02 30);
-  --sidebar-accent: oklch(0.22 0.1 22);
-  --sidebar-accent-foreground: oklch(0.96 0.03 30);
-  --sidebar-border: oklch(0.95 0.06 30 / 14%);
-  --sidebar-ring: oklch(0.62 0.27 22);
+  --background: oklch(0.1 0.025 25);
+  --foreground: oklch(0.95 0.02 30);
+  --card: oklch(0.15 0.04 25);
+  --card-foreground: oklch(0.95 0.02 30);
+  --popover: oklch(0.13 0.035 25);
+  --popover-foreground: oklch(0.95 0.02 30);
+  --primary: oklch(0.6 0.16 22);             /* muted crimson */
+  --primary-foreground: oklch(0.99 0.015 30);
+  --secondary: oklch(0.24 0.06 25);
+  --secondary-foreground: oklch(0.95 0.02 30);
+  --muted: oklch(0.2 0.045 25);
+  --muted-foreground: oklch(0.74 0.05 35);
+  --accent: oklch(0.72 0.13 45);             /* softened ember */
+  --accent-foreground: oklch(0.13 0.04 25);
+  --destructive: oklch(0.62 0.2 27);
+  --border: oklch(0.95 0.04 30 / 14%);
+  --input: oklch(0.95 0.04 30 / 18%);
+  --ring: oklch(0.6 0.16 22);
+  --chart-1: oklch(0.6 0.16 22);
+  --chart-2: oklch(0.72 0.13 45);
+  --chart-3: oklch(0.5 0.13 18);
+  --chart-4: oklch(0.83 0.1 55);
+  --chart-5: oklch(0.45 0.12 18);
+  --sidebar: oklch(0.13 0.035 25);
+  --sidebar-foreground: oklch(0.95 0.02 30);
+  --sidebar-primary: oklch(0.6 0.16 22);
+  --sidebar-primary-foreground: oklch(0.99 0.015 30);
+  --sidebar-accent: oklch(0.24 0.06 25);
+  --sidebar-accent-foreground: oklch(0.95 0.02 30);
+  --sidebar-border: oklch(0.95 0.04 30 / 14%);
+  --sidebar-ring: oklch(0.6 0.16 22);
 
-  --neon-cyan: oklch(0.62 0.27 22);          /* crimson */
-  --neon-magenta: oklch(0.74 0.2 45);        /* ember */
-  --neon-violet: oklch(0.5 0.22 15);         /* dark blood */
-  --frost: oklch(0.85 0.16 55);              /* hot ember highlight */
+  --neon-cyan: oklch(0.6 0.16 22);           /* muted crimson */
+  --neon-magenta: oklch(0.72 0.13 45);       /* softened ember */
+  --neon-violet: oklch(0.5 0.13 18);         /* dim blood */
+  --frost: oklch(0.83 0.1 55);               /* warm ember highlight (toned down) */
 }
 
 /* ===== Shadowbringers — 漆黒のヴィランズ (jet black + aether glow) ===== */

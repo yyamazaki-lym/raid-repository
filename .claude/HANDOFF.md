@@ -37,9 +37,7 @@
 | 11 | ページ全体のパフォーマンス最適化 (重さを軽減) — 候補: bundle 軽量化, RSC 化, lazy mount, 画像最適化, query batching, realtime subscription 削減 等 | 中 |
 | 20 | Vercel ドメイン変更 (`raid-repository.vercel.app` から好きな名前 / カスタムドメインへ) — Vercel Project Settings → Domains で実施。Discord Developer Portal の Redirects、Supabase Authentication の Site URL / Redirect URLs にも新ドメインを追加する必要あり | 小 |
 | 23 | サイト全体のデータ初期化ボタン (設定ダイアログ内、ADMIN 権限のみ、2 度確認ダイアログ) — `categories` `category_links` `app_settings` 等のユーザーデータを TRUNCATE して初期状態に戻す。デプロイ初期や検証時の rebuild 用。Server Action で全テーブルを削除 → 2 段階確認 (1回目「本当に初期化?」、2回目「データ全消去確認、入力欄に `INITIALIZE` と打ってください」) | 中 |
-| 24 | 過去日程の表示を「開催確定日 (DECISION)」のみに絞る — 現在は候補日 (CANDIDATE) も過去ログに含まれてしまい、結果ノイズが多い。`schedule-list.tsx` / `schedule-past-simple.tsx` の過去側 filter を `status === "DECISION"` 限定に。出欠記号と日時はそのまま、候補だけ過去から除外 | 小 |
-| 29 | GitHub About / topics の定期メンテ — 大型機能追加時に repo の Description / Topics を最新化する。`gh repo edit yyamazaki-lym/raid-repository --description "..." --add-topic ...` で更新可。直近は 2.1 (2026-04-29) で `discord-oauth` topic 等を追加済み | 極小 |
-| 30 | 紅蓮 (Stormblood) テーマが赤すぎるので彩度/明度を下げて薄く — `app/globals.css` 等の色トークンを探して該当テーマ variant の rose/red 系を調整。プレビューしながらバランス確認 | 小 |
+| 29 | GitHub About / topics の定期メンテ — 大型機能追加時に repo の Description / Topics を最新化する。`gh repo edit yyamazaki-lym/raid-repository --description "..." --add-topic ...` で更新可。2.1 (2026-04-29) 時点で description/topics は `discord-oauth/ffxiv/nextjs/raid/supabase/tailwind/typescript/vercel` まで更新済み (継続項目として残置) | 極小 |
 
 ## 完了済み TODO アーカイブ
 
@@ -65,6 +63,8 @@
 | ~~26~~ | カード編集にコンテンツ説明文 (description) フィールド — `categories.description` + `[slug]/layout.tsx` ヘッダー直下表示 | 2.1 (2026-04-29) |
 | ~~27~~ | /category ページ上部の説明文に「動画など」追加 (当初『カード編集から動画追加』と誤解釈、UI 撤去済み) | 2.1 (2026-04-29) |
 | ~~28~~ | Status の右端を Trophy と揃える — `SubPageShortcuts` の右パディングのみ調整 | 2.1 (2026-04-29) |
+| ~~24~~ | 過去日程の表示を「開催確定日 (DECISION)」のみに絞る — `schedule-list.tsx` の `splitSessions` と `schedule-past-simple.tsx` の `recent` filter に `status === "DECISION"` を追加 | 2.1 (2026-04-29) |
+| ~~30~~ | 紅蓮 (Stormblood) テーマの彩度/明度を下げて薄く — `app/globals.css` の `.dark.theme-stormblood` を全域で chroma 圧縮 (primary `0.27→0.16`、background も `0.04→0.025`)、lightness を僅かに上げて目に優しい紅蓮に再調整 | 2.1 (2026-04-29) |
 
 ### 除外済み (再対応不要)
 
@@ -79,7 +79,7 @@
 | Ver | 概要 |
 |---|---|
 | 2.0 (2026-04-28) | TODO #19: Discord OAuth ゲート全体導入 + ロール単位ページ閲覧制御。`/auth/callback` で `app_metadata.discord_guild_member` / `discord_roles` を JWT 同梱、`proxy.ts` (旧 middleware) で全 page を gate |
-| 2.1 (2026-04-29) | TODO #21: admin ロール限定編集 (`DISCORD_ADMIN_ROLE_IDS` env)、TODO #22: 動画紐付けタイトル日付ベース化 + posted_at 取得元 YouTube 優先、TODO #25-28: カード編集ダイアログ拡張 (description / manual time / Status 揃え)、メンテメニュー単独ボタン化、`<details>` でロールセクション折りたたみ |
+| 2.1 (2026-04-29) | TODO #21: admin ロール限定編集 (`DISCORD_ADMIN_ROLE_IDS` env)、TODO #22: 動画紐付けタイトル日付ベース化 + posted_at 取得元 YouTube 優先、TODO #25-28: カード編集ダイアログ拡張 (description / manual time / Status 揃え)、メンテメニュー単独ボタン化、`<details>` でロールセクション折りたたみ、TODO #24: 過去日程は DECISION のみ表示、TODO #30: 紅蓮テーマ彩度/明度を低減 |
 
 ## アーキテクチャ重要ポイント
 

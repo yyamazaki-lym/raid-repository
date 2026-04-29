@@ -1185,7 +1185,9 @@ function splitSessions(
   const past: ScheduleSession[] = [];
   for (const s of sessions) {
     if (s.date.getTime() >= cutoff) upcoming.push(s);
-    else past.push(s);
+    // 過去側は開催確定 (DECISION) のみ。流れた候補日 (CANDIDATE) は
+    // 過去ログに出てもノイズなので除外する (TODO #24)。
+    else if (s.status === "DECISION") past.push(s);
   }
   upcoming.sort((a, b) => a.date.getTime() - b.date.getTime());
   past.sort((a, b) => b.date.getTime() - a.date.getTime());
