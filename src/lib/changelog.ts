@@ -52,6 +52,10 @@ export const RELEASES: ReleaseEntry[] = [
     date: "2026-04-29",
     parts: [
       {
+        title: "📐 Status の右端を Trophy と揃える (Card layout を flex-col 化)",
+        body: "ユーザー指摘: Status (クリア済) バッジが Trophy (クリア日時) と若干右端ずれて表示されていた。\n\n原因: SubPageShortcuts (icon 行) は middle column 内に閉じていたため、`ml-auto` で右寄せしても card 全幅まで届かず、右カラム内の Trophy と右端が揃わなかった。\n\n対応: Card を `flex flex-col` に再構成し、上段に [grip + middle + 右カラム] の flex-row、下段に SubPageShortcuts を card 全幅で配置。SubPageShortcuts の右パディングを `pr-2` (= 右カラム `p-2` と同値) にして Status の右端を Trophy/Hourglass の右端と揃えた。",
+      },
+      {
         title: "🧹 カード layout 再調整 (Status を icon 行に / Trophy + Hourglass のみ右上) + メンテを単独ボタンに",
         body: "前回の調整 (Status/Trophy/Hourglass を右上揃え) が想定外配置だったためユーザー要望に合わせ再構成:\n\n1. Status (クリア済バッジ) を `SubPageShortcuts` 行 (mitigation/loot/strategy/videos/macros アイコン行) の右端に移設。`SubPageShortcuts` に `statusSlot` props を追加し `ml-auto` で右寄せ。\n2. 中段の Timer (累計練習時間) はカード上から削除 (ユーザー要望「カード表示はクリアまでの累計時間のみで良い」)。データ load (`practiceSecondsByCategory`) は将来の tooltip 等のため残置。\n3. 右カラム上段は Trophy + Hourglass のみ (placeholder で高さ固定)。\n4. メンテメニューを単独ボタンに簡素化 (DropdownMenu wrapper 撤去)。`Cloud / Timer / Stethoscope / DropdownMenu*` import / `diagnoseYoutube` action / `DiagnosePanel` を削除。診断ツールは YouTube API key 設定で限定公開動画も取れる見込みのため不要と判断。\n5. AllPanel の YouTube fail バナーを「全件 fail (= Vercel bot 弾き)」と「部分 fail (= unlisted 動画混在)」で表示分岐。両方とも `YOUTUBE_API_KEY` 設定で改善することを案内。\n6. `.env.local.example` の `YOUTUBE_API_KEY` コメントを「サーバー側 1 回のみ admin 設定で全動画カバー、各メンバー設定不要」と明記。private 動画は不可な点も追記。",
       },
