@@ -68,6 +68,7 @@ type PostedAtBackfillResult = {
 type ActionKind =
   | "discord"
   | "videoMeta"
+  | "videoMetaForceRefresh"
   | "firstClearForce"
   | "diagnoseYoutube";
 
@@ -146,7 +147,18 @@ export function MaintenanceMenu() {
           router.refresh();
           return;
         }
-        if (kind === "videoMeta") {
+        if (kind === "videoMeta" || kind === "videoMetaForceRefresh") {
+          const force = kind === "videoMetaForceRefresh";
+          if (force) {
+            const ok = window.confirm(
+              "全動画の posted_at を YouTube uploadDate で再取得します。\n" +
+                "(古い動画を Discord に貼って posted_at が誤って取り込み日に\n" +
+                "なっている場合の修復用、TODO #22 追加対応)\n\n" +
+                "動画件数 × 1 リクエスト発行されるため数十秒〜数分かかります。\n" +
+                "実行しますか?",
+            );
+            if (!ok) return;
+          }
           // 1.9.21: chunked YouTube duration backfill with live progress
           // updates. We loop over `backfillVideoDurationsChunk()` until
           // it reports done=true; each iteration updates the progress
@@ -163,7 +175,10 @@ export function MaintenanceMenu() {
           // (shouldn't happen with the cursor-by-id design, but
           // guards against an infinite loop if the server flakes).
           for (let iter = 0; iter < 500; iter++) {
-            const r = await backfillVideoDurationsChunk({ afterId: lastId });
+            const r = await backfillVideoDurationsChunk({
+              afterId: lastId,
+              forceRefresh: force,
+            });
             if (!r.ok) {
               durFatal = r.reason ?? "unknown";
               break;
@@ -212,15 +227,29 @@ export function MaintenanceMenu() {
             return;
           }
 
-          // Discord posted_at — runs as a single server action since
-          // it's per-channel and typically fast. Show "投稿日時取得中"
-          // phase while it runs.
-          setVideoMetaProgress({
-            phase: "postedAt",
-            processed: 0,
-            total: 0,
-          });
-          const posted = await backfillPostedAtFromDiscordChannels();
+          // Discord posted_at — Force refresh モードでは Discord 時刻を
+          // 上書きしないようスキップ (YouTube uploadDate を真とするのが
+          // 主目的のため、Discord 時刻フォールバックは趣旨に反する)。
+          // 通常モードでは YouTube が取得失敗した行の posted_at を Discord
+          // メッセージ時刻で埋めるフォールバックとして引き続き呼ぶ。
+          let posted: PostedAtBackfillResult;
+          if (force) {
+            posted = {
+              ok: true,
+              scannedMessages: 0,
+              scannedUrls: 0,
+              matched: 0,
+              updated: 0,
+              channels: [],
+            };
+          } else {
+            setVideoMetaProgress({
+              phase: "postedAt",
+              processed: 0,
+              total: 0,
+            });
+            posted = await backfillPostedAtFromDiscordChannels();
+          }
           setVideoMetaProgress(null);
           if (!posted.ok) {
             toast.error("投稿日時取得失敗: " + (posted.reason ?? "unknown"));
@@ -302,10 +331,11 @@ export function MaintenanceMenu() {
           {pending
             ? pendingKind === "discord"
               ? "取り込み中…"
-              : pendingKind === "videoMeta"
+              : pendingKind === "videoMeta" ||
+                  pendingKind === "videoMetaForceRefresh"
                 ? videoMetaProgress
                   ? videoMetaProgress.phase === "duration"
-                    ? `動画時間 ${videoMetaProgress.processed}/${videoMetaProgress.total}`
+                    ? `${pendingKind === "videoMetaForceRefresh" ? "再取得" : "動画時間"} ${videoMetaProgress.processed}/${videoMetaProgress.total}`
                     : "投稿日時取得中…"
                   : "メタデータ取得中…"
                 : pendingKind === "diagnoseYoutube"
@@ -337,6 +367,19 @@ export function MaintenanceMenu() {
               <span className="text-[10px] text-muted-foreground leading-snug">
                 YouTube から duration / uploadDate を一括取得 +
                 Discord メッセージから posted_at を埋める
+              </span>
+            </div>
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() => run("videoMetaForceRefresh")}
+            className="flex cursor-pointer items-start gap-2"
+          >
+            <Timer className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-300" aria-hidden />
+            <div className="flex flex-col gap-0.5">
+              <span className="text-sm">投稿日時を YouTube から再取得 (全動画)</span>
+              <span className="text-[10px] text-muted-foreground leading-snug">
+                Discord 時刻ベースで誤って取り込み日になっている動画を、
+                YouTube uploadDate で全件上書き (TODO #22 修復用)
               </span>
             </div>
           </DropdownMenuItem>

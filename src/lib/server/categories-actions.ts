@@ -923,8 +923,12 @@ export async function backfillPostedAtFromDiscordChannels(): Promise<PostedAtBac
  * dialog after a manual create — the dialog inserts the row first
  * (browser-side), then asks us to enrich.
  *
- * `posted_at` is only set when the row currently has it NULL, so we
- * never clobber a more accurate Discord message timestamp.
+ * 2.1 (2026-04-29、TODO #22 追加対応): `posted_at` は YouTube uploadDate が
+ * 取れた場合 **常に上書き** に変更。旧設計では Discord メッセージ時刻が
+ * 真とされていたが、古い動画 (例: 2023 年録画) を 2026 年に Discord に
+ * 貼った場合 Discord 時刻 = 2026 となり、スケジュール↔動画紐付けで誤マッチ
+ * が起きる問題があった (`session-video-link.ts`)。YouTube uploadDate は
+ * publisher 側の真の公開日なので、ある場合はそちらを優先する。
  *
  * No-op for non-YouTube URLs or fetch failures; the row stays as-is.
  */
@@ -950,14 +954,12 @@ export async function enrichVideoLinkDuration(
     }
   }
 
-  // posted_at: only fill when currently NULL — Discord-supplied
-  // timestamps are more authoritative than YouTube upload dates.
+  // posted_at: 常に YouTube uploadDate で上書き (TODO #22 追加対応)。
   if (meta.uploadDate !== null) {
     const { error } = await supabase
       .from("category_links")
       .update({ posted_at: meta.uploadDate })
-      .eq("id", linkId)
-      .is("posted_at", null);
+      .eq("id", linkId);
     if (error) {
       console.warn("[enrich-video] posted_at update failed", linkId, error.message);
     }
@@ -1009,8 +1011,9 @@ export async function diagnoseYouTubeUrl(
  * `posted_at` and try to fill both via a single YouTube scrape per row.
  *
  * - `duration_seconds`: written (overwriting NULL) when the scrape succeeds
- * - `posted_at`: written only when currently NULL (don't clobber Discord
- *   timestamps from the import path, which are more authoritative)
+ * - `posted_at`: 常に YouTube uploadDate で上書き (TODO #22 追加対応)。
+ *   旧設計の「Discord 時刻が真」前提は古い動画の後追い投稿で破綻するため、
+ *   YouTube 側の publisher 公開日を優先する。
  *
  * Idempotent — re-running is a no-op once everything fetchable has been
  * filled. Runs fetches concurrently to keep wall-clock time reasonable
@@ -1055,8 +1058,8 @@ export async function backfillVideoDurations(): Promise<DurationBackfillResult> 
       const meta = await fetchYouTubeMeta(row.url as string);
       const needsDuration =
         row.duration_seconds === null && meta.durationSeconds !== null;
-      const needsPostedAt =
-        row.posted_at === null && meta.uploadDate !== null;
+      // TODO #22 追加対応: posted_at は uploadDate が取れたら常に上書き。
+      const needsPostedAt = meta.uploadDate !== null;
       if (!needsDuration && !needsPostedAt) {
         // Either non-YouTube, or scrape didn't return useful data, or
         // the row already has the value we'd write. Bucket as "skipped".
@@ -1105,9 +1108,15 @@ export async function backfillVideoDurations(): Promise<DurationBackfillResult> 
  * deterministically), so the client can loop with progress updates.
  *
  * Done when the batch returns fewer than `BATCH_SIZE` rows.
+ *
+ * `forceRefresh`: 全動画 row を対象に YouTube uploadDate を再取得し
+ * `posted_at` を上書きする。既に Discord 時刻で埋まっていて TODO #22 の
+ * 「古い動画を直近セッションに誤紐付け」を起こしている row を一括修復する
+ * 用途。フラグ無し時は従来どおり「missing data 行のみ」処理。
  */
 export async function backfillVideoDurationsChunk(opts: {
   afterId?: string | null;
+  forceRefresh?: boolean;
 }): Promise<{
   ok: boolean;
   reason?: string;
@@ -1127,15 +1136,19 @@ export async function backfillVideoDurationsChunk(opts: {
   const supabase = await createClient();
   const BATCH_SIZE = 16;
   const FETCH_CONCURRENCY = 8;
+  const force = opts.forceRefresh === true;
 
   // First-call snapshot: total pending count for progress denominator.
   let totalPending: number | undefined;
   if (!opts.afterId) {
-    const { count } = await supabase
+    let countQ = supabase
       .from("category_links")
       .select("id", { count: "exact", head: true })
-      .eq("kind", "video")
-      .or("duration_seconds.is.null,posted_at.is.null");
+      .eq("kind", "video");
+    if (!force) {
+      countQ = countQ.or("duration_seconds.is.null,posted_at.is.null");
+    }
+    const { count } = await countQ;
     totalPending = count ?? 0;
     if (totalPending === 0) {
       return {
@@ -1154,11 +1167,13 @@ export async function backfillVideoDurationsChunk(opts: {
   // stable across iterations. The pending status itself acts as the
   // primary cursor; the id-GTE filter just prevents reprocessing rows
   // we've already attempted in earlier iterations of this loop.
-  const baseQ = supabase
+  let baseQ = supabase
     .from("category_links")
     .select("id, url, duration_seconds, posted_at")
-    .eq("kind", "video")
-    .or("duration_seconds.is.null,posted_at.is.null");
+    .eq("kind", "video");
+  if (!force) {
+    baseQ = baseQ.or("duration_seconds.is.null,posted_at.is.null");
+  }
   const { data, error } = await (opts.afterId
     ? baseQ.gt("id", opts.afterId)
     : baseQ
@@ -1197,8 +1212,8 @@ export async function backfillVideoDurationsChunk(opts: {
       const meta = await fetchYouTubeMeta(row.url as string);
       const needsDuration =
         row.duration_seconds === null && meta.durationSeconds !== null;
-      const needsPostedAt =
-        row.posted_at === null && meta.uploadDate !== null;
+      // TODO #22 追加対応: posted_at は uploadDate が取れたら常に上書き。
+      const needsPostedAt = meta.uploadDate !== null;
       if (!needsDuration && !needsPostedAt) return "skipped";
       const update: { duration_seconds?: number; posted_at?: string } = {};
       if (needsDuration) update.duration_seconds = meta.durationSeconds!;

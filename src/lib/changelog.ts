@@ -52,6 +52,10 @@ export const RELEASES: ReleaseEntry[] = [
     date: "2026-04-29",
     parts: [
       {
+        title: "🩹 posted_at の取得元を YouTube uploadDate 優先に反転 (TODO #22 追加対応)",
+        body: "ユーザー指摘: タイトルに日付が無い動画でも、`posted_at` が Discord メッセージ時刻でセットされていれば紐付きはするが、古い動画 (例: 2023 年録画) を 2026 年に Discord に貼った場合 posted_at = 2026 になり、結局 2026 年の直近セッションに誤紐付けする穴が残る。\n\n対応: 旧設計の「Discord 時刻が真、YouTube uploadDate は NULL のときだけ補完」を反転し、**YouTube uploadDate が取得できれば常に上書き** に変更。\n\n変更箇所:\n1. `enrichVideoLinkDuration` (link form 経由の手動追加): `is(\"posted_at\", null)` ガードを撤去、常に上書き。\n2. `backfillVideoDurations` / `backfillVideoDurationsChunk` (バルクメンテナンス): in-loop の `needsPostedAt` 判定から `row.posted_at === null` を撤去。\n3. メンテナンスメニューに「投稿日時を YouTube から再取得 (全動画)」項目を追加。`backfillVideoDurationsChunk({ forceRefresh: true })` を呼び、SQL の `posted_at IS NULL` フィルタを外して全 video 行を再スキャン。Discord 時刻で既に埋まっている誤値も YouTube uploadDate で全件修正できる。\n4. force refresh モード時は後段の `backfillPostedAtFromDiscordChannels` を呼ばない (Discord 時刻フォールバックが趣旨に反するため)。通常モードでは「YouTube 失敗行を Discord 時刻で埋める」フォールバックとして引き続き動作。\n\nこれで Discord に古い動画リンクを貼っても、YouTube が真の uploadDate を返す限りスケジュール紐付けが正しく動く。タイトル日付なし & YouTube 取得失敗 & posted_at NULL の動画はこれまで通りスキップ (`session-video-link.ts`)。",
+      },
+      {
         title: "🎯 スケジュール↔動画の紐付けをタイトル日付ベースに (TODO #22)",
         body: "ユーザー報告: 古い動画 (例: 2023 年録画) を後から DB に追加すると、`posted_at` (= 追加投稿時刻) ベースの ±36h ウィンドウが、無関係な直近セッションを掴んで誤紐付けしていた。\n\n修正: `src/lib/server/session-video-link.ts` のマッチ方式を「動画日付 == セッション JST 同日」に変更。日付の解決優先度:\n1. `extractDateFromTitle(title)` — タイトル内に書かれた raid date (「【2026/04/01】」「2026 04 01」「4月1日」「20260401」「【0401】」等) を最優先。ユーザーが手で打つので最も信頼できる。\n2. `posted_at` の JST 日付 — タイトル日付が抜けている動画でも、YouTube/Discord 取得済みの実投稿日が当日 or 翌日朝のことが多いので fallback として許容 (ユーザー追記要望)。\n3. 上記いずれも取れない動画は **スキップ** (`created_at` は単なる DB 行作成時刻なので使わない)。\n\n副次効果:\n- 過去動画の詳細表 / 簡易チップで、何年も前にアップした動画が直近セッションのアイコンに化けて出る現象が消える。\n- ±36h ウィンドウが消えたので、本当に当日 22:00 開始 → 当日中アップロードのケースだけが紐付き、夜跨ぎで翌朝アップした動画は (タイトルに前日日付が書いてあれば) 前日セッションへ正しく付く。\n- 同日複数試合に複数動画がある場合は `posted_at asc` 順で early bird が勝つ仕様 (used-set で取り合いを防止)。",
       },
