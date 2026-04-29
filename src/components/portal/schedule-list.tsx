@@ -133,13 +133,24 @@ export function ScheduleList({
   // iframe overlay. Tapping a username header or per-session attendance
   // cell now sets `editTarget`, which mounts the dialog. State lives at
   // the top level so a single dialog instance is reused across rows.
+  //
+  // 2.1+ (TODO #44): a per-session attendance click also passes an
+  // `upcomingIndex` (0 = nearest future session). The dialog uses it to
+  // clip its iframe so the target date row roughly lines up with the
+  // top of the dialog. cross-origin iframe scripting / hash anchors
+  // aren't honored by character-sheets so we use a heuristic:
+  //   offset = MID + index * APPROX_ROW_HEIGHT
   const [editTarget, setEditTarget] = useState<{
     url: string;
     title: string;
+    targetOffsetPx: number | null;
   } | null>(null);
-  const openEditFrame = useCallback((url: string, title: string) => {
-    setEditTarget({ url, title });
-  }, []);
+  const openEditFrame = useCallback(
+    (url: string, title: string, targetOffsetPx: number | null = null) => {
+      setEditTarget({ url, title, targetOffsetPx });
+    },
+    [],
+  );
 
   // 1.9.28: refresh button next to the legend lets the user pull the
   // latest schedule data on demand (no need to reload the page).
@@ -297,7 +308,7 @@ export function ScheduleList({
           <table className="w-full min-w-[640px] border-collapse text-left text-sm">
             {tableHead(true)}
             <tbody>
-              {upcoming.map((s) => (
+              {upcoming.map((s, idx) => (
                 <SessionRow
                   key={s.rawDate}
                   session={s}
@@ -308,6 +319,7 @@ export function ScheduleList({
                   scheduleUrl={scheduleUrl}
                   onOpenEditFrame={openEditFrame}
                   initialMemos={initialMemosByDate[s.rawDate]}
+                  upcomingIndex={idx}
                 />
               ))}
               {upcoming.length === 0 && (
@@ -331,6 +343,7 @@ export function ScheduleList({
       <ScheduleEditFrameDialog
         url={editTarget?.url ?? null}
         title={editTarget?.title ?? ""}
+        targetOffsetPx={editTarget?.targetOffsetPx ?? null}
         onClose={() => setEditTarget(null)}
       />
 
@@ -438,7 +451,11 @@ function UserHeaderCell({
   comments: ScheduleComment[];
   editUrl: string | null;
   /** Open the in-portal iframe dialog for the given URL. */
-  onOpenEditFrame: (url: string, title: string) => void;
+  onOpenEditFrame: (
+    url: string,
+    title: string,
+    targetOffsetPx?: number | null,
+  ) => void;
 }) {
   const hasComments = comments.length > 0;
 
@@ -564,6 +581,7 @@ function SessionRow({
   scheduleUrl,
   onOpenEditFrame,
   initialMemos,
+  upcomingIndex,
 }: {
   session: ScheduleSession;
   users: ScheduleUser[];
@@ -586,9 +604,20 @@ function SessionRow({
    */
   scheduleUrl?: string | null;
   /** Open the in-portal iframe dialog for the given URL. */
-  onOpenEditFrame: (url: string, title: string) => void;
+  onOpenEditFrame: (
+    url: string,
+    title: string,
+    targetOffsetPx?: number | null,
+  ) => void;
   /** TODO #11: server prefetch した memos (該当 rawDate 分) */
   initialMemos?: import("@/lib/schedule-memos-client").ScheduleSessionMemo[];
+  /**
+   * TODO #44: 0-based index of this session within the upcoming list.
+   * When defined (= upcoming row), attendance-cell clicks pass a
+   * heuristic offset so the iframe lands near this date's input row.
+   * `undefined` for past rows where the per-date jump isn't useful.
+   */
+  upcomingIndex?: number;
 }) {
   const decided = session.status === "DECISION";
   const { memos, refetch: refetchMemos } = useRealtimeScheduleMemos(
@@ -791,6 +820,14 @@ function SessionRow({
                   onOpenEditFrame(
                     editUrl,
                     `${u.name} の出欠を編集 (${dateLabel} を含む)`,
+                    // TODO #44: pass per-date offset for upcoming rows.
+                    // 280 は legacy "mid" (ヘッダー / 概要セクション分),
+                    // 36px/row は character-sheets の日付行のおおよその
+                    // 高さ (実測ヒューリスティック)。少し上に余裕を残す
+                    // ために -1 行分を引いている。
+                    typeof upcomingIndex === "number"
+                      ? Math.max(0, 280 + (upcomingIndex - 1) * 36)
+                      : null,
                   )
                 }
                 title={`${u.name} の出欠をその場で編集 (${dateLabel} を含む全日程)`}

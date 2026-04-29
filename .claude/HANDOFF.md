@@ -19,10 +19,7 @@
 
 ## 📌 次回の作業優先度
 
-新規会話開始時は **TODO #43 → #44** から着手すること (ユーザー指示、2026-04-29)。
-
-- **#43**: 軽減表 / ロット管理表のデフォルト iframe 縮尺調整
-- **#44**: スケジュール日程リストから iframe スクロールジャンプ
+現在なし。次回着手項目はユーザーが TODO リストから選定する。
 
 ## 🚨 新規会話開始時のルーチン
 
@@ -47,12 +44,8 @@
 | 11 | ページ全体のパフォーマンス最適化 — bundle 軽量化 / RSC 化 / lazy mount / 画像最適化 / query batching / realtime 削減 等 | 中 |
 | 20 | Vercel ドメイン変更 — Project Settings → Domains。Discord Developer / Supabase Auth の Redirect URLs にも反映必要 | 小 |
 | 23 | サイト全体のデータ初期化ボタン (admin 限定、2 段階確認: 1 回目「本当に初期化?」、2 回目「`INITIALIZE` と入力」) | 中 |
-| 29 | GitHub About / topics の定期メンテ — 大型機能追加時に `gh repo edit --description --add-topic` で更新 | 極小 |
 | 37 | カテゴリ編集ダイアログで「攻略チャンネル ID から sheet URL 自動紐付け」 — Discord メッセージの `docs.google.com/spreadsheets/...` を軽減表 / ロット URL に自動セット。`importDiscordNow` フローに hook | 中 |
 | 38 | スケジュール追加機能 — portal 内から開催候補日を追加する UI が無い。日付 + 時間帯 + 参加可否を入力 → DB 保存 → 描画。TODO #2 と統合可 | 中〜大 |
-| 39 | 「本日」バッジを「挑戦中」に変えて色差別化 — 開催時間帯のみ別色 (例: red/magenta) で進行中を表現 | 小 |
-| 43 | 軽減表 / ロット管理表のデフォルト iframe 縮尺調整 — Sheets の標準ズームだと枠に収まらず、自動フィット縮尺をデフォルトに | 中 |
-| 44 | スケジュール日程リストから iframe ジャンプ — 未確定 `-` / 確定 〇× 押下時、character-sheets iframe を該当日程までスクロール (postMessage or hash anchor) | 中 |
 
 ## 完了済み TODO アーカイブ
 
@@ -81,6 +74,10 @@
 | 41 | 🔒 Server Action のエラーメッセージ汎用化 — `dbError(label, error)` ヘルパー |
 | 42 | 背景画像リセット問題 — CSP `img-src` 緩和で正常化 |
 | 45 | 🔍 FFLogs Logs 取り込みの 2 段階バグ修正 — (a) 全ポータル Edge runtime 化で Cloudflare 403 回避、(b) matcher 緩和 + 1 レポート → 同日複数動画 OK + カスタムマッチワード機能 |
+| 39 | 🎯 開催時間中バッジを「挑戦中」(amber) に切替 — `inSession` 判定 + tone="inSession" で next-session カードと relative ラベルを差別化 |
+| 43 | 🖼 SheetIframe にズームトグル — デフォルト 60%、50/60/75/90/100% を循環、localStorage 永続化 |
+| 44 | 📅 スケジュール出欠セル → iframe スクロールジャンプ — `targetOffsetPx` 経由で `BASE + index * ROW_HEIGHT` ヒューリスティックを translateY clip に注入。3-way トグル (該当日 / 中央 / 上) |
+| 29 | 🏷 GitHub About / topics 更新 — 2.1 機能反映 |
 
 ### 1.9 / 2.0 (2026-04-28)
 

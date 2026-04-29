@@ -889,17 +889,17 @@ export function CategoryFormDialog({
               id="fflogs-match-keywords"
               value={matchKeywordsInput}
               onChange={(e) => setMatchKeywordsInput(e.target.value)}
-              placeholder="例: 4層しょーか, LH しょか, M4S"
+              placeholder="例: 絶アレキサンダー, リットアティン強襲戦, M4S"
               className="min-h-[2.4rem] w-full resize-y rounded-md border border-border/60 bg-background/40 px-2.5 py-1.5 font-mono text-[12px] leading-relaxed outline-none transition-colors placeholder:text-muted-foreground focus:border-[var(--neon-cyan)]/60"
               autoComplete="off"
               rows={2}
             />
             <p className="text-muted-foreground text-[11px] leading-relaxed">
-              カンマ区切りで複数指定可。レポートの zone / タイトルに
-              いずれかが部分一致 (大小文字無視) すれば、自動紐づけ時の
-              コンテンツ判定でこのカテゴリのものとして採用されます。
-              標準キーワード (例: 「ライトヘビー級」「M3S」) でマッチ
-              しないユーザー独自命名のレポートを救済する用途。
+              カンマ区切りで複数指定可。コンテンツ名 (例: 「絶アレキサンダー」
+              「リットアティン強襲戦」) や層指定 (例: 「M4S」) を入れておくと、
+              レポートの zone / タイトルにそれらが部分一致 (大小文字無視) した
+              ときに自動紐づけでこのカテゴリのものとして採用されます。
+              標準キーワードでマッチしない独自命名レポートの救済用途。
             </p>
           </div>
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { ChevronsDown, ChevronsUp, ExternalLink } from "lucide-react";
 import {
   Dialog,
@@ -26,6 +26,12 @@ import { safeHref } from "@/lib/url-safe";
  * are clipped, putting a chosen offset (e.g. ~280px in) at the visual
  * top of the dialog. Toggle button switches between top / mid offsets
  * so the user can flip back if they want to see the page header.
+ *
+ * 2.1+ (TODO #44): also accept a per-session offset so that tapping a
+ * specific date row jumps the iframe roughly to that date's input row.
+ * cross-origin iframe scripting and hash anchors aren't honored by
+ * character-sheets, so we extend the same translateY clipping with a
+ * heuristic `BASE + index * ROW_HEIGHT` offset.
  */
 const SCROLL_OFFSETS = {
   top: 0,
@@ -35,25 +41,53 @@ const SCROLL_OFFSETS = {
   mid: 280,
 } as const;
 
-type OffsetMode = keyof typeof SCROLL_OFFSETS;
+type OffsetMode = keyof typeof SCROLL_OFFSETS | "target";
 
 export function ScheduleEditFrameDialog({
   url,
   title,
+  targetOffsetPx,
   onClose,
 }: {
   /** Editing URL. `null` = closed. */
   url: string | null;
   /** Title shown in the header (e.g. "ユーザー名 の出欠を編集"). */
   title: string;
+  /**
+   * TODO #44: heuristic clipping offset to roughly land on a specific
+   * date row in the character-sheets input page. When set, the dialog
+   * defaults to the "target" mode using this value; the user can still
+   * flip to top / mid to see the header or recenter. `null` (the
+   * default) preserves pre-2.1 behavior — open at "mid" with no
+   * per-date hint.
+   */
+  targetOffsetPx?: number | null;
   /** Called when the user closes the dialog. */
   onClose: () => void;
 }) {
   const safeUrl = safeHref(url);
-  // Default to mid so the user lands closer to the calendar input area.
-  // They can flip back to top to see the page header / title.
-  const [offsetMode, setOffsetMode] = useState<OffsetMode>("mid");
-  const offsetPx = SCROLL_OFFSETS[offsetMode];
+  // Default to "target" if a per-date offset was passed; otherwise
+  // fall back to the legacy "mid" so unrelated open paths (e.g.
+  // tapping a username header) keep their old landing position.
+  const initialMode: OffsetMode =
+    typeof targetOffsetPx === "number" ? "target" : "mid";
+  const [offsetMode, setOffsetMode] = useState<OffsetMode>(initialMode);
+  // Each open of a new URL resets the mode (otherwise the previous
+  // session's offset would stick when the user opens a different cell
+  // without closing the dialog).
+  const lastUrlRef = useRef<string | null>(null);
+  if (lastUrlRef.current !== url) {
+    lastUrlRef.current = url;
+    if (url !== null && offsetMode !== initialMode) {
+      // setState in render is fine here — it's a derived reset on
+      // identity change of the URL prop and avoids an extra effect.
+      setOffsetMode(initialMode);
+    }
+  }
+  const offsetPx =
+    offsetMode === "target"
+      ? Math.max(0, targetOffsetPx ?? 0)
+      : SCROLL_OFFSETS[offsetMode];
 
   return (
     <Dialog
@@ -78,17 +112,28 @@ export function ScheduleEditFrameDialog({
             </DialogDescription>
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
-            {/* 表示位置トグル: 「ヘッダーを見たい」「中央 (デフォルト)」 */}
+            {/* 表示位置トグル: 「ヘッダー」「中央」「該当日 (target offset)」
+                を循環。target offset が無い場合は header ↔ mid の 2-way。 */}
             {safeUrl && (
               <button
                 type="button"
                 onClick={() =>
-                  setOffsetMode((m) => (m === "top" ? "mid" : "top"))
+                  setOffsetMode((m) => {
+                    const hasTarget = typeof targetOffsetPx === "number";
+                    if (!hasTarget) return m === "top" ? "mid" : "top";
+                    if (m === "target") return "mid";
+                    if (m === "mid") return "top";
+                    return "target";
+                  })
                 }
                 title={
                   offsetMode === "top"
-                    ? "中央位置にジャンプ (ヘッダーを隠す)"
-                    : "ヘッダーを表示 (上端から)"
+                    ? typeof targetOffsetPx === "number"
+                      ? "該当日にジャンプ"
+                      : "中央位置にジャンプ (ヘッダーを隠す)"
+                    : offsetMode === "mid"
+                      ? "ヘッダーを表示 (上端から)"
+                      : "中央位置に戻す"
                 }
                 className="inline-flex items-center gap-1 rounded-md border border-border/60 bg-background/40 px-2 py-1.5 font-mono text-[10px] tracking-[0.18em] text-muted-foreground uppercase transition-colors hover:border-[var(--neon-cyan)]/60 hover:text-foreground"
               >
@@ -97,7 +142,13 @@ export function ScheduleEditFrameDialog({
                 ) : (
                   <ChevronsUp className="h-3 w-3" aria-hidden />
                 )}
-                {offsetMode === "top" ? "中央" : "上"}
+                {offsetMode === "top"
+                  ? typeof targetOffsetPx === "number"
+                    ? "該当日"
+                    : "中央"
+                  : offsetMode === "mid"
+                    ? "上"
+                    : "中央"}
               </button>
             )}
             {safeUrl && (

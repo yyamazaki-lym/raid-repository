@@ -52,6 +52,14 @@ export const RELEASES: ReleaseEntry[] = [
     date: "2026-04-29",
     parts: [
       {
+        title: "🖼 軽減表 / ロット iframe にズームトグル追加 (TODO #43)",
+        body: "軽減表 / ロット管理サブタブで Google Sheets を埋め込む際、Sheets 標準ズームではフレームに収まらず横スクロールが必要だった問題を解消。\n\n**仕様**: 右上 toolbar に倍率ボタン (現在値 % 表示) を追加。クリックで `50% → 60% → 75% → 90% → 100% → 50%` を循環。デフォルトは 60% (= ほぼフィット)。選択は `localStorage[\"raid-portal:sheet-iframe-scale\"]` に保存され、カテゴリ間 / セッション間で永続。\n\n**実装**: `SheetIframe` を server component として残しつつ、interactive 部分を新規 client component `SheetIframeFrame` に切り出し。inverse-sized iframe (`width: 100/scale %`) に `transform: scale(N)` を当てる旧来手法を踏襲しつつ、scale 値を state で持つ。100% 時はオーバーサイズ不要で透過 (`transform: none`)。",
+      },
+      {
+        title: "📅 スケジュール出欠セル → 該当日 iframe スクロールジャンプ (TODO #44)",
+        body: "スケジュール表で「未確定」(◯△× セル) を押下したとき、character-sheets の編集 iframe が該当日付の入力行近くで開くように改善。複数日先の予定を編集するときに毎回スクロールダウンしなくて済む。\n\n**背景**: cross-origin iframe は scrollTo / postMessage できず、character-sheets は URL hash 由来のスクロールにも対応していない (1.9.14-15 で確認済)。\n\n**実装**: 1.9.15 で導入した `translateY` clipping (= iframe 上端を強制的に隠して指定 px 下から見せる) を per-date 化。`schedule-list` から session の upcoming index を `targetOffsetPx = 280 + (index - 1) * 36` で計算し `ScheduleEditFrameDialog` に渡す。280 = 既存の \"mid\" base (ヘッダー高)、36 = 日付行 1 行分の概算高さ。\n\n**UI**: ダイアログ右上のオフセット切替ボタンを 3-way 化 — 「該当日 / 中央 / 上」を循環。target offset が無い経路 (= ユーザー名ヘッダー押下) は従来どおり 2-way (中央 / 上)。URL prop が変わったら mode を初期値にリセットしてセッション間で位置が固定化されるのを防止。",
+      },
+      {
         title: "🔑 カテゴリ編集に「FFLogs マッチワード」追加 (TODO #45)",
         body: "標準コンテンツ分類 (CONTENT_GROUPS) で拾えないユーザー独自の FFLogs report 命名を救済する escape hatch を追加。\n\n**背景**: ユーザー指摘 — LH 級カテゴリで 24 本中 4 本しか紐づかない (うち 1 本は手動らしい = auto match 実質 3 本)。原因は report タイトルが「4 層しょーか」「LH しょか」のような独自命名で、CONTENT_GROUPS の標準キーワード (「ライトヘビー級」「M3S」「LH 級」) に当たらないため `rGroups = empty` になり、緩和ルールでも score=0.5 (曖昧) 止まり。さらに report タイトルがたまたま「ヘビー級」(ライト無し) を含むと group 12 (Heavyweight) に分類されて cross-group reject の餌食に。\n\n**仕様**: カテゴリ編集ダイアログ (admin 限定) に新フィールド「FFLogs マッチワード」を追加。カンマ区切りで複数キーワードを登録 (例: `4層しょーか, LH しょか, M4S`)。FFLogs auto-link で同日候補を評価する際、このカテゴリの動画 × 該当 report の組について report の `zoneName + title` 結合文字列に **いずれかのキーワードが部分一致** (大小文字無視) すれば、cross-group reject を override して **score=0 (確信マッチ)** として扱う。\n\n**実装**:\n- DB: `categories.fflogs_match_keywords text[]` 列追加 (`schema.sql` 再実行が必要)\n- 型: `Category.fflogsMatchKeywords: string[]` / Row 側 `fflogs_match_keywords: string[] | null`\n- Server Action: `updateCategoryAction` の `CategoryUpdatePatch` ホワイトリスト拡張\n- UI: `category-form-dialog` に textarea 追加 (累計時間入力欄の下、カンマ / 読点 / 改行で分割保存、空配列 / null = 従来挙動)\n- Matcher: `linkReportsToVideos` の `scoreCandidate` で `contentMismatchPenalty` 評価前に override チェック\n\n**注**: スキーマ変更を含むので Supabase の SQL Editor で `supabase/schema.sql` 再実行が必要。実行後、admin ロール所持者がカテゴリ編集ダイアログで該当キーワードを登録 → 「FFLogs と動画を連動」を再実行すれば紐づきが増える。",
       },
