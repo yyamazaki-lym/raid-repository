@@ -38,6 +38,9 @@
 | 20 | Vercel ドメイン変更 (`raid-repository.vercel.app` から好きな名前 / カスタムドメインへ) — Vercel Project Settings → Domains で実施。Discord Developer Portal の Redirects、Supabase Authentication の Site URL / Redirect URLs にも新ドメインを追加する必要あり | 小 |
 | 23 | サイト全体のデータ初期化ボタン (設定ダイアログ内、ADMIN 権限のみ、2 度確認ダイアログ) — `categories` `category_links` `app_settings` 等のユーザーデータを TRUNCATE して初期状態に戻す。デプロイ初期や検証時の rebuild 用。Server Action で全テーブルを削除 → 2 段階確認 (1回目「本当に初期化?」、2回目「データ全消去確認、入力欄に `INITIALIZE` と打ってください」) | 中 |
 | 29 | GitHub About / topics の定期メンテ — 大型機能追加時に repo の Description / Topics を最新化する。`gh repo edit yyamazaki-lym/raid-repository --description "..." --add-topic ...` で更新可。2.1 (2026-04-29) 時点で description/topics は `discord-oauth/ffxiv/nextjs/raid/supabase/tailwind/typescript/vercel` まで更新済み (継続項目として残置) | 極小 |
+| 33 | **🔒 [security]** CSP (Content-Security-Policy) 段階導入 — まず `Content-Security-Policy-Report-Only` で本番 1 週間運用 → violation report 確認 → enforce に切替。Tailwind / Google Fonts / Discord / Supabase / Vercel domain の許可リスト整理が必要 | 中 |
+| 35 | **🔒 [security]** FFLogs session cookie / OAuth tokens を `app_settings` 平文保存から脱却 — 専用テーブル `secrets` に分離、Postgres `pgcrypto` で暗号化 (encryption key は env)。RLS で SELECT を service role のみに絞る。書き込み Server Action は admin gate 維持 | 中 |
+| 36 | **🔒 [security]** Supabase RLS を `auth.uid()` ベースに締める — 現状全テーブル `USING (true)` で誰でも anon key で全件 CRUD 可能。Discord OAuth で `auth.users` に session があるユーザーのみ SELECT 許可、書き込みは admin role を要求する RLS function を作成。最大規模の変更で migration 計画が必要 | 大 |
 
 ## 完了済み TODO アーカイブ
 
@@ -66,6 +69,8 @@
 | ~~24~~ | 過去日程は Discord/snapshot を authoritative source として表示 + 個別削除 UI — 過去フィルタは `status === "DECISION"` 限定 + `mergeStoredPastSessions` で **char-sheets のみで stored に無い過去行は破棄**。char-sheets が実際は流した日でも DECISION マーカーを残すケースを排除。`discord-schedule.ts` は未来日時 insert ガード + 既存未来行 DELETE クリーンアップ。settings dialog → DB 保存件数ボタンで直近 20 件を表示、各行 × で個別削除可 (`deleteStoredPastSession` Server Action)。100 件ローテで元 Discord メッセージが落ちた古い stored 行や、誤って入った行を除去できる | 2.1 (2026-04-29) |
 | ~~30~~ | 紅蓮 (Stormblood) テーマの彩度/明度を下げて薄く + 出欠 × (rose-400) と差別化 — `app/globals.css` の `.dark.theme-stormblood` を hue `22 → 38-40` (deep ember 寄り) に振り、accent も `45 → 60` (amber 寄り)、primary chroma `0.27 → 0.17` で再調整。前回 chroma 圧縮のみで hue 据え置きだったため × マーカーと色相被り → ember 系 hue で解消 | 2.1 (2026-04-29) |
 | ~~31~~ | 軽減表 / ロット管理ページのスプレッドシート紐付け解除 UI + 軽減表テンプレ案内 — `SheetUrlUnlinkButton` を新規追加し `SheetIframe` の toolbar に admin 限定表示 (`updateCategory({ mitigation_sheet_url/loot_sheet_url: null })` で解除)。軽減表 onboarding には lastagous 氏のコピー元シート + note 使い方ガイドへのリンク追加 | 2.1 (2026-04-29) |
+| ~~32~~ | **🔒 [security]** セキュリティレスポンスヘッダー追加 — `next.config.ts` の `headers()` で全パスに `X-Frame-Options: DENY` / `HSTS max-age=15552000` / `Referrer-Policy strict-origin-when-cross-origin` / `X-Content-Type-Options: nosniff` / `Permissions-Policy` (camera/microphone/geolocation 等を全 OFF) を付与 | 2.1 (2026-04-29) |
+| ~~34~~ | **🔒 [security]** Storage bucket `category-backgrounds` 強化 — `file_size_limit = 5MB` + `allowed_mime_types = [png,jpeg,webp,gif]` を bucket レベル強制 (SVG は XSS ベクタなので除外)、anon UPDATE/DELETE policy 撤去、public read + anon insert のみ残置 | 2.1 (2026-04-29) |
 
 ### 除外済み (再対応不要)
 

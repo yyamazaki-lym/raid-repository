@@ -520,12 +520,30 @@ ON CONFLICT (slug) DO NOTHING;
 -- ---- 10. Storage bucket for category background images ---------------
 -- Phase 9 (TODO #17 follow-up, 1.9 (2026-04-28)): public bucket so the
 -- category card edit dialog can upload local images and the resulting
--- public URL is stored in `categories.background_image_url`. Anon key
--- gets full read/write/delete via permissive RLS, matching the rest of
--- this single-tenant app.
-INSERT INTO storage.buckets (id, name, public)
-VALUES ('category-backgrounds', 'category-backgrounds', true)
-ON CONFLICT (id) DO UPDATE SET public = EXCLUDED.public;
+-- public URL is stored in `categories.background_image_url`.
+--
+-- TODO #34 強化 (2.1, 2026-04-29):
+-- - `file_size_limit = 5MB` を bucket レベルで強制 (anon insert で
+--   多量データを送られるのを RLS では無く storage 層で弾く)
+-- - `allowed_mime_types` に画像系のみ許可 (`image/svg+xml` は XSS
+--   ベクタになり得るので除外)
+-- - anon UPDATE / DELETE policy を撤去。ユーザー UI に消去操作は
+--   無く、攻撃者が anon key で他人の画像を消すリスクを排除。
+--   再アップロード = 別 path (`{Date.now()}-{rand}.{ext}`) なので
+--   UPDATE 不要。古い画像のクリーンアップは admin Server Action で
+--   別途実装する想定 (現状はオブジェクトストレージに残置でも害なし)。
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES (
+  'category-backgrounds',
+  'category-backgrounds',
+  true,
+  5242880,  -- 5 MB
+  ARRAY['image/png', 'image/jpeg', 'image/webp', 'image/gif']
+)
+ON CONFLICT (id) DO UPDATE SET
+  public = EXCLUDED.public,
+  file_size_limit = EXCLUDED.file_size_limit,
+  allowed_mime_types = EXCLUDED.allowed_mime_types;
 
 DROP POLICY IF EXISTS "category-backgrounds public read"  ON storage.objects;
 DROP POLICY IF EXISTS "category-backgrounds anon insert"  ON storage.objects;
@@ -539,12 +557,7 @@ CREATE POLICY "category-backgrounds public read"
 CREATE POLICY "category-backgrounds anon insert"
   ON storage.objects FOR INSERT
   WITH CHECK (bucket_id = 'category-backgrounds');
-
-CREATE POLICY "category-backgrounds anon update"
-  ON storage.objects FOR UPDATE
-  USING (bucket_id = 'category-backgrounds')
-  WITH CHECK (bucket_id = 'category-backgrounds');
-
-CREATE POLICY "category-backgrounds anon delete"
-  ON storage.objects FOR DELETE
-  USING (bucket_id = 'category-backgrounds');
+-- NOTE: anon UPDATE / anon DELETE は撤去。Discord OAuth 経由でアプリ
+-- に来たユーザーでも anon key の Storage 直接操作はできない (admin
+-- Server Action 経由のみ可、未実装なので現状は完全 read-only + insert
+-- のみ)。古い画像のクリーンアップは将来 admin Server Action で対応。
