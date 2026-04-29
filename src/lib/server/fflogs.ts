@@ -995,9 +995,12 @@ export async function linkFflogsReportsToVideos(): Promise<FflogsLinkResult> {
         me.id,
         sessionCookie,
       );
-      if (cookieUsed) {
-        // Auto-delete the cookie after use — one-time-use semantics.
-        // 新 secrets テーブルと旧 app_settings の両方を消す (移行期)。
+      // TODO #45 (2.1): scrape 成功時のみ cookie を auto-delete する。
+      // 旧設計では成功 / 失敗を問わず削除していたため、Cloudflare の
+      // 一時的な 403 で cookie だけ消費される事故 (= 「貼り直しの無限
+      // ループ」) が発生していた。失敗時は cookie 残しユーザーが
+      // そのまま再試行できるようにする。
+      if (cookieUsed && scrapeResult.ok) {
         try {
           const cleanupClient = await createClient();
           await cleanupClient

@@ -43,6 +43,7 @@
 | 39 | **「本日」バッジを「挑戦中」に変えて色差別化** — スケジュールページ上部の次回開催カード (`next-session-card.tsx`) で、現在 `本日` バッジが終日同色。開催時間帯 (start time → end time) の間は「挑戦中」表記 + 色を変えて (例: green/cyan の発光 → red/magenta 強調) 進行中であることを視覚的に示したい | 小 |
 | 43 | **軽減表 / ロット管理表のデフォルト iframe 縮尺調整** — `SheetIframe` 表示時、Google Sheets の標準ズームだと枠に収まらず横スクロール / 余白が出る。シート読み込み時に iframe サイズへフィットする縮尺 (例: `transform: scale(...)` 自動計算 or Sheets の `widget=true&headers=false&range=A1:N40` 等のクエリ追加) をデフォルトにしたい。`mitigation_sheet_url` / `loot_sheet_url` 両対象 | 中 |
 | 44 | **スケジュール日程リストから日程位置への iframe ジャンプ** — 未確定の `-` または確定済みの〇/×/△を押した時、iframe (character-sheets スケジュール管理) を開いて該当日程まで自動スクロールさせたい。`〇×` 等を押した時の編集挙動と同様。実装案: schedule-edit-frame-dialog 側で `postMessage` or hash anchor (`#row-YYYYMMDD` 等) で日程位置を指定し iframe 内に scroll。character-sheets 側がアンカーをサポートしていない場合は postMessage + 内部 query DOM 走査の代替案も要検討 | 中 |
+| 45 | **🐛 FFLogs HTML scrape が Cloudflare に 403 で弾かれる** — ユーザー診断: v2 GraphQL は 12 件 (古い Public のみ、2017-2022) 取れるが、HTML scrape は **`fflogs HTML scrape 403 (page 1)`** で 1 ページ目から拒否され Unlisted/Private 19 ページ分が取れない。実 Chrome 風 UA + Sec-Fetch 一式付与済 (2.1) でも今回は通らず、Vercel egress IP が Cloudflare bot 判定されている。**即効対応 (本 commit で実装済)**: scrape 成功時のみ session cookie を auto-delete (失敗時は保持してリトライ可能に) — 旧設計だと 403 でも cookie が消費されて「貼り直しの無限ループ」になっていた。これにより「トップページからやれば取れる / 他ページだと取れない」と見えていた現象 (実態は運次第) も解消。**根本対応 (未着手)**: (a) ユーザーローカル PC からの cron scrape → API push、(b) residential proxy 経由、(c) 完全に手動 URL 貼り付け運用に倒し scrape 廃止、のいずれか。FFLogs v2 API は仕様で Private/Unlisted を露出しないため API 拡張による解決は不可 | 中 |
 
 ## 完了済み TODO アーカイブ
 
