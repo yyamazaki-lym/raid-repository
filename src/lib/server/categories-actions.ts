@@ -66,6 +66,7 @@ import {
   type DiscordGuildRole,
 } from "./discord-roles";
 import { assertAdminResult } from "./auth";
+import { dbError } from "./db-error";
 import {
   rowToCategory,
   type Category,
@@ -177,7 +178,7 @@ export async function createCategoryAction(
     .select("*")
     .single();
   if (error || !data) {
-    return { ok: false, reason: error?.message ?? "unknown error" };
+    return { ok: false, reason: dbError("カテゴリ作成", error) };
   }
   revalidateCategoryPages();
   return { ok: true, category: rowToCategory(data as CategoryRow) };
@@ -195,7 +196,7 @@ export async function updateCategoryAction(
     .from("categories")
     .update(patch)
     .eq("id", id);
-  if (error) return { ok: false, reason: error.message };
+  if (error) return { ok: false, reason: dbError("カテゴリ更新", error) };
   revalidateCategoryPages();
   return { ok: true };
 }
@@ -208,7 +209,7 @@ export async function deleteCategoryAction(
 
   const supabase = await createClient();
   const { error } = await supabase.from("categories").delete().eq("id", id);
-  if (error) return { ok: false, reason: error.message };
+  if (error) return { ok: false, reason: dbError("カテゴリ削除", error) };
   revalidateCategoryPages();
   return { ok: true };
 }
@@ -226,7 +227,9 @@ export async function setCategoryOrderAction(
   );
   const results = await Promise.all(updates);
   const failed = results.find((r) => r.error);
-  if (failed?.error) return { ok: false, reason: failed.error.message };
+  if (failed?.error) {
+    return { ok: false, reason: dbError("並び替え", failed.error) };
+  }
   revalidateCategoryPages();
   return { ok: true };
 }
@@ -243,7 +246,7 @@ export async function updateCategoryStatusAction(
     .from("categories")
     .update({ status })
     .eq("id", id);
-  if (error) return { ok: false, reason: error.message };
+  if (error) return { ok: false, reason: dbError("ステータス更新", error) };
   revalidateCategoryPages();
   return { ok: true };
 }
@@ -267,14 +270,14 @@ export async function maybeSetFirstClearAtAction(
     .select("first_clear_at")
     .eq("id", categoryId)
     .maybeSingle();
-  if (selErr) return { updated: false, reason: selErr.message };
+  if (selErr) return { updated: false, reason: dbError("クリア日確認", selErr) };
   if (data?.first_clear_at) return { updated: false }; // already set
   const { error: updErr } = await supabase
     .from("categories")
     .update({ first_clear_at: isoTimestamp })
     .eq("id", categoryId)
     .is("first_clear_at", null);
-  if (updErr) return { updated: false, reason: updErr.message };
+  if (updErr) return { updated: false, reason: dbError("クリア日更新", updErr) };
   return { updated: true };
 }
 
@@ -439,7 +442,7 @@ export async function backfillFirstClearFromExistingVideos(
   if (catErr || !cats) {
     return {
       ok: false,
-      reason: "categories fetch failed: " + (catErr?.message ?? "unknown"),
+      reason: dbError("カテゴリ取得", catErr),
       alreadySet: 0,
       filled: 0,
       noMatch: 0,
@@ -830,7 +833,7 @@ export async function clearAllFflogsLinks(): Promise<{
   if (vidsErr) {
     return {
       ok: false,
-      reason: "videos: " + vidsErr.message,
+      reason: dbError("動画 logs_url クリア", vidsErr),
       videosCleared: 0,
       sessionsCleared: 0,
     };
@@ -843,7 +846,7 @@ export async function clearAllFflogsLinks(): Promise<{
   if (sesErr) {
     return {
       ok: false,
-      reason: "sessions: " + sesErr.message,
+      reason: dbError("過去予定 logs_url クリア", sesErr),
       videosCleared: vids?.length ?? 0,
       sessionsCleared: 0,
     };
@@ -919,7 +922,7 @@ export async function setSessionLogsUrl(
     .eq("raw_date", trimmedDate)
     .select("raw_date")
     .maybeSingle();
-  if (updErr) return { ok: false, reason: updErr.message };
+  if (updErr) return { ok: false, reason: dbError("logs_url 更新", updErr) };
 
   if (!updated) {
     if (!sessionDetails) {
@@ -941,7 +944,7 @@ export async function setSessionLogsUrl(
         logs_url: normalized,
         logs_url_source: "manual",
       });
-    if (insErr) return { ok: false, reason: insErr.message };
+    if (insErr) return { ok: false, reason: dbError("過去予定登録", insErr) };
   }
   try {
     revalidatePath("/");
@@ -999,7 +1002,7 @@ export async function countStoredPastSessions(): Promise<{
   if (cErr) {
     return {
       ok: false,
-      reason: cErr.message,
+      reason: dbError("過去予定件数取得", cErr),
       count: 0,
       recentRows: [],
     };
@@ -1044,7 +1047,7 @@ export async function deleteStoredPastSession(rawDate: string): Promise<{
     .from("schedule_past_sessions")
     .delete()
     .eq("raw_date", trimmed);
-  if (error) return { ok: false, reason: error.message };
+  if (error) return { ok: false, reason: dbError("過去予定削除", error) };
   return { ok: true };
 }
 
@@ -1077,7 +1080,7 @@ export async function setScheduleUrlAction(
   const { error } = await supabase
     .from("app_settings")
     .upsert({ key: "schedule_url", value: url }, { onConflict: "key" });
-  if (error) return { ok: false, reason: error.message };
+  if (error) return { ok: false, reason: dbError("URL 保存", error) };
   try {
     revalidatePath("/");
   } catch {
@@ -1098,7 +1101,7 @@ export async function setDiscordScheduleChannelIdAction(
       .from("app_settings")
       .delete()
       .eq("key", "discord_schedule_channel_id");
-    if (error) return { ok: false, reason: error.message };
+    if (error) return { ok: false, reason: dbError("チャンネル ID 削除", error) };
     return { ok: true };
   }
   if (!/^\d{17,20}$/.test(id)) {
@@ -1110,7 +1113,7 @@ export async function setDiscordScheduleChannelIdAction(
       { key: "discord_schedule_channel_id", value: id },
       { onConflict: "key" },
     );
-  if (error) return { ok: false, reason: error.message };
+  if (error) return { ok: false, reason: dbError("チャンネル ID 保存", error) };
   return { ok: true };
 }
 
@@ -1173,7 +1176,7 @@ export async function createCategoryLinkAction(input: {
     .select("id")
     .single();
   if (error || !data) {
-    return { ok: false, reason: error?.message ?? "unknown error" };
+    return { ok: false, reason: dbError("リンク作成", error) };
   }
   return { ok: true, linkId: data.id as string };
 }
@@ -1217,7 +1220,7 @@ export async function updateCategoryLinkAction(
     .from("category_links")
     .update(dbPatch)
     .eq("id", id);
-  if (error) return { ok: false, reason: error.message };
+  if (error) return { ok: false, reason: dbError("リンク更新", error) };
   return { ok: true };
 }
 
@@ -1231,7 +1234,7 @@ export async function deleteCategoryLinkAction(
     .from("category_links")
     .delete()
     .eq("id", id);
-  if (error) return { ok: false, reason: error.message };
+  if (error) return { ok: false, reason: dbError("リンク削除", error) };
   return { ok: true };
 }
 
@@ -1250,7 +1253,9 @@ export async function setCategoryLinkOrderAction(
     ),
   );
   const failed = results.find((r) => r.error);
-  if (failed?.error) return { ok: false, reason: failed.error.message };
+  if (failed?.error) {
+    return { ok: false, reason: dbError("リンク並び替え", failed.error) };
+  }
   return { ok: true };
 }
 
@@ -1266,7 +1271,7 @@ export async function setFflogsUsernameAction(
       .from("app_settings")
       .delete()
       .eq("key", "fflogs_username");
-    if (error) return { ok: false, reason: error.message };
+    if (error) return { ok: false, reason: dbError("FFLogs ユーザー名削除", error) };
     return { ok: true };
   }
   // URL で渡された場合は表示名部分を抽出 (旧 parseFflogsDisplayName 同等)
@@ -1313,7 +1318,7 @@ export async function setFflogsUsernameAction(
   const { error } = await supabase
     .from("app_settings")
     .upsert({ key: "fflogs_username", value }, { onConflict: "key" });
-  if (error) return { ok: false, reason: error.message };
+  if (error) return { ok: false, reason: dbError("FFLogs ユーザー名保存", error) };
   return { ok: true };
 }
 
@@ -1638,7 +1643,7 @@ export async function backfillVideoDurationsChunk(opts: {
   if (error) {
     return {
       ok: false,
-      reason: "fetch failed: " + error.message,
+      reason: dbError("動画一覧取得", error),
       filled: 0,
       failed: 0,
       skippedNonYoutube: 0,

@@ -1,5 +1,6 @@
 import "server-only";
 import { createClient as createSupabaseJsClient } from "@supabase/supabase-js";
+import { dbError } from "./db-error";
 import {
   decryptSecret,
   encryptSecret,
@@ -65,7 +66,7 @@ export async function setSecretValue(
       { key, encrypted_value: encrypted, updated_at: new Date().toISOString() },
       { onConflict: "key" },
     );
-  if (error) return { ok: false, reason: error.message };
+  if (error) return { ok: false, reason: dbError("secret 保存", error) };
   return { ok: true };
 }
 
@@ -103,6 +104,6 @@ export async function deleteSecretValue(
     return { ok: false, reason: "SUPABASE_SERVICE_ROLE_KEY 未設定" };
   }
   const { error } = await client.from("secrets").delete().eq("key", key);
-  if (error) return { ok: false, reason: error.message };
+  if (error) return { ok: false, reason: dbError("secret 削除", error) };
   return { ok: true };
 }

@@ -1,5 +1,6 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
+import { dbError } from "@/lib/server/db-error";
 import { fetchAppSetting } from "@/lib/supabase/app-settings";
 import {
   deleteSecretValue,
@@ -106,7 +107,7 @@ export async function buildAuthorizeUrl(
       { key: KEY_STATE_PENDING, value: state },
       { onConflict: "key" },
     );
-  if (error) return { ok: false, reason: "state 保存失敗: " + error.message };
+  if (error) return { ok: false, reason: dbError("OAuth state 保存", error) };
 
   const url = new URL(OAUTH_AUTHORIZE_URL);
   url.searchParams.set("client_id", creds.clientId);
@@ -343,7 +344,7 @@ export async function disconnectFflogsOAuth(): Promise<{
       KEY_USER_NAME,
       KEY_STATE_PENDING,
     ]);
-  if (error) return { ok: false, reason: error.message };
+  if (error) return { ok: false, reason: dbError("FFLogs 連携解除", error) };
   // 新 secrets テーブルからも消す (best-effort)。
   await deleteSecretValue(KEY_ACCESS);
   await deleteSecretValue(KEY_REFRESH);

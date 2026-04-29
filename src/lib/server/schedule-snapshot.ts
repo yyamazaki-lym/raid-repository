@@ -1,5 +1,6 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
+import { dbError } from "@/lib/server/db-error";
 import { fetchScheduleRaw } from "@/lib/schedule/next-session";
 
 /**
@@ -99,7 +100,7 @@ export async function runScheduleSnapshot(): Promise<{
   if (error) {
     return {
       ok: false,
-      reason: "upsert failed: " + error.message,
+      reason: dbError("スナップショット保存", error),
       scanned: rows.length,
       inserted: 0,
       updated: 0,

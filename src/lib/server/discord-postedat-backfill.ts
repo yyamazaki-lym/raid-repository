@@ -1,5 +1,6 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
+import { dbError } from "@/lib/server/db-error";
 
 /**
  * One-shot backfill for `category_links.posted_at` using the original
@@ -80,7 +81,7 @@ export async function backfillPostedAtFromDiscord(): Promise<PostedAtBackfillRes
   if (error || !cats) {
     return {
       ok: false,
-      reason: "categories fetch failed: " + (error?.message ?? "unknown"),
+      reason: dbError("カテゴリ取得", error),
       scannedMessages: 0,
       scannedUrls: 0,
       matched: 0,

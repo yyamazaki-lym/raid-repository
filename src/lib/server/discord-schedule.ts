@@ -1,5 +1,6 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
+import { dbError } from "@/lib/server/db-error";
 import { fetchAppSetting } from "@/lib/supabase/app-settings";
 
 /**
@@ -215,7 +216,7 @@ export async function importDiscordScheduleHistory(): Promise<ScheduleHistoryImp
     if (error) {
       return {
         ok: false,
-        reason: "insert failed: " + error.message,
+        reason: dbError("スケジュール取り込み", error),
         scanned: messages.length,
         parsed: parsedRows.length,
         inserted: 0,

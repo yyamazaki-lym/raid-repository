@@ -1,5 +1,6 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
+import { dbError } from "@/lib/server/db-error";
 import { fetchPageTitle } from "@/lib/server/page-title";
 import {
   fetchYouTubeMeta,
@@ -76,7 +77,7 @@ export async function runDiscordImport(): Promise<{
   if (error) {
     return {
       ok: false,
-      reason: "supabase select failed: " + error.message,
+      reason: dbError("カテゴリ取得", error),
       results: [],
     };
   }
