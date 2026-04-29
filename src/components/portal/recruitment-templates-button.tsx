@@ -157,56 +157,51 @@ export function RecruitmentTemplatesButton({ initial, categories }: Props) {
 
   // 上位 SortableContext のキー = カテゴリグループキー (categoryId
   // か "__none__")。block 単位の useSortable で section ごと並び替え。
-  // 2.1 (2026-04-29) v2: 旧仕様では intra-category 並び替えを macros
-  // ページに譲っていたが、ユーザー要望で popover 内でも row 単位 DnD を
-  // 可能にした。各カテゴリブロック内に個別 SortableContext を nest し、
-  // 行 grip は当該行のみを動かす (cross-category drag も flat list で
-  // 反映 → groupBy 再描画で結果的に同 category に戻る)。
+  //
+  // 2.1 (2026-04-29) v3: row 単位の DnD を popover 内で可能にする際、
+  // 旧 v2 では outer DndContext + nested SortableContext で実装した
+  // ところ collisionDetection が category id と template id を混同して
+  // 「ドラッグしても追従しない」事象が出ていた (ユーザー報告)。
+  // v3 では outer (category) と inner (row) の DndContext を完全分離し、
+  // それぞれに独立した onDragEnd を持たせる構造に切替。
   const groupKeys = useMemo(
     () => grouped.map((g) => g.categoryId ?? "__none__"),
     [grouped],
   );
-  const groupKeySet = useMemo(() => new Set(groupKeys), [groupKeys]);
 
-  const onDragEnd = async (event: DragEndEvent) => {
+  const onCategoryDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = groupKeys.indexOf(String(active.id));
+    const newIndex = groupKeys.indexOf(String(over.id));
+    if (oldIndex < 0 || newIndex < 0) return;
+
+    const reorderedGroups = arrayMove(grouped, oldIndex, newIndex);
+    const next = reorderedGroups.flatMap((g) => g.items.map((t) => t.id));
+    setOptimisticOrder(next);
+
+    const srcName = grouped[oldIndex]?.categoryName ?? "未分類";
+    const dstName = grouped[newIndex]?.categoryName ?? "未分類";
+
+    const result = await setRecruitmentTemplateOrder(next);
+    if (!result.ok) {
+      toast.error("並び替え保存失敗: " + result.reason);
+      setOptimisticOrder(null);
+      return;
+    }
+    toast.success(`「${srcName}」を「${dstName}」の位置に移動しました`);
+    setTimeout(() => setOptimisticOrder(null), 1500);
+  };
+
+  // 行並び替えは groupId で限定して同 category 内に閉じる (cross-category
+  // drag は groupBy 再描画で結果が直感に反するため)。section ごとの inner
+  // DndContext で発火するので、active / over はその section のテンプレ
+  // id のみ。
+  const onRowDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
     const aId = String(active.id);
     const oId = String(over.id);
-
-    // active が groupKey (= category) → カテゴリブロック並び替え
-    if (groupKeySet.has(aId)) {
-      // category を row の上にドロップした場合は no-op
-      if (!groupKeySet.has(oId)) return;
-      const oldIndex = groupKeys.indexOf(aId);
-      const newIndex = groupKeys.indexOf(oId);
-      if (oldIndex < 0 || newIndex < 0) return;
-
-      const reorderedGroups = arrayMove(grouped, oldIndex, newIndex);
-      const next = reorderedGroups.flatMap((g) =>
-        g.items.map((t) => t.id),
-      );
-      setOptimisticOrder(next);
-
-      const srcName = grouped[oldIndex]?.categoryName ?? "未分類";
-      const dstName = grouped[newIndex]?.categoryName ?? "未分類";
-
-      const result = await setRecruitmentTemplateOrder(next);
-      if (!result.ok) {
-        toast.error("並び替え保存失敗: " + result.reason);
-        setOptimisticOrder(null);
-        return;
-      }
-      toast.success(
-        `「${srcName}」を「${dstName}」の位置に移動しました`,
-      );
-      setTimeout(() => setOptimisticOrder(null), 1500);
-      return;
-    }
-
-    // active が template id → 行単位 (intra-category) 並び替え。
-    // row を category ヘッダーにドロップした場合は no-op。
-    if (groupKeySet.has(oId)) return;
 
     const flat = ordered.map((t) => t.id);
     const oldIndex = flat.indexOf(aId);
@@ -271,7 +266,7 @@ export function RecruitmentTemplatesButton({ initial, categories }: Props) {
             <DndContext
               sensors={sensors}
               collisionDetection={closestCenter}
-              onDragEnd={onDragEnd}
+              onDragEnd={onCategoryDragEnd}
             >
               <SortableContext
                 items={groupKeys}
@@ -294,6 +289,8 @@ export function RecruitmentTemplatesButton({ initial, categories }: Props) {
                         isOpen={openCategories.has(key)}
                         onToggle={() => toggleCategory(key)}
                         onCopy={copyToClipboard}
+                        sensors={sensors}
+                        onRowDragEnd={onRowDragEnd}
                       />
                     );
                   })}
@@ -329,6 +326,8 @@ function SortableCategorySection({
   isOpen,
   onToggle,
   onCopy,
+  sensors,
+  onRowDragEnd,
 }: {
   groupKey: string;
   group: TemplateGroup;
@@ -337,6 +336,10 @@ function SortableCategorySection({
   isOpen: boolean;
   onToggle: () => void;
   onCopy: (t: RecruitmentTemplate) => void;
+  /** 親と同じ sensor 設定を共有 (距離 / 遅延ガードを揃えるため) */
+  sensors: ReturnType<typeof useSensors>;
+  /** 行並び替えの onDragEnd。section ごとに独立した inner DndContext で発火 */
+  onRowDragEnd: (event: DragEndEvent) => void;
 }) {
   const {
     attributes,
@@ -425,21 +428,32 @@ function SortableCategorySection({
         )}
       </div>
       {isOpen && (
-        <SortableContext
-          items={rowIds}
-          strategy={verticalListSortingStrategy}
+        // Inner DndContext: 行並び替え専用、outer (category) と完全分離。
+        // 親の DndContext と同居させると collisionDetection が混線して
+        // 「ドラッグ追従しない」事象が出る (v2 のバグ報告)。section ごとに
+        // 独立 DndContext を立てれば inner の active / over は当該 row
+        // 群のみ可視。
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={onRowDragEnd}
         >
-          <ul className="flex flex-col gap-0.5 border-t border-border/30 p-1">
-            {group.items.map((t) => (
-              <SortableTemplateRow
-                key={t.id}
-                template={t}
-                isTop={t.id === topId}
-                onCopy={() => onCopy(t)}
-              />
-            ))}
-          </ul>
-        </SortableContext>
+          <SortableContext
+            items={rowIds}
+            strategy={verticalListSortingStrategy}
+          >
+            <ul className="flex flex-col gap-0.5 border-t border-border/30 p-1">
+              {group.items.map((t) => (
+                <SortableTemplateRow
+                  key={t.id}
+                  template={t}
+                  isTop={t.id === topId}
+                  onCopy={() => onCopy(t)}
+                />
+              ))}
+            </ul>
+          </SortableContext>
+        </DndContext>
       )}
     </div>
   );

@@ -107,15 +107,14 @@ export async function runDiscordImport(): Promise<{
       continue;
     }
     if (cat.discordStrategyChannelId) {
+      // TODO #37 v3 (2.1, 2026-04-29): auto-link は importChannel 内部で
+      // 既に fetch 済みの messages を再利用する設計に変更。旧設計
+      // (channel 2 回 fetch) は Vercel function timeout / Discord rate
+      // limit に当たって import 全体が "Page Error" を返す原因に
+      // なっていた。
       results.push(
         await importChannel(cat, cat.discordStrategyChannelId, "strategy", botToken),
       );
-      // TODO #37 (2.1, 2026-04-29): in addition to feeding the link
-      // list, scan the strategy channel for "軽減表" / "ロット" keywords
-      // adjacent to a Google Sheets URL and auto-set the per-category
-      // sheet URLs. Skipped silently when the category already has the
-      // URL set (don't clobber manual choices).
-      await maybeAutoLinkSheetUrls(cat, cat.discordStrategyChannelId, botToken);
     }
     if (cat.discordVideoChannelId) {
       results.push(
@@ -166,19 +165,32 @@ async function importChannel(
     };
   }
 
+  // TODO #37 v3 (2.1, 2026-04-29): strategy チャンネルから取得した
+  // messages を流用して、軽減表 / ロット URL の自動紐付けを試行する。
+  // helper は完全に self-contained (内部 try/catch) で、何が起きても
+  // 親 import を止めない。Discord 側の追加 fetch は発生しない。
+  if (kind === "strategy") {
+    await maybeAutoLinkSheetUrls(cat, messages);
+  }
+
   // 2. Extract URLs (oldest first for chronological insertion).
   type Candidate = { url: string; postedBy: string; postedAt: string };
   const candidates: Candidate[] = [];
   const seenInBatch = new Set<string>();
   for (const m of [...messages].reverse()) {
-    const found = m.content.matchAll(URL_RE);
+    // Defensive: m.content can be missing/non-string for system /
+    // webhook / forwarded messages even though Discord docs say it's
+    // always present. Skip silently rather than throw.
+    const content = typeof m?.content === "string" ? m.content : "";
+    if (!content) continue;
+    const found = content.matchAll(URL_RE);
     for (const match of found) {
       const url = stripTrailingPunctuation(match[0]);
       if (!url || seenInBatch.has(url)) continue;
       seenInBatch.add(url);
       candidates.push({
         url,
-        postedBy: m.author.username,
+        postedBy: m.author?.username ?? "unknown",
         postedAt: m.timestamp,
       });
     }
@@ -363,36 +375,15 @@ function stripTrailingPunctuation(url: string): string {
  */
 async function maybeAutoLinkSheetUrls(
   cat: Category,
-  channelId: string,
-  botToken: string,
+  messages: DiscordMessage[],
 ): Promise<void> {
-  // Wrap the whole helper so a malformed Discord response or unexpected
-  // shape can NEVER kill the parent runDiscordImport. The auto-link is
-  // a best-effort enhancement; the link import itself must still
-  // succeed even if this errors.
+  // Wrap the whole helper so a malformed message shape can NEVER kill
+  // the parent runDiscordImport. The auto-link is a best-effort
+  // enhancement; the link import itself must still succeed even if
+  // this errors.
   try {
-    // Skip the network round-trip entirely if both columns are set.
+    // 既に両方埋まっているカテゴリは走査自体スキップ。
     if (cat.mitigationSheetUrl && cat.lootSheetUrl) return;
-
-    let messages: unknown;
-    try {
-      const res = await fetch(
-        `https://discord.com/api/v10/channels/${channelId}/messages?limit=100`,
-        {
-          headers: {
-            Authorization: `Bot ${botToken}`,
-            "User-Agent": "RaidRepositoryBot/0.1",
-          },
-          signal: AbortSignal.timeout(15000),
-        },
-      );
-      if (!res.ok) return;
-      messages = await res.json();
-    } catch {
-      return;
-    }
-    // Discord returns error responses as JSON objects on success-coded
-    // responses in some edge cases; bail unless we got a proper array.
     if (!Array.isArray(messages)) return;
 
     const SHEET_URL_RE =
@@ -405,7 +396,7 @@ async function maybeAutoLinkSheetUrls(
     let mitigationUrl: string | null = null;
     let lootUrl: string | null = null;
 
-    for (const m of messages as DiscordMessage[]) {
+    for (const m of messages) {
       if (
         (cat.mitigationSheetUrl || mitigationUrl) &&
         (cat.lootSheetUrl || lootUrl)
