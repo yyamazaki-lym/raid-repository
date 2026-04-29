@@ -59,6 +59,7 @@ import {
 import {
   clearAllFflogsLinks,
   countStoredPastSessions,
+  deleteStoredPastSession,
   disconnectFflogsOAuthAction,
   fetchFflogsOAuthStatus,
   getFflogsSessionCookieStatus,
@@ -157,9 +158,10 @@ export function SettingsDialog() {
   const [storedInfo, setStoredInfo] = useState<{
     ok: boolean;
     count: number;
-    sampleRawDates: string[];
+    recentRows: { rawDate: string; parsedDate: string; source: string | null }[];
     reason?: string;
   } | null>(null);
+  const [deletingRow, startDeleteRow] = useTransition();
   const [snapshotting, startSnapshot] = useTransition();
   const [snapshotResult, setSnapshotResult] =
     useState<ScheduleSnapshotResult | null>(null);
@@ -300,6 +302,24 @@ export function SettingsDialog() {
       const r = await countStoredPastSessions();
       setStoredInfo(r);
       if (!r.ok) toast.error("件数取得失敗: " + (r.reason ?? "unknown"));
+    });
+  };
+
+  const onDeleteStoredRow = (rawDate: string) => {
+    if (!confirm(`削除しますか?\n${rawDate}\n\n過去日程からこの日が消えます。Discord 取り込みを再実行しても、この raw_date のメッセージが Discord 100 件に残っていれば再度 insert されます。`)) {
+      return;
+    }
+    startDeleteRow(async () => {
+      const r = await deleteStoredPastSession(rawDate);
+      if (!r.ok) {
+        toast.error("削除失敗: " + (r.reason ?? "unknown"));
+        return;
+      }
+      toast.success(`削除しました: ${rawDate}`);
+      // Refresh the count panel + schedule view.
+      const refreshed = await countStoredPastSessions();
+      setStoredInfo(refreshed);
+      router.refresh();
     });
   };
 
@@ -617,20 +637,40 @@ export function SettingsDialog() {
                     <p className="font-mono">
                       DB 保存件数: <strong>{storedInfo.count}</strong>
                     </p>
-                    {storedInfo.sampleRawDates.length > 0 && (
+                    {storedInfo.recentRows.length > 0 && (
                       <ul className="font-mono text-[10px] text-muted-foreground">
-                        <li>サンプル（新しい順）:</li>
-                        {storedInfo.sampleRawDates.map((s, i) => (
-                          <li key={i} className="break-words">
-                            ・{s}
+                        <li className="mb-0.5">
+                          直近 {storedInfo.recentRows.length} 件（新しい順
+                          / 削除可）:
+                        </li>
+                        {storedInfo.recentRows.map((row, i) => (
+                          <li
+                            key={i}
+                            className="flex items-center gap-1.5 break-words py-0.5"
+                          >
+                            <button
+                              type="button"
+                              onClick={() => onDeleteStoredRow(row.rawDate)}
+                              disabled={deletingRow}
+                              aria-label={`${row.rawDate} を削除`}
+                              title={`この行を schedule_past_sessions から削除`}
+                              className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-rose-500/20 hover:text-rose-300 disabled:opacity-40"
+                            >
+                              <X className="h-3 w-3" aria-hidden />
+                            </button>
+                            <span className="text-muted-foreground/70">
+                              [{row.source ?? "?"}]
+                            </span>
+                            <span>{row.rawDate}</span>
                           </li>
                         ))}
                       </ul>
                     )}
                     <p className="mt-1 text-muted-foreground text-[10px]">
                       この件数はスケジュールページの「過去」に
-                      マージされる候補数です。0 なら保存されていない or
-                      SELECT が RLS で拒否されています。
+                      マージされる候補数です。実際は開催されていない日が
+                      混ざっていれば × ボタンで個別削除できます。0 なら
+                      保存されていない or SELECT が RLS で拒否されています。
                     </p>
                   </>
                 ) : (

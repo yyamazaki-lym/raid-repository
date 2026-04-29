@@ -63,7 +63,7 @@
 | ~~26~~ | カード編集にコンテンツ説明文 (description) フィールド — `categories.description` + `[slug]/layout.tsx` ヘッダー直下表示 | 2.1 (2026-04-29) |
 | ~~27~~ | /category ページ上部の説明文に「動画など」追加 (当初『カード編集から動画追加』と誤解釈、UI 撤去済み) | 2.1 (2026-04-29) |
 | ~~28~~ | Status の右端を Trophy と揃える — `SubPageShortcuts` の右パディングのみ調整 | 2.1 (2026-04-29) |
-| ~~24~~ | 過去日程は Discord/snapshot を authoritative source として表示 — 過去フィルタは `status === "DECISION"` 限定に加え、`mergeStoredPastSessions` を再設計して **char-sheets のみで stored に無い過去行は破棄** する仕様に。char-sheets が実際は流した日でも DECISION マーカーを残すケース (固定が source page を手動更新しない) を排除できる。char-sheets と stored で rawDate 一致 → 出欠記号は char-sheets 維持 + DECISION 扱いで残す。`discord-schedule.ts` は未来日時 insert ガード + 既存未来行 DELETE クリーンアップ (`skippedFuture` / `cleanedFuture`)。`settings-dialog.tsx` の import 結果パネルに件数表示。◯ は『参加可投票』であって実出席記録ではない (流れた候補日にも票が残る) ため fallback に使えない | 2.1 (2026-04-29) |
+| ~~24~~ | 過去日程は Discord/snapshot を authoritative source として表示 + 個別削除 UI — 過去フィルタは `status === "DECISION"` 限定 + `mergeStoredPastSessions` で **char-sheets のみで stored に無い過去行は破棄**。char-sheets が実際は流した日でも DECISION マーカーを残すケースを排除。`discord-schedule.ts` は未来日時 insert ガード + 既存未来行 DELETE クリーンアップ。settings dialog → DB 保存件数ボタンで直近 20 件を表示、各行 × で個別削除可 (`deleteStoredPastSession` Server Action)。100 件ローテで元 Discord メッセージが落ちた古い stored 行や、誤って入った行を除去できる | 2.1 (2026-04-29) |
 | ~~30~~ | 紅蓮 (Stormblood) テーマの彩度/明度を下げて薄く + 出欠 × (rose-400) と差別化 — `app/globals.css` の `.dark.theme-stormblood` を hue `22 → 38-40` (deep ember 寄り) に振り、accent も `45 → 60` (amber 寄り)、primary chroma `0.27 → 0.17` で再調整。前回 chroma 圧縮のみで hue 据え置きだったため × マーカーと色相被り → ember 系 hue で解消 | 2.1 (2026-04-29) |
 
 ### 除外済み (再対応不要)

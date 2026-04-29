@@ -912,7 +912,8 @@ export async function countStoredPastSessions(): Promise<{
   ok: boolean;
   reason?: string;
   count: number;
-  sampleRawDates: string[];
+  /** Recent rows for UI inspection / per-row deletion. */
+  recentRows: { rawDate: string; parsedDate: string; source: string | null }[];
 }> {
   const supabase = await createClient();
   const { count, error: cErr } = await supabase
@@ -923,20 +924,49 @@ export async function countStoredPastSessions(): Promise<{
       ok: false,
       reason: cErr.message,
       count: 0,
-      sampleRawDates: [],
+      recentRows: [],
     };
   }
-  // Also pull a small sample so the user can eyeball the raw_date format.
+  // Pull recent rows so the user can verify content + delete stale ones
+  // (e.g. dates that came from old Discord messages that have since been
+  // determined to be non-events).
   const { data } = await supabase
     .from("schedule_past_sessions")
-    .select("raw_date")
+    .select("raw_date, parsed_date, source")
     .order("parsed_date", { ascending: false })
-    .limit(5);
+    .limit(20);
   return {
     ok: true,
     count: count ?? 0,
-    sampleRawDates: (data ?? []).map((r) => r.raw_date as string),
+    recentRows: (data ?? []).map((r) => ({
+      rawDate: r.raw_date as string,
+      parsedDate: r.parsed_date as string,
+      source: (r.source as string | null) ?? null,
+    })),
   };
+}
+
+/**
+ * Server Action: delete a single row from `schedule_past_sessions` by
+ * `raw_date`. Used by the settings dialog when the user wants to remove
+ * a stale entry that shouldn't appear in past history (e.g. a date that
+ * was imported from Discord but the session never actually happened, or
+ * an older importer leaked a future-dated row that has since aged into
+ * the past).
+ */
+export async function deleteStoredPastSession(rawDate: string): Promise<{
+  ok: boolean;
+  reason?: string;
+}> {
+  const trimmed = rawDate?.trim();
+  if (!trimmed) return { ok: false, reason: "raw_date is empty" };
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("schedule_past_sessions")
+    .delete()
+    .eq("raw_date", trimmed);
+  if (error) return { ok: false, reason: error.message };
+  return { ok: true };
 }
 
 /**
