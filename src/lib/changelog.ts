@@ -52,10 +52,6 @@ export const RELEASES: ReleaseEntry[] = [
     date: "2026-04-30",
     parts: [
       {
-        title: "⬇ 編集 iframe ダイアログに「登録」ジャンプボタンを追加 (TODO #53 フォロー)",
-        body: "**要望**: スケジュール (TOP) のユーザ列をクリックして開く character-sheets 編集 iframe ダイアログ (`schedule/input?key=...&userId=...`) は最下部に「日程登録 / 削除」ボタンが配置されており、毎回そこまで iframe 内をスクロールして到達する必要があった。iframe の wheel スクロールとダイアログ / ページ全体のスクロールで挙動が違うため境界で引っ掛かる事象もあり、動線を 1 押しで済ませたい要望。\n\n**修正**: `schedule-edit-frame-dialog.tsx` に `bottom` (offset=2400) を `SCROLL_OFFSETS` に追加し、ヘッダーに専用の「⬇ 登録」ボタンを新設。`CalendarPlus` アイコン + `登録` ラベル + `aria-pressed` で active 状態を視覚化 (neon-cyan ハイライト)。1 押しで `bottom` モードに切替 → iframe を `top: -2400px / height: calc(100% + 2400px)` で clip して下端を視野に入れる。もう 1 押しで直前のモード (`beforeBottomModeRef` に保存) に戻る toggle 動作なので、登録ボタン操作後の復帰も 1 押し。\n\n**他のトグルとの相互作用**: 既存の循環トグル (上 / 中央 / 該当日) は独立。bottom 状態で循環トグルが押された場合は initialMode (= mid もしくは target) に戻し、cycle に復帰させる。bottom 中の循環ボタンラベルは「通常」と表示。\n\n**offset 値**: character-sheets input ページの実測高 (~1900-2300px、固定行数で大きく変動しない) を上回る 2400 を採用。短いページの場合は単に余白が増えるだけで、cross-origin iframe を制御せずに「下端を確実に視野に入れる」方針。upstream レイアウト変更で外れた場合は定数を調整する想定。",
-      },
-      {
         title: "🪜 ダイアログを閉じた後にスクロール位置がズレる事象を防御 (TODO #53)",
         body: "**症状**: スケジュール (TOP) の出欠セル / 確定セル / ユーザ名ヘッダーをクリックして character-sheets 編集 iframe ダイアログを開いてから閉じると、スクロール位置がページ頭に戻ったり、しばらく scroll が効きにくく感じられることがあった。再現は条件付きで、iframe との相互作用 / focus return / 並行 re-render (Realtime メモ更新など) と base-ui の scroll lock cleanup (setTimeout 0 + exit animation) が噛み合った時に発生していたと推測。\n\n**修正**: `schedule-list.tsx` の `openEditFrame` 呼び出し時に `window.scrollY` を `savedScrollYRef` に保存し、`editTarget` が null に戻ったタイミングで `useEffect` から rAF を 2 段重ねて (= base-ui の `setTimeout(0)` cleanup + 100ms exit animation を待つ) scrollY をチェック。差分が 4px 超のときだけ `window.scrollTo({ top: saved, behavior: 'instant' })` で復元する。差分が小さい (= base-ui が正しく復元できている) 場合は no-op なので、二重 scroll の見た目にはならない。\n\n**検証**: dev preview で 1) 通常ケース (open → close) では scroll イベント追加発火ゼロ。2) ダイアログ open 中に意図的に `window.scrollTo(0, 0)` で scroll を破壊した「bug シミュレーション」ケースでは close 後に元の scrollY (1200 / 1400 / 1600 など) に確実に復元される、を 3 連続で確認。",
       },
