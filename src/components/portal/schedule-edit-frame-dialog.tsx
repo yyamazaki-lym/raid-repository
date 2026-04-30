@@ -58,8 +58,8 @@ export function ScheduleEditFrameDialog({
    * date row in the character-sheets input page. When set, the dialog
    * defaults to the "target" mode using this value; the user can still
    * flip to top / mid to see the header or recenter. `null` (the
-   * default) preserves pre-2.1 behavior — open at "mid" with no
-   * per-date hint.
+   * default) opens at "top" (offset=0) so the upper register/delete
+   * button set is visible — see initialMode comment below.
    */
   targetOffsetPx?: number | null;
   /** Called when the user closes the dialog. */
@@ -67,10 +67,16 @@ export function ScheduleEditFrameDialog({
 }) {
   const safeUrl = safeHref(url);
   // Default to "target" if a per-date offset was passed; otherwise
-  // fall back to the legacy "mid" so unrelated open paths (e.g.
-  // tapping a username header) keep their old landing position.
+  // open at "top" (offset=0). character-sheets の input ページは UX
+  // 配慮で「日程登録 / 削除 / 一覧へ戻る」ボタンセットをページ上部
+  // (top=145 付近) と下部 (top=1080 付近) の両端に配置している。
+  // 元々の "mid" (offset=280) はカレンダー中心の表示だが、これだと
+  // 上部ボタンセットが clip 範囲外になり、下部セットへ到達するため
+  // iframe 内を手動スクロールする必要があった。top で開けば上部
+  // 登録ボタン + 直近の table 行 (row_0〜row_9 程度) が同時に表示
+  // され、編集 + 登録が 1 画面で完結する (TODO #53 完了, part6)。
   const initialMode: OffsetMode =
-    typeof targetOffsetPx === "number" ? "target" : "mid";
+    typeof targetOffsetPx === "number" ? "target" : "top";
   const [offsetMode, setOffsetMode] = useState<OffsetMode>(initialMode);
   // Each open of a new URL resets the mode (otherwise the previous
   // session's offset would stick when the user opens a different cell
