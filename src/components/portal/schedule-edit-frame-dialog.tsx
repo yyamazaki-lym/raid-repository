@@ -66,15 +66,37 @@ export function ScheduleEditFrameDialog({
   onClose: () => void;
 }) {
   const safeUrl = safeHref(url);
+  // 2.1 (2026-04-30 part7, TODO #53): 通常 mode (no targetOffsetPx) で
+  // iframe URL に `#comment` を append。character-sheets は iframe 経由
+  // で開くと UI 上部のデイコードナビ / 大タイトル / 上部登録ボタンセット
+  // を非表示にする (responsive design の判定で iframe 検出時に隠す)
+  // ため、scroll=0 のまま開くと「【凡例】」表示で table 行が画面外、
+  // ユーザーが手動 scroll する必要があった。`#comment` (= 一言コメント
+  // 入力欄の id) を hash anchor に付けると、character-sheets ページが
+  // ロード時に window.scrollY = 299 (docMax 付近) に native ジャンプ
+  // → 凡例 + table header + table 行 (~15 行) + 下端 overlay 登録
+  // ボタンが同時表示される画面状態になる (Claude in Chrome 経由で
+  // ユーザーの画像と一致することを実検証済)。1.9.15 コメント「URL
+  // hash hints aren't honored」は誤った観察。
+  //
+  // target mode (= per-date offset 指定時) は現状の heuristic translateY
+  // 方式を維持 (将来 `#row_N` 方式に置換すれば精度向上余地あり、TODO #44)。
+  const srcUrl = !safeUrl
+    ? null
+    : typeof targetOffsetPx === "number"
+      ? safeUrl
+      : (() => {
+          try {
+            const u = new URL(safeUrl);
+            u.hash = "#comment";
+            return u.toString();
+          } catch {
+            return safeUrl;
+          }
+        })();
   // Default to "target" if a per-date offset was passed; otherwise
-  // open at "top" (offset=0). character-sheets の input ページは UX
-  // 配慮で「日程登録 / 削除 / 一覧へ戻る」ボタンセットをページ上部
-  // (top=145 付近) と下部 (top=1080 付近) の両端に配置している。
-  // 元々の "mid" (offset=280) はカレンダー中心の表示だが、これだと
-  // 上部ボタンセットが clip 範囲外になり、下部セットへ到達するため
-  // iframe 内を手動スクロールする必要があった。top で開けば上部
-  // 登録ボタン + 直近の table 行 (row_0〜row_9 程度) が同時に表示
-  // され、編集 + 登録が 1 画面で完結する (TODO #53 完了, part6)。
+  // open at "top" (offset=0) so translateY clipping は無効、上記の
+  // hash anchor で initial scroll 位置を指定する方針に集約。
   const initialMode: OffsetMode =
     typeof targetOffsetPx === "number" ? "target" : "top";
   const [offsetMode, setOffsetMode] = useState<OffsetMode>(initialMode);
@@ -178,8 +200,8 @@ export function ScheduleEditFrameDialog({
           // cross-origin script needed (which wouldn't work anyway).
           <div className="relative min-h-0 flex-1 overflow-hidden rounded-lg border border-border/40 bg-white">
             <iframe
-              key={safeUrl}
-              src={safeUrl}
+              key={srcUrl ?? safeUrl}
+              src={srcUrl ?? safeUrl}
               title={title}
               sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-top-navigation-by-user-activation"
               referrerPolicy="no-referrer-when-downgrade"
