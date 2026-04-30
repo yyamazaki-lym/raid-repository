@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import {
   Plus,
@@ -38,6 +39,7 @@ import {
 } from "@/lib/categories-client";
 import { fetchAvailableGuildRoles } from "@/lib/server/categories-actions";
 import type { DiscordGuildRole } from "@/lib/server/discord-roles";
+import { isOptimizableImageHost } from "@/lib/url-safe";
 import { cn } from "@/lib/utils";
 
 const SLUG_RE = /^[a-z0-9][a-z0-9-]{1,40}[a-z0-9]?$/;
@@ -694,11 +696,19 @@ export function CategoryFormDialog({
               /^https?:\/\//i.test(backgroundImageUrl.trim()) && (
                 <div
                   aria-hidden
-                  className="mt-1 h-20 w-full overflow-hidden rounded-md border border-border/40 bg-cover bg-center"
-                  style={{
-                    backgroundImage: `url(${backgroundImageUrl.trim()})`,
-                  }}
-                />
+                  className="relative mt-1 h-20 w-full overflow-hidden rounded-md border border-border/40"
+                >
+                  <Image
+                    src={backgroundImageUrl.trim()}
+                    alt=""
+                    fill
+                    sizes="100vw"
+                    unoptimized={
+                      !isOptimizableImageHost(backgroundImageUrl.trim())
+                    }
+                    className="object-cover object-center"
+                  />
+                </div>
               )}
           </div>
 

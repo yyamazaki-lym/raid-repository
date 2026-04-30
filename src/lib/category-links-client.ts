@@ -116,7 +116,24 @@ export async function setCategoryLinkOrder(
 
 /**
  * Live link list for a category + kind. Mirrors `useRealtimeCategories`.
+ *
+ * 2.1 (2026-04-30) TODO #11: Realtime payload を直接 state に適用する
+ * incremental update 方式に変更。旧実装は 1 イベントごとに `category_links`
+ * を全件 SELECT し直していたため、動画 50 件のリストで 1 行追加/編集する
+ * たびに 50 行の SELECT が走っていた。並び替え (Bulk reorder) では行数
+ * 分の UPDATE 連鎖で SELECT が連射されるためさらに重い。
+ *
+ * INSERT / UPDATE は payload.new から `rowToCategoryLink` で変換、DELETE
+ * は payload.old.id (PK は REPLICA IDENTITY FULL 不要で常に取得可能) で
+ * 削除。subscription 失敗時のみ fallback refetch。
  */
+function sortLinks(links: CategoryLink[]): CategoryLink[] {
+  return [...links].sort((a, b) => {
+    if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
+    return a.createdAt.localeCompare(b.createdAt);
+  });
+}
+
 export function useRealtimeCategoryLinks(
   categoryId: string,
   kind: CategoryLinkKind,
@@ -166,10 +183,37 @@ export function useRealtimeCategoryLinks(
           event: "*",
           schema: "public",
           table: "category_links",
+          // postgres-side filter は category_id 単一しか指定できない
+          // (`and(...)` 構文は v2 で未サポート)。kind の絞り込みは下記
+          // payload handler 内で実施。
           filter: `category_id=eq.${categoryId}`,
         },
-        () => {
-          void refetch();
+        (payload) => {
+          if (cancelled) return;
+          if (payload.eventType === "INSERT") {
+            const row = payload.new as CategoryLinkRow | null;
+            if (!row || row.kind !== kind) return;
+            const next = rowToCategoryLink(row);
+            setLinks((prev) =>
+              prev.some((l) => l.id === next.id)
+                ? prev
+                : sortLinks([...prev, next]),
+            );
+          } else if (payload.eventType === "UPDATE") {
+            const row = payload.new as CategoryLinkRow | null;
+            if (!row || row.kind !== kind) return;
+            const updated = rowToCategoryLink(row);
+            setLinks((prev) => {
+              const exists = prev.some((l) => l.id === updated.id);
+              return exists
+                ? sortLinks(prev.map((l) => (l.id === updated.id ? updated : l)))
+                : sortLinks([...prev, updated]);
+            });
+          } else if (payload.eventType === "DELETE") {
+            const oldRow = payload.old as { id?: string } | null;
+            if (!oldRow?.id) return;
+            setLinks((prev) => prev.filter((l) => l.id !== oldRow.id));
+          }
         },
       )
       .subscribe((status, err) => {
@@ -179,8 +223,17 @@ export function useRealtimeCategoryLinks(
             status,
             err,
           );
+          // subscribe 失敗時は payload を取れないので保険で再 fetch。
+          void refetch();
         }
       });
+
+    // initial が空 = server prefetch が無かった経路 (旧パス / DEV bypass
+    // 等) の保険として 1 度だけ実 fetch。通常経路では server-side で
+    // initial が満たされているため SELECT は走らない。
+    if (initial.length === 0) {
+      void refetch();
+    }
 
     return () => {
       cancelled = true;
@@ -190,6 +243,10 @@ export function useRealtimeCategoryLinks(
         console.warn("[category-links-client] removeChannel error:", e);
       }
     };
+    // initial.length は mount 時の判定だけに使う。length 変動で
+    // subscription を作り直すと既存 channel が無駄に剥がれるので依存配列
+    // に入れない。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, categoryId, kind]);
 
   return links;

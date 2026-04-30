@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
@@ -62,7 +63,7 @@ import {
 } from "@/lib/categories-client";
 import { isCategoryVisibleToRoles } from "@/lib/category-visibility";
 import type { Category, CategoryStatus } from "@/lib/supabase/types";
-import { isSafeUrl } from "@/lib/url-safe";
+import { isOptimizableImageHost, isSafeUrl } from "@/lib/url-safe";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -345,10 +346,18 @@ function SortableCategoryCard({
       >
         {bgImageUrl && (
           <>
-            <div
+            {/* TODO #11/#17 (2.1+): next/Image fill で WebP / srcset を
+                自動配信。Supabase Storage (`*.supabase.co`) のみ最適化対象、
+                他ホスト (imgur 等) は `unoptimized` で素通し。 */}
+            <Image
+              src={bgImageUrl}
+              alt=""
               aria-hidden
-              className="pointer-events-none absolute inset-0 rounded-xl bg-cover bg-center opacity-40"
-              style={{ backgroundImage: `url(${bgImageUrl})` }}
+              fill
+              sizes="(min-width: 1024px) 50vw, 100vw"
+              loading="lazy"
+              unoptimized={!isOptimizableImageHost(bgImageUrl)}
+              className="pointer-events-none rounded-xl object-cover object-center opacity-40"
             />
             {/* Dark gradient overlay so foreground text/badges remain
                 readable regardless of image brightness. */}

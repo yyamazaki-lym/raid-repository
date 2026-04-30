@@ -44,6 +44,26 @@ export function safeHref(
 }
 
 /**
+ * `next/Image` の Vercel Image Optimization が利用可能なホストか判定。
+ * `next.config.ts#images.remotePatterns` で宣言したホストのみ最適化対象。
+ * それ以外 (imgur 等のユーザー直入力) は `unoptimized` で素通しに切替。
+ */
+export function isOptimizableImageHost(
+  raw: string | null | undefined,
+): boolean {
+  if (!raw) return false;
+  let parsed: URL;
+  try {
+    parsed = new URL(raw.trim());
+  } catch {
+    return false;
+  }
+  return (
+    parsed.hostname === "i.ytimg.com" || parsed.hostname.endsWith(".supabase.co")
+  );
+}
+
+/**
  * Write-time validator. Throws a user-facing error message if the URL
  * is invalid, so callers can `catch` and surface the message in toast /
  * inline error UI.

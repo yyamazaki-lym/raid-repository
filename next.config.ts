@@ -112,10 +112,20 @@ const nextConfig: NextConfig = {
     // Allow next/image to proxy YouTube thumbnails for the videos sub-tab.
     // Even though we render with `unoptimized`, declaring the pattern here
     // avoids compatibility issues with future image optimization choices.
+    //
+    // `*.supabase.co` は Supabase Storage public bucket
+    // (`category-backgrounds` 等) からの画像を Vercel Image Optimization
+    // で WebP 変換するために宣言。pathname を /storage/v1/object/public/**
+    // に絞って bucket 外のレスポンスを通さないようにする。
     remotePatterns: [
       {
         protocol: "https",
         hostname: "i.ytimg.com",
+      },
+      {
+        protocol: "https",
+        hostname: "*.supabase.co",
+        pathname: "/storage/v1/object/public/**",
       },
     ],
   },
