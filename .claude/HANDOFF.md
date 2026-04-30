@@ -41,7 +41,7 @@
 | 2 | スケジュール表自前実装 (作成/編集/確定/Discord 通知) | 大 |
 | 7 | スマホでのレイアウト崩れ確認 | 中 |
 | 8 | Vercel/Supabase 自動導入 (Deploy button / `.env.example` / seed)。導入後の公開モックサイト (デモ用ダミーデータ) も検証 | 中 |
-| 11 | ページ全体のパフォーマンス最適化 (継続)。直近完了は 2.1 (2026-04-30) の 4 phase。残作業を再 surveys するなら DnD-kit / motion / @base-ui の dynamic import や RSC 化を再検討 (前回調査では現 "use client" 群はすべて event handler / state 必須で見送り) | 中 |
+| 11 | ページ全体のパフォーマンス最適化 (継続)。直近完了は 2.1 (2026-04-30) の phase 1-7 (画像最適化 / Realtime delta / ChunkErrorHandler / `buildSessionVideoLinkMap` O(n+m) / `<Link>` 復活 + auth cache() / Next.js `deploymentId` skew protection / `useRealtimeAllScheduleMemos` で memos channel を親 1 個に集約)。残: DnD-kit / motion / @base-ui の dynamic import や RSC 化は前回調査で「現 "use client" 群はすべて event handler / state 必須」のため見送り判定済 — 再着手するなら別観点で (例: webpack bundle analyzer で実際に重いモジュール特定) | 中 |
 | 20 | Vercel ドメイン変更 — Project Settings → Domains。Discord Developer / Supabase Auth の Redirect URLs にも反映必要 | 小 |
 | 23 | サイト全体のデータ初期化ボタン (admin 限定、2 段階確認: 1 回目「本当に初期化?」、2 回目「`INITIALIZE` と入力」) | 中 |
 | 38 | スケジュール追加機能 — portal 内から開催候補日を追加する UI が無い。日付 + 時間帯 + 参加可否を入力 → DB 保存 → 描画。TODO #2 と統合可 | 中〜大 |
@@ -52,7 +52,7 @@
 
 > 各項目の詳細・経緯は `src/lib/changelog.ts` の該当バージョン項目に記載。ここでは番号と版だけ。
 
-- **2.1 (2026-04-30)**: #46 / #11 phase 1-5 / #48 phase 3
+- **2.1 (2026-04-30)**: #46 / #11 phase 1-7 / #48 phase 3
 - **2.1 (2026-04-29)**: #21 #22 #24 #25 #26 #27 #28 #29 #30 #31 #32 #33 #34 #35 #36 #37 #39 #40 #41 #42 #43 #44 #45
 - **2.0 (2026-04-28)**: #19 (ロール単位ページ閲覧制御 = OAuth + 役職判定)
 - **1.9 (2026-04-28)**: #3 #4 #5 #6 #9 #10 #12 #13 #14 #15 #16 #17 #18

@@ -112,57 +112,77 @@ export async function deleteScheduleMemo(
 }
 
 /**
- * Live memo list scoped to a single rawDate. Mirrors other realtime
- * hooks in the codebase. Filter is server-side via the postgres
- * filter so we don't refetch the whole table on unrelated changes.
+ * 全 memo 行を「リクエスト一発 / 単一 channel」で監視するフック (TODO #11
+ * phase 7, 2.1)。
+ *
+ * 旧 `useRealtimeScheduleMemos(rawDate, initial)` は各 SessionMemoPopover が
+ * 個別に subscribe していたため、スケジュール表で 30+ セッション行が同時に
+ * 30+ 個の Realtime channel を張り、1 INSERT/UPDATE/DELETE で全リスナーが
+ * 「自分宛か?」を判定 → マッチした 1 つが per-rawDate refetch という設計
+ * だった。さらに DELETE は raw_date が分からないため全 listener が refetch
+ * → 30 倍の SELECT 発生。これを親 component (ScheduleList /
+ * SchedulePastSimple) で 1 回だけ subscribe + payload delta で in-memory
+ * map を更新する方式に置き換えた。子は `memosByDate[rawDate]` を props で
+ * 受け取るだけで Realtime 知識を持たない。
+ *
+ * payload delta のセマンティクス:
+ *   - INSERT: `payload.new` を rowToMemo してバケットに append + createdAt 昇順 sort
+ *   - UPDATE: 全バケットから id で除去 (raw_date 変更の可能性があるため) →
+ *     新バケットに append + sort
+ *   - DELETE: REPLICA IDENTITY FULL があれば `old.raw_date` で対象バケットを
+ *     特定できる。無い環境では `old.id` のみが届くので全バケットから id で
+ *     除去 (1 度の sweep で済むので O(total memos) を許容)。万一 id すら
+ *     無い payload (e.g. broken policy) は refetchAll に fallback。
  */
-export function useRealtimeScheduleMemos(
-  rawDate: string,
-  initial: ScheduleSessionMemo[],
-): { memos: ScheduleSessionMemo[]; refetch: () => Promise<void> } {
-  const [memos, setMemos] = useState<ScheduleSessionMemo[]>(initial);
+export function useRealtimeAllScheduleMemos(
+  initialByDate: Record<string, ScheduleSessionMemo[]>,
+): {
+  memosByDate: Record<string, ScheduleSessionMemo[]>;
+  refetchAll: () => Promise<void>;
+} {
+  const [memosByDate, setMemosByDate] =
+    useState<Record<string, ScheduleSessionMemo[]>>(initialByDate);
   const id = useId();
 
-  const initialRef = useRef(initial);
+  // server prefetch の initial が SSR 後に差し替わったら state を追従させる
+  // (ScheduleList の initialMemosByDate prop が new reference で来るケース)。
+  const initialRef = useRef(initialByDate);
   useEffect(() => {
-    if (initial !== initialRef.current) {
-      initialRef.current = initial;
-      setMemos(initial);
+    if (initialByDate !== initialRef.current) {
+      initialRef.current = initialByDate;
+      setMemosByDate(initialByDate);
     }
-  }, [initial]);
+  }, [initialByDate]);
 
-  // Stable refetch — exposed to callers so they can force-refresh
-  // immediately after a CUD operation (defense against realtime
-  // delivery failures or REPLICA IDENTITY misconfiguration).
-  const refetch = useCallback(async () => {
+  const refetchAll = useCallback(async () => {
     const supabase = createClient();
     try {
       const { data, error } = await supabase
         .from("schedule_session_memos")
         .select("*")
-        .eq("raw_date", rawDate)
         .order("created_at", { ascending: true });
       if (error) {
-        console.warn("[schedule-memos] refetch error:", error.message);
+        console.warn("[schedule-memos:all] refetch error:", error.message);
         return;
       }
-      setMemos(((data ?? []) as ScheduleSessionMemoRow[]).map(rowToMemo));
+      const next: Record<string, ScheduleSessionMemo[]> = {};
+      for (const row of (data ?? []) as ScheduleSessionMemoRow[]) {
+        const m = rowToMemo(row);
+        const list = next[m.rawDate];
+        if (list) list.push(m);
+        else next[m.rawDate] = [m];
+      }
+      setMemosByDate(next);
     } catch (e) {
-      console.warn("[schedule-memos] refetch exception:", e);
+      console.warn("[schedule-memos:all] refetch exception:", e);
     }
-  }, [rawDate]);
+  }, []);
 
   useEffect(() => {
     const supabase = createClient();
 
-    // Subscribe without a server-side filter on raw_date — that field
-    // contains parens / slashes / spaces / tildes (e.g.
-    // "2026/04/23(木) 22:00~0:00") which Supabase Realtime's filter
-    // parser doesn't reliably handle. Cheaper to listen to all memo
-    // changes and match in the callback. Volume is tiny (one row per
-    // memo create / edit / delete).
     const channel = supabase
-      .channel(`schedule-memos-${id}`)
+      .channel(`schedule-memos-all-${id}`)
       .on(
         "postgres_changes",
         {
@@ -171,51 +191,67 @@ export function useRealtimeScheduleMemos(
           table: "schedule_session_memos",
         },
         (payload) => {
-          const newRow = payload.new as { raw_date?: string } | null;
-          const oldRow = payload.old as { raw_date?: string } | null;
-          // INSERT / UPDATE always carry `new`. UPDATE / DELETE carry
-          // `old` IF the table has REPLICA IDENTITY FULL — without it,
-          // `old` is just `{ id }` on DELETE and we can't tell whether
-          // the deleted row was ours. So: always refetch on DELETE
-          // (volume is tiny) as a defensive fallback in case the
-          // production DB hasn't received the FULL replica migration.
-          if (newRow?.raw_date === rawDate) {
-            void refetch();
+          if (payload.eventType === "INSERT") {
+            const row = payload.new as ScheduleSessionMemoRow | null;
+            if (!row) return;
+            const m = rowToMemo(row);
+            setMemosByDate((prev) => {
+              const list = prev[m.rawDate] ?? [];
+              const merged = [...list, m].sort((a, b) =>
+                a.createdAt.localeCompare(b.createdAt),
+              );
+              return { ...prev, [m.rawDate]: merged };
+            });
             return;
           }
-          if (oldRow?.raw_date === rawDate) {
-            void refetch();
+          if (payload.eventType === "UPDATE") {
+            const row = payload.new as ScheduleSessionMemoRow | null;
+            if (!row) return;
+            const m = rowToMemo(row);
+            setMemosByDate((prev) => {
+              const next: Record<string, ScheduleSessionMemo[]> = {};
+              for (const [k, v] of Object.entries(prev)) {
+                next[k] = v.filter((x) => x.id !== m.id);
+              }
+              const list = next[m.rawDate] ?? [];
+              next[m.rawDate] = [...list, m].sort((a, b) =>
+                a.createdAt.localeCompare(b.createdAt),
+              );
+              return next;
+            });
             return;
           }
           if (payload.eventType === "DELETE") {
-            // We can't tell which date this DELETE was for. One refetch
-            // per delete event (per row instance) is a fine cost vs.
-            // the alternative of stale UI.
-            void refetch();
+            const oldRow = payload.old as
+              | { id?: string; raw_date?: string }
+              | null;
+            const targetId = oldRow?.id;
+            if (!targetId) {
+              void refetchAll();
+              return;
+            }
+            setMemosByDate((prev) => {
+              const next: Record<string, ScheduleSessionMemo[]> = {};
+              for (const [k, v] of Object.entries(prev)) {
+                next[k] = v.filter((x) => x.id !== targetId);
+              }
+              return next;
+            });
           }
         },
       )
       .subscribe();
 
-    // 初回 fetch: server から initial に prefetch 済 memos が降ってきて
-    // いれば省略 (TODO #11 対応 — N 個の SELECT が並列で走るのを回避)。
-    // initial が空配列なら念のため refetch して既存メモを取りに行く
-    // (server prefetch を無効化した経路や、新しく追加された rawDate
-    // に対するフォールバック)。
-    if (initial.length === 0) {
-      void refetch();
-    }
-
     return () => {
       try {
         void supabase.removeChannel(channel);
       } catch (e) {
-        console.warn("[schedule-memos] removeChannel error:", e);
+        console.warn("[schedule-memos:all] removeChannel error:", e);
       }
     };
-  }, [id, rawDate, refetch, initial.length]);
+  }, [id, refetchAll]);
 
-  return { memos, refetch };
+  return { memosByDate, refetchAll };
 }
 
 /** Browser-side initial fetch for a single date. */

@@ -30,7 +30,7 @@ import {
   type SessionMemoPopoverHandle,
 } from "./session-memo-popover";
 import {
-  useRealtimeScheduleMemos,
+  useRealtimeAllScheduleMemos,
   type ScheduleSessionMemo,
 } from "@/lib/schedule-memos-client";
 import {
@@ -129,6 +129,12 @@ export function ScheduleList({
   topTextOverride = null,
   initialMemosByDate = {},
 }: Props) {
+  // TODO #11 phase 7: 全 memo を 1 channel で監視し、各 SessionRow には
+  // 該当 rawDate の slice + refetchAll を props で配る (旧: 各行が個別
+  // subscribe → N リスナー × N refetch の問題)。
+  const { memosByDate, refetchAll: refetchMemos } =
+    useRealtimeAllScheduleMemos(initialMemosByDate);
+
   // 1.9.13: replace `target="_blank"` external nav with an in-portal
   // iframe overlay. Tapping a username header or per-session attendance
   // cell now sets `editTarget`, which mounts the dialog. State lives at
@@ -318,7 +324,8 @@ export function ScheduleList({
                   sessionLogsUrl={sessionLogsByDate?.[s.rawDate] ?? null}
                   scheduleUrl={scheduleUrl}
                   onOpenEditFrame={openEditFrame}
-                  initialMemos={initialMemosByDate[s.rawDate]}
+                  memos={memosByDate[s.rawDate] ?? EMPTY_MEMOS}
+                  onRefreshMemos={refetchMemos}
                   upcomingIndex={idx}
                 />
               ))}
@@ -385,7 +392,8 @@ export function ScheduleList({
                     sessionLogsUrl={sessionLogsByDate?.[s.rawDate] ?? null}
                     scheduleUrl={scheduleUrl}
                     onOpenEditFrame={openEditFrame}
-                    initialMemos={initialMemosByDate[s.rawDate]}
+                    memos={memosByDate[s.rawDate] ?? EMPTY_MEMOS}
+                  onRefreshMemos={refetchMemos}
                   />
                 ))}
                 {olderPast.length > 0 && showOlderPast &&
@@ -401,7 +409,8 @@ export function ScheduleList({
                       sessionLogsUrl={sessionLogsByDate?.[s.rawDate] ?? null}
                       scheduleUrl={scheduleUrl}
                       onOpenEditFrame={openEditFrame}
-                      initialMemos={initialMemosByDate[s.rawDate]}
+                      memos={memosByDate[s.rawDate] ?? EMPTY_MEMOS}
+                  onRefreshMemos={refetchMemos}
                     />
                   ))}
                 {olderPast.length > 0 && (
@@ -580,7 +589,8 @@ function SessionRow({
   sessionLogsUrl = null,
   scheduleUrl,
   onOpenEditFrame,
-  initialMemos,
+  memos,
+  onRefreshMemos,
   upcomingIndex,
 }: {
   session: ScheduleSession;
@@ -609,8 +619,10 @@ function SessionRow({
     title: string,
     targetOffsetPx?: number | null,
   ) => void;
-  /** TODO #11: server prefetch した memos (該当 rawDate 分) */
-  initialMemos?: import("@/lib/schedule-memos-client").ScheduleSessionMemo[];
+  /** 親が `useRealtimeAllScheduleMemos` で集約した live slice (TODO #11 phase 7)。 */
+  memos: import("@/lib/schedule-memos-client").ScheduleSessionMemo[];
+  /** Server-action 後の保険 refetch (旧 useRealtimeScheduleMemos の refetch 互換)。 */
+  onRefreshMemos: () => Promise<void>;
   /**
    * TODO #44: 0-based index of this session within the upcoming list.
    * When defined (= upcoming row), attendance-cell clicks pass a
@@ -620,10 +632,6 @@ function SessionRow({
   upcomingIndex?: number;
 }) {
   const decided = session.status === "DECISION";
-  const { memos, refetch: refetchMemos } = useRealtimeScheduleMemos(
-    session.rawDate,
-    initialMemos ?? EMPTY_MEMOS,
-  );
   // Ref so the (separately-rendered) memo dot can open the popover.
   const popoverRef = useRef<SessionMemoPopoverHandle>(null);
   // Japanese national holidays get a red date label — overrides the
@@ -665,7 +673,7 @@ function SessionRow({
             rawDate={session.rawDate}
             displayDate={session.rawDate.split(" ")[0] ?? session.rawDate}
             memos={memos}
-            onRefresh={refetchMemos}
+            onRefresh={onRefreshMemos}
             currentLogsUrl={videoLink?.logsUrl ?? sessionLogsUrl ?? null}
             sessionDetails={{
               parsedDate: session.date.toISOString(),

@@ -11,7 +11,7 @@ import Link from "next/link";
 import { safeHref } from "@/lib/url-safe";
 import type { JapaneseHolidaysMap } from "@/lib/japanese-holidays";
 import {
-  useRealtimeScheduleMemos,
+  useRealtimeAllScheduleMemos,
   type ScheduleSessionMemo,
 } from "@/lib/schedule-memos-client";
 import type { ScheduleSession } from "@/lib/schedule/next-session";
@@ -62,6 +62,10 @@ export function SchedulePastSimple({
   /** TODO #11: server prefetched memos (rawDate → memos[]) */
   initialMemosByDate?: Record<string, ScheduleSessionMemo[]>;
 }) {
+  // TODO #11 phase 7: 親で 1 channel だけ subscribe (旧: 各 DateChip が個別)。
+  const { memosByDate, refetchAll: refetchMemos } =
+    useRealtimeAllScheduleMemos(initialMemosByDate);
+
   const cutoff = Date.now() - STILL_RELEVANT_MS;
   // 過去側は「開催確定 (DECISION)」のみ表示。◯ は『参加可投票』であって
   // 実際に開催された記録ではないので fallback シグナルに使えない (流れ
@@ -98,7 +102,8 @@ export function SchedulePastSimple({
             holidays={holidays}
             videoLink={sessionVideoLinks?.[s.rawDate] ?? null}
             sessionLogsUrl={sessionLogsByDate?.[s.rawDate] ?? null}
-            initialMemos={initialMemosByDate[s.rawDate] ?? EMPTY_MEMOS}
+            memos={memosByDate[s.rawDate] ?? EMPTY_MEMOS}
+            onRefreshMemos={refetchMemos}
           />
         ))}
       </ul>
@@ -111,19 +116,19 @@ function DateChip({
   holidays,
   videoLink,
   sessionLogsUrl,
-  initialMemos,
+  memos,
+  onRefreshMemos,
 }: {
   session: ScheduleSession;
   holidays?: JapaneseHolidaysMap;
   videoLink: SessionVideoLink | null;
   /** Fallback FFLogs URL for sessions without a matching video. */
   sessionLogsUrl: string | null;
-  initialMemos: ScheduleSessionMemo[];
+  /** 親 `useRealtimeAllScheduleMemos` で集約した live slice (TODO #11 phase 7)。 */
+  memos: ScheduleSessionMemo[];
+  /** Server-action 後の保険 refetch (旧 useRealtimeScheduleMemos の refetch 互換)。 */
+  onRefreshMemos: () => Promise<void>;
 }) {
-  const { memos, refetch: refetchMemos } = useRealtimeScheduleMemos(
-    session.rawDate,
-    initialMemos,
-  );
   // Ref to the popover so the (separately-rendered) memo dot can
   // open it. Keeping the dot outside the popover wrapper preserves
   // the chip's left-to-right reading order: date → icons → dot.
@@ -189,7 +194,7 @@ function DateChip({
         rawDate={session.rawDate}
         displayDate={`${monthDay}（${session.dayOfWeek}）`}
         memos={memos}
-        onRefresh={refetchMemos}
+        onRefresh={onRefreshMemos}
         currentLogsUrl={videoLink?.logsUrl ?? sessionLogsUrl ?? null}
         sessionDetails={{
           parsedDate: session.date.toISOString(),
