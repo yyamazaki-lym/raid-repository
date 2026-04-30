@@ -52,6 +52,10 @@ export const RELEASES: ReleaseEntry[] = [
     date: "2026-04-30",
     parts: [
       {
+        title: "🎯 確定セル 最古未来日 (rowIndex=0) のジャンプを修正 (TODO #44 part10)",
+        body: "**症状**: part9 で確定セル経由のジャンプを `rowIndex - 1` 補正したが、最古未来日 (= rowIndex=0、例 2026/04/30) のみ `Math.max(0, -1) = 0` クランプの結果 `#row_0` に留まり、固定 header 被りで「日付+1 = 0501 が画面最上端」のズレが残っていた。\n\n**修正**: schedule-list.tsx の確定セル handler で `rowIndex === 0` を sentinel `-1` に変換し、schedule-edit-frame-dialog.tsx の hash 派生で `targetRowIndex < 0` のとき hash を空 (`u.hash = \"\"`) にして渡す。ブラウザは page scroll=0 で iframe を開き、固定 header の直下に row_0 (= 04/30) がそのまま表示される。`rowIndex >= 1` は従来通り `rowIndex - 1` で `#row_(N-1)` に補正。\n\n**検証**: dev preview で 1) 04/30 click → URL は `?key=...` (hash 抜き)、2) 05/01 click → `#row_0`、3) 05/02 click → `#row_1`、4) メンバー列出欠セル (`/input` 側) は 04/30 でも `#row_0` のまま (補正不要) を確認。tsc 通過。",
+      },
+      {
         title: "🎯 確定セル `/list` ジャンプの 1 行ズレを `rowIndex - 1` 補正 (TODO #44 part9)",
         body: "**症状**: part8 の `#row_N` hash anchor 方式で確定セル click は所望の行に飛ぶようになったが、視覚的に「日付+1 の日程の行が画面最上端」に見えるズレが残っていた (例: 2026/05/02(土) クリック → 画面最上端は 2026/05/03(日))。メンバー列 (出欠セル) では同様のズレは出ない。\n\n**原因**: `/schedule/list` (確定セル click 先) と `/schedule/input` (メンバー列 click 先) で character-sheets 側の表示構造が異なる。`/list` は固定 table header が anchor 行に被さるため、ブラウザ native の hash jump 後に 1 行分視覚的に隠される。`/input` 側は被りが起きないので補正不要。\n\n**修正**: `schedule-list.tsx` の確定セル handler のみ `Math.max(0, session.rowIndex - 1)` を渡すよう変更。`rowIndex === null` (synthetic 行) のときは null フォールバック (`#comment` 着地) を維持。メンバー列の出欠セル / ユーザー名 header は `session.rowIndex` をそのまま渡すロジック不変。\n\n**検証**: dev preview で 1) 2026/04/30 (rowIndex=0) → `#row_0` (max(0, -1)=0 でクランプ)、2) 2026/05/01 (rowIndex=1) → `#row_0`、3) 2026/05/02 (rowIndex=2) → `#row_1`、4) メンバー列出欠セルは rowIndex=0 → `#row_0` のままを確認。tsc 通過。",
       },

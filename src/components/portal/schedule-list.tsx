@@ -826,9 +826,16 @@ function SessionRow({
             // これを相殺するため確定セル経由のみ `rowIndex - 1` を渡す。
             // メンバー列 (出欠セル) は `/schedule/input` 側で問題なく
             // 該当行が画面に見えるので補正不要。
+            //
+            // 2.1 part10: rowIndex=0 (最古未来日 = 一覧の最上端行) は
+            // `-1` 補正できないので sentinel `-1` を渡す。dialog 側で
+            // hash 抜き URL に変換され、ブラウザ scroll=0 で開く →
+            // 固定 header の直下に row_0 が見える状態になる。
             const targetRowIndex =
               typeof session.rowIndex === "number"
-                ? Math.max(0, session.rowIndex - 1)
+                ? session.rowIndex === 0
+                  ? -1
+                  : session.rowIndex - 1
                 : null;
             const dateLabel =
               session.rawDate.split(" ")[0] ?? session.rawDate;

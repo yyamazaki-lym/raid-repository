@@ -39,10 +39,13 @@ export function ScheduleEditFrameDialog({
   title: string;
   /**
    * 0-based N of the target `<tr id="row_N">` on character-sheets.
-   * When provided, the iframe URL gets a `#row_N` fragment so the page
-   * scrolls exact to that row on load. `null`/omitted → the iframe lands
-   * at `#comment` (default "mid" view: legend + table rows + footer
-   * register button visible at once).
+   *
+   * - `>= 0` → URL gets `#row_N`, exact row anchor
+   * - `< 0`  → no hash (page scroll=0, table 最上端表示)。確定セルで
+   *   `rowIndex - 1` 補正したとき最古行 (rowIndex=0) で負になるため、
+   *   その行を見せる用途の sentinel
+   * - `null`/omitted → `#comment` fallback (default mid view: legend +
+   *   table rows + footer register button visible at once)
    */
   targetRowIndex?: number | null;
   /** Called when the user closes the dialog. */
@@ -59,7 +62,9 @@ export function ScheduleEditFrameDialog({
           const u = new URL(safeUrl);
           u.hash =
             typeof targetRowIndex === "number"
-              ? `#row_${targetRowIndex}`
+              ? targetRowIndex < 0
+                ? "" // 最古行 sentinel: hash なしで page scroll=0
+                : `#row_${targetRowIndex}`
               : "#comment";
           return u.toString();
         } catch {
