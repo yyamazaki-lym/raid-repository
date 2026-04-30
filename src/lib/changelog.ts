@@ -52,6 +52,10 @@ export const RELEASES: ReleaseEntry[] = [
     date: "2026-04-30",
     parts: [
       {
+        title: "⬇ 「登録」ジャンプボタンの bottom offset を 2400 → 3600 に調整 (TODO #53 フォロー part5)",
+        body: "**指摘**: part4 で追加した「登録」ボタンを押しても、character-sheets input ページの「日程登録」ボタンまでまだ下にスクロールが必要だった。\n\n**修正**: `SCROLL_OFFSETS.bottom` を 2400 → **3600** に引き上げ。実測でコンテンツ高 ~3200px 以上 + 表示エリア (h-[92svh] ~720-820px) なので 3600 で確実に下端到達位置を上回る安全側の値に。短いページの場合は余白が増えるだけで害は無い。\n\n**直接ボタン押下は不可**: 「登録ボタンから iframe 内の日程登録ボタンを直接クリックできないか」という併せての要望は、cross-origin (character-sheets.appspot.com) の Same-Origin Policy 制約により実装不可。`sandbox` で `allow-same-origin` を付けても本当のオリジンは異なるため、親ウィンドウから `iframe.contentDocument` には触れず、要素検索 / クリック発火は届かない。URL hash アンカーも character-sheets 側が honor しない (1.9.15 時点で確認済) ため、`postMessage` ベースの連携も相手側の対応がない以上不可。translateY clipping で「視野に入れる」が物理的な上限になる。",
+      },
+      {
         title: "⬇ 編集 iframe ダイアログに「登録」ジャンプボタンを追加 (TODO #53 フォロー)",
         body: "**要望**: スケジュール (TOP) のユーザ列をクリックして開く character-sheets 編集 iframe ダイアログ (`schedule/input?key=...&userId=...`) は最下部に「日程登録 / 削除」ボタンが配置されており、毎回そこまで iframe 内をスクロールして到達する必要があった。iframe の wheel スクロールとダイアログ / ページ全体のスクロールで挙動が違うため境界で引っ掛かる事象もあり、動線を 1 押しで済ませたい要望。\n\n**修正**: `schedule-edit-frame-dialog.tsx` に `bottom` (offset=2400) を `SCROLL_OFFSETS` に追加し、ヘッダーに専用の「⬇ 登録」ボタンを新設。`CalendarPlus` アイコン + `登録` ラベル + `aria-pressed` で active 状態を視覚化 (neon-cyan ハイライト)。1 押しで `bottom` モードに切替 → iframe を `top: -2400px / height: calc(100% + 2400px)` で clip して下端を視野に入れる。もう 1 押しで直前のモード (`beforeBottomModeRef` に保存) に戻る toggle 動作なので、登録ボタン操作後の復帰も 1 押し。\n\n**他のトグルとの相互作用**: 既存の循環トグル (上 / 中央 / 該当日) は独立。bottom 状態で循環トグルが押された場合は initialMode (= mid もしくは target) に戻し、cycle に復帰させる。bottom 中の循環ボタンラベルは「通常」と表示。\n\n**offset 値**: character-sheets input ページの実測高 (~1900-2300px、固定行数で大きく変動しない) を上回る 2400 を採用。短いページの場合は単に余白が増えるだけで、cross-origin iframe を制御せずに「下端を確実に視野に入れる」方針。upstream レイアウト変更で外れた場合は定数を調整する想定。",
       },
