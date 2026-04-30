@@ -56,6 +56,7 @@ ALTER TABLE public.category_links
 | 23 | サイト全体のデータ初期化ボタン (admin 限定、2 段階確認: 1 回目「本当に初期化?」、2 回目「`INITIALIZE` と入力」) | 中 |
 | 38 | スケジュール追加機能 — portal 内から開催候補日を追加する UI が無い。日付 + 時間帯 + 参加可否を入力 → DB 保存 → 描画。TODO #2 と統合可 | 中〜大 |
 | 51 | マイクロインタラクション / ユーザビリティ向上。クリック時の press feedback / hover 時の subtle elevation / loading skeleton / focus ring 強化 / toast の出現位置・タイミング微調整 / フォーム入力の即時 validation / 空状態の illustration etc。framer-motion を残す方針なので springy な質感も維持しつつ portal 全体の polish を 1 周。観点リストの作成 + 優先順位付けから | 中 |
+| 53 | スケジュール (TOP) からセッション編集 / 確定入力ダイアログを開いて閉じた後、スクロール位置が頭に戻ったりスクロール自体が効きにくくなる事象。Next.js 16 の `revalidatePath` 経由の RSC 再描画 or focus trap の解放タイミング周りの可能性。`schedule-edit-frame-dialog` の onOpenChange / iframe の focus return / `router.refresh()` 呼び出しを順に調査 | 小〜中 |
 
 ## 完了済み TODO
 
