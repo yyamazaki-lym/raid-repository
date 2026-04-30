@@ -1,6 +1,6 @@
 # Raid Repository — 引き継ぎノート
 
-> 2.1 (2026-04-30 part2) 時点。完了済 TODO の詳細はすべて `src/lib/changelog.ts` を参照。
+> 2.1 (2026-04-30 part7) 時点。完了済 TODO の詳細はすべて `src/lib/changelog.ts` を参照。
 
 ## プロジェクト概要
 
@@ -21,7 +21,7 @@
 
 ## 📌 次回の作業優先度
 
-現在なし。次回着手項目はユーザーが TODO リストから選定する。
+**TODO #44 改善** から着手 (ユーザー指示, 2026-04-30 part7 終了時)。下記「未完了 TODO 一覧」の `🗓 スケジュールページ` セクションを参照。
 
 ## 🚨 新規会話開始時のルーチン
 
@@ -45,6 +45,7 @@
 |---|---|---|
 | 2 | スケジュール表自前実装 (作成/編集/確定/Discord 通知) | 大 |
 | 38 | スケジュール追加機能 — portal 内から開催候補日を追加する UI が無い。日付 + 時間帯 + 参加可否を入力 → DB 保存 → 描画。TODO #2 と統合可 | 中〜大 |
+| 44 | **【再オープン: 精度向上】**スケジュール TOP の日程セルクリックで開く character-sheets iframe に該当日付までジャンプする target offset の精度を、現状の heuristic translateY (`280 + (upcomingIndex - 1) * 36`) から **`#row_N` URL hash anchor 方式**に置換。今回 (2.1 part7) の TODO #53 真の完了で character-sheets が hash anchor を honor することを実証 (1.9.15 のコメントは誤りだった)。`#row_${upcomingIndex}` を append すれば exact ジャンプ可能で heuristic の数 px ズレを根絶できる。要確認: portal の `upcomingIndex` (= 未来日程 index、0 が next session) が character-sheets の `row_N` (= 全日程の index、row_0 = 最古？最新？) と一致するか。`schedule-list.tsx` の openEditFrame call site を確認、必要なら character-sheets の row 順序を Claude in Chrome で再確認。実装は `schedule-edit-frame-dialog.tsx` の srcUrl 派生に target 分岐を追加するだけで小規模。ついでに target mode 用の translateY (offset = 244 等) は不要になるので削除可能 (= mode 簡素化) | 小 |
 
 ### 📂 カテゴリ詳細ページ (`/category/[slug]`)
 
@@ -122,6 +123,17 @@
 - **dev bypass**: `.env.local` の `DEV_AUTH_BYPASS=true` (NODE_ENV != production 時のみ偽 admin で短絡)。`DEV_AUTH_BYPASS_NON_ADMIN=true` で roles=[] 視点
 - **Service role bypass**: `SUPABASE_SERVICE_ROLE_KEY` 設定で server-side createClient が service role 化 (RLS バイパス、dev 用)
 - **Admin 判定**: `DISCORD_ADMIN_ROLE_IDS` 未設定なら全員 admin (backward compat)
+
+### character-sheets iframe (編集ダイアログ)
+
+- 編集ダイアログは `schedule-edit-frame-dialog.tsx` で character-sheets を iframe 埋め込み (cross-origin, sandbox 付)
+- **URL hash anchor は honor される** (2.1 part7 で実証、1.9.15 のコメント "URL hash hints aren't honored" は誤った観察)
+  - `#row_N` (各日程行 TR の id, N=0 が最古行) で window scroll + 内部 table-container scroll の両方が連動ジャンプ
+  - `#comment` (一言コメント入力欄) で window scrollY ~299 (docMax 付近) にジャンプ → 凡例 + table 行 + 下端 overlay 登録ボタンが同時表示される画面状態 (= ユーザ名 header click 時のデフォルト表示)
+  - cross-origin SOP とは無関係 (ブラウザ native 機能)
+- **iframe 経由で開いた時、character-sheets が responsive 判定で上部要素 (デイコードナビ / 大タイトル / 上部登録ボタンセット top=145) を非表示にする**。Chrome 直接アクセスでは見える。iframe デフォルトの scroll=0 では「凡例から始まる短い表示」になるため、`#comment` hash で初期スクロールを補正するのが現方針
+- target mode の translateY heuristic (`280 + (upcomingIndex - 1) * 36`) は精度低い → TODO #44 で `#row_N` hash 方式に置換予定
+- **撤廃済 (再導入禁止)**: `bottom` mode (offset=2400/3600) の translateY 下端ジャンプ — character-sheets が flex layout (header + table[overflow:auto, flex-grow] + footer) のため iframe height を伸ばすと中央 table が同期拡大 → 行が空白に隠れて使い物にならない (2.1 part4-5 で試行 → 撤回)
 
 ### YouTube メタデータ
 
