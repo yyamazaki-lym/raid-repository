@@ -766,14 +766,19 @@ function SessionRow({
                   <Film className="h-3 w-3" aria-hidden />
                 </a>
               ) : (
-                // 2.1 (2026-04-30): `<Link>` (default prefetch) で soft-nav
-                // 復活。viewport 入りで RSC payload が先読みされクリックは
-                // 即時遷移。デプロイ後 chunk hash mismatch の silent fail は
-                // ChunkErrorHandler (portal layout 常駐) が ChunkLoadError を
-                // catch して自動 reload するので保険済 (旧コミット: hard nav
-                // 化 fab1d59 / hover prefetch 389b8f8 を撤回)。
+                // 2.1 (2026-05-01) TODO #54 part2-d: `<Link>` で soft-nav は
+                // 維持しつつ `prefetch={false}` で viewport 内自動 prefetch
+                // を抑制。スケジュール表は 1 画面で N 行 × 動画 icon が
+                // 並ぶため cold start init 中に RSC payload 投機ロードが
+                // 一斉発動するとサーバ生成キューが詰まり初回クリックの
+                // 遷移が遅延する。クリック時は top progress bar が即時
+                // 出るので無音 stuck にはならない。デプロイ後 chunk hash
+                // mismatch の silent fail は ChunkErrorHandler (portal
+                // layout 常駐) が ChunkLoadError を catch して自動 reload
+                // するので保険済。
                 <Link
                   href={videoLink.href}
+                  prefetch={false}
                   aria-label={`${videoLink.categoryName}/動画「${videoLink.videoTitle}」を開く`}
                   title={`${videoLink.categoryName}/動画 → 「${videoLink.videoTitle}」`}
                   className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-[var(--neon-cyan)]/85 transition-all hover:bg-[var(--neon-cyan)]/15 hover:text-[var(--neon-cyan)] hover:shadow-[0_0_10px_-2px_var(--neon-cyan)]"

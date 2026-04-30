@@ -389,7 +389,7 @@ function SortableCategoryCard({
         <div className="relative z-10 flex flex-1 flex-col">
           <Link
             href={`/category/${category.slug}/mitigation`}
-            prefetch
+            prefetch={false}
             className="flex flex-col gap-1 px-4 pt-4 pb-1"
           >
             <div className="flex items-start justify-between gap-2">
@@ -574,7 +574,7 @@ function SubPageShortcuts({
         <Link
           key={p.segment}
           href={`/category/${slug}/${p.segment}`}
-          prefetch
+          prefetch={false}
           aria-label={p.label}
           title={p.label}
           className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border/40 bg-background/30 text-muted-foreground transition-all duration-150 hover:scale-110 hover:border-[var(--neon-violet)]/60 hover:bg-[var(--neon-violet)]/10 hover:text-[var(--neon-violet)] hover:shadow-[0_0_10px_-4px_var(--neon-violet)]"
