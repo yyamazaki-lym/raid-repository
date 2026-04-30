@@ -107,7 +107,25 @@ const securityHeaders = [
   },
 ];
 
+/**
+ * Next.js 16 標準の version skew protection (TODO #11, 2.1+).
+ *
+ * `deploymentId` を設定すると Next.js は:
+ *   - 静的アセット URL に `?dpl=<id>` 付与 (CDN キャッシュバスト)
+ *   - クライアント nav リクエストに `x-deployment-id` ヘッダ送信
+ *   - レスポンスの `x-nextjs-deployment-id` と mismatch なら自動で hard nav
+ *
+ * Vercel `VERCEL_GIT_COMMIT_SHA` を使うと commit 単位で id が切り替わるので
+ * デプロイ毎に確実に変わる。Hobby plan で Skew Protection (Pro 限定) が無くても
+ * 同等の挙動を得られる — 古いタブからのクリックは自動 hard nav に
+ * フォールバックされ、ChunkErrorHandler の事後 reload に頼る必要がなくなる。
+ *
+ * ローカル dev では env 未設定 → undefined 扱いで何も起こらない (default 動作)。
+ */
+const deploymentId = process.env.VERCEL_GIT_COMMIT_SHA;
+
 const nextConfig: NextConfig = {
+  ...(deploymentId ? { deploymentId } : {}),
   images: {
     // Allow next/image to proxy YouTube thumbnails for the videos sub-tab.
     // Even though we render with `unoptimized`, declaring the pattern here
