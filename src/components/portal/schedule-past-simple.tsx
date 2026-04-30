@@ -1,7 +1,6 @@
 "use client";
 
 import { useRef } from "react";
-import Link from "next/link";
 import { BarChart3, Film } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import {
@@ -224,16 +223,18 @@ function DateChip({
             </a>
           );
         }
+        // 2.1 (2026-04-30) TODO #11 補強: `<Link>` を素の <a> に置換して
+        // hard navigation 強制 (Hobby plan = Skew Protection 不可、
+        // schedule-list.tsx と同様の理由)。
         return (
-          <Link
+          <a
             href={videoLink.href}
-            prefetch={false}
             aria-label={`${videoLink.categoryName}/動画「${videoLink.videoTitle}」を開く`}
             title={`${videoLink.categoryName}/動画 → 「${videoLink.videoTitle}」`}
             className="inline-flex h-4 w-4 items-center justify-center rounded text-current/75 transition-all hover:bg-current/15 hover:text-current"
           >
             <Film className="h-2.5 w-2.5" aria-hidden />
-          </Link>
+          </a>
         );
       })()}
       {(() => {

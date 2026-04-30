@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   CalendarX2,
@@ -724,15 +723,20 @@ function SessionRow({
                   <Film className="h-3 w-3" aria-hidden />
                 </a>
               ) : (
-                <Link
+                // 2.1 (2026-04-30) TODO #11 補強: `<Link>` ではなく素の <a>
+                // を使い hard navigation 強制。Hobby plan は Skew Protection
+                // が無いため、デプロイで chunk hash が変わると soft-nav の
+                // RSC fetch が 404 で silent fail することがある (URL も
+                // 変わらない)。prefetch={false} で既に soft-nav の速度
+                // メリットを捨てているので、ブラウザ標準遷移の方が信頼性高い。
+                <a
                   href={videoLink.href}
-                  prefetch={false}
                   aria-label={`${videoLink.categoryName}/動画「${videoLink.videoTitle}」を開く`}
                   title={`${videoLink.categoryName}/動画 → 「${videoLink.videoTitle}」`}
                   className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-[var(--neon-cyan)]/85 transition-all hover:bg-[var(--neon-cyan)]/15 hover:text-[var(--neon-cyan)] hover:shadow-[0_0_10px_-2px_var(--neon-cyan)]"
                 >
                   <Film className="h-3 w-3" aria-hidden />
-                </Link>
+                </a>
               )
             ) : (
               <span aria-hidden className="inline-block h-5 w-5 shrink-0" />
