@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { ChevronsDown, ChevronsUp, ExternalLink } from "lucide-react";
+import { CalendarPlus, ChevronsDown, ChevronsUp, ExternalLink } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -39,6 +39,14 @@ const SCROLL_OFFSETS = {
   // the first ~280px. Skipping that lands the user near the calendar.
   // Adjust if the upstream layout changes.
   mid: 280,
+  // 2.1 (2026-04-30 part4, TODO #53 フォロー): character-sheets の
+  // input ページ (ユーザー列の編集) は最下部に「日程登録 / 削除」ボタン
+  // 群があり、ユーザーがそこへ到達するために iframe 内を毎回大きく
+  // スクロールしていた。クロスオリジンで scriptable には制御できない
+  // が、translateY clipping を大きく取れば下端を一気に視野に入れられる。
+  // 2400 はユーザー列ページの実測高 (~1900-2300px、固定行数で大きく
+  // 変動しない) を上回る値。短いページの場合は単に余白が増えるだけ。
+  bottom: 2400,
 } as const;
 
 type OffsetMode = keyof typeof SCROLL_OFFSETS | "target";
@@ -72,16 +80,24 @@ export function ScheduleEditFrameDialog({
   const initialMode: OffsetMode =
     typeof targetOffsetPx === "number" ? "target" : "mid";
   const [offsetMode, setOffsetMode] = useState<OffsetMode>(initialMode);
+  // 2.1 (2026-04-30 part4): 「⬇ 登録」ボタンで bottom にジャンプした
+  // 後、もう一度押したときに元のモードへ戻すための保存先 (toggle 動作)。
+  // 通常モード切替トグルとは独立に「下端 ↔ 直前の表示位置」を 1 押しで
+  // 行き来させる。
+  const beforeBottomModeRef = useRef<OffsetMode | null>(null);
   // Each open of a new URL resets the mode (otherwise the previous
   // session's offset would stick when the user opens a different cell
   // without closing the dialog).
   const lastUrlRef = useRef<string | null>(null);
   if (lastUrlRef.current !== url) {
     lastUrlRef.current = url;
-    if (url !== null && offsetMode !== initialMode) {
-      // setState in render is fine here — it's a derived reset on
-      // identity change of the URL prop and avoids an extra effect.
-      setOffsetMode(initialMode);
+    if (url !== null) {
+      beforeBottomModeRef.current = null;
+      if (offsetMode !== initialMode) {
+        // setState in render is fine here — it's a derived reset on
+        // identity change of the URL prop and avoids an extra effect.
+        setOffsetMode(initialMode);
+      }
     }
   }
   const offsetPx =
@@ -112,6 +128,41 @@ export function ScheduleEditFrameDialog({
             </DialogDescription>
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
+            {/* 「⬇ 登録」専用ボタン (2.1, 2026-04-30 part4, TODO #53 フォロー):
+                character-sheets input ページ最下部の「日程登録 / 削除」
+                ボタンへ 1 押しで到達するためのショートカット。bottom mode
+                ↔ 直前のモードを toggle するので、登録ボタン操作後に戻る
+                のも 1 押しで済む。target/top/mid トグルとは独立に置く。 */}
+            {safeUrl && (
+              <button
+                type="button"
+                onClick={() => {
+                  setOffsetMode((m) => {
+                    if (m === "bottom") {
+                      const prev = beforeBottomModeRef.current ?? initialMode;
+                      beforeBottomModeRef.current = null;
+                      return prev;
+                    }
+                    beforeBottomModeRef.current = m;
+                    return "bottom";
+                  });
+                }}
+                title={
+                  offsetMode === "bottom"
+                    ? "前の表示位置に戻す"
+                    : "ページ下部 (日程登録ボタン付近) にジャンプ"
+                }
+                aria-pressed={offsetMode === "bottom"}
+                className={`inline-flex items-center gap-1 rounded-md border px-2 py-1.5 font-mono text-[10px] tracking-[0.18em] uppercase transition-colors ${
+                  offsetMode === "bottom"
+                    ? "border-[var(--neon-cyan)]/60 bg-[var(--neon-cyan)]/15 text-[var(--neon-cyan)]"
+                    : "border-border/60 bg-background/40 text-muted-foreground hover:border-[var(--neon-cyan)]/60 hover:text-foreground"
+                }`}
+              >
+                <CalendarPlus className="h-3 w-3" aria-hidden />
+                登録
+              </button>
+            )}
             {/* 表示位置トグル: 「ヘッダー」「中央」「該当日 (target offset)」
                 を循環。target offset が無い場合は header ↔ mid の 2-way。 */}
             {safeUrl && (
@@ -119,6 +170,12 @@ export function ScheduleEditFrameDialog({
                 type="button"
                 onClick={() =>
                   setOffsetMode((m) => {
+                    // bottom 状態から普通のトグルが押された場合は cycle に
+                    // 復帰させる (= initialMode に戻す)。toggle 履歴は破棄。
+                    if (m === "bottom") {
+                      beforeBottomModeRef.current = null;
+                      return initialMode;
+                    }
                     const hasTarget = typeof targetOffsetPx === "number";
                     if (!hasTarget) return m === "top" ? "mid" : "top";
                     if (m === "target") return "mid";
@@ -133,7 +190,9 @@ export function ScheduleEditFrameDialog({
                       : "中央位置にジャンプ (ヘッダーを隠す)"
                     : offsetMode === "mid"
                       ? "ヘッダーを表示 (上端から)"
-                      : "中央位置に戻す"
+                      : offsetMode === "bottom"
+                        ? "通常表示に戻す"
+                        : "中央位置に戻す"
                 }
                 className="inline-flex items-center gap-1 rounded-md border border-border/60 bg-background/40 px-2 py-1.5 font-mono text-[10px] tracking-[0.18em] text-muted-foreground uppercase transition-colors hover:border-[var(--neon-cyan)]/60 hover:text-foreground"
               >
@@ -148,7 +207,9 @@ export function ScheduleEditFrameDialog({
                     : "中央"
                   : offsetMode === "mid"
                     ? "上"
-                    : "中央"}
+                    : offsetMode === "bottom"
+                      ? "通常"
+                      : "中央"}
               </button>
             )}
             {safeUrl && (
