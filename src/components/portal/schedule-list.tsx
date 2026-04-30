@@ -19,7 +19,7 @@ import { Card } from "@/components/ui/card";
 import { CommentPopover } from "./comment-popover";
 import { ScheduleEditFrameDialog } from "./schedule-edit-frame-dialog";
 import { toast } from "sonner";
-import { prefetchUrl } from "@/lib/client/prefetch-on-hover";
+import Link from "next/link";
 import {
   clearScheduleTopTextOverride,
   setScheduleTopTextOverride,
@@ -724,22 +724,20 @@ function SessionRow({
                   <Film className="h-3 w-3" aria-hidden />
                 </a>
               ) : (
-                // 2.1 (2026-04-30) TODO #11 補強: `<Link>` ではなく素の <a>
-                // を使い hard navigation 強制。Hobby plan は Skew Protection
-                // が無いため、デプロイで chunk hash が変わると soft-nav の
-                // RSC fetch が 404 で silent fail することがある (URL も
-                // 変わらない)。prefetch={false} で既に soft-nav の速度
-                // メリットを捨てているので、ブラウザ標準遷移の方が信頼性高い。
-                <a
+                // 2.1 (2026-04-30): `<Link>` (default prefetch) で soft-nav
+                // 復活。viewport 入りで RSC payload が先読みされクリックは
+                // 即時遷移。デプロイ後 chunk hash mismatch の silent fail は
+                // ChunkErrorHandler (portal layout 常駐) が ChunkLoadError を
+                // catch して自動 reload するので保険済 (旧コミット: hard nav
+                // 化 fab1d59 / hover prefetch 389b8f8 を撤回)。
+                <Link
                   href={videoLink.href}
-                  onMouseEnter={() => prefetchUrl(videoLink.href)}
-                  onFocus={() => prefetchUrl(videoLink.href)}
                   aria-label={`${videoLink.categoryName}/動画「${videoLink.videoTitle}」を開く`}
                   title={`${videoLink.categoryName}/動画 → 「${videoLink.videoTitle}」`}
                   className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-[var(--neon-cyan)]/85 transition-all hover:bg-[var(--neon-cyan)]/15 hover:text-[var(--neon-cyan)] hover:shadow-[0_0_10px_-2px_var(--neon-cyan)]"
                 >
                   <Film className="h-3 w-3" aria-hidden />
-                </a>
+                </Link>
               )
             ) : (
               <span aria-hidden className="inline-block h-5 w-5 shrink-0" />

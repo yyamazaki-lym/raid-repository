@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 
@@ -58,27 +59,35 @@ function devAuthBypassUser(): AuthorizedUser | null {
   };
 }
 
-export async function requireDiscordMember(): Promise<AuthorizedUser> {
-  const bypass = devAuthBypassUser();
-  if (bypass) return bypass;
+/**
+ * React `cache()` でリクエスト単位 dedupe する。1 回の hard nav 中に
+ * `(portal)/layout` (`getAuthorizedUserRoles`) → `[slug]/layout`
+ * (`requireDiscordRoles`) → 各 page (`getCurrentUserCanEdit`) の 3 経路で
+ * `auth.getUser()` が走っていたのを 1 回に圧縮 (TODO #11 phase 5)。
+ */
+export const requireDiscordMember = cache(
+  async (): Promise<AuthorizedUser> => {
+    const bypass = devAuthBypassUser();
+    if (bypass) return bypass;
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) redirect("/login");
 
-  const meta = (user.app_metadata ?? {}) as DiscordAppMetadata;
-  if (meta.discord_guild_member !== true || !meta.discord_id) {
-    redirect("/auth/denied");
-  }
+    const meta = (user.app_metadata ?? {}) as DiscordAppMetadata;
+    if (meta.discord_guild_member !== true || !meta.discord_id) {
+      redirect("/auth/denied");
+    }
 
-  return {
-    userId: user.id,
-    discordId: meta.discord_id,
-    roles: meta.discord_roles ?? [],
-  };
-}
+    return {
+      userId: user.id,
+      discordId: meta.discord_id,
+      roles: meta.discord_roles ?? [],
+    };
+  },
+);
 
 /**
  * 指定ロールのいずれか 1 つでも持っていれば通す ("any" 判定)。
