@@ -37,7 +37,6 @@ const PUBLIC_PATHS = new Set<string>([
 // 前方一致で公開するパス
 const PUBLIC_PREFIXES = [
   "/api/cron/", // Vercel Cron — CRON_SECRET で別途認証
-  "/api/health", // ヘルスチェック
 ];
 
 function isPublicPath(pathname: string): boolean {
