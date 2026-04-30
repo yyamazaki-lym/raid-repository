@@ -52,6 +52,10 @@ export const RELEASES: ReleaseEntry[] = [
     date: "2026-04-30",
     parts: [
       {
+        title: "📅 過去日程が保存されない不具合修正 (TODO #46)",
+        body: "**症状**: 開催日が過ぎた翌朝に「過去の活動」へ載らず、出欠状況も消える事象。\n\n**原因**: `importDiscordScheduleHistory` の cleanup ステップが「`parsed_date > now()` の行」を **source 区別なく** DELETE していたため、開催前の 21:50 JST に snapshot cron が保存した `source='snapshot'` 行 (parsed_date=当日開催時刻=その時点では未来) が、後続の Discord 取り込み (cron / 手動) で巻き込み削除されていた。これにより `mergeStoredPastSessions` の 6h cutoff (now-6h) を char-sheets 側のセッションが超えた時点 (= 翌朝 04:00 JST 頃) で表示元が消滅していた。\n\n**修正**:\n1. `discord-schedule.ts:cleanedFuture` の DELETE 句に `.eq('source', 'discord')` を追加。snapshot / manual 由来行を保護。\n2. `vercel.json` の `import-discord` cron を `0 0 * * *` (JST 09:00) → `0 14 * * *` (JST 23:00 = 開催時間 22:00-00:00 の中間) に変更。session 開始後に Discord 通知メッセージを past 扱いで insert できるようにし、snapshot が失敗した場合の二重保険にもなる。",
+      },
+      {
         title: "⚙ メンテナンスメニューを DropdownMenu に集約 + Hobby plan 25s 上限対応で 3 phase 個別実行に分割",
         body: "**背景**: 旧 `メンテナンス` セクションは「最新情報を取り込んで再計算」単一ボタンで Discord 取り込み → 動画メタ取得 → クリア再計算を順次実行する設計だったが、Vercel Hobby plan の Edge function 25s 上限を超えて `Page Error` が返るケースが発生していた。あわせてユーザー要望「3 ボタンを別個に出すのではなくメンテナンスメニューに集約したい」も並行。\n\n**修正**:\n\n1. **取り込み並列化** (`discord-import.ts`): strategy / video チャンネル fetch を `Promise.all` で並列化。1 ボタンあたり数秒短縮。\n2. **メンテメニューを DropdownMenu 化** (`maintenance-menu.tsx`): トリガーボタン 1 つ + メニュー内に ① Discord 取込 / ② 動画メタ取得 / ③ クリア再計算 を縦並びで表示。各 phase が独立して走るので 1 ボタンあたりの実行時間は十分短い。`pending` 中はトリガーラベルが「① Discord 取込中…」「② 動画情報 X/Y (N%)」のように切り替わる。\n3. **DropdownMenuItem ハンドラ修正**: 当初 Radix UI 流の `onSelect={(e) => { e.preventDefault(); run(...) }}` を渡していたが、本プロジェクトは base-ui の Menu API (`MenuItem` は `onClick` のみ) を使用しており全く反応しなかった。3 ボタン全てを `onClick={() => run(...)}` に修正してメニューが本来の動作に。",
       },

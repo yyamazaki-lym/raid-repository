@@ -165,14 +165,18 @@ export async function importDiscordScheduleHistory(): Promise<ScheduleHistoryImp
     });
   }
 
-  // 既存 DB の未来日時行をクリーンアップ。importer の旧版や手動投入で
-  // 未来 parsed_date が混入している場合があり、past 化すると「未開催の
+  // 既存 DB の未来日時行をクリーンアップ。importer の旧版で未来
+  // parsed_date が混入している場合があり、past 化すると「未開催の
   // ノイズ日」として表に出てしまうため、import 実行ごとに削除する。
+  // ただし source='snapshot' / 'manual' の行は意図的に未来日時で
+  // 保存されている (snapshot は char-sheets の今日分セッションを開催
+  // 前に保存する) ため、`source='discord'` の行のみを対象にする。
   const supabaseEarly = await createClient();
   const { count: cleanedFuture } = await supabaseEarly
     .from("schedule_past_sessions")
     .delete({ count: "exact" })
-    .gt("parsed_date", new Date(nowMs).toISOString());
+    .gt("parsed_date", new Date(nowMs).toISOString())
+    .eq("source", "discord");
 
   if (parsedRows.length === 0) {
     return {
