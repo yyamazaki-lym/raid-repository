@@ -818,7 +818,18 @@ function SessionRow({
             // `null` when the session is synthetic (Discord/snapshot
             // backed past row with no DOM anchor) — falls back to the
             // default `#comment` landing.
-            const targetRowIndex = session.rowIndex;
+            //
+            // 2.1 part9 (2026-04-30): 確定セル click は `/schedule/list`
+            // (一覧ページ) を開くが、character-sheets `/list` 側は固定
+            // header が anchor 行に被さって視覚的に「1 行下にジャンプ
+            // した」ように見える ("日付+1 の行が画面最上端" になる)。
+            // これを相殺するため確定セル経由のみ `rowIndex - 1` を渡す。
+            // メンバー列 (出欠セル) は `/schedule/input` 側で問題なく
+            // 該当行が画面に見えるので補正不要。
+            const targetRowIndex =
+              typeof session.rowIndex === "number"
+                ? Math.max(0, session.rowIndex - 1)
+                : null;
             const dateLabel =
               session.rawDate.split(" ")[0] ?? session.rawDate;
             const safeScheduleUrl = scheduleUrl ?? null;

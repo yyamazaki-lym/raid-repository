@@ -1,6 +1,6 @@
 # Raid Repository — 引き継ぎノート
 
-> 2.1 (2026-04-30 part8) 時点。完了済 TODO の詳細はすべて `src/lib/changelog.ts` を参照。
+> 2.1 (2026-04-30 part9) 時点。完了済 TODO の詳細はすべて `src/lib/changelog.ts` を参照。
 
 ## プロジェクト概要
 
@@ -29,10 +29,16 @@
 2. 内容を踏まえてユーザーから具体的な要望が来るのを待つ — **TODO 一覧の自動表示はしない** (トークン消費削減のため、2026-04-30 ユーザー指示)
 3. ユーザーが「TODO 見せて」「未完了一覧」等を明示要求した時のみ「未完了 TODO 一覧」セクションを表示する
 
-ユーザー側のテンプレ:
+ユーザー側のテンプレ (基本):
 ```
 このリポは Raid Repository (Next.js 16 + Supabase)。
 .claude/HANDOFF.md を読んでから作業してください。
+```
+
+特定 TODO に着手したい場合:
+```
+このリポは Raid Repository (Next.js 16 + Supabase)。
+.claude/HANDOFF.md を読んで TODO #44 から作業してください。
 ```
 
 ## 未完了 TODO 一覧
@@ -77,6 +83,7 @@
 
 > 各項目の詳細・経緯は `src/lib/changelog.ts` の該当バージョン項目に記載。ここでは番号と版だけ。
 
+- **2.1 (2026-04-30 part9)**: #44 補正 (確定セル `/list` ジャンプの 1 行ズレを `Math.max(0, rowIndex - 1)` で相殺。メンバー列 `/input` は補正不要で session.rowIndex そのまま)
 - **2.1 (2026-04-30 part8)**: #44 完了 (iframe per-date jump を `#row_N` hash anchor 方式に置換、heuristic translateY 撤廃 + mode toggle / SCROLL_OFFSETS 削除で大幅簡素化)
 - **2.1 (2026-04-30 part7)**: #53 真の完了 (iframe URL に `#comment` hash 付与で初期スクロール位置を最適化)
 - **2.1 (2026-04-30 part6)**: #53 part 2 (initialMode を mid → top に変更、part7 の前段)
@@ -134,6 +141,7 @@
 - **iframe 経由で開いた時、character-sheets が responsive 判定で上部要素 (デイコードナビ / 大タイトル / 上部登録ボタンセット top=145) を非表示にする**。Chrome 直接アクセスでは見える。デフォルトの scroll=0 では「凡例から始まる短い表示」になるため、`#comment` / `#row_N` hash で初期スクロールを補正する方針に集約
 - **dialog 側の構造**: prop は `targetRowIndex?: number | null` のみ (`targetOffsetPx` / mode toggle / `SCROLL_OFFSETS` / translateY clipping は part8 で全廃)。iframe は `absolute inset-0 h-full w-full` でフルサイズ表示、初期スクロール位置の制御は URL hash 一本
 - **synthetic 行**: Discord 通知 / snapshot 由来の past セッション (`next-session.ts` の additions) は character-sheets の DOM に対応行が無いので `rowIndex: null`。null は dialog で `#comment` フォールバックされる
+- **`/list` ページのみ -1 補正** (2.1 part9): 確定セルクリック (= `/schedule/list?key=...` 開く) では `#row_${rowIndex}` だと固定 header に anchor 行が被さり「日付+1 の行が画面最上端」に見えるズレが発生。確定セル handler のみ `Math.max(0, rowIndex - 1)` を渡して 1 行手前にシフトする (`schedule-list.tsx` 確定セル `(() => { const targetRowIndex = ... })`)。メンバー列 (= `/schedule/input?...&userId=...`) は `/input` 側で固定 header の被りが起きないため補正不要、`session.rowIndex` をそのまま渡す。`/list` と `/input` で character-sheets の表示構造が違うことが原因
 - **撤廃済 (再導入禁止)**:
   - heuristic translateY による per-date jump (`280 + (upcomingIndex - 1) * 36`, 2.1 part8 で削除) — 行高変動 / レイアウト改修で容易にズレ、`#row_N` hash 方式の方が正確かつ自動追従
   - `bottom` mode (offset=2400/3600) の translateY 下端ジャンプ — character-sheets が flex layout (header + table[overflow:auto, flex-grow] + footer) のため iframe height を伸ばすと中央 table が同期拡大 → 行が空白に隠れて使い物にならない (2.1 part4-5 で試行 → 撤回)
