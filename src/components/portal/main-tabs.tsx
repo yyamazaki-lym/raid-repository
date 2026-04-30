@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { CalendarDays } from "lucide-react";
+import { motion } from "motion/react";
 import { cn } from "@/lib/utils";
 import { CategorySwitcher } from "./category-switcher";
 import type { Category } from "@/lib/supabase/types";
@@ -53,17 +54,13 @@ export function MainTabs({
                 aria-hidden
               />
               <span>スケジュール</span>
-              {/* TODO #11 phase 8: framer-motion 撤廃。常時描画 + opacity
-                  crossfade に置換。category-switcher (violet) との色違い
-                  なので「ひとつのバーが滑る」演出より「片方が消えてもう
-                  片方が現れる」のほうが視覚的にも自然。 */}
-              <span
-                aria-hidden
-                className={cn(
-                  "pointer-events-none absolute right-2 -bottom-px left-2 h-px bg-[var(--neon-cyan)] shadow-[0_0_10px_var(--neon-cyan)] transition-opacity duration-300 ease-out",
-                  scheduleActive ? "opacity-100" : "opacity-0",
-                )}
-              />
+              {scheduleActive && (
+                <motion.span
+                  layoutId="main-tab-underline"
+                  transition={{ type: "spring", bounce: 0.2, duration: 0.5 }}
+                  className="absolute right-2 -bottom-px left-2 h-px bg-[var(--neon-cyan)] shadow-[0_0_10px_var(--neon-cyan)]"
+                />
+              )}
             </Link>
           </li>
 

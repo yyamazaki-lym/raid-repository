@@ -16,8 +16,8 @@ import {
   X,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
-import { CommentPopover } from "./comment-popover";
-import { ScheduleEditFrameDialog } from "./schedule-edit-frame-dialog";
+import { CommentPopover } from "./comment-popover-lazy";
+import { ScheduleEditFrameDialog } from "./schedule-edit-frame-dialog-lazy";
 import { toast } from "sonner";
 import Link from "next/link";
 import {

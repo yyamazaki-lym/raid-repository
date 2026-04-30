@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { motion } from "motion/react";
 import {
   Dice5,
   ShieldHalf,
@@ -11,7 +12,6 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useActiveUnderline } from "@/lib/client/use-active-underline";
 
 type SubTab = {
   id: string;
@@ -31,10 +31,6 @@ const SUB_TABS: SubTab[] = [
 
 export function SubTabs({ baseHref }: { baseHref: string }) {
   const pathname = usePathname();
-  // TODO #11 phase 8: framer-motion `layoutId` を撤廃し、親 <ul> 共有
-  // underline を JS 計測 + CSS transition で実装。`bounce: 0.2` の質感は
-  // ease-out に劣化するが 37 KB gz 削減のトレードオフを取る。
-  const { containerRef, style } = useActiveUnderline(pathname);
 
   return (
     <nav
@@ -42,10 +38,7 @@ export function SubTabs({ baseHref }: { baseHref: string }) {
       className="border-border/40 border-b"
     >
       <div className="mx-auto max-w-5xl px-2 sm:px-6">
-        <ul
-          ref={containerRef}
-          className="relative flex gap-1 overflow-x-auto py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-        >
+        <ul className="flex gap-1 overflow-x-auto py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {SUB_TABS.map((tab) => {
             const href = `${baseHref}/${tab.segment}`;
             const active = pathname === href || pathname.startsWith(`${href}/`);
@@ -72,17 +65,17 @@ export function SubTabs({ baseHref }: { baseHref: string }) {
                     aria-hidden
                   />
                   <span>{tab.label}</span>
+                  {active && (
+                    <motion.span
+                      layoutId="sub-tab-underline"
+                      transition={{ type: "spring", bounce: 0.2, duration: 0.4 }}
+                      className="absolute right-1.5 -bottom-[7px] left-1.5 h-px bg-[var(--neon-violet)] shadow-[0_0_8px_var(--neon-violet)]"
+                    />
+                  )}
                 </Link>
               </li>
             );
           })}
-          {style && (
-            <span
-              aria-hidden
-              className="pointer-events-none absolute bottom-1 h-px bg-[var(--neon-violet)] shadow-[0_0_8px_var(--neon-violet)] transition-[left,width] duration-[400ms] ease-out"
-              style={{ left: style.left + 6, width: style.width - 12 }}
-            />
-          )}
         </ul>
       </div>
     </nav>

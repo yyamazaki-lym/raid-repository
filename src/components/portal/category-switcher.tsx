@@ -14,6 +14,7 @@ import {
   Terminal,
   type LucideIcon,
 } from "lucide-react";
+import { motion } from "motion/react";
 import { cn } from "@/lib/utils";
 import {
   DropdownMenu,
@@ -105,15 +106,13 @@ export function CategorySwitcher({ initialCategories, userRoleIds }: Props) {
           className="h-3 w-3 opacity-70 transition-transform data-[popup-open]:rotate-180"
           aria-hidden
         />
-        {/* TODO #11 phase 8: framer-motion 撤廃。常時描画 + opacity
-            crossfade に置換 (main-tabs schedule リンクと対称)。 */}
-        <span
-          aria-hidden
-          className={cn(
-            "pointer-events-none absolute right-2 -bottom-px left-2 h-px bg-[var(--neon-violet)] shadow-[0_0_10px_var(--neon-violet)] transition-opacity duration-300 ease-out",
-            isCategoryRoute ? "opacity-100" : "opacity-0",
-          )}
-        />
+        {isCategoryRoute && (
+          <motion.span
+            layoutId="main-tab-underline"
+            transition={{ type: "spring", bounce: 0.2, duration: 0.5 }}
+            className="absolute right-2 -bottom-px left-2 h-px bg-[var(--neon-violet)] shadow-[0_0_10px_var(--neon-violet)]"
+          />
+        )}
       </DropdownMenuTrigger>
 
       <DropdownMenuContent

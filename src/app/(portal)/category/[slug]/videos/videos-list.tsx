@@ -42,7 +42,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { Card } from "@/components/ui/card";
 // 1.9 (2026-04-28) TODO #11: lazy 化で初期 client bundle から外す
 import { LinkFormDialog } from "@/components/portal/link-form-dialog-lazy";
-import { LinkCardMenu } from "@/components/portal/link-card-menu";
+import { LinkCardMenu } from "@/components/portal/link-card-menu-lazy";
 import {
   deleteCategoryLink,
   setCategoryLinkOrder,
