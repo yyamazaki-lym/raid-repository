@@ -48,6 +48,7 @@
 | 47 | 動画お気に入り機能 + ソートで「お気に入りのみ」表示。`category_links` に boolean 列追加 → 動画カードに star トグル → videos-list の sort モードに「お気に入り」追加 | 中 (schema 変更含む) |
 | 49 | 動画削除時にページトップへスクロールが戻る挙動を抑止。`router.refresh()` / revalidate 後の再描画でスクロール位置が失われている可能性。`videos-list` の削除ハンドラ周辺を調査 | 小〜中 |
 | 51 | マイクロインタラクション / ユーザビリティ向上。クリック時の press feedback / hover 時の subtle elevation / loading skeleton / focus ring 強化 / toast の出現位置・タイミング微調整 / フォーム入力の即時 validation / 空状態の illustration etc。framer-motion を残す方針なので springy な質感も維持しつつ portal 全体の polish を 1 周。観点リストの作成 + 優先順位付けから | 中 |
+| 52 | 動画ページに「複数選択した動画の再生時間からクリア時間を計測」するボタン。チェックボックス等で複数 video を選択 → 各 `category_links.duration_seconds` を合計 → 「クリアまでの累計時間」相当として表示 / `manual_time_to_clear_seconds` に保存できる。既存の手動入力欄 (TODO #25) との連携、未取得 duration の扱い (skip / warning) を要設計 | 中 |
 
 ## 完了済み TODO
 
