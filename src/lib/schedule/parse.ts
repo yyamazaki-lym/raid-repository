@@ -37,6 +37,15 @@ export type ScheduleSession = {
   status: SessionStatus;
   /** Map of userId → attendance symbol. Missing entries = no answer recorded. */
   attendances: Record<string, Attendance>;
+  /**
+   * N from `<tr id="row_N">` on character-sheets. Used by the in-portal
+   * iframe edit dialog to jump directly to this row via `#row_N` URL
+   * fragment — replaces the heuristic translateY clipping used pre-2.1.
+   * row_0 = oldest session row in DOM order. `null` for synthetic rows
+   * (Discord / snapshot-derived past sessions that have no character-
+   * sheets DOM row to anchor to).
+   */
+  rowIndex: number | null;
 };
 
 export type ScheduleComment = {
@@ -65,7 +74,7 @@ export type ParsedSchedule = {
 const NAMELINK_USER_RE =
   /<a\s+class="namelink"\s+href="[^"]*userId=([^"&]+)[^"]*"[^>]*>([^<]+)<\/a>/g;
 
-const ROW_RE = /<tr id="row_\d+">([\s\S]*?)<\/tr>/g;
+const ROW_RE = /<tr id="row_(\d+)">([\s\S]*?)<\/tr>/g;
 const DATETITLE_RE = /<th class="datetitle">\s*([^<]+?)\s*</;
 // Permissive: extract any value, then bucket as DECISION/CANDIDATE later.
 // Past rows on character-sheets sometimes have a different (or empty) value
@@ -226,7 +235,8 @@ function parseUsers(html: string): ScheduleUser[] {
 function parseSessions(html: string, userCount: number): ScheduleSession[] {
   const out: ScheduleSession[] = [];
   for (const rowMatch of html.matchAll(ROW_RE)) {
-    const rowHtml = rowMatch[1];
+    const rowIndex = Number(rowMatch[1]);
+    const rowHtml = rowMatch[2];
     const dateMatch = DATETITLE_RE.exec(rowHtml);
     const statusMatch = DATESTATUS_RE.exec(rowHtml);
     if (!dateMatch || !statusMatch) continue;
@@ -261,6 +271,7 @@ function parseSessions(html: string, userCount: number): ScheduleSession[] {
       ...parsed,
       status: statusMatch[1] as SessionStatus,
       attendances,
+      rowIndex,
     });
   }
   return out;

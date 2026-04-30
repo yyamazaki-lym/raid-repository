@@ -1,6 +1,6 @@
 # Raid Repository — 引き継ぎノート
 
-> 2.1 (2026-04-30 part7) 時点。完了済 TODO の詳細はすべて `src/lib/changelog.ts` を参照。
+> 2.1 (2026-04-30 part8) 時点。完了済 TODO の詳細はすべて `src/lib/changelog.ts` を参照。
 
 ## プロジェクト概要
 
@@ -21,7 +21,7 @@
 
 ## 📌 次回の作業優先度
 
-**TODO #44 改善** から着手 (ユーザー指示, 2026-04-30 part7 終了時)。下記「未完了 TODO 一覧」の `🗓 スケジュールページ` セクションを参照。
+指定なし (TODO #44 完了済)。次回はユーザー指示を待つか、`🗓 スケジュールページ` の TODO #2 / #38 (スケジュール表自前実装) など大規模項目から候補出しする。
 
 ## 🚨 新規会話開始時のルーチン
 
@@ -45,7 +45,6 @@
 |---|---|---|
 | 2 | スケジュール表自前実装 (作成/編集/確定/Discord 通知) | 大 |
 | 38 | スケジュール追加機能 — portal 内から開催候補日を追加する UI が無い。日付 + 時間帯 + 参加可否を入力 → DB 保存 → 描画。TODO #2 と統合可 | 中〜大 |
-| 44 | **【再オープン: 精度向上】**スケジュール TOP の日程セルクリックで開く character-sheets iframe に該当日付までジャンプする target offset の精度を、現状の heuristic translateY (`280 + (upcomingIndex - 1) * 36`) から **`#row_N` URL hash anchor 方式**に置換。今回 (2.1 part7) の TODO #53 真の完了で character-sheets が hash anchor を honor することを実証 (1.9.15 のコメントは誤りだった)。`#row_${upcomingIndex}` を append すれば exact ジャンプ可能で heuristic の数 px ズレを根絶できる。要確認: portal の `upcomingIndex` (= 未来日程 index、0 が next session) が character-sheets の `row_N` (= 全日程の index、row_0 = 最古？最新？) と一致するか。`schedule-list.tsx` の openEditFrame call site を確認、必要なら character-sheets の row 順序を Claude in Chrome で再確認。実装は `schedule-edit-frame-dialog.tsx` の srcUrl 派生に target 分岐を追加するだけで小規模。ついでに target mode 用の translateY (offset = 244 等) は不要になるので削除可能 (= mode 簡素化) | 小 |
 
 ### 📂 カテゴリ詳細ページ (`/category/[slug]`)
 
@@ -78,6 +77,7 @@
 
 > 各項目の詳細・経緯は `src/lib/changelog.ts` の該当バージョン項目に記載。ここでは番号と版だけ。
 
+- **2.1 (2026-04-30 part8)**: #44 完了 (iframe per-date jump を `#row_N` hash anchor 方式に置換、heuristic translateY 撤廃 + mode toggle / SCROLL_OFFSETS 削除で大幅簡素化)
 - **2.1 (2026-04-30 part7)**: #53 真の完了 (iframe URL に `#comment` hash 付与で初期スクロール位置を最適化)
 - **2.1 (2026-04-30 part6)**: #53 part 2 (initialMode を mid → top に変更、part7 の前段)
 - **2.1 (2026-04-30 part3)**: #53 part 1 (scroll 復元 fix)
@@ -127,13 +127,16 @@
 ### character-sheets iframe (編集ダイアログ)
 
 - 編集ダイアログは `schedule-edit-frame-dialog.tsx` で character-sheets を iframe 埋め込み (cross-origin, sandbox 付)
-- **URL hash anchor は honor される** (2.1 part7 で実証、1.9.15 のコメント "URL hash hints aren't honored" は誤った観察)
-  - `#row_N` (各日程行 TR の id, N=0 が最古行) で window scroll + 内部 table-container scroll の両方が連動ジャンプ
-  - `#comment` (一言コメント入力欄) で window scrollY ~299 (docMax 付近) にジャンプ → 凡例 + table 行 + 下端 overlay 登録ボタンが同時表示される画面状態 (= ユーザ名 header click 時のデフォルト表示)
+- **URL hash anchor は honor される** (2.1 part7-8 で実証、1.9.15 のコメント "URL hash hints aren't honored" は誤った観察)
+  - `#row_N` (各日程行 TR の id) — N は character-sheets の HTML DOM 出現順 (実機確認: row_0 = 直近未来日 / 表の最上端、N が増えるほど未来日へ)。`parse.ts` の `ROW_RE` に capture group を入れて parser が `ScheduleSession.rowIndex` に保存。dialog 側が `#row_${rowIndex}` を URL に append すると character-sheets が window scroll + 内部 table-container scroll を両方連動して該当行までジャンプ
+  - `#comment` (一言コメント入力欄) で window scrollY ~299 (docMax 付近) にジャンプ → 凡例 + table 行 + 下端 overlay 登録ボタンが同時表示 (= 通常 mode = `targetRowIndex` 無し時のデフォルト着地)
   - cross-origin SOP とは無関係 (ブラウザ native 機能)
-- **iframe 経由で開いた時、character-sheets が responsive 判定で上部要素 (デイコードナビ / 大タイトル / 上部登録ボタンセット top=145) を非表示にする**。Chrome 直接アクセスでは見える。iframe デフォルトの scroll=0 では「凡例から始まる短い表示」になるため、`#comment` hash で初期スクロールを補正するのが現方針
-- target mode の translateY heuristic (`280 + (upcomingIndex - 1) * 36`) は精度低い → TODO #44 で `#row_N` hash 方式に置換予定
-- **撤廃済 (再導入禁止)**: `bottom` mode (offset=2400/3600) の translateY 下端ジャンプ — character-sheets が flex layout (header + table[overflow:auto, flex-grow] + footer) のため iframe height を伸ばすと中央 table が同期拡大 → 行が空白に隠れて使い物にならない (2.1 part4-5 で試行 → 撤回)
+- **iframe 経由で開いた時、character-sheets が responsive 判定で上部要素 (デイコードナビ / 大タイトル / 上部登録ボタンセット top=145) を非表示にする**。Chrome 直接アクセスでは見える。デフォルトの scroll=0 では「凡例から始まる短い表示」になるため、`#comment` / `#row_N` hash で初期スクロールを補正する方針に集約
+- **dialog 側の構造**: prop は `targetRowIndex?: number | null` のみ (`targetOffsetPx` / mode toggle / `SCROLL_OFFSETS` / translateY clipping は part8 で全廃)。iframe は `absolute inset-0 h-full w-full` でフルサイズ表示、初期スクロール位置の制御は URL hash 一本
+- **synthetic 行**: Discord 通知 / snapshot 由来の past セッション (`next-session.ts` の additions) は character-sheets の DOM に対応行が無いので `rowIndex: null`。null は dialog で `#comment` フォールバックされる
+- **撤廃済 (再導入禁止)**:
+  - heuristic translateY による per-date jump (`280 + (upcomingIndex - 1) * 36`, 2.1 part8 で削除) — 行高変動 / レイアウト改修で容易にズレ、`#row_N` hash 方式の方が正確かつ自動追従
+  - `bottom` mode (offset=2400/3600) の translateY 下端ジャンプ — character-sheets が flex layout (header + table[overflow:auto, flex-grow] + footer) のため iframe height を伸ばすと中央 table が同期拡大 → 行が空白に隠れて使い物にならない (2.1 part4-5 で試行 → 撤回)
 
 ### YouTube メタデータ
 

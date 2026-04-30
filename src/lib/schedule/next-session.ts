@@ -177,6 +177,9 @@ async function mergeStoredPastSessions(
       // にはならない。
       status: "DECISION",
       attendances: attendances as ParsedSchedule["sessions"][number]["attendances"],
+      // No char-sheets `<tr id="row_N">` for synthetic rows — the iframe
+      // jump (`#row_N` anchor) doesn't apply.
+      rowIndex: null,
     });
   }
 

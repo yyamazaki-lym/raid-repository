@@ -140,16 +140,13 @@ export function ScheduleList({
   // cell now sets `editTarget`, which mounts the dialog. State lives at
   // the top level so a single dialog instance is reused across rows.
   //
-  // 2.1+ (TODO #44): a per-session attendance click also passes an
-  // `upcomingIndex` (0 = nearest future session). The dialog uses it to
-  // clip its iframe so the target date row roughly lines up with the
-  // top of the dialog. cross-origin iframe scripting / hash anchors
-  // aren't honored by character-sheets so we use a heuristic:
-  //   offset = MID + index * APPROX_ROW_HEIGHT
+  // 2.1+ (TODO #44): per-date 確定セルクリックは `targetRowIndex` も
+  // 一緒に渡す。dialog 側で URL に `#row_N` hash を付けて character-sheets
+  // を該当行までネイティブ jump させる (旧 heuristic translateY 廃止)。
   const [editTarget, setEditTarget] = useState<{
     url: string;
     title: string;
-    targetOffsetPx: number | null;
+    targetRowIndex: number | null;
   } | null>(null);
   // TODO #53 (2.1, 2026-04-30 part3): base-ui Dialog の scroll lock 解除と
   // FloatingFocusManager の returnFocus が iframe / 高頻度 re-render と組み
@@ -159,11 +156,11 @@ export function ScheduleList({
   // exit animation を待つ) してから差分があれば復元する。
   const savedScrollYRef = useRef<number | null>(null);
   const openEditFrame = useCallback(
-    (url: string, title: string, targetOffsetPx: number | null = null) => {
+    (url: string, title: string, targetRowIndex: number | null = null) => {
       if (typeof window !== "undefined") {
         savedScrollYRef.current = window.scrollY;
       }
-      setEditTarget({ url, title, targetOffsetPx });
+      setEditTarget({ url, title, targetRowIndex });
     },
     [],
   );
@@ -350,7 +347,7 @@ export function ScheduleList({
           <table className="w-full min-w-[640px] border-collapse text-left text-sm">
             {tableHead(true)}
             <tbody>
-              {upcoming.map((s, idx) => (
+              {upcoming.map((s) => (
                 <SessionRow
                   key={s.rawDate}
                   session={s}
@@ -362,7 +359,6 @@ export function ScheduleList({
                   onOpenEditFrame={openEditFrame}
                   memos={memosByDate[s.rawDate] ?? EMPTY_MEMOS}
                   onRefreshMemos={refetchMemos}
-                  upcomingIndex={idx}
                 />
               ))}
               {upcoming.length === 0 && (
@@ -386,7 +382,7 @@ export function ScheduleList({
       <ScheduleEditFrameDialog
         url={editTarget?.url ?? null}
         title={editTarget?.title ?? ""}
-        targetOffsetPx={editTarget?.targetOffsetPx ?? null}
+        targetRowIndex={editTarget?.targetRowIndex ?? null}
         onClose={() => setEditTarget(null)}
       />
 
@@ -500,7 +496,7 @@ function UserHeaderCell({
   onOpenEditFrame: (
     url: string,
     title: string,
-    targetOffsetPx?: number | null,
+    targetRowIndex?: number | null,
   ) => void;
   /**
    * TODO #50 (2.1, 2026-04-30): false で username を span 描画にし、
@@ -637,7 +633,6 @@ function SessionRow({
   onOpenEditFrame,
   memos,
   onRefreshMemos,
-  upcomingIndex,
 }: {
   session: ScheduleSession;
   users: ScheduleUser[];
@@ -663,19 +658,12 @@ function SessionRow({
   onOpenEditFrame: (
     url: string,
     title: string,
-    targetOffsetPx?: number | null,
+    targetRowIndex?: number | null,
   ) => void;
   /** 親が `useRealtimeAllScheduleMemos` で集約した live slice (TODO #11 phase 7)。 */
   memos: import("@/lib/schedule-memos-client").ScheduleSessionMemo[];
   /** Server-action 後の保険 refetch (旧 useRealtimeScheduleMemos の refetch 互換)。 */
   onRefreshMemos: () => Promise<void>;
-  /**
-   * TODO #44: 0-based index of this session within the upcoming list.
-   * When defined (= upcoming row), attendance-cell clicks pass a
-   * heuristic offset so the iframe lands near this date's input row.
-   * `undefined` for past rows where the per-date jump isn't useful.
-   */
-  upcomingIndex?: number;
 }) {
   const decided = session.status === "DECISION";
   // Ref so the (separately-rendered) memo dot can open the popover.
@@ -822,21 +810,15 @@ function SessionRow({
       {showDecided && (
         <td className="px-1 py-2 text-center align-middle">
           {(() => {
-            // TODO #44 (2.1, 2026-04-29 v2): clicking the 確定 cell
-            // (either the green badge or the · placeholder) opens the
-            // schedule list URL in the iframe dialog, clipped so the
-            // matching date row sits near the top. Uses the same
-            // translateY heuristic as the per-user edit dialog because
-            // cross-origin iframes can't be scripted.
-            //   offset = MID_BASE + (upcomingIndex - 1) * ROW_HEIGHT
-            // MID_BASE = 280 matches the legacy "mid" landing zone (=
-            // skips character-sheets header). ROW_HEIGHT = 36 is the
-            // observed row pitch in the list view; tune if upstream
-            // layout drifts.
-            const targetOffset =
-              typeof upcomingIndex === "number"
-                ? Math.max(0, 280 + (upcomingIndex - 1) * 36)
-                : null;
+            // TODO #44 (2.1, 2026-04-30): clicking the 確定 cell opens
+            // the schedule list URL in the iframe dialog with a
+            // `#row_N` fragment anchor so character-sheets natively
+            // jumps to the matching date row. `session.rowIndex` is the
+            // N from `<tr id="row_N">` (parsed from the source HTML).
+            // `null` when the session is synthetic (Discord/snapshot
+            // backed past row with no DOM anchor) — falls back to the
+            // default `#comment` landing.
+            const targetRowIndex = session.rowIndex;
             const dateLabel =
               session.rawDate.split(" ")[0] ?? session.rawDate;
             const safeScheduleUrl = scheduleUrl ?? null;
@@ -845,7 +827,7 @@ function SessionRow({
               onOpenEditFrame(
                 safeScheduleUrl,
                 `スケジュール (${dateLabel} の行へ移動)`,
-                targetOffset,
+                targetRowIndex,
               );
             };
             const sharedClass =
@@ -936,17 +918,17 @@ function SessionRow({
               // ボタン化 (1.9.13): その場でインライン iframe ダイアログを
               // 開いて出欠を編集。タブ移動なしで戻れる。hover の scale +
               // focus ring で「タップ可能」のフィードバックを残す。
-              // 2.1+ (TODO #44 v2): upcoming 行は per-date offset を渡し、
-              // 該当日の入力行近くで iframe が開くようにする。
+              // 2.1+ (TODO #44 v3): 該当行へは `#row_N` hash anchor で
+              // ジャンプ。session.rowIndex は parser が `<tr id="row_N">`
+              // から抜き出した N (synthetic 行は null = 通常 mode の
+              // `#comment` 着地になる)。
               <button
                 type="button"
                 onClick={() =>
                   onOpenEditFrame(
                     editUrl,
                     `${u.name} の出欠を編集 (${dateLabel} を含む)`,
-                    typeof upcomingIndex === "number"
-                      ? Math.max(0, 280 + (upcomingIndex - 1) * 36)
-                      : null,
+                    session.rowIndex,
                   )
                 }
                 title={`${u.name} の出欠をその場で編集 (${dateLabel} を含む全日程)`}
