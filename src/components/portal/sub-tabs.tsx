@@ -1,7 +1,7 @@
 "use client";
 
+import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { PortalLink } from "./portal-link";
 import { motion } from "motion/react";
 import {
   Dice5,
@@ -44,7 +44,7 @@ export function SubTabs({ baseHref }: { baseHref: string }) {
             const active = pathname === href || pathname.startsWith(`${href}/`);
             return (
               <li key={tab.id} className="shrink-0">
-                <PortalLink
+                <Link
                   href={href}
                   data-active={active}
                   className={cn(
@@ -72,7 +72,7 @@ export function SubTabs({ baseHref }: { baseHref: string }) {
                       className="absolute right-1.5 -bottom-[7px] left-1.5 h-px bg-[var(--neon-violet)] shadow-[0_0_8px_var(--neon-violet)]"
                     />
                   )}
-                </PortalLink>
+                </Link>
               </li>
             );
           })}

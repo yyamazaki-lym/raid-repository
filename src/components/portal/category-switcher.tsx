@@ -1,7 +1,7 @@
 "use client";
 
+import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { PortalLink } from "./portal-link";
 import { useEffect, useState } from "react";
 import {
   ChevronDown,
@@ -156,7 +156,7 @@ export function CategorySwitcher({ initialCategories, userRoleIds }: Props) {
                     by the menu's pointer handling and never navigated. */}
                 <DropdownMenuItem
                   render={
-                    <PortalLink
+                    <Link
                       href={defaultHref}
                       prefetch
                       title={cat.name}
@@ -196,7 +196,7 @@ export function CategorySwitcher({ initialCategories, userRoleIds }: Props) {
                     <DropdownMenuItem
                       key={p.segment}
                       render={
-                        <PortalLink
+                        <Link
                           href={`/category/${cat.slug}/${p.segment}`}
                           prefetch
                           title={p.label}
@@ -217,7 +217,7 @@ export function CategorySwitcher({ initialCategories, userRoleIds }: Props) {
         <DropdownMenuSeparator />
 
         <DropdownMenuItem
-          render={<PortalLink href="/category" prefetch />}
+          render={<Link href="/category" prefetch />}
           className="flex cursor-pointer items-center gap-2"
         >
           <ListChecks className="h-4 w-4 text-muted-foreground" aria-hidden />

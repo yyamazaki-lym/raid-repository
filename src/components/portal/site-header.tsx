@@ -1,5 +1,5 @@
+import Link from "next/link";
 import { Activity } from "lucide-react";
-import { PortalLink } from "./portal-link";
 import { ThemeSwitcher } from "./theme-switcher";
 // 1.9 (2026-04-28) TODO #11: SettingsDialog (~1601 行 + MaintenanceMenu
 // ~880 行) は開いた時だけ必要なので、`next/dynamic` 経由で別 chunk 化
@@ -114,7 +114,7 @@ export async function SiteHeader() {
   return (
     <header className="glass-bar sticky top-0 z-30">
       <div className="mx-auto flex h-14 max-w-5xl items-center gap-3 px-4 sm:h-16 sm:px-6">
-        <PortalLink
+        <Link
           href="/"
           className="group flex items-center gap-2.5"
           aria-label="Raid Repository home"
@@ -140,7 +140,7 @@ export async function SiteHeader() {
               <span className="tracking-[0.22em]">{APP_STAGE}</span>
             </DeployColorBadge>
           </div>
-        </PortalLink>
+        </Link>
 
         <div className="ml-auto flex items-center gap-2">
           <ThemeSwitcher />

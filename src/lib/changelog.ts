@@ -49,6 +49,16 @@ export type ReleasePart = {
 export const RELEASES: ReleaseEntry[] = [
   {
     version: "2.1",
+    date: "2026-05-01",
+    parts: [
+      {
+        title: "🔙 TODO #54 part2 系を全 revert (Vercel build 連続失敗による撤退)",
+        body: "**経緯**: 35991e8 (top progress bar の自前実装置換) 以降、Vercel build container で `npm install` 完了後の `next build` フェーズ進入直後に build process が無音 SIGKILL される現象が連続発生 (cache cleared redeploy + 同 commit を 2-3 回試行しても同位置で再死亡)。ローカル `next build` は 6.2s で完走するためコード自体は正常で、Vercel infra 側のネイティブモジュール crash または OOM 起因と推定。Build Logs が `added 648 packages in 15s` で切断され Vercel 側が generic 'transient issue' message しか出さないため真因特定不能、本番が 35991e8 以降の変更を一切反映できない状態が続いた (= 設定 → 更新履歴の表示も part1 のまま固着、左上の deploy 色変化も更新されない症状でユーザが気付き発覚)。\n\n**撤退範囲** (新→旧の順):\n- 6833c8b: リスト系 `<Link>` を `prefetch={false}` 化 (TODO #54 part2-d)\n- 8fbbb87: proxy auth `getUser()` → `getClaims()` (TODO #54 part2-c)\n- 881ebda: top progress bar phase=finish stuck の useEffect timer race 解消 (TODO #54 part2)\n- 9a6f14d: `@tailwindcss/oxide-wasm32-wasi` lockfile bundled deps 補完\n- 35991e8: top progress bar を自前実装に置換、`next-nprogress-bar` 削除、`<PortalLink>` ラッパー + `useLinkStatus` ベースの pending 集約導入 (TODO #54 part2 本体)\n\n**復帰先**: ad4b29a (TODO #54 part1) — top progress bar は `next-nprogress-bar` 採用版に戻る (本番で描画されない既知問題は残るが、デプロイは安定)。\n\n**今後の方針**: part2-c (proxy getClaims) と part2-d (Link prefetch) は本撤退とは独立した build-safe な変更なので、別 commit で `<PortalLink>` ラッパーを経由しない素の `<Link>` に直接書く形で再投入予定。top progress bar 自前実装 (35991e8 本体) は Vercel build SIGKILL の真因特定後に別アプローチで再着手。",
+      },
+    ],
+  },
+  {
+    version: "2.1",
     date: "2026-04-30",
     parts: [
       {

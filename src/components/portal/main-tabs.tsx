@@ -1,11 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { CalendarDays } from "lucide-react";
 import { motion } from "motion/react";
 import { cn } from "@/lib/utils";
 import { CategorySwitcher } from "./category-switcher";
-import { PortalLink } from "./portal-link";
 import type { Category } from "@/lib/supabase/types";
 
 export function MainTabs({
@@ -33,7 +33,7 @@ export function MainTabs({
       <div className="mx-auto max-w-5xl px-2 sm:px-6">
         <ul className="flex gap-1 overflow-x-auto py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <li className="shrink-0">
-            <PortalLink
+            <Link
               href="/"
               data-active={scheduleActive}
               className={cn(
@@ -61,7 +61,7 @@ export function MainTabs({
                   className="absolute right-2 -bottom-px left-2 h-px bg-[var(--neon-cyan)] shadow-[0_0_10px_var(--neon-cyan)]"
                 />
               )}
-            </PortalLink>
+            </Link>
           </li>
 
           <li className="shrink-0">
