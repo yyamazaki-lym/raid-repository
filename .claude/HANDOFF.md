@@ -37,18 +37,42 @@
 
 ## 未完了 TODO 一覧
 
+ページ / 領域ごとに分類。番号は履歴上の通番なので連続しないが、`changelog.ts` の参照キーとしてそのまま維持する。
+
+### 🗓 スケジュールページ (`/` = top)
+
+| # | 項目 | 規模 |
+|---|---|---|
+| 2 | スケジュール表自前実装 (作成/編集/確定/Discord 通知) | 大 |
+| 38 | スケジュール追加機能 — portal 内から開催候補日を追加する UI が無い。日付 + 時間帯 + 参加可否を入力 → DB 保存 → 描画。TODO #2 と統合可 | 中〜大 |
+| 53 | スケジュール (TOP) からセッション編集 / 確定入力ダイアログを開いて閉じた後、スクロール位置が頭に戻ったりスクロール自体が効きにくくなる事象。Next.js 16 の `revalidatePath` 経由の RSC 再描画 or focus trap の解放タイミング周りの可能性。`schedule-edit-frame-dialog` の onOpenChange / iframe の focus return / `router.refresh()` 呼び出しを順に調査 | 小〜中 |
+
+### 📂 カテゴリ詳細ページ (`/category/[slug]`)
+
 | # | 項目 | 規模 |
 |---|---|---|
 | 1 | 同日複数 Logs/動画 のプルダウン選択式 | 中 (schema 設計含む) |
-| 2 | スケジュール表自前実装 (作成/編集/確定/Discord 通知) | 大 |
-| 7 | スマホでのレイアウト崩れ確認 | 中 |
-| 8 | Vercel/Supabase 自動導入 (Deploy button / `.env.example` / seed)。導入後の公開モックサイト (デモ用ダミーデータ) も検証 | 中 |
-| 11 | ページ全体のパフォーマンス最適化。2.1 (2026-04-30) で phase 1-10 完了 (画像最適化 / Realtime delta / ChunkErrorHandler / `buildSessionVideoLinkMap` O(n+m) / `<Link>` 復活 + auth cache() / Next.js `deploymentId` skew protection / `useRealtimeAllScheduleMemos` 集約 / framer-motion 一旦撤廃→視覚価値で復活 / Toaster dynamic import / on-demand UI 追加 lazy: link-card-menu / comment-popover / schedule-edit-frame-dialog)。**現時点で安全に手の届く最適化はやり尽くした**。今後新たなボトルネックが見つかったら個別に追記。下記の見送り候補は再検討禁止 (UI / auth リスク高):  ❌ `@supabase/ssr` 流入剥がし (auth 整合直結) / ❌ `tailwind-merge` → `clsx` 縮約 (Tailwind conflict 解決挙動変化で UI regression 余地) / ❌ base-ui 残 primitive (status-badge / theme-switcher / recruitment-templates) の dynamic 化 (常時表示トリガーでレイアウトシフト発生 + 削減効果も小) | — |
-| 20 | Vercel ドメイン変更 — Project Settings → Domains。Discord Developer / Supabase Auth の Redirect URLs にも反映必要 | 小 |
+
+### ⚙ 設定 / 管理系 (settings-dialog / maintenance-menu)
+
+| # | 項目 | 規模 |
+|---|---|---|
 | 23 | サイト全体のデータ初期化ボタン (admin 限定、2 段階確認: 1 回目「本当に初期化?」、2 回目「`INITIALIZE` と入力」) | 中 |
-| 38 | スケジュール追加機能 — portal 内から開催候補日を追加する UI が無い。日付 + 時間帯 + 参加可否を入力 → DB 保存 → 描画。TODO #2 と統合可 | 中〜大 |
+
+### 🌐 サイト全体 / 横断 UI
+
+| # | 項目 | 規模 |
+|---|---|---|
+| 7 | スマホでのレイアウト崩れ確認 | 中 |
 | 51 | マイクロインタラクション / ユーザビリティ向上。クリック時の press feedback / hover 時の subtle elevation / loading skeleton / focus ring 強化 / toast の出現位置・タイミング微調整 / フォーム入力の即時 validation / 空状態の illustration etc。framer-motion を残す方針なので springy な質感も維持しつつ portal 全体の polish を 1 周。観点リストの作成 + 優先順位付けから | 中 |
-| 53 | スケジュール (TOP) からセッション編集 / 確定入力ダイアログを開いて閉じた後、スクロール位置が頭に戻ったりスクロール自体が効きにくくなる事象。Next.js 16 の `revalidatePath` 経由の RSC 再描画 or focus trap の解放タイミング周りの可能性。`schedule-edit-frame-dialog` の onOpenChange / iframe の focus return / `router.refresh()` 呼び出しを順に調査 | 小〜中 |
+| 11 | ページ全体のパフォーマンス最適化。2.1 (2026-04-30) で phase 1-10 完了 (画像最適化 / Realtime delta / ChunkErrorHandler / `buildSessionVideoLinkMap` O(n+m) / `<Link>` 復活 + auth cache() / Next.js `deploymentId` skew protection / `useRealtimeAllScheduleMemos` 集約 / framer-motion 一旦撤廃→視覚価値で復活 / Toaster dynamic import / on-demand UI 追加 lazy: link-card-menu / comment-popover / schedule-edit-frame-dialog)。**現時点で安全に手の届く最適化はやり尽くした**。今後新たなボトルネックが見つかったら個別に追記。下記の見送り候補は再検討禁止 (UI / auth リスク高):  ❌ `@supabase/ssr` 流入剥がし (auth 整合直結) / ❌ `tailwind-merge` → `clsx` 縮約 (Tailwind conflict 解決挙動変化で UI regression 余地) / ❌ base-ui 残 primitive (status-badge / theme-switcher / recruitment-templates) の dynamic 化 (常時表示トリガーでレイアウトシフト発生 + 削減効果も小) | — |
+
+### 🚀 インフラ / デプロイ (コード外作業)
+
+| # | 項目 | 規模 |
+|---|---|---|
+| 8 | Vercel/Supabase 自動導入 (Deploy button / `.env.example` / seed)。導入後の公開モックサイト (デモ用ダミーデータ) も検証 | 中 |
+| 20 | Vercel ドメイン変更 — Project Settings → Domains。Discord Developer / Supabase Auth の Redirect URLs にも反映必要 | 小 |
 
 ## 完了済み TODO
 
