@@ -15,17 +15,9 @@
 
 ## 🔄 保留オペレーション
 
-### Supabase schema 適用 (TODO #47)
+現在なし。新たな schema 変更や設定変更が発生したらここに追記する。
 
-`supabase/schema.sql` に `category_links.is_favorite boolean NOT NULL DEFAULT false` 列を追加した。Production の Supabase に未適用。
-
-```sql
-ALTER TABLE public.category_links
-  ADD COLUMN IF NOT EXISTS is_favorite boolean NOT NULL DEFAULT false;
-```
-
-- 列が無くても client は `row.is_favorite ?? false` で fallback するので UI は壊れないが、★ トグルが効かない (UPDATE 失敗 toast)。
-- Supabase ダッシュボード SQL Editor で 1 度実行すればよい。`IF NOT EXISTS` 付なので冪等。
+> 2026-04-30 part2 で `category_links.is_favorite` 列追加 SQL は適用済 (ユーザー実行確認)。
 
 ## 📌 次回の作業優先度
 
