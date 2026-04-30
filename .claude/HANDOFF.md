@@ -1,6 +1,8 @@
 # Raid Repository — 引き継ぎノート
 
-> 2.1 (2026-04-30 part12) 時点。完了済 TODO の詳細はすべて `src/lib/changelog.ts` を参照。
+> 2.1 (2026-04-30) 時点。完了済 TODO の詳細は `src/lib/changelog.ts` / 過去版番号は `.claude/done.md`。
+>
+> **新規会話の手順**: このファイルを読んだ後、TODO 一覧は自動表示せずユーザーの要望を待つ。新規 TODO 追記時は part 単位ではなく TODO 完了時のみ統合追記する (part 細分は commit log に任せる)。
 
 ## プロジェクト概要
 
@@ -17,34 +19,9 @@
 
 現在なし。新たな schema 変更や設定変更が発生したらここに追記する。
 
-> 2026-04-30 part2 で `category_links.is_favorite` 列追加 SQL は適用済 (ユーザー実行確認)。
-
 ## 📌 次回の作業優先度
 
-**TODO #54 part2** (本番デプロイ後の効果検証 → 不十分なら Pooler / リージョン整合へ進む)。part1 (2026-04-30) で top progress bar を追加し UX 主問題 (無音 stuck) を解消する打ち手を投入。残課題は cold start 自体の短縮 (仮説 1 系)。
-
-- **part1 検証ポイント**: Vercel デプロイ直後にどのページへ遷移しても上端 2px cyan バーが表示されるか。表示されれば「クリックしたのに何も起きない」体感は解消。バーが出ているのに数秒待たされる場合は cold start 主因 (= part2 へ)。
-- **part2 候補手順**: (a) Supabase Dashboard で project リージョン確認、Tokyo (hnd1) と一致するか。(b) Pooler (Transaction mode) URL への切替検討。(c) `proxy.ts` の `updateSession()` で毎リクエスト `getUser()` してる重さの軽量化余地。(d) `<Link prefetch={false}>` で cold start 中の不可視 RSC ロードを抑制する逆張りも一案。
-
-過去対策は両方とも現存して機能していることを確認済 (Explore agent の誤報告に注意): `ChunkErrorHandler` ([src/components/portal/chunk-error-handler.tsx](../src/components/portal/chunk-error-handler.tsx)) + `next.config.ts:127` の `deploymentId = VERCEL_GIT_COMMIT_SHA?.slice(0, 12)`。chunk hash mismatch 系の二重防御は健在なので、仮説 2 (RSC payload skew) を再検討する場合はまず両者がコードに存在することを必ず確認すること。
-
-## 🚨 新規会話開始時のルーチン
-
-1. このファイル全体を読み込む (`Read .claude/HANDOFF.md`)
-2. 内容を踏まえてユーザーから具体的な要望が来るのを待つ — **TODO 一覧の自動表示はしない** (トークン消費削減のため、2026-04-30 ユーザー指示)
-3. ユーザーが「TODO 見せて」「未完了一覧」等を明示要求した時のみ「未完了 TODO 一覧」セクションを表示する
-
-ユーザー側のテンプレ (基本):
-```
-このリポは Raid Repository (Next.js 16 + Supabase)。
-.claude/HANDOFF.md を読んでから作業してください。
-```
-
-特定 TODO に着手したい場合:
-```
-このリポは Raid Repository (Next.js 16 + Supabase)。
-.claude/HANDOFF.md を読んで TODO #44 から作業してください。
-```
+**TODO #54 part2** (cold start 自体の短縮)。part1 で top progress bar 投入済 → UX 主問題は解消。詳細: `.claude/todos/54.md`
 
 ## 未完了 TODO 一覧
 
@@ -75,8 +52,8 @@
 |---|---|---|
 | 7 | スマホでのレイアウト崩れ確認 | 中 |
 | 51 | マイクロインタラクション / ユーザビリティ向上。クリック時の press feedback / hover 時の subtle elevation / loading skeleton / focus ring 強化 / toast の出現位置・タイミング微調整 / フォーム入力の即時 validation / 空状態の illustration etc。framer-motion を残す方針なので springy な質感も維持しつつ portal 全体の polish を 1 周。観点リストの作成 + 優先順位付けから | 中 |
-| 54 | **【ユーザー報告 2026-04-30】Vercel デプロイ後、動画ページ / コンテンツカテゴリページへの遷移がロードで止まる事象が再発**。何度かリロード or ページ移動繰り返しで表示。読み込み / ネット回線 / 通信量増加も原因か要検証。<br><br>**part1 完了 (2026-04-30)**: 真因切り分け済 — 仮説 2 (chunk hash mismatch) は `ChunkErrorHandler` + `deploymentId` で二重防御済のため非該当、実体は仮説 1 (cold start) + `loading.tsx` 不在による無音 stuck UX 問題。`next-nprogress-bar` で上端 progress bar を導入し UX 主問題は解消する打ち手を投入。残るは cold start 自体の短縮 (= part2)。<br><br>**仮説 1 (有力): コールドスタート + Supabase DB 接続遅延** — ユーザー提供参考記事 https://note.com/light_systems/n/n8431aa59d7f7 (Vercel + Neon の cold start で「DB 接続だけで 2-3 秒」「朝イチアクセスが 3-5 秒」)。Raid Repo は Supabase だが同様の現象が起きうる。記事の主因は「Function リージョン と DB リージョンの不一致 → 太平洋横断で RTT 数百ms × PostgreSQL TCP 8 RT = 累積遅延」。確認ポイント: (a) Supabase project のリージョン (現状未確認) と Vercel Function の実行リージョン (Edge は分散、ユーザーに近い PoP で実行) の距離、(b) Supabase Pooler (Transaction/Session mode) を使っているか、(c) 動画 / カテゴリページが Server Component で Supabase fetch を実行するパス。記事の対策案: Function リージョンを DB に合わせる (vercel.json `regions: [...]`) / Pooler 有効化 / Cron warmup (Pro plan)。**ただし制約**: 全ポータルページ Edge runtime は FFLogs scrape (Cloudflare bot 判定を Edge IP ですり抜け) のため固定。Node Lambda 化は FFLogs 系ルートで 403 を誘発する。動画/カテゴリページが FFLogs に触れていないなら個別に Node runtime + リージョン固定への切替検討余地あり。<br><br>**仮説 2: deploy 後 chunk hash mismatch / RSC payload skew** — 1.9.x で `<Link>` 復活 + `ChunkErrorHandler` (portal layout 常駐、ChunkLoadError catch → auto reload) + Next.js `deploymentId` skew protection を入れた経緯あり。再発経路を特定する必要 (RSC stream stuck / Suspense fallback 永久 / Service Worker / browser cache が古い chunk URL を保持 / prefetch 暴走 / etc)。<br><br>**初動**: サブエージェント (Explore) で (i) 動画/カテゴリページの遷移経路 + Supabase fetch 箇所、(ii) `vercel.json` 設定と Supabase 接続設定、(iii) 過去対策 (`ChunkErrorHandler` / `deploymentId`) の現状を確認。並行してユーザーに再現条件確認 (頻度、特定の動画/カテゴリで起きるか、デプロイ直後だけか cold な時間帯だけか、Vercel ダッシュボードに function timeout / 長尺 invocation が出ているか)。 | 中 |
-| 11 | ページ全体のパフォーマンス最適化。2.1 (2026-04-30) で phase 1-10 完了 (画像最適化 / Realtime delta / ChunkErrorHandler / `buildSessionVideoLinkMap` O(n+m) / `<Link>` 復活 + auth cache() / Next.js `deploymentId` skew protection / `useRealtimeAllScheduleMemos` 集約 / framer-motion 一旦撤廃→視覚価値で復活 / Toaster dynamic import / on-demand UI 追加 lazy: link-card-menu / comment-popover / schedule-edit-frame-dialog)。**現時点で安全に手の届く最適化はやり尽くした**。今後新たなボトルネックが見つかったら個別に追記。下記の見送り候補は再検討禁止 (UI / auth リスク高):  ❌ `@supabase/ssr` 流入剥がし (auth 整合直結) / ❌ `tailwind-merge` → `clsx` 縮約 (Tailwind conflict 解決挙動変化で UI regression 余地) / ❌ base-ui 残 primitive (status-badge / theme-switcher / recruitment-templates) の dynamic 化 (常時表示トリガーでレイアウトシフト発生 + 削減効果も小) | — |
+| 54 | Vercel デプロイ後の遷移ロード再発 — part1 (top progress bar) 完了。残: part2 (cold start 短縮)。詳細: `.claude/todos/54.md` | 中 |
+| 11 | ページ全体のパフォーマンス最適化。phase 1-10 完了済、見送り候補あり。詳細: `.claude/todos/11.md` | — |
 
 ### 🚀 インフラ / デプロイ (コード外作業)
 
@@ -87,28 +64,10 @@
 
 ## 完了済み TODO
 
-> 各項目の詳細・経緯は `src/lib/changelog.ts` の該当バージョン項目に記載。ここでは番号と版だけ。
+直近版のみ列挙。詳細経緯は `src/lib/changelog.ts`、過去版アーカイブは `.claude/done.md`。
 
-- **2.1 (2026-04-30 part11)**: #44 仕上げ (rowIndex=0 sentinel の hash を `#stickyhead` に変更。`<thead id="stickyhead">` 固定 header に anchor することで凡例 / 運用ルール / コメントが画面外上にスクロール → 固定 header 直下に row_0 が並ぶ、他の確定セルと一貫した見た目)
-- **2.1 (2026-04-30 part10)**: #44 微調整 (確定セル rowIndex=0 = 最古未来日のみ `-1` 補正できないので sentinel 経由で hash 抜き URL → page scroll=0 で開き row_0 を最上端に表示) — part11 で hash 抜き → `#stickyhead` に置換
-- **2.1 (2026-04-30 part9)**: #44 補正 (確定セル `/list` ジャンプの 1 行ズレを `Math.max(0, rowIndex - 1)` で相殺。メンバー列 `/input` は補正不要で session.rowIndex そのまま)
-- **2.1 (2026-04-30 part8)**: #44 完了 (iframe per-date jump を `#row_N` hash anchor 方式に置換、heuristic translateY 撤廃 + mode toggle / SCROLL_OFFSETS 削除で大幅簡素化)
-- **2.1 (2026-04-30 part7)**: #53 真の完了 (iframe URL に `#comment` hash 付与で初期スクロール位置を最適化)
-- **2.1 (2026-04-30 part6)**: #53 part 2 (initialMode を mid → top に変更、part7 の前段)
-- **2.1 (2026-04-30 part3)**: #53 part 1 (scroll 復元 fix)
-- **2.1 (2026-04-30 part2)**: #47 / #49 / #52
-- **2.1 (2026-04-30)**: #46 / #50 / #11 phase 1-10 / #48 phase 3
-- **2.1 (2026-04-29)**: #21 #22 #24 #25 #26 #27 #28 #29 #30 #31 #32 #33 #34 #35 #36 #37 #39 #40 #41 #42 #43 #44 #45
-- **2.0 (2026-04-28)**: #19 (ロール単位ページ閲覧制御 = OAuth + 役職判定)
-- **1.9 (2026-04-28)**: #3 #4 #5 #6 #9 #10 #12 #13 #14 #15 #16 #17 #18
-
-### 除外済み (再対応不要)
-
-- top の「断絶」 Ultimate clear 表記 (異例ケース)
-- Vercel デプロイ確認 (1 回きり)
-- ヘビー級クリア取得 (取得済み)
-- チップ縦中央揃え (1.9.38 で symmetric `py-1` に固定)
-- 診断ツール (YouTube 取得テスト UI) — 2.1 で撤去 (`YOUTUBE_API_KEY` で限定公開動画も取れるため)
+- **2.1 (2026-04-30 part11)**: #44 仕上げ (`#stickyhead` anchor で row_0 表示揃え)
+- **2.1 (2026-04-30 part10)**: #44 微調整 (rowIndex=0 を sentinel 経由)
 
 ## アーキテクチャ重要ポイント
 
