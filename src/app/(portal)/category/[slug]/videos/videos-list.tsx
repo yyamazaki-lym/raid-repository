@@ -65,7 +65,7 @@ import {
 } from "@/lib/duration-format";
 import { safeHref } from "@/lib/url-safe";
 import { extractDateFromTitle } from "@/lib/title-date";
-import type { CategoryLink } from "@/lib/supabase/types";
+import type { CategoryLink, CategoryStatus } from "@/lib/supabase/types";
 
 type Props = {
   categoryId: string;
@@ -76,6 +76,16 @@ type Props = {
    * + the time-to-clear stat alongside the running total.
    */
   firstClearAt?: string | null;
+  /**
+   * Category status. クリア済 のときだけ「クリアまでの累計時間」表示、
+   * それ以外は「コンテンツ挑戦時間」(全動画 duration 合計) として表示。
+   */
+  status: CategoryStatus;
+  /**
+   * 手動入力のクリアまでの累計時間 (秒、TODO #25)。NULL なら自動計算優先。
+   * セットされていれば status に関係なくこの値を表示する。
+   */
+  manualTimeToClearSeconds?: number | null;
 };
 
 type SortMode = "date" | "custom";
@@ -84,7 +94,13 @@ const SORT_STORAGE_KEY = "raid-repo:videos-sort-mode";
 // 残し、リロードしても直前の閲覧モードを維持する。SORT と同じ命名規則。
 const FAVORITES_FILTER_STORAGE_KEY = "raid-repo:videos-favorites-only";
 
-export function VideosList({ categoryId, initial, firstClearAt }: Props) {
+export function VideosList({
+  categoryId,
+  initial,
+  firstClearAt,
+  status,
+  manualTimeToClearSeconds = null,
+}: Props) {
   const live = useRealtimeCategoryLinks(categoryId, "video", initial);
   const [editTarget, setEditTarget] = useState<CategoryLink | null>(null);
   const [optimistic, setOptimistic] = useState<string[] | null>(null);
@@ -638,27 +654,57 @@ export function VideosList({ categoryId, initial, firstClearAt }: Props) {
           <span>
             {videos.length} video{videos.length === 1 ? "" : "s"}
           </span>
-          {totalSeconds > 0 && (
-            <span
-              className="inline-flex items-center gap-1 rounded-sm border border-violet-400/40 bg-violet-400/10 px-1.5 py-px text-[9px] text-violet-200 normal-case"
-              title={`累計練習時間: ${formatDurationLong(totalSeconds)}${
-                missingDurationCount > 0
-                  ? ` (${missingDurationCount} 件は再生時間未取得)`
-                  : ""
-              }`}
-            >
-              <Timer className="h-2.5 w-2.5" aria-hidden />
-              {formatDurationShort(totalSeconds)}
-            </span>
-          )}
-          {firstClearAt && timeToClearSeconds > 0 && (
-            <span
-              className="inline-flex items-center gap-1 rounded-sm border border-emerald-400/45 bg-emerald-400/10 px-1.5 py-px text-[9px] text-emerald-200 normal-case"
-              title={`クリアまでの累計時間: ${formatDurationLong(timeToClearSeconds)}`}
-            >
-              →{formatDurationShort(timeToClearSeconds)}
-            </span>
-          )}
+          {/* 2.1 (2026-04-30) TODO 追加: status 依存で表示切り替え。
+              - クリア済: violet「累計練習時間 (= 全動画合計)」
+                + emerald「クリアまでの累計時間 (= firstClearAt 以前の合計)」
+                両方表示。post-clear 動画があると 2 値が分かれる。
+              - それ以外 (練習中 / 休止中 / 未着手): 1 つの emerald バッジで
+                「コンテンツ挑戦時間」を表示。値は manual ?? totalSeconds。
+                violet の累計練習時間とは値が同じになるので 1 つに集約。 */}
+          {(() => {
+            const isCleared = status === "クリア済";
+            const showTotalBadge = isCleared && totalSeconds > 0;
+            const challengeValue = isCleared
+              ? (manualTimeToClearSeconds ?? timeToClearSeconds)
+              : (manualTimeToClearSeconds ?? totalSeconds);
+            const challengeLabel = isCleared
+              ? "クリアまでの累計時間"
+              : "コンテンツ挑戦時間";
+            const showChallengeBadge =
+              challengeValue > 0 && (isCleared ? !!firstClearAt : true);
+            return (
+              <>
+                {showTotalBadge && (
+                  <span
+                    className="inline-flex items-center gap-1 rounded-sm border border-violet-400/40 bg-violet-400/10 px-1.5 py-px text-[9px] text-violet-200 normal-case"
+                    title={`累計練習時間: ${formatDurationLong(totalSeconds)}${
+                      missingDurationCount > 0
+                        ? ` (${missingDurationCount} 件は再生時間未取得)`
+                        : ""
+                    }`}
+                  >
+                    <Timer className="h-2.5 w-2.5" aria-hidden />
+                    {formatDurationShort(totalSeconds)}
+                  </span>
+                )}
+                {showChallengeBadge && (
+                  <span
+                    className="inline-flex items-center gap-1 rounded-sm border border-emerald-400/45 bg-emerald-400/10 px-1.5 py-px text-[9px] text-emerald-200 normal-case"
+                    title={`${challengeLabel}: ${formatDurationLong(challengeValue)}${manualTimeToClearSeconds !== null ? " (手動入力)" : missingDurationCount > 0 && !isCleared ? ` (${missingDurationCount} 件は再生時間未取得)` : ""}`}
+                  >
+                    {isCleared ? (
+                      <>→{formatDurationShort(challengeValue)}</>
+                    ) : (
+                      <>
+                        <Hourglass className="h-2.5 w-2.5" aria-hidden />
+                        {formatDurationShort(challengeValue)}
+                      </>
+                    )}
+                  </span>
+                )}
+              </>
+            );
+          })()}
           {firstClearAt && (
             <button
               type="button"

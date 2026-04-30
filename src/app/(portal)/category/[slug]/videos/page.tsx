@@ -28,6 +28,8 @@ export default async function VideosPage({
       categoryId={category.id}
       initial={videos}
       firstClearAt={category.firstClearAt}
+      status={category.status}
+      manualTimeToClearSeconds={category.manualTimeToClearSeconds}
     />
   );
 }

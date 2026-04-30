@@ -314,16 +314,20 @@ function SortableCategoryCard({
     zIndex: isDragging ? 10 : "auto",
   };
 
-  // 2.1 (2026-04-29): Timer (累計練習時間) はカード上に表示しない方針に
-  // 変更したため `showPracticeTime` フラグも廃止。`practiceSeconds` prop
-  // 自体は将来 tooltip 等で使えるよう一旦残置 (= データロードは継続)。
-  void practiceSeconds;
-
-  // TODO #25 (2.1, 2026-04-29): 手動入力のクリア時間が設定されていれば
-  // 自動集計より優先表示。Hourglass バッジが「動画 duration が NULL の
-  // ままで自動計算が低めに出る」事象を回避できる。
-  const effectiveTimeToClearSeconds =
-    category.manualTimeToClearSeconds ?? timeToClearSeconds;
+  // 2.1 (2026-04-30): Hourglass バッジを status 依存にする (TODO 追加要望)。
+  //   - クリア済 → 「クリアまでの累計時間」 (manual ?? timeToClearSeconds)
+  //   - それ以外 (練習中 / 休止中 / 未着手) → 「コンテンツ挑戦時間」
+  //     (manual ?? practiceSeconds = 全動画 duration の合計)
+  // クリア前は firstClearAt が未設定で従来は badge が出なかったが、
+  // 練習中カードにも「現時点の挑戦累計」が見えるように value source を
+  // 切り替えて常時表示できるようにする。
+  const isCleared = category.status === "クリア済";
+  const challengeTimeSeconds = isCleared
+    ? (category.manualTimeToClearSeconds ?? timeToClearSeconds)
+    : (category.manualTimeToClearSeconds ?? practiceSeconds);
+  const challengeTimeLabel = isCleared
+    ? "クリアまでの累計時間"
+    : "コンテンツ挑戦時間";
 
   // Background image (TODO #17): paint behind the card's glass surface so
   // text and chips remain readable. Validated via `isSafeUrl` to prevent
@@ -472,16 +476,19 @@ function SortableCategoryCard({
                 0000-00-00
               </span>
             )}
-            {effectiveTimeToClearSeconds > 0 && category.firstClearAt ? (
+            {challengeTimeSeconds > 0 ? (
               <span
                 // 2.1 (2026-04-29): 累計時間の "21h5m" は uppercase だと
                 // "21H5M" になり H/M 等のアルファベットが圧縮されて見える
                 // ので uppercase を外し小文字維持。
+                // 2.1 (2026-04-30): クリア済以外は label が「コンテンツ挑戦時間」、
+                // 矢印 "→" を出さず時間だけ表示 (クリアは未到達なので向き先が無い)。
                 className="inline-flex items-center gap-1 rounded-sm border border-emerald-400/45 bg-emerald-400/10 px-1.5 py-px font-mono text-[9px] tracking-[0.18em] text-emerald-200"
-                title={`クリアまでの累計時間: ${formatDurationLong(effectiveTimeToClearSeconds)}${category.manualTimeToClearSeconds !== null ? " (手動入力)" : ""}`}
+                title={`${challengeTimeLabel}: ${formatDurationLong(challengeTimeSeconds)}${category.manualTimeToClearSeconds !== null ? " (手動入力)" : ""}`}
               >
                 <Hourglass className="h-2.5 w-2.5" aria-hidden />
-                →{formatDurationShort(effectiveTimeToClearSeconds)}
+                {isCleared ? "→" : ""}
+                {formatDurationShort(challengeTimeSeconds)}
               </span>
             ) : (
               // Hourglass が無いカードでもサイズを揃える placeholder。
