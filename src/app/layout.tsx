@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, JetBrains_Mono, Orbitron } from "next/font/google";
-import { Toaster } from "@/components/ui/sonner";
+import { DynamicToaster } from "@/components/ui/toaster-dynamic";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { PRE_HYDRATION_THEME_SCRIPT } from "@/lib/theme-store";
 import "./globals.css";
@@ -81,7 +81,7 @@ export default function RootLayout({
             {children}
           </div>
         </TooltipProvider>
-        <Toaster richColors position="top-center" theme="dark" />
+        <DynamicToaster richColors position="top-center" theme="dark" />
       </body>
     </html>
   );

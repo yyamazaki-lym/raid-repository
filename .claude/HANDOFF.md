@@ -41,18 +41,19 @@
 | 2 | スケジュール表自前実装 (作成/編集/確定/Discord 通知) | 大 |
 | 7 | スマホでのレイアウト崩れ確認 | 中 |
 | 8 | Vercel/Supabase 自動導入 (Deploy button / `.env.example` / seed)。導入後の公開モックサイト (デモ用ダミーデータ) も検証 | 中 |
-| 11 | ページ全体のパフォーマンス最適化 (継続)。直近完了は 2.1 (2026-04-30) の phase 1-7 (画像最適化 / Realtime delta / ChunkErrorHandler / `buildSessionVideoLinkMap` O(n+m) / `<Link>` 復活 + auth cache() / Next.js `deploymentId` skew protection / `useRealtimeAllScheduleMemos` で memos channel を親 1 個に集約)。残: DnD-kit / motion / @base-ui の dynamic import や RSC 化は前回調査で「現 "use client" 群はすべて event handler / state 必須」のため見送り判定済 — 再着手するなら別観点で (例: webpack bundle analyzer で実際に重いモジュール特定) | 中 |
+| 11 | ページ全体のパフォーマンス最適化 (継続)。2.1 (2026-04-30) で phase 1-9 完了 (画像最適化 / Realtime delta / ChunkErrorHandler / `buildSessionVideoLinkMap` O(n+m) / `<Link>` 復活 + auth cache() / Next.js `deploymentId` skew protection / `useRealtimeAllScheduleMemos` 集約 / framer-motion 撤廃 / Toaster dynamic import)。残候補: `@supabase/ssr` の client 流入 (~31 KB gz) — 案 A で `@supabase/supabase-js` + 自作 cookie storage adapter に置換すれば剥がせるが auth 整合に直結するため別 commit で慎重に扱う必要 / `@base-ui/react` Dialog/Popover/Dropdown 系の dynamic import (20-30 KB gz 見込) / `tailwind-merge` (7.9 KB gz) を `clsx` 単独に縮約 | 中 |
 | 20 | Vercel ドメイン変更 — Project Settings → Domains。Discord Developer / Supabase Auth の Redirect URLs にも反映必要 | 小 |
 | 23 | サイト全体のデータ初期化ボタン (admin 限定、2 段階確認: 1 回目「本当に初期化?」、2 回目「`INITIALIZE` と入力」) | 中 |
 | 38 | スケジュール追加機能 — portal 内から開催候補日を追加する UI が無い。日付 + 時間帯 + 参加可否を入力 → DB 保存 → 描画。TODO #2 と統合可 | 中〜大 |
 | 47 | 動画お気に入り機能 + ソートで「お気に入りのみ」表示。`category_links` に boolean 列追加 → 動画カードに star トグル → videos-list の sort モードに「お気に入り」追加 | 中 (schema 変更含む) |
 | 49 | 動画削除時にページトップへスクロールが戻る挙動を抑止。`router.refresh()` / revalidate 後の再描画でスクロール位置が失われている可能性。`videos-list` の削除ハンドラ周辺を調査 | 小〜中 |
+| 50 | 過去日程リスト (詳細ログ表) のユーザー名ヘッダーから日付編集ページ (character-sheets iframe) への遷移を無効化。upcoming はそのまま、past 詳細表の `UserHeaderCell` のみ click を抑止 — `schedule-list.tsx` の `tableHead(false, false)` 経路で `UserHeaderCell` に `isPast` (or `clickable=false`) flag を渡して span 描画に切替 | 小 |
 
 ## 完了済み TODO
 
 > 各項目の詳細・経緯は `src/lib/changelog.ts` の該当バージョン項目に記載。ここでは番号と版だけ。
 
-- **2.1 (2026-04-30)**: #46 / #11 phase 1-7 / #48 phase 3
+- **2.1 (2026-04-30)**: #46 / #11 phase 1-9 / #48 phase 3
 - **2.1 (2026-04-29)**: #21 #22 #24 #25 #26 #27 #28 #29 #30 #31 #32 #33 #34 #35 #36 #37 #39 #40 #41 #42 #43 #44 #45
 - **2.0 (2026-04-28)**: #19 (ロール単位ページ閲覧制御 = OAuth + 役職判定)
 - **1.9 (2026-04-28)**: #3 #4 #5 #6 #9 #10 #12 #13 #14 #15 #16 #17 #18
