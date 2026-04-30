@@ -52,6 +52,10 @@ export const RELEASES: ReleaseEntry[] = [
     date: "2026-04-30",
     parts: [
       {
+        title: "🛟 動画ページ 選択モードの動線改善 (フォロー: TODO #47 / #52)",
+        body: "**問題**: bulk 削除 / クリア時間ボタンがツールバー右側に常設されていたため、(a) 長いリストでスクロール後にボタンへ戻る必要がある、(b) 選択モード中にボタンが増えるとフィルタ・並び替えが左に詰まりレイアウトがガタつく、という動線の問題があった。また ★ トグルが server action の往復を待つため反応が鈍く感じられた。\n\n**修正**:\n\n1. **画面下部の floating action bar に集約**: `position: fixed; bottom: 1rem` でビューポート下部にバーを固定配置。`selectMode && selectedIds.size > 0` のときのみ表示し、「N 件選択中」ラベル + ★ 追加/解除 / クリア時間 / 削除 / × 閉じる のボタンを横並びで持つ。`pointer-events-none` の外コンテナ + `pointer-events-auto` の bar 本体でカード一覧側の操作は妨げない。これでスクロール位置に関係なく操作でき、ツールバー側のレイアウトも選択モードで不変になる。\n\n2. **bulk お気に入り**: 選択中の動画の状態を見て、未お気に入りが 1 件でもあれば「N 件 ★ 追加」、全件お気に入り済なら「N 件 ★ 解除」を出す自動切替。Promise.all で並列発火、optimistic state で即時反映。\n\n3. **★ トグル optimistic UI**: 各カードの星クリックで `optimisticFavorites: Map<id, bool>` に書き込み、`live` より優先表示。realtime UPDATE が同じ値で届いた時点で entry を破棄 (削除済 id も sweep)。失敗時は entry を取り下げて元の状態に戻す。`favoriteCount` / フィルタも optimistic 反映済みの派生配列を見るので一貫した表示。",
+      },
+      {
         title: "⭐ 動画お気に入り機能 + 「お気に入りのみ」フィルタ (TODO #47)",
         body: "**追加**: 動画ページの各カードヘッダーに ★ トグルボタン、ツールバーに「★お気に入りのみ」フィルタボタン。on のとき isFavorite=true の動画だけ描画。フィルタ ON/OFF は localStorage に保存しリロード後も継続。\n\n**スキーマ**: `category_links` に `is_favorite boolean NOT NULL DEFAULT false` を追加 (`schema.sql`)。Server Action `setCategoryLinkFavoriteAction` を新設、admin gate 付き (`category_links` の他 write と一貫)。`useRealtimeCategoryLinks` の UPDATE handler が変更をライブで反映するので局所 state は持たない。\n\n**UI**: ヘッダーに ★ アイコン + 件数 (`★(N)`)。フィルタ on でも live に 1 件もお気に入り無しなら「お気に入りに登録された動画はまだありません」の empty state を表示。",
       },

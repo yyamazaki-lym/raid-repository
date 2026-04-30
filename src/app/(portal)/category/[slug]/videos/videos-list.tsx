@@ -19,6 +19,7 @@ import {
   Square,
   Hourglass,
   Star,
+  X,
 } from "lucide-react";
 import { LinkSiteIcon } from "@/components/portal/link-site-icon";
 import { LINK_SITE_LABEL, detectLinkSite } from "@/lib/link-site";
@@ -98,6 +99,14 @@ export function VideosList({ categoryId, initial, firstClearAt }: Props) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [savingClearTime, setSavingClearTime] = useState(false);
+  const [bulkFavoriting, setBulkFavoriting] = useState(false);
+  // TODO #47 follow-up (2.1, 2026-04-30): ★ トグル click → server action
+  // 完了 → realtime payload 反映までのラグ (体感 200-500ms) を消すための
+  // optimistic state。`Map<id, optimisticIsFavorite>` で持ち、live の値より
+  // 優先表示する。realtime UPDATE が同じ値で届いた時点でエントリを破棄。
+  const [optimisticFavorites, setOptimisticFavorites] = useState<
+    Map<string, boolean>
+  >(new Map());
   const toggleSelected = (id: string) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -309,10 +318,53 @@ export function VideosList({ categoryId, initial, firstClearAt }: Props) {
     }
   };
 
+  // TODO #47 follow-up: optimistic ★ 状態を live にマージした派生配列。
+  // 以降の derived (videos / favoriteCount / 削除可否判定) は全部この
+  // `liveWithFav` を起点にすることで、realtime ラグ中も UI が即座に
+  // 反映される。realtime UPDATE で live の isFavorite が optimistic と
+  // 一致すれば下記 useEffect でエントリを破棄。
+  const liveWithFav = useMemo(() => {
+    if (optimisticFavorites.size === 0) return live;
+    return live.map((v) => {
+      const opt = optimisticFavorites.get(v.id);
+      return opt === undefined || opt === v.isFavorite
+        ? v
+        : { ...v, isFavorite: opt };
+    });
+  }, [live, optimisticFavorites]);
+
+  // realtime payload が届いて live.isFavorite が optimistic と揃ったら
+  // エントリを破棄。これでメモリリーク (古い id がずっと残る) を防ぐ。
+  useEffect(() => {
+    setOptimisticFavorites((prev) => {
+      if (prev.size === 0) return prev;
+      let changed = false;
+      const next = new Map(prev);
+      for (const v of live) {
+        const opt = next.get(v.id);
+        if (opt !== undefined && opt === v.isFavorite) {
+          next.delete(v.id);
+          changed = true;
+        }
+      }
+      // live にもう存在しない id (= 削除済) も sweep
+      const liveIds = new Set(live.map((v) => v.id));
+      for (const id of next.keys()) {
+        if (!liveIds.has(id)) {
+          next.delete(id);
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [live]);
+
   const videos = useMemo(() => {
     // TODO #47: favorites filter は sort より前段。空表示時の empty
     // state はカード件数 0 で既存 videos.length === 0 分岐に乗せる。
-    const base = favoritesOnly ? live.filter((v) => v.isFavorite) : live;
+    const base = favoritesOnly
+      ? liveWithFav.filter((v) => v.isFavorite)
+      : liveWithFav;
     if (sortMode === "date") {
       // Newest first by created_at; ties (within the same insert batch from
       // the cron) fall back to sort_order ascending.
@@ -341,11 +393,11 @@ export function VideosList({ categoryId, initial, firstClearAt }: Props) {
       });
     }
     return [...base].reverse();
-  }, [live, optimistic, sortMode, favoritesOnly]);
+  }, [liveWithFav, optimistic, sortMode, favoritesOnly]);
 
   const favoriteCount = useMemo(
-    () => live.reduce((n, v) => (v.isFavorite ? n + 1 : n), 0),
-    [live],
+    () => liveWithFav.reduce((n, v) => (v.isFavorite ? n + 1 : n), 0),
+    [liveWithFav],
   );
 
   const persistFavoritesOnly = (next: boolean) => {
@@ -363,12 +415,24 @@ export function VideosList({ categoryId, initial, firstClearAt }: Props) {
   const onToggleFavorite = useCallback(
     async (video: CategoryLink) => {
       const next = !video.isFavorite;
+      // 1. UI を先に更新 (optimistic) — クリック反応の体感を即時化。
+      setOptimisticFavorites((prev) => {
+        const m = new Map(prev);
+        m.set(video.id, next);
+        return m;
+      });
+      // 2. Server へ反映。realtime UPDATE で live が更新されたら、
+      //    上の useEffect が optimistic エントリを破棄する。
       const result = await setCategoryLinkFavorite(video.id, next);
       if (!result.ok) {
+        // 失敗時は optimistic を取り下げて元の状態に戻す。
+        setOptimisticFavorites((prev) => {
+          const m = new Map(prev);
+          m.delete(video.id);
+          return m;
+        });
         toast.error("お気に入り更新失敗: " + result.reason);
-        return;
       }
-      // Realtime UPDATE が isFavorite を反映するので局所 state は持たない。
     },
     [],
   );
@@ -405,6 +469,136 @@ export function VideosList({ categoryId, initial, firstClearAt }: Props) {
   };
 
   const ids = useMemo(() => videos.map((v) => v.id), [videos]);
+
+  // ============================================================
+  // 選択モード bulk action handlers (画面下部 floating bar から使う)
+  // ============================================================
+
+  const onBulkDelete = useCallback(async () => {
+    const count = selectedIds.size;
+    if (count === 0) return;
+    if (
+      !window.confirm(
+        `選択した ${count} 件の動画を削除します。元に戻せません。よろしいですか？`,
+      )
+    ) {
+      return;
+    }
+    setBulkDeleting(true);
+    const ids = [...selectedIds];
+    const results = await Promise.all(
+      ids.map((id) => deleteCategoryLink(id)),
+    );
+    const failed = results
+      .map((r, i) => ({ r, id: ids[i]! }))
+      .filter((x) => !x.r.ok);
+    setBulkDeleting(false);
+    if (failed.length === 0) {
+      toast.success(`${count} 件削除しました`);
+      setSelectedIds(new Set());
+      setSelectMode(false);
+    } else {
+      const okCount = count - failed.length;
+      toast.error(
+        `${okCount} 件削除、${failed.length} 件失敗: ${failed[0]?.r.ok === false ? failed[0].r.reason : ""}`,
+      );
+      setSelectedIds(new Set(failed.map((x) => x.id)));
+    }
+  }, [selectedIds]);
+
+  const onBulkSaveClearTime = useCallback(async () => {
+    let total = 0;
+    let missing = 0;
+    for (const v of liveWithFav) {
+      if (!selectedIds.has(v.id)) continue;
+      if (v.durationSeconds === null) missing += 1;
+      else total += v.durationSeconds;
+    }
+    if (total <= 0) {
+      toast.error(
+        "選択中の動画はすべて再生時間未取得です。先に YouTube duration を取得してください",
+      );
+      return;
+    }
+    const summary = formatDurationLong(total);
+    const missingNote =
+      missing > 0
+        ? `\n(${missing} 件は再生時間未取得 — 0 として扱います)`
+        : "";
+    if (
+      !window.confirm(
+        `選択した ${selectedIds.size} 件の合計再生時間 ${summary} を` +
+          `「クリアまでの累計時間」として保存します。${missingNote}\n` +
+          `既存の手動入力は上書きされます。よろしいですか？`,
+      )
+    ) {
+      return;
+    }
+    setSavingClearTime(true);
+    const result = await updateCategory(categoryId, {
+      manual_time_to_clear_seconds: total,
+    });
+    setSavingClearTime(false);
+    if (!result.ok) {
+      toast.error("保存失敗: " + result.reason);
+      return;
+    }
+    toast.success(`クリア時間 ${summary} を保存しました`);
+    setSelectedIds(new Set());
+    setSelectMode(false);
+  }, [categoryId, liveWithFav, selectedIds]);
+
+  // 選択中の全動画が既にお気に入りなら「外す」、そうでなければ「追加」。
+  // ユーザーが手元の選択集合を 1 ボタンで揃えられる方が UX がシンプル。
+  const bulkFavoriteAction: "add" | "remove" = useMemo(() => {
+    if (selectedIds.size === 0) return "add";
+    for (const v of liveWithFav) {
+      if (!selectedIds.has(v.id)) continue;
+      if (!v.isFavorite) return "add";
+    }
+    return "remove";
+  }, [liveWithFav, selectedIds]);
+
+  const onBulkToggleFavorite = useCallback(async () => {
+    const target = bulkFavoriteAction === "add";
+    const targets = liveWithFav.filter(
+      (v) => selectedIds.has(v.id) && v.isFavorite !== target,
+    );
+    if (targets.length === 0) return;
+    // optimistic を先に積み、続いて並列に server action 発火。
+    setOptimisticFavorites((prev) => {
+      const m = new Map(prev);
+      for (const v of targets) m.set(v.id, target);
+      return m;
+    });
+    setBulkFavoriting(true);
+    const results = await Promise.all(
+      targets.map((v) => setCategoryLinkFavorite(v.id, target)),
+    );
+    setBulkFavoriting(false);
+    const failed = results
+      .map((r, i) => ({ r, id: targets[i]!.id }))
+      .filter((x) => !x.r.ok);
+    if (failed.length === 0) {
+      toast.success(
+        target
+          ? `${targets.length} 件をお気に入りに追加しました`
+          : `${targets.length} 件をお気に入りから外しました`,
+      );
+    } else {
+      // 失敗した分の optimistic を取り下げ。realtime で来る成功分は
+      // useEffect が自動 sweep してくれる。
+      setOptimisticFavorites((prev) => {
+        const m = new Map(prev);
+        for (const f of failed) m.delete(f.id);
+        return m;
+      });
+      const okCount = targets.length - failed.length;
+      toast.error(
+        `${okCount} 件成功、${failed.length} 件失敗: ${failed[0]?.r.ok === false ? failed[0].r.reason : ""}`,
+      );
+    }
+  }, [bulkFavoriteAction, liveWithFav, selectedIds]);
 
   // Cumulative duration across all videos in this category. NULL durations
   // (not yet backfilled) are treated as 0. timeToClear sums only videos
@@ -523,109 +717,9 @@ export function VideosList({ categoryId, initial, firstClearAt }: Props) {
             )}
             選択
           </button>
-          {selectMode && selectedIds.size > 0 && (
-            <button
-              type="button"
-              disabled={bulkDeleting}
-              onClick={async () => {
-                const count = selectedIds.size;
-                if (
-                  !window.confirm(
-                    `選択した ${count} 件の動画を削除します。元に戻せません。よろしいですか？`,
-                  )
-                ) {
-                  return;
-                }
-                setBulkDeleting(true);
-                const ids = [...selectedIds];
-                const results = await Promise.all(
-                  ids.map((id) => deleteCategoryLink(id)),
-                );
-                const failed = results
-                  .map((r, i) => ({ r, id: ids[i]! }))
-                  .filter((x) => !x.r.ok);
-                setBulkDeleting(false);
-                if (failed.length === 0) {
-                  toast.success(`${count} 件削除しました`);
-                  setSelectedIds(new Set());
-                  setSelectMode(false);
-                } else {
-                  const okCount = count - failed.length;
-                  toast.error(
-                    `${okCount} 件削除、${failed.length} 件失敗: ${failed[0]?.r.ok === false ? failed[0].r.reason : ""}`,
-                  );
-                  setSelectedIds(
-                    new Set(failed.map((x) => x.id)),
-                  );
-                }
-              }}
-              className="inline-flex h-7 items-center gap-1 rounded-md border border-rose-400/60 bg-rose-400/10 px-2 font-mono text-[10px] tracking-[0.18em] text-rose-200 uppercase transition-colors hover:border-rose-400/80 hover:bg-rose-400/20 disabled:opacity-50"
-              title="選択した動画を削除"
-            >
-              <Trash2 className="h-3 w-3" aria-hidden />
-              {bulkDeleting ? "削除中…" : `${selectedIds.size} 件削除`}
-            </button>
-          )}
-          {/* TODO #52 (2.1, 2026-04-30): 選択中の動画の duration_seconds を
-              合算して `categories.manual_time_to_clear_seconds` に保存する。
-              既存の手動入力欄 (TODO #25) と同じ field を使うため、保存後は
-              category-list.tsx の優先順 (manual ?? auto) で上書き表示される。
-              duration が NULL (= YouTube から未取得) の動画は 0 として扱い、
-              件数だけ confirm に明示する。 */}
-          {selectMode && selectedIds.size > 0 && (
-            <button
-              type="button"
-              disabled={savingClearTime}
-              onClick={async () => {
-                let total = 0;
-                let missing = 0;
-                for (const v of live) {
-                  if (!selectedIds.has(v.id)) continue;
-                  if (v.durationSeconds === null) missing += 1;
-                  else total += v.durationSeconds;
-                }
-                if (total <= 0) {
-                  toast.error(
-                    "選択中の動画はすべて再生時間未取得です。先に YouTube duration を取得してください",
-                  );
-                  return;
-                }
-                const summary = formatDurationLong(total);
-                const missingNote =
-                  missing > 0
-                    ? `\n(${missing} 件は再生時間未取得 — 0 として扱います)`
-                    : "";
-                if (
-                  !window.confirm(
-                    `選択した ${selectedIds.size} 件の合計再生時間 ${summary} を` +
-                      `「クリアまでの累計時間」として保存します。${missingNote}\n` +
-                      `既存の手動入力は上書きされます。よろしいですか？`,
-                  )
-                ) {
-                  return;
-                }
-                setSavingClearTime(true);
-                const result = await updateCategory(categoryId, {
-                  manual_time_to_clear_seconds: total,
-                });
-                setSavingClearTime(false);
-                if (!result.ok) {
-                  toast.error("保存失敗: " + result.reason);
-                  return;
-                }
-                toast.success(`クリア時間 ${summary} を保存しました`);
-                setSelectedIds(new Set());
-                setSelectMode(false);
-              }}
-              className="inline-flex h-7 items-center gap-1 rounded-md border border-emerald-400/55 bg-emerald-400/10 px-2 font-mono text-[10px] tracking-[0.18em] text-emerald-200 uppercase transition-colors hover:border-emerald-400/80 hover:bg-emerald-400/20 disabled:opacity-50"
-              title="選択した動画の合計再生時間をクリアまでの累計時間として保存"
-            >
-              <Hourglass className="h-3 w-3" aria-hidden />
-              {savingClearTime
-                ? "保存中…"
-                : `${selectedIds.size} 件をクリア時間に`}
-            </button>
-          )}
+          {/* TODO #47 follow-up (2.1, 2026-04-30): bulk 系操作 (削除 / クリア
+              時間 / お気に入り一括) は画面下部の floating bar に集約。
+              ツールバーは選択モード中もレイアウト不変。 */}
           {/* TODO #47 (2.1, 2026-04-30): お気に入りのみ表示するフィルタ。
               ON のとき isFavorite=true の動画だけ描画。sort モードと独立。
               live に 1 件もお気に入りがない時はボタンを描画するが「(0)」を
@@ -792,6 +886,89 @@ export function VideosList({ categoryId, initial, firstClearAt }: Props) {
           if (!o) setEditTarget(null);
         }}
       />
+
+      {/* TODO #47 follow-up (2.1, 2026-04-30): 選択中の bulk 操作を集約する
+          画面下部固定 action bar。スクロール位置に関係なく常時押せる。
+          ツールバーから bulk 系を移したのでカード一覧の右上はレイアウト
+          不変になる。selectMode 解除 / 0 件選択時は非表示。 */}
+      {selectMode && selectedIds.size > 0 && (
+        <div
+          className="pointer-events-none fixed inset-x-0 bottom-3 z-40 flex justify-center px-3"
+          aria-live="polite"
+        >
+          <div className="glass pointer-events-auto flex max-w-[calc(100vw-1.5rem)] flex-wrap items-center gap-1.5 rounded-xl border border-border/50 bg-background/85 px-2.5 py-2 shadow-[0_18px_48px_-18px_rgba(0,0,0,0.8)] backdrop-blur-md">
+            <span className="px-1 font-mono text-[10px] tracking-[0.18em] text-[var(--neon-cyan)] uppercase">
+              {selectedIds.size} 件選択中
+            </span>
+            <span
+              aria-hidden
+              className="hidden h-4 w-px bg-border/40 sm:inline-block"
+            />
+            <button
+              type="button"
+              disabled={bulkFavoriting}
+              onClick={onBulkToggleFavorite}
+              className="inline-flex h-7 items-center gap-1 rounded-md border border-amber-400/55 bg-amber-400/10 px-2 font-mono text-[10px] tracking-[0.18em] text-amber-200 uppercase transition-colors hover:border-amber-400/80 hover:bg-amber-400/20 disabled:opacity-50"
+              title={
+                bulkFavoriteAction === "add"
+                  ? "選択した動画をすべてお気に入りに追加"
+                  : "選択した動画をすべてお気に入りから外す"
+              }
+            >
+              <Star
+                className={
+                  "h-3 w-3 " +
+                  (bulkFavoriteAction === "remove" ? "fill-amber-300" : "")
+                }
+                aria-hidden
+              />
+              {bulkFavoriting
+                ? "更新中…"
+                : bulkFavoriteAction === "add"
+                  ? `${selectedIds.size} 件 ★`
+                  : `${selectedIds.size} 件 ★ 解除`}
+            </button>
+            <button
+              type="button"
+              disabled={savingClearTime}
+              onClick={onBulkSaveClearTime}
+              className="inline-flex h-7 items-center gap-1 rounded-md border border-emerald-400/55 bg-emerald-400/10 px-2 font-mono text-[10px] tracking-[0.18em] text-emerald-200 uppercase transition-colors hover:border-emerald-400/80 hover:bg-emerald-400/20 disabled:opacity-50"
+              title="選択した動画の合計再生時間をクリアまでの累計時間として保存"
+            >
+              <Hourglass className="h-3 w-3" aria-hidden />
+              {savingClearTime
+                ? "保存中…"
+                : `${selectedIds.size} 件をクリア時間に`}
+            </button>
+            <button
+              type="button"
+              disabled={bulkDeleting}
+              onClick={onBulkDelete}
+              className="inline-flex h-7 items-center gap-1 rounded-md border border-rose-400/60 bg-rose-400/10 px-2 font-mono text-[10px] tracking-[0.18em] text-rose-200 uppercase transition-colors hover:border-rose-400/80 hover:bg-rose-400/20 disabled:opacity-50"
+              title="選択した動画を削除"
+            >
+              <Trash2 className="h-3 w-3" aria-hidden />
+              {bulkDeleting ? "削除中…" : `${selectedIds.size} 件削除`}
+            </button>
+            <span
+              aria-hidden
+              className="hidden h-4 w-px bg-border/40 sm:inline-block"
+            />
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedIds(new Set());
+                setSelectMode(false);
+              }}
+              className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border/40 bg-background/30 text-muted-foreground transition-colors hover:text-foreground"
+              title="選択モードを解除"
+              aria-label="選択モードを解除"
+            >
+              <X className="h-3.5 w-3.5" aria-hidden />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
