@@ -52,6 +52,10 @@ export const RELEASES: ReleaseEntry[] = [
     date: "2026-04-30",
     parts: [
       {
+        title: "🪜 ダイアログを閉じた後にスクロール位置がズレる事象を防御 (TODO #53)",
+        body: "**症状**: スケジュール (TOP) の出欠セル / 確定セル / ユーザ名ヘッダーをクリックして character-sheets 編集 iframe ダイアログを開いてから閉じると、スクロール位置がページ頭に戻ったり、しばらく scroll が効きにくく感じられることがあった。再現は条件付きで、iframe との相互作用 / focus return / 並行 re-render (Realtime メモ更新など) と base-ui の scroll lock cleanup (setTimeout 0 + exit animation) が噛み合った時に発生していたと推測。\n\n**修正**: `schedule-list.tsx` の `openEditFrame` 呼び出し時に `window.scrollY` を `savedScrollYRef` に保存し、`editTarget` が null に戻ったタイミングで `useEffect` から rAF を 2 段重ねて (= base-ui の `setTimeout(0)` cleanup + 100ms exit animation を待つ) scrollY をチェック。差分が 4px 超のときだけ `window.scrollTo({ top: saved, behavior: 'instant' })` で復元する。差分が小さい (= base-ui が正しく復元できている) 場合は no-op なので、二重 scroll の見た目にはならない。\n\n**検証**: dev preview で 1) 通常ケース (open → close) では scroll イベント追加発火ゼロ。2) ダイアログ open 中に意図的に `window.scrollTo(0, 0)` で scroll を破壊した「bug シミュレーション」ケースでは close 後に元の scrollY (1200 / 1400 / 1600 など) に確実に復元される、を 3 連続で確認。",
+      },
+      {
         title: "🏷 累計時間バッジの文言 + 配色を status 依存に (TODO 追加要望)",
         body: "**変更**: コンテンツカード一覧 / 各動画ページの Hourglass バッジが、これまで status に関係なく「クリアまでの累計時間」固定だったのを、status に応じて切り替えるようにした:\n\n- **クリア済**: 「クリアまでの累計時間」 (今までと同じ。manual ?? firstClearAt 以前の動画 duration 合計)。表示は emerald 系 + `→{time}` で矢印付き、「クリアに至るまでにかかった時間」を視覚的に示す。\n- **練習中 / 休止中 / 未着手**: 「コンテンツ挑戦時間」 (manual ?? 全動画 duration 合計)。表示は **violet 系** + 矢印無しの `{time}` のみ。クリア未達成なので「向き先」を出さず、配色も emerald から外して一覧上で達成状況が一目で見分けられるようにした (ユーザー要望追補)。\n\n**カードページ (category-list)**: クリア前は firstClearAt が無く Hourglass バッジが完全に隠れていたが、今後は練習中カードでも「コンテンツ挑戦時間: 21h5m」(violet) が表示されるようになる。manual を仕込めばその値が優先される (TODO #25 / #52 ボタンで設定したものが効く)。\n\n**動画ページ (videos-list)**: ヘッダーの violet「累計練習時間」と emerald「クリアまでの累計時間」を整理。クリア済は今まで通り両方表示 (post-clear 動画があると 2 値が分かれるため意味がある)。それ以外の status では emerald を消し violet 1 つに集約 — 値が同じになる重複を解消しつつ「未クリア = 紫」のサインも兼ねる。propagation のため `videos/page.tsx` で `category.status` / `manualTimeToClearSeconds` を `<VideosList>` に追加で渡す。",
       },

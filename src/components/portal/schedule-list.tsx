@@ -151,12 +151,44 @@ export function ScheduleList({
     title: string;
     targetOffsetPx: number | null;
   } | null>(null);
+  // TODO #53 (2.1, 2026-04-30 part3): base-ui Dialog の scroll lock 解除と
+  // FloatingFocusManager の returnFocus が iframe / 高頻度 re-render と組み
+  // 合わさるとダイアログ閉じた後にスクロール位置が頭に戻ったり、scroll
+  // が一時的に効きにくく見える事象があった。開く瞬間の `window.scrollY`
+  // を保存し、閉じた後に rAF 2 回 (= base-ui の `setTimeout(0)` cleanup +
+  // exit animation を待つ) してから差分があれば復元する。
+  const savedScrollYRef = useRef<number | null>(null);
   const openEditFrame = useCallback(
     (url: string, title: string, targetOffsetPx: number | null = null) => {
+      if (typeof window !== "undefined") {
+        savedScrollYRef.current = window.scrollY;
+      }
       setEditTarget({ url, title, targetOffsetPx });
     },
     [],
   );
+  // editTarget が null に戻ったタイミングで scrollY を復元。差分が小さい
+  // (= base-ui が正しく復元できている) 場合は no-op。差分があるときだけ
+  // 上書き。`behavior: 'instant'` (= "auto") にして animation を挟まない。
+  useEffect(() => {
+    if (editTarget !== null) return;
+    const saved = savedScrollYRef.current;
+    if (saved === null) return;
+    savedScrollYRef.current = null;
+    let raf1 = 0;
+    let raf2 = 0;
+    raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => {
+        if (Math.abs(window.scrollY - saved) > 4) {
+          window.scrollTo({ top: saved, left: 0, behavior: "instant" });
+        }
+      });
+    });
+    return () => {
+      if (raf1) cancelAnimationFrame(raf1);
+      if (raf2) cancelAnimationFrame(raf2);
+    };
+  }, [editTarget]);
 
   // 1.9.28: refresh button next to the legend lets the user pull the
   // latest schedule data on demand (no need to reload the page).
