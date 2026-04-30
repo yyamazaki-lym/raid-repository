@@ -688,8 +688,20 @@ export function VideosList({
                   </span>
                 )}
                 {showChallengeBadge && (
+                  // 2.1 (2026-04-30) 追補: クリア状況を色で一目化。
+                  //   - クリア済 = emerald (達成感、現状維持)
+                  //   - 未クリア = violet (進行中・練習感)
+                  // 紫は元々 cleared 表示の violet「累計練習時間」と
+                  // 同色だが、未クリア時は emerald 側を消して 1 つに
+                  // 集約しているので同一画面で同じ意味の violet が
+                  // 重複することはない。
                   <span
-                    className="inline-flex items-center gap-1 rounded-sm border border-emerald-400/45 bg-emerald-400/10 px-1.5 py-px text-[9px] text-emerald-200 normal-case"
+                    className={
+                      "inline-flex items-center gap-1 rounded-sm border px-1.5 py-px text-[9px] normal-case " +
+                      (isCleared
+                        ? "border-emerald-400/45 bg-emerald-400/10 text-emerald-200"
+                        : "border-violet-400/45 bg-violet-400/10 text-violet-200")
+                    }
                     title={`${challengeLabel}: ${formatDurationLong(challengeValue)}${manualTimeToClearSeconds !== null ? " (手動入力)" : missingDurationCount > 0 && !isCleared ? ` (${missingDurationCount} 件は再生時間未取得)` : ""}`}
                   >
                     {isCleared ? (

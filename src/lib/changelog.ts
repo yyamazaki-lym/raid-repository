@@ -52,8 +52,8 @@ export const RELEASES: ReleaseEntry[] = [
     date: "2026-04-30",
     parts: [
       {
-        title: "🏷 累計時間バッジの文言を status 依存に (TODO 追加要望)",
-        body: "**変更**: コンテンツカード一覧 / 各動画ページの Hourglass バッジが、これまで status に関係なく「クリアまでの累計時間」固定だったのを、status に応じて切り替えるようにした:\n\n- **クリア済**: 「クリアまでの累計時間」 (今までと同じ。manual ?? firstClearAt 以前の動画 duration 合計)。表示は `→{time}` で矢印付き、「クリアに至るまでにかかった時間」を視覚的に示す。\n- **練習中 / 休止中 / 未着手**: 「コンテンツ挑戦時間」 (manual ?? 全動画 duration 合計)。表示は矢印無しの `{time}` のみ。クリア未達成なので「向き先」を出さない方が自然。\n\n**カードページ (category-list)**: クリア前は firstClearAt が無く Hourglass バッジが完全に隠れていたが、今後は練習中カードでも「コンテンツ挑戦時間: 21h5m」が表示されるようになる。manual を仕込めばその値が優先される (TODO #25 / #52 ボタンで設定したものが効く)。\n\n**動画ページ (videos-list)**: ヘッダーの violet「累計練習時間」と emerald「クリアまでの累計時間」を整理。クリア済は今まで通り両方表示 (post-clear 動画があると 2 値が分かれるため意味がある)。それ以外の status では emerald 1 つに集約 — 値が同じになる重複を解消。propagation のため `videos/page.tsx` で `category.status` / `manualTimeToClearSeconds` を `<VideosList>` に追加で渡す。",
+        title: "🏷 累計時間バッジの文言 + 配色を status 依存に (TODO 追加要望)",
+        body: "**変更**: コンテンツカード一覧 / 各動画ページの Hourglass バッジが、これまで status に関係なく「クリアまでの累計時間」固定だったのを、status に応じて切り替えるようにした:\n\n- **クリア済**: 「クリアまでの累計時間」 (今までと同じ。manual ?? firstClearAt 以前の動画 duration 合計)。表示は emerald 系 + `→{time}` で矢印付き、「クリアに至るまでにかかった時間」を視覚的に示す。\n- **練習中 / 休止中 / 未着手**: 「コンテンツ挑戦時間」 (manual ?? 全動画 duration 合計)。表示は **violet 系** + 矢印無しの `{time}` のみ。クリア未達成なので「向き先」を出さず、配色も emerald から外して一覧上で達成状況が一目で見分けられるようにした (ユーザー要望追補)。\n\n**カードページ (category-list)**: クリア前は firstClearAt が無く Hourglass バッジが完全に隠れていたが、今後は練習中カードでも「コンテンツ挑戦時間: 21h5m」(violet) が表示されるようになる。manual を仕込めばその値が優先される (TODO #25 / #52 ボタンで設定したものが効く)。\n\n**動画ページ (videos-list)**: ヘッダーの violet「累計練習時間」と emerald「クリアまでの累計時間」を整理。クリア済は今まで通り両方表示 (post-clear 動画があると 2 値が分かれるため意味がある)。それ以外の status では emerald を消し violet 1 つに集約 — 値が同じになる重複を解消しつつ「未クリア = 紫」のサインも兼ねる。propagation のため `videos/page.tsx` で `category.status` / `manualTimeToClearSeconds` を `<VideosList>` に追加で渡す。",
       },
       {
         title: "🛟 動画ページ 選択モードの動線改善 (フォロー: TODO #47 / #52)",

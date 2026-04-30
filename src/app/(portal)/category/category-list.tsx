@@ -483,7 +483,15 @@ function SortableCategoryCard({
                 // ので uppercase を外し小文字維持。
                 // 2.1 (2026-04-30): クリア済以外は label が「コンテンツ挑戦時間」、
                 // 矢印 "→" を出さず時間だけ表示 (クリアは未到達なので向き先が無い)。
-                className="inline-flex items-center gap-1 rounded-sm border border-emerald-400/45 bg-emerald-400/10 px-1.5 py-px font-mono text-[9px] tracking-[0.18em] text-emerald-200"
+                // 2.1 (2026-04-30) 追補: 配色も status で変える。クリア済 = emerald
+                // (クリア達成感)、未クリア = violet (進行中・練習感)。これで
+                // 一覧上でクリア状況が色だけで一目で判別できる。
+                className={
+                  "inline-flex items-center gap-1 rounded-sm border px-1.5 py-px font-mono text-[9px] tracking-[0.18em] " +
+                  (isCleared
+                    ? "border-emerald-400/45 bg-emerald-400/10 text-emerald-200"
+                    : "border-violet-400/45 bg-violet-400/10 text-violet-200")
+                }
                 title={`${challengeTimeLabel}: ${formatDurationLong(challengeTimeSeconds)}${category.manualTimeToClearSeconds !== null ? " (手動入力)" : ""}`}
               >
                 <Hourglass className="h-2.5 w-2.5" aria-hidden />
