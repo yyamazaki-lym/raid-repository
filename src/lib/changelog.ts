@@ -52,6 +52,10 @@ export const RELEASES: ReleaseEntry[] = [
     date: "2026-04-30",
     parts: [
       {
+        title: "🎯 確定セル 最古未来日 のジャンプ位置を `#stickyhead` で揃える (TODO #44 part11)",
+        body: "**症状**: part10 で 0430 (rowIndex=0) は hash 抜き URL → page scroll=0 で開いていたが、character-sheets `/list` の上部に運用ルール / 凡例 / コメント等の長いブロックがあり、0430 行が画面最下端で見切れて他の行と見た目が異なる UX 問題があった (ユーザー画像確認)。\n\n**修正**: character-sheets の HTML を `curl` で確認し `<thead id=\"stickyhead\">` (固定 header) を発見。dialog の hash 派生で `targetRowIndex < 0` のとき `#stickyhead` を anchor に使うよう変更。これでブラウザは固定 header の DOM 位置まで scroll → 凡例 / 運用ルール / コメントは画面外上にスクロールされ、画面最上端 = 固定 header → 直下に row_0 (= 0430) が並ぶ状態になる。他の確定セル (`#row_(N-1)` で行 N-1 anchor → 固定 header 下に行 N) と画面の見た目が一貫する。\n\n**変更箇所**: `schedule-edit-frame-dialog.tsx` の hash 派生 1 行のみ (`\"\"` → `\"#stickyhead\"`)。schedule-list.tsx の sentinel `-1` 渡しは不変。\n\n**HANDOFF.md**: character-sheets の利用可能 anchor 一覧 (`stickyhead` / `namerow` / `filterrow` / `row_N` / `input_N` / `comment` / `title` / `serverName` / `filter` / `addUserModal` 等) を新規 anchor が必要になった時の参照用に追記。再列挙コマンドも記録。",
+      },
+      {
         title: "🎯 確定セル 最古未来日 (rowIndex=0) のジャンプを修正 (TODO #44 part10)",
         body: "**症状**: part9 で確定セル経由のジャンプを `rowIndex - 1` 補正したが、最古未来日 (= rowIndex=0、例 2026/04/30) のみ `Math.max(0, -1) = 0` クランプの結果 `#row_0` に留まり、固定 header 被りで「日付+1 = 0501 が画面最上端」のズレが残っていた。\n\n**修正**: schedule-list.tsx の確定セル handler で `rowIndex === 0` を sentinel `-1` に変換し、schedule-edit-frame-dialog.tsx の hash 派生で `targetRowIndex < 0` のとき hash を空 (`u.hash = \"\"`) にして渡す。ブラウザは page scroll=0 で iframe を開き、固定 header の直下に row_0 (= 04/30) がそのまま表示される。`rowIndex >= 1` は従来通り `rowIndex - 1` で `#row_(N-1)` に補正。\n\n**検証**: dev preview で 1) 04/30 click → URL は `?key=...` (hash 抜き)、2) 05/01 click → `#row_0`、3) 05/02 click → `#row_1`、4) メンバー列出欠セル (`/input` 側) は 04/30 でも `#row_0` のまま (補正不要) を確認。tsc 通過。",
       },

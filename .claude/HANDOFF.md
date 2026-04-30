@@ -1,6 +1,6 @@
 # Raid Repository — 引き継ぎノート
 
-> 2.1 (2026-04-30 part10) 時点。完了済 TODO の詳細はすべて `src/lib/changelog.ts` を参照。
+> 2.1 (2026-04-30 part11) 時点。完了済 TODO の詳細はすべて `src/lib/changelog.ts` を参照。
 
 ## プロジェクト概要
 
@@ -84,7 +84,8 @@
 
 > 各項目の詳細・経緯は `src/lib/changelog.ts` の該当バージョン項目に記載。ここでは番号と版だけ。
 
-- **2.1 (2026-04-30 part10)**: #44 微調整 (確定セル rowIndex=0 = 最古未来日のみ `-1` 補正できないので sentinel 経由で hash 抜き URL → page scroll=0 で開き row_0 を最上端に表示)
+- **2.1 (2026-04-30 part11)**: #44 仕上げ (rowIndex=0 sentinel の hash を `#stickyhead` に変更。`<thead id="stickyhead">` 固定 header に anchor することで凡例 / 運用ルール / コメントが画面外上にスクロール → 固定 header 直下に row_0 が並ぶ、他の確定セルと一貫した見た目)
+- **2.1 (2026-04-30 part10)**: #44 微調整 (確定セル rowIndex=0 = 最古未来日のみ `-1` 補正できないので sentinel 経由で hash 抜き URL → page scroll=0 で開き row_0 を最上端に表示) — part11 で hash 抜き → `#stickyhead` に置換
 - **2.1 (2026-04-30 part9)**: #44 補正 (確定セル `/list` ジャンプの 1 行ズレを `Math.max(0, rowIndex - 1)` で相殺。メンバー列 `/input` は補正不要で session.rowIndex そのまま)
 - **2.1 (2026-04-30 part8)**: #44 完了 (iframe per-date jump を `#row_N` hash anchor 方式に置換、heuristic translateY 撤廃 + mode toggle / SCROLL_OFFSETS 削除で大幅簡素化)
 - **2.1 (2026-04-30 part7)**: #53 真の完了 (iframe URL に `#comment` hash 付与で初期スクロール位置を最適化)
@@ -143,7 +144,8 @@
 - **iframe 経由で開いた時、character-sheets が responsive 判定で上部要素 (デイコードナビ / 大タイトル / 上部登録ボタンセット top=145) を非表示にする**。Chrome 直接アクセスでは見える。デフォルトの scroll=0 では「凡例から始まる短い表示」になるため、`#comment` / `#row_N` hash で初期スクロールを補正する方針に集約
 - **dialog 側の構造**: prop は `targetRowIndex?: number | null` のみ (`targetOffsetPx` / mode toggle / `SCROLL_OFFSETS` / translateY clipping は part8 で全廃)。iframe は `absolute inset-0 h-full w-full` でフルサイズ表示、初期スクロール位置の制御は URL hash 一本
 - **synthetic 行**: Discord 通知 / snapshot 由来の past セッション (`next-session.ts` の additions) は character-sheets の DOM に対応行が無いので `rowIndex: null`。null は dialog で `#comment` フォールバックされる
-- **`/list` ページのみ -1 補正** (2.1 part9-10): 確定セルクリック (= `/schedule/list?key=...` 開く) では `#row_${rowIndex}` だと固定 header に anchor 行が被さり「日付+1 の行が画面最上端」に見えるズレが発生。確定セル handler のみ `rowIndex - 1` を渡して 1 行手前にシフトする。`rowIndex === 0` (= 最古未来日 = 一覧最上端) は `-1` 補正できないので sentinel `-1` を渡し、dialog 側で hash 抜き URL に変換 → ブラウザは page scroll=0 で開き、固定 header 直下に row_0 がそのまま表示される (`schedule-list.tsx` 確定セル handler / `schedule-edit-frame-dialog.tsx` の hash 派生で `targetRowIndex < 0` を hash なしに分岐)。メンバー列 (= `/schedule/input?...&userId=...`) は `/input` 側で固定 header の被りが起きないため補正不要、`session.rowIndex` をそのまま渡す。`/list` と `/input` で character-sheets の表示構造が違うことが原因
+- **`/list` ページのみ -1 補正** (2.1 part9-11): 確定セルクリック (= `/schedule/list?key=...` 開く) では `#row_${rowIndex}` だと固定 header に anchor 行が被さり「日付+1 の行が画面最上端」に見えるズレが発生。確定セル handler のみ `rowIndex - 1` を渡して 1 行手前にシフトする。`rowIndex === 0` (= 最古未来日 = 一覧最上端) は `-1` 補正できないので sentinel `-1` を渡し、dialog 側で **`#stickyhead`** anchor (= `<thead id="stickyhead">` 固定 header 自体) に変換 → 凡例 / 運用ルール / コメントが画面外上にスクロールされ、固定 header 直下に row_0 がそのまま表示される。これで他の確定セル click と画面最上端の見た目が一貫する (`schedule-list.tsx` 確定セル handler / `schedule-edit-frame-dialog.tsx` の hash 派生で `targetRowIndex < 0` を `#stickyhead` に分岐)。メンバー列 (= `/schedule/input?...&userId=...`) は `/input` 側で固定 header の被りが起きないため補正不要、`session.rowIndex` をそのまま渡す。`/list` と `/input` で character-sheets の表示構造が違うことが原因
+- **character-sheets の anchor 候補** (curl で `id=` 列挙、2.1 part11): `stickyhead` (thead 固定 header), `namerow` (thead 内最初の tr = ユーザー名行), `filterrow` (thead 内 2 番目の tr = フィルター行), `row_0`〜`row_N` (各日程行), `input_0`〜`input_N` (`/input` 側の入力 cell), `comment` (一言コメント), `title` / `serverName` / `filter` / `addUserModal` 等。新しい anchor 候補が必要になったら curl で再列挙: `curl -s "$NEXT_PUBLIC_SCHEDULE_URL" | grep -oE 'id="[^"]*"' | sort -u`
 - **撤廃済 (再導入禁止)**:
   - heuristic translateY による per-date jump (`280 + (upcomingIndex - 1) * 36`, 2.1 part8 で削除) — 行高変動 / レイアウト改修で容易にズレ、`#row_N` hash 方式の方が正確かつ自動追従
   - `bottom` mode (offset=2400/3600) の translateY 下端ジャンプ — character-sheets が flex layout (header + table[overflow:auto, flex-grow] + footer) のため iframe height を伸ばすと中央 table が同期拡大 → 行が空白に隠れて使い物にならない (2.1 part4-5 で試行 → 撤回)

@@ -41,9 +41,12 @@ export function ScheduleEditFrameDialog({
    * 0-based N of the target `<tr id="row_N">` on character-sheets.
    *
    * - `>= 0` → URL gets `#row_N`, exact row anchor
-   * - `< 0`  → no hash (page scroll=0, table 最上端表示)。確定セルで
-   *   `rowIndex - 1` 補正したとき最古行 (rowIndex=0) で負になるため、
-   *   その行を見せる用途の sentinel
+   * - `< 0`  → URL gets `#stickyhead` (= `<thead id="stickyhead">` の固定
+   *   header 自体に anchor)。確定セルで `rowIndex - 1` 補正したとき最古行
+   *   (rowIndex=0) で負になるため、固定 header の直下に row_0 を見せたい
+   *   ケースの sentinel。pre-table の凡例 / 運用ルール / コメントは画面外
+   *   上にスクロールされ、画面最上端 = 固定 header → 直下に row_0 という
+   *   他の `#row_(N-1)` 着地と整合する見た目になる
    * - `null`/omitted → `#comment` fallback (default mid view: legend +
    *   table rows + footer register button visible at once)
    */
@@ -63,7 +66,7 @@ export function ScheduleEditFrameDialog({
           u.hash =
             typeof targetRowIndex === "number"
               ? targetRowIndex < 0
-                ? "" // 最古行 sentinel: hash なしで page scroll=0
+                ? "#stickyhead" // 最古行 sentinel: 固定 header 直下に row_0 を表示
                 : `#row_${targetRowIndex}`
               : "#comment";
           return u.toString();
