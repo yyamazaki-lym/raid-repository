@@ -1,6 +1,6 @@
 # Raid Repository — 引き継ぎノート
 
-> 2.1 (2026-04-29) 時点。アーカイブ詳細は `src/lib/changelog.ts` を参照。
+> 2.1 (2026-04-30) 時点。アーカイブ詳細は `src/lib/changelog.ts` を参照。
 
 ## プロジェクト概要
 
@@ -41,12 +41,11 @@
 | 2 | スケジュール表自前実装 (作成/編集/確定/Discord 通知) | 大 |
 | 7 | スマホでのレイアウト崩れ確認 | 中 |
 | 8 | Vercel/Supabase 自動導入 (Deploy button / `.env.example` / seed)。導入後の公開モックサイト (デモ用ダミーデータ) も検証 | 中 |
-| 11 | ページ全体のパフォーマンス最適化 — bundle 軽量化 / RSC 化 / lazy mount / 画像最適化 / query batching / realtime 削減 等 | 中 |
+| 11 | ページ全体のパフォーマンス最適化 (継続) — 2.1 (2026-04-30) で画像最適化 / Realtime payload delta / hover prefetch を実施。残: DnD-kit / motion / @base-ui の dynamic import / RSC 化 / TOP の `buildSessionVideoLinkMap` JS loop 改善 | 中 |
 | 20 | Vercel ドメイン変更 — Project Settings → Domains。Discord Developer / Supabase Auth の Redirect URLs にも反映必要 | 小 |
 | 23 | サイト全体のデータ初期化ボタン (admin 限定、2 段階確認: 1 回目「本当に初期化?」、2 回目「`INITIALIZE` と入力」) | 中 |
 | 38 | スケジュール追加機能 — portal 内から開催候補日を追加する UI が無い。日付 + 時間帯 + 参加可否を入力 → DB 保存 → 描画。TODO #2 と統合可 | 中〜大 |
 | 47 | 動画お気に入り機能 + ソートで「お気に入りのみ」表示。`category_links` に boolean 列追加 → 動画カードに star トグル → videos-list の sort モードに「お気に入り」追加 | 中 (schema 変更含む) |
-| 48 | ページ全体の表示がまた遅い (動画ページへの遷移など)。TODO #11 と関連。再計測 + ボトルネック切り分け (RSC fetch / bundle / hydration / Supabase RTT) | 中 |
 | 49 | 動画削除時にページトップへスクロールが戻る挙動を抑止。`router.refresh()` / revalidate 後の再描画でスクロール位置が失われている可能性。`videos-list` の削除ハンドラ周辺を調査 | 小〜中 |
 
 ## 完了済み TODO アーカイブ
@@ -58,6 +57,9 @@
 | # | 項目 |
 |---|---|
 | 46 | 開催日が過去リストに載らない問題修正 — `cleanedFuture` DELETE を `source='discord'` 限定に絞り snapshot/manual 行を保護 + `import-discord` cron を JST 09:00 → 23:00 (開催時間 22-00 の中間) に変更 |
+| 11/48 phase 1 | 🖼 CategoryCard 背景画像を next/Image (fill) 化 — `*.supabase.co/storage/v1/object/public/**` を remotePatterns に追加して WebP / srcset 自動配信、外部 URL は `isOptimizableImageHost` で判定して `unoptimized` 素通し |
+| 11/48 phase 2 | 🔄 `useRealtimeCategoryLinks` を payload delta 方式に — INSERT/UPDATE/DELETE を `rowToCategoryLink` で組み立てて state 直接適用、per-event SELECT を 50 行 × N → 0 に削減。subscription 失敗時のみ fallback refetch |
+| 48 phase 3 | 🛡 デプロイ後 navigation silent fail 対策 — Hobby plan は Vercel Skew Protection 不可なので: (a) schedule-list / schedule-past-simple の動画 Film アイコンを `<Link prefetch={false}>` → 素の `<a href>` に置換して hard navigation 強制、(b) `ChunkErrorHandler` を (portal) layout に常駐させ ChunkLoadError 検知時に `window.location.reload()` (sessionStorage で 1 回ガード)、(c) `<a>` の `onMouseEnter` / `onFocus` で `<link rel="prefetch" as="document">` を head に注入する hover prefetch helper (`src/lib/client/prefetch-on-hover.ts`) で hard nav の引っ掛かりを緩和 |
 
 ### 2.1 (2026-04-29)
 
