@@ -1,3 +1,4 @@
+import { ChunkErrorHandler } from "@/components/portal/chunk-error-handler";
 import { SiteHeader } from "@/components/portal/site-header";
 import { MainTabs } from "@/components/portal/main-tabs";
 import { fetchCategories } from "@/lib/supabase/categories";
@@ -39,6 +40,7 @@ export default async function PortalLayout({
 
   return (
     <>
+      <ChunkErrorHandler />
       <SiteHeader />
       <MainTabs initialCategories={visible} userRoleIds={userRoles} />
       {/* 1.9.30: max-width を 6xl (1152px) → 5xl (1024px) に絞る。
