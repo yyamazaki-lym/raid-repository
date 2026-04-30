@@ -8,6 +8,7 @@ import {
   createCategoryLinkAction,
   deleteCategoryLinkAction,
   enrichVideoLinkDuration,
+  setCategoryLinkFavoriteAction,
   setCategoryLinkOrderAction,
   updateCategoryLinkAction,
 } from "@/lib/server/categories-actions";
@@ -102,6 +103,13 @@ export async function deleteCategoryLink(
   id: string,
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
   return deleteCategoryLinkAction(id);
+}
+
+export async function setCategoryLinkFavorite(
+  id: string,
+  isFavorite: boolean,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  return setCategoryLinkFavoriteAction(id, isFavorite);
 }
 
 /**

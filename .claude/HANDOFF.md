@@ -1,6 +1,6 @@
 # Raid Repository — 引き継ぎノート
 
-> 2.1 (2026-04-30) 時点。完了済 TODO の詳細はすべて `src/lib/changelog.ts` を参照。
+> 2.1 (2026-04-30 part2) 時点。完了済 TODO の詳細はすべて `src/lib/changelog.ts` を参照。
 
 ## プロジェクト概要
 
@@ -15,7 +15,17 @@
 
 ## 🔄 保留オペレーション
 
-現在なし。新たな schema 変更や設定変更が発生したらここに追記する。
+### Supabase schema 適用 (TODO #47)
+
+`supabase/schema.sql` に `category_links.is_favorite boolean NOT NULL DEFAULT false` 列を追加した。Production の Supabase に未適用。
+
+```sql
+ALTER TABLE public.category_links
+  ADD COLUMN IF NOT EXISTS is_favorite boolean NOT NULL DEFAULT false;
+```
+
+- 列が無くても client は `row.is_favorite ?? false` で fallback するので UI は壊れないが、★ トグルが効かない (UPDATE 失敗 toast)。
+- Supabase ダッシュボード SQL Editor で 1 度実行すればよい。`IF NOT EXISTS` 付なので冪等。
 
 ## 📌 次回の作業優先度
 
@@ -45,15 +55,13 @@
 | 20 | Vercel ドメイン変更 — Project Settings → Domains。Discord Developer / Supabase Auth の Redirect URLs にも反映必要 | 小 |
 | 23 | サイト全体のデータ初期化ボタン (admin 限定、2 段階確認: 1 回目「本当に初期化?」、2 回目「`INITIALIZE` と入力」) | 中 |
 | 38 | スケジュール追加機能 — portal 内から開催候補日を追加する UI が無い。日付 + 時間帯 + 参加可否を入力 → DB 保存 → 描画。TODO #2 と統合可 | 中〜大 |
-| 47 | 動画お気に入り機能 + ソートで「お気に入りのみ」表示。`category_links` に boolean 列追加 → 動画カードに star トグル → videos-list の sort モードに「お気に入り」追加 | 中 (schema 変更含む) |
-| 49 | 動画削除時にページトップへスクロールが戻る挙動を抑止。`router.refresh()` / revalidate 後の再描画でスクロール位置が失われている可能性。`videos-list` の削除ハンドラ周辺を調査 | 小〜中 |
 | 51 | マイクロインタラクション / ユーザビリティ向上。クリック時の press feedback / hover 時の subtle elevation / loading skeleton / focus ring 強化 / toast の出現位置・タイミング微調整 / フォーム入力の即時 validation / 空状態の illustration etc。framer-motion を残す方針なので springy な質感も維持しつつ portal 全体の polish を 1 周。観点リストの作成 + 優先順位付けから | 中 |
-| 52 | 動画ページに「複数選択した動画の再生時間からクリア時間を計測」するボタン。チェックボックス等で複数 video を選択 → 各 `category_links.duration_seconds` を合計 → 「クリアまでの累計時間」相当として表示 / `manual_time_to_clear_seconds` に保存できる。既存の手動入力欄 (TODO #25) との連携、未取得 duration の扱い (skip / warning) を要設計 | 中 |
 
 ## 完了済み TODO
 
 > 各項目の詳細・経緯は `src/lib/changelog.ts` の該当バージョン項目に記載。ここでは番号と版だけ。
 
+- **2.1 (2026-04-30 part2)**: #47 / #49 / #52
 - **2.1 (2026-04-30)**: #46 / #50 / #11 phase 1-10 / #48 phase 3
 - **2.1 (2026-04-29)**: #21 #22 #24 #25 #26 #27 #28 #29 #30 #31 #32 #33 #34 #35 #36 #37 #39 #40 #41 #42 #43 #44 #45
 - **2.0 (2026-04-28)**: #19 (ロール単位ページ閲覧制御 = OAuth + 役職判定)

@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { MoreVertical, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -26,7 +25,6 @@ export function LinkCardMenu({
   link: CategoryLink;
   onEdit: () => void;
 }) {
-  const router = useRouter();
   const onDelete = async () => {
     if (!window.confirm(`「${link.title}」を削除しますか？`)) return;
     const result = await deleteCategoryLink(link.id);
@@ -35,11 +33,9 @@ export function LinkCardMenu({
       return;
     }
     toast.success(`「${link.title}」を削除しました`);
-    // Belt-and-suspenders: realtime will catch the DELETE once
-    // REPLICA IDENTITY FULL is set on category_links, but until the
-    // user re-runs the schema it might not. Force a server-side
-    // refetch so the row disappears immediately regardless.
-    router.refresh();
+    // 行の消失は `useRealtimeCategoryLinks` の DELETE handler が拾うので
+    // `router.refresh()` は不要。むしろ refresh は RSC 再描画でスクロール
+    // 位置が頭に戻る挙動を引き起こすため意図的に呼ばない (TODO #49)。
   };
 
   return (

@@ -17,6 +17,8 @@ import {
   Trash2,
   CheckSquare,
   Square,
+  Hourglass,
+  Star,
 } from "lucide-react";
 import { LinkSiteIcon } from "@/components/portal/link-site-icon";
 import { LINK_SITE_LABEL, detectLinkSite } from "@/lib/link-site";
@@ -45,9 +47,11 @@ import { LinkFormDialog } from "@/components/portal/link-form-dialog-lazy";
 import { LinkCardMenu } from "@/components/portal/link-card-menu-lazy";
 import {
   deleteCategoryLink,
+  setCategoryLinkFavorite,
   setCategoryLinkOrder,
   useRealtimeCategoryLinks,
 } from "@/lib/category-links-client";
+import { updateCategory } from "@/lib/categories-client";
 import {
   parseYouTubeId,
   youtubeEmbedUrl,
@@ -75,6 +79,9 @@ type Props = {
 
 type SortMode = "date" | "custom";
 const SORT_STORAGE_KEY = "raid-repo:videos-sort-mode";
+// TODO #47 (2.1, 2026-04-30): お気に入りフィルタの ON/OFF も localStorage に
+// 残し、リロードしても直前の閲覧モードを維持する。SORT と同じ命名規則。
+const FAVORITES_FILTER_STORAGE_KEY = "raid-repo:videos-favorites-only";
 
 export function VideosList({ categoryId, initial, firstClearAt }: Props) {
   const live = useRealtimeCategoryLinks(categoryId, "video", initial);
@@ -90,6 +97,7 @@ export function VideosList({ categoryId, initial, firstClearAt }: Props) {
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [savingClearTime, setSavingClearTime] = useState(false);
   const toggleSelected = (id: string) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -157,10 +165,15 @@ export function VideosList({ categoryId, initial, firstClearAt }: Props) {
   // Default to date (newest-first) — matches the request to view videos
   // chronologically; switching to custom enables DnD reordering.
   const [sortMode, setSortMode] = useState<SortMode>("date");
+  // TODO #47: お気に入りのみ表示するフィルタ。sortMode と独立で動き、
+  // ON のときは `videos` を `isFavorite === true` で絞った結果のみ描画。
+  const [favoritesOnly, setFavoritesOnly] = useState(false);
   useEffect(() => {
     if (typeof window === "undefined") return;
     const stored = window.localStorage.getItem(SORT_STORAGE_KEY);
     if (stored === "custom" || stored === "date") setSortMode(stored);
+    const fav = window.localStorage.getItem(FAVORITES_FILTER_STORAGE_KEY);
+    if (fav === "1") setFavoritesOnly(true);
   }, []);
 
   // focusedVideoId が解決した瞬間に focusActive を再 arm。これにより
@@ -297,10 +310,13 @@ export function VideosList({ categoryId, initial, firstClearAt }: Props) {
   };
 
   const videos = useMemo(() => {
+    // TODO #47: favorites filter は sort より前段。空表示時の empty
+    // state はカード件数 0 で既存 videos.length === 0 分岐に乗せる。
+    const base = favoritesOnly ? live.filter((v) => v.isFavorite) : live;
     if (sortMode === "date") {
       // Newest first by created_at; ties (within the same insert batch from
       // the cron) fall back to sort_order ascending.
-      return [...live].sort((a, b) => {
+      return [...base].sort((a, b) => {
         const cmp = b.createdAt.localeCompare(a.createdAt);
         return cmp !== 0 ? cmp : a.sortOrder - b.sortOrder;
       });
@@ -315,7 +331,7 @@ export function VideosList({ categoryId, initial, firstClearAt }: Props) {
     // be applied as-is.
     if (optimistic) {
       const idx = new Map(optimistic.map((id, i) => [id, i] as const));
-      return [...live].sort((a, b) => {
+      return [...base].sort((a, b) => {
         const ai = idx.get(a.id);
         const bi = idx.get(b.id);
         if (ai === undefined && bi === undefined) return 0;
@@ -324,8 +340,38 @@ export function VideosList({ categoryId, initial, firstClearAt }: Props) {
         return ai - bi;
       });
     }
-    return [...live].reverse();
-  }, [live, optimistic, sortMode]);
+    return [...base].reverse();
+  }, [live, optimistic, sortMode, favoritesOnly]);
+
+  const favoriteCount = useMemo(
+    () => live.reduce((n, v) => (v.isFavorite ? n + 1 : n), 0),
+    [live],
+  );
+
+  const persistFavoritesOnly = (next: boolean) => {
+    setFavoritesOnly(next);
+    try {
+      window.localStorage.setItem(
+        FAVORITES_FILTER_STORAGE_KEY,
+        next ? "1" : "0",
+      );
+    } catch {
+      // ignore
+    }
+  };
+
+  const onToggleFavorite = useCallback(
+    async (video: CategoryLink) => {
+      const next = !video.isFavorite;
+      const result = await setCategoryLinkFavorite(video.id, next);
+      if (!result.ok) {
+        toast.error("お気に入り更新失敗: " + result.reason);
+        return;
+      }
+      // Realtime UPDATE が isFavorite を反映するので局所 state は持たない。
+    },
+    [],
+  );
 
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
@@ -520,6 +566,94 @@ export function VideosList({ categoryId, initial, firstClearAt }: Props) {
               {bulkDeleting ? "削除中…" : `${selectedIds.size} 件削除`}
             </button>
           )}
+          {/* TODO #52 (2.1, 2026-04-30): 選択中の動画の duration_seconds を
+              合算して `categories.manual_time_to_clear_seconds` に保存する。
+              既存の手動入力欄 (TODO #25) と同じ field を使うため、保存後は
+              category-list.tsx の優先順 (manual ?? auto) で上書き表示される。
+              duration が NULL (= YouTube から未取得) の動画は 0 として扱い、
+              件数だけ confirm に明示する。 */}
+          {selectMode && selectedIds.size > 0 && (
+            <button
+              type="button"
+              disabled={savingClearTime}
+              onClick={async () => {
+                let total = 0;
+                let missing = 0;
+                for (const v of live) {
+                  if (!selectedIds.has(v.id)) continue;
+                  if (v.durationSeconds === null) missing += 1;
+                  else total += v.durationSeconds;
+                }
+                if (total <= 0) {
+                  toast.error(
+                    "選択中の動画はすべて再生時間未取得です。先に YouTube duration を取得してください",
+                  );
+                  return;
+                }
+                const summary = formatDurationLong(total);
+                const missingNote =
+                  missing > 0
+                    ? `\n(${missing} 件は再生時間未取得 — 0 として扱います)`
+                    : "";
+                if (
+                  !window.confirm(
+                    `選択した ${selectedIds.size} 件の合計再生時間 ${summary} を` +
+                      `「クリアまでの累計時間」として保存します。${missingNote}\n` +
+                      `既存の手動入力は上書きされます。よろしいですか？`,
+                  )
+                ) {
+                  return;
+                }
+                setSavingClearTime(true);
+                const result = await updateCategory(categoryId, {
+                  manual_time_to_clear_seconds: total,
+                });
+                setSavingClearTime(false);
+                if (!result.ok) {
+                  toast.error("保存失敗: " + result.reason);
+                  return;
+                }
+                toast.success(`クリア時間 ${summary} を保存しました`);
+                setSelectedIds(new Set());
+                setSelectMode(false);
+              }}
+              className="inline-flex h-7 items-center gap-1 rounded-md border border-emerald-400/55 bg-emerald-400/10 px-2 font-mono text-[10px] tracking-[0.18em] text-emerald-200 uppercase transition-colors hover:border-emerald-400/80 hover:bg-emerald-400/20 disabled:opacity-50"
+              title="選択した動画の合計再生時間をクリアまでの累計時間として保存"
+            >
+              <Hourglass className="h-3 w-3" aria-hidden />
+              {savingClearTime
+                ? "保存中…"
+                : `${selectedIds.size} 件をクリア時間に`}
+            </button>
+          )}
+          {/* TODO #47 (2.1, 2026-04-30): お気に入りのみ表示するフィルタ。
+              ON のとき isFavorite=true の動画だけ描画。sort モードと独立。
+              live に 1 件もお気に入りがない時はボタンを描画するが「(0)」を
+              添えて、押しても空表示になることをヒントにする。 */}
+          <button
+            type="button"
+            onClick={() => persistFavoritesOnly(!favoritesOnly)}
+            className={
+              "inline-flex h-7 items-center gap-1 rounded-md border px-2 font-mono text-[10px] tracking-[0.18em] uppercase transition-colors " +
+              (favoritesOnly
+                ? "border-amber-400/60 bg-amber-400/12 text-amber-200"
+                : "border-border/40 bg-background/30 text-muted-foreground hover:text-foreground")
+            }
+            aria-pressed={favoritesOnly}
+            title={
+              favoritesOnly
+                ? "お気に入りフィルタを解除"
+                : "お気に入りのみ表示"
+            }
+          >
+            <Star
+              className={
+                "h-3 w-3 " + (favoritesOnly ? "fill-amber-300" : "")
+              }
+              aria-hidden
+            />
+            ★({favoriteCount})
+          </button>
           {/* Sort mode toggle: 日付順 (newest first) or カスタム順 (DnD). */}
           <div
             className="inline-flex items-center rounded-md border border-border/40 bg-background/30 p-0.5 font-mono text-[10px] tracking-[0.18em] uppercase"
@@ -564,14 +698,31 @@ export function VideosList({ categoryId, initial, firstClearAt }: Props) {
       {videos.length === 0 ? (
         <Card className="glass flex flex-col items-center gap-3 p-10 text-center">
           <span className="grid h-10 w-10 place-items-center rounded-md border border-[var(--neon-cyan)]/40 bg-background/40 text-[var(--neon-cyan)]">
-            <Film className="h-4 w-4" aria-hidden />
+            {favoritesOnly && live.length > 0 ? (
+              <Star className="h-4 w-4" aria-hidden />
+            ) : (
+              <Film className="h-4 w-4" aria-hidden />
+            )}
           </span>
-          <p className="font-display text-foreground text-sm">動画未登録</p>
-          <p className="text-muted-foreground max-w-md text-xs leading-relaxed">
-            YouTube の URL を登録するとサムネイル付きで表示されます。
-            <br />
-            その他の動画サイト URL もリンク表示できます。
-          </p>
+          {favoritesOnly && live.length > 0 ? (
+            <>
+              <p className="font-display text-foreground text-sm">
+                お気に入りに登録された動画はまだありません
+              </p>
+              <p className="text-muted-foreground max-w-md text-xs leading-relaxed">
+                各カードの星アイコンをクリックすると、お気に入りに追加されます。
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="font-display text-foreground text-sm">動画未登録</p>
+              <p className="text-muted-foreground max-w-md text-xs leading-relaxed">
+                YouTube の URL を登録するとサムネイル付きで表示されます。
+                <br />
+                その他の動画サイト URL もリンク表示できます。
+              </p>
+            </>
+          )}
         </Card>
       ) : sortMode === "custom" ? (
         // Custom (DnD-enabled) layout. Each card carries a drag handle.
@@ -587,6 +738,7 @@ export function VideosList({ categoryId, initial, firstClearAt }: Props) {
                   key={v.id}
                   video={v}
                   onEdit={() => setEditTarget(v)}
+                  onToggleFavorite={() => onToggleFavorite(v)}
                   focused={focusActive && v.id === focusedVideoId}
                   refIfFocused={
                     v.id === focusedVideoId ? focusedRef : null
@@ -618,6 +770,7 @@ export function VideosList({ categoryId, initial, firstClearAt }: Props) {
               <VideoCard
                 video={v}
                 onEdit={() => setEditTarget(v)}
+                onToggleFavorite={() => onToggleFavorite(v)}
                 selectMode={selectMode}
                 selected={selectedIds.has(v.id)}
                 onToggleSelect={() => toggleSelected(v.id)}
@@ -646,6 +799,7 @@ export function VideosList({ categoryId, initial, firstClearAt }: Props) {
 function SortableVideoCard({
   video,
   onEdit,
+  onToggleFavorite,
   focused = false,
   refIfFocused = null,
   selectMode = false,
@@ -657,6 +811,7 @@ function SortableVideoCard({
 }: {
   video: CategoryLink;
   onEdit: () => void;
+  onToggleFavorite?: () => void;
   focused?: boolean;
   refIfFocused?: React.RefObject<HTMLLIElement | null> | null;
   selectMode?: boolean;
@@ -706,6 +861,7 @@ function SortableVideoCard({
       <VideoCard
         video={video}
         onEdit={onEdit}
+        onToggleFavorite={onToggleFavorite}
         dragListeners={listeners}
         selectMode={selectMode}
         selected={selected}
@@ -721,6 +877,7 @@ function SortableVideoCard({
 function VideoCard({
   video,
   onEdit,
+  onToggleFavorite,
   dragListeners,
   selectMode = false,
   selected = false,
@@ -731,6 +888,7 @@ function VideoCard({
 }: {
   video: CategoryLink;
   onEdit: () => void;
+  onToggleFavorite?: () => void;
   dragListeners?: ReturnType<typeof useSortable>["listeners"];
   selectMode?: boolean;
   selected?: boolean;
@@ -875,6 +1033,43 @@ function VideoCard({
             <MessageCircle className="h-2.5 w-2.5" aria-hidden />
           </span>
         )}
+        {/* TODO #47 (2.1, 2026-04-30): お気に入りトグル。アイコンのみ表示で
+            on/off は色 + fill で表現。data-card-no-nav で背景クリック時の
+            動画ナビを抑止。stopPropagation で iframe クリックも妨げない。 */}
+        <button
+          type="button"
+          data-card-no-nav
+          onClick={(e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            onToggleFavorite?.();
+          }}
+          aria-pressed={video.isFavorite}
+          aria-label={
+            video.isFavorite
+              ? `${video.title} のお気に入りを解除`
+              : `${video.title} をお気に入りに追加`
+          }
+          title={
+            video.isFavorite
+              ? "お気に入りから外す"
+              : "お気に入りに追加"
+          }
+          className={
+            "flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-colors " +
+            (video.isFavorite
+              ? "text-amber-300 hover:text-amber-200"
+              : "text-muted-foreground/60 hover:text-amber-300")
+          }
+        >
+          <Star
+            className={
+              "h-3.5 w-3.5 " +
+              (video.isFavorite ? "fill-amber-300" : "")
+            }
+            aria-hidden
+          />
+        </button>
         <LinkCardMenu link={video} onEdit={onEdit} />
       </div>
       {/* Description は無くても 1 行分を確保してカード高さを揃える

@@ -153,6 +153,8 @@ export type CategoryLinkRow = {
    * the duration backfill has run. Falls back to `created_at` in queries.
    */
   posted_at: string | null;
+  /** TODO #47 (2.1, 2026-04-30): user-toggled favorite flag (videos only UI). */
+  is_favorite: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -169,6 +171,7 @@ export type CategoryLink = {
   logsUrl: string | null;
   durationSeconds: number | null;
   postedAt: string | null;
+  isFavorite: boolean;
   createdAt: string;
 };
 
@@ -185,6 +188,7 @@ export function rowToCategoryLink(row: CategoryLinkRow): CategoryLink {
     logsUrl: row.logs_url ?? null,
     durationSeconds: row.duration_seconds ?? null,
     postedAt: row.posted_at ?? null,
+    isFavorite: row.is_favorite ?? false,
     createdAt: row.created_at,
   };
 }

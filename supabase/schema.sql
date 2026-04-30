@@ -153,6 +153,14 @@ ALTER TABLE public.category_links
 -- batch import doesn't end up giving every category the same date.
 ALTER TABLE public.category_links
   ADD COLUMN IF NOT EXISTS posted_at timestamptz;
+
+-- 2.1 (2026-04-30) TODO #47: per-link favorite flag. Lets the videos page
+-- expose a "★お気に入りのみ" filter and a star toggle on each card.
+-- Strategy links don't surface this in the UI yet but the column lives
+-- on the shared table for symmetry.
+ALTER TABLE public.category_links
+  ADD COLUMN IF NOT EXISTS is_favorite boolean NOT NULL DEFAULT false;
+
 CREATE INDEX IF NOT EXISTS category_links_category_kind_idx
   ON public.category_links(category_id, kind, sort_order);
 

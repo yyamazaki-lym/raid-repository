@@ -1245,6 +1245,26 @@ export async function deleteCategoryLinkAction(
   return { ok: true };
 }
 
+/**
+ * TODO #47 (2.1, 2026-04-30): toggle the per-link favorite flag.
+ * Admin-gated to match the rest of `category_links` writes — keeping
+ * "shared single-tenant" semantics; everyone sees the same favorites.
+ */
+export async function setCategoryLinkFavoriteAction(
+  id: string,
+  isFavorite: boolean,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("category_links")
+    .update({ is_favorite: isFavorite })
+    .eq("id", id);
+  if (error) return { ok: false, reason: dbError("お気に入り更新", error) };
+  return { ok: true };
+}
+
 export async function setCategoryLinkOrderAction(
   orderedIds: string[],
 ): Promise<{ ok: true } | { ok: false; reason: string }> {

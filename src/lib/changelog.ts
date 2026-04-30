@@ -52,6 +52,18 @@ export const RELEASES: ReleaseEntry[] = [
     date: "2026-04-30",
     parts: [
       {
+        title: "⭐ 動画お気に入り機能 + 「お気に入りのみ」フィルタ (TODO #47)",
+        body: "**追加**: 動画ページの各カードヘッダーに ★ トグルボタン、ツールバーに「★お気に入りのみ」フィルタボタン。on のとき isFavorite=true の動画だけ描画。フィルタ ON/OFF は localStorage に保存しリロード後も継続。\n\n**スキーマ**: `category_links` に `is_favorite boolean NOT NULL DEFAULT false` を追加 (`schema.sql`)。Server Action `setCategoryLinkFavoriteAction` を新設、admin gate 付き (`category_links` の他 write と一貫)。`useRealtimeCategoryLinks` の UPDATE handler が変更をライブで反映するので局所 state は持たない。\n\n**UI**: ヘッダーに ★ アイコン + 件数 (`★(N)`)。フィルタ on でも live に 1 件もお気に入り無しなら「お気に入りに登録された動画はまだありません」の empty state を表示。",
+      },
+      {
+        title: "⏱ 選択中動画の合計再生時間をクリア時間として保存するボタン (TODO #52)",
+        body: "**追加**: 動画ページの選択モードで ≥1 件選択中、ツールバーに「N 件をクリア時間に」ボタン (Hourglass icon、emerald) を表示。クリックで `window.confirm` を出し、選択中の動画の `duration_seconds` 合算を `categories.manual_time_to_clear_seconds` に保存。\n\n**設計**: 既存の手動入力欄 (TODO #25) と同じ field を使うため、保存後は category-list.tsx の優先順 (`manual ?? auto`) で上書き表示される。`updateCategory({ manual_time_to_clear_seconds: total })` を再利用するので新 server action は不要。\n\n**未取得 duration の扱い**: skip + 件数を confirm に明記 (block しない)。全件 NULL の場合のみエラー toast で先に YouTube duration 取得を促す。\n\n**用途**: クリア動画の累計練習時間を「クリアしたときの時刻に投稿された動画の duration 合計」で自動算出する代わりに、ユーザーがクリア当日の練習動画群を手動でピックアップして集計できる。",
+      },
+      {
+        title: "🛟 動画削除時にスクロールが頭に戻る挙動を抑止 (TODO #49)",
+        body: "**症状**: 動画カードの ⋮ メニューから削除すると、削除直後にページトップへスクロールが戻ってしまう。長いリストで下の方の動画を整理する時に毎回スクロールし直す必要があり煩わしい。\n\n**真因**: `link-card-menu.tsx:onDelete` が削除成功後に `router.refresh()` を呼んでいた。これは「Realtime DELETE が REPLICA IDENTITY FULL 入れる前まで動かない時の保険」として残っていたコメント付きの呼び出しだったが、現在は schema に REPLICA IDENTITY FULL が適用済 + `useRealtimeCategoryLinks` の DELETE handler が `payload.old.id` で行を消すロジックが入っているため redundant。RSC 再描画が走ると、focused 動画カードや親要素の再 mount で scroll restoration が暴発するケースがあった。\n\n**修正**: `router.refresh()` 呼び出しを削除。bulk delete (`videosList` の「N 件削除」ボタン経由) は元々 client state のみで動くので影響なし。",
+      },
+      {
         title: "🚫 過去詳細表のユーザ名クリック編集を無効化 (TODO #50)",
         body: "**症状**: スケジュール表「過去 (詳細ログ・出欠表)」のユーザ名ヘッダーをクリックすると character-sheets の編集 iframe ダイアログが開いてしまい、過去日付の出欠を不意に編集してしまう事故が起きうる。upcoming 側は引き続き編集できる必要がある。\n\n**修正**: `UserHeaderCell` に `clickable` prop を追加し、false のとき `<button>` ではなく `<span>` で username を描画 + underline 装飾も削除して「リンク風の見た目」を抑止。`tableHead` factory は `tableHead(showDecided)` 既存呼び出しを `clickable={showDecided}` 経由で wire (upcoming = `tableHead(true)` → clickable=true / past = `tableHead(false, false)` → clickable=false)。`showDecided` フラグが「upcoming = true / past = false」と一致する性質を利用したシンプルな配線。\n\n**結果**: past 詳細表ではユーザ名がただのテキストになり、誤クリックで編集ページに飛ばない。upcoming 表は従来どおりクリックで編集可能。",
       },
