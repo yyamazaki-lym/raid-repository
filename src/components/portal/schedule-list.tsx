@@ -269,6 +269,9 @@ export function ScheduleList({
   // 過去詳細表ではユーザー名横のメモアイコン (CommentPopover) を出さない
   // — 過去日のヘッダーで毎回メモが目に入って情報過多になっていたのを
   // 解消する (ユーザー要望)。upcoming は引き続きメモを出す。
+  // TODO #50: past 詳細表 (showDecided=false) ではユーザ名のクリックで
+  // 開く編集ページへの遷移を抑止 — 過去日付の出欠をうっかり編集して
+  // しまう事故を防ぐ。upcoming 表は引き続き clickable のまま。
   const tableHead = (showDecided: boolean, showComments = true) => (
     <thead>
       <tr className="border-b border-border/60 font-mono text-[10px] tracking-[0.22em] text-muted-foreground uppercase">
@@ -289,6 +292,7 @@ export function ScheduleList({
             }
             editUrl={buildEditUrl(scheduleUrl, u.userId)}
             onOpenEditFrame={openEditFrame}
+            clickable={showDecided}
           />
         ))}
       </tr>
@@ -455,6 +459,7 @@ function UserHeaderCell({
   comments,
   editUrl,
   onOpenEditFrame,
+  clickable = true,
 }: {
   user: ScheduleUser;
   comments: ScheduleComment[];
@@ -465,6 +470,12 @@ function UserHeaderCell({
     title: string,
     targetOffsetPx?: number | null,
   ) => void;
+  /**
+   * TODO #50 (2.1, 2026-04-30): false で username を span 描画にし、
+   * 編集ページへの遷移を抑止。past 詳細表のヘッダーで使う想定 — 過去日付
+   * をうっかり編集してしまう事故を防ぐ。
+   */
+  clickable?: boolean;
 }) {
   const hasComments = comments.length > 0;
 
@@ -476,10 +487,13 @@ function UserHeaderCell({
   // name is unusually long — prevents one outlier name from blowing out
   // the whole table's layout. The full name is still in the title
   // attribute (tooltip).
-  const nameClass =
-    "inline-block max-w-[7rem] truncate align-bottom underline decoration-dotted decoration-[var(--neon-cyan)]/60 underline-offset-4 transition-colors hover:decoration-[var(--neon-cyan)] hover:text-[var(--neon-cyan)]";
+  // 非 clickable のときは underline / hover を消して「リンク風」の見た目を
+  // 落とす — 押せそうに見えてしまうのを避ける。
+  const nameClass = clickable
+    ? "inline-block max-w-[7rem] truncate align-bottom underline decoration-dotted decoration-[var(--neon-cyan)]/60 underline-offset-4 transition-colors hover:decoration-[var(--neon-cyan)] hover:text-[var(--neon-cyan)]"
+    : "inline-block max-w-[7rem] truncate align-bottom";
 
-  const nameNode = editUrl ? (
+  const nameNode = clickable && editUrl ? (
     <button
       type="button"
       onClick={() => onOpenEditFrame(editUrl, `${user.name} の出欠を編集`)}

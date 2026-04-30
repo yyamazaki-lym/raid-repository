@@ -52,6 +52,10 @@ export const RELEASES: ReleaseEntry[] = [
     date: "2026-04-30",
     parts: [
       {
+        title: "🚫 過去詳細表のユーザ名クリック編集を無効化 (TODO #50)",
+        body: "**症状**: スケジュール表「過去 (詳細ログ・出欠表)」のユーザ名ヘッダーをクリックすると character-sheets の編集 iframe ダイアログが開いてしまい、過去日付の出欠を不意に編集してしまう事故が起きうる。upcoming 側は引き続き編集できる必要がある。\n\n**修正**: `UserHeaderCell` に `clickable` prop を追加し、false のとき `<button>` ではなく `<span>` で username を描画 + underline 装飾も削除して「リンク風の見た目」を抑止。`tableHead` factory は `tableHead(showDecided)` 既存呼び出しを `clickable={showDecided}` 経由で wire (upcoming = `tableHead(true)` → clickable=true / past = `tableHead(false, false)` → clickable=false)。`showDecided` フラグが「upcoming = true / past = false」と一致する性質を利用したシンプルな配線。\n\n**結果**: past 詳細表ではユーザ名がただのテキストになり、誤クリックで編集ページに飛ばない。upcoming 表は従来どおりクリックで編集可能。",
+      },
+      {
         title: "🌀 framer-motion 復活 + on-demand UI を更に lazy 化 (TODO #11)",
         body: "**framer-motion 復活**: phase 8 で剥がした framer-motion (`motion.span` + `layoutId` の spring slide アニメ) を `sub-tabs.tsx` / `main-tabs.tsx` / `category-switcher.tsx` に戻す。撤廃版の opacity crossfade / 自作 underline スライドより spring-bounce の質感がユーザビリティ的に良いという判断。bundle size は ~37 KB gz 戻すが視覚価値を優先。`src/lib/client/use-active-underline.ts` は削除。\n\n**on-demand UI の追加 lazy 化**: bundle analyzer で残候補だった base-ui 系から、トリガーが即時不要なものを `next/dynamic({ ssr: false })` で別 chunk 化:\n\n- `link-card-menu-lazy.tsx`: `<DropdownMenu>` ベースの ⋮ 三点メニュー (videos / strategy のリンクカード上)。admin がクリックして初めて開く\n- `comment-popover-lazy.tsx`: `<Popover>` ベースのユーザコメント表示 (スケジュール表のユーザ名ヘッダー)。クリックで初めて開く\n- `schedule-edit-frame-dialog-lazy.tsx`: `<Dialog>` + iframe のスケジュール編集ダイアログ (出欠セル / ユーザ名クリックで開く)\n\n既存の lazy wrapper (`settings-dialog-lazy` / `link-form-dialog-lazy` / `category-form-dialog-lazy` / `toaster-dynamic`) と合わせ、「初期表示で UI に出ているトリガーは同期、内容は on-demand」のパターンに統一。click 反応に若干 (50-200ms 程度) のチャンクロード遅延が追加されるが、初回 LCP 経路から大型 dialog コードを完全に外出しできるトレードオフ。",
       },

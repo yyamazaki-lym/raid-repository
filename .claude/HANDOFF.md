@@ -47,14 +47,13 @@
 | 38 | スケジュール追加機能 — portal 内から開催候補日を追加する UI が無い。日付 + 時間帯 + 参加可否を入力 → DB 保存 → 描画。TODO #2 と統合可 | 中〜大 |
 | 47 | 動画お気に入り機能 + ソートで「お気に入りのみ」表示。`category_links` に boolean 列追加 → 動画カードに star トグル → videos-list の sort モードに「お気に入り」追加 | 中 (schema 変更含む) |
 | 49 | 動画削除時にページトップへスクロールが戻る挙動を抑止。`router.refresh()` / revalidate 後の再描画でスクロール位置が失われている可能性。`videos-list` の削除ハンドラ周辺を調査 | 小〜中 |
-| 50 | 過去日程リスト (詳細ログ表) のユーザー名ヘッダーから日付編集ページ (character-sheets iframe) への遷移を無効化。upcoming はそのまま、past 詳細表の `UserHeaderCell` のみ click を抑止 — `schedule-list.tsx` の `tableHead(false, false)` 経路で `UserHeaderCell` に `isPast` (or `clickable=false`) flag を渡して span 描画に切替 | 小 |
 | 51 | マイクロインタラクション / ユーザビリティ向上。クリック時の press feedback / hover 時の subtle elevation / loading skeleton / focus ring 強化 / toast の出現位置・タイミング微調整 / フォーム入力の即時 validation / 空状態の illustration etc。framer-motion を残す方針なので springy な質感も維持しつつ portal 全体の polish を 1 周。観点リストの作成 + 優先順位付けから | 中 |
 
 ## 完了済み TODO
 
 > 各項目の詳細・経緯は `src/lib/changelog.ts` の該当バージョン項目に記載。ここでは番号と版だけ。
 
-- **2.1 (2026-04-30)**: #46 / #11 phase 1-10 / #48 phase 3
+- **2.1 (2026-04-30)**: #46 / #50 / #11 phase 1-10 / #48 phase 3
 - **2.1 (2026-04-29)**: #21 #22 #24 #25 #26 #27 #28 #29 #30 #31 #32 #33 #34 #35 #36 #37 #39 #40 #41 #42 #43 #44 #45
 - **2.0 (2026-04-28)**: #19 (ロール単位ページ閲覧制御 = OAuth + 役職判定)
 - **1.9 (2026-04-28)**: #3 #4 #5 #6 #9 #10 #12 #13 #14 #15 #16 #17 #18
