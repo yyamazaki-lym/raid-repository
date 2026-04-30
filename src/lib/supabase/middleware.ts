@@ -1,5 +1,6 @@
 import "server-only";
 import { createServerClient } from "@supabase/ssr";
+import type { UserAppMetadata } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
 
 /**
@@ -8,12 +9,24 @@ import { NextResponse, type NextRequest } from "next/server";
  * 公式パターン (https://supabase.com/docs/guides/auth/server-side):
  *   - リクエストが来るたびに anon key で server client を作成
  *   - cookie の getAll / setAll を NextRequest / NextResponse に橋渡し
- *   - `getUser()` を呼ぶことで自動的に access_token をリフレッシュ
- *     (期限切れなら refresh_token を消費して新しい cookie を書き戻す)
+ *   - cookie に入っている JWT を検証 → user 情報を取り出す
  *
  * 戻り値の `response` は cookie 書き戻し済みなので、proxy 側はこれに
  * `redirect` などを重ねるか、そのまま return するだけで良い。
+ *
+ * **TODO #54 part2-c**: Auth API 往復削減のため `getUser()` から
+ * `getClaims()` に切り替え。`getClaims()` は asymmetric JWT signing
+ * key (RS256/ES256, kid あり) であれば JWKS を WebCrypto でローカル
+ * 検証して Supabase Auth API への往復をスキップする (JWKS はクライアント
+ * 内キャッシュ)。symmetric (HS256) のままだと内部で `getUser()` に
+ * フォールバックするため効果ゼロ。Supabase Dashboard → Settings →
+ * API → JWT Keys で asymmetric への migration が必要。
  */
+export type AuthenticatedUser = {
+  id: string;
+  app_metadata: UserAppMetadata;
+};
+
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });
 
@@ -38,12 +51,15 @@ export async function updateSession(request: NextRequest) {
     },
   );
 
-  // IMPORTANT: getUser() は JWT を検証する。getSession() だけでは
-  // cookie に入っている JWT を検証せず信用してしまうので、proxy で
-  // 認可判定するなら必ず getUser() を使う (Supabase 公式の指示)。
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { data } = await supabase.auth.getClaims();
+
+  let user: AuthenticatedUser | null = null;
+  if (data?.claims) {
+    user = {
+      id: data.claims.sub,
+      app_metadata: (data.claims.app_metadata ?? {}) as UserAppMetadata,
+    };
+  }
 
   return { user, response };
 }
