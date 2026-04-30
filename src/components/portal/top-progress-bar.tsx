@@ -51,29 +51,24 @@ export function TopProgressBar() {
   const [phase, setPhase] = useState<Phase>("idle");
 
   useEffect(() => {
-    // setState を effect body から sync に呼ぶと React 19 の
-    // `react-hooks/set-state-in-effect` rule に引っかかるため、最初の
-    // 遷移も setTimeout(0) でマクロタスクに飛ばしてから phase を進める。
-    // 体感ラグは 1 frame 以下で UX 上は不可視。
-    // idle/finish → start → creep
-    if (pending && (phase === "idle" || phase === "finish")) {
-      const tStart = setTimeout(() => setPhase("start"), 0);
-      const tCreep = setTimeout(() => setPhase("creep"), 220);
-      return () => {
-        clearTimeout(tStart);
-        clearTimeout(tCreep);
-      };
+    // 依存は `pending` のみ。`phase` を依存に含めると `setPhase` で
+    // phase が動くたびに effect が再走 → cleanup が走って未発火タイマー
+    // (creep / idle) が clear され、phase=finish のまま永続化する race
+    // が起きる (2.1 part2 初回実装で実観測)。`setPhase` を関数形式で
+    // 使うことで stale closure を避けつつ依存を最小化。
+    if (pending) {
+      setPhase("start");
+      const t = setTimeout(() => setPhase("creep"), 200);
+      return () => clearTimeout(t);
     }
-    // start/creep → finish → idle
-    if (!pending && (phase === "start" || phase === "creep")) {
-      const tFinish = setTimeout(() => setPhase("finish"), 0);
-      const tIdle = setTimeout(() => setPhase("idle"), 520);
-      return () => {
-        clearTimeout(tFinish);
-        clearTimeout(tIdle);
-      };
-    }
-  }, [pending, phase]);
+    setPhase((prev) =>
+      prev === "idle" || prev === "finish" ? prev : "finish",
+    );
+    const t = setTimeout(() => {
+      setPhase((prev) => (prev === "finish" ? "idle" : prev));
+    }, 500);
+    return () => clearTimeout(t);
+  }, [pending]);
 
   if (phase === "idle") return null;
 
