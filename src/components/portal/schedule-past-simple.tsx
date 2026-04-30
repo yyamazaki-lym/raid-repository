@@ -7,8 +7,8 @@ import {
   getJapaneseHolidayName,
   isJapaneseHoliday,
 } from "@/lib/japanese-holidays";
-import Link from "next/link";
 import { safeHref } from "@/lib/url-safe";
+import { PortalLink } from "./portal-link";
 import type { JapaneseHolidaysMap } from "@/lib/japanese-holidays";
 import {
   useRealtimeAllScheduleMemos,
@@ -233,14 +233,14 @@ function DateChip({
         // chunk hash mismatch の silent fail は ChunkErrorHandler が catch
         // して reload するので保険済 (旧コミット fab1d59 を撤回)。
         return (
-          <Link
+          <PortalLink
             href={videoLink.href}
             aria-label={`${videoLink.categoryName}/動画「${videoLink.videoTitle}」を開く`}
             title={`${videoLink.categoryName}/動画 → 「${videoLink.videoTitle}」`}
             className="inline-flex h-4 w-4 items-center justify-center rounded text-current/75 transition-all hover:bg-current/15 hover:text-current"
           >
             <Film className="h-2.5 w-2.5" aria-hidden />
-          </Link>
+          </PortalLink>
         );
       })()}
       {(() => {

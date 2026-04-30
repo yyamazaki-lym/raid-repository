@@ -1,8 +1,8 @@
 "use client";
 
 import Image from "next/image";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { PortalLink } from "@/components/portal/portal-link";
 import { useMemo, useState } from "react";
 import {
   GripVertical,
@@ -387,7 +387,7 @@ function SortableCategoryCard({
             short-cuts to each sub-page. Icon row is OUTSIDE the parent
             Link to keep nested-anchor invalid HTML out of the tree. */}
         <div className="relative z-10 flex flex-1 flex-col">
-          <Link
+          <PortalLink
             href={`/category/${category.slug}/mitigation`}
             prefetch
             className="flex flex-col gap-1 px-4 pt-4 pb-1"
@@ -411,7 +411,7 @@ function SortableCategoryCard({
             </p>
             {/* 2.1 (2026-04-29): Timer (累計練習時間) は card 上に出さない
                 方針 (ユーザー要望)。Trophy + Hourglass のみ右カラムで表示。 */}
-          </Link>
+          </PortalLink>
 
           <SubPageShortcuts
             slug={category.slug}
@@ -571,7 +571,7 @@ function SubPageShortcuts({
       className="flex items-center gap-1 pt-1 pr-2 pb-3 pl-3"
     >
       {SUB_PAGES.map((p) => (
-        <Link
+        <PortalLink
           key={p.segment}
           href={`/category/${slug}/${p.segment}`}
           prefetch
@@ -580,7 +580,7 @@ function SubPageShortcuts({
           className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border/40 bg-background/30 text-muted-foreground transition-all duration-150 hover:scale-110 hover:border-[var(--neon-violet)]/60 hover:bg-[var(--neon-violet)]/10 hover:text-[var(--neon-violet)] hover:shadow-[0_0_10px_-4px_var(--neon-violet)]"
         >
           <p.Icon className="h-3.5 w-3.5" aria-hidden />
-        </Link>
+        </PortalLink>
       ))}
       {statusSlot && <span className="ml-auto">{statusSlot}</span>}
     </nav>

@@ -19,7 +19,7 @@ import { Card } from "@/components/ui/card";
 import { CommentPopover } from "./comment-popover-lazy";
 import { ScheduleEditFrameDialog } from "./schedule-edit-frame-dialog-lazy";
 import { toast } from "sonner";
-import Link from "next/link";
+import { PortalLink } from "./portal-link";
 import {
   clearScheduleTopTextOverride,
   setScheduleTopTextOverride,
@@ -772,14 +772,14 @@ function SessionRow({
                 // ChunkErrorHandler (portal layout 常駐) が ChunkLoadError を
                 // catch して自動 reload するので保険済 (旧コミット: hard nav
                 // 化 fab1d59 / hover prefetch 389b8f8 を撤回)。
-                <Link
+                <PortalLink
                   href={videoLink.href}
                   aria-label={`${videoLink.categoryName}/動画「${videoLink.videoTitle}」を開く`}
                   title={`${videoLink.categoryName}/動画 → 「${videoLink.videoTitle}」`}
                   className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-[var(--neon-cyan)]/85 transition-all hover:bg-[var(--neon-cyan)]/15 hover:text-[var(--neon-cyan)] hover:shadow-[0_0_10px_-2px_var(--neon-cyan)]"
                 >
                   <Film className="h-3 w-3" aria-hidden />
-                </Link>
+                </PortalLink>
               )
             ) : (
               <span aria-hidden className="inline-block h-5 w-5 shrink-0" />
