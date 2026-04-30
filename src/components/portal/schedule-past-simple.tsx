@@ -7,6 +7,7 @@ import {
   getJapaneseHolidayName,
   isJapaneseHoliday,
 } from "@/lib/japanese-holidays";
+import { prefetchUrl } from "@/lib/client/prefetch-on-hover";
 import { safeHref } from "@/lib/url-safe";
 import type { JapaneseHolidaysMap } from "@/lib/japanese-holidays";
 import {
@@ -229,6 +230,8 @@ function DateChip({
         return (
           <a
             href={videoLink.href}
+            onMouseEnter={() => prefetchUrl(videoLink.href)}
+            onFocus={() => prefetchUrl(videoLink.href)}
             aria-label={`${videoLink.categoryName}/動画「${videoLink.videoTitle}」を開く`}
             title={`${videoLink.categoryName}/動画 → 「${videoLink.videoTitle}」`}
             className="inline-flex h-4 w-4 items-center justify-center rounded text-current/75 transition-all hover:bg-current/15 hover:text-current"

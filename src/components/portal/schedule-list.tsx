@@ -19,6 +19,7 @@ import { Card } from "@/components/ui/card";
 import { CommentPopover } from "./comment-popover";
 import { ScheduleEditFrameDialog } from "./schedule-edit-frame-dialog";
 import { toast } from "sonner";
+import { prefetchUrl } from "@/lib/client/prefetch-on-hover";
 import {
   clearScheduleTopTextOverride,
   setScheduleTopTextOverride,
@@ -731,6 +732,8 @@ function SessionRow({
                 // メリットを捨てているので、ブラウザ標準遷移の方が信頼性高い。
                 <a
                   href={videoLink.href}
+                  onMouseEnter={() => prefetchUrl(videoLink.href)}
+                  onFocus={() => prefetchUrl(videoLink.href)}
                   aria-label={`${videoLink.categoryName}/動画「${videoLink.videoTitle}」を開く`}
                   title={`${videoLink.categoryName}/動画 → 「${videoLink.videoTitle}」`}
                   className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-[var(--neon-cyan)]/85 transition-all hover:bg-[var(--neon-cyan)]/15 hover:text-[var(--neon-cyan)] hover:shadow-[0_0_10px_-2px_var(--neon-cyan)]"
