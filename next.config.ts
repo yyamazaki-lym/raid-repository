@@ -122,7 +122,9 @@ const securityHeaders = [
  *
  * ローカル dev では env 未設定 → undefined 扱いで何も起こらない (default 動作)。
  */
-const deploymentId = process.env.VERCEL_GIT_COMMIT_SHA;
+// Next.js は deploymentId に 32 文字以下を要求するが git SHA は 40 文字
+// なので切り詰める。先頭 12 文字あれば衝突実用上 0 + 視認性◎。
+const deploymentId = process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 12);
 
 const nextConfig: NextConfig = {
   ...(deploymentId ? { deploymentId } : {}),
