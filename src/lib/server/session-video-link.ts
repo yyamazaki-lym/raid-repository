@@ -121,21 +121,29 @@ export async function buildSessionVideoLinkMap(
     })
     .filter((v): v is NonNullable<typeof v> => v !== null);
 
+  // Pre-index videos by JST Y/M/D so each session lookup is O(1).
+  // videoEntries は DB 側で posted_at asc ソート済 → bucket 先頭が最古、
+  // shift() で取り出すと「同日複数動画は最古優先」の元挙動を維持できる。
+  const videosByDate = new Map<string, typeof videoEntries>();
+  for (const v of videoEntries) {
+    const key = `${v.y}-${v.m}-${v.d}`;
+    const bucket = videosByDate.get(key);
+    if (bucket) bucket.push(v);
+    else videosByDate.set(key, [v]);
+  }
+
   // Process sessions oldest-first so videos are claimed by the
   // chronologically earliest plausible session.
   const sortedSessions = [...sessions].sort(
     (a, b) => a.date.getTime() - b.date.getTime(),
   );
 
-  const used = new Set<string>();
   const out: Record<string, SessionVideoLink> = {};
   for (const s of sortedSessions) {
     const sj = toJstYmd(s.date.getTime());
-    const match = videoEntries.find(
-      (v) => !used.has(v.id) && v.y === sj.y && v.m === sj.m && v.d === sj.d,
-    );
+    const bucket = videosByDate.get(`${sj.y}-${sj.m}-${sj.d}`);
+    const match = bucket?.shift();
     if (!match) continue;
-    used.add(match.id);
     out[s.rawDate] = {
       href: `/category/${match.categorySlug}/videos?focus=${match.id}`,
       url: match.url,
