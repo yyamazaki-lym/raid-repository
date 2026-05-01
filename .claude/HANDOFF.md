@@ -21,7 +21,7 @@
 
 ## 📌 次回の作業優先度
 
-**TODO #54 part3** (cold start 根本対策)。part1 (top progress bar) / part2-c (`getClaims()` 化, ECC 移行済で発動確認) / part2-d (`prefetch={false}`) 完了。残は Supabase Pooler 切替 / Edge → Node runtime 個別判定 等。progress bar 別アプローチは「ロード長時間下では意義なし」判断で取り下げ。詳細: `.claude/todos/54.md`
+**未定 (ユーザー選択)**。直前作業 TODO #54 (Vercel デプロイ後の遷移ロード再発) はクローズ済。残未完了 TODO は下表参照。次回会話開始時にユーザーが選択。
 
 ## 未完了 TODO 一覧
 
@@ -52,7 +52,6 @@
 |---|---|---|
 | 7 | スマホでのレイアウト崩れ確認 | 中 |
 | 51 | マイクロインタラクション / ユーザビリティ向上。クリック時の press feedback / hover 時の subtle elevation / loading skeleton / focus ring 強化 / toast の出現位置・タイミング微調整 / フォーム入力の即時 validation / 空状態の illustration etc。framer-motion を残す方針なので springy な質感も維持しつつ portal 全体の polish を 1 周。観点リストの作成 + 優先順位付けから | 中 |
-| 54 | Vercel デプロイ後の遷移ロード再発 — part1 (top progress bar) / part2-c (`getClaims()`, ECC 移行済) / part2-d (`prefetch={false}`) 完了。残: part3 (cold start 根本対策)。詳細: `.claude/todos/54.md` | 中 |
 | 11 | ページ全体のパフォーマンス最適化。phase 1-10 完了済、見送り候補あり。詳細: `.claude/todos/11.md` | — |
 
 ### 🚀 インフラ / デプロイ (コード外作業)
@@ -66,6 +65,7 @@
 
 直近版のみ列挙。詳細経緯は `src/lib/changelog.ts`、過去版アーカイブは `.claude/done.md`。
 
+- **2.1 (2026-05-01 part3+)**: #54 Vercel デプロイ後の遷移ロード再発 — part3 (cold start 根本対策) を Edge → Node runtime 個別判定 (FFLogs 非依存ページ 6 ファイル) で解決、本番体感確認済。詳細: `.claude/todos/54.md`
 - **2.1 (2026-04-30 part11)**: #44 仕上げ (`#stickyhead` anchor で row_0 表示揃え)
 - **2.1 (2026-04-30 part10)**: #44 微調整 (rowIndex=0 を sentinel 経由)
 
