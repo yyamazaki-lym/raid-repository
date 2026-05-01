@@ -249,6 +249,19 @@ function parseSessions(html: string, userCount: number): ScheduleSession[] {
     const rowHtml = rowMatch[2];
     const dateMatch = DATETITLE_RE.exec(rowHtml);
     const statusMatch = DATESTATUS_RE.exec(rowHtml);
+    // TODO #61 temp debug: capture raw values per row to diagnose
+    // why DECISION rows render as CANDIDATE on the demo site. Remove
+    // once the root cause is identified.
+    const dateRawDebug = dateMatch ? dateMatch[1].trim() : null;
+    const statusRawDebug = statusMatch ? statusMatch[1] : null;
+    console.warn("[parse-debug]", {
+      rowIndex,
+      dateRaw: dateRawDebug,
+      statusRaw: statusRawDebug,
+      statusRawLen: statusRawDebug == null ? null : statusRawDebug.length,
+      dateMatched: !!dateMatch,
+      statusMatched: !!statusMatch,
+    });
     if (!dateMatch || !statusMatch) continue;
 
     const rawDate = dateMatch[1].trim();
