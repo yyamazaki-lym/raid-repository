@@ -53,8 +53,10 @@ export async function fetchScheduleRaw(): Promise<ScheduleFetchResult> {
 
   let html: string;
   try {
+    // TODO #61 temp: bypass Vercel Data Cache to test cache-stale hypothesis
+    // (c-1). Revert to `next: { revalidate: 1800 }` once root cause is fixed.
     const res = await fetch(url, {
-      next: { revalidate: 1800 },
+      cache: "no-store",
       headers: { "User-Agent": "RaidRepository/0.1" },
     });
     if (!res.ok) {
@@ -69,6 +71,22 @@ export async function fetchScheduleRaw(): Promise<ScheduleFetchResult> {
 
   try {
     const data = attachUsersToSessions(parseSchedule(html));
+    // TODO #61 temp: per-fetch summary for cache/UA debug. Captures
+    // htmlLen + DECISION/CANDIDATE counts so a single Vercel log line
+    // tells us whether the upstream HTML is the right one.
+    let decisionCount = 0;
+    let candidateCount = 0;
+    for (const s of data.sessions) {
+      if (s.status === "DECISION") decisionCount++;
+      else candidateCount++;
+    }
+    console.warn("[parse-summary]", {
+      htmlLen: html.length,
+      usersCount: data.users.length,
+      sessionsCount: data.sessions.length,
+      decisionCount,
+      candidateCount,
+    });
     return { ok: true, data };
   } catch (err) {
     console.warn("[schedule] parse error:", err);
