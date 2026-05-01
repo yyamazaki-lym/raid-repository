@@ -651,3 +651,19 @@ CREATE POLICY "category-backgrounds authenticated insert"
 -- TODO #36 phase 1 で削除して authenticated 限定にした。古い画像の
 -- クリーンアップは将来 admin Server Action で対応 (現状は新 path 別名
 -- でアップロード→旧画像はオブジェクトストレージに残置)。
+
+-- ---- 11. Sample seed categories (idempotent) -------------------------
+-- TODO #8 (2.1, 2026-05-01): 新規 fork 直後の空 portal だと使い方が掴み
+-- にくいため、サンプルカテゴリ 5 件を投入する。実コンテンツ名 (現行零式
+-- + Variant + Extreme + Ultimate 2 件) を入れて status 4 種類を一通り
+-- カバー。ON CONFLICT (slug) DO NOTHING で既存値は上書きしないので、
+-- 再実行・編集後の再 apply でも安全。
+-- 全データ初期化 (TODO #23) で削除した後に schema.sql を再実行すれば
+-- 復活する = リカバリ手段としても機能。
+INSERT INTO public.categories (slug, name, status, sort_order) VALUES
+  ('arcadion-heavy',            '至天の座アルカディア：ヘビー級', '練習中',   10),
+  ('variant-shokyaku',          '異聞商客物語',                   '未着手',   20),
+  ('extreme-cloud-of-darkness', '滅暗闇の雲激闘戦',               'クリア済', 30),
+  ('ultimate-omega-protocol',   '絶オメガ検証戦',                 '未着手',   40),
+  ('ultimate-futures-rewritten','絶もうひとつの未来',             '休止中',   50)
+ON CONFLICT (slug) DO NOTHING;

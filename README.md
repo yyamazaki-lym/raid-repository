@@ -172,7 +172,9 @@ FF14 レイド固定向けポータル — スケジュール / 軽減表 / ロ�
 | `CRON_SECRET` | 32 文字以上のランダム文字列 | Vercel Cron 認証 |
 | `YOUTUBE_API_KEY` | YouTube Data API v3 キー | 限定公開動画の duration / uploadDate 取得 (未設定だと HTML scrape fallback、Vercel IP の bot 検出で失敗することあり) |
 | `SECRET_ENCRYPTION_KEY` | 64 文字 hex (`openssl rand -hex 32`) | FFLogs token 等の AES-256-GCM 暗号化保管 (未設定だと旧 `app_settings` 平文保存にフォールバック) |
-| `FFLOGS_API_KEY` | FFLogs API v1 キー | レポート ↔ 動画 自動マッチ |
+| `FFLOGS_API_KEY` | FFLogs API v1 キー | レポート ↔ 動画 自動マッチ (Public レポート対象) |
+| `FFLOGS_OAUTH_CLIENT_ID` | FFLogs OAuth Client ID | **Private / Unlisted** レポートの自動マッチ用 (Authorization Code Flow)。v1 で十分なら未設定可 |
+| `FFLOGS_OAUTH_CLIENT_SECRET` | FFLogs OAuth Client Secret | 同上 (server-only)。詳細手順は `.env.local.example` |
 
 #### Discord OAuth (ダッシュボード設定のみ、env なし)
 
@@ -210,7 +212,7 @@ FF14 レイド固定向けポータル — スケジュール / 軽減表 / ロ�
 #### 4-2. カテゴリーの追加・編集
 
 1. 上部タブ **カテゴリー** へ
-2. デフォルトでアルカディア3階級が seed されているので、**自分達のコンテンツに編集**するか、削除して新規追加：
+2. デフォルトでサンプル 5 件 (現行零式 + Variant + Extreme + Ultimate × 2) が seed されているので、**自分達のコンテンツに編集**するか、削除して新規追加：
    - カードの **⋯ → 削除**
    - 右上 **カテゴリー追加** で新規
 3. 編集ダイアログ各項目：
