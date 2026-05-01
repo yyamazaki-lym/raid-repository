@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { Loader2 } from "lucide-react";
 import { ScheduleOnboarding } from "@/components/portal/schedule-onboarding";
 import { SchedulePageBody } from "@/components/portal/schedule-page-body";
 import { fetchJapaneseHolidays } from "@/lib/japanese-holidays";
@@ -48,18 +49,39 @@ export const runtime = "edge";
  * でラップしていたが、「skeleton → 実コンテンツ swap」体感が悪く synchronous
  * に戻していた経緯あり (詳細は git log)。
  *
- * 今回は `fallback={null}` で復活: skeleton を出さず空白のまま実コンテンツを
- * 流すので過去経緯の swap 違和感は発生しない。`(portal)/layout.tsx` の
- * SiteHeader / MainTabs が data 完了直後に flush されて FCP を計上するため、
- * page 側の重い `Promise.all` を Suspense 境界の向こう側に追い出すだけで
- * 効果が出る。h1 は SchedulePageBody 内で既に描画されているので shell には
- * 重複させない。
+ * `(portal)/layout.tsx` の SiteHeader / MainTabs が data 完了直後に flush
+ * されて FCP を計上するため、page 側の重い `Promise.all` を Suspense 境界の
+ * 向こう側に追い出すだけで効果が出る。h1 は SchedulePageBody 内で既に描画
+ * されているので shell には重複させない。
+ *
+ * 2.1 (2026-05-01) TODO #57 — fallback に遅延 fade-in "Now Loading" を投入。
+ * `scheduleLoadingFadeIn` keyframe (globals.css) で `opacity: 0 → 1` を
+ * `0.5s delay + 0.3s duration` で発火。ロードが 500ms 未満なら fallback は
+ * 視認されず TODO #55 part2 の swap 違和感回避は維持、500ms を超える場合
+ * のみ穏やかに "Now Loading" が出るので「真っ白」体感を解消できる。
  */
 export default function SchedulePage() {
   return (
-    <Suspense fallback={null}>
+    <Suspense fallback={<ScheduleLoadingFallback />}>
       <ScheduleContent />
     </Suspense>
+  );
+}
+
+function ScheduleLoadingFallback() {
+  return (
+    <div
+      className="flex min-h-[40vh] items-center justify-center gap-2 text-muted-foreground"
+      style={{
+        opacity: 0,
+        animation: "scheduleLoadingFadeIn 300ms ease-out 500ms forwards",
+      }}
+      role="status"
+      aria-live="polite"
+    >
+      <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+      <span className="text-sm">Now Loading...</span>
+    </div>
   );
 }
 

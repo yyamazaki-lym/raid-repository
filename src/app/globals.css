@@ -593,6 +593,15 @@
   animation: drift 14s linear infinite;
 }
 
+/* TODO #57: スケジュール TOP の Suspense fallback 用、遅延 fade-in。
+ * 短いロード (<500ms) では視認されず TODO #55 part2 の swap 違和感を回避、
+ * 長いロード時のみ "Now Loading" が穏やかに表示される。 */
+@keyframes scheduleLoadingFadeIn {
+  to {
+    opacity: 1;
+  }
+}
+
 /* ============================================================
  * Per-theme background effects — fully distinct atmospheres.
  * Each theme overrides .bg-grid and/or .bg-scanlines with a
