@@ -4,6 +4,14 @@ FF14 レイド固定向けポータル — スケジュール / 軽減表 / ロ�
 
 「1グループ = 1デプロイ」前提で作られた、自分の固定で fork して使うシングルテナントアプリです。
 
+## Live demo
+
+実際の使用感を確認できる公開モックサイト (read-only):
+
+🔗 **https://demo-raid-repository.vercel.app**
+
+サンプルデータ (5 カテゴリ + 過去 8 週分のスケジュール + 軽減表 / ロット表 / 攻略リンク / 動画リンク / マクロ / 募集文等) が seed 済。`PUBLIC_DEMO_MODE=true` で Discord OAuth gate を skip しつつ、書き込みは admin gate で全件弾く 4 層防御 (proxy / app / RLS) で閲覧専用にしています。
+
 ## Deploy
 
 ワンクリックで自分の Vercel + GitHub に fork → デプロイできます (Supabase / Discord Bot は先に作っておく必要あり、詳細は [Setup for your raid group](#setup-for-your-raid-group)):
