@@ -17,6 +17,12 @@ import {
 } from "@/lib/server/auth";
 import { CategoryList } from "./category-list";
 
+// TODO #54 part3 横展開: FFLogs 非依存ページなので Node runtime に切替 (cold start 短縮)。
+// MaintenanceMenu の Server Action 群 (Discord 取込 / YouTube duration / posted_at backfill /
+// クリア再計算) は Discord API / YouTube API / Supabase のみで FFLogs 未使用、
+// Node Lambda IP でも 403 リスク無し。
+export const runtime = "nodejs";
+
 export const metadata = {
   title: "コンテンツ",
 };

@@ -5,6 +5,9 @@ import {
 } from "@/lib/supabase/category-macros";
 import { MacrosList } from "./macros-list";
 
+// TODO #54 part3 横展開: FFLogs 非依存ページなので Node runtime に切替 (cold start 短縮)。
+export const runtime = "nodejs";
+
 export const metadata = {
   title: "マクロ",
 };

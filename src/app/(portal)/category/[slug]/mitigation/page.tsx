@@ -3,6 +3,9 @@ import { SheetUrlOnboarding } from "@/components/portal/sheet-url-onboarding";
 import { findCategoryBySlug } from "@/lib/supabase/categories";
 import { getCurrentUserCanEdit } from "@/lib/server/auth";
 
+// TODO #54 part3 横展開: FFLogs 非依存ページなので Node runtime に切替 (cold start 短縮)。
+export const runtime = "nodejs";
+
 export const metadata = {
   title: "軽減表",
 };
