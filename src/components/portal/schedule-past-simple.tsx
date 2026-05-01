@@ -149,11 +149,13 @@ function DateChip({
     ? `${parseInt(m[2]!, 10)}月${parseInt(m[3]!, 10)}日`
     : `${session.date.getMonth() + 1}月${session.date.getDate()}日`;
 
-  const chipColor = holiday
-    ? "border-rose-400/45 bg-rose-400/10 text-rose-300"
-    : decided
-      ? "border-[var(--neon-cyan)]/40 bg-[var(--neon-cyan)]/8 text-[var(--neon-cyan)]"
-      : "border-border/50 bg-background/30 text-foreground/85";
+  // 祝日は文字色のみ rose にし、border / bg は他の日付チップと揃える
+  // (祝日かどうかの違いを枠まで主張すると、確定済 (cyan) との視覚的
+  // 区別が混線するため)。過去簡易ログは DECISION のみ描画する仕様な
+  // ので実質 decided 分岐固定だが、コードの一貫性のため両方サポート。
+  const chipColor = decided
+    ? `border-[var(--neon-cyan)]/40 bg-[var(--neon-cyan)]/8 ${holiday ? "text-rose-300" : "text-[var(--neon-cyan)]"}`
+    : `border-border/50 bg-background/30 ${holiday ? "text-rose-300" : "text-foreground/85"}`;
 
   const hasLogs = Boolean(videoLink?.logsUrl ?? sessionLogsUrl);
   const tooltip = `${session.rawDate}${decided ? " · 確定" : ""}${

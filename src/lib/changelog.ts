@@ -52,6 +52,10 @@ export const RELEASES: ReleaseEntry[] = [
     date: "2026-05-01",
     parts: [
       {
+        title: "🎨 過去簡易ログの祝日チップを文字色のみ赤に変更 + TODO #55 追加 (スケジュールページ軽量化)",
+        body: "**TODO 外作業 (色修正)**: スケジュール TOP の「過去簡易ログ (日付チップ)」で、祝日に該当する日付チップが border / 背景 / 文字すべて rose 系になっていた。確定済 (DECISION) を示す cyan 枠との視覚的区別が混線するため、**祝日表記は文字色のみ rose** にし、border / bg は他の日付チップと揃えるよう変更。過去簡易ログは DECISION のみ描画する仕様 ([schedule-past-simple.tsx](src/components/portal/schedule-past-simple.tsx) の `recent` filter) なので実質 cyan 枠 + 祝日時のみ文字 rose になる。\n\n**変更箇所**: [src/components/portal/schedule-past-simple.tsx](src/components/portal/schedule-past-simple.tsx) の `chipColor` 派生を `holiday` 優先の三項 → `decided` を外側に置いて `holiday` を文字色のみに分岐する形に変更。\n\n**TODO 追加** ([.claude/HANDOFF.md](.claude/HANDOFF.md)): スケジュールページの初期表示の重さ / レンダリング負荷を削減する案件を **TODO #55** として追加。具体施策は別途調査。",
+      },
+      {
         title: "✅ TODO #54 クローズ — Vercel デプロイ後の遷移ロード再発を Edge → Node runtime 個別判定で解決 (本番体感確認済)",
         body: "**背景**: TODO #54 冒頭の主訴「Vercel デプロイ後、動画ページ / コンテンツカテゴリページへの遷移がロードで止まる」を起点に part1〜part3 で対策を積み重ねてきた。横展開 commit (`abe9765`) 後にユーザーが本番再確認 →「デプロイ後でも表示が早くなった」と確認。主訴解消が確定したため **TODO #54 全体クローズ**。\n\n**最終構成 (時系列)**:\n- part1 (旧): top progress bar (`next-nprogress-bar`) → 本番不可視のまま放置 (cold start 短縮で UX 補助バー不要になった判断で取り下げ)\n- part2 試行 (`35991e8` 等 → `aae6891` で全 revert): 自前 progress bar の 4 ファイル機構 → Vercel build SIGKILL で撤退\n- part2-c (`b11a1fe`): `getClaims()` 化 (asymmetric JWT で Supabase Auth API 往復削減)\n- part2-d (`9e8676f`): リスト系 `<Link prefetch={false}>` 化\n- part3 第一歩 (`585d4e1`): `videos/page.tsx` を Node runtime 化 → 体感改善「早くなった気がする」\n- part3 横展開 (`abe9765`): カテゴリ系 5 ページを Node runtime 化 → 主訴解消「デプロイ後でも表示が早くなった」\n\n**後任エンジニア向け注意**: 親 layout (edge) / 子 page (nodejs) の混在を維持している。Server Action は呼び出し元 page の runtime で実行されるため、Node 化したカテゴリ詳細ページから FFLogs を間接呼び出しするコード (`fetchSessionLogsByDate` / `linkFflogsReportsToVideos` / `setFflogsSessionCookie` 等) を新たに追加すると Cloudflare 403 リスクあり。FFLogs scrape 系の追加開発時は呼び出し元の runtime を確認すること。Pooler 切替は将来の検討対象から外して良い (PostgREST REST API のみのため libpq 接続用 Pooler URL は寄与しない)。\n\n**詳細経緯**: [.claude/todos/54.md](.claude/todos/54.md) (TODO #54 クローズ セクション)",
       },
