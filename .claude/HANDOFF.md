@@ -21,7 +21,7 @@
 
 ## 📌 次回の作業優先度
 
-**TODO #54 part2** (cold start 自体の短縮)。part1 で top progress bar 投入済 → UX 主問題は解消。詳細: `.claude/todos/54.md`
+**TODO #54 part3** (cold start 根本対策)。part1 (top progress bar) / part2-c (`getClaims()` 化, ECC 移行済で発動確認) / part2-d (`prefetch={false}`) 完了。残は Supabase Pooler 切替 / Edge → Node runtime 個別判定 等。progress bar 別アプローチは「ロード長時間下では意義なし」判断で取り下げ。詳細: `.claude/todos/54.md`
 
 ## 未完了 TODO 一覧
 
@@ -52,7 +52,7 @@
 |---|---|---|
 | 7 | スマホでのレイアウト崩れ確認 | 中 |
 | 51 | マイクロインタラクション / ユーザビリティ向上。クリック時の press feedback / hover 時の subtle elevation / loading skeleton / focus ring 強化 / toast の出現位置・タイミング微調整 / フォーム入力の即時 validation / 空状態の illustration etc。framer-motion を残す方針なので springy な質感も維持しつつ portal 全体の polish を 1 周。観点リストの作成 + 優先順位付けから | 中 |
-| 54 | Vercel デプロイ後の遷移ロード再発 — part1 (top progress bar) 完了。残: part2 (cold start 短縮)。詳細: `.claude/todos/54.md` | 中 |
+| 54 | Vercel デプロイ後の遷移ロード再発 — part1 (top progress bar) / part2-c (`getClaims()`, ECC 移行済) / part2-d (`prefetch={false}`) 完了。残: part3 (cold start 根本対策)。詳細: `.claude/todos/54.md` | 中 |
 | 11 | ページ全体のパフォーマンス最適化。phase 1-10 完了済、見送り候補あり。詳細: `.claude/todos/11.md` | — |
 
 ### 🚀 インフラ / デプロイ (コード外作業)
