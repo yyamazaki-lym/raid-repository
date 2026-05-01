@@ -21,7 +21,7 @@
 
 ## 📌 次回の作業優先度
 
-**未定 (ユーザー選択)**。直前作業 TODO #23 (サイト全体のデータ初期化ボタン) はクローズ済。残未完了 TODO は下表参照。次回会話開始時にユーザーが選択。
+**未定 (ユーザー選択)**。直前作業 TODO #1 (同日複数 Logs/動画 のプルダウン選択式) はクローズ済。残未完了 TODO は下表参照。次回会話開始時にユーザーが選択。
 
 ## 未完了 TODO 一覧
 
@@ -39,7 +39,7 @@
 
 | # | 項目 | 規模 |
 |---|---|---|
-| 1 | 同日複数 Logs/動画 のプルダウン選択式 | 中 (schema 設計含む) |
+| _(現在なし)_ | — | — |
 
 ### ⚙ 設定 / 管理系 (settings-dialog / maintenance-menu)
 
@@ -65,6 +65,14 @@
 
 直近版のみ列挙。詳細経緯は `src/lib/changelog.ts`、過去版アーカイブは `.claude/done.md`。
 
+- **2.1 (2026-05-01)**: #1 同日複数 Logs/動画 のプルダウン選択式 — 完了 (commit 8228876)
+  - **対象**: スケジュールページ (`/`) の確定セル日付ボタン横の動画 (Film) / Logs (BarChart3) アイコン。同日に複数 video / FFLogs report が紐付いた場合、従来は `bucket?.shift()` で最古 1 件のみ表示で 2 件目以降にアクセス不可だった
+  - **データ層** ([src/lib/server/session-video-link.ts](src/lib/server/session-video-link.ts)): `buildSessionVideoLinkMap()` の戻り値を `Record<string, SessionVideoLink>` → **`Record<string, SessionVideoLink[]>`** に配列化、bucket 全件保持に変更 (posted_at asc ソート順は維持)。旧仕様 "各 video は最大 1 セッションに紐付く (used-set)" は撤廃 (実害なし)
+  - **UI 層** ([src/components/portal/schedule-list.tsx](src/components/portal/schedule-list.tsx)): 旧 IIFE スロット描画を新 component `SessionActionIcons` に分離。0 件 = 透明 spacer / 1 件 = 従来単一リンク (回帰なし) / 2+ 件 = `DropdownMenu` (`@base-ui/react/menu` 既存) 切替。Trigger は元の Film/BarChart3 アイコン + 右上に件数バッジ (h-2.5 round + neon-cyan/amber 配色)。past の動画 dropdown item は外部リンク `target="_blank"`、upcoming は portal 内 `<Link prefetch={false}>` (`render` prop で `<a>` / `<Link>` 分岐)
+  - **Logs 候補集約**: (A) 各動画の `logsUrl` (= category_links.logs_url) + (B) `sessionLogsUrl` (= schedule_past_sessions.logs_url) を URL で dedup して候補化。(B) 由来は最後に「セッション登録分」ラベルで併記
+  - **追従**: schedule-page-body / schedule-past-simple は型を配列化 + DateChip propagate を `sessionVideoLinks?.[s.rawDate]?.[0] ?? null` で 1 件目のみ抽出 (= 既存挙動 100% 維持、ユーザー合意済)。next-session-card には影響なし (`SessionVideoLink` 未使用)
+  - **スコープ外** (意図的): FFLogs API を click 時に呼んで動画にも紐付いていない同日 report 全件取得は重く認証も要するため見送り、DB 保存済み候補のみ dropdown 化。schema 変更なし (migration 不要)
+  - **検証**: `tsc --noEmit` PASS。dev preview 起動成功 (Next.js 16.2.4 / Ready 410ms / `/` GET 200) で console / server エラー無し。実 DB 上で 2 ヶ月以内の DECISION 過去 session が現在 0 件のため Film/Logs アイコン描画行が無く dropdown 視覚確認は本番デプロイ後に実データで実施予定 (TODO #23 と同様パターン)。コード経路は `videoLinks.length === 0` の spacer fallback で回帰なし
 - **2.1 (2026-05-01)**: #23 サイト全体のデータ初期化ボタン — 完了 (admin 限定 + 2 段階確認)
   - settings-dialog 末尾に **Danger Zone** セクション新設 (`canEdit` のみ表示、rose 系トーンで他セクションと隔離)。MainTabs / maintenance-menu (日常運用 action) とは性質が違う本番破壊級なので意図的に分離配置
   - 新規 [src/components/portal/data-init-confirm-dialog.tsx](src/components/portal/data-init-confirm-dialog.tsx): 2 段階 confirm dialog (step1=warn / step2=`INITIALIZE` テキスト一致で実行 active)。既存 destructive UI (`window.confirm` 1 段階) には前例の無いテキスト入力ガードを本機能専用に新規実装
