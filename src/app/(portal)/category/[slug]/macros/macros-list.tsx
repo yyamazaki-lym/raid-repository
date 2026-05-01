@@ -62,7 +62,7 @@ import {
   useRealtimeRecruitmentTemplates,
   type RecruitmentTemplate,
 } from "@/lib/recruitment-templates-client";
-import { ActionSlot } from "@/components/portal/action-slot";
+import { MirrorActionSlot } from "@/components/portal/action-slot";
 
 /**
  * Macro & template page for a single category. Two sections, both
@@ -236,10 +236,22 @@ function MacrosSection({
             {ordered.length}件
           </span>
         </div>
-        {/* TODO #58: stuck 時のみ SubTabs 右端へ portal、それ以外は元位置 in-flow。
-            stuck 時は同 portal target に Templates の追加ボタンも並ぶため
-            「マクロ追加」と明示してセクション識別子兼用とする。 */}
-        <ActionSlot>
+        {/* TODO #58 part2 (2026-05-01): macros は量が少なく中途半端なスクロール
+            位置で元位置のボタンが見える状態が起こり得るため、stuck 時に元位置から
+            消す (移動) のではなく、元位置はそのまま + 上部 SubTabs 右端に同じ
+            アクションの「複製ボタン」を追加表示する形に変更。両ボタンとも startNew
+            を発火するため state は親の `editing` で一元管理される。 */}
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={startNew}
+          className="gap-1.5 font-mono text-[11px] tracking-[0.18em] uppercase"
+        >
+          <Plus className="h-3.5 w-3.5" aria-hidden />
+          マクロ追加
+        </Button>
+        <MirrorActionSlot>
           <Button
             type="button"
             variant="outline"
@@ -250,7 +262,7 @@ function MacrosSection({
             <Plus className="h-3.5 w-3.5" aria-hidden />
             マクロ追加
           </Button>
-        </ActionSlot>
+        </MirrorActionSlot>
       </header>
 
       {ordered.length === 0 ? (
@@ -565,9 +577,19 @@ function TemplatesSection({
             {templates.length}件
           </span>
         </div>
-        {/* TODO #58: stuck 時のみ SubTabs 右端へ portal。Macros の追加と並ぶため
-            「募集文追加」表記でセクション識別。 */}
-        <ActionSlot>
+        {/* TODO #58 part2: 元位置 in-flow + stuck 時 SubTabs 右端に複製ボタン。
+            macros section と同方針 (元位置のボタンは常時表示 / 複製を上部に追加)。 */}
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={startNew}
+          className="gap-1.5 font-mono text-[11px] tracking-[0.18em] uppercase"
+        >
+          <Plus className="h-3.5 w-3.5" aria-hidden />
+          募集文追加
+        </Button>
+        <MirrorActionSlot>
           <Button
             type="button"
             variant="outline"
@@ -578,7 +600,7 @@ function TemplatesSection({
             <Plus className="h-3.5 w-3.5" aria-hidden />
             募集文追加
           </Button>
-        </ActionSlot>
+        </MirrorActionSlot>
       </header>
 
       {orderedTemplates.length === 0 ? (

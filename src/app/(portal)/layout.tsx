@@ -1,6 +1,7 @@
 import { ChunkErrorHandler } from "@/components/portal/chunk-error-handler";
 import { SiteHeader } from "@/components/portal/site-header";
 import { MainTabs } from "@/components/portal/main-tabs";
+import { MainActionSlotProvider } from "@/components/portal/action-slot";
 import { fetchCategories } from "@/lib/supabase/categories";
 import { getAuthorizedUserRoles } from "@/lib/server/auth";
 import { filterVisibleCategories } from "@/lib/category-visibility";
@@ -42,16 +43,22 @@ export default async function PortalLayout({
     <>
       <ChunkErrorHandler />
       <SiteHeader />
-      <MainTabs initialCategories={visible} userRoleIds={userRoles} />
-      {/* 1.9.30: max-width を 6xl (1152px) → 5xl (1024px) に絞る。
-          PC 横幅が広すぎてカードや表が間延びして見える、という
-          ユーザー指摘への対応。最も広いレイアウトでも 1024px に収まる
-          ようにし、上下方向の縦スクロールを犠牲にしてでも横の密度を
-          上げる。schedule の詳細表は overflow-x-auto があるので
-          必要なら横スクロールに切り替わる。 */}
-      <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6 sm:px-6 sm:py-8">
-        {children}
-      </main>
+      {/* TODO #58 part2: /category 一覧の Maintenance + 追加ボタンを MainTabs
+          右端 portal target へ追従表示するための context。MainTabs と children
+          を一緒に包み、子側 <MainActionSlot> が stuck 状態を push、MainTabs 側
+          <MainActionSlotTarget> が portal 着地 div を提供する。 */}
+      <MainActionSlotProvider>
+        <MainTabs initialCategories={visible} userRoleIds={userRoles} />
+        {/* 1.9.30: max-width を 6xl (1152px) → 5xl (1024px) に絞る。
+            PC 横幅が広すぎてカードや表が間延びして見える、という
+            ユーザー指摘への対応。最も広いレイアウトでも 1024px に収まる
+            ようにし、上下方向の縦スクロールを犠牲にしてでも横の密度を
+            上げる。schedule の詳細表は overflow-x-auto があるので
+            必要なら横スクロールに切り替わる。 */}
+        <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6 sm:px-6 sm:py-8">
+          {children}
+        </main>
+      </MainActionSlotProvider>
     </>
   );
 }

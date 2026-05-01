@@ -3,7 +3,9 @@
 import {
   createContext,
   useContext,
+  useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -13,6 +15,13 @@ import { createPortal } from "react-dom";
 // portal で集約する基盤。Provider は category/[slug]/layout.tsx で SubTabs と
 // children を包む。SubTabs が stuck 状態を push、各 page は <ActionSlot> で
 // 子要素をラップ。stuck=false なら元位置に in-flow、stuck=true で createPortal。
+//
+// part2 (2026-05-01): /category 一覧用に MainActionSlot 一式を追加。MainTabs
+// 右端 portal target + 内部 sentinel + scroll listener で stuck 判定する別系統
+// (SubTabs 用 ActionSlot とは独立した context)。
+// あわせて、macro page 用に MirrorActionSlot を追加。stuck 時のみ portal target
+// に「複製ボタン」を render し、元位置の in-flow ボタンはそのまま残す形。
+// macros は量が少なく中途半端なスクロール位置で元ボタンが見える状態が起こり得るため。
 
 type ActionSlotCtx = {
   stuck: boolean;
@@ -50,4 +59,108 @@ export function ActionSlot({ children }: { children: ReactNode }) {
     return createPortal(<>{children}</>, ctx.target);
   }
   return <>{children}</>;
+}
+
+/**
+ * stuck 時のみ portal target に children を render。in-flow に何も出さない。
+ * 元位置の in-flow ボタンを別途並べた上で、stuck 時に同じハンドラの
+ * 「複製ボタン」を上部 nav へ追加表示するのに使う (macro page 用)。
+ */
+export function MirrorActionSlot({ children }: { children: ReactNode }) {
+  const ctx = useContext(Ctx);
+  if (!ctx || !ctx.stuck || !ctx.target) return null;
+  return createPortal(<>{children}</>, ctx.target);
+}
+
+// ---------- MainActionSlot (TODO #58 part2: /category 一覧用) ---------------
+
+const MainCtx = createContext<ActionSlotCtx | null>(null);
+
+export function MainActionSlotProvider({ children }: { children: ReactNode }) {
+  const [stuck, setStuck] = useState(false);
+  const [target, setTarget] = useState<HTMLElement | null>(null);
+  const value = useMemo<ActionSlotCtx>(
+    () => ({ stuck, setStuck, target, setTarget }),
+    [stuck, target],
+  );
+  return <MainCtx.Provider value={value}>{children}</MainCtx.Provider>;
+}
+
+export function MainActionSlotTarget({ className }: { className?: string }) {
+  const ctx = useContext(MainCtx);
+  if (!ctx) return null;
+  return <div ref={ctx.setTarget} className={className} />;
+}
+
+/**
+ * /category 一覧の Maintenance + 追加ボタンを MainTabs 右端へ追従表示する。
+ * 内部に sentinel を持ち、scroll listener + hysteresis で MainTabs bottom 通過時に
+ * stuck=true を context に push、stuck 時は createPortal で children を MainTabs
+ * 右端 target へ移送、それ以外は in-flow render。
+ *
+ * stuck 閾値: STICK_AT 92 / UNSTICK_AT 108 (MainTabs bottom ≈ mobile 94 / desktop 104,
+ * 16px buffer)。SubTabs ActionSlot と同じ hysteresis パターンで振動ループを抑止。
+ */
+export function MainActionSlot({ children }: { children: ReactNode }) {
+  const ctx = useContext(MainCtx);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const stuckRef = useRef(false);
+  const setStuck = ctx?.setStuck;
+
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel || !setStuck) return;
+    const STICK_AT = 92;
+    const UNSTICK_AT = 108;
+    let raf = 0;
+    const apply = (next: boolean) => {
+      if (stuckRef.current === next) return;
+      stuckRef.current = next;
+      setStuck(next);
+    };
+    const check = () => {
+      raf = 0;
+      const top = sentinel.getBoundingClientRect().top;
+      if (!stuckRef.current && top < STICK_AT) apply(true);
+      else if (stuckRef.current && top > UNSTICK_AT) apply(false);
+    };
+    const onScroll = () => {
+      if (raf) return;
+      raf = requestAnimationFrame(check);
+    };
+    check();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll);
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onScroll);
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, [setStuck]);
+
+  // unmount 時に stuck=false にリセット (ページ遷移で MainActionSlot を使わない
+  // ページに移った時、portal target に残骸が残らないようにする)
+  useEffect(() => {
+    return () => {
+      stuckRef.current = false;
+      setStuck?.(false);
+    };
+  }, [setStuck]);
+
+  if (!ctx) {
+    return (
+      <>
+        <div ref={sentinelRef} aria-hidden className="h-px" />
+        {children}
+      </>
+    );
+  }
+  return (
+    <>
+      <div ref={sentinelRef} aria-hidden className="h-px" />
+      {ctx.stuck && ctx.target
+        ? createPortal(<>{children}</>, ctx.target)
+        : children}
+    </>
+  );
 }

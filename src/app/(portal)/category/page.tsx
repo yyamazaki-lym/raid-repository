@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/card";
 // `category-list.tsx` 経由の `category-form-dialog-lazy` 分割が効く)。
 import { CategoryFormDialog } from "@/components/portal/category-form-dialog";
 import { MaintenanceMenu } from "@/components/portal/maintenance-menu";
+import { MainActionSlot } from "@/components/portal/action-slot";
 import { fetchCategories } from "@/lib/supabase/categories";
 import {
   fetchPracticeSecondsByCategory,
@@ -63,10 +64,19 @@ export default async function CategoryIndexPage() {
             レイドコンテンツ単位で、軽減・ロット・攻略情報・動画などを切り替えます。
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {canEdit && <MaintenanceMenu />}
-          {canEdit && <CategoryFormDialog />}
-        </div>
+        {/* TODO #58 part2 (2026-05-01): admin 限定の Maintenance + 追加ボタン
+            を MainActionSlot で wrap。stuck (= header が画面外へスクロール)
+            時のみ MainTabs 右端 portal target へ移動し、in-flow 時は元位置
+            (page header 右端) に表示。MainActionSlot 内部に sentinel を持ち、
+            scroll listener + hysteresis で stuck 判定する。 */}
+        {canEdit && (
+          <MainActionSlot>
+            <div className="flex flex-wrap items-center gap-2">
+              <MaintenanceMenu />
+              <CategoryFormDialog />
+            </div>
+          </MainActionSlot>
+        )}
       </div>
 
       {!result.ok && (
