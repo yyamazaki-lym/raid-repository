@@ -122,6 +122,17 @@ export function SubTabs({ baseHref }: { baseHref: string }) {
                   <Link
                     href={href}
                     data-active={active}
+                    // TODO #58 part2 fix: Next.js 16 の Link デフォルト挙動は
+                    // 「Page 要素が viewport 内に visible なら scroll 位置を保持」
+                    // (sticky な MainTabs/SubTabs はバイパス判定の対象外)。
+                    // sub-nav stuck (= ページ下方) で別 sub-tab に遷移した時、
+                    // 新ページの main 上端が画面内に部分 visible → scroll 位置
+                    // 維持で sub-nav が stuck 状態のまま再描画されてしまうため、
+                    // タブ切替時のみ明示的に top へスクロールする。同タブクリック
+                    // (active) では発火させない。
+                    onClick={() => {
+                      if (!active) window.scrollTo({ top: 0, behavior: "instant" });
+                    }}
                     className={cn(
                       "relative flex items-center rounded-md font-mono tracking-[0.16em] uppercase transition-all duration-200",
                       stuck
