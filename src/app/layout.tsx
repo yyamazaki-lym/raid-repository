@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, JetBrains_Mono, Orbitron } from "next/font/google";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import { DynamicToaster } from "@/components/ui/toaster-dynamic";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { PRE_HYDRATION_THEME_SCRIPT } from "@/lib/theme-store";
@@ -82,6 +83,12 @@ export default function RootLayout({
           </div>
         </TooltipProvider>
         <DynamicToaster richColors position="top-center" theme="dark" />
+        {/*
+          Vercel Speed Insights — 本番環境でのみデータを送信 (NODE_ENV=production)。
+          dev / preview では beacon を投げないため localhost への影響なし。
+          TODO #55 計測基盤として導入 (TTFB / LCP / FCP / CLS / INP の RUM)。
+        */}
+        <SpeedInsights />
       </body>
     </html>
   );
