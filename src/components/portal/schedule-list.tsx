@@ -53,13 +53,19 @@ import type { SessionVideoLink } from "@/lib/server/session-video-link";
 // "initial-changed" guard, clobbering fetched memos with empty.
 const EMPTY_MEMOS: ScheduleSessionMemo[] = [];
 
-const ATT_TONE: Record<Attendance, string> = {
+const ATT_TONE: Record<string, string> = {
   "◯": "text-[var(--neon-cyan)] bg-[var(--neon-cyan)]/10 border-[var(--neon-cyan)]/30",
   "⏰": "text-amber-300 bg-amber-300/10 border-amber-300/30",
   "△": "text-[var(--neon-violet)] bg-[var(--neon-violet)]/10 border-[var(--neon-violet)]/30",
   "×": "text-rose-400 bg-rose-400/10 border-rose-400/30",
   "－": "text-muted-foreground bg-secondary/30 border-border/50",
 };
+
+// 標準 5 種以外 (例: 昼 / 夜 / 全 など character-sheets 側のカスタム
+// ラベル) に当てるフォールバック tone。amber 系で「未知だが値が入って
+// いる」ことが視認できるように。TODO #60。
+const ATT_TONE_FALLBACK =
+  "text-amber-200 bg-amber-200/10 border-amber-200/30";
 
 const ATT_LEGEND: { symbol: Attendance; label: string }[] = [
   { symbol: "◯", label: "参加可" },
@@ -924,7 +930,7 @@ function SessionRow({
             // baseline within a fixed h-5 box.
             className={
               "inline-flex h-5 min-w-[1.75rem] items-center justify-center rounded-sm border px-1 text-[12px] leading-none transition-transform " +
-              ATT_TONE[att]
+              (ATT_TONE[att] ?? ATT_TONE_FALLBACK)
             }
             aria-label={`${u.name}: ${att}`}
           >
@@ -1093,7 +1099,7 @@ function Legend({
           <span
             className={
               "inline-flex h-4 w-5 items-center justify-center rounded-sm border text-[11px] leading-none " +
-              ATT_TONE[l.symbol]
+              (ATT_TONE[l.symbol] ?? ATT_TONE_FALLBACK)
             }
           >
             {l.symbol}

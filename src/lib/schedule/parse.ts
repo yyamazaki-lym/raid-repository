@@ -15,7 +15,13 @@
  */
 import { decodeHtmlEntities } from "@/lib/html-entities";
 
-export type Attendance = "◯" | "⏰" | "△" | "×" | "－";
+/**
+ * 出欠記号。標準セットは「◯ / ⏰ / △ / × / －」だが、character-sheets
+ * 側では運用カスタムとして「昼 / 夜 / 全」のような任意ラベルも採用される。
+ * 表示側 (`ATT_TONE`) は未知ラベルにフォールバック tone を当てるので、
+ * parser はここで union を絞らず「空文字以外」を全て通す方針 (TODO #60)。
+ */
+export type Attendance = string;
 export type SessionStatus = "CANDIDATE" | "DECISION";
 
 export type ScheduleUser = {
@@ -273,7 +279,7 @@ function parseSessions(html: string, userCount: number): ScheduleSession[] {
     out.push({
       rawDate,
       ...parsed,
-      status: statusMatch[1] as SessionStatus,
+      status,
       attendances,
       rowIndex,
     });
@@ -340,7 +346,7 @@ function parseRawDate(raw: string): {
 }
 
 function isAttendance(s: string): s is Attendance {
-  return s === "◯" || s === "⏰" || s === "△" || s === "×" || s === "－";
+  return s !== "";
 }
 
 /**
