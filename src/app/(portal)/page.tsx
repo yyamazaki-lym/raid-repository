@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { ScheduleOnboarding } from "@/components/portal/schedule-onboarding";
 import { SchedulePageBody } from "@/components/portal/schedule-page-body";
 import { fetchJapaneseHolidays } from "@/lib/japanese-holidays";
@@ -41,20 +42,28 @@ export const metadata = {
 export const runtime = "edge";
 
 /**
- * 1.9 (2026-04-28) — Suspense streaming + skeleton を一旦撤去。
+ * 2.1 (2026-05-01) TODO #55 part2 — Suspense streaming で FCP 改善。
  *
- * 旧 (1.9 (2026-04-28) 初期): 主データロード (`<ScheduleContent>`) を
- * Suspense でラップ → サーバは layout + skeleton を即時 flush し、fetch
- * 完了後に streamed chunk で実コンテンツを置換する構造だった。
+ * 旧 (1.9 (2026-04-28) 初期): 主データロードを `<Suspense fallback={skeleton}>`
+ * でラップしていたが、「skeleton → 実コンテンツ swap」体感が悪く synchronous
+ * に戻していた経緯あり (詳細は git log)。
  *
- * しかし「skeleton → 実コンテンツ swap」の体感が「結局ロード待ちでは？」
- * となり、ユーザー指示で旧来の synchronous server-render に戻している。
- * 全 fetch が `Promise.all` で並列走るので合計時間は最遅 fetch に等しく、
- * その分 skeleton 表示時間も削れている (代わりに layout も含めて全部
- * 待つことになる)。Vercel Region を Tokyo (hnd1) へ寄せた効果も合わせ
- * てここで体感を比較したい。
+ * 今回は `fallback={null}` で復活: skeleton を出さず空白のまま実コンテンツを
+ * 流すので過去経緯の swap 違和感は発生しない。`(portal)/layout.tsx` の
+ * SiteHeader / MainTabs が data 完了直後に flush されて FCP を計上するため、
+ * page 側の重い `Promise.all` を Suspense 境界の向こう側に追い出すだけで
+ * 効果が出る。h1 は SchedulePageBody 内で既に描画されているので shell には
+ * 重複させない。
  */
-export default async function SchedulePage() {
+export default function SchedulePage() {
+  return (
+    <Suspense fallback={null}>
+      <ScheduleContent />
+    </Suspense>
+  );
+}
+
+async function ScheduleContent() {
   const url = await getScheduleSourceUrl();
 
   // No URL yet — render an onboarding card that lets the user register
@@ -85,28 +94,12 @@ export default async function SchedulePage() {
     fetchJapaneseHolidays(),
     fetchRecruitmentTemplatesServer(),
     fetchCategories(),
-    // TODO #19: role-based filtering. Categories with non-empty
-    // `requiredRoleIds` are hidden from the recruitment popover and the
-    // Ultimate-clear bookkeeping below for users without those roles.
     getAuthorizedUserRoles(),
     fetchSessionLogsByDate(),
-    // TODO #11: app_settings の必要キーを 1 SELECT で bulk 取得。
-    // 旧来は schedule_url (getScheduleSourceUrl) と override
-    // (fetchAppSetting) の 2 round-trip だった。`React.cache` 経由で
-    // 同一 render 内の重複呼び出しは元々統合されていたが、別キーは
-    // 別 SELECT になっていたため `.in('key', [...])` で 1 回に統合。
     fetchAppSettings([SCHEDULE_TOP_TEXT_OVERRIDE_KEY]),
-    // TODO #11: 全 memos を一括 prefetch して各 chip / row が個別に
-    // SELECT クエリを発行するのを回避。30+ 行ある状況で memo バッジが
-    // 「遅れて表示」される体感の主因だった。
     fetchScheduleMemosByDateBulk(),
   ]);
   const topTextOverride = appSettings[SCHEDULE_TOP_TEXT_OVERRIDE_KEY] ?? null;
-  // Slim category list passed to the recruitment popover. id+name+slug:
-  // slug is needed for the per-category macro-page link icons added in
-  // the popover (1.9 (2026-04-28)) — clicking the icon opens
-  // `/category/{slug}/macros` for full CRUD on that category's templates.
-  // TODO #19: filter to categories the user's Discord roles can see.
   const visibleCategories = categoriesResult.ok
     ? filterVisibleCategories(categoriesResult.categories, userRoles)
     : [];
@@ -115,15 +108,9 @@ export default async function SchedulePage() {
     name: c.name,
     slug: c.slug,
   }));
-  // 1.9.16: schedule legend label switches MEMBERS → LEGENDS only when
-  // the group has at least one cleared Ultimate (絶◯◯ + status=クリア済).
   const hasUltimateClear = visibleCategories.some(
     (c) => c.name.startsWith("絶") && c.status === "クリア済",
   );
-  // Build the date-→-video map from the actual session list so the
-  // 36h window matching can pick the right video for each session
-  // (vs. the older naive "same JST day" approach which missed videos
-  // uploaded the morning after a late-night session).
   const sessionVideoLinks = result.ok
     ? await buildSessionVideoLinkMap(result.data.sessions)
     : {};
@@ -131,11 +118,6 @@ export default async function SchedulePage() {
     ? { ok: true, session: pickNextDecision(result.data.sessions) }
     : { ok: false, reason: result.reason };
 
-  // Past-visibility state lives client-side now so we can offer a
-  // hover-peek + click-to-pin UX. The header buttons + the list are
-  // wrapped together in a Client Component that owns that state.
-  // Holidays travel as a plain object (date → name) so the date-column
-  // tooltip can show e.g. "建国記念の日" instead of just "祝日".
   return (
     <SchedulePageBody
       result={result}
