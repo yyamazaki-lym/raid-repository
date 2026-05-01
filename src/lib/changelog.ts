@@ -52,6 +52,10 @@ export const RELEASES: ReleaseEntry[] = [
     date: "2026-05-01",
     parts: [
       {
+        title: "🗑️ 死コード除去 — `next-nprogress-bar` 依存と `top-progress-bar.tsx` を撤廃 (TODO #54 part1 取り下げの後始末)",
+        body: "**背景**: TODO #54 part1 (`ad4b29a`) で導入した `next-nprogress-bar` ベースの top progress bar は本番不可視のまま放置されており、TODO #54 part3 (Edge → Node runtime 個別判定) で cold start 短縮が達成されたため「UX 補助バー不要」と判断 → 取り下げ済 (changelog 上の経緯)。しかしコード本体 (`src/components/portal/top-progress-bar.tsx` + `(portal)/layout.tsx` の `<TopProgressBar />`) と package.json の依存が残っており、ローカル `npm install` 状態次第ではモジュール解決失敗で dev server / `tsc` が落ちる状態だった。\n\n**変更**:\n- 削除: [src/components/portal/top-progress-bar.tsx](src/components/portal/top-progress-bar.tsx)\n- [src/app/(portal)/layout.tsx](src/app/(portal)/layout.tsx) から `TopProgressBar` の import + `<TopProgressBar />` 利用箇所を削除\n- [package.json](package.json) から `next-nprogress-bar: ^2.4.7` を削除、[package-lock.json](package-lock.json) を main repo の整合済み版に揃える (= nprogress / nprogress-v2 を lock からも除去)\n\n**動作影響**: 本番では元々非表示のため UX 変化なし。Vercel ビルドは元々 nprogress ありで通っていたので構築面の動作も変わらず。死コード整理のみ。",
+      },
+      {
         title: "🎨 過去簡易ログの祝日チップを文字色のみ赤に変更 + TODO #55 追加 (スケジュールページ軽量化)",
         body: "**TODO 外作業 (色修正)**: スケジュール TOP の「過去簡易ログ (日付チップ)」で、祝日に該当する日付チップが border / 背景 / 文字すべて rose 系になっていた。確定済 (DECISION) を示す cyan 枠との視覚的区別が混線するため、**祝日表記は文字色のみ rose** にし、border / bg は他の日付チップと揃えるよう変更。過去簡易ログは DECISION のみ描画する仕様 ([schedule-past-simple.tsx](src/components/portal/schedule-past-simple.tsx) の `recent` filter) なので実質 cyan 枠 + 祝日時のみ文字 rose になる。\n\n**変更箇所**: [src/components/portal/schedule-past-simple.tsx](src/components/portal/schedule-past-simple.tsx) の `chipColor` 派生を `holiday` 優先の三項 → `decided` を外側に置いて `holiday` を文字色のみに分岐する形に変更。\n\n**TODO 追加** ([.claude/HANDOFF.md](.claude/HANDOFF.md)): スケジュールページの初期表示の重さ / レンダリング負荷を削減する案件を **TODO #55** として追加。具体施策は別途調査。",
       },
