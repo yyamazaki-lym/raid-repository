@@ -88,25 +88,9 @@ ALTER TABLE public.categories
   -- 空配列 / NULL = 従来挙動。
   ADD COLUMN IF NOT EXISTS fflogs_match_keywords         text[];
 
--- Phase 8.1 (1.9.10): track whether category_links.logs_url was set by
--- automated FFLogs sync ('auto') or by manual user edit ('manual'). This
--- lets the sync re-run safely: only 'auto' values are wiped before
--- re-matching, while user-curated 'manual' overrides are preserved.
-ALTER TABLE public.category_links
-  ADD COLUMN IF NOT EXISTS logs_url_source text NOT NULL DEFAULT 'manual';
-ALTER TABLE public.category_links
-  DROP CONSTRAINT IF EXISTS category_links_logs_url_source_check;
-ALTER TABLE public.category_links
-  ADD CONSTRAINT category_links_logs_url_source_check
-  CHECK (logs_url_source IN ('auto','manual'));
-
-ALTER TABLE public.schedule_past_sessions
-  ADD COLUMN IF NOT EXISTS logs_url_source text NOT NULL DEFAULT 'manual';
-ALTER TABLE public.schedule_past_sessions
-  DROP CONSTRAINT IF EXISTS schedule_past_sessions_logs_url_source_check;
-ALTER TABLE public.schedule_past_sessions
-  ADD CONSTRAINT schedule_past_sessions_logs_url_source_check
-  CHECK (logs_url_source IN ('auto','manual'));
+-- NOTE: category_links / schedule_past_sessions の logs_url_source ALTER
+-- は、それぞれ該当 CREATE TABLE 直後に移動済 (新規 fork で table 未作成
+-- 時に ALTER が失敗するのを回避、TODO #8 fix, 2.1 (2026-05-01))。
 
 CREATE INDEX IF NOT EXISTS categories_sort_order_idx
   ON public.categories(sort_order);
@@ -160,6 +144,18 @@ ALTER TABLE public.category_links
 -- on the shared table for symmetry.
 ALTER TABLE public.category_links
   ADD COLUMN IF NOT EXISTS is_favorite boolean NOT NULL DEFAULT false;
+
+-- Phase 8.1 (1.9.10): track whether category_links.logs_url was set by
+-- automated FFLogs sync ('auto') or by manual user edit ('manual'). This
+-- lets the sync re-run safely: only 'auto' values are wiped before
+-- re-matching, while user-curated 'manual' overrides are preserved.
+ALTER TABLE public.category_links
+  ADD COLUMN IF NOT EXISTS logs_url_source text NOT NULL DEFAULT 'manual';
+ALTER TABLE public.category_links
+  DROP CONSTRAINT IF EXISTS category_links_logs_url_source_check;
+ALTER TABLE public.category_links
+  ADD CONSTRAINT category_links_logs_url_source_check
+  CHECK (logs_url_source IN ('auto','manual'));
 
 CREATE INDEX IF NOT EXISTS category_links_category_kind_idx
   ON public.category_links(category_id, kind, sort_order);
@@ -398,6 +394,17 @@ ALTER TABLE public.schedule_past_sessions
 ALTER TABLE public.schedule_past_sessions
   ADD CONSTRAINT schedule_past_sessions_source_check
   CHECK (source IN ('discord','manual','snapshot'));
+
+-- Phase 8.1 (1.9.10): track whether schedule_past_sessions.logs_url was
+-- set by automated FFLogs sync ('auto') or by manual user edit ('manual').
+-- See category_links section above for rationale.
+ALTER TABLE public.schedule_past_sessions
+  ADD COLUMN IF NOT EXISTS logs_url_source text NOT NULL DEFAULT 'manual';
+ALTER TABLE public.schedule_past_sessions
+  DROP CONSTRAINT IF EXISTS schedule_past_sessions_logs_url_source_check;
+ALTER TABLE public.schedule_past_sessions
+  ADD CONSTRAINT schedule_past_sessions_logs_url_source_check
+  CHECK (logs_url_source IN ('auto','manual'));
 
 -- ---- 6. tags (universal — D scheme) ----------------------------------
 
