@@ -21,7 +21,7 @@
 
 ## 📌 次回の作業優先度
 
-**未定 (ユーザー選択)**。直前作業 TODO #57 (スケジュール TOP の Suspense fallback 強化) はクローズ済。残未完了 TODO は下表参照。次回会話開始時にユーザーが選択。
+**未定 (ユーザー選択)**。直前作業 TODO #23 (サイト全体のデータ初期化ボタン) はクローズ済。残未完了 TODO は下表参照。次回会話開始時にユーザーが選択。
 
 ## 未完了 TODO 一覧
 
@@ -45,7 +45,7 @@
 
 | # | 項目 | 規模 |
 |---|---|---|
-| 23 | サイト全体のデータ初期化ボタン (admin 限定、2 段階確認: 1 回目「本当に初期化?」、2 回目「`INITIALIZE` と入力」) | 中 |
+| _(現在なし)_ | — | — |
 
 ### 🌐 サイト全体 / 横断 UI
 
@@ -65,6 +65,13 @@
 
 直近版のみ列挙。詳細経緯は `src/lib/changelog.ts`、過去版アーカイブは `.claude/done.md`。
 
+- **2.1 (2026-05-01)**: #23 サイト全体のデータ初期化ボタン — 完了 (admin 限定 + 2 段階確認)
+  - settings-dialog 末尾に **Danger Zone** セクション新設 (`canEdit` のみ表示、rose 系トーンで他セクションと隔離)。MainTabs / maintenance-menu (日常運用 action) とは性質が違う本番破壊級なので意図的に分離配置
+  - 新規 [src/components/portal/data-init-confirm-dialog.tsx](src/components/portal/data-init-confirm-dialog.tsx): 2 段階 confirm dialog (step1=warn / step2=`INITIALIZE` テキスト一致で実行 active)。既存 destructive UI (`window.confirm` 1 段階) には前例の無いテキスト入力ガードを本機能専用に新規実装
+  - 新規 [src/lib/server/admin-actions.ts](src/lib/server/admin-actions.ts) `initializeAllDataAction()`: `assertAdminResult()` gate + 13 テーブル子→親順 delete (tags / category_macros / recruitment_templates / strategy_docs / mitigation_entries / mitigation_phases / loot_entries / loot_items / category_links / categories / schedule_session_memos / schedule_past_sessions / app_settings)。各テーブルごとに `delete().not(<pk>, "is", null).select(<pk>)` で削除件数を取得、`revalidatePath("/", "layout")` で全ポータル invalidate
+  - 残すデータ: `secrets` (FFLogs OAuth token / session cookie)、storage `category-backgrounds` bucket、`auth.users` / `app_metadata`
+  - 実行後フロー: dialog `onComplete` で settings dialog 自体も close → `router.refresh()` で空状態に切替 → toast (sonner) で「データ初期化完了 — 合計 N 行削除」を表示
+  - 検証: tsc PASS。動作確認は admin login + 実 Supabase 接続必須のため worktree dev preview の env 解決問題により本番側で実施予定
 - **2.1 (2026-05-01)**: #57 スケジュール TOP の Suspense fallback に遅延 fade-in "Now Loading" 投入 — 完了 (commit 5ef8792)
   - 旧 `fallback={null}` (#55 part2) では長いロード時に「真っ白」体感、即時 skeleton では過去 (1.9, 2026-04-28) の swap 違和感再発、という両立困難な要件を **遅延 fade-in** で解消
   - [src/app/(portal)/page.tsx](src/app/(portal)/page.tsx) の fallback を `<ScheduleLoadingFallback />` に置換: Loader2 spinner + "Now Loading..." (role=status / aria-live=polite) を中央配置 (min-h-[40vh])、inline style で `opacity:0` + `animation: scheduleLoadingFadeIn 300ms ease-out 500ms forwards`

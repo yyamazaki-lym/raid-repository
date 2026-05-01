@@ -15,6 +15,7 @@ import {
   BarChart3,
   Link2,
   LogOut,
+  AlertTriangle,
   X,
 } from "lucide-react";
 
@@ -70,6 +71,7 @@ import {
   type ScheduleSnapshotResult,
 } from "@/lib/server/categories-actions";
 import { RELEASES } from "@/lib/changelog";
+import { DataInitConfirmDialog } from "./data-init-confirm-dialog";
 
 type FflogsLinkResultLite = {
   ok: boolean;
@@ -190,6 +192,8 @@ export function SettingsDialog({ canEdit }: { canEdit: boolean }) {
   } | null>(null);
   const [savingCookie, startSaveCookie] = useTransition();
   const [showChangelog, setShowChangelog] = useState(false);
+  // TODO #23 (2.1): 全データ初期化ボタン用の confirm dialog 表示制御。
+  const [showDataInitDialog, setShowDataInitDialog] = useState(false);
   // 1.9 (2026-04-28) TODO #11: 古い changelog エントリーは source から
   // 削除して bundle weight を削減 (`changelog.ts` には最新 5 件のみ
   // 残置)。それ以前の履歴は GitHub commits リンクで確認可能。
@@ -1664,6 +1668,36 @@ export function SettingsDialog({ canEdit }: { canEdit: boolean }) {
               )}
             </div>
           </section>
+
+          {/* TODO #23 (2.1): Danger Zone — 全データ初期化。admin 限定で
+              表示、誤操作防止のため 2 段階確認 dialog (warn → INITIALIZE
+              入力) を必須にしている。settings dialog 末尾に隔離配置 */}
+          {canEdit && (
+            <section className="flex flex-col gap-3">
+              <h3 className="flex items-center gap-2 font-mono text-[11px] tracking-[0.18em] text-rose-300 uppercase">
+                <AlertTriangle className="h-3.5 w-3.5" aria-hidden />
+                Danger Zone
+              </h3>
+              <div className="flex flex-col gap-2.5 rounded-md border border-rose-400/30 bg-rose-400/5 p-3">
+                <p className="text-[12px] leading-relaxed text-rose-100/90">
+                  サイト全体のデータを削除して初期化します。すべてのカテゴリ
+                  / 動画 / 戦略 / 過去スケジュール / アプリ設定が消去されます。
+                  この操作は取り消せません。
+                </p>
+                <div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => setShowDataInitDialog(true)}
+                    className="gap-1.5 border border-rose-400/50 bg-rose-500/20 font-mono text-[11px] tracking-[0.18em] text-rose-100 uppercase hover:bg-rose-500/30"
+                  >
+                    <AlertTriangle className="h-3.5 w-3.5" aria-hidden />
+                    全データ初期化
+                  </Button>
+                </div>
+              </div>
+            </section>
+          )}
         </div>
 
         <DialogFooter className="-mx-0 -mb-0 mt-0 flex-row items-center justify-end gap-2 rounded-b-xl border-t border-border/40 bg-secondary/30 p-3">
@@ -1689,6 +1723,19 @@ export function SettingsDialog({ canEdit }: { canEdit: boolean }) {
           </Button>
         </DialogFooter>
       </DialogContent>
+      <DataInitConfirmDialog
+        open={showDataInitDialog}
+        onOpenChange={setShowDataInitDialog}
+        onComplete={(result) => {
+          if (result.ok) {
+            // 初期化後は settings dialog 自体も閉じてリロード相当の状態に
+            // 戻す。サーバ側で revalidatePath 済みなので router.refresh()
+            // で次回 fetch から空状態を取り直す。
+            setOpen(false);
+            router.refresh();
+          }
+        }}
+      />
     </Dialog>
   );
 }
