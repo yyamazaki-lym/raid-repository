@@ -181,7 +181,7 @@ src/
 ## 開発コマンド
 
 ```bash
-# 型チェック
+# 型チェック (main repo / worktree 共通)
 node ./node_modules/typescript/bin/tsc --noEmit
 
 # 本番ビルド
@@ -190,7 +190,15 @@ node ./node_modules/next/dist/bin/next build
 
 dev server は `.claude/launch.json` の `portal-dev` 設定 (port 3000)。Claude Preview から起動可。
 
-**ローカル env**: `.env.local` を main repo (`D:\workd\portal\.env.local`) からコピー。`.env*` は gitignore 済。
+**ローカル env**: `.env.local` を main repo (`D:\workd\portal\.env.local`) からコピー。`.env*` は gitignore 済。`.env.local` には dev で Discord OAuth gate を抜けるため `DEV_AUTH_BYPASS=true` を含めること (NODE_ENV !== "production" 時のみ偽 admin で短絡、Vercel 本番では fail-safe で無効化)。新 worktree でも main repo の `.env.local` をそのまま流用可。
+
+**worktree での tsc / next build**: worktree は独自の `node_modules` を持たない (main repo のものを共有する設計)。worktree 内から実行する場合は main repo の node_modules を参照すること:
+
+```bash
+node D:/workd/portal/node_modules/typescript/bin/tsc --noEmit
+```
+
+`npm install` は worktree では新規実行不要 (main repo の lockfile / node_modules がそのまま有効)。
 
 ## コミット & Push 運用
 
