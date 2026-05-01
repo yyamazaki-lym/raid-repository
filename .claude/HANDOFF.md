@@ -21,7 +21,7 @@
 
 ## 📌 次回の作業優先度
 
-**未定 (ユーザー選択)**。直前作業 TODO #54 (Vercel デプロイ後の遷移ロード再発) はクローズ済。残未完了 TODO は下表参照。次回会話開始時にユーザーが選択。
+**未定 (ユーザー選択)**。直前作業 TODO #57 (スケジュール TOP の Suspense fallback 強化) はクローズ済。残未完了 TODO は下表参照。次回会話開始時にユーザーが選択。
 
 ## 未完了 TODO 一覧
 
@@ -34,7 +34,6 @@
 | 2 | スケジュール表自前実装 (作成/編集/確定/Discord 通知) | 大 |
 | 38 | スケジュール追加機能 — portal 内から開催候補日を追加する UI が無い。日付 + 時間帯 + 参加可否を入力 → DB 保存 → 描画。TODO #2 と統合可 | 中〜大 |
 | 55 | スケジュールページの軽量化。初期表示の重さ / レンダリング負荷を削減 (具体施策は別途調査) | 中〜大 |
-| 57 | スケジュールページ初回ロード時、日程表示まで背景のみで真っ白に近い状態が続くため "Now Loading" 等のローディング表示を出したい (Suspense fallback の見た目強化想定) | 小〜中 |
 
 ### 📂 カテゴリ詳細ページ (`/category/[slug]`)
 
@@ -66,6 +65,12 @@
 
 直近版のみ列挙。詳細経緯は `src/lib/changelog.ts`、過去版アーカイブは `.claude/done.md`。
 
+- **2.1 (2026-05-01)**: #57 スケジュール TOP の Suspense fallback に遅延 fade-in "Now Loading" 投入 — 完了 (commit 5ef8792)
+  - 旧 `fallback={null}` (#55 part2) では長いロード時に「真っ白」体感、即時 skeleton では過去 (1.9, 2026-04-28) の swap 違和感再発、という両立困難な要件を **遅延 fade-in** で解消
+  - [src/app/(portal)/page.tsx](src/app/(portal)/page.tsx) の fallback を `<ScheduleLoadingFallback />` に置換: Loader2 spinner + "Now Loading..." (role=status / aria-live=polite) を中央配置 (min-h-[40vh])、inline style で `opacity:0` + `animation: scheduleLoadingFadeIn 300ms ease-out 500ms forwards`
+  - [globals.css](src/app/globals.css) に `@keyframes scheduleLoadingFadeIn { to { opacity: 1; } }` 追加
+  - 仕組み: 500ms 未満ロード = fallback は `opacity:0` のまま視認されず #55 part2 の swap 違和感回避は維持、500ms 超過時のみ 300ms かけて穏やかに fade-in
+  - 検証: tsc PASS / HTML stream に fallback markup 含有 / keyframe を CSSOM で確認 / DOM 注入スクショで視覚確認 / console + server エラーなし
 - **2.1 (2026-05-01)**: #58 sub-nav / main-nav stuck 時の page アクションボタン portal 集約 — 完了 (part1 + part2 + fix 統合)
   - **part1 (commit 36e32f9)**: 新規 `action-slot.tsx` (Provider / Target / Slot, createPortal)、SubTabs に slot 配置 (mobile `max-w-[60vw] overflow-x-auto` + `[&>*]:!flex-nowrap`)、stuck 検出を IntersectionObserver から scroll listener + hysteresis (STICK_AT 102 / UNSTICK_AT 118) に置換し nav 高変化由来の振動ループを抑止。strategy / macros / videos 各 page を `<ActionSlot>` でラップ (移動方式)、macros は識別子兼用でテキストを「マクロ追加」「募集文追加」に変更
   - **part2 (commit cb294d4)**: /category 一覧用に MainActionSlot 一式 (`MainActionSlotProvider` / `MainActionSlotTarget` / `MainActionSlot`、SubTabs ActionSlot とは別 context、内部 sentinel + scroll listener + hysteresis STICK_AT 92 / UNSTICK_AT 108、unmount で stuck リセット) を追加。`(portal)/layout.tsx` で MainTabs + main をラップ、`main-tabs.tsx` を `<div.flex>` 構造で ul + MainActionSlotTarget を横並び化、`category/page.tsx` の MaintenanceMenu + CategoryFormDialog を MainActionSlot でラップ。あわせて macros 用に `MirrorActionSlot` (stuck 時のみ portal target に render、in-flow 時 null) を追加し、macros-list.tsx は元位置 in-flow ボタン + MirrorActionSlot で複製ボタンを並置 → stuck 時に元位置 2 + portal 2 の計 4 ボタン両表示 (登録量が少なく中途半端な scroll で元位置が見える状態が起こり得るため)。strategy / videos は part1 の移動方式を継続
