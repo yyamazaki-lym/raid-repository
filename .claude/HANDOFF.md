@@ -1,6 +1,6 @@
 # Raid Repository — 引き継ぎノート
 
-> 2.1 (2026-05-02) 時点。完了済 TODO の詳細は `src/lib/changelog.ts` / 過去版番号は `.claude/done.md`。
+> 2.1 (2026-05-02 part2) 時点。完了済 TODO の詳細は `src/lib/changelog.ts` / 過去版番号は `.claude/done.md`。
 >
 > **新規会話の手順**: このファイルを読んだ後、TODO 一覧は自動表示せずユーザーの要望を待つ。新規 TODO 追記時は part 単位ではなく TODO 完了時のみ統合追記する (part 細分は commit log に任せる)。
 
@@ -65,6 +65,17 @@
 
 直近版のみ列挙。詳細経緯は `src/lib/changelog.ts`、過去版アーカイブは `.claude/done.md`。
 
+- **2.1 (2026-05-02 part2)**: #62 schedule 凡例を character-sheets `/schedule/edit` の「日程オプション」から動的生成 — クローズ
+  - **狙い**: `/schedule/edit` の `<input id="choiceValues" value="全昼夜">` で管理者が登録した記号マスターを portal 凡例 + セル描画に反映 (TODO #60 で許容したカスタムラベルが「色は付くが凡例で説明されない」状態の解消)
+  - **真因**: portal の凡例情報源が `/schedule/list` HTML だけで、マスターが書かれている `/schedule/edit` を一切 fetch していなかった (list 側にはマスターも凡例ブロックも無い)
+  - **実装**:
+    - [src/lib/schedule/parse.ts](src/lib/schedule/parse.ts): `ScheduleAttendanceOptions` 型 (`choices: string[]` + `source: "edit-page" | "fallback-from-list" | "unavailable"`) を新設、`ParsedSchedule.attendanceOptions` 必須化。`parseAttendanceChoicesFromEditHtml(editHtml)` で `id="choiceValues"` の value を codepoint 単位 split (× / ー は除外)、`resolveAttendanceOptions()` で edit 失敗時は sessions の出欠集合から fallback、両方失敗で `unavailable`
+    - [src/lib/schedule/next-session.ts](src/lib/schedule/next-session.ts): `deriveEditUrl()` で list URL から `/schedule/edit?key=...` を派生、`fetchScheduleRaw()` で list と edit を `Promise.all([fetchHtmlOrNull(list), fetchHtmlOrNull(edit)])` で並列 fetch (edit は null 許容、`cache: "no-store"` 維持)
+    - [src/components/portal/schedule-list.tsx](src/components/portal/schedule-list.tsx): `ATT_LEGEND` ハードコード撤去 → `buildAttendanceLegend(choices)` 関数で動的生成 (choices 先頭 + `×` `－` 末尾固定、空なら従来 5 種にフォールバック)。`ATT_LABEL_DICT` に portal 側ラベル辞書 (`◯→参加可` 系 5 種 + `全→全日参加可` `昼→昼参加可` `夜→夜参加可` `早→早朝参加可`)、辞書外は記号のみ表示。`ATT_TONE` に 全/昼/夜/早 を amber fallback トーンで明示マッピング、辞書外も同 fallback
+  - **ラベル方針**: マッピング外は説明なし (記号のみ凡例表示) — ユーザー要望
+  - **表示順**: edit choiceValues の文字順 → 末尾固定 `×` `ー`
+  - **Cache 戦略**: list と同じく `cache: "no-store"` で fresh fetch (TTFB +1〜3s 増、TODO #61 と整合)
+  - **検証**: `tsc --noEmit` PASS。デモ `/schedule/edit` を curl で取得し parser ロジックを Node 単体実行 → `choiceValues="全昼夜"` から `choices=[全,昼,夜]` 抽出 + 凡例 5 件 (`全→全日参加可 / 昼→昼参加可 / 夜→夜参加可 / ×→不可 / －→未回答`) 構築を実証。portal 上 (本番固定 = 標準 5 種) で従来表示と同等の凡例 + regression なしを画面 screenshot で確認
 - **2.1 (2026-05-02)**: #61 DECISION 行 CANDIDATE 描画 + ルール popover「日程状況一覧」混入 — クローズ
   - **真因 (1) Vercel Data Cache stale**: `fetch({ next: { revalidate: 1800 } })` で 30 分 TTL の Data Cache が character-sheets の DECISION 更新を反映できず古い CANDIDATE 一色 HTML が居座り続ける。`revalidatePath("/")` の mutate trigger でも fetch cache key 単位では invalidate されないケースが Edge + Next.js 16 の組み合わせで再現。再 deploy しても Data Cache は別ストレージに persist されるため消えない (TODO #61 起票時の「fresh deploy 後も再現」も同根)
   - **真因 (2) parseTopText の regex 漏れ**: `parseTopText()` の block re が `<table>` 直前の `<p|pre|blockquote|h2|h3|h4>` を拾うヒューリスティック。character-sheets が table 直前に「日程状況一覧」というラベル見出しを出していると `■コメント` 切り捨てより前に混入

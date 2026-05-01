@@ -47,28 +47,56 @@ const STILL_RELEVANT_MS = 6 * 60 * 60 * 1000;
  * create a feedback loop where snapshotted attendance keeps re-saving
  * itself, and complicates "what just changed" logic).
  */
-export async function fetchScheduleRaw(): Promise<ScheduleFetchResult> {
-  const url = await getScheduleSourceUrl();
-  if (!url) return { ok: false, reason: "no-url" };
-
-  let html: string;
+/**
+ * `/schedule/list?key=...` URL から `/schedule/edit?key=...` を派生。
+ * 凡例 (出欠選択肢マスター) は edit ページのフォーム input にしか
+ * 載っていないので、list と並列に取得する。失敗時は null。
+ */
+function deriveEditUrl(listUrl: string): string | null {
   try {
-    const res = await fetch(url, {
+    const u = new URL(listUrl);
+    if (!/\/list(\b|$)/.test(u.pathname)) return null;
+    u.pathname = u.pathname.replace(/\/list(\b|$)/, "/edit");
+    return u.toString();
+  } catch {
+    return null;
+  }
+}
+
+async function fetchHtmlOrNull(target: string): Promise<string | null> {
+  try {
+    const res = await fetch(target, {
       cache: "no-store",
       headers: { "User-Agent": "RaidRepository/0.1" },
     });
     if (!res.ok) {
-      console.warn("[schedule] non-OK response:", res.status);
-      return { ok: false, reason: "fetch-failed" };
+      console.warn("[schedule] non-OK response:", res.status, target);
+      return null;
     }
-    html = await res.text();
+    return await res.text();
   } catch (err) {
-    console.warn("[schedule] fetch error:", err);
-    return { ok: false, reason: "fetch-failed" };
+    console.warn("[schedule] fetch error:", err, target);
+    return null;
   }
+}
+
+export async function fetchScheduleRaw(): Promise<ScheduleFetchResult> {
+  const url = await getScheduleSourceUrl();
+  if (!url) return { ok: false, reason: "no-url" };
+
+  const editUrl = deriveEditUrl(url);
+  // list と edit を並列 fetch。edit 失敗は致命的でない (parse 側で
+  // sessions 由来 fallback / 固定凡例にデグレする) ので Promise.all
+  // でなく allSettled 相当の null 許容で受ける。
+  const [listHtml, editHtml] = await Promise.all([
+    fetchHtmlOrNull(url),
+    editUrl ? fetchHtmlOrNull(editUrl) : Promise.resolve(null),
+  ]);
+
+  if (listHtml === null) return { ok: false, reason: "fetch-failed" };
 
   try {
-    const data = attachUsersToSessions(parseSchedule(html));
+    const data = attachUsersToSessions(parseSchedule(listHtml, editHtml));
     return { ok: true, data };
   } catch (err) {
     console.warn("[schedule] parse error:", err);
