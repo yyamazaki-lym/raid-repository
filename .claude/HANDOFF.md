@@ -41,6 +41,7 @@
 | # | 項目 | 規模 |
 |---|---|---|
 | 1 | 同日複数 Logs/動画 のプルダウン選択式 | 中 (schema 設計含む) |
+| 58 | sub-nav stuck 時に各 page (videos / loot / strategy / mitigation / macros) のアクションボタン群を SubTabs 右端へポータル集約。例: videos の「選択 / ★ / 日付順 / カスタム / 動画追加」が stuck 時に画面外で操作不能なため、stuck 時のみ slot 経由で右端展開。設計案: ActionSlotContext + createPortal、in-flow 時は page 内元位置維持。TODO #56 part2 (commit 51f50c4) の延長 | 中〜大 |
 
 ### ⚙ 設定 / 管理系 (settings-dialog / maintenance-menu)
 
