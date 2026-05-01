@@ -34,6 +34,7 @@
 | 2 | スケジュール表自前実装 (作成/編集/確定/Discord 通知) | 大 |
 | 38 | スケジュール追加機能 — portal 内から開催候補日を追加する UI が無い。日付 + 時間帯 + 参加可否を入力 → DB 保存 → 描画。TODO #2 と統合可 | 中〜大 |
 | 55 | スケジュールページの軽量化。初期表示の重さ / レンダリング負荷を削減 (具体施策は別途調査) | 中〜大 |
+| 61 | デモサイトで `value="DECISION"` 行 (5/02, 5/17, 5/30) が portal 上で全て CANDIDATE (`·`) として描画される。次回開催カードも「未確定」表示で連動。当初 Data Cache stale を仮説としたが TODO #60 fresh deploy 後も再現。**ローカル Node simulation では DECISION 3 件正しく抽出できる**ので Edge runtime の regex 挙動 / mergeStoredPastSessions のタイミング / または別の override 経路が疑われる。次セッションで原因切り分け (まずは parse.ts に temp `console.log` を入れて Vercel Logs で raw HTML サイズ + dateStatus 値を確認するのが最短) | 中 |
 
 ### 📂 カテゴリ詳細ページ (`/category/[slug]`)
 
@@ -65,6 +66,14 @@
 
 直近版のみ列挙。詳細経緯は `src/lib/changelog.ts`、過去版アーカイブは `.claude/done.md`。
 
+- **2.1 (2026-05-01)**: #60 schedule 出欠記号にカスタムラベル (昼/夜/全 等) を許容 — クローズ
+  - **真因**: `parse.ts` の `Attendance` 型 union が `◯ / ⏰ / △ / × / －` の 5 種固定で、`isAttendance()` がそれ以外を全 reject していた。character-sheets 側で運用カスタムとして「昼 / 夜 / 全」のような任意ラベルが入っても portal 上で `―` フォールバックに上書きされる挙動だった
+  - **修正**:
+    - [src/lib/schedule/parse.ts](src/lib/schedule/parse.ts): `Attendance` 型を string union から `string` に拡張、`isAttendance()` を「空文字以外なら通す」に縮小
+    - [src/components/portal/schedule-list.tsx](src/components/portal/schedule-list.tsx): `ATT_TONE` を `Record<string, string>` 化 + `ATT_TONE_FALLBACK` (amber) 新設、`ATT_TONE[att] ?? ATT_TONE_FALLBACK` で安全 lookup
+    - 副次: parseSessions push の status を bucket 済 (DECISION/CANDIDATE) に統一、空 value="" 行が status="" になる経路を除去 (defensive)
+  - **検証**: tsc PASS + デプロイ後 (dpl 2abda84bd01f) demo サイトで 夜=18 / 昼=6 / 全=11 件が amber トーンで描画されることを確認 (commit 2abda84)
+  - **残課題**: 確定/次回開催 反映が「再デプロイ + Data Cache クリア後も改善されない」問題が残存。当初は cache stale 仮説だったが新 deploy でも全 31 行 `·` (CANDIDATE)、`>確定<` は列ヘッダーの 1 件のみ → 別 TODO #61 として起票 (下記)
 - **2.1 (2026-05-01)**: #59 デモサイトでスケジュールメンバー取得が動作しない不具合修正 — クローズ
   - **真因**: `parse.ts` の `RAW_DATE_RE` が `HH:MM~HH:MM` の時間レンジを必須にしていたが、character-sheets では時間未入力のまま運用するスケジュールが存在し (本番でも想定される)、その場合 datetitle は `2026/05/01(金)` のように日付+曜日のみ。`parseRawDate()` が全行で null → `parseSessions()` 全 skip → sessions=0 → メンバー描画不能、という silent skip パスに落ちていた。throw されないため Runtime Logs にも痕跡なし、(d) 派生
   - **切り分け方法**: 当該 character-sheets URL を curl で取得 (HTTP 200, 66KB, 31 行 + 4 ユーザー、構造正常) → parse.ts 同等ロジックを node mjs で再現 → `rawDateOk: 0` で `RAW_DATE_RE` 不一致を特定。datetitle 31 件すべて時間部分なしと確認
