@@ -68,6 +68,22 @@ export async function buildSessionVideoLinkMap(
 ): Promise<Record<string, SessionVideoLink>> {
   if (sessions.length === 0) return {};
 
+  // TODO #55: セッション日付範囲 ± 7d で `posted_at` を pre-filter。
+  // 旧版は category_links を kind=video で全件取得していたが、portal
+  // 運用が長期化すると videos が累積し続けて毎回不要な行を SELECT して
+  // しまっていた。動画はセッション日にしか紐付かないので「セッション
+  // が無い時期」の動画はそもそも match 不可 → DB 段で落とせる。
+  // バッファ ±7d は uploadDate と raid 日が稀にずれる分を吸収する余白。
+  // `posted_at IS NULL` は title-only date 解決経路のフォールバックに
+  // 使われるので OR で残す (extractDateFromTitle が year を含む完全
+  // 日付を拾えれば posted_at 無しでもマッチ可能)。
+  const sessionMs = sessions.map((s) => s.date.getTime());
+  const minMs = Math.min(...sessionMs);
+  const maxMs = Math.max(...sessionMs);
+  const BUFFER_MS = 7 * 24 * 60 * 60 * 1000;
+  const minIso = new Date(minMs - BUFFER_MS).toISOString();
+  const maxIso = new Date(maxMs + BUFFER_MS).toISOString();
+
   const supabase = await createClient();
   type Row = {
     id: string;
@@ -87,6 +103,9 @@ export async function buildSessionVideoLinkMap(
         "categories!inner(slug, name)",
     )
     .eq("kind", "video")
+    .or(
+      `and(posted_at.gte.${minIso},posted_at.lte.${maxIso}),posted_at.is.null`,
+    )
     .order("posted_at", { ascending: true, nullsFirst: false })
     .order("created_at", { ascending: true });
   if (error || !data) return {};

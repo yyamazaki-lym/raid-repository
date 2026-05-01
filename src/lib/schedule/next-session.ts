@@ -4,7 +4,13 @@
  * Combined entry point — exposes both the full schedule (users + sessions)
  * for the native list view, and a derived "next confirmed session".
  *
- * Result is cached for 10 minutes via Next.js `fetch` revalidate.
+ * Result is cached for 30 minutes via Next.js `fetch` revalidate. 旧版は
+ * 10 分だったが、TOP の Promise.all 8 fetch のうち最遅 = この外部
+ * scrape (1〜3s) が cache miss 時に TTFB を支配していたため TODO #55 で
+ * 30 分へ延長。admin 系 mutation (snapshot / カテゴリ編集 / Discord
+ * 取込み等) は既に `revalidatePath("/")` で route の Data Cache を
+ * 無効化しているので、明示的なフレッシュ更新は従来通り効く (TTL
+ * 延長で増えるのは「何もしていない時間帯のキャッシュ命中率」のみ)。
  */
 
 import {
@@ -48,7 +54,7 @@ export async function fetchScheduleRaw(): Promise<ScheduleFetchResult> {
   let html: string;
   try {
     const res = await fetch(url, {
-      next: { revalidate: 600 },
+      next: { revalidate: 1800 },
       headers: { "User-Agent": "RaidRepository/0.1" },
     });
     if (!res.ok) {
