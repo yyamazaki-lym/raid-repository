@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { SubTabs } from "@/components/portal/sub-tabs";
+import { ActionSlotProvider } from "@/components/portal/action-slot";
 import { StatusBadge } from "@/components/portal/status-badge";
 import { findCategoryBySlug } from "@/lib/supabase/categories";
 import { requireDiscordRoles } from "@/lib/server/auth";
@@ -58,9 +59,13 @@ export default async function CategoryDetailLayout({
         </p>
       )}
 
-      <SubTabs baseHref={`/category/${slug}`} />
+      {/* TODO #58: SubTabs と children を ActionSlotProvider 配下に置き、
+          stuck 時に各 page のアクションボタンを SubTabs 右端へ portal 集約。 */}
+      <ActionSlotProvider>
+        <SubTabs baseHref={`/category/${slug}`} />
 
-      <div>{children}</div>
+        <div>{children}</div>
+      </ActionSlotProvider>
     </div>
   );
 }

@@ -62,6 +62,7 @@ import {
   useRealtimeRecruitmentTemplates,
   type RecruitmentTemplate,
 } from "@/lib/recruitment-templates-client";
+import { ActionSlot } from "@/components/portal/action-slot";
 
 /**
  * Macro & template page for a single category. Two sections, both
@@ -235,16 +236,21 @@ function MacrosSection({
             {ordered.length}件
           </span>
         </div>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={startNew}
-          className="gap-1.5 font-mono text-[11px] tracking-[0.18em] uppercase"
-        >
-          <Plus className="h-3.5 w-3.5" aria-hidden />
-          追加
-        </Button>
+        {/* TODO #58: stuck 時のみ SubTabs 右端へ portal、それ以外は元位置 in-flow。
+            stuck 時は同 portal target に Templates の追加ボタンも並ぶため
+            「マクロ追加」と明示してセクション識別子兼用とする。 */}
+        <ActionSlot>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={startNew}
+            className="gap-1.5 font-mono text-[11px] tracking-[0.18em] uppercase"
+          >
+            <Plus className="h-3.5 w-3.5" aria-hidden />
+            マクロ追加
+          </Button>
+        </ActionSlot>
       </header>
 
       {ordered.length === 0 ? (
@@ -559,16 +565,20 @@ function TemplatesSection({
             {templates.length}件
           </span>
         </div>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={startNew}
-          className="gap-1.5 font-mono text-[11px] tracking-[0.18em] uppercase"
-        >
-          <Plus className="h-3.5 w-3.5" aria-hidden />
-          追加
-        </Button>
+        {/* TODO #58: stuck 時のみ SubTabs 右端へ portal。Macros の追加と並ぶため
+            「募集文追加」表記でセクション識別。 */}
+        <ActionSlot>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={startNew}
+            className="gap-1.5 font-mono text-[11px] tracking-[0.18em] uppercase"
+          >
+            <Plus className="h-3.5 w-3.5" aria-hidden />
+            募集文追加
+          </Button>
+        </ActionSlot>
       </header>
 
       {orderedTemplates.length === 0 ? (

@@ -14,6 +14,10 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  ActionSlotTarget,
+  useActionSlotContext,
+} from "@/components/portal/action-slot";
 
 type SubTab = {
   id: string;
@@ -34,23 +38,50 @@ const SUB_TABS: SubTab[] = [
 export function SubTabs({ baseHref }: { baseHref: string }) {
   const pathname = usePathname();
   const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const stuckRef = useRef(false);
   const [stuck, setStuck] = useState(false);
+  // TODO #58: stuck 状態を ActionSlot context へ push し、各 page のアクション
+  // ボタンを SubTabs 右端 portal target へ集約させる。Provider 不在時は無視。
+  const slotCtx = useActionSlotContext();
+  const setSlotStuck = slotCtx?.setStuck;
 
-  // TODO #56: sentinel が画面外 = nav が sticky で stuck している状態。
-  // collapsed 形 (padding / icon / text サイズ縮小) に切替える。
+  // TODO #56 / #58: sentinel が sticky 行に達した瞬間 (= nav 貼り付き) に
+  // collapsed 形へ切替える。IntersectionObserver の単一閾値だと、stuck 化で
+  // nav 高が縮む (~6px) → 末端スクロール位置が clamp されて sentinel が
+  // 再表示 → unstick → nav 高が戻る → sentinel 隠れる、の振動ループに
+  // 入るケースがあった (コンテンツ高がビューポート高ぎりぎりの時)。
+  // hysteresis: stick / unstick で異なる閾値を使い、振動を抑止する。
   useEffect(() => {
     const sentinel = sentinelRef.current;
     if (!sentinel) return;
-    // rootMargin で sticky top 値ぶん上端を引き上げ、nav が貼り付く
-    // 瞬間 (sentinel が sticky 行に達した時) に切替えが発火するようにする。
-    // 値は MainTabs の bottom + 1px gap に合わせて調整 (mobile / sm 差 8px は無視可)。
-    const observer = new IntersectionObserver(
-      ([entry]) => setStuck(!entry.isIntersecting),
-      { threshold: 0, rootMargin: "-102px 0px 0px 0px" },
-    );
-    observer.observe(sentinel);
-    return () => observer.disconnect();
-  }, []);
+    const STICK_AT = 102; // sentinel.top < STICK_AT で stuck=true (MainTabs bottom + 1px)
+    const UNSTICK_AT = 118; // sentinel.top > UNSTICK_AT で stuck=false (16px buffer)
+    let raf = 0;
+    const apply = (next: boolean) => {
+      if (stuckRef.current === next) return;
+      stuckRef.current = next;
+      setStuck(next);
+      setSlotStuck?.(next);
+    };
+    const check = () => {
+      raf = 0;
+      const top = sentinel.getBoundingClientRect().top;
+      if (!stuckRef.current && top < STICK_AT) apply(true);
+      else if (stuckRef.current && top > UNSTICK_AT) apply(false);
+    };
+    const onScroll = () => {
+      if (raf) return;
+      raf = requestAnimationFrame(check);
+    };
+    check();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll);
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onScroll);
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, [setSlotStuck]);
 
   return (
     <>
@@ -60,10 +91,10 @@ export function SubTabs({ baseHref }: { baseHref: string }) {
         data-stuck={stuck}
         className="glass-bar border-border/40 sticky top-[102px] z-15 border-b transition-[top] sm:top-[110px]"
       >
-        <div className="mx-auto max-w-5xl px-2 sm:px-6">
+        <div className="mx-auto flex max-w-5xl items-center gap-1 px-2 sm:px-6">
           <ul
             className={cn(
-              "flex items-center gap-1 overflow-x-auto py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+              "flex min-w-0 flex-1 items-center gap-1 overflow-x-auto py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
             )}
           >
             <li
@@ -130,6 +161,16 @@ export function SubTabs({ baseHref }: { baseHref: string }) {
               );
             })}
           </ul>
+          {/* TODO #58: stuck 時に各 page のアクションボタンが portal される
+              右端スロット。ul (overflow-x-auto) の外に置き、tabs スクロール
+              時もスロット内ボタンが常に visible になる構造。in-flow 時は空。
+              videos page など複数ボタンが portal されるケースで mobile 幅
+              を超えるため、mobile では max-w + overflow-x-auto で内部スクロール
+              可能にする (sm 以上は通常 layout)。
+              `[&>*]:!flex-nowrap` で portaled 直下子の flex-wrap を強制無効化、
+              元 page で multi-row 折返ししていた action 群 (videos の 5 ボタン)
+              も stuck 時は単一行 + 内部横スクロールに正規化する。 */}
+          <ActionSlotTarget className="flex shrink-0 items-center gap-1 max-w-[60vw] overflow-x-auto [scrollbar-width:none] sm:max-w-none [&::-webkit-scrollbar]:hidden [&>*]:!flex-nowrap [&>*]:shrink-0 [&>*>*]:shrink-0" />
         </div>
       </nav>
     </>

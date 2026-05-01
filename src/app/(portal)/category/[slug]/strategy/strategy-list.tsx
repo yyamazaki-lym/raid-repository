@@ -26,6 +26,7 @@ import { Card } from "@/components/ui/card";
 // 1.9 (2026-04-28) TODO #11: lazy 化で初期 client bundle から外す
 import { LinkFormDialog } from "@/components/portal/link-form-dialog-lazy";
 import { LinkCardMenu } from "@/components/portal/link-card-menu-lazy";
+import { ActionSlot } from "@/components/portal/action-slot";
 import {
   setCategoryLinkOrder,
   useRealtimeCategoryLinks,
@@ -96,7 +97,10 @@ export function StrategyList({ categoryId, initial }: Props) {
             </span>
           )}
         </p>
-        <LinkFormDialog categoryId={categoryId} kind="strategy" />
+        {/* TODO #58: stuck 時のみ SubTabs 右端へ portal、それ以外は元位置 in-flow。 */}
+        <ActionSlot>
+          <LinkFormDialog categoryId={categoryId} kind="strategy" />
+        </ActionSlot>
       </div>
 
       {links.length === 0 ? (

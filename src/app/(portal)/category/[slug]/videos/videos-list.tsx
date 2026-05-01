@@ -46,6 +46,7 @@ import { Card } from "@/components/ui/card";
 // 1.9 (2026-04-28) TODO #11: lazy 化で初期 client bundle から外す
 import { LinkFormDialog } from "@/components/portal/link-form-dialog-lazy";
 import { LinkCardMenu } from "@/components/portal/link-card-menu-lazy";
+import { ActionSlot } from "@/components/portal/action-slot";
 import {
   deleteCategoryLink,
   setCategoryLinkFavorite,
@@ -742,6 +743,12 @@ export function VideosList({
             </span>
           )}
         </div>
+        {/* TODO #58: stuck 時のみ SubTabs 右端 portal、それ以外は元位置 in-flow。
+            actions 群 (5要素: 選択 / ★ / 日付順 / カスタム / 動画追加) は state を
+            videos-list 側で持つので、createPortal で DOM 位置だけ移しても state は
+            維持される。flex-wrap は in-flow mobile 多段折返し用、portal 時も同じ
+            class なので slot 内で折返しが起きうる (slot max-w-[60vw] + nav 縦に伸び)。 */}
+        <ActionSlot>
         <div className="flex flex-wrap items-center gap-1.5">
           {/* 複数選択モード切替 (1.9.15) — オフ時はカード本体クリックが
               YouTube 再生 / 編集など通常動作。オン時はカード上に
@@ -845,6 +852,7 @@ export function VideosList({
           </div>
           <LinkFormDialog categoryId={categoryId} kind="video" />
         </div>
+        </ActionSlot>
       </div>
 
       {videos.length === 0 ? (

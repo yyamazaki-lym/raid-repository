@@ -41,7 +41,6 @@
 | # | 項目 | 規模 |
 |---|---|---|
 | 1 | 同日複数 Logs/動画 のプルダウン選択式 | 中 (schema 設計含む) |
-| 58 | sub-nav stuck 時に各 page (videos / loot / strategy / mitigation / macros) のアクションボタン群を SubTabs 右端へポータル集約。例: videos の「選択 / ★ / 日付順 / カスタム / 動画追加」が stuck 時に画面外で操作不能なため、stuck 時のみ slot 経由で右端展開。設計案: ActionSlotContext + createPortal、in-flow 時は page 内元位置維持。TODO #56 part2 (commit 51f50c4) の延長 | 中〜大 |
 
 ### ⚙ 設定 / 管理系 (settings-dialog / maintenance-menu)
 
@@ -67,6 +66,7 @@
 
 直近版のみ列挙。詳細経緯は `src/lib/changelog.ts`、過去版アーカイブは `.claude/done.md`。
 
+- **2.1 (2026-05-01 part6)**: #58 sub-nav stuck 時に各 page アクションボタン (strategy/macros/videos) を SubTabs 右端へ portal 集約 — 新規 `action-slot.tsx` (Provider / Target / Slot, createPortal)、SubTabs に slot 配置 (mobile `max-w-[60vw] overflow-x-auto` + `[&>*]:!flex-nowrap`)、stuck 検出を IntersectionObserver から scroll listener + hysteresis (STICK_AT 102 / UNSTICK_AT 118) に置換し nav 高変化由来の振動ループを抑止。各 page に `<ActionSlot>` でラップ、macros は識別子兼用でテキストを「マクロ追加」「募集文追加」に変更
 - **2.1 (2026-05-01 part5)**: #56 カテゴリ詳細 sub-nav の sticky top 化 + scroll 連動 collapsed 形 — `src/components/portal/sub-tabs.tsx` 単独で実装。IntersectionObserver + 1px sentinel + `rootMargin: -110px` で nav が sticky 行に達した瞬間に `data-stuck` を切替、CSS で padding / icon / font / gap / underline glow を縮小 (`transition-all duration-200`)。z-index は SubTabs `z-15` (MainTabs `z-20` の下) で重なり回避、top は mobile 110 / sm 118 で MainTabs bottom と gap=1px。desktop / mobile 双方で `getBoundingClientRect` 計測検証済
 - **2.1 (2026-05-01 part3+ / part4)**: #20 Vercel ドメイン変更 — コード側ドメイン非依存性を確認 (origin 動的取得 / 環境変数で吸収)、`.env.local.example` に新ドメイン例 + FFLogs OAuth エントリ追記、`.claude/todos/20.md` に dashboard 作業手順チェックリスト整備。実 dashboard 作業 (Vercel project rename / Supabase Auth URL Configuration / FFLogs OAuth Redirect URI) はユーザー側で実施。**part4 (2026-05-01)**: 旧 URL 整理削除完了 — Vercel 旧 alias を 308 Permanent Redirect 化 (curl 検証済)、Supabase Redirect URLs から旧エントリ 3 件削除、FFLogs 3 client すべてから旧 callback URL 削除。詳細: `.claude/todos/20.md`
 - **2.1 (2026-05-01 part3+)**: #54 Vercel デプロイ後の遷移ロード再発 — part3 (cold start 根本対策) を Edge → Node runtime 個別判定 (FFLogs 非依存ページ 6 ファイル) で解決、本番体感確認済。詳細: `.claude/todos/54.md`
