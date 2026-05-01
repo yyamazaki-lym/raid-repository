@@ -34,13 +34,13 @@
 | 2 | スケジュール表自前実装 (作成/編集/確定/Discord 通知) | 大 |
 | 38 | スケジュール追加機能 — portal 内から開催候補日を追加する UI が無い。日付 + 時間帯 + 参加可否を入力 → DB 保存 → 描画。TODO #2 と統合可 | 中〜大 |
 | 55 | スケジュールページの軽量化。初期表示の重さ / レンダリング負荷を削減 (具体施策は別途調査) | 中〜大 |
+| 57 | スケジュールページ初回ロード時、日程表示まで背景のみで真っ白に近い状態が続くため "Now Loading" 等のローディング表示を出したい (Suspense fallback の見た目強化想定) | 小〜中 |
 
 ### 📂 カテゴリ詳細ページ (`/category/[slug]`)
 
 | # | 項目 | 規模 |
 |---|---|---|
 | 1 | 同日複数 Logs/動画 のプルダウン選択式 | 中 (schema 設計含む) |
-| 56 | カテゴリ詳細ページ内の sub-nav (動画 / 軽減表 / ロット管理 / 戦略 / マクロ等) を sticky top 化、スクロール時に 1 行 collapsed 形へ変形させてアクセス維持。現状はページ上部に通常配置で、下スクロール時に画面外へ消えてしまう | 中 |
 
 ### ⚙ 設定 / 管理系 (settings-dialog / maintenance-menu)
 
@@ -66,6 +66,7 @@
 
 直近版のみ列挙。詳細経緯は `src/lib/changelog.ts`、過去版アーカイブは `.claude/done.md`。
 
+- **2.1 (2026-05-01 part5)**: #56 カテゴリ詳細 sub-nav の sticky top 化 + scroll 連動 collapsed 形 — `src/components/portal/sub-tabs.tsx` 単独で実装。IntersectionObserver + 1px sentinel + `rootMargin: -110px` で nav が sticky 行に達した瞬間に `data-stuck` を切替、CSS で padding / icon / font / gap / underline glow を縮小 (`transition-all duration-200`)。z-index は SubTabs `z-15` (MainTabs `z-20` の下) で重なり回避、top は mobile 110 / sm 118 で MainTabs bottom と gap=1px。desktop / mobile 双方で `getBoundingClientRect` 計測検証済
 - **2.1 (2026-05-01 part3+ / part4)**: #20 Vercel ドメイン変更 — コード側ドメイン非依存性を確認 (origin 動的取得 / 環境変数で吸収)、`.env.local.example` に新ドメイン例 + FFLogs OAuth エントリ追記、`.claude/todos/20.md` に dashboard 作業手順チェックリスト整備。実 dashboard 作業 (Vercel project rename / Supabase Auth URL Configuration / FFLogs OAuth Redirect URI) はユーザー側で実施。**part4 (2026-05-01)**: 旧 URL 整理削除完了 — Vercel 旧 alias を 308 Permanent Redirect 化 (curl 検証済)、Supabase Redirect URLs から旧エントリ 3 件削除、FFLogs 3 client すべてから旧 callback URL 削除。詳細: `.claude/todos/20.md`
 - **2.1 (2026-05-01 part3+)**: #54 Vercel デプロイ後の遷移ロード再発 — part3 (cold start 根本対策) を Edge → Node runtime 個別判定 (FFLogs 非依存ページ 6 ファイル) で解決、本番体感確認済。詳細: `.claude/todos/54.md`
 - **2.1 (2026-04-30 part11)**: #44 仕上げ (`#stickyhead` anchor で row_0 表示揃え)
