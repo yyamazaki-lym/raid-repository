@@ -59,17 +59,19 @@
 
 | # | 項目 | 規模 |
 |---|---|---|
-| _(現在なし)_ | — | — |
+| 59 | デモサイトでスケジュールメンバー取得が動作しない調査。`https://demo-raid-repository.vercel.app/` で `app_settings.schedule_url` を実 URL (character-sheets.appspot.com/schedule/list?key=...&userId=...) に UPSERT 済だがメンバー欄が空のまま。原因切り分け候補: (a) Vercel Edge runtime からの character-sheets fetch が Google App Engine の bot 判定で 403、(b) PUBLIC_DEMO_MODE bypass 時の auth.users 不在で `userId` 参照箇所が失敗、(c) RSC cache が空状態で stale、(d) URL の `userId` パラメータが parse.ts で例外化、のいずれか。Vercel Function Logs (Runtime Logs) を最初に確認 | 中 |
 
 ## 完了済み TODO
 
 直近版のみ列挙。詳細経緯は `src/lib/changelog.ts`、過去版アーカイブは `.claude/done.md`。
 
-- **2.1 (2026-05-01)**: #8 Vercel/Supabase 自動導入 + モックサイト — クローズ (part A〜E 完了)
+- **2.1 (2026-05-01)**: #8 Vercel/Supabase 自動導入 + モックサイト — クローズ (part A〜E 完了 + デプロイ実施)
   - **part A〜D (commit 51f8142 / abaec6d / 1f389be)**: `.env.local.example` に FFLogs v2 OAuth + `NEXT_PUBLIC_SCHEDULE_URL` 追記、schema.sql に Section 11 サンプルカテゴリ 5 件 seed、README に Vercel Deploy Button 追加
-  - **part C-ii (本コミット)**: schema.sql Section 12 を新設、Section 11 のサンプル 5 カテゴリに紐付ける demo data bulk seed (category_links 37 / loot_items 18 + entries ~36 / mitigation_phases 20 + entries ~60 / strategy_docs 5 / category_macros 10 / recruitment_templates 5 / tags 11 / past_sessions 18 + memos 8 / app_settings 2)。`DO $$ BEGIN ... END $$` block + sentinel `app_settings.demo_seed_applied=1` で冪等
-  - **part E (本コミット)**: `PUBLIC_DEMO_MODE=true` フラグ追加。proxy.ts に `isPublicDemoModeEnabled()` 追加 (NODE_ENV ガード無し → 本番でも有効、dev bypass の後段配置)、auth.ts に `publicDemoModeUser()` 追加 (roles=[] 固定で書き込みは admin gate + RLS で 4 層防御)。`.env.local.example` に PUBLIC_DEMO_MODE セクション追記
-  - **モックサイト用デプロイ + README リンク追記**: ユーザー側で実 Vercel + Supabase インスタンスをデプロイ後、README にモックサイト URL を追記する想定 (本コミットでは保留)
+  - **part C-ii (commit e494347)**: schema.sql Section 12 を新設、Section 11 のサンプル 5 カテゴリに紐付ける demo data bulk seed (category_links 37 / loot_items 18 + entries ~36 / mitigation_phases 20 + entries ~60 / strategy_docs 5 / category_macros 10 / recruitment_templates 5 / tags 11 / past_sessions 18 + memos 8 / app_settings 2)。`DO $$ BEGIN ... END $$` block + sentinel `app_settings.demo_seed_applied=1` で冪等
+  - **part E (commit e494347)**: `PUBLIC_DEMO_MODE=true` フラグ追加。proxy.ts に `isPublicDemoModeEnabled()` 追加 (NODE_ENV ガード無し → 本番でも有効、dev bypass の後段配置)、auth.ts に `publicDemoModeUser()` 追加 (roles=[] 固定で書き込みは admin gate + RLS で 4 層防御)。`.env.local.example` に PUBLIC_DEMO_MODE セクション追記
+  - **schema fix (commit 429700e)**: 副次発見の長期 bug 修正 — `ALTER TABLE public.category_links` / `schedule_past_sessions` の logs_url_source 関連 ALTER が CREATE TABLE より前に配置されており、新規 fork 時に `ERROR: 42P01: relation does not exist` で失敗していた。各 CREATE TABLE 直後に移動
+  - **デプロイ実施 (commit 4b9ff27 / dbbdda5)**: モックサイト用 Vercel + Supabase 別インスタンスをデプロイ → https://demo-raid-repository.vercel.app/ 稼働。Vercel deploy phase の transient 障害 (`Deploying outputs...` で 4 連続 fail) を空 commit push で回避。動作確認: HTTP 200 + demo data 表示 + `/login` リダイレクト無し (PUBLIC_DEMO_MODE bypass OK)。README に Live demo セクション追記
+  - **データ修正 (commit 94a9ce5)**: 旧 `arc-heavy/cruiser/lightheavy` (name `アルカディア:〜`) と新 `arcadion-heavy` (name `至天の座アルカディア：ヘビー級`) の重複解消 → arcadion-* に統合 (cruiser/lightheavy 新規追加)。Section 9 の INSERT を migration DELETE に置換 (旧 seed name のみ削除する安全弁つき)。Section 13 を新設してユーザー指定の追加コンテンツ 6 件 (3 動画 + 3 攻略、URL ベース NOT EXISTS guard) を投入
 - **2.1 (2026-05-01)**: #23 サイト全体のデータ初期化ボタン — 完了 (admin 限定 + 2 段階確認)
   - settings-dialog 末尾に **Danger Zone** セクション新設 (`canEdit` のみ表示、rose 系トーンで他セクションと隔離)。MainTabs / maintenance-menu (日常運用 action) とは性質が違う本番破壊級なので意図的に分離配置
   - 新規 [src/components/portal/data-init-confirm-dialog.tsx](src/components/portal/data-init-confirm-dialog.tsx): 2 段階 confirm dialog (step1=warn / step2=`INITIALIZE` テキスト一致で実行 active)。既存 destructive UI (`window.confirm` 1 段階) には前例の無いテキスト入力ガードを本機能専用に新規実装
