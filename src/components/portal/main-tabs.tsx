@@ -31,13 +31,13 @@ export function MainTabs({
       className="glass-bar sticky top-14 z-20 sm:top-16"
     >
       <div className="mx-auto max-w-5xl px-2 sm:px-6">
-        <ul className="flex gap-1 overflow-x-auto py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <ul className="flex gap-1 overflow-x-auto py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <li className="shrink-0">
             <Link
               href="/"
               data-active={scheduleActive}
               className={cn(
-                "neon-edge group relative flex items-center gap-2 rounded-md border border-transparent px-4 py-2 font-mono text-[12px] tracking-[0.16em] uppercase transition-colors",
+                "neon-edge group relative flex items-center gap-2 rounded-md border border-transparent px-4 py-1.5 font-mono text-[12px] tracking-[0.16em] uppercase transition-colors",
                 scheduleActive
                   ? "text-foreground"
                   : "text-muted-foreground hover:text-foreground/90",
