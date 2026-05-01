@@ -27,8 +27,8 @@ export default async function CategoryDetailLayout({
   const display = category?.name ?? decoded;
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center gap-3">
+    <div className="flex flex-col gap-2">
+      <div className="-mt-2 flex flex-wrap items-center gap-3">
         <Link
           href="/category"
           className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 font-mono text-[11px] tracking-[0.18em] uppercase transition-colors"
