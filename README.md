@@ -4,6 +4,14 @@ FF14 レイド固定向けポータル — スケジュール / 軽減表 / ロ�
 
 「1グループ = 1デプロイ」前提で作られた、自分の固定で fork して使うシングルテナントアプリです。
 
+## Deploy
+
+ワンクリックで自分の Vercel + GitHub に fork → デプロイできます (Supabase / Discord Bot は先に作っておく必要あり、詳細は [Setup for your raid group](#setup-for-your-raid-group)):
+
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/yyamazaki-lym/raid-repository&env=NEXT_PUBLIC_SUPABASE_URL,NEXT_PUBLIC_SUPABASE_ANON_KEY,SUPABASE_SERVICE_ROLE_KEY,DISCORD_BOT_TOKEN,DISCORD_GUILD_ID&envDescription=Supabase%20%2B%20Discord%20OAuth%20%E5%BF%85%E9%A0%88%20%28%E8%A9%B3%E7%B4%B0%20%3A%20envLink%29&envLink=https://github.com/yyamazaki-lym/raid-repository/blob/main/.env.local.example&project-name=raid-repository&repository-name=raid-repository)
+
+任意の env (DISCORD_ADMIN_ROLE_IDS / YOUTUBE_API_KEY / FFLOGS_API_KEY / FFLogs OAuth / SECRET_ENCRYPTION_KEY / CRON_SECRET) はデプロイ後に Vercel ダッシュボード → Settings → Environment Variables から追加。
+
 ## What it does
 
 ### スケジュール
