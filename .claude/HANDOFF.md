@@ -1,6 +1,6 @@
 # Raid Repository — 引き継ぎノート
 
-> 2.1 (2026-05-02 part2) 時点。完了済 TODO の詳細は `src/lib/changelog.ts` / 過去版番号は `.claude/done.md`。
+> 2.1 (2026-05-02 part3) 時点。完了済 TODO の詳細は `src/lib/changelog.ts` / 過去版番号は `.claude/done.md`。
 >
 > **新規会話の手順**: このファイルを読んだ後、TODO 一覧は自動表示せずユーザーの要望を待つ。新規 TODO 追記時は part 単位ではなく TODO 完了時のみ統合追記する (part 細分は commit log に任せる)。
 
@@ -33,7 +33,6 @@
 |---|---|---|
 | 2 | スケジュール表自前実装 (作成/編集/確定/Discord 通知) | 大 |
 | 38 | スケジュール追加機能 — portal 内から開催候補日を追加する UI が無い。日付 + 時間帯 + 参加可否を入力 → DB 保存 → 描画。TODO #2 と統合可 | 中〜大 |
-| 55 | スケジュールページの軽量化。初期表示の重さ / レンダリング負荷を削減 (具体施策は別途調査) | 中〜大 |
 
 ### 📂 カテゴリ詳細ページ (`/category/[slug]`)
 
@@ -65,6 +64,17 @@
 
 直近版のみ列挙。詳細経緯は `src/lib/changelog.ts`、過去版アーカイブは `.claude/done.md`。
 
+- **2.1 (2026-05-02 part3)**: #55 スケジュールページ軽量化 — Vercel Data Cache を `updateTag` 即時無効化方式で復活 — クローズ
+  - **狙い**: TODO #61 で `cache: "no-store"` 固定にしたため Speed Insights `/` route FCP が 2.86s に悪化していた点を解消
+  - **真因**: `no-store` で character-sheets HTML scrape が毎回 1〜3s。Vercel Data Cache を使えれば cache hit 時はほぼ瞬時だが、TODO #61 の `revalidatePath("/")` が fetch cache key を外せない問題で stale 化リスクがあった
+  - **修正**:
+    - [next-session.ts](src/lib/schedule/next-session.ts): fetch options を `next: { revalidate: 60, tags: [SCHEDULE_CACHE_TAG] }` に変更、`SCHEDULE_CACHE_TAG = "schedule"` を新 export
+    - 新規 [schedule-cache-actions.ts](src/lib/server/schedule-cache-actions.ts) (`"use server"`): `invalidateScheduleCache()` で Next.js 16 の `updateTag(SCHEDULE_CACHE_TAG)` 呼出 (read-your-own-writes セマンティクス)
+    - [schedule-edit-frame-dialog.tsx](src/components/portal/schedule-edit-frame-dialog.tsx): onOpenChange close ハンドラで `invalidateScheduleCache().then(() => router.refresh())` 呼出。portal 経由の編集はキャッシュ即時無効化 + RSC 再 fetch
+  - **TODO #61 との整合**: `updateTag` は tag-based で cache key 単位に直接効くため stale 問題は再発しない。HANDOFF にも明記済の future option を採用
+  - **lag 設計**: TTL 60s なので外部編集 (portal を介さず character-sheets を直接編集) は最大 1 分遅延、portal iframe 経由はほぼ即時
+  - **副次変更**: 設定タブの更新履歴 UI を簡略化 — 各 part の `<details>` 折りたたみ + body 撤去、title 1 行のフラット箇条書きに変更 ([settings-dialog.tsx:1610](src/components/portal/settings-dialog.tsx))。release 単位の折りたたみと最新 1 件 default open は維持
+  - **検証**: `tsc --noEmit` PASS、dev preview で page render + console エラーなし + 更新履歴 1 行表示を確認
 - **2.1 (2026-05-02 part2)**: #62 schedule 凡例を character-sheets `/schedule/edit` の「日程オプション」から動的生成 — クローズ
   - **狙い**: `/schedule/edit` の `<input id="choiceValues" value="全昼夜">` で管理者が登録した記号マスターを portal 凡例 + セル描画に反映 (TODO #60 で許容したカスタムラベルが「色は付くが凡例で説明されない」状態の解消)
   - **真因**: portal の凡例情報源が `/schedule/list` HTML だけで、マスターが書かれている `/schedule/edit` を一切 fetch していなかった (list 側にはマスターも凡例ブロックも無い)

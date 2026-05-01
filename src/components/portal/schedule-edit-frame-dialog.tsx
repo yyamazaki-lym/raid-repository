@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { ExternalLink } from "lucide-react";
 import {
   Dialog,
@@ -8,6 +9,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { invalidateScheduleCache } from "@/lib/server/schedule-cache-actions";
 import { safeHref } from "@/lib/url-safe";
 
 /**
@@ -54,7 +56,18 @@ export function ScheduleEditFrameDialog({
   /** Called when the user closes the dialog. */
   onClose: () => void;
 }) {
+  const router = useRouter();
   const safeUrl = safeHref(url);
+
+  /**
+   * dialog 閉じた時に Vercel Data Cache の `schedule` tag を invalidate
+   * し、router.refresh で RSC を再 fetch (cache miss → fresh HTML 取得)。
+   * 編集が反映されない症状 (TODO #55 cache 戦略) を防ぐ。
+   */
+  const handleClose = () => {
+    void invalidateScheduleCache().then(() => router.refresh());
+    onClose();
+  };
   // Append the appropriate hash anchor. character-sheets honors
   // browser-native fragment scrolling — no cross-origin scripting
   // required. `#row_N` for per-date jumps, `#comment` otherwise.
@@ -79,7 +92,7 @@ export function ScheduleEditFrameDialog({
     <Dialog
       open={url !== null}
       onOpenChange={(open) => {
-        if (!open) onClose();
+        if (!open) handleClose();
       }}
     >
       <DialogContent

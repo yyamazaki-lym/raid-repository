@@ -4,13 +4,14 @@
  * Combined entry point — exposes both the full schedule (users + sessions)
  * for the native list view, and a derived "next confirmed session".
  *
- * **Cache 戦略**: `cache: "no-store"` で毎リクエスト fresh fetch。TODO #55
- * では 30 分 revalidate を採用していたが、TODO #61 で Vercel Data Cache
- * が character-sheets の DECISION 更新を反映できず stale CANDIDATE を
- * 返し続ける症状が再現。`revalidatePath("/")` を mutation で呼んでも
- * data cache のキー単位では invalidate されないケースがあり、
- * single-tenant 低トラフィック portal では「常に最新 + 1〜3s TTFB
- * 増加」を許容するのが運用上素直なため no-store 固定に切替。
+ * **Cache 戦略 (TODO #55 part3)**: `next: { revalidate: 60, tags: [SCHEDULE_CACHE_TAG] }`。
+ * 60 秒 TTL の Vercel Data Cache に乗せて FCP を短縮しつつ、portal 経由の
+ * iframe edit dialog 閉じる時に Server Action `invalidateScheduleCache`
+ * (`updateTag(SCHEDULE_CACHE_TAG)`) で read-your-own-writes 即時無効化する。
+ * TODO #61 で `revalidatePath("/")` が fetch cache key を外せないケースに
+ * 遭遇し `cache: "no-store"` に逃げていたが、tag-based 無効化は cache key
+ * に直接効くので stale 問題を回避できる。外部編集 (portal を介さない
+ * character-sheets 直接編集) は最大 60s lag。
  */
 
 import {
@@ -36,6 +37,13 @@ export type ScheduleFetchResult =
 export type NextSessionResult =
   | { ok: true; session: ScheduleSession | null }
   | { ok: false; reason: "no-url" | "fetch-failed" | "parse-failed" };
+
+/**
+ * Vercel Data Cache tag for character-sheets fetches。
+ * iframe edit dialog 閉じる時に server action から `revalidateTag` で
+ * 明示無効化される (`@/lib/server/schedule-cache-actions`)。
+ */
+export const SCHEDULE_CACHE_TAG = "schedule";
 
 /** "Still relevant" = up to 6 hours past the start time. */
 const STILL_RELEVANT_MS = 6 * 60 * 60 * 1000;
@@ -66,7 +74,7 @@ function deriveEditUrl(listUrl: string): string | null {
 async function fetchHtmlOrNull(target: string): Promise<string | null> {
   try {
     const res = await fetch(target, {
-      cache: "no-store",
+      next: { revalidate: 60, tags: [SCHEDULE_CACHE_TAG] },
       headers: { "User-Agent": "RaidRepository/0.1" },
     });
     if (!res.ok) {
