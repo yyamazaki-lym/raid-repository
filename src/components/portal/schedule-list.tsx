@@ -723,11 +723,13 @@ function SessionRow({
               holidayName={holidayName}
             />
           </SessionMemoPopover>
-          <span className="font-mono text-[11px] tabular-nums text-muted-foreground/85">
-            {session.startTime}
-            <span className="mx-0.5 opacity-60">~</span>
-            {session.endTime}
-          </span>
+          {(session.startTime || session.endTime) && (
+            <span className="font-mono text-[11px] tabular-nums text-muted-foreground/85">
+              {session.startTime}
+              <span className="mx-0.5 opacity-60">~</span>
+              {session.endTime}
+            </span>
+          )}
           {/* Memo indicator placed right after the time per user
               request — visible whether or not video/Logs links are
               also rendered for this row. `reserveSpace` keeps an

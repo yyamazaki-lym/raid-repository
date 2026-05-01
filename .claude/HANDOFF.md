@@ -59,12 +59,20 @@
 
 | # | 項目 | 規模 |
 |---|---|---|
-| 59 | デモサイトでスケジュールメンバー取得が動作しない調査。`https://demo-raid-repository.vercel.app/` で `app_settings.schedule_url` を実 URL (character-sheets.appspot.com/schedule/list?key=...&userId=...) に UPSERT 済だがメンバー欄が空のまま。原因切り分け候補: (a) Vercel Edge runtime からの character-sheets fetch が Google App Engine の bot 判定で 403、(b) PUBLIC_DEMO_MODE bypass 時の auth.users 不在で `userId` 参照箇所が失敗、(c) RSC cache が空状態で stale、(d) URL の `userId` パラメータが parse.ts で例外化、のいずれか。Vercel Function Logs (Runtime Logs) を最初に確認 | 中 |
+| _(現在なし)_ | — | — |
 
 ## 完了済み TODO
 
 直近版のみ列挙。詳細経緯は `src/lib/changelog.ts`、過去版アーカイブは `.claude/done.md`。
 
+- **2.1 (2026-05-01)**: #59 デモサイトでスケジュールメンバー取得が動作しない不具合修正 — クローズ
+  - **真因**: `parse.ts` の `RAW_DATE_RE` が `HH:MM~HH:MM` の時間レンジを必須にしていたが、character-sheets では時間未入力のまま運用するスケジュールが存在し (本番でも想定される)、その場合 datetitle は `2026/05/01(金)` のように日付+曜日のみ。`parseRawDate()` が全行で null → `parseSessions()` 全 skip → sessions=0 → メンバー描画不能、という silent skip パスに落ちていた。throw されないため Runtime Logs にも痕跡なし、(d) 派生
+  - **切り分け方法**: 当該 character-sheets URL を curl で取得 (HTTP 200, 66KB, 31 行 + 4 ユーザー、構造正常) → parse.ts 同等ロジックを node mjs で再現 → `rawDateOk: 0` で `RAW_DATE_RE` 不一致を特定。datetitle 31 件すべて時間部分なしと確認
+  - **修正**:
+    - [src/lib/schedule/parse.ts](src/lib/schedule/parse.ts): `RAW_DATE_RE` の時間レンジ部分を `(?: ... )?` で optional 化、`parseRawDate()` で時間未入力時は `startTime`/`endTime` に空文字、Date は JST 当日 00:00 をフォールバック
+    - [src/components/portal/schedule-list.tsx:650](src/components/portal/schedule-list.tsx) / [src/components/portal/next-session-card.tsx:74](src/components/portal/next-session-card.tsx): 両方空のとき時間レンジ span 自体を render skip (「 ~ 」だけが残る不格好な表示を回避)
+  - **検証**: tsc PASS + 同 curl → 修正後再現スクリプトで sessions=31 件正常抽出を確認。本番動作確認は次回会話で実施
+  - **DB 影響**: `schedule_past_sessions.start_time/end_time` は `text NOT NULL` なので空文字 (NOT NULL を満たす) で互換、schema 変更不要
 - **2.1 (2026-05-01)**: #8 Vercel/Supabase 自動導入 + モックサイト — クローズ (part A〜E 完了 + デプロイ実施)
   - **part A〜D (commit 51f8142 / abaec6d / 1f389be)**: `.env.local.example` に FFLogs v2 OAuth + `NEXT_PUBLIC_SCHEDULE_URL` 追記、schema.sql に Section 11 サンプルカテゴリ 5 件 seed、README に Vercel Deploy Button 追加
   - **part C-ii (commit e494347)**: schema.sql Section 12 を新設、Section 11 のサンプル 5 カテゴリに紐付ける demo data bulk seed (category_links 37 / loot_items 18 + entries ~36 / mitigation_phases 20 + entries ~60 / strategy_docs 5 / category_macros 10 / recruitment_templates 5 / tags 11 / past_sessions 18 + memos 8 / app_settings 2)。`DO $$ BEGIN ... END $$` block + sentinel `app_settings.demo_seed_applied=1` で冪等

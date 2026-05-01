@@ -83,8 +83,12 @@ const DATESTATUS_RE = /class="dateStatus"[\s\S]{0,200}?value="([^"]*)"/;
 const ATTENDANCE_RE =
   /<span\s+class="tag statustag[^"]*"[^>]*>\s*([^<]+?)\s*<\/span>/g;
 
+// 時間レンジ部分は optional。character-sheets では時間未入力のまま
+// 運用するスケジュールが存在し、その場合 datetitle は `2026/05/01(金)`
+// のように日付+曜日のみで返される。時間欠落時は startTime/endTime に
+// 空文字を入れ、Date は JST 当日 00:00 を使う (2.1 (2026-05-01) TODO #59)。
 const RAW_DATE_RE =
-  /^(\d{4})\/(\d{1,2})\/(\d{1,2})\(([日月火水木金土])\)\s*(\d{1,2}):(\d{2})\s*[~〜]\s*(\d{1,2}):(\d{2})$/;
+  /^(\d{4})\/(\d{1,2})\/(\d{1,2})\(([日月火水木金土])\)(?:\s*(\d{1,2}):(\d{2})\s*[~〜]\s*(\d{1,2}):(\d{2}))?$/;
 
 export function parseSchedule(html: string): ParsedSchedule {
   const users = parseUsers(html);
@@ -310,18 +314,19 @@ function parseRawDate(raw: string): {
   const m = RAW_DATE_RE.exec(raw);
   if (!m) return null;
   const [, y, mo, d, dow, sh, sm, eh, em] = m;
+  const hasTime = sh !== undefined && sm !== undefined;
   // The schedule labels are JST. Build a UTC instant directly so the result
   // is timezone-independent — `Date.UTC(...)` plus a -9h shift represents
   // "JST clock time" → "the same moment expressed as UTC". This means the
   // returned Date works correctly whether the server runs on UTC (Vercel) or
-  // local Asia/Tokyo (developer machine).
+  // local Asia/Tokyo (developer machine). Time 未入力時は当日 JST 00:00。
   const date = new Date(
     Date.UTC(
       Number(y),
       Number(mo) - 1,
       Number(d),
-      Number(sh),
-      Number(sm),
+      hasTime ? Number(sh) : 0,
+      hasTime ? Number(sm) : 0,
       0,
       0,
     ) - JST_OFFSET_MS,
@@ -329,8 +334,8 @@ function parseRawDate(raw: string): {
   return {
     date,
     dayOfWeek: dow,
-    startTime: `${sh}:${sm}`,
-    endTime: `${eh}:${em}`,
+    startTime: hasTime ? `${sh}:${sm}` : "",
+    endTime: eh !== undefined && em !== undefined ? `${eh}:${em}` : "",
   };
 }
 
