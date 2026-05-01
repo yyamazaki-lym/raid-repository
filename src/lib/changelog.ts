@@ -49,6 +49,16 @@ export type ReleasePart = {
 export const RELEASES: ReleaseEntry[] = [
   {
     version: "2.1",
+    date: "2026-05-02",
+    parts: [
+      {
+        title: "🐛 TODO #61 クローズ — DECISION 行が CANDIDATE 描画される + ルールに「日程状況一覧」混入を解消",
+        body: "**狙い**: TODO #60 修正後の demo サイト確認で発見した 2 症状を解決。(1) character-sheets で `value=\"DECISION\"` を入れた 5/02・5/17・5/30 が portal 上で全て CANDIDATE (`·`) 描画 + 次回開催カードも「未確定」表示で連動、(2) ルール popover (運用ルール / 注意事項) の冒頭に「日程状況一覧」という character-sheets 側の見出しラベルが混入。\n\n**真因**:\n- (1) **Vercel Data Cache stale**: [next-session.ts](src/lib/schedule/next-session.ts) の `fetch({ next: { revalidate: 1800 } })` で 30 分 TTL の Data Cache を使っていたが、character-sheets で DECISION マークを更新しても Vercel 側の cache key 単位では invalidate されず古い CANDIDATE 一色 HTML が居座り続ける症状。`revalidatePath(\"/\")` を mutate 経路で呼んでも fetch cache が消えないケースが Edge runtime + Next.js 16 の組み合わせで再現。HANDOFF 起票時 (TODO #61) の「fresh deploy 後も再現」も同根 (= 再 deploy では Data Cache は消えない、別ストレージに persist)\n- (2) **parseTopText の regex 漏れ**: [parse.ts](src/lib/schedule/parse.ts) `parseTopText()` が `<table>` 直前の `<p|pre|blockquote|h2|h3|h4>` ブロックを拾うヒューリスティック。character-sheets が table 直前に「日程状況一覧」というラベル見出しを `<h2>`/`<h3>` 等で出していると `■コメント` 切り捨てより前の段階で混入。最近の character-sheets テンプレ変更で見出しが追加された可能性\n\n**切り分け方法**:\n- temp `console.warn(\"[parse-debug]\", ...)` を `parseSessions()` 行頭に投入して Vercel Runtime Logs で実 statusRaw を観測 → 5/02 の statusRaw=`CANDIDATE` (length=9, きれいな ASCII) と判明 → regex 不一致 (a) / 後段上書き (b) は排除、HTML 自体が違う (c) で確定\n- `cache: \"no-store\"` に切替えて再 deploy → `[parse-summary]` log で `decisionCount: 0 → 3` に変化 + ブラウザ確認で 5/02・5/17・5/30 全件で確定 chip 描画 + 「次回開催 = 2026/05/02 確定」表示を確認 → c-1 (Cache stale) 確定\n\n**修正**:\n- [next-session.ts](src/lib/schedule/next-session.ts) `fetchScheduleRaw()` の fetch を `next: { revalidate: 1800 }` から `cache: \"no-store\"` に変更。毎リクエスト fresh fetch (1〜3s TTFB) を許容する代わりに stale 問題を根絶。single-tenant 低トラフィック portal では運用上素直な選択\n- [parse.ts](src/lib/schedule/parse.ts) `CHARSHEETS_LABEL_NOISE` Set を新設 (現状「日程状況一覧」のみ)、`parseTopText` の block ループ内で完全一致時のみ skip。同表現を含むユーザー本文 (例: 「〜の日程状況一覧について」) は誤って消さない\n\n**TTFB トレードオフ**: TODO #55 で `revalidate: 600 → 1800` に伸ばして cache 命中率を稼いでいた経緯と相反するが、stale CANDIDATE で portal が機能しないより毎回 fresh が優先と判断。将来的に `revalidateTag` ベースで iframe edit 完了時 / admin mutate 時に明示 invalidate する形 (option C) に戻す余地は残す。\n\n**動作影響**: スケジュール TOP の TTFB が +1〜3s (cache miss 相当)。代わりに character-sheets 側の DECISION / CANDIDATE / 出欠記号変更が即時反映される。ルール popover に「日程状況一覧」の余分な行が出なくなる (運用ルール / 注意事項のユーザー記述のみ表示)。\n\n**検証**: `tsc --noEmit` PASS。Claude in Chrome で demo サイトを直接ブラウザ確認、5/02・5/17・5/30 全件で「確定」 chip 描画 + 次回開催カード = 2026/05/02 + 確定 chip + ルール popover に「日程状況一覧」が表示されないことを確認 (commit 直前)。",
+      },
+    ],
+  },
+  {
+    version: "2.1",
     date: "2026-05-01",
     parts: [
       {

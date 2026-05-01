@@ -1,6 +1,6 @@
 # Raid Repository — 引き継ぎノート
 
-> 2.1 (2026-04-30) 時点。完了済 TODO の詳細は `src/lib/changelog.ts` / 過去版番号は `.claude/done.md`。
+> 2.1 (2026-05-02) 時点。完了済 TODO の詳細は `src/lib/changelog.ts` / 過去版番号は `.claude/done.md`。
 >
 > **新規会話の手順**: このファイルを読んだ後、TODO 一覧は自動表示せずユーザーの要望を待つ。新規 TODO 追記時は part 単位ではなく TODO 完了時のみ統合追記する (part 細分は commit log に任せる)。
 
@@ -34,7 +34,6 @@
 | 2 | スケジュール表自前実装 (作成/編集/確定/Discord 通知) | 大 |
 | 38 | スケジュール追加機能 — portal 内から開催候補日を追加する UI が無い。日付 + 時間帯 + 参加可否を入力 → DB 保存 → 描画。TODO #2 と統合可 | 中〜大 |
 | 55 | スケジュールページの軽量化。初期表示の重さ / レンダリング負荷を削減 (具体施策は別途調査) | 中〜大 |
-| 61 | デモサイトで `value="DECISION"` 行 (5/02, 5/17, 5/30) が portal 上で全て CANDIDATE (`·`) として描画される。次回開催カードも「未確定」表示で連動。当初 Data Cache stale を仮説としたが TODO #60 fresh deploy 後も再現。**ローカル Node simulation では DECISION 3 件正しく抽出できる**ので Edge runtime の regex 挙動 / mergeStoredPastSessions のタイミング / または別の override 経路が疑われる。次セッションで原因切り分け (まずは parse.ts に temp `console.log` を入れて Vercel Logs で raw HTML サイズ + dateStatus 値を確認するのが最短) | 中 |
 
 ### 📂 カテゴリ詳細ページ (`/category/[slug]`)
 
@@ -66,6 +65,15 @@
 
 直近版のみ列挙。詳細経緯は `src/lib/changelog.ts`、過去版アーカイブは `.claude/done.md`。
 
+- **2.1 (2026-05-02)**: #61 DECISION 行 CANDIDATE 描画 + ルール popover「日程状況一覧」混入 — クローズ
+  - **真因 (1) Vercel Data Cache stale**: `fetch({ next: { revalidate: 1800 } })` で 30 分 TTL の Data Cache が character-sheets の DECISION 更新を反映できず古い CANDIDATE 一色 HTML が居座り続ける。`revalidatePath("/")` の mutate trigger でも fetch cache key 単位では invalidate されないケースが Edge + Next.js 16 の組み合わせで再現。再 deploy しても Data Cache は別ストレージに persist されるため消えない (TODO #61 起票時の「fresh deploy 後も再現」も同根)
+  - **真因 (2) parseTopText の regex 漏れ**: `parseTopText()` の block re が `<table>` 直前の `<p|pre|blockquote|h2|h3|h4>` を拾うヒューリスティック。character-sheets が table 直前に「日程状況一覧」というラベル見出しを出していると `■コメント` 切り捨てより前に混入
+  - **切り分け**: temp `[parse-debug]` log で 5/02 の statusRaw=`CANDIDATE` (length=9, 完全一致) を観測 → regex は問題なし、HTML 自体が違う (c) で確定。`cache: "no-store"` 切替で `decisionCount: 0 → 3` に変化 + ブラウザ確認で 5/02・5/17・5/30 全件確定 chip 描画 → c-1 (Cache stale) 確定
+  - **修正**:
+    - [src/lib/schedule/next-session.ts](src/lib/schedule/next-session.ts) `fetchScheduleRaw()` の fetch を `cache: "no-store"` に固定。毎リクエスト fresh fetch (TTFB +1〜3s) を許容して stale 問題を根絶 (single-tenant 低トラフィック portal なので運用許容範囲)
+    - [src/lib/schedule/parse.ts](src/lib/schedule/parse.ts) `CHARSHEETS_LABEL_NOISE` Set 新設 (現状「日程状況一覧」のみ)、`parseTopText` の block ループ内で完全一致時のみ skip
+  - **TTFB トレードオフ**: TODO #55 の cache TTL 延長 (10→30 分) と相反するが stale で機能しないより fresh 優先。将来 `revalidateTag` ベースで iframe edit 完了時 / admin mutate 時に明示 invalidate する形に戻す余地は残す
+  - **検証**: tsc PASS。Claude in Chrome で demo を直接確認、5/02・5/17・5/30 全件確定 chip + 次回開催 = 2026/05/02 確定 + ルール popover に「日程状況一覧」非表示を確認 (commit 直前)
 - **2.1 (2026-05-01)**: #60 schedule 出欠記号にカスタムラベル (昼/夜/全 等) を許容 — クローズ
   - **真因**: `parse.ts` の `Attendance` 型 union が `◯ / ⏰ / △ / × / －` の 5 種固定で、`isAttendance()` がそれ以外を全 reject していた。character-sheets 側で運用カスタムとして「昼 / 夜 / 全」のような任意ラベルが入っても portal 上で `―` フォールバックに上書きされる挙動だった
   - **修正**:

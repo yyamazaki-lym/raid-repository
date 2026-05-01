@@ -4,13 +4,13 @@
  * Combined entry point — exposes both the full schedule (users + sessions)
  * for the native list view, and a derived "next confirmed session".
  *
- * Result is cached for 30 minutes via Next.js `fetch` revalidate. 旧版は
- * 10 分だったが、TOP の Promise.all 8 fetch のうち最遅 = この外部
- * scrape (1〜3s) が cache miss 時に TTFB を支配していたため TODO #55 で
- * 30 分へ延長。admin 系 mutation (snapshot / カテゴリ編集 / Discord
- * 取込み等) は既に `revalidatePath("/")` で route の Data Cache を
- * 無効化しているので、明示的なフレッシュ更新は従来通り効く (TTL
- * 延長で増えるのは「何もしていない時間帯のキャッシュ命中率」のみ)。
+ * **Cache 戦略**: `cache: "no-store"` で毎リクエスト fresh fetch。TODO #55
+ * では 30 分 revalidate を採用していたが、TODO #61 で Vercel Data Cache
+ * が character-sheets の DECISION 更新を反映できず stale CANDIDATE を
+ * 返し続ける症状が再現。`revalidatePath("/")` を mutation で呼んでも
+ * data cache のキー単位では invalidate されないケースがあり、
+ * single-tenant 低トラフィック portal では「常に最新 + 1〜3s TTFB
+ * 増加」を許容するのが運用上素直なため no-store 固定に切替。
  */
 
 import {
@@ -53,8 +53,6 @@ export async function fetchScheduleRaw(): Promise<ScheduleFetchResult> {
 
   let html: string;
   try {
-    // TODO #61 temp: bypass Vercel Data Cache to test cache-stale hypothesis
-    // (c-1). Revert to `next: { revalidate: 1800 }` once root cause is fixed.
     const res = await fetch(url, {
       cache: "no-store",
       headers: { "User-Agent": "RaidRepository/0.1" },
@@ -71,22 +69,6 @@ export async function fetchScheduleRaw(): Promise<ScheduleFetchResult> {
 
   try {
     const data = attachUsersToSessions(parseSchedule(html));
-    // TODO #61 temp: per-fetch summary for cache/UA debug. Captures
-    // htmlLen + DECISION/CANDIDATE counts so a single Vercel log line
-    // tells us whether the upstream HTML is the right one.
-    let decisionCount = 0;
-    let candidateCount = 0;
-    for (const s of data.sessions) {
-      if (s.status === "DECISION") decisionCount++;
-      else candidateCount++;
-    }
-    console.warn("[parse-summary]", {
-      htmlLen: html.length,
-      usersCount: data.users.length,
-      sessionsCount: data.sessions.length,
-      decisionCount,
-      candidateCount,
-    });
     return { ok: true, data };
   } catch (err) {
     console.warn("[schedule] parse error:", err);

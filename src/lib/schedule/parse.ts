@@ -145,6 +145,11 @@ function parseTopText(html: string): string | null {
   while ((m = blockRe.exec(before)) !== null) {
     const text = stripHtmlToText(m[2]!).trim();
     if (!text || text.length < 2) continue;
+    // character-sheets が table 直前に出すラベル見出し (例:
+    // 「日程状況一覧」) はルール本文ではないので除外。完全一致のみ
+    // skip — 同表現を含むユーザー文 (「〜の日程状況一覧について」等)
+    // は誤って消さない (TODO #61)。
+    if (CHARSHEETS_LABEL_NOISE.has(text)) continue;
     // Skip duplicates (some templates double-render the same text in
     // hidden vs visible variants).
     if (seen.has(text)) continue;
@@ -183,6 +188,14 @@ function stripHtmlToText(html: string): string {
     .replace(/[ \t]*\n[ \t]*/g, "\n")
     .replace(/\n{3,}/g, "\n\n");
 }
+
+/**
+ * character-sheets が table 直前に出す UI ラベル見出しの集合。
+ * `parseTopText` で完全一致時のみ skip 対象 (TODO #61)。
+ */
+const CHARSHEETS_LABEL_NOISE = new Set<string>([
+  "日程状況一覧",
+]);
 
 const COMMENT_HEADER = "■コメント";
 const COMMENT_LINE_RE = /<p\s+class="is-size-7">\s*・([^<]+)<\/p>/g;
@@ -249,19 +262,6 @@ function parseSessions(html: string, userCount: number): ScheduleSession[] {
     const rowHtml = rowMatch[2];
     const dateMatch = DATETITLE_RE.exec(rowHtml);
     const statusMatch = DATESTATUS_RE.exec(rowHtml);
-    // TODO #61 temp debug: capture raw values per row to diagnose
-    // why DECISION rows render as CANDIDATE on the demo site. Remove
-    // once the root cause is identified.
-    const dateRawDebug = dateMatch ? dateMatch[1].trim() : null;
-    const statusRawDebug = statusMatch ? statusMatch[1] : null;
-    console.warn("[parse-debug]", {
-      rowIndex,
-      dateRaw: dateRawDebug,
-      statusRaw: statusRawDebug,
-      statusRawLen: statusRawDebug == null ? null : statusRawDebug.length,
-      dateMatched: !!dateMatch,
-      statusMatched: !!statusMatch,
-    });
     if (!dateMatch || !statusMatch) continue;
 
     const rawDate = dateMatch[1].trim();
