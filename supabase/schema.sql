@@ -564,13 +564,22 @@ BEGIN
   END LOOP;
 END $$;
 
--- ---- 9. Seed initial categories ---------------------------------------
-
-INSERT INTO public.categories (slug, name, status, sort_order) VALUES
-  ('arc-heavy',       'アルカディア:ヘビー級',         '練習中', 0),
-  ('arc-cruiser',     'アルカディア:クルーザー級',     '練習中', 1),
-  ('arc-lightheavy',  'アルカディア:ライトヘビー級',   '未着手', 2)
-ON CONFLICT (slug) DO NOTHING;
+-- ---- 9. Migration: cleanup 旧 seed (TODO #8 follow-up, 2026-05-01) ----
+-- 当初 (1.x 系) は `arc-heavy` / `arc-cruiser` / `arc-lightheavy` の 3 件を
+-- name=`アルカディア:〜` で seed していたが、Section 11 で導入した
+-- `arcadion-heavy` (name=`至天の座アルカディア：ヘビー級`) と内容が重複し
+-- 始めたため、`arcadion-*` に統合する方針に変更。
+--
+-- 安全策: name が **旧 seed の初期値のまま** (= ユーザー編集が入っていない)
+-- 行のみ削除。カスタマイズ済の name の行は意図的に残置 (誤削除防止)。
+-- 旧 seed の categories には子テーブル参照が無いので CASCADE 影響なし。
+DELETE FROM public.categories
+WHERE slug IN ('arc-heavy','arc-cruiser','arc-lightheavy')
+  AND name IN (
+    'アルカディア:ヘビー級',
+    'アルカディア:クルーザー級',
+    'アルカディア:ライトヘビー級'
+  );
 
 -- ---- 9.5. Secrets table (TODO #35, 2.1) -----------------------------
 -- 機密値 (FFLogs session cookie / OAuth access+refresh token 等) を
@@ -668,11 +677,13 @@ CREATE POLICY "category-backgrounds authenticated insert"
 -- 全データ初期化 (TODO #23) で削除した後に schema.sql を再実行すれば
 -- 復活する = リカバリ手段としても機能。
 INSERT INTO public.categories (slug, name, status, sort_order) VALUES
-  ('arcadion-heavy',            '至天の座アルカディア：ヘビー級', '練習中',   10),
-  ('variant-shokyaku',          '異聞商客物語',                   '未着手',   20),
-  ('extreme-cloud-of-darkness', '滅暗闇の雲激闘戦',               'クリア済', 30),
-  ('ultimate-omega-protocol',   '絶オメガ検証戦',                 '未着手',   40),
-  ('ultimate-futures-rewritten','絶もうひとつの未来',             '休止中',   50)
+  ('arcadion-heavy',            '至天の座アルカディア：ヘビー級',         '練習中',   10),
+  ('arcadion-cruiser',          '至天の座アルカディア：クルーザー級',     '練習中',   11),
+  ('arcadion-lightheavy',       '至天の座アルカディア：ライトヘビー級',   '未着手',   12),
+  ('variant-shokyaku',          '異聞商客物語',                           '未着手',   20),
+  ('extreme-cloud-of-darkness', '滅暗闇の雲激闘戦',                       'クリア済', 30),
+  ('ultimate-omega-protocol',   '絶オメガ検証戦',                         '未着手',   40),
+  ('ultimate-futures-rewritten','絶もうひとつの未来',                     '休止中',   50)
 ON CONFLICT (slug) DO NOTHING;
 
 -- ---- 12. Demo data bulk seed (TODO #8 part C-ii, 2.1 (2026-05-01)) ----
@@ -1076,4 +1087,72 @@ BEGIN
 
   RAISE NOTICE 'Demo seed applied — categories=5, links=37, loot_items=18, mitigation_phases=20, mitigation_entries~=60, strategy_docs=5, macros=10, recruit_templates=5, tags=11, past_sessions=18, memos=8.';
 
+END $$;
+
+-- ---- 13. 追加コンテンツ seed (TODO #8 follow-up, 2.1 (2026-05-01)) ----
+-- ユーザー指定の追加リンク。Section 12 の demo seed sentinel に依存せず、
+-- URL ベース NOT EXISTS guard で冪等 (重複 INSERT 回避)。Section 11 で
+-- 新規追加した arcadion-cruiser / arcadion-lightheavy は Section 12 の
+-- demo data 対象外なので、本ブロックがそれらの最初のコンテンツ投入を担う。
+
+DO $$
+DECLARE
+  v_arc      uuid;
+  v_cruiser  uuid;
+  v_lh       uuid;
+BEGIN
+  SELECT id INTO v_arc     FROM public.categories WHERE slug = 'arcadion-heavy';
+  SELECT id INTO v_cruiser FROM public.categories WHERE slug = 'arcadion-cruiser';
+  SELECT id INTO v_lh      FROM public.categories WHERE slug = 'arcadion-lightheavy';
+
+  -- arcadion-heavy: 動画 + 攻略
+  IF v_arc IS NOT NULL THEN
+    INSERT INTO public.category_links (category_id, kind, title, url, source, sort_order)
+    SELECT v_arc, 'video', 'M5S〜M8S 解説動画', 'https://www.youtube.com/watch?v=ZHoZ5981rPg', 'manual', 99
+    WHERE NOT EXISTS (
+      SELECT 1 FROM public.category_links
+      WHERE category_id = v_arc AND url = 'https://www.youtube.com/watch?v=ZHoZ5981rPg'
+    );
+
+    INSERT INTO public.category_links (category_id, kind, title, url, source, sort_order)
+    SELECT v_arc, 'strategy', 'FFXIV パッチ 7.4 公式 — ヘビー級', 'https://jp.finalfantasyxiv.com/dawntrail/patch_7_4/', 'manual', 99
+    WHERE NOT EXISTS (
+      SELECT 1 FROM public.category_links
+      WHERE category_id = v_arc AND url = 'https://jp.finalfantasyxiv.com/dawntrail/patch_7_4/'
+    );
+  END IF;
+
+  -- arcadion-cruiser: 動画 + 攻略
+  IF v_cruiser IS NOT NULL THEN
+    INSERT INTO public.category_links (category_id, kind, title, url, source, sort_order)
+    SELECT v_cruiser, 'video', 'クルーザー級 解説動画', 'https://www.youtube.com/watch?v=X4rIEOt6Wl8', 'manual', 0
+    WHERE NOT EXISTS (
+      SELECT 1 FROM public.category_links
+      WHERE category_id = v_cruiser AND url = 'https://www.youtube.com/watch?v=X4rIEOt6Wl8'
+    );
+
+    INSERT INTO public.category_links (category_id, kind, title, url, source, sort_order)
+    SELECT v_cruiser, 'strategy', 'FFXIV パッチ 7.2 公式 — クルーザー級', 'https://jp.finalfantasyxiv.com/dawntrail/patch_7_2/', 'manual', 0
+    WHERE NOT EXISTS (
+      SELECT 1 FROM public.category_links
+      WHERE category_id = v_cruiser AND url = 'https://jp.finalfantasyxiv.com/dawntrail/patch_7_2/'
+    );
+  END IF;
+
+  -- arcadion-lightheavy: 動画 + 攻略
+  IF v_lh IS NOT NULL THEN
+    INSERT INTO public.category_links (category_id, kind, title, url, source, sort_order)
+    SELECT v_lh, 'video', 'ライトヘビー級 解説動画', 'https://www.youtube.com/watch?v=aSU-swmCxVM', 'manual', 0
+    WHERE NOT EXISTS (
+      SELECT 1 FROM public.category_links
+      WHERE category_id = v_lh AND url = 'https://www.youtube.com/watch?v=aSU-swmCxVM'
+    );
+
+    INSERT INTO public.category_links (category_id, kind, title, url, source, sort_order)
+    SELECT v_lh, 'strategy', 'FFXIV: 黄金のレガシー 公式', 'https://jp.finalfantasyxiv.com/dawntrail/', 'manual', 0
+    WHERE NOT EXISTS (
+      SELECT 1 FROM public.category_links
+      WHERE category_id = v_lh AND url = 'https://jp.finalfantasyxiv.com/dawntrail/'
+    );
+  END IF;
 END $$;
