@@ -17,7 +17,42 @@
 
 ## 🔄 保留オペレーション
 
-_(現在なし)_
+### TODO #65 残課題: dropdown スクロール時の3段階ちらつき (本番再現)
+
+**現状**: `054859e` (PR [#12](https://github.com/yyamazaki-lym/raid-repository/pull/12)) + `0e60e6d` (PR [#13](https://github.com/yyamazaki-lym/raid-repository/pull/13)) で実装済。動作確認の結果、4 項目中 ① / ② / ④ は OK、③ のみ修正後も再現。
+
+**症状 (本番、過去詳細表で確認)**: 動画/Logs アイコン dropdown を開いた状態で wheel スクロールすると、
+1. スクロール中にポップアップが**1 度消える**
+2. その直後に**1 度現れる**
+3. 最終的に消える
+
+= 単純な閉じきりではなく 3 段階の re-toggle が発生。
+
+**現実装** ([src/lib/use-scroll-closing-menu.ts](src/lib/use-scroll-closing-menu.ts)): `modal={false}` + window scroll listener (capture phase 撤廃済) + 150ms grace period で controlled open。capture phase 由来のフォールスポジティブは排除した。
+
+**仮説**:
+- (a) Base UI Menu の controlled `open` と内部 state が非同期で、`setOpen(false)` 後に Base UI 側の outside-click / pointer-dismissal が再 open 検出 → 再 close の往復
+- (b) Floating UI Positioner の autoUpdate が scroll で position 再計算 → mount/unmount 振動
+- (c) React 19 の deferred state update でフレーム跨ぎの flicker、複数の連続 scroll event で setOpen(false) → setOpen(true) が交互に呼ばれる
+- (d) Base UI 側の anchor tracking で trigger が viewport 外に出た時の anchorHidden 切替が再 mount を誘発
+
+**次回着手案**:
+1. 仮説検証: Chrome DevTools の Performance + console.log で何が起きてるか観察 (open state 推移 + Base UI data-state attribute 推移)
+2. Strategy A — `disableAnchorTracking` を Positioner に渡し autoUpdate を切る (= a/b/d 切り分け)
+3. Strategy B — 1 度 close したらしばらく再 open しないように guard する (lock state pattern)
+4. Strategy C — `modal={false}` を捨てて modal モードに戻し、scroll を許可する別ルート (例: dropdown 全体を Popover に切替、Popover の `dismissOnPointerDown` 等を活用)
+
+**次回開始テンプレ**:
+```
+TODO #65 残課題 (③ dropdown スクロール時のちらつき) を修正。
+
+【症状再掲】過去詳細表で dropdown 開 → wheel scroll で 1 度消え → 1 度出 → 最終 close (3 段階)
+【現実装】src/lib/use-scroll-closing-menu.ts (capture phase 撤廃 + 150ms grace period)
+【仮説】Base UI Menu の controlled open と autoUpdate / outside-click の race
+【手順】仮説検証 (DevTools 観察) → A/B/C のうち最小修正案を提案 → 実装
+
+参考: HANDOFF.md 保留オペレーション、commits 054859e + 0e60e6d
+```
 
 ## 📌 次回の作業優先度
 
