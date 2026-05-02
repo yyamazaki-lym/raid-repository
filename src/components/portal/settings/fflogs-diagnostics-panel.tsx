@@ -13,6 +13,14 @@
  * `userTypeFields` は logsResult 直下のフィールドだが UI 上は diag
  * パネル内 nested で描画されるため、props として一緒に受け渡し本
  * component 内で出し分ける。
+ *
+ * **part10 (2026-05-02)**: 親側で controlled `<details onToggle>` +
+ * 条件マウント (`{diagOpen && <FflogsDiagnosticsPanel />}`) する設計に
+ * 切替えたため、本 component は **root `<details>` を持たない**。
+ * 親が開閉を制御し、本 component は「diag が開かれた瞬間に mount される
+ * body 部分」だけを返す。これにより `logsResult.diag` が真値で **かつ**
+ * details が開かれた瞬間に初めて chunk fetch される (連動実行のみで
+ * 開かない場合は fetch されない)。
  */
 
 export type FflogsDiagInfo = {
@@ -44,16 +52,7 @@ export function FflogsDiagnosticsPanel({
   userTypeFields?: string[];
 }) {
   return (
-    <details className="mt-2 group/diag">
-      <summary className="cursor-pointer list-none text-[10px] text-muted-foreground/80 hover:text-foreground/90 [&::-webkit-details-marker]:hidden">
-        <span className="inline-flex items-center gap-1">
-          <span className="text-amber-300/70 transition-transform group-open/diag:rotate-90">
-            ▸
-          </span>
-          詳細診断（v2 / HTML スクレイプの取得状況）
-        </span>
-      </summary>
-      <div className="mt-1.5 ml-3.5 flex flex-col gap-0.5 font-mono text-[10px] text-muted-foreground">
+    <div className="mt-1.5 ml-3.5 flex flex-col gap-0.5 font-mono text-[10px] text-muted-foreground">
         {diag.v2Me && (
           <p>
             v2 currentUser: id=
@@ -204,8 +203,7 @@ export function FflogsDiagnosticsPanel({
             </pre>
           </details>
         )}
-      </div>
-    </details>
+    </div>
   );
 }
 
