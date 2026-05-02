@@ -293,3 +293,33 @@ Remove-Item $path
 ## バージョン更新
 
 `src/lib/changelog.ts` の `RELEASES[0]` に新エントリ追加 (or 当日中に複数 part を追加)。`MAJOR.MINOR (YYYY-MM-DD)` 方式、patch は使わない。
+
+## Claude Code 自動化セットアップ
+
+`8850b78` (2026-05-02) でプロジェクト全体に導入。
+
+### Project scope (`.claude/` 配下、git 管理)
+
+- **skills/**
+  - `check-next-docs` — Next.js 16 / React 19 の API を編集する前に `node_modules/next/dist/docs/` を必ず読む
+  - `handoff-update` — `/handoff-update` で完了 TODO を本ファイルに統合追記
+- **agents/**
+  - `supabase-rls-reviewer` — RLS / GRANT / ポリシー整合の読み取り監査
+  - `next16-migration-reviewer` — async params / fetch caching / use() 等の現行 API 適合監査
+- **hooks/** (`.claude/settings.json` に登録)
+  - `PreToolUse(Edit|Write|MultiEdit)` → `block-sensitive-files.sh` (`.env*` / lock 自動編集を遮断、`.env*.example` は許可)
+  - `PostToolUse(Edit|Write|MultiEdit)` → `eslint-fix.sh` (`.ts|.tsx|.js|.jsx|.mjs|.cjs` のみ `eslint --fix`、失敗時もブロックしない)
+
+### User scope (`~/.claude.json` 直下の `mcpServers`、コミット禁止)
+
+| MCP | コマンド | 環境変数 |
+|---|---|---|
+| `supabase` | `npx -y @supabase/mcp-server-supabase --read-only --project-ref=jmzjwesxqnaqmysuzrjt` | `SUPABASE_ACCESS_TOKEN` |
+| `context7` | `npx -y @upstash/context7-mcp` | `CONTEXT7_API_KEY` |
+
+**API キーローテ履歴**: 2026-05-02 — 旧 context7 key (`ctx7sk-870c8d52-...`) と旧 Supabase access token を漏洩扱いで revoke、新キーで user scope に再登録。新キーは `~/.claude.json` のみに格納、git 管理外。
+
+### 有効化されているプラグイン (`~/.claude/settings.json`)
+
+- `claude-code-setup@claude-plugins-official`
+- `frontend-design@claude-plugins-official`
