@@ -1,6 +1,6 @@
 # Raid Repository — 引き継ぎノート
 
-> 2.1 (2026-05-02 part8) 時点。完了済 TODO の詳細は `src/lib/changelog.ts` / 過去版番号は `.claude/done.md`。
+> 2.1 (2026-05-02 part9) 時点。完了済 TODO の詳細は `src/lib/changelog.ts` / 過去版番号は `.claude/done.md`。
 >
 > **新規会話の手順**: このファイルを読んだ後、TODO 一覧は自動表示せずユーザーの要望を待つ。新規 TODO 追記時は part 単位ではなく TODO 完了時のみ統合追記する (part 細分は commit log に任せる)。
 
@@ -59,7 +59,7 @@ _(現在なし)_
 
 | # | 項目 | 規模 |
 |---|---|---|
-| 68 | TODO #66 後続 — `src/components/portal/settings/fflogs-sync-section.tsx` (962 行) 内の詳細診断パネル (`logsResult.diag`、HTML サンプル / userTypeFields / titleDateMissSample / v2OwnersSample 含む ~150 行のサブツリー) を `next/dynamic({ ssr: false })` で別 chunk に分離。FFLogs 連動を実行して結果が「合うレポートなし」になり詳細診断 details を開いたときだけ load されるため、true lazy load 効果あり。`logsResult.diag` 表示部分を別ファイル `fflogs-diagnostics-panel.tsx` に切り出し、親では `dynamic(() => import("./fflogs-diagnostics-panel"), { ssr: false })` でラップ。検証: tsc + dev preview で通常時は chunk が fetch されない / 診断 details 開いた瞬間に fetch される (Network タブ) ことを確認 | 小〜中 |
+| _(現在なし)_ | — | — |
 
 ### 🚀 インフラ / デプロイ (コード外作業)
 
@@ -71,6 +71,12 @@ _(現在なし)_
 
 直近版のみ列挙。詳細経緯は `src/lib/changelog.ts`、過去版アーカイブは `.claude/done.md`。
 
+- **2.1 (2026-05-02 part9)**: #68 `fflogs-sync-section.tsx` 内の詳細診断パネル (~190 行) を `next/dynamic({ ssr: false })` で別 chunk に分離 — クローズ
+  - **狙い**: TODO #66 で settings-dialog を 5 つの sub-component に分割した際、最大セクション `fflogs-sync-section.tsx` (962 行) 内の詳細診断パネル (`logsResult.diag` + `userTypeFields` 描画、HTML サンプル / titleDateMissSample / v2OwnersSample 含む ~190 行) が後続最適化として残されていた。FFLogs 連動を実行して結果が「合うレポートなし」になり、かつ詳細診断 details を開いた時にしか見えない稀な UI なので、`next/dynamic({ ssr: false })` で別 chunk 化して true lazy load を実現
+  - **実装**: 新規 [src/components/portal/settings/fflogs-diagnostics-panel.tsx](src/components/portal/settings/fflogs-diagnostics-panel.tsx) (203 行) に詳細診断 `<details>` ブロック (内部の HTML サンプル / titleDateMissSample / userTypeFields nested details 含む) を切出し、`FflogsDiagInfo` 型も export。[fflogs-sync-section.tsx](src/components/portal/settings/fflogs-sync-section.tsx) で `dynamic(() => import("./fflogs-diagnostics-panel"), { ssr: false })` でラップし、旧 inline JSX を `<FflogsDiagnosticsPanel diag={...} userTypeFields={...} />` に置換 (962 行 → 802 行、-160 行)
+  - **chunk 分離検証**: `.next/dev/static/chunks/0qc1_src_components_portal_settings_fflogs-diagnostics-panel_tsx_*.js` として独立 chunk 生成を確認
+  - **Network タブ挙動 (dev preview)**: 初期ページロード時 / Settings dialog open 時は **未 fetch**、「FFLogs と動画を連動」ボタン押下後 (linkFflogsReports → logsResult.diag set → `<FflogsDiagnosticsPanel>` mount) に chunk **fetch される**
+  - **UI 動作等価性**: 連動結果として `詳細診断` / `日付抽出に失敗したタイトル` / `User 型のフィールド一覧` などすべての nested details が従前通り render。console error / warning なし。tsc --noEmit PASS
 - **2.1 (2026-05-02 part8)**: #65 Film/Logs dropdown スクロール時の 3 段階ちらつきを Strategy G (CSS exit transition 撤去) で根絶 — クローズ
   - **狙い**: PR [#12](https://github.com/yyamazaki-lym/raid-repository/pull/12) (TODO #65 初版) + PR [#13](https://github.com/yyamazaki-lym/raid-repository/pull/13) (capture phase 撤廃 + grace period) でも残った「過去詳細表で dropdown 開 → wheel scroll で 1 度消え → 1 度出 → 最終 close」の 3 段階 re-toggle を解消
   - **真因確定 (PR [#21](https://github.com/yyamazaki-lym/raid-repository/pull/21) debug log で本番観測)**: wheel scroll 時の React state 遷移は `onOpenChange(true) → setOpen(true) → armed → scroll-close fired → cleanup` の **open→close 単一遷移** で完結しており、`IGNORED — locked` も 2 回目の `onOpenChange(true)` も発生していなかった。「現れる」段階は React state 由来ではなく **CSS exit transition のリバウンド** が真因。Base UI Menu が `setOpen(false)` を受けて `data-closed` 属性を付け、`data-closed:animate-out / fade-out-0 / zoom-out-95 / overflow-hidden` の組合せで 100ms かけて消えていく途中で zoom-out のスケール変化が visual rebound を生んでいた

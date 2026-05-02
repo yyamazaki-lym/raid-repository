@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
 import {
   BarChart3,
   Save,
@@ -23,6 +24,20 @@ import {
   setFflogsUsernameAction,
 } from "@/lib/server/categories-actions";
 import { getFflogsUsername } from "@/lib/schedule-url-store";
+
+/**
+ * TODO #68 (2026-05-02): 詳細診断パネル (~190 行) を別 chunk に分離。
+ * `logsResult.diag` が描画される条件 (FFLogs 連動を実行 + 診断 details
+ * を開く) は通常運用で稀なため、`next/dynamic({ ssr: false })` で
+ * 「初期 client bundle に含めず開いた瞬間に fetch」する true lazy load。
+ */
+const FflogsDiagnosticsPanel = dynamic(
+  () =>
+    import("./fflogs-diagnostics-panel").then((m) => ({
+      default: m.FflogsDiagnosticsPanel,
+    })),
+  { ssr: false },
+);
 
 type FflogsLinkResultLite = {
   ok: boolean;
@@ -702,193 +717,14 @@ export function FflogsSyncSection({
                         </details>
                       )}
                     {/* 詳細診断パネル — 各フェッチレイヤーの結果を
-                        全部見せる。なぜ 0 件なのか切り分けに使う。 */}
+                        全部見せる。なぜ 0 件なのか切り分けに使う。
+                        TODO #68: `next/dynamic({ ssr: false })` で別 chunk
+                        化、開いた瞬間に fetch される true lazy load。 */}
                     {logsResult.diag && (
-                      <details className="mt-2 group/diag">
-                        <summary className="cursor-pointer list-none text-[10px] text-muted-foreground/80 hover:text-foreground/90 [&::-webkit-details-marker]:hidden">
-                          <span className="inline-flex items-center gap-1">
-                            <span className="text-amber-300/70 transition-transform group-open/diag:rotate-90">
-                              ▸
-                            </span>
-                            詳細診断（v2 / HTML スクレイプの取得状況）
-                          </span>
-                        </summary>
-                        <div className="mt-1.5 ml-3.5 flex flex-col gap-0.5 font-mono text-[10px] text-muted-foreground">
-                          {logsResult.diag.v2Me && (
-                            <p>
-                              v2 currentUser: id=
-                              <strong className="text-foreground/85">
-                                {logsResult.diag.v2Me.id}
-                              </strong>
-                              {" / name="}
-                              <strong className="text-foreground/85">
-                                {logsResult.diag.v2Me.name || "(空)"}
-                              </strong>
-                            </p>
-                          )}
-                          <p>
-                            v2 raw fetched:{" "}
-                            <strong className="text-foreground/85">
-                              {logsResult.diag.v2RawCount ?? "(なし)"}
-                            </strong>
-                            {" / owner-filter 通過: "}
-                            <strong className="text-foreground/85">
-                              {logsResult.diag.v2OwnedCount ?? "(なし)"}
-                            </strong>
-                          </p>
-                          {logsResult.diag.v2OwnersSample &&
-                            logsResult.diag.v2OwnersSample.length > 0 && (
-                              <>
-                                <p className="mt-0.5">
-                                  v2 取得時の owner 上位:
-                                </p>
-                                <ul className="ml-3 flex flex-col gap-0.5">
-                                  {logsResult.diag.v2OwnersSample.map(
-                                    (o, i) => (
-                                      <li key={i}>
-                                        ・id={o.id ?? "(null)"} / name=
-                                        {o.name ?? "(null)"} ×{o.count}
-                                      </li>
-                                    ),
-                                  )}
-                                </ul>
-                              </>
-                            )}
-                          {logsResult.diag.htmlPageSize !== undefined && (
-                            <p className="mt-0.5">
-                              HTML スクレイプ: page1 size=
-                              <strong className="text-foreground/85">
-                                {logsResult.diag.htmlPageSize}
-                              </strong>
-                              {" bytes / 検出 codes="}
-                              <strong className="text-foreground/85">
-                                {logsResult.diag.htmlCodesFound ?? 0}
-                              </strong>
-                              {" / 取得 reports="}
-                              <strong className="text-foreground/85">
-                                {logsResult.diag.htmlReportCount ?? 0}
-                              </strong>
-                            </p>
-                          )}
-                          <p className="mt-0.5">
-                            Session Cookie 適用:{" "}
-                            <strong
-                              className={
-                                logsResult.diag.cookieUsed
-                                  ? "text-emerald-300"
-                                  : "text-rose-300/80"
-                              }
-                            >
-                              {logsResult.diag.cookieUsed ? "あり" : "なし"}
-                            </strong>
-                            {logsResult.diag.cookieUsed && (
-                              <span className="ml-1 text-muted-foreground/70">
-                                (連動完了後に自動削除済)
-                              </span>
-                            )}
-                          </p>
-                          {logsResult.diag.htmlScrapeError && (
-                            <p className="mt-0.5 text-rose-300/85">
-                              HTML スクレイプエラー:{" "}
-                              {logsResult.diag.htmlScrapeError}
-                            </p>
-                          )}
-                          {(logsResult.diag.videosSkippedNoPostedAt ?? 0) >
-                            0 && (
-                            <p className="mt-0.5 text-amber-200/85">
-                              ⚠ タイトル日付なしでスキップ:{" "}
-                              <strong>
-                                {logsResult.diag.videosSkippedNoPostedAt}
-                              </strong>
-                              {" 件"}
-                              <span className="ml-1 text-muted-foreground/85">
-                                ※ 1.9.9 から、タイトルに raid 日が無い動画は
-                                自動マッチ対象から除外（誤マッチ防止）。
-                                動画編集ダイアログから FFLogs URL を手動指定
-                                してください
-                              </span>
-                            </p>
-                          )}
-                          {logsResult.diag.titleDateHitCount !== undefined && (
-                            <p className="mt-0.5">
-                              タイトル日付抽出:
-                              {" 成功 "}
-                              <strong className="text-emerald-300">
-                                {logsResult.diag.titleDateHitCount}
-                              </strong>
-                              {" / 失敗 "}
-                              <strong className="text-rose-300">
-                                {logsResult.diag.titleDateMissCount ?? 0}
-                              </strong>
-                              {" 件"}
-                              <span className="ml-1 text-muted-foreground/70">
-                                (失敗 = 自動マッチ対象外)
-                              </span>
-                            </p>
-                          )}
-                          {logsResult.diag.titleDateMissSample &&
-                            logsResult.diag.titleDateMissSample.length >
-                              0 && (
-                              <details className="mt-1 group/missdates">
-                                <summary className="cursor-pointer list-none text-[10px] hover:text-foreground/90 [&::-webkit-details-marker]:hidden">
-                                  <span className="inline-flex items-center gap-1">
-                                    <span className="text-rose-300/70 transition-transform group-open/missdates:rotate-90">
-                                      ▸
-                                    </span>
-                                    日付抽出に失敗したタイトル (上位
-                                    {logsResult.diag.titleDateMissSample.length}
-                                    件)
-                                  </span>
-                                </summary>
-                                <ul className="mt-1 ml-3 flex flex-col gap-0.5 font-mono text-[9px] leading-tight text-muted-foreground">
-                                  {logsResult.diag.titleDateMissSample.map(
-                                    (t, i) => (
-                                      <li
-                                        key={i}
-                                        className="break-all bg-secondary/20 px-1.5 py-0.5 rounded"
-                                      >
-                                        {t}
-                                      </li>
-                                    ),
-                                  )}
-                                </ul>
-                              </details>
-                            )}
-                          {logsResult.diag.htmlSample && (
-                            <details className="mt-1.5 group/htmlsample">
-                              <summary className="cursor-pointer list-none text-[10px] hover:text-foreground/90 [&::-webkit-details-marker]:hidden">
-                                <span className="inline-flex items-center gap-1">
-                                  <span className="text-amber-300/70 transition-transform group-open/htmlsample:rotate-90">
-                                    ▸
-                                  </span>
-                                  HTML サンプル (最初のレポートコード周辺)
-                                </span>
-                              </summary>
-                              <pre className="mt-1 ml-3 rounded bg-secondary/30 px-1.5 py-1 font-mono text-[9px] leading-tight whitespace-pre-wrap break-all text-muted-foreground/85 max-h-[16rem] overflow-y-auto">
-                                {logsResult.diag.htmlSample}
-                              </pre>
-                            </details>
-                          )}
-                          {logsResult.userTypeFields &&
-                            logsResult.userTypeFields.length > 0 && (
-                              <details className="mt-1.5 group/userfields">
-                                <summary className="cursor-pointer list-none text-[10px] hover:text-foreground/90 [&::-webkit-details-marker]:hidden">
-                                  <span className="inline-flex items-center gap-1">
-                                    <span className="text-amber-300/70 transition-transform group-open/userfields:rotate-90">
-                                      ▸
-                                    </span>
-                                    User 型のフィールド一覧 (introspect、{
-                                      logsResult.userTypeFields.length
-                                    } 個)
-                                  </span>
-                                </summary>
-                                <pre className="mt-1 ml-3 rounded bg-secondary/30 px-1.5 py-1 font-mono text-[9px] leading-tight whitespace-pre-wrap break-words text-muted-foreground/85 max-h-[12rem] overflow-y-auto">
-                                  {logsResult.userTypeFields.join("\n")}
-                                </pre>
-                              </details>
-                            )}
-                        </div>
-                      </details>
+                      <FflogsDiagnosticsPanel
+                        diag={logsResult.diag}
+                        userTypeFields={logsResult.userTypeFields}
+                      />
                     )}
                     {logsResult.details.length > 0 && (
                       <ul className="mt-1 flex flex-col gap-0.5 font-mono text-[10px] text-muted-foreground">
