@@ -17,11 +17,11 @@
 
 ## 🔄 保留オペレーション
 
-現在なし。新たな schema 変更や設定変更が発生したらここに追記する。
+- **TODO #1 マージ待ち** (2026-05-01 実装完了 / main 未マージ): `claude/loving-mirzakhani-8bc971` ブランチに schedule の動画/Logs アイコンを同日複数件で DropdownMenu 化する実装あり (commits `8228876`, `db9d5b6`)。`buildSessionVideoLinkMap` の戻り値を `Record<string, SessionVideoLink[]>` に配列化、5 ファイル / +258 -104 行。tsc PASS + dev preview 起動成功までは確認済だが、本番 DB の DECISION 過去 0 件で dropdown 視覚確認は未実施。次セッションで PR 化 → main マージ → ブランチ削除を実施する。
 
 ## 📌 次回の作業優先度
 
-**未定 (ユーザー選択)**。直前作業 TODO #23 (サイト全体のデータ初期化ボタン) はクローズ済。残未完了 TODO は下表参照。次回会話開始時にユーザーが選択。
+**TODO #1 マージ作業** (上記 🔄 保留オペレーション参照)。worktree を立てて本番側で dropdown 視覚確認 → PR → マージ。完了後はそれ以外の未完了 TODO はユーザー選択。
 
 ## 未完了 TODO 一覧
 
