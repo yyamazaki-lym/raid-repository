@@ -90,6 +90,12 @@ TODO #65 残課題 (③ dropdown スクロール時のちらつき) を修正。
 | 51 | マイクロインタラクション / ユーザビリティ向上。クリック時の press feedback / hover 時の subtle elevation / loading skeleton / focus ring 強化 / toast の出現位置・タイミング微調整 / フォーム入力の即時 validation / 空状態の illustration etc。framer-motion を残す方針なので springy な質感も維持しつつ portal 全体の polish を 1 周。観点リストの作成 + 優先順位付けから | 中 |
 | 11 | ページ全体のパフォーマンス最適化。phase 1-10 完了済、見送り候補あり。詳細: `.claude/todos/11.md` | — |
 
+### 🧹 コードベース最適化 / リファクタ
+
+| # | 項目 | 規模 |
+|---|---|---|
+| 66 | `src/components/portal/settings-dialog.tsx` (1,723 行 / 88 KB) を機能別 sub-component に分割。候補: 表示設定 / データ管理 (Danger Zone 含む) / 更新履歴 / 認証情報 / 開発者情報。既存 `settings-dialog-lazy.tsx` (lazy 化) と組合せて初期 bundle 削減を狙う。背景: 2026-05-02 の肥大化精査で settings-dialog + schedule-list が src/ 全体の 11.6% を占めると判明 | 中〜大 |
+
 ### 🚀 インフラ / デプロイ (コード外作業)
 
 | # | 項目 | 規模 |
@@ -100,6 +106,12 @@ TODO #65 残課題 (③ dropdown スクロール時のちらつき) を修正。
 
 直近版のみ列挙。詳細経緯は `src/lib/changelog.ts`、過去版アーカイブは `.claude/done.md`。
 
+- **2.1 (2026-05-02 part6)**: #67 `changelog.ts` (629 行 / 234 KB) を最新 1 件のみに削減 + 過去 9 リリースを `src/lib/changelog-archive.ts` に分離 + dynamic import 化 — クローズ
+  - **狙い**: 2026-05-02 のプロジェクト肥大化精査で `changelog.ts` が git tracked size リポ全体 2 位 (`package-lock.json` 378 KB 次点)、しかも `settings-dialog` から全件 import されて初期 client bundle に常時混入していた。「使う時だけ load」する dynamic import 化で初期 bundle 縮小
+  - **実装**: 新規 [src/lib/changelog-archive.ts](src/lib/changelog-archive.ts) (RELEASES_ARCHIVE export) / [src/lib/changelog.ts](src/lib/changelog.ts) は最新 1 件 (`2.1 (2026-05-02)`) のみ残置 (234 KB → 19.6 KB) / [settings-dialog.tsx](src/components/portal/settings-dialog.tsx) に `archiveReleases / loadingArchive / archiveError` state 追加 + 「↓ 過去の更新履歴を見る」ボタンで `import("@/lib/changelog-archive")` 発火、`displayReleases = [...RELEASES, ...archiveReleases]` を map
+  - **graduation 運用**: 今後リリースを追加する時は `RELEASES[0]` を新エントリで置き換え、旧 `RELEASES[0]` を `RELEASES_ARCHIVE[0]` に prepend する (本体ヘッダーコメントに方針記載済)
+  - **検証**: `tsc --noEmit` PASS、dev preview で初期 1 件表示 → archive ボタン押下後 10 件結合表示 + ボタン消滅 + console エラーなしを eval 確認
+  - **副次変更**: 「↗ これより前の履歴を GitHub で見る」リンクの文言を「↗ commit log を GitHub で見る」に変更 (archive で全更新履歴が見られるようになったため、GitHub link は commit 単位参照に位置付け直し)
 - **2.1 (2026-05-02 part5)**: #64 schedule_past_sessions の logs_url を子テーブル `schedule_past_session_logs` に分離 (1:N 化) — クローズ (PR [#11](https://github.com/yyamazaki-lym/raid-repository/pull/11) squash merge `b15e029`、本番 Supabase は MCP `apply_migration` で同日反映)
   - **狙い**: 同 session 日付に対する FFLogs report が複数発生するケース (午前/午後分けた、ロビー失敗等) を素直に扱えるようにする。旧来は `schedule_past_sessions.logs_url` 単数列で 1 URL しか持てず popover が **上書き編集** だった
   - **schema 変更**: 新表 `schedule_past_session_logs` (id/raw_date/url/source/created_at + UNIQUE(raw_date,url) + ON DELETE CASCADE)。旧 `logs_url` / `logs_url_source` 列は info_schema ガード付き seed → DROP。RLS / REPLICA IDENTITY FULL / supabase_realtime publication にも追加
