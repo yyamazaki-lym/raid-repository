@@ -19,12 +19,12 @@ import { extractDateFromTitle } from "@/lib/title-date";
  * Match rule:
  *   - kind = 'video'
  *   - video の解決済み JST Y/M/D == session の JST Y/M/D
- *   - 同日に複数候補があるときは `posted_at asc` で最も古いものが勝つ
- *   - 各 video は最大 1 セッションに紐付く (used-set)
+ *   - 同日に複数候補があるときは `posted_at asc` で最古優先のソート順を維持
+ *   - 1 session に同日複数動画が紐付くケースを許容 (TODO #1)
  *
- * Output is keyed by `session.rawDate` (the original schedule label)
- * so the consumer just does `map[session.rawDate]` — no timezone math
- * on the client side.
+ * Output is keyed by `session.rawDate` (the original schedule label) →
+ * 同日全件の `SessionVideoLink[]` 配列。consumer は `map[rawDate]` で
+ * 配列を受け取り、要素数 0 = 紐付なし / 1 = 単数表示 / 2+ = dropdown 化。
  *
  * History: 旧版は `posted_at` ± 36h ウィンドウで紐付けていたが、
  * 古い動画 (例: 2023 年録画) を後から DB に追加すると、追加時刻ベースで
@@ -65,7 +65,7 @@ function toJstYmd(ms: number): { y: number; m: number; d: number } {
 
 export async function buildSessionVideoLinkMap(
   sessions: SessionLite[],
-): Promise<Record<string, SessionVideoLink>> {
+): Promise<Record<string, SessionVideoLink[]>> {
   if (sessions.length === 0) return {};
 
   // TODO #55: セッション日付範囲 ± 7d で `posted_at` を pre-filter。
@@ -142,7 +142,7 @@ export async function buildSessionVideoLinkMap(
 
   // Pre-index videos by JST Y/M/D so each session lookup is O(1).
   // videoEntries は DB 側で posted_at asc ソート済 → bucket 先頭が最古、
-  // shift() で取り出すと「同日複数動画は最古優先」の元挙動を維持できる。
+  // 配列のままセッション側に展開して dropdown UI に最古→最新の順で渡す。
   const videosByDate = new Map<string, typeof videoEntries>();
   for (const v of videoEntries) {
     const key = `${v.y}-${v.m}-${v.d}`;
@@ -151,25 +151,18 @@ export async function buildSessionVideoLinkMap(
     else videosByDate.set(key, [v]);
   }
 
-  // Process sessions oldest-first so videos are claimed by the
-  // chronologically earliest plausible session.
-  const sortedSessions = [...sessions].sort(
-    (a, b) => a.date.getTime() - b.date.getTime(),
-  );
-
-  const out: Record<string, SessionVideoLink> = {};
-  for (const s of sortedSessions) {
+  const out: Record<string, SessionVideoLink[]> = {};
+  for (const s of sessions) {
     const sj = toJstYmd(s.date.getTime());
     const bucket = videosByDate.get(`${sj.y}-${sj.m}-${sj.d}`);
-    const match = bucket?.shift();
-    if (!match) continue;
-    out[s.rawDate] = {
+    if (!bucket || bucket.length === 0) continue;
+    out[s.rawDate] = bucket.map((match) => ({
       href: `/category/${match.categorySlug}/videos?focus=${match.id}`,
       url: match.url,
       categoryName: match.categoryName,
       videoTitle: match.title,
       logsUrl: match.logsUrl,
-    };
+    }));
   }
   return out;
 }

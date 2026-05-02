@@ -52,7 +52,7 @@ type Props = {
    * Pre-built map of `session.rawDate` → matching video page link.
    * Used by the schedule date cells to deep-link into the video.
    */
-  sessionVideoLinks?: Record<string, SessionVideoLink>;
+  sessionVideoLinks?: Record<string, SessionVideoLink[]>;
   /**
    * Pre-built map of `session.rawDate` → FFLogs URL stored on the
    * past-session row. Surfaced as a Logs icon in the date cell even

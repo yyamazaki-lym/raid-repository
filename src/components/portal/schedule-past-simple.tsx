@@ -56,7 +56,7 @@ export function SchedulePastSimple({
 }: {
   sessions: ScheduleSession[];
   holidays?: JapaneseHolidaysMap;
-  sessionVideoLinks?: Record<string, SessionVideoLink>;
+  sessionVideoLinks?: Record<string, SessionVideoLink[]>;
   /** FFLogs URLs keyed by `rawDate` — fallback when no video. */
   sessionLogsByDate?: Record<string, string>;
   /** TODO #11: server prefetched memos (rawDate → memos[]) */
@@ -100,7 +100,7 @@ export function SchedulePastSimple({
             key={s.rawDate}
             session={s}
             holidays={holidays}
-            videoLink={sessionVideoLinks?.[s.rawDate] ?? null}
+            videoLink={sessionVideoLinks?.[s.rawDate]?.[0] ?? null}
             sessionLogsUrl={sessionLogsByDate?.[s.rawDate] ?? null}
             memos={memosByDate[s.rawDate] ?? EMPTY_MEMOS}
             onRefreshMemos={refetchMemos}

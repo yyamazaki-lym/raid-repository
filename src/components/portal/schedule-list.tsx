@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -7,6 +8,7 @@ import {
   Check,
   ChevronDown,
   ChevronUp,
+  ExternalLink,
   Film,
   Loader2,
   MessageSquare,
@@ -15,6 +17,12 @@ import {
   RotateCcw,
   X,
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Card } from "@/components/ui/card";
 import { CommentPopover } from "./comment-popover-lazy";
 import { ScheduleEditFrameDialog } from "./schedule-edit-frame-dialog-lazy";
@@ -52,6 +60,9 @@ import type { SessionVideoLink } from "@/lib/server/session-video-link";
 // would be a fresh array on every render and trip the hook's
 // "initial-changed" guard, clobbering fetched memos with empty.
 const EMPTY_MEMOS: ScheduleSessionMemo[] = [];
+
+// Default `videoLinks` prop — same stability concern as above.
+const EMPTY_VIDEO_LINKS: SessionVideoLink[] = [];
 
 // 標準 5 種以外 (例: 昼 / 夜 / 全 など character-sheets 側のカスタム
 // ラベル) に当てるフォールバック tone。amber 系で「未知だが値が入って
@@ -133,7 +144,7 @@ type Props = {
    * session has an entry, its date cell becomes a Link to that
    * video; otherwise the cell renders as plain text.
    */
-  sessionVideoLinks?: Record<string, SessionVideoLink>;
+  sessionVideoLinks?: Record<string, SessionVideoLink[]>;
   /**
    * Pre-built `rawDate` → FFLogs URL map for past sessions. Lets the
    * UI show a Logs icon next to a date even when there's no matching
@@ -393,7 +404,7 @@ export function ScheduleList({
                   session={s}
                   users={users}
                   holidays={holidays}
-                  videoLink={lookupVideoLink(s, sessionVideoLinks)}
+                  videoLinks={lookupVideoLinks(s, sessionVideoLinks)}
                   sessionLogsUrl={sessionLogsByDate?.[s.rawDate] ?? null}
                   scheduleUrl={scheduleUrl}
                   onOpenEditFrame={openEditFrame}
@@ -460,7 +471,7 @@ export function ScheduleList({
                     isPast
                     holidays={holidays}
                     showDecided={false}
-                    videoLink={lookupVideoLink(s, sessionVideoLinks)}
+                    videoLinks={lookupVideoLinks(s, sessionVideoLinks)}
                     sessionLogsUrl={sessionLogsByDate?.[s.rawDate] ?? null}
                     scheduleUrl={scheduleUrl}
                     onOpenEditFrame={openEditFrame}
@@ -477,7 +488,7 @@ export function ScheduleList({
                       isPast
                       holidays={holidays}
                       showDecided={false}
-                      videoLink={lookupVideoLink(s, sessionVideoLinks)}
+                      videoLinks={lookupVideoLinks(s, sessionVideoLinks)}
                       sessionLogsUrl={sessionLogsByDate?.[s.rawDate] ?? null}
                       scheduleUrl={scheduleUrl}
                       onOpenEditFrame={openEditFrame}
@@ -649,16 +660,219 @@ function DateLabel({
 }
 
 /**
- * Look up a session's matching video. Map is rawDate-keyed (built
- * server-side using the 36h window heuristic) so the lookup is just
- * a key access here — no timezone math needed.
+ * Look up the matching videos for a session. Map is rawDate-keyed so the
+ * lookup is just a key access here — no timezone math needed. TODO #1:
+ * 同日複数動画を許容するため配列で返す (空配列なら「紐付なし」)。
  */
-function lookupVideoLink(
+function lookupVideoLinks(
   session: ScheduleSession,
-  links: Record<string, SessionVideoLink> | undefined,
-): SessionVideoLink | null {
-  if (!links) return null;
-  return links[session.rawDate] ?? null;
+  links: Record<string, SessionVideoLink[]> | undefined,
+): SessionVideoLink[] {
+  if (!links) return [];
+  return links[session.rawDate] ?? [];
+}
+
+/**
+ * Action icons (Film + BarChart3) for a session row's date cell.
+ * 1.9.27 仕様で 2 スロット分は常に確保 (透明 spacer で揃える)。
+ *
+ * TODO #1 (2.1, 2026-05-01): 同日複数動画 / 複数 Logs を扱えるように
+ * 単一リンク or DropdownMenu を分岐:
+ * - 0 件: 透明 spacer
+ * - 1 件: 従来通り `<a>` / `<Link>` で 1 クリック直行
+ * - 2+ 件: DropdownMenu に切替、各候補をリスト表示
+ *
+ * Logs 候補は次の和集合 + URL dedup:
+ * (A) 各動画の `logsUrl` (= category_links.logs_url 由来)
+ * (B) `sessionLogsUrl` (= schedule_past_sessions.logs_url 由来、動画と
+ *     未紐付の場合の fallback)
+ */
+function SessionActionIcons({
+  videoLinks,
+  sessionLogsUrl,
+  isPast,
+  displayDate,
+}: {
+  videoLinks: SessionVideoLink[];
+  sessionLogsUrl: string | null;
+  isPast: boolean;
+  displayDate: string;
+}) {
+  // -- Film slot: 動画候補 --
+  let filmSlot: ReactNode;
+  if (videoLinks.length === 0) {
+    filmSlot = <span aria-hidden className="inline-block h-5 w-5 shrink-0" />;
+  } else if (videoLinks.length === 1) {
+    filmSlot = renderSingleVideoLink(videoLinks[0]!, isPast);
+  } else {
+    filmSlot = (
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          aria-label={`${displayDate} の動画 ${videoLinks.length} 件から選択`}
+          title={`動画 ${videoLinks.length} 件 — クリックで選択`}
+          className="relative inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-[var(--neon-cyan)]/85 transition-all hover:bg-[var(--neon-cyan)]/15 hover:text-[var(--neon-cyan)] hover:shadow-[0_0_10px_-2px_var(--neon-cyan)] data-popup-open:bg-[var(--neon-cyan)]/15 data-popup-open:text-[var(--neon-cyan)]"
+        >
+          <Film className="h-3 w-3" aria-hidden />
+          <span
+            aria-hidden
+            className="pointer-events-none absolute -right-0.5 -top-0.5 flex h-2.5 min-w-2.5 items-center justify-center rounded-full bg-[var(--neon-cyan)] px-0.5 font-mono text-[8px] leading-none text-background"
+          >
+            {videoLinks.length}
+          </span>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" sideOffset={4}>
+          {videoLinks.map((v) => (
+            <DropdownMenuItem
+              key={v.url}
+              render={(props) => {
+                if (isPast) {
+                  return (
+                    <a
+                      {...props}
+                      href={safeHref(v.url) ?? "#"}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    />
+                  );
+                }
+                return <Link {...props} href={v.href} prefetch={false} />;
+              }}
+            >
+              <Film className="h-3.5 w-3.5 text-[var(--neon-cyan)]/85" aria-hidden />
+              <span className="truncate">
+                {v.categoryName} / {v.videoTitle}
+              </span>
+              {isPast && (
+                <ExternalLink
+                  className="ml-auto h-3 w-3 text-muted-foreground/60"
+                  aria-hidden
+                />
+              )}
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    );
+  }
+
+  // -- Logs slot: Logs URL 候補 (動画の logsUrl 集約 + sessionLogsUrl)
+  // を URL で dedup し、出現順を維持 --
+  const logsCandidates: { url: string; label: string }[] = [];
+  const seen = new Set<string>();
+  for (const v of videoLinks) {
+    const safe = safeHref(v.logsUrl);
+    if (!safe || seen.has(safe)) continue;
+    seen.add(safe);
+    logsCandidates.push({
+      url: safe,
+      label: `${v.categoryName} / ${v.videoTitle}`,
+    });
+  }
+  const safeSessionLogs = safeHref(sessionLogsUrl);
+  if (safeSessionLogs && !seen.has(safeSessionLogs)) {
+    seen.add(safeSessionLogs);
+    logsCandidates.push({ url: safeSessionLogs, label: "セッション登録分" });
+  }
+
+  let logsSlot: ReactNode;
+  if (logsCandidates.length === 0) {
+    logsSlot = <span aria-hidden className="inline-block h-5 w-5 shrink-0" />;
+  } else if (logsCandidates.length === 1) {
+    logsSlot = (
+      <a
+        href={logsCandidates[0]!.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label={`${displayDate} の FFLogs を開く`}
+        title="FFLogs"
+        className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-amber-300/85 transition-all hover:bg-amber-400/15 hover:text-amber-200 hover:shadow-[0_0_10px_-2px_rgba(251,191,36,0.6)]"
+      >
+        <BarChart3 className="h-3 w-3" aria-hidden />
+      </a>
+    );
+  } else {
+    logsSlot = (
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          aria-label={`${displayDate} の FFLogs ${logsCandidates.length} 件から選択`}
+          title={`FFLogs ${logsCandidates.length} 件 — クリックで選択`}
+          className="relative inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-amber-300/85 transition-all hover:bg-amber-400/15 hover:text-amber-200 hover:shadow-[0_0_10px_-2px_rgba(251,191,36,0.6)] data-popup-open:bg-amber-400/15 data-popup-open:text-amber-200"
+        >
+          <BarChart3 className="h-3 w-3" aria-hidden />
+          <span
+            aria-hidden
+            className="pointer-events-none absolute -right-0.5 -top-0.5 flex h-2.5 min-w-2.5 items-center justify-center rounded-full bg-amber-300 px-0.5 font-mono text-[8px] leading-none text-background"
+          >
+            {logsCandidates.length}
+          </span>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" sideOffset={4}>
+          {logsCandidates.map((c) => (
+            <DropdownMenuItem
+              key={c.url}
+              render={(props) => (
+                <a
+                  {...props}
+                  href={c.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                />
+              )}
+            >
+              <BarChart3 className="h-3.5 w-3.5 text-amber-300/85" aria-hidden />
+              <span className="truncate">{c.label}</span>
+              <ExternalLink
+                className="ml-auto h-3 w-3 text-muted-foreground/60"
+                aria-hidden
+              />
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    );
+  }
+
+  return (
+    <>
+      {filmSlot}
+      {logsSlot}
+    </>
+  );
+}
+
+/**
+ * 単一動画リンク描画 (TODO #1 dropdown 化前の従来挙動)。
+ * past = 外部新規タブ、upcoming = portal 内動画ページへ soft-nav。
+ */
+function renderSingleVideoLink(v: SessionVideoLink, isPast: boolean) {
+  const externalVideoUrl = isPast ? safeHref(v.url) : null;
+  if (externalVideoUrl) {
+    return (
+      <a
+        href={externalVideoUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label={`${v.categoryName}/動画「${v.videoTitle}」を新規タブで開く`}
+        title={`${v.categoryName}/動画 → 「${v.videoTitle}」 (外部リンク)`}
+        className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-[var(--neon-cyan)]/85 transition-all hover:bg-[var(--neon-cyan)]/15 hover:text-[var(--neon-cyan)] hover:shadow-[0_0_10px_-2px_var(--neon-cyan)]"
+      >
+        <Film className="h-3 w-3" aria-hidden />
+      </a>
+    );
+  }
+  // upcoming は `<Link>` で portal 内 soft-nav (TODO #54 part2-d:
+  // prefetch={false} で cold start 時の RSC 投機ロード一斉発動を抑制)。
+  return (
+    <Link
+      href={v.href}
+      prefetch={false}
+      aria-label={`${v.categoryName}/動画「${v.videoTitle}」を開く`}
+      title={`${v.categoryName}/動画 → 「${v.videoTitle}」`}
+      className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-[var(--neon-cyan)]/85 transition-all hover:bg-[var(--neon-cyan)]/15 hover:text-[var(--neon-cyan)] hover:shadow-[0_0_10px_-2px_var(--neon-cyan)]"
+    >
+      <Film className="h-3 w-3" aria-hidden />
+    </Link>
+  );
 }
 
 function SessionRow({
@@ -667,7 +881,7 @@ function SessionRow({
   isPast = false,
   holidays,
   showDecided = true,
-  videoLink = null,
+  videoLinks = EMPTY_VIDEO_LINKS,
   sessionLogsUrl = null,
   scheduleUrl,
   onOpenEditFrame,
@@ -680,8 +894,11 @@ function SessionRow({
   holidays?: JapaneseHolidaysMap;
   /** When false, drop the 確定 column entirely (past table). */
   showDecided?: boolean;
-  /** When non-null, the date label becomes a Link to that video. */
-  videoLink?: SessionVideoLink | null;
+  /**
+   * 同日紐付動画 (TODO #1)。0 件 = 紐付なし、1 件 = 単一リンク表示、
+   * 2 件以上 = Film アイコンを DropdownMenu にして選択式にする。
+   */
+  videoLinks?: SessionVideoLink[];
   /**
    * FFLogs URL stored on the past-session row. Used as the Logs icon
    * source when no matching video exists for this date (a session
@@ -748,7 +965,7 @@ function SessionRow({
             displayDate={session.rawDate.split(" ")[0] ?? session.rawDate}
             memos={memos}
             onRefresh={onRefreshMemos}
-            currentLogsUrl={videoLink?.logsUrl ?? sessionLogsUrl ?? null}
+            currentLogsUrl={videoLinks[0]?.logsUrl ?? sessionLogsUrl ?? null}
             sessionDetails={{
               parsedDate: session.date.toISOString(),
               startTime: session.startTime,
@@ -786,72 +1003,12 @@ function SessionRow({
               icons share vertical column alignment across all rows.
               When a slot has no content, render an invisible h-5 w-5
               placeholder. */}
-          {(() => {
-            const logsUrl = safeHref(videoLink?.logsUrl ?? sessionLogsUrl);
-            // 過去日程の Film アイコンは Logs と同じく直接外部リンクへ
-            // (新規タブ、URL は category_links.url)。upcoming は引き続き
-            // ポータル内の動画ページへリンクする (動画は通常まだ無いが、
-            // 当日分が早めに上がっていたケースで動画一覧に飛びたい)。
-            const externalVideoUrl = isPast
-              ? safeHref(videoLink?.url)
-              : null;
-            const filmSlot = videoLink ? (
-              externalVideoUrl ? (
-                <a
-                  href={externalVideoUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-label={`${videoLink.categoryName}/動画「${videoLink.videoTitle}」を新規タブで開く`}
-                  title={`${videoLink.categoryName}/動画 → 「${videoLink.videoTitle}」 (外部リンク)`}
-                  className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-[var(--neon-cyan)]/85 transition-all hover:bg-[var(--neon-cyan)]/15 hover:text-[var(--neon-cyan)] hover:shadow-[0_0_10px_-2px_var(--neon-cyan)]"
-                >
-                  <Film className="h-3 w-3" aria-hidden />
-                </a>
-              ) : (
-                // 2.1 (2026-05-01) TODO #54 part2-d: `<Link>` で soft-nav は
-                // 維持しつつ `prefetch={false}` で viewport 内自動 prefetch
-                // を抑制。スケジュール表は 1 画面で N 行 × 動画 icon が
-                // 並ぶため cold start init 中に RSC payload 投機ロードが
-                // 一斉発動するとサーバ生成キューが詰まり初回クリックの
-                // 遷移が遅延する。クリック時は top progress bar が即時
-                // 出るので無音 stuck にはならない。デプロイ後 chunk hash
-                // mismatch の silent fail は ChunkErrorHandler (portal
-                // layout 常駐) が ChunkLoadError を catch して自動 reload
-                // するので保険済。
-                <Link
-                  href={videoLink.href}
-                  prefetch={false}
-                  aria-label={`${videoLink.categoryName}/動画「${videoLink.videoTitle}」を開く`}
-                  title={`${videoLink.categoryName}/動画 → 「${videoLink.videoTitle}」`}
-                  className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-[var(--neon-cyan)]/85 transition-all hover:bg-[var(--neon-cyan)]/15 hover:text-[var(--neon-cyan)] hover:shadow-[0_0_10px_-2px_var(--neon-cyan)]"
-                >
-                  <Film className="h-3 w-3" aria-hidden />
-                </Link>
-              )
-            ) : (
-              <span aria-hidden className="inline-block h-5 w-5 shrink-0" />
-            );
-            const logsSlot = logsUrl ? (
-              <a
-                href={logsUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label={`${session.rawDate.split(" ")[0]} の FFLogs を開く`}
-                title="FFLogs"
-                className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-amber-300/85 transition-all hover:bg-amber-400/15 hover:text-amber-200 hover:shadow-[0_0_10px_-2px_rgba(251,191,36,0.6)]"
-              >
-                <BarChart3 className="h-3 w-3" aria-hidden />
-              </a>
-            ) : (
-              <span aria-hidden className="inline-block h-5 w-5 shrink-0" />
-            );
-            return (
-              <>
-                {filmSlot}
-                {logsSlot}
-              </>
-            );
-          })()}
+          <SessionActionIcons
+            videoLinks={videoLinks}
+            sessionLogsUrl={sessionLogsUrl}
+            isPast={isPast}
+            displayDate={session.rawDate.split(" ")[0] ?? session.rawDate}
+          />
         </div>
       </th>
       {showDecided && (
