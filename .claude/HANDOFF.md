@@ -21,7 +21,7 @@ _(現在なし)_
 
 ## 📌 次回の作業優先度
 
-未完了 TODO はユーザー選択。直近で起票された TODO #63 (動画 dropdown のマウスオーバーで動画タイトル tooltip 表示) は schedule-list の `SessionActionIcons` に手を入れるだけで完結する小規模改善。
+未完了 TODO はユーザー選択。残りはほぼ全て中〜大規模 (TODO #2 統合 / #7 / #51 / #11) の見送り候補。
 
 ## 未完了 TODO 一覧
 
@@ -31,9 +31,7 @@ _(現在なし)_
 
 | # | 項目 | 規模 |
 |---|---|---|
-| 2 | スケジュール表自前実装 (作成/編集/確定/Discord 通知) | 大 |
-| 38 | スケジュール追加機能 — portal 内から開催候補日を追加する UI が無い。日付 + 時間帯 + 参加可否を入力 → DB 保存 → 描画。TODO #2 と統合可 | 中〜大 |
-| 63 | TODO #1 で導入した動画 / Logs DropdownMenu の trigger アイコンに hover した際、動画タイトル (= dropdown item で表示している `videoTitle`) を tooltip で表示する。1 件時 (`<a>` / `<Link>` 直行ケース) も同様に tooltip 化したい。schedule-list.tsx の `SessionActionIcons` に手を入れるだけで完結 | 小 |
+| 2 | スケジュール表自前実装 (作成/編集/確定/Discord 通知)。**#38 を統合**: portal 内から開催候補日を追加する UI (日付 + 時間帯 + 参加可否入力 → DB 保存 → 描画) を本 TODO スコープ内に含める。**追加要件**: 初期設定 (settings-dialog) で「既存取り込み式 (現行 character-sheets iframe) / 新規作成式 (本 TODO で実装する自前 UI) / 使わない (スケジュール機能無効)」の 3 択を選択可能にする。後から変更可 | 大 |
 
 ### 📂 カテゴリ詳細ページ (`/category/[slug]`)
 
@@ -59,7 +57,7 @@ _(現在なし)_
 
 | # | 項目 | 規模 |
 |---|---|---|
-| 68 | TODO #66 後続 — `src/components/portal/settings/fflogs-sync-section.tsx` (962 行) 内の詳細診断パネル (`logsResult.diag`、HTML サンプル / userTypeFields / titleDateMissSample / v2OwnersSample 含む ~150 行のサブツリー) を `next/dynamic({ ssr: false })` で別 chunk に分離。FFLogs 連動を実行して結果が「合うレポートなし」になり詳細診断 details を開いたときだけ load されるため、true lazy load 効果あり。`logsResult.diag` 表示部分を別ファイル `fflogs-diagnostics-panel.tsx` に切り出し、親では `dynamic(() => import("./fflogs-diagnostics-panel"), { ssr: false })` でラップ。検証: tsc + dev preview で通常時は chunk が fetch されない / 診断 details 開いた瞬間に fetch される (Network タブ) ことを確認 | 小〜中 |
+| _(現在なし)_ | — | — |
 
 ### 🚀 インフラ / デプロイ (コード外作業)
 
@@ -71,6 +69,16 @@ _(現在なし)_
 
 直近版のみ列挙。詳細経緯は `src/lib/changelog.ts`、過去版アーカイブは `.claude/done.md`。
 
+- **2.1 (2026-05-02 part9)**: #68 `fflogs-sync-section.tsx` 内の詳細診断パネルを `next/dynamic({ ssr: false })` で別 chunk 化 + controlled details で「開いた瞬間に load」実現 — クローズ
+  - **狙い**: TODO #66 (settings-dialog 5 分割) 後続。最大セクション `fflogs-sync-section.tsx` (962 行) 内の詳細診断パネル (`logsResult.diag` + `userTypeFields` 表示、HTML サンプル / titleDateMissSample / v2OwnersSample 含む ~190 行) を別 chunk 化。診断詳細を開く稀なケースのみ load される ⇒ true lazy load
+  - **実装**:
+    - 新規 [src/components/portal/settings/fflogs-diagnostics-panel.tsx](src/components/portal/settings/fflogs-diagnostics-panel.tsx) (~190 行): default export `FflogsDiagnosticsPanel({ diag, userTypeFields })` + named export `FflogsDiag` 型 (旧 inline 型を移植)
+    - [fflogs-sync-section.tsx](src/components/portal/settings/fflogs-sync-section.tsx): `import dynamic from "next/dynamic"` + `import type { FflogsDiag }` 追加。`const FflogsDiagnosticsPanel = dynamic(() => import("./fflogs-diagnostics-panel"), { ssr: false })`。`FflogsLinkResultLite.diag` を `FflogsDiag` 参照に置換 (型重複防止)
+    - **controlled details**: 詳細診断 root details を `useState diagOpen` + `<details onToggle={(e) => setDiagOpen(e.currentTarget.open)}>` で React 側に同期、body は `{diagOpen && <FflogsDiagnosticsPanel ... />}` で条件マウント。details 閉じている間 panel 自体が unmount されているので chunk もまだ load されない。details を開いた瞬間に diagOpen=true → mount → chunk fetch
+  - **ssr: false の根拠**: admin-only + 連動実行後のみ表示なので SSR 不要、初回 HTML から panel を完全削減
+  - **チャンク分離の検証 (決定的)**: production build (Turbopack) 出力 `.next/static/chunks/0ld.ycas-7l6..js` (5,150 bytes) が独立生成、`v2 currentUser` / `Session Cookie 適用` / `User 型のフィールド一覧` 等の panel 専用文字列を含む一方で親 UI 文字列 (`FFLogs と動画を連動` / `全 logs URL クリア`) は **一切含まれない**。完全分離達成
+  - **検証**: `tsc --noEmit` PASS / `next build` 成功 / dev preview で Settings dialog 開閉 + FFLogs section 主要 UI 全描画 + console error 0 件を eval 確認 / open 時の chunk fetch タイミングは本番デプロイ後にユーザー側 Network タブで実機確認予定
+  - **副次**: `<details onToggle>` で uncontrolled-with-listener パターン (browser native details 動作維持しつつ open 状態を React に同期) を採用。入れ子 details (htmlSample / titleDateMissSample / userTypeFields) は外側 details を閉じた時に unmount されて open 状態リセットされるが、ユーザーが見えない状態の話なので UX 等価
 - **2.1 (2026-05-02 part8)**: #65 Film/Logs dropdown スクロール時の 3 段階ちらつきを Strategy G (CSS exit transition 撤去) で根絶 — クローズ
   - **狙い**: PR [#12](https://github.com/yyamazaki-lym/raid-repository/pull/12) (TODO #65 初版) + PR [#13](https://github.com/yyamazaki-lym/raid-repository/pull/13) (capture phase 撤廃 + grace period) でも残った「過去詳細表で dropdown 開 → wheel scroll で 1 度消え → 1 度出 → 最終 close」の 3 段階 re-toggle を解消
   - **真因確定 (PR [#21](https://github.com/yyamazaki-lym/raid-repository/pull/21) debug log で本番観測)**: wheel scroll 時の React state 遷移は `onOpenChange(true) → setOpen(true) → armed → scroll-close fired → cleanup` の **open→close 単一遷移** で完結しており、`IGNORED — locked` も 2 回目の `onOpenChange(true)` も発生していなかった。「現れる」段階は React state 由来ではなく **CSS exit transition のリバウンド** が真因。Base UI Menu が `setOpen(false)` を受けて `data-closed` 属性を付け、`data-closed:animate-out / fade-out-0 / zoom-out-95 / overflow-hidden` の組合せで 100ms かけて消えていく途中で zoom-out のスケール変化が visual rebound を生んでいた
