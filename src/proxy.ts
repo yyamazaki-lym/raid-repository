@@ -106,6 +106,20 @@ function isDevAuthBypassEnabled(): boolean {
   );
 }
 
+// Public demo mode: `PUBLIC_DEMO_MODE=true` で本番ビルドでも Discord OAuth
+// gate を skip する。モックサイト (TODO #8) 用に portal を一般公開する用途。
+// dev bypass と違って NODE_ENV ガードを設けず production でも有効になる。
+//
+// 書き込みは別途 `auth.ts` の publicDemoModeUser が roles=[] (= 非 admin) を
+// 返すことで `requireAdmin()` / `assertAdminResult()` 経由でアプリ層で弾く。
+// さらに demo mode user は実 Supabase auth session を持たないため、書き込み
+// 時の `createClient()` は anon key で動作 → RLS の `WITH CHECK
+// (auth.jwt()->>is_admin = 'true')` も通過できず 4 層防御の最深層 (RLS)
+// でも block される。
+function isPublicDemoModeEnabled(): boolean {
+  return process.env.PUBLIC_DEMO_MODE === "true";
+}
+
 export async function proxy(request: NextRequest) {
   // TODO #40: rate limit は session refresh より前段で評価して、
   // 攻撃時に Supabase への往復も抑える。dev bypass は意図的に rate
@@ -123,6 +137,13 @@ export async function proxy(request: NextRequest) {
   // Dev bypass: ログイン状態 / guild membership を一切問わずにそのまま通す。
   // この経路を取るのはローカル開発時のみ (NODE_ENV ガード済み)。
   if (isDevAuthBypassEnabled()) {
+    return response;
+  }
+
+  // Public demo mode: 本番ビルドでも auth gate を skip。書き込みは
+  // auth.ts 側の roles=[] non-admin user で弾かれるので read-only 公開。
+  // 優先順位は dev bypass の後 (= ローカル開発で両方 true なら admin 視点維持)。
+  if (isPublicDemoModeEnabled()) {
     return response;
   }
 

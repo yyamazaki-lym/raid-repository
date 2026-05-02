@@ -4,6 +4,22 @@ FF14 レイド固定向けポータル — スケジュール / 軽減表 / ロ�
 
 「1グループ = 1デプロイ」前提で作られた、自分の固定で fork して使うシングルテナントアプリです。
 
+## Live demo
+
+実際の使用感を確認できる公開モックサイト (read-only):
+
+🔗 **https://demo-raid-repository.vercel.app**
+
+サンプルデータ (5 カテゴリ + 過去 8 週分のスケジュール + 軽減表 / ロット表 / 攻略リンク / 動画リンク / マクロ / 募集文等) が seed 済。`PUBLIC_DEMO_MODE=true` で Discord OAuth gate を skip しつつ、書き込みは admin gate で全件弾く 4 層防御 (proxy / app / RLS) で閲覧専用にしています。
+
+## Deploy
+
+ワンクリックで自分の Vercel + GitHub に fork → デプロイできます (Supabase / Discord Bot は先に作っておく必要あり、詳細は [Setup for your raid group](#setup-for-your-raid-group)):
+
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/yyamazaki-lym/raid-repository&env=NEXT_PUBLIC_SUPABASE_URL,NEXT_PUBLIC_SUPABASE_ANON_KEY,SUPABASE_SERVICE_ROLE_KEY,DISCORD_BOT_TOKEN,DISCORD_GUILD_ID&envDescription=Supabase%20%2B%20Discord%20OAuth%20%E5%BF%85%E9%A0%88%20%28%E8%A9%B3%E7%B4%B0%20%3A%20envLink%29&envLink=https://github.com/yyamazaki-lym/raid-repository/blob/main/.env.local.example&project-name=raid-repository&repository-name=raid-repository)
+
+任意の env (DISCORD_ADMIN_ROLE_IDS / YOUTUBE_API_KEY / FFLOGS_API_KEY / FFLogs OAuth / SECRET_ENCRYPTION_KEY / CRON_SECRET) はデプロイ後に Vercel ダッシュボード → Settings → Environment Variables から追加。
+
 ## What it does
 
 ### スケジュール
@@ -172,7 +188,9 @@ FF14 レイド固定向けポータル — スケジュール / 軽減表 / ロ�
 | `CRON_SECRET` | 32 文字以上のランダム文字列 | Vercel Cron 認証 |
 | `YOUTUBE_API_KEY` | YouTube Data API v3 キー | 限定公開動画の duration / uploadDate 取得 (未設定だと HTML scrape fallback、Vercel IP の bot 検出で失敗することあり) |
 | `SECRET_ENCRYPTION_KEY` | 64 文字 hex (`openssl rand -hex 32`) | FFLogs token 等の AES-256-GCM 暗号化保管 (未設定だと旧 `app_settings` 平文保存にフォールバック) |
-| `FFLOGS_API_KEY` | FFLogs API v1 キー | レポート ↔ 動画 自動マッチ |
+| `FFLOGS_API_KEY` | FFLogs API v1 キー | レポート ↔ 動画 自動マッチ (Public レポート対象) |
+| `FFLOGS_OAUTH_CLIENT_ID` | FFLogs OAuth Client ID | **Private / Unlisted** レポートの自動マッチ用 (Authorization Code Flow)。v1 で十分なら未設定可 |
+| `FFLOGS_OAUTH_CLIENT_SECRET` | FFLogs OAuth Client Secret | 同上 (server-only)。詳細手順は `.env.local.example` |
 
 #### Discord OAuth (ダッシュボード設定のみ、env なし)
 
@@ -210,7 +228,7 @@ FF14 レイド固定向けポータル — スケジュール / 軽減表 / ロ�
 #### 4-2. カテゴリーの追加・編集
 
 1. 上部タブ **カテゴリー** へ
-2. デフォルトでアルカディア3階級が seed されているので、**自分達のコンテンツに編集**するか、削除して新規追加：
+2. デフォルトでサンプル 5 件 (現行零式 + Variant + Extreme + Ultimate × 2) が seed されているので、**自分達のコンテンツに編集**するか、削除して新規追加：
    - カードの **⋯ → 削除**
    - 右上 **カテゴリー追加** で新規
 3. 編集ダイアログ各項目：

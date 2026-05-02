@@ -103,11 +103,13 @@ export function NextSessionCard({
         <Value highlight={isToday} inSession={inSession}>
           {rawDate}
         </Value>
-        <span className="font-mono text-sm tabular-nums text-foreground/80">
-          {startTime}
-          <span className="mx-1 opacity-60">~</span>
-          {endTime}
-        </span>
+        {(startTime || endTime) && (
+          <span className="font-mono text-sm tabular-nums text-foreground/80">
+            {startTime}
+            <span className="mx-1 opacity-60">~</span>
+            {endTime}
+          </span>
+        )}
         {relative && (
           <span
             className={

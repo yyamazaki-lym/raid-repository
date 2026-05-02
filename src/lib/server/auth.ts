@@ -60,6 +60,29 @@ function devAuthBypassUser(): AuthorizedUser | null {
 }
 
 /**
+ * Public demo mode bypass: `PUBLIC_DEMO_MODE=true` で本番ビルドでも Discord
+ * OAuth gate を skip し、roles=[] (非 admin) の偽ゲストを返す。モックサイト
+ * (TODO #8) で portal を一般公開しつつ、書き込みは admin gate で禁止する用途。
+ *
+ * dev bypass との違い:
+ * - NODE_ENV ガードを設けず production でも有効
+ * - roles は常に空 ([]) — `userIsAdmin()` は false を返し、`requireAdmin()`
+ *   や `assertAdminResult()` で書き込み Server Action を弾く
+ * - createClient() は service role に切替えない (anon key で動作)
+ *   → RLS の `WITH CHECK (auth.jwt()->>is_admin = 'true')` でも block される
+ *
+ * 優先順位は dev bypass の後 (= ローカル開発で両方 true なら admin 視点維持)。
+ */
+function publicDemoModeUser(): AuthorizedUser | null {
+  if (process.env.PUBLIC_DEMO_MODE !== "true") return null;
+  return {
+    userId: "00000000-0000-0000-0000-0000000d3m0u",
+    discordId: "public-demo-mode-guest",
+    roles: [], // always non-admin — read-only public demo
+  };
+}
+
+/**
  * React `cache()` でリクエスト単位 dedupe する。1 回の hard nav 中に
  * `(portal)/layout` (`getAuthorizedUserRoles`) → `[slug]/layout`
  * (`requireDiscordRoles`) → 各 page (`getCurrentUserCanEdit`) の 3 経路で
@@ -69,6 +92,9 @@ export const requireDiscordMember = cache(
   async (): Promise<AuthorizedUser> => {
     const bypass = devAuthBypassUser();
     if (bypass) return bypass;
+
+    const demo = publicDemoModeUser();
+    if (demo) return demo;
 
     const supabase = await createClient();
     const {

@@ -64,21 +64,60 @@ const EMPTY_MEMOS: ScheduleSessionMemo[] = [];
 // Default `videoLinks` prop — same stability concern as above.
 const EMPTY_VIDEO_LINKS: SessionVideoLink[] = [];
 
-const ATT_TONE: Record<Attendance, string> = {
+// 標準 5 種以外 (例: 昼 / 夜 / 全 など character-sheets 側のカスタム
+// ラベル) に当てるフォールバック tone。amber 系で「未知だが値が入って
+// いる」ことが視認できるように。TODO #60。
+const ATT_TONE_FALLBACK =
+  "text-amber-200 bg-amber-200/10 border-amber-200/30";
+
+const ATT_TONE: Record<string, string> = {
   "◯": "text-[var(--neon-cyan)] bg-[var(--neon-cyan)]/10 border-[var(--neon-cyan)]/30",
   "⏰": "text-amber-300 bg-amber-300/10 border-amber-300/30",
   "△": "text-[var(--neon-violet)] bg-[var(--neon-violet)]/10 border-[var(--neon-violet)]/30",
   "×": "text-rose-400 bg-rose-400/10 border-rose-400/30",
   "－": "text-muted-foreground bg-secondary/30 border-border/50",
+  // character-sheets 側のカスタムラベル (TODO #62) — 既知のものは
+  // amber fallback と同色で固定マッピング、辞書外は ?? で同 fallback
+  // に落ちる。色を分けないのは「× / 標準 5 種に対する派生」という
+  // 位置付けを視覚的に揃えるため。
+  "全": ATT_TONE_FALLBACK,
+  "昼": ATT_TONE_FALLBACK,
+  "夜": ATT_TONE_FALLBACK,
+  "早": ATT_TONE_FALLBACK,
 };
 
-const ATT_LEGEND: { symbol: Attendance; label: string }[] = [
-  { symbol: "◯", label: "参加可" },
-  { symbol: "⏰", label: "遅刻" },
-  { symbol: "△", label: "未定" },
-  { symbol: "×", label: "不可" },
-  { symbol: "－", label: "未回答" },
-];
+/**
+ * 凡例ラベル辞書。`/schedule/edit` 側には記号のみで日本語説明が無い
+ * ため portal で持つ。マッピング外は説明 null (記号のみ表示)。
+ */
+const ATT_LABEL_DICT: Record<string, string> = {
+  "◯": "参加可",
+  "⏰": "遅刻",
+  "△": "未定",
+  "×": "不可",
+  "－": "未回答",
+  "全": "全日参加可",
+  "昼": "昼参加可",
+  "夜": "夜参加可",
+  "早": "早朝参加可",
+};
+
+/**
+ * 凡例エントリを構築。`/schedule/edit` の `choiceValues` 由来の選択肢
+ * を先頭に並べ、末尾に固定で `×` `－` を追加。choices が空 (取得失敗)
+ * のときは標準 5 種 (◯⏰△×－) にフォールバック。
+ */
+function buildAttendanceLegend(
+  choices: readonly string[],
+): { symbol: Attendance; label: string | null }[] {
+  const filtered = choices.filter((c) => c !== "×" && c !== "－" && c !== "");
+  const ordered =
+    filtered.length > 0 ? [...filtered, "×", "－"] : ["◯", "⏰", "△", "×", "－"];
+  return ordered.map((symbol) => ({
+    symbol,
+    label: ATT_LABEL_DICT[symbol] ?? null,
+  }));
+}
 
 type Props = {
   result: ScheduleFetchResult;
@@ -353,6 +392,7 @@ export function ScheduleList({
              同期で上書きされないので、運用ルールを portal 側で
              カスタマイズしてもそのまま残る。 */
           topTextOverride={topTextOverride}
+          attendanceChoices={result.data.attendanceOptions.choices}
         />
         <div className="overflow-x-auto">
           <table className="w-full min-w-[640px] border-collapse text-left text-sm">
@@ -940,11 +980,13 @@ function SessionRow({
               holidayName={holidayName}
             />
           </SessionMemoPopover>
-          <span className="font-mono text-[11px] tabular-nums text-muted-foreground/85">
-            {session.startTime}
-            <span className="mx-0.5 opacity-60">~</span>
-            {session.endTime}
-          </span>
+          {(session.startTime || session.endTime) && (
+            <span className="font-mono text-[11px] tabular-nums text-muted-foreground/85">
+              {session.startTime}
+              <span className="mx-0.5 opacity-60">~</span>
+              {session.endTime}
+            </span>
+          )}
           {/* Memo indicator placed right after the time per user
               request — visible whether or not video/Logs links are
               also rendered for this row. `reserveSpace` keeps an
@@ -1079,7 +1121,7 @@ function SessionRow({
             // baseline within a fixed h-5 box.
             className={
               "inline-flex h-5 min-w-[1.75rem] items-center justify-center rounded-sm border px-1 text-[12px] leading-none transition-transform " +
-              ATT_TONE[att]
+              (ATT_TONE[att] ?? ATT_TONE_FALLBACK)
             }
             aria-label={`${u.name}: ${att}`}
           >
@@ -1132,6 +1174,7 @@ function Legend({
   refreshing = false,
   topTextScraped = null,
   topTextOverride = null,
+  attendanceChoices = [],
 }: {
   hasUltimateClear?: boolean;
   /** Called when the user clicks the refresh button at the right end. */
@@ -1144,7 +1187,12 @@ function Legend({
   /** Portal 側で編集された override (`app_settings.schedule_top_text_override`)。
    * 同期では上書きされない。トグルボタンで scraped 表示と切り替え可能。 */
   topTextOverride?: string | null;
+  /** `/schedule/edit` の `choiceValues` 由来の出欠選択肢順 (`×` `－`
+   * 含まず)。空配列なら標準 5 種にフォールバック。詳細は
+   * `buildAttendanceLegend`。 */
+  attendanceChoices?: readonly string[];
 }) {
+  const legend = buildAttendanceLegend(attendanceChoices);
   const router = useRouter();
   // Local controlled-popover state for the top-text comment icon.
   const [showTopText, setShowTopText] = useState(false);
@@ -1243,17 +1291,19 @@ function Legend({
       >
         {label}
       </span>
-      {ATT_LEGEND.map((l) => (
+      {legend.map((l) => (
         <span key={l.symbol} className="inline-flex items-center gap-1.5">
           <span
             className={
-              "inline-flex h-4 w-5 items-center justify-center rounded-sm border text-[11px] leading-none " +
-              ATT_TONE[l.symbol]
+              "inline-flex h-4 min-w-5 items-center justify-center rounded-sm border px-0.5 text-[11px] leading-none " +
+              (ATT_TONE[l.symbol] ?? ATT_TONE_FALLBACK)
             }
           >
             {l.symbol}
           </span>
-          <span className="text-[11px] text-muted-foreground">{l.label}</span>
+          {l.label !== null && (
+            <span className="text-[11px] text-muted-foreground">{l.label}</span>
+          )}
         </span>
       ))}
       {/* 1.9.37: ルール / 更新ボタンを右端 1 グループにまとめる。

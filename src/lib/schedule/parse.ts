@@ -15,7 +15,13 @@
  */
 import { decodeHtmlEntities } from "@/lib/html-entities";
 
-export type Attendance = "◯" | "⏰" | "△" | "×" | "－";
+/**
+ * 出欠記号。標準セットは「◯ / ⏰ / △ / × / －」だが、character-sheets
+ * 側では運用カスタムとして「昼 / 夜 / 全」のような任意ラベルも採用される。
+ * 表示側 (`ATT_TONE`) は未知ラベルにフォールバック tone を当てるので、
+ * parser はここで union を絞らず「空文字以外」を全て通す方針 (TODO #60)。
+ */
+export type Attendance = string;
 export type SessionStatus = "CANDIDATE" | "DECISION";
 
 export type ScheduleUser = {
@@ -57,6 +63,27 @@ export type ScheduleComment = {
   timestamp: string | null;
 };
 
+/**
+ * 凡例で使う出欠選択肢のマスター情報。
+ *
+ * character-sheets `/schedule/edit` の `<input id="choiceValues" value="...">`
+ * に管理者が登録した記号 (デモでは `全昼夜` のような 1 文字単位) を順序保持。
+ * `×` (不可) / `－` (未回答) は character-sheets 側の HTML 説明
+ * "×は入力不要です" の通り暗黙で常に末尾に追加される運用なので
+ * `choices` には含めない (UI 側の `buildAttendanceLegend` で末尾追加)。
+ */
+export type ScheduleAttendanceOptions = {
+  /** edit page 由来の選択肢、登録順。`×` `－` は含めない。 */
+  choices: string[];
+  /**
+   * - `edit-page`: `/schedule/edit` から正常取得
+   * - `fallback-from-list`: edit 取得失敗 → `/schedule/list` の各セルに
+   *   現れた記号集合から復元 (未投票の選択肢は欠落する不完全版)
+   * - `unavailable`: どちらからも取れず空集合 (UI は固定 5 種にフォールバック)
+   */
+  source: "edit-page" | "fallback-from-list" | "unavailable";
+};
+
 export type ParsedSchedule = {
   users: ScheduleUser[];
   sessions: ScheduleSession[];
@@ -69,10 +96,22 @@ export type ParsedSchedule = {
    * to surface a clickable comment icon → popover on the portal.
    */
   topText: string | null;
+  /** 凡例で使う出欠選択肢のマスター。詳細は `ScheduleAttendanceOptions`。 */
+  attendanceOptions: ScheduleAttendanceOptions;
 };
 
 const NAMELINK_USER_RE =
   /<a\s+class="namelink"\s+href="[^"]*userId=([^"&]+)[^"]*"[^>]*>([^<]+)<\/a>/g;
+
+/**
+ * `/schedule/edit` の選択肢記号入力欄。`<input class="input is-small"
+ * type="text" id="choiceValues" value="全昼夜" placeholder="◯△など">` の
+ * value を抜き出す。HTML 内説明 "選択肢を1〜4個設定してください。×は
+ * 入力不要です。" の通り、登録された各 codepoint が 1 選択肢に対応。
+ * 未ログイン curl でも value 込みで返るので匿名 GET で十分。
+ */
+const CHOICE_VALUES_RE =
+  /<input\b[^>]*\bid="choiceValues"[^>]*\bvalue="([^"]*)"/i;
 
 const ROW_RE = /<tr id="row_(\d+)">([\s\S]*?)<\/tr>/g;
 const DATETITLE_RE = /<th class="datetitle">\s*([^<]+?)\s*</;
@@ -83,15 +122,77 @@ const DATESTATUS_RE = /class="dateStatus"[\s\S]{0,200}?value="([^"]*)"/;
 const ATTENDANCE_RE =
   /<span\s+class="tag statustag[^"]*"[^>]*>\s*([^<]+?)\s*<\/span>/g;
 
+// 時間レンジ部分は optional。character-sheets では時間未入力のまま
+// 運用するスケジュールが存在し、その場合 datetitle は `2026/05/01(金)`
+// のように日付+曜日のみで返される。時間欠落時は startTime/endTime に
+// 空文字を入れ、Date は JST 当日 00:00 を使う (2.1 (2026-05-01) TODO #59)。
 const RAW_DATE_RE =
-  /^(\d{4})\/(\d{1,2})\/(\d{1,2})\(([日月火水木金土])\)\s*(\d{1,2}):(\d{2})\s*[~〜]\s*(\d{1,2}):(\d{2})$/;
+  /^(\d{4})\/(\d{1,2})\/(\d{1,2})\(([日月火水木金土])\)(?:\s*(\d{1,2}):(\d{2})\s*[~〜]\s*(\d{1,2}):(\d{2}))?$/;
 
-export function parseSchedule(html: string): ParsedSchedule {
+export function parseSchedule(
+  html: string,
+  editHtml?: string | null,
+): ParsedSchedule {
   const users = parseUsers(html);
   const sessions = parseSessions(html, users.length);
   const comments = parseComments(html);
   const topText = parseTopText(html);
-  return { users, sessions, comments, topText };
+  const attendanceOptions = resolveAttendanceOptions(editHtml, sessions);
+  return { users, sessions, comments, topText, attendanceOptions };
+}
+
+/**
+ * `/schedule/edit` HTML から `choiceValues` を抽出して codepoint
+ * 単位で split。空白 / 空文字は除外。マッチしないか value が空の
+ * 場合は `null`。
+ */
+export function parseAttendanceChoicesFromEditHtml(
+  editHtml: string,
+): string[] | null {
+  const m = CHOICE_VALUES_RE.exec(editHtml);
+  if (!m) return null;
+  const decoded = decodeEntities(m[1]).trim();
+  if (!decoded) return null;
+  const out: string[] = [];
+  // Array.from で codepoint 単位に分割 (サロゲートペア安全)
+  for (const ch of Array.from(decoded)) {
+    if (/\s/.test(ch)) continue;
+    if (!ch) continue;
+    out.push(ch);
+  }
+  return out.length > 0 ? out : null;
+}
+
+const ATT_OPTION_IGNORE = new Set(["×", "－", ""]);
+
+function resolveAttendanceOptions(
+  editHtml: string | null | undefined,
+  sessions: ScheduleSession[],
+): ScheduleAttendanceOptions {
+  if (editHtml) {
+    const choices = parseAttendanceChoicesFromEditHtml(editHtml);
+    if (choices) {
+      // edit 側で × / － が混入していても凡例側で末尾追加するので除外
+      const filtered = choices.filter((c) => !ATT_OPTION_IGNORE.has(c));
+      if (filtered.length > 0) {
+        return { choices: filtered, source: "edit-page" };
+      }
+    }
+  }
+  // edit 取得失敗 → list の sessions から実際に登場した記号集合で復元。
+  // 未投票の選択肢は欠落するが、固定 5 種にフォールバックするより portal
+  // 側のラベル辞書を活かせる確率が高い (TODO #60 でカスタムラベル運用を
+  // 既に許容しているため)。
+  const seen = new Set<string>();
+  for (const s of sessions) {
+    for (const sym of Object.values(s.attendances)) {
+      if (!ATT_OPTION_IGNORE.has(sym)) seen.add(sym);
+    }
+  }
+  if (seen.size > 0) {
+    return { choices: Array.from(seen), source: "fallback-from-list" };
+  }
+  return { choices: [], source: "unavailable" };
 }
 
 /**
@@ -135,6 +236,11 @@ function parseTopText(html: string): string | null {
   while ((m = blockRe.exec(before)) !== null) {
     const text = stripHtmlToText(m[2]!).trim();
     if (!text || text.length < 2) continue;
+    // character-sheets が table 直前に出すラベル見出し (例:
+    // 「日程状況一覧」) はルール本文ではないので除外。完全一致のみ
+    // skip — 同表現を含むユーザー文 (「〜の日程状況一覧について」等)
+    // は誤って消さない (TODO #61)。
+    if (CHARSHEETS_LABEL_NOISE.has(text)) continue;
     // Skip duplicates (some templates double-render the same text in
     // hidden vs visible variants).
     if (seen.has(text)) continue;
@@ -173,6 +279,14 @@ function stripHtmlToText(html: string): string {
     .replace(/[ \t]*\n[ \t]*/g, "\n")
     .replace(/\n{3,}/g, "\n\n");
 }
+
+/**
+ * character-sheets が table 直前に出す UI ラベル見出しの集合。
+ * `parseTopText` で完全一致時のみ skip 対象 (TODO #61)。
+ */
+const CHARSHEETS_LABEL_NOISE = new Set<string>([
+  "日程状況一覧",
+]);
 
 const COMMENT_HEADER = "■コメント";
 const COMMENT_LINE_RE = /<p\s+class="is-size-7">\s*・([^<]+)<\/p>/g;
@@ -269,7 +383,7 @@ function parseSessions(html: string, userCount: number): ScheduleSession[] {
     out.push({
       rawDate,
       ...parsed,
-      status: statusMatch[1] as SessionStatus,
+      status,
       attendances,
       rowIndex,
     });
@@ -295,6 +409,7 @@ export function attachUsersToSessions(parsed: ParsedSchedule): ParsedSchedule {
     sessions,
     comments: parsed.comments,
     topText: parsed.topText,
+    attendanceOptions: parsed.attendanceOptions,
   };
 }
 
@@ -310,18 +425,19 @@ function parseRawDate(raw: string): {
   const m = RAW_DATE_RE.exec(raw);
   if (!m) return null;
   const [, y, mo, d, dow, sh, sm, eh, em] = m;
+  const hasTime = sh !== undefined && sm !== undefined;
   // The schedule labels are JST. Build a UTC instant directly so the result
   // is timezone-independent — `Date.UTC(...)` plus a -9h shift represents
   // "JST clock time" → "the same moment expressed as UTC". This means the
   // returned Date works correctly whether the server runs on UTC (Vercel) or
-  // local Asia/Tokyo (developer machine).
+  // local Asia/Tokyo (developer machine). Time 未入力時は当日 JST 00:00。
   const date = new Date(
     Date.UTC(
       Number(y),
       Number(mo) - 1,
       Number(d),
-      Number(sh),
-      Number(sm),
+      hasTime ? Number(sh) : 0,
+      hasTime ? Number(sm) : 0,
       0,
       0,
     ) - JST_OFFSET_MS,
@@ -329,13 +445,13 @@ function parseRawDate(raw: string): {
   return {
     date,
     dayOfWeek: dow,
-    startTime: `${sh}:${sm}`,
-    endTime: `${eh}:${em}`,
+    startTime: hasTime ? `${sh}:${sm}` : "",
+    endTime: eh !== undefined && em !== undefined ? `${eh}:${em}` : "",
   };
 }
 
 function isAttendance(s: string): s is Attendance {
-  return s === "◯" || s === "⏰" || s === "△" || s === "×" || s === "－";
+  return s !== "";
 }
 
 /**

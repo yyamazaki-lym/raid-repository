@@ -1601,42 +1601,24 @@ export function SettingsDialog({ canEdit }: { canEdit: boolean }) {
                               )}
                             </summary>
 
-                            {/* 展開時の本体: parts (新スキーム) があれば
-                                part 単位の collapsible、無ければ notes
-                                (旧スキーム) のフラットな箇条書き。
-                                1.9 (2026-04-28) TODO #11: 各 release 内の
-                                parts も最新 5 個に制限して表示を絞る。
-                                (大項目: 5 件、小項目: 5 件 / 大項目) */}
+                            {/* 2.1 (2026-05-02 part3) TODO #55 完了に併設:
+                                各 part の <details> 折りたたみ + body を撤去
+                                し、title 1 行のみのフラットなリストに変更。
+                                詳細は GitHub commits / changelog.ts 参照。 */}
                             <div className="mt-1.5 ml-3 flex flex-col gap-1">
                               {r.parts ? (
-                                <>
-                                {r.parts.slice(0, 5).map((p, i) => (
-                                  <details
-                                    key={i}
-                                    className="group/part rounded-sm border border-border/30 bg-secondary/25"
-                                  >
-                                    <summary className="flex cursor-pointer list-none items-start gap-1.5 px-2 py-1 select-none outline-none hover:bg-secondary/40 [&::-webkit-details-marker]:hidden">
-                                      <span
-                                        aria-hidden
-                                        className="mt-[2px] inline-block w-2 text-[10px] text-muted-foreground transition-transform duration-150 group-open/part:rotate-90"
-                                      >
-                                        ▶
-                                      </span>
-                                      <span className="flex-1 text-[11px] leading-snug text-foreground/90">
-                                        {p.title}
-                                      </span>
-                                    </summary>
-                                    <p className="px-3 pt-1 pb-2 text-[11px] leading-relaxed whitespace-pre-wrap text-foreground/80">
-                                      {p.body}
-                                    </p>
-                                  </details>
-                                ))}
-                                {r.parts.length > 5 && (
-                                  <p className="ml-2 font-mono text-[9px] tracking-[0.18em] text-muted-foreground/70 uppercase">
-                                    … +{r.parts.length - 5} more
-                                  </p>
-                                )}
-                                </>
+                                <ul className="flex flex-col gap-0.5 text-[11px] text-foreground/85">
+                                  {r.parts.slice(0, 5).map((p, i) => (
+                                    <li key={i} className="leading-snug">
+                                      ・{p.title}
+                                    </li>
+                                  ))}
+                                  {r.parts.length > 5 && (
+                                    <li className="font-mono text-[9px] tracking-[0.18em] text-muted-foreground/70 uppercase">
+                                      … +{r.parts.length - 5} more
+                                    </li>
+                                  )}
+                                </ul>
                               ) : (
                                 <ul className="flex flex-col gap-0.5 text-[11px] text-foreground/85">
                                   {(r.notes ?? []).map((n, i) => (

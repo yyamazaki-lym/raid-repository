@@ -4,13 +4,14 @@
  * Combined entry point — exposes both the full schedule (users + sessions)
  * for the native list view, and a derived "next confirmed session".
  *
- * Result is cached for 30 minutes via Next.js `fetch` revalidate. 旧版は
- * 10 分だったが、TOP の Promise.all 8 fetch のうち最遅 = この外部
- * scrape (1〜3s) が cache miss 時に TTFB を支配していたため TODO #55 で
- * 30 分へ延長。admin 系 mutation (snapshot / カテゴリ編集 / Discord
- * 取込み等) は既に `revalidatePath("/")` で route の Data Cache を
- * 無効化しているので、明示的なフレッシュ更新は従来通り効く (TTL
- * 延長で増えるのは「何もしていない時間帯のキャッシュ命中率」のみ)。
+ * **Cache 戦略 (TODO #55 part3)**: `next: { revalidate: 60, tags: [SCHEDULE_CACHE_TAG] }`。
+ * 60 秒 TTL の Vercel Data Cache に乗せて FCP を短縮しつつ、portal 経由の
+ * iframe edit dialog 閉じる時に Server Action `invalidateScheduleCache`
+ * (`updateTag(SCHEDULE_CACHE_TAG)`) で read-your-own-writes 即時無効化する。
+ * TODO #61 で `revalidatePath("/")` が fetch cache key を外せないケースに
+ * 遭遇し `cache: "no-store"` に逃げていたが、tag-based 無効化は cache key
+ * に直接効くので stale 問題を回避できる。外部編集 (portal を介さない
+ * character-sheets 直接編集) は最大 60s lag。
  */
 
 import {
@@ -37,6 +38,13 @@ export type NextSessionResult =
   | { ok: true; session: ScheduleSession | null }
   | { ok: false; reason: "no-url" | "fetch-failed" | "parse-failed" };
 
+/**
+ * Vercel Data Cache tag for character-sheets fetches。
+ * iframe edit dialog 閉じる時に server action から `revalidateTag` で
+ * 明示無効化される (`@/lib/server/schedule-cache-actions`)。
+ */
+export const SCHEDULE_CACHE_TAG = "schedule";
+
 /** "Still relevant" = up to 6 hours past the start time. */
 const STILL_RELEVANT_MS = 6 * 60 * 60 * 1000;
 
@@ -47,28 +55,56 @@ const STILL_RELEVANT_MS = 6 * 60 * 60 * 1000;
  * create a feedback loop where snapshotted attendance keeps re-saving
  * itself, and complicates "what just changed" logic).
  */
+/**
+ * `/schedule/list?key=...` URL から `/schedule/edit?key=...` を派生。
+ * 凡例 (出欠選択肢マスター) は edit ページのフォーム input にしか
+ * 載っていないので、list と並列に取得する。失敗時は null。
+ */
+function deriveEditUrl(listUrl: string): string | null {
+  try {
+    const u = new URL(listUrl);
+    if (!/\/list(\b|$)/.test(u.pathname)) return null;
+    u.pathname = u.pathname.replace(/\/list(\b|$)/, "/edit");
+    return u.toString();
+  } catch {
+    return null;
+  }
+}
+
+async function fetchHtmlOrNull(target: string): Promise<string | null> {
+  try {
+    const res = await fetch(target, {
+      next: { revalidate: 60, tags: [SCHEDULE_CACHE_TAG] },
+      headers: { "User-Agent": "RaidRepository/0.1" },
+    });
+    if (!res.ok) {
+      console.warn("[schedule] non-OK response:", res.status, target);
+      return null;
+    }
+    return await res.text();
+  } catch (err) {
+    console.warn("[schedule] fetch error:", err, target);
+    return null;
+  }
+}
+
 export async function fetchScheduleRaw(): Promise<ScheduleFetchResult> {
   const url = await getScheduleSourceUrl();
   if (!url) return { ok: false, reason: "no-url" };
 
-  let html: string;
-  try {
-    const res = await fetch(url, {
-      next: { revalidate: 1800 },
-      headers: { "User-Agent": "RaidRepository/0.1" },
-    });
-    if (!res.ok) {
-      console.warn("[schedule] non-OK response:", res.status);
-      return { ok: false, reason: "fetch-failed" };
-    }
-    html = await res.text();
-  } catch (err) {
-    console.warn("[schedule] fetch error:", err);
-    return { ok: false, reason: "fetch-failed" };
-  }
+  const editUrl = deriveEditUrl(url);
+  // list と edit を並列 fetch。edit 失敗は致命的でない (parse 側で
+  // sessions 由来 fallback / 固定凡例にデグレする) ので Promise.all
+  // でなく allSettled 相当の null 許容で受ける。
+  const [listHtml, editHtml] = await Promise.all([
+    fetchHtmlOrNull(url),
+    editUrl ? fetchHtmlOrNull(editUrl) : Promise.resolve(null),
+  ]);
+
+  if (listHtml === null) return { ok: false, reason: "fetch-failed" };
 
   try {
-    const data = attachUsersToSessions(parseSchedule(html));
+    const data = attachUsersToSessions(parseSchedule(listHtml, editHtml));
     return { ok: true, data };
   } catch (err) {
     console.warn("[schedule] parse error:", err);

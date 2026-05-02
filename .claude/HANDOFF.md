@@ -1,6 +1,6 @@
 # Raid Repository — 引き継ぎノート
 
-> 2.1 (2026-04-30) 時点。完了済 TODO の詳細は `src/lib/changelog.ts` / 過去版番号は `.claude/done.md`。
+> 2.1 (2026-05-02 part3) 時点。完了済 TODO の詳細は `src/lib/changelog.ts` / 過去版番号は `.claude/done.md`。
 >
 > **新規会話の手順**: このファイルを読んだ後、TODO 一覧は自動表示せずユーザーの要望を待つ。新規 TODO 追記時は part 単位ではなく TODO 完了時のみ統合追記する (part 細分は commit log に任せる)。
 
@@ -17,11 +17,11 @@
 
 ## 🔄 保留オペレーション
 
-現在なし。新たな schema 変更や設定変更が発生したらここに追記する。
+- **TODO #1 マージ待ち** (2026-05-01 実装完了 / main 未マージ): `claude/loving-mirzakhani-8bc971` ブランチに schedule の動画/Logs アイコンを同日複数件で DropdownMenu 化する実装あり (commits `8228876`, `db9d5b6`)。`buildSessionVideoLinkMap` の戻り値を `Record<string, SessionVideoLink[]>` に配列化、5 ファイル / +258 -104 行。tsc PASS + dev preview 起動成功までは確認済だが、本番 DB の DECISION 過去 0 件で dropdown 視覚確認は未実施。次セッションで PR 化 → main マージ → ブランチ削除を実施する。
 
 ## 📌 次回の作業優先度
 
-**未定 (ユーザー選択)**。直前作業 TODO #1 (同日複数 Logs/動画 のプルダウン選択式) はクローズ済。残未完了 TODO は下表参照。次回会話開始時にユーザーが選択。
+**TODO #1 マージ作業** (上記 🔄 保留オペレーション参照)。worktree を立てて本番側で dropdown 視覚確認 → PR → マージ。完了後はそれ以外の未完了 TODO はユーザー選択。
 
 ## 未完了 TODO 一覧
 
@@ -33,13 +33,12 @@
 |---|---|---|
 | 2 | スケジュール表自前実装 (作成/編集/確定/Discord 通知) | 大 |
 | 38 | スケジュール追加機能 — portal 内から開催候補日を追加する UI が無い。日付 + 時間帯 + 参加可否を入力 → DB 保存 → 描画。TODO #2 と統合可 | 中〜大 |
-| 55 | スケジュールページの軽量化。初期表示の重さ / レンダリング負荷を削減 (具体施策は別途調査) | 中〜大 |
 
 ### 📂 カテゴリ詳細ページ (`/category/[slug]`)
 
 | # | 項目 | 規模 |
 |---|---|---|
-| _(現在なし)_ | — | — |
+| 1 | 同日複数 Logs/動画 のプルダウン選択式 | 中 (schema 設計含む) |
 
 ### ⚙ 設定 / 管理系 (settings-dialog / maintenance-menu)
 
@@ -59,20 +58,66 @@
 
 | # | 項目 | 規模 |
 |---|---|---|
-| 8 | Vercel/Supabase 自動導入 (Deploy button / `.env.example` / seed)。導入後の公開モックサイト (デモ用ダミーデータ) も検証 | 中 |
+| _(現在なし)_ | — | — |
 
 ## 完了済み TODO
 
 直近版のみ列挙。詳細経緯は `src/lib/changelog.ts`、過去版アーカイブは `.claude/done.md`。
 
-- **2.1 (2026-05-01)**: #1 同日複数 Logs/動画 のプルダウン選択式 — 完了 (commit 8228876)
-  - **対象**: スケジュールページ (`/`) の確定セル日付ボタン横の動画 (Film) / Logs (BarChart3) アイコン。同日に複数 video / FFLogs report が紐付いた場合、従来は `bucket?.shift()` で最古 1 件のみ表示で 2 件目以降にアクセス不可だった
-  - **データ層** ([src/lib/server/session-video-link.ts](src/lib/server/session-video-link.ts)): `buildSessionVideoLinkMap()` の戻り値を `Record<string, SessionVideoLink>` → **`Record<string, SessionVideoLink[]>`** に配列化、bucket 全件保持に変更 (posted_at asc ソート順は維持)。旧仕様 "各 video は最大 1 セッションに紐付く (used-set)" は撤廃 (実害なし)
-  - **UI 層** ([src/components/portal/schedule-list.tsx](src/components/portal/schedule-list.tsx)): 旧 IIFE スロット描画を新 component `SessionActionIcons` に分離。0 件 = 透明 spacer / 1 件 = 従来単一リンク (回帰なし) / 2+ 件 = `DropdownMenu` (`@base-ui/react/menu` 既存) 切替。Trigger は元の Film/BarChart3 アイコン + 右上に件数バッジ (h-2.5 round + neon-cyan/amber 配色)。past の動画 dropdown item は外部リンク `target="_blank"`、upcoming は portal 内 `<Link prefetch={false}>` (`render` prop で `<a>` / `<Link>` 分岐)
-  - **Logs 候補集約**: (A) 各動画の `logsUrl` (= category_links.logs_url) + (B) `sessionLogsUrl` (= schedule_past_sessions.logs_url) を URL で dedup して候補化。(B) 由来は最後に「セッション登録分」ラベルで併記
-  - **追従**: schedule-page-body / schedule-past-simple は型を配列化 + DateChip propagate を `sessionVideoLinks?.[s.rawDate]?.[0] ?? null` で 1 件目のみ抽出 (= 既存挙動 100% 維持、ユーザー合意済)。next-session-card には影響なし (`SessionVideoLink` 未使用)
-  - **スコープ外** (意図的): FFLogs API を click 時に呼んで動画にも紐付いていない同日 report 全件取得は重く認証も要するため見送り、DB 保存済み候補のみ dropdown 化。schema 変更なし (migration 不要)
-  - **検証**: `tsc --noEmit` PASS。dev preview 起動成功 (Next.js 16.2.4 / Ready 410ms / `/` GET 200) で console / server エラー無し。実 DB 上で 2 ヶ月以内の DECISION 過去 session が現在 0 件のため Film/Logs アイコン描画行が無く dropdown 視覚確認は本番デプロイ後に実データで実施予定 (TODO #23 と同様パターン)。コード経路は `videoLinks.length === 0` の spacer fallback で回帰なし
+- **2.1 (2026-05-02 part3)**: #55 スケジュールページ軽量化 — Vercel Data Cache を `updateTag` 即時無効化方式で復活 — クローズ
+  - **狙い**: TODO #61 で `cache: "no-store"` 固定にしたため Speed Insights `/` route FCP が 2.86s に悪化していた点を解消
+  - **真因**: `no-store` で character-sheets HTML scrape が毎回 1〜3s。Vercel Data Cache を使えれば cache hit 時はほぼ瞬時だが、TODO #61 の `revalidatePath("/")` が fetch cache key を外せない問題で stale 化リスクがあった
+  - **修正**:
+    - [next-session.ts](src/lib/schedule/next-session.ts): fetch options を `next: { revalidate: 60, tags: [SCHEDULE_CACHE_TAG] }` に変更、`SCHEDULE_CACHE_TAG = "schedule"` を新 export
+    - 新規 [schedule-cache-actions.ts](src/lib/server/schedule-cache-actions.ts) (`"use server"`): `invalidateScheduleCache()` で Next.js 16 の `updateTag(SCHEDULE_CACHE_TAG)` 呼出 (read-your-own-writes セマンティクス)
+    - [schedule-edit-frame-dialog.tsx](src/components/portal/schedule-edit-frame-dialog.tsx): onOpenChange close ハンドラで `invalidateScheduleCache().then(() => router.refresh())` 呼出。portal 経由の編集はキャッシュ即時無効化 + RSC 再 fetch
+  - **TODO #61 との整合**: `updateTag` は tag-based で cache key 単位に直接効くため stale 問題は再発しない。HANDOFF にも明記済の future option を採用
+  - **lag 設計**: TTL 60s なので外部編集 (portal を介さず character-sheets を直接編集) は最大 1 分遅延、portal iframe 経由はほぼ即時
+  - **副次変更**: 設定タブの更新履歴 UI を簡略化 — 各 part の `<details>` 折りたたみ + body 撤去、title 1 行のフラット箇条書きに変更 ([settings-dialog.tsx:1610](src/components/portal/settings-dialog.tsx))。release 単位の折りたたみと最新 1 件 default open は維持
+  - **検証**: `tsc --noEmit` PASS、dev preview で page render + console エラーなし + 更新履歴 1 行表示を確認
+- **2.1 (2026-05-02 part2)**: #62 schedule 凡例を character-sheets `/schedule/edit` の「日程オプション」から動的生成 — クローズ
+  - **狙い**: `/schedule/edit` の `<input id="choiceValues" value="全昼夜">` で管理者が登録した記号マスターを portal 凡例 + セル描画に反映 (TODO #60 で許容したカスタムラベルが「色は付くが凡例で説明されない」状態の解消)
+  - **真因**: portal の凡例情報源が `/schedule/list` HTML だけで、マスターが書かれている `/schedule/edit` を一切 fetch していなかった (list 側にはマスターも凡例ブロックも無い)
+  - **実装**:
+    - [src/lib/schedule/parse.ts](src/lib/schedule/parse.ts): `ScheduleAttendanceOptions` 型 (`choices: string[]` + `source: "edit-page" | "fallback-from-list" | "unavailable"`) を新設、`ParsedSchedule.attendanceOptions` 必須化。`parseAttendanceChoicesFromEditHtml(editHtml)` で `id="choiceValues"` の value を codepoint 単位 split (× / ー は除外)、`resolveAttendanceOptions()` で edit 失敗時は sessions の出欠集合から fallback、両方失敗で `unavailable`
+    - [src/lib/schedule/next-session.ts](src/lib/schedule/next-session.ts): `deriveEditUrl()` で list URL から `/schedule/edit?key=...` を派生、`fetchScheduleRaw()` で list と edit を `Promise.all([fetchHtmlOrNull(list), fetchHtmlOrNull(edit)])` で並列 fetch (edit は null 許容、`cache: "no-store"` 維持)
+    - [src/components/portal/schedule-list.tsx](src/components/portal/schedule-list.tsx): `ATT_LEGEND` ハードコード撤去 → `buildAttendanceLegend(choices)` 関数で動的生成 (choices 先頭 + `×` `－` 末尾固定、空なら従来 5 種にフォールバック)。`ATT_LABEL_DICT` に portal 側ラベル辞書 (`◯→参加可` 系 5 種 + `全→全日参加可` `昼→昼参加可` `夜→夜参加可` `早→早朝参加可`)、辞書外は記号のみ表示。`ATT_TONE` に 全/昼/夜/早 を amber fallback トーンで明示マッピング、辞書外も同 fallback
+  - **ラベル方針**: マッピング外は説明なし (記号のみ凡例表示) — ユーザー要望
+  - **表示順**: edit choiceValues の文字順 → 末尾固定 `×` `ー`
+  - **Cache 戦略**: list と同じく `cache: "no-store"` で fresh fetch (TTFB +1〜3s 増、TODO #61 と整合)
+  - **検証**: `tsc --noEmit` PASS。デモ `/schedule/edit` を curl で取得し parser ロジックを Node 単体実行 → `choiceValues="全昼夜"` から `choices=[全,昼,夜]` 抽出 + 凡例 5 件 (`全→全日参加可 / 昼→昼参加可 / 夜→夜参加可 / ×→不可 / －→未回答`) 構築を実証。portal 上 (本番固定 = 標準 5 種) で従来表示と同等の凡例 + regression なしを画面 screenshot で確認
+- **2.1 (2026-05-02)**: #61 DECISION 行 CANDIDATE 描画 + ルール popover「日程状況一覧」混入 — クローズ
+  - **真因 (1) Vercel Data Cache stale**: `fetch({ next: { revalidate: 1800 } })` で 30 分 TTL の Data Cache が character-sheets の DECISION 更新を反映できず古い CANDIDATE 一色 HTML が居座り続ける。`revalidatePath("/")` の mutate trigger でも fetch cache key 単位では invalidate されないケースが Edge + Next.js 16 の組み合わせで再現。再 deploy しても Data Cache は別ストレージに persist されるため消えない (TODO #61 起票時の「fresh deploy 後も再現」も同根)
+  - **真因 (2) parseTopText の regex 漏れ**: `parseTopText()` の block re が `<table>` 直前の `<p|pre|blockquote|h2|h3|h4>` を拾うヒューリスティック。character-sheets が table 直前に「日程状況一覧」というラベル見出しを出していると `■コメント` 切り捨てより前に混入
+  - **切り分け**: temp `[parse-debug]` log で 5/02 の statusRaw=`CANDIDATE` (length=9, 完全一致) を観測 → regex は問題なし、HTML 自体が違う (c) で確定。`cache: "no-store"` 切替で `decisionCount: 0 → 3` に変化 + ブラウザ確認で 5/02・5/17・5/30 全件確定 chip 描画 → c-1 (Cache stale) 確定
+  - **修正**:
+    - [src/lib/schedule/next-session.ts](src/lib/schedule/next-session.ts) `fetchScheduleRaw()` の fetch を `cache: "no-store"` に固定。毎リクエスト fresh fetch (TTFB +1〜3s) を許容して stale 問題を根絶 (single-tenant 低トラフィック portal なので運用許容範囲)
+    - [src/lib/schedule/parse.ts](src/lib/schedule/parse.ts) `CHARSHEETS_LABEL_NOISE` Set 新設 (現状「日程状況一覧」のみ)、`parseTopText` の block ループ内で完全一致時のみ skip
+  - **TTFB トレードオフ**: TODO #55 の cache TTL 延長 (10→30 分) と相反するが stale で機能しないより fresh 優先。将来 `revalidateTag` ベースで iframe edit 完了時 / admin mutate 時に明示 invalidate する形に戻す余地は残す
+  - **検証**: tsc PASS。Claude in Chrome で demo を直接確認、5/02・5/17・5/30 全件確定 chip + 次回開催 = 2026/05/02 確定 + ルール popover に「日程状況一覧」非表示を確認 (commit 直前)
+- **2.1 (2026-05-01)**: #60 schedule 出欠記号にカスタムラベル (昼/夜/全 等) を許容 — クローズ
+  - **真因**: `parse.ts` の `Attendance` 型 union が `◯ / ⏰ / △ / × / －` の 5 種固定で、`isAttendance()` がそれ以外を全 reject していた。character-sheets 側で運用カスタムとして「昼 / 夜 / 全」のような任意ラベルが入っても portal 上で `―` フォールバックに上書きされる挙動だった
+  - **修正**:
+    - [src/lib/schedule/parse.ts](src/lib/schedule/parse.ts): `Attendance` 型を string union から `string` に拡張、`isAttendance()` を「空文字以外なら通す」に縮小
+    - [src/components/portal/schedule-list.tsx](src/components/portal/schedule-list.tsx): `ATT_TONE` を `Record<string, string>` 化 + `ATT_TONE_FALLBACK` (amber) 新設、`ATT_TONE[att] ?? ATT_TONE_FALLBACK` で安全 lookup
+    - 副次: parseSessions push の status を bucket 済 (DECISION/CANDIDATE) に統一、空 value="" 行が status="" になる経路を除去 (defensive)
+  - **検証**: tsc PASS + デプロイ後 (dpl 2abda84bd01f) demo サイトで 夜=18 / 昼=6 / 全=11 件が amber トーンで描画されることを確認 (commit 2abda84)
+  - **残課題**: 確定/次回開催 反映が「再デプロイ + Data Cache クリア後も改善されない」問題が残存。当初は cache stale 仮説だったが新 deploy でも全 31 行 `·` (CANDIDATE)、`>確定<` は列ヘッダーの 1 件のみ → 別 TODO #61 として起票 (下記)
+- **2.1 (2026-05-01)**: #59 デモサイトでスケジュールメンバー取得が動作しない不具合修正 — クローズ
+  - **真因**: `parse.ts` の `RAW_DATE_RE` が `HH:MM~HH:MM` の時間レンジを必須にしていたが、character-sheets では時間未入力のまま運用するスケジュールが存在し (本番でも想定される)、その場合 datetitle は `2026/05/01(金)` のように日付+曜日のみ。`parseRawDate()` が全行で null → `parseSessions()` 全 skip → sessions=0 → メンバー描画不能、という silent skip パスに落ちていた。throw されないため Runtime Logs にも痕跡なし、(d) 派生
+  - **切り分け方法**: 当該 character-sheets URL を curl で取得 (HTTP 200, 66KB, 31 行 + 4 ユーザー、構造正常) → parse.ts 同等ロジックを node mjs で再現 → `rawDateOk: 0` で `RAW_DATE_RE` 不一致を特定。datetitle 31 件すべて時間部分なしと確認
+  - **修正**:
+    - [src/lib/schedule/parse.ts](src/lib/schedule/parse.ts): `RAW_DATE_RE` の時間レンジ部分を `(?: ... )?` で optional 化、`parseRawDate()` で時間未入力時は `startTime`/`endTime` に空文字、Date は JST 当日 00:00 をフォールバック
+    - [src/components/portal/schedule-list.tsx:650](src/components/portal/schedule-list.tsx) / [src/components/portal/next-session-card.tsx:74](src/components/portal/next-session-card.tsx): 両方空のとき時間レンジ span 自体を render skip (「 ~ 」だけが残る不格好な表示を回避)
+  - **検証**: tsc PASS + 同 curl → 修正後再現スクリプトで sessions=31 件正常抽出を確認。本番動作確認は次回会話で実施
+  - **DB 影響**: `schedule_past_sessions.start_time/end_time` は `text NOT NULL` なので空文字 (NOT NULL を満たす) で互換、schema 変更不要
+- **2.1 (2026-05-01)**: #8 Vercel/Supabase 自動導入 + モックサイト — クローズ (part A〜E 完了 + デプロイ実施)
+  - **part A〜D (commit 51f8142 / abaec6d / 1f389be)**: `.env.local.example` に FFLogs v2 OAuth + `NEXT_PUBLIC_SCHEDULE_URL` 追記、schema.sql に Section 11 サンプルカテゴリ 5 件 seed、README に Vercel Deploy Button 追加
+  - **part C-ii (commit e494347)**: schema.sql Section 12 を新設、Section 11 のサンプル 5 カテゴリに紐付ける demo data bulk seed (category_links 37 / loot_items 18 + entries ~36 / mitigation_phases 20 + entries ~60 / strategy_docs 5 / category_macros 10 / recruitment_templates 5 / tags 11 / past_sessions 18 + memos 8 / app_settings 2)。`DO $$ BEGIN ... END $$` block + sentinel `app_settings.demo_seed_applied=1` で冪等
+  - **part E (commit e494347)**: `PUBLIC_DEMO_MODE=true` フラグ追加。proxy.ts に `isPublicDemoModeEnabled()` 追加 (NODE_ENV ガード無し → 本番でも有効、dev bypass の後段配置)、auth.ts に `publicDemoModeUser()` 追加 (roles=[] 固定で書き込みは admin gate + RLS で 4 層防御)。`.env.local.example` に PUBLIC_DEMO_MODE セクション追記
+  - **schema fix (commit 429700e)**: 副次発見の長期 bug 修正 — `ALTER TABLE public.category_links` / `schedule_past_sessions` の logs_url_source 関連 ALTER が CREATE TABLE より前に配置されており、新規 fork 時に `ERROR: 42P01: relation does not exist` で失敗していた。各 CREATE TABLE 直後に移動
+  - **デプロイ実施 (commit 4b9ff27 / dbbdda5)**: モックサイト用 Vercel + Supabase 別インスタンスをデプロイ → https://demo-raid-repository.vercel.app/ 稼働。Vercel deploy phase の transient 障害 (`Deploying outputs...` で 4 連続 fail) を空 commit push で回避。動作確認: HTTP 200 + demo data 表示 + `/login` リダイレクト無し (PUBLIC_DEMO_MODE bypass OK)。README に Live demo セクション追記
+  - **データ修正 (commit 94a9ce5)**: 旧 `arc-heavy/cruiser/lightheavy` (name `アルカディア:〜`) と新 `arcadion-heavy` (name `至天の座アルカディア：ヘビー級`) の重複解消 → arcadion-* に統合 (cruiser/lightheavy 新規追加)。Section 9 の INSERT を migration DELETE に置換 (旧 seed name のみ削除する安全弁つき)。Section 13 を新設してユーザー指定の追加コンテンツ 6 件 (3 動画 + 3 攻略、URL ベース NOT EXISTS guard) を投入
 - **2.1 (2026-05-01)**: #23 サイト全体のデータ初期化ボタン — 完了 (admin 限定 + 2 段階確認)
   - settings-dialog 末尾に **Danger Zone** セクション新設 (`canEdit` のみ表示、rose 系トーンで他セクションと隔離)。MainTabs / maintenance-menu (日常運用 action) とは性質が違う本番破壊級なので意図的に分離配置
   - 新規 [src/components/portal/data-init-confirm-dialog.tsx](src/components/portal/data-init-confirm-dialog.tsx): 2 段階 confirm dialog (step1=warn / step2=`INITIALIZE` テキスト一致で実行 active)。既存 destructive UI (`window.confirm` 1 段階) には前例の無いテキスト入力ガードを本機能専用に新規実装
@@ -248,3 +293,33 @@ Remove-Item $path
 ## バージョン更新
 
 `src/lib/changelog.ts` の `RELEASES[0]` に新エントリ追加 (or 当日中に複数 part を追加)。`MAJOR.MINOR (YYYY-MM-DD)` 方式、patch は使わない。
+
+## Claude Code 自動化セットアップ
+
+`8850b78` (2026-05-02) でプロジェクト全体に導入。
+
+### Project scope (`.claude/` 配下、git 管理)
+
+- **skills/**
+  - `check-next-docs` — Next.js 16 / React 19 の API を編集する前に `node_modules/next/dist/docs/` を必ず読む
+  - `handoff-update` — `/handoff-update` で完了 TODO を本ファイルに統合追記
+- **agents/**
+  - `supabase-rls-reviewer` — RLS / GRANT / ポリシー整合の読み取り監査
+  - `next16-migration-reviewer` — async params / fetch caching / use() 等の現行 API 適合監査
+- **hooks/** (`.claude/settings.json` に登録)
+  - `PreToolUse(Edit|Write|MultiEdit)` → `block-sensitive-files.sh` (`.env*` / lock 自動編集を遮断、`.env*.example` は許可)
+  - `PostToolUse(Edit|Write|MultiEdit)` → `eslint-fix.sh` (`.ts|.tsx|.js|.jsx|.mjs|.cjs` のみ `eslint --fix`、失敗時もブロックしない)
+
+### User scope (`~/.claude.json` 直下の `mcpServers`、コミット禁止)
+
+| MCP | コマンド | 環境変数 |
+|---|---|---|
+| `supabase` | `npx -y @supabase/mcp-server-supabase --read-only --project-ref=jmzjwesxqnaqmysuzrjt` | `SUPABASE_ACCESS_TOKEN` |
+| `context7` | `npx -y @upstash/context7-mcp` | `CONTEXT7_API_KEY` |
+
+**API キーローテ履歴**: 2026-05-02 — 旧 context7 key (`ctx7sk-870c8d52-...`) と旧 Supabase access token を漏洩扱いで revoke、新キーで user scope に再登録。新キーは `~/.claude.json` のみに格納、git 管理外。
+
+### 有効化されているプラグイン (`~/.claude/settings.json`)
+
+- `claude-code-setup@claude-plugins-official`
+- `frontend-design@claude-plugins-official`
