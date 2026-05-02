@@ -1,10 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 /**
- * TODO #65 (2.1, 2026-05-02 part6): controlled-open helper for Base UI
- * `Menu.Root` (= our `DropdownMenu`).
+ * TODO #65 (2.1, 2026-05-02 part6 / part8): controlled-open helper for
+ * Base UI `Menu.Root` (= our `DropdownMenu`).
  *
  * Default Base UI menus are modal — they lock document scroll while
  * open, which traps users on a long schedule list when they tap the
@@ -29,9 +29,18 @@ import { useCallback, useEffect, useState } from "react";
  *   scroll-into-view fires during enter animation), we'd close
  *   instantly. Skipping the first 150ms gives the user a moment to
  *   see the menu before any pending scroll closes it.
+ * - 400ms re-open lock after a scroll-triggered close. Even with
+ *   `disableAnchorTracking` on the Positioner (part7), production
+ *   reproduced a 3-stage flicker: close → momentarily re-open →
+ *   close. Something on the Base UI / React 19 side is requesting
+ *   `onOpenChange(true)` mid-close (suspected: dismissal handler
+ *   re-entry or concurrent-render re-commit). Ignoring `true` for
+ *   400ms after a scroll-close kills the visible re-open without
+ *   touching the Base UI internals.
  */
 export function useScrollClosingMenu() {
   const [open, setOpen] = useState(false);
+  const reopenLockedUntilRef = useRef(0);
   useEffect(() => {
     if (!open) return;
     let armed = false;
@@ -40,6 +49,7 @@ export function useScrollClosingMenu() {
     }, 150);
     const close = () => {
       if (!armed) return;
+      reopenLockedUntilRef.current = Date.now() + 400;
       setOpen(false);
     };
     window.addEventListener("scroll", close, { passive: true });
@@ -48,6 +58,9 @@ export function useScrollClosingMenu() {
       window.removeEventListener("scroll", close);
     };
   }, [open]);
-  const onOpenChange = useCallback((next: boolean) => setOpen(next), []);
+  const onOpenChange = useCallback((next: boolean) => {
+    if (next && Date.now() < reopenLockedUntilRef.current) return;
+    setOpen(next);
+  }, []);
   return { open, onOpenChange, modal: false as const };
 }
