@@ -1,6 +1,6 @@
 # Raid Repository — 引き継ぎノート
 
-> 2.1 (2026-05-02 part3) 時点。完了済 TODO の詳細は `src/lib/changelog.ts` / 過去版番号は `.claude/done.md`。
+> 2.1 (2026-05-02 part5) 時点。完了済 TODO の詳細は `src/lib/changelog.ts` / 過去版番号は `.claude/done.md`。
 >
 > **新規会話の手順**: このファイルを読んだ後、TODO 一覧は自動表示せずユーザーの要望を待つ。新規 TODO 追記時は part 単位ではなく TODO 完了時のみ統合追記する (part 細分は commit log に任せる)。
 
@@ -65,6 +65,18 @@ _(現在なし)_
 
 直近版のみ列挙。詳細経緯は `src/lib/changelog.ts`、過去版アーカイブは `.claude/done.md`。
 
+- **2.1 (2026-05-02 part5)**: #64 schedule_past_sessions の logs_url を子テーブル `schedule_past_session_logs` に分離 (1:N 化) — クローズ (PR [#11](https://github.com/yyamazaki-lym/raid-repository/pull/11) squash merge `b15e029`、本番 Supabase は MCP `apply_migration` で同日反映)
+  - **狙い**: 同 session 日付に対する FFLogs report が複数発生するケース (午前/午後分けた、ロビー失敗等) を素直に扱えるようにする。旧来は `schedule_past_sessions.logs_url` 単数列で 1 URL しか持てず popover が **上書き編集** だった
+  - **schema 変更**: 新表 `schedule_past_session_logs` (id/raw_date/url/source/created_at + UNIQUE(raw_date,url) + ON DELETE CASCADE)。旧 `logs_url` / `logs_url_source` 列は info_schema ガード付き seed → DROP。RLS / REPLICA IDENTITY FULL / supabase_realtime publication にも追加
+  - **server**: `fetchSessionLogsByDate()` 戻り値を `Record<string, SessionLogEntry[]>` に型変更、`linkReportsToSessions` の auto-link は新表 INSERT (source=auto) に置換、wipe も新表 delete に。1.9.11 bootstrap の sessions ブランチは撤去 (column 自体が無くなるため)。`category_links.logs_url` / `logs_url_source` は動画用なので残置
+  - **action 再編**: `setSessionLogsUrl` 撤廃 → `addSessionLogsUrl` (URL バリデート + 親 row upsert + 子 INSERT、UNIQUE 衝突は friendlier reason に変換) / `deleteSessionLogsUrl` (子 PK 単発削除、auto/manual 両方削除可) の 2 関数に分割
+  - **popover UI**: 簡素版に書換 — 既存エントリは行ごとに `URL + sourceバッジ + 開く + ×` で表示、末尾 input + 追加 ボタンで append-only。in-place edit は廃止
+  - **consumer 追従**: `schedule-list` / `schedule-past-simple` / `schedule-page-body` の `sessionLogsByDate` 型を配列形に。`SessionActionIcons` の Logs dropdown 候補集約は (動画 logsUrl ∪ sessionLogs) を URL dedup する形に書換、auto/manual はラベルで区別
+  - **admin-actions**: `initializeAllDataAction` の `DataInitCounts` / steps[] に新表を **親より前** に追加 (FK CASCADE 任せでも消えるが件数別表示用)
+  - **共有型**: `src/lib/schedule/session-logs.ts` に `SessionLogEntry` / `SessionLogSource` を切出し (server-only な fflogs.ts と client な popover の両方から import 可能にする)
+  - **デプロイ手順 (案 B)**: PR merge → Vercel main デプロイ完了 → MCP `apply_migration` で本番 Supabase にスキーマ反映、という順序。デプロイ完了直後の数十秒だけ「新コード × 旧スキーマ」窓があり `fetchSessionLogsByDate` が空 fallback を返すが、Logs アイコン非表示で凌げる設計
+  - **検証**: `tsc --noEmit` PASS。MCP `execute_sql` で本番スキーマ反映後に `schedule_past_session_logs.count=9` (旧 logs_url から自動移行) / `legacy_cols_remaining=0` / `RLS policies=4` / `replica_identity=full` を確認
+  - **migration SQL アーカイブ**: `.claude/todos/64-migration.sql` に MCP に投入した本番マイグレーション SQL 全文を保存 (再現性確保)
 - **2.1 (2026-05-02 part4)**: #1 schedule の動画/Logs アイコンを同日複数件で DropdownMenu 化 — クローズ (PR [#10](https://github.com/yyamazaki-lym/raid-repository/pull/10) squash merge `4953323`)
   - **狙い**: 同日複数の動画 / FFLogs report が紐付いたとき、旧 UI の `bucket?.shift()` で 1 件目しか描画されない問題を解消
   - **実装**: [session-video-link.ts](src/lib/server/session-video-link.ts) `buildSessionVideoLinkMap()` の戻り値を `Record<string, SessionVideoLink[]>` に配列化、[schedule-list.tsx](src/components/portal/schedule-list.tsx) の `SessionActionIcons` で `0 件 → spacer` / `1 件 → 直行 link` / `2+ 件 → DropdownMenu (件数バッジ付き)` の 3 経路に分岐。Logs 候補は (A) 各動画 `logsUrl` + (B) `sessionLogsUrl` を URL dedup
