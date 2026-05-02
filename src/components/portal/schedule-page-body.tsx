@@ -13,6 +13,7 @@ import type { JapaneseHolidaysMap } from "@/lib/japanese-holidays";
 import type { RecruitmentTemplate } from "@/lib/recruitment-templates-client";
 import type { ScheduleSessionMemo } from "@/lib/schedule-memos-client";
 import type { NextSessionResult, ScheduleFetchResult } from "@/lib/schedule/next-session";
+import type { SessionLogEntry } from "@/lib/schedule/session-logs";
 import type { SessionVideoLink } from "@/lib/server/session-video-link";
 
 /**
@@ -54,11 +55,13 @@ type Props = {
    */
   sessionVideoLinks?: Record<string, SessionVideoLink[]>;
   /**
-   * Pre-built map of `session.rawDate` → FFLogs URL stored on the
-   * past-session row. Surfaced as a Logs icon in the date cell even
-   * when no matching video exists.
+   * Pre-built map of `session.rawDate` → FFLogs URL entries stored in
+   * the `schedule_past_session_logs` child table. Surfaced as a Logs
+   * icon in the date cell even when no matching video exists. TODO #64
+   * (2.1, 2026-05-02 part5): array form replaces the legacy single
+   * `string` to allow multiple URLs per date.
    */
-  sessionLogsByDate?: Record<string, string>;
+  sessionLogsByDate?: Record<string, SessionLogEntry[]>;
   /**
    * True if the group has at least one cleared Ultimate (`絶...` +
    * status = `クリア済`). Drives the schedule-legend label MEMBERS

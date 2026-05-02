@@ -28,8 +28,14 @@ import {
   updateScheduleMemo,
   type ScheduleSessionMemo,
 } from "@/lib/schedule-memos-client";
-import { setSessionLogsUrl } from "@/lib/server/categories-actions";
+import {
+  addSessionLogsUrl,
+  deleteSessionLogsUrl,
+} from "@/lib/server/categories-actions";
+import type { SessionLogEntry } from "@/lib/schedule/session-logs";
 import { safeHref } from "@/lib/url-safe";
+
+const EMPTY_SESSION_LOGS: SessionLogEntry[] = [];
 
 /**
  * Click-on-date popover that lets any viewer leave shared memos for a
@@ -58,12 +64,13 @@ type Props = {
    */
   onRefresh?: () => Promise<void>;
   /**
-   * Currently-set FFLogs URL for this date (from `schedule_past_sessions
-   * .logs_url` OR a matching video's `logs_url`). Used to pre-fill the
-   * manual-entry input — the API's v1 endpoint only returns Public
-   * reports, so Unlisted / Private logs need to be bound by hand.
+   * Existing `schedule_past_session_logs` rows for this date. The
+   * editor lists them with delete + open buttons so users can clean
+   * up wrong auto-matches and remove stale manual entries inline.
+   * TODO #64 (2.1, 2026-05-02 part5): replaces the legacy
+   * `currentLogsUrl: string | null` prop.
    */
-  currentLogsUrl?: string | null;
+  sessionLogs?: SessionLogEntry[];
   /**
    * Session details for upserting the past_session row when manually
    * setting a logs URL for a session that hasn't been snapshotted yet.
@@ -98,7 +105,7 @@ export const SessionMemoPopover = forwardRef<
     displayDate,
     memos,
     onRefresh,
-    currentLogsUrl,
+    sessionLogs = EMPTY_SESSION_LOGS,
     sessionDetails,
     children,
   },
@@ -263,7 +270,7 @@ export const SessionMemoPopover = forwardRef<
                 rawDate={rawDate}
                 memos={memos}
                 onRefresh={onRefresh}
-                currentLogsUrl={currentLogsUrl ?? null}
+                sessionLogs={sessionLogs}
                 sessionDetails={sessionDetails}
               />
             </div>
@@ -349,13 +356,13 @@ function MemoList({
   rawDate,
   memos,
   onRefresh,
-  currentLogsUrl,
+  sessionLogs,
   sessionDetails,
 }: {
   rawDate: string;
   memos: ScheduleSessionMemo[];
   onRefresh?: () => Promise<void>;
-  currentLogsUrl: string | null;
+  sessionLogs: SessionLogEntry[];
   sessionDetails?: {
     parsedDate: string;
     startTime: string;
@@ -373,31 +380,39 @@ function MemoList({
   // overlay centered on screen.
   const [pendingDelete, setPendingDelete] =
     useState<ScheduleSessionMemo | null>(null);
-  // FFLogs URL editor state. Pre-filled from prop so users see the
-  // currently-bound URL on open. Editable in-place; save / clear
-  // buttons commit via the server action.
-  const [logsUrlInput, setLogsUrlInput] = useState(currentLogsUrl ?? "");
+  // TODO #64 (2.1, 2026-05-02 part5): simplified FFLogs editor —
+  // existing rows render with delete + open buttons (read-only URL),
+  // and a single input + 追加 button appends a new manual entry.
+  // Replaces the legacy "single URL with edit-in-place" UI.
+  const [newLogsInput, setNewLogsInput] = useState("");
   const [logsBusy, setLogsBusy] = useState(false);
-  // Re-sync local input when the prop changes (e.g. another tab edited
-  // it, or after our own save returns and parent re-fetches).
-  useEffect(() => {
-    setLogsUrlInput(currentLogsUrl ?? "");
-  }, [currentLogsUrl]);
 
-  const saveLogsUrl = async (next: string | null) => {
+  const handleAddLogs = async () => {
+    const value = newLogsInput.trim();
+    if (!value) return;
     setLogsBusy(true);
-    const r = await setSessionLogsUrl(rawDate, next, sessionDetails);
+    const r = await addSessionLogsUrl(rawDate, value, sessionDetails);
     setLogsBusy(false);
     if (!r.ok) {
-      toast.error("Logs URL 保存失敗: " + r.reason);
+      toast.error("Logs URL 追加失敗: " + r.reason);
       return;
     }
-    toast.success(next ? "Logs URL を保存しました" : "Logs URL をクリアしました");
-    // Page-level state (sessionLogsByDate map) only refreshes via
-    // server revalidation. The action calls `revalidatePath('/')`
-    // which re-renders the schedule on the next nav/click. Local
-    // input stays in sync via the useEffect above when the prop
-    // updates after refresh.
+    toast.success("Logs URL を追加しました");
+    setNewLogsInput("");
+    // Page-level `sessionLogsByDate` map refreshes via the server
+    // action's `revalidatePath('/')` — the new row will appear on
+    // the next render of the parent.
+  };
+
+  const handleDeleteLogs = async (id: string) => {
+    setLogsBusy(true);
+    const r = await deleteSessionLogsUrl(id);
+    setLogsBusy(false);
+    if (!r.ok) {
+      toast.error("Logs URL 削除失敗: " + r.reason);
+      return;
+    }
+    toast.success("Logs URL を削除しました");
   };
 
   // Compose state for adding a new memo. Author name initialized
@@ -619,71 +634,94 @@ function MemoList({
       </div>
 
       {/* FFLogs URL editor — placed at the bottom of the popover so it
-          doesn't compete with memo reading. The v1 API only returns
-          Public reports, so Unlisted / Private logs need to be bound
-          here by hand. */}
+          doesn't compete with memo reading. TODO #64 (2.1, 2026-05-02
+          part5): now backed by the `schedule_past_session_logs` child
+          table so each date can hold multiple URLs. Existing rows are
+          listed with open + × buttons (delete only, no edit-in-place),
+          and a single input + 追加 button appends new manual entries. */}
       <div className="flex flex-col gap-1.5 border-t border-border/40 pt-2.5">
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-1.5 font-mono text-[10px] tracking-[0.22em] text-muted-foreground uppercase">
-            <BarChart3
-              className="h-3 w-3 text-amber-300/85"
+        <div className="flex items-center gap-1.5 font-mono text-[10px] tracking-[0.22em] text-muted-foreground uppercase">
+          <BarChart3
+            className="h-3 w-3 text-amber-300/85"
+            aria-hidden
+          />
+          FFLogs URL
+          {sessionLogs.length > 0 && (
+            <span
               aria-hidden
-            />
-            FFLogs URL
-          </div>
-          {(() => {
-            const safeLogsHref = safeHref(currentLogsUrl);
-            if (!safeLogsHref) return null;
-            return (
-              <a
-                href={safeLogsHref}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-[10px] text-amber-300/85 underline decoration-dotted underline-offset-2 hover:text-amber-300"
-                title="現在の URL を新タブで開く"
-              >
-                <ExternalLink className="h-2.5 w-2.5" aria-hidden />
-                現在の URL を開く
-              </a>
-            );
-          })()}
-        </div>
-        <input
-          value={logsUrlInput}
-          onChange={(e) => setLogsUrlInput(e.target.value)}
-          placeholder="https://www.fflogs.com/reports/abc123..."
-          type="url"
-          inputMode="url"
-          spellCheck={false}
-          autoComplete="off"
-          className={inputClass}
-        />
-        <div className="flex justify-end gap-1.5">
-          {currentLogsUrl && (
-            <button
-              type="button"
-              onClick={() => {
-                setLogsUrlInput("");
-                void saveLogsUrl(null);
-              }}
-              disabled={logsBusy}
-              className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 font-mono text-[10px] tracking-[0.18em] text-muted-foreground uppercase transition-colors hover:bg-secondary/60 hover:text-rose-200 disabled:opacity-50"
+              className="font-mono text-[10px] tracking-[0.18em] text-amber-300/70"
             >
-              <X className="h-3 w-3" aria-hidden />
-              クリア
-            </button>
+              · {sessionLogs.length} 件
+            </span>
           )}
+        </div>
+        {sessionLogs.length > 0 && (
+          <ul className="flex flex-col gap-1">
+            {sessionLogs.map((entry) => {
+              const safe = safeHref(entry.url);
+              return (
+                <li
+                  key={entry.id}
+                  className="flex items-center gap-1 rounded border border-border/40 bg-background/30 px-2 py-1"
+                >
+                  <span
+                    className="min-w-0 flex-1 truncate font-mono text-[11px] text-foreground/85"
+                    title={entry.url}
+                  >
+                    {entry.url}
+                  </span>
+                  <span
+                    aria-hidden
+                    className="font-mono text-[9px] tracking-[0.18em] text-muted-foreground/70 uppercase"
+                  >
+                    {entry.source}
+                  </span>
+                  {safe && (
+                    <a
+                      href={safe}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex h-5 items-center gap-1 rounded px-1.5 text-[10px] text-amber-300/85 transition-colors hover:bg-amber-400/15 hover:text-amber-200"
+                      title="新タブで開く"
+                    >
+                      <ExternalLink className="h-2.5 w-2.5" aria-hidden />
+                      開く
+                    </a>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => void handleDeleteLogs(entry.id)}
+                    disabled={logsBusy}
+                    aria-label="この URL を削除"
+                    title="削除"
+                    className="inline-flex h-5 w-5 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-rose-400/15 hover:text-rose-200 disabled:opacity-50"
+                  >
+                    <X className="h-3 w-3" aria-hidden />
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        <div className="flex items-center gap-1.5">
+          <input
+            value={newLogsInput}
+            onChange={(e) => setNewLogsInput(e.target.value)}
+            placeholder="https://www.fflogs.com/reports/abc123..."
+            type="url"
+            inputMode="url"
+            spellCheck={false}
+            autoComplete="off"
+            className={inputClass + " flex-1"}
+          />
           <button
             type="button"
-            onClick={() => void saveLogsUrl(logsUrlInput.trim() || null)}
-            disabled={
-              logsBusy ||
-              logsUrlInput.trim() === (currentLogsUrl ?? "").trim()
-            }
+            onClick={() => void handleAddLogs()}
+            disabled={logsBusy || newLogsInput.trim().length === 0}
             className="inline-flex items-center gap-1.5 rounded-md border border-amber-400/45 bg-amber-400/10 px-3 py-1.5 font-mono text-[10px] tracking-[0.22em] text-amber-200 uppercase transition-colors hover:border-amber-400/70 hover:bg-amber-400/18 disabled:opacity-50"
           >
             <Save className="h-3 w-3" aria-hidden />
-            保存
+            追加
           </button>
         </div>
       </div>

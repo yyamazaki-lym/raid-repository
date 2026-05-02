@@ -845,11 +845,17 @@ export async function clearAllFflogsLinks(): Promise<{
       sessionsCleared: 0,
     };
   }
+  // TODO #64 (2.1, 2026-05-02 part5): wipe all rows in the new
+  // `schedule_past_session_logs` table — both 'auto' and 'manual'.
+  // Per the existing comment, this matches the legacy behavior of
+  // `update logs_url=null` (which cleared everything regardless of
+  // source). Users who want to preserve manual entries should delete
+  // them individually from the memo popover instead.
   const { data: ses, error: sesErr } = await supabase
-    .from("schedule_past_sessions")
-    .update({ logs_url: null })
-    .not("logs_url", "is", null)
-    .select("raw_date");
+    .from("schedule_past_session_logs")
+    .delete()
+    .not("id", "is", null)
+    .select("id");
   if (sesErr) {
     return {
       ok: false,
@@ -871,72 +877,68 @@ export async function clearAllFflogsLinks(): Promise<{
 }
 
 /**
- * Server Action: manually set / clear a session's `logs_url`.
+ * TODO #64 (2.1, 2026-05-02 part5): append a new manual FFLogs URL to
+ * `schedule_past_session_logs` for the given session date.
  *
- * Workaround for the v1 API limitation: it returns ONLY public reports,
- * so Unlisted / Private FFLogs reports can't be auto-linked. Users
- * paste the URL by hand from the memo popover for the date.
+ * Replaces the legacy `setSessionLogsUrl` which UPDATE'd a single
+ * `schedule_past_sessions.logs_url` text column. The new model
+ * supports multiple URLs per date — each call appends one row with
+ * `source='manual'`.
  *
- * Upserts: if the past_session row doesn't exist yet (live session
- * that hasn't been snapshotted), insert it using the provided session
- * details. Pass `null` (or empty string) for `logsUrl` to clear the
- * value.
+ * Upserts the parent row first when `sessionDetails` is supplied so
+ * "live session not yet snapshotted" cases still work. The FK from
+ * the logs table to `schedule_past_sessions.raw_date` requires the
+ * parent row to exist before the child insert.
  */
-export async function setSessionLogsUrl(
+export async function addSessionLogsUrl(
   rawDate: string,
-  logsUrl: string | null,
+  logsUrl: string,
   sessionDetails?: {
     parsedDate: string;
     startTime: string;
     endTime: string;
     dayOfWeek: string;
   },
-): Promise<{ ok: true } | { ok: false; reason: string }> {
+): Promise<{ ok: true; id: string } | { ok: false; reason: string }> {
   const auth = await assertAdminResult();
   if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
   const trimmedDate = rawDate.trim();
   if (!trimmedDate) {
     return { ok: false, reason: "rawDate が空です" };
   }
-  // Normalize: empty string → null (clear). Anything else gets a basic
-  // shape check.
-  let normalized: string | null = null;
-  if (logsUrl && logsUrl.trim()) {
-    const t = logsUrl.trim();
-    if (!/^https?:\/\//i.test(t)) {
-      return {
-        ok: false,
-        reason: "FFLogs URL は http:// か https:// で始めてください",
-      };
-    }
-    if (!/fflogs\.com\/reports\//i.test(t)) {
-      return {
-        ok: false,
-        reason:
-          "FFLogs レポート URL を入力してください (例: https://www.fflogs.com/reports/abc123)",
-      };
-    }
-    normalized = t;
+  const t = logsUrl.trim();
+  if (!t) {
+    return { ok: false, reason: "FFLogs URL を入力してください" };
+  }
+  if (!/^https?:\/\//i.test(t)) {
+    return {
+      ok: false,
+      reason: "FFLogs URL は http:// か https:// で始めてください",
+    };
+  }
+  if (!/fflogs\.com\/reports\//i.test(t)) {
+    return {
+      ok: false,
+      reason:
+        "FFLogs レポート URL を入力してください (例: https://www.fflogs.com/reports/abc123)",
+    };
   }
 
   const supabase = await createClient();
-  // Try UPDATE first. If 0 rows affected and we have session details,
-  // INSERT a new row. This covers both "live session not yet
-  // snapshotted" and "past session that's been snapshotted" cases.
-  const { data: updated, error: updErr } = await supabase
+  // Ensure parent row exists. If the session hasn't been snapshotted
+  // yet but the caller knows the session shape (passed via the
+  // popover), insert a `source='manual'` placeholder row.
+  const { data: existing } = await supabase
     .from("schedule_past_sessions")
-    .update({ logs_url: normalized, logs_url_source: "manual" })
-    .eq("raw_date", trimmedDate)
     .select("raw_date")
+    .eq("raw_date", trimmedDate)
     .maybeSingle();
-  if (updErr) return { ok: false, reason: dbError("logs_url 更新", updErr) };
-
-  if (!updated) {
+  if (!existing) {
     if (!sessionDetails) {
       return {
         ok: false,
         reason:
-          "対象の過去予定が見つかりませんでした — 先にスナップショットを取るか、メモポップオーバーから手動で紐づけてください",
+          "対象の過去予定が見つかりませんでした — 先にスナップショットを取るか、セッション情報を含めて再度お試しください",
       };
     }
     const { error: insErr } = await supabase
@@ -948,11 +950,52 @@ export async function setSessionLogsUrl(
         end_time: sessionDetails.endTime,
         day_of_week: sessionDetails.dayOfWeek,
         source: "manual",
-        logs_url: normalized,
-        logs_url_source: "manual",
       });
     if (insErr) return { ok: false, reason: dbError("過去予定登録", insErr) };
   }
+
+  const { data: inserted, error: logErr } = await supabase
+    .from("schedule_past_session_logs")
+    .insert({ raw_date: trimmedDate, url: t, source: "manual" })
+    .select("id")
+    .single();
+  if (logErr) {
+    // Likely UNIQUE (raw_date, url) violation — surface a friendlier
+    // message so users know the URL is already linked.
+    if ((logErr as { code?: string }).code === "23505") {
+      return { ok: false, reason: "同じ URL が既に紐付いています" };
+    }
+    return { ok: false, reason: dbError("logs URL 追加", logErr) };
+  }
+  try {
+    revalidatePath("/");
+  } catch {
+    // best-effort
+  }
+  return { ok: true, id: inserted.id as string };
+}
+
+/**
+ * TODO #64: delete a single row from `schedule_past_session_logs` by
+ * its primary key. Used by the memo popover to remove an existing
+ * URL entry — both 'auto' and 'manual' rows are deletable so the user
+ * can clean up wrong auto-matches inline.
+ */
+export async function deleteSessionLogsUrl(
+  id: string,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
+  const trimmed = id.trim();
+  if (!trimmed) {
+    return { ok: false, reason: "id が空です" };
+  }
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("schedule_past_session_logs")
+    .delete()
+    .eq("id", trimmed);
+  if (error) return { ok: false, reason: dbError("logs URL 削除", error) };
   try {
     revalidatePath("/");
   } catch {
