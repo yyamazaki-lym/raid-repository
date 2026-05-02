@@ -17,11 +17,11 @@
 
 ## 🔄 保留オペレーション
 
-- **TODO #1 マージ待ち** (2026-05-01 実装完了 / main 未マージ): `claude/loving-mirzakhani-8bc971` ブランチに schedule の動画/Logs アイコンを同日複数件で DropdownMenu 化する実装あり (commits `8228876`, `db9d5b6`)。`buildSessionVideoLinkMap` の戻り値を `Record<string, SessionVideoLink[]>` に配列化、5 ファイル / +258 -104 行。tsc PASS + dev preview 起動成功までは確認済だが、本番 DB の DECISION 過去 0 件で dropdown 視覚確認は未実施。次セッションで PR 化 → main マージ → ブランチ削除を実施する。
+_(現在なし)_
 
 ## 📌 次回の作業優先度
 
-**TODO #1 マージ作業** (上記 🔄 保留オペレーション参照)。worktree を立てて本番側で dropdown 視覚確認 → PR → マージ。完了後はそれ以外の未完了 TODO はユーザー選択。
+未完了 TODO はユーザー選択。直近で起票された TODO #63 (動画 dropdown のマウスオーバーで動画タイトル tooltip 表示) は schedule-list の `SessionActionIcons` に手を入れるだけで完結する小規模改善。
 
 ## 未完了 TODO 一覧
 
@@ -33,12 +33,13 @@
 |---|---|---|
 | 2 | スケジュール表自前実装 (作成/編集/確定/Discord 通知) | 大 |
 | 38 | スケジュール追加機能 — portal 内から開催候補日を追加する UI が無い。日付 + 時間帯 + 参加可否を入力 → DB 保存 → 描画。TODO #2 と統合可 | 中〜大 |
+| 63 | TODO #1 で導入した動画 / Logs DropdownMenu の trigger アイコンに hover した際、動画タイトル (= dropdown item で表示している `videoTitle`) を tooltip で表示する。1 件時 (`<a>` / `<Link>` 直行ケース) も同様に tooltip 化したい。schedule-list.tsx の `SessionActionIcons` に手を入れるだけで完結 | 小 |
 
 ### 📂 カテゴリ詳細ページ (`/category/[slug]`)
 
 | # | 項目 | 規模 |
 |---|---|---|
-| 1 | 同日複数 Logs/動画 のプルダウン選択式 | 中 (schema 設計含む) |
+| _(現在なし)_ | — | — |
 
 ### ⚙ 設定 / 管理系 (settings-dialog / maintenance-menu)
 
@@ -64,6 +65,11 @@
 
 直近版のみ列挙。詳細経緯は `src/lib/changelog.ts`、過去版アーカイブは `.claude/done.md`。
 
+- **2.1 (2026-05-02 part4)**: #1 schedule の動画/Logs アイコンを同日複数件で DropdownMenu 化 — クローズ (PR [#10](https://github.com/yyamazaki-lym/raid-repository/pull/10) squash merge `4953323`)
+  - **狙い**: 同日複数の動画 / FFLogs report が紐付いたとき、旧 UI の `bucket?.shift()` で 1 件目しか描画されない問題を解消
+  - **実装**: [session-video-link.ts](src/lib/server/session-video-link.ts) `buildSessionVideoLinkMap()` の戻り値を `Record<string, SessionVideoLink[]>` に配列化、[schedule-list.tsx](src/components/portal/schedule-list.tsx) の `SessionActionIcons` で `0 件 → spacer` / `1 件 → 直行 link` / `2+ 件 → DropdownMenu (件数バッジ付き)` の 3 経路に分岐。Logs 候補は (A) 各動画 `logsUrl` + (B) `sessionLogsUrl` を URL dedup
+  - **マージ過程**: `claude/loving-mirzakhani-8bc971` を main (5/02 part1-3 進行) と merge した際 schedule-list.tsx / changelog.ts / HANDOFF.md で 3 ファイル衝突 → `EMPTY_VIDEO_LINKS` (TODO #1) と `ATT_TONE_FALLBACK` (TODO #60) を統合する形で解消、`ATT_TONE` 型は `Record<string, string>` を採用
+  - **検証**: tsc PASS + worktree 本番 next build PASS + 本番デモ環境 (5/30 → 5/02 訂正後の 3/28 行で 2 件) で dropdown が両 item 表示 + クリック動作することを実確認
 - **2.1 (2026-05-02 part3)**: #55 スケジュールページ軽量化 — Vercel Data Cache を `updateTag` 即時無効化方式で復活 — クローズ
   - **狙い**: TODO #61 で `cache: "no-store"` 固定にしたため Speed Insights `/` route FCP が 2.86s に悪化していた点を解消
   - **真因**: `no-store` で character-sheets HTML scrape が毎回 1〜3s。Vercel Data Cache を使えれば cache hit 時はほぼ瞬時だが、TODO #61 の `revalidatePath("/")` が fetch cache key を外せない問題で stale 化リスクがあった
