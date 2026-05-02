@@ -10,26 +10,42 @@ import { useCallback, useEffect, useState } from "react";
  * open, which traps users on a long schedule list when they tap the
  * Film / Logs trigger. We want:
  *   1. `modal={false}` so the page keeps scrolling normally
- *   2. close the menu on the first scroll event so the popup doesn't
- *      drift over content the user is now reading
+ *   2. close the menu on document scroll so the popup doesn't drift
+ *      over content the user is now reading
  *
  * Returns a `bind` object that spreads into `<DropdownMenu {...bind}>`
  * along with `modal: false`. Caller controls nothing else.
+ *
+ * Implementation notes:
+ * - No capture phase. Capture-phase scroll listeners catch ANY nested
+ *   scrollable element's scroll event (including the popup's own
+ *   `overflow-y-auto` body and Base UI's Positioner / focus-restore
+ *   internal scrolls), which caused a flicker right after open
+ *   (popup fades in then immediately fades out). Listening on window
+ *   without capture only catches the document's own scroll, which is
+ *   what we actually care about.
+ * - 150ms grace period after open. If scrolling started before the
+ *   click reached the trigger (e.g. mid-touch on mobile, or focus
+ *   scroll-into-view fires during enter animation), we'd close
+ *   instantly. Skipping the first 150ms gives the user a moment to
+ *   see the menu before any pending scroll closes it.
  */
 export function useScrollClosingMenu() {
   const [open, setOpen] = useState(false);
   useEffect(() => {
     if (!open) return;
-    const close = () => setOpen(false);
-    // Capture-phase so nested scroll containers also trigger the
-    // close — the popup itself doesn't scroll long enough to fire its
-    // own scroll event in this codebase, so this is safe.
-    window.addEventListener("scroll", close, {
-      passive: true,
-      capture: true,
-    });
+    let armed = false;
+    const arm = setTimeout(() => {
+      armed = true;
+    }, 150);
+    const close = () => {
+      if (!armed) return;
+      setOpen(false);
+    };
+    window.addEventListener("scroll", close, { passive: true });
     return () => {
-      window.removeEventListener("scroll", close, { capture: true });
+      clearTimeout(arm);
+      window.removeEventListener("scroll", close);
     };
   }, [open]);
   const onOpenChange = useCallback((next: boolean) => setOpen(next), []);
