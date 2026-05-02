@@ -4,6 +4,7 @@ import {
   forwardRef,
   useEffect,
   useImperativeHandle,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -387,28 +388,98 @@ function MemoList({
   const [newLogsInput, setNewLogsInput] = useState("");
   const [logsBusy, setLogsBusy] = useState(false);
 
+  // TODO #65 (2.1, 2026-05-02 part6): optimistic state. Add / delete
+  // surface immediately while the server action runs; reconcile when
+  // the parent prop refreshes via `revalidatePath('/')`. The original
+  // implementation waited for full RSC re-render (1〜3s on no-store
+  // character-sheets fetch), making the popover feel sluggish.
+  const [optimisticAdds, setOptimisticAdds] = useState<SessionLogEntry[]>([]);
+  const [pendingDeletes, setPendingDeletes] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+
+  // Reconcile against the authoritative `sessionLogs` prop whenever it
+  // changes: drop optimistic adds whose URL is now in the canonical
+  // list, and drop pending deletes whose id is no longer present
+  // (= the server side has confirmed the delete).
+  useEffect(() => {
+    setOptimisticAdds((prev) =>
+      prev.filter((entry) => !sessionLogs.some((s) => s.url === entry.url)),
+    );
+    setPendingDeletes((prev) => {
+      const next = new Set<string>();
+      for (const id of prev) {
+        if (sessionLogs.some((s) => s.id === id)) next.add(id);
+      }
+      return next.size === prev.size ? prev : next;
+    });
+  }, [sessionLogs]);
+
+  const displayedLogs = useMemo(
+    () => [
+      ...sessionLogs.filter((s) => !pendingDeletes.has(s.id)),
+      ...optimisticAdds,
+    ],
+    [sessionLogs, optimisticAdds, pendingDeletes],
+  );
+
   const handleAddLogs = async () => {
     const value = newLogsInput.trim();
     if (!value) return;
+    // Duplicate guard up-front so we don't show an optimistic row that
+    // we know the server will reject (UNIQUE constraint).
+    if (
+      sessionLogs.some((s) => s.url === value) ||
+      optimisticAdds.some((e) => e.url === value)
+    ) {
+      toast.error("同じ URL が既に紐付いています");
+      return;
+    }
+    const tempId = `__optimistic-${Date.now()}-${Math.random()}`;
+    const tempEntry: SessionLogEntry = {
+      id: tempId,
+      url: value,
+      source: "manual",
+    };
+    setOptimisticAdds((prev) => [...prev, tempEntry]);
+    setNewLogsInput("");
     setLogsBusy(true);
     const r = await addSessionLogsUrl(rawDate, value, sessionDetails);
     setLogsBusy(false);
     if (!r.ok) {
+      // Rollback: remove the optimistic row and restore the input so
+      // the user can edit and retry.
+      setOptimisticAdds((prev) => prev.filter((e) => e.id !== tempId));
+      setNewLogsInput(value);
       toast.error("Logs URL 追加失敗: " + r.reason);
       return;
     }
     toast.success("Logs URL を追加しました");
-    setNewLogsInput("");
-    // Page-level `sessionLogsByDate` map refreshes via the server
-    // action's `revalidatePath('/')` — the new row will appear on
-    // the next render of the parent.
+    // Reconciliation happens when `sessionLogs` prop updates from the
+    // server's `revalidatePath('/')` re-render — the useEffect above
+    // drops the matching optimistic row.
   };
 
   const handleDeleteLogs = async (id: string) => {
+    // Optimistic-only row (still pending insert): just remove locally.
+    if (id.startsWith("__optimistic-")) {
+      setOptimisticAdds((prev) => prev.filter((e) => e.id !== id));
+      return;
+    }
+    setPendingDeletes((prev) => {
+      const next = new Set(prev);
+      next.add(id);
+      return next;
+    });
     setLogsBusy(true);
     const r = await deleteSessionLogsUrl(id);
     setLogsBusy(false);
     if (!r.ok) {
+      setPendingDeletes((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
       toast.error("Logs URL 削除失敗: " + r.reason);
       return;
     }
@@ -646,18 +717,18 @@ function MemoList({
             aria-hidden
           />
           FFLogs URL
-          {sessionLogs.length > 0 && (
+          {displayedLogs.length > 0 && (
             <span
               aria-hidden
               className="font-mono text-[10px] tracking-[0.18em] text-amber-300/70"
             >
-              · {sessionLogs.length} 件
+              · {displayedLogs.length} 件
             </span>
           )}
         </div>
-        {sessionLogs.length > 0 && (
+        {displayedLogs.length > 0 && (
           <ul className="flex flex-col gap-1">
-            {sessionLogs.map((entry) => {
+            {displayedLogs.map((entry) => {
               const safe = safeHref(entry.url);
               return (
                 <li

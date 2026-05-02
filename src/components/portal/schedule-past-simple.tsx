@@ -1,14 +1,11 @@
 "use client";
 
 import { useRef } from "react";
-import { BarChart3, Film } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import {
   getJapaneseHolidayName,
   isJapaneseHoliday,
 } from "@/lib/japanese-holidays";
-import Link from "next/link";
-import { safeHref } from "@/lib/url-safe";
 import type { JapaneseHolidaysMap } from "@/lib/japanese-holidays";
 import {
   useRealtimeAllScheduleMemos,
@@ -17,6 +14,7 @@ import {
 import type { ScheduleSession } from "@/lib/schedule/next-session";
 import type { SessionLogEntry } from "@/lib/schedule/session-logs";
 import type { SessionVideoLink } from "@/lib/server/session-video-link";
+import { SessionActionIcons } from "./schedule-list";
 import {
   SessionMemoDot,
   SessionMemoPopover,
@@ -29,6 +27,7 @@ import {
 // fetched memos. Module-level constant keeps the reference identity.
 const EMPTY_MEMOS: ScheduleSessionMemo[] = [];
 const EMPTY_SESSION_LOGS: SessionLogEntry[] = [];
+const EMPTY_VIDEO_LINKS: SessionVideoLink[] = [];
 
 /**
  * Simple past-sessions view: a compact horizontal-wrap strip of the
@@ -106,7 +105,7 @@ export function SchedulePastSimple({
             key={s.rawDate}
             session={s}
             holidays={holidays}
-            videoLink={sessionVideoLinks?.[s.rawDate]?.[0] ?? null}
+            videoLinks={sessionVideoLinks?.[s.rawDate] ?? EMPTY_VIDEO_LINKS}
             sessionLogs={sessionLogsByDate?.[s.rawDate] ?? EMPTY_SESSION_LOGS}
             memos={memosByDate[s.rawDate] ?? EMPTY_MEMOS}
             onRefreshMemos={refetchMemos}
@@ -120,19 +119,23 @@ export function SchedulePastSimple({
 function DateChip({
   session,
   holidays,
-  videoLink,
+  videoLinks,
   sessionLogs,
   memos,
   onRefreshMemos,
 }: {
   session: ScheduleSession;
   holidays?: JapaneseHolidaysMap;
-  videoLink: SessionVideoLink | null;
   /**
-   * `schedule_past_session_logs` entries for this date — fallback Logs
-   * source when no matching video exists. TODO #64 (2.1, 2026-05-02
-   * part5): array form. The chip surfaces only the first entry as a
-   * single icon (multi-URL editing happens in the popover).
+   * TODO #65 (2.1, 2026-05-02 part6): array form so chips can use the
+   * shared `SessionActionIcons` 0/1/2+ branching (DropdownMenu when
+   * multiple) — same UX as the detail past table.
+   */
+  videoLinks: SessionVideoLink[];
+  /**
+   * `schedule_past_session_logs` entries for this date. TODO #65: now
+   * passed through whole — `SessionActionIcons` handles single vs
+   * multi-URL display itself.
    */
   sessionLogs: SessionLogEntry[];
   /** 親 `useRealtimeAllScheduleMemos` で集約した live slice (TODO #11 phase 7)。 */
@@ -168,13 +171,17 @@ function DateChip({
     ? `border-[var(--neon-cyan)]/40 bg-[var(--neon-cyan)]/8 ${holiday ? "text-rose-300" : "text-[var(--neon-cyan)]"}`
     : `border-border/50 bg-background/30 ${holiday ? "text-rose-300" : "text-foreground/85"}`;
 
-  const firstSessionLogUrl = sessionLogs[0]?.url ?? null;
-  const hasLogs = Boolean(videoLink?.logsUrl ?? firstSessionLogUrl);
+  // TODO #65: tooltip simplified — chip-level tooltip just states what
+  // the date is. Per-icon hover labels live on each link / dropdown
+  // item via `SessionActionIcons` (which renders 0/1/2+ branches).
+  const hasVideos = videoLinks.length > 0;
+  const hasFallbackLogs = sessionLogs.length > 0;
+  const hasVideoLogs = videoLinks.some((v) => Boolean(v.logsUrl));
   const tooltip = `${session.rawDate}${decided ? " · 確定" : ""}${
     holidayName ? " · " + holidayName : holiday ? " · 祝日" : ""
-  }${
-    videoLink ? ` · ${videoLink.categoryName}/動画` : ""
-  }${hasLogs && !videoLink?.logsUrl ? " · FFLogs" : ""}`;
+  }${hasVideos ? ` · 動画 ${videoLinks.length} 件` : ""}${
+    !hasVideoLogs && hasFallbackLogs ? " · FFLogs" : ""
+  }`;
 
   // The chip's date text is plain (no link / no underline) so the
   // visual stays calm. Action icons sit at the right edge: a small
@@ -221,66 +228,17 @@ function DateChip({
           {monthDay}（{session.dayOfWeek}）
         </span>
       </SessionMemoPopover>
-      {videoLink && (() => {
-        // 簡易ログのチップは「過去日程」のみを描画 (recent fileter で
-        // 確定済み)。詳細テーブルと同じく、Film アイコンクリックは
-        // ポータル内動画ページではなく直接外部 URL を新規タブで開く
-        // (Logs アイコンと同じ挙動)。`safeHref` を通すことで http(s)
-        // 以外の URL が混入しても DOM に到達しない。`url` が無い古い
-        // データに備えて従来 `href` への Link を fallback として残す。
-        const externalUrl = safeHref(videoLink.url);
-        if (externalUrl) {
-          return (
-            <a
-              href={externalUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label={`${videoLink.categoryName}/動画「${videoLink.videoTitle}」を新規タブで開く`}
-              title={`${videoLink.categoryName}/動画 → 「${videoLink.videoTitle}」 (外部リンク)`}
-              className="inline-flex h-4 w-4 items-center justify-center rounded text-current/75 transition-all hover:bg-current/15 hover:text-current"
-            >
-              <Film className="h-2.5 w-2.5" aria-hidden />
-            </a>
-          );
-        }
-        // 2.1 (2026-05-01) TODO #54 part2-d: schedule-list と同様 viewport
-        // 自動 prefetch を抑制。過去カードも N 個並ぶリスト系。chunk hash
-        // mismatch の silent fail は ChunkErrorHandler が catch して reload
-        // するので保険済。
-        return (
-          <Link
-            href={videoLink.href}
-            prefetch={false}
-            aria-label={`${videoLink.categoryName}/動画「${videoLink.videoTitle}」を開く`}
-            title={`${videoLink.categoryName}/動画 → 「${videoLink.videoTitle}」`}
-            className="inline-flex h-4 w-4 items-center justify-center rounded text-current/75 transition-all hover:bg-current/15 hover:text-current"
-          >
-            <Film className="h-2.5 w-2.5" aria-hidden />
-          </Link>
-        );
-      })()}
-      {(() => {
-        // Same priority as schedule-list: video.logs_url first, then
-        // first per-session fallback. The chip is intentionally
-        // single-icon (no dropdown) — multi-URL UI lives in the
-        // popover; this is just a quick "where's the log?" jump.
-        // safeHref drops anything that isn't http(s) so a malformed
-        // / dangerous URL can't reach the DOM.
-        const logsUrl = safeHref(videoLink?.logsUrl ?? firstSessionLogUrl);
-        if (!logsUrl) return null;
-        return (
-          <a
-            href={logsUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label={`${monthDay} の FFLogs を開く`}
-            title={`FFLogs: ${monthDay}`}
-            className="inline-flex h-4 w-4 items-center justify-center rounded text-amber-300/85 transition-all hover:bg-amber-400/15 hover:text-amber-200 hover:shadow-[0_0_8px_-2px_rgba(251,191,36,0.55)]"
-          >
-            <BarChart3 className="h-2.5 w-2.5" aria-hidden />
-          </a>
-        );
-      })()}
+      {/* TODO #65: chip と詳細テーブルで同じ 0/1/2+ 分岐を共有。
+          chip 用に `size="compact"` (h-4/h-2.5) + `placeholder={false}`
+          (空 slot は描画せずに chip 幅を可変) で呼び出す。 */}
+      <SessionActionIcons
+        videoLinks={videoLinks}
+        sessionLogs={sessionLogs}
+        isPast
+        displayDate={`${monthDay}（${session.dayOfWeek}）`}
+        size="compact"
+        placeholder={false}
+      />
       <SessionMemoDot
         count={memos.length}
         className="ml-0.5"
