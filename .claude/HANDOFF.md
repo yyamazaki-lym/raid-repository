@@ -94,7 +94,7 @@ TODO #65 残課題 (③ dropdown スクロール時のちらつき) を修正。
 
 | # | 項目 | 規模 |
 |---|---|---|
-| _(現在なし)_ | — | — |
+| 68 | TODO #66 後続 — `src/components/portal/settings/fflogs-sync-section.tsx` (962 行) 内の詳細診断パネル (`logsResult.diag`、HTML サンプル / userTypeFields / titleDateMissSample / v2OwnersSample 含む ~150 行のサブツリー) を `next/dynamic({ ssr: false })` で別 chunk に分離。FFLogs 連動を実行して結果が「合うレポートなし」になり詳細診断 details を開いたときだけ load されるため、true lazy load 効果あり。`logsResult.diag` 表示部分を別ファイル `fflogs-diagnostics-panel.tsx` に切り出し、親では `dynamic(() => import("./fflogs-diagnostics-panel"), { ssr: false })` でラップ。検証: tsc + dev preview で通常時は chunk が fetch されない / 診断 details 開いた瞬間に fetch される (Network タブ) ことを確認 | 小〜中 |
 
 ### 🚀 インフラ / デプロイ (コード外作業)
 
