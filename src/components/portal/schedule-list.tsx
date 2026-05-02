@@ -54,6 +54,7 @@ import type {
   ScheduleSession,
   ScheduleUser,
 } from "@/lib/schedule/next-session";
+import type { SessionLogEntry } from "@/lib/schedule/session-logs";
 import type { SessionVideoLink } from "@/lib/server/session-video-link";
 
 // Stable reference for the realtime hook's initial param — `[]` inline
@@ -63,6 +64,9 @@ const EMPTY_MEMOS: ScheduleSessionMemo[] = [];
 
 // Default `videoLinks` prop — same stability concern as above.
 const EMPTY_VIDEO_LINKS: SessionVideoLink[] = [];
+
+// Default `sessionLogs` prop — array form (TODO #64).
+const EMPTY_SESSION_LOGS: SessionLogEntry[] = [];
 
 // 標準 5 種以外 (例: 昼 / 夜 / 全 など character-sheets 側のカスタム
 // ラベル) に当てるフォールバック tone。amber 系で「未知だが値が入って
@@ -146,11 +150,12 @@ type Props = {
    */
   sessionVideoLinks?: Record<string, SessionVideoLink[]>;
   /**
-   * Pre-built `rawDate` → FFLogs URL map for past sessions. Lets the
-   * UI show a Logs icon next to a date even when there's no matching
-   * video for that session.
+   * Pre-built `rawDate` → FFLogs URL entries for past sessions, sourced
+   * from `schedule_past_session_logs`. Lets the UI show a Logs icon
+   * (or a multi-item dropdown) next to a date even when there's no
+   * matching video. TODO #64 (2.1, 2026-05-02 part5): array form.
    */
-  sessionLogsByDate?: Record<string, string>;
+  sessionLogsByDate?: Record<string, SessionLogEntry[]>;
   /**
    * True if the group has at least one Ultimate cleared. Drives the
    * legend label MEMBERS → LEGENDS swap (1.9.16). Default false.
@@ -405,7 +410,7 @@ export function ScheduleList({
                   users={users}
                   holidays={holidays}
                   videoLinks={lookupVideoLinks(s, sessionVideoLinks)}
-                  sessionLogsUrl={sessionLogsByDate?.[s.rawDate] ?? null}
+                  sessionLogs={sessionLogsByDate?.[s.rawDate] ?? EMPTY_SESSION_LOGS}
                   scheduleUrl={scheduleUrl}
                   onOpenEditFrame={openEditFrame}
                   memos={memosByDate[s.rawDate] ?? EMPTY_MEMOS}
@@ -472,7 +477,7 @@ export function ScheduleList({
                     holidays={holidays}
                     showDecided={false}
                     videoLinks={lookupVideoLinks(s, sessionVideoLinks)}
-                    sessionLogsUrl={sessionLogsByDate?.[s.rawDate] ?? null}
+                    sessionLogs={sessionLogsByDate?.[s.rawDate] ?? EMPTY_SESSION_LOGS}
                     scheduleUrl={scheduleUrl}
                     onOpenEditFrame={openEditFrame}
                     memos={memosByDate[s.rawDate] ?? EMPTY_MEMOS}
@@ -489,7 +494,7 @@ export function ScheduleList({
                       holidays={holidays}
                       showDecided={false}
                       videoLinks={lookupVideoLinks(s, sessionVideoLinks)}
-                      sessionLogsUrl={sessionLogsByDate?.[s.rawDate] ?? null}
+                      sessionLogs={sessionLogsByDate?.[s.rawDate] ?? EMPTY_SESSION_LOGS}
                       scheduleUrl={scheduleUrl}
                       onOpenEditFrame={openEditFrame}
                       memos={memosByDate[s.rawDate] ?? EMPTY_MEMOS}
@@ -684,17 +689,17 @@ function lookupVideoLinks(
  *
  * Logs 候補は次の和集合 + URL dedup:
  * (A) 各動画の `logsUrl` (= category_links.logs_url 由来)
- * (B) `sessionLogsUrl` (= schedule_past_sessions.logs_url 由来、動画と
- *     未紐付の場合の fallback)
+ * (B) `sessionLogs[]` (= schedule_past_session_logs 由来、TODO #64 で
+ *     1:N 化。auto / manual 両方を平等に candidate に積む)
  */
 function SessionActionIcons({
   videoLinks,
-  sessionLogsUrl,
+  sessionLogs,
   isPast,
   displayDate,
 }: {
   videoLinks: SessionVideoLink[];
-  sessionLogsUrl: string | null;
+  sessionLogs: SessionLogEntry[];
   isPast: boolean;
   displayDate: string;
 }) {
@@ -755,7 +760,7 @@ function SessionActionIcons({
     );
   }
 
-  // -- Logs slot: Logs URL 候補 (動画の logsUrl 集約 + sessionLogsUrl)
+  // -- Logs slot: Logs URL 候補 (動画の logsUrl 集約 + sessionLogs[])
   // を URL で dedup し、出現順を維持 --
   const logsCandidates: { url: string; label: string }[] = [];
   const seen = new Set<string>();
@@ -768,10 +773,17 @@ function SessionActionIcons({
       label: `${v.categoryName} / ${v.videoTitle}`,
     });
   }
-  const safeSessionLogs = safeHref(sessionLogsUrl);
-  if (safeSessionLogs && !seen.has(safeSessionLogs)) {
-    seen.add(safeSessionLogs);
-    logsCandidates.push({ url: safeSessionLogs, label: "セッション登録分" });
+  for (const entry of sessionLogs) {
+    const safe = safeHref(entry.url);
+    if (!safe || seen.has(safe)) continue;
+    seen.add(safe);
+    logsCandidates.push({
+      url: safe,
+      label:
+        entry.source === "auto"
+          ? "セッション登録分 (auto)"
+          : "セッション登録分",
+    });
   }
 
   let logsSlot: ReactNode;
@@ -882,7 +894,7 @@ function SessionRow({
   holidays,
   showDecided = true,
   videoLinks = EMPTY_VIDEO_LINKS,
-  sessionLogsUrl = null,
+  sessionLogs = EMPTY_SESSION_LOGS,
   scheduleUrl,
   onOpenEditFrame,
   memos,
@@ -900,11 +912,12 @@ function SessionRow({
    */
   videoLinks?: SessionVideoLink[];
   /**
-   * FFLogs URL stored on the past-session row. Used as the Logs icon
-   * source when no matching video exists for this date (a session
-   * happened, was logged on FFLogs, but nobody uploaded a video).
+   * FFLogs URL entries stored in `schedule_past_session_logs` for this
+   * date. Used as a fallback Logs icon source when no matching video
+   * exists, and as the editable list inside the memo popover.
+   * TODO #64 (2.1, 2026-05-02 part5): array form.
    */
-  sessionLogsUrl?: string | null;
+  sessionLogs?: SessionLogEntry[];
   /**
    * Source schedule URL — used to derive each user's character-sheets
    * input page so attendance cells can become "click here to edit"
@@ -965,7 +978,7 @@ function SessionRow({
             displayDate={session.rawDate.split(" ")[0] ?? session.rawDate}
             memos={memos}
             onRefresh={onRefreshMemos}
-            currentLogsUrl={videoLinks[0]?.logsUrl ?? sessionLogsUrl ?? null}
+            sessionLogs={sessionLogs}
             sessionDetails={{
               parsedDate: session.date.toISOString(),
               startTime: session.startTime,
@@ -1005,7 +1018,7 @@ function SessionRow({
               placeholder. */}
           <SessionActionIcons
             videoLinks={videoLinks}
-            sessionLogsUrl={sessionLogsUrl}
+            sessionLogs={sessionLogs}
             isPast={isPast}
             displayDate={session.rawDate.split(" ")[0] ?? session.rawDate}
           />

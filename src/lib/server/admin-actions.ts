@@ -17,6 +17,7 @@ export type DataInitCounts = {
   category_links: number;
   categories: number;
   schedule_session_memos: number;
+  schedule_past_session_logs: number;
   schedule_past_sessions: number;
   app_settings: number;
 };
@@ -71,10 +72,15 @@ export async function initializeAllDataAction(): Promise<DataInitResult> {
     category_links: 0,
     categories: 0,
     schedule_session_memos: 0,
+    schedule_past_session_logs: 0,
     schedule_past_sessions: 0,
     app_settings: 0,
   };
 
+  // TODO #64 (2.1, 2026-05-02 part5): `schedule_past_session_logs` は
+  // schedule_past_sessions に対する子表 (FK ON DELETE CASCADE 設定済)
+  // なので CASCADE 任せでも消えるが、削除件数を別カウントとして表示
+  // したいので親より先に明示削除。
   const steps: Array<{ table: keyof DataInitCounts; pk: string }> = [
     { table: "tags", pk: "id" },
     { table: "category_macros", pk: "id" },
@@ -87,6 +93,7 @@ export async function initializeAllDataAction(): Promise<DataInitResult> {
     { table: "category_links", pk: "id" },
     { table: "categories", pk: "id" },
     { table: "schedule_session_memos", pk: "id" },
+    { table: "schedule_past_session_logs", pk: "id" },
     { table: "schedule_past_sessions", pk: "raw_date" },
     { table: "app_settings", pk: "key" },
   ];

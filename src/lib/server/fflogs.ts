@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { fetchAppSetting } from "@/lib/supabase/app-settings";
 import { findContentGroups } from "@/lib/content-groups";
 import { extractDateFromTitle } from "@/lib/title-date";
+import type { SessionLogEntry } from "@/lib/schedule/session-logs";
 import { getValidFflogsOAuthToken } from "./fflogs-oauth";
 
 /**
@@ -847,14 +848,15 @@ export type FflogsLinkResult = {
  * the target's window — same heuristic as the video↔session matching.
  */
 export async function linkFflogsReportsToVideos(): Promise<FflogsLinkResult> {
-  // 1.9.11: ONE-TIME BOOTSTRAP. The 1.9.10 schema added logs_url_source
-  // with `NOT NULL DEFAULT 'manual'`, which means every pre-existing
-  // logs_url row got tagged 'manual'. The 'auto'-only cleanup below
-  // therefore never wiped legacy auto-matches (including the wrong
-  // 0328↔0401 ones the user reported). Flip them to 'auto' once so the
-  // next sync produces a clean re-match. Guarded by an app_settings
-  // flag so subsequent syncs don't keep flipping legitimately-manual
-  // rows the user has set since 1.9.11 shipped.
+  // 1.9.11: ONE-TIME BOOTSTRAP for `category_links.logs_url_source`. The
+  // 1.9.10 schema added the column with `NOT NULL DEFAULT 'manual'`, so
+  // every pre-existing logs_url row got tagged 'manual'. Flip them to
+  // 'auto' once so the next sync produces a clean re-match.
+  //
+  // TODO #64 (2.1, 2026-05-02 part5): the schedule_past_sessions branch
+  // of this bootstrap was dropped along with its `logs_url_source`
+  // column — the new `schedule_past_session_logs` child table stores
+  // its own `source` value at row creation time so no flip is needed.
   try {
     const flagClient = await createClient();
     const { data: flagRow } = await flagClient
@@ -863,18 +865,11 @@ export async function linkFflogsReportsToVideos(): Promise<FflogsLinkResult> {
       .eq("key", "fflogs_source_bootstrap_v1")
       .maybeSingle();
     if (!flagRow) {
-      await Promise.all([
-        flagClient
-          .from("category_links")
-          .update({ logs_url_source: "auto" })
-          .not("logs_url", "is", null)
-          .eq("logs_url_source", "manual"),
-        flagClient
-          .from("schedule_past_sessions")
-          .update({ logs_url_source: "auto" })
-          .not("logs_url", "is", null)
-          .eq("logs_url_source", "manual"),
-      ]);
+      await flagClient
+        .from("category_links")
+        .update({ logs_url_source: "auto" })
+        .not("logs_url", "is", null)
+        .eq("logs_url_source", "manual");
       await flagClient
         .from("app_settings")
         .upsert(
@@ -889,11 +884,13 @@ export async function linkFflogsReportsToVideos(): Promise<FflogsLinkResult> {
     console.warn("[fflogs] 1.9.11 bootstrap flip failed", e);
   }
 
-  // 1.9.10: wipe stale AUTO logs_url before re-matching. Manual entries
-  // (set via the memo popover or the video edit dialog) are preserved
-  // because they have logs_url_source = 'manual'. This makes every
-  // sync produce a fresh, consistent set of auto matches without
-  // requiring the user to click "全 logs URL クリア" first.
+  // 1.9.10: wipe stale AUTO entries before re-matching. Manual entries
+  // (set via the memo popover or the video edit dialog) are preserved.
+  // For `category_links` manual rows have `logs_url_source = 'manual'`;
+  // for `schedule_past_session_logs` the `source` column distinguishes
+  // 'auto' from 'manual' rows. This makes every sync produce a fresh,
+  // consistent set of auto matches without requiring the user to click
+  // "全 logs URL クリア" first.
   try {
     const cleanupClient = await createClient();
     await Promise.all([
@@ -903,10 +900,9 @@ export async function linkFflogsReportsToVideos(): Promise<FflogsLinkResult> {
         .eq("logs_url_source", "auto")
         .not("logs_url", "is", null),
       cleanupClient
-        .from("schedule_past_sessions")
-        .update({ logs_url: null })
-        .eq("logs_url_source", "auto")
-        .not("logs_url", "is", null),
+        .from("schedule_past_session_logs")
+        .delete()
+        .eq("source", "auto"),
     ]);
   } catch (e) {
     console.warn("[fflogs] auto-cleanup failed", e);
@@ -1559,13 +1555,25 @@ async function linkReportsToSessions(
 
   const { data: sessions } = await supabase
     .from("schedule_past_sessions")
-    .select("raw_date, parsed_date, logs_url")
-    .is("logs_url", null);
+    .select("raw_date, parsed_date");
   if (!sessions || sessions.length === 0) {
     return { scanned: 0, matched: 0, details: [] };
   }
 
+  // TODO #64: skip sessions that already have any entry in the new
+  // `schedule_past_session_logs` table. Manual entries are preserved
+  // across the auto-wipe above (only `source='auto'` rows were
+  // deleted), so a session with a manual link won't be eligible for
+  // an additional auto link.
+  const { data: existingLogs } = await supabase
+    .from("schedule_past_session_logs")
+    .select("raw_date");
+  const alreadyLinked = new Set(
+    (existingLogs ?? []).map((r) => r.raw_date as string),
+  );
+
   const sortedSessions = sessions
+    .filter((s) => !alreadyLinked.has(s.raw_date as string))
     .map((s) => {
       const tMs = new Date(s.parsed_date as string).getTime();
       return { ...s, tMs: Number.isFinite(tMs) ? tMs : null };
@@ -1612,14 +1620,16 @@ async function linkReportsToSessions(
     if (usedSessions.has(sKey)) continue;
     if (usedReports.has(pair.report.id)) continue;
     const logsUrl = `https://www.fflogs.com/reports/${pair.report.id}`;
+    // TODO #64: insert into `schedule_past_session_logs` with
+    // `source='auto'`. ON CONFLICT DO NOTHING is implied by Supabase
+    // when no `onConflict` option is given — but to be explicit we
+    // rely on the UNIQUE (raw_date, url) constraint to prevent dup.
     const { error } = await supabase
-      .from("schedule_past_sessions")
-      .update({ logs_url: logsUrl, logs_url_source: "auto" })
-      .eq("raw_date", sKey)
-      .is("logs_url", null);
+      .from("schedule_past_session_logs")
+      .insert({ raw_date: sKey, url: logsUrl, source: "auto" });
     if (error) {
       console.warn(
-        "[fflogs-link/session] update failed",
+        "[fflogs-link/session] insert failed",
         sKey,
         error.message,
       );
@@ -1669,24 +1679,32 @@ async function linkReportsToSessions(
 }
 
 /**
- * Server-side reader: returns a `rawDate → logs_url` map covering all
- * past sessions whose `logs_url` is non-null. Used by the schedule
- * page to surface a Logs icon on the date row even when no matching
- * video exists.
+ * Server-side reader: returns a `rawDate → SessionLogEntry[]` map for
+ * every past session that has at least one entry in
+ * `schedule_past_session_logs`. Used by the schedule page to surface
+ * Logs icons on date rows even when no matching video exists.
+ *
+ * TODO #64 (2.1, 2026-05-02 part5): replaces the legacy
+ * `schedule_past_sessions.logs_url` (single text per row) read.
  */
-export async function fetchSessionLogsByDate(): Promise<Record<string, string>> {
+export async function fetchSessionLogsByDate(): Promise<
+  Record<string, SessionLogEntry[]>
+> {
   try {
     const supabase = await createClient();
     const { data, error } = await supabase
-      .from("schedule_past_sessions")
-      .select("raw_date, logs_url")
-      .not("logs_url", "is", null);
+      .from("schedule_past_session_logs")
+      .select("id, raw_date, url, source")
+      .order("created_at", { ascending: true });
     if (error || !data) return {};
-    const out: Record<string, string> = {};
+    const out: Record<string, SessionLogEntry[]> = {};
     for (const row of data) {
       const k = row.raw_date as string;
-      const v = row.logs_url as string | null;
-      if (k && v) out[k] = v;
+      const url = row.url as string | null;
+      const id = row.id as string;
+      const source = (row.source as string) === "auto" ? "auto" : "manual";
+      if (!k || !url) continue;
+      (out[k] ??= []).push({ id, url, source });
     }
     return out;
   } catch (e) {

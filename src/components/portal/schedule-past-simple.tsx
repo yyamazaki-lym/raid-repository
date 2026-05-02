@@ -15,6 +15,7 @@ import {
   type ScheduleSessionMemo,
 } from "@/lib/schedule-memos-client";
 import type { ScheduleSession } from "@/lib/schedule/next-session";
+import type { SessionLogEntry } from "@/lib/schedule/session-logs";
 import type { SessionVideoLink } from "@/lib/server/session-video-link";
 import {
   SessionMemoDot,
@@ -27,6 +28,7 @@ import {
 // "initial reference changed → reset state" guard and clobbers the
 // fetched memos. Module-level constant keeps the reference identity.
 const EMPTY_MEMOS: ScheduleSessionMemo[] = [];
+const EMPTY_SESSION_LOGS: SessionLogEntry[] = [];
 
 /**
  * Simple past-sessions view: a compact horizontal-wrap strip of the
@@ -57,8 +59,12 @@ export function SchedulePastSimple({
   sessions: ScheduleSession[];
   holidays?: JapaneseHolidaysMap;
   sessionVideoLinks?: Record<string, SessionVideoLink[]>;
-  /** FFLogs URLs keyed by `rawDate` — fallback when no video. */
-  sessionLogsByDate?: Record<string, string>;
+  /**
+   * FFLogs URL entries keyed by `rawDate` — used as a fallback Logs
+   * source when no matching video exists. TODO #64 (2.1, 2026-05-02
+   * part5): array form replaces the legacy single string.
+   */
+  sessionLogsByDate?: Record<string, SessionLogEntry[]>;
   /** TODO #11: server prefetched memos (rawDate → memos[]) */
   initialMemosByDate?: Record<string, ScheduleSessionMemo[]>;
 }) {
@@ -101,7 +107,7 @@ export function SchedulePastSimple({
             session={s}
             holidays={holidays}
             videoLink={sessionVideoLinks?.[s.rawDate]?.[0] ?? null}
-            sessionLogsUrl={sessionLogsByDate?.[s.rawDate] ?? null}
+            sessionLogs={sessionLogsByDate?.[s.rawDate] ?? EMPTY_SESSION_LOGS}
             memos={memosByDate[s.rawDate] ?? EMPTY_MEMOS}
             onRefreshMemos={refetchMemos}
           />
@@ -115,15 +121,20 @@ function DateChip({
   session,
   holidays,
   videoLink,
-  sessionLogsUrl,
+  sessionLogs,
   memos,
   onRefreshMemos,
 }: {
   session: ScheduleSession;
   holidays?: JapaneseHolidaysMap;
   videoLink: SessionVideoLink | null;
-  /** Fallback FFLogs URL for sessions without a matching video. */
-  sessionLogsUrl: string | null;
+  /**
+   * `schedule_past_session_logs` entries for this date — fallback Logs
+   * source when no matching video exists. TODO #64 (2.1, 2026-05-02
+   * part5): array form. The chip surfaces only the first entry as a
+   * single icon (multi-URL editing happens in the popover).
+   */
+  sessionLogs: SessionLogEntry[];
   /** 親 `useRealtimeAllScheduleMemos` で集約した live slice (TODO #11 phase 7)。 */
   memos: ScheduleSessionMemo[];
   /** Server-action 後の保険 refetch (旧 useRealtimeScheduleMemos の refetch 互換)。 */
@@ -157,7 +168,8 @@ function DateChip({
     ? `border-[var(--neon-cyan)]/40 bg-[var(--neon-cyan)]/8 ${holiday ? "text-rose-300" : "text-[var(--neon-cyan)]"}`
     : `border-border/50 bg-background/30 ${holiday ? "text-rose-300" : "text-foreground/85"}`;
 
-  const hasLogs = Boolean(videoLink?.logsUrl ?? sessionLogsUrl);
+  const firstSessionLogUrl = sessionLogs[0]?.url ?? null;
+  const hasLogs = Boolean(videoLink?.logsUrl ?? firstSessionLogUrl);
   const tooltip = `${session.rawDate}${decided ? " · 確定" : ""}${
     holidayName ? " · " + holidayName : holiday ? " · 祝日" : ""
   }${
@@ -197,7 +209,7 @@ function DateChip({
         displayDate={`${monthDay}（${session.dayOfWeek}）`}
         memos={memos}
         onRefresh={onRefreshMemos}
-        currentLogsUrl={videoLink?.logsUrl ?? sessionLogsUrl ?? null}
+        sessionLogs={sessionLogs}
         sessionDetails={{
           parsedDate: session.date.toISOString(),
           startTime: session.startTime,
@@ -249,11 +261,12 @@ function DateChip({
       })()}
       {(() => {
         // Same priority as schedule-list: video.logs_url first, then
-        // session-level fallback. Lets the chip surface a Logs icon
-        // for sessions that have no recorded video. safeHref drops
-        // anything that isn't http(s) so a malformed/dangerous URL
-        // can't reach the DOM.
-        const logsUrl = safeHref(videoLink?.logsUrl ?? sessionLogsUrl);
+        // first per-session fallback. The chip is intentionally
+        // single-icon (no dropdown) — multi-URL UI lives in the
+        // popover; this is just a quick "where's the log?" jump.
+        // safeHref drops anything that isn't http(s) so a malformed
+        // / dangerous URL can't reach the DOM.
+        const logsUrl = safeHref(videoLink?.logsUrl ?? firstSessionLogUrl);
         if (!logsUrl) return null;
         return (
           <a

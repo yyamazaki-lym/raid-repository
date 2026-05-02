@@ -380,13 +380,6 @@ ALTER TABLE public.schedule_past_sessions
 -- attendances format: { "Alice": "◯", "Bob": "×", ... }
 -- user_names format:  ["Alice","Bob","Charlie", ...] (order = column order)
 
--- Phase 6: per-session FFLogs URL. Populated by the FFLogs sync action
--- when a report's start time falls within the session's window — lets
--- the schedule UI surface a Logs link for sessions that have no
--- matching video (e.g. a session that wasn't recorded).
-ALTER TABLE public.schedule_past_sessions
-  ADD COLUMN IF NOT EXISTS logs_url text;
-
 -- Widen the source CHECK constraint to allow 'snapshot' on existing
 -- deployments where the table was created with the old 2-value list.
 ALTER TABLE public.schedule_past_sessions
@@ -395,16 +388,53 @@ ALTER TABLE public.schedule_past_sessions
   ADD CONSTRAINT schedule_past_sessions_source_check
   CHECK (source IN ('discord','manual','snapshot'));
 
--- Phase 8.1 (1.9.10): track whether schedule_past_sessions.logs_url was
--- set by automated FFLogs sync ('auto') or by manual user edit ('manual').
--- See category_links section above for rationale.
-ALTER TABLE public.schedule_past_sessions
-  ADD COLUMN IF NOT EXISTS logs_url_source text NOT NULL DEFAULT 'manual';
+-- ---- 5d. schedule_past_session_logs (multi-URL per date) ------------
+-- TODO #64 (2.1, 2026-05-02 part5): replaces the legacy
+-- `schedule_past_sessions.logs_url` (single text) + `logs_url_source`
+-- pair with a child table that supports multiple FFLogs URLs per
+-- session date. `source` distinguishes 'auto' (inserted by the FFLogs
+-- sync action `linkReportsToSessions`) from 'manual' (added via the
+-- memo popover editor).
+CREATE TABLE IF NOT EXISTS public.schedule_past_session_logs (
+  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  raw_date    text NOT NULL
+              REFERENCES public.schedule_past_sessions(raw_date)
+              ON DELETE CASCADE,
+  url         text NOT NULL,
+  source      text NOT NULL DEFAULT 'manual'
+              CHECK (source IN ('auto','manual')),
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (raw_date, url)
+);
+CREATE INDEX IF NOT EXISTS schedule_past_session_logs_raw_date_idx
+  ON public.schedule_past_session_logs(raw_date);
+
+-- One-shot migration: fold legacy logs_url + logs_url_source columns
+-- into rows. Idempotent guard via information_schema so re-runs after
+-- the column DROP below are safe.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+     WHERE table_schema = 'public'
+       AND table_name = 'schedule_past_sessions'
+       AND column_name = 'logs_url'
+  ) THEN
+    INSERT INTO public.schedule_past_session_logs (raw_date, url, source)
+    SELECT raw_date, logs_url,
+           COALESCE(NULLIF(logs_url_source, ''), 'manual')
+      FROM public.schedule_past_sessions
+     WHERE logs_url IS NOT NULL
+    ON CONFLICT (raw_date, url) DO NOTHING;
+  END IF;
+END $$;
+
+-- Drop legacy columns + their CHECK constraint. Idempotent.
 ALTER TABLE public.schedule_past_sessions
   DROP CONSTRAINT IF EXISTS schedule_past_sessions_logs_url_source_check;
 ALTER TABLE public.schedule_past_sessions
-  ADD CONSTRAINT schedule_past_sessions_logs_url_source_check
-  CHECK (logs_url_source IN ('auto','manual'));
+  DROP COLUMN IF EXISTS logs_url,
+  DROP COLUMN IF EXISTS logs_url_source;
 
 -- ---- 6. tags (universal — D scheme) ----------------------------------
 
@@ -451,19 +481,20 @@ CREATE INDEX IF NOT EXISTS tags_target_idx
 -- の service role client に切替えて RLS をバイパスする。production では
 -- `NODE_ENV=production` でこの分岐は走らない。
 
-ALTER TABLE public.categories             ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.category_links         ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.app_settings           ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.schedule_past_sessions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.recruitment_templates  ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.category_macros        ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.schedule_session_memos ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.loot_items             ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.loot_entries           ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.mitigation_phases      ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.mitigation_entries     ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.strategy_docs          ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.tags                   ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.categories                  ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.category_links              ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.app_settings                ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.schedule_past_sessions      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.schedule_past_session_logs  ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.recruitment_templates       ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.category_macros             ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.schedule_session_memos      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.loot_items                  ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.loot_entries                ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.mitigation_phases           ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.mitigation_entries          ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.strategy_docs               ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.tags                        ENABLE ROW LEVEL SECURITY;
 
 -- Replay-safe policy creation: drop then create per (table, action).
 DO $$
@@ -475,6 +506,7 @@ DECLARE
 BEGIN
   FOR t IN SELECT unnest(ARRAY[
     'categories','category_links','app_settings','schedule_past_sessions',
+    'schedule_past_session_logs',
     'recruitment_templates','category_macros','schedule_session_memos',
     'loot_items','loot_entries',
     'mitigation_phases','mitigation_entries',
@@ -524,19 +556,20 @@ END $$;
 -- filters on any column work as expected. Slight WAL overhead, but
 -- our row sizes are small.
 
-ALTER TABLE public.categories             REPLICA IDENTITY FULL;
-ALTER TABLE public.category_links         REPLICA IDENTITY FULL;
-ALTER TABLE public.app_settings           REPLICA IDENTITY FULL;
-ALTER TABLE public.schedule_past_sessions REPLICA IDENTITY FULL;
-ALTER TABLE public.recruitment_templates  REPLICA IDENTITY FULL;
-ALTER TABLE public.category_macros        REPLICA IDENTITY FULL;
-ALTER TABLE public.schedule_session_memos REPLICA IDENTITY FULL;
-ALTER TABLE public.loot_items             REPLICA IDENTITY FULL;
-ALTER TABLE public.loot_entries           REPLICA IDENTITY FULL;
-ALTER TABLE public.mitigation_phases      REPLICA IDENTITY FULL;
-ALTER TABLE public.mitigation_entries     REPLICA IDENTITY FULL;
-ALTER TABLE public.strategy_docs          REPLICA IDENTITY FULL;
-ALTER TABLE public.tags                   REPLICA IDENTITY FULL;
+ALTER TABLE public.categories                  REPLICA IDENTITY FULL;
+ALTER TABLE public.category_links              REPLICA IDENTITY FULL;
+ALTER TABLE public.app_settings                REPLICA IDENTITY FULL;
+ALTER TABLE public.schedule_past_sessions      REPLICA IDENTITY FULL;
+ALTER TABLE public.schedule_past_session_logs  REPLICA IDENTITY FULL;
+ALTER TABLE public.recruitment_templates       REPLICA IDENTITY FULL;
+ALTER TABLE public.category_macros             REPLICA IDENTITY FULL;
+ALTER TABLE public.schedule_session_memos      REPLICA IDENTITY FULL;
+ALTER TABLE public.loot_items                  REPLICA IDENTITY FULL;
+ALTER TABLE public.loot_entries                REPLICA IDENTITY FULL;
+ALTER TABLE public.mitigation_phases           REPLICA IDENTITY FULL;
+ALTER TABLE public.mitigation_entries          REPLICA IDENTITY FULL;
+ALTER TABLE public.strategy_docs               REPLICA IDENTITY FULL;
+ALTER TABLE public.tags                        REPLICA IDENTITY FULL;
 
 -- ---- 8. Realtime publication ------------------------------------------
 
@@ -546,6 +579,7 @@ DECLARE
 BEGIN
   FOR t IN SELECT unnest(ARRAY[
     'categories','category_links','app_settings','schedule_past_sessions',
+    'schedule_past_session_logs',
     'recruitment_templates','category_macros','schedule_session_memos',
     'loot_items','loot_entries',
     'mitigation_phases','mitigation_entries',
