@@ -1,6 +1,6 @@
 # Raid Repository — 引き継ぎノート
 
-> 2.1 (2026-05-02 part8) 時点。完了済 TODO の詳細は `src/lib/changelog.ts` / 過去版番号は `.claude/done.md`。
+> 2.1 (2026-05-02 part9) 時点。完了済 TODO の詳細は `src/lib/changelog.ts` / 過去版番号は `.claude/done.md`。
 >
 > **新規会話の手順**: このファイルを読んだ後、TODO 一覧は自動表示せずユーザーの要望を待つ。新規 TODO 追記時は part 単位ではなく TODO 完了時のみ統合追記する (part 細分は commit log に任せる)。
 
@@ -17,42 +17,7 @@
 
 ## 🔄 保留オペレーション
 
-### TODO #65 残課題: dropdown スクロール時の3段階ちらつき (本番再現)
-
-**現状**: `054859e` (PR [#12](https://github.com/yyamazaki-lym/raid-repository/pull/12)) + `0e60e6d` (PR [#13](https://github.com/yyamazaki-lym/raid-repository/pull/13)) で実装済。動作確認の結果、4 項目中 ① / ② / ④ は OK、③ のみ修正後も再現。
-
-**症状 (本番、過去詳細表で確認)**: 動画/Logs アイコン dropdown を開いた状態で wheel スクロールすると、
-1. スクロール中にポップアップが**1 度消える**
-2. その直後に**1 度現れる**
-3. 最終的に消える
-
-= 単純な閉じきりではなく 3 段階の re-toggle が発生。
-
-**現実装** ([src/lib/use-scroll-closing-menu.ts](src/lib/use-scroll-closing-menu.ts)): `modal={false}` + window scroll listener (capture phase 撤廃済) + 150ms grace period で controlled open。capture phase 由来のフォールスポジティブは排除した。
-
-**仮説**:
-- (a) Base UI Menu の controlled `open` と内部 state が非同期で、`setOpen(false)` 後に Base UI 側の outside-click / pointer-dismissal が再 open 検出 → 再 close の往復
-- (b) Floating UI Positioner の autoUpdate が scroll で position 再計算 → mount/unmount 振動
-- (c) React 19 の deferred state update でフレーム跨ぎの flicker、複数の連続 scroll event で setOpen(false) → setOpen(true) が交互に呼ばれる
-- (d) Base UI 側の anchor tracking で trigger が viewport 外に出た時の anchorHidden 切替が再 mount を誘発
-
-**次回着手案**:
-1. 仮説検証: Chrome DevTools の Performance + console.log で何が起きてるか観察 (open state 推移 + Base UI data-state attribute 推移)
-2. Strategy A — `disableAnchorTracking` を Positioner に渡し autoUpdate を切る (= a/b/d 切り分け)
-3. Strategy B — 1 度 close したらしばらく再 open しないように guard する (lock state pattern)
-4. Strategy C — `modal={false}` を捨てて modal モードに戻し、scroll を許可する別ルート (例: dropdown 全体を Popover に切替、Popover の `dismissOnPointerDown` 等を活用)
-
-**次回開始テンプレ**:
-```
-TODO #65 残課題 (③ dropdown スクロール時のちらつき) を修正。
-
-【症状再掲】過去詳細表で dropdown 開 → wheel scroll で 1 度消え → 1 度出 → 最終 close (3 段階)
-【現実装】src/lib/use-scroll-closing-menu.ts (capture phase 撤廃 + 150ms grace period)
-【仮説】Base UI Menu の controlled open と autoUpdate / outside-click の race
-【手順】仮説検証 (DevTools 観察) → A/B/C のうち最小修正案を提案 → 実装
-
-参考: HANDOFF.md 保留オペレーション、commits 054859e + 0e60e6d
-```
+_(現在なし)_
 
 ## 📌 次回の作業優先度
 
@@ -106,6 +71,20 @@ TODO #65 残課題 (③ dropdown スクロール時のちらつき) を修正。
 
 直近版のみ列挙。詳細経緯は `src/lib/changelog.ts`、過去版アーカイブは `.claude/done.md`。
 
+- **2.1 (2026-05-02 part9)**: #68 `fflogs-sync-section.tsx` 内の詳細診断パネル (~190 行) を `next/dynamic({ ssr: false })` で別 chunk に分離 — クローズ
+  - **狙い**: TODO #66 で settings-dialog を 5 つの sub-component に分割した際、最大セクション `fflogs-sync-section.tsx` (962 行) 内の詳細診断パネル (`logsResult.diag` + `userTypeFields` 描画、HTML サンプル / titleDateMissSample / v2OwnersSample 含む ~190 行) が後続最適化として残されていた。FFLogs 連動を実行して結果が「合うレポートなし」になり、かつ詳細診断 details を開いた時にしか見えない稀な UI なので、`next/dynamic({ ssr: false })` で別 chunk 化して true lazy load を実現
+  - **実装**: 新規 [src/components/portal/settings/fflogs-diagnostics-panel.tsx](src/components/portal/settings/fflogs-diagnostics-panel.tsx) (203 行) に詳細診断 `<details>` ブロック (内部の HTML サンプル / titleDateMissSample / userTypeFields nested details 含む) を切出し、`FflogsDiagInfo` 型も export。[fflogs-sync-section.tsx](src/components/portal/settings/fflogs-sync-section.tsx) で `dynamic(() => import("./fflogs-diagnostics-panel"), { ssr: false })` でラップし、旧 inline JSX を `<FflogsDiagnosticsPanel diag={...} userTypeFields={...} />` に置換 (962 行 → 802 行、-160 行)
+  - **chunk 分離検証**: `.next/dev/static/chunks/0qc1_src_components_portal_settings_fflogs-diagnostics-panel_tsx_*.js` として独立 chunk 生成を確認
+  - **Network タブ挙動 (dev preview)**: 初期ページロード時 / Settings dialog open 時は **未 fetch**、「FFLogs と動画を連動」ボタン押下後 (linkFflogsReports → logsResult.diag set → `<FflogsDiagnosticsPanel>` mount) に chunk **fetch される**
+  - **UI 動作等価性**: 連動結果として `詳細診断` / `日付抽出に失敗したタイトル` / `User 型のフィールド一覧` などすべての nested details が従前通り render。console error / warning なし。tsc --noEmit PASS
+- **2.1 (2026-05-02 part8)**: #65 Film/Logs dropdown スクロール時の 3 段階ちらつきを Strategy G (CSS exit transition 撤去) で根絶 — クローズ
+  - **狙い**: PR [#12](https://github.com/yyamazaki-lym/raid-repository/pull/12) (TODO #65 初版) + PR [#13](https://github.com/yyamazaki-lym/raid-repository/pull/13) (capture phase 撤廃 + grace period) でも残った「過去詳細表で dropdown 開 → wheel scroll で 1 度消え → 1 度出 → 最終 close」の 3 段階 re-toggle を解消
+  - **真因確定 (PR [#21](https://github.com/yyamazaki-lym/raid-repository/pull/21) debug log で本番観測)**: wheel scroll 時の React state 遷移は `onOpenChange(true) → setOpen(true) → armed → scroll-close fired → cleanup` の **open→close 単一遷移** で完結しており、`IGNORED — locked` も 2 回目の `onOpenChange(true)` も発生していなかった。「現れる」段階は React state 由来ではなく **CSS exit transition のリバウンド** が真因。Base UI Menu が `setOpen(false)` を受けて `data-closed` 属性を付け、`data-closed:animate-out / fade-out-0 / zoom-out-95 / overflow-hidden` の組合せで 100ms かけて消えていく途中で zoom-out のスケール変化が visual rebound を生んでいた
+  - **修正 (Strategy G — PR [#22](https://github.com/yyamazaki-lym/raid-repository/pull/22))**: [src/components/ui/dropdown-menu.tsx](src/components/ui/dropdown-menu.tsx) の `DropdownMenuContent` / `DropdownMenuSubContent` の className から `data-closed:animate-out` / `data-closed:overflow-hidden` / `data-closed:fade-out-0` / `data-closed:zoom-out-95` を削除。入場アニメーション (`data-open:animate-in / fade-in-0 / zoom-in-95`) は維持。close 時は瞬間消滅、open 時は従来通り 100ms かけて zoom-in + fade-in
+  - **副作用受入**: 全 dropdown で「閉じる時のフェードアウト」が消えて瞬間消滅になる (本来意図せぬ全体仕様変更だが、3 段階ちらつき根絶を優先、本番 UX 判定で許容確認済)
+  - **試行履歴 (再導入禁止)**: PR [#19](https://github.com/yyamazaki-lym/raid-repository/pull/19) Strategy A (`disableAnchorTracking`) — 真因と無関係だったが副作用なしで維持 / PR [#20](https://github.com/yyamazaki-lym/raid-repository/pull/20) Strategy B (re-open lock) — debug log 撤去して防御的 guard として維持 / PR [#21](https://github.com/yyamazaki-lym/raid-repository/pull/21) debug log — 真因特定済で撤去
+  - **将来妥協案**: フェードアウト復活したい場合は `duration-50` + `opacity-only` 版 (zoom-out なし → リバウンド再発リスク低)、または cubic-bezier で「100 → 0 一直線」のイージング指定で現れフレーム不可避
+  - **検証**: `tsc --noEmit` PASS。dev preview は demo data に Film/Logs dropdown が存在せず再現不能 → 本番デプロイ後にユーザー側で過去詳細表 → 動画 dropdown 開 → wheel scroll で 3 段階ちらつき完全消滅 + close 時瞬間消滅 UX 許容を確認 (commit `18a338f`)
 - **2.1 (2026-05-02 part7)**: #66 `settings-dialog.tsx` (1,761 行 / 88 KB) を 5 つの sub-component に機能別分割 — クローズ
   - **狙い**: 2026-05-02 の肥大化精査で settings-dialog + schedule-list が src/ 全体の 11.6% を占める件への対応。単一ファイルの編集 / 読解 / レビュー摩擦を解消するため、ロジカルなセクション境界に沿って 5 つの sub-component に分割し、各セクション固有の state を section 内部に閉じ込めて親シェルを薄くする
   - **実装** (新規 [src/components/portal/settings/](src/components/portal/settings/)): `schedule-source-section.tsx` (103 行) / `past-sessions-section.tsx` (352 行) / `fflogs-sync-section.tsx` (962 行 — 最大) / `changelog-footer.tsx` (232 行) / `danger-zone-section.tsx` (58 行)
