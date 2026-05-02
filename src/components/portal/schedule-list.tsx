@@ -749,7 +749,7 @@ export function SessionActionIcons({
             {videoLinks.length}
           </span>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" sideOffset={4}>
+        <DropdownMenuContent align="start" sideOffset={4} disableAnchorTracking>
           {videoLinks.map((v) => {
             // TODO #65 (2.1, 2026-05-02 part6): native `title` tooltip
             // on each row so hovering reveals the full label even when
@@ -859,7 +859,7 @@ export function SessionActionIcons({
             {logsCandidates.length}
           </span>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" sideOffset={4}>
+        <DropdownMenuContent align="start" sideOffset={4} disableAnchorTracking>
           {logsCandidates.map((c) => {
             // TODO #65 (2.1, 2026-05-02 part6): show full label (and the
             // raw URL as a secondary line) on hover so the truncated row
