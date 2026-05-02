@@ -1,6 +1,6 @@
 # Raid Repository — 引き継ぎノート
 
-> 2.1 (2026-05-02 part5) 時点。完了済 TODO の詳細は `src/lib/changelog.ts` / 過去版番号は `.claude/done.md`。
+> 2.1 (2026-05-02 part7) 時点。完了済 TODO の詳細は `src/lib/changelog.ts` / 過去版番号は `.claude/done.md`。
 >
 > **新規会話の手順**: このファイルを読んだ後、TODO 一覧は自動表示せずユーザーの要望を待つ。新規 TODO 追記時は part 単位ではなく TODO 完了時のみ統合追記する (part 細分は commit log に任せる)。
 
@@ -94,7 +94,7 @@ TODO #65 残課題 (③ dropdown スクロール時のちらつき) を修正。
 
 | # | 項目 | 規模 |
 |---|---|---|
-| 66 | `src/components/portal/settings-dialog.tsx` (1,723 行 / 88 KB) を機能別 sub-component に分割。候補: 表示設定 / データ管理 (Danger Zone 含む) / 更新履歴 / 認証情報 / 開発者情報。既存 `settings-dialog-lazy.tsx` (lazy 化) と組合せて初期 bundle 削減を狙う。背景: 2026-05-02 の肥大化精査で settings-dialog + schedule-list が src/ 全体の 11.6% を占めると判明 | 中〜大 |
+| _(現在なし)_ | — | — |
 
 ### 🚀 インフラ / デプロイ (コード外作業)
 
@@ -106,6 +106,14 @@ TODO #65 残課題 (③ dropdown スクロール時のちらつき) を修正。
 
 直近版のみ列挙。詳細経緯は `src/lib/changelog.ts`、過去版アーカイブは `.claude/done.md`。
 
+- **2.1 (2026-05-02 part7)**: #66 `settings-dialog.tsx` (1,761 行 / 88 KB) を 5 つの sub-component に機能別分割 — クローズ
+  - **狙い**: 2026-05-02 の肥大化精査で settings-dialog + schedule-list が src/ 全体の 11.6% を占める件への対応。単一ファイルの編集 / 読解 / レビュー摩擦を解消するため、ロジカルなセクション境界に沿って 5 つの sub-component に分割し、各セクション固有の state を section 内部に閉じ込めて親シェルを薄くする
+  - **実装** (新規 [src/components/portal/settings/](src/components/portal/settings/)): `schedule-source-section.tsx` (103 行) / `past-sessions-section.tsx` (352 行) / `fflogs-sync-section.tsx` (962 行 — 最大) / `changelog-footer.tsx` (232 行) / `danger-zone-section.tsx` (58 行)
+  - **親シェル**: [settings-dialog.tsx](src/components/portal/settings-dialog.tsx) を 1,761 → **208 行** (-88%) に縮小。保持 state は `open` (Dialog 制御) + `url / channelId / busy` (フッター保存ボタンが両方更新するため共通) のみ。OAuth callback handler (`?fflogs_oauth_connected` 検出 → setOpen(true)) は dialog 制御 state を握る親に残す
+  - **state 分散**: 旧 1 つの useEffect [open] で 5 件 Promise.all していた初期 fetch を「親 = url + channelId」「FflogsSyncSection = OAuth + cookie + username」の 2 つに分割 (並列性は維持)
+  - **動作影響**: UI 出力は等価。サブコンポーネント分割自体は client bundle 合計サイズを変えない (本 TODO のメイン狙いはファイル肥大化解消 + 認知負荷削減であり、初期 bundle 削減は TODO #67 で実現済)
+  - **検証**: `tsc --noEmit` PASS。dev preview で Settings dialog を開き、4 section header 描画 + 全 10+ ボタン / 5 リンク表示 + 更新履歴 archive lazy load (1 件 → 10 件) + Danger Zone confirm dialog 開閉、を eval 経由で確認。console errors / warnings なし
+  - **今後の拡張余地**: fflogs-sync-section の詳細診断パネル (logsResult.diag、HTML サンプル含む ~150 行) を `next/dynamic` で別 chunk 化すれば true lazy load 可能。本 TODO スコープ外として別途検討
 - **2.1 (2026-05-02 part6)**: #67 `changelog.ts` (629 行 / 234 KB) を最新 1 件のみに削減 + 過去 9 リリースを `src/lib/changelog-archive.ts` に分離 + dynamic import 化 — クローズ
   - **狙い**: 2026-05-02 のプロジェクト肥大化精査で `changelog.ts` が git tracked size リポ全体 2 位 (`package-lock.json` 378 KB 次点)、しかも `settings-dialog` から全件 import されて初期 client bundle に常時混入していた。「使う時だけ load」する dynamic import 化で初期 bundle 縮小
   - **実装**: 新規 [src/lib/changelog-archive.ts](src/lib/changelog-archive.ts) (RELEASES_ARCHIVE export) / [src/lib/changelog.ts](src/lib/changelog.ts) は最新 1 件 (`2.1 (2026-05-02)`) のみ残置 (234 KB → 19.6 KB) / [settings-dialog.tsx](src/components/portal/settings-dialog.tsx) に `archiveReleases / loadingArchive / archiveError` state 追加 + 「↓ 過去の更新履歴を見る」ボタンで `import("@/lib/changelog-archive")` 発火、`displayReleases = [...RELEASES, ...archiveReleases]` を map
