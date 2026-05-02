@@ -41,14 +41,28 @@ import { useCallback, useEffect, useRef, useState } from "react";
 export function useScrollClosingMenu() {
   const [open, setOpen] = useState(false);
   const reopenLockedUntilRef = useRef(0);
+  const idRef = useRef<string>("");
+  if (idRef.current === "") {
+    idRef.current = Math.random().toString(36).slice(2, 6);
+  }
+  // TODO #65 part-debug: temporary verbose logging to diagnose the
+  // 3-stage flicker that reproduces only on production. Remove once
+  // root cause is identified.
   useEffect(() => {
     if (!open) return;
+    const id = idRef.current;
     let armed = false;
+    console.log(`[scm:${id}] open=true, listener attached`);
     const arm = setTimeout(() => {
       armed = true;
+      console.log(`[scm:${id}] armed (150ms passed)`);
     }, 150);
     const close = () => {
-      if (!armed) return;
+      if (!armed) {
+        console.log(`[scm:${id}] scroll fired but NOT armed yet — ignored`);
+        return;
+      }
+      console.log(`[scm:${id}] scroll-close fired (scrollY=${window.scrollY})`);
       reopenLockedUntilRef.current = Date.now() + 400;
       setOpen(false);
     };
@@ -56,10 +70,19 @@ export function useScrollClosingMenu() {
     return () => {
       clearTimeout(arm);
       window.removeEventListener("scroll", close);
+      console.log(`[scm:${id}] cleanup, listener removed`);
     };
   }, [open]);
   const onOpenChange = useCallback((next: boolean) => {
-    if (next && Date.now() < reopenLockedUntilRef.current) return;
+    const id = idRef.current;
+    const lockMs = reopenLockedUntilRef.current - Date.now();
+    if (next && lockMs > 0) {
+      console.log(
+        `[scm:${id}] onOpenChange(true) IGNORED — locked for ${lockMs}ms more`,
+      );
+      return;
+    }
+    console.log(`[scm:${id}] onOpenChange(${next}) -> setOpen(${next})`);
     setOpen(next);
   }, []);
   return { open, onOpenChange, modal: false as const };
