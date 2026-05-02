@@ -16,7 +16,16 @@ FF14 レイド固定向けポータル — スケジュール / 軽減表 / ロ�
 
 ワンクリックで自分の Vercel + GitHub に fork → デプロイできます (Supabase / Discord Bot は先に作っておく必要あり、詳細は [Setup for your raid group](#setup-for-your-raid-group)):
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/yyamazaki-lym/raid-repository&env=NEXT_PUBLIC_SUPABASE_URL,NEXT_PUBLIC_SUPABASE_ANON_KEY,SUPABASE_SERVICE_ROLE_KEY,DISCORD_BOT_TOKEN,DISCORD_GUILD_ID&envDescription=Supabase%20%2B%20Discord%20OAuth%20%E5%BF%85%E9%A0%88%20%28%E8%A9%B3%E7%B4%B0%20%3A%20envLink%29&envLink=https://github.com/yyamazaki-lym/raid-repository/blob/main/.env.local.example&project-name=raid-repository&repository-name=raid-repository)
+> ## ⚠️ デプロイ前に必ず確認
+>
+> Deploy Button / Fork ボタンを押した先の画面で、**プロジェクト名 / リポジトリ名のデフォルト `my-raid-repository` は必ず変更してください**。
+>
+> - そのまま確定すると、本リポジトリを使う他の固定と同じ名前になり、Vercel ダッシュボードや URL で見分けがつかなくなります
+> - 自分の固定を識別できる名前を推奨 (例: `pandora-raid`, `phoenix-fixed-portal`, `tuesday-night-raid` 等)
+> - **GitHub repo 名 / Vercel project 名 の両方に反映されます** (片方だけ変えるのは NG)
+> - 後から rename も可能ですが、URL や OAuth callback の整合を取り直す必要があるので**最初に決める方が楽**です
+
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/yyamazaki-lym/raid-repository&env=NEXT_PUBLIC_SUPABASE_URL,NEXT_PUBLIC_SUPABASE_ANON_KEY,SUPABASE_SERVICE_ROLE_KEY,DISCORD_BOT_TOKEN,DISCORD_GUILD_ID&envDescription=Supabase%20%2B%20Discord%20OAuth%20%E5%BF%85%E9%A0%88%20%28%E8%A9%B3%E7%B4%B0%20%3A%20envLink%29&envLink=https://github.com/yyamazaki-lym/raid-repository/blob/main/.env.local.example&project-name=my-raid-repository&repository-name=my-raid-repository)
 
 任意の env (DISCORD_ADMIN_ROLE_IDS / YOUTUBE_API_KEY / FFLOGS_API_KEY / FFLogs OAuth / SECRET_ENCRYPTION_KEY / CRON_SECRET) はデプロイ後に Vercel ダッシュボード → Settings → Environment Variables から追加。
 
@@ -107,9 +116,13 @@ FF14 レイド固定向けポータル — スケジュール / 軽減表 / ロ�
 
 ### 1. Fork (1分)
 
+> ⚠️ **デフォルト名のまま fork しないでください**
+> 何も考えずに進めると、他の固定が fork した repo と完全に同じ `raid-repository` という名前になり、自分の Vercel ダッシュボード上でも他の固定と区別がつかなくなります。下記 step 3 で**必ず**自分の固定を識別できる名前に変更してください。
+
 1. このリポジトリの右上 **Fork** ボタン
-2. 自分のアカウントを選択 → **Create fork**
-3. （任意）Settings → 名前を変更しても OK
+2. 自分のアカウントを選択
+3. **Repository name** をデフォルト (`raid-repository`) から自分の固定を識別できる名前に**必ず変更** (例: `pandora-raid`, `phoenix-fixed-portal`, `tuesday-night-raid` 等)。Vercel に import する時の project 名 default にもなるので、ここで変えておくとあとが楽
+4. **Create fork**
 
 ---
 
