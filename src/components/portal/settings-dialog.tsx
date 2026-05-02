@@ -70,7 +70,7 @@ import {
   snapshotScheduleNow,
   type ScheduleSnapshotResult,
 } from "@/lib/server/categories-actions";
-import { RELEASES } from "@/lib/changelog";
+import { RELEASES, type ReleaseEntry } from "@/lib/changelog";
 import { DataInitConfirmDialog } from "./data-init-confirm-dialog";
 
 type FflogsLinkResultLite = {
@@ -194,11 +194,13 @@ export function SettingsDialog({ canEdit }: { canEdit: boolean }) {
   const [showChangelog, setShowChangelog] = useState(false);
   // TODO #23 (2.1): 全データ初期化ボタン用の confirm dialog 表示制御。
   const [showDataInitDialog, setShowDataInitDialog] = useState(false);
-  // 1.9 (2026-04-28) TODO #11: 古い changelog エントリーは source から
-  // 削除して bundle weight を削減 (`changelog.ts` には最新 5 件のみ
-  // 残置)。それ以前の履歴は GitHub commits リンクで確認可能。
-  // → 旧 `showAllReleases` / `RELEASES_INITIAL_LIMIT` の state は
-  //   不要になったので削除。
+  // TODO #67 (2026-05-02): 過去の更新履歴 (changelog-archive.ts) を
+  // dynamic import で lazy load。最新リリース 1 件は `RELEASES` で即時
+  // 表示し、ユーザーが「過去の更新履歴を見る」を押した時のみ archive
+  // (~210 KB) を fetch して結合表示する。
+  const [archiveReleases, setArchiveReleases] = useState<ReleaseEntry[] | null>(null);
+  const [loadingArchive, setLoadingArchive] = useState(false);
+  const [archiveError, setArchiveError] = useState<string | null>(null);
 
   // OAuth callback handler — when the user returns from FFLogs to
   // /api/auth/fflogs/callback, we redirect back to "/" with either
@@ -1568,11 +1570,15 @@ export function SettingsDialog({ canEdit }: { canEdit: boolean }) {
                   <p className="font-mono text-[10px] tracking-[0.2em] text-muted-foreground uppercase">
                     更新履歴 — Release Notes
                   </p>
-                  {RELEASES.length === 0 ? (
-                    <p className="text-muted-foreground">記録なし</p>
-                  ) : (
-                    <ul className="flex flex-col gap-2">
-                      {RELEASES.map((r, idx) => (
+                  {(() => {
+                    const displayReleases = archiveReleases
+                      ? [...RELEASES, ...archiveReleases]
+                      : RELEASES;
+                    return displayReleases.length === 0 ? (
+                      <p className="text-muted-foreground">記録なし</p>
+                    ) : (
+                      <ul className="flex flex-col gap-2">
+                        {displayReleases.map((r, idx) => (
                         <li
                           key={`${r.version}|${r.date}`}
                           className="border-l-2 border-[var(--neon-cyan)]/40 pl-2.5"
@@ -1632,19 +1638,51 @@ export function SettingsDialog({ canEdit }: { canEdit: boolean }) {
                           </details>
                         </li>
                       ))}
-                    </ul>
+                      </ul>
+                    );
+                  })()}
+                  {/* TODO #67 (2026-05-02): archive (~210 KB) は dynamic
+                      import で lazy load。最初の表示は最新リリース 1 件
+                      のみで初期 bundle を抑える */}
+                  {archiveReleases === null ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (loadingArchive) return;
+                        setLoadingArchive(true);
+                        setArchiveError(null);
+                        import("@/lib/changelog-archive")
+                          .then((mod) => {
+                            setArchiveReleases(mod.RELEASES_ARCHIVE);
+                          })
+                          .catch((err: unknown) => {
+                            console.warn("[changelog-archive] load failed:", err);
+                            setArchiveError("読み込みに失敗しました");
+                          })
+                          .finally(() => {
+                            setLoadingArchive(false);
+                          });
+                      }}
+                      disabled={loadingArchive}
+                      className="self-start cursor-pointer rounded-sm border border-[var(--neon-cyan)]/30 bg-secondary/30 px-2.5 py-1 font-mono text-[10px] tracking-[0.18em] text-[var(--neon-cyan)]/85 uppercase transition-colors hover:border-[var(--neon-cyan)]/60 hover:bg-secondary/50 hover:text-[var(--neon-cyan)] disabled:cursor-wait disabled:opacity-60"
+                      aria-busy={loadingArchive}
+                    >
+                      {loadingArchive ? "読み込み中…" : "↓ 過去の更新履歴を見る"}
+                    </button>
+                  ) : null}
+                  {archiveError && (
+                    <p className="font-mono text-[10px] text-rose-400/80" role="status">
+                      {archiveError}
+                    </p>
                   )}
-                  {/* 1.9 (2026-04-28) — 古い changelog エントリーは
-                      bundle weight 削減のため source から削除済み。それ
-                      以前の履歴は GitHub commits 一覧で確認可能 */}
                   <a
                     href="https://github.com/yyamazaki-lym/raid-repository/commits/main"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="self-start font-mono text-[10px] tracking-[0.18em] text-[var(--neon-cyan)]/85 uppercase transition-colors hover:text-[var(--neon-cyan)]"
-                    title="これ以前の更新履歴は GitHub commits で確認"
+                    title="これ以前の commit log は GitHub で確認"
                   >
-                    ↗ これより前の履歴を GitHub で見る
+                    ↗ commit log を GitHub で見る
                   </a>
                 </div>
               )}
