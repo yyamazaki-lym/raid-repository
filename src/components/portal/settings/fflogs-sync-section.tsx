@@ -128,6 +128,11 @@ export function FflogsSyncSection({
     preview: string | null;
   } | null>(null);
   const [savingCookie, startSaveCookie] = useTransition();
+  // TODO #68 part10: 詳細診断 details の open 状態を React state に同期。
+  // open 時のみ FflogsDiagnosticsPanel を mount する → details を開いた
+  // 瞬間にだけ dynamic chunk が fetch される (連動実行のみで開かない場合
+  // chunk fetch されない、PR #24 比でさらに lazy 度を 1 段引き上げ)。
+  const [diagOpen, setDiagOpen] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -719,12 +724,32 @@ export function FflogsSyncSection({
                     {/* 詳細診断パネル — 各フェッチレイヤーの結果を
                         全部見せる。なぜ 0 件なのか切り分けに使う。
                         TODO #68: `next/dynamic({ ssr: false })` で別 chunk
-                        化、開いた瞬間に fetch される true lazy load。 */}
+                        化、開いた瞬間に fetch される true lazy load。
+                        part10 (2026-05-02): root details を親側に持ち、
+                        body のみ panel から render する controlled 構造。
+                        diagOpen=true の時だけ mount = chunk fetch される。 */}
                     {logsResult.diag && (
-                      <FflogsDiagnosticsPanel
-                        diag={logsResult.diag}
-                        userTypeFields={logsResult.userTypeFields}
-                      />
+                      <details
+                        className="mt-2 group/diag"
+                        onToggle={(e) =>
+                          setDiagOpen(e.currentTarget.open)
+                        }
+                      >
+                        <summary className="cursor-pointer list-none text-[10px] text-muted-foreground/80 hover:text-foreground/90 [&::-webkit-details-marker]:hidden">
+                          <span className="inline-flex items-center gap-1">
+                            <span className="text-amber-300/70 transition-transform group-open/diag:rotate-90">
+                              ▸
+                            </span>
+                            詳細診断（v2 / HTML スクレイプの取得状況）
+                          </span>
+                        </summary>
+                        {diagOpen && (
+                          <FflogsDiagnosticsPanel
+                            diag={logsResult.diag}
+                            userTypeFields={logsResult.userTypeFields}
+                          />
+                        )}
+                      </details>
                     )}
                     {logsResult.details.length > 0 && (
                       <ul className="mt-1 flex flex-col gap-0.5 font-mono text-[10px] text-muted-foreground">

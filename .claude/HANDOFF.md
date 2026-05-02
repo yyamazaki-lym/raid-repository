@@ -1,6 +1,6 @@
 # Raid Repository — 引き継ぎノート
 
-> 2.1 (2026-05-02 part9) 時点。完了済 TODO の詳細は `src/lib/changelog.ts` / 過去版番号は `.claude/done.md`。
+> 2.1 (2026-05-02 part10) 時点。完了済 TODO の詳細は `src/lib/changelog.ts` / 過去版番号は `.claude/done.md`。
 >
 > **新規会話の手順**: このファイルを読んだ後、TODO 一覧は自動表示せずユーザーの要望を待つ。新規 TODO 追記時は part 単位ではなく TODO 完了時のみ統合追記する (part 細分は commit log に任せる)。
 
@@ -21,7 +21,7 @@ _(現在なし)_
 
 ## 📌 次回の作業優先度
 
-未完了 TODO はユーザー選択。直近で起票された TODO #63 (動画 dropdown のマウスオーバーで動画タイトル tooltip 表示) は schedule-list の `SessionActionIcons` に手を入れるだけで完結する小規模改善。
+未完了 TODO はユーザー選択。残りはほぼ全て中〜大規模 (TODO #2 統合 / #7 / #51 / #11) の見送り候補。
 
 ## 未完了 TODO 一覧
 
@@ -31,9 +31,7 @@ _(現在なし)_
 
 | # | 項目 | 規模 |
 |---|---|---|
-| 2 | スケジュール表自前実装 (作成/編集/確定/Discord 通知) | 大 |
-| 38 | スケジュール追加機能 — portal 内から開催候補日を追加する UI が無い。日付 + 時間帯 + 参加可否を入力 → DB 保存 → 描画。TODO #2 と統合可 | 中〜大 |
-| 63 | TODO #1 で導入した動画 / Logs DropdownMenu の trigger アイコンに hover した際、動画タイトル (= dropdown item で表示している `videoTitle`) を tooltip で表示する。1 件時 (`<a>` / `<Link>` 直行ケース) も同様に tooltip 化したい。schedule-list.tsx の `SessionActionIcons` に手を入れるだけで完結 | 小 |
+| 2 | スケジュール表自前実装 (作成/編集/確定/Discord 通知)。**#38 を統合**: portal 内から開催候補日を追加する UI (日付 + 時間帯 + 参加可否入力 → DB 保存 → 描画) を本 TODO スコープ内に含める。**追加要件**: 初期設定 (settings-dialog) で「既存取り込み式 (現行 character-sheets iframe) / 新規作成式 (本 TODO で実装する自前 UI) / 使わない (スケジュール機能無効)」の 3 択を選択可能にする。後から変更可 | 大 |
 
 ### 📂 カテゴリ詳細ページ (`/category/[slug]`)
 
@@ -71,6 +69,18 @@ _(現在なし)_
 
 直近版のみ列挙。詳細経緯は `src/lib/changelog.ts`、過去版アーカイブは `.claude/done.md`。
 
+- **2.1 (2026-05-02 part10)**: #68 follow-up — 詳細診断 chunk を「details 開時のみマウント」する controlled 構造に強化 (PR #24 の lazy 度を 1 段引き上げ)
+  - **狙い**: PR #24 の TODO #68 完了版では `logsResult.diag` 真値時点で `<FflogsDiagnosticsPanel>` が常に mount され、details を開かなくても chunk fetch が発火する設計だった。「details を開いた時に load」を厳密に満たすため、root details を親側に持ってきて `useState diagOpen` で controlled 化、open=true の時だけ panel を mount する形に再構成
+  - **実装**:
+    - [fflogs-diagnostics-panel.tsx](src/components/portal/settings/fflogs-diagnostics-panel.tsx): root `<details>` + `<summary>` 撤去、内部の `<div>` (詳細診断 body) のみを返す形に変更
+    - [fflogs-sync-section.tsx](src/components/portal/settings/fflogs-sync-section.tsx): `useState<boolean>(false)` の `diagOpen` 追加、`<details onToggle={(e) => setDiagOpen(e.currentTarget.open)}>` で wrap、body は `{diagOpen && <FflogsDiagnosticsPanel ... />}` で条件マウント。閉じている間 panel 自体が unmount = chunk も load されない
+  - **`<details onToggle>` パターン**: uncontrolled-with-listener 方式で browser native トグル動作を維持しつつ open 状態を React に同期 (controlled `<details open={...}>` だと user click が効かなくなるので avoid)
+  - **動作差** (PR #24 比):
+    - 連動実行 → details を開かない: PR #24 = chunk fetch / part10 = chunk **fetch されない**
+    - 連動実行 → details を開く: PR #24 = 既に fetch 済 / part10 = 開いた瞬間に fetch
+    - details 開閉のサイクル: PR #24 = 維持 / part10 = 閉時 unmount (再開で再 mount、chunk は browser cache 経由)
+  - **副作用**: 詳細診断 details を閉じる時に内側 nested details (htmlSample / titleDateMissSample / userTypeFields) の open 状態がリセットされる (再度親 details を開いた時、これらは閉じた状態に戻る)。ユーザーが直接見ない状態の話なので UX 等価
+  - **検証**: `tsc --noEmit` PASS。dev preview で Settings dialog 開閉 + FFLogs section 主要 UI 全描画 + 連動未実行時に「詳細診断」summary 非表示 + console error 0 件を eval 確認
 - **2.1 (2026-05-02 part9)**: #68 `fflogs-sync-section.tsx` 内の詳細診断パネル (~190 行) を `next/dynamic({ ssr: false })` で別 chunk に分離 — クローズ
   - **狙い**: TODO #66 で settings-dialog を 5 つの sub-component に分割した際、最大セクション `fflogs-sync-section.tsx` (962 行) 内の詳細診断パネル (`logsResult.diag` + `userTypeFields` 描画、HTML サンプル / titleDateMissSample / v2OwnersSample 含む ~190 行) が後続最適化として残されていた。FFLogs 連動を実行して結果が「合うレポートなし」になり、かつ詳細診断 details を開いた時にしか見えない稀な UI なので、`next/dynamic({ ssr: false })` で別 chunk 化して true lazy load を実現
   - **実装**: 新規 [src/components/portal/settings/fflogs-diagnostics-panel.tsx](src/components/portal/settings/fflogs-diagnostics-panel.tsx) (203 行) に詳細診断 `<details>` ブロック (内部の HTML サンプル / titleDateMissSample / userTypeFields nested details 含む) を切出し、`FflogsDiagInfo` 型も export。[fflogs-sync-section.tsx](src/components/portal/settings/fflogs-sync-section.tsx) で `dynamic(() => import("./fflogs-diagnostics-panel"), { ssr: false })` でラップし、旧 inline JSX を `<FflogsDiagnosticsPanel diag={...} userTypeFields={...} />` に置換 (962 行 → 802 行、-160 行)
