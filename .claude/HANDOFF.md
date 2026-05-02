@@ -1,6 +1,6 @@
 # Raid Repository — 引き継ぎノート
 
-> 2.1 (2026-05-02 part7) 時点。完了済 TODO の詳細は `src/lib/changelog.ts` / 過去版番号は `.claude/done.md`。
+> 2.1 (2026-05-02 part8) 時点。完了済 TODO の詳細は `src/lib/changelog.ts` / 過去版番号は `.claude/done.md`。
 >
 > **新規会話の手順**: このファイルを読んだ後、TODO 一覧は自動表示せずユーザーの要望を待つ。新規 TODO 追記時は part 単位ではなく TODO 完了時のみ統合追記する (part 細分は commit log に任せる)。
 
@@ -94,7 +94,7 @@ TODO #65 残課題 (③ dropdown スクロール時のちらつき) を修正。
 
 | # | 項目 | 規模 |
 |---|---|---|
-| 68 | TODO #66 後続 — `src/components/portal/settings/fflogs-sync-section.tsx` (962 行) 内の詳細診断パネル (`logsResult.diag`、HTML サンプル / userTypeFields / titleDateMissSample / v2OwnersSample 含む ~150 行のサブツリー) を `next/dynamic({ ssr: false })` で別 chunk に分離。FFLogs 連動を実行して結果が「合うレポートなし」になり詳細診断 details を開いたときだけ load されるため、true lazy load 効果あり。`logsResult.diag` 表示部分を別ファイル `fflogs-diagnostics-panel.tsx` に切り出し、親では `dynamic(() => import("./fflogs-diagnostics-panel"), { ssr: false })` でラップ。検証: tsc + dev preview で通常時は chunk が fetch されない / 診断 details 開いた瞬間に fetch される (Network タブ) ことを確認 | 小〜中 |
+| _(現在なし)_ | — | — |
 
 ### 🚀 インフラ / デプロイ (コード外作業)
 
