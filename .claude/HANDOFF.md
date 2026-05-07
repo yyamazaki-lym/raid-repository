@@ -49,6 +49,7 @@ _(現在なし)_
 
 | # | 項目 | 規模 |
 |---|---|---|
+| 72 | **TODO #71 残留 (継続)**: 案 D / A / B / E / T / J 全て本番反映後もユーザー実機で「コメント popover 白枠残留」継続。**案 J 進捗**: Claude が demo 環境で rapid 連続 hover race を再現 + case J `{open && <PopoverContent />}` controlled unmount で解消確認 (demo 実機 0 残留)。ただしユーザー実機 (demo + 本番両方) で別シーケンスの残留が継続報告。次回会話で **本番 DevTools 観察** (ハードリフレッシュ確認 + Console 観察スクリプト実行 + 残留 node の outerHTML / data-open / data-closed / display 属性転記) で別系統の真因特定が必要。詳細は `.claude/todos/72.md` | 中 |
 | 7 | スマホでのレイアウト崩れ確認 | 中 |
 | 51 | マイクロインタラクション / ユーザビリティ向上。クリック時の press feedback / hover 時の subtle elevation / loading skeleton / focus ring 強化 / toast の出現位置・タイミング微調整 / フォーム入力の即時 validation / 空状態の illustration etc。framer-motion を残す方針なので springy な質感も維持しつつ portal 全体の polish を 1 周。観点リストの作成 + 優先順位付けから | 中 |
 | 11 | ページ全体のパフォーマンス最適化。phase 1-10 完了済、見送り候補あり。詳細: `.claude/todos/11.md` | — |
@@ -69,7 +70,7 @@ _(現在なし)_
 
 直近版のみ列挙。詳細経緯は `src/lib/changelog.ts`、過去版アーカイブは `.claude/done.md`。
 
-- **2.1 (2026-05-07 part4)**: #72 — 案 D / A / B / E / T 全敗 (案 D=focus 同期, 案 A=bootstrap click, 案 B=常駐 MutationObserver, 案 E=`[&:not([data-open])]:hidden`, 案 T=`<Portal keepMounted>`) → **Claude 自前観察フェーズで真因確定 + 案 J (controlled unmount) で根絶**
+- **2.1 (2026-05-07 part4)**: #72 部分解消 — 案 D / A / B / E / T 全敗 (案 D=focus 同期, 案 A=bootstrap click, 案 B=常駐 MutationObserver, 案 E=`[&:not([data-open])]:hidden`, 案 T=`<Portal keepMounted>`) → **Claude 自前観察フェーズで rapid 連続 hover race の真因確定 + 案 J (controlled unmount) で demo 実機解消** **— ただしユーザー実機で別シーケンスの残留継続報告、TODO #72 (継続) として再起票**
   - **観察手法**: Claude in Chrome で demo 環境 (`https://demo-raid-repository.vercel.app/`、本番と同一 Vercel production build) に対して実機 hover/click 操作 + `javascript_tool` で DOM 属性測定。Single hover では再現せず、**rapid 連続 hover (3 trigger 順次)** で 3 popover が `data-open=""` 残置 + `display: flex` で visible 残留することを **実測再現**。
   - **真因確定**: **複数 Popover の同時 `setOpen(false)` 並行発火**で React 19 production batch race が発生し `data-open` 属性が外れない。`keepMounted` (案 T) でも `[&:not([data-open])]:hidden` (案 E) でも `data-open` が外れる前提だったため両方失効。outside click は Base UI `useDismiss` が個別 Popover を確実な close path に乗せるため、ページ内 click で残留が解消する観測事実と一致。本番ユーザー報告「リロード直後 first hover → leave で白枠」は、複数メンバーアイコンを順次素早く hover していく自然な行為で発火していた。
   - **修正** ([src/components/portal/comment-popover.tsx](src/components/portal/comment-popover.tsx)): `<PopoverContent ...>...</PopoverContent>` を `{open && <PopoverContent ...>...</PopoverContent>}` で wrap (React 条件付き render = controlled unmount)。open=false 遷移時に React unmount path で確実に DOM tree から物理除去 → `data-open` 属性更新に依存しない。案 A bootstrap click は残置 (副作用なし、予防策)
