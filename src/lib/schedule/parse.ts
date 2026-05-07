@@ -84,6 +84,23 @@ export type ScheduleAttendanceOptions = {
   source: "edit-page" | "fallback-from-list" | "unavailable";
 };
 
+/**
+ * TODO #2 phase 2-B (2026-05-07): native mode 専用メタデータ。sync 経路の
+ * `parseSchedule()` では undefined のまま (character-sheets には DB id 概念が
+ * ないため)。`fetchNativeSchedule()` が DB SELECT 結果から組み立てて同梱する。
+ *
+ * - `sessionIdByRawDate`: popover / status toggle が server action 呼出時に
+ *   `session.id` (uuid) を引くため。`ScheduleSession.rowIndex` は character-
+ *   sheets の `<tr id="row_N">` 由来で native では常に null。
+ * - `commentsByPair`: `${sessionId}__${discordUserId}` をキーにした出欠コメント
+ *   マップ。popover の textarea 初期値に使う。空コメントは entry を持たない
+ *   (`?? ""` で fallback)。
+ */
+export type NativeScheduleMeta = {
+  sessionIdByRawDate: Record<string, string>;
+  commentsByPair: Record<string, string>;
+};
+
 export type ParsedSchedule = {
   users: ScheduleUser[];
   sessions: ScheduleSession[];
@@ -98,6 +115,11 @@ export type ParsedSchedule = {
   topText: string | null;
   /** 凡例で使う出欠選択肢のマスター。詳細は `ScheduleAttendanceOptions`。 */
   attendanceOptions: ScheduleAttendanceOptions;
+  /**
+   * TODO #2 phase 2-B: native mode 専用メタ。sync 経路では undefined。
+   * 詳細は `NativeScheduleMeta`。
+   */
+  nativeMeta?: NativeScheduleMeta;
 };
 
 const NAMELINK_USER_RE =
@@ -410,6 +432,7 @@ export function attachUsersToSessions(parsed: ParsedSchedule): ParsedSchedule {
     comments: parsed.comments,
     topText: parsed.topText,
     attendanceOptions: parsed.attendanceOptions,
+    nativeMeta: parsed.nativeMeta,
   };
 }
 

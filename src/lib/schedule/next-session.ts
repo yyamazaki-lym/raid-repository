@@ -28,6 +28,8 @@ export type {
   ScheduleUser,
   Attendance,
   ScheduleComment,
+  ScheduleAttendanceOptions,
+  NativeScheduleMeta,
 } from "./parse";
 
 export type ScheduleFetchResult =
