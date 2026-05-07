@@ -184,6 +184,20 @@ export const SessionMemoPopover = forwardRef<
       if (!t) return;
       if (popupRef.current?.contains(t)) return;
       if (wrapperRef.current?.contains(t)) return;
+      // The memo dot is rendered OUTSIDE the wrapperRef (parent places
+      // it as a sibling so chip/row reading order = date → icons → dot
+      // is preserved). Treat dot clicks as "inside" so the 2nd click
+      // on the dot can reach the React click handler without being
+      // pre-empted by this outside-click handler. Without this guard,
+      // mousedown on dot fires → setOpen(false), then click → toggle
+      // → setOpen(false → true), netting "popup stays open" (= dot
+      // click does nothing visually). Attribute-based check is used
+      // because React 19's synthetic e.stopPropagation() does NOT
+      // stop the underlying native DOM event from bubbling to this
+      // document-level listener, so per-button stopPropagation is
+      // unreliable.
+      if (t instanceof Element && t.closest("[data-memo-dot-trigger]"))
+        return;
       setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => {
@@ -334,7 +348,7 @@ export function SessionMemoDot({
   return (
     <button
       type="button"
-      onMouseDown={(e) => e.stopPropagation()}
+      data-memo-dot-trigger
       onClick={(e) => {
         e.stopPropagation();
         onClick();
