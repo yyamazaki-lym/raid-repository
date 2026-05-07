@@ -19,7 +19,11 @@ import { buildSessionVideoLinkMap } from "@/lib/server/session-video-link";
 import { fetchAppSettings } from "@/lib/supabase/app-settings";
 import { fetchCategories } from "@/lib/supabase/categories";
 import { fetchRecruitmentTemplatesServer } from "@/lib/supabase/recruitment-templates";
-import { getAuthorizedUserRoles } from "@/lib/server/auth";
+import {
+  getAuthorizedUserRoles,
+  requireDiscordMember,
+  userIsAdmin,
+} from "@/lib/server/auth";
 import { filterVisibleCategories } from "@/lib/category-visibility";
 
 export const metadata = {
@@ -179,23 +183,22 @@ async function ScheduleContent() {
     );
   }
 
-  // mode === "native": phase 1 skeleton.
-  // 出欠 / 動画リンク / FFLogs / メモなどの併用 fetch は phase 2 で。
-  // phase 1 では recruitment templates / categories だけ並列取得して
-  // 既存の RecruitmentTemplatesButton / NextSessionCard のシェルを
-  // そのまま動かす。
+  // mode === "native": phase 2-A で本実装の native_schedule_* 取得 + 認証情報配線。
+  // 動画リンク / FFLogs / メモ併用 fetch は将来の phase で必要に応じて足す。
   const [
     nativeResult,
     holidays,
     recruitmentTemplates,
     categoriesResult,
     userRoles,
+    member,
   ] = await Promise.all([
     fetchNativeSchedule(),
     fetchJapaneseHolidays(),
     fetchRecruitmentTemplatesServer(),
     fetchCategories(),
     getAuthorizedUserRoles(),
+    requireDiscordMember(),
   ]);
   const visibleCategories = categoriesResult.ok
     ? filterVisibleCategories(categoriesResult.categories, userRoles)
@@ -211,6 +214,7 @@ async function ScheduleContent() {
   const nextResult: NextSessionResult = nativeResult.ok
     ? { ok: true, session: pickNextDecision(nativeResult.data.sessions) }
     : { ok: false, reason: nativeResult.reason };
+  const isAdmin = userIsAdmin(userRoles);
 
   return (
     <SchedulePageBody
@@ -226,6 +230,8 @@ async function ScheduleContent() {
       hasUltimateClear={hasUltimateClear}
       topTextOverride={null}
       initialMemosByDate={{}}
+      currentDiscordId={member.discordId}
+      isAdmin={isAdmin}
     />
   );
 }
