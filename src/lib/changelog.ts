@@ -56,6 +56,16 @@ export type ReleasePart = {
 export const RELEASES: ReleaseEntry[] = [
   {
     version: "2.1",
+    date: "2026-05-07",
+    parts: [
+      {
+        title: "🐛 TODO #69 クローズ — スケジュール各員コメント popover の close 時に「白枠だけ残る」現象を Strategy G (CSS exit transition 撤去) で根絶",
+        body: "**症状**: スケジュールページ TOP の表で、メンバーごとのコメントアイコンに hover すると `CommentPopover` が開いてコメントが表示されるが、カーソルを popover / トリガーから外側に移動すると、コメント本文と背景は消えるのに「白い枠だけ」が表示されたまま残ることがあった (毎回ではなく散発、特に rapid hover-leave で再現しやすい)。\n\n**真因**: TODO #65 (PR #22, commit `18a338f`) で `dropdown-menu.tsx` に対して同根のバグを「3 段階ちらつき」として既に修正済みだったが、`popover.tsx` / `tooltip.tsx` には同じ Base UI close 時アニメ (`data-closed:animate-out / fade-out-0 / zoom-out-95`) が残存していた。close transition (~100ms) の間に zoom スケール 95% への縮小と fade-out 透明化のタイミングずれが発生すると、`bg-popover` の中身は透明化していく一方で `ring-1 ring-foreground/10` + `shadow-md` の輪郭だけが visible に残るフレームが visual artifact として観測される現象。`CommentPopover` は 120ms grace period を持つため open/close の頻度が高く、特に発火しやすかった。\n\n**修正** (Strategy G の popover/tooltip 版):\n- [src/components/ui/popover.tsx](src/components/ui/popover.tsx): `PopoverContent` の `<PopoverPrimitive.Popup>` className から `data-closed:animate-out` / `data-closed:fade-out-0` / `data-closed:zoom-out-95` の 3 クラスを削除\n- [src/components/ui/tooltip.tsx](src/components/ui/tooltip.tsx): `TooltipContent` の `<TooltipPrimitive.Popup>` className から同 3 クラスを削除 (今回のバグには直接関与しないが、Base UI overlay 三兄弟 dropdown / popover / tooltip で方針統一する予防修正)\n\n入場アニメーション (`data-open:animate-in / fade-in-0 / zoom-in-95` + `data-[side=*]:slide-in-from-*`) は維持。close 時は瞬間消滅、open 時は従来通り 100ms かけて zoom-in + fade-in。\n\n**副作用受入**: Base UI overlay 全種類で「閉じる時のフェードアウト」が消えて瞬間消滅になる。`CommentPopover` の hover 制御 (`cancelClose` / `scheduleClose` 120ms grace) のロジック自体は変更なし。recruitment-templates-button (`PopoverContent` の唯一の他使用箇所) も close 瞬間消滅になるが click open / click outside close の機能上問題なし。dropdown-menu と UX 統一が取れる。\n\n**動作差** (修正前 → 修正後):\n- hover → leave → close: 「中身は消えるが白枠だけ残る」現象 → close 即時 unmount で白枠が物理的に出現しない\n- DOM 実観測 (preview_eval): mouseleave 後 250ms で `[data-slot=\"popover-content\"]` ノードが完全に消滅、`data-closed` 属性が DOM に現れるフェーズ自体が観測されない\n\n**Strategy G の前例**: dropdown-menu (TODO #65, PR #22) で同方針を本番適用済 + UX 許容確認済。本修正は同パターンの popover / tooltip 版として一貫性を持つ。将来フェードアウト復活したい場合は `duration-50` + `opacity-only` 版 (zoom-out なし → リバウンド再発リスク低) で復活可能。\n\n**検証**: `tsc --noEmit` PASS。dev preview (worktree, `.env.local` を main repo からコピー) でスケジュールページ TOP の `CommentPopover` を `mouseenter` で open → `mouseleave` で close、close 後 250ms で popover ノードが DOM から完全消失することを `preview_eval` で確認。screenshot で popover open 状態と close 後状態の両方を撮影し、close 後に白枠が残っていないことを目視確認。console error / warning 0 件。",
+      },
+    ],
+  },
+  {
+    version: "2.1",
     date: "2026-05-02",
     parts: [
       {
