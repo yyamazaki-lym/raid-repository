@@ -58,6 +58,7 @@ export function CommentPopover({
   const [updated, setUpdated] = useState(false);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const remountTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   // Base UI Popover の DOM が production build で稀に portal close 後に
   // 残留して白枠だけ残る現象 (TODO #70 / #71 / part2 でも完全解消できず
   // ユーザー報告継続) の対策。close transition 完了後 (250ms) に
@@ -166,6 +167,12 @@ export function CommentPopover({
     ? {
         onMouseEnter: () => {
           cancelClose();
+          // TODO #72: hydration 直後の first hover で Base UI Popover の
+          // portal cleanup ref が貼られず DOM 残留する race の対策。
+          // click 経路で踏まれる focus 移動を hover でも踏ませて
+          // `isTriggerActive` 遷移 + FocusGuard 装着を発火させる。
+          // preventScroll で hover 時の scroll jump を抑制。
+          triggerRef.current?.focus({ preventScroll: true });
           setOpen(true);
         },
         onMouseLeave: scheduleClose,
@@ -182,6 +189,7 @@ export function CommentPopover({
   return (
     <Popover key={remountKey} open={open} onOpenChange={setOpen}>
       <PopoverTrigger
+        ref={triggerRef}
         {...hoverProps}
         className={triggerClass}
         aria-label={
