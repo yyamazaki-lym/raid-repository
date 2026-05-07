@@ -161,6 +161,14 @@ export function CommentPopover({
     ? "relative inline-flex h-5 w-5 items-center justify-center rounded-sm border border-amber-300/70 bg-amber-300/15 text-amber-200 transition-colors hover:bg-amber-300/25 shadow-[0_0_8px_-2px_rgba(252,211,77,0.7)]"
     : "relative inline-flex h-5 w-5 items-center justify-center rounded-sm border border-[var(--neon-cyan)]/40 bg-[var(--neon-cyan)]/8 text-[var(--neon-cyan)] transition-colors hover:bg-[var(--neon-cyan)]/15";
 
+  // TODO #72 案 J: open=false の時に <PopoverContent> を React tree から
+  // 完全に除外する controlled unmount。観察 (demo 環境 rapid 連続 hover
+  // 再現テスト, 2026-05-07) で「複数 Popover 同時 setOpen(false) 並行発火
+  // 時に React 19 production batch race で `data-open` 属性が外れない」と
+  // 真因確定。案 T (keepMounted) / 案 E (`[&:not([data-open])]:hidden`) は
+  // どちらも「`data-open` が外れる」前提だったため両方失効。React レベル
+  // で unmount すれば Base UI の `data-open` 属性更新に依存せず確実に
+  // node が DOM から外れる。
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
@@ -186,42 +194,44 @@ export function CommentPopover({
           />
         )}
       </PopoverTrigger>
-      <PopoverContent
-        side="bottom"
-        align="center"
-        sideOffset={6}
-        className="glass-popup w-72 max-w-[80vw] p-0"
-        // Same hover semantics on the popup so moving the cursor onto the
-        // content keeps it open.
-        onMouseEnter={hoverEnabled ? cancelClose : undefined}
-        onMouseLeave={hoverEnabled ? scheduleClose : undefined}
-      >
-        <div className="flex flex-col gap-1 p-3 text-left">
-          <div className="flex items-center gap-1.5 border-b border-border/50 pb-1.5">
-            <MessageSquareText
-              className="h-3 w-3 text-[var(--neon-cyan)]"
-              aria-hidden
-            />
-            <span className="font-mono text-[9px] tracking-[0.2em] text-muted-foreground uppercase">
-              {user.name} の一言
-            </span>
+      {open && (
+        <PopoverContent
+          side="bottom"
+          align="center"
+          sideOffset={6}
+          className="glass-popup w-72 max-w-[80vw] p-0"
+          // Same hover semantics on the popup so moving the cursor onto the
+          // content keeps it open.
+          onMouseEnter={hoverEnabled ? cancelClose : undefined}
+          onMouseLeave={hoverEnabled ? scheduleClose : undefined}
+        >
+          <div className="flex flex-col gap-1 p-3 text-left">
+            <div className="flex items-center gap-1.5 border-b border-border/50 pb-1.5">
+              <MessageSquareText
+                className="h-3 w-3 text-[var(--neon-cyan)]"
+                aria-hidden
+              />
+              <span className="font-mono text-[9px] tracking-[0.2em] text-muted-foreground uppercase">
+                {user.name} の一言
+              </span>
+            </div>
+            <ul className="flex flex-col gap-1.5 pt-1">
+              {comments.map((c, idx) => (
+                <li key={idx} className="flex flex-col gap-0.5">
+                  <p className="text-[11px] leading-relaxed text-foreground/95 whitespace-pre-wrap break-words">
+                    {c.body || "—"}
+                  </p>
+                  {c.timestamp && (
+                    <span className="font-mono text-[9px] text-muted-foreground">
+                      {c.timestamp}
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
           </div>
-          <ul className="flex flex-col gap-1.5 pt-1">
-            {comments.map((c, idx) => (
-              <li key={idx} className="flex flex-col gap-0.5">
-                <p className="text-[11px] leading-relaxed text-foreground/95 whitespace-pre-wrap break-words">
-                  {c.body || "—"}
-                </p>
-                {c.timestamp && (
-                  <span className="font-mono text-[9px] text-muted-foreground">
-                    {c.timestamp}
-                  </span>
-                )}
-              </li>
-            ))}
-          </ul>
-        </div>
-      </PopoverContent>
+        </PopoverContent>
+      )}
     </Popover>
   );
 }
