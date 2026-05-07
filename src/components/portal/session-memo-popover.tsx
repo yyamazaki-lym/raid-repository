@@ -334,6 +334,7 @@ export function SessionMemoDot({
   return (
     <button
       type="button"
+      onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => {
         e.stopPropagation();
         onClick();
