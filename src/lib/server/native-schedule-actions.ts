@@ -6,6 +6,13 @@ import { createClient } from "@/lib/supabase/server";
 
 import { assertAdminResult, requireDiscordMember } from "./auth";
 import { dbError } from "./db-error";
+import {
+  notifyNativeSessionCancelled,
+  notifyNativeSessionCreated,
+  notifyNativeSessionDecided,
+  notifyNativeSessionDeleted,
+  type NativeSessionLike,
+} from "./native-schedule-discord";
 
 /**
  * TODO #2 phase 2-A (2026-05-07): native スケジュール用 Server Actions。
@@ -26,6 +33,45 @@ const SESSION_STATUSES = ["CANDIDATE", "DECISION", "CANCELLED"] as const;
 type NativeSessionStatus = (typeof SESSION_STATUSES)[number];
 
 const NATIVE_CHOICE_VALUES_KEY = "native_schedule_choice_values";
+
+type NativeSessionRow = {
+  id: string;
+  raw_date: string;
+  parsed_date: string;
+  start_time: string;
+  end_time: string;
+  day_of_week: string;
+  note: string | null;
+  status: NativeSessionStatus;
+};
+
+function rowToSessionLike(row: NativeSessionRow): NativeSessionLike {
+  return {
+    id: row.id,
+    rawDate: row.raw_date,
+    parsedDate: row.parsed_date,
+    startTime: row.start_time,
+    endTime: row.end_time,
+    dayOfWeek: row.day_of_week,
+    note: row.note ?? null,
+    status: row.status,
+  };
+}
+
+function pickStatusNotifier(
+  prev: NativeSessionStatus,
+  next: NativeSessionStatus,
+): ((s: NativeSessionLike) => Promise<void>) | null {
+  if (prev === next) return null;
+  if (next === "DECISION" && prev === "CANDIDATE") return notifyNativeSessionDecided;
+  if (next === "CANCELLED") {
+    if (prev === "CANDIDATE" || prev === "DECISION") {
+      return notifyNativeSessionCancelled;
+    }
+  }
+  // DECISION → CANDIDATE / CANCELLED → * は通知しない
+  return null;
+}
 
 // ---- sessions (admin gate) ------------------------------------------------
 
@@ -66,13 +112,20 @@ export async function createNativeScheduleSessionAction(
       note,
       created_by_id: auth.user.discordId,
     })
-    .select("id")
+    .select(
+      "id, raw_date, parsed_date, start_time, end_time, day_of_week, note, status",
+    )
     .single();
   if (error) {
     if ((error as { code?: string }).code === "23505") {
       return { ok: false, reason: "同じ日時の候補日がすでにあります" };
     }
     return { ok: false, reason: dbError("候補日追加", error) };
+  }
+  try {
+    await notifyNativeSessionCreated(rowToSessionLike(data));
+  } catch (e) {
+    console.warn("[native-schedule] notifyCreated failed", String(e));
   }
   try {
     revalidatePath("/");
@@ -91,11 +144,26 @@ export async function deleteNativeScheduleSessionAction(
   if (!trimmed) return { ok: false, reason: "id が空です" };
 
   const supabase = await createClient();
+  const { data: existing } = await supabase
+    .from("native_schedule_sessions")
+    .select(
+      "id, raw_date, parsed_date, start_time, end_time, day_of_week, note, status",
+    )
+    .eq("id", trimmed)
+    .maybeSingle();
+
   const { error } = await supabase
     .from("native_schedule_sessions")
     .delete()
     .eq("id", trimmed);
   if (error) return { ok: false, reason: dbError("候補日削除", error) };
+  if (existing) {
+    try {
+      await notifyNativeSessionDeleted(rowToSessionLike(existing));
+    } catch (e) {
+      console.warn("[native-schedule] notifyDeleted failed", String(e));
+    }
+  }
   try {
     revalidatePath("/");
   } catch {
@@ -118,13 +186,34 @@ export async function setNativeScheduleSessionStatusAction(
       reason: "status は CANDIDATE / DECISION / CANCELLED のいずれかです",
     };
   }
+  const newStatus = status as NativeSessionStatus;
 
   const supabase = await createClient();
+  const { data: existing } = await supabase
+    .from("native_schedule_sessions")
+    .select(
+      "id, raw_date, parsed_date, start_time, end_time, day_of_week, note, status",
+    )
+    .eq("id", trimmed)
+    .maybeSingle();
+
   const { error } = await supabase
     .from("native_schedule_sessions")
-    .update({ status })
+    .update({ status: newStatus })
     .eq("id", trimmed);
   if (error) return { ok: false, reason: dbError("status 更新", error) };
+
+  if (existing) {
+    const prevStatus = existing.status as NativeSessionStatus;
+    const notify = pickStatusNotifier(prevStatus, newStatus);
+    if (notify) {
+      try {
+        await notify({ ...rowToSessionLike(existing), status: newStatus });
+      } catch (e) {
+        console.warn("[native-schedule] notifyStatus failed", String(e));
+      }
+    }
+  }
   try {
     revalidatePath("/");
   } catch {
