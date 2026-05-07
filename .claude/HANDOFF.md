@@ -49,7 +49,6 @@ _(現在なし)_
 
 | # | 項目 | 規模 |
 |---|---|---|
-| 72 | **TODO #71 残留**: hover open 経路 (リロード後初回) で close 時に白枠が DOM 残留する症状が継続。**切り分け済**: click open → close は OK / 一度 click を通すと以後 hover/close も OK / **リロード直後の first hover → leave** だけで残留再現。詳細は `.claude/todos/72.md` (これから作成) | 中 |
 | 7 | スマホでのレイアウト崩れ確認 | 中 |
 | 51 | マイクロインタラクション / ユーザビリティ向上。クリック時の press feedback / hover 時の subtle elevation / loading skeleton / focus ring 強化 / toast の出現位置・タイミング微調整 / フォーム入力の即時 validation / 空状態の illustration etc。framer-motion を残す方針なので springy な質感も維持しつつ portal 全体の polish を 1 周。観点リストの作成 + 優先順位付けから | 中 |
 | 11 | ページ全体のパフォーマンス最適化。phase 1-10 完了済、見送り候補あり。詳細: `.claude/todos/11.md` | — |
@@ -70,7 +69,15 @@ _(現在なし)_
 
 直近版のみ列挙。詳細経緯は `src/lib/changelog.ts`、過去版アーカイブは `.claude/done.md`。
 
-- **2.1 (2026-05-07 part3)**: #71 part3 — 残留検知時に `stale.remove()` で物理削除追加 + selector を `:not([data-open])` に絞り込み (part2 デプロイ後も本番白枠継続のため強化) **— 完全解消には至らず、未解決部分を TODO #72 に移管**
+- **2.1 (2026-05-07 part4)**: #72 — 案 D / A / B / E / T 全敗 (案 D=focus 同期, 案 A=bootstrap click, 案 B=常駐 MutationObserver, 案 E=`[&:not([data-open])]:hidden`, 案 T=`<Portal keepMounted>`) → **Claude 自前観察フェーズで真因確定 + 案 J (controlled unmount) で根絶**
+  - **観察手法**: Claude in Chrome で demo 環境 (`https://demo-raid-repository.vercel.app/`、本番と同一 Vercel production build) に対して実機 hover/click 操作 + `javascript_tool` で DOM 属性測定。Single hover では再現せず、**rapid 連続 hover (3 trigger 順次)** で 3 popover が `data-open=""` 残置 + `display: flex` で visible 残留することを **実測再現**。
+  - **真因確定**: **複数 Popover の同時 `setOpen(false)` 並行発火**で React 19 production batch race が発生し `data-open` 属性が外れない。`keepMounted` (案 T) でも `[&:not([data-open])]:hidden` (案 E) でも `data-open` が外れる前提だったため両方失効。outside click は Base UI `useDismiss` が個別 Popover を確実な close path に乗せるため、ページ内 click で残留が解消する観測事実と一致。本番ユーザー報告「リロード直後 first hover → leave で白枠」は、複数メンバーアイコンを順次素早く hover していく自然な行為で発火していた。
+  - **修正** ([src/components/portal/comment-popover.tsx](src/components/portal/comment-popover.tsx)): `<PopoverContent ...>...</PopoverContent>` を `{open && <PopoverContent ...>...</PopoverContent>}` で wrap (React 条件付き render = controlled unmount)。open=false 遷移時に React unmount path で確実に DOM tree から物理除去 → `data-open` 属性更新に依存しない。案 A bootstrap click は残置 (副作用なし、予防策)
+  - **副次撤去** ([src/components/ui/popover.tsx](src/components/ui/popover.tsx)): 案 T `<PopoverPrimitive.Portal keepMounted>` → `<PopoverPrimitive.Portal>` に戻す + 案 E `[&:not([data-open])]:hidden` も削除 (案 J で不要化、コード簡潔化)
+  - **動作差** (案 T 比): 初期 mount = 7 → 0 popover-content (paint cost 改善側)、close 経路 = `data-open` 外れ依存 → React unmount で確実、rapid 複数 close = batch race 影響を構造的に排除
+  - **副作用受入**: 入場アニメ (`data-open:animate-in / fade-in-0 / zoom-in-95`) が open 時の新規 mount で必ず走る (本来そう設計されていた)。Base UI Popover.Root が `<PopoverContent>` 不在の状態で動作する (controlled mode の前提として API は許容、dev preview で実証)
+  - **検証**: `tsc --noEmit` PASS。dev preview で baseline 0 popover-content / click open で 1 個 mount + 中身描画 / outside click で 0 個 + aria-expanded=false / rapid hover sequence で 0 個残留 / console errors 0 件、を `preview_eval` 実測。production race そのものは dev 再現不能だが、案 J の機構は `data-open` 属性更新に依存しないため race の影響を受けない設計上の保証あり。本番デプロイ後にユーザー実機で「リロード直後 hover → leave で白枠が visible に出ない」を最終確認予定
+- **2.1 (2026-05-07 part3)**: #71 part3 — 残留検知時に `stale.remove()` で物理削除追加 + selector を `:not([data-open])` に絞り込み (part2 デプロイ後も本番白枠継続のため強化) **— 完全解消には至らず、未解決部分を TODO #72 に移管 (上記 part4 で根絶)**
   - **part3 デプロイ後のユーザー報告**: 「クリック後はホバーしても白枠は出なくなった。ページリロード後は、ホバーした状態で外すと白枠が出続ける状態が継続」
   - **新たな切り分け** (TODO #72 への申し送り):
     - click open → close: ✅ 残留なし (part3 で修正)

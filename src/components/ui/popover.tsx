@@ -26,17 +26,7 @@ function PopoverContent({
     "align" | "alignOffset" | "side" | "sideOffset"
   >) {
   return (
-    // TODO #72 案 T: React 19 + production build で `useTransitionStatus` の
-    // `setMounted(false)` と `setTransitionStatus('ending')` が別 batch で実
-    // 行され、`PopoverPortal` の条件判定 (`mounted || keepMounted`) が古い
-    // `mounted === true` で評価される race により、Portal が unmount されず
-    // PopoverPopup も再 render されず `data-open` 属性が古い open=true 状態
-    // で固定されたまま DOM 残留する症状 (案 D / A / B / E 全て本番効果なし)
-    // への対策。`keepMounted` を渡して Portal DOM を常時保持し、open state
-    // 切替時に PopoverPopup が確実に再 render され `data-open` 属性が確実に
-    // 外れるようにする。これにより案 E の `[&:not([data-open])]:hidden` が
-    // ようやく hit し display: none で白枠 visible に出なくなる構造。
-    <PopoverPrimitive.Portal keepMounted>
+    <PopoverPrimitive.Portal>
       <PopoverPrimitive.Positioner
         align={align}
         alignOffset={alignOffset}
@@ -47,17 +37,7 @@ function PopoverContent({
         <PopoverPrimitive.Popup
           data-slot="popover-content"
           className={cn(
-            // TODO #72 案 E: production-only race で `data-open` 属性が外れた
-            // popover-content node が DOM に残留する症状 (PR #29 Strategy G /
-            // PR #33 part3 stale.remove + key bump / PR #36 案 D focus 同期 /
-            // PR #37 案 A bootstrap click / PR #38 案 B 常駐 MutationObserver
-            // のいずれでも本番で残留継続) を「DOM に残っても visual に何も
-            // 描画されない」設計で受け止める CSS-only 防御層。`data-open` 属
-            // 性が無い瞬間に display: none → 背景・影・枠が描画されず白枠が
-            // visible に出ない。Base UI は mount 時に React render と同期で
-            // data-open を付与する (= PR #33 selector が機能する前提) ため、
-            // open 直後の入場アニメに flash は発生しない構造。
-            "z-50 flex w-72 origin-(--transform-origin) flex-col gap-2.5 rounded-lg bg-popover p-2.5 text-sm text-popover-foreground shadow-md ring-1 ring-foreground/10 outline-hidden duration-100 data-[side=bottom]:slide-in-from-top-2 data-[side=inline-end]:slide-in-from-left-2 data-[side=inline-start]:slide-in-from-right-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 [&:not([data-open])]:hidden",
+            "z-50 flex w-72 origin-(--transform-origin) flex-col gap-2.5 rounded-lg bg-popover p-2.5 text-sm text-popover-foreground shadow-md ring-1 ring-foreground/10 outline-hidden duration-100 data-[side=bottom]:slide-in-from-top-2 data-[side=inline-end]:slide-in-from-left-2 data-[side=inline-start]:slide-in-from-right-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95",
             className
           )}
           {...props}
