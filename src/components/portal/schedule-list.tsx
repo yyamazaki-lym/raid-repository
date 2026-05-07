@@ -1064,7 +1064,7 @@ function SessionRow({
           <SessionMemoDot
             count={memos.length}
             reserveSpace
-            onClick={() => popoverRef.current?.open()}
+            onClick={() => popoverRef.current?.toggle()}
           />
           {/* Action icons — Film slot (left) | BarChart3 slot (right).
               1.9.27: ALWAYS reserve both slots in the detail table so

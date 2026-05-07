@@ -242,7 +242,7 @@ function DateChip({
       <SessionMemoDot
         count={memos.length}
         className="ml-0.5"
-        onClick={() => popoverRef.current?.open()}
+        onClick={() => popoverRef.current?.toggle()}
       />
     </li>
   );
