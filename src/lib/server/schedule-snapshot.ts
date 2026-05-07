@@ -25,12 +25,19 @@ import { fetchScheduleRaw } from "@/lib/schedule/next-session";
 export async function runScheduleSnapshot(): Promise<{
   ok: boolean;
   reason?: string;
-  /** Sessions found in character-sheets. */
+  /** Sessions found in character-sheets (DECISION 行のみカウント). */
   scanned: number;
   /** Of `scanned`, how many were inserted (new). */
   inserted: number;
   /** Of `scanned`, how many were updated (existing rawDate, refreshed attendances). */
   updated: number;
+  /**
+   * char-sheets で CANDIDATE に戻された / 元から CANDIDATE だった
+   * rawDate に該当する `source='snapshot'` row を削除した件数。
+   * 過去のバグで蓄積された CANDIDATE 由来 row を次回 snapshot 実行時
+   * に自動掃除する。`source='discord'` / `'manual'` の row は対象外。
+   */
+  cleanedCandidates: number;
 }> {
   const result = await fetchScheduleRaw();
   if (!result.ok) {
@@ -40,12 +47,58 @@ export async function runScheduleSnapshot(): Promise<{
       scanned: 0,
       inserted: 0,
       updated: 0,
+      cleanedCandidates: 0,
     };
   }
 
   const { users, sessions } = result.data;
-  if (sessions.length === 0) {
-    return { ok: true, scanned: 0, inserted: 0, updated: 0 };
+
+  // CANDIDATE 行は「実際に開催されたわけではない候補日」なので
+  // snapshot しない。これがないと CANDIDATE 由来の rawDate が DB に
+  // 入り、merge 時に raw_date 照合だけで verified set に入って
+  // DECISION 強制で過去日として表示されてしまう (= 「確定日以外の
+  // 日付も過去日程として記録に残る」バグの真因)。
+  const decisionSessions = sessions.filter((s) => s.status === "DECISION");
+  const candidateRawDates = sessions
+    .filter((s) => s.status !== "DECISION")
+    .map((s) => s.rawDate);
+
+  if (decisionSessions.length === 0 && candidateRawDates.length === 0) {
+    return {
+      ok: true,
+      scanned: 0,
+      inserted: 0,
+      updated: 0,
+      cleanedCandidates: 0,
+    };
+  }
+
+  const supabase = await createClient();
+
+  // 既存 snapshot 由来 row のうち、char-sheets で現在 CANDIDATE な
+  // rawDate に一致するものを delete。新規混入を止める DECISION フィルタ
+  // と組み合わせ、過去のバグで蓄積された CANDIDATE 由来 row を次回
+  // snapshot 実行時に自動掃除する。`source='discord'` / `'manual'` は
+  // authoritative / admin 操作なので touch しない。
+  let cleanedCandidates = 0;
+  if (candidateRawDates.length > 0) {
+    const { count } = await supabase
+      .from("schedule_past_sessions")
+      .delete({ count: "exact" })
+      .in("raw_date", candidateRawDates)
+      .eq("source", "snapshot");
+    cleanedCandidates = count ?? 0;
+  }
+
+  if (decisionSessions.length === 0) {
+    // 候補日のみ存在 (DECISION 0 件) のケース。cleanup だけ実施して終了。
+    return {
+      ok: true,
+      scanned: 0,
+      inserted: 0,
+      updated: 0,
+      cleanedCandidates,
+    };
   }
 
   const userNames = users.map((u) => u.name);
@@ -61,7 +114,7 @@ export async function runScheduleSnapshot(): Promise<{
     attendances: Record<string, string>;
     user_names: string[];
   };
-  const rows: Row[] = sessions.map((s) => {
+  const rows: Row[] = decisionSessions.map((s) => {
     const byName: Record<string, string> = {};
     for (const u of users) {
       const sym = s.attendances[u.userId];
@@ -78,8 +131,6 @@ export async function runScheduleSnapshot(): Promise<{
       user_names: userNames,
     };
   });
-
-  const supabase = await createClient();
 
   // Detect existing rows so we can report inserted vs updated.
   const rawDates = rows.map((r) => r.raw_date);
@@ -104,6 +155,7 @@ export async function runScheduleSnapshot(): Promise<{
       scanned: rows.length,
       inserted: 0,
       updated: 0,
+      cleanedCandidates,
     };
   }
 
@@ -114,5 +166,6 @@ export async function runScheduleSnapshot(): Promise<{
     scanned: rows.length,
     inserted,
     updated,
+    cleanedCandidates,
   };
 }
