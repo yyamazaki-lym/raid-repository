@@ -26,7 +26,17 @@ function PopoverContent({
     "align" | "alignOffset" | "side" | "sideOffset"
   >) {
   return (
-    <PopoverPrimitive.Portal>
+    // TODO #72 案 T: React 19 + production build で `useTransitionStatus` の
+    // `setMounted(false)` と `setTransitionStatus('ending')` が別 batch で実
+    // 行され、`PopoverPortal` の条件判定 (`mounted || keepMounted`) が古い
+    // `mounted === true` で評価される race により、Portal が unmount されず
+    // PopoverPopup も再 render されず `data-open` 属性が古い open=true 状態
+    // で固定されたまま DOM 残留する症状 (案 D / A / B / E 全て本番効果なし)
+    // への対策。`keepMounted` を渡して Portal DOM を常時保持し、open state
+    // 切替時に PopoverPopup が確実に再 render され `data-open` 属性が確実に
+    // 外れるようにする。これにより案 E の `[&:not([data-open])]:hidden` が
+    // ようやく hit し display: none で白枠 visible に出なくなる構造。
+    <PopoverPrimitive.Portal keepMounted>
       <PopoverPrimitive.Positioner
         align={align}
         alignOffset={alignOffset}

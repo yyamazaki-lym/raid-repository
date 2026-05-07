@@ -29,41 +29,6 @@ function commentsSeenKey(userId: string): string {
 }
 
 /**
- * TODO #72 案 B: 案 D (focus 同期) / 案 A (bootstrap click 発火) でも本番で
- * 「リロード直後の first hover → leave で popover が DOM 残留」が継続する
- * ため、最終手段として常駐 MutationObserver で `[data-slot="popover-
- * content"]:not([data-open])` (= close 状態なのに DOM に残っている popover
- * node) を検知して `node.remove()` で物理削除。
- *
- * - module-level singleton: CommentPopover が複数 mount されても observer は
- *   1 つだけ。fire-and-forget (アプリ寿命中に disconnect しない)
- * - rAF throttle: 同 frame 内の連続 mutation で query を 1 回に集約
- * - selector `:not([data-open])` で open 中の popover を誤射しない
- * - Base UI の Popover は mount 時に data-open を React render で同期セット
- *   するため、open 直前の transient な race は構造的に発生しない
- */
-let popoverGcInstalled = false;
-function installPopoverGarbageCollector(): void {
-  if (typeof document === "undefined") return;
-  if (popoverGcInstalled) return;
-  popoverGcInstalled = true;
-  let scheduled = false;
-  const tick = (): void => {
-    if (scheduled) return;
-    scheduled = true;
-    requestAnimationFrame(() => {
-      scheduled = false;
-      const stales = document.querySelectorAll(
-        '[data-slot="popover-content"]:not([data-open])',
-      );
-      stales.forEach((n) => n.remove());
-    });
-  };
-  const observer = new MutationObserver(tick);
-  observer.observe(document.body, { childList: true, subtree: true });
-}
-
-/**
  * Per-user comment popover.
  *
  * - Hover-capable devices (desktop with mouse): mouseenter on the trigger
@@ -99,20 +64,7 @@ export function CommentPopover({
   // OK (Base UI の `isTriggerActive` 遷移後は hover 経路でも cleanup 登録済)。
   const [bootstrapped, setBootstrapped] = useState(false);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const remountTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
-  // Base UI Popover の DOM が production build で稀に portal close 後に
-  // 残留して白枠だけ残る現象 (TODO #70 / #71 / part2 でも完全解消できず
-  // ユーザー報告継続) の対策。close transition 完了後 (250ms) に
-  // `[data-slot="popover-content"]:not([data-open])` (= close 状態なのに
-  // DOM に残っている node) を query し、検知時は **stale.remove() で物理
-  // 削除 + key bump で React ツリーも remount** の二段重ねで根絶。:not
-  // ([data-open]) で open 中の他 popover を誤射せず、自分の close path
-  // で発生した残留のみ targeting。通常時 (Base UI が portal を正常
-  // unmount している) は selector がゼロ件でスキップ → trigger 保持 →
-  // hover 連続反応 (mouseenter 再発火) を維持。
-  const [remountKey, setRemountKey] = useState(0);
-  const prevOpen = useRef(false);
 
   const fingerprint = useMemo(
     () => commentsFingerprint(comments),
@@ -161,38 +113,13 @@ export function CommentPopover({
   useEffect(() => {
     if (typeof window === "undefined") return;
     setHoverEnabled(window.matchMedia("(hover: hover)").matches);
-    installPopoverGarbageCollector();
   }, []);
 
   useEffect(() => {
     return () => {
       if (closeTimer.current) clearTimeout(closeTimer.current);
-      if (remountTimer.current) clearTimeout(remountTimer.current);
     };
   }, []);
-
-  useEffect(() => {
-    if (prevOpen.current && !open) {
-      if (remountTimer.current) clearTimeout(remountTimer.current);
-      remountTimer.current = setTimeout(() => {
-        const stales =
-          typeof document !== "undefined"
-            ? document.querySelectorAll(
-                '[data-slot="popover-content"]:not([data-open])',
-              )
-            : null;
-        if (stales && stales.length > 0) {
-          stales.forEach((node) => node.remove());
-          setRemountKey((k) => k + 1);
-        }
-        remountTimer.current = null;
-      }, 250);
-    } else if (open && remountTimer.current) {
-      clearTimeout(remountTimer.current);
-      remountTimer.current = null;
-    }
-    prevOpen.current = open;
-  }, [open]);
 
   const cancelClose = () => {
     if (closeTimer.current) {
@@ -235,7 +162,7 @@ export function CommentPopover({
     : "relative inline-flex h-5 w-5 items-center justify-center rounded-sm border border-[var(--neon-cyan)]/40 bg-[var(--neon-cyan)]/8 text-[var(--neon-cyan)] transition-colors hover:bg-[var(--neon-cyan)]/15";
 
   return (
-    <Popover key={remountKey} open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
         ref={triggerRef}
         {...hoverProps}
