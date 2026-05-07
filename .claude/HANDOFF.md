@@ -1,6 +1,6 @@
 # Raid Repository — 引き継ぎノート
 
-> 2.1 (2026-05-02 part10) 時点。完了済 TODO の詳細は `src/lib/changelog.ts` / 過去版番号は `.claude/done.md`。
+> 2.1 (2026-05-07) 時点。完了済 TODO の詳細は `src/lib/changelog.ts` / 過去版番号は `.claude/done.md`。
 >
 > **新規会話の手順**: このファイルを読んだ後、TODO 一覧は自動表示せずユーザーの要望を待つ。新規 TODO 追記時は part 単位ではなく TODO 完了時のみ統合追記する (part 細分は commit log に任せる)。
 
@@ -69,6 +69,17 @@ _(現在なし)_
 
 直近版のみ列挙。詳細経緯は `src/lib/changelog.ts`、過去版アーカイブは `.claude/done.md`。
 
+- **2.1 (2026-05-07)**: #69 — `schedule_past_sessions` に CANDIDATE 行が混入するバグを修正 (snapshot DECISION-only filter + 既存 CANDIDATE row 自動 cleanup)
+  - **真因**: [src/lib/server/schedule-snapshot.ts](src/lib/server/schedule-snapshot.ts) `runScheduleSnapshot()` が `fetchScheduleRaw()` で得た sessions を **status (DECISION/CANDIDATE) を見ずに全件 UPSERT** していた。`mergeStoredPastSessions` ([src/lib/schedule/next-session.ts:185-220](src/lib/schedule/next-session.ts:185)) の「raw_date 照合だけで verified set に入れて `status: \"DECISION\"` 強制」挙動と組み合わさり、CANDIDATE 由来 row が「過去確定日」として表示されていた。`supabase/schema.sql` の `schedule_past_sessions` には status 相当列が無く (`source` のみ)、永続化レイヤで DECISION/CANDIDATE を区別できない設計のため入口 (snapshot) で止める方針
+  - **Discord 取り込みは問題なし** — `importDiscordScheduleHistory` は「本日YYYY/MM/DD…は固定活動予定日です」当日通知のみ scrape するため CANDIDATE 混入は構造的に発生しない。問題は snapshot path 単独
+  - **修正**:
+    - [schedule-snapshot.ts](src/lib/server/schedule-snapshot.ts): `decisionSessions = sessions.filter(s => s.status === \"DECISION\")` で DECISION 行のみ snapshot、`candidateRawDates` に該当する `source='snapshot'` row を delete (次回 snapshot 実行時に自動 cleanup)。`source='discord'` / `'manual'` は touch しない。戻り値に `cleanedCandidates: number` 追加
+    - [categories-actions.ts](src/lib/server/categories-actions.ts): `ScheduleSnapshotResult` 型に `cleanedCandidates` 追加、`snapshotScheduleNow` admin gate fallback 戻り値も追従
+    - [past-sessions-section.tsx](src/components/portal/settings/past-sessions-section.tsx): snapshot 結果 (toast + 結果パネル) に `候補日 cleanup N` 表示、説明文を「DECISION 行のみ保存 / CANDIDATE 行は自動 cleanup」に書き換え
+    - [api/cron/snapshot-schedule/route.ts](src/app/api/cron/snapshot-schedule/route.ts): cron response JSON に `cleanedCandidates` 追加
+  - **運用前提**: char-sheets 上で当日 21:50 JST までに DECISION マークされた session のみ snapshot 対象。CANDIDATE のままだと attendance データが永続化されないので「実施前に DECISION マークする」運用ルールでカバー
+  - **既存 CANDIDATE row の cleanup**: 次回 snapshot 実行 (cron or settings dialog の「出席状況を即時保存」) で自動削除。手動 SQL 不要
+  - **検証**: `tsc --noEmit` PASS。実発火経路 (cron + Supabase + char-sheets) は worktree dev preview で再現不能のため、本番デプロイ後にユーザー側で「snapshot 即時実行 → settings dialog の DB 保存件数で row 一覧を確認 → CANDIDATE 由来 row が消えている」を目視確認予定
 - **2.1 (2026-05-02 part10)**: #68 follow-up — 詳細診断 chunk を「details 開時のみマウント」する controlled 構造に強化 (PR #24 の lazy 度を 1 段引き上げ)
   - **狙い**: PR #24 の TODO #68 完了版では `logsResult.diag` 真値時点で `<FflogsDiagnosticsPanel>` が常に mount され、details を開かなくても chunk fetch が発火する設計だった。「details を開いた時に load」を厳密に満たすため、root details を親側に持ってきて `useState diagOpen` で controlled 化、open=true の時だけ panel を mount する形に再構成
   - **実装**:

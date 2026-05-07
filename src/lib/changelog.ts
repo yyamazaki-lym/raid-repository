@@ -56,6 +56,16 @@ export type ReleasePart = {
 export const RELEASES: ReleaseEntry[] = [
   {
     version: "2.1",
+    date: "2026-05-07",
+    parts: [
+      {
+        title: "🐛 TODO #69 クローズ — schedule_past_sessions に CANDIDATE 行が混入するバグを修正 (snapshot DECISION-only filter + 既存 CANDIDATE row 自動 cleanup)",
+        body: "**狙い**: ユーザー報告「確定日以外の日付も過去日程として記録に残ってしまっている」の修正。`schedule_past_sessions` テーブルには本来 **実開催が確定した DECISION 行のみ** が入る前提だが、snapshot path に穴があり CANDIDATE 行も混入していた。\n\n**真因** ([src/lib/server/schedule-snapshot.ts](src/lib/server/schedule-snapshot.ts)): `runScheduleSnapshot()` が `fetchScheduleRaw()` で得た sessions を **status (DECISION/CANDIDATE) を見ずに全件 UPSERT** していた。これが `mergeStoredPastSessions` ([src/lib/schedule/next-session.ts:185-220](src/lib/schedule/next-session.ts:185)) の「raw_date 照合だけで verified set に入れて DECISION 強制」挙動と組み合わさり、CANDIDATE 由来 row が **過去確定日として表示** されていた。`supabase/schema.sql` の `schedule_past_sessions` には status 相当列が無く (`source` のみ)、永続化レイヤで DECISION/CANDIDATE を区別できないため、入口 (snapshot) 側で混入を止める方針で修正。\n\n**Discord 取り込み (`importDiscordScheduleHistory`) は問題なし** — 「本日YYYY/MM/DD…は固定活動予定日です」当日通知メッセージのみ scrape するため CANDIDATE 混入は構造的に発生しない。\n\n**修正**:\n- [schedule-snapshot.ts](src/lib/server/schedule-snapshot.ts) `runScheduleSnapshot()`:\n  - `decisionSessions = sessions.filter(s => s.status === \"DECISION\")` で **DECISION 行のみ snapshot 対象** に絞る\n  - 残りの `candidateRawDates` に該当する `source='snapshot'` row を delete (次回 snapshot 実行時に自動 cleanup)。`source='discord'` / `'manual'` は authoritative / admin 操作なので touch しない\n  - 戻り値に `cleanedCandidates: number` を追加 (cleanup 件数を可視化)\n- [categories-actions.ts](src/lib/server/categories-actions.ts): `ScheduleSnapshotResult` 型に `cleanedCandidates` 追加、`snapshotScheduleNow` の admin gate fallback 戻り値も追従\n- [past-sessions-section.tsx](src/components/portal/settings/past-sessions-section.tsx): snapshot 結果表示 (toast + 結果パネル) に `候補日 cleanup N` を追加表示、説明文を「DECISION 行のみ保存 / CANDIDATE 行は自動 cleanup」に書き換え\n- [api/cron/snapshot-schedule/route.ts](src/app/api/cron/snapshot-schedule/route.ts): cron response JSON に `cleanedCandidates` を含める (Vercel cron logs で確認可)\n\n**運用前提**: char-sheets 上で当日 21:50 JST (cron 実行時刻) までに DECISION マークされた session のみ snapshot に乗る。CANDIDATE のままだと attendance データが永続化されないため、「実施前に DECISION マークする」運用ルールでカバー (元々の運用前提どおり)。\n\n**既存 CANDIDATE 由来 row のクリーンアップ**: 次回 snapshot 実行 (cron 21:50 JST or settings dialog の「出席状況を即時保存」ボタン) で自動的に削除される。手動 SQL 実行は不要。実行後は settings dialog の「DB の保存件数」で row 一覧を確認可能 (各 row に source ラベルが表示される)。\n\n**検証**: `node D:/workd/portal/node_modules/typescript/bin/tsc --noEmit` PASS。実発火経路 (Vercel cron + Supabase + char-sheets fetch) は worktree dev preview では再現不能のため、本番デプロイ後に「snapshot 即時実行 → settings dialog の DB 保存件数で snapshot row 一覧を確認 → CANDIDATE 由来 row が消えている」を目視確認予定。",
+      },
+    ],
+  },
+  {
+    version: "2.1",
     date: "2026-05-02",
     parts: [
       {

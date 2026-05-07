@@ -675,6 +675,12 @@ export type ScheduleSnapshotResult = {
   scanned: number;
   inserted: number;
   updated: number;
+  /**
+   * char-sheets で CANDIDATE 状態の rawDate に該当する `source='snapshot'`
+   * row を delete した件数。過去のバグで蓄積された CANDIDATE 由来 row を
+   * 次回 snapshot 実行時に自動掃除する。
+   */
+  cleanedCandidates: number;
 };
 
 /**
@@ -1019,6 +1025,7 @@ export async function snapshotScheduleNow(): Promise<ScheduleSnapshotResult> {
       scanned: 0,
       inserted: 0,
       updated: 0,
+      cleanedCandidates: 0,
     };
   }
   const result = await runScheduleSnapshot();
