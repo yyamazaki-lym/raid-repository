@@ -24,9 +24,14 @@ import {
   setScheduleUrlAction,
 } from "@/lib/server/categories-actions";
 import type { ScheduleSourceMode } from "@/lib/schedule/source-mode";
+import {
+  fetchNativeScheduleAdminAux,
+  type NativeAdminAux,
+} from "@/lib/schedule/native-admin-client";
 import { ScheduleSourceModeSection } from "./settings/schedule-source-mode-section";
 import { ScheduleSourceSection } from "./settings/schedule-source-section";
 import { PastSessionsSection } from "./settings/past-sessions-section";
+import { NativeMembersSection } from "./settings/native-members-section";
 import { FflogsSyncSection } from "./settings/fflogs-sync-section";
 import { ChangelogFooter } from "./settings/changelog-footer";
 import { DangerZoneSection } from "./settings/danger-zone-section";
@@ -57,6 +62,11 @@ export function SettingsDialog({ canEdit }: { canEdit: boolean }) {
   // 切替える。`sync` 以外では URL / Discord channel ID は無関係なので
   // 折り畳んで UI ノイズを減らす。
   const [mode, setMode] = useState<ScheduleSourceMode>("sync");
+  // TODO #2 phase 2-C (2026-05-07): native 用 admin section が必要とする
+  // 集合 (全 member / CANCELLED 行 / 凡例 CSV) を mode='native' のとき
+  // だけ client SELECT する。`adminAuxTick` を CRUD 後に bump して再 fetch。
+  const [adminAux, setAdminAux] = useState<NativeAdminAux | null>(null);
+  const [adminAuxTick, setAdminAuxTick] = useState(0);
 
   // OAuth callback handler — when the user returns from FFLogs to
   // /api/auth/fflogs/callback, we redirect back to "/" with either
@@ -115,6 +125,24 @@ export function SettingsDialog({ canEdit }: { canEdit: boolean }) {
       cancelled = true;
     };
   }, [open]);
+
+  // TODO #2 phase 2-C: native mode のときだけ admin aux (全 member /
+  // CANCELLED 行 / 凡例 CSV) を fetch。CRUD 後は section から `onChanged`
+  // で `adminAuxTick` を bump → このフックが再走して最新値を反映。
+  useEffect(() => {
+    if (!open || mode !== "native") {
+      setAdminAux(null);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const aux = await fetchNativeScheduleAdminAux();
+      if (!cancelled) setAdminAux(aux);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, mode, adminAuxTick]);
 
   const onSave = async () => {
     setBusy(true);
@@ -179,6 +207,14 @@ export function SettingsDialog({ canEdit }: { canEdit: boolean }) {
               open={open}
               channelId={channelId}
               onChannelIdChange={setChannelId}
+            />
+          )}
+          {mode === "native" && (
+            <NativeMembersSection
+              canEdit={canEdit}
+              members={adminAux?.allMembers ?? []}
+              loaded={adminAux !== null}
+              onChanged={() => setAdminAuxTick((t) => t + 1)}
             />
           )}
           <FflogsSyncSection open={open} canEdit={canEdit} />
