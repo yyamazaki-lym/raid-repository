@@ -91,6 +91,19 @@ type Props = {
    * 用にそのまま維持。
    */
   initialMemosByDate?: Record<string, ScheduleSessionMemo[]>;
+  /**
+   * TODO #2 phase 2-A (2026-05-07): 認証済 Discord メンバーの ID。
+   * native mode の出欠入力 popover で「自分の行のみ編集可」判定に使う。
+   * sync mode では参照しない (popover は character-sheets iframe が持つ)。
+   * Phase 2-A では prop drill のみで UI 改修は次 phase。
+   */
+  currentDiscordId?: string | null;
+  /**
+   * TODO #2 phase 2-A (2026-05-07): admin role 持ちか。
+   * native mode の候補日追加 / status 切替 / member 編集 UI 表示判定に使う。
+   * Phase 2-A では prop drill のみで UI 改修は次 phase。
+   */
+  isAdmin?: boolean;
 };
 
 export function SchedulePageBody({
@@ -106,6 +119,9 @@ export function SchedulePageBody({
   hasUltimateClear = false,
   topTextOverride = null,
   initialMemosByDate = {},
+  // Phase 2-A: prop drill only — Phase 2-B 以降で popover / dialog から参照する。
+  currentDiscordId: _currentDiscordId = null,
+  isAdmin: _isAdmin = false,
 }: Props) {
   // Two-toggle state: simple list (top) and detailed table (bottom).
   // Both default to off; pinned values persist via localStorage.

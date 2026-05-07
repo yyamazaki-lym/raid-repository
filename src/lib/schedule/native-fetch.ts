@@ -1,30 +1,160 @@
 import "server-only";
+
+import { fetchAppSetting } from "@/lib/supabase/app-settings";
+import { createClient } from "@/lib/supabase/server";
+
+import type {
+  Attendance,
+  ParsedSchedule,
+  ScheduleSession,
+  ScheduleUser,
+  SessionStatus,
+} from "./parse";
 import type { ScheduleFetchResult } from "./next-session";
 
 /**
- * Native (自前) スケジュールの fetcher (TODO #2 phase 1 skeleton)。
+ * Native (自前) スケジュールの fetcher (TODO #2 phase 2-A 本実装)。
  *
- * Phase 1 では `native_schedule_*` テーブルへの SELECT 実装はせず、空の
- * `ParsedSchedule` を返すスケルトン。Phase 2 で:
- *   - `native_schedule_sessions` から rows を SELECT
- *   - `native_schedule_members` で users 列を構築
- *   - `native_schedule_attendances` を session_id でグルーピング
- *   - `app_settings.native_schedule_choice_values` で凡例を構築
- * を実装し、`ScheduleFetchResult` 互換の shape を返すことで
- * `schedule-list.tsx` は無改修のまま native mode で再利用できる。
+ * `native_schedule_*` テーブルから ScheduleFetchResult 互換の shape を
+ * 組み立てて返す。schedule-list.tsx は sync mode と同じ型を受け取れば
+ * 描画できるため、UI 側の分岐は最小化される。
  *
- * 戻り値型を sync 側 (`fetchSchedule`) と完全互換にすることで、
- * `schedule-page-body.tsx` 側の分岐は最小化される。
+ * - `users`        ← native_schedule_members (is_active=true, sort_order ASC)
+ * - `sessions`     ← native_schedule_sessions (status != CANCELLED, parsed_date DESC)
+ * - `attendances`  ← native_schedule_attendances (session_id IN matrix)
+ * - `choices`      ← app_settings.native_schedule_choice_values (CSV) / 既定値
+ * - `comments`     ← []  (Phase 2-B で attendance.comment を表示する別経路)
+ * - `topText`      ← null (Phase 3 で Discord 通知文等を表示する余地)
+ *
+ * いずれかの SELECT 失敗時は `{ ok: false, reason: "fetch-failed" }` を返却。
+ * `page.tsx` 側で sync 経路と同じ error UI に流れる。
  */
+
+const NATIVE_CHOICE_VALUES_KEY = "native_schedule_choice_values";
+
+/** 凡例マスター未設定時のフォールバック (sync mode の固定 5 種と同じ並び)。 */
+const DEFAULT_CHOICES: readonly string[] = ["○", "×", "△", "⏰", "－"];
+
+type NativeMemberRow = {
+  discord_user_id: string;
+  display_name: string;
+};
+
+type NativeSessionRow = {
+  id: string;
+  raw_date: string;
+  parsed_date: string;
+  start_time: string;
+  end_time: string;
+  day_of_week: string;
+  status: "CANDIDATE" | "DECISION" | "CANCELLED";
+};
+
+type NativeAttendanceRow = {
+  session_id: string;
+  discord_user_id: string;
+  symbol: string;
+};
+
 export async function fetchNativeSchedule(): Promise<ScheduleFetchResult> {
-  return {
-    ok: true,
-    data: {
-      users: [],
-      sessions: [],
-      comments: [],
-      topText: null,
-      attendanceOptions: { choices: [], source: "unavailable" },
+  const supabase = await createClient();
+
+  const [membersRes, sessionsRes, choiceCsv] = await Promise.all([
+    supabase
+      .from("native_schedule_members")
+      .select("discord_user_id, display_name")
+      .eq("is_active", true)
+      .order("sort_order", { ascending: true })
+      .order("display_name", { ascending: true }),
+    supabase
+      .from("native_schedule_sessions")
+      .select(
+        "id, raw_date, parsed_date, start_time, end_time, day_of_week, status",
+      )
+      .neq("status", "CANCELLED")
+      .order("parsed_date", { ascending: false }),
+    fetchAppSetting(NATIVE_CHOICE_VALUES_KEY),
+  ]);
+
+  if (membersRes.error) {
+    console.warn("[native-schedule] members fetch error:", membersRes.error);
+    return { ok: false, reason: "fetch-failed" };
+  }
+  if (sessionsRes.error) {
+    console.warn("[native-schedule] sessions fetch error:", sessionsRes.error);
+    return { ok: false, reason: "fetch-failed" };
+  }
+
+  const members = (membersRes.data ?? []) as NativeMemberRow[];
+  const sessionRows = (sessionsRes.data ?? []) as NativeSessionRow[];
+
+  const users: ScheduleUser[] = members.map((m) => ({
+    userId: m.discord_user_id,
+    name: m.display_name,
+  }));
+
+  // attendances を session_id IN(...) で一括 fetch → session_id ごとに matrix 構築
+  const attendancesBySession = new Map<string, Record<string, Attendance>>();
+  if (sessionRows.length > 0) {
+    const sessionIds = sessionRows.map((s) => s.id);
+    const { data: attData, error: attErr } = await supabase
+      .from("native_schedule_attendances")
+      .select("session_id, discord_user_id, symbol")
+      .in("session_id", sessionIds);
+    if (attErr) {
+      console.warn("[native-schedule] attendances fetch error:", attErr);
+      return { ok: false, reason: "fetch-failed" };
+    }
+    for (const row of (attData ?? []) as NativeAttendanceRow[]) {
+      const map = attendancesBySession.get(row.session_id) ?? {};
+      map[row.discord_user_id] = row.symbol;
+      attendancesBySession.set(row.session_id, map);
+    }
+  }
+
+  const sessions: ScheduleSession[] = sessionRows.map((s) => ({
+    rawDate: s.raw_date,
+    date: new Date(s.parsed_date),
+    dayOfWeek: s.day_of_week,
+    startTime: s.start_time,
+    endTime: s.end_time,
+    // CANCELLED は SELECT で除外済 (filter neq) なので CANDIDATE | DECISION
+    // のみが残る。SessionStatus 型に narrow するため as でキャスト。
+    status: s.status as SessionStatus,
+    attendances: attendancesBySession.get(s.id) ?? {},
+    // native では character-sheets `<tr id="row_N">` 概念がないため null。
+    // schedule-list の iframe edit jump 経路は sync 専用なので影響なし。
+    rowIndex: null,
+  }));
+
+  const choices = parseChoiceValues(choiceCsv);
+
+  const data: ParsedSchedule = {
+    users,
+    sessions,
+    comments: [],
+    topText: null,
+    attendanceOptions: {
+      choices: choices.values,
+      source: choices.source,
     },
   };
+
+  return { ok: true, data };
+}
+
+function parseChoiceValues(csv: string | null): {
+  values: string[];
+  source: "edit-page" | "fallback-from-list";
+} {
+  if (csv) {
+    const items = csv
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (items.length > 0) {
+      return { values: items, source: "edit-page" };
+    }
+  }
+  return { values: [...DEFAULT_CHOICES], source: "fallback-from-list" };
 }

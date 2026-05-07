@@ -619,6 +619,37 @@ BEGIN
   END LOOP;
 END $$;
 
+-- ---- 7a. native_schedule_attendances 本人 row 例外 (TODO #2 phase 2-A) ---
+-- 上の 7 章ループは admin-only policy を生成するが、出欠入力は本人が
+-- 自分の行を編集する設計のため、attendances のみ self-row insert/update
+-- を別名 policy で許可する。複数 policy は OR 評価されるので admin (上の
+-- ループ生成) と self-row (ここで生成) のどちらか TRUE で許可される。
+-- delete は admin-only のまま (本人 delete は不要 — symbol 変更で表現)。
+--
+-- マッチ条件: `auth.jwt() -> 'app_metadata' ->> 'discord_id' = discord_user_id`
+-- discord_id claim は OAuth callback で書き込まれる (Phase 1 と同じ経路)。
+
+DROP POLICY IF EXISTS native_schedule_attendances_self_insert
+  ON public.native_schedule_attendances;
+CREATE POLICY native_schedule_attendances_self_insert
+  ON public.native_schedule_attendances
+  FOR INSERT TO authenticated
+  WITH CHECK (
+    (auth.jwt() -> 'app_metadata' ->> 'discord_id') = discord_user_id
+  );
+
+DROP POLICY IF EXISTS native_schedule_attendances_self_update
+  ON public.native_schedule_attendances;
+CREATE POLICY native_schedule_attendances_self_update
+  ON public.native_schedule_attendances
+  FOR UPDATE TO authenticated
+  USING (
+    (auth.jwt() -> 'app_metadata' ->> 'discord_id') = discord_user_id
+  )
+  WITH CHECK (
+    (auth.jwt() -> 'app_metadata' ->> 'discord_id') = discord_user_id
+  );
+
 -- ---- 7b. Realtime: REPLICA IDENTITY FULL ------------------------------
 -- Without this, Supabase Realtime DELETE events only carry the primary
 -- key in the payload — which means the client-side filter
