@@ -436,6 +436,75 @@ ALTER TABLE public.schedule_past_sessions
   DROP COLUMN IF EXISTS logs_url,
   DROP COLUMN IF EXISTS logs_url_source;
 
+-- ---- 5e. native schedule (TODO #2 phase 1, 2026-05-07) ---------------
+-- 自前スケジュール用テーブル。`app_settings.schedule_source_mode='native'`
+-- のときだけ参照される (sync='character-sheets', disabled='機能停止')。
+-- 設計詳細:
+-- - raw_date を sync 互換 format ("YYYY/MM/DD(曜) HH:MM~HH:MM") にして
+--   `schedule_session_memos` / `schedule_past_session_logs` を共用可能に。
+-- - mode 切替は `app_settings.schedule_source_mode` の 1 行 update のみ。
+--   両方のデータは破壊せず残置 (sync↔native 往復で履歴を失わない)。
+-- - メンバー識別子は Discord OAuth `app_metadata.discord_id` を採用。
+--   portal 内発番は導入しない (= 二重管理の罠を避ける)。
+-- - phase 1 では SELECT skeleton のみ実装、INSERT/UPDATE は phase 2 以降。
+
+CREATE TABLE IF NOT EXISTS public.native_schedule_sessions (
+  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  raw_date      text NOT NULL UNIQUE,
+  parsed_date   timestamptz NOT NULL,
+  start_time    text NOT NULL,
+  end_time      text NOT NULL,
+  day_of_week   text NOT NULL,
+  status        text NOT NULL DEFAULT 'CANDIDATE'
+                CHECK (status IN ('CANDIDATE','DECISION','CANCELLED')),
+  note          text,
+  created_by_id text,
+  created_at    timestamptz NOT NULL DEFAULT now(),
+  updated_at    timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS native_schedule_sessions_date_idx
+  ON public.native_schedule_sessions(parsed_date DESC);
+
+DROP TRIGGER IF EXISTS set_updated_at_native_schedule_sessions
+  ON public.native_schedule_sessions;
+CREATE TRIGGER set_updated_at_native_schedule_sessions
+  BEFORE UPDATE ON public.native_schedule_sessions
+  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+CREATE TABLE IF NOT EXISTS public.native_schedule_members (
+  discord_user_id text PRIMARY KEY,
+  display_name    text NOT NULL,
+  sort_order      integer NOT NULL DEFAULT 0,
+  is_active       boolean NOT NULL DEFAULT true,
+  created_at      timestamptz NOT NULL DEFAULT now(),
+  updated_at      timestamptz NOT NULL DEFAULT now()
+);
+
+DROP TRIGGER IF EXISTS set_updated_at_native_schedule_members
+  ON public.native_schedule_members;
+CREATE TRIGGER set_updated_at_native_schedule_members
+  BEFORE UPDATE ON public.native_schedule_members
+  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+CREATE TABLE IF NOT EXISTS public.native_schedule_attendances (
+  session_id      uuid NOT NULL
+                  REFERENCES public.native_schedule_sessions(id) ON DELETE CASCADE,
+  discord_user_id text NOT NULL
+                  REFERENCES public.native_schedule_members(discord_user_id) ON DELETE CASCADE,
+  symbol          text NOT NULL,
+  comment         text,
+  updated_at      timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (session_id, discord_user_id)
+);
+CREATE INDEX IF NOT EXISTS native_schedule_attendances_session_idx
+  ON public.native_schedule_attendances(session_id);
+
+DROP TRIGGER IF EXISTS set_updated_at_native_schedule_attendances
+  ON public.native_schedule_attendances;
+CREATE TRIGGER set_updated_at_native_schedule_attendances
+  BEFORE UPDATE ON public.native_schedule_attendances
+  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
 -- ---- 6. tags (universal — D scheme) ----------------------------------
 
 CREATE TABLE IF NOT EXISTS public.tags (
@@ -481,20 +550,23 @@ CREATE INDEX IF NOT EXISTS tags_target_idx
 -- の service role client に切替えて RLS をバイパスする。production では
 -- `NODE_ENV=production` でこの分岐は走らない。
 
-ALTER TABLE public.categories                  ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.category_links              ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.app_settings                ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.schedule_past_sessions      ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.schedule_past_session_logs  ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.recruitment_templates       ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.category_macros             ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.schedule_session_memos      ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.loot_items                  ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.loot_entries                ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.mitigation_phases           ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.mitigation_entries          ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.strategy_docs               ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.tags                        ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.categories                    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.category_links                ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.app_settings                  ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.schedule_past_sessions        ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.schedule_past_session_logs    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.recruitment_templates         ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.category_macros               ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.schedule_session_memos        ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.loot_items                    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.loot_entries                  ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.mitigation_phases             ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.mitigation_entries            ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.strategy_docs                 ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.tags                          ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.native_schedule_sessions      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.native_schedule_members       ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.native_schedule_attendances   ENABLE ROW LEVEL SECURITY;
 
 -- Replay-safe policy creation: drop then create per (table, action).
 DO $$
@@ -510,7 +582,9 @@ BEGIN
     'recruitment_templates','category_macros','schedule_session_memos',
     'loot_items','loot_entries',
     'mitigation_phases','mitigation_entries',
-    'strategy_docs','tags'
+    'strategy_docs','tags',
+    'native_schedule_sessions','native_schedule_members',
+    'native_schedule_attendances'
   ]) LOOP
     FOREACH op IN ARRAY ops LOOP
       policy_name := t || '_anon_' || op;
@@ -556,20 +630,23 @@ END $$;
 -- filters on any column work as expected. Slight WAL overhead, but
 -- our row sizes are small.
 
-ALTER TABLE public.categories                  REPLICA IDENTITY FULL;
-ALTER TABLE public.category_links              REPLICA IDENTITY FULL;
-ALTER TABLE public.app_settings                REPLICA IDENTITY FULL;
-ALTER TABLE public.schedule_past_sessions      REPLICA IDENTITY FULL;
-ALTER TABLE public.schedule_past_session_logs  REPLICA IDENTITY FULL;
-ALTER TABLE public.recruitment_templates       REPLICA IDENTITY FULL;
-ALTER TABLE public.category_macros             REPLICA IDENTITY FULL;
-ALTER TABLE public.schedule_session_memos      REPLICA IDENTITY FULL;
-ALTER TABLE public.loot_items                  REPLICA IDENTITY FULL;
-ALTER TABLE public.loot_entries                REPLICA IDENTITY FULL;
-ALTER TABLE public.mitigation_phases           REPLICA IDENTITY FULL;
-ALTER TABLE public.mitigation_entries          REPLICA IDENTITY FULL;
-ALTER TABLE public.strategy_docs               REPLICA IDENTITY FULL;
-ALTER TABLE public.tags                        REPLICA IDENTITY FULL;
+ALTER TABLE public.categories                    REPLICA IDENTITY FULL;
+ALTER TABLE public.category_links                REPLICA IDENTITY FULL;
+ALTER TABLE public.app_settings                  REPLICA IDENTITY FULL;
+ALTER TABLE public.schedule_past_sessions        REPLICA IDENTITY FULL;
+ALTER TABLE public.schedule_past_session_logs    REPLICA IDENTITY FULL;
+ALTER TABLE public.recruitment_templates         REPLICA IDENTITY FULL;
+ALTER TABLE public.category_macros               REPLICA IDENTITY FULL;
+ALTER TABLE public.schedule_session_memos        REPLICA IDENTITY FULL;
+ALTER TABLE public.loot_items                    REPLICA IDENTITY FULL;
+ALTER TABLE public.loot_entries                  REPLICA IDENTITY FULL;
+ALTER TABLE public.mitigation_phases             REPLICA IDENTITY FULL;
+ALTER TABLE public.mitigation_entries            REPLICA IDENTITY FULL;
+ALTER TABLE public.strategy_docs                 REPLICA IDENTITY FULL;
+ALTER TABLE public.tags                          REPLICA IDENTITY FULL;
+ALTER TABLE public.native_schedule_sessions      REPLICA IDENTITY FULL;
+ALTER TABLE public.native_schedule_members       REPLICA IDENTITY FULL;
+ALTER TABLE public.native_schedule_attendances   REPLICA IDENTITY FULL;
 
 -- ---- 8. Realtime publication ------------------------------------------
 
@@ -583,7 +660,9 @@ BEGIN
     'recruitment_templates','category_macros','schedule_session_memos',
     'loot_items','loot_entries',
     'mitigation_phases','mitigation_entries',
-    'strategy_docs','tags'
+    'strategy_docs','tags',
+    'native_schedule_sessions','native_schedule_members',
+    'native_schedule_attendances'
   ]) LOOP
     BEGIN
       EXECUTE format(

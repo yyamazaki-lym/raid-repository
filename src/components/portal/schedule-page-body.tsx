@@ -14,6 +14,7 @@ import type { RecruitmentTemplate } from "@/lib/recruitment-templates-client";
 import type { ScheduleSessionMemo } from "@/lib/schedule-memos-client";
 import type { NextSessionResult, ScheduleFetchResult } from "@/lib/schedule/next-session";
 import type { SessionLogEntry } from "@/lib/schedule/session-logs";
+import type { ScheduleSourceMode } from "@/lib/schedule/source-mode";
 import type { SessionVideoLink } from "@/lib/server/session-video-link";
 
 /**
@@ -38,7 +39,17 @@ const DETAIL_KEY = "raid-repo:show-past-detail";
 type Props = {
   result: ScheduleFetchResult;
   nextResult: NextSessionResult;
-  scheduleUrl: string;
+  /**
+   * sync モードでは character-sheets URL、native モードでは `null`。
+   * 「元サイトを開く」リンクの表示有無に使う。
+   */
+  scheduleUrl: string | null;
+  /**
+   * TODO #2 phase 1 (2026-05-07): スケジュールソースモード。
+   * `disabled` のときはこのコンポーネントは render されない (page で
+   * 別 notice 表示)。`native` は phase 1 では skeleton (空 sessions)。
+   */
+  mode: ScheduleSourceMode;
   /** Pre-fetched Japanese holidays map (date → holiday name). */
   holidays?: JapaneseHolidaysMap;
   /** Pre-fetched PT-募集 templates (server-rendered initial state). */
@@ -86,6 +97,7 @@ export function SchedulePageBody({
   result,
   nextResult,
   scheduleUrl,
+  mode,
   holidays,
   recruitmentTemplates = [],
   recruitmentCategories = [],
@@ -180,18 +192,27 @@ export function SchedulePageBody({
             initial={recruitmentTemplates}
             categories={recruitmentCategories}
           />
-          <a
-            href={scheduleUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="元サイトを開く"
-            title="元サイトを開く"
-            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border/60 text-muted-foreground transition-colors hover:border-[var(--neon-cyan)]/60 hover:text-foreground"
-          >
-            <ExternalLink className="h-4 w-4" aria-hidden />
-          </a>
+          {scheduleUrl && (
+            <a
+              href={scheduleUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="元サイトを開く"
+              title="元サイトを開く"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border/60 text-muted-foreground transition-colors hover:border-[var(--neon-cyan)]/60 hover:text-foreground"
+            >
+              <ExternalLink className="h-4 w-4" aria-hidden />
+            </a>
+          )}
         </div>
       </div>
+
+      {mode === "native" && (
+        <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] leading-relaxed text-amber-200">
+          自前スケジュール (準備中) — 候補日追加 / 出欠入力 UI は phase 2
+          で実装予定です。現在は空状態の表示のみ動作確認できます。
+        </div>
+      )}
 
       <NextSessionCard
         result={nextResult}

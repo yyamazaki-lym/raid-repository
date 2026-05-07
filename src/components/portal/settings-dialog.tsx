@@ -16,12 +16,15 @@ import {
 } from "@/components/ui/dialog";
 import {
   getDiscordScheduleChannelId,
+  getScheduleSourceModeFromDb,
   getScheduleUrlFromDb,
 } from "@/lib/schedule-url-store";
 import {
   setDiscordScheduleChannelIdAction,
   setScheduleUrlAction,
 } from "@/lib/server/categories-actions";
+import type { ScheduleSourceMode } from "@/lib/schedule/source-mode";
+import { ScheduleSourceModeSection } from "./settings/schedule-source-mode-section";
 import { ScheduleSourceSection } from "./settings/schedule-source-section";
 import { PastSessionsSection } from "./settings/past-sessions-section";
 import { FflogsSyncSection } from "./settings/fflogs-sync-section";
@@ -50,6 +53,10 @@ export function SettingsDialog({ canEdit }: { canEdit: boolean }) {
   const [url, setUrl] = useState("");
   const [channelId, setChannelId] = useState("");
   const [busy, setBusy] = useState(false);
+  // TODO #2 phase 1 (2026-05-07): mode で sync 専用セクションの表示を
+  // 切替える。`sync` 以外では URL / Discord channel ID は無関係なので
+  // 折り畳んで UI ノイズを減らす。
+  const [mode, setMode] = useState<ScheduleSourceMode>("sync");
 
   // OAuth callback handler — when the user returns from FFLogs to
   // /api/auth/fflogs/callback, we redirect back to "/" with either
@@ -78,20 +85,30 @@ export function SettingsDialog({ canEdit }: { canEdit: boolean }) {
     window.history.replaceState({}, "", cleanUrl);
   }, []);
 
-  // Initial fetch of url + channelId on open. These two live at the
-  // shell level because the footer Save button persists both atomically
-  // via separate server actions.
+  // Initial fetch of url + channelId + mode on open. URL / channelId は
+  // sync mode の Save ボタン経由で永続化、mode は ScheduleSourceModeSection
+  // 内で即時保存。ここでは現在値を読み出して表示制御に使うのみ。
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
     void (async () => {
-      const [currentUrl, currentChannel] = await Promise.all([
+      const [currentUrl, currentChannel, currentMode] = await Promise.all([
         getScheduleUrlFromDb(),
         getDiscordScheduleChannelId(),
+        getScheduleSourceModeFromDb(),
       ]);
       if (!cancelled) {
         setUrl(currentUrl ?? "");
         setChannelId(currentChannel ?? "");
+        if (
+          currentMode === "native" ||
+          currentMode === "disabled" ||
+          currentMode === "sync"
+        ) {
+          setMode(currentMode);
+        } else {
+          setMode("sync");
+        }
       }
     })();
     return () => {
@@ -153,10 +170,11 @@ export function SettingsDialog({ canEdit }: { canEdit: boolean }) {
               ユーザーのみ操作できます。閲覧専用モードで表示中です。
             </div>
           )}
-          {canEdit && (
+          <ScheduleSourceModeSection open={open} canEdit={canEdit} />
+          {canEdit && mode === "sync" && (
             <ScheduleSourceSection url={url} onUrlChange={setUrl} />
           )}
-          {canEdit && (
+          {canEdit && mode === "sync" && (
             <PastSessionsSection
               open={open}
               channelId={channelId}
@@ -191,16 +209,21 @@ export function SettingsDialog({ canEdit }: { canEdit: boolean }) {
           >
             キャンセル
           </Button>
-          <Button
-            type="button"
-            size="sm"
-            onClick={onSave}
-            disabled={busy}
-            className="gap-1.5 font-mono text-[11px] tracking-[0.18em] uppercase"
-          >
-            <Save className="h-3.5 w-3.5" aria-hidden />
-            {busy ? "保存中..." : "保存"}
-          </Button>
+          {/* Save ボタンは sync mode の URL / channel ID 保存専用。native /
+              disabled mode では URL / channelId 入力欄が非表示なので保存
+              ボタンも隠す (それぞれの section が即時保存する設計)。 */}
+          {mode === "sync" && (
+            <Button
+              type="button"
+              size="sm"
+              onClick={onSave}
+              disabled={busy}
+              className="gap-1.5 font-mono text-[11px] tracking-[0.18em] uppercase"
+            >
+              <Save className="h-3.5 w-3.5" aria-hidden />
+              {busy ? "保存中..." : "保存"}
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

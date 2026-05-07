@@ -1,13 +1,16 @@
 import { Suspense } from "react";
 import { Loader2 } from "lucide-react";
+import { ScheduleDisabledNotice } from "@/components/portal/schedule-disabled-notice";
 import { ScheduleOnboarding } from "@/components/portal/schedule-onboarding";
 import { SchedulePageBody } from "@/components/portal/schedule-page-body";
 import { fetchJapaneseHolidays } from "@/lib/japanese-holidays";
+import { fetchNativeSchedule } from "@/lib/schedule/native-fetch";
 import {
   fetchSchedule,
   pickNextDecision,
   type NextSessionResult,
 } from "@/lib/schedule/next-session";
+import { getScheduleSourceMode } from "@/lib/schedule/source-mode";
 import { getScheduleSourceUrl } from "@/lib/schedule/source-url";
 import { SCHEDULE_TOP_TEXT_OVERRIDE_KEY } from "@/lib/schedule-top-text-keys";
 import { fetchSessionLogsByDate } from "@/lib/server/fflogs";
@@ -86,42 +89,114 @@ function ScheduleLoadingFallback() {
 }
 
 async function ScheduleContent() {
-  const url = await getScheduleSourceUrl();
+  // TODO #2 phase 1 (2026-05-07): スケジュールソースモードで分岐。
+  // - sync     → 既存の character-sheets fetch + parse path
+  // - native   → 自前テーブル fetch (phase 1 では空 skeleton)
+  // - disabled → 機能停止 notice のみ
+  const mode = await getScheduleSourceMode();
 
-  // No URL yet — render an onboarding card that lets the user register
-  // one inline (same shape as the settings dialog body, but not behind
-  // a gear).
-  if (!url) {
+  if (mode === "disabled") {
     return (
       <div className="flex flex-col gap-4">
         <h1 className="font-display text-xl text-foreground sm:text-2xl">
           Schedule
         </h1>
-        <ScheduleOnboarding />
+        <ScheduleDisabledNotice />
       </div>
     );
   }
 
+  if (mode === "sync") {
+    const url = await getScheduleSourceUrl();
+
+    // No URL yet — render an onboarding card that lets the user register
+    // one inline (same shape as the settings dialog body, but not behind
+    // a gear).
+    if (!url) {
+      return (
+        <div className="flex flex-col gap-4">
+          <h1 className="font-display text-xl text-foreground sm:text-2xl">
+            Schedule
+          </h1>
+          <ScheduleOnboarding />
+        </div>
+      );
+    }
+
+    const [
+      result,
+      holidays,
+      recruitmentTemplates,
+      categoriesResult,
+      userRoles,
+      sessionLogsByDate,
+      appSettings,
+      initialMemosByDate,
+    ] = await Promise.all([
+      fetchSchedule(),
+      fetchJapaneseHolidays(),
+      fetchRecruitmentTemplatesServer(),
+      fetchCategories(),
+      getAuthorizedUserRoles(),
+      fetchSessionLogsByDate(),
+      fetchAppSettings([SCHEDULE_TOP_TEXT_OVERRIDE_KEY]),
+      fetchScheduleMemosByDateBulk(),
+    ]);
+    const topTextOverride = appSettings[SCHEDULE_TOP_TEXT_OVERRIDE_KEY] ?? null;
+    const visibleCategories = categoriesResult.ok
+      ? filterVisibleCategories(categoriesResult.categories, userRoles)
+      : [];
+    const recruitmentCategoryOptions = visibleCategories.map((c) => ({
+      id: c.id,
+      name: c.name,
+      slug: c.slug,
+    }));
+    const hasUltimateClear = visibleCategories.some(
+      (c) => c.name.startsWith("絶") && c.status === "クリア済",
+    );
+    const sessionVideoLinks = result.ok
+      ? await buildSessionVideoLinkMap(result.data.sessions)
+      : {};
+    const nextResult: NextSessionResult = result.ok
+      ? { ok: true, session: pickNextDecision(result.data.sessions) }
+      : { ok: false, reason: result.reason };
+
+    return (
+      <SchedulePageBody
+        result={result}
+        nextResult={nextResult}
+        scheduleUrl={url}
+        mode="sync"
+        holidays={holidays}
+        recruitmentTemplates={recruitmentTemplates}
+        recruitmentCategories={recruitmentCategoryOptions}
+        sessionVideoLinks={sessionVideoLinks}
+        sessionLogsByDate={sessionLogsByDate}
+        hasUltimateClear={hasUltimateClear}
+        topTextOverride={topTextOverride}
+        initialMemosByDate={initialMemosByDate}
+      />
+    );
+  }
+
+  // mode === "native": phase 1 skeleton.
+  // 出欠 / 動画リンク / FFLogs / メモなどの併用 fetch は phase 2 で。
+  // phase 1 では recruitment templates / categories だけ並列取得して
+  // 既存の RecruitmentTemplatesButton / NextSessionCard のシェルを
+  // そのまま動かす。
   const [
-    result,
+    nativeResult,
     holidays,
     recruitmentTemplates,
     categoriesResult,
     userRoles,
-    sessionLogsByDate,
-    appSettings,
-    initialMemosByDate,
   ] = await Promise.all([
-    fetchSchedule(),
+    fetchNativeSchedule(),
     fetchJapaneseHolidays(),
     fetchRecruitmentTemplatesServer(),
     fetchCategories(),
     getAuthorizedUserRoles(),
-    fetchSessionLogsByDate(),
-    fetchAppSettings([SCHEDULE_TOP_TEXT_OVERRIDE_KEY]),
-    fetchScheduleMemosByDateBulk(),
   ]);
-  const topTextOverride = appSettings[SCHEDULE_TOP_TEXT_OVERRIDE_KEY] ?? null;
   const visibleCategories = categoriesResult.ok
     ? filterVisibleCategories(categoriesResult.categories, userRoles)
     : [];
@@ -133,26 +208,24 @@ async function ScheduleContent() {
   const hasUltimateClear = visibleCategories.some(
     (c) => c.name.startsWith("絶") && c.status === "クリア済",
   );
-  const sessionVideoLinks = result.ok
-    ? await buildSessionVideoLinkMap(result.data.sessions)
-    : {};
-  const nextResult: NextSessionResult = result.ok
-    ? { ok: true, session: pickNextDecision(result.data.sessions) }
-    : { ok: false, reason: result.reason };
+  const nextResult: NextSessionResult = nativeResult.ok
+    ? { ok: true, session: pickNextDecision(nativeResult.data.sessions) }
+    : { ok: false, reason: nativeResult.reason };
 
   return (
     <SchedulePageBody
-      result={result}
+      result={nativeResult}
       nextResult={nextResult}
-      scheduleUrl={url}
+      scheduleUrl={null}
+      mode="native"
       holidays={holidays}
       recruitmentTemplates={recruitmentTemplates}
       recruitmentCategories={recruitmentCategoryOptions}
-      sessionVideoLinks={sessionVideoLinks}
-      sessionLogsByDate={sessionLogsByDate}
+      sessionVideoLinks={{}}
+      sessionLogsByDate={{}}
       hasUltimateClear={hasUltimateClear}
-      topTextOverride={topTextOverride}
-      initialMemosByDate={initialMemosByDate}
+      topTextOverride={null}
+      initialMemosByDate={{}}
     />
   );
 }
