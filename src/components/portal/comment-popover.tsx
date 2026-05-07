@@ -180,6 +180,17 @@ export function CommentPopover({
           align="center"
           sideOffset={6}
           className="glass-popup w-72 max-w-[80vw] p-0"
+          // TODO #72 案 K3: close 時の focus restore を無効化。Base UI Popover
+          // は controlled mode (React 側 setOpen) では openReason を triggerHover
+          // と認識できないため `FloatingFocusManager` が focus management を
+          // disabled にしない (PopoverPopup.js:122 参照)。結果 close 時に trigger
+          // に programmatic focus が戻り、`:focus-visible: true` で
+          // `globals.css * { outline-ring/50 }` の auto outline が visible に
+          // (= ユーザー報告の太い白枠)。`finalFocus={false}` で focus restore を
+          // 無効化することで trigger に focus が戻らず ring が出ない。
+          // a11y trade-off: click outside / escape close でも trigger に focus
+          // 戻らないが、CommentPopover は装飾的トリガーで影響軽微。
+          finalFocus={false}
           // Same hover semantics on the popup so moving the cursor onto the
           // content keeps it open.
           onMouseEnter={hoverEnabled ? cancelClose : undefined}
