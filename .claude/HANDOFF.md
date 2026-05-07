@@ -21,7 +21,7 @@ _(現在なし)_
 
 ## 📌 次回の作業優先度
 
-未完了 TODO はユーザー選択。残りはほぼ全て中〜大規模 (TODO #2 phase 2-4 / #7 / #51 / #11) の見送り候補。
+未完了 TODO はユーザー選択。残りはほぼ全て中〜大規模 (TODO #2 phase 2-B/2-C/3/4 / #7 / #51 / #11) の見送り候補。
 
 ## 未完了 TODO 一覧
 
@@ -31,7 +31,7 @@ _(現在なし)_
 
 | # | 項目 | 規模 |
 |---|---|---|
-| 2 | スケジュール表自前実装 — **phase 1 完了 (2026-05-07)**: 3 モード切替 (`sync` / `native` / `disabled`) インフラ + native 用テーブル 3 件 (`native_schedule_*`) schema 確定 + skeleton fetcher。**phase 2 以降は別 TODO 起票予定**: phase 2 = 候補日追加 dialog / 出欠入力 popover / member 編集 / 凡例 master、phase 3 = Discord 通知 (既存 bot token + channel ID 流用)、phase 4 = リマインダー cron + video / FFLogs 連携統合。設計は `.claude/plans/todo-dazzling-locket.md` に保存済 | 大 |
+| 2 | スケジュール表自前実装 — **phase 1 + 2-A 完了 (2026-05-07)**: phase 1 = 3 モード切替インフラ + 3 テーブル schema、phase 2-A = self-row RLS + 8 server actions + `fetchNativeSchedule()` 本実装 + 認証情報 prop drill。**残: phase 2-B (schedule-list mode 分岐 + candidate-date-dialog + native-attendance-popover + status toggle) + phase 2-C (members section + chip list editor for choice values + settings-dialog 組込 + dev preview 全機能検証) + phase 3 (Discord 通知) + phase 4 (リマインダー cron + 連携)**。設計は `.claude/plans/todo-2-phase-2-virtual-panda.md` (phase 2-A 用) と `.claude/plans/todo-dazzling-locket.md` (全体設計) に保存済 | 大 |
 
 ### 📂 カテゴリ詳細ページ (`/category/[slug]`)
 
@@ -70,6 +70,15 @@ _(現在なし)_
 
 直近版のみ列挙。詳細経緯は `src/lib/changelog.ts`、過去版アーカイブは `.claude/done.md`。
 
+- **2.1 (2026-05-07 part7)**: #2 phase 2-A — native スケジュール server-side 基盤を実装 (UI は phase 2-B / 2-C で別 PR)。phase 1 の skeleton fetcher を実データ fetch に置換 + 出欠入力に必要な self-row RLS policy 追加 + 4 機能 (候補日追加 / 出欠入力 / member 管理 / 凡例 master) の Server Actions 8 種を新規ファイルに集約 + page.tsx native 分岐に `requireDiscordMember()` を Promise.all で並列取得して `SchedulePageBody` に `currentDiscordId` / `isAdmin` prop drill (UI 側参照は次 phase)。
+  - **新規 schema** ([supabase/schema.sql](supabase/schema.sql) 7a セクション): `native_schedule_attendances` に `_self_insert` / `_self_update` policy を別名追加 — `(auth.jwt() -> 'app_metadata' ->> 'discord_id') = discord_user_id` で本人 row のみ許可。admin policy (7 章ループ) と OR 評価され、admin はそのまま全 row 編集可、非 admin は本人 row のみ。delete は admin only 維持
+  - **新規ファイル** ([src/lib/server/native-schedule-actions.ts](src/lib/server/native-schedule-actions.ts)): 8 server actions — `createNativeScheduleSessionAction` / `deleteNativeScheduleSessionAction` / `setNativeScheduleSessionStatusAction` / `addNativeScheduleMemberAction` / `updateNativeScheduleMemberAction` / `deleteNativeScheduleMemberAction` / `setNativeScheduleChoiceValuesAction` (admin gate via `assertAdminResult`) + `upsertNativeScheduleAttendanceAction` (`requireDiscordMember()` で auth user 確定 → RLS WITH CHECK で本人 row のみ通す、admin gate ではない)。symbol 空文字列で row 削除扱い、`raw_date` UNIQUE 違反は 23505 で「同じ日時の候補日がすでにあります」を toast、Discord ID は 17〜20 桁 regex validate
+  - **編集** ([src/lib/schedule/native-fetch.ts](src/lib/schedule/native-fetch.ts)): skeleton → 本実装。`native_schedule_members` (is_active=true, sort_order ASC) + `native_schedule_sessions` (CANCELLED 除外, parsed_date DESC) + `app_settings.native_schedule_choice_values` を Promise.all で 3 並列、attendances は session_id IN(...) で一括 SELECT して matrix 構築。choice_values 未設定時は既定 5 種 `["○","×","△","⏰","─"]` fallback (`source: "fallback-from-list"`)。CANCELLED は SELECT で `.neq('status','CANCELLED')` で UI に出さず履歴は DB に残す
+  - **編集** ([src/app/(portal)/page.tsx](src/app/(portal)/page.tsx)): native 分岐の Promise.all に `requireDiscordMember()` 追加、`SchedulePageBody` に `currentDiscordId={member.discordId}` / `isAdmin={userIsAdmin(userRoles)}` を渡す。sync 分岐は無改修 (既存挙動完全維持)
+  - **編集** ([src/components/portal/schedule-page-body.tsx](src/components/portal/schedule-page-body.tsx)): `currentDiscordId?: string \| null` / `isAdmin?: boolean` prop 追加、本 phase では body 内で参照しない (`_` prefix で unused 抑止)。phase 2-B で popover / dialog から参照
+  - **schema 適用**: phase 1 と同様 Supabase Dashboard SQL Editor で `supabase/schema.sql` 再実行 (idempotent)。`SELECT polname FROM pg_policy WHERE polrelid='public.native_schedule_attendances'::regclass` で `_self_insert` / `_self_update` の 2 行が出ることで適用確認可能
+  - **検証**: `tsc --noEmit` PASS。phase 2-A は UI 改修なし server-side 基盤のみなので dev preview の機能テストは Supabase schema 適用 + `app_settings.schedule_source_mode='native'` 切替後にユーザー実機で確認 (members 0 件で空状態描画、SQL で member 追加すれば user 列ヘッダーに表示、sessions 未作成のままなので「予定なし」placeholder のまま)
+  - **設計ドキュメント**: `.claude/plans/todo-2-phase-2-virtual-panda.md` (phase 2-A 詳細 + 2-B/2-C 後続 plan)。phase 2-B 着手時はこのファイルの「後続 phase」節を参照
 - **2.1 (2026-05-07 part6)**: #2 phase 1 — スケジュールソースモード切替 (`sync` / `native` / `disabled`) のインフラを追加。default = `sync` (既存運用と互換)。`native` mode は phase 1 では空状態 skeleton 表示のみ、`disabled` は機能停止 notice のみ。`mode` 切替は `app_settings.schedule_source_mode` の 1 行 update で完結し、sync/native の DB データは両方残置 (往復で履歴を失わない)。Phase 2 以降 (候補日追加 UI / 出欠入力 popover / Discord 通知 / リマインダー cron) は別 TODO で起票予定。
   - **新規 schema** (`supabase/schema.sql` 5e セクション): `native_schedule_sessions` (id / raw_date UNIQUE / parsed_date / start/end_time / day_of_week / status: CANDIDATE|DECISION|CANCELLED / note / created_by_id) + `native_schedule_members` (discord_user_id PK / display_name / sort_order / is_active) + `native_schedule_attendances` (session_id × discord_user_id 複合 PK / symbol / comment)。RLS は既存 7 章ループに追加 (SELECT は anon、INSERT/UPDATE/DELETE は `is_admin = 'true'`)、Realtime publication にも追加
   - **メンバー識別子は Discord OAuth `app_metadata.discord_id`** (portal 内発番なし、二重管理回避)
