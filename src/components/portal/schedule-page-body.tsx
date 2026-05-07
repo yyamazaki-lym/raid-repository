@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { History, Table, ExternalLink } from "lucide-react";
 import { NextSessionCard } from "./next-session-card";
+import { CandidateDateDialog } from "./native-schedule/candidate-date-dialog";
 import {
   RecruitmentTemplatesButton,
   RecruitmentTopCopyButton,
@@ -119,9 +120,11 @@ export function SchedulePageBody({
   hasUltimateClear = false,
   topTextOverride = null,
   initialMemosByDate = {},
-  // Phase 2-A: prop drill only — Phase 2-B 以降で popover / dialog から参照する。
-  currentDiscordId: _currentDiscordId = null,
-  isAdmin: _isAdmin = false,
+  // Phase 2-B (2026-05-07): native UI 第 1 弾で実利用開始。
+  // - currentDiscordId: ScheduleList → SessionRow に drill、本人 cell 判定で popover trigger 化に使う。
+  // - isAdmin: ScheduleList → SessionRow に drill、status toggle の表示判定 + header の候補日追加 dialog の表示判定に使う。
+  currentDiscordId = null,
+  isAdmin = false,
 }: Props) {
   // Two-toggle state: simple list (top) and detailed table (bottom).
   // Both default to off; pinned values persist via localStorage.
@@ -204,6 +207,9 @@ export function SchedulePageBody({
             }
             Icon={Table}
           />
+          {/* Phase 2-B: native + admin の時のみ「候補日追加」trigger を表示。
+              dialog 内で日時 + 備考を入力して createNativeScheduleSessionAction を呼ぶ。 */}
+          {mode === "native" && isAdmin && <CandidateDateDialog />}
           <RecruitmentTemplatesButton
             initial={recruitmentTemplates}
             categories={recruitmentCategories}
@@ -225,8 +231,9 @@ export function SchedulePageBody({
 
       {mode === "native" && (
         <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] leading-relaxed text-amber-200">
-          自前スケジュール (準備中) — 候補日追加 / 出欠入力 UI は phase 2
-          で実装予定です。現在は空状態の表示のみ動作確認できます。
+          自前スケジュール — 候補日追加 / 出欠入力 / 確定切替は本 phase で利用可能。
+          メンバー編集 UI / 凡例 chip editor / Discord 通知 / リマインダーは
+          後続 phase で実装予定です。
         </div>
       )}
 
@@ -262,6 +269,9 @@ export function SchedulePageBody({
         hasUltimateClear={hasUltimateClear}
         topTextOverride={topTextOverride}
         initialMemosByDate={initialMemosByDate}
+        mode={mode}
+        currentDiscordId={currentDiscordId}
+        isAdmin={isAdmin}
       />
     </div>
   );

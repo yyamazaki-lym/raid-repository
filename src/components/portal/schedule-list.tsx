@@ -50,13 +50,17 @@ import { useScrollClosingMenu } from "@/lib/use-scroll-closing-menu";
 import type { JapaneseHolidaysMap } from "@/lib/japanese-holidays";
 import type {
   Attendance,
+  ScheduleAttendanceOptions,
   ScheduleComment,
   ScheduleFetchResult,
   ScheduleSession,
   ScheduleUser,
 } from "@/lib/schedule/next-session";
+import type { ScheduleSourceMode } from "@/lib/schedule/source-mode";
 import type { SessionLogEntry } from "@/lib/schedule/session-logs";
 import type { SessionVideoLink } from "@/lib/server/session-video-link";
+import { NativeAttendancePopover } from "./native-schedule/native-attendance-popover";
+import { SessionStatusToggle } from "./native-schedule/session-status-toggle";
 
 // Stable reference for the realtime hook's initial param — `[]` inline
 // would be a fresh array on every render and trip the hook's
@@ -171,6 +175,23 @@ type Props = {
   topTextOverride?: string | null;
   /** TODO #11: server prefetch した memos (rawDate → memos[]) */
   initialMemosByDate?: Record<string, import("@/lib/schedule-memos-client").ScheduleSessionMemo[]>;
+  /**
+   * TODO #2 phase 2-B: スケジュールソースモード。
+   * `"native"` のとき確定列の admin 用 status toggle / 本人 cell の出欠 popover を mount する。
+   * default = `"sync"` (既存 character-sheets 経路、native UI 一切無効)。
+   */
+  mode?: ScheduleSourceMode;
+  /**
+   * TODO #2 phase 2-B: 認証済 Discord メンバーの ID。
+   * native mode の出欠 cell で `currentDiscordId === u.userId` を満たす行のみ
+   * `<NativeAttendancePopover>` で render。sync mode では参照しない。
+   */
+  currentDiscordId?: string | null;
+  /**
+   * TODO #2 phase 2-B: admin role 持ちか。
+   * native mode の確定列で `<SessionStatusToggle>` を表示するかの判定に使う。
+   */
+  isAdmin?: boolean;
 };
 
 export function ScheduleList({
@@ -184,6 +205,9 @@ export function ScheduleList({
   hasUltimateClear = false,
   topTextOverride = null,
   initialMemosByDate = {},
+  mode = "sync",
+  currentDiscordId = null,
+  isAdmin = false,
 }: Props) {
   // TODO #11 phase 7: 全 memo を 1 channel で監視し、各 SessionRow には
   // 該当 rawDate の slice + refetchAll を props で配る (旧: 各行が個別
@@ -312,6 +336,21 @@ export function ScheduleList({
 
   const { users, sessions, comments } = result.data;
   const commentsByAuthor = groupCommentsByAuthor(comments);
+  // TODO #2 phase 2-B: native mode 専用メタ。sync mode では undefined のまま、
+  // 各 SessionRow の `nativeSessionId` / `currentUserComment` は undefined / "" で
+  // 既存 sync 経路をそのまま流す。
+  const nativeMeta = result.data.nativeMeta;
+  const attendanceOptionsForNative = result.data.attendanceOptions;
+  const resolveNativeSessionId = (rawDate: string): string | undefined =>
+    nativeMeta?.sessionIdByRawDate[rawDate];
+  const resolveCurrentUserComment = (
+    nativeSessionId: string | undefined,
+  ): string => {
+    if (!nativeSessionId || !currentDiscordId) return "";
+    return (
+      nativeMeta?.commentsByPair[`${nativeSessionId}__${currentDiscordId}`] ?? ""
+    );
+  };
 
   const { upcoming, past } = splitSessions(sessions, limit);
   // Past sessions newest-first (already sorted by splitSessions). The
@@ -404,20 +443,29 @@ export function ScheduleList({
           <table className="w-full min-w-[640px] border-collapse text-left text-sm">
             {tableHead(true)}
             <tbody>
-              {upcoming.map((s) => (
-                <SessionRow
-                  key={s.rawDate}
-                  session={s}
-                  users={users}
-                  holidays={holidays}
-                  videoLinks={lookupVideoLinks(s, sessionVideoLinks)}
-                  sessionLogs={sessionLogsByDate?.[s.rawDate] ?? EMPTY_SESSION_LOGS}
-                  scheduleUrl={scheduleUrl}
-                  onOpenEditFrame={openEditFrame}
-                  memos={memosByDate[s.rawDate] ?? EMPTY_MEMOS}
-                  onRefreshMemos={refetchMemos}
-                />
-              ))}
+              {upcoming.map((s) => {
+                const nativeSessionId = resolveNativeSessionId(s.rawDate);
+                return (
+                  <SessionRow
+                    key={s.rawDate}
+                    session={s}
+                    users={users}
+                    holidays={holidays}
+                    videoLinks={lookupVideoLinks(s, sessionVideoLinks)}
+                    sessionLogs={sessionLogsByDate?.[s.rawDate] ?? EMPTY_SESSION_LOGS}
+                    scheduleUrl={scheduleUrl}
+                    onOpenEditFrame={openEditFrame}
+                    memos={memosByDate[s.rawDate] ?? EMPTY_MEMOS}
+                    onRefreshMemos={refetchMemos}
+                    mode={mode}
+                    currentDiscordId={currentDiscordId}
+                    isAdmin={isAdmin}
+                    nativeSessionId={nativeSessionId}
+                    currentUserComment={resolveCurrentUserComment(nativeSessionId)}
+                    attendanceOptions={attendanceOptionsForNative}
+                  />
+                );
+              })}
               {upcoming.length === 0 && (
                 <tr>
                   <td
@@ -469,24 +517,9 @@ export function ScheduleList({
             <table className="w-full min-w-[640px] border-collapse text-left text-sm">
               {tableHead(false, false)}
               <tbody>
-                {recentPast.map((s) => (
-                  <SessionRow
-                    key={s.rawDate}
-                    session={s}
-                    users={users}
-                    isPast
-                    holidays={holidays}
-                    showDecided={false}
-                    videoLinks={lookupVideoLinks(s, sessionVideoLinks)}
-                    sessionLogs={sessionLogsByDate?.[s.rawDate] ?? EMPTY_SESSION_LOGS}
-                    scheduleUrl={scheduleUrl}
-                    onOpenEditFrame={openEditFrame}
-                    memos={memosByDate[s.rawDate] ?? EMPTY_MEMOS}
-                  onRefreshMemos={refetchMemos}
-                  />
-                ))}
-                {olderPast.length > 0 && showOlderPast &&
-                  olderPast.map((s) => (
+                {recentPast.map((s) => {
+                  const nativeSessionId = resolveNativeSessionId(s.rawDate);
+                  return (
                     <SessionRow
                       key={s.rawDate}
                       session={s}
@@ -499,9 +532,42 @@ export function ScheduleList({
                       scheduleUrl={scheduleUrl}
                       onOpenEditFrame={openEditFrame}
                       memos={memosByDate[s.rawDate] ?? EMPTY_MEMOS}
-                  onRefreshMemos={refetchMemos}
+                      onRefreshMemos={refetchMemos}
+                      mode={mode}
+                      currentDiscordId={currentDiscordId}
+                      isAdmin={isAdmin}
+                      nativeSessionId={nativeSessionId}
+                      currentUserComment={resolveCurrentUserComment(nativeSessionId)}
+                      attendanceOptions={attendanceOptionsForNative}
                     />
-                  ))}
+                  );
+                })}
+                {olderPast.length > 0 && showOlderPast &&
+                  olderPast.map((s) => {
+                    const nativeSessionId = resolveNativeSessionId(s.rawDate);
+                    return (
+                      <SessionRow
+                        key={s.rawDate}
+                        session={s}
+                        users={users}
+                        isPast
+                        holidays={holidays}
+                        showDecided={false}
+                        videoLinks={lookupVideoLinks(s, sessionVideoLinks)}
+                        sessionLogs={sessionLogsByDate?.[s.rawDate] ?? EMPTY_SESSION_LOGS}
+                        scheduleUrl={scheduleUrl}
+                        onOpenEditFrame={openEditFrame}
+                        memos={memosByDate[s.rawDate] ?? EMPTY_MEMOS}
+                        onRefreshMemos={refetchMemos}
+                        mode={mode}
+                        currentDiscordId={currentDiscordId}
+                        isAdmin={isAdmin}
+                        nativeSessionId={nativeSessionId}
+                        currentUserComment={resolveCurrentUserComment(nativeSessionId)}
+                        attendanceOptions={attendanceOptionsForNative}
+                      />
+                    );
+                  })}
                 {olderPast.length > 0 && (
                   <tr>
                     <td
@@ -954,6 +1020,12 @@ function SessionRow({
   onOpenEditFrame,
   memos,
   onRefreshMemos,
+  mode = "sync",
+  currentDiscordId = null,
+  isAdmin = false,
+  nativeSessionId,
+  currentUserComment = "",
+  attendanceOptions,
 }: {
   session: ScheduleSession;
   users: ScheduleUser[];
@@ -989,6 +1061,21 @@ function SessionRow({
   memos: import("@/lib/schedule-memos-client").ScheduleSessionMemo[];
   /** Server-action 後の保険 refetch (旧 useRealtimeScheduleMemos の refetch 互換)。 */
   onRefreshMemos: () => Promise<void>;
+  /** TODO #2 phase 2-B: スケジュールソースモード。default = "sync"。 */
+  mode?: ScheduleSourceMode;
+  /** TODO #2 phase 2-B: 認証済 Discord メンバーの ID。本人 cell 判定で使用。 */
+  currentDiscordId?: string | null;
+  /** TODO #2 phase 2-B: admin role 持ち。確定列の status toggle 表示判定。 */
+  isAdmin?: boolean;
+  /**
+   * TODO #2 phase 2-B: native_schedule_sessions.id (uuid)。`nativeMeta` が
+   * 解決した時のみセット。undefined のときは sync 経路を流す (status toggle / popover 非 mount)。
+   */
+  nativeSessionId?: string;
+  /** TODO #2 phase 2-B: 本人の現在 attendance comment (popover 初期値)。空文字列で fallback。 */
+  currentUserComment?: string;
+  /** TODO #2 phase 2-B: 凡例マスター (popover の symbol radio 用)。 */
+  attendanceOptions?: ScheduleAttendanceOptions;
 }) {
   const decided = session.status === "DECISION";
   // Ref so the (separately-rendered) memo dot can open the popover.
@@ -1081,7 +1168,18 @@ function SessionRow({
       </th>
       {showDecided && (
         <td className="px-1 py-2 text-center align-middle">
-          {(() => {
+          {/* TODO #2 phase 2-B: native mode + admin の時は確定列の中身を
+              SessionStatusToggle に置換し DropdownMenu で CANDIDATE / DECISION /
+              CANCELLED を切替える。CANCELLED 選択は次回 fetch で行が消える。
+              sync mode (`mode !== "native"`) や非 admin / nativeSessionId 解決
+              失敗時は既存 IIFE 経路 (sync 互換の確定 badge / 未確定 dot) を流す。 */}
+          {mode === "native" && isAdmin && nativeSessionId ? (
+            <SessionStatusToggle
+              sessionId={nativeSessionId}
+              currentStatus={session.status}
+              displayDate={session.rawDate.split(" ")[0] ?? session.rawDate}
+            />
+          ) : (() => {
             // TODO #44 (2.1, 2026-04-30): clicking the 確定 cell opens
             // the schedule list URL in the iframe dialog with a
             // `#row_N` fragment anchor so character-sheets natively
@@ -1177,6 +1275,31 @@ function SessionRow({
         const att = session.attendances[u.userId] ?? "－";
         const editUrl = buildEditUrl(scheduleUrl, u.userId);
         const dateLabel = session.rawDate.split(" ")[0] ?? session.rawDate;
+        const tone = ATT_TONE[att] ?? ATT_TONE_FALLBACK;
+        // TODO #2 phase 2-B: native mode + 本人行 + nativeSessionId 解決済 +
+        // 出欠選択肢取得済 + 過去日でない、の 5 条件 AND で popover trigger 化。
+        // 過去日 (`isPast`) は sync 経路と揃えて編集不可 (記録閲覧のみ)。
+        const enableNativePopover =
+          mode === "native" &&
+          !isPast &&
+          currentDiscordId === u.userId &&
+          Boolean(nativeSessionId) &&
+          Boolean(attendanceOptions);
+        if (enableNativePopover && nativeSessionId && attendanceOptions) {
+          return (
+            <td key={u.userId} className="px-1.5 py-2 align-middle text-center">
+              <NativeAttendancePopover
+                sessionId={nativeSessionId}
+                currentSymbol={att}
+                currentComment={currentUserComment}
+                attendanceOptions={attendanceOptions}
+                triggerClass={tone}
+                userName={u.name}
+                displayDate={dateLabel}
+              />
+            </td>
+          );
+        }
         const symbol = (
           <span
             // Drop `font-mono` for the symbols — ◯ ⏰ △ × － are CJK
@@ -1189,7 +1312,7 @@ function SessionRow({
             // baseline within a fixed h-5 box.
             className={
               "inline-flex h-5 min-w-[1.75rem] items-center justify-center rounded-sm border px-1 text-[12px] leading-none transition-transform " +
-              (ATT_TONE[att] ?? ATT_TONE_FALLBACK)
+              tone
             }
             aria-label={`${u.name}: ${att}`}
           >
