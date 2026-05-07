@@ -69,6 +69,19 @@ _(現在なし)_
 
 直近版のみ列挙。詳細経緯は `src/lib/changelog.ts`、過去版アーカイブは `.claude/done.md`。
 
+- **2.1 (2026-05-07 part3)**: #71 part3 — 残留検知時に `stale.remove()` で物理削除追加 + selector を `:not([data-open])` に絞り込み (part2 デプロイ後も本番白枠継続のため強化)
+  - **症状継続**: part2 (PR [#31](https://github.com/yyamazaki-lym/raid-repository/pull/31)) デプロイ後も「コメント開いた後にホバー外すと白い枠が出続ける」報告継続。part2 の「DOM 残留検知時のみ remount」では key bump (React tree remount) のみで対応していたが、Base UI の Portal 経由で document.body 直下に植えた node が React 側 unmount 後も物理的に残るケース (React 19 + Vercel Edge build での createPortal cleanup 漏れ race) では効かないと判明
+  - **修正** ([src/components/portal/comment-popover.tsx](src/components/portal/comment-popover.tsx)):
+    - selector を `[data-slot="popover-content"]` → `[data-slot="popover-content"]:not([data-open])` に絞り込み (open 中の他 popover を誤射しない)
+    - `querySelectorAll` で複数 stale node を網羅取得
+    - 検知時は **`stale.remove()` で物理削除 + `setRemountKey` で React tree remount** の二段重ね (Portal cleanup 漏れに対しては DOM 直接操作が最も確実、加えて Base UI internal state を新規 instance に置換)
+    - 待機時間 200ms → 250ms (production の close transition + paint flush 完了をより確実に待つ)
+  - **DOM 直接操作の副作用受入**: Base UI の internal state と DOM の整合が取れなくなる懸念は key bump 併用で React tree 全体 remount → Base UI instance も新規生成で解消。古い instance が削除済 node を参照する経路は無し
+  - **動作差 (part2 比)**:
+    - 通常 close: part2 = remount スキップ / part3 = 同じく remount スキップ (selector ゼロ件で hover 連続反応維持を継続)
+    - DOM 残留 (production-only race): part2 = key bump のみ (Portal node に効かない場合あり) / part3 = `stale.remove()` 物理削除 + key bump 併用で確実
+    - selector 範囲: part2 = 全 popover-content / part3 = close 状態のみ → 安全性向上
+  - **検証**: `tsc --noEmit` PASS。dev preview で通常 close 経路 (open → close → 250ms 後 DOM 0 件 + 連続 click 再 open OK) 維持を `preview_eval` で確認。selector + node.remove() の単独動作も確認済。console error 0 件。production-only race は dev 再現不能のため本番デプロイ後ユーザー実機確認待ち
 - **2.1 (2026-05-07 part2)**: #71 follow-up — 常時 remount による hover 連続反応の阻害を「DOM 残留検知時のみ remount」に縮退
   - **症状継続**: part1 (PR [#30](https://github.com/yyamazaki-lym/raid-repository/pull/30)) で白枠残留は消えたが、副作用として hover 経路の UX が劣化。close 後 200ms で必ず `key={remountKey}` bump → `<Popover>` ツリー全体が unmount/remount → trigger 要素も再生成 → cursor が trigger 上にあっても `mouseenter` は新規発火しない (mouseenter は要素境界を新規に跨いだ時のみ発火する仕様) → hover 連続反応が阻害され、再開には click が必要。ユーザー体感「クリック時 Open は割とだるい」
   - **ユーザー認識ズレ**: ユーザーは「白枠残留は新規更新時など稀な場合のみ出る」と想定していたが、part1 の修正は毎回の close で必ず remount する設計。本番運用では白枠残留自体は頻発していたが、毎回 remount は過剰と判断し条件付き化に縮退
