@@ -56,6 +56,13 @@ export function CommentPopover({
   const [open, setOpen] = useState(false);
   const [hoverEnabled, setHoverEnabled] = useState(false);
   const [updated, setUpdated] = useState(false);
+  // TODO #72 案 A: 「リロード直後の first hover → leave で popover が DOM 残留」
+  // (= click を 1 度通すと以降 hover でも残留しない、と切り分け済) への対策。
+  // 初回 mouseenter で `triggerRef.current?.click()` を発火させ、Base UI の
+  // useClick path を 1 度通させて click-only な初期化 (FocusGuard / portal
+  // cleanup ref 登録) を確実に走らせる。以降の hover は通常の setOpen(true) で
+  // OK (Base UI の `isTriggerActive` 遷移後は hover 経路でも cleanup 登録済)。
+  const [bootstrapped, setBootstrapped] = useState(false);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const remountTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -167,13 +174,18 @@ export function CommentPopover({
     ? {
         onMouseEnter: () => {
           cancelClose();
-          // TODO #72: hydration 直後の first hover で Base UI Popover の
-          // portal cleanup ref が貼られず DOM 残留する race の対策。
-          // click 経路で踏まれる focus 移動を hover でも踏ませて
-          // `isTriggerActive` 遷移 + FocusGuard 装着を発火させる。
-          // preventScroll で hover 時の scroll jump を抑制。
-          triggerRef.current?.focus({ preventScroll: true });
-          setOpen(true);
+          if (!bootstrapped) {
+            // 初回のみ: Base UI の useClick path を強制発火し
+            // click-only な初期化を確実に走らせる。controlled な
+            // onOpenChange = setOpen(true) を経由して open になる。
+            // requestAnimationFrame 後の setOpen(true) は Base UI が
+            // 同期的に open=true を発火しなかった場合の保険。
+            triggerRef.current?.click();
+            setBootstrapped(true);
+            requestAnimationFrame(() => setOpen(true));
+          } else {
+            setOpen(true);
+          }
         },
         onMouseLeave: scheduleClose,
       }
