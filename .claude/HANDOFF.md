@@ -69,6 +69,21 @@ _(現在なし)_
 
 直近版のみ列挙。詳細経緯は `src/lib/changelog.ts`、過去版アーカイブは `.claude/done.md`。
 
+- **2.1 (2026-05-07 part2)**: #71 follow-up — 常時 remount による hover 連続反応の阻害を「DOM 残留検知時のみ remount」に縮退
+  - **症状継続**: part1 (PR [#30](https://github.com/yyamazaki-lym/raid-repository/pull/30)) で白枠残留は消えたが、副作用として hover 経路の UX が劣化。close 後 200ms で必ず `key={remountKey}` bump → `<Popover>` ツリー全体が unmount/remount → trigger 要素も再生成 → cursor が trigger 上にあっても `mouseenter` は新規発火しない (mouseenter は要素境界を新規に跨いだ時のみ発火する仕様) → hover 連続反応が阻害され、再開には click が必要。ユーザー体感「クリック時 Open は割とだるい」
+  - **ユーザー認識ズレ**: ユーザーは「白枠残留は新規更新時など稀な場合のみ出る」と想定していたが、part1 の修正は毎回の close で必ず remount する設計。本番運用では白枠残留自体は頻発していたが、毎回 remount は過剰と判断し条件付き化に縮退
+  - **修正** ([src/components/portal/comment-popover.tsx](src/components/portal/comment-popover.tsx)):
+    - close 後 200ms の `setTimeout` callback 内で `document.querySelector('[data-slot="popover-content"]')` で portal node の生存を判定
+    - **残留時のみ** `setRemountKey((k) => k + 1)` で key bump (= 既存の DOM リセット挙動を発火、白枠根絶を維持)
+    - **残留なし時** は何もしない (= 通常時 hover 連続反応を維持)
+    - close → 200ms 待機中に open=true へ復帰した場合のレース対策で `else if (open && remountTimer.current)` 分岐を追加し timer を clearTimeout (open 中に key bump で popover が瞬間消失するのを防止)
+    - `remountKey` の用途コメントを「常に remount」→「DOM 残留検知時のみ remount」に書き換え
+  - **動作差 (part1 比)**:
+    - 通常 close (DOM 正常 unmount): part1 = 200ms 後に必ず remount / part2 = remount スキップ → 連続 hover で再 open 可能
+    - 稀な DOM 残留: 両者とも remount で根絶 (検知ロジック追加のみ、対応経路は等価)
+    - 連続 hover で 200ms 内に再 open: part1 = remount → trigger 再生成で hover 復帰失敗 / part2 = timer cancel → スムーズに open 維持
+  - **副作用受入**: selector `[data-slot="popover-content"]` は他の同時 open popover (recruitment-templates-button 等) も拾う可能性があるが、自分が残留してない場合 remount しても害は trigger サブツリーの 1 度の再 mount だけ (open 中の他 popover は別ツリーで触らない) なので UX 上ほぼ気付かない。厳密な identification (ref + aria-controls ベース) は Base UI internal id 体系に依存して実装コスト高 vs 効果薄なので不採用
+  - **検証**: `tsc --noEmit` PASS。dev preview で click open → outside click close → 250ms / 550ms 後の DOM カウントを `preview_eval` で取得し、通常時に 0 件 (= remount 未発火) + 連続 click 再 open 可能を確認。phantom node を手動 inject した残留シナリオで selector が拾うこと + 再 click open が反応することも確認。console error / warning 0 件。本番デプロイ後にユーザー側で「hover 連続反応が click なしで復元している」+「白枠残留時は引き続き消える」を実機確認予定
 - **2.1 (2026-05-07)**: #71 — TODO #70 follow-up: production build のみで残る popover DOM 残留を `<Popover key={remountKey}>` 強制 remount で根絶
   - **症状継続**: TODO #70 (PR [#29](https://github.com/yyamazaki-lym/raid-repository/pull/29)) で Strategy G を popover/tooltip に適用 → 本番 deploy 後も「ページ更新後 hover → カーソル外移動で白枠だけ残る」継続。条件: hover 経路のみ + click 経路では非発生 + scroll でも残り続け、枠外 click や別ウィンドウ選択で消える。dev preview では完全消失するが **production build のみ** で再発
   - **真因仮説**: Base UI Popover の `open` controlled prop 切替時、production build で portal close race が起きるか、もしくは trigger button の `:hover` paint が popover close と競合してブラウザの paint optimization で残留。Strategy G が前提とした「CSS exit transition リバウンド」とは別系統 (CSS は撤去済なのに残るので CSS 由来ではない)
