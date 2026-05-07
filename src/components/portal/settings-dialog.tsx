@@ -32,6 +32,7 @@ import { ScheduleSourceModeSection } from "./settings/schedule-source-mode-secti
 import { ScheduleSourceSection } from "./settings/schedule-source-section";
 import { PastSessionsSection } from "./settings/past-sessions-section";
 import { NativeMembersSection } from "./settings/native-members-section";
+import { NativeChoiceValuesSection } from "./settings/native-choice-values-section";
 import { FflogsSyncSection } from "./settings/fflogs-sync-section";
 import { ChangelogFooter } from "./settings/changelog-footer";
 import { DangerZoneSection } from "./settings/danger-zone-section";
@@ -213,6 +214,14 @@ export function SettingsDialog({ canEdit }: { canEdit: boolean }) {
             <NativeMembersSection
               canEdit={canEdit}
               members={adminAux?.allMembers ?? []}
+              loaded={adminAux !== null}
+              onChanged={() => setAdminAuxTick((t) => t + 1)}
+            />
+          )}
+          {mode === "native" && (
+            <NativeChoiceValuesSection
+              canEdit={canEdit}
+              currentChoiceCsv={adminAux?.currentChoiceCsv ?? null}
               loaded={adminAux !== null}
               onChanged={() => setAdminAuxTick((t) => t + 1)}
             />
