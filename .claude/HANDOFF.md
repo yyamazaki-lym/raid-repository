@@ -69,6 +69,15 @@ _(現在なし)_
 
 直近版のみ列挙。詳細経緯は `src/lib/changelog.ts`、過去版アーカイブは `.claude/done.md`。
 
+- **2.1 (2026-05-07)**: #70 — スケジュール各員コメント popover の close 時に「白枠だけ残る」現象を Strategy G (CSS exit transition 撤去) で根絶
+  - **症状**: スケジュールページ TOP のメンバー名行コメントアイコンに hover → コメント popover 表示 → カーソルを popover / トリガーから外側へ移動した際、中身は消えるが `ring-1 ring-foreground/10` + `shadow-md` の輪郭だけが visible に残るフレームが散発的に発生 (`CommentPopover` の 120ms grace period があるため open/close 頻度が高く、特に発火しやすかった)
+  - **真因**: TODO #65 (PR [#22](https://github.com/yyamazaki-lym/raid-repository/pull/22), commit `18a338f`) で `dropdown-menu.tsx` に対して同根のバグを「3 段階ちらつき」として既に修正済みだったが、`popover.tsx` / `tooltip.tsx` には同じ Base UI close 時アニメ (`data-closed:animate-out / fade-out-0 / zoom-out-95`) が残存していた。close transition (~100ms) で zoom スケール 95% への縮小と fade-out 透明化のタイミングずれが visual artifact (枠だけ残るフレーム) を生む現象、TODO #65 と完全に同根
+  - **修正** (Strategy G の popover/tooltip 版):
+    - [src/components/ui/popover.tsx](src/components/ui/popover.tsx): `PopoverContent` の `<PopoverPrimitive.Popup>` className から `data-closed:animate-out` / `data-closed:fade-out-0` / `data-closed:zoom-out-95` の 3 クラスを削除
+    - [src/components/ui/tooltip.tsx](src/components/ui/tooltip.tsx): `TooltipContent` の `<TooltipPrimitive.Popup>` className から同 3 クラスを削除 (今回のバグには直接関与しないが、Base UI overlay 三兄弟 dropdown / popover / tooltip で方針統一する予防修正)
+  - **副作用受入**: Base UI overlay 全種類で close 時瞬間消滅に統一 (dropdown と一貫性が取れる)。recruitment-templates-button も close 瞬間消滅になるが click open / click outside close の機能上問題なし。`CommentPopover` の hover 制御 (`cancelClose` / `scheduleClose` 120ms grace) のロジック自体は変更なし
+  - **再導入禁止リスト追記** (TODO #65 part8 と統合): popover.tsx / tooltip.tsx / dropdown-menu.tsx の `data-closed:animate-out` / `data-closed:fade-out-0` / `data-closed:zoom-out-95` 系列は visual rebound 再発のため再追加禁止。フェードアウト復活したい場合は `duration-50` + `opacity-only` 版 (zoom-out なし) を使う
+  - **検証**: `tsc --noEmit` PASS。dev preview (worktree) で `CommentPopover` を `mouseenter` で open → `mouseleave` で close、close 後 250ms で `[data-slot="popover-content"]` ノードが DOM から完全消失することを `preview_eval` で確認。screenshot で popover open / close 後を比較撮影、close 後に白枠が残らないことを目視確認。console error / warning 0 件
 - **2.1 (2026-05-07)**: #69 — `schedule_past_sessions` に CANDIDATE 行が混入するバグを修正 (snapshot DECISION-only filter + 既存 CANDIDATE row 自動 cleanup)
   - **真因**: [src/lib/server/schedule-snapshot.ts](src/lib/server/schedule-snapshot.ts) `runScheduleSnapshot()` が `fetchScheduleRaw()` で得た sessions を **status (DECISION/CANDIDATE) を見ずに全件 UPSERT** していた。`mergeStoredPastSessions` ([src/lib/schedule/next-session.ts:185-220](src/lib/schedule/next-session.ts:185)) の「raw_date 照合だけで verified set に入れて `status: \"DECISION\"` 強制」挙動と組み合わさり、CANDIDATE 由来 row が「過去確定日」として表示されていた。`supabase/schema.sql` の `schedule_past_sessions` には status 相当列が無く (`source` のみ)、永続化レイヤで DECISION/CANDIDATE を区別できない設計のため入口 (snapshot) で止める方針
   - **Discord 取り込みは問題なし** — `importDiscordScheduleHistory` は「本日YYYY/MM/DD…は固定活動予定日です」当日通知のみ scrape するため CANDIDATE 混入は構造的に発生しない。問題は snapshot path 単独
