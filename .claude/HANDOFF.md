@@ -21,7 +21,7 @@ _(現在なし)_
 
 ## 📌 次回の作業優先度
 
-未完了 TODO はユーザー選択。残りはほぼ全て中〜大規模 (TODO #2 統合 / #7 / #51 / #11) の見送り候補。
+未完了 TODO はユーザー選択。残りはほぼ全て中〜大規模 (TODO #2 phase 2-4 / #7 / #51 / #11) の見送り候補。
 
 ## 未完了 TODO 一覧
 
@@ -31,7 +31,7 @@ _(現在なし)_
 
 | # | 項目 | 規模 |
 |---|---|---|
-| 2 | スケジュール表自前実装 (作成/編集/確定/Discord 通知)。**#38 を統合**: portal 内から開催候補日を追加する UI (日付 + 時間帯 + 参加可否入力 → DB 保存 → 描画) を本 TODO スコープ内に含める。**追加要件**: 初期設定 (settings-dialog) で「既存取り込み式 (現行 character-sheets iframe) / 新規作成式 (本 TODO で実装する自前 UI) / 使わない (スケジュール機能無効)」の 3 択を選択可能にする。後から変更可 | 大 |
+| 2 | スケジュール表自前実装 — **phase 1 完了 (2026-05-07)**: 3 モード切替 (`sync` / `native` / `disabled`) インフラ + native 用テーブル 3 件 (`native_schedule_*`) schema 確定 + skeleton fetcher。**phase 2 以降は別 TODO 起票予定**: phase 2 = 候補日追加 dialog / 出欠入力 popover / member 編集 / 凡例 master、phase 3 = Discord 通知 (既存 bot token + channel ID 流用)、phase 4 = リマインダー cron + video / FFLogs 連携統合。設計は `.claude/plans/todo-dazzling-locket.md` に保存済 | 大 |
 
 ### 📂 カテゴリ詳細ページ (`/category/[slug]`)
 
@@ -70,6 +70,14 @@ _(現在なし)_
 
 直近版のみ列挙。詳細経緯は `src/lib/changelog.ts`、過去版アーカイブは `.claude/done.md`。
 
+- **2.1 (2026-05-07 part6)**: #2 phase 1 — スケジュールソースモード切替 (`sync` / `native` / `disabled`) のインフラを追加。default = `sync` (既存運用と互換)。`native` mode は phase 1 では空状態 skeleton 表示のみ、`disabled` は機能停止 notice のみ。`mode` 切替は `app_settings.schedule_source_mode` の 1 行 update で完結し、sync/native の DB データは両方残置 (往復で履歴を失わない)。Phase 2 以降 (候補日追加 UI / 出欠入力 popover / Discord 通知 / リマインダー cron) は別 TODO で起票予定。
+  - **新規 schema** (`supabase/schema.sql` 5e セクション): `native_schedule_sessions` (id / raw_date UNIQUE / parsed_date / start/end_time / day_of_week / status: CANDIDATE|DECISION|CANCELLED / note / created_by_id) + `native_schedule_members` (discord_user_id PK / display_name / sort_order / is_active) + `native_schedule_attendances` (session_id × discord_user_id 複合 PK / symbol / comment)。RLS は既存 7 章ループに追加 (SELECT は anon、INSERT/UPDATE/DELETE は `is_admin = 'true'`)、Realtime publication にも追加
+  - **メンバー識別子は Discord OAuth `app_metadata.discord_id`** (portal 内発番なし、二重管理回避)
+  - **新規ファイル**: [src/lib/schedule/source-mode.ts](src/lib/schedule/source-mode.ts) (`getScheduleSourceMode()` server helper、default fallback = `'sync'`) / [src/lib/schedule/native-fetch.ts](src/lib/schedule/native-fetch.ts) (空 ScheduleFetchResult を返す skeleton) / [src/components/portal/schedule-disabled-notice.tsx](src/components/portal/schedule-disabled-notice.tsx) / [src/components/portal/settings/schedule-source-mode-section.tsx](src/components/portal/settings/schedule-source-mode-section.tsx) (3 択 radio + 即時保存 + `router.refresh()`)
+  - **編集**: [src/app/(portal)/page.tsx](src/app/(portal)/page.tsx) で mode 分岐、[src/components/portal/schedule-page-body.tsx](src/components/portal/schedule-page-body.tsx) に `mode` prop + scheduleUrl を `string | null`、[src/components/portal/settings-dialog.tsx](src/components/portal/settings-dialog.tsx) に新 section + sync 専用 UI を `mode === 'sync'` ガード、[src/lib/server/categories-actions.ts](src/lib/server/categories-actions.ts) に `setScheduleSourceModeAction(mode)` 追加 (admin gate)、[src/lib/schedule-url-store.ts](src/lib/schedule-url-store.ts) に `getScheduleSourceModeFromDb()` client reader を追加 (settings dialog の useEffect 用)
+  - **schema 適用**: 本 PR では DDL を `schema.sql` に追記したのみ。Supabase Dashboard SQL Editor で再実行してテーブル作成は別途必要 (既存環境に対しても idempotent)。phase 1 は native テーブル参照しない skeleton なのでテーブル未作成でも portal 動作には影響なし
+  - **検証**: `tsc --noEmit` PASS。dev preview で 3 mode (sync = 既存維持 / native = 準備中バナー + 空 list / disabled = 機能停止 notice) の切替・表示確認。settings dialog で mode radio が正しく表示・即時保存し、`mode === 'sync'` のときのみ URL / Discord channel section と Save ボタンが表示される
+  - **設計ドキュメント**: `.claude/plans/todo-dazzling-locket.md` に Phase 1〜4 全体設計を保存済。phase 2 起票時はこのファイルを参照
 - **2.1 (2026-05-07 part5)**: #72 完全解消 — 案 J 後もユーザー実機で「コメントボタン本体の太い白枠」継続報告 → **真因 = popover content の DOM 残留ではなく Base UI Popover focus restore による trigger button の `:focus-visible` auto outline** と再特定。案 K1 (`bootstrap click()` 撤去, PR [#44](https://github.com/yyamazaki-lym/raid-repository/pull/44)) はハズレ、案 K3 (`<PopoverContent finalFocus={false}>`, PR [#45](https://github.com/yyamazaki-lym/raid-repository/pull/45)) で根絶
   - **真因確定**: `node_modules/@base-ui/react/popover/popup/PopoverPopup.js:118-124` の `FloatingFocusManager` が `disabled: !mounted || openReason === REASONS.triggerHover` で hover open 時のみ focus management を無効化する設計。しかし `comment-popover.tsx` は controlled mode で React 側から `setOpen(true)` を直接呼ぶため、Base UI 内部 store の `openReason` が `triggerHover` と認識されず → focus management 常時 enable → close 時に `returnFocus: finalFocus` (default = trigger に戻す) で trigger に programmatic focus → `:focus-visible: true` → `globals.css * { outline-ring/50 }` の auto outline visible (= 太い白枠)。`PopoverRoot` には `openOnHover` API が無いため controlled mode で reason を Base UI に伝える方法はなく、`<PopoverPopup finalFocus={false}>` で close 時の focus restore そのものを無効化する方針が解
   - **観察手法**: Claude in Chrome で demo 環境 (commit `331cb27` 案 J 適用済) で実機 hover/leave + `javascript_tool` の `getComputedStyle().outline` / `matches(':focus-visible')` で測定。修正前 `outline-style: auto` / `:focus-visible: true` / `outline-color: oklab(0.92 -0.03 -0.03 / 0.5)` (= --ring 銀白色 50% opacity) を確認、修正後 `activeElement = BODY` / `:focus-visible: false` / `outline-style: none` で根絶検証

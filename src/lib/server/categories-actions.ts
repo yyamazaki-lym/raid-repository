@@ -1175,6 +1175,41 @@ export async function setDiscordScheduleChannelIdAction(
 }
 
 /**
+ * TODO #2 phase 1 (2026-05-07): スケジュールソースモードを保存する。
+ *
+ * 値:
+ *   - `'sync'`     既存挙動 (character-sheets fetch + parse)
+ *   - `'native'`   自前テーブル (`native_schedule_*`) 描画
+ *   - `'disabled'` 機能停止 notice
+ *
+ * mode 切替で DB は破壊しない (両方残置方針)。詳細は
+ * `src/lib/schedule/source-mode.ts` を参照。
+ */
+export async function setScheduleSourceModeAction(
+  rawMode: string,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
+  if (rawMode !== "sync" && rawMode !== "native" && rawMode !== "disabled") {
+    return { ok: false, reason: "mode は sync / native / disabled のいずれかです" };
+  }
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("app_settings")
+    .upsert(
+      { key: "schedule_source_mode", value: rawMode },
+      { onConflict: "key" },
+    );
+  if (error) return { ok: false, reason: dbError("モード保存", error) };
+  try {
+    revalidatePath("/");
+  } catch {
+    // best-effort
+  }
+  return { ok: true };
+}
+
+/**
  * Server-action wrappers for `category_links` CRUD — assertAdminResult-gated.
  *
  * 旧設計では `lib/category-links-client.ts` の "use client" 経由で anon
