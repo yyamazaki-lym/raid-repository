@@ -43,5 +43,6 @@ export async function GET(req: NextRequest) {
     scanned: result.scanned,
     inserted: result.inserted,
     updated: result.updated,
+    cleanedCandidates: result.cleanedCandidates,
   });
 }

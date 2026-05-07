@@ -132,10 +132,14 @@ export function PastSessionsSection({
         toast.error("スナップショット失敗: " + (r.reason ?? "原因不明"));
         return;
       }
-      toast.success(
+      const baseMsg =
         r.scanned > 0
           ? `${r.scanned} 件保存（新規 ${r.inserted} / 更新 ${r.updated}）`
-          : "保存対象のセッションなし",
+          : "保存対象のセッションなし";
+      toast.success(
+        r.cleanedCandidates > 0
+          ? `${baseMsg} / 候補日 cleanup ${r.cleanedCandidates}`
+          : baseMsg,
       );
       router.refresh();
     });
@@ -277,9 +281,18 @@ export function PastSessionsSection({
                 対象 {snapshotResult.scanned} 件 / 新規{" "}
                 <strong>{snapshotResult.inserted}</strong> / 更新{" "}
                 <strong>{snapshotResult.updated}</strong>
+                {snapshotResult.cleanedCandidates > 0 && (
+                  <>
+                    {" "}
+                    / 候補日 cleanup{" "}
+                    <strong>{snapshotResult.cleanedCandidates}</strong>
+                  </>
+                )}
               </p>
               <p className="text-muted-foreground text-[10px]">
-                character-sheets の現スケジュール全体を出席情報込みで保存しました。
+                character-sheets の DECISION (確定) 行のみを出席情報込みで保存します。
+                CANDIDATE 行は対象外、過去 snapshot に混入していた CANDIDATE 行は
+                自動 cleanup されます。
               </p>
             </>
           ) : (
