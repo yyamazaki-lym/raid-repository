@@ -57,6 +57,16 @@ export function CommentPopover({
   const [hoverEnabled, setHoverEnabled] = useState(false);
   const [updated, setUpdated] = useState(false);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const remountTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Base UI Popover の DOM が production build で稀に portal close 後に
+  // 残留して trigger の :hover paint と重なって白枠だけ残る現象 (TODO #70
+  // で Strategy G を popover に適用したが production-only で再発、close
+  // 経路依存の race) の対策。open → false 遷移時に key を bump して
+  // <Popover> 自体を強制 remount し、portal / popup / trigger の DOM を
+  // クリーンに作り直す。close transition 完了後 (200ms 後) に bump する
+  // ので連続 hover による再 open 邪魔は最小限。
+  const [remountKey, setRemountKey] = useState(0);
+  const prevOpen = useRef(false);
 
   const fingerprint = useMemo(
     () => commentsFingerprint(comments),
@@ -110,8 +120,20 @@ export function CommentPopover({
   useEffect(() => {
     return () => {
       if (closeTimer.current) clearTimeout(closeTimer.current);
+      if (remountTimer.current) clearTimeout(remountTimer.current);
     };
   }, []);
+
+  useEffect(() => {
+    if (prevOpen.current && !open) {
+      if (remountTimer.current) clearTimeout(remountTimer.current);
+      remountTimer.current = setTimeout(() => {
+        setRemountKey((k) => k + 1);
+        remountTimer.current = null;
+      }, 200);
+    }
+    prevOpen.current = open;
+  }, [open]);
 
   const cancelClose = () => {
     if (closeTimer.current) {
@@ -143,7 +165,7 @@ export function CommentPopover({
     : "relative inline-flex h-5 w-5 items-center justify-center rounded-sm border border-[var(--neon-cyan)]/40 bg-[var(--neon-cyan)]/8 text-[var(--neon-cyan)] transition-colors hover:bg-[var(--neon-cyan)]/15";
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover key={remountKey} open={open} onOpenChange={setOpen}>
       <PopoverTrigger
         {...hoverProps}
         className={triggerClass}

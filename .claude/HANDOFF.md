@@ -69,6 +69,16 @@ _(現在なし)_
 
 直近版のみ列挙。詳細経緯は `src/lib/changelog.ts`、過去版アーカイブは `.claude/done.md`。
 
+- **2.1 (2026-05-07)**: #71 — TODO #70 follow-up: production build のみで残る popover DOM 残留を `<Popover key={remountKey}>` 強制 remount で根絶
+  - **症状継続**: TODO #70 (PR [#29](https://github.com/yyamazaki-lym/raid-repository/pull/29)) で Strategy G を popover/tooltip に適用 → 本番 deploy 後も「ページ更新後 hover → カーソル外移動で白枠だけ残る」継続。条件: hover 経路のみ + click 経路では非発生 + scroll でも残り続け、枠外 click や別ウィンドウ選択で消える。dev preview では完全消失するが **production build のみ** で再発
+  - **真因仮説**: Base UI Popover の `open` controlled prop 切替時、production build で portal close race が起きるか、もしくは trigger button の `:hover` paint が popover close と競合してブラウザの paint optimization で残留。Strategy G が前提とした「CSS exit transition リバウンド」とは別系統 (CSS は撤去済なのに残るので CSS 由来ではない)
+  - **修正** ([src/components/portal/comment-popover.tsx](src/components/portal/comment-popover.tsx)):
+    - `remountKey` state (`useState<number>(0)`) を追加、`<Popover key={remountKey} open={open} onOpenChange={setOpen}>` で key driven な force remount
+    - `prevOpen` ref で open=true→false の遷移を検出する `useEffect`、close transition 完了後 (200ms) に `setRemountKey(k => k + 1)` を呼び出し → React が `<Popover>` ツリー全体を unmount + 新規 mount → portal / popup / trigger の DOM が完全リセット
+    - cleanup の useEffect で `remountTimer` も clearTimeout (アンマウント時の memory leak 防止)
+  - **副作用**: 200ms タイマー 1 つ追加 + reconciler の Popover サブツリー再生成 (6〜10 アイコンの小規模 portal なので GC コスト無視可能)。`hoverProps` (cancelClose / scheduleClose 120ms grace) のロジックは変更なし、UX 等価。連続 hover で cursor が trigger 上に残ったまま remount される場合に再 open される可能性あり (200ms 遅延で発生確率は低、許容)
+  - **TODO #70 との関係**: Strategy G (popover/tooltip の close transition 撤去) は維持。本修正と相補的 (Strategy G で zoom-out リバウンド排除 + remount で DOM 残留排除)
+  - **検証**: `tsc --noEmit` PASS。dev preview で click open → outside click close → 250ms 後 / 650ms 後 (remount timer 完了後) の両時点で `[data-slot="popover-content"]` が DOM から消失することを `preview_eval` で確認、再 click open でも問題なく動作。console error / warning 0 件。dev では DOM 残留が起きないため remount の効果検証は production deploy 後にユーザー側で実機確認予定
 - **2.1 (2026-05-07)**: #70 — スケジュール各員コメント popover の close 時に「白枠だけ残る」現象を Strategy G (CSS exit transition 撤去) で根絶
   - **症状**: スケジュールページ TOP のメンバー名行コメントアイコンに hover → コメント popover 表示 → カーソルを popover / トリガーから外側へ移動した際、中身は消えるが `ring-1 ring-foreground/10` + `shadow-md` の輪郭だけが visible に残るフレームが散発的に発生 (`CommentPopover` の 120ms grace period があるため open/close 頻度が高く、特に発火しやすかった)
   - **真因**: TODO #65 (PR [#22](https://github.com/yyamazaki-lym/raid-repository/pull/22), commit `18a338f`) で `dropdown-menu.tsx` に対して同根のバグを「3 段階ちらつき」として既に修正済みだったが、`popover.tsx` / `tooltip.tsx` には同じ Base UI close 時アニメ (`data-closed:animate-out / fade-out-0 / zoom-out-95`) が残存していた。close transition (~100ms) で zoom スケール 95% への縮小と fade-out 透明化のタイミングずれが visual artifact (枠だけ残るフレーム) を生む現象、TODO #65 と完全に同根
