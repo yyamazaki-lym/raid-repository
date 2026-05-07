@@ -49,6 +49,7 @@ _(現在なし)_
 
 | # | 項目 | 規模 |
 |---|---|---|
+| 72 | **TODO #71 残留**: hover open 経路 (リロード後初回) で close 時に白枠が DOM 残留する症状が継続。**切り分け済**: click open → close は OK / 一度 click を通すと以後 hover/close も OK / **リロード直後の first hover → leave** だけで残留再現。詳細は `.claude/todos/72.md` (これから作成) | 中 |
 | 7 | スマホでのレイアウト崩れ確認 | 中 |
 | 51 | マイクロインタラクション / ユーザビリティ向上。クリック時の press feedback / hover 時の subtle elevation / loading skeleton / focus ring 強化 / toast の出現位置・タイミング微調整 / フォーム入力の即時 validation / 空状態の illustration etc。framer-motion を残す方針なので springy な質感も維持しつつ portal 全体の polish を 1 周。観点リストの作成 + 優先順位付けから | 中 |
 | 11 | ページ全体のパフォーマンス最適化。phase 1-10 完了済、見送り候補あり。詳細: `.claude/todos/11.md` | — |
@@ -69,7 +70,23 @@ _(現在なし)_
 
 直近版のみ列挙。詳細経緯は `src/lib/changelog.ts`、過去版アーカイブは `.claude/done.md`。
 
-- **2.1 (2026-05-07 part3)**: #71 part3 — 残留検知時に `stale.remove()` で物理削除追加 + selector を `:not([data-open])` に絞り込み (part2 デプロイ後も本番白枠継続のため強化)
+- **2.1 (2026-05-07 part3)**: #71 part3 — 残留検知時に `stale.remove()` で物理削除追加 + selector を `:not([data-open])` に絞り込み (part2 デプロイ後も本番白枠継続のため強化) **— 完全解消には至らず、未解決部分を TODO #72 に移管**
+  - **part3 デプロイ後のユーザー報告**: 「クリック後はホバーしても白枠は出なくなった。ページリロード後は、ホバーした状態で外すと白枠が出続ける状態が継続」
+  - **新たな切り分け** (TODO #72 への申し送り):
+    - click open → close: ✅ 残留なし (part3 で修正)
+    - 一度 click 経路を通した後の hover → close: ✅ 残留なし (Base UI 内部状態が click でフル初期化済?)
+    - **リロード直後の first hover → leave**: ❌ 残留継続 (hover-only path の問題)
+  - **真因仮説 (未確定、TODO #72 で調査)**:
+    - React 19 hydration 完了直後の最初の portal mount が不完全な状態で hover trigger される
+    - mouseenter → setOpen(true) 経路で Base UI Popover の internal state が click 経路と異なる初期化を踏む (focus 移動なし、pointer events の event.type 違い等)
+    - portal node が body 直下に持ち上がるタイミングで、初回だけ unmount path の cleanup ref が貼られない race
+  - **次回会話の調査方針** (新規 TODO #72):
+    - production build を `next start` で local 起動して再現確認 (worktree dev では再現不能を継続)
+    - Base UI `@base-ui/react/popover` のソース (`node_modules/@base-ui/react/popover/`) を読み、open/close の internal cleanup 経路で hover-trigger 特殊化があるか確認
+    - 別アプローチ: trigger に `onMouseEnter` で `setOpen(true)` を呼ぶ前に triggerRef.current?.click() を 1 度発火する hack で「click 経路を強制通過」させて初期化を補正する案
+    - または、page mount 時に `MutationObserver` で `document.body` 直下の `[data-slot="popover-content"]:not([data-open])` を常時監視・自動除去する常駐ガード型対策
+    - もしくは hover open そのものを諦めて click open に固定する UX 妥協 (CommentPopover は hover-first 設計だったが、white-frame 残留より click open 体験のほうがマシならトレードオフ)
+  - 以下は part3 までの実装履歴 (技術的な経過記録):
   - **症状継続**: part2 (PR [#31](https://github.com/yyamazaki-lym/raid-repository/pull/31)) デプロイ後も「コメント開いた後にホバー外すと白い枠が出続ける」報告継続。part2 の「DOM 残留検知時のみ remount」では key bump (React tree remount) のみで対応していたが、Base UI の Portal 経由で document.body 直下に植えた node が React 側 unmount 後も物理的に残るケース (React 19 + Vercel Edge build での createPortal cleanup 漏れ race) では効かないと判明
   - **修正** ([src/components/portal/comment-popover.tsx](src/components/portal/comment-popover.tsx)):
     - selector を `[data-slot="popover-content"]` → `[data-slot="popover-content"]:not([data-open])` に絞り込み (open 中の他 popover を誤射しない)
