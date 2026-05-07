@@ -59,16 +59,15 @@ export function CommentPopover({
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const remountTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Base UI Popover の DOM が production build で稀に portal close 後に
-  // 残留して trigger の :hover paint と重なって白枠だけ残る現象 (TODO #70
-  // で Strategy G を popover に適用したが production-only で再発、close
-  // 経路依存の race) の対策。close transition 完了後 (200ms) に portal
-  // node が DOM に残っているかを query で判定し、**残留時のみ** key を
-  // bump して <Popover> 全体を強制 remount → portal / popup / trigger
-  // の DOM をクリーンに作り直す。通常時 (Base UI が portal を unmount
-  // 完了している) は何もしないので、hover 連続反応 (mouseenter で再 open)
-  // を維持できる。常時 remount だと trigger 要素も再生成され mouseenter
-  // が新規発火しなくなり、cursor が trigger 上にあっても再 open しなく
-  // なる UX 劣化が出る (TODO #71 part2 で発覚) ため条件付きに縮退。
+  // 残留して白枠だけ残る現象 (TODO #70 / #71 / part2 でも完全解消できず
+  // ユーザー報告継続) の対策。close transition 完了後 (250ms) に
+  // `[data-slot="popover-content"]:not([data-open])` (= close 状態なのに
+  // DOM に残っている node) を query し、検知時は **stale.remove() で物理
+  // 削除 + key bump で React ツリーも remount** の二段重ねで根絶。:not
+  // ([data-open]) で open 中の他 popover を誤射せず、自分の close path
+  // で発生した残留のみ targeting。通常時 (Base UI が portal を正常
+  // unmount している) は selector がゼロ件でスキップ → trigger 保持 →
+  // hover 連続反応 (mouseenter 再発火) を維持。
   const [remountKey, setRemountKey] = useState(0);
   const prevOpen = useRef(false);
 
@@ -132,15 +131,18 @@ export function CommentPopover({
     if (prevOpen.current && !open) {
       if (remountTimer.current) clearTimeout(remountTimer.current);
       remountTimer.current = setTimeout(() => {
-        const stale =
+        const stales =
           typeof document !== "undefined"
-            ? document.querySelector('[data-slot="popover-content"]')
+            ? document.querySelectorAll(
+                '[data-slot="popover-content"]:not([data-open])',
+              )
             : null;
-        if (stale) {
+        if (stales && stales.length > 0) {
+          stales.forEach((node) => node.remove());
           setRemountKey((k) => k + 1);
         }
         remountTimer.current = null;
-      }, 200);
+      }, 250);
     } else if (open && remountTimer.current) {
       clearTimeout(remountTimer.current);
       remountTimer.current = null;
