@@ -1307,3 +1307,55 @@ BEGIN
     );
   END IF;
 END $$;
+
+-- ---- 13. Hourly cron for native schedule Discord notify ----------------
+-- TODO #2 候補 B (2026-05-08 案 D): Vercel Hobby cron は sub-daily 限定
+-- (日 1 回以下) で、毎時 cron を含む vercel.json は build 前 reject される
+-- (PR #66/#67/#68 の連続 deploy 失敗で確定、PR #69 で daily に revert 済)。
+-- この制約を回避するため、毎時発火を Supabase pg_cron に逃がす。
+--
+-- 役割分担:
+--   * pg_cron: 毎時 0 分 UTC = JST 毎時 0 分発火 (DB 内 scheduler、秒単位精度)
+--   * pg_net.http_get: Vercel route URL に Bearer auth で GET (async)
+--   * vault: CRON_SECRET を暗号化保管 (Vercel env と同値、ユーザーが手動登録)
+--   * route 側 HH gate: getJstHour() === target hour のみ実通知
+--     (`app_settings.native_schedule_discord_notify_hour`、PR #66 実装済)
+--
+-- 運用前提:
+--   1. Supabase Dashboard → SQL Editor で
+--      `SELECT vault.create_secret('<CRON_SECRET 値>', 'cron_notify_native_schedule_bearer');`
+--      を 1 回だけ実行 (本セクション反映の前後どちらでも OK)
+--   2. 本セクション反映で extension 自動 enable + cron job 自動登録
+--   3. 確認: `SELECT * FROM cron.job WHERE jobname = 'notify-native-schedule-hourly';`
+
+CREATE EXTENSION IF NOT EXISTS pg_cron;
+CREATE EXTENSION IF NOT EXISTS pg_net;
+
+-- 既存 job の unschedule (idempotent: jobname 未登録なら no-op)
+DO $$
+BEGIN
+  PERFORM cron.unschedule('notify-native-schedule-hourly');
+EXCEPTION WHEN undefined_function OR undefined_object OR invalid_parameter_value THEN
+  NULL;
+END $$;
+
+-- 毎時 0 分 UTC = JST 毎時 0 分 (JST/UTC は分単位ずれなし)
+SELECT cron.schedule(
+  'notify-native-schedule-hourly',
+  '0 * * * *',
+  $cron$
+    SELECT net.http_get(
+      url := 'https://yurutto-raid-repository.vercel.app/api/cron/notify-native-schedule',
+      headers := jsonb_build_object(
+        'Authorization',
+        'Bearer ' || (
+          SELECT decrypted_secret
+          FROM vault.decrypted_secrets
+          WHERE name = 'cron_notify_native_schedule_bearer'
+          LIMIT 1
+        )
+      ),
+      timeout_milliseconds := 60000
+    );
+  $cron$
+);
