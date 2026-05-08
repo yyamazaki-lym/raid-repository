@@ -38,7 +38,7 @@
 
 | # | 項目 | 規模 |
 |---|---|---|
-| 2 | スケジュール表自前実装 — **phase 1〜4 実装完了 (PR #59)、本番運用検証中**。「保留オペレーション」節の項目 3 (ON/OFF トグル ON 切替) が検証待ち。phase 4 plan で言及された残候補 (`mode==='native'` 時の sync cron skip / DECISION 確定後のリマインダー cron (24h 前 / 開始時) / video / FFLogs 連携整合) は要否未確定、ユーザー判断待ち。設計は `.claude/plans/todo-2-phase-4-abstract-nygaard.md` | 小〜中 |
+| 2 | スケジュール表自前実装 — **phase 1〜4 (PR #59) + 残候補 A (PR #63 sync cron skip) + C (PR #64 video 連携) 実装完了、本番運用検証中**。「保留オペレーション」節の項目 3 (ON/OFF トグル ON 切替) が検証待ち。残候補は B (通知時刻を 12:00 固定 → 任意 HH に変更可能化 + 毎時 cron) のみ、別セッションで実装予定。FFLogs 連携整合は本 TODO から分離して別 TODO 起票予定 (TODO 番号未採番)。設計は `.claude/plans/todo-2-claude-handoff-md-spicy-seahorse.md` (残候補 3 件方針確定) と `.claude/plans/todo-2-c-resilient-truffle.md` (候補 C 実装) | 小〜中 |
 
 ### 📂 カテゴリ詳細ページ (`/category/[slug]`)
 
