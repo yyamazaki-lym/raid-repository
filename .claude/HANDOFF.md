@@ -17,10 +17,10 @@
 
 ## 🔄 保留オペレーション
 
-**TODO #2 close 後の本番運用観察** (2026-05-08):
+**TODO #2 close 後の本番運用観察 + Vercel deploy 障害復旧** (2026-05-08):
 
 1. ⏳ Discord 通知 ON/OFF トグル **現在 OFF**、手動 Bell button で初期検証中。問題なければ ON に戻す
-2. ⏳ 候補 B 本対応 (案 D: Supabase pg_cron) — Vercel Hobby cron sub-daily 制約回避。**Supabase Dashboard 手動操作が必要**:
+2. ⏳ 候補 B 本対応 ([PR #71](https://github.com/yyamazaki-lym/raid-repository/pull/71) — 案 D: Supabase pg_cron): Vercel Hobby cron sub-daily 制約 (PR #69 で daily 暫定 revert 済) を回避するため、毎時 trigger を Supabase pg_cron + pg_net に移管。設計ドキュメント `.claude/plans/todo-2-b-dynamic-moore.md`。当初検討した案 C (GitHub Actions hourly cron) は通常 5–15 min 遅延・ピーク 1h+ で精度不足のため却下、pg_cron は DB 内 scheduler で秒単位精度。**Supabase Dashboard 手動操作が必要**:
    1. SQL Editor で `SELECT vault.create_secret('<Vercel Env の CRON_SECRET と同値>', 'cron_notify_native_schedule_bearer');` を 1 回実行
    2. SQL Editor で `supabase/schema.sql` の追記された **13 章「Hourly cron for native schedule Discord notify」** (extensions + DO block + cron.schedule) を実行
    3. 動作確認: `SELECT * FROM cron.job WHERE jobname = 'notify-native-schedule-hourly';` で job 登録 + 手動 trigger (`SELECT net.http_get(url := 'https://yurutto-raid-repository.vercel.app/api/cron/notify-native-schedule', headers := jsonb_build_object('Authorization', 'Bearer ' || (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'cron_notify_native_schedule_bearer' LIMIT 1)));`) → Vercel route logs で 200 + JSON response 確認
