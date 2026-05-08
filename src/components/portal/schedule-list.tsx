@@ -61,6 +61,7 @@ import type { SessionLogEntry } from "@/lib/schedule/session-logs";
 import type { SessionVideoLink } from "@/lib/server/session-video-link";
 import { NativeAttendancePopover } from "./native-schedule/native-attendance-popover";
 import { SessionStatusToggle } from "./native-schedule/session-status-toggle";
+import { SessionDiscordNotifyButton } from "./native-schedule/session-discord-notify-button";
 
 // Stable reference for the realtime hook's initial param — `[]` inline
 // would be a fresh array on every render and trip the hook's
@@ -1174,11 +1175,19 @@ function SessionRow({
               sync mode (`mode !== "native"`) や非 admin / nativeSessionId 解決
               失敗時は既存 IIFE 経路 (sync 互換の確定 badge / 未確定 dot) を流す。 */}
           {mode === "native" && isAdmin && nativeSessionId ? (
-            <SessionStatusToggle
-              sessionId={nativeSessionId}
-              currentStatus={session.status}
-              displayDate={session.rawDate.split(" ")[0] ?? session.rawDate}
-            />
+            <span className="inline-flex items-center justify-center">
+              <SessionStatusToggle
+                sessionId={nativeSessionId}
+                currentStatus={session.status}
+                displayDate={session.rawDate.split(" ")[0] ?? session.rawDate}
+              />
+              {session.status === "DECISION" && !isPast && (
+                <SessionDiscordNotifyButton
+                  sessionId={nativeSessionId}
+                  displayDate={session.rawDate.split(" ")[0] ?? session.rawDate}
+                />
+              )}
+            </span>
           ) : (() => {
             // TODO #44 (2.1, 2026-04-30): clicking the 確定 cell opens
             // the schedule list URL in the iframe dialog with a

@@ -21,6 +21,12 @@ import { createClient } from "@/lib/supabase/client";
  */
 
 const NATIVE_CHOICE_VALUES_KEY = "native_schedule_choice_values";
+const NATIVE_DISCORD_NOTIFY_ENABLED_KEY =
+  "native_schedule_discord_notify_enabled";
+const NATIVE_DISCORD_NOTIFY_CHANNEL_KEY =
+  "native_schedule_discord_notify_channel_id";
+const NATIVE_DISCORD_NOTIFY_ROLE_KEY =
+  "native_schedule_discord_notify_role_id";
 
 export type NativeMemberRowFull = {
   discord_user_id: string;
@@ -43,11 +49,17 @@ export type NativeAdminAux = {
   allMembers: NativeMemberRowFull[];
   cancelledSessions: NativeCancelledSessionRow[];
   currentChoiceCsv: string | null;
+  /** TODO #2 phase 4: cron auto-notify ON/OFF (default = true)。 */
+  discordNotifyEnabled: boolean;
+  /** TODO #2 phase 4: 通知先 Discord channel ID (空なら通知不能)。 */
+  discordNotifyChannelId: string | null;
+  /** TODO #2 phase 4: mention 対象 role ID (空なら平文)。 */
+  discordNotifyRoleId: string | null;
 };
 
 export async function fetchNativeScheduleAdminAux(): Promise<NativeAdminAux> {
   const supabase = createClient();
-  const [membersRes, cancelledRes, choiceRes] = await Promise.all([
+  const [membersRes, cancelledRes, settingsRes] = await Promise.all([
     supabase
       .from("native_schedule_members")
       .select("discord_user_id, display_name, sort_order, is_active")
@@ -62,15 +74,30 @@ export async function fetchNativeScheduleAdminAux(): Promise<NativeAdminAux> {
       .order("parsed_date", { ascending: false }),
     supabase
       .from("app_settings")
-      .select("value")
-      .eq("key", NATIVE_CHOICE_VALUES_KEY)
-      .maybeSingle(),
+      .select("key, value")
+      .in("key", [
+        NATIVE_CHOICE_VALUES_KEY,
+        NATIVE_DISCORD_NOTIFY_ENABLED_KEY,
+        NATIVE_DISCORD_NOTIFY_CHANNEL_KEY,
+        NATIVE_DISCORD_NOTIFY_ROLE_KEY,
+      ]),
   ]);
+
+  const settingsMap: Record<string, string | null> = {};
+  for (const row of (settingsRes.data ?? []) as Array<{
+    key: string;
+    value: string | null;
+  }>) {
+    settingsMap[row.key] = row.value ?? null;
+  }
 
   return {
     allMembers: (membersRes.data ?? []) as NativeMemberRowFull[],
     cancelledSessions: (cancelledRes.data ?? []) as NativeCancelledSessionRow[],
-    currentChoiceCsv:
-      (choiceRes.data?.value as string | null | undefined) ?? null,
+    currentChoiceCsv: settingsMap[NATIVE_CHOICE_VALUES_KEY] ?? null,
+    discordNotifyEnabled:
+      (settingsMap[NATIVE_DISCORD_NOTIFY_ENABLED_KEY] ?? "true") !== "false",
+    discordNotifyChannelId: settingsMap[NATIVE_DISCORD_NOTIFY_CHANNEL_KEY] ?? null,
+    discordNotifyRoleId: settingsMap[NATIVE_DISCORD_NOTIFY_ROLE_KEY] ?? null,
   };
 }

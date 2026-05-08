@@ -1,149 +1,309 @@
 import "server-only";
 
+import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { fetchAppSetting } from "@/lib/supabase/app-settings";
 
-import { postDiscordMessage, type DiscordEmbed } from "./discord-post";
-
 /**
- * TODO #2 phase 3 (2026-05-08): native スケジュールの 4 イベント
- * (候補日追加 / 確定 / 中止 / 削除) を Discord channel に embed 投稿する dispatcher。
+ * TODO #2 phase 3 + phase 4 (2026-05-08): native スケジュール用 Discord 通知 dispatch。
  *
- * channel ID は `app_settings.discord_schedule_channel_id` (sync mode で取り込み
- * チャンネルとして既登録) を流用。bot token は `DISCORD_BOT_TOKEN` を流用。
+ * 設計の根幹: ユーザーが「DECISION 化や session 作成 trigger の自動通知」を却下、
+ * 自動通知の唯一のパスは「当日 12:00 JST cron」のみ。手動 button は admin が
+ * 任意のタイミングで打てる。詳細は `.claude/plans/todo-2-phase-4-abstract-nygaard.md`。
  *
- * 候補日追加時のみ `DISCORD_NOTIFY_MENTION_ROLE_ID` env が設定されていれば
- * ロール mention を発火する。確定 / 中止 / 削除は mention なし。
+ * - cron 経路: `dispatchNoonNotifyForToday()` が今日 (JST) の DECISION セッションを
+ *   `last_notified_at IS NULL` で絞り、順次 notify。dedup 列で Vercel cron の
+ *   at-least-once retry に対応。
+ * - 手動 button 経路: `notifyNativeScheduleSession({ respectToggle: false,
+ *   respectDedup: false })` で ON/OFF と dedup 両方を bypass、admin が再送可能。
  *
- * いずれの関数も throw しない。失敗は内部で console.warn にとどめ、caller の
- * server action は ok 返却を維持する (fire-and-forget)。
+ * Discord POST は既存 `discord-import.ts` と同じ Bot token + v10 endpoint パターン。
+ * RLS で UPDATE できない anon 経路を避けるため service role client を使用。
  */
 
-export type NativeSessionLike = {
-  id: string;
-  rawDate: string;
-  parsedDate: string;
-  startTime: string;
-  endTime: string;
-  dayOfWeek: string;
-  note: string | null;
-  status: "CANDIDATE" | "DECISION" | "CANCELLED";
+const NOTIFY_ENABLED_KEY = "native_schedule_discord_notify_enabled";
+const NOTIFY_CHANNEL_KEY = "native_schedule_discord_notify_channel_id";
+const NOTIFY_ROLE_KEY = "native_schedule_discord_notify_role_id";
+
+const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
+
+export type DispatchResult =
+  | { ok: true; posted: number; skipped: number }
+  | { ok: false; reason: string };
+
+type NotifySessionInput = {
+  sessionId: string;
+  /** cron path = true (toggle が false なら early return)。manual = false。 */
+  respectToggle: boolean;
+  /** cron path = true (`last_notified_at` を見て dedup)。manual = false。 */
+  respectDedup: boolean;
 };
 
-const COLOR_CANDIDATE = 0x3498db; // 青
-const COLOR_DECISION = 0x2ecc71; // 緑
-const COLOR_CANCELLED = 0xe74c3c; // 赤
-const COLOR_DELETED = 0x95a5a6; // 灰
+type SessionRow = {
+  id: string;
+  raw_date: string;
+  parsed_date: string;
+  start_time: string;
+  end_time: string;
+  day_of_week: string;
+  status: "CANDIDATE" | "DECISION" | "CANCELLED";
+  note: string | null;
+  last_notified_at: string | null;
+};
 
-const FOOTER_TEXT = "Raid Repository";
+type MemberRow = {
+  discord_user_id: string;
+  display_name: string;
+  is_active: boolean;
+};
 
-export async function notifyNativeSessionCreated(
-  s: NativeSessionLike,
-): Promise<void> {
-  const fields: DiscordEmbed["fields"] = [
-    { name: "日時", value: s.rawDate, inline: false },
-  ];
-  if (s.note) {
-    fields.push({ name: "備考", value: s.note, inline: false });
+type AttendanceRow = {
+  session_id: string;
+  discord_user_id: string;
+  symbol: string;
+};
+
+/** 単一セッション通知。cron loop と manual button の共通処理。 */
+export async function notifyNativeScheduleSession(
+  input: NotifySessionInput,
+): Promise<DispatchResult> {
+  const botToken = process.env.DISCORD_BOT_TOKEN?.trim();
+  if (!botToken) {
+    return { ok: false, reason: "DISCORD_BOT_TOKEN 未設定" };
   }
-  const embed: DiscordEmbed = {
-    title: "📅 新しい候補日が追加されました",
-    color: COLOR_CANDIDATE,
-    fields,
-    footer: { text: FOOTER_TEXT },
-    timestamp: new Date().toISOString(),
-  };
 
-  const roleId = process.env.DISCORD_NOTIFY_MENTION_ROLE_ID?.trim();
-  await dispatch({
-    embed,
-    content: roleId ? `<@&${roleId}>` : undefined,
-    allowedMentions: roleId ? { roles: [roleId] } : undefined,
-    eventLabel: "create",
-  });
-}
-
-export async function notifyNativeSessionDecided(
-  s: NativeSessionLike,
-): Promise<void> {
-  await dispatch({
-    embed: {
-      title: "✅ 活動日が確定しました",
-      color: COLOR_DECISION,
-      fields: [{ name: "日時", value: s.rawDate, inline: false }],
-      footer: { text: FOOTER_TEXT },
-      timestamp: new Date().toISOString(),
-    },
-    eventLabel: "decision",
-  });
-}
-
-export async function notifyNativeSessionCancelled(
-  s: NativeSessionLike,
-): Promise<void> {
-  await dispatch({
-    embed: {
-      title: "❌ 活動が中止されました",
-      color: COLOR_CANCELLED,
-      fields: [{ name: "日時", value: s.rawDate, inline: false }],
-      footer: { text: FOOTER_TEXT },
-      timestamp: new Date().toISOString(),
-    },
-    eventLabel: "cancel",
-  });
-}
-
-export async function notifyNativeSessionDeleted(
-  s: NativeSessionLike,
-): Promise<void> {
-  await dispatch({
-    embed: {
-      title: "🗑️ 候補日が削除されました",
-      color: COLOR_DELETED,
-      fields: [{ name: "日時", value: s.rawDate, inline: false }],
-      footer: { text: FOOTER_TEXT },
-      timestamp: new Date().toISOString(),
-    },
-    eventLabel: "delete",
-  });
-}
-
-async function dispatch(args: {
-  embed: DiscordEmbed;
-  content?: string;
-  allowedMentions?: Parameters<typeof postDiscordMessage>[0]["allowedMentions"];
-  eventLabel: string;
-}): Promise<void> {
-  const { embed, content, allowedMentions, eventLabel } = args;
-  let channelId: string | null = null;
-  try {
-    channelId = await fetchAppSetting("discord_schedule_channel_id");
-  } catch (e) {
-    console.warn(
-      `[native-schedule-notify] channel resolve failed (${eventLabel})`,
-      String(e),
-    );
-    return;
-  }
-  if (!channelId) return;
-
-  const result = await postDiscordMessage({
-    channelId,
-    embed,
-    content,
-    allowedMentions,
-  });
-  if (!result.ok) {
-    if (
-      result.reason === "no_token" ||
-      result.reason === "no_channel" ||
-      result.reason === "dry_run"
-    ) {
-      return;
+  if (input.respectToggle) {
+    const enabled = await fetchAppSetting(NOTIFY_ENABLED_KEY);
+    if (enabled === "false") {
+      return { ok: true, posted: 0, skipped: 1 };
     }
+  }
+
+  const channelId = (await fetchAppSetting(NOTIFY_CHANNEL_KEY))?.trim();
+  if (!channelId) {
+    return { ok: false, reason: "通知先チャンネル ID 未設定" };
+  }
+  const roleId = (await fetchAppSetting(NOTIFY_ROLE_KEY))?.trim() ?? null;
+
+  const supabase = createSupabaseServiceRoleClient();
+
+  const { data: sessionData, error: sessionErr } = await supabase
+    .from("native_schedule_sessions")
+    .select(
+      "id, raw_date, parsed_date, start_time, end_time, day_of_week, status, note, last_notified_at",
+    )
+    .eq("id", input.sessionId)
+    .maybeSingle();
+  if (sessionErr) {
+    return { ok: false, reason: `session fetch: ${sessionErr.message}` };
+  }
+  if (!sessionData) {
+    return { ok: false, reason: "セッションが見つかりません" };
+  }
+  const session = sessionData as SessionRow;
+
+  if (input.respectDedup && session.last_notified_at !== null) {
+    return { ok: true, posted: 0, skipped: 1 };
+  }
+
+  const message = await buildMessage(supabase, session, roleId);
+  const postResult = await postToDiscord({
+    botToken,
+    channelId,
+    content: message,
+    roleId,
+  });
+  if (!postResult.ok) {
+    return { ok: false, reason: postResult.reason };
+  }
+
+  const { error: updErr } = await supabase
+    .from("native_schedule_sessions")
+    .update({ last_notified_at: new Date().toISOString() })
+    .eq("id", session.id);
+  if (updErr) {
     console.warn(
-      `[native-schedule-notify] ${eventLabel} failed:`,
-      result.reason,
-      result.detail ?? "",
+      "[native-discord] last_notified_at UPDATE failed:",
+      updErr.message,
     );
+    // Discord post は成功済みなので ok: true で返す (re-notify 二重投稿を許容)。
+  }
+
+  return { ok: true, posted: 1, skipped: 0 };
+}
+
+/** cron entry。今日 (JST) の DECISION セッションを順次 notify。 */
+export async function dispatchNoonNotifyForToday(): Promise<DispatchResult> {
+  const botToken = process.env.DISCORD_BOT_TOKEN?.trim();
+  if (!botToken) {
+    return { ok: false, reason: "DISCORD_BOT_TOKEN 未設定" };
+  }
+
+  const enabled = await fetchAppSetting(NOTIFY_ENABLED_KEY);
+  if (enabled === "false") {
+    return { ok: true, posted: 0, skipped: 0 };
+  }
+
+  const range = computeJstTodayUtcRange();
+
+  const supabase = createSupabaseServiceRoleClient();
+  // parsed_date は timestamptz、JST 上の「今日」を UTC 範囲に換算して比較。
+  const { data, error } = await supabase
+    .from("native_schedule_sessions")
+    .select("id")
+    .eq("status", "DECISION")
+    .gte("parsed_date", range.todayStartUtc)
+    .lt("parsed_date", range.tomorrowStartUtc)
+    .is("last_notified_at", null);
+  if (error) {
+    return { ok: false, reason: `cron select: ${error.message}` };
+  }
+
+  let posted = 0;
+  let skipped = 0;
+  for (const row of (data ?? []) as Array<{ id: string }>) {
+    const r = await notifyNativeScheduleSession({
+      sessionId: row.id,
+      respectToggle: false, // 上で gate 済 (loop 内で再 fetch しない)
+      respectDedup: true,
+    });
+    if (!r.ok) {
+      console.warn("[native-discord] cron notify failed:", row.id, r.reason);
+      continue;
+    }
+    posted += r.posted;
+    skipped += r.skipped;
+  }
+  return { ok: true, posted, skipped };
+}
+
+/**
+ * JST 上の「今日 0:00 〜 明日 0:00」を UTC ISO 文字列で返す。
+ * `parsed_date` (timestamptz) を範囲クエリで比較するため。
+ */
+function computeJstTodayUtcRange(): {
+  todayStartUtc: string;
+  tomorrowStartUtc: string;
+} {
+  const nowJst = new Date(Date.now() + JST_OFFSET_MS);
+  // JST 上の今日 0:00 を「UTC エポック値として扱った ms」
+  const todayJstMidnightAsUtcMs = Date.UTC(
+    nowJst.getUTCFullYear(),
+    nowJst.getUTCMonth(),
+    nowJst.getUTCDate(),
+    0,
+    0,
+    0,
+    0,
+  );
+  // 真の UTC ms に戻すには JST offset を引く
+  const todayStartUtcMs = todayJstMidnightAsUtcMs - JST_OFFSET_MS;
+  const tomorrowStartUtcMs = todayStartUtcMs + 24 * 60 * 60 * 1000;
+  return {
+    todayStartUtc: new Date(todayStartUtcMs).toISOString(),
+    tomorrowStartUtc: new Date(tomorrowStartUtcMs).toISOString(),
+  };
+}
+
+type SupabaseClient = ReturnType<typeof createSupabaseServiceRoleClient>;
+
+async function buildMessage(
+  supabase: SupabaseClient,
+  session: SessionRow,
+  roleId: string | null,
+): Promise<string> {
+  const [membersRes, attendancesRes] = await Promise.all([
+    supabase
+      .from("native_schedule_members")
+      .select("discord_user_id, display_name, is_active")
+      .eq("is_active", true)
+      .order("sort_order", { ascending: true })
+      .order("display_name", { ascending: true }),
+    supabase
+      .from("native_schedule_attendances")
+      .select("session_id, discord_user_id, symbol")
+      .eq("session_id", session.id),
+  ]);
+
+  const members = (membersRes.data ?? []) as MemberRow[];
+  const attendances = (attendancesRes.data ?? []) as AttendanceRow[];
+
+  const symbolBy: Record<string, string> = {};
+  for (const a of attendances) {
+    if (a.symbol && a.symbol.trim()) symbolBy[a.discord_user_id] = a.symbol;
+  }
+
+  const buckets = new Map<string, string[]>();
+  const unanswered: string[] = [];
+  for (const m of members) {
+    const sym = symbolBy[m.discord_user_id];
+    if (sym) {
+      const list = buckets.get(sym) ?? [];
+      list.push(m.display_name);
+      buckets.set(sym, list);
+    } else {
+      unanswered.push(m.display_name);
+    }
+  }
+  const answered = members.length - unanswered.length;
+
+  const lines: string[] = [];
+  const mentionPrefix = roleId ? `<@&${roleId}> ` : "";
+  lines.push(`${mentionPrefix}本日の固定活動予定日です`);
+  lines.push("");
+  lines.push(`📅 ${session.raw_date} (${session.day_of_week})`);
+  lines.push(`🕘 ${session.start_time} 〜 ${session.end_time}`);
+  if (session.note && session.note.trim()) {
+    lines.push(`📝 ${session.note.trim()}`);
+  }
+  lines.push("");
+  lines.push(`出欠 (回答済 ${answered}/${members.length}):`);
+  for (const [sym, names] of buckets) {
+    lines.push(`　${sym}: ${names.join(", ")}`);
+  }
+  if (unanswered.length > 0) {
+    lines.push(`　未回答: ${unanswered.join(", ")}`);
+  }
+
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim();
+  if (siteUrl) {
+    lines.push("");
+    lines.push(siteUrl);
+  }
+
+  return lines.join("\n");
+}
+
+async function postToDiscord(input: {
+  botToken: string;
+  channelId: string;
+  content: string;
+  roleId: string | null;
+}): Promise<{ ok: true } | { ok: false; reason: string }> {
+  try {
+    const res = await fetch(
+      `https://discord.com/api/v10/channels/${input.channelId}/messages`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bot ${input.botToken}`,
+          "Content-Type": "application/json",
+          "User-Agent": "RaidRepositoryBot/0.1",
+        },
+        body: JSON.stringify({
+          content: input.content,
+          allowed_mentions: input.roleId
+            ? { roles: [input.roleId] }
+            : { parse: [] },
+        }),
+        signal: AbortSignal.timeout(15000),
+      },
+    );
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      return { ok: false, reason: `discord ${res.status}: ${body.slice(0, 200)}` };
+    }
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, reason: `discord fetch error: ${String(err)}` };
   }
 }

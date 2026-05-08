@@ -6,13 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 
 import { assertAdminResult, requireDiscordMember } from "./auth";
 import { dbError } from "./db-error";
-import {
-  notifyNativeSessionCancelled,
-  notifyNativeSessionCreated,
-  notifyNativeSessionDecided,
-  notifyNativeSessionDeleted,
-  type NativeSessionLike,
-} from "./native-schedule-discord";
+import { notifyNativeScheduleSession } from "./native-schedule-discord";
 
 /**
  * TODO #2 phase 2-A (2026-05-07): native スケジュール用 Server Actions。
@@ -33,45 +27,12 @@ const SESSION_STATUSES = ["CANDIDATE", "DECISION", "CANCELLED"] as const;
 type NativeSessionStatus = (typeof SESSION_STATUSES)[number];
 
 const NATIVE_CHOICE_VALUES_KEY = "native_schedule_choice_values";
-
-type NativeSessionRow = {
-  id: string;
-  raw_date: string;
-  parsed_date: string;
-  start_time: string;
-  end_time: string;
-  day_of_week: string;
-  note: string | null;
-  status: NativeSessionStatus;
-};
-
-function rowToSessionLike(row: NativeSessionRow): NativeSessionLike {
-  return {
-    id: row.id,
-    rawDate: row.raw_date,
-    parsedDate: row.parsed_date,
-    startTime: row.start_time,
-    endTime: row.end_time,
-    dayOfWeek: row.day_of_week,
-    note: row.note ?? null,
-    status: row.status,
-  };
-}
-
-function pickStatusNotifier(
-  prev: NativeSessionStatus,
-  next: NativeSessionStatus,
-): ((s: NativeSessionLike) => Promise<void>) | null {
-  if (prev === next) return null;
-  if (next === "DECISION" && prev === "CANDIDATE") return notifyNativeSessionDecided;
-  if (next === "CANCELLED") {
-    if (prev === "CANDIDATE" || prev === "DECISION") {
-      return notifyNativeSessionCancelled;
-    }
-  }
-  // DECISION → CANDIDATE / CANCELLED → * は通知しない
-  return null;
-}
+const NATIVE_DISCORD_NOTIFY_ENABLED_KEY =
+  "native_schedule_discord_notify_enabled";
+const NATIVE_DISCORD_NOTIFY_CHANNEL_KEY =
+  "native_schedule_discord_notify_channel_id";
+const NATIVE_DISCORD_NOTIFY_ROLE_KEY =
+  "native_schedule_discord_notify_role_id";
 
 // ---- sessions (admin gate) ------------------------------------------------
 
@@ -112,20 +73,13 @@ export async function createNativeScheduleSessionAction(
       note,
       created_by_id: auth.user.discordId,
     })
-    .select(
-      "id, raw_date, parsed_date, start_time, end_time, day_of_week, note, status",
-    )
+    .select("id")
     .single();
   if (error) {
     if ((error as { code?: string }).code === "23505") {
       return { ok: false, reason: "同じ日時の候補日がすでにあります" };
     }
     return { ok: false, reason: dbError("候補日追加", error) };
-  }
-  try {
-    await notifyNativeSessionCreated(rowToSessionLike(data));
-  } catch (e) {
-    console.warn("[native-schedule] notifyCreated failed", String(e));
   }
   try {
     revalidatePath("/");
@@ -144,26 +98,11 @@ export async function deleteNativeScheduleSessionAction(
   if (!trimmed) return { ok: false, reason: "id が空です" };
 
   const supabase = await createClient();
-  const { data: existing } = await supabase
-    .from("native_schedule_sessions")
-    .select(
-      "id, raw_date, parsed_date, start_time, end_time, day_of_week, note, status",
-    )
-    .eq("id", trimmed)
-    .maybeSingle();
-
   const { error } = await supabase
     .from("native_schedule_sessions")
     .delete()
     .eq("id", trimmed);
   if (error) return { ok: false, reason: dbError("候補日削除", error) };
-  if (existing) {
-    try {
-      await notifyNativeSessionDeleted(rowToSessionLike(existing));
-    } catch (e) {
-      console.warn("[native-schedule] notifyDeleted failed", String(e));
-    }
-  }
   try {
     revalidatePath("/");
   } catch {
@@ -186,34 +125,13 @@ export async function setNativeScheduleSessionStatusAction(
       reason: "status は CANDIDATE / DECISION / CANCELLED のいずれかです",
     };
   }
-  const newStatus = status as NativeSessionStatus;
 
   const supabase = await createClient();
-  const { data: existing } = await supabase
-    .from("native_schedule_sessions")
-    .select(
-      "id, raw_date, parsed_date, start_time, end_time, day_of_week, note, status",
-    )
-    .eq("id", trimmed)
-    .maybeSingle();
-
   const { error } = await supabase
     .from("native_schedule_sessions")
-    .update({ status: newStatus })
+    .update({ status })
     .eq("id", trimmed);
   if (error) return { ok: false, reason: dbError("status 更新", error) };
-
-  if (existing) {
-    const prevStatus = existing.status as NativeSessionStatus;
-    const notify = pickStatusNotifier(prevStatus, newStatus);
-    if (notify) {
-      try {
-        await notify({ ...rowToSessionLike(existing), status: newStatus });
-      } catch (e) {
-        console.warn("[native-schedule] notifyStatus failed", String(e));
-      }
-    }
-  }
   try {
     revalidatePath("/");
   } catch {
@@ -390,6 +308,139 @@ export async function setNativeScheduleChoiceValuesAction(
   } catch {
     // best-effort
   }
+  return { ok: true };
+}
+
+// ---- discord notify settings (admin gate, app_settings keys) -----------
+
+/**
+ * TODO #2 phase 4 (2026-05-08): cron 自動通知の ON/OFF を `app_settings` に保存。
+ * 手動 button (notifyNativeScheduleSessionAction) は本トグルを参照しない。
+ */
+export async function setNativeScheduleDiscordNotifyEnabledAction(
+  enabled: boolean,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("app_settings")
+    .upsert(
+      { key: NATIVE_DISCORD_NOTIFY_ENABLED_KEY, value: enabled ? "true" : "false" },
+      { onConflict: "key" },
+    );
+  if (error) return { ok: false, reason: dbError("通知 ON/OFF 保存", error) };
+  try {
+    revalidatePath("/");
+  } catch {
+    // best-effort
+  }
+  return { ok: true };
+}
+
+export async function setNativeScheduleDiscordNotifyChannelIdAction(
+  channelId: string,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
+
+  const trimmed = channelId.trim();
+  const supabase = await createClient();
+
+  if (!trimmed) {
+    const { error } = await supabase
+      .from("app_settings")
+      .delete()
+      .eq("key", NATIVE_DISCORD_NOTIFY_CHANNEL_KEY);
+    if (error) return { ok: false, reason: dbError("Channel ID 削除", error) };
+    try {
+      revalidatePath("/");
+    } catch {
+      // best-effort
+    }
+    return { ok: true };
+  }
+
+  if (!DISCORD_ID_RE.test(trimmed)) {
+    return { ok: false, reason: "Channel ID は 17〜20 桁の数字です" };
+  }
+
+  const { error } = await supabase
+    .from("app_settings")
+    .upsert(
+      { key: NATIVE_DISCORD_NOTIFY_CHANNEL_KEY, value: trimmed },
+      { onConflict: "key" },
+    );
+  if (error) return { ok: false, reason: dbError("Channel ID 保存", error) };
+  try {
+    revalidatePath("/");
+  } catch {
+    // best-effort
+  }
+  return { ok: true };
+}
+
+export async function setNativeScheduleDiscordNotifyRoleIdAction(
+  roleId: string,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
+
+  const trimmed = roleId.trim();
+  const supabase = await createClient();
+
+  if (!trimmed) {
+    const { error } = await supabase
+      .from("app_settings")
+      .delete()
+      .eq("key", NATIVE_DISCORD_NOTIFY_ROLE_KEY);
+    if (error) return { ok: false, reason: dbError("Role ID 削除", error) };
+    try {
+      revalidatePath("/");
+    } catch {
+      // best-effort
+    }
+    return { ok: true };
+  }
+
+  if (!DISCORD_ID_RE.test(trimmed)) {
+    return { ok: false, reason: "Role ID は 17〜20 桁の数字です" };
+  }
+
+  const { error } = await supabase
+    .from("app_settings")
+    .upsert(
+      { key: NATIVE_DISCORD_NOTIFY_ROLE_KEY, value: trimmed },
+      { onConflict: "key" },
+    );
+  if (error) return { ok: false, reason: dbError("Role ID 保存", error) };
+  try {
+    revalidatePath("/");
+  } catch {
+    // best-effort
+  }
+  return { ok: true };
+}
+
+/**
+ * 手動「Discord 通知」button から呼ばれる。admin gate + ON/OFF と dedup
+ * 両方を bypass で dispatch。再送可能。
+ */
+export async function notifyNativeScheduleSessionAction(
+  sessionId: string,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
+  const trimmed = sessionId?.trim();
+  if (!trimmed) return { ok: false, reason: "sessionId が空です" };
+
+  const r = await notifyNativeScheduleSession({
+    sessionId: trimmed,
+    respectToggle: false,
+    respectDedup: false,
+  });
+  if (!r.ok) return { ok: false, reason: r.reason };
   return { ok: true };
 }
 
