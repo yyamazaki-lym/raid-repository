@@ -131,7 +131,7 @@ export function ScheduleEditFrameDialog({
               key={srcUrl ?? safeUrl}
               src={srcUrl ?? safeUrl}
               title={title}
-              sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-top-navigation-by-user-activation"
+              sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-top-navigation-by-user-activation allow-modals"
               referrerPolicy="no-referrer-when-downgrade"
               className="absolute inset-0 h-full w-full border-0"
             />
