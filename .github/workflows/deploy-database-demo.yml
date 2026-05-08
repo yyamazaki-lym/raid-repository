@@ -28,7 +28,7 @@ jobs:
   deploy-demo:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Skip if SUPABASE_DB_URL_DEMO not configured
         id: guard
