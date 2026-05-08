@@ -53,7 +53,6 @@
 | # | 項目 | 規模 |
 |---|---|---|
 | 73 | **FFLogs 連携 native 拡張** — `src/lib/server/fflogs.ts` の `linkReportsToSessions()` は現状 `schedule_past_sessions` 直読みなので native mode の sessions では FFLogs auto-link が動かない。native sessions 対応への拡張、`schedule_past_session_logs` の sync/native 統合 vs 別テーブル新設の設計議論、`schedule_past_sessions` 直読みからの脱却を含む。TODO #2 から分離 (2026-05-08)。詳細は `.claude/plans/todo-2-claude-handoff-md-spicy-seahorse.md` の「FFLogs 部分の扱い (本 TODO から除外)」節 | 中 |
-| 75 | **sync 出欠回答後の iframe で「日程登録 / コメント登録」ボタンが押せない** — sync スケジュール一覧の〇△× 出欠アイコン click から開く character-sheets 外部フォーム iframe (`ScheduleEditFrameDialog`) で登録系ボタンが click 反応しない。TODO #72 由来 popover DOM 残留 / `finalFocus={false}` 後の focus restore 不完全 / iframe sandbox 属性 (`allow-forms allow-popups` のみで `allow-scripts` 不足の可能性) のいずれが原因かを本番実機で再現観察して特定する。詳細は `.claude/plans/todo-sequential-waterfall.md` | 中 |
 | 77 | **自前作成式 (native) UI を同期式と揃える + 5月重複 row 解消** — native モードのトップ表示に sync 同等の「過去簡易日程 / スケジュールリスト / 過去開催日時」リスト UI (リストから確定操作 / プルダウンで状況入力可) を整備し、`schedule-list.tsx` の `mode` 分岐で出し分ける。併せて `native_schedule_sessions` に入っている **2025 年 5 月 row 2 件のうち重複ノイズ側** (もう片方は開催日程 2 件入りで正) を本番 Supabase SQL Editor から `DELETE` する (実 row id はユーザー判断)。詳細は `.claude/plans/todo-sequential-waterfall.md` | 中〜大 |
 
 ### 📂 カテゴリ詳細ページ (`/category/[slug]`)
@@ -93,6 +92,13 @@
 
 直近版のみ列挙。詳細経緯は `src/lib/changelog.ts`、過去版アーカイブは `.claude/done.md`。
 
+- **2.1 (2026-05-08 part12)**: #75 sync 出欠 iframe 内「日程登録 / コメント登録」ボタンが押せない不具合修正 — クローズ ([PR #78](https://github.com/yyamazaki-lym/raid-repository/pull/78) squash merge `a4346bc`)
+  - **真因**: [src/components/portal/schedule-edit-frame-dialog.tsx:134](src/components/portal/schedule-edit-frame-dialog.tsx) の `<iframe sandbox>` 属性に `allow-modals` トークンが欠落しており、iframe 内 (character-sheets) JS の `alert/confirm/prompt/print` 呼び出しが blocked されていた。character-sheets app の登録系 button (日程登録 / コメント登録 / 削除) は既存登録ありの場合に「上書きしますか?」「削除しますか?」等の `confirm()` を呼ぶ経路があり、blocking で例外発生 → form submit 中断、ユーザーには「button が押せない」と認識されていた
+  - **修正**: sandbox 文字列末尾に `allow-modals` を追加 (1 トークン、1 行)。iframe 内 native modal が動作するようになり register / comment / delete 系 button が反応するようになる
+  - **demo / 本番差の説明**: コードは同一だが character-sheets 側のデータ依存。demo は新規登録なし経路で `confirm()` 不要 → 押せた、本番 Lym は既存データあり経路で `confirm()` 経由 → blocking 発動 = 押せない、で再現環境差が出ていた
+  - **観察フェーズ (前セッション、2026-05-08 part11)**: `~/.claude/plans/todo75-federated-dahl.md` で実機 Claude in Chrome 観察により仮説 A (popover DOM 残留 — `popoverCount=0`) / B (focus restore 不完全 — `activeElement=IFRAME` で正常移動) / C (sandbox `allow-scripts` 不足 — 既に含まれている) / D (dialog overlay 遮蔽 — `topElementAt(button center)=IFRAME`) を全否定し、仮説 E = sandbox `allow-modals` 欠落を新発見・特定
+  - **採らなかった案**: (a) character-sheets app 側で `confirm()` を独自カスタム modal に置換 → portal 外 repo で工数大、(b) dialog header の「新しいタブ」link を促進する UI に変更し iframe 内 form 操作を非推奨化 → UX 後退で却下
+  - **検証**: 本番 deploy 後にユーザー実機 (本番 Lym 0521 以降 row) で「押せる」確認済 (2026-05-08)
 - **2.1 (2026-05-08 part11)**: #74 設定 dialog mode 切替で section 出し分けが即時反映されない不具合修正 — クローズ ([PR #76](https://github.com/yyamazaki-lym/raid-repository/pull/76) squash merge `93ada17`)
   - **真因**: [src/components/portal/settings/schedule-source-mode-section.tsx](src/components/portal/settings/schedule-source-mode-section.tsx) が独自の `mode` useState を持つ一方、parent [src/components/portal/settings-dialog.tsx](src/components/portal/settings-dialog.tsx) の `mode` useState への通知 callback が無く、section の `router.refresh()` は Next.js 16 仕様で Server Component の data refetch のみ実行し Client State (parent useState) は保持するため、parent `mode` が dialog 初回 open 時の値で固まり続ける。結果 `mode === "sync" / "native"` の条件分岐 (settings-dialog.tsx 行 205-249) が永久に更新されず、close → 再 open でしか正常化しなかった
   - **修正**: `ScheduleSourceModeSection` に optional `onModeChange?: (mode: ScheduleSourceMode) => void` prop を追加 (DB 初期 fetch successful path / radio onChange / server action 失敗時の rollback の 4 箇所で callback 呼出)、settings-dialog から `onModeChange={setMode}` を渡して parent state と同期。触る範囲は 2 ファイル / +12 行 / -2 行
