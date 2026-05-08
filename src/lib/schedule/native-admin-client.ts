@@ -27,6 +27,8 @@ const NATIVE_DISCORD_NOTIFY_CHANNEL_KEY =
   "native_schedule_discord_notify_channel_id";
 const NATIVE_DISCORD_NOTIFY_ROLE_KEY =
   "native_schedule_discord_notify_role_id";
+const NATIVE_DISCORD_NOTIFY_HOUR_KEY =
+  "native_schedule_discord_notify_hour";
 
 export type NativeMemberRowFull = {
   discord_user_id: string;
@@ -55,6 +57,8 @@ export type NativeAdminAux = {
   discordNotifyChannelId: string | null;
   /** TODO #2 phase 4: mention 対象 role ID (空なら平文)。 */
   discordNotifyRoleId: string | null;
+  /** TODO #2 候補 B: 通知時刻 (HH 文字列 "0"-"23", default "12")。 */
+  discordNotifyHour: string;
 };
 
 export async function fetchNativeScheduleAdminAux(): Promise<NativeAdminAux> {
@@ -80,6 +84,7 @@ export async function fetchNativeScheduleAdminAux(): Promise<NativeAdminAux> {
         NATIVE_DISCORD_NOTIFY_ENABLED_KEY,
         NATIVE_DISCORD_NOTIFY_CHANNEL_KEY,
         NATIVE_DISCORD_NOTIFY_ROLE_KEY,
+        NATIVE_DISCORD_NOTIFY_HOUR_KEY,
       ]),
   ]);
 
@@ -99,5 +104,6 @@ export async function fetchNativeScheduleAdminAux(): Promise<NativeAdminAux> {
       (settingsMap[NATIVE_DISCORD_NOTIFY_ENABLED_KEY] ?? "true") !== "false",
     discordNotifyChannelId: settingsMap[NATIVE_DISCORD_NOTIFY_CHANNEL_KEY] ?? null,
     discordNotifyRoleId: settingsMap[NATIVE_DISCORD_NOTIFY_ROLE_KEY] ?? null,
+    discordNotifyHour: settingsMap[NATIVE_DISCORD_NOTIFY_HOUR_KEY] ?? "12",
   };
 }
