@@ -1,6 +1,7 @@
 import "server-only";
 import { NextResponse, type NextRequest } from "next/server";
 import { runScheduleSnapshot } from "@/lib/server/schedule-snapshot";
+import { getScheduleSourceMode } from "@/lib/schedule/source-mode";
 
 /**
  * Vercel Cron: snapshot character-sheets attendance into
@@ -29,6 +30,11 @@ export async function GET(req: NextRequest) {
   const headerOk = authHeader === expected || authHeader?.trim() === expected;
   if (!headerOk && !isVercelCron) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+
+  const mode = await getScheduleSourceMode();
+  if (mode !== "sync") {
+    return NextResponse.json({ ok: true, skipped: "mode not sync" });
   }
 
   const result = await runScheduleSnapshot();
