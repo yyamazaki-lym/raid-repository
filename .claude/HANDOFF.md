@@ -41,6 +41,8 @@
 | # | 項目 | 規模 |
 |---|---|---|
 | 73 | **FFLogs 連携 native 拡張** — `src/lib/server/fflogs.ts` の `linkReportsToSessions()` は現状 `schedule_past_sessions` 直読みなので native mode の sessions では FFLogs auto-link が動かない。native sessions 対応への拡張、`schedule_past_session_logs` の sync/native 統合 vs 別テーブル新設の設計議論、`schedule_past_sessions` 直読みからの脱却を含む。TODO #2 から分離 (2026-05-08)。詳細は `.claude/plans/todo-2-claude-handoff-md-spicy-seahorse.md` の「FFLogs 部分の扱い (本 TODO から除外)」節 | 中 |
+| 75 | **sync 出欠回答後の iframe で「日程登録 / コメント登録」ボタンが押せない** — sync スケジュール一覧の〇△× 出欠アイコン click から開く character-sheets 外部フォーム iframe (`ScheduleEditFrameDialog`) で登録系ボタンが click 反応しない。TODO #72 由来 popover DOM 残留 / `finalFocus={false}` 後の focus restore 不完全 / iframe sandbox 属性 (`allow-forms allow-popups` のみで `allow-scripts` 不足の可能性) のいずれが原因かを本番実機で再現観察して特定する。詳細は `.claude/plans/todo-sequential-waterfall.md` | 中 |
+| 77 | **自前作成式 (native) UI を同期式と揃える + 5月重複 row 解消** — native モードのトップ表示に sync 同等の「過去簡易日程 / スケジュールリスト / 過去開催日時」リスト UI (リストから確定操作 / プルダウンで状況入力可) を整備し、`schedule-list.tsx` の `mode` 分岐で出し分ける。併せて `native_schedule_sessions` に入っている **2025 年 5 月 row 2 件のうち重複ノイズ側** (もう片方は開催日程 2 件入りで正) を本番 Supabase SQL Editor から `DELETE` する (実 row id はユーザー判断)。詳細は `.claude/plans/todo-sequential-waterfall.md` | 中〜大 |
 
 ### 📂 カテゴリ詳細ページ (`/category/[slug]`)
 
@@ -52,7 +54,7 @@
 
 | # | 項目 | 規模 |
 |---|---|---|
-| _(現在なし)_ | — | — |
+| 74 | **設定 dialog で mode 切替時に古い表示が残る** — 設定 dialog の「同期式 (sync) / 自前作成式 (native)」スケジュールソースモードを切り替えても、dialog 内に古い mode の section 表示や子 section 内部 state が引き継がれて残る。mode 切替時に dialog 自動 close → 再 open / `<div key={mode}>` で section ツリー強制 remount / 各 section に明示的 reset effect、のいずれかで対応。詳細は `.claude/plans/todo-sequential-waterfall.md` | 小〜中 |
 
 ### 🌐 サイト全体 / 横断 UI
 
@@ -73,7 +75,7 @@
 
 | # | 項目 | 規模 |
 |---|---|---|
-| _(現在なし)_ | — | — |
+| 76 | **schema.sql 更新時に demo seed が本番にも自動挿入 (再発)** — `supabase/schema.sql` 12 章 (行 838-1241) + 13 章 (行 1243-1302) の demo サイト用 sample seed が本番再実行で入る。TODO #8 part C-ii で 12 章に `app_settings.demo_seed_applied='1'` sentinel を入れたが、新章追加 (13 章 など) ごとに再ガード必要で設計上の弱点。「demo only」全体ガード機構として `current_setting('app.is_demo', true)='1'` GUC 判定 / `seed-demo.sql` 別ファイル分離 / Supabase project_id 判定 のいずれかを採用する。詳細は `.claude/plans/todo-sequential-waterfall.md` | 中 |
 
 ## 完了済み TODO
 
