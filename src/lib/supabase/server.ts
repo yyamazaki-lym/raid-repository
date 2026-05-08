@@ -1,4 +1,5 @@
 import { createServerClient } from "@supabase/ssr";
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 
 /**
@@ -61,4 +62,32 @@ export async function createClient() {
       },
     },
   );
+}
+
+/**
+ * Service-role Supabase client. RLS をバイパスして書き込みできる、cookie session
+ * を持たない pure server client。
+ *
+ * 用途:
+ *   - Vercel cron (Discord 通知 / snapshot / import) で anon に降格して
+ *     UPDATE が RLS で拒否されるのを避ける
+ *   - admin gate を server action 側で済ませた後の重い書き込みを一括処理
+ *
+ * 取扱注意: anon ではなく service role の権限なので、呼び出し元で必ず
+ * `assertAdminResult()` か CRON_SECRET 経由 auth を済ませること。
+ */
+export function createSupabaseServiceRoleClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) {
+    throw new Error(
+      "createSupabaseServiceRoleClient: NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY missing",
+    );
+  }
+  return createSupabaseClient(url, key, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+  });
 }

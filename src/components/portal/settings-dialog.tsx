@@ -34,6 +34,7 @@ import { PastSessionsSection } from "./settings/past-sessions-section";
 import { NativeMembersSection } from "./settings/native-members-section";
 import { NativeChoiceValuesSection } from "./settings/native-choice-values-section";
 import { NativeCancelledSessionsSection } from "./settings/native-cancelled-sessions-section";
+import { NativeDiscordNotifySection } from "./settings/native-discord-notify-section";
 import { FflogsSyncSection } from "./settings/fflogs-sync-section";
 import { ChangelogFooter } from "./settings/changelog-footer";
 import { DangerZoneSection } from "./settings/danger-zone-section";
@@ -232,6 +233,16 @@ export function SettingsDialog({ canEdit }: { canEdit: boolean }) {
               canEdit={canEdit}
               cancelledSessions={adminAux?.cancelledSessions ?? []}
               loaded={adminAux !== null}
+              onChanged={() => setAdminAuxTick((t) => t + 1)}
+            />
+          )}
+          {mode === "native" && (
+            <NativeDiscordNotifySection
+              canEdit={canEdit}
+              loaded={adminAux !== null}
+              enabled={adminAux?.discordNotifyEnabled ?? true}
+              channelId={adminAux?.discordNotifyChannelId ?? null}
+              roleId={adminAux?.discordNotifyRoleId ?? null}
               onChanged={() => setAdminAuxTick((t) => t + 1)}
             />
           )}

@@ -462,6 +462,11 @@ CREATE TABLE IF NOT EXISTS public.native_schedule_sessions (
   created_at    timestamptz NOT NULL DEFAULT now(),
   updated_at    timestamptz NOT NULL DEFAULT now()
 );
+-- TODO #2 phase 4 (2026-05-08): Vercel cron at-least-once retry の二重投稿を
+-- 避けるための dedup 列。POST 成功直後に now() で埋める、cron は IS NULL の
+-- 行だけ拾う。手動 button は本列を見ない (admin が再送可能)。
+ALTER TABLE public.native_schedule_sessions
+  ADD COLUMN IF NOT EXISTS last_notified_at timestamptz;
 CREATE INDEX IF NOT EXISTS native_schedule_sessions_date_idx
   ON public.native_schedule_sessions(parsed_date DESC);
 
@@ -1223,10 +1228,11 @@ BEGIN
     ('2026/03/24 (火)', 'M5S 初突入！ボイス確認お願いします',                            'アルファ');
 
   -- ---- 12.12 app_settings ----
-  -- schedule_url の placeholder + sentinel
+  -- schedule_url の placeholder + sentinel + TODO #2 phase 4 native Discord notify defaults
   INSERT INTO public.app_settings (key, value) VALUES
-    ('schedule_url',        'https://character-sheets.appspot.com/schedule/list?key=demoplaceholder'),
-    ('demo_seed_applied',   '1')
+    ('schedule_url',                              'https://character-sheets.appspot.com/schedule/list?key=demoplaceholder'),
+    ('demo_seed_applied',                         '1'),
+    ('native_schedule_discord_notify_enabled',    'true')
   ON CONFLICT (key) DO NOTHING;
 
   RAISE NOTICE 'Demo seed applied — categories=5, links=37, loot_items=18, mitigation_phases=20, mitigation_entries~=60, strategy_docs=5, macros=10, recruit_templates=5, tags=11, past_sessions=18, memos=8.';
