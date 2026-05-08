@@ -211,6 +211,9 @@ async function ScheduleContent() {
   const hasUltimateClear = visibleCategories.some(
     (c) => c.name.startsWith("絶") && c.status === "クリア済",
   );
+  const sessionVideoLinks = nativeResult.ok
+    ? await buildSessionVideoLinkMap(nativeResult.data.sessions)
+    : {};
   const nextResult: NextSessionResult = nativeResult.ok
     ? { ok: true, session: pickNextDecision(nativeResult.data.sessions) }
     : { ok: false, reason: nativeResult.reason };
@@ -225,7 +228,7 @@ async function ScheduleContent() {
       holidays={holidays}
       recruitmentTemplates={recruitmentTemplates}
       recruitmentCategories={recruitmentCategoryOptions}
-      sessionVideoLinks={{}}
+      sessionVideoLinks={sessionVideoLinks}
       sessionLogsByDate={{}}
       hasUltimateClear={hasUltimateClear}
       topTextOverride={null}
