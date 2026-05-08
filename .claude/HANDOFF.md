@@ -92,6 +92,28 @@
 
 直近版のみ列挙。詳細経緯は `src/lib/changelog.ts`、過去版アーカイブは `.claude/done.md`。
 
+- **2.1 (2026-05-08 part14)**: #76 follow-up — Section 11 sample 7 categories も seed-demo.sql に集約 (本番 fork は空 portal で起動) — クローズ ([PR #82](https://github.com/yyamazaki-lym/raid-repository/pull/82) squash merge `bfb3bbf`)
+  - **発端**: PR #80 merge 後にユーザーが本番 Supabase で schema.sql を再実行したところ **7 件の sample categories** (`arcadion-heavy` / `arcadion-cruiser` / `arcadion-lightheavy` / `variant-shokyaku` / `extreme-cloud-of-darkness` / `ultimate-omega-protocol` / `ultimate-futures-rewritten`) が入ったまま、と報告。loot/mitigation/strategy 等の bulk demo data は 0 件 (PR #80 で seed-demo.sql に逃がし済) だが、Section 11 INSERT は schema.sql に残置していたため
+  - **plan ミス**: 元 plan で Section 11 を「`ON CONFLICT DO NOTHING` で害なし、新規 fork ユーザーの動作確認に役立つ」として保持判断していたが、ユーザー認識では sample categories も明確に demo データであり、本番 fork では空 portal の方が望ましい
+  - **修正方針 (ユーザー判断 2026-05-08)**: (1) Section 11 を全面 demo 扱いに格上げ (本番では空 portal、運営者が自分でカテゴリ追加)、(2) schema.sql 側に自動 cleanup DELETE は入れない (削除挙動が暗黙的になり既存運用を壊しうる)、(3) 既に入った 7 件は手動 SQL でユーザー側で削除する運用
+  - **修正**: 旧 Section 11 INSERT (8 行) を schema.sql から削除し placeholder コメントブロックを「Section 11-13a: Sample / demo seed data — MOVED to seed-demo.sql」に拡張。seed-demo.sql 冒頭に **Section 0: Sample seed categories** (7 件 INSERT、`ON CONFLICT (slug) DO NOTHING`) を追加、Section 1 demo bulk seed が Section 0 の 5 件に紐付く流れを維持。schema.sql の seed 系 INSERT は完全消滅 — DDL/RLS/extensions/必須 cron のみの純粋スキーマ定義に
+  - **README.md 更新**: 「Live demo」節を「7 カテゴリ」に修正、「2-2. スキーマ実行」節に「本番 = schema.sql のみで空 portal、運営者が自分で追加」「demo = schema.sql + seed-demo.sql でサンプル 7 カテゴリ + データ一括投入」の明確分岐を callout 化
+  - **本番クリーンアップ用手動 SQL** (Supabase Dashboard SQL Editor で 1 回実行):
+    ```sql
+    DELETE FROM public.categories
+    WHERE slug IN (
+      'arcadion-heavy','arcadion-cruiser','arcadion-lightheavy',
+      'variant-shokyaku','extreme-cloud-of-darkness',
+      'ultimate-omega-protocol','ultimate-futures-rewritten'
+    )
+    AND name IN (
+      '至天の座アルカディア：ヘビー級','至天の座アルカディア：クルーザー級',
+      '至天の座アルカディア：ライトヘビー級','異聞商客物語',
+      '滅暗闇の雲激闘戦','絶オメガ検証戦','絶もうひとつの未来'
+    );
+    ```
+    name 一致 guard あり = ユーザー編集済の name の行は残置 (誤削除防止)。category_links 等の子 row は CASCADE 連動削除のため事前に件数確認推奨
+  - **検証**: `tsc --noEmit` PASS (TS 影響なし、SQL のみの変更)
 - **2.1 (2026-05-08 part13)**: #76 schema.sql の demo seed を seed-demo.sql 別ファイルに分離して本番再実行時の誤挿入を構造的に根治 — クローズ ([PR #80](https://github.com/yyamazaki-lym/raid-repository/pull/80) squash merge `9347746`)
   - **真因**: TODO #8 part C-ii (2026-05-01) で `supabase/schema.sql` Section 12 (demo bulk seed) に `app_settings.demo_seed_applied='1'` sentinel ガードを入れて再実行時の重複挿入は防げていたが、Section 13a (URL ベース NOT EXISTS guard のみ、追加コンテンツ seed) を追加した時点で sentinel に依存しない demo セクションが再発。新章追加時にガードの再実装が必要で「demo only」全体ガード機構が schema.sql に存在しないことが本質的な弱点
   - **修正**: Section 12 (行 838-1242) + Section 13a (行 1243-1310) ~473 行を新規 [supabase/seed-demo.sql](supabase/seed-demo.sql) (489 行、demo project 専用) に物理分離。schema.sql には placeholder コメント (~10 行) を残置。冪等ガード (sentinel + URL NOT EXISTS) は seed-demo.sql 内に温存し demo 再適用時の安全性を維持。schema.sql は 1365 → 904 行 (-461 行)、Section 1〜11 + Section 13b (pg_cron) は完全無改修
