@@ -17,18 +17,16 @@
 
 ## 🔄 保留オペレーション
 
-**TODO #2 phase 3+4 (PR #59) — 本番運用前のチェックリスト** (2026-05-08 進捗):
+**TODO #2 close 後の本番運用観察** (2026-05-08):
 
-1. ✅ Supabase schema 適用済 (`native_schedule_sessions.last_notified_at` 列 + 3 app_settings keys seed)
-2. ✅ settings dialog で通知 channel ID + (任意) role ID 登録済
-3. ⏳ ON/OFF トグル **現在 OFF**、手動 Bell button で初期検証中。問題なければ ON に戻す
-4. ✅ Vercel Dashboard "Crons" に `notify-native-schedule` (`0 3 * * *` UTC = 12:00 JST) 出現確認済
+1. ⏳ Discord 通知 ON/OFF トグル **現在 OFF**、手動 Bell button で初期検証中。問題なければ ON に戻す
+2. ⏳ 候補 B ([PR #66](https://github.com/yyamazaki-lym/raid-repository/pull/66)) 動作確認 — 通知時刻 HH 設定 + 毎時 cron (`0 * * * *`) が想定通り動作するか 1 日後に Vercel Cron Logs で確認 (`skipped: not target hour` 多数 + target hour で 1 通)
 
-(項目 3 を ON に戻したらこの節を `_(現在なし)_` に戻す)
+(項目 1/2 とも完了したらこの節を `_(現在なし)_` に戻す)
 
 ## 📌 次回の作業優先度
 
-未完了 TODO はユーザー選択。残りはほぼ全て中〜大規模 (TODO #2 検証中 / #7 / #51 / #11) の見送り候補。
+未完了 TODO はユーザー選択。残りはほぼ全て中〜大規模 (#7 / #51 / #11) の見送り候補。
 
 ## 未完了 TODO 一覧
 
@@ -38,7 +36,7 @@
 
 | # | 項目 | 規模 |
 |---|---|---|
-| 2 | スケジュール表自前実装 — **phase 1〜4 実装完了 (PR #59)、本番運用検証中**。「保留オペレーション」節の項目 3 (ON/OFF トグル ON 切替) が検証待ち。phase 4 plan で言及された残候補 (`mode==='native'` 時の sync cron skip / DECISION 確定後のリマインダー cron (24h 前 / 開始時) / video / FFLogs 連携整合) は要否未確定、ユーザー判断待ち。設計は `.claude/plans/todo-2-phase-4-abstract-nygaard.md` | 小〜中 |
+| 73 | **FFLogs 連携 native 拡張** — `src/lib/server/fflogs.ts` の `linkReportsToSessions()` は現状 `schedule_past_sessions` 直読みなので native mode の sessions では FFLogs auto-link が動かない。native sessions 対応への拡張、`schedule_past_session_logs` の sync/native 統合 vs 別テーブル新設の設計議論、`schedule_past_sessions` 直読みからの脱却を含む。TODO #2 から分離 (2026-05-08)。詳細は `.claude/plans/todo-2-claude-handoff-md-spicy-seahorse.md` の「FFLogs 部分の扱い (本 TODO から除外)」節 | 中 |
 
 ### 📂 カテゴリ詳細ページ (`/category/[slug]`)
 
