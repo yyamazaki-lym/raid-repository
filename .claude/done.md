@@ -2,6 +2,10 @@
 
 > 各項目の詳細・経緯は `src/lib/changelog.ts` の該当バージョン項目に記載。ここでは番号と版だけ。
 
+## 2.1 (2026-05-08)
+
+- **(TODO #2 完結)**: #2 (PR #63 / #64 / #66) — 自前スケジュール 5 phase + 残候補 A/B/C 完結。FFLogs 部分は TODO #73 に分離。詳細は `src/lib/changelog.ts` の `2.1 (2026-05-08)` entry
+
 ## 2.1 (2026-04-30)
 
 - **part11**: #44 仕上げ (rowIndex=0 sentinel の hash を `#stickyhead` に変更)
