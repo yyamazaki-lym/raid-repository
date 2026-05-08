@@ -71,7 +71,6 @@
 
 | # | 項目 | 規模 |
 |---|---|---|
-| 72 | **TODO #71 残留 (継続)**: 案 D / A / B / E / T / J 全て本番反映後もユーザー実機で「コメント popover 白枠残留」継続。**案 J 進捗**: Claude が demo 環境で rapid 連続 hover race を再現 + case J `{open && <PopoverContent />}` controlled unmount で解消確認 (demo 実機 0 残留)。ただしユーザー実機 (demo + 本番両方) で別シーケンスの残留が継続報告。次回会話で **本番 DevTools 観察** (ハードリフレッシュ確認 + Console 観察スクリプト実行 + 残留 node の outerHTML / data-open / data-closed / display 属性転記) で別系統の真因特定が必要。詳細は `.claude/todos/72.md` | 中 |
 | 7 | スマホでのレイアウト崩れ確認 | 中 |
 | 51 | マイクロインタラクション / ユーザビリティ向上。クリック時の press feedback / hover 時の subtle elevation / loading skeleton / focus ring 強化 / toast の出現位置・タイミング微調整 / フォーム入力の即時 validation / 空状態の illustration etc。framer-motion を残す方針なので springy な質感も維持しつつ portal 全体の polish を 1 周。観点リストの作成 + 優先順位付けから | 中 |
 | 11 | ページ全体のパフォーマンス最適化。phase 1-10 完了済、見送り候補あり。詳細: `.claude/todos/11.md` | — |
