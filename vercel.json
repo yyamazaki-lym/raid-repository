@@ -15,10 +15,6 @@
     {
       "path": "/api/cron/snapshot-schedule",
       "schedule": "50 12 * * *"
-    },
-    {
-      "path": "/api/cron/notify-native-schedule",
-      "schedule": "0 3 * * *"
     }
   ]
 }

@@ -20,7 +20,11 @@
 **TODO #2 close 後の本番運用観察** (2026-05-08):
 
 1. ⏳ Discord 通知 ON/OFF トグル **現在 OFF**、手動 Bell button で初期検証中。問題なければ ON に戻す
-2. ⏳ 候補 B ([PR #66](https://github.com/yyamazaki-lym/raid-repository/pull/66)) 動作確認 — 通知時刻 HH 設定 + 毎時 cron (`0 * * * *`) が想定通り動作するか 1 日後に Vercel Cron Logs で確認 (`skipped: not target hour` 多数 + target hour で 1 通)
+2. ⏳ 候補 B 本対応 (案 D: Supabase pg_cron) — Vercel Hobby cron sub-daily 制約回避。**Supabase Dashboard 手動操作が必要**:
+   1. SQL Editor で `SELECT vault.create_secret('<Vercel Env の CRON_SECRET と同値>', 'cron_notify_native_schedule_bearer');` を 1 回実行
+   2. SQL Editor で `supabase/schema.sql` の追記された **13 章「Hourly cron for native schedule Discord notify」** (extensions + DO block + cron.schedule) を実行
+   3. 動作確認: `SELECT * FROM cron.job WHERE jobname = 'notify-native-schedule-hourly';` で job 登録 + 手動 trigger (`SELECT net.http_get(url := 'https://yurutto-raid-repository.vercel.app/api/cron/notify-native-schedule', headers := jsonb_build_object('Authorization', 'Bearer ' || (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'cron_notify_native_schedule_bearer' LIMIT 1)));`) → Vercel route logs で 200 + JSON response 確認
+   4. 24h 自動運転後: `SELECT jobname, status, return_message, start_time FROM cron.job_run_details WHERE jobname = 'notify-native-schedule-hourly' ORDER BY start_time DESC LIMIT 24;` で発火履歴 + target HH (default 12) 時刻に Discord 投稿 1 件届くか確認 (項目 1 の ON/OFF を ON にした状態で)
 
 (項目 1/2 とも完了したらこの節を `_(現在なし)_` に戻す)
 
