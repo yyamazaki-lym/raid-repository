@@ -17,10 +17,10 @@
 
 ## 🔄 保留オペレーション
 
-**TODO #2 close 後の本番運用観察** (2026-05-08):
+**TODO #2 close 後の本番運用観察 + Vercel deploy 障害復旧** (2026-05-08):
 
 1. ⏳ Discord 通知 ON/OFF トグル **現在 OFF**、手動 Bell button で初期検証中。問題なければ ON に戻す
-2. ⏳ 候補 B ([PR #66](https://github.com/yyamazaki-lym/raid-repository/pull/66)) 動作確認 — 通知時刻 HH 設定 + 毎時 cron (`0 * * * *`) が想定通り動作するか 1 日後に Vercel Cron Logs で確認 (`skipped: not target hour` 多数 + target hour で 1 通)
+2. ⚠️ **HH 設定機能 一時無効化** ([PR #69](https://github.com/yyamazaki-lym/raid-repository/pull/69) で暫定 revert): PR #66 で導入した毎時 cron `0 * * * *` が **Vercel Hobby plan の sub-daily 制限**に違反し 3 連続 deploy 失敗 (PR #67 / PR #68 巻き添えで本番未反映)。PR #69 で `0 3 * * *` に一時 revert したところ deploy が即時復活、PR #67 / PR #68 もまとめて本番反映 (b20c7d6)。**cron 本対応 (案 C: GitHub Actions hourly cron に逃がす) は別セッションで設計・実装予定**。本対応までの暫定運用: `app_settings.native_schedule_discord_notify_hour = 12` のままに保つ (12 以外は cron 発火 hour と一致せず通知が飛ばない)
 
 (項目 1/2 とも完了したらこの節を `_(現在なし)_` に戻す)
 
