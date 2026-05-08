@@ -1232,7 +1232,8 @@ BEGIN
   INSERT INTO public.app_settings (key, value) VALUES
     ('schedule_url',                              'https://character-sheets.appspot.com/schedule/list?key=demoplaceholder'),
     ('demo_seed_applied',                         '1'),
-    ('native_schedule_discord_notify_enabled',    'true')
+    ('native_schedule_discord_notify_enabled',    'true'),
+    ('native_schedule_discord_notify_hour',       '12')
   ON CONFLICT (key) DO NOTHING;
 
   RAISE NOTICE 'Demo seed applied — categories=5, links=37, loot_items=18, mitigation_phases=20, mitigation_entries~=60, strategy_docs=5, macros=10, recruit_templates=5, tags=11, past_sessions=18, memos=8.';
