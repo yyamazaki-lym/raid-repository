@@ -1332,10 +1332,14 @@ CREATE EXTENSION IF NOT EXISTS pg_cron;
 CREATE EXTENSION IF NOT EXISTS pg_net;
 
 -- 既存 job の unschedule (idempotent: jobname 未登録なら no-op)
+-- pg_cron の `cron.unschedule()` は jobname 未登録時に
+-- `XX000 (internal_error)` を投げる版があり、明示列挙では catch 漏れ → DO block abort
+-- → 同 transaction 内の後続 cron.schedule() も skip。idempotent 化が目的なので
+-- WHEN OTHERS で全捕捉する
 DO $$
 BEGIN
   PERFORM cron.unschedule('notify-native-schedule-hourly');
-EXCEPTION WHEN undefined_function OR undefined_object OR invalid_parameter_value THEN
+EXCEPTION WHEN OTHERS THEN
   NULL;
 END $$;
 
