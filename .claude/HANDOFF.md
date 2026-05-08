@@ -17,16 +17,14 @@
 
 ## 🔄 保留オペレーション
 
-**TODO #2 phase 3+4 (PR #59) — 本番運用前のチェックリスト**:
+**TODO #2 phase 3+4 (PR #59) — 本番運用前のチェックリスト** (2026-05-08 進捗):
 
-1. Supabase Dashboard SQL Editor で `supabase/schema.sql` 再実行 (idempotent)
-   - `native_schedule_sessions.last_notified_at` 列追加
-   - 3 app_settings keys seed (`native_schedule_discord_notify_enabled='true'` のみ default 投入、channel/role は未設定のまま)
-2. portal settings dialog (admin) で `通知チャンネル ID` を登録、必要なら `mention ロール ID` も登録
-3. **初期検証中は ON/OFF トグルを OFF にして手動 button のみで動作確認**、問題なければ ON に戻す
-4. Vercel Dashboard → Project → Settings → Crons で `notify-native-schedule` (`0 3 * * *` UTC = 12:00 JST) が新規 entry として表示されることを確認
+1. ✅ Supabase schema 適用済 (`native_schedule_sessions.last_notified_at` 列 + 3 app_settings keys seed)
+2. ✅ settings dialog で通知 channel ID + (任意) role ID 登録済
+3. ⏳ ON/OFF トグル **現在 OFF**、手動 Bell button で初期検証中。問題なければ ON に戻す
+4. ✅ Vercel Dashboard "Crons" に `notify-native-schedule` (`0 3 * * *` UTC = 12:00 JST) 出現確認済
 
-(検証完了後はこの節を `_(現在なし)_` に戻す)
+(項目 3 を ON に戻したらこの節を `_(現在なし)_` に戻す)
 
 ## 📌 次回の作業優先度
 
