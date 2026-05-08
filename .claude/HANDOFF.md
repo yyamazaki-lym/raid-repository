@@ -92,6 +92,15 @@
 
 直近版のみ列挙。詳細経緯は `src/lib/changelog.ts`、過去版アーカイブは `.claude/done.md`。
 
+- **2.1 (2026-05-08 part13)**: #76 schema.sql の demo seed を seed-demo.sql 別ファイルに分離して本番再実行時の誤挿入を構造的に根治 — クローズ ([PR #80](https://github.com/yyamazaki-lym/raid-repository/pull/80) squash merge `9347746`)
+  - **真因**: TODO #8 part C-ii (2026-05-01) で `supabase/schema.sql` Section 12 (demo bulk seed) に `app_settings.demo_seed_applied='1'` sentinel ガードを入れて再実行時の重複挿入は防げていたが、Section 13a (URL ベース NOT EXISTS guard のみ、追加コンテンツ seed) を追加した時点で sentinel に依存しない demo セクションが再発。新章追加時にガードの再実装が必要で「demo only」全体ガード機構が schema.sql に存在しないことが本質的な弱点
+  - **修正**: Section 12 (行 838-1242) + Section 13a (行 1243-1310) ~473 行を新規 [supabase/seed-demo.sql](supabase/seed-demo.sql) (489 行、demo project 専用) に物理分離。schema.sql には placeholder コメント (~10 行) を残置。冪等ガード (sentinel + URL NOT EXISTS) は seed-demo.sql 内に温存し demo 再適用時の安全性を維持。schema.sql は 1365 → 904 行 (-461 行)、Section 1〜11 + Section 13b (pg_cron) は完全無改修
+  - **運用変更**: 本番 fork は `schema.sql` のみ適用 (現状運用と同じ、demo データは入らなくなる)、demo project は `schema.sql` + `seed-demo.sql` の 2 段適用 (新規ステップ)
+  - **README.md 更新**: 「Live demo」節に seed-demo.sql 由来の明記、「2-2. スキーマ実行」節に demo project 専用 callout (本番では実行しない警告) を追加
+  - **採らなかった案**: 案 A (GUC `current_setting('app.is_demo', true)='1'` 判定) — per-session SET 忘れリスク + 各セクションのラッパー保守負担が残るため却下、案 C (Supabase project_id 判定) — SQL から取得不能で hard-code 必要、fragile で却下
+  - **既存環境への影響**: demo project は sentinel 行が既に入っているので seed-demo.sql 再実行で skip、state 変化なし。本番 fork に既に誤挿入された demo データの cleanup は admin の「全データ初期化」(TODO #23) で別途対応する想定 (本 TODO のスコープ外、forward-looking only)
+  - **検証**: `tsc --noEmit` PASS (TS 影響なし、SQL のみの変更)。本番 Supabase での schema.sql 再実行で demo データが追加されないことの実機確認は本 PR merge 後にユーザー側で実施
+  - **設計ドキュメント**: `~/.claude/plans/handoff-md-todo-dreamy-pumpkin.md`
 - **2.1 (2026-05-08 part12)**: #75 sync 出欠 iframe 内「日程登録 / コメント登録」ボタンが押せない不具合修正 — クローズ ([PR #78](https://github.com/yyamazaki-lym/raid-repository/pull/78) squash merge `a4346bc`)
   - **真因**: [src/components/portal/schedule-edit-frame-dialog.tsx:134](src/components/portal/schedule-edit-frame-dialog.tsx) の `<iframe sandbox>` 属性に `allow-modals` トークンが欠落しており、iframe 内 (character-sheets) JS の `alert/confirm/prompt/print` 呼び出しが blocked されていた。character-sheets app の登録系 button (日程登録 / コメント登録 / 削除) は既存登録ありの場合に「上書きしますか?」「削除しますか?」等の `confirm()` を呼ぶ経路があり、blocking で例外発生 → form submit 中断、ユーザーには「button が押せない」と認識されていた
   - **修正**: sandbox 文字列末尾に `allow-modals` を追加 (1 トークン、1 行)。iframe 内 native modal が動作するようになり register / comment / delete 系 button が反応するようになる
