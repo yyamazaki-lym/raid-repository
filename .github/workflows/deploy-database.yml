@@ -1,0 +1,50 @@
+# Deploy Database (Production)
+#
+# Auto-applies supabase/schema.sql to the linked Supabase project on every
+# main push that touches the file. Idempotent (CREATE/ALTER ... IF NOT EXISTS),
+# so repeated runs are safe.
+#
+# Setup (per fork): register a GitHub Actions secret `SUPABASE_DB_URL` with
+# your Supabase Session pooler URI (Settings -> Database -> Connection string
+# -> Session pooler). Forks without the secret skip silently — no red marks.
+#
+# This workflow does NOT run supabase/seed-demo.sql. Demo seed is handled by
+# deploy-database-demo.yml on the upstream repo only.
+
+name: Deploy Database (Production)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/schema.sql'
+      - '.github/workflows/deploy-database.yml'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Skip if SUPABASE_DB_URL not configured
+        id: guard
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          if [ -z "$SUPABASE_DB_URL" ]; then
+            echo "Skipping: SUPABASE_DB_URL secret not set on this fork."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Apply supabase/schema.sql
+        if: steps.guard.outputs.skip == 'false'
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          psql "$SUPABASE_DB_URL" \
+            -v ON_ERROR_STOP=1 \
+            --single-transaction \
+            -f supabase/schema.sql

@@ -153,6 +153,8 @@ FF14 レイド固定向けポータル — スケジュール / 軽減表 / ロ�
 > 📌 **本番 / 実際の固定で使う場合**: schema.sql の実行のみで OK。`/category` は空 portal で起動するので、運営者が固定で扱うコンテンツを「カテゴリ追加」から登録してください。
 >
 > 📌 **demo / モックサイト用にデプロイする場合のみ**: 続けて [`supabase/seed-demo.sql`](./supabase/seed-demo.sql) を同様に SQL Editor で実行すると、demo 表示用のサンプルカテゴリ 7 件 + サンプルデータ (動画 / 軽減 / ロット / 募集文等) が一括投入されます。**本番運用では実行しないでください** — 本番テーブルに demo データが混入します。冪等 (ON CONFLICT / sentinel / URL NOT EXISTS guard) なので demo project への再実行は安全。
+>
+> 📌 **GitHub Actions で自動反映したい場合 (任意)**: `supabase/schema.sql` を更新する main push のたびに自動で SQL Editor 相当の処理を走らせる workflow を同梱しています。Supabase 接続文字列を repo secret に登録するだけで以後手動コピペ不要。手順は **[6. (任意) GitHub Actions で schema 自動反映](#6-任意-github-actions-で-schema-自動反映-5分)** を参照。
 
 #### 2-3. 認証情報を取得
 
@@ -357,11 +359,50 @@ openssl rand -hex 16
 
 ---
 
+### 6. (任意) GitHub Actions で schema 自動反映 (5分)
+
+`supabase/schema.sql` が更新されたとき (upstream `git pull` → `git push`、または自分でスキーマを編集したとき)、Supabase Dashboard で手動コピペする代わりに **push 1 回で自動反映**できます。
+
+**この設定をしないとどうなる?**
+- 設定しなくても今までどおり手動運用できます (Step 2-2 と同じやり方)
+- ただし upstream に schema 拡張が入るたびに SQL Editor で再実行する手間がかかります
+
+#### 6-1. 接続文字列を取得
+
+1. Supabase ダッシュボード → **Settings → Database → Connection string**
+2. **Session pooler** タブを選択 (CI 向け、`postgres.<ref>` ユーザー)
+   - "Direct connection" は Free plan で IPv6 のみ提供で GitHub Actions runner から繋がりません。**Session pooler を必ず選択**
+3. URI 形式の文字列をコピー (`postgresql://postgres.xxxxx:[YOUR-PASSWORD]@aws-0-...:5432/postgres` 形式)
+4. `[YOUR-PASSWORD]` を Step 2-1 で保管した DB パスワードに置換
+
+#### 6-2. GitHub repo secret に登録
+
+1. fork した GitHub repo → **Settings → Secrets and variables → Actions** → **New repository secret**
+2. 入力:
+   | 項目 | 値 |
+   |---|---|
+   | Name | `SUPABASE_DB_URL` |
+   | Value | 6-1 で組み立てた URI 全体 |
+3. **Add secret**
+
+#### 6-3. 動作確認
+
+- これだけです。次回 `supabase/schema.sql` を含む main push が入ると、**Actions** タブで "Deploy Database (Production)" workflow が自動実行され schema が反映されます
+- (任意) Actions タブ → "Deploy Database (Production)" → 右上 **Run workflow** で手動 trigger も可能
+- workflow が失敗した場合は psql のエラーメッセージがログに出るので原因が読めます。`schema.sql` は冪等なので何度でも再 run 可能
+
+> 📌 **secret を登録しなかった fork の挙動**: workflow は冒頭で `Skipping: SUPABASE_DB_URL not set on this fork.` とログを出して即 success 終了します。Actions タブが緑のチェックで埋まる (赤い印は付かない) ので、手動運用を続けたい人は無視して OK。
+
+> 📌 **demo project 用の workflow** (`deploy-database-demo.yml`): upstream 元 (`yyamazaki-lym/raid-repository`) でだけ動かす demo 専用 workflow も同梱しています。各 fork ユーザーには無関係 (secret 未登録で常に skip)。誤って自分の本番プロジェクトに seed-demo.sql を流さないよう、本番 fork では絶対に `SUPABASE_DB_URL_DEMO` secret を登録しないでください。
+
+---
+
 ### スキーマ更新時の対応
 
 将来このリポジトリを `git pull` で最新化した時にスキーマが拡張されている場合：
 
 1. プルしたコードに含まれる新しい `supabase/schema.sql` をそのまま Supabase SQL Editor で再実行
+   - **[Step 6](#6-任意-github-actions-で-schema-自動反映-5分) を設定済の場合は `git push origin main` するだけで GitHub Actions が自動反映**するので SQL Editor は不要です
 2. すべての `CREATE TABLE` / `ALTER TABLE` が `IF NOT EXISTS` / `ADD COLUMN IF NOT EXISTS` で書かれているので**冪等**
 3. 既存データは破壊されません
 

@@ -86,7 +86,7 @@
 
 | # | 項目 | 規模 |
 |---|---|---|
-| 78 | **schema.sql / seed-demo.sql の SQL 投入を自動化** — 現状は Supabase Dashboard SQL Editor で手動コピペ + Run。GitHub Actions + Supabase CLI で `main` push trigger → `supabase db push` 自動実行に置換。fork ユーザー視点では `SUPABASE_DB_URL_PROD` secret 登録 1 回で以後 schema 更新が自動反映、upstream 取り込みも `git pull upstream main` → `git push origin main` で DB 自動同期。demo project には `seed-demo.sql` も自動適用 (本番 fork では走らないようガード)。詳細検討は `~/.claude/plans/handoff-md-todo-dreamy-pumpkin.md` の追加質問節 (TODO #76 follow-up セッション、2026-05-08)。比較案: Vercel Build psql (Preview build 事故リスク + psql binary 依存で却下)、Claude MCP (fork ユーザーに Claude Code 必須は前提強すぎで却下)。実装時は `vault.create_secret` 等の手動 1 回登録は CI 自動化非推奨で残す | 中 |
+| _(現在なし)_ | — | — |
 
 ## 完了済み TODO
 

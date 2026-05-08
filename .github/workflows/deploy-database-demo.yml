@@ -1,0 +1,63 @@
+# Deploy Database (Demo)
+#
+# Auto-applies supabase/schema.sql AND supabase/seed-demo.sql to the demo
+# Supabase project on every main push that touches either file. seed-demo.sql
+# is idempotent (sentinel `app_settings.demo_seed_applied='1'` + URL NOT EXISTS
+# guards), so repeated runs are safe.
+#
+# Setup (upstream repo only): register a GitHub Actions secret
+# `SUPABASE_DB_URL_DEMO` with the demo project's Session pooler URI. Fork
+# repos without the secret skip silently — only the upstream repo (or any
+# other repo intentionally configured for a demo deploy) ever runs this.
+#
+# Production / actual fork repos should NOT register this secret. Their main
+# Supabase is updated via deploy-database.yml (schema.sql only).
+
+name: Deploy Database (Demo)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/schema.sql'
+      - 'supabase/seed-demo.sql'
+      - '.github/workflows/deploy-database-demo.yml'
+  workflow_dispatch:
+
+jobs:
+  deploy-demo:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Skip if SUPABASE_DB_URL_DEMO not configured
+        id: guard
+        env:
+          SUPABASE_DB_URL_DEMO: ${{ secrets.SUPABASE_DB_URL_DEMO }}
+        run: |
+          if [ -z "$SUPABASE_DB_URL_DEMO" ]; then
+            echo "Skipping: SUPABASE_DB_URL_DEMO secret not set."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Apply supabase/schema.sql
+        if: steps.guard.outputs.skip == 'false'
+        env:
+          SUPABASE_DB_URL_DEMO: ${{ secrets.SUPABASE_DB_URL_DEMO }}
+        run: |
+          psql "$SUPABASE_DB_URL_DEMO" \
+            -v ON_ERROR_STOP=1 \
+            --single-transaction \
+            -f supabase/schema.sql
+
+      - name: Apply supabase/seed-demo.sql
+        if: steps.guard.outputs.skip == 'false'
+        env:
+          SUPABASE_DB_URL_DEMO: ${{ secrets.SUPABASE_DB_URL_DEMO }}
+        run: |
+          psql "$SUPABASE_DB_URL_DEMO" \
+            -v ON_ERROR_STOP=1 \
+            --single-transaction \
+            -f supabase/seed-demo.sql
