@@ -28,7 +28,7 @@
 
 ## 📌 次回の作業優先度
 
-未完了 TODO はユーザー選択。残りはほぼ全て中〜大規模 (TODO #7 / #51 / #11) の見送り候補。
+未完了 TODO はユーザー選択。残りはほぼ全て中〜大規模 (TODO #2 検証中 / #7 / #51 / #11) の見送り候補。
 
 ## 未完了 TODO 一覧
 
@@ -38,7 +38,7 @@
 
 | # | 項目 | 規模 |
 |---|---|---|
-| _(現在なし)_ | — | — |
+| 2 | スケジュール表自前実装 — **phase 1〜4 実装完了 (PR #59)、本番運用検証中**。「保留オペレーション」節の項目 3 (ON/OFF トグル ON 切替) が検証待ち。phase 4 plan で言及された残候補 (`mode==='native'` 時の sync cron skip / DECISION 確定後のリマインダー cron (24h 前 / 開始時) / video / FFLogs 連携整合) は要否未確定、ユーザー判断待ち。設計は `.claude/plans/todo-2-phase-4-abstract-nygaard.md` | 小〜中 |
 
 ### 📂 カテゴリ詳細ページ (`/category/[slug]`)
 
@@ -89,7 +89,7 @@
   - **PR #57 由来の auto-notify 削除**: `native-schedule-actions.ts` から PR #57 で仕込んだ `notifyNativeSessionCreated/Decided/Cancelled/Deleted` 4 関数 hook を全削除 (3 actions の `try/catch` ブロックと `rowToSessionLike` / `pickStatusNotifier` helpers を削除、SELECT 列も `id` のみに戻した)。**ファイル削除**: `src/lib/server/discord-post.ts` (PR #57 で新規追加した embed POST 共通ラッパ、149 行) — 新設計では `native-schedule-discord.ts` が直接 fetch する形になり、PR #57 の `dry_run` / `rate_limited` / `discriminated union 戻り値` モデルは廃止。**env 削除** [.env.local.example](.env.local.example): `DISCORD_NOTIFY_DRY_RUN` / `DISCORD_NOTIFY_MENTION_ROLE_ID` を削除 (channel/role は DB の `app_settings` に移動、DRY_RUN は新設計では不要 — channel ID 未設定で no-op)
   - **検証**: `tsc --noEmit` PASS、`npm run lint` 既存 35 errors のみ (新規 0、phase 2-C からの baseline)、schema.sql idempotent (`IF NOT EXISTS` / `ON CONFLICT DO NOTHING`)。本番 DB 連動 (cron 当日 12:00 JST 発火 / 手動 button 投稿 / dedup 動作 / ON/OFF 切替) は本番 deploy 後にユーザー実機で検証 (本ファイル冒頭「保留オペレーション」節のチェックリスト)
   - **設計ドキュメント**: `.claude/plans/todo-2-phase-4-abstract-nygaard.md` (phase 3+4 統合実装の詳細設計)
-  - **本 PR で TODO #2 完結**。phase 1 (mode 切替) / 2-A (server-side 基盤) / 2-B (トップ UI) / 2-C (settings 3 section) / 3+4 (Discord 通知 cron + 手動 + ON/OFF) の 5 phase シリーズが全完了。残作業として「`mode==='native'` のとき既存 sync cron を skip する分岐」「DECISION 確定後のリマインダー cron (24h 前 / 開始時)」「video / FFLogs 連携整合」が phase 4 plan で言及されていたが、実際の運用には不要 (sync 取り込みは sync mode 固有 / リマインダーは cron 通知で代替 / video FFLogs は別 TODO 領域) と判断、未実装で TODO #2 close
+  - **本 PR で 5 phase シリーズの実装は完了** (phase 1 mode 切替 / 2-A server-side 基盤 / 2-B トップ UI / 2-C settings 3 section / 3+4 Discord 通知 cron + 手動 + ON/OFF)。**ただし TODO #2 自体は close ではない** — 本番運用検証 (本ファイル冒頭「保留オペレーション」節 項目 3 = ON/OFF トグル ON 切替) と、phase 4 plan で言及された残候補 (`mode==='native'` 時の既存 sync cron skip / DECISION 確定後のリマインダー cron (24h 前 / 開始時) / video / FFLogs 連携整合) の要否確定がユーザー判断待ち
 - **2.1 (2026-05-07 part9)**: #2 phase 2-C — native スケジュール settings UI 3 section。phase 2-B のトップ UI に対応する管理側 UI を埋めて自前モードを実運用可能にした。新規 server action なし、phase 2-A で実装済の 4 actions (`addNativeScheduleMemberAction` / `updateNativeScheduleMemberAction` / `deleteNativeScheduleMemberAction` / `setNativeScheduleChoiceValuesAction` / `setNativeScheduleSessionStatusAction`) を流用。3 PR シリーズ ([#53](https://github.com/yyamazaki-lym/raid-repository/pull/53) / [#54](https://github.com/yyamazaki-lym/raid-repository/pull/54) / [#55](https://github.com/yyamazaki-lym/raid-repository/pull/55))。
   - **新規 client reader** ([src/lib/schedule/native-admin-client.ts](src/lib/schedule/native-admin-client.ts)): `fetchNativeScheduleAdminAux()` を追加。settings UI が必要とする集合 (`is_active=false` 含む全 member / `status='CANCELLED'` 行 / 凡例 CSV 現値) を 1 回の Promise.all で取得。`fetchNativeSchedule()` は schedule-list が要求する集合に絞っているので別経路、`schedule-url-store.ts` と同じ `"use client" + supabase/client` パターン。RLS は schema.sql 7 章ループの `USING (true)` で SELECT 全面開放されている前提
   - **新規 section** ([src/components/portal/settings/native-members-section.tsx](src/components/portal/settings/native-members-section.tsx)): Discord ID + 表示名 + sort_order + is_active toggle + 削除 を inline 編集。表示名 / sort_order は drafts state で差分時のみ「保存」button 表示、is_active toggle と削除は即時 commit。Discord ID 17–20 桁 regex を client 側で軽 validate (server 側と二重化)
