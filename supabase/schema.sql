@@ -817,31 +817,21 @@ CREATE POLICY "category-backgrounds authenticated insert"
 -- クリーンアップは将来 admin Server Action で対応 (現状は新 path 別名
 -- でアップロード→旧画像はオブジェクトストレージに残置)。
 
--- ---- 11. Sample seed categories (idempotent) -------------------------
--- TODO #8 (2.1, 2026-05-01): 新規 fork 直後の空 portal だと使い方が掴み
--- にくいため、サンプルカテゴリ 5 件を投入する。実コンテンツ名 (現行零式
--- + Variant + Extreme + Ultimate 2 件) を入れて status 4 種類を一通り
--- カバー。ON CONFLICT (slug) DO NOTHING で既存値は上書きしないので、
--- 再実行・編集後の再 apply でも安全。
--- 全データ初期化 (TODO #23) で削除した後に schema.sql を再実行すれば
--- 復活する = リカバリ手段としても機能。
-INSERT INTO public.categories (slug, name, status, sort_order) VALUES
-  ('arcadion-heavy',            '至天の座アルカディア：ヘビー級',         '練習中',   10),
-  ('arcadion-cruiser',          '至天の座アルカディア：クルーザー級',     '練習中',   11),
-  ('arcadion-lightheavy',       '至天の座アルカディア：ライトヘビー級',   '未着手',   12),
-  ('variant-shokyaku',          '異聞商客物語',                           '未着手',   20),
-  ('extreme-cloud-of-darkness', '滅暗闇の雲激闘戦',                       'クリア済', 30),
-  ('ultimate-omega-protocol',   '絶オメガ検証戦',                         '未着手',   40),
-  ('ultimate-futures-rewritten','絶もうひとつの未来',                     '休止中',   50)
-ON CONFLICT (slug) DO NOTHING;
-
 -- ============================================================================
--- Section 12-13a: Demo seed data — MOVED to supabase/seed-demo.sql
+-- Section 11-13a: Sample / demo seed data — MOVED to supabase/seed-demo.sql
 --
--- Demo bulk seed (category enrichment / category_links / loot / mitigation /
--- strategy / app_settings sentinel etc.) and additional demo content links
--- have been moved to a separate file to prevent accidental insertion on
--- production projects (TODO #76, 2.1, 2026-05-XX).
+-- 旧 Section 11 (sample 7 categories) は元々 demo 用途であり、本番 fork
+-- では空 portal の方が望ましい (運営者が自分のカテゴリを追加するだけ) と
+-- ユーザー判断で確定 (TODO #76 follow-up, 2026-05-08)。旧 Section 12
+-- (demo bulk seed) と 13a (追加コンテンツ seed) と合わせて完全に
+-- seed-demo.sql 側へ集約し、本 schema.sql は DDL / RLS / extensions /
+-- 必須 cron のみの純粋なスキーマ定義にする。
+--
+-- 旧 Section 11 INSERT で本番 fork に既に入ってしまった 7 sample
+-- categories の cleanup は **本ファイルでは自動実行しない** (削除挙動が
+-- 暗黙的になり既存運用を壊しうるため)。本 PR 後にユーザー側で必要に
+-- 応じて手動 SQL で削除する想定 (HANDOFF.md の TODO #76 完了エントリに
+-- クリーンアップ用 SQL あり)。
 --
 -- For demo deploy:        apply schema.sql, then seed-demo.sql
 -- For production / fork:  apply schema.sql ONLY
