@@ -33,6 +33,8 @@ const NATIVE_DISCORD_NOTIFY_CHANNEL_KEY =
   "native_schedule_discord_notify_channel_id";
 const NATIVE_DISCORD_NOTIFY_ROLE_KEY =
   "native_schedule_discord_notify_role_id";
+const NATIVE_DISCORD_NOTIFY_HOUR_KEY =
+  "native_schedule_discord_notify_hour";
 
 // ---- sessions (admin gate) ------------------------------------------------
 
@@ -415,6 +417,54 @@ export async function setNativeScheduleDiscordNotifyRoleIdAction(
       { onConflict: "key" },
     );
   if (error) return { ok: false, reason: dbError("Role ID 保存", error) };
+  try {
+    revalidatePath("/");
+  } catch {
+    // best-effort
+  }
+  return { ok: true };
+}
+
+/**
+ * TODO #2 候補 B (2026-05-08): 通知時刻 (HH 0-23, JST) を `app_settings` に保存。
+ * cron は毎時発火し、`dispatchNoonNotifyForToday()` が現在 JST hour と本値を
+ * 比較して一致時のみ実通知。空文字列で DELETE → default '12' に戻る。
+ */
+export async function setNativeScheduleDiscordNotifyHourAction(
+  hour: string,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
+
+  const trimmed = hour.trim();
+  const supabase = await createClient();
+
+  if (!trimmed) {
+    const { error } = await supabase
+      .from("app_settings")
+      .delete()
+      .eq("key", NATIVE_DISCORD_NOTIFY_HOUR_KEY);
+    if (error) return { ok: false, reason: dbError("通知時刻削除", error) };
+    try {
+      revalidatePath("/");
+    } catch {
+      // best-effort
+    }
+    return { ok: true };
+  }
+
+  const n = Number.parseInt(trimmed, 10);
+  if (!Number.isInteger(n) || String(n) !== trimmed || n < 0 || n > 23) {
+    return { ok: false, reason: "通知時刻は 0〜23 の整数です" };
+  }
+
+  const { error } = await supabase
+    .from("app_settings")
+    .upsert(
+      { key: NATIVE_DISCORD_NOTIFY_HOUR_KEY, value: String(n) },
+      { onConflict: "key" },
+    );
+  if (error) return { ok: false, reason: dbError("通知時刻保存", error) };
   try {
     revalidatePath("/");
   } catch {

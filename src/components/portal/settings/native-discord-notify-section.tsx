@@ -10,6 +10,7 @@ import {
   setNativeScheduleDiscordNotifyEnabledAction,
   setNativeScheduleDiscordNotifyChannelIdAction,
   setNativeScheduleDiscordNotifyRoleIdAction,
+  setNativeScheduleDiscordNotifyHourAction,
 } from "@/lib/server/native-schedule-actions";
 
 /**
@@ -32,6 +33,7 @@ export function NativeDiscordNotifySection({
   enabled,
   channelId,
   roleId,
+  hour,
   onChanged,
 }: {
   canEdit: boolean;
@@ -39,6 +41,7 @@ export function NativeDiscordNotifySection({
   enabled: boolean;
   channelId: string | null;
   roleId: string | null;
+  hour: string;
   onChanged: () => void;
 }) {
   const router = useRouter();
@@ -55,6 +58,20 @@ export function NativeDiscordNotifySection({
 
   const channelDirty = channelDraft !== (channelId ?? "");
   const roleDirty = roleDraft !== (roleId ?? "");
+
+  const onChangeHour = (next: string) => {
+    if (next === hour) return;
+    startTransition(async () => {
+      const r = await setNativeScheduleDiscordNotifyHourAction(next);
+      if (!r.ok) {
+        toast.error(r.reason);
+        return;
+      }
+      toast.success(`通知時刻を ${next}:00 JST に変更しました`);
+      onChanged();
+      router.refresh();
+    });
+  };
 
   const onToggle = (next: boolean) => {
     if (next === enabled) return;
@@ -126,15 +143,15 @@ export function NativeDiscordNotifySection({
       </header>
 
       <p className="text-[10px] leading-relaxed text-muted-foreground">
-        当日 12:00 JST に自動で「本日の固定活動予定日です」を Discord に投稿します。
+        当日の指定時刻 (JST) に自動で「本日の固定活動予定日です」を Discord に投稿します。
         手動 button (確定列の Bell icon) は ON/OFF と無関係に常時動作します。
       </p>
 
       <div className="flex items-center justify-between gap-2 rounded-md border border-border/30 bg-secondary/20 px-3 py-2">
         <div className="flex flex-col gap-0.5">
-          <span className="text-xs">当日昼の自動通知</span>
+          <span className="text-xs">当日の自動通知</span>
           <span className="font-mono text-[9px] text-muted-foreground/60">
-            {enabled ? "ON (12:00 JST cron が動作)" : "OFF (cron 停止)"}
+            {enabled ? `ON (${String(parseInt(hour, 10)).padStart(2, "0")}:00 JST cron が動作)` : "OFF (cron 停止)"}
           </span>
         </div>
         <label className="inline-flex cursor-pointer items-center gap-2">
@@ -149,6 +166,27 @@ export function NativeDiscordNotifySection({
             {enabled ? "ON" : "OFF"}
           </span>
         </label>
+      </div>
+
+      <div className="flex items-center justify-between gap-2 rounded-md border border-border/30 bg-secondary/20 px-3 py-2">
+        <div className="flex flex-col gap-0.5">
+          <span className="text-xs">通知時刻 (JST)</span>
+          <span className="font-mono text-[9px] text-muted-foreground/60">
+            毎時 cron が発火し、選択時刻のみ Discord に投稿
+          </span>
+        </div>
+        <select
+          value={hour}
+          disabled={!canEdit || !loaded || pending}
+          onChange={(e) => onChangeHour(e.target.value)}
+          className="h-8 rounded-md border border-border/40 bg-background px-2 font-mono text-xs"
+        >
+          {Array.from({ length: 24 }, (_, i) => (
+            <option key={i} value={String(i)}>
+              {String(i).padStart(2, "0")}:00
+            </option>
+          ))}
+        </select>
       </div>
 
       <div className="flex flex-col gap-1.5">

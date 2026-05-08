@@ -23,8 +23,10 @@ import { fetchAppSetting } from "@/lib/supabase/app-settings";
 const NOTIFY_ENABLED_KEY = "native_schedule_discord_notify_enabled";
 const NOTIFY_CHANNEL_KEY = "native_schedule_discord_notify_channel_id";
 const NOTIFY_ROLE_KEY = "native_schedule_discord_notify_role_id";
+const NOTIFY_HOUR_KEY = "native_schedule_discord_notify_hour";
 
 const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
+const DEFAULT_NOTIFY_HOUR = 12;
 
 export type DispatchResult =
   | { ok: true; posted: number; skipped: number }
@@ -143,6 +145,17 @@ export async function dispatchNoonNotifyForToday(): Promise<DispatchResult> {
     return { ok: true, posted: 0, skipped: 0 };
   }
 
+  // TODO #2 候補 B (2026-05-08): cron は毎時発火 (`0 * * * *`)、
+  // `app_settings.native_schedule_discord_notify_hour` (default '12') と
+  // 現在 JST hour が一致するときのみ実通知。dedup (`last_notified_at`) は
+  // 不変なので、同日内の重複発火は notifyNativeScheduleSession 側で抑止。
+  const hourRaw = await fetchAppSetting(NOTIFY_HOUR_KEY);
+  const targetHour = parseHour(hourRaw);
+  const nowJstHour = getJstHour();
+  if (nowJstHour !== targetHour) {
+    return { ok: true, posted: 0, skipped: 0 };
+  }
+
   const range = computeJstTodayUtcRange();
 
   const supabase = createSupabaseServiceRoleClient();
@@ -174,6 +187,17 @@ export async function dispatchNoonNotifyForToday(): Promise<DispatchResult> {
     skipped += r.skipped;
   }
   return { ok: true, posted, skipped };
+}
+
+function getJstHour(now: Date = new Date()): number {
+  return new Date(now.getTime() + JST_OFFSET_MS).getUTCHours();
+}
+
+function parseHour(raw: string | null): number {
+  if (!raw) return DEFAULT_NOTIFY_HOUR;
+  const n = Number.parseInt(raw, 10);
+  if (!Number.isInteger(n) || n < 0 || n > 23) return DEFAULT_NOTIFY_HOUR;
+  return n;
 }
 
 /**
