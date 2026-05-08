@@ -87,7 +87,7 @@
 
 | # | 項目 | 規模 |
 |---|---|---|
-| 76 | **schema.sql 更新時に demo seed が本番にも自動挿入 (再発)** — `supabase/schema.sql` 12 章 (行 838-1241) + 13 章 (行 1243-1302) の demo サイト用 sample seed が本番再実行で入る。TODO #8 part C-ii で 12 章に `app_settings.demo_seed_applied='1'` sentinel を入れたが、新章追加 (13 章 など) ごとに再ガード必要で設計上の弱点。「demo only」全体ガード機構として `current_setting('app.is_demo', true)='1'` GUC 判定 / `seed-demo.sql` 別ファイル分離 / Supabase project_id 判定 のいずれかを採用する。詳細は `.claude/plans/todo-sequential-waterfall.md` | 中 |
+| _(現在なし)_ | — | — |
 
 ## 完了済み TODO
 
