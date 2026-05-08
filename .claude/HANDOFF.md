@@ -17,11 +17,20 @@
 
 ## 🔄 保留オペレーション
 
-_(現在なし)_
+**TODO #2 phase 3+4 (PR #59) — 本番運用前のチェックリスト**:
+
+1. Supabase Dashboard SQL Editor で `supabase/schema.sql` 再実行 (idempotent)
+   - `native_schedule_sessions.last_notified_at` 列追加
+   - 3 app_settings keys seed (`native_schedule_discord_notify_enabled='true'` のみ default 投入、channel/role は未設定のまま)
+2. portal settings dialog (admin) で `通知チャンネル ID` を登録、必要なら `mention ロール ID` も登録
+3. **初期検証中は ON/OFF トグルを OFF にして手動 button のみで動作確認**、問題なければ ON に戻す
+4. Vercel Dashboard → Project → Settings → Crons で `notify-native-schedule` (`0 3 * * *` UTC = 12:00 JST) が新規 entry として表示されることを確認
+
+(検証完了後はこの節を `_(現在なし)_` に戻す)
 
 ## 📌 次回の作業優先度
 
-未完了 TODO はユーザー選択。残りはほぼ全て中〜大規模 (TODO #2 phase 2-B/2-C/3/4 / #7 / #51 / #11) の見送り候補。
+未完了 TODO はユーザー選択。残りはほぼ全て中〜大規模 (TODO #7 / #51 / #11) の見送り候補。
 
 ## 未完了 TODO 一覧
 
@@ -31,7 +40,7 @@ _(現在なし)_
 
 | # | 項目 | 規模 |
 |---|---|---|
-| 2 | スケジュール表自前実装 — **phase 1 / 2-A / 2-B / 2-C / 3 完了 (2026-05-08)**: 3 モード切替 (`sync` / `native` / `disabled`) インフラ + native 用テーブル 3 件 schema + 8 server actions + self-row RLS + native トップ UI (admin 候補日追加 dialog + 本人出欠入力 popover + admin status toggle) + native settings UI (members CRUD + 凡例 CSV editor + CANCELLED 復帰) + Discord 通知 4 イベント (候補日追加 / 確定 / 中止 / 削除、ロール mention env + DRY_RUN env)。**残 phase**: 4 = リマインダー cron + 既存 sync 取り込みの native mode 分岐 + portal settings UI からの Discord 通知 ON/OFF トグル (default ON)。設計は `.claude/plans/todo-dazzling-locket.md` (全体) / `todo-2-phase-2-virtual-panda.md` (2-A) / `todo-2-phase-2-b-resilient-seal.md` (2-B) / `todo-2-phase-2-c-enchanted-kurzweil.md` (2-C) / `todo-2-phase-3-jazzy-pelican.md` (3) | 中 |
+| _(現在なし)_ | — | — |
 
 ### 📂 カテゴリ詳細ページ (`/category/[slug]`)
 
@@ -70,25 +79,19 @@ _(現在なし)_
 
 直近版のみ列挙。詳細経緯は `src/lib/changelog.ts`、過去版アーカイブは `.claude/done.md`。
 
-- **2.1 (2026-05-08 part10)**: #2 phase 3 — native スケジュール Discord 通知 4 イベント。phase 2-A で実装済の 8 server actions のうち session ライフサイクル系 3 (`createNativeScheduleSessionAction` / `setNativeScheduleSessionStatusAction` / `deleteNativeScheduleSessionAction`) に通知 hook を仕込んで、`app_settings.discord_schedule_channel_id` (sync mode で取り込み channel として既登録) を流用して embed POST する。bot token は既存 `DISCORD_BOT_TOKEN` を流用、portal で初の Discord **投稿** 経路。PR [#57](https://github.com/yyamazaki-lym/raid-repository/pull/57)。
-  - **新規 [src/lib/server/discord-post.ts](src/lib/server/discord-post.ts)**: POST 共通ラッパ。timeout 15s + `AbortSignal.timeout(15000)` (取り込み path と同パターン) + 429 で `retry_after` 秒待って 1 回だけ retry + `DISCORD_NOTIFY_DRY_RUN=true` で fetch せず `console.info` で payload log + `no_token` / `no_channel` / `dry_run` / `rate_limited` / `discord_error` の discriminated union 戻り値。**throw しない設計**で caller は `result.ok` で判定する。`allowed_mentions` を引数で受け取れる shape (`DiscordPostInput.allowedMentions`) で role mention 確実発火を可能にする
-  - **新規 [src/lib/server/native-schedule-discord.ts](src/lib/server/native-schedule-discord.ts)**: 4 関数 (`notifyNativeSessionCreated/Decided/Cancelled/Deleted`)。色は `0x3498DB` 青 / `0x2ECC71` 緑 / `0xE74C3C` 赤 / `0x95A5A6` 灰、日時 field は `raw_date` ("2026/05/12(月) 22:00~0:00") そのまま、`note` があれば備考 field 追加。`fetchAppSetting("discord_schedule_channel_id")` を内部で解決 (`React.cache` メモ化済)。`channelId` 未設定なら no-op 早期 return。**候補日追加のみ** `process.env.DISCORD_NOTIFY_MENTION_ROLE_ID?.trim()` を読んで `<@&{roleId}>` + `allowed_mentions: { roles: [roleId] }` を送る。確定 / 中止 / 削除は mention なし固定
-  - **編集 [src/lib/server/native-schedule-actions.ts](src/lib/server/native-schedule-actions.ts)**:
-    - (a) `createNativeScheduleSessionAction`: SELECT 列を `id` のみから `id, raw_date, parsed_date, start_time, end_time, day_of_week, note, status` に拡張、INSERT 直後 + `revalidatePath("/")` 前に `notifyNativeSessionCreated`
-    - (b) `setNativeScheduleSessionStatusAction`: UPDATE **前** に元 row を `.maybeSingle()` で SELECT、UPDATE 後に `pickStatusNotifier(prev, next)` で遷移判定: `CANDIDATE → DECISION` = decided, `CANDIDATE/DECISION → CANCELLED` = cancelled、**`DECISION → CANDIDATE` (確定取り消し) と `CANCELLED → *` (中止取り消し) は通知なし**
-    - (c) `deleteNativeScheduleSessionAction`: DELETE **前** に SELECT で row データ保持 (`.maybeSingle()`)、DELETE 成功後 `notifyNativeSessionDeleted(savedRow)`、SELECT 0 row なら通知 skip して `{ ok: true }` 返却 (現状動作維持)
-    - 通知失敗は `try { await notifyX(...) } catch { console.warn(...) }` で握りつぶし、action は ok 返却維持。helper `rowToSessionLike(row)` + `pickStatusNotifier(prev, next)` を file 上部に追加
-  - **編集 [.env.local.example](.env.local.example)**: `DISCORD_NOTIFY_DRY_RUN` (dev 専用、本番未設定) + `DISCORD_NOTIFY_MENTION_ROLE_ID` (任意、空なら mention なし) を追記
-  - **schema 変更なし**。RLS / Realtime / トリガーいずれも触らない
-  - **ユーザー判断確定事項** (本セッション AskUserQuestion 4 つで質問):
-    - mention 戦略: ロール mention env 指定 (案 1: なし / 案 2: @everyone / 案 3: env 指定の 3 択中 案 3 採択)
-    - `CANCELLED → CANDIDATE/DECISION` 復帰通知: しない (誤操作の戻し / リハビリ操作で誤発火するノイズ回避)
-    - DRY_RUN env: 導入する (dev で本番 channel 誤投稿防止、`DEV_AUTH_BYPASS` と同じ dev-only 運用)
-    - 通知範囲: session 4 イベントのみ (attendance update / member CRUD / 凡例編集は phase 3 範囲外、phase 4 以降で再検討)
-  - **検証**: `tsc --noEmit` PASS。worktree dev preview (`DEV_AUTH_BYPASS=true` + `DISCORD_NOTIFY_DRY_RUN=true` + main repo `node_modules` junction + main repo `.env.local` コピー) で sync mode が完全回帰なし、console error 0 を確認。DB 連動 (4 イベント実投稿) は本番 channel 投稿のため phase 2 シリーズと同じく **本番 deploy 後にユーザー実機で 4 イベント検証予定** (候補日追加 = 青 + ロール mention / DECISION = 緑 / CANCELLED = 赤 / 削除 = 灰 / CANCELLED 復帰 = 通知 0 / Vercel logs に `[discord-post]` error なし)
-  - **既存資産の流用**: [discord-schedule.ts:55-119](src/lib/server/discord-schedule.ts) の fetch headers (`Authorization: Bot ${token}` / `User-Agent: RaidRepositoryBot/0.1` / `AbortSignal.timeout(15000)`) パターン / [discord-import.ts:165-193](src/lib/server/discord-import.ts) の `text().catch(() => "").slice(0, 200)` エラー詳細切り詰め / [app-settings.ts:61-92](src/lib/supabase/app-settings.ts) の `fetchAppSetting` 流用
-  - **設計ドキュメント**: `.claude/plans/todo-2-phase-3-jazzy-pelican.md`。phase 4 起票時はこのファイルの「phase 4 で実施」節と plan の 「現状の OFF 経路」「設定でオフにできるか」議論を参照
-  - **phase 4 で実施 (本セッション 範囲外、別セッション)**: (1) `mode === "native"` のとき [discord-schedule.ts:55](src/lib/server/discord-schedule.ts) の cron 取り込みを skip する分岐 (1 行 early return) / (2) **portal settings UI から Discord 通知を ON/OFF できる toggle** — `app_settings.native_schedule_discord_notify_enabled` (`'true'|'false'`、default ON) + `dispatch()` 冒頭で early return + `src/components/portal/settings/` に新 section 追加、phase 2-C 凡例 section と同じ即時保存パターン / (3) DECISION 確定後のリマインダー cron (24h 前 / 当日 / 開始時) / (4) video / FFLogs 連携整合
+- **2.1 (2026-05-08 part10)**: #2 phase 3+4 (TODO #2 完結) — native スケジュール Discord 通知。設計は単一 PR で phase 3 (通知 dispatch + 手動 button) と phase 4 (cron + ON/OFF + 設定 UI) を一括実装。**設計上の重要点**: 当初 phase 3 設計の「DECISION 遷移 / session 作成時の auto-notify 4 イベント」はユーザーが「自動 trigger は良くない、手動なら良い、自動は当日 12:00 JST のみ」と却下したため**実装しない**。自動通知の唯一のパスは **当日 12:00 JST cron** (`/api/cron/notify-native-schedule`)、手動 Bell button は ON/OFF と無関係に常時動作、ON/OFF トグルは cron path のみ gate。PR [#59](https://github.com/yyamazaki-lym/raid-repository/pull/59)。
+  - **新規** [src/lib/server/native-schedule-discord.ts](src/lib/server/native-schedule-discord.ts): dispatch module (`notifyNativeScheduleSession({ sessionId, respectToggle, respectDedup })` + `dispatchNoonNotifyForToday()`)。Discord API v10 endpoint 直接 fetch (Bot token + `User-Agent: RaidRepositoryBot/0.1` + `AbortSignal.timeout(15000)`)、`allowed_mentions: { roles: [roleId] }` で role mention のみ parse 許可 (`@here` / 個別 user の暴発防止)、role ID 未設定なら mention 無し平文。メッセージ format は `<@&{roleId}> 本日の固定活動予定日です` + `📅 raw_date` + `🕘 start~end` + `📝 note` + 出欠集計 (○/△/×/未回答 別)
+  - **新規** [src/app/api/cron/notify-native-schedule/route.ts](src/app/api/cron/notify-native-schedule/route.ts): cron route。auth は `Authorization: Bearer ${CRON_SECRET}` OR `x-vercel-cron` header、`runtime: 'nodejs'` / `dynamic: 'force-dynamic'` / `maxDuration: 60`。`native_schedule_discord_notify_enabled='false'` なら `{ ok: true, skipped: 'disabled' }` 即返却。`vercel.json` に `{ path: '/api/cron/notify-native-schedule', schedule: '0 3 * * *' }` (UTC 03:00 = JST 12:00) を追加
+  - **新規** [src/components/portal/native-schedule/session-discord-notify-button.tsx](src/components/portal/native-schedule/session-discord-notify-button.tsx): 手動 Bell button。`schedule-list.tsx` の確定セルで `mode === 'native' && isAdmin && status === 'DECISION' && !isPast && nativeSessionId` の 5 条件 AND で SessionStatusToggle 隣に mount。click → confirm → `notifyNativeScheduleSessionAction(sessionId)` → toast。`respectToggle:false, respectDedup:false` で ON/OFF 無関係 + 再送可能
+  - **新規** [src/components/portal/settings/native-discord-notify-section.tsx](src/components/portal/settings/native-discord-notify-section.tsx): settings UI 1 section に 3 controls (ON/OFF toggle / channel ID input / role ID input)。phase 2-C `native-choice-values-section.tsx` と同じ即時保存パターン (`useTransition` + parent-sync `useEffect` + toast + `onChanged` + `router.refresh()`)、両 ID は `/^\d{17,20}$/` で client validate (server 側と二重化)、空保存で row delete
+  - **schema 追加** [supabase/schema.sql](supabase/schema.sql): `native_schedule_sessions.last_notified_at timestamptz` 列 + 3 app_settings keys seed (`native_schedule_discord_notify_enabled='true'` のみ default ON、channel/role は seed なし)。dedup 列の必要性は **Vercel cron at-least-once delivery** で Discord 5xx retry の二重送信を防ぐため、cron path で `last_notified_at IS NULL` で絞り、POST 成功後に `now()` で UPDATE。手動 button は dedup を無視
+  - **service role 抽出** [src/lib/supabase/server.ts](src/lib/supabase/server.ts): `createServiceRoleClient()` を export 化。cron route は Vercel 側で実行されるため cookie session が無く anon 扱いとなり `last_notified_at` UPDATE が RLS で拒否される、よって service role 必須。manual button 経路でも統一して service role を使い、認可は server action 側の `assertAdminResult` で二重化
+  - **server actions 4 個追加** [src/lib/server/native-schedule-actions.ts](src/lib/server/native-schedule-actions.ts): `setNativeScheduleDiscordNotifyEnabledAction` / `setNativeScheduleDiscordNotifyChannelIdAction` / `setNativeScheduleDiscordNotifyRoleIdAction` (全て admin gate + `upsert` with `onConflict: 'key'` + 空文字 DELETE) + `notifyNativeScheduleSessionAction` (manual button entry)
+  - **adminAux 拡張** [src/lib/schedule/native-admin-client.ts](src/lib/schedule/native-admin-client.ts): `fetchNativeScheduleAdminAux()` の `Promise.all` に 3 keys 取得追加、`NativeAdminAux` 型に `discordNotifyEnabled: boolean` (default `true`) / `discordNotifyChannelId: string \| null` / `discordNotifyRoleId: string \| null` を追加
+  - **PR #57 由来の auto-notify 削除**: `native-schedule-actions.ts` から PR #57 で仕込んだ `notifyNativeSessionCreated/Decided/Cancelled/Deleted` 4 関数 hook を全削除 (3 actions の `try/catch` ブロックと `rowToSessionLike` / `pickStatusNotifier` helpers を削除、SELECT 列も `id` のみに戻した)。**ファイル削除**: `src/lib/server/discord-post.ts` (PR #57 で新規追加した embed POST 共通ラッパ、149 行) — 新設計では `native-schedule-discord.ts` が直接 fetch する形になり、PR #57 の `dry_run` / `rate_limited` / `discriminated union 戻り値` モデルは廃止。**env 削除** [.env.local.example](.env.local.example): `DISCORD_NOTIFY_DRY_RUN` / `DISCORD_NOTIFY_MENTION_ROLE_ID` を削除 (channel/role は DB の `app_settings` に移動、DRY_RUN は新設計では不要 — channel ID 未設定で no-op)
+  - **検証**: `tsc --noEmit` PASS、`npm run lint` 既存 35 errors のみ (新規 0、phase 2-C からの baseline)、schema.sql idempotent (`IF NOT EXISTS` / `ON CONFLICT DO NOTHING`)。本番 DB 連動 (cron 当日 12:00 JST 発火 / 手動 button 投稿 / dedup 動作 / ON/OFF 切替) は本番 deploy 後にユーザー実機で検証 (本ファイル冒頭「保留オペレーション」節のチェックリスト)
+  - **設計ドキュメント**: `.claude/plans/todo-2-phase-4-abstract-nygaard.md` (phase 3+4 統合実装の詳細設計)
+  - **本 PR で TODO #2 完結**。phase 1 (mode 切替) / 2-A (server-side 基盤) / 2-B (トップ UI) / 2-C (settings 3 section) / 3+4 (Discord 通知 cron + 手動 + ON/OFF) の 5 phase シリーズが全完了。残作業として「`mode==='native'` のとき既存 sync cron を skip する分岐」「DECISION 確定後のリマインダー cron (24h 前 / 開始時)」「video / FFLogs 連携整合」が phase 4 plan で言及されていたが、実際の運用には不要 (sync 取り込みは sync mode 固有 / リマインダーは cron 通知で代替 / video FFLogs は別 TODO 領域) と判断、未実装で TODO #2 close
 - **2.1 (2026-05-07 part9)**: #2 phase 2-C — native スケジュール settings UI 3 section。phase 2-B のトップ UI に対応する管理側 UI を埋めて自前モードを実運用可能にした。新規 server action なし、phase 2-A で実装済の 4 actions (`addNativeScheduleMemberAction` / `updateNativeScheduleMemberAction` / `deleteNativeScheduleMemberAction` / `setNativeScheduleChoiceValuesAction` / `setNativeScheduleSessionStatusAction`) を流用。3 PR シリーズ ([#53](https://github.com/yyamazaki-lym/raid-repository/pull/53) / [#54](https://github.com/yyamazaki-lym/raid-repository/pull/54) / [#55](https://github.com/yyamazaki-lym/raid-repository/pull/55))。
   - **新規 client reader** ([src/lib/schedule/native-admin-client.ts](src/lib/schedule/native-admin-client.ts)): `fetchNativeScheduleAdminAux()` を追加。settings UI が必要とする集合 (`is_active=false` 含む全 member / `status='CANCELLED'` 行 / 凡例 CSV 現値) を 1 回の Promise.all で取得。`fetchNativeSchedule()` は schedule-list が要求する集合に絞っているので別経路、`schedule-url-store.ts` と同じ `"use client" + supabase/client` パターン。RLS は schema.sql 7 章ループの `USING (true)` で SELECT 全面開放されている前提
   - **新規 section** ([src/components/portal/settings/native-members-section.tsx](src/components/portal/settings/native-members-section.tsx)): Discord ID + 表示名 + sort_order + is_active toggle + 削除 を inline 編集。表示名 / sort_order は drafts state で差分時のみ「保存」button 表示、is_active toggle と削除は即時 commit。Discord ID 17–20 桁 regex を client 側で軽 validate (server 側と二重化)
