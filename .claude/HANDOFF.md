@@ -1,6 +1,6 @@
 # Raid Repository — 引き継ぎノート
 
-> 2.1 (2026-05-07) 時点。完了済 TODO の詳細は `src/lib/changelog.ts` / 過去版番号は `.claude/done.md`。
+> 2.1 (2026-05-08) 時点。完了済 TODO の詳細は `src/lib/changelog.ts` / 過去版番号は `.claude/done.md`。
 >
 > **新規会話の手順**: このファイルを読んだ後、TODO 一覧は自動表示せずユーザーの要望を待つ。新規 TODO 追記時は part 単位ではなく TODO 完了時のみ統合追記する (part 細分は commit log に任せる)。
 
@@ -66,7 +66,7 @@
 
 | # | 項目 | 規模 |
 |---|---|---|
-| 74 | **設定 dialog で mode 切替時に古い表示が残る** — 設定 dialog の「同期式 (sync) / 自前作成式 (native)」スケジュールソースモードを切り替えても、dialog 内に古い mode の section 表示や子 section 内部 state が引き継がれて残る。mode 切替時に dialog 自動 close → 再 open / `<div key={mode}>` で section ツリー強制 remount / 各 section に明示的 reset effect、のいずれかで対応。詳細は `.claude/plans/todo-sequential-waterfall.md` | 小〜中 |
+| _(現在なし)_ | — | — |
 
 ### 🌐 サイト全体 / 横断 UI
 
@@ -93,6 +93,14 @@
 
 直近版のみ列挙。詳細経緯は `src/lib/changelog.ts`、過去版アーカイブは `.claude/done.md`。
 
+- **2.1 (2026-05-08 part11)**: #74 設定 dialog mode 切替で section 出し分けが即時反映されない不具合修正 — クローズ ([PR #76](https://github.com/yyamazaki-lym/raid-repository/pull/76) squash merge `93ada17`)
+  - **真因**: [src/components/portal/settings/schedule-source-mode-section.tsx](src/components/portal/settings/schedule-source-mode-section.tsx) が独自の `mode` useState を持つ一方、parent [src/components/portal/settings-dialog.tsx](src/components/portal/settings-dialog.tsx) の `mode` useState への通知 callback が無く、section の `router.refresh()` は Next.js 16 仕様で Server Component の data refetch のみ実行し Client State (parent useState) は保持するため、parent `mode` が dialog 初回 open 時の値で固まり続ける。結果 `mode === "sync" / "native"` の条件分岐 (settings-dialog.tsx 行 205-249) が永久に更新されず、close → 再 open でしか正常化しなかった
+  - **修正**: `ScheduleSourceModeSection` に optional `onModeChange?: (mode: ScheduleSourceMode) => void` prop を追加 (DB 初期 fetch successful path / radio onChange / server action 失敗時の rollback の 4 箇所で callback 呼出)、settings-dialog から `onModeChange={setMode}` を渡して parent state と同期。触る範囲は 2 ファイル / +12 行 / -2 行
+  - **副次効果**: parent `mode` 変化を `useEffect [open, mode, adminAuxTick]` (settings-dialog.tsx 行 135-148) が感知できるようになり、初回 native 切替時に `adminAux` fetch も即時発火するようになる (従来は dialog 再 open しないと fetch されない壊れ状態)
+  - **採らなかった案**: (a) mode 切替時に dialog 自動 close → 再 open は UX 後退で却下、(b) `<div key={mode}>` で native 4 section を wrap は条件分岐の mount/unmount で internal state が自然 reset されるため冗長で却下、(c) 各 section に reset effect は分散実装で抜けやすく却下
+  - **触らない範囲**: `native-members-section.tsx` / `native-choice-values-section.tsx` / `native-cancelled-sessions-section.tsx` / `native-discord-notify-section.tsx` は完全に無改修。条件分岐 mount/unmount で internal state (drafts / channelDraft / roleDraft 等) が自然 reset される
+  - **検証**: `tsc --noEmit` PASS。worktree dev preview で sync → native → disabled → sync の 3 mode 遷移を実機確認、各遷移で section 出し分けが即時切替わり (sync 用 `Schedule Source` / `Past Sessions` ↔ native 用 4 section ↔ disabled 時は共通 section のみ) console error 0 件。CRUD round trip (member 追加 / 凡例 CSV 編集中の mode 切替で drafts が消えること) は本番 deploy 後にユーザー実機検証
+  - **設計ドキュメント**: `~/.claude/plans/todo-74-dynamic-rocket.md`
 - **2.1 (2026-05-08 part10)**: #2 phase 3+4 (TODO #2 完結) — native スケジュール Discord 通知。設計は単一 PR で phase 3 (通知 dispatch + 手動 button) と phase 4 (cron + ON/OFF + 設定 UI) を一括実装。**設計上の重要点**: 当初 phase 3 設計の「DECISION 遷移 / session 作成時の auto-notify 4 イベント」はユーザーが「自動 trigger は良くない、手動なら良い、自動は当日 12:00 JST のみ」と却下したため**実装しない**。自動通知の唯一のパスは **当日 12:00 JST cron** (`/api/cron/notify-native-schedule`)、手動 Bell button は ON/OFF と無関係に常時動作、ON/OFF トグルは cron path のみ gate。PR [#59](https://github.com/yyamazaki-lym/raid-repository/pull/59)。
   - **新規** [src/lib/server/native-schedule-discord.ts](src/lib/server/native-schedule-discord.ts): dispatch module (`notifyNativeScheduleSession({ sessionId, respectToggle, respectDedup })` + `dispatchNoonNotifyForToday()`)。Discord API v10 endpoint 直接 fetch (Bot token + `User-Agent: RaidRepositoryBot/0.1` + `AbortSignal.timeout(15000)`)、`allowed_mentions: { roles: [roleId] }` で role mention のみ parse 許可 (`@here` / 個別 user の暴発防止)、role ID 未設定なら mention 無し平文。メッセージ format は `<@&{roleId}> 本日の固定活動予定日です` + `📅 raw_date` + `🕘 start~end` + `📝 note` + 出欠集計 (○/△/×/未回答 別)
   - **新規** [src/app/api/cron/notify-native-schedule/route.ts](src/app/api/cron/notify-native-schedule/route.ts): cron route。auth は `Authorization: Bearer ${CRON_SECRET}` OR `x-vercel-cron` header、`runtime: 'nodejs'` / `dynamic: 'force-dynamic'` / `maxDuration: 60`。`native_schedule_discord_notify_enabled='false'` なら `{ ok: true, skipped: 'disabled' }` 即返却。`vercel.json` に `{ path: '/api/cron/notify-native-schedule', schedule: '0 3 * * *' }` (UTC 03:00 = JST 12:00) を追加
