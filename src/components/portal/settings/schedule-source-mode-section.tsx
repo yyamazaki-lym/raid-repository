@@ -47,9 +47,11 @@ const MODES: ReadonlyArray<{
 export function ScheduleSourceModeSection({
   open,
   canEdit,
+  onModeChange,
 }: {
   open: boolean;
   canEdit: boolean;
+  onModeChange?: (mode: ScheduleSourceMode) => void;
 }) {
   const router = useRouter();
   const [mode, setMode] = useState<ScheduleSourceMode>("sync");
@@ -64,24 +66,28 @@ export function ScheduleSourceModeSection({
       if (cancelled) return;
       if (v === "native" || v === "disabled" || v === "sync") {
         setMode(v);
+        onModeChange?.(v);
       } else {
         setMode("sync");
+        onModeChange?.("sync");
       }
       setLoaded(true);
     })();
     return () => {
       cancelled = true;
     };
-  }, [open]);
+  }, [open, onModeChange]);
 
   const onChange = (next: ScheduleSourceMode) => {
     if (next === mode) return;
     const prev = mode;
     setMode(next);
+    onModeChange?.(next);
     startTransition(async () => {
       const result = await setScheduleSourceModeAction(next);
       if (!result.ok) {
         setMode(prev);
+        onModeChange?.(prev);
         toast.error("モード保存: " + result.reason);
         return;
       }

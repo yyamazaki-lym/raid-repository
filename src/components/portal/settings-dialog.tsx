@@ -201,7 +201,11 @@ export function SettingsDialog({ canEdit }: { canEdit: boolean }) {
               ユーザーのみ操作できます。閲覧専用モードで表示中です。
             </div>
           )}
-          <ScheduleSourceModeSection open={open} canEdit={canEdit} />
+          <ScheduleSourceModeSection
+            open={open}
+            canEdit={canEdit}
+            onModeChange={setMode}
+          />
           {canEdit && mode === "sync" && (
             <ScheduleSourceSection url={url} onUrlChange={setUrl} />
           )}
