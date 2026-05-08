@@ -5,18 +5,38 @@
 -- DO NOT apply on production / actual fork projects — demo data will pollute
 -- your live raid repository.
 --
--- Idempotent: contains its own re-run guards (sentinel + URL NOT EXISTS),
--- so re-applying on the demo project is safe.
+-- Idempotent: contains its own re-run guards (ON CONFLICT / sentinel /
+-- URL NOT EXISTS), so re-applying on the demo project is safe.
 --
 -- 履歴:
 --   - 2026-05-01 (TODO #8 part C-ii): schema.sql 12 章として初投入
 --   - 2026-05-01 (TODO #8 follow-up): schema.sql 13 章前半に追加コンテンツ seed
---   - 2026-05-XX (TODO #76): schema.sql から本ファイルに分離
+--   - 2026-05-08 (TODO #76): schema.sql から本ファイルに分離
 --     (新章追加ごとの再ガード負担と本番誤適用リスクを根治するため)
+--   - 2026-05-08 (TODO #76 follow-up): 旧 schema.sql Section 11 (sample 7
+--     categories) も demo 扱いに格上げして本ファイルに移管
+--     (本番 fork では空 portal の方が望ましいというユーザー判断)
 -- ============================================================================
 
+-- ---- 0. Sample seed categories (was schema.sql Section 11) ----------------
+-- 旧 TODO #8 (2.1, 2026-05-01): demo 環境で空 portal だと使い方が掴みにくい
+-- ため、サンプルカテゴリ 7 件を投入する。実コンテンツ名 (現行零式 + Variant
+-- + Extreme + Ultimate 2 件) を入れて status 4 種類を一通りカバー。
+-- ON CONFLICT (slug) DO NOTHING で既存値は上書きしないので、再実行・編集後
+-- の再 apply でも安全。Section 1 の demo bulk seed はこれら 7 件のうち 5 件
+-- に紐付くので必ず本セクションを先に走らせる。
+INSERT INTO public.categories (slug, name, status, sort_order) VALUES
+  ('arcadion-heavy',            '至天の座アルカディア：ヘビー級',         '練習中',   10),
+  ('arcadion-cruiser',          '至天の座アルカディア：クルーザー級',     '練習中',   11),
+  ('arcadion-lightheavy',       '至天の座アルカディア：ライトヘビー級',   '未着手',   12),
+  ('variant-shokyaku',          '異聞商客物語',                           '未着手',   20),
+  ('extreme-cloud-of-darkness', '滅暗闇の雲激闘戦',                       'クリア済', 30),
+  ('ultimate-omega-protocol',   '絶オメガ検証戦',                         '未着手',   40),
+  ('ultimate-futures-rewritten','絶もうひとつの未来',                     '休止中',   50)
+ON CONFLICT (slug) DO NOTHING;
+
 -- ---- 1. Demo data bulk seed (was schema.sql Section 12) -------------------
--- モックサイト見栄え用の demo data 一括投入。Section 11 のサンプル 5
+-- モックサイト見栄え用の demo data 一括投入。Section 0 のサンプル 5
 -- カテゴリ (arcadion-heavy / variant-shokyaku / extreme-cloud-of-darkness
 -- / ultimate-omega-protocol / ultimate-futures-rewritten) に紐付ける形で
 -- 残り 10 テーブル (category_links / loot_items / loot_entries /
@@ -53,7 +73,7 @@ BEGIN
   SELECT id INTO v_fru FROM public.categories WHERE slug = 'ultimate-futures-rewritten';
 
   IF v_arc IS NULL OR v_var IS NULL OR v_ext IS NULL OR v_omg IS NULL OR v_fru IS NULL THEN
-    RAISE NOTICE 'Section 11 sample categories missing — skipping demo seed.';
+    RAISE NOTICE 'Section 0 sample categories missing — skipping demo seed.';
     RETURN;
   END IF;
 
@@ -422,9 +442,9 @@ END $$;
 
 -- ---- 2. 追加コンテンツ seed (was schema.sql Section 13a) -------------------
 -- ユーザー指定の追加リンク。Section 1 の demo seed sentinel に依存せず、
--- URL ベース NOT EXISTS guard で冪等 (重複 INSERT 回避)。schema.sql Section 11
--- で追加した arcadion-cruiser / arcadion-lightheavy は Section 1 の demo data
--- 対象外なので、本ブロックがそれらの最初のコンテンツ投入を担う。
+-- URL ベース NOT EXISTS guard で冪等 (重複 INSERT 回避)。Section 0 の sample
+-- categories のうち arcadion-cruiser / arcadion-lightheavy は Section 1 の
+-- demo data 対象外なので、本ブロックがそれらの最初のコンテンツ投入を担う。
 
 DO $$
 DECLARE

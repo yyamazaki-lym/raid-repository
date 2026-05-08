@@ -10,7 +10,7 @@ FF14 レイド固定向けポータル — スケジュール / 軽減表 / ロ�
 
 🔗 **https://demo-raid-repository.vercel.app**
 
-サンプルデータ (5 カテゴリ + 過去 8 週分のスケジュール + 軽減表 / ロット表 / 攻略リンク / 動画リンク / マクロ / 募集文等) が seed 済 (`supabase/seed-demo.sql` 由来、demo project にのみ適用)。`PUBLIC_DEMO_MODE=true` で Discord OAuth gate を skip しつつ、書き込みは admin gate で全件弾く 4 層防御 (proxy / app / RLS) で閲覧専用にしています。
+サンプルデータ (7 カテゴリ + 過去 8 週分のスケジュール + 軽減表 / ロット表 / 攻略リンク / 動画リンク / マクロ / 募集文等) が seed 済 (`supabase/seed-demo.sql` 由来、demo project にのみ適用)。`PUBLIC_DEMO_MODE=true` で Discord OAuth gate を skip しつつ、書き込みは admin gate で全件弾く 4 層防御 (proxy / app / RLS) で閲覧専用にしています。
 
 ## Deploy
 
@@ -150,7 +150,9 @@ FF14 レイド固定向けポータル — スケジュール / 軽減表 / ロ�
 4. 「Success. No rows returned」が出れば完了
 5. （確認）左メニュー **Table Editor** で `categories`, `category_links`, `app_settings` などのテーブルが作られていればOK
 
-> 📌 **demo / モックサイト用にデプロイする場合のみ**: 続けて [`supabase/seed-demo.sql`](./supabase/seed-demo.sql) を同様に SQL Editor で実行すると、demo 表示用のサンプルデータ (動画 / 軽減 / ロット / 募集文等) が一括投入されます。**本番運用 (実際の固定で使う) では実行しないでください** — 本番テーブルに demo データが混入します。冪等 (sentinel + URL NOT EXISTS guard) なので demo project への再実行は安全。
+> 📌 **本番 / 実際の固定で使う場合**: schema.sql の実行のみで OK。`/category` は空 portal で起動するので、運営者が固定で扱うコンテンツを「カテゴリ追加」から登録してください。
+>
+> 📌 **demo / モックサイト用にデプロイする場合のみ**: 続けて [`supabase/seed-demo.sql`](./supabase/seed-demo.sql) を同様に SQL Editor で実行すると、demo 表示用のサンプルカテゴリ 7 件 + サンプルデータ (動画 / 軽減 / ロット / 募集文等) が一括投入されます。**本番運用では実行しないでください** — 本番テーブルに demo データが混入します。冪等 (ON CONFLICT / sentinel / URL NOT EXISTS guard) なので demo project への再実行は安全。
 
 #### 2-3. 認証情報を取得
 
