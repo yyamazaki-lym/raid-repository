@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Users, Trash2, Plus, Loader2, Save } from "lucide-react";
+import { Users, Trash2, Plus, Loader2, Save, Wand2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
@@ -16,19 +16,31 @@ import type { NativeMemberRowFull } from "@/lib/schedule/native-admin-client";
 /**
  * TODO #2 phase 2-C (2026-05-07): native スケジュール member CRUD section。
  *
- * - 一覧 (Discord ID + 表示名 + sort_order + is_active toggle + delete)
- * - 「+ 追加」inline form (Discord ID + 表示名 + sort_order + 追加)
+ * - 一覧 (Discord ID または ローカルキー + 表示名 + sort_order + is_active toggle + delete)
+ * - 「+ 追加」inline form (キー入力 + ローカルキー自動生成 button + 表示名 + sort_order + 追加)
+ *
+ * メンバーキーは下記 2 種を受け付ける:
+ *   - 17〜20 桁数字 = 通常 Discord ID (本人 popover / 個別通知の対象)
+ *   - `local_<英数字_->{3,32}` = Discord アカウント未取得メンバー用ローカルキー。
+ *     本人 popover は出ない (一致しないため) ので admin が代理運用する想定。
  *
  * 表示名 / sort_order は inline 編集 (drafts state)、変更後に「保存」ボタンを
  * 出して `updateNativeScheduleMemberAction` を呼ぶ。is_active toggle と削除
- * は即時 commit。Discord ID 17〜20 桁 regex を client 側でも軽 validate (server
- * 側 `addNativeScheduleMemberAction` の正規表現と二重化)。
+ * は即時 commit。client / server で同一の regex で 2 重 validate。
  *
  * CRUD 後は `onChanged()` callback で settings-dialog の adminAux fetch を
  * 再走させ、`router.refresh()` でトップ schedule-list も更新。
  */
 
-const DISCORD_ID_RE = /^\d{17,20}$/;
+const MEMBER_KEY_RE = /^(?:\d{17,20}|local_[A-Za-z0-9_-]{3,32})$/;
+const MEMBER_KEY_REASON =
+  "Discord ID (17〜20 桁の数字) または ローカルキー (local_<英数字>, 3〜32 文字) を入力してください";
+
+const generateLocalKey = () =>
+  // 衝突しにくく短めの suffix。Date.now base36 (約 8 文字) + random base36 4 文字。
+  `local_${Date.now().toString(36)}${Math.floor(Math.random() * 36 ** 4)
+    .toString(36)
+    .padStart(4, "0")}`;
 
 type DraftMap = Record<string, { displayName: string; sortOrder: string }>;
 
@@ -83,8 +95,8 @@ export function NativeMembersSection({
     const discordUserId = newDiscordId.trim();
     const displayName = newDisplayName.trim();
     const sortOrder = Number(newSortOrder);
-    if (!DISCORD_ID_RE.test(discordUserId)) {
-      toast.error("Discord ID は 17〜20 桁の数字です");
+    if (!MEMBER_KEY_RE.test(discordUserId)) {
+      toast.error(MEMBER_KEY_REASON);
       return;
     }
     if (!displayName) {
@@ -206,8 +218,14 @@ export function NativeMembersSection({
 
       <p className="text-[10px] leading-relaxed text-muted-foreground">
         スケジュール表に出欠列として表示するメンバー。Discord ID
-        で識別し、並び順 (昇順) で左から並びます。無効化されたメンバーは
-        スケジュール表に出ませんが、過去の出欠履歴は DB に残ります。
+        または ローカルキーで識別し、並び順 (昇順) で左から並びます。無効化された
+        メンバーはスケジュール表に出ませんが、過去の出欠履歴は DB に残ります。
+        <br />
+        <span className="text-muted-foreground/80">
+          ※ ローカルキー (
+          <code className="font-mono">local_*</code>
+          ) で登録したメンバーは本人として出欠入力できません (admin が代理運用)。
+        </span>
       </p>
 
       {!loaded ? (
@@ -316,15 +334,28 @@ export function NativeMembersSection({
             Add member
           </span>
           <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center">
-            <Input
-              type="text"
-              value={newDiscordId}
-              onChange={(e) => setNewDiscordId(e.target.value)}
-              disabled={pending}
-              placeholder="Discord ID (17〜20 桁)"
-              inputMode="numeric"
-              className="h-7 text-xs sm:flex-1"
-            />
+            <div className="flex items-center gap-1 sm:flex-1">
+              <Input
+                type="text"
+                value={newDiscordId}
+                onChange={(e) => setNewDiscordId(e.target.value)}
+                disabled={pending}
+                placeholder="Discord ID または local_xxx"
+                className="h-7 text-xs"
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={pending}
+                onClick={() => setNewDiscordId(generateLocalKey())}
+                aria-label="ローカルキーを自動生成"
+                title="Discord アカウント未取得メンバー用のローカルキーを自動生成"
+                className="h-7 w-7 shrink-0 p-0 text-muted-foreground hover:text-foreground"
+              >
+                <Wand2 className="h-3.5 w-3.5" aria-hidden />
+              </Button>
+            </div>
             <Input
               type="text"
               value={newDisplayName}

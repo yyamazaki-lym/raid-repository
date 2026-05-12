@@ -145,6 +145,15 @@ export async function setNativeScheduleSessionStatusAction(
 // ---- members (admin gate) -------------------------------------------------
 
 const DISCORD_ID_RE = /^\d{17,20}$/;
+/**
+ * member の主キー (`native_schedule_members.discord_user_id`) として許容するキー。
+ * - 17〜20 桁数字: 通常の Discord ID (本人 popover / 個別通知の対象)
+ * - `local_<英数字_->{3,32}`: Discord アカウント未取得メンバー用ローカルキー。
+ *   本人として popover を開けないため admin が代理入力する運用想定。
+ */
+const MEMBER_KEY_RE = /^(?:\d{17,20}|local_[A-Za-z0-9_-]{3,32})$/;
+const MEMBER_KEY_REASON =
+  "Discord ID (17〜20 桁の数字) または ローカルキー (local_<英数字>, 3〜32 文字) を入力してください";
 
 export type AddNativeScheduleMemberInput = {
   discordUserId: string;
@@ -160,8 +169,8 @@ export async function addNativeScheduleMemberAction(
 
   const discordUserId = input.discordUserId?.trim();
   const displayName = input.displayName?.trim();
-  if (!discordUserId || !DISCORD_ID_RE.test(discordUserId)) {
-    return { ok: false, reason: "Discord ID は 17〜20 桁の数字です" };
+  if (!discordUserId || !MEMBER_KEY_RE.test(discordUserId)) {
+    return { ok: false, reason: MEMBER_KEY_REASON };
   }
   if (!displayName) return { ok: false, reason: "表示名を入力してください" };
   const sortOrder = Number.isFinite(input.sortOrder) ? Number(input.sortOrder) : 0;
@@ -200,8 +209,8 @@ export async function updateNativeScheduleMemberAction(
   const auth = await assertAdminResult();
   if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
   const id = discordUserId?.trim();
-  if (!id || !DISCORD_ID_RE.test(id)) {
-    return { ok: false, reason: "Discord ID が不正です" };
+  if (!id || !MEMBER_KEY_RE.test(id)) {
+    return { ok: false, reason: "メンバーキーが不正です" };
   }
 
   const update: Record<string, unknown> = {};
@@ -243,8 +252,8 @@ export async function deleteNativeScheduleMemberAction(
   const auth = await assertAdminResult();
   if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
   const id = discordUserId?.trim();
-  if (!id || !DISCORD_ID_RE.test(id)) {
-    return { ok: false, reason: "Discord ID が不正です" };
+  if (!id || !MEMBER_KEY_RE.test(id)) {
+    return { ok: false, reason: "メンバーキーが不正です" };
   }
   const supabase = await createClient();
   const { error } = await supabase
