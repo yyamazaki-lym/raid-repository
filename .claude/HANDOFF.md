@@ -53,7 +53,7 @@
 | # | 項目 | 規模 |
 |---|---|---|
 | 73 | **FFLogs 連携 native 拡張** — `src/lib/server/fflogs.ts` の `linkReportsToSessions()` は現状 `schedule_past_sessions` 直読みなので native mode の sessions では FFLogs auto-link が動かない。native sessions 対応への拡張、`schedule_past_session_logs` の sync/native 統合 vs 別テーブル新設の設計議論、`schedule_past_sessions` 直読みからの脱却を含む。TODO #2 から分離 (2026-05-08)。詳細は `.claude/plans/todo-2-claude-handoff-md-spicy-seahorse.md` の「FFLogs 部分の扱い (本 TODO から除外)」節 | 中 |
-| 77 | **自前作成式 (native) UI を同期式と揃える + 5月重複 row 解消** — native モードのトップ表示に sync 同等の「過去簡易日程 / スケジュールリスト / 過去開催日時」リスト UI (リストから確定操作 / プルダウンで状況入力可) を整備し、`schedule-list.tsx` の `mode` 分岐で出し分ける。併せて `native_schedule_sessions` に入っている **2025 年 5 月 row 2 件のうち重複ノイズ側** (もう片方は開催日程 2 件入りで正) を本番 Supabase SQL Editor から `DELETE` する (実 row id はユーザー判断)。詳細は `.claude/plans/todo-sequential-waterfall.md` | 中〜大 |
+| 80 | **native スケジュール UI 細部調整 (TODO #77 follow-up)** — TODO #77 (PR #94) で sync 同等のフラット表に統一した後、本番実機で 2 点の違和感が残ったので別 TODO として起票 (2026-05-12)。(1) デフォルトで **当月の日付リスト**が upcoming に並んでほしい (同期式の挙動と揃える) — 現状 `splitSessions` の cutoff (今 -6h) では「当月の過去 candidate 日」が消えるため、当月分は常時 upcoming に並ぶ等の挙動に調整したい、(2) **過去 5月開催日が「2 ヶ月以上前」セクションに分類される** — 過去詳細表 (Table icon) で 60 日 cutoff (`PAST_FOLD_THRESHOLD_MS`) を超える 5月 DECISION 行が olderPast に折り畳まれる。期待は「当月の DECISION 行は常時 recentPast」または「demo seed の 2025-05 row はノイズ扱い」など複数解釈ありで、新規会話で実機を見ながら期待挙動を確定して調整する | 小〜中 |
 
 ### 📂 カテゴリ詳細ページ (`/category/[slug]`)
 
@@ -91,6 +91,18 @@
 
 直近版のみ列挙。詳細経緯は `src/lib/changelog.ts`、過去版アーカイブは `.claude/done.md`。
 
+- **2.1 (2026-05-12 part2)**: #77 native スケジュール UI を sync 同等のフラット表に統一 — クローズ ([PR #94](https://github.com/yyamazaki-lym/raid-repository/pull/94) squash merge `bbe3edf`)
+  - **発端**: TODO #2 phase 2-B (2026-05-07) で native モードに `NativeMonthlySchedule` (月別 collapsible accordion) を導入したが、phase 2-C / 3+4 を経て機能が出揃った段階で「sync は 1 枚カードのフラット表 + 過去簡易 strip + 過去開催詳細表」「native は月別 accordion + 過去簡易 strip のみ (過去開催詳細表は `mode !== "native"` ガードで非表示)」と見た目・操作性が乖離。同じ portal なのに schedule が 2 種類別 UI という違和感が残っていた
+  - **採用方式 (ユーザー確認済み 4 仕様)**: (1) 表示構造 = sync 式フラット 1 枚カードに統一 (`NativeMonthlySchedule` 廃止)、(2) 過去開催日時 = native でも Table icon 有効化、(3) プルダウン (status toggle + 出欠 popover) は既存実装を維持、(4) 2025-05 重複 row は SELECT で 0 件確認、本 PR スコープから除外
+  - **修正** [src/components/portal/schedule-page-body.tsx](src/components/portal/schedule-page-body.tsx): `NativeMonthlySchedule` 経路を撤去し常に `<ScheduleList>` を呼ぶ一本道に、Table icon の `mode !== "native"` ガード撤去、amber バナー文言を最新機能状況 (候補日追加 / 出欠入力 / 確定切替 / Discord 通知が利用可能) に更新
+  - **修正** [src/components/portal/schedule-list.tsx](src/components/portal/schedule-list.tsx): 月別 section 専用だった `monthFilter` prop / `toJstYearMonth` import / 関連分岐 (useFlatCard / splitSessions bypass / Legend 抑止) を削除、flat list 単一 path に縮約
+  - **修正** [src/app/(portal)/page.tsx](src/app/(portal)/page.tsx): native ブランチの `Promise.all` に `fetchScheduleMemosByDateBulk()` + `fetchAppSettings([SCHEDULE_TOP_TEXT_OVERRIDE_KEY])` を追加し、`SchedulePageBody` に sync 同等の `initialMemosByDate` / `topTextOverride` を prop drill
+  - **削除**: `src/components/portal/native-schedule/native-monthly-schedule.tsx` / `src/components/portal/native-schedule/monthly-section.tsx` / `src/lib/schedule/jst-month.ts` (callers が消えたため 3 ファイル削除)
+  - **触らない範囲**: `native-fetch.ts` / `parse.ts` / `schema.sql` / `native-schedule-actions.ts` / 各 native UI 部品 (`candidate-date-dialog.tsx` / `native-attendance-popover.tsx` / `session-status-toggle.tsx` / `session-discord-notify-button.tsx`) は完全無改修。FFLogs 連携 (`sessionLogsByDate`) は TODO #73 のスコープなので native でも `{}` 維持
+  - **検証**: `npx tsc --noEmit` PASS、`npm run lint` baseline (35 errors / 2 warnings) 維持で新規 0。worktree dev preview は Supabase env 取得が別 terminal 必須のため本セッション内では未実施、merge 後の本番 (demo + yurutto) 実機でユーザーが「開催日 / 過去簡易ログ / メンバー日程 / 過去詳細ログが表示」「これまでの 5月の表 2 つが消えた」を確認
+  - **2025-05 重複 row 経過**: 元 TODO 文言では「2025 年 5 月 row 2 件のうち重複ノイズ側を本番 Supabase SQL Editor から DELETE」と記載していたが、実装フェーズで提示した確認 SQL (`SELECT ... FROM public.native_schedule_sessions WHERE parsed_date IN [2025-05-01 .. 2025-06-01)`) を本番で実行したところ 0 件、既に解消済と判明 (PR #80 / #82 経由で seed-demo.sql に逃がした効果が反映されていた)
+  - **follow-up TODO #80**: 本番実機で残った 2 点の違和感を別 TODO に分離 — (a) デフォルトで当月日付リストを upcoming に並べる挙動、(b) 過去 5月開催日が「2 ヶ月以上前」セクションに分類される問題、を新規会話で実機を見ながら調整
+  - **設計ドキュメント**: `~/.claude/plans/todo77-gleaming-gosling.md`
 - **2.1 (2026-05-12)**: #79 schedule_source_mode='disabled' 時のデフォルトページをコンテンツページに切替 — クローズ ([PR #91](https://github.com/yyamazaki-lym/raid-repository/pull/91) squash merge `99cada9`)
   - **発端**: TODO #2 phase 1 (2026-05-07) で disabled モードを導入したが、当初設計では `/` (schedule top) に `ScheduleDisabledNotice` を表示するだけで、スケジュール表を使わない portal でも「Schedule 機能停止中」notice がトップに居座る不自然な状態が残っていた。スケジュールを使わない運用ではコンテンツページを実質のホームにしたい、というユーザー要望
   - **採用方式 (ユーザー確認済み 3 仕様)**: (1) redirect 先 = `/category` (カテゴリ一覧)、(2) `MainTabs` のスケジュール tab は disabled 時に**全ユーザー**で非表示、(3) `/` 直アクセスは **admin だけ** `ScheduleDisabledNotice` を表示し、**非 admin は server redirect**。admin の復帰導線は SiteHeader の SettingsDialog (全 portal ページで常時 mount 済み) を維持
