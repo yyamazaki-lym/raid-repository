@@ -132,13 +132,74 @@ export async function ensureNativeMonthlyPlaceholders(
     };
   });
 
-  // 7. service_role client で bulk upsert。raw_date UNIQUE + ignoreDuplicates で
-  //    既存 row (admin 手動追加 / CANCELLED 化済 / 既存 placeholder) は完全 skip。
+  // 7. service_role client。
+  //
+  // 2.1 hotfix (2026-05-12): raw_date は `YYYY/MM/DD(曜) HH:MM~HH:MM` で時刻
+  // 文字列を含むため、Default Raid Time が変わると同じ JST 日付に対しても
+  // raw_date 文字列が変わってしまい、`onConflict: raw_date + ignoreDuplicates`
+  // では衝突検出できず重複 row が作られる問題があった。
+  //
+  // 対応: parsed_date 範囲で当月+翌月の既存 row を事前 SELECT し、raw_date の
+  // 日付 prefix (`YYYY/MM/DD(曜)`) を Set 化 → 候補から既存日付を除外して
+  // 残りのみ INSERT する。CANCELLED 含む全 status を対象に既存判定 (CANCELLED
+  // 化済の日付に対しても重ねて placeholder を作らない)。
   try {
     const supabase = createSupabaseServiceRoleClient();
+
+    // 候補レンジを parsed_date の UTC ISO 範囲で表現。
+    // 当月開始 (今日 0:00 JST) 〜 (翌月対象なら翌月末日 23:59、そうでなければ
+    // 当月末日 23:59) の 1 秒先 (上限は < で半開区間にする)。
+    const rangeStartJstMs = Date.UTC(jstYear, jstMonth, jstDay, 0, 0, 0, 0);
+    const rangeStartUtcMs = rangeStartJstMs - JST_OFFSET_MS;
+    const lastCand = candidates[candidates.length - 1];
+    const rangeEndJstMs = Date.UTC(
+      lastCand.y,
+      lastCand.m,
+      lastCand.d + 1,
+      0,
+      0,
+      0,
+      0,
+    );
+    const rangeEndUtcMs = rangeEndJstMs - JST_OFFSET_MS;
+
+    const { data: existingRows, error: existErr } = await supabase
+      .from("native_schedule_sessions")
+      .select("raw_date")
+      .gte("parsed_date", new Date(rangeStartUtcMs).toISOString())
+      .lt("parsed_date", new Date(rangeEndUtcMs).toISOString());
+    if (existErr) {
+      console.warn(
+        "[native-placeholders] existing select error:",
+        existErr.message,
+      );
+      return;
+    }
+
+    // raw_date format: `YYYY/MM/DD(曜) HH:MM~HH:MM` の前半 13 文字程度 (曜まで含む)。
+    // 時刻部分が変わっても date prefix は固定なので、prefix で重複判定する。
+    const datePrefixRe = /^(\d{4}\/\d{2}\/\d{2}\([日月火水木金土]\))/;
+    const existingDatePrefixes = new Set<string>();
+    for (const r of (existingRows ?? []) as Array<{ raw_date: string }>) {
+      const m = r.raw_date.match(datePrefixRe);
+      if (m) existingDatePrefixes.add(m[1]);
+    }
+
+    const filteredRows = rows.filter((r) => {
+      const m = r.raw_date.match(datePrefixRe);
+      if (!m) return false;
+      return !existingDatePrefixes.has(m[1]);
+    });
+
+    if (filteredRows.length === 0) return;
+
+    // INSERT に切替 (event-level race condition 保険として onConflict も残す)。
     const { error } = await supabase
       .from("native_schedule_sessions")
-      .upsert(rows, { onConflict: "raw_date", ignoreDuplicates: true });
+      .upsert(filteredRows, {
+        onConflict: "raw_date",
+        ignoreDuplicates: true,
+      });
     if (error) {
       console.warn("[native-placeholders] upsert error:", error.message);
     }
