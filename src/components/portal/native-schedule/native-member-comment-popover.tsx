@@ -19,7 +19,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { updateNativeScheduleMemberCommentAction } from "@/lib/server/native-schedule-actions";
 
 /**
- * 2.1 (2026-05-12) PR3-D + follow-up: native スケジュールのメンバー全体コメント
+ * 2.1 (2026-05-12) PR3-D + follow-ups: native スケジュールのメンバー全体コメント
  * (同期式準拠で 1 メンバー = 1 行) を表示・編集する popover。
  *
  * 同期式 (`comment-popover.tsx`) と同じ hover-open + grace period パターン:
@@ -28,9 +28,14 @@ import { updateNativeScheduleMemberCommentAction } from "@/lib/server/native-sch
  * - touch: hover handlers no-op、tap で open
  * - click も常に動作 (Popover の controlled open)
  *
- * 本人 (`isOwn=true`) は popover 内で textarea + 保存 + 削除 button で編集可能。
- * 他人 (`isOwn=false`) は popover 内で read-only 表示。コメントなしの他人は
- * trigger 自体を表示しないので、UserHeaderCell 側で mount 条件を絞る。
+ * 親 (UserHeaderCell) から `open` / `onOpenChange` を渡すと controlled mode に
+ * なり、名前 cell の click でも popover を開けるようになる。省略時は uncontrolled。
+ *
+ * 入力中の誤 close を防ぐため、textarea が focus を持っている間 (`isFocused`) と
+ * server action 走行中 (`busy`) は hover close を抑止する。
+ *
+ * 本人 (`isOwn=true`) は popover 内で textarea + 保存 + クリア button で編集可能、
+ * 他人 (`isOwn=false`) は popover 内で read-only 表示。
  *
  * popover 構造は TODO #72 教訓 (controlled unmount + finalFocus=false) を踏襲。
  */
@@ -42,21 +47,38 @@ type Props = {
   userName: string;
   /** true = 本人 cell (編集可能)、false = 他人 cell (read-only)。 */
   isOwn: boolean;
+  /**
+   * controlled mode の open 値。省略時は uncontrolled (内部 state)。親側で名前
+   * cell click 等から popover を開きたいときに利用する。
+   */
+  open?: boolean;
+  /** controlled mode の change handler。 */
+  onOpenChange?: (open: boolean) => void;
 };
 
 export function NativeMemberCommentPopover({
   currentComment,
   userName,
   isOwn,
+  open: openProp,
+  onOpenChange,
 }: Props) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  const [openInner, setOpenInner] = useState(false);
+  const open = openProp ?? openInner;
+  const setOpen = (next: boolean) => {
+    if (openProp === undefined) setOpenInner(next);
+    onOpenChange?.(next);
+  };
+
   const [hoverEnabled, setHoverEnabled] = useState(false);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [draft, setDraft] = useState<string>(currentComment ?? "");
   const [error, setError] = useState<string | null>(null);
   const [busy, startTransition] = useTransition();
+  // 入力中 (textarea focus 中) は hover の自動 close を抑止する。
+  const [isFocused, setIsFocused] = useState(false);
 
   // open=true 化時に props で local state を再初期化。
   useEffect(() => {
@@ -85,16 +107,13 @@ export function NativeMemberCommentPopover({
   };
 
   const scheduleClose = () => {
+    // textarea focus 中 / server action 走行中は自動 close しない。
+    if (isFocused || busy) return;
     cancelClose();
     closeTimer.current = setTimeout(() => setOpen(false), 120);
   };
 
-  // 編集中 (本人 only) は hover で誤 close しないよう、textarea focus 中は
-  // close timer を抑止する。
-  const isEditing = isOwn && busy;
-
-  // 他人 popover は hover で完全制御。本人 popover は hover 開始 + 編集中は
-  // 自動 close を停止 (textarea 内で mouse leave しても閉じない)。
+  // hover handlers (desktop のみ)。tap デバイスでは Popover の click open で動く。
   const hoverProps = hoverEnabled
     ? {
         onMouseEnter: () => {
@@ -170,7 +189,7 @@ export function NativeMemberCommentPopover({
           className="glass-popup w-72 max-w-[80vw] p-0"
           finalFocus={false}
           onMouseEnter={hoverEnabled ? cancelClose : undefined}
-          onMouseLeave={hoverEnabled && !isEditing ? scheduleClose : undefined}
+          onMouseLeave={hoverEnabled ? scheduleClose : undefined}
         >
           <div className="flex flex-col gap-1 p-3 text-left">
             <div className="flex items-center gap-1.5 border-b border-border/50 pb-1.5">
@@ -188,6 +207,8 @@ export function NativeMemberCommentPopover({
                 <Textarea
                   value={draft}
                   onChange={(e) => setDraft(e.target.value)}
+                  onFocus={() => setIsFocused(true)}
+                  onBlur={() => setIsFocused(false)}
                   placeholder="例: 仕事次第、開始時刻 1h 遅れる可能性"
                   rows={3}
                   className="mt-1 text-xs"

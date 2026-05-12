@@ -669,6 +669,13 @@ function UserHeaderCell({
     mode === "native" && user.comment && user.comment.trim()
       ? user.comment.trim()
       : null;
+  // 2.1 (2026-05-12) PR3-D follow-up #2: native では本人 cell に常時 trigger
+  // (空でも編集可) + 他人 cell でも comment ありなら trigger を出して hover/
+  // click で popover 表示。名前 cell click でも popover を開けるよう、上位で
+  // open state を持って NativeMemberCommentPopover に controlled prop で注入する。
+  const nativeCommentTarget =
+    mode === "native" && (isOwnUser || !!nativeComment);
+  const [nativeCommentOpen, setNativeCommentOpen] = useState(false);
 
   // Username is a clickable button that opens the in-portal iframe
   // dialog (1.9.13). Comments live in a separate small button →
@@ -684,7 +691,25 @@ function UserHeaderCell({
     ? "inline-block max-w-[7rem] truncate align-bottom underline decoration-dotted decoration-[var(--neon-cyan)]/60 underline-offset-4 transition-colors hover:decoration-[var(--neon-cyan)] hover:text-[var(--neon-cyan)]"
     : "inline-block max-w-[7rem] truncate align-bottom";
 
-  const nameNode = clickable && editUrl ? (
+  // 2.1 (2026-05-12) PR3-D follow-up #2: native では名前 click も popover open
+  // のトリガーにする (要望「名前・アイコンクリックでも開くようにして欲しい」)。
+  // sync 経路では従来通り character-sheets 編集 iframe を開く。
+  const nameNode = nativeCommentTarget ? (
+    <button
+      type="button"
+      onClick={() => setNativeCommentOpen(true)}
+      className={
+        "inline-block max-w-[7rem] truncate align-bottom underline decoration-dotted decoration-[var(--neon-cyan)]/60 underline-offset-4 transition-colors hover:decoration-[var(--neon-cyan)] hover:text-[var(--neon-cyan)]"
+      }
+      title={
+        isOwnUser
+          ? `${user.name} のコメントを編集`
+          : `${user.name} のコメントを表示`
+      }
+    >
+      {user.name}
+    </button>
+  ) : clickable && editUrl ? (
     <button
       type="button"
       onClick={() => onOpenEditFrame(editUrl, `${user.name} の出欠を編集`)}
@@ -711,15 +736,13 @@ function UserHeaderCell({
       <span className="inline-flex items-center gap-1">
         {nameNode}
         {hasComments && <CommentPopover user={user} comments={comments} />}
-        {/* 2.1 (2026-05-12) PR3-D follow-up: native では本人 cell に常時 trigger
-            (空でも編集できるよう) + 他人 cell でも comment あれば trigger を出して
-            hover で popover 表示 (同期式 CommentPopover と同じ挙動)。読み取り用
-            下段 truncate span は popover に集約したため撤去。 */}
-        {mode === "native" && (isOwnUser || !!nativeComment) ? (
+        {nativeCommentTarget ? (
           <NativeMemberCommentPopover
             currentComment={user.comment ?? null}
             userName={user.name}
             isOwn={isOwnUser}
+            open={nativeCommentOpen}
+            onOpenChange={setNativeCommentOpen}
           />
         ) : null}
       </span>
