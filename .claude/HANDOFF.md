@@ -53,6 +53,7 @@
 | # | 項目 | 規模 |
 |---|---|---|
 | 73 | **FFLogs 連携 native 拡張** — `src/lib/server/fflogs.ts` の `linkReportsToSessions()` は現状 `schedule_past_sessions` 直読みなので native mode の sessions では FFLogs auto-link が動かない。native sessions 対応への拡張、`schedule_past_session_logs` の sync/native 統合 vs 別テーブル新設の設計議論、`schedule_past_sessions` 直読みからの脱却を含む。TODO #2 から分離 (2026-05-08)。詳細は `.claude/plans/todo-2-claude-handoff-md-spicy-seahorse.md` の「FFLogs 部分の扱い (本 TODO から除外)」節 | 中 |
+| 81 | **native モードで row 0 件でも当月全日付を upcoming にデフォルト表示** — TODO #80 (PR #98) 完了後の実機確認で、yurutto 本番 native では運用上「Discord 通知時にその都度候補日を追加」する流れのため `native_schedule_sessions` テーブルが当月分 0 件のまま。TODO #77 (PR #94) のフラット表統一以降は row 0 件 → 「今後の予定はありません」表示になり、当月の日付リストが視認できない (2026-05-12 起票)。期待: native でも当月の全日付 (例 5/1〜5/31) が空 row で並ぶ。設計検討点 — placeholder row を ScheduleList で擬似生成するか / `native_schedule_sessions` に空 row を auto insert するか / 「候補日追加」UI からの導線をどう変えるか / 出欠入力可否 / 過去日付の扱い / 月切替 UI など複数論点ありで、新規会話で実機を見ながら仕様確定 | 中 |
 
 ### 📂 カテゴリ詳細ページ (`/category/[slug]`)
 
@@ -90,14 +91,17 @@
 
 直近版のみ列挙。詳細経緯は `src/lib/changelog.ts`、過去版アーカイブは `.claude/done.md`。
 
-- **2.1 (2026-05-12 part3)**: #80 splitSessions cutoff を JST 当月 1 日 0:00 に変更し当月分を upcoming に並べる (TODO #77 follow-up) — クローズ ([PR #96](https://github.com/yyamazaki-lym/raid-repository/pull/96) squash merge `3a64303`)
+- **2.1 (2026-05-12 part3+part4)**: #80 splitSessions cutoff を JST 今日 0:00 に変更し未来日付のみ upcoming に並べる (TODO #77 follow-up) — クローズ ([PR #96](https://github.com/yyamazaki-lym/raid-repository/pull/96) squash merge `3a64303` + [PR #98](https://github.com/yyamazaki-lym/raid-repository/pull/98) squash merge `e787ba1`)
   - **発端**: TODO #77 (PR #94) で sync/native 共通の `<ScheduleList>` に統一した後、月中視点で「当月の過去 candidate 日」がどこにも表示されなくなる問題が残った。例 (今日 = 2026-05-12) で 5/3 や 5/8 の candidate 行が `splitSessions` の cutoff (`Date.now() - 6h`) 以前に落ち、past バケットでは `s.status === "DECISION"` ガードで弾かれて非表示になっていた
-  - **採用方式 (ユーザー確認済み)**: 問題 (a) のみ実装、問題 (b) は現状維持で確定。(a) cutoff を `now - 6h` → **JST 当月 1 日 00:00** に変更し、当月分は candidate / DECISION 区別なく全て upcoming に並ぶようにする。sync 元サイト (character-sheets) が当月全列を 1 か月分横並びで返す挙動と揃う
-  - **修正** [src/components/portal/schedule-list.tsx](src/components/portal/schedule-list.tsx): `splitSessions` 関数 (1754-1779) の cutoff 計算のみ差し替え。`JST_OFFSET_MS = 9h` を使い `Date.UTC(nowJst.getUTCFullYear(), nowJst.getUTCMonth(), 1) - JST_OFFSET_MS` で当月 1 日 0:00 JST を UTC ms 化 (既存 `discord-schedule.ts` / `native-schedule-discord.ts` と同パターン)
+  - **初版実装 (PR #96)**: cutoff を `now - 6h` → **JST 当月 1 日 00:00** に変更し、当月分は candidate / DECISION 区別なく全て upcoming に並ぶようにした。AskUserQuestion で「当月分は全部 upcoming に並べる (推奨)」回答に基づく実装
+  - **本番実機 V1 で再調整 (PR #98)**: yurutto / demo sync 環境で確認したところ「過去日程 (例 5/12 視点の 5/07) が upcoming に並ぶのは直感に反する」とユーザー指摘。元 TODO 文言「同期式の挙動と揃える」を「当月分は全部 upcoming」と解釈したが、実機で見たユーザー期待は「未来日付だけ upcoming」だった。cutoff を **JST 今日 0:00** に再調整 (`Date.UTC(year, month, day, 0, 0, 0, 0) - JST_OFFSET_MS`)
+  - **最終挙動**: 今日 0:00 JST 以降の row → upcoming、昨日以前の DECISION 行 → past (recentPast / olderPast)、昨日以前の non-DECISION 行 → 表示なし。当月の過去 candidate は再び消えるが、当月の過去 DECISION 行は過去詳細表 (Table icon) に並ぶので情報自体は失われない
+  - **修正** [src/components/portal/schedule-list.tsx](src/components/portal/schedule-list.tsx): `splitSessions` 関数の cutoff 計算のみ差し替え。`JST_OFFSET_MS = 9h` を使う (既存 `discord-schedule.ts` / `native-schedule-discord.ts` と同パターン)
   - **問題 (b) 経過**: 元 TODO 文言にあった「過去 5月 DECISION 行が『2 ヶ月以上前』セクションに分類される」は、表示中 5月行が rawDate `'5/3'` 形式 (年抜き) で **2025-05** (約 1 年前) を 2026-05 と勘違いしたユーザー誤認と判明。実体は 1 年前なので `PAST_FOLD_THRESHOLD_MS = 60d` の olderPast 折り畳みが正しい振り分け。`PAST_FOLD_THRESHOLD_MS` / recentPast / olderPast / displayDate format は無改修で確定
   - **触らない範囲**: schedule-page-body.tsx / (portal)/page.tsx / native-fetch.ts / parse.ts / schema.sql / seed-demo.sql は touch なし。FFLogs 連携 (`sessionLogsByDate`) は TODO #73 のスコープなので無改修
-  - **副作用**: `splitSessions` 呼び出し元は schedule-list.tsx 内 1 箇所のみ、`limit` は schedule-page-body.tsx の主呼び出しでは未指定。当月 DECISION 行は past バケットには出ない (upcoming 側のみ) ことが仕様。月跨ぎは `Date.now()` ベースで自動更新。Discord 通知 / cron / FFLogs は `splitSessions` を呼んでいないため横断的副作用なし
-  - **検証**: `npx tsc --noEmit` PASS、`npm run lint` baseline (35 errors / 2 warnings) 維持で新規 0。worktree dev preview は Supabase env 取得が別 terminal 必須のため本セッション内では未実施、merge 後の本番 (demo + yurutto) 実機でユーザー確認に委ねる
+  - **副作用**: `splitSessions` 呼び出し元は schedule-list.tsx 内 1 箇所のみ、`limit` は schedule-page-body.tsx の主呼び出しでは未指定。月跨ぎは `Date.now()` ベースで自動更新。Discord 通知 / cron / FFLogs は `splitSessions` を呼んでいないため横断的副作用なし
+  - **検証**: `npx tsc --noEmit` PASS、`npm run lint` baseline (35 errors / 2 warnings) 維持で新規 0。worktree dev preview は Supabase env 取得が別 terminal 必須のため本セッション内では未実施、merge 後の本番 demo (sync) で「5/07 が upcoming から消え過去詳細表に並ぶ、今日以降のみ upcoming に並ぶ」を実機確認
+  - **PR #98 後の follow-up TODO #81 起票**: 本番実機確認時に「native (yurutto) で日程自体が表示されていない」報告が別途あったが、調査の結果 yurutto 本番 native DB が当月 0 件 (運用上 Discord 通知時に候補日追加する流れ) で「TODO #77 のフラット表統一で当月 row が無いと『今後の予定はありません』表示になる」現象と判明。TODO #80 (splitSessions cutoff 調整) とは無関係の別 issue なので TODO #81 として分離起票
   - **設計ドキュメント**: `~/.claude/plans/todo80-generic-rossum.md`
 - **2.1 (2026-05-12 part2)**: #77 native スケジュール UI を sync 同等のフラット表に統一 — クローズ ([PR #94](https://github.com/yyamazaki-lym/raid-repository/pull/94) squash merge `bbe3edf`)
   - **発端**: TODO #2 phase 2-B (2026-05-07) で native モードに `NativeMonthlySchedule` (月別 collapsible accordion) を導入したが、phase 2-C / 3+4 を経て機能が出揃った段階で「sync は 1 枚カードのフラット表 + 過去簡易 strip + 過去開催詳細表」「native は月別 accordion + 過去簡易 strip のみ (過去開催詳細表は `mode !== "native"` ガードで非表示)」と見た目・操作性が乖離。同じ portal なのに schedule が 2 種類別 UI という違和感が残っていた
