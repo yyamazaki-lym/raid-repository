@@ -1,8 +1,13 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, MessageSquare, Save } from "lucide-react";
+import {
+  AlertTriangle,
+  MessageSquareText,
+  Save,
+  Trash2,
+} from "lucide-react";
 import { toast } from "sonner";
 import {
   Popover,
@@ -14,27 +19,41 @@ import { Textarea } from "@/components/ui/textarea";
 import { updateNativeScheduleMemberCommentAction } from "@/lib/server/native-schedule-actions";
 
 /**
- * 2.1 (2026-05-12) PR3-D: native スケジュールのメンバー全体コメント
- * (同期式準拠で 1 メンバー = 1 行) を本人が編集する popover。
+ * 2.1 (2026-05-12) PR3-D + follow-up: native スケジュールのメンバー全体コメント
+ * (同期式準拠で 1 メンバー = 1 行) を表示・編集する popover。
  *
- * 名前ヘッダー cell の右側に MessageSquare icon を出し、click で popover を開く。
- * Textarea + 保存 button (500 文字以内、空文字列は NULL 正規化)。
+ * 同期式 (`comment-popover.tsx`) と同じ hover-open + grace period パターン:
+ * - desktop (`hover: hover`): trigger hover で popover open、trigger ↔ popup 移動
+ *   猶予 120ms、両方から離脱で close
+ * - touch: hover handlers no-op、tap で open
+ * - click も常に動作 (Popover の controlled open)
  *
- * popover 構造は `native-attendance-popover.tsx` の TODO #72 教訓踏襲:
- *   - `<Popover open={open} onOpenChange={setOpen}>` controlled
- *   - `{open && <PopoverContent finalFocus={false}>}` で close 時 DOM 残留を回避
+ * 本人 (`isOwn=true`) は popover 内で textarea + 保存 + 削除 button で編集可能。
+ * 他人 (`isOwn=false`) は popover 内で read-only 表示。コメントなしの他人は
+ * trigger 自体を表示しないので、UserHeaderCell 側で mount 条件を絞る。
+ *
+ * popover 構造は TODO #72 教訓 (controlled unmount + finalFocus=false) を踏襲。
  */
 
 type Props = {
-  /** 現在のコメント (null / 空文字なら未入力)。Textarea 初期値復元用。 */
+  /** 現在のコメント (null / 空文字なら未入力)。 */
   currentComment: string | null;
   /** 表示名 (aria-label / popover header)。 */
   userName: string;
+  /** true = 本人 cell (編集可能)、false = 他人 cell (read-only)。 */
+  isOwn: boolean;
 };
 
-export function NativeMemberCommentPopover({ currentComment, userName }: Props) {
+export function NativeMemberCommentPopover({
+  currentComment,
+  userName,
+  isOwn,
+}: Props) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  const [hoverEnabled, setHoverEnabled] = useState(false);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const [draft, setDraft] = useState<string>(currentComment ?? "");
   const [error, setError] = useState<string | null>(null);
   const [busy, startTransition] = useTransition();
@@ -46,6 +65,45 @@ export function NativeMemberCommentPopover({ currentComment, userName }: Props) 
       setError(null);
     }
   }, [open, currentComment]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setHoverEnabled(window.matchMedia("(hover: hover)").matches);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (closeTimer.current) clearTimeout(closeTimer.current);
+    };
+  }, []);
+
+  const cancelClose = () => {
+    if (closeTimer.current) {
+      clearTimeout(closeTimer.current);
+      closeTimer.current = null;
+    }
+  };
+
+  const scheduleClose = () => {
+    cancelClose();
+    closeTimer.current = setTimeout(() => setOpen(false), 120);
+  };
+
+  // 編集中 (本人 only) は hover で誤 close しないよう、textarea focus 中は
+  // close timer を抑止する。
+  const isEditing = isOwn && busy;
+
+  // 他人 popover は hover で完全制御。本人 popover は hover 開始 + 編集中は
+  // 自動 close を停止 (textarea 内で mouse leave しても閉じない)。
+  const hoverProps = hoverEnabled
+    ? {
+        onMouseEnter: () => {
+          cancelClose();
+          setOpen(true);
+        },
+        onMouseLeave: scheduleClose,
+      }
+    : {};
 
   const onSave = () => {
     setError(null);
@@ -72,25 +130,37 @@ export function NativeMemberCommentPopover({ currentComment, userName }: Props) 
     });
   };
 
+  const onClear = () => {
+    setDraft("");
+  };
+
   const hasComment = !!currentComment && currentComment.trim().length > 0;
+
+  // 同期式の CommentPopover と同じ trigger デザイン (cyan / 5×5 / MessageSquareText icon)。
+  // 本人 cell でコメントなしのときだけ「outline-only」風に薄く出して「追加できる」hint。
+  const triggerClass = hasComment
+    ? "inline-flex h-5 w-5 items-center justify-center rounded-sm border border-[var(--neon-cyan)]/40 bg-[var(--neon-cyan)]/8 text-[var(--neon-cyan)] transition-colors hover:bg-[var(--neon-cyan)]/15 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--neon-cyan)]/60"
+    : "inline-flex h-5 w-5 items-center justify-center rounded-sm border border-border/40 bg-transparent text-muted-foreground/50 transition-colors hover:bg-secondary/40 hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--neon-cyan)]/60";
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
-        className={
-          "inline-flex h-4 w-4 items-center justify-center rounded-sm border text-[10px] leading-none transition-colors hover:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--neon-cyan)]/60 " +
-          (hasComment
-            ? "border-[var(--neon-cyan)]/50 bg-[var(--neon-cyan)]/10 text-[var(--neon-cyan)]"
-            : "border-border/40 text-muted-foreground/60 hover:text-foreground")
+        {...hoverProps}
+        className={triggerClass}
+        aria-label={
+          isOwn
+            ? `${userName} のコメントを編集`
+            : `${userName} のコメントを表示`
         }
-        aria-label={`${userName} のコメントを編集`}
         title={
           hasComment
-            ? `現在のコメント: ${currentComment}`
-            : "コメントを追加"
+            ? `${userName} のコメント`
+            : isOwn
+              ? "コメントを追加"
+              : undefined
         }
       >
-        <MessageSquare className="h-2.5 w-2.5" aria-hidden />
+        <MessageSquareText className="h-2.5 w-2.5" aria-hidden />
       </PopoverTrigger>
       {open && (
         <PopoverContent
@@ -99,57 +169,76 @@ export function NativeMemberCommentPopover({ currentComment, userName }: Props) 
           sideOffset={6}
           className="glass-popup w-72 max-w-[80vw] p-0"
           finalFocus={false}
+          onMouseEnter={hoverEnabled ? cancelClose : undefined}
+          onMouseLeave={hoverEnabled && !isEditing ? scheduleClose : undefined}
         >
-          <div className="flex flex-col gap-3 p-3">
+          <div className="flex flex-col gap-1 p-3 text-left">
             <div className="flex items-center gap-1.5 border-b border-border/50 pb-1.5">
+              <MessageSquareText
+                className="h-3 w-3 text-[var(--neon-cyan)]"
+                aria-hidden
+              />
               <span className="font-mono text-[9px] tracking-[0.2em] text-muted-foreground uppercase">
                 {userName} のコメント
               </span>
             </div>
 
-            <Textarea
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              placeholder="例: 仕事次第、開始時刻 1h 遅れる可能性"
-              rows={3}
-              className="text-xs"
-              spellCheck={false}
-              maxLength={500}
-              disabled={busy}
-            />
-
-            {error && (
-              <div className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-2.5 py-1.5 text-[11px] text-destructive-foreground/90">
-                <AlertTriangle
-                  className="mt-0.5 h-3 w-3 shrink-0 text-destructive"
-                  aria-hidden
+            {isOwn ? (
+              <>
+                <Textarea
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  placeholder="例: 仕事次第、開始時刻 1h 遅れる可能性"
+                  rows={3}
+                  className="mt-1 text-xs"
+                  spellCheck={false}
+                  maxLength={500}
+                  disabled={busy}
                 />
-                <span>{error}</span>
-              </div>
-            )}
 
-            <div className="flex items-center justify-end gap-1.5 border-t border-border/40 pt-2">
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => setOpen(false)}
-                disabled={busy}
-                className="font-mono text-[10px] tracking-[0.18em] uppercase"
-              >
-                キャンセル
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                onClick={onSave}
-                disabled={busy}
-                className="gap-1 font-mono text-[10px] tracking-[0.18em] uppercase"
-              >
-                <Save className="h-3 w-3" aria-hidden />
-                {busy ? "保存中..." : "保存"}
-              </Button>
-            </div>
+                {error && (
+                  <div className="mt-1 flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-2.5 py-1.5 text-[11px] text-destructive-foreground/90">
+                    <AlertTriangle
+                      className="mt-0.5 h-3 w-3 shrink-0 text-destructive"
+                      aria-hidden
+                    />
+                    <span>{error}</span>
+                  </div>
+                )}
+
+                <div className="mt-2 flex items-center justify-end gap-1.5 border-t border-border/40 pt-2">
+                  {hasComment && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={onClear}
+                      disabled={busy || !draft}
+                      className="gap-1 font-mono text-[10px] tracking-[0.18em] uppercase"
+                      title="textarea をクリア (保存すると DB から削除)"
+                    >
+                      <Trash2 className="h-3 w-3" aria-hidden />
+                      クリア
+                    </Button>
+                  )}
+                  <div className="flex-1" />
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={onSave}
+                    disabled={busy}
+                    className="gap-1 font-mono text-[10px] tracking-[0.18em] uppercase"
+                  >
+                    <Save className="h-3 w-3" aria-hidden />
+                    {busy ? "保存中..." : "保存"}
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <p className="pt-1 text-[11px] leading-relaxed text-foreground/95 whitespace-pre-wrap break-words">
+                {hasComment ? currentComment : "—"}
+              </p>
+            )}
           </div>
         </PopoverContent>
       )}
