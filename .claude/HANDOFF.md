@@ -42,7 +42,7 @@
 
 ## 📌 次回の作業優先度
 
-未完了 TODO はユーザー選択。残りはほぼ全て中〜大規模 (#7 / #51 / #11) の見送り候補。
+未完了 TODO はユーザー選択。残りはほぼ全て中〜大規模 (#73 / #7 / #51 / #11) の見送り候補。TODO #81 完了後の機能面 follow-up (CandidateDateDialog 初期値統合、月切替 UI 等) は新規会話で別 TODO 起票予定。
 
 ## 未完了 TODO 一覧
 
@@ -53,7 +53,6 @@
 | # | 項目 | 規模 |
 |---|---|---|
 | 73 | **FFLogs 連携 native 拡張** — `src/lib/server/fflogs.ts` の `linkReportsToSessions()` は現状 `schedule_past_sessions` 直読みなので native mode の sessions では FFLogs auto-link が動かない。native sessions 対応への拡張、`schedule_past_session_logs` の sync/native 統合 vs 別テーブル新設の設計議論、`schedule_past_sessions` 直読みからの脱却を含む。TODO #2 から分離 (2026-05-08)。詳細は `.claude/plans/todo-2-claude-handoff-md-spicy-seahorse.md` の「FFLogs 部分の扱い (本 TODO から除外)」節 | 中 |
-| 81 | **native モードで row 0 件でも当月全日付を upcoming にデフォルト表示** — TODO #80 (PR #98) 完了後の実機確認で、yurutto 本番 native では運用上「Discord 通知時にその都度候補日を追加」する流れのため `native_schedule_sessions` テーブルが当月分 0 件のまま。TODO #77 (PR #94) のフラット表統一以降は row 0 件 → 「今後の予定はありません」表示になり、当月の日付リストが視認できない (2026-05-12 起票)。期待: native でも当月の全日付 (例 5/1〜5/31) が空 row で並ぶ。設計検討点 — placeholder row を ScheduleList で擬似生成するか / `native_schedule_sessions` に空 row を auto insert するか / 「候補日追加」UI からの導線をどう変えるか / 出欠入力可否 / 過去日付の扱い / 月切替 UI など複数論点ありで、新規会話で実機を見ながら仕様確定 | 中 |
 
 ### 📂 カテゴリ詳細ページ (`/category/[slug]`)
 
@@ -91,6 +90,21 @@
 
 直近版のみ列挙。詳細経緯は `src/lib/changelog.ts`、過去版アーカイブは `.claude/done.md`。
 
+- **2.1 (2026-05-12 part5)**: #81 native スケジュールで当月日付を auto-insert し空 row 状態を解消 — クローズ ([PR #100](https://github.com/yyamazaki-lym/raid-repository/pull/100) squash merge `ae55fd4`)
+  - **発端**: TODO #77 (PR #94) で sync/native UI を flat 表に統一、TODO #80 (PR #96+#98) で `splitSessions` cutoff を「JST 今日 0:00」に揃えた後、native では `native_schedule_sessions` が当月分 0 件のままだと「予定なし」表示になり当月日付一覧がそもそも視認できない問題が残っていた。yurutto 本番 native は「Discord 通知時に候補日を都度追加」する運用で row が積まれていないのが常態
+  - **採用方式 (ユーザー確認済み 3 点)**: (1) 実装方式 = **DB に空 row を auto-insert** (placeholder 擬似生成ではない、実 row 化により出欠 / 通知 / status toggle が普通に動く)、(2) 日付範囲 = JST 今日 0:00 〜 当月末日、当月末日まで残り 7 日以内なら翌月末日まで延長、(3) 起動タイミング = page レンダー毎に点検 + 不足分 bulk INSERT (`ON CONFLICT (raw_date) DO NOTHING` で冪等、2 回目以降のアクセスは noop)、デフォルト時刻 = app_settings 新規キー 2 件 + settings dialog UI で admin が編集可能 (fallback `21:00`〜`23:00`)、出欠 / 通知ボタン = 日付行から両方表示 (実 row なので既存 UI ロジックが動く)
+  - **新規** [src/lib/server/native-schedule-placeholders.ts](src/lib/server/native-schedule-placeholders.ts): `ensureNativeMonthlyPlaceholders(defaults)` server util。`createSupabaseServiceRoleClient()` で RLS バイパスし、JST 今日 〜 当月末日 (+ 末日 7 日前以降は翌月末日まで) の不足 raw_date を `upsert(rows, { onConflict: "raw_date", ignoreDuplicates: true })`。rawDate format は sync 互換 `YYYY/MM/DD(曜) HH:MM~HH:MM` (`schedule_session_memos` / `schedule_past_session_logs` と key 共有)。失敗時は `console.warn` のみで page render 続行 (`DYNAMIC_SERVER_USAGE` / `NEXT_*` digest は re-throw)
+  - **新規** [src/components/portal/settings/native-default-raid-time-section.tsx](src/components/portal/settings/native-default-raid-time-section.tsx): admin 向け settings section。HH:MM input × 2 + 即時保存、`setNativeScheduleDefaultRaidTimeAction` を呼ぶ。`NativeChoiceValuesSection` / `NativeDiscordNotifySection` と同じ「親 prop → 子 useState 同期」パターン
+  - **修正** [src/app/(portal)/page.tsx](src/app/(portal)/page.tsx): native ブランチで `fetchAppSettings()` に `NATIVE_DEFAULT_START_TIME_KEY` / `NATIVE_DEFAULT_END_TIME_KEY` を統合 fetch、`Promise.all` の後に `ensureNativeMonthlyPlaceholders()` → `fetchNativeSchedule()` の順次実行に組み替え (並列だと race で初回 read が空配列になる可能性)
+  - **修正** [src/lib/server/categories-actions.ts](src/lib/server/categories-actions.ts): `setNativeScheduleDefaultRaidTimeAction({ startTime, endTime })` server action 追加。`assertAdminResult` gate + HH:MM regex validate (start !== end) + `app_settings.upsert([...], { onConflict: "key" })` + `revalidatePath("/")` best-effort
+  - **修正** [src/lib/schedule/native-admin-client.ts](src/lib/schedule/native-admin-client.ts): `NativeAdminAux` 型に `defaultStartTime` / `defaultEndTime` 追加 (fallback `"21:00"` / `"23:00"`)、`fetchNativeScheduleAdminAux()` の `app_settings.in()` に 2 key 追加
+  - **修正** [src/components/portal/settings-dialog.tsx](src/components/portal/settings-dialog.tsx): `mode === "native"` ブロックに `<NativeDefaultRaidTimeSection>` を 1 行配線 (`NativeCancelledSessionsSection` と `NativeDiscordNotifySection` の間)
+  - **触らない範囲**: schedule-list.tsx (placeholder 用 ロジック追加なし、実 row として並ぶので既存描画が動く) / native-fetch.ts (SELECT は `status != CANCELLED` 全件のまま) / candidate-date-dialog.tsx (+ ボタン UI 既存挙動維持、初期値 `"21:00"`/`"23:00"` を app_settings default に揃える件はスコープ外で別 TODO 候補) / cron route (`status='DECISION'` トリガなので CANDIDATE placeholder は通知対象外) / FFLogs 連携 (TODO #73 スコープ) / supabase/schema.sql (seed insert pattern が既存に無いため fallback で吸収する判断、改修なし)
+  - **副作用**: sync / disabled モードへの影響なし (修正箇所は `mode === "native"` ブロック内のみ)。raw_date UNIQUE で既存 admin 手動追加 row / DECISION 化済 / CANCELLED 化済の re-INSERT は全 skip。月跨ぎは page render 時 `Date.now()` ベースで自動更新。1 ヶ月 30 行 × 12 ヶ月 = 360 行/年で DB 容量は無視できるサイズ。複数 user 同時アクセス時は ON CONFLICT で race condition 解消。cron 自動通知は CANDIDATE placeholder を対象外、admin が DECISION 切替時に既存通り通知対象
+  - **service_role 使用の妥当性**: auto-insert する内容は user 入力を一切受け取らず「当月日付 + app_settings 由来 default time」だけで決定的に生成するため、admin gate を通さずとも悪用余地がない。`createSupabaseServiceRoleClient()` の docstring 注意書き「assertAdminResult か CRON_SECRET 経由 auth」の例外として util の docstring で明示。非 admin user の page アクセス時にも placeholder を揃える必要があるため
+  - **検証**: `npx tsc --noEmit` PASS / `npm run lint` baseline (35 errors / 2 warnings) 維持で本 PR 改修起因の新規 0 件 (新規 section の `useEffect` 同期パターンは `eslint-disable-next-line react-hooks/set-state-in-effect` で抑制し既存セクションと挙動揃え)。worktree dev preview は Supabase env 取得が別 terminal 必須のため本セッション内では未実施、merge 後の本番実機 (demo + yurutto) でユーザーが「見た目 OK」を確認
+  - **follow-up**: ユーザー明言「機能面の修正・追加は新規会話で対応」。CandidateDateDialog の初期値を app_settings default に揃える件、placeholder 行で startTime/endTime/note を手動編集する UI、月切替 UI、placeholder の自動生成タグ表示、過去 default 時刻を新月分以降にだけ反映する遡及更新の有無、などを新規会話で別 TODO 化する想定
+  - **設計ドキュメント**: `~/.claude/plans/todo81-claude-plans-todo80-generic-rossu-declarative-sprout.md`
 - **2.1 (2026-05-12 part3+part4)**: #80 splitSessions cutoff を JST 今日 0:00 に変更し未来日付のみ upcoming に並べる (TODO #77 follow-up) — クローズ ([PR #96](https://github.com/yyamazaki-lym/raid-repository/pull/96) squash merge `3a64303` + [PR #98](https://github.com/yyamazaki-lym/raid-repository/pull/98) squash merge `e787ba1`)
   - **発端**: TODO #77 (PR #94) で sync/native 共通の `<ScheduleList>` に統一した後、月中視点で「当月の過去 candidate 日」がどこにも表示されなくなる問題が残った。例 (今日 = 2026-05-12) で 5/3 や 5/8 の candidate 行が `splitSessions` の cutoff (`Date.now() - 6h`) 以前に落ち、past バケットでは `s.status === "DECISION"` ガードで弾かれて非表示になっていた
   - **初版実装 (PR #96)**: cutoff を `now - 6h` → **JST 当月 1 日 00:00** に変更し、当月分は candidate / DECISION 区別なく全て upcoming に並ぶようにした。AskUserQuestion で「当月分は全部 upcoming に並べる (推奨)」回答に基づく実装
