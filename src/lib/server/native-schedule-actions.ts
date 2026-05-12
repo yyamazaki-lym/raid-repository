@@ -142,6 +142,57 @@ export async function setNativeScheduleSessionStatusAction(
   return { ok: true };
 }
 
+/**
+ * 2.1 (2026-05-12): 日個別の raid time を override / default 戻しするための
+ * admin only action。`startTime` / `endTime` のいずれかが null なら DB を NULL
+ * に UPDATE = default 追従に戻す。両方 string なら override 値を書き込む。
+ * HH:MM regex で validate。
+ */
+const HHMM_RE = /^([01]?\d|2[0-3]):([0-5]\d)$/;
+
+export type UpdateNativeScheduleSessionTimeInput = {
+  sessionId: string;
+  startTime: string | null;
+  endTime: string | null;
+};
+
+export async function updateNativeScheduleSessionTimeAction(
+  input: UpdateNativeScheduleSessionTimeInput,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
+  const trimmed = input.sessionId?.trim();
+  if (!trimmed) return { ok: false, reason: "sessionId が空です" };
+
+  // どちらか片方だけ null は想定しない (UI 上は両方同時に切り替わる)。
+  // 受け入れるが「両方 null = default に戻す」「両方 string = override」
+  // どちらかにする運用を前提に validate。
+  const startTime = input.startTime?.trim() || null;
+  const endTime = input.endTime?.trim() || null;
+  if (startTime !== null && !HHMM_RE.test(startTime)) {
+    return { ok: false, reason: "開始時刻は HH:MM 形式で入力してください" };
+  }
+  if (endTime !== null && !HHMM_RE.test(endTime)) {
+    return { ok: false, reason: "終了時刻は HH:MM 形式で入力してください" };
+  }
+  if (startTime !== null && endTime !== null && startTime === endTime) {
+    return { ok: false, reason: "開始時刻と終了時刻が同じです" };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("native_schedule_sessions")
+    .update({ start_time: startTime, end_time: endTime })
+    .eq("id", trimmed);
+  if (error) return { ok: false, reason: dbError("時刻更新", error) };
+  try {
+    revalidatePath("/");
+  } catch {
+    // best-effort
+  }
+  return { ok: true };
+}
+
 // ---- members (admin gate) -------------------------------------------------
 
 const DISCORD_ID_RE = /^\d{17,20}$/;

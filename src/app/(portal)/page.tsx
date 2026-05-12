@@ -234,7 +234,13 @@ async function ScheduleContent() {
     startTime: appSettings[NATIVE_DEFAULT_START_TIME_KEY],
     endTime: appSettings[NATIVE_DEFAULT_END_TIME_KEY],
   });
-  const nativeResult = await fetchNativeSchedule();
+  // 2.1 (2026-05-12): native_schedule_sessions.start_time / end_time が NULL の row
+  // は default に追従させたいので、ensureNativeMonthlyPlaceholders と同じ default を
+  // fetchNativeSchedule にも渡して COALESCE する。
+  const nativeResult = await fetchNativeSchedule({
+    startTime: appSettings[NATIVE_DEFAULT_START_TIME_KEY],
+    endTime: appSettings[NATIVE_DEFAULT_END_TIME_KEY],
+  });
   const topTextOverride = appSettings[SCHEDULE_TOP_TEXT_OVERRIDE_KEY] ?? null;
   const visibleCategories = categoriesResult.ok
     ? filterVisibleCategories(categoriesResult.categories, userRoles)

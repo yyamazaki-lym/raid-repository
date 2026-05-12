@@ -2,6 +2,12 @@ import "server-only";
 
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { fetchAppSetting } from "@/lib/supabase/app-settings";
+import {
+  FALLBACK_DEFAULT_END_TIME,
+  FALLBACK_DEFAULT_START_TIME,
+  NATIVE_DEFAULT_END_TIME_KEY,
+  NATIVE_DEFAULT_START_TIME_KEY,
+} from "@/lib/server/native-schedule-placeholders";
 
 /**
  * TODO #2 phase 3 + phase 4 (2026-05-08): native スケジュール用 Discord 通知 dispatch。
@@ -44,13 +50,32 @@ type SessionRow = {
   id: string;
   raw_date: string;
   parsed_date: string;
-  start_time: string;
-  end_time: string;
+  // 2.1 (2026-05-12): NULL 許可化。buildMessage 内で default を COALESCE する。
+  start_time: string | null;
+  end_time: string | null;
   day_of_week: string;
   status: "CANDIDATE" | "DECISION" | "CANCELLED";
   note: string | null;
   last_notified_at: string | null;
 };
+
+const TIME_RE = /^([01]?\d|2[0-3]):([0-5]\d)$/;
+
+async function fetchTimeDefaults(): Promise<{
+  startTime: string;
+  endTime: string;
+}> {
+  const [startRaw, endRaw] = await Promise.all([
+    fetchAppSetting(NATIVE_DEFAULT_START_TIME_KEY),
+    fetchAppSetting(NATIVE_DEFAULT_END_TIME_KEY),
+  ]);
+  return {
+    startTime:
+      startRaw && TIME_RE.test(startRaw) ? startRaw : FALLBACK_DEFAULT_START_TIME,
+    endTime:
+      endRaw && TIME_RE.test(endRaw) ? endRaw : FALLBACK_DEFAULT_END_TIME,
+  };
+}
 
 type MemberRow = {
   discord_user_id: string;
@@ -235,7 +260,7 @@ async function buildMessage(
   session: SessionRow,
   roleId: string | null,
 ): Promise<string> {
-  const [membersRes, attendancesRes] = await Promise.all([
+  const [membersRes, attendancesRes, timeDefaults] = await Promise.all([
     supabase
       .from("native_schedule_members")
       .select("discord_user_id, display_name, is_active")
@@ -246,6 +271,7 @@ async function buildMessage(
       .from("native_schedule_attendances")
       .select("session_id, discord_user_id, symbol")
       .eq("session_id", session.id),
+    fetchTimeDefaults(),
   ]);
 
   const members = (membersRes.data ?? []) as MemberRow[];
@@ -272,10 +298,13 @@ async function buildMessage(
 
   const lines: string[] = [];
   const mentionPrefix = roleId ? `<@&${roleId}> ` : "";
+  // 2.1 (2026-05-12): NULL の row は default 時刻に追従させる。
+  const startTime = session.start_time ?? timeDefaults.startTime;
+  const endTime = session.end_time ?? timeDefaults.endTime;
   lines.push(`${mentionPrefix}本日の固定活動予定日です`);
   lines.push("");
   lines.push(`📅 ${session.raw_date} (${session.day_of_week})`);
-  lines.push(`🕘 ${session.start_time} 〜 ${session.end_time}`);
+  lines.push(`🕘 ${startTime} 〜 ${endTime}`);
   if (session.note && session.note.trim()) {
     lines.push(`📝 ${session.note.trim()}`);
   }

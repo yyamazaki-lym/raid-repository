@@ -2,6 +2,10 @@ import "server-only";
 
 import { fetchAppSetting } from "@/lib/supabase/app-settings";
 import { createClient } from "@/lib/supabase/server";
+import {
+  FALLBACK_DEFAULT_END_TIME,
+  FALLBACK_DEFAULT_START_TIME,
+} from "@/lib/server/native-schedule-placeholders";
 
 import type {
   Attendance,
@@ -44,8 +48,9 @@ type NativeSessionRow = {
   id: string;
   raw_date: string;
   parsed_date: string;
-  start_time: string;
-  end_time: string;
+  // 2.1 (2026-05-12): NULL 許可化。NULL = default 追従、NOT NULL = 日個別 override。
+  start_time: string | null;
+  end_time: string | null;
   day_of_week: string;
   status: "CANDIDATE" | "DECISION" | "CANCELLED";
 };
@@ -58,7 +63,29 @@ type NativeAttendanceRow = {
   comment: string | null;
 };
 
-export async function fetchNativeSchedule(): Promise<ScheduleFetchResult> {
+export type FetchNativeScheduleDefaults = {
+  startTime?: string | null;
+  endTime?: string | null;
+};
+
+const TIME_RE = /^([01]?\d|2[0-3]):([0-5]\d)$/;
+
+export async function fetchNativeSchedule(
+  defaults?: FetchNativeScheduleDefaults,
+): Promise<ScheduleFetchResult> {
+  // 2.1 (2026-05-12): start_time / end_time が NULL の row は default 時刻を
+  // 表示用に COALESCE する。default は page.tsx 側で app_settings 経由で取得
+  // して引数注入 (placeholder の `ensureNativeMonthlyPlaceholders` と同じ
+  // pattern)。不正値や未指定は fallback。
+  const defaultStartTime =
+    defaults?.startTime && TIME_RE.test(defaults.startTime)
+      ? defaults.startTime
+      : FALLBACK_DEFAULT_START_TIME;
+  const defaultEndTime =
+    defaults?.endTime && TIME_RE.test(defaults.endTime)
+      ? defaults.endTime
+      : FALLBACK_DEFAULT_END_TIME;
+
   const supabase = await createClient();
 
   const [membersRes, sessionsRes, choiceCsv] = await Promise.all([
@@ -125,8 +152,11 @@ export async function fetchNativeSchedule(): Promise<ScheduleFetchResult> {
     rawDate: s.raw_date,
     date: new Date(s.parsed_date),
     dayOfWeek: s.day_of_week,
-    startTime: s.start_time,
-    endTime: s.end_time,
+    // 2.1 (2026-05-12): start_time / end_time が NULL の row は default 時刻に
+    // 追従させる。session-time-edit-popover で日個別 override を入れた場合は
+    // NOT NULL がそのまま表示される。
+    startTime: s.start_time ?? defaultStartTime,
+    endTime: s.end_time ?? defaultEndTime,
     // CANCELLED は SELECT で除外済 (filter neq) なので CANDIDATE | DECISION
     // のみが残る。SessionStatus 型に narrow するため as でキャスト。
     status: s.status as SessionStatus,
@@ -142,8 +172,18 @@ export async function fetchNativeSchedule(): Promise<ScheduleFetchResult> {
   // map。`ScheduleSession.rowIndex` は character-sheets 由来で native では常に
   // null のため、別 channel として `nativeMeta` に同梱する。
   const sessionIdByRawDate: Record<string, string> = {};
+  // 2.1 (2026-05-12): session-time-edit-popover が「override 有無 + default 表示」
+  // を出すため、表示用 COALESCE 後の値ではなく生の DB 値 (NULL 含む) を別マップで保持。
+  const timeOverridesByRawDate: Record<
+    string,
+    { start: string | null; end: string | null }
+  > = {};
   for (const s of sessionRows) {
     sessionIdByRawDate[s.raw_date] = s.id;
+    timeOverridesByRawDate[s.raw_date] = {
+      start: s.start_time,
+      end: s.end_time,
+    };
   }
 
   const data: ParsedSchedule = {
@@ -158,6 +198,9 @@ export async function fetchNativeSchedule(): Promise<ScheduleFetchResult> {
     nativeMeta: {
       sessionIdByRawDate,
       commentsByPair,
+      timeOverridesByRawDate,
+      defaultStartTime,
+      defaultEndTime,
     },
   };
 
