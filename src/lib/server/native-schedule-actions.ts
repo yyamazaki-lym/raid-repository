@@ -2,7 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 
-import { createClient } from "@/lib/supabase/server";
+import {
+  createClient,
+  createSupabaseServiceRoleClient,
+} from "@/lib/supabase/server";
 
 import { assertAdminResult, requireDiscordMember } from "./auth";
 import { dbError } from "./db-error";
@@ -35,6 +38,12 @@ const NATIVE_DISCORD_NOTIFY_ROLE_KEY =
   "native_schedule_discord_notify_role_id";
 const NATIVE_DISCORD_NOTIFY_HOUR_KEY =
   "native_schedule_discord_notify_hour";
+// 2.1 (2026-05-12) PR3-A: 通知メッセージ template (placeholder 置換式)。
+const NATIVE_DISCORD_NOTIFY_TEMPLATE_KEY =
+  "native_schedule_discord_notify_template";
+// 2.1 (2026-05-12) PR3-B: 確定 (DECISION 切替 / 新規 DECISION INSERT) 時の auto-notify ON/OFF。
+const NATIVE_DISCORD_NOTIFY_ON_DECISION_KEY =
+  "native_schedule_discord_notify_on_decision";
 
 // ---- sessions (admin gate) ------------------------------------------------
 
@@ -91,6 +100,42 @@ export async function createNativeScheduleSessionAction(
   return { ok: true, id: data.id as string };
 }
 
+/**
+ * 2.1 (2026-05-12) PR3-B: 確定 (DECISION) 切替 / 新規 DECISION INSERT 時の
+ * auto-notify hook 共通 helper。`native_schedule_discord_notify_on_decision`
+ * が "true" のとき、`notifyNativeScheduleSession({ respectToggle: true,
+ * respectDedup: true })` で 1 件発火する。respectDedup: true で
+ * `last_notified_at` が既に入っている row は skip され、同一 session の二重
+ * 投稿が起きない (status を CANDIDATE←→DECISION で連打しても通知は 1 回)。
+ *
+ * 失敗時は warn log のみで握りつぶす (status 更新自体は成功している)。
+ */
+async function maybeAutoNotifyOnDecision(sessionId: string): Promise<void> {
+  try {
+    const supabase = await createClient();
+    const { data } = await supabase
+      .from("app_settings")
+      .select("value")
+      .eq("key", NATIVE_DISCORD_NOTIFY_ON_DECISION_KEY)
+      .maybeSingle();
+    const enabled = (data as { value?: string } | null)?.value === "true";
+    if (!enabled) return;
+    const r = await notifyNativeScheduleSession({
+      sessionId,
+      respectToggle: true,
+      respectDedup: true,
+    });
+    if (!r.ok) {
+      console.warn(
+        "[native-schedule] auto-notify on DECISION failed:",
+        r.reason,
+      );
+    }
+  } catch (err) {
+    console.warn("[native-schedule] auto-notify hook error:", err);
+  }
+}
+
 export async function deleteNativeScheduleSessionAction(
   id: string,
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
@@ -138,6 +183,10 @@ export async function setNativeScheduleSessionStatusAction(
     revalidatePath("/");
   } catch {
     // best-effort
+  }
+  // 2.1 (2026-05-12) PR3-B: DECISION 切替時に auto-notify (flag 確認 + dedup あり)。
+  if ((status as NativeSessionStatus) === "DECISION") {
+    await maybeAutoNotifyOnDecision(trimmed);
   }
   return { ok: true };
 }
@@ -289,6 +338,40 @@ export async function updateNativeScheduleMemberAction(
     .update(update)
     .eq("discord_user_id", id);
   if (error) return { ok: false, reason: dbError("メンバー更新", error) };
+  try {
+    revalidatePath("/");
+  } catch {
+    // best-effort
+  }
+  return { ok: true };
+}
+
+/**
+ * 2.1 (2026-05-12) PR3-D: メンバー全体コメント (同期式準拠で 1 メンバー = 1 行)
+ * を本人だけが更新できる action。RLS は admin only のまま (display_name や
+ * is_active を client から弄れないよう保護)、本 action は service role で
+ * RLS を bypass しつつ「自分の discord_id == row.discord_user_id」のみ書ける。
+ *
+ * 空文字列は NULL に正規化 (= コメント削除)。500 文字制限。
+ */
+export async function updateNativeScheduleMemberCommentAction(input: {
+  comment: string | null;
+}): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const member = await requireDiscordMember();
+
+  const raw = (input.comment ?? "").trim();
+  if (raw.length > 500) {
+    return { ok: false, reason: "コメントは 500 文字以内で入力してください" };
+  }
+  const normalized = raw || null;
+
+  // RLS は admin only。service role で bypass しつつ本人 row のみ UPDATE。
+  const supabase = createSupabaseServiceRoleClient();
+  const { error } = await supabase
+    .from("native_schedule_members")
+    .update({ comment: normalized })
+    .eq("discord_user_id", member.discordId);
+  if (error) return { ok: false, reason: dbError("コメント更新", error) };
   try {
     revalidatePath("/");
   } catch {
@@ -525,6 +608,89 @@ export async function setNativeScheduleDiscordNotifyHourAction(
       { onConflict: "key" },
     );
   if (error) return { ok: false, reason: dbError("通知時刻保存", error) };
+  try {
+    revalidatePath("/");
+  } catch {
+    // best-effort
+  }
+  return { ok: true };
+}
+
+/**
+ * 2.1 (2026-05-12) PR3-A: 通知メッセージ template 文字列を `app_settings` に保存。
+ * placeholder: `{mention}` `{date}` `{day}` `{time_start}` `{time_end}` `{note}`
+ *              `{attendance}` `{site_url}`。空文字列で DELETE → buildMessage の
+ * hardcode default に戻る。
+ */
+export async function setNativeScheduleDiscordNotifyTemplateAction(
+  template: string,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
+
+  const trimmed = template ?? "";
+  const supabase = await createClient();
+
+  if (!trimmed.trim()) {
+    const { error } = await supabase
+      .from("app_settings")
+      .delete()
+      .eq("key", NATIVE_DISCORD_NOTIFY_TEMPLATE_KEY);
+    if (error) {
+      return { ok: false, reason: dbError("通知 template 削除", error) };
+    }
+    try {
+      revalidatePath("/");
+    } catch {
+      // best-effort
+    }
+    return { ok: true };
+  }
+
+  if (trimmed.length > 4000) {
+    return { ok: false, reason: "テンプレートは 4000 文字以内で入力してください" };
+  }
+
+  const { error } = await supabase
+    .from("app_settings")
+    .upsert(
+      { key: NATIVE_DISCORD_NOTIFY_TEMPLATE_KEY, value: trimmed },
+      { onConflict: "key" },
+    );
+  if (error) {
+    return { ok: false, reason: dbError("通知 template 保存", error) };
+  }
+  try {
+    revalidatePath("/");
+  } catch {
+    // best-effort
+  }
+  return { ok: true };
+}
+
+/**
+ * 2.1 (2026-05-12) PR3-B: 確定時自動通知 ON/OFF を `app_settings` に保存。
+ * default は OFF (キー未存在時)。
+ */
+export async function setNativeScheduleDiscordNotifyOnDecisionAction(
+  enabled: boolean,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("app_settings")
+    .upsert(
+      {
+        key: NATIVE_DISCORD_NOTIFY_ON_DECISION_KEY,
+        value: enabled ? "true" : "false",
+      },
+      { onConflict: "key" },
+    );
+  if (error) {
+    return { ok: false, reason: dbError("確定時自動通知 ON/OFF 保存", error) };
+  }
   try {
     revalidatePath("/");
   } catch {

@@ -63,6 +63,7 @@ import { NativeAttendancePopover } from "./native-schedule/native-attendance-pop
 import { SessionStatusToggle } from "./native-schedule/session-status-toggle";
 import { SessionDiscordNotifyButton } from "./native-schedule/session-discord-notify-button";
 import { SessionTimeEditPopover } from "./native-schedule/session-time-edit-popover";
+import { NativeMemberCommentPopover } from "./native-schedule/native-member-comment-popover";
 
 // Stable reference for the realtime hook's initial param — `[]` inline
 // would be a fresh array on every render and trip the hook's
@@ -434,6 +435,10 @@ export function ScheduleList({
             editUrl={buildEditUrl(scheduleUrl, u.userId)}
             onOpenEditFrame={openEditFrame}
             clickable={showDecided}
+            mode={mode}
+            isOwnUser={
+              mode === "native" && !!currentDiscordId && u.userId === currentDiscordId
+            }
           />
         ))}
       </tr>
@@ -629,6 +634,8 @@ function UserHeaderCell({
   editUrl,
   onOpenEditFrame,
   clickable = true,
+  mode = "sync",
+  isOwnUser = false,
 }: {
   user: ScheduleUser;
   comments: ScheduleComment[];
@@ -645,8 +652,23 @@ function UserHeaderCell({
    * をうっかり編集してしまう事故を防ぐ。
    */
   clickable?: boolean;
+  /**
+   * 2.1 (2026-05-12) PR3-D: スケジュールソースモード。native では member
+   * 全体コメント popover を本人のみマウント、他人 cell にはコメントを
+   * tooltip / 折返し span で read-only 表示する。
+   */
+  mode?: ScheduleSourceMode;
+  /**
+   * 2.1 (2026-05-12) PR3-D: 本人 cell 判定 (mode === "native" && currentDiscordId
+   * === user.userId)。true のとき MessageSquare icon を表示し popover を開ける。
+   */
+  isOwnUser?: boolean;
 }) {
   const hasComments = comments.length > 0;
+  const nativeComment =
+    mode === "native" && user.comment && user.comment.trim()
+      ? user.comment.trim()
+      : null;
 
   // Username is a clickable button that opens the in-portal iframe
   // dialog (1.9.13). Comments live in a separate small button →
@@ -689,7 +711,24 @@ function UserHeaderCell({
       <span className="inline-flex items-center gap-1">
         {nameNode}
         {hasComments && <CommentPopover user={user} comments={comments} />}
+        {/* 2.1 (2026-05-12) PR3-D: native の本人 cell に member 全体コメント
+            popover を mount。他人 cell には comment を tooltip / 下段 span で
+            read-only 表示。 */}
+        {mode === "native" && isOwnUser ? (
+          <NativeMemberCommentPopover
+            currentComment={user.comment ?? null}
+            userName={user.name}
+          />
+        ) : null}
       </span>
+      {mode === "native" && !isOwnUser && nativeComment ? (
+        <div
+          className="mx-auto mt-0.5 max-w-[7rem] truncate text-[9px] font-normal normal-case tracking-normal text-muted-foreground/80"
+          title={nativeComment}
+        >
+          {nativeComment}
+        </div>
+      ) : null}
     </th>
   );
 }
@@ -1344,7 +1383,6 @@ function SessionRow({
               <NativeAttendancePopover
                 sessionId={nativeSessionId}
                 currentSymbol={att}
-                currentComment={currentUserComment}
                 attendanceOptions={attendanceOptions}
                 triggerClass={tone}
                 userName={u.name}

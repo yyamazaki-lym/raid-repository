@@ -2,24 +2,26 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, Save } from "lucide-react";
+import { AlertTriangle, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
 import { upsertNativeScheduleAttendanceAction } from "@/lib/server/native-schedule-actions";
 import type { ScheduleAttendanceOptions } from "@/lib/schedule/parse";
 
 /**
  * TODO #2 phase 2-B: native スケジュールの本人専用出欠入力 popover。
  *
- * 自分の出欠 cell click → 開く radio + textarea。`upsertNativeScheduleAttendanceAction`
- * (本人 only via RLS self-row policy) を呼んで symbol + comment を upsert する。
+ * 自分の出欠 cell click → 開く radio。`upsertNativeScheduleAttendanceAction`
+ * (本人 only via RLS self-row policy) を呼んで symbol を upsert する。
  * 空 symbol は server side で row delete (= 「未回答」状態に戻す)。
+ *
+ * 2.1 (2026-05-12) PR3-C: **click 即保存に変更** (同期式準拠で「保存」「キャンセル」
+ * を撤去、radio click 時に即 server action 発火 → close + toast)。comment 欄も
+ * popover から外し、メンバー全体コメント (名前 cell の別 popover) に集約。
  *
  * **TODO #72 教訓** (popover DOM 残留 + focus restore outline):
  * - `<Popover open={open} onOpenChange={setOpen}>` controlled mode
@@ -41,8 +43,6 @@ type Props = {
   sessionId: string;
   /** 現在の出欠記号 (cell に表示されている値)。"-" なら未回答扱い。 */
   currentSymbol: string;
-  /** 現在の comment (空なら "")。textarea 初期値復元用。 */
-  currentComment: string;
   /**
    * 凡例マスター。`choices` 配列の symbol 群を radio 表示。
    * `source` は `"edit-page" | "fallback-from-list" | "unavailable"` で
@@ -60,7 +60,6 @@ type Props = {
 export function NativeAttendancePopover({
   sessionId,
   currentSymbol,
-  currentComment,
   attendanceOptions,
   triggerClass,
   userName,
@@ -68,56 +67,42 @@ export function NativeAttendancePopover({
 }: Props) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  // popover 内 form の local state。open=true 化時に props で初期化。
-  const [draftSymbol, setDraftSymbol] = useState<string>(
-    currentSymbol === "－" ? SYMBOL_UNANSWERED : currentSymbol,
-  );
-  const [draftComment, setDraftComment] = useState<string>(currentComment);
+  // PR3-C: click 即保存に変わり、draft state は busy 中の視覚 hint のみで活用。
+  // current 値の同期は不要 (再 open 時に props 経由で表示が反映される)。
+  const [pendingSymbol, setPendingSymbol] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, startTransition] = useTransition();
 
-  // open=true 化 (popover が開いた瞬間) に props で local state を再初期化。
-  // 別のタイミングで他人の attendance が realtime 更新されたとき current* prop が
-  // 変わっても、popover 開いている間は user 入力を上書きしない。
+  // open=false 化時に error / pending 表示をリセット (controlled unmount で
+  // popover の内部 state は破棄されるが、念のため明示クリア)。
   useEffect(() => {
-    if (open) {
-      setDraftSymbol(currentSymbol === "－" ? SYMBOL_UNANSWERED : currentSymbol);
-      setDraftComment(currentComment);
+    if (!open) {
       setError(null);
+      setPendingSymbol(null);
     }
-  }, [open, currentSymbol, currentComment]);
+  }, [open]);
 
-  const onSave = () => {
+  const applySymbol = (nextSymbol: string) => {
     setError(null);
-
-    const trimmedComment = draftComment.trim();
-    if (trimmedComment.length > 500) {
-      setError("コメントは 500 文字以内で入力してください");
-      return;
-    }
-
+    setPendingSymbol(nextSymbol);
     startTransition(async () => {
       const result = await upsertNativeScheduleAttendanceAction({
         sessionId,
-        symbol: draftSymbol,
-        comment: trimmedComment || undefined,
+        symbol: nextSymbol,
       });
       if (!result.ok) {
         setError(result.reason);
+        setPendingSymbol(null);
         return;
       }
       toast.success(
-        draftSymbol === SYMBOL_UNANSWERED
+        nextSymbol === SYMBOL_UNANSWERED
           ? `${displayDate} の出欠を未回答に戻しました`
-          : `${displayDate} の出欠を保存しました`,
+          : `${displayDate} の出欠を「${nextSymbol}」に保存しました`,
       );
       setOpen(false);
       router.refresh();
     });
-  };
-
-  const onCancel = () => {
-    setOpen(false);
   };
 
   return (
@@ -150,13 +135,19 @@ export function NativeAttendancePopover({
           <div className="flex flex-col gap-3 p-3">
             <div className="flex items-center gap-1.5 border-b border-border/50 pb-1.5">
               <span className="font-mono text-[9px] tracking-[0.2em] text-muted-foreground uppercase">
-                {userName} の出欠 — {displayDate}
+                {userName} — {displayDate}
               </span>
+              {busy && (
+                <Loader2
+                  className="ml-auto h-3 w-3 animate-spin text-muted-foreground"
+                  aria-hidden
+                />
+              )}
             </div>
 
             <div className="flex flex-col gap-1.5">
               <span className="font-mono text-[10px] tracking-[0.18em] text-muted-foreground uppercase">
-                参加状況
+                参加状況 (クリックで即保存)
               </span>
               <div className="flex flex-wrap gap-1">
                 {attendanceOptions.choices.map((sym) => (
@@ -164,37 +155,32 @@ export function NativeAttendancePopover({
                     key={sym || "__empty"}
                     value={sym}
                     label={sym}
-                    selected={draftSymbol === sym}
-                    onSelect={() => setDraftSymbol(sym)}
+                    selected={
+                      pendingSymbol !== null
+                        ? pendingSymbol === sym
+                        : (currentSymbol === "－"
+                            ? SYMBOL_UNANSWERED
+                            : currentSymbol) === sym
+                    }
+                    disabled={busy}
+                    onSelect={() => applySymbol(sym)}
                   />
                 ))}
                 <SymbolRadio
                   key="__unanswered"
                   value={SYMBOL_UNANSWERED}
                   label="未回答"
-                  selected={draftSymbol === SYMBOL_UNANSWERED}
-                  onSelect={() => setDraftSymbol(SYMBOL_UNANSWERED)}
+                  selected={
+                    pendingSymbol !== null
+                      ? pendingSymbol === SYMBOL_UNANSWERED
+                      : (currentSymbol === "－"
+                          ? SYMBOL_UNANSWERED
+                          : currentSymbol) === SYMBOL_UNANSWERED
+                  }
+                  disabled={busy}
+                  onSelect={() => applySymbol(SYMBOL_UNANSWERED)}
                 />
               </div>
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-              <label
-                htmlFor="native-att-comment"
-                className="font-mono text-[10px] tracking-[0.18em] text-muted-foreground uppercase"
-              >
-                コメント (任意)
-              </label>
-              <Textarea
-                id="native-att-comment"
-                value={draftComment}
-                onChange={(e) => setDraftComment(e.target.value)}
-                placeholder="例: 仕事次第、開始時刻 1h 遅れる可能性"
-                rows={3}
-                className="text-xs"
-                spellCheck={false}
-                maxLength={500}
-              />
             </div>
 
             {error && (
@@ -207,28 +193,9 @@ export function NativeAttendancePopover({
               </div>
             )}
 
-            <div className="flex items-center justify-end gap-1.5 border-t border-border/40 pt-2">
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={onCancel}
-                disabled={busy}
-                className="font-mono text-[10px] tracking-[0.18em] uppercase"
-              >
-                キャンセル
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                onClick={onSave}
-                disabled={busy}
-                className="gap-1 font-mono text-[10px] tracking-[0.18em] uppercase"
-              >
-                <Save className="h-3 w-3" aria-hidden />
-                {busy ? "保存中..." : "保存"}
-              </Button>
-            </div>
+            <p className="text-[10px] leading-relaxed text-muted-foreground/80">
+              コメントは表ヘッダーの自分の名前をクリックして編集できます。
+            </p>
           </div>
         </PopoverContent>
       )}
@@ -240,20 +207,23 @@ function SymbolRadio({
   value,
   label,
   selected,
+  disabled = false,
   onSelect,
 }: {
   value: string;
   label: string;
   selected: boolean;
+  disabled?: boolean;
   onSelect: () => void;
 }) {
   return (
     <button
       type="button"
       onClick={onSelect}
+      disabled={disabled}
       aria-pressed={selected}
       className={
-        "inline-flex min-w-[2.4rem] items-center justify-center rounded-sm border px-2 py-1 font-mono text-[11px] tabular-nums leading-none transition-colors " +
+        "inline-flex min-w-[2.4rem] items-center justify-center rounded-sm border px-2 py-1 font-mono text-[11px] tabular-nums leading-none transition-colors disabled:opacity-50 disabled:cursor-not-allowed " +
         (selected
           ? "border-[var(--neon-cyan)]/70 bg-[var(--neon-cyan)]/15 text-[var(--neon-cyan)] shadow-[0_0_8px_-3px_var(--neon-cyan)]"
           : "border-border/60 bg-background/40 text-muted-foreground hover:border-[var(--neon-cyan)]/40 hover:text-foreground")

@@ -27,6 +27,11 @@ export type SessionStatus = "CANDIDATE" | "DECISION";
 export type ScheduleUser = {
   userId: string;
   name: string;
+  /**
+   * 2.1 (2026-05-12) PR3-D: native mode のメンバー全体コメント (同期式準拠で
+   * 1 メンバー = 1 行)。sync mode では undefined のまま。
+   */
+  comment?: string | null;
 };
 
 export type ScheduleSession = {

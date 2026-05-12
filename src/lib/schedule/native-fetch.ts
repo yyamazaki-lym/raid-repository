@@ -42,6 +42,8 @@ const DEFAULT_CHOICES: readonly string[] = ["○", "×", "△", "⏰", "－"];
 type NativeMemberRow = {
   discord_user_id: string;
   display_name: string;
+  // 2.1 (2026-05-12) PR3-D: メンバー全体コメント (本人 only 編集)。
+  comment: string | null;
 };
 
 type NativeSessionRow = {
@@ -91,7 +93,7 @@ export async function fetchNativeSchedule(
   const [membersRes, sessionsRes, choiceCsv] = await Promise.all([
     supabase
       .from("native_schedule_members")
-      .select("discord_user_id, display_name")
+      .select("discord_user_id, display_name, comment")
       .eq("is_active", true)
       .order("sort_order", { ascending: true })
       .order("display_name", { ascending: true }),
@@ -120,6 +122,7 @@ export async function fetchNativeSchedule(
   const users: ScheduleUser[] = members.map((m) => ({
     userId: m.discord_user_id,
     name: m.display_name,
+    comment: m.comment,
   }));
 
   // attendances を session_id IN(...) で一括 fetch → session_id ごとに matrix 構築。
