@@ -192,8 +192,11 @@ async function ScheduleContent() {
     );
   }
 
-  // mode === "native": phase 2-A で本実装の native_schedule_* 取得 + 認証情報配線。
-  // 動画リンク / FFLogs / メモ併用 fetch は将来の phase で必要に応じて足す。
+  // mode === "native": phase 2-A 以降の native_schedule_* 取得 + 認証情報配線。
+  // TODO #77 (2.1, 2026-05-12): UI を sync 同等のフラット表に統一したので、
+  // sync 経路と同じく memos / topTextOverride も fetch して同等の体験にする。
+  // sessionLogsByDate は TODO #73 (FFLogs 連携 native 拡張) のスコープなので
+  // ここでは空のまま (= 過去詳細表に FFLogs アイコンは出ない)。
   const [
     nativeResult,
     holidays,
@@ -201,6 +204,8 @@ async function ScheduleContent() {
     categoriesResult,
     userRoles,
     member,
+    appSettings,
+    initialMemosByDate,
   ] = await Promise.all([
     fetchNativeSchedule(),
     fetchJapaneseHolidays(),
@@ -208,7 +213,10 @@ async function ScheduleContent() {
     fetchCategories(),
     getAuthorizedUserRoles(),
     requireDiscordMember(),
+    fetchAppSettings([SCHEDULE_TOP_TEXT_OVERRIDE_KEY]),
+    fetchScheduleMemosByDateBulk(),
   ]);
+  const topTextOverride = appSettings[SCHEDULE_TOP_TEXT_OVERRIDE_KEY] ?? null;
   const visibleCategories = categoriesResult.ok
     ? filterVisibleCategories(categoriesResult.categories, userRoles)
     : [];
@@ -240,8 +248,8 @@ async function ScheduleContent() {
       sessionVideoLinks={sessionVideoLinks}
       sessionLogsByDate={{}}
       hasUltimateClear={hasUltimateClear}
-      topTextOverride={null}
-      initialMemosByDate={{}}
+      topTextOverride={topTextOverride}
+      initialMemosByDate={initialMemosByDate}
       currentDiscordId={member.discordId}
       isAdmin={isAdmin}
     />

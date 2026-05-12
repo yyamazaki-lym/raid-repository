@@ -59,7 +59,6 @@ import type {
 import type { ScheduleSourceMode } from "@/lib/schedule/source-mode";
 import type { SessionLogEntry } from "@/lib/schedule/session-logs";
 import type { SessionVideoLink } from "@/lib/server/session-video-link";
-import { toJstYearMonth } from "@/lib/schedule/jst-month";
 import { NativeAttendancePopover } from "./native-schedule/native-attendance-popover";
 import { SessionStatusToggle } from "./native-schedule/session-status-toggle";
 import { SessionDiscordNotifyButton } from "./native-schedule/session-discord-notify-button";
@@ -194,14 +193,6 @@ type Props = {
    * native mode の確定列で `<SessionStatusToggle>` を表示するかの判定に使う。
    */
   isAdmin?: boolean;
-  /**
-   * 月別 section から呼び出すとき指定。受信時は (a) sessions を JST 月内に
-   * フィルタ + 昇順 sort、(b) `splitSessions` の upcoming/past 分割を行わず
-   * 単一 list として全 status を render、(c) Legend を非表示 (wrapper 側で
-   * 1 度だけ描画)、(d) 外側 Card の `glass` 装飾を抑止 (二重囲み回避)。
-   * sync mode 経路では指定しない。
-   */
-  monthFilter?: { year: number; month: number };
 };
 
 export function ScheduleList({
@@ -218,7 +209,6 @@ export function ScheduleList({
   mode = "sync",
   currentDiscordId = null,
   isAdmin = false,
-  monthFilter,
 }: Props) {
   // TODO #11 phase 7: 全 memo を 1 channel で監視し、各 SessionRow には
   // 該当 rawDate の slice + refetchAll を props で配る (旧: 各行が個別
@@ -327,11 +317,7 @@ export function ScheduleList({
     });
   }, []);
 
-  // monthFilter (= 月別 section から呼出) のときは外側に Card 装飾の二重
-  // 囲みを作らない。sync 経路 / native mode の wrapper を介さない直 mount
-  // では従来どおり glass 枠を出す。
-  const useFlatCard = monthFilter !== undefined;
-  const baseCardClass = useFlatCard ? "" : "glass ";
+  const baseCardClass = "glass ";
 
   if (!result.ok) {
     return (
@@ -369,26 +355,7 @@ export function ScheduleList({
     );
   };
 
-  // monthFilter 受信時は splitSessions を bypass し、月内 sessions の単一
-  // list を昇順 (日付の早い順) で render する。月内では upcoming / past の
-  // 分割が UX と噛み合わない (現在時刻 -6h cutoff で月が分断され DECISION
-  // 以外の過去 session が消える) ため、CANDIDATE / DECISION 両方を時系列
-  // 順で出す。過去日 row の popover 抑止は SessionRow 内の isPast で個別判定。
-  let upcoming: ScheduleSession[];
-  let past: ScheduleSession[];
-  if (monthFilter) {
-    const filtered = sessions.filter((s) => {
-      const ym = toJstYearMonth(s.date);
-      return ym.year === monthFilter.year && ym.month === monthFilter.month;
-    });
-    filtered.sort((a, b) => a.date.getTime() - b.date.getTime());
-    upcoming = filtered;
-    past = [];
-  } else {
-    const split = splitSessions(sessions, limit);
-    upcoming = split.upcoming;
-    past = split.past;
-  }
+  const { upcoming, past } = splitSessions(sessions, limit);
   // Past sessions newest-first (already sorted by splitSessions). The
   // most-recent past sits at the top of the detail table — reads as
   // "what happened most recently" first.
@@ -463,22 +430,18 @@ export function ScheduleList({
     <div className="flex flex-col gap-4">
       {/* Upcoming sessions — primary card. Layout untouched. */}
       <Card className={baseCardClass + "overflow-hidden p-0"}>
-        {/* monthFilter 受信時 (= 月別 section) は Legend を出さない。wrapper
-            (NativeMonthlySchedule) 側で全 section の上に 1 度だけ描画する。 */}
-        {!monthFilter && (
-          <Legend
-            hasUltimateClear={hasUltimateClear}
-            onRefresh={refreshSchedule}
-            refreshing={refreshing}
-            /* オリジナル (元サイトから取り込み) */
-            topTextScraped={result.data.topText ?? null}
-            /* 編集後 (Supabase app_settings.schedule_top_text_override)。
-               同期で上書きされないので、運用ルールを portal 側で
-               カスタマイズしてもそのまま残る。 */
-            topTextOverride={topTextOverride}
-            attendanceChoices={result.data.attendanceOptions.choices}
-          />
-        )}
+        <Legend
+          hasUltimateClear={hasUltimateClear}
+          onRefresh={refreshSchedule}
+          refreshing={refreshing}
+          /* オリジナル (元サイトから取り込み) */
+          topTextScraped={result.data.topText ?? null}
+          /* 編集後 (Supabase app_settings.schedule_top_text_override)。
+             同期で上書きされないので、運用ルールを portal 側で
+             カスタマイズしてもそのまま残る。 */
+          topTextOverride={topTextOverride}
+          attendanceChoices={result.data.attendanceOptions.choices}
+        />
         <div className="overflow-x-auto">
           <table className="w-full min-w-[640px] border-collapse text-left text-sm">
             {tableHead(true)}
