@@ -17,10 +17,13 @@ import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
  *   ([candidate-date-dialog.tsx:91-105](src/components/portal/native-schedule/candidate-date-dialog.tsx:91)
  *   と同式)。`schedule_session_memos` / `schedule_past_session_logs` が
  *   rawDate を join key にしているので、sync 経路と key 空間を共有できる。
- * - **start_time / end_time**: app_settings の
- *   `native_schedule_default_start_time` / `..._end_time` で admin 設定可能。
- *   未設定時は fallback "21:00" / "23:00" を使う。同一 raw_date で再投入時の
- *   start/end 上書きは **しない** (UNIQUE 制約 + `ignoreDuplicates`)。
+ * - **start_time / end_time**: 2.1 (2026-05-12) で **placeholder は NULL を
+ *   入れる**運用に変更。NULL = `app_settings.native_schedule_default_{start,end}_time`
+ *   を表示時にフォールバック (fetchNativeSchedule / buildMessage で COALESCE)。
+ *   日個別 override が必要なら session-time-edit-popover で NOT NULL を書き込む。
+ *   raw_date 文字列には default time を埋める (sync 経路と key 空間を共有する
+ *   ためのフォーマット維持)。同一 raw_date で再投入時の上書きは **しない**
+ *   (UNIQUE 制約 + `ignoreDuplicates`)。
  * - **過去日付は投入しない**: TODO #80 の cutoff (JST 今日 0:00) より前は
  *   upcoming に出ないため、auto-insert しても見えない。DB の gomi を避ける。
  * - **service_role 経由 (RLS バイパス)**: `native_schedule_sessions` への
@@ -119,8 +122,11 @@ export async function ensureNativeMonthlyPlaceholders(
     return {
       raw_date: rawDate,
       parsed_date: parsedDate,
-      start_time: startTime,
-      end_time: endTime,
+      // 2.1 (2026-05-12): start_time / end_time は NULL を入れて
+      // app_settings の default に追従させる。日個別 override が必要なら
+      // session-time-edit-popover で後から書き込む。
+      start_time: null as string | null,
+      end_time: null as string | null,
       day_of_week: dow,
       // status は schema default 'CANDIDATE'、note / created_by_id / last_notified_at は NULL。
     };

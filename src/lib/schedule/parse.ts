@@ -95,10 +95,22 @@ export type ScheduleAttendanceOptions = {
  * - `commentsByPair`: `${sessionId}__${discordUserId}` をキーにした出欠コメント
  *   マップ。popover の textarea 初期値に使う。空コメントは entry を持たない
  *   (`?? ""` で fallback)。
+ * - `timeOverridesByRawDate`: 2.1 (2026-05-12) — 日個別時刻 override を持つ
+ *   session の生 DB 値 (start_time / end_time)。NULL = default 採用 (= override
+ *   なし)、NOT NULL = override 値。session-time-edit-popover が「現状値 + default
+ *   に戻す」UI を出すために、表示用 COALESCE 後の値ではなく **生の DB 値**を引く。
+ * - `defaultStartTime` / `defaultEndTime`: `app_settings.native_schedule_default_*`
+ *   の現値。session-time-edit-popover で「default に戻す」表示や placeholder に使う。
  */
 export type NativeScheduleMeta = {
   sessionIdByRawDate: Record<string, string>;
   commentsByPair: Record<string, string>;
+  timeOverridesByRawDate: Record<
+    string,
+    { start: string | null; end: string | null }
+  >;
+  defaultStartTime: string;
+  defaultEndTime: string;
 };
 
 export type ParsedSchedule = {

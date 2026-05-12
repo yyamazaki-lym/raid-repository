@@ -452,8 +452,8 @@ CREATE TABLE IF NOT EXISTS public.native_schedule_sessions (
   id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   raw_date      text NOT NULL UNIQUE,
   parsed_date   timestamptz NOT NULL,
-  start_time    text NOT NULL,
-  end_time      text NOT NULL,
+  start_time    text,
+  end_time      text,
   day_of_week   text NOT NULL,
   status        text NOT NULL DEFAULT 'CANDIDATE'
                 CHECK (status IN ('CANDIDATE','DECISION','CANCELLED')),
@@ -467,6 +467,14 @@ CREATE TABLE IF NOT EXISTS public.native_schedule_sessions (
 -- 行だけ拾う。手動 button は本列を見ない (admin が再送可能)。
 ALTER TABLE public.native_schedule_sessions
   ADD COLUMN IF NOT EXISTS last_notified_at timestamptz;
+-- 2.1 (2026-05-12): Default Raid Time 変更が既存 placeholder 行に追従するよう
+-- start_time / end_time を NULL 許可に変更。NULL = app_settings の
+-- native_schedule_default_{start,end}_time を fallback として使用、NOT NULL
+-- = 日個別の override (session-time-edit-popover で UPDATE)。
+-- 既存 DB に対しては idempotent (DROP NOT NULL は重複実行で no-op)。
+ALTER TABLE public.native_schedule_sessions
+  ALTER COLUMN start_time DROP NOT NULL,
+  ALTER COLUMN end_time   DROP NOT NULL;
 CREATE INDEX IF NOT EXISTS native_schedule_sessions_date_idx
   ON public.native_schedule_sessions(parsed_date DESC);
 

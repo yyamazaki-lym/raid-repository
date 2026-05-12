@@ -62,6 +62,7 @@ import type { SessionVideoLink } from "@/lib/server/session-video-link";
 import { NativeAttendancePopover } from "./native-schedule/native-attendance-popover";
 import { SessionStatusToggle } from "./native-schedule/session-status-toggle";
 import { SessionDiscordNotifyButton } from "./native-schedule/session-discord-notify-button";
+import { SessionTimeEditPopover } from "./native-schedule/session-time-edit-popover";
 
 // Stable reference for the realtime hook's initial param — `[]` inline
 // would be a fresh array on every render and trip the hook's
@@ -354,6 +355,19 @@ export function ScheduleList({
       nativeMeta?.commentsByPair[`${nativeSessionId}__${currentDiscordId}`] ?? ""
     );
   };
+  // 2.1 (2026-05-12): session-time-edit-popover が「override 有無 + default」を出すための
+  // メタデータ resolver。native_schedule_sessions.start_time/end_time が NULL = default
+  // 追従、NOT NULL = 日個別 override。
+  const resolveNativeTimeMeta = (rawDate: string) => {
+    if (!nativeMeta) return undefined;
+    const o = nativeMeta.timeOverridesByRawDate[rawDate];
+    return {
+      overrideStart: o?.start ?? null,
+      overrideEnd: o?.end ?? null,
+      defaultStartTime: nativeMeta.defaultStartTime,
+      defaultEndTime: nativeMeta.defaultEndTime,
+    };
+  };
 
   const { upcoming, past } = splitSessions(sessions, limit);
   // Past sessions newest-first (already sorted by splitSessions). The
@@ -466,6 +480,7 @@ export function ScheduleList({
                     nativeSessionId={nativeSessionId}
                     currentUserComment={resolveCurrentUserComment(nativeSessionId)}
                     attendanceOptions={attendanceOptionsForNative}
+                    nativeTimeMeta={resolveNativeTimeMeta(s.rawDate)}
                   />
                 );
               })}
@@ -1029,6 +1044,7 @@ function SessionRow({
   nativeSessionId,
   currentUserComment = "",
   attendanceOptions,
+  nativeTimeMeta,
 }: {
   session: ScheduleSession;
   users: ScheduleUser[];
@@ -1079,6 +1095,16 @@ function SessionRow({
   currentUserComment?: string;
   /** TODO #2 phase 2-B: 凡例マスター (popover の symbol radio 用)。 */
   attendanceOptions?: ScheduleAttendanceOptions;
+  /**
+   * 2.1 (2026-05-12): native mode の admin が日個別時刻を編集するための meta。
+   * undefined = sync mode or native meta 未解決。time edit popover の trigger 表示判定に使う。
+   */
+  nativeTimeMeta?: {
+    overrideStart: string | null;
+    overrideEnd: string | null;
+    defaultStartTime: string;
+    defaultEndTime: string;
+  };
 }) {
   const decided = session.status === "DECISION";
   // Ref so the (separately-rendered) memo dot can open the popover.
@@ -1145,6 +1171,22 @@ function SessionRow({
               {session.endTime}
             </span>
           )}
+          {/* 2.1 (2026-05-12): native admin の未来日付に限って日個別時刻 edit popover の
+              clock icon を表示。past 日付は時刻変更したくないので isPast を排除。 */}
+          {!isPast &&
+            mode === "native" &&
+            isAdmin &&
+            nativeSessionId &&
+            nativeTimeMeta ? (
+            <SessionTimeEditPopover
+              sessionId={nativeSessionId}
+              overrideStart={nativeTimeMeta.overrideStart}
+              overrideEnd={nativeTimeMeta.overrideEnd}
+              defaultStartTime={nativeTimeMeta.defaultStartTime}
+              defaultEndTime={nativeTimeMeta.defaultEndTime}
+              displayDate={session.rawDate.split(" ")[0] ?? session.rawDate}
+            />
+          ) : null}
           {/* Memo indicator placed right after the time per user
               request — visible whether or not video/Logs links are
               also rendered for this row. `reserveSpace` keeps an
