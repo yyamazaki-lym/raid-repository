@@ -1210,6 +1210,49 @@ export async function setScheduleSourceModeAction(
 }
 
 /**
+ * TODO #81 (2.1, 2026-05-12): native 経路で `ensureNativeMonthlyPlaceholders()`
+ * が auto-insert する placeholder row の開始 / 終了時刻のデフォルト値を保存する。
+ *
+ * - 値は HH:MM 形式 (24h)。深夜またぎ (例 23:00~01:00) は CandidateDateDialog
+ *   と同じく start === end でなければ許容。
+ * - 既存 placeholder の遡及更新は **しない**。本 action 保存後に新規追加される
+ *   placeholder (= 翌月分 / 月末 7 日前境界後) から新値が反映される。
+ */
+export async function setNativeScheduleDefaultRaidTimeAction(input: {
+  startTime: string;
+  endTime: string;
+}): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
+  const startTime = input.startTime.trim();
+  const endTime = input.endTime.trim();
+  const TIME_RE = /^([01]?\d|2[0-3]):([0-5]\d)$/;
+  if (!TIME_RE.test(startTime) || !TIME_RE.test(endTime)) {
+    return { ok: false, reason: "時刻は HH:MM 形式で入力してください" };
+  }
+  if (startTime === endTime) {
+    return { ok: false, reason: "開始時刻と終了時刻が同じです" };
+  }
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("app_settings")
+    .upsert(
+      [
+        { key: "native_schedule_default_start_time", value: startTime },
+        { key: "native_schedule_default_end_time", value: endTime },
+      ],
+      { onConflict: "key" },
+    );
+  if (error) return { ok: false, reason: dbError("デフォルト時刻保存", error) };
+  try {
+    revalidatePath("/");
+  } catch {
+    // best-effort
+  }
+  return { ok: true };
+}
+
+/**
  * Server-action wrappers for `category_links` CRUD — assertAdminResult-gated.
  *
  * 旧設計では `lib/category-links-client.ts` の "use client" 経由で anon

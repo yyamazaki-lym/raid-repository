@@ -34,6 +34,7 @@ import { PastSessionsSection } from "./settings/past-sessions-section";
 import { NativeMembersSection } from "./settings/native-members-section";
 import { NativeChoiceValuesSection } from "./settings/native-choice-values-section";
 import { NativeCancelledSessionsSection } from "./settings/native-cancelled-sessions-section";
+import { NativeDefaultRaidTimeSection } from "./settings/native-default-raid-time-section";
 import { NativeDiscordNotifySection } from "./settings/native-discord-notify-section";
 import { FflogsSyncSection } from "./settings/fflogs-sync-section";
 import { ChangelogFooter } from "./settings/changelog-footer";
@@ -237,6 +238,15 @@ export function SettingsDialog({ canEdit }: { canEdit: boolean }) {
               canEdit={canEdit}
               cancelledSessions={adminAux?.cancelledSessions ?? []}
               loaded={adminAux !== null}
+              onChanged={() => setAdminAuxTick((t) => t + 1)}
+            />
+          )}
+          {mode === "native" && (
+            <NativeDefaultRaidTimeSection
+              canEdit={canEdit}
+              loaded={adminAux !== null}
+              defaultStartTime={adminAux?.defaultStartTime ?? "21:00"}
+              defaultEndTime={adminAux?.defaultEndTime ?? "23:00"}
               onChanged={() => setAdminAuxTick((t) => t + 1)}
             />
           )}
