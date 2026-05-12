@@ -9,7 +9,7 @@
 **Raid Repository** — FFXIV レイド固定向け portal (Next.js 16 + Supabase, single-tenant)
 
 - **Repo**: https://github.com/yyamazaki-lym/raid-repository
-- **Path**: `D:\workd\portal`
+- **Path**: `D:\workd\raid-repository`
 - **Stack**: Next.js 16.2.4 (Turbopack) / React 19.2 / Supabase / Tailwind v4 / @base-ui/react
 - **Deploy**: Vercel auto-deploy from `main`
 - **Version**: `2.1 (2026-04-30)`。`package.json#version` は `1.9.38` のまま (履歴マーカー)、UI は `RELEASES[0].version + .date` を表示
@@ -545,12 +545,12 @@ node ./node_modules/next/dist/bin/next build
 
 dev server は `.claude/launch.json` の `portal-dev` 設定 (port 3000)。Claude Preview から起動可。
 
-**ローカル env**: `.env.local` を main repo (`D:\workd\portal\.env.local`) からコピー。`.env*` は gitignore 済。`.env.local` には dev で Discord OAuth gate を抜けるため `DEV_AUTH_BYPASS=true` を含めること (NODE_ENV !== "production" 時のみ偽 admin で短絡、Vercel 本番では fail-safe で無効化)。新 worktree でも main repo の `.env.local` をそのまま流用可。
+**ローカル env**: `.env.local` を main repo (`D:\workd\raid-repository\.env.local`) からコピー。`.env*` は gitignore 済。`.env.local` には dev で Discord OAuth gate を抜けるため `DEV_AUTH_BYPASS=true` を含めること (NODE_ENV !== "production" 時のみ偽 admin で短絡、Vercel 本番では fail-safe で無効化)。新 worktree でも main repo の `.env.local` をそのまま流用可。
 
 **worktree での tsc / next build**: worktree は独自の `node_modules` を持たない (main repo のものを共有する設計)。worktree 内から実行する場合は main repo の node_modules を参照すること:
 
 ```bash
-node D:/workd/portal/node_modules/typescript/bin/tsc --noEmit
+node D:/workd/raid-repository/node_modules/typescript/bin/tsc --noEmit
 ```
 
 `npm install` は worktree では新規実行不要 (main repo の lockfile / node_modules がそのまま有効)。
@@ -562,7 +562,7 @@ node D:/workd/portal/node_modules/typescript/bin/tsc --noEmit
 **改行ありメッセージ**: PowerShell の `Out-File -Encoding utf8` は BOM 混入するので必ず:
 
 ```powershell
-$path = 'D:/workd/portal/.git/COMMIT_EDITMSG_TEMP'  # worktree の場合は .git/worktrees/<name>/
+$path = 'D:/workd/raid-repository/.git/COMMIT_EDITMSG_TEMP'  # worktree の場合は .git/worktrees/<name>/
 [System.IO.File]::WriteAllText($path, $msg, (New-Object System.Text.UTF8Encoding $false))
 git commit -F $path
 Remove-Item $path
@@ -570,7 +570,7 @@ Remove-Item $path
 
 - BOM 混入時: `git commit --amend -F <path>` (push 前のみ)
 - Bash heredoc は Windows で不安定 → 避ける
-- 連続 commit 時は cwd が外れることがあるので PowerShell 冒頭に `Set-Location D:\workd\portal\.claude\worktrees\<name>`
+- 連続 commit 時は cwd が外れることがあるので PowerShell 冒頭に `Set-Location D:\workd\raid-repository\.claude\worktrees\<name>`
 - Claude Desktop は `.claude/settings.json` hooks が動かない (CLI 版のみ) — Claude が直接 push
 - 既存 commit 取消は `git revert --no-edit <hash>` (`reset --hard` 不使用方針)
 
