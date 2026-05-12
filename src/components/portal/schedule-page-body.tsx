@@ -233,13 +233,6 @@ export function SchedulePageBody({
         </div>
       </div>
 
-      {mode === "native" && (
-        <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] leading-relaxed text-amber-200">
-          自前スケジュール — 候補日追加 / 出欠入力 / 確定切替 / Discord 通知が利用可能。
-          メンバー / 凡例 / 通知設定は歯車アイコンから。
-        </div>
-      )}
-
       <NextSessionCard
         result={nextResult}
         recruitmentTopButton={
