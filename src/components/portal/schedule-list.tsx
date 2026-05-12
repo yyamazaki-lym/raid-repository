@@ -1746,27 +1746,37 @@ function groupCommentsByAuthor(
 }
 
 /**
- * Split sessions into upcoming (当月 (JST) 以降) と past (前月以前の DECISION のみ)、
+ * Split sessions into upcoming (JST 今日 0:00 以降) と past (前日以前の DECISION のみ)、
  * それぞれ pre-sorted。Limit は upcoming のみに適用 — past は常に新しい順に並べ、
  * "Past" divider の直後に最も関連性の高い日付が表示されるようにする。
  *
- * TODO #80 (2.1, 2026-05-12): cutoff を `now - 6h` から **JST 当月 1 日 00:00** に
- * 変更。以前は月中視点で当月の過去 candidate 日 (例 5/12 視点の 5/3 等) が past
- * バケット (DECISION 限定) に弾かれて画面から消える問題があった。sync 元サイト
- * (character-sheets) が当月全列を 1 か月分横並びで返す挙動と揃える。当月分は
- * candidate / DECISION の区別なく全て upcoming に並ぶ。
+ * TODO #80 (2.1, 2026-05-12 part4): cutoff を **JST 今日 0:00** に確定。
+ * - 初版 (PR #96): `JST 当月 1 日 00:00` にして「当月分は candidate / DECISION 全部
+ *   upcoming」にしたが、本番実機で「過去日程 (例 5/12 視点の 5/07) が upcoming に
+ *   並ぶのが直感に反する」とユーザー指摘 (= sync の元サイト挙動と思っていたものと
+ *   違った) のため、未来日付のみ並べる方針に再調整。
+ * - これにより当月の過去 candidate は再び消える (= TODO #80 起票前の挙動に近い)
+ *   が、当月の過去 DECISION 行は past バケット → 過去詳細表 (Table icon) に並ぶ
+ *   ので情報自体は失われない。
  */
 function splitSessions(
   sessions: ScheduleSession[],
   limit?: number,
 ): { upcoming: ScheduleSession[]; past: ScheduleSession[] } {
-  // JST 当月 1 日 0:00 を UTC ms に変換 (JST_OFFSET_MS は他経路の
+  // JST 今日 0:00 を UTC ms に変換 (JST_OFFSET_MS は他経路の
   // discord-schedule.ts / native-schedule-discord.ts と同値の 9h)。
   const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
   const nowJst = new Date(Date.now() + JST_OFFSET_MS);
   const cutoff =
-    Date.UTC(nowJst.getUTCFullYear(), nowJst.getUTCMonth(), 1, 0, 0, 0, 0) -
-    JST_OFFSET_MS;
+    Date.UTC(
+      nowJst.getUTCFullYear(),
+      nowJst.getUTCMonth(),
+      nowJst.getUTCDate(),
+      0,
+      0,
+      0,
+      0,
+    ) - JST_OFFSET_MS;
   const upcoming: ScheduleSession[] = [];
   const past: ScheduleSession[] = [];
   for (const s of sessions) {
