@@ -9,7 +9,6 @@ import {
   RecruitmentTopCopyButton,
 } from "./recruitment-templates-button";
 import { ScheduleList } from "./schedule-list";
-import { NativeMonthlySchedule } from "./native-schedule/native-monthly-schedule";
 import { SchedulePastSimple } from "./schedule-past-simple";
 import type { JapaneseHolidaysMap } from "@/lib/japanese-holidays";
 import type { RecruitmentTemplate } from "@/lib/recruitment-templates-client";
@@ -191,28 +190,27 @@ export function SchedulePageBody({
             }
             Icon={History}
           />
-          {/* Detail toggle (出欠表全件) は native mode では非表示。月別
-              section が常時 detail を兼ねるため、Table icon は機能重複に
-              なる。sync mode ではそのまま既存挙動。 */}
-          {mode !== "native" && (
-            <ToggleButton
-              pinned={pinnedDetail}
-              hovered={hoveredDetail}
-              onPin={() => setPinnedDetail((v) => !v)}
-              onHover={setHoveredDetail}
-              ariaLabel={
-                pinnedDetail
-                  ? "過去の活動 (詳細) を隠す"
-                  : "過去の活動 (詳細)"
-              }
-              title={
-                pinnedDetail
-                  ? "過去の活動 (詳細) — 表示中"
-                  : "過去の活動 (詳細) — 出席者付きの全件表"
-              }
-              Icon={Table}
-            />
-          )}
+          {/* Detail toggle (出欠表全件): sync / native の双方で同じ UX。
+              TODO #77 (2.1, 2026-05-12) で native の月別 accordion を撤去し
+              sync 同等のフラット表に統一した時点で、Table icon の mode 分岐
+              ガードも撤去 (native でも過去詳細表を見られるようにする)。 */}
+          <ToggleButton
+            pinned={pinnedDetail}
+            hovered={hoveredDetail}
+            onPin={() => setPinnedDetail((v) => !v)}
+            onHover={setHoveredDetail}
+            ariaLabel={
+              pinnedDetail
+                ? "過去の活動 (詳細) を隠す"
+                : "過去の活動 (詳細)"
+            }
+            title={
+              pinnedDetail
+                ? "過去の活動 (詳細) — 表示中"
+                : "過去の活動 (詳細) — 出席者付きの全件表"
+            }
+            Icon={Table}
+          />
           {/* Phase 2-B: native + admin の時のみ「候補日追加」trigger を表示。
               dialog 内で日時 + 備考を入力して createNativeScheduleSessionAction を呼ぶ。 */}
           {mode === "native" && isAdmin && <CandidateDateDialog />}
@@ -237,9 +235,8 @@ export function SchedulePageBody({
 
       {mode === "native" && (
         <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] leading-relaxed text-amber-200">
-          自前スケジュール — 候補日追加 / 出欠入力 / 確定切替は本 phase で利用可能。
-          メンバー編集 UI / 凡例 chip editor / Discord 通知 / リマインダーは
-          後続 phase で実装予定です。
+          自前スケジュール — 候補日追加 / 出欠入力 / 確定切替 / Discord 通知が利用可能。
+          メンバー / 凡例 / 通知設定は歯車アイコンから。
         </div>
       )}
 
@@ -265,36 +262,24 @@ export function SchedulePageBody({
         />
       )}
 
-      {mode === "native" ? (
-        <NativeMonthlySchedule
-          result={result}
-          scheduleUrl={scheduleUrl}
-          holidays={holidays}
-          sessionVideoLinks={sessionVideoLinks}
-          sessionLogsByDate={sessionLogsByDate}
-          hasUltimateClear={hasUltimateClear}
-          topTextOverride={topTextOverride}
-          initialMemosByDate={initialMemosByDate}
-          mode={mode}
-          currentDiscordId={currentDiscordId}
-          isAdmin={isAdmin}
-        />
-      ) : (
-        <ScheduleList
-          result={result}
-          showDetailedPast={showDetail}
-          scheduleUrl={scheduleUrl}
-          holidays={holidays}
-          sessionVideoLinks={sessionVideoLinks}
-          sessionLogsByDate={sessionLogsByDate}
-          hasUltimateClear={hasUltimateClear}
-          topTextOverride={topTextOverride}
-          initialMemosByDate={initialMemosByDate}
-          mode={mode}
-          currentDiscordId={currentDiscordId}
-          isAdmin={isAdmin}
-        />
-      )}
+      {/* TODO #77 (2.1, 2026-05-12): native の月別 accordion を撤去し、
+          sync と同じ <ScheduleList> 一本道に統一。mode prop を drill するだけで
+          schedule-list.tsx 側が両モード対応 (確定列の status toggle / 本人 cell
+          の出欠 popover) を出し分ける。 */}
+      <ScheduleList
+        result={result}
+        showDetailedPast={showDetail}
+        scheduleUrl={scheduleUrl}
+        holidays={holidays}
+        sessionVideoLinks={sessionVideoLinks}
+        sessionLogsByDate={sessionLogsByDate}
+        hasUltimateClear={hasUltimateClear}
+        topTextOverride={topTextOverride}
+        initialMemosByDate={initialMemosByDate}
+        mode={mode}
+        currentDiscordId={currentDiscordId}
+        isAdmin={isAdmin}
+      />
     </div>
   );
 }
