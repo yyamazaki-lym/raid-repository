@@ -258,6 +258,8 @@ export function SettingsDialog({ canEdit }: { canEdit: boolean }) {
               channelId={adminAux?.discordNotifyChannelId ?? null}
               roleId={adminAux?.discordNotifyRoleId ?? null}
               hour={adminAux?.discordNotifyHour ?? "12"}
+              template={adminAux?.discordNotifyTemplate ?? null}
+              onDecision={adminAux?.discordNotifyOnDecision ?? false}
               onChanged={() => setAdminAuxTick((t) => t + 1)}
             />
           )}

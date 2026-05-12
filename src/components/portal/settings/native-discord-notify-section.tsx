@@ -2,16 +2,20 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Bell, Save, Loader2 } from "lucide-react";
+import { Bell, Save, Loader2, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import {
   setNativeScheduleDiscordNotifyEnabledAction,
   setNativeScheduleDiscordNotifyChannelIdAction,
   setNativeScheduleDiscordNotifyRoleIdAction,
   setNativeScheduleDiscordNotifyHourAction,
+  setNativeScheduleDiscordNotifyTemplateAction,
+  setNativeScheduleDiscordNotifyOnDecisionAction,
 } from "@/lib/server/native-schedule-actions";
+import { NATIVE_DISCORD_DEFAULT_TEMPLATE } from "@/lib/schedule/native-discord-template";
 
 /**
  * TODO #2 phase 3 + phase 4 (2026-05-08): native スケジュール Discord 通知設定。
@@ -34,6 +38,8 @@ export function NativeDiscordNotifySection({
   channelId,
   roleId,
   hour,
+  template,
+  onDecision,
   onChanged,
 }: {
   canEdit: boolean;
@@ -42,22 +48,77 @@ export function NativeDiscordNotifySection({
   channelId: string | null;
   roleId: string | null;
   hour: string;
+  /** PR3-A: 通知 template (null = 未設定 → hardcode default 利用)。 */
+  template: string | null;
+  /** PR3-B: 確定 (DECISION) 切替時の自動通知 ON/OFF。 */
+  onDecision: boolean;
   onChanged: () => void;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [channelDraft, setChannelDraft] = useState("");
   const [roleDraft, setRoleDraft] = useState("");
+  const [templateDraft, setTemplateDraft] = useState("");
 
   useEffect(() => {
     if (loaded) {
       setChannelDraft(channelId ?? "");
       setRoleDraft(roleId ?? "");
+      setTemplateDraft(template ?? "");
     }
-  }, [channelId, roleId, loaded]);
+  }, [channelId, roleId, template, loaded]);
 
   const channelDirty = channelDraft !== (channelId ?? "");
   const roleDirty = roleDraft !== (roleId ?? "");
+  const templateDirty = templateDraft !== (template ?? "");
+
+  const onToggleOnDecision = (next: boolean) => {
+    if (next === onDecision) return;
+    startTransition(async () => {
+      const r = await setNativeScheduleDiscordNotifyOnDecisionAction(next);
+      if (!r.ok) {
+        toast.error(r.reason);
+        return;
+      }
+      toast.success(
+        next
+          ? "確定時の自動通知を ON にしました"
+          : "確定時の自動通知を OFF にしました",
+      );
+      onChanged();
+      router.refresh();
+    });
+  };
+
+  const onSaveTemplate = () => {
+    const trimmed = templateDraft;
+    if (trimmed.length > 4000) {
+      toast.error("テンプレートは 4000 文字以内で入力してください");
+      return;
+    }
+    startTransition(async () => {
+      const r = await setNativeScheduleDiscordNotifyTemplateAction(trimmed);
+      if (!r.ok) {
+        toast.error(r.reason);
+        return;
+      }
+      toast.success(
+        trimmed.trim()
+          ? "通知テンプレートを保存しました"
+          : "通知テンプレートを削除しました (既定に戻りました)",
+      );
+      onChanged();
+      router.refresh();
+    });
+  };
+
+  const onResetTemplateToDefault = () => {
+    setTemplateDraft(NATIVE_DISCORD_DEFAULT_TEMPLATE);
+  };
+
+  const onClearTemplate = () => {
+    setTemplateDraft("");
+  };
 
   const onChangeHour = (next: string) => {
     if (next === hour) return;
@@ -251,6 +312,106 @@ export function NativeDiscordNotifySection({
               )}
               保存
             </Button>
+          )}
+        </div>
+      </div>
+
+      {/* 2.1 (2026-05-12) PR3-B: 確定 (DECISION) 切替時の自動通知 ON/OFF。 */}
+      <div className="flex items-center justify-between gap-2 rounded-md border border-border/30 bg-secondary/20 px-3 py-2">
+        <div className="flex flex-col gap-0.5">
+          <span className="text-xs">確定時に自動通知</span>
+          <span className="font-mono text-[9px] text-muted-foreground/60">
+            開催日を「確定」に切替えた瞬間に 1 回だけ Discord 投稿 (同セッションの再送は last_notified_at で抑止)
+          </span>
+        </div>
+        <label className="inline-flex cursor-pointer items-center gap-2">
+          <input
+            type="checkbox"
+            checked={onDecision}
+            disabled={!canEdit || !loaded || pending}
+            onChange={(e) => onToggleOnDecision(e.target.checked)}
+            className="h-4 w-4 cursor-pointer accent-[var(--neon-cyan)]"
+          />
+          <span className="font-mono text-[10px] tracking-[0.18em] text-muted-foreground uppercase">
+            {onDecision ? "ON" : "OFF"}
+          </span>
+        </label>
+      </div>
+
+      {/* 2.1 (2026-05-12) PR3-A: 通知 message template 編集。空文字列で保存すると
+          DB から DELETE され、buildMessage は hardcode default に戻る。 */}
+      <div className="flex flex-col gap-1.5">
+        <label className="font-mono text-[10px] tracking-[0.18em] text-muted-foreground uppercase">
+          通知メッセージ テンプレート (任意)
+        </label>
+        <Textarea
+          value={templateDraft}
+          onChange={(e) => setTemplateDraft(e.target.value)}
+          disabled={!canEdit || !loaded || pending}
+          placeholder={NATIVE_DISCORD_DEFAULT_TEMPLATE}
+          rows={10}
+          className="text-xs font-mono"
+          spellCheck={false}
+          maxLength={4000}
+        />
+        <p className="text-[10px] leading-relaxed text-muted-foreground/80">
+          利用可能な placeholder:
+          <code className="ml-1 font-mono">{`{mention}`}</code>,
+          <code className="ml-1 font-mono">{`{date}`}</code>,
+          <code className="ml-1 font-mono">{`{day}`}</code>,
+          <code className="ml-1 font-mono">{`{time_start}`}</code>,
+          <code className="ml-1 font-mono">{`{time_end}`}</code>,
+          <code className="ml-1 font-mono">{`{note}`}</code>,
+          <code className="ml-1 font-mono">{`{note_block}`}</code>,
+          <code className="ml-1 font-mono">{`{attendance}`}</code>,
+          <code className="ml-1 font-mono">{`{site_url}`}</code>
+          <br />
+          空欄で保存すると既定 (現行の hardcode フォーマット) に戻ります。
+          <code className="font-mono">{`{note_block}`}</code> は note 有無で
+          自動的に行ごと出現/省略します。
+        </p>
+        <div className="flex flex-wrap items-center gap-1.5">
+          {canEdit && (
+            <>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={!loaded || pending}
+                onClick={onResetTemplateToDefault}
+                className="h-7 gap-1 px-2 text-[10px]"
+                title="既定テンプレートを textarea に流し込む (保存はまだしない)"
+              >
+                <RotateCcw className="h-3 w-3" aria-hidden />
+                既定を流し込む
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={!loaded || pending || !templateDraft}
+                onClick={onClearTemplate}
+                className="h-7 px-2 text-[10px]"
+                title="textarea をクリア (保存すると DB から削除、既定に戻る)"
+              >
+                クリア
+              </Button>
+              <div className="flex-1" />
+              <Button
+                type="button"
+                size="sm"
+                disabled={!loaded || pending || !templateDirty}
+                onClick={onSaveTemplate}
+                className="h-7 gap-1 px-3 text-[10px]"
+              >
+                {pending ? (
+                  <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
+                ) : (
+                  <Save className="h-3 w-3" aria-hidden />
+                )}
+                保存
+              </Button>
+            </>
           )}
         </div>
       </div>

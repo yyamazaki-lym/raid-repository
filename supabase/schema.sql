@@ -489,9 +489,15 @@ CREATE TABLE IF NOT EXISTS public.native_schedule_members (
   display_name    text NOT NULL,
   sort_order      integer NOT NULL DEFAULT 0,
   is_active       boolean NOT NULL DEFAULT true,
+  comment         text,
   created_at      timestamptz NOT NULL DEFAULT now(),
   updated_at      timestamptz NOT NULL DEFAULT now()
 );
+-- 2.1 (2026-05-12) PR3-D: メンバー全体コメント (同期式準拠で 1 メンバー = 1 行)。
+-- session ごとの comment (`native_schedule_attendances.comment`) は別概念で
+-- 並存する (UI 上は本コメントを優先表示し、attendances.comment は当面 UI 露出なし)。
+ALTER TABLE public.native_schedule_members
+  ADD COLUMN IF NOT EXISTS comment text;
 
 DROP TRIGGER IF EXISTS set_updated_at_native_schedule_members
   ON public.native_schedule_members;

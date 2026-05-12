@@ -34,6 +34,11 @@ const NATIVE_DEFAULT_START_TIME_KEY = "native_schedule_default_start_time";
 const NATIVE_DEFAULT_END_TIME_KEY = "native_schedule_default_end_time";
 const FALLBACK_DEFAULT_START_TIME = "21:00";
 const FALLBACK_DEFAULT_END_TIME = "23:00";
+// 2.1 (2026-05-12) PR3-A/B: 通知 template / 確定時自動通知 ON/OFF。
+const NATIVE_DISCORD_NOTIFY_TEMPLATE_KEY =
+  "native_schedule_discord_notify_template";
+const NATIVE_DISCORD_NOTIFY_ON_DECISION_KEY =
+  "native_schedule_discord_notify_on_decision";
 
 export type NativeMemberRowFull = {
   discord_user_id: string;
@@ -68,6 +73,10 @@ export type NativeAdminAux = {
   defaultStartTime: string;
   /** TODO #81: placeholder auto-insert の終了時刻 (HH:MM, default "23:00")。 */
   defaultEndTime: string;
+  /** PR3-A: 通知 message template (null = 未設定 → buildMessage の hardcode default を使う)。 */
+  discordNotifyTemplate: string | null;
+  /** PR3-B: status DECISION 切替時の auto-notify ON/OFF (default OFF)。 */
+  discordNotifyOnDecision: boolean;
 };
 
 export async function fetchNativeScheduleAdminAux(): Promise<NativeAdminAux> {
@@ -96,6 +105,8 @@ export async function fetchNativeScheduleAdminAux(): Promise<NativeAdminAux> {
         NATIVE_DISCORD_NOTIFY_HOUR_KEY,
         NATIVE_DEFAULT_START_TIME_KEY,
         NATIVE_DEFAULT_END_TIME_KEY,
+        NATIVE_DISCORD_NOTIFY_TEMPLATE_KEY,
+        NATIVE_DISCORD_NOTIFY_ON_DECISION_KEY,
       ]),
   ]);
 
@@ -120,5 +131,9 @@ export async function fetchNativeScheduleAdminAux(): Promise<NativeAdminAux> {
       settingsMap[NATIVE_DEFAULT_START_TIME_KEY] ?? FALLBACK_DEFAULT_START_TIME,
     defaultEndTime:
       settingsMap[NATIVE_DEFAULT_END_TIME_KEY] ?? FALLBACK_DEFAULT_END_TIME,
+    discordNotifyTemplate:
+      settingsMap[NATIVE_DISCORD_NOTIFY_TEMPLATE_KEY] ?? null,
+    discordNotifyOnDecision:
+      settingsMap[NATIVE_DISCORD_NOTIFY_ON_DECISION_KEY] === "true",
   };
 }

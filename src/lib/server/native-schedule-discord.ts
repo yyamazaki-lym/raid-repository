@@ -30,6 +30,8 @@ const NOTIFY_ENABLED_KEY = "native_schedule_discord_notify_enabled";
 const NOTIFY_CHANNEL_KEY = "native_schedule_discord_notify_channel_id";
 const NOTIFY_ROLE_KEY = "native_schedule_discord_notify_role_id";
 const NOTIFY_HOUR_KEY = "native_schedule_discord_notify_hour";
+// 2.1 (2026-05-12) PR3-A: 通知 message template (placeholder 置換式)。
+const NOTIFY_TEMPLATE_KEY = "native_schedule_discord_notify_template";
 
 const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
 const DEFAULT_NOTIFY_HOUR = 12;
@@ -260,19 +262,21 @@ async function buildMessage(
   session: SessionRow,
   roleId: string | null,
 ): Promise<string> {
-  const [membersRes, attendancesRes, timeDefaults] = await Promise.all([
-    supabase
-      .from("native_schedule_members")
-      .select("discord_user_id, display_name, is_active")
-      .eq("is_active", true)
-      .order("sort_order", { ascending: true })
-      .order("display_name", { ascending: true }),
-    supabase
-      .from("native_schedule_attendances")
-      .select("session_id, discord_user_id, symbol")
-      .eq("session_id", session.id),
-    fetchTimeDefaults(),
-  ]);
+  const [membersRes, attendancesRes, timeDefaults, templateRaw] =
+    await Promise.all([
+      supabase
+        .from("native_schedule_members")
+        .select("discord_user_id, display_name, is_active")
+        .eq("is_active", true)
+        .order("sort_order", { ascending: true })
+        .order("display_name", { ascending: true }),
+      supabase
+        .from("native_schedule_attendances")
+        .select("session_id, discord_user_id, symbol")
+        .eq("session_id", session.id),
+      fetchTimeDefaults(),
+      fetchAppSetting(NOTIFY_TEMPLATE_KEY),
+    ]);
 
   const members = (membersRes.data ?? []) as MemberRow[];
   const attendances = (attendancesRes.data ?? []) as AttendanceRow[];
@@ -296,28 +300,57 @@ async function buildMessage(
   }
   const answered = members.length - unanswered.length;
 
-  const lines: string[] = [];
   const mentionPrefix = roleId ? `<@&${roleId}> ` : "";
   // 2.1 (2026-05-12): NULL の row は default 時刻に追従させる。
   const startTime = session.start_time ?? timeDefaults.startTime;
   const endTime = session.end_time ?? timeDefaults.endTime;
+  const note = session.note && session.note.trim() ? session.note.trim() : "";
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim() ?? "";
+
+  // 出欠ブロック (template / hardcode 共通)。
+  const attendanceLines: string[] = [];
+  attendanceLines.push(`出欠 (回答済 ${answered}/${members.length}):`);
+  for (const [sym, names] of buckets) {
+    attendanceLines.push(`　${sym}: ${names.join(", ")}`);
+  }
+  if (unanswered.length > 0) {
+    attendanceLines.push(`　未回答: ${unanswered.join(", ")}`);
+  }
+  const attendance = attendanceLines.join("\n");
+
+  // 2.1 (2026-05-12) PR3-A: app_settings に template があれば placeholder 置換、
+  // 未設定 (空) なら現行 hardcode default を使う (既定 = 現行レイアウト)。
+  const template = templateRaw?.trim() ? templateRaw : null;
+  if (template) {
+    const noteBlock = note ? `📝 ${note}\n` : "";
+    const replacements: Record<string, string> = {
+      "{mention}": mentionPrefix,
+      "{date}": session.raw_date,
+      "{day}": session.day_of_week,
+      "{time_start}": startTime,
+      "{time_end}": endTime,
+      "{note}": note,
+      "{note_block}": noteBlock,
+      "{attendance}": attendance,
+      "{site_url}": siteUrl,
+    };
+    return template.replace(
+      /\{(mention|date|day|time_start|time_end|note|note_block|attendance|site_url)\}/g,
+      (m) => replacements[m] ?? "",
+    );
+  }
+
+  // 既定 (現行) hardcode フォーマット。
+  const lines: string[] = [];
   lines.push(`${mentionPrefix}本日の固定活動予定日です`);
   lines.push("");
   lines.push(`📅 ${session.raw_date} (${session.day_of_week})`);
   lines.push(`🕘 ${startTime} 〜 ${endTime}`);
-  if (session.note && session.note.trim()) {
-    lines.push(`📝 ${session.note.trim()}`);
+  if (note) {
+    lines.push(`📝 ${note}`);
   }
   lines.push("");
-  lines.push(`出欠 (回答済 ${answered}/${members.length}):`);
-  for (const [sym, names] of buckets) {
-    lines.push(`　${sym}: ${names.join(", ")}`);
-  }
-  if (unanswered.length > 0) {
-    lines.push(`　未回答: ${unanswered.join(", ")}`);
-  }
-
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim();
+  lines.push(attendance);
   if (siteUrl) {
     lines.push("");
     lines.push(siteUrl);
@@ -325,6 +358,10 @@ async function buildMessage(
 
   return lines.join("\n");
 }
+
+// 2.1 (2026-05-12) PR3-A: 既定 template の文字列定義は client-safe な共有
+// module に分離 (admin UI と server で再利用)。
+export { NATIVE_DISCORD_DEFAULT_TEMPLATE } from "@/lib/schedule/native-discord-template";
 
 async function postToDiscord(input: {
   botToken: string;
