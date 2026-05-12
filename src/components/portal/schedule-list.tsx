@@ -1746,16 +1746,27 @@ function groupCommentsByAuthor(
 }
 
 /**
- * Split sessions into upcoming (future + ≤6h-past) and past (everything older),
- * each pre-sorted. Limit is applied to upcoming only — past list is always
- * sorted newest-first so the most relevant past dates appear right after the
- * "Past" divider.
+ * Split sessions into upcoming (当月 (JST) 以降) と past (前月以前の DECISION のみ)、
+ * それぞれ pre-sorted。Limit は upcoming のみに適用 — past は常に新しい順に並べ、
+ * "Past" divider の直後に最も関連性の高い日付が表示されるようにする。
+ *
+ * TODO #80 (2.1, 2026-05-12): cutoff を `now - 6h` から **JST 当月 1 日 00:00** に
+ * 変更。以前は月中視点で当月の過去 candidate 日 (例 5/12 視点の 5/3 等) が past
+ * バケット (DECISION 限定) に弾かれて画面から消える問題があった。sync 元サイト
+ * (character-sheets) が当月全列を 1 か月分横並びで返す挙動と揃える。当月分は
+ * candidate / DECISION の区別なく全て upcoming に並ぶ。
  */
 function splitSessions(
   sessions: ScheduleSession[],
   limit?: number,
 ): { upcoming: ScheduleSession[]; past: ScheduleSession[] } {
-  const cutoff = Date.now() - 6 * 60 * 60 * 1000;
+  // JST 当月 1 日 0:00 を UTC ms に変換 (JST_OFFSET_MS は他経路の
+  // discord-schedule.ts / native-schedule-discord.ts と同値の 9h)。
+  const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
+  const nowJst = new Date(Date.now() + JST_OFFSET_MS);
+  const cutoff =
+    Date.UTC(nowJst.getUTCFullYear(), nowJst.getUTCMonth(), 1, 0, 0, 0, 0) -
+    JST_OFFSET_MS;
   const upcoming: ScheduleSession[] = [];
   const past: ScheduleSession[] = [];
   for (const s of sessions) {
