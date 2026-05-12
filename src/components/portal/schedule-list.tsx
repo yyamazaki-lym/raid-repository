@@ -711,24 +711,18 @@ function UserHeaderCell({
       <span className="inline-flex items-center gap-1">
         {nameNode}
         {hasComments && <CommentPopover user={user} comments={comments} />}
-        {/* 2.1 (2026-05-12) PR3-D: native の本人 cell に member 全体コメント
-            popover を mount。他人 cell には comment を tooltip / 下段 span で
-            read-only 表示。 */}
-        {mode === "native" && isOwnUser ? (
+        {/* 2.1 (2026-05-12) PR3-D follow-up: native では本人 cell に常時 trigger
+            (空でも編集できるよう) + 他人 cell でも comment あれば trigger を出して
+            hover で popover 表示 (同期式 CommentPopover と同じ挙動)。読み取り用
+            下段 truncate span は popover に集約したため撤去。 */}
+        {mode === "native" && (isOwnUser || !!nativeComment) ? (
           <NativeMemberCommentPopover
             currentComment={user.comment ?? null}
             userName={user.name}
+            isOwn={isOwnUser}
           />
         ) : null}
       </span>
-      {mode === "native" && !isOwnUser && nativeComment ? (
-        <div
-          className="mx-auto mt-0.5 max-w-[7rem] truncate text-[9px] font-normal normal-case tracking-normal text-muted-foreground/80"
-          title={nativeComment}
-        >
-          {nativeComment}
-        </div>
-      ) : null}
     </th>
   );
 }
