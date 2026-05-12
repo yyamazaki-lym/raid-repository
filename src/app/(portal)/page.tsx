@@ -15,6 +15,11 @@ import { getScheduleSourceMode } from "@/lib/schedule/source-mode";
 import { getScheduleSourceUrl } from "@/lib/schedule/source-url";
 import { SCHEDULE_TOP_TEXT_OVERRIDE_KEY } from "@/lib/schedule-top-text-keys";
 import { fetchSessionLogsByDate } from "@/lib/server/fflogs";
+import {
+  ensureNativeMonthlyPlaceholders,
+  NATIVE_DEFAULT_END_TIME_KEY,
+  NATIVE_DEFAULT_START_TIME_KEY,
+} from "@/lib/server/native-schedule-placeholders";
 import { fetchScheduleMemosByDateBulk } from "@/lib/server/schedule-memos-fetch";
 import { buildSessionVideoLinkMap } from "@/lib/server/session-video-link";
 import { fetchAppSettings } from "@/lib/supabase/app-settings";
@@ -197,25 +202,39 @@ async function ScheduleContent() {
   // sync 経路と同じく memos / topTextOverride も fetch して同等の体験にする。
   // sessionLogsByDate は TODO #73 (FFLogs 連携 native 拡張) のスコープなので
   // ここでは空のまま (= 過去詳細表に FFLogs アイコンは出ない)。
+  //
+  // TODO #81 (2.1, 2026-05-12 part5): native では「Discord 通知のたびに候補日を
+  // 都度追加」する運用が現実的に存在するため、当月分が 0 件のままだと「予定なし」
+  // 表示になり日付一覧がそもそも視認できない。先に bulk fetch で default time を
+  // 拾い、`ensureNativeMonthlyPlaceholders()` で不足分を auto-insert してから
+  // `fetchNativeSchedule()` を走らせる順次実行に組み替える (Promise.all 並列だと
+  // race で初回 read が空配列になる可能性がある)。
   const [
-    nativeResult,
+    appSettings,
     holidays,
     recruitmentTemplates,
     categoriesResult,
     userRoles,
     member,
-    appSettings,
     initialMemosByDate,
   ] = await Promise.all([
-    fetchNativeSchedule(),
+    fetchAppSettings([
+      SCHEDULE_TOP_TEXT_OVERRIDE_KEY,
+      NATIVE_DEFAULT_START_TIME_KEY,
+      NATIVE_DEFAULT_END_TIME_KEY,
+    ]),
     fetchJapaneseHolidays(),
     fetchRecruitmentTemplatesServer(),
     fetchCategories(),
     getAuthorizedUserRoles(),
     requireDiscordMember(),
-    fetchAppSettings([SCHEDULE_TOP_TEXT_OVERRIDE_KEY]),
     fetchScheduleMemosByDateBulk(),
   ]);
+  await ensureNativeMonthlyPlaceholders({
+    startTime: appSettings[NATIVE_DEFAULT_START_TIME_KEY],
+    endTime: appSettings[NATIVE_DEFAULT_END_TIME_KEY],
+  });
+  const nativeResult = await fetchNativeSchedule();
   const topTextOverride = appSettings[SCHEDULE_TOP_TEXT_OVERRIDE_KEY] ?? null;
   const visibleCategories = categoriesResult.ok
     ? filterVisibleCategories(categoriesResult.categories, userRoles)

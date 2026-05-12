@@ -29,6 +29,11 @@ const NATIVE_DISCORD_NOTIFY_ROLE_KEY =
   "native_schedule_discord_notify_role_id";
 const NATIVE_DISCORD_NOTIFY_HOUR_KEY =
   "native_schedule_discord_notify_hour";
+// TODO #81 (2.1, 2026-05-12): placeholder auto-insert のデフォルト時刻。
+const NATIVE_DEFAULT_START_TIME_KEY = "native_schedule_default_start_time";
+const NATIVE_DEFAULT_END_TIME_KEY = "native_schedule_default_end_time";
+const FALLBACK_DEFAULT_START_TIME = "21:00";
+const FALLBACK_DEFAULT_END_TIME = "23:00";
 
 export type NativeMemberRowFull = {
   discord_user_id: string;
@@ -59,6 +64,10 @@ export type NativeAdminAux = {
   discordNotifyRoleId: string | null;
   /** TODO #2 候補 B: 通知時刻 (HH 文字列 "0"-"23", default "12")。 */
   discordNotifyHour: string;
+  /** TODO #81: placeholder auto-insert の開始時刻 (HH:MM, default "21:00")。 */
+  defaultStartTime: string;
+  /** TODO #81: placeholder auto-insert の終了時刻 (HH:MM, default "23:00")。 */
+  defaultEndTime: string;
 };
 
 export async function fetchNativeScheduleAdminAux(): Promise<NativeAdminAux> {
@@ -85,6 +94,8 @@ export async function fetchNativeScheduleAdminAux(): Promise<NativeAdminAux> {
         NATIVE_DISCORD_NOTIFY_CHANNEL_KEY,
         NATIVE_DISCORD_NOTIFY_ROLE_KEY,
         NATIVE_DISCORD_NOTIFY_HOUR_KEY,
+        NATIVE_DEFAULT_START_TIME_KEY,
+        NATIVE_DEFAULT_END_TIME_KEY,
       ]),
   ]);
 
@@ -105,5 +116,9 @@ export async function fetchNativeScheduleAdminAux(): Promise<NativeAdminAux> {
     discordNotifyChannelId: settingsMap[NATIVE_DISCORD_NOTIFY_CHANNEL_KEY] ?? null,
     discordNotifyRoleId: settingsMap[NATIVE_DISCORD_NOTIFY_ROLE_KEY] ?? null,
     discordNotifyHour: settingsMap[NATIVE_DISCORD_NOTIFY_HOUR_KEY] ?? "12",
+    defaultStartTime:
+      settingsMap[NATIVE_DEFAULT_START_TIME_KEY] ?? FALLBACK_DEFAULT_START_TIME,
+    defaultEndTime:
+      settingsMap[NATIVE_DEFAULT_END_TIME_KEY] ?? FALLBACK_DEFAULT_END_TIME,
   };
 }
