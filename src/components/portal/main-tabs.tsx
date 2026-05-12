@@ -8,10 +8,12 @@ import { cn } from "@/lib/utils";
 import { CategorySwitcher } from "./category-switcher";
 import { MainActionSlotTarget } from "./action-slot";
 import type { Category } from "@/lib/supabase/types";
+import type { ScheduleSourceMode } from "@/lib/schedule/source-mode";
 
 export function MainTabs({
   initialCategories,
   userRoleIds,
+  scheduleSourceMode,
 }: {
   initialCategories: Category[];
   /**
@@ -22,9 +24,17 @@ export function MainTabs({
    * the next page navigation.
    */
   userRoleIds: string[];
+  /**
+   * TODO #79: schedule_source_mode='disabled' の portal ではスケジュール
+   * 機能が無効化されているため、ナビ上から「スケジュール」タブ自体を
+   * 取り除き、コンテンツページを実質のホームにする。admin が settings
+   * dialog から sync/native に戻したら tab も自動復活する。
+   */
+  scheduleSourceMode: ScheduleSourceMode;
 }) {
   const pathname = usePathname();
   const scheduleActive = pathname === "/";
+  const showScheduleTab = scheduleSourceMode !== "disabled";
 
   return (
     <nav
@@ -34,37 +44,39 @@ export function MainTabs({
       <div className="mx-auto max-w-5xl px-2 sm:px-6">
         <div className="flex items-center gap-1">
           <ul className="flex min-w-0 flex-1 gap-1 overflow-x-auto py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            <li className="shrink-0">
-              <Link
-                href="/"
-                data-active={scheduleActive}
-                className={cn(
-                  "neon-edge group relative flex items-center gap-2 rounded-md border border-transparent px-4 py-1.5 font-mono text-[12px] tracking-[0.16em] uppercase transition-colors",
-                  scheduleActive
-                    ? "text-foreground"
-                    : "text-muted-foreground hover:text-foreground/90",
-                )}
-                aria-current={scheduleActive ? "page" : undefined}
-              >
-                <CalendarDays
+            {showScheduleTab && (
+              <li className="shrink-0">
+                <Link
+                  href="/"
+                  data-active={scheduleActive}
                   className={cn(
-                    "h-3.5 w-3.5 transition-colors",
+                    "neon-edge group relative flex items-center gap-2 rounded-md border border-transparent px-4 py-1.5 font-mono text-[12px] tracking-[0.16em] uppercase transition-colors",
                     scheduleActive
-                      ? "text-[var(--neon-cyan)]"
-                      : "text-muted-foreground group-hover:text-foreground/80",
+                      ? "text-foreground"
+                      : "text-muted-foreground hover:text-foreground/90",
                   )}
-                  aria-hidden
-                />
-                <span>スケジュール</span>
-                {scheduleActive && (
-                  <motion.span
-                    layoutId="main-tab-underline"
-                    transition={{ type: "spring", bounce: 0.2, duration: 0.5 }}
-                    className="absolute right-2 -bottom-px left-2 h-px bg-[var(--neon-cyan)] shadow-[0_0_10px_var(--neon-cyan)]"
+                  aria-current={scheduleActive ? "page" : undefined}
+                >
+                  <CalendarDays
+                    className={cn(
+                      "h-3.5 w-3.5 transition-colors",
+                      scheduleActive
+                        ? "text-[var(--neon-cyan)]"
+                        : "text-muted-foreground group-hover:text-foreground/80",
+                    )}
+                    aria-hidden
                   />
-                )}
-              </Link>
-            </li>
+                  <span>スケジュール</span>
+                  {scheduleActive && (
+                    <motion.span
+                      layoutId="main-tab-underline"
+                      transition={{ type: "spring", bounce: 0.2, duration: 0.5 }}
+                      className="absolute right-2 -bottom-px left-2 h-px bg-[var(--neon-cyan)] shadow-[0_0_10px_var(--neon-cyan)]"
+                    />
+                  )}
+                </Link>
+              </li>
+            )}
 
             <li className="shrink-0">
               <CategorySwitcher

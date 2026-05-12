@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { redirect } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { ScheduleDisabledNotice } from "@/components/portal/schedule-disabled-notice";
 import { ScheduleOnboarding } from "@/components/portal/schedule-onboarding";
@@ -100,6 +101,14 @@ async function ScheduleContent() {
   const mode = await getScheduleSourceMode();
 
   if (mode === "disabled") {
+    // TODO #79: スケジュール機能 OFF の portal ではコンテンツページを実質の
+    // ホームにする。非 admin は `/category` に server redirect、admin だけは
+    // 従来通り disabled notice を見せ、SiteHeader の設定 dialog 経由で
+    // sync/native に戻せる導線を残す。
+    const userRoles = await getAuthorizedUserRoles();
+    if (!userIsAdmin(userRoles)) {
+      redirect("/category");
+    }
     return (
       <div className="flex flex-col gap-4">
         <h1 className="font-display text-xl text-foreground sm:text-2xl">

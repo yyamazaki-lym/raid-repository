@@ -5,6 +5,7 @@ import { MainActionSlotProvider } from "@/components/portal/action-slot";
 import { fetchCategories } from "@/lib/supabase/categories";
 import { getAuthorizedUserRoles } from "@/lib/server/auth";
 import { filterVisibleCategories } from "@/lib/category-visibility";
+import { getScheduleSourceMode } from "@/lib/schedule/source-mode";
 
 /**
  * 2.1 (2026-04-29) TODO #45: 全ポータルページを Edge Runtime に統一。
@@ -31,9 +32,13 @@ export default async function PortalLayout({
   // TODO #19: filter the list to categories the user's Discord roles can
   // see. Categories with `requiredRoleIds = []` (default) are visible to
   // everyone; non-empty arrays restrict to role intersection.
-  const [result, userRoles] = await Promise.all([
+  // TODO #79: scheduleSourceMode を MainTabs に渡してスケジュール tab の
+  // 出し分け (disabled モード時は非表示) を行う。getScheduleSourceMode は
+  // React.cache 済なので page.tsx 側で再度呼ばれても DB クエリは 1 回。
+  const [result, userRoles, scheduleSourceMode] = await Promise.all([
     fetchCategories(),
     getAuthorizedUserRoles(),
+    getScheduleSourceMode(),
   ]);
   const visible = result.ok
     ? filterVisibleCategories(result.categories, userRoles)
@@ -48,7 +53,11 @@ export default async function PortalLayout({
           を一緒に包み、子側 <MainActionSlot> が stuck 状態を push、MainTabs 側
           <MainActionSlotTarget> が portal 着地 div を提供する。 */}
       <MainActionSlotProvider>
-        <MainTabs initialCategories={visible} userRoleIds={userRoles} />
+        <MainTabs
+          initialCategories={visible}
+          userRoleIds={userRoles}
+          scheduleSourceMode={scheduleSourceMode}
+        />
         {/* 1.9.30: max-width を 6xl (1152px) → 5xl (1024px) に絞る。
             PC 横幅が広すぎてカードや表が間延びして見える、という
             ユーザー指摘への対応。最も広いレイアウトでも 1024px に収まる
