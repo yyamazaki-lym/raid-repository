@@ -246,8 +246,17 @@ function SortableImageCard({
 
 /**
  * Lightbox modal. base-ui Dialog のオーバーレイ + 中央配置をフルサイズに
- * 上書きし、画像を `object-contain` で原比率表示。esc / overlay クリック /
- * 右上 ✕ のいずれでも閉じる (Dialog primitive の標準挙動)。
+ * 上書きし、画像を `object-contain` で原比率表示。閉じる手段:
+ *   - 右上 ✕ ボタン
+ *   - esc キー (Dialog primitive 標準)
+ *   - 画像外の黒い余白クリック / タップ (画像本体クリックは閉じない)
+ *
+ * 画像本体は素の `<img>` を使う。`<Image fill>` だと img element が親
+ * box 全域を覆い、object-contain の透明 letterbox 領域もクリック判定が
+ * img になってしまうため「画像外」が成立しなかった。`<img>` + max-h/max-w
+ * full + object-contain なら img の box が画像の natural aspect に絞られ、
+ * 周囲の余白は親 div のクリック判定になる (= 閉じる)。
+ * Lightbox は拡大用なので Next.js Image Optimization は捨てて問題なし。
  */
 function ImageLightbox({
   link,
@@ -258,6 +267,8 @@ function ImageLightbox({
 }) {
   const open = link !== null;
   const src = link ? safeHref(link.url) : undefined;
+  // 余白クリックで閉じる。画像本体は stopPropagation で素通り。
+  const onBackdropClick = () => onOpenChange(false);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -265,24 +276,32 @@ function ImageLightbox({
         className="grid h-[100svh] max-h-none w-screen max-w-[100vw] -translate-x-1/2 -translate-y-1/2 grid-rows-[1fr_auto] gap-0 rounded-none border-0 bg-black/85 p-0 ring-0 sm:max-w-[100vw]"
         showCloseButton={true}
       >
-        {/* sr-only タイトル — Radix Dialog の a11y 警告対策 */}
+        {/* sr-only タイトル — Dialog の a11y 警告対策 */}
         <DialogTitle className="sr-only">
           {link?.title ?? "画像"}
         </DialogTitle>
         {src ? (
-          <div className="relative flex min-h-0 items-center justify-center overflow-hidden">
-            <Image
+          <div
+            className="relative flex min-h-0 cursor-zoom-out items-center justify-center overflow-hidden"
+            onClick={onBackdropClick}
+            role="button"
+            tabIndex={-1}
+            aria-label="画像を閉じる"
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
               src={src}
               alt={link?.title ?? ""}
-              fill
-              sizes="100vw"
-              className="object-contain"
-              priority
-              unoptimized={!isOptimizableImageHost(src)}
+              className="max-h-full max-w-full cursor-default object-contain"
+              onClick={(e) => e.stopPropagation()}
+              draggable={false}
             />
           </div>
         ) : (
-          <div className="flex items-center justify-center text-sm text-white/70">
+          <div
+            className="flex items-center justify-center text-sm text-white/70"
+            onClick={onBackdropClick}
+          >
             画像を読み込めませんでした
           </div>
         )}
