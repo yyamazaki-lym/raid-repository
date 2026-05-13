@@ -2,26 +2,32 @@ import "server-only";
 import { decodeHtmlEntities } from "@/lib/html-entities";
 import { parseYouTubeId } from "@/lib/youtube";
 
+export type PageMeta = {
+  title: string | null;
+  /** og:image (HTML) または YouTube oEmbed thumbnail_url。http(s) 絶対化済。 */
+  imageUrl: string | null;
+};
+
 /**
- * Server-side page-title fetcher. Used by both the public
- * `/api/page-title` route (called from the link dialog) and the
- * Discord cron import (called from `/api/cron/import-discord`).
+ * Server-side ページメタ取得器。タイトルと og:image を 1 度の fetch で
+ * まとめて取得する (Phase 14, 2026-05-13)。
  *
  * Strategy:
- *   1. YouTube → oEmbed (clean video title)
- *   2. Other URLs → og:title or HTML <title>, with HTML entity decoding
+ *   1. YouTube → oEmbed で title + thumbnail_url
+ *   2. その他 → 1 度の HTML 取得から og:title / `<title>` と og:image を抽出
  *
- * Returns null on any failure (timeout, non-200 upstream, missing tag).
+ * いずれも失敗時は対応フィールドを null。
  */
-export async function fetchPageTitle(url: string): Promise<string | null> {
+export async function fetchPageMeta(url: string): Promise<PageMeta> {
+  const empty: PageMeta = { title: null, imageUrl: null };
   let parsed: URL;
   try {
     parsed = new URL(url);
   } catch {
-    return null;
+    return empty;
   }
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    return null;
+    return empty;
   }
 
   // YouTube fast path.
@@ -36,8 +42,16 @@ export async function fetchPageTitle(url: string): Promise<string | null> {
         signal: AbortSignal.timeout(8000),
       });
       if (res.ok) {
-        const data = (await res.json()) as { title?: string };
-        if (data.title) return data.title;
+        const data = (await res.json()) as {
+          title?: string;
+          thumbnail_url?: string;
+        };
+        if (data.title || data.thumbnail_url) {
+          return {
+            title: data.title ?? null,
+            imageUrl: data.thumbnail_url ?? null,
+          };
+        }
       }
     } catch {
       // fall through
@@ -56,18 +70,53 @@ export async function fetchPageTitle(url: string): Promise<string | null> {
       signal: AbortSignal.timeout(8000),
       redirect: "follow",
     });
-    if (!res.ok) return null;
+    if (!res.ok) return empty;
     const html = await res.text();
-    const ogMatch = html.match(
+
+    const ogTitleMatch = html.match(
       /<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i,
     );
-    const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
-    const raw = (ogMatch?.[1] ?? titleMatch?.[1] ?? "").trim();
-    if (!raw) return null;
-    // 1.9 (2026-04-28): TODO #13 — `&times;` 等の named entity も
-    // デコードできるよう共通の `decodeHtmlEntities` に切替。
-    return decodeHtmlEntities(raw);
+    const titleTagMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+    const rawTitle = (ogTitleMatch?.[1] ?? titleTagMatch?.[1] ?? "").trim();
+    // 1.9 (2026-04-28) TODO #13: named entity 込みで decode 必要。
+    const title = rawTitle ? decodeHtmlEntities(rawTitle) : null;
+
+    // og:image: property/name + content の順序どちらでも拾えるよう 2 パターン。
+    // 相対 URL は元 URL を base に絶対化、http(s) 以外は破棄 (data: 等を遮断)。
+    const ogImageMatch =
+      html.match(
+        /<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i,
+      ) ??
+      html.match(
+        /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i,
+      );
+    let imageUrl: string | null = null;
+    const rawImage = ogImageMatch?.[1]?.trim();
+    if (rawImage) {
+      try {
+        const resolved = new URL(decodeHtmlEntities(rawImage), parsed);
+        if (
+          resolved.protocol === "http:" ||
+          resolved.protocol === "https:"
+        ) {
+          imageUrl = resolved.toString();
+        }
+      } catch {
+        // 解決不能な og:image は捨てる
+      }
+    }
+
+    return { title, imageUrl };
   } catch {
-    return null;
+    return empty;
   }
+}
+
+/**
+ * 旧 API 互換ラッパ。既存呼び出し元 (`/api/page-title` route と Discord cron
+ * import) は title のみ必要なので、`fetchPageMeta` の title フィールドだけ
+ * 返す。新規コードは `fetchPageMeta` を直接呼ぶこと。
+ */
+export async function fetchPageTitle(url: string): Promise<string | null> {
+  return (await fetchPageMeta(url)).title;
 }

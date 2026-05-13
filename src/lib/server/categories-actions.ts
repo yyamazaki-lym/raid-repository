@@ -139,6 +139,12 @@ export type CategoryUpdatePatch = Partial<{
    */
   discord_video_filter_keywords: string[] | null;
   discord_strategy_filter_keywords: string[] | null;
+  /**
+   * Phase 14 (2.x, 2026-05-13): 攻略リンクのサムネイル表示 ON/OFF
+   * (カテゴリ単位)。true で thumbnail_url の入っている攻略リンクに
+   * og:image / YouTube サムネイルをカード上部に表示する。
+   */
+  show_strategy_thumbnails: boolean;
 }>;
 
 /**
@@ -1335,6 +1341,25 @@ export async function createCategoryLinkAction(input: {
     }
   }
 
+  // Phase 14 (2.x, 2026-05-13): 攻略リンクの og:image を取得して thumbnail_url
+  // に保存。ON/OFF はカテゴリ側 (categories.show_strategy_thumbnails) で
+  // 制御するため、ここでは取得・保存だけ常に行う (将来 ON にしたとき即時
+  // 表示可能になる)。動画は別系統 (youtubeThumbnailUrl) なのでスキップ。
+  // 失敗・タイムアウト・og:image なしは NULL のまま登録 (致命視しない)。
+  let thumbnailUrl: string | null = null;
+  if (input.kind === "strategy") {
+    try {
+      const { fetchPageMeta } = await import("@/lib/server/page-title");
+      const { isSafeUrl } = await import("@/lib/url-safe");
+      const meta = await fetchPageMeta(input.url);
+      if (meta.imageUrl && isSafeUrl(meta.imageUrl)) {
+        thumbnailUrl = meta.imageUrl;
+      }
+    } catch {
+      // fall through — og:image 取得失敗は登録自体を妨げない
+    }
+  }
+
   const { data, error } = await supabase
     .from("category_links")
     .insert({
@@ -1348,6 +1373,7 @@ export async function createCategoryLinkAction(input: {
       sort_order: nextOrder,
       duration_seconds: durationSeconds,
       posted_at: postedAt,
+      thumbnail_url: thumbnailUrl,
     })
     .select("id")
     .single();

@@ -71,6 +71,12 @@ export type CategoryRow = {
   discord_video_filter_keywords: string[] | null;
   /** Phase 13 (2.1, 2026-05-13): Discord 攻略ch 取り込みフィルタ。挙動は video 版と同形。 */
   discord_strategy_filter_keywords: string[] | null;
+  /**
+   * Phase 14 (2.x, 2026-05-13): 攻略リンクのサムネイル表示 ON/OFF。
+   * false (default) で従来通り、true で thumbnail_url の入っている攻略
+   * リンクに og:image / YouTube サムネイルを表示。カテゴリ単位の共有設定。
+   */
+  show_strategy_thumbnails: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -119,6 +125,12 @@ export type Category = {
   discordVideoFilterKeywords: string[];
   /** Discord 攻略ch 取り込みフィルタ (Phase 13)。挙動は video 版と同形。 */
   discordStrategyFilterKeywords: string[];
+  /**
+   * Phase 14 (2.x, 2026-05-13): 攻略リンクのサムネイル表示 ON/OFF。
+   * false (default) でカードに og:image を出さない。true で
+   * thumbnail_url が入っているリンクのみカード上部にサムネイル表示。
+   */
+  showStrategyThumbnails: boolean;
 };
 
 export function rowToCategory(row: CategoryRow): Category {
@@ -142,6 +154,7 @@ export function rowToCategory(row: CategoryRow): Category {
     fflogsMatchKeywords: row.fflogs_match_keywords ?? [],
     discordVideoFilterKeywords: row.discord_video_filter_keywords ?? [],
     discordStrategyFilterKeywords: row.discord_strategy_filter_keywords ?? [],
+    showStrategyThumbnails: row.show_strategy_thumbnails ?? false,
   };
 }
 
@@ -173,6 +186,12 @@ export type CategoryLinkRow = {
   posted_at: string | null;
   /** TODO #47 (2.1, 2026-04-30): user-toggled favorite flag (videos only UI). */
   is_favorite: boolean;
+  /**
+   * Phase 14 (2.x, 2026-05-13): 攻略リンクのサムネイル URL (og:image)。
+   * 新規追加時に server-side で fetchPageMeta から取得。失敗・既存行は NULL。
+   * 表示は categories.show_strategy_thumbnails が true のときだけ走る。
+   */
+  thumbnail_url: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -190,6 +209,8 @@ export type CategoryLink = {
   durationSeconds: number | null;
   postedAt: string | null;
   isFavorite: boolean;
+  /** og:image URL (新規追加時に fetchPageMeta で取得した値、Phase 14)。 */
+  thumbnailUrl: string | null;
   createdAt: string;
 };
 
@@ -207,6 +228,7 @@ export function rowToCategoryLink(row: CategoryLinkRow): CategoryLink {
     durationSeconds: row.duration_seconds ?? null,
     postedAt: row.posted_at ?? null,
     isFavorite: row.is_favorite ?? false,
+    thumbnailUrl: row.thumbnail_url ?? null,
     createdAt: row.created_at,
   };
 }
