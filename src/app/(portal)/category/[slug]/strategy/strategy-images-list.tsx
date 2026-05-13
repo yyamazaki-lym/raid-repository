@@ -428,6 +428,9 @@ function ImageLightbox({
   };
 
   // キーボード ← → で前後移動。Esc は Dialog primitive 側が拾うのでここでは扱わない。
+  // base-ui の DialogContent は bubble 段階で keydown を捕まえて
+  // stopPropagation するため window への伝播が起きないケースがある。
+  // capture phase で先取りすることで Dialog primitive の挙動に依らず動かす。
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -439,8 +442,8 @@ function ImageLightbox({
         goNext();
       }
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
     // goPrev/goNext は idx 依存で毎レンダー新規だが、最新を見ればよいので
     // 依存配列に含めず eslint-disable で済ます (key 押下時の closure が
     // 古くても 1 step 分しかズレないため UX 上問題なし)。
@@ -499,8 +502,24 @@ function ImageLightbox({
             <img
               src={src}
               alt={link?.title ?? ""}
-              className="max-h-full max-w-full cursor-default object-contain select-none"
-              onClick={(e) => e.stopPropagation()}
+              className={
+                "max-h-full max-w-full object-contain select-none " +
+                (hasMultiple ? "cursor-pointer" : "cursor-default")
+              }
+              // Phase 17 (2026-05-13): 画像本体クリックでも左右半分判定で
+              // 前後遷移できるようにする。stopPropagation で背景クリック
+              // (= 閉じる) は発火させず、img bounding rect 内の clientX 位置で
+              // 前 / 次を決める。単独画像のときは clickable 化しない。
+              onClick={(e) => {
+                e.stopPropagation();
+                if (!hasMultiple) return;
+                const rect = (
+                  e.currentTarget as HTMLImageElement
+                ).getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                if (x < rect.width / 2) goPrev();
+                else goNext();
+              }}
               draggable={false}
             />
             {hasMultiple && (
