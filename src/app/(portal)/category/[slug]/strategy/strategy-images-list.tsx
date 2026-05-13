@@ -3,6 +3,8 @@
 import { useMemo, useState } from "react";
 import Image from "next/image";
 import {
+  ChevronDown,
+  ChevronRight,
   ExternalLink,
   GripVertical,
   ImagePlus,
@@ -54,6 +56,7 @@ import {
   useRealtimeGphotoAlbums,
 } from "@/lib/category-links-client";
 import { isOptimizableImageHost, safeHref } from "@/lib/url-safe";
+import { useCollapsible } from "@/lib/use-collapsible";
 import type {
   CategoryGphotoAlbum,
   CategoryLink,
@@ -172,17 +175,36 @@ export function StrategyImagesList({
     return all.find((l) => l.id === lightboxId) ?? null;
   }, [liveImages, liveGphotos, lightboxId]);
 
+  // Phase 17: セクション折りたたみ。strategy-list と同じ localStorage 命名規則。
+  const [collapsed, setCollapsed] = useCollapsible(
+    "raid-repo:strategy-section-collapsed:images",
+    false,
+  );
+
   return (
     <section className="flex flex-col gap-3 border-t border-border/30 pt-4">
       <div className="flex items-center justify-between">
-        <p className="font-mono text-[10px] tracking-[0.2em] text-muted-foreground uppercase">
-          {totalCount} image{totalCount === 1 ? "" : "s"}
-          {looseLinks.length > 1 && (
+        <button
+          type="button"
+          onClick={() => setCollapsed(!collapsed)}
+          aria-expanded={!collapsed}
+          aria-controls="strategy-images-body"
+          className="inline-flex items-center gap-1 font-mono text-[10px] tracking-[0.2em] text-muted-foreground uppercase transition-colors hover:text-foreground"
+        >
+          {collapsed ? (
+            <ChevronRight className="h-3 w-3" aria-hidden />
+          ) : (
+            <ChevronDown className="h-3 w-3" aria-hidden />
+          )}
+          <span>
+            Images · {totalCount} image{totalCount === 1 ? "" : "s"}
+          </span>
+          {!collapsed && looseLinks.length > 1 && (
             <span className="ml-2 text-muted-foreground/60">
               · ドラッグで並び替え
             </span>
           )}
-        </p>
+        </button>
         {/* SubTabs が stuck 状態になったら ActionSlot 経由で SubTabs 右端に
             portal される (strategy-list の「サムネ + 攻略リンク追加」と同じ
             target を共有。Phase 16 で Google フォト URL 判定を
@@ -192,7 +214,9 @@ export function StrategyImagesList({
         </ActionSlot>
       </div>
 
-      {totalCount === 0 && albums.length === 0 ? (
+      {!collapsed && (
+        <div id="strategy-images-body" className="flex flex-col gap-3">
+          {totalCount === 0 && albums.length === 0 ? (
         <Card className="glass flex flex-col items-center gap-3 p-10 text-center">
           <span className="grid h-10 w-10 place-items-center rounded-md border border-[var(--neon-magenta)]/40 bg-background/40 text-[var(--neon-magenta)]">
             <ImagePlus className="h-4 w-4" aria-hidden />
@@ -236,6 +260,8 @@ export function StrategyImagesList({
             />
           ))}
         </>
+      )}
+        </div>
       )}
 
       <ImageFormDialog

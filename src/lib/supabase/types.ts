@@ -77,6 +77,18 @@ export type CategoryRow = {
    * リンクに og:image / YouTube サムネイルを表示。カテゴリ単位の共有設定。
    */
   show_strategy_thumbnails: boolean;
+  /**
+   * Phase 17 (2026-05-13): カテゴリカードから category 詳細に飛んだ時の
+   * 既定タブ。'mitigation' | 'loot' | 'strategy' | 'videos' | 'macros'。
+   * default は従来挙動の 'mitigation'。
+   */
+  default_tab: string;
+  /**
+   * Phase 17 (2026-05-13): SubTabs の表示 ON/OFF と任意ラベル上書き。
+   * `{<tabId>: {enabled?: boolean, label?: string|null}}`。未指定 key は
+   * 「enabled=true, label はデフォルト」とみなす (後方互換)。
+   */
+  tab_config: Record<string, { enabled?: boolean; label?: string | null }>;
   created_at: string;
   updated_at: string;
 };
@@ -131,7 +143,34 @@ export type Category = {
    * thumbnail_url が入っているリンクのみカード上部にサムネイル表示。
    */
   showStrategyThumbnails: boolean;
+  /**
+   * Phase 17 (2026-05-13): カテゴリカードから category 詳細を開いた時に
+   * 最初に着地する SubTab id。
+   */
+  defaultTab: CategoryTabId;
+  /**
+   * Phase 17 (2026-05-13): SubTabs の表示 ON/OFF とラベル上書き。
+   * key 未指定なら「enabled=true, label はデフォルト」を意味する。
+   */
+  tabConfig: Record<string, { enabled?: boolean; label?: string | null }>;
 };
+
+// Phase 17 (2026-05-13): SubTabs の固定 id 一覧。CHECK 制約と一致させる。
+export const CATEGORY_TAB_IDS = [
+  "mitigation",
+  "loot",
+  "strategy",
+  "videos",
+  "macros",
+] as const;
+export type CategoryTabId = (typeof CATEGORY_TAB_IDS)[number];
+
+export function isCategoryTabId(v: unknown): v is CategoryTabId {
+  return (
+    typeof v === "string" &&
+    (CATEGORY_TAB_IDS as readonly string[]).includes(v)
+  );
+}
 
 export function rowToCategory(row: CategoryRow): Category {
   return {
@@ -155,6 +194,13 @@ export function rowToCategory(row: CategoryRow): Category {
     discordVideoFilterKeywords: row.discord_video_filter_keywords ?? [],
     discordStrategyFilterKeywords: row.discord_strategy_filter_keywords ?? [],
     showStrategyThumbnails: row.show_strategy_thumbnails ?? false,
+    defaultTab: isCategoryTabId(row.default_tab)
+      ? row.default_tab
+      : "mitigation",
+    tabConfig:
+      row.tab_config && typeof row.tab_config === "object"
+        ? (row.tab_config as Category["tabConfig"])
+        : {},
   };
 }
 

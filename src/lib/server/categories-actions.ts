@@ -146,6 +146,18 @@ export type CategoryUpdatePatch = Partial<{
    * og:image / YouTube サムネイルをカード上部に表示する。
    */
   show_strategy_thumbnails: boolean;
+  /**
+   * Phase 17 (2026-05-13): カテゴリカードから category 詳細に遷移する
+   * ときの既定タブ。SUB_TABS の id (mitigation / loot / strategy /
+   * videos / macros) のいずれか。DB の CHECK で値域が縛られている。
+   */
+  default_tab: string;
+  /**
+   * Phase 17 (2026-05-13): SubTabs の表示 ON/OFF とラベル上書き。
+   * `{<tabId>: {enabled?: boolean, label?: string|null}}`。
+   * 既存値を完全置換する patch (差分マージはしない)。
+   */
+  tab_config: Record<string, { enabled?: boolean; label?: string | null }>;
 }>;
 
 /**

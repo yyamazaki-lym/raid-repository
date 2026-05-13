@@ -30,9 +30,13 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
   ALL_STATUSES,
+  CATEGORY_TAB_IDS,
+  isCategoryTabId,
   type Category,
   type CategoryStatus,
+  type CategoryTabId,
 } from "@/lib/supabase/types";
+import { DEFAULT_SUB_TAB_LABELS } from "@/components/portal/sub-tabs";
 import {
   createCategory,
   updateCategory,
@@ -187,6 +191,31 @@ export function CategoryFormDialog({
   const [availableRoles, setAvailableRoles] = useState<DiscordGuildRole[]>([]);
   const [rolesLoading, setRolesLoading] = useState(false);
 
+  // Phase 17 (2026-05-13): カテゴリカードから飛ぶ既定タブと、SubTabs 表示
+  // 設定 (ON/OFF + ラベル上書き)。tabSettings は UI 内部用の Record。
+  type TabSetting = { enabled: boolean; label: string };
+  const buildInitialTabSettings = (
+    cfg: Category["tabConfig"] | undefined,
+  ): Record<CategoryTabId, TabSetting> => {
+    const out = {} as Record<CategoryTabId, TabSetting>;
+    for (const id of CATEGORY_TAB_IDS) {
+      const c = cfg?.[id];
+      out[id] = {
+        enabled: c?.enabled !== false,
+        label: typeof c?.label === "string" ? c.label : "",
+      };
+    }
+    return out;
+  };
+  const [defaultTab, setDefaultTab] = useState<CategoryTabId>(
+    category?.defaultTab && isCategoryTabId(category.defaultTab)
+      ? category.defaultTab
+      : "mitigation",
+  );
+  const [tabSettings, setTabSettings] = useState<
+    Record<CategoryTabId, TabSetting>
+  >(buildInitialTabSettings(category?.tabConfig));
+
   const onPickBackgroundFile = () => {
     fileInputRef.current?.click();
   };
@@ -271,6 +300,12 @@ export function CategoryFormDialog({
       setStrategyFilterInput(
         matchKeywordsToString(category?.discordStrategyFilterKeywords),
       );
+      setDefaultTab(
+        category?.defaultTab && isCategoryTabId(category.defaultTab)
+          ? category.defaultTab
+          : "mitigation",
+      );
+      setTabSettings(buildInitialTabSettings(category?.tabConfig));
       setError(null);
     }
   }, [open, category]);
@@ -371,6 +406,35 @@ export function CategoryFormDialog({
     // Phase 13 (2.1, 2026-05-13): Discord 取り込みフィルタ (kind 別) も同じパース。
     const parsedVideoFilter = parseCsvKeywords(videoFilterInput);
     const parsedStrategyFilter = parseCsvKeywords(strategyFilterInput);
+
+    // Phase 17 (2026-05-13): tab_config を patch 用に組み立てる。デフォルト
+    // 状態 (enabled=true, label 空) のキーは jsonb に残しても害はないが、
+    // 「設定されたタブだけ」を残す方が読み取り側でデフォルトとの差分を
+    // 見つけやすいので、デフォルト状態の key は省いて保存する。
+    const tabConfigPatch: Record<
+      string,
+      { enabled?: boolean; label?: string | null }
+    > = {};
+    for (const id of CATEGORY_TAB_IDS) {
+      const s = tabSettings[id];
+      const trimmedLabel = s.label.trim();
+      const isDefault = s.enabled && !trimmedLabel;
+      if (isDefault) continue;
+      tabConfigPatch[id] = {
+        enabled: s.enabled,
+        label: trimmedLabel ? trimmedLabel : null,
+      };
+    }
+    // defaultTab が disabled になっている場合は最初の enabled タブに
+    // フォールバック。それも無ければ mitigation。
+    const defaultTabValid =
+      tabSettings[defaultTab]?.enabled !== false ? defaultTab : null;
+    const firstEnabled = (CATEGORY_TAB_IDS.find(
+      (id) => tabSettings[id].enabled !== false,
+    ) ?? "mitigation") as CategoryTabId;
+    const effectiveDefaultTab: CategoryTabId =
+      defaultTabValid ?? firstEnabled;
+
     const patch = {
       name: trimmedName,
       slug: trimmedSlug,
@@ -390,6 +454,8 @@ export function CategoryFormDialog({
         parsedVideoFilter.length > 0 ? parsedVideoFilter : null,
       discord_strategy_filter_keywords:
         parsedStrategyFilter.length > 0 ? parsedStrategyFilter : null,
+      default_tab: effectiveDefaultTab,
+      tab_config: tabConfigPatch,
     };
 
     const result = isEdit
@@ -557,6 +623,103 @@ export function CategoryFormDialog({
               ))}
             </div>
           </div>
+
+          {/* Phase 17 (2026-05-13): タブ設定。カテゴリカードから飛ぶ既定タブと、
+              各 SubTab の表示 ON/OFF + ラベル上書き。details で折りたためる。 */}
+          <details className="flex flex-col gap-1.5 border-t border-border/30 pt-4">
+            <summary className="cursor-pointer select-none text-xs text-foreground/80">
+              タブ設定（既定タブ・表示 ON/OFF・名前変更）
+            </summary>
+            <div className="mt-2 flex flex-col gap-3">
+              <div className="flex flex-col gap-1.5">
+                <Label className="text-xs text-foreground/80">
+                  カテゴリカードから最初に開くタブ
+                </Label>
+                <div className="flex flex-wrap gap-1.5">
+                  {CATEGORY_TAB_IDS.map((id) => {
+                    const labelOverride = tabSettings[id].label.trim();
+                    const label = labelOverride
+                      ? labelOverride
+                      : DEFAULT_SUB_TAB_LABELS[id];
+                    const disabled = tabSettings[id].enabled === false;
+                    return (
+                      <button
+                        key={id}
+                        type="button"
+                        onClick={() => setDefaultTab(id)}
+                        disabled={disabled}
+                        title={
+                          disabled
+                            ? "このタブは非表示に設定されています"
+                            : undefined
+                        }
+                        className={cn(
+                          "inline-flex items-center gap-1.5 rounded-sm border px-2 py-1 font-mono text-[10px] tracking-[0.18em] uppercase transition-colors",
+                          defaultTab === id
+                            ? "border-[var(--neon-cyan)]/60 bg-[var(--neon-cyan)]/10 text-foreground"
+                            : "border-border bg-background/30 text-muted-foreground hover:text-foreground/80",
+                          disabled && "opacity-40",
+                        )}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-muted-foreground text-[11px] leading-relaxed">
+                  カテゴリカードをクリックしたときの遷移先。非表示タブを既定にすると、
+                  保存時に表示されているタブの先頭にフォールバックします。
+                </p>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <Label className="text-xs text-foreground/80">
+                  各タブの表示 ON/OFF と名前
+                </Label>
+                <ul className="flex flex-col gap-2">
+                  {CATEGORY_TAB_IDS.map((id) => {
+                    const s = tabSettings[id];
+                    return (
+                      <li
+                        key={id}
+                        className="flex items-center gap-2 rounded-sm border border-border/40 bg-background/30 p-2"
+                      >
+                        <label className="inline-flex items-center gap-1.5 font-mono text-[11px] tracking-[0.16em] uppercase">
+                          <input
+                            type="checkbox"
+                            checked={s.enabled}
+                            onChange={(e) =>
+                              setTabSettings((prev) => ({
+                                ...prev,
+                                [id]: { ...prev[id], enabled: e.target.checked },
+                              }))
+                            }
+                            className="h-3.5 w-3.5"
+                          />
+                          <span className="w-16 text-muted-foreground">
+                            {DEFAULT_SUB_TAB_LABELS[id]}
+                          </span>
+                        </label>
+                        <Input
+                          type="text"
+                          value={s.label}
+                          onChange={(e) =>
+                            setTabSettings((prev) => ({
+                              ...prev,
+                              [id]: { ...prev[id], label: e.target.value },
+                            }))
+                          }
+                          placeholder={`名前を変更（空欄＝既定「${DEFAULT_SUB_TAB_LABELS[id]}」）`}
+                          className="font-mono text-[11px]"
+                          disabled={!s.enabled}
+                        />
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            </div>
+          </details>
 
           <div className="flex flex-col gap-1.5 border-t border-border/30 pt-4">
             <Label htmlFor="mitigation-url" className="text-xs text-foreground/80">

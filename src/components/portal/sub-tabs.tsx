@@ -35,7 +35,25 @@ const SUB_TABS: SubTab[] = [
   { id: "macros", label: "マクロ", segment: "macros", Icon: Terminal },
 ];
 
-export function SubTabs({ baseHref }: { baseHref: string }) {
+// SUB_TABS の id をデフォルトラベルから引くため (form dialog でも参照)。
+export const DEFAULT_SUB_TAB_LABELS: Record<string, string> = Object.fromEntries(
+  SUB_TABS.map((t) => [t.id, t.label]),
+);
+
+type TabConfig = Record<string, { enabled?: boolean; label?: string | null }>;
+
+export function SubTabs({
+  baseHref,
+  tabConfig,
+}: {
+  baseHref: string;
+  /**
+   * Phase 17 (2026-05-13): カテゴリごとの SubTabs 設定。enabled=false の
+   * タブは描画から除外、label が非空なら表示名を上書き。未指定 key は
+   * 「enabled=true, label はデフォルト」(後方互換)。
+   */
+  tabConfig?: TabConfig;
+}) {
   const pathname = usePathname();
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const stuckRef = useRef(false);
@@ -115,6 +133,10 @@ export function SubTabs({ baseHref }: { baseHref: string }) {
               <span className="border-border/40 mx-1 h-3 border-r" aria-hidden />
             </li>
             {SUB_TABS.map((tab) => {
+              const cfg = tabConfig?.[tab.id];
+              if (cfg?.enabled === false) return null;
+              const labelOverride = cfg?.label?.trim();
+              const label = labelOverride ? labelOverride : tab.label;
               const href = `${baseHref}/${tab.segment}`;
               const active = pathname === href || pathname.startsWith(`${href}/`);
               return (
@@ -154,7 +176,7 @@ export function SubTabs({ baseHref }: { baseHref: string }) {
                       )}
                       aria-hidden
                     />
-                    <span>{tab.label}</span>
+                    <span>{label}</span>
                     {active && (
                       <motion.span
                         layoutId="sub-tab-underline"
