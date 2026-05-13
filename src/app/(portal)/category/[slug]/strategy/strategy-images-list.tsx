@@ -34,6 +34,7 @@ import { Card } from "@/components/ui/card";
 // LinkCardMenu を再利用 (kind に依存しない title/url/description のみ操作)。
 import { ImageFormDialog } from "@/components/portal/image-form-dialog-lazy";
 import { LinkCardMenu } from "@/components/portal/link-card-menu-lazy";
+import { ActionSlot } from "@/components/portal/action-slot";
 import {
   setCategoryLinkOrder,
   useRealtimeCategoryLinks,
@@ -110,9 +111,13 @@ export function StrategyImagesList({ categoryId, initial }: Props) {
             </span>
           )}
         </p>
-        {/* strategy-list 側が ActionSlot を占有しているため、画像追加ボタンは
-            セクション内に in-flow で配置。 */}
-        <ImageFormDialog categoryId={categoryId} />
+        {/* SubTabs が stuck 状態になったら ActionSlot 経由で SubTabs 右端に
+            portal される (strategy-list の「サムネ + 攻略リンク追加」と同じ
+            target を共有。複数 ActionSlot は children を append 順で並べる
+            ので、攻略リンク追加 → 画像追加 の順に並ぶ)。 */}
+        <ActionSlot>
+          <ImageFormDialog categoryId={categoryId} />
+        </ActionSlot>
       </div>
 
       {links.length === 0 ? (
