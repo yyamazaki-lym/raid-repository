@@ -39,7 +39,11 @@ export type ImportResult = {
   category: string;
   kind: CategoryLinkKind;
   ok: boolean;
-  /** Total URLs found in the Discord messages this run. */
+  /**
+   * Total URLs found in the Discord messages this run.
+   * Phase 13: `discord_*_filter_keywords` が設定されたカテゴリではフィルタ通過後の
+   * 件数になる (= 本文/URL のどちらかがキーワードに部分一致した URL のみカウント)。
+   */
   scanned?: number;
   /** Of `scanned`, how many were already in the DB and skipped. */
   duplicates?: number;
@@ -202,6 +206,12 @@ async function importChannel(
   void maybeAutoLinkSheetUrls;
 
   // 2. Extract URLs (oldest first for chronological insertion).
+  // Phase 13: kind 別の取り込みフィルタワード。空配列 = フィルタ無効 (従来挙動)。
+  // 本文または抽出 URL のどちらかにマッチした投稿だけが candidates に入る。
+  const filterKeywords =
+    kind === "video"
+      ? cat.discordVideoFilterKeywords
+      : cat.discordStrategyFilterKeywords;
   type Candidate = { url: string; postedBy: string; postedAt: string };
   const candidates: Candidate[] = [];
   const seenInBatch = new Set<string>();
@@ -211,10 +221,14 @@ async function importChannel(
     // always present. Skip silently rather than throw.
     const content = typeof m?.content === "string" ? m.content : "";
     if (!content) continue;
+    // メッセージ本文判定は per-message で 1 回。本文でヒットすれば全 URL を通し、
+    // 外れた場合は URL 個別で再判定する (要件: 「本文 OR URL」OR マッチ)。
+    const contentMatches = matchesAnyKeyword(content, filterKeywords);
     const found = content.matchAll(URL_RE);
     for (const match of found) {
       const url = stripTrailingPunctuation(match[0]);
       if (!url || seenInBatch.has(url)) continue;
+      if (!contentMatches && !matchesAnyKeyword(url, filterKeywords)) continue;
       seenInBatch.add(url);
       candidates.push({
         url,
@@ -381,6 +395,28 @@ async function importChannel(
 
 function stripTrailingPunctuation(url: string): string {
   return url.replace(/[)\].,!?;:'"]+$/, "");
+}
+
+/**
+ * Phase 13 (2.1, 2026-05-13): カテゴリ別の Discord 取り込みフィルタ判定。
+ *
+ * `keywords` が空配列なら「フィルタ無効 = 通す」を意味し、常に true を返す。
+ * これにより既存カテゴリ (新カラム NULL → rowToCategory で [] に正規化) は
+ * 何も設定しなくても従来通り全件取り込みされる (後方互換)。
+ *
+ * 非空のときは「配列内のいずれかが `haystack` に部分一致 (大小無視) すれば
+ * true」の OR マッチ。trim/空除去は UI 層で済んでいる前提だが、defensive に
+ * もう一度ここでも空文字を弾く。
+ */
+function matchesAnyKeyword(haystack: string, keywords: string[]): boolean {
+  if (keywords.length === 0) return true;
+  const lower = haystack.toLowerCase();
+  for (const kw of keywords) {
+    const trimmed = kw.trim().toLowerCase();
+    if (trimmed.length === 0) continue;
+    if (lower.includes(trimmed)) return true;
+  }
+  return false;
 }
 
 /**

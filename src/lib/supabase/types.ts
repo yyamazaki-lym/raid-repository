@@ -63,6 +63,14 @@ export type CategoryRow = {
    * 従来挙動。
    */
   fflogs_match_keywords: string[] | null;
+  /**
+   * Phase 13 (2.1, 2026-05-13): Discord 動画ch 取り込みフィルタ。配列内の
+   * いずれかがメッセージ本文または抽出 URL に (大小無視・部分一致) ヒット
+   * したものだけ取り込む OR マッチ。NULL/空 = フィルタ無効 (従来通り全件)。
+   */
+  discord_video_filter_keywords: string[] | null;
+  /** Phase 13 (2.1, 2026-05-13): Discord 攻略ch 取り込みフィルタ。挙動は video 版と同形。 */
+  discord_strategy_filter_keywords: string[] | null;
   created_at: string;
   updated_at: string;
 };
@@ -103,6 +111,14 @@ export type Category = {
    * とき (大小文字無視) cross-group reject を override してマッチ扱い。
    */
   fflogsMatchKeywords: string[];
+  /**
+   * Discord 動画ch 取り込みフィルタ (Phase 13)。空配列ならフィルタ無効 (従来通り
+   * 全件取り込み)。非空ならメッセージ本文または抽出 URL のどちらかに、配列内
+   * のいずれかが (大小無視・部分一致) 含まれている投稿だけが対象になる OR マッチ。
+   */
+  discordVideoFilterKeywords: string[];
+  /** Discord 攻略ch 取り込みフィルタ (Phase 13)。挙動は video 版と同形。 */
+  discordStrategyFilterKeywords: string[];
 };
 
 export function rowToCategory(row: CategoryRow): Category {
@@ -124,6 +140,8 @@ export function rowToCategory(row: CategoryRow): Category {
     description: row.description ?? null,
     manualTimeToClearSeconds: row.manual_time_to_clear_seconds ?? null,
     fflogsMatchKeywords: row.fflogs_match_keywords ?? [],
+    discordVideoFilterKeywords: row.discord_video_filter_keywords ?? [],
+    discordStrategyFilterKeywords: row.discord_strategy_filter_keywords ?? [],
   };
 }
 

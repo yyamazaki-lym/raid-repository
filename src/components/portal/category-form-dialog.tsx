@@ -164,6 +164,17 @@ export function CategoryFormDialog({
     matchKeywordsToString(category?.fflogsMatchKeywords),
   );
 
+  // Phase 13 (2.1, 2026-05-13): Discord 取り込みフィルタワード (kind 別)。
+  // カンマ区切り入力 → string[] (trim+空除去+重複排除) で保存。空 → DB は NULL
+  // (= フィルタ無効 = 従来通り全件取り込み)。文字列 ↔ 配列の変換は
+  // `matchKeywordsToString` (fflogs と同形) を流用。
+  const [videoFilterInput, setVideoFilterInput] = useState<string>(
+    matchKeywordsToString(category?.discordVideoFilterKeywords),
+  );
+  const [strategyFilterInput, setStrategyFilterInput] = useState<string>(
+    matchKeywordsToString(category?.discordStrategyFilterKeywords),
+  );
+
 
   // TODO #19: role gating. `selectedRoleIds` is the working set; on save
   // it's persisted as `required_role_ids`. Empty array = open to all
@@ -253,6 +264,12 @@ export function CategoryFormDialog({
       setManualMinutes(im > 0 ? String(im) : "");
       setMatchKeywordsInput(
         matchKeywordsToString(category?.fflogsMatchKeywords),
+      );
+      setVideoFilterInput(
+        matchKeywordsToString(category?.discordVideoFilterKeywords),
+      );
+      setStrategyFilterInput(
+        matchKeywordsToString(category?.discordStrategyFilterKeywords),
       );
       setError(null);
     }
@@ -344,14 +361,16 @@ export function CategoryFormDialog({
     const manualSeconds = safeHour * 3600 + safeMinute * 60;
     const trimmedDescription = description.trim();
     // TODO #45 (2.1): カンマ区切り文字列 → string[] 変換。trim、空除去、重複除去。
-    const parsedKeywords = Array.from(
-      new Set(
-        matchKeywordsInput
-          .split(/[,、，\n]/)
-          .map((s) => s.trim())
-          .filter((s) => s.length > 0),
-      ),
-    );
+    const parseCsvKeywords = (raw: string): string[] =>
+      Array.from(
+        new Set(
+          raw.split(/[,、，\n]/).map((s) => s.trim()).filter((s) => s.length > 0),
+        ),
+      );
+    const parsedKeywords = parseCsvKeywords(matchKeywordsInput);
+    // Phase 13 (2.1, 2026-05-13): Discord 取り込みフィルタ (kind 別) も同じパース。
+    const parsedVideoFilter = parseCsvKeywords(videoFilterInput);
+    const parsedStrategyFilter = parseCsvKeywords(strategyFilterInput);
     const patch = {
       name: trimmedName,
       slug: trimmedSlug,
@@ -367,6 +386,10 @@ export function CategoryFormDialog({
       description: trimmedDescription || null,
       manual_time_to_clear_seconds: manualSeconds > 0 ? manualSeconds : null,
       fflogs_match_keywords: parsedKeywords.length > 0 ? parsedKeywords : null,
+      discord_video_filter_keywords:
+        parsedVideoFilter.length > 0 ? parsedVideoFilter : null,
+      discord_strategy_filter_keywords:
+        parsedStrategyFilter.length > 0 ? parsedStrategyFilter : null,
     };
 
     const result = isEdit
@@ -393,6 +416,10 @@ export function CategoryFormDialog({
             followUp.manual_time_to_clear_seconds = manualSeconds;
           if (parsedKeywords.length > 0)
             followUp.fflogs_match_keywords = parsedKeywords;
+          if (parsedVideoFilter.length > 0)
+            followUp.discord_video_filter_keywords = parsedVideoFilter;
+          if (parsedStrategyFilter.length > 0)
+            followUp.discord_strategy_filter_keywords = parsedStrategyFilter;
           if (Object.keys(followUp).length > 0) {
             await updateCategory(r.category.id, followUp);
           }
@@ -595,6 +622,27 @@ export function CategoryFormDialog({
 
           <div className="flex flex-col gap-1.5">
             <Label
+              htmlFor="discord-strategy-filter"
+              className="text-xs text-foreground/80"
+            >
+              攻略 取り込みフィルタワード（任意）
+            </Label>
+            <Input
+              id="discord-strategy-filter"
+              value={strategyFilterInput}
+              onChange={(e) => setStrategyFilterInput(e.target.value)}
+              placeholder="例: 軽減, ロット, 動き"
+              className="font-mono text-[12px]"
+              autoComplete="off"
+              spellCheck={false}
+            />
+            <p className="text-muted-foreground text-[11px] leading-relaxed">
+              カンマ区切りで複数指定可。いずれかがメッセージ本文または URL に含まれる投稿だけを取り込みます。空欄なら全件取り込み（従来通り）。
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label
               htmlFor="discord-video"
               className="text-xs text-foreground/80"
             >
@@ -613,6 +661,27 @@ export function CategoryFormDialog({
             <p className="text-muted-foreground text-[11px] leading-relaxed">
               設定すると、毎日1回このチャンネルから URL を自動で動画タブに取り込みます。
               Discord の開発者モードを ON にして、チャンネル名右クリック → IDコピーで取得できます。
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label
+              htmlFor="discord-video-filter"
+              className="text-xs text-foreground/80"
+            >
+              動画 取り込みフィルタワード（任意）
+            </Label>
+            <Input
+              id="discord-video-filter"
+              value={videoFilterInput}
+              onChange={(e) => setVideoFilterInput(e.target.value)}
+              placeholder="例: クリア, 軽減, 解説"
+              className="font-mono text-[12px]"
+              autoComplete="off"
+              spellCheck={false}
+            />
+            <p className="text-muted-foreground text-[11px] leading-relaxed">
+              カンマ区切りで複数指定可。いずれかがメッセージ本文または URL に含まれる投稿だけを取り込みます。空欄なら全件取り込み（従来通り）。
             </p>
           </div>
 
