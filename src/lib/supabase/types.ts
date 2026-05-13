@@ -162,7 +162,10 @@ export function rowToCategory(row: CategoryRow): Category {
 // category_links
 // =============================================================
 
-export type CategoryLinkKind = "strategy" | "video";
+// Phase 15 (2.x, 2026-05-13): `image` を追加。攻略タブで画像 (Storage
+// アップロード or 外部 URL) を直接貼れる新エントリ。表示は strategy と
+// 別セクション。Discord cron 取り込みは生成しない (manual のみ)。
+export type CategoryLinkKind = "strategy" | "video" | "image";
 export type CategoryLinkSource = "manual" | "discord";
 
 export type CategoryLinkRow = {

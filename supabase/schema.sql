@@ -180,6 +180,17 @@ ALTER TABLE public.category_links
 ALTER TABLE public.category_links
   ADD COLUMN IF NOT EXISTS thumbnail_url text;
 
+-- Phase 15 (2.x, 2026-05-13): kind=image を追加。攻略タブで画像
+-- (Supabase Storage アップロード or 外部 URL) を直接貼れるようにするための拡張。
+-- インライン CHECK 制約 (CREATE TABLE 時に postgres が自動命名) を一旦
+-- 落として、image を含む新制約で再定義する冪等パターン。既存行の値は
+-- ('strategy','video') のみなので、新制約適用時の violate は発生しない。
+ALTER TABLE public.category_links
+  DROP CONSTRAINT IF EXISTS category_links_kind_check;
+ALTER TABLE public.category_links
+  ADD CONSTRAINT category_links_kind_check
+  CHECK (kind IN ('strategy','video','image'));
+
 CREATE INDEX IF NOT EXISTS category_links_category_kind_idx
   ON public.category_links(category_id, kind, sort_order);
 
@@ -853,6 +864,40 @@ CREATE POLICY "category-backgrounds authenticated insert"
 -- TODO #36 phase 1 で削除して authenticated 限定にした。古い画像の
 -- クリーンアップは将来 admin Server Action で対応 (現状は新 path 別名
 -- でアップロード→旧画像はオブジェクトストレージに残置)。
+
+-- ---- 10b. Storage bucket for strategy images (Phase 15, 2026-05-13) ----
+-- 攻略タブの画像エントリ (category_links kind=image) 用の public bucket。
+-- 仕様は category-backgrounds と完全同型 (5MB / 画像 MIME ホワイトリスト /
+-- public read / authenticated + is_admin claim のみ INSERT)。
+-- path 規則: `<categoryId>/<timestamp>-<rand>.<ext>` (slug は将来変わる
+-- ため UUID の categoryId を採用)。
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES (
+  'category-strategy-images',
+  'category-strategy-images',
+  true,
+  5242880,  -- 5 MB
+  ARRAY['image/png', 'image/jpeg', 'image/webp', 'image/gif']
+)
+ON CONFLICT (id) DO UPDATE SET
+  public = EXCLUDED.public,
+  file_size_limit = EXCLUDED.file_size_limit,
+  allowed_mime_types = EXCLUDED.allowed_mime_types;
+
+DROP POLICY IF EXISTS "category-strategy-images public read"          ON storage.objects;
+DROP POLICY IF EXISTS "category-strategy-images authenticated insert" ON storage.objects;
+
+CREATE POLICY "category-strategy-images public read"
+  ON storage.objects FOR SELECT
+  USING (bucket_id = 'category-strategy-images');
+
+CREATE POLICY "category-strategy-images authenticated insert"
+  ON storage.objects FOR INSERT
+  TO authenticated
+  WITH CHECK (
+    bucket_id = 'category-strategy-images'
+    AND (auth.jwt() -> 'app_metadata' ->> 'is_admin') = 'true'
+  );
 
 -- ============================================================================
 -- Section 11-13a: Sample / demo seed data — MOVED to supabase/seed-demo.sql

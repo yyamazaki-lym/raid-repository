@@ -25,9 +25,11 @@ import type {
   CategoryLinkKind,
 } from "@/lib/supabase/types";
 
+// Phase 15: kind=image は ImageFormDialog 担当。LinkFormDialog は
+// 従来通り strategy / video のみを扱う (Props 型で image を除外)。
 type Props = {
   categoryId: string;
-  kind: CategoryLinkKind;
+  kind: Exclude<CategoryLinkKind, "image">;
   /** Provide an existing link to edit; omit for create mode. */
   link?: CategoryLink;
   /** Custom trigger element (e.g. menu item). Defaults to a primary "追加" button. */
@@ -37,7 +39,10 @@ type Props = {
   onOpenChange?: (open: boolean) => void;
 };
 
-const KIND_LABEL: Record<CategoryLinkKind, string> = {
+// Phase 15: kind=image は別 dialog (ImageFormDialog) が扱うので、ここでは
+// strategy / video のみ。Exclude で image を型から除外し、Record の網羅性
+// 警告を回避。
+const KIND_LABEL: Record<Exclude<CategoryLinkKind, "image">, string> = {
   strategy: "攻略リンク",
   video: "動画",
 };
