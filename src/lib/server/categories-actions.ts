@@ -312,6 +312,12 @@ export type ImportNowItem = {
    * 除外された」状態であり、Bot 権限不足ではない旨を UI で表示する。
    */
   prefilteredCount?: number;
+  /**
+   * Phase 13.3 (2.1, 2026-05-13): enrichment 段階でタイトル取得に成功した URL 数。
+   * フィルタ全件除外時にユーザーが「タイトル取得失敗が原因か / ワード不一致が原因か」
+   * を切り分けられるよう、portal の取り込み結果パネルに表示する。
+   */
+  titleFetchedCount?: number;
 };
 
 /**
@@ -371,6 +377,7 @@ export async function importDiscordNow(): Promise<{
       reason: r.reason ?? r.failReason,
       skipped: r.skipped,
       prefilteredCount: r.prefilteredCount,
+      titleFetchedCount: r.titleFetchedCount,
     });
   }
   return { ok: true, totalScanned, totalInserted, totalFailed, items };

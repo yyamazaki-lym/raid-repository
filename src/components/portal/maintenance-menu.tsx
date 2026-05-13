@@ -489,7 +489,15 @@ function describeDiscord(it: ImportNowItem): string {
     // ケースを「Bot 権限不足」と誤判定しない。prefilteredCount > 0 なら原因は
     // フィルタ設定なので、その旨を表示してユーザーに見直しを促す。
     if ((it.prefilteredCount ?? 0) > 0) {
-      return `フィルタ条件に一致する URL なし (${it.prefilteredCount} 件中 0 件) — フィルタワード設定を見直し`;
+      // Phase 13.3: フィルタ全件除外時、タイトル取得成功数も併記して
+      // 「タイトル取得失敗 (0/N) が原因」なのか「ワード不一致が原因」なのかを
+      // 区別できるようにする。titleFetchedCount は fresh (DB 未登録) URL 限定
+      // なので、`prefilteredCount` (= 抽出ユニーク総数) と必ずしも一致しない。
+      const tail =
+        typeof it.titleFetchedCount === "number"
+          ? ` (タイトル取得 ${it.titleFetchedCount})`
+          : "";
+      return `フィルタ条件に一致する URL なし (${it.prefilteredCount} 件中 0 件)${tail} — フィルタワード設定を見直し`;
     }
     return "URL 検出できず（チャンネル空 or Bot 不可）";
   }
