@@ -42,11 +42,14 @@ type Props = {
 // Phase 15: kind=image は別 dialog (ImageFormDialog) が扱うので、ここでは
 // strategy / video のみ。Exclude で他種別を型から除外し、Record の網羅性
 // 警告を回避。Phase 16 で gphoto も除外。
+// Phase 17 (2026-05-13): 攻略タブの「攻略リンク追加」ボタンを「リンク追加」に
+// 短縮 (Images / Google フォトと並ぶ Action ボタン群で表記を統一)。動画タブ側は
+// そのまま「動画」のままで OK (動画ボタンの所在からも自明)。
 const KIND_LABEL: Record<
   Exclude<CategoryLinkKind, "image" | "gphoto">,
   string
 > = {
-  strategy: "攻略リンク",
+  strategy: "リンク",
   video: "動画",
 };
 

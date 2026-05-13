@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import {
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
   ExternalLink,
   GripVertical,
@@ -89,7 +90,13 @@ export function StrategyImagesList({
 
   const [editTarget, setEditTarget] = useState<CategoryLink | null>(null);
   const [optimistic, setOptimistic] = useState<string[] | null>(null);
-  const [lightboxId, setLightboxId] = useState<string | null>(null);
+  // Phase 17 (2026-05-13): Lightbox を「集合 + 現在 id」モデルに拡張。
+  // 同じ集合の中で左右に前後画像へ遷移できるようにするため、Lightbox を
+  // 開いた時点でどのリスト (loose or album:<id>) を集合とするかを保持する。
+  const [lightbox, setLightbox] = useState<{
+    setKey: "loose" | `album:${string}`;
+    currentId: string;
+  } | null>(null);
 
   // 「ばら」セクション用: kind=image 全件 + アルバム未所属の gphoto。
   // sortOrder + createdAt で素直に整列したものを基準とし、optimistic 並び
@@ -168,12 +175,19 @@ export function StrategyImagesList({
     [looseLinks],
   );
 
-  // Lightbox は ばら + アルバム配下 すべての中から id 検索する。
-  const lightboxLink = useMemo(() => {
-    if (!lightboxId) return null;
-    const all: CategoryLink[] = [...liveImages, ...liveGphotos];
-    return all.find((l) => l.id === lightboxId) ?? null;
-  }, [liveImages, liveGphotos, lightboxId]);
+  // Lightbox 表示中の集合 (ばら全件 or 特定アルバム配下) を、現在のリスト
+  // 状態から都度再計算する。集合が空になっていたら閉じる扱いにする。
+  const lightboxLinks = useMemo<CategoryLink[]>(() => {
+    if (!lightbox) return [];
+    if (lightbox.setKey === "loose") return looseLinks;
+    const albumId = lightbox.setKey.slice("album:".length);
+    return albumChildren.get(albumId) ?? [];
+  }, [lightbox, looseLinks, albumChildren]);
+
+  const onOpenLooseLightbox = (id: string) =>
+    setLightbox({ setKey: "loose", currentId: id });
+  const onOpenAlbumLightbox = (albumId: string, id: string) =>
+    setLightbox({ setKey: `album:${albumId}`, currentId: id });
 
   // Phase 17: セクション折りたたみ。strategy-list と同じ localStorage 命名規則。
   const [collapsed, setCollapsed] = useCollapsible(
@@ -241,7 +255,7 @@ export function StrategyImagesList({
                     <SortableImageCard
                       key={link.id}
                       link={link}
-                      onOpen={() => setLightboxId(link.id)}
+                      onOpen={() => onOpenLooseLightbox(link.id)}
                       onEdit={() => setEditTarget(link)}
                     />
                   ))}
@@ -255,7 +269,7 @@ export function StrategyImagesList({
               key={album.id}
               album={album}
               children={albumChildren.get(album.id) ?? []}
-              onOpenImage={(id) => setLightboxId(id)}
+              onOpenImage={(id) => onOpenAlbumLightbox(album.id, id)}
               onEditImage={(link) => setEditTarget(link)}
             />
           ))}
@@ -274,9 +288,12 @@ export function StrategyImagesList({
       />
 
       <ImageLightbox
-        link={lightboxLink}
-        onOpenChange={(o) => {
-          if (!o) setLightboxId(null);
+        links={lightboxLinks}
+        currentId={lightbox?.currentId ?? null}
+        onCurrentIdChange={(nextId) => {
+          if (!lightbox) return;
+          if (nextId === null) setLightbox(null);
+          else setLightbox({ ...lightbox, currentId: nextId });
         }}
       />
     </section>
@@ -375,21 +392,91 @@ function SortableImageCard({
  * full + object-contain なら img の box が画像の natural aspect に絞られ、
  * 周囲の余白は親 div のクリック判定になる (= 閉じる)。
  * Lightbox は拡大用なので Next.js Image Optimization は捨てて問題なし。
+ *
+ * Phase 17 (2026-05-13): 集合 + 現在 id モデルに拡張。複数枚あるアルバム /
+ * セクションで「左右クリック」「←→ キー」「スワイプ」による前後遷移を
+ * サポート。集合が空 / currentId が見つからない場合は閉じる扱い。
+ * 端到達時は循環 (wrap) する。
  */
 function ImageLightbox({
-  link,
-  onOpenChange,
+  links,
+  currentId,
+  onCurrentIdChange,
 }: {
-  link: CategoryLink | null;
-  onOpenChange: (open: boolean) => void;
+  links: CategoryLink[];
+  currentId: string | null;
+  onCurrentIdChange: (nextId: string | null) => void;
 }) {
-  const open = link !== null;
+  const idx = currentId
+    ? links.findIndex((l) => l.id === currentId)
+    : -1;
+  const open = currentId !== null && idx >= 0;
+  const link = open ? links[idx] : null;
   const src = link ? safeHref(link.url) : undefined;
-  // 余白クリックで閉じる。画像本体は stopPropagation で素通り。
-  const onBackdropClick = () => onOpenChange(false);
+  const hasMultiple = links.length > 1;
+
+  const close = () => onCurrentIdChange(null);
+  const goPrev = () => {
+    if (!hasMultiple) return;
+    const next = links[(idx - 1 + links.length) % links.length];
+    if (next) onCurrentIdChange(next.id);
+  };
+  const goNext = () => {
+    if (!hasMultiple) return;
+    const next = links[(idx + 1) % links.length];
+    if (next) onCurrentIdChange(next.id);
+  };
+
+  // キーボード ← → で前後移動。Esc は Dialog primitive 側が拾うのでここでは扱わない。
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        goPrev();
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        goNext();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // goPrev/goNext は idx 依存で毎レンダー新規だが、最新を見ればよいので
+    // 依存配列に含めず eslint-disable で済ます (key 押下時の closure が
+    // 古くても 1 step 分しかズレないため UX 上問題なし)。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, idx, links.length]);
+
+  // 集合が空 / currentId が消えた場合は閉じる (削除や同期で消えたケース)。
+  useEffect(() => {
+    if (currentId !== null && idx < 0) {
+      onCurrentIdChange(null);
+    }
+  }, [currentId, idx, onCurrentIdChange]);
+
+  // タッチスワイプで前後移動。最終 X 差分が ±50px 超なら遷移。
+  const touchStartX = useRef<number | null>(null);
+  const onTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0]?.clientX ?? null;
+  };
+  const onTouchEnd = (e: React.TouchEvent) => {
+    const start = touchStartX.current;
+    touchStartX.current = null;
+    if (start === null) return;
+    const end = e.changedTouches[0]?.clientX ?? start;
+    const diff = end - start;
+    if (Math.abs(diff) < 50) return;
+    if (diff > 0) goPrev();
+    else goNext();
+  };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        if (!o) close();
+      }}
+    >
       <DialogContent
         className="grid h-[100svh] max-h-none w-screen max-w-[100vw] -translate-x-1/2 -translate-y-1/2 grid-rows-[1fr_auto] gap-0 rounded-none border-0 bg-black/85 p-0 ring-0 sm:max-w-[100vw]"
         showCloseButton={true}
@@ -401,7 +488,9 @@ function ImageLightbox({
         {src ? (
           <div
             className="relative flex min-h-0 cursor-zoom-out items-center justify-center overflow-hidden"
-            onClick={onBackdropClick}
+            onClick={close}
+            onTouchStart={onTouchStart}
+            onTouchEnd={onTouchEnd}
             role="button"
             tabIndex={-1}
             aria-label="画像を閉じる"
@@ -410,15 +499,47 @@ function ImageLightbox({
             <img
               src={src}
               alt={link?.title ?? ""}
-              className="max-h-full max-w-full cursor-default object-contain"
+              className="max-h-full max-w-full cursor-default object-contain select-none"
               onClick={(e) => e.stopPropagation()}
               draggable={false}
             />
+            {hasMultiple && (
+              <>
+                <button
+                  type="button"
+                  aria-label="前の画像"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    goPrev();
+                  }}
+                  className="absolute top-1/2 left-2 -translate-y-1/2 rounded-full bg-black/40 p-2 text-white/80 transition-colors hover:bg-black/70 hover:text-white sm:left-4"
+                >
+                  <ChevronLeft className="h-6 w-6" aria-hidden />
+                </button>
+                <button
+                  type="button"
+                  aria-label="次の画像"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    goNext();
+                  }}
+                  className="absolute top-1/2 right-2 -translate-y-1/2 rounded-full bg-black/40 p-2 text-white/80 transition-colors hover:bg-black/70 hover:text-white sm:right-4"
+                >
+                  <ChevronRight className="h-6 w-6" aria-hidden />
+                </button>
+                <span
+                  aria-hidden
+                  className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-black/50 px-3 py-1 font-mono text-[10px] tracking-[0.18em] text-white/70 uppercase"
+                >
+                  {idx + 1} / {links.length}
+                </span>
+              </>
+            )}
           </div>
         ) : (
           <div
             className="flex items-center justify-center text-sm text-white/70"
-            onClick={onBackdropClick}
+            onClick={close}
           >
             画像を読み込めませんでした
           </div>
@@ -459,6 +580,12 @@ function AlbumSection({
 }) {
   const [syncing, setSyncing] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  // Phase 17 (2026-05-13): アルバム単位の折りたたみ。localStorage key は
+  // album.id を含めて個別保持 (削除されたアルバムの key はそのまま残置 = 害なし)。
+  const [collapsed, setCollapsed] = useCollapsible(
+    `raid-repo:gphoto-album-collapsed:${album.id}`,
+    false,
+  );
 
   const onSync = async () => {
     if (syncing) return;
@@ -504,19 +631,34 @@ function AlbumSection({
   return (
     <section className="flex flex-col gap-2 rounded-md border border-border/40 bg-secondary/10 p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex min-w-0 flex-col gap-0.5">
-          <p className="truncate font-display text-sm text-foreground">
-            {album.title ?? "Google フォト"}
-          </p>
-          <p className="font-mono text-[10px] tracking-[0.18em] text-muted-foreground uppercase">
-            {children.length} image{children.length === 1 ? "" : "s"}
-            {lastSyncedLabel && (
-              <span className="ml-2 text-muted-foreground/60">
-                · last sync {lastSyncedLabel}
-              </span>
+        <button
+          type="button"
+          onClick={() => setCollapsed(!collapsed)}
+          aria-expanded={!collapsed}
+          aria-controls={`gphoto-album-body-${album.id}`}
+          className="flex min-w-0 flex-1 items-start gap-2 text-left transition-colors hover:text-foreground"
+        >
+          <span className="mt-0.5 shrink-0 text-muted-foreground">
+            {collapsed ? (
+              <ChevronRight className="h-3.5 w-3.5" aria-hidden />
+            ) : (
+              <ChevronDown className="h-3.5 w-3.5" aria-hidden />
             )}
-          </p>
-        </div>
+          </span>
+          <span className="flex min-w-0 flex-col gap-0.5">
+            <span className="truncate font-display text-sm text-foreground">
+              {album.title ?? "Google フォト"}
+            </span>
+            <span className="font-mono text-[10px] tracking-[0.18em] text-muted-foreground uppercase">
+              {children.length} image{children.length === 1 ? "" : "s"}
+              {lastSyncedLabel && (
+                <span className="ml-2 text-muted-foreground/60">
+                  · last sync {lastSyncedLabel}
+                </span>
+              )}
+            </span>
+          </span>
+        </button>
         <div className="flex items-center gap-1.5">
           {shareHref && (
             <a
@@ -558,21 +700,25 @@ function AlbumSection({
         </div>
       </div>
 
-      {children.length === 0 ? (
-        <p className="px-1 py-3 text-xs text-muted-foreground">
-          画像がありません。共有設定 / 同期を確認してください。
-        </p>
-      ) : (
-        <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {children.map((link) => (
-            <AlbumImageCard
-              key={link.id}
-              link={link}
-              onOpen={() => onOpenImage(link.id)}
-              onEdit={() => onEditImage(link)}
-            />
-          ))}
-        </ul>
+      {!collapsed && (
+        <div id={`gphoto-album-body-${album.id}`}>
+          {children.length === 0 ? (
+            <p className="px-1 py-3 text-xs text-muted-foreground">
+              画像がありません。共有設定 / 同期を確認してください。
+            </p>
+          ) : (
+            <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {children.map((link) => (
+                <AlbumImageCard
+                  key={link.id}
+                  link={link}
+                  onOpen={() => onOpenImage(link.id)}
+                  onEdit={() => onEditImage(link)}
+                />
+              ))}
+            </ul>
+          )}
+        </div>
       )}
     </section>
   );
