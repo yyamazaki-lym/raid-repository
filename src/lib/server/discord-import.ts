@@ -178,30 +178,50 @@ async function importChannel(
   kind: CategoryLinkKind,
   botToken: string,
 ): Promise<ImportResult> {
-  // 1. Fetch last 100 Discord messages.
+  // 1. Fetch Discord messages with pagination.
+  // Phase 13.4 (2.1, 2026-05-13): 旧実装は最新 100 件のみ。Pandæmonium 辺獄編
+  // のような古いコンテンツでは、その後の練習動画が積み上がってチャンネル内の
+  // 100 件 limit を押し出してしまい、取り込み不可だった。`?before=<message_id>`
+  // で過去メッセージを遡れるよう pagination 対応。上限 MAX_MESSAGE_PAGES で
+  // Vercel function timeout (Hobby plan 25s, Pro plan 60s+) に到達しない範囲に
+  // 抑える。100 件未満が返ったら終端 (= チャンネル全件取得済) として break。
+  const MAX_MESSAGE_PAGES = 5;
   let messages: DiscordMessage[];
   try {
-    const res = await fetch(
-      `https://discord.com/api/v10/channels/${channelId}/messages?limit=100`,
-      {
-        headers: {
-          Authorization: `Bot ${botToken}`,
-          // Generic UA — fork deployments shouldn't all impersonate one URL.
-          "User-Agent": "RaidRepositoryBot/0.1",
+    const all: DiscordMessage[] = [];
+    let beforeId: string | undefined = undefined;
+    for (let page = 0; page < MAX_MESSAGE_PAGES; page++) {
+      const params = new URLSearchParams({ limit: "100" });
+      if (beforeId) params.set("before", beforeId);
+      const res = await fetch(
+        `https://discord.com/api/v10/channels/${channelId}/messages?${params.toString()}`,
+        {
+          headers: {
+            Authorization: `Bot ${botToken}`,
+            // Generic UA — fork deployments shouldn't all impersonate one URL.
+            "User-Agent": "RaidRepositoryBot/0.1",
+          },
+          signal: AbortSignal.timeout(15000),
         },
-        signal: AbortSignal.timeout(15000),
-      },
-    );
-    if (!res.ok) {
-      const body = await res.text().catch(() => "");
-      return {
-        category: cat.slug,
-        kind,
-        ok: false,
-        reason: `discord ${res.status}: ${body.slice(0, 200)}`,
-      };
+      );
+      if (!res.ok) {
+        const body = await res.text().catch(() => "");
+        return {
+          category: cat.slug,
+          kind,
+          ok: false,
+          reason: `discord ${res.status} (page ${page + 1}): ${body.slice(0, 200)}`,
+        };
+      }
+      const batch = (await res.json()) as DiscordMessage[];
+      if (batch.length === 0) break;
+      all.push(...batch);
+      // Discord は新しい順 (descending) で返すので、最後の要素 = batch 内で最古。
+      // 次ページの `before` に渡せばそれより古いメッセージを遡って取得できる。
+      if (batch.length < 100) break;
+      beforeId = batch[batch.length - 1].id;
     }
-    messages = (await res.json()) as DiscordMessage[];
+    messages = all;
   } catch (err) {
     return {
       category: cat.slug,
