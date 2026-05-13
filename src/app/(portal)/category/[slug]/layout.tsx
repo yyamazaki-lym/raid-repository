@@ -60,9 +60,13 @@ export default async function CategoryDetailLayout({
       )}
 
       {/* TODO #58: SubTabs と children を ActionSlotProvider 配下に置き、
-          stuck 時に各 page のアクションボタンを SubTabs 右端へ portal 集約。 */}
+          stuck 時に各 page のアクションボタンを SubTabs 右端へ portal 集約。
+          Phase 17: 各カテゴリの tab_config を渡して、ON/OFF とラベル上書きを反映。 */}
       <ActionSlotProvider>
-        <SubTabs baseHref={`/category/${slug}`} />
+        <SubTabs
+          baseHref={`/category/${slug}`}
+          tabConfig={category?.tabConfig}
+        />
 
         <div>{children}</div>
       </ActionSlotProvider>

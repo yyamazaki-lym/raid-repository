@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import {
   BookOpen,
+  ChevronDown,
+  ChevronRight,
   GripVertical,
   Image as ImageIcon,
   ImageOff,
@@ -40,6 +42,7 @@ import {
 } from "@/lib/category-links-client";
 import { updateCategory } from "@/lib/categories-client";
 import { safeHref } from "@/lib/url-safe";
+import { useCollapsible } from "@/lib/use-collapsible";
 import type { CategoryLink } from "@/lib/supabase/types";
 
 type Props = {
@@ -135,17 +138,38 @@ export function StrategyList({
     }
   };
 
+  // Phase 17: セクション折りたたみ。ユーザー / デバイス単位で localStorage 保持。
+  // カテゴリを跨いでも同じ初期状態にしたい (毎回開きたい / 毎回畳みたい) と
+  // 想定し、key にカテゴリ id は含めない。
+  const [collapsed, setCollapsed] = useCollapsible(
+    "raid-repo:strategy-section-collapsed:links",
+    false,
+  );
+
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between">
-        <p className="font-mono text-[10px] tracking-[0.2em] text-muted-foreground uppercase">
-          {links.length} link{links.length === 1 ? "" : "s"}
-          {links.length > 1 && (
+        <button
+          type="button"
+          onClick={() => setCollapsed(!collapsed)}
+          aria-expanded={!collapsed}
+          aria-controls="strategy-links-body"
+          className="inline-flex items-center gap-1 font-mono text-[10px] tracking-[0.2em] text-muted-foreground uppercase transition-colors hover:text-foreground"
+        >
+          {collapsed ? (
+            <ChevronRight className="h-3 w-3" aria-hidden />
+          ) : (
+            <ChevronDown className="h-3 w-3" aria-hidden />
+          )}
+          <span>
+            Links · {links.length} link{links.length === 1 ? "" : "s"}
+          </span>
+          {!collapsed && links.length > 1 && (
             <span className="ml-2 text-muted-foreground/60">
               · ドラッグで並び替え
             </span>
           )}
-        </p>
+        </button>
         {/* TODO #58: stuck 時のみ SubTabs 右端へ portal、それ以外は元位置 in-flow。 */}
         <ActionSlot>
           <div className="flex items-center gap-1.5">
@@ -182,37 +206,41 @@ export function StrategyList({
         </ActionSlot>
       </div>
 
-      {links.length === 0 ? (
-        <Card className="glass flex flex-col items-center gap-3 p-10 text-center">
-          <span className="grid h-10 w-10 place-items-center rounded-md border border-[var(--neon-magenta)]/40 bg-background/40 text-[var(--neon-magenta)]">
-            <BookOpen className="h-4 w-4" aria-hidden />
-          </span>
-          <p className="font-display text-foreground text-sm">
-            攻略リンク未登録
-          </p>
-          <p className="text-muted-foreground max-w-md text-xs leading-relaxed">
-            wiki / 攻略ブログ / Twitter (X) などの URL を登録できます。
-          </p>
-        </Card>
-      ) : (
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragEnd={onDragEnd}
-        >
-          <SortableContext items={ids} strategy={rectSortingStrategy}>
-            <ul className="grid gap-3 sm:grid-cols-2">
-              {links.map((link) => (
-                <SortableStrategyCard
-                  key={link.id}
-                  link={link}
-                  showThumbnail={showThumbnails}
-                  onEdit={() => setEditTarget(link)}
-                />
-              ))}
-            </ul>
-          </SortableContext>
-        </DndContext>
+      {!collapsed && (
+        <div id="strategy-links-body">
+          {links.length === 0 ? (
+            <Card className="glass flex flex-col items-center gap-3 p-10 text-center">
+              <span className="grid h-10 w-10 place-items-center rounded-md border border-[var(--neon-magenta)]/40 bg-background/40 text-[var(--neon-magenta)]">
+                <BookOpen className="h-4 w-4" aria-hidden />
+              </span>
+              <p className="font-display text-foreground text-sm">
+                攻略リンク未登録
+              </p>
+              <p className="text-muted-foreground max-w-md text-xs leading-relaxed">
+                wiki / 攻略ブログ / Twitter (X) などの URL を登録できます。
+              </p>
+            </Card>
+          ) : (
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={onDragEnd}
+            >
+              <SortableContext items={ids} strategy={rectSortingStrategy}>
+                <ul className="grid gap-3 sm:grid-cols-2">
+                  {links.map((link) => (
+                    <SortableStrategyCard
+                      key={link.id}
+                      link={link}
+                      showThumbnail={showThumbnails}
+                      onEdit={() => setEditTarget(link)}
+                    />
+                  ))}
+                </ul>
+              </SortableContext>
+            </DndContext>
+          )}
+        </div>
       )}
 
       <LinkFormDialog

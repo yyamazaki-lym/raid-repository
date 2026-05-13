@@ -101,7 +101,25 @@ ALTER TABLE public.categories
   -- true にすると category_links.thumbnail_url が NULL でない攻略リンクの
   -- カード上部に og:image / YouTube oEmbed thumbnail を表示する。
   -- カテゴリ単位設定 (全閲覧者で共有)。動画 (kind=video) には影響しない。
-  ADD COLUMN IF NOT EXISTS show_strategy_thumbnails boolean NOT NULL DEFAULT false;
+  ADD COLUMN IF NOT EXISTS show_strategy_thumbnails boolean NOT NULL DEFAULT false,
+  -- Phase 17 (2026-05-13): カテゴリカードから category 詳細を開いた時に
+  -- 最初に着地する SubTab。カテゴリごとに「軽減表 / ロット / 攻略情報 /
+  -- 動画 / マクロ」のいずれかを既定にできる。default は従来挙動の mitigation。
+  ADD COLUMN IF NOT EXISTS default_tab text NOT NULL DEFAULT 'mitigation',
+  -- Phase 17 (2026-05-13): SubTabs の表示 ON/OFF と任意ラベル上書き。構造は
+  --   `{<tabId>: {enabled?: boolean, label?: string|null}}`
+  -- key 未指定 / object 未指定 → enabled=true、label はデフォルトを使用
+  -- (後方互換)。空 jsonb (= '{}') が default なので新規カテゴリは従来通り
+  -- 全タブ表示 + デフォルトラベルになる。
+  ADD COLUMN IF NOT EXISTS tab_config jsonb NOT NULL DEFAULT '{}'::jsonb;
+
+-- default_tab の値域を新規追加時に絞っておく (今後タブが増えたら CHECK を
+-- 拡張する)。既存行 ('mitigation' default) は当該制約を満たす。
+ALTER TABLE public.categories
+  DROP CONSTRAINT IF EXISTS categories_default_tab_check;
+ALTER TABLE public.categories
+  ADD CONSTRAINT categories_default_tab_check
+  CHECK (default_tab IN ('mitigation','loot','strategy','videos','macros'));
 
 -- NOTE: category_links / schedule_past_sessions の logs_url_source ALTER
 -- は、それぞれ該当 CREATE TABLE 直後に移動済 (新規 fork で table 未作成

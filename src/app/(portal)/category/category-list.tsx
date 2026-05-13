@@ -388,7 +388,7 @@ function SortableCategoryCard({
             Link to keep nested-anchor invalid HTML out of the tree. */}
         <div className="relative z-10 flex flex-1 flex-col">
           <Link
-            href={`/category/${category.slug}/mitigation`}
+            href={`/category/${category.slug}/${category.defaultTab}`}
             prefetch={false}
             className="flex flex-col gap-1 px-4 pt-4 pb-1"
           >
