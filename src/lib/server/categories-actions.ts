@@ -1296,6 +1296,23 @@ export async function createCategoryLinkAction(input: {
     .limit(1)
     .maybeSingle();
   const nextOrder = ((maxRow?.sort_order as number | undefined) ?? -1) + 1;
+
+  // 2.x: 動画の手動追加でも Discord cron import と同型のメタを埋める。
+  // 非 YouTube URL の場合 fetchYouTubeMeta は { null, null } を返すので
+  // そのまま既存値 (NULL) で INSERT される。タイムアウト・bot 検出失敗時も
+  // 致命視せず NULL のまま登録 (Discord import と同じ方針)。
+  let durationSeconds: number | null = null;
+  let postedAt: string | null = null;
+  if (input.kind === "video") {
+    try {
+      const meta = await fetchYouTubeMeta(input.url);
+      durationSeconds = meta.durationSeconds;
+      postedAt = resolvePostedAt(input.title, meta, null);
+    } catch {
+      // fall through — メタ取得失敗は登録自体を妨げない
+    }
+  }
+
   const { data, error } = await supabase
     .from("category_links")
     .insert({
@@ -1307,6 +1324,8 @@ export async function createCategoryLinkAction(input: {
       logs_url: input.logsUrl ?? null,
       logs_url_source: "manual",
       sort_order: nextOrder,
+      duration_seconds: durationSeconds,
+      posted_at: postedAt,
     })
     .select("id")
     .single();

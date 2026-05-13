@@ -111,9 +111,9 @@ export function LinkFormDialog({
 
   const onSubmit = async () => {
     setError(null);
-    const t = title.trim();
+    let t = title.trim();
     const u = url.trim();
-    if (!t) return setError("タイトルを入力してください");
+    // URL バリデーションを先に通す: タイトル空時の自動取得は URL が valid な前提
     if (!/^https?:\/\//i.test(u))
       return setError("URLは http:// または https:// で始めてください");
     try {
@@ -133,6 +133,34 @@ export function LinkFormDialog({
       } catch {
         return setError("Logs URL の形式が正しくありません");
       }
+    }
+
+    // 2.x: 動画 kind の新規追加でタイトル空なら /api/page-title で自動補完。
+    // UX 目的: 「URLから取得」ボタンを手動で押す手間を省く。失敗時は
+    // 手動入力を促すエラーへフォールバック (kind=strategy / 編集モードは
+    // 従来通り空タイトル禁止のまま)。
+    if (!t && !isEdit && kind === "video") {
+      setFetchingTitle(true);
+      try {
+        const res = await fetch(
+          "/api/page-title?url=" + encodeURIComponent(u),
+        );
+        const data = (await res.json()) as { title?: string; error?: string };
+        if (!res.ok || !data.title) {
+          setFetchingTitle(false);
+          return setError(
+            "タイトルを取得できませんでした。手動で入力してください",
+          );
+        }
+        setTitle(data.title);
+        t = data.title.trim();
+      } catch (e) {
+        setFetchingTitle(false);
+        return setError("タイトル取得失敗: " + String(e));
+      }
+      setFetchingTitle(false);
+    } else if (!t) {
+      return setError("タイトルを入力してください");
     }
 
     setBusy(true);
