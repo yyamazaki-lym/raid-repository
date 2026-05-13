@@ -26,5 +26,11 @@ export default async function StrategyPage({
   }
 
   const links = await fetchCategoryLinks(category.id, "strategy");
-  return <StrategyList categoryId={category.id} initial={links} />;
+  return (
+    <StrategyList
+      categoryId={category.id}
+      initial={links}
+      initialShowThumbnails={category.showStrategyThumbnails}
+    />
+  );
 }

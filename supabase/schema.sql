@@ -95,7 +95,13 @@ ALTER TABLE public.categories
   -- video ch では「クリア / 軽減 / 解説」、strategy ch では「軽減 / ロット /
   -- 動き」など、ch ごとのノイズ排除のために用途を分けて使う。
   ADD COLUMN IF NOT EXISTS discord_video_filter_keywords    text[],
-  ADD COLUMN IF NOT EXISTS discord_strategy_filter_keywords text[];
+  ADD COLUMN IF NOT EXISTS discord_strategy_filter_keywords text[],
+  -- Phase 14 (2.x, 2026-05-13): 攻略リンクのサムネイル表示 ON/OFF。
+  -- false (default) で従来通り / 既存挙動と同じカードレイアウト。
+  -- true にすると category_links.thumbnail_url が NULL でない攻略リンクの
+  -- カード上部に og:image / YouTube oEmbed thumbnail を表示する。
+  -- カテゴリ単位設定 (全閲覧者で共有)。動画 (kind=video) には影響しない。
+  ADD COLUMN IF NOT EXISTS show_strategy_thumbnails boolean NOT NULL DEFAULT false;
 
 -- NOTE: category_links / schedule_past_sessions の logs_url_source ALTER
 -- は、それぞれ該当 CREATE TABLE 直後に移動済 (新規 fork で table 未作成
@@ -165,6 +171,14 @@ ALTER TABLE public.category_links
 ALTER TABLE public.category_links
   ADD CONSTRAINT category_links_logs_url_source_check
   CHECK (logs_url_source IN ('auto','manual'));
+
+-- Phase 14 (2.x, 2026-05-13): 攻略リンクのサムネイル URL。
+-- 新規追加時に server-side で og:image (kind=strategy のみ) または YouTube
+-- oEmbed の thumbnail_url を取得して保存。NULL のままでも登録は妨げない
+-- (Discord cron 取り込み・既存行は backfill しない)。video の表示は従来通り
+-- youtubeThumbnailUrl(ytId) を使うので、このカラムは現状 strategy 用。
+ALTER TABLE public.category_links
+  ADD COLUMN IF NOT EXISTS thumbnail_url text;
 
 CREATE INDEX IF NOT EXISTS category_links_category_kind_idx
   ON public.category_links(category_id, kind, sort_order);
