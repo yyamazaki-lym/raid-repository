@@ -305,6 +305,13 @@ export type ImportNowItem = {
   failed: number;
   reason?: string;
   skipped?: "disabled";
+  /**
+   * Phase 13.1 (2.1, 2026-05-13): フィルタ判定前にメッセージから抽出された
+   * ユニーク URL 数。フィルタ未設定カテゴリでは scanned と同値。フィルタ設定済で
+   * `scanned === 0 && prefilteredCount > 0` のときは「フィルタが効きすぎて全件
+   * 除外された」状態であり、Bot 権限不足ではない旨を UI で表示する。
+   */
+  prefilteredCount?: number;
 };
 
 /**
@@ -363,6 +370,7 @@ export async function importDiscordNow(): Promise<{
       failed: r.failed ?? 0,
       reason: r.reason ?? r.failReason,
       skipped: r.skipped,
+      prefilteredCount: r.prefilteredCount,
     });
   }
   return { ok: true, totalScanned, totalInserted, totalFailed, items };

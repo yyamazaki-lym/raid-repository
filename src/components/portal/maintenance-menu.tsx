@@ -484,7 +484,15 @@ function DiscordIcon({ item }: { item: ImportNowItem }) {
 function describeDiscord(it: ImportNowItem): string {
   if (!it.ok) return `エラー: ${it.reason ?? "原因不明"}`;
   if (it.skipped === "disabled") return "一時停止中";
-  if (it.scanned === 0) return "URL 検出できず（チャンネル空 or Bot 不可）";
+  if (it.scanned === 0) {
+    // Phase 13.1: フィルタ判定前に URL は見つかっていたが全件フィルタで弾かれた
+    // ケースを「Bot 権限不足」と誤判定しない。prefilteredCount > 0 なら原因は
+    // フィルタ設定なので、その旨を表示してユーザーに見直しを促す。
+    if ((it.prefilteredCount ?? 0) > 0) {
+      return `フィルタ条件に一致する URL なし (${it.prefilteredCount} 件中 0 件) — フィルタワード設定を見直し`;
+    }
+    return "URL 検出できず（チャンネル空 or Bot 不可）";
+  }
   if (it.failed > 0)
     return `scanned ${it.scanned}, 失敗 ${it.failed}${it.reason ? " — " + it.reason : ""}`;
   if (it.inserted > 0)
