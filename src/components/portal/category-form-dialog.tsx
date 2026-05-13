@@ -648,6 +648,7 @@ export function CategoryFormDialog({
             >
               Discord 動画チャンネルID（任意）
             </Label>
+            {/* 動画ch だけ、フィルタワード説明にタイトル判定の有効化を明記 */}
             <Input
               id="discord-video"
               inputMode="numeric"
@@ -681,7 +682,7 @@ export function CategoryFormDialog({
               spellCheck={false}
             />
             <p className="text-muted-foreground text-[11px] leading-relaxed">
-              カンマ区切りで複数指定可。いずれかがメッセージ本文または URL に含まれる投稿だけを取り込みます。空欄なら全件取り込み（従来通り）。
+              カンマ区切りで複数指定可。いずれかが「メッセージ本文 / URL / 動画タイトル」のいずれかに含まれる投稿だけを取り込みます。URL のみのメッセージでもタイトル経由でマッチします。空欄なら全件取り込み（従来通り）。
             </p>
           </div>
 
