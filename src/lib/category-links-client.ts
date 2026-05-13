@@ -6,15 +6,21 @@ import { isClearTitleForCategory } from "@/lib/clear-detection";
 import { maybeSetFirstClearAt } from "@/lib/categories-client";
 import {
   createCategoryLinkAction,
+  createGphotoEntryAction,
   deleteCategoryLinkAction,
+  deleteGphotoAlbumAction,
   enrichVideoLinkDuration,
   setCategoryLinkFavoriteAction,
   setCategoryLinkOrderAction,
+  syncGphotoAlbumAction,
   updateCategoryLinkAction,
 } from "@/lib/server/categories-actions";
 import { parseYouTubeId } from "@/lib/youtube";
 import {
+  rowToCategoryGphotoAlbum,
   rowToCategoryLink,
+  type CategoryGphotoAlbum,
+  type CategoryGphotoAlbumRow,
   type CategoryLink,
   type CategoryLinkKind,
   type CategoryLinkRow,
@@ -30,9 +36,11 @@ import {
  * なので supabase client のまま。
  */
 
+// Phase 16: gphoto は専用 action (`createGphotoEntry`) 経由でのみ作成する
+// ため、ここの汎用 createCategoryLink から `gphoto` は除外する。
 export async function createCategoryLink(input: {
   categoryId: string;
-  kind: CategoryLinkKind;
+  kind: Exclude<CategoryLinkKind, "gphoto">;
   title: string;
   url: string;
   description?: string;
@@ -258,4 +266,170 @@ export function useRealtimeCategoryLinks(
   }, [id, categoryId, kind]);
 
   return links;
+}
+
+// =============================================================
+// Phase 16 (2026-05-13): Google フォトアルバム client wrappers
+// =============================================================
+
+export async function createGphotoEntry(input: {
+  categoryId: string;
+  rawUrl: string;
+}): Promise<
+  | {
+      ok: true;
+      kind: "album";
+      albumId: string;
+      imageCount: number;
+      title: string | null;
+    }
+  | { ok: true; kind: "single"; linkId: string }
+  | { ok: false; reason: string }
+> {
+  return createGphotoEntryAction(input);
+}
+
+export async function syncGphotoAlbum(albumId: string): Promise<
+  | { ok: true; added: number; removed: number; total: number }
+  | { ok: false; reason: string }
+> {
+  return syncGphotoAlbumAction(albumId);
+}
+
+export async function deleteGphotoAlbum(
+  albumId: string,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  return deleteGphotoAlbumAction(albumId);
+}
+
+function sortAlbums(albums: CategoryGphotoAlbum[]): CategoryGphotoAlbum[] {
+  return [...albums].sort((a, b) => {
+    if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
+    return a.createdAt.localeCompare(b.createdAt);
+  });
+}
+
+/**
+ * `useRealtimeCategoryLinks` の album 版。`category_gphoto_albums` を
+ * subscribe して INSERT / UPDATE / DELETE を incremental に反映する。
+ */
+export function useRealtimeGphotoAlbums(
+  categoryId: string,
+  initial: CategoryGphotoAlbum[],
+): CategoryGphotoAlbum[] {
+  const [albums, setAlbums] = useState<CategoryGphotoAlbum[]>(initial);
+  const id = useId();
+
+  const initialRef = useRef(initial);
+  useEffect(() => {
+    if (initial !== initialRef.current) {
+      initialRef.current = initial;
+      setAlbums(initial);
+    }
+  }, [initial]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const supabase = createClient();
+
+    const refetch = async () => {
+      if (cancelled) return;
+      try {
+        const { data, error } = await supabase
+          .from("category_gphoto_albums")
+          .select("*")
+          .eq("category_id", categoryId)
+          .order("sort_order", { ascending: true })
+          .order("created_at", { ascending: true });
+        if (cancelled) return;
+        if (error) {
+          console.warn(
+            "[category-links-client] album refetch error:",
+            error.message,
+          );
+          return;
+        }
+        setAlbums(
+          ((data ?? []) as CategoryGphotoAlbumRow[]).map(
+            rowToCategoryGphotoAlbum,
+          ),
+        );
+      } catch (e) {
+        console.warn(
+          "[category-links-client] album refetch exception:",
+          e,
+        );
+      }
+    };
+
+    const channel = supabase
+      .channel(`category-gphoto-albums-${id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "category_gphoto_albums",
+          filter: `category_id=eq.${categoryId}`,
+        },
+        (payload) => {
+          if (cancelled) return;
+          if (payload.eventType === "INSERT") {
+            const row = payload.new as CategoryGphotoAlbumRow | null;
+            if (!row) return;
+            const next = rowToCategoryGphotoAlbum(row);
+            setAlbums((prev) =>
+              prev.some((a) => a.id === next.id)
+                ? prev
+                : sortAlbums([...prev, next]),
+            );
+          } else if (payload.eventType === "UPDATE") {
+            const row = payload.new as CategoryGphotoAlbumRow | null;
+            if (!row) return;
+            const updated = rowToCategoryGphotoAlbum(row);
+            setAlbums((prev) => {
+              const exists = prev.some((a) => a.id === updated.id);
+              return exists
+                ? sortAlbums(
+                    prev.map((a) => (a.id === updated.id ? updated : a)),
+                  )
+                : sortAlbums([...prev, updated]);
+            });
+          } else if (payload.eventType === "DELETE") {
+            const oldRow = payload.old as { id?: string } | null;
+            if (!oldRow?.id) return;
+            setAlbums((prev) => prev.filter((a) => a.id !== oldRow.id));
+          }
+        },
+      )
+      .subscribe((status, err) => {
+        if (err) {
+          console.warn(
+            "[category-links-client] album subscribe error:",
+            status,
+            err,
+          );
+          void refetch();
+        }
+      });
+
+    if (initial.length === 0) {
+      void refetch();
+    }
+
+    return () => {
+      cancelled = true;
+      try {
+        void supabase.removeChannel(channel);
+      } catch (e) {
+        console.warn(
+          "[category-links-client] album removeChannel error:",
+          e,
+        );
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, categoryId]);
+
+  return albums;
 }

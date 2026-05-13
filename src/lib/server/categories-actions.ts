@@ -2282,3 +2282,302 @@ export async function fetchRecentImportCountsByCategory(
   }
   return counts;
 }
+
+// =============================================================
+// Phase 16 (2026-05-13): Google フォト連携 Server Actions
+// =============================================================
+//
+// 共有アルバム URL を 1 件貼ると server-side scrape で含まれる画像 URL を
+// 抽出し、`category_gphoto_albums` (アルバムメタ) + 子の `category_links`
+// (kind='gphoto') の 2 段構造で保存する。直リンク (lh3) を貼った場合は
+// アルバム行は作らず、kind='gphoto', gphoto_album_id=NULL の単独行で
+// 保存する。同期は子行を URL diff で差分更新。削除は CASCADE で子も消す。
+
+const GPHOTO_DEFAULT_TITLE = "Google フォト";
+
+/**
+ * 入力 URL を classify して、共有アルバムなら scrape→展開、直リンクなら
+ * 単独画像行を 1 つ INSERT する。
+ */
+export async function createGphotoEntryAction(input: {
+  categoryId: string;
+  rawUrl: string;
+}): Promise<
+  | {
+      ok: true;
+      kind: "album";
+      albumId: string;
+      imageCount: number;
+      title: string | null;
+    }
+  | { ok: true; kind: "single"; linkId: string }
+  | { ok: false; reason: string }
+> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
+
+  const { isSafeUrl } = await import("@/lib/url-safe");
+  if (!isSafeUrl(input.rawUrl)) {
+    return {
+      ok: false,
+      reason:
+        "URL は http:// または https:// で始まる正しい URL である必要があります",
+    };
+  }
+
+  const { classifyGphotoInput, fetchGooglePhotosAlbum } = await import(
+    "./google-photos"
+  );
+  const classified = classifyGphotoInput(input.rawUrl);
+  if (classified.kind === "invalid") {
+    return {
+      ok: false,
+      reason:
+        "Google フォトの共有 URL もしくは画像直リンクを入力してください",
+    };
+  }
+
+  const supabase = await createClient();
+
+  // 末尾に追加するため、image+gphoto の sort_order 最大値を取得。
+  // 攻略画像セクションでは image / gphoto を同じ grid に並べる前提で、
+  // sort_order 空間を共有する。
+  async function nextImageOrder(): Promise<number> {
+    const { data } = await supabase
+      .from("category_links")
+      .select("sort_order")
+      .eq("category_id", input.categoryId)
+      .in("kind", ["image", "gphoto"])
+      .order("sort_order", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    return ((data?.sort_order as number | undefined) ?? -1) + 1;
+  }
+
+  if (classified.kind === "direct") {
+    // 直リンク 1 枚: 単独行を INSERT (アルバム行は作らない)。
+    const order = await nextImageOrder();
+    const { data, error } = await supabase
+      .from("category_links")
+      .insert({
+        category_id: input.categoryId,
+        kind: "gphoto",
+        title: GPHOTO_DEFAULT_TITLE,
+        url: classified.canonical,
+        description: null,
+        sort_order: order,
+        thumbnail_url: classified.canonical,
+        gphoto_album_id: null,
+      })
+      .select("id")
+      .single();
+    if (error || !data) {
+      return { ok: false, reason: dbError("画像追加", error) };
+    }
+    return { ok: true, kind: "single", linkId: data.id as string };
+  }
+
+  // 共有アルバム: scrape して N 件展開。
+  let album: { title: string | null; imageUrls: string[] };
+  try {
+    album = await fetchGooglePhotosAlbum(classified.canonical);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "fetch failed";
+    return { ok: false, reason: `アルバムの取得に失敗しました: ${msg}` };
+  }
+  if (album.imageUrls.length === 0) {
+    return {
+      ok: false,
+      reason:
+        "画像が見つかりませんでした。アルバムが公開設定になっているかご確認ください",
+    };
+  }
+
+  // album メタ行を作成。sort_order はカテゴリ内 album 末尾。
+  const { data: maxAlbum } = await supabase
+    .from("category_gphoto_albums")
+    .select("sort_order")
+    .eq("category_id", input.categoryId)
+    .order("sort_order", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const albumOrder =
+    ((maxAlbum?.sort_order as number | undefined) ?? -1) + 1;
+
+  const nowIso = new Date().toISOString();
+  const { data: albumRow, error: albumErr } = await supabase
+    .from("category_gphoto_albums")
+    .insert({
+      category_id: input.categoryId,
+      share_url: classified.canonical,
+      title: album.title,
+      image_count: album.imageUrls.length,
+      last_synced_at: nowIso,
+      sort_order: albumOrder,
+    })
+    .select("id")
+    .single();
+  if (albumErr || !albumRow) {
+    return { ok: false, reason: dbError("アルバム作成", albumErr) };
+  }
+  const albumId = albumRow.id as string;
+
+  const baseOrder = await nextImageOrder();
+  const rows = album.imageUrls.map((u, i) => ({
+    category_id: input.categoryId,
+    kind: "gphoto" as const,
+    title: album.title ?? GPHOTO_DEFAULT_TITLE,
+    url: u,
+    description: null,
+    sort_order: baseOrder + i,
+    thumbnail_url: u,
+    gphoto_album_id: albumId,
+  }));
+  const { error: linksErr } = await supabase
+    .from("category_links")
+    .insert(rows);
+  if (linksErr) {
+    // best-effort rollback: 子 INSERT に失敗したら album 行も消す
+    // (CASCADE 不要だが、孤立した album 行を残さない)。
+    await supabase.from("category_gphoto_albums").delete().eq("id", albumId);
+    return { ok: false, reason: dbError("画像登録", linksErr) };
+  }
+
+  return {
+    ok: true,
+    kind: "album",
+    albumId,
+    imageCount: album.imageUrls.length,
+    title: album.title,
+  };
+}
+
+/**
+ * 既存アルバムを再 scrape し、子の category_links を URL diff で差分更新する。
+ * 削除→追加の順で実行 (途中失敗時の不整合は許容、再同期で復旧する想定)。
+ */
+export async function syncGphotoAlbumAction(albumId: string): Promise<
+  | { ok: true; added: number; removed: number; total: number }
+  | { ok: false; reason: string }
+> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
+
+  const supabase = await createClient();
+  const { data: albumRow, error: albumErr } = await supabase
+    .from("category_gphoto_albums")
+    .select("id, category_id, share_url, title")
+    .eq("id", albumId)
+    .maybeSingle();
+  if (albumErr || !albumRow) {
+    return { ok: false, reason: "アルバムが見つかりません" };
+  }
+
+  const { fetchGooglePhotosAlbum } = await import("./google-photos");
+  let album: { title: string | null; imageUrls: string[] };
+  try {
+    album = await fetchGooglePhotosAlbum(albumRow.share_url as string);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "fetch failed";
+    return { ok: false, reason: `アルバムの取得に失敗しました: ${msg}` };
+  }
+  if (album.imageUrls.length === 0) {
+    return {
+      ok: false,
+      reason:
+        "画像が見つかりませんでした。アルバムが公開設定になっているかご確認ください",
+    };
+  }
+
+  const { data: existing, error: existingErr } = await supabase
+    .from("category_links")
+    .select("id, url")
+    .eq("gphoto_album_id", albumId);
+  if (existingErr) {
+    return { ok: false, reason: dbError("既存画像取得", existingErr) };
+  }
+  const existingRows = (existing ?? []) as Array<{ id: string; url: string }>;
+  const existingUrls = new Set(existingRows.map((r) => r.url));
+  const newUrls = new Set(album.imageUrls);
+
+  const toDelete = existingRows
+    .filter((r) => !newUrls.has(r.url))
+    .map((r) => r.id);
+  const toAdd = album.imageUrls.filter((u) => !existingUrls.has(u));
+
+  if (toDelete.length > 0) {
+    const { error: delErr } = await supabase
+      .from("category_links")
+      .delete()
+      .in("id", toDelete);
+    if (delErr) {
+      return { ok: false, reason: dbError("既存画像削除", delErr) };
+    }
+  }
+
+  if (toAdd.length > 0) {
+    const { data: maxRow } = await supabase
+      .from("category_links")
+      .select("sort_order")
+      .eq("category_id", albumRow.category_id as string)
+      .in("kind", ["image", "gphoto"])
+      .order("sort_order", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const baseOrder = ((maxRow?.sort_order as number | undefined) ?? -1) + 1;
+    const rows = toAdd.map((u, i) => ({
+      category_id: albumRow.category_id as string,
+      kind: "gphoto" as const,
+      title: (album.title ?? albumRow.title ?? GPHOTO_DEFAULT_TITLE) as string,
+      url: u,
+      description: null,
+      sort_order: baseOrder + i,
+      thumbnail_url: u,
+      gphoto_album_id: albumId,
+    }));
+    const { error: insErr } = await supabase
+      .from("category_links")
+      .insert(rows);
+    if (insErr) {
+      return { ok: false, reason: dbError("新規画像追加", insErr) };
+    }
+  }
+
+  // album メタを更新 (title は scrape で取れた値を優先で上書き、空なら既存維持)。
+  const nowIso = new Date().toISOString();
+  const total = album.imageUrls.length;
+  await supabase
+    .from("category_gphoto_albums")
+    .update({
+      title: album.title ?? albumRow.title,
+      image_count: total,
+      last_synced_at: nowIso,
+    })
+    .eq("id", albumId);
+
+  return {
+    ok: true,
+    added: toAdd.length,
+    removed: toDelete.length,
+    total,
+  };
+}
+
+/**
+ * アルバム削除 (CASCADE で子 category_links も自動消去)。
+ */
+export async function deleteGphotoAlbumAction(
+  albumId: string,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("category_gphoto_albums")
+    .delete()
+    .eq("id", albumId);
+  if (error) {
+    return { ok: false, reason: dbError("アルバム削除", error) };
+  }
+  return { ok: true };
+}

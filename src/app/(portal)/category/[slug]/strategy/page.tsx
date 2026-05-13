@@ -1,5 +1,6 @@
 import { findCategoryBySlug } from "@/lib/supabase/categories";
 import { fetchCategoryLinks } from "@/lib/supabase/category-links";
+import { fetchCategoryGphotoAlbums } from "@/lib/supabase/category-gphoto-albums";
 import { StrategyList } from "./strategy-list";
 import { StrategyImagesList } from "./strategy-images-list";
 
@@ -26,12 +27,14 @@ export default async function StrategyPage({
     );
   }
 
-  // Phase 15 (2.x, 2026-05-13): リンクと画像を並行プリフェッチ。
+  // Phase 15 / 16 (2026-05-13): リンク / 画像 / Google フォト系を並行プリフェッチ。
   // fetchCategoryLinks は React.cache 済だが kind 違いは別キー扱いで
-  // SELECT が 2 本走る。Promise.all で直列化を避ける。
-  const [links, images] = await Promise.all([
+  // SELECT が分かれる。Promise.all で直列化を避ける。
+  const [links, images, gphotos, albums] = await Promise.all([
     fetchCategoryLinks(category.id, "strategy"),
     fetchCategoryLinks(category.id, "image"),
+    fetchCategoryLinks(category.id, "gphoto"),
+    fetchCategoryGphotoAlbums(category.id),
   ]);
   return (
     <div className="flex flex-col gap-6">
@@ -40,7 +43,12 @@ export default async function StrategyPage({
         initial={links}
         initialShowThumbnails={category.showStrategyThumbnails}
       />
-      <StrategyImagesList categoryId={category.id} initial={images} />
+      <StrategyImagesList
+        categoryId={category.id}
+        initialImages={images}
+        initialGphotos={gphotos}
+        initialAlbums={albums}
+      />
     </div>
   );
 }
