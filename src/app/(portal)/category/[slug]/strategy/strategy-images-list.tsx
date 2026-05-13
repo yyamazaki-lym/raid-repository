@@ -44,7 +44,6 @@ import { Card } from "@/components/ui/card";
 // アルバム所属分のみアルバム単位でセクション分け、それ以外は image と
 // 同じ「ばら」grid に並ぶ。
 import { ImageFormDialog } from "@/components/portal/image-form-dialog-lazy";
-import { GphotoFormDialog } from "@/components/portal/gphoto-form-dialog-lazy";
 import { LinkCardMenu } from "@/components/portal/link-card-menu-lazy";
 import { ActionSlot } from "@/components/portal/action-slot";
 import {
@@ -186,11 +185,10 @@ export function StrategyImagesList({
         </p>
         {/* SubTabs が stuck 状態になったら ActionSlot 経由で SubTabs 右端に
             portal される (strategy-list の「サムネ + 攻略リンク追加」と同じ
-            target を共有。複数 ActionSlot は children を append 順で並べる
-            ので、攻略リンク追加 → 画像追加 → Google フォト追加 の順)。 */}
+            target を共有。Phase 16 で Google フォト URL 判定を
+            ImageFormDialog 内に統合したため、ボタンは 1 つに集約。 */}
         <ActionSlot>
           <ImageFormDialog categoryId={categoryId} />
-          <GphotoFormDialog categoryId={categoryId} />
         </ActionSlot>
       </div>
 
