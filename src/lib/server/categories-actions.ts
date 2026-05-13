@@ -132,6 +132,13 @@ export type CategoryUpdatePatch = Partial<{
    * 従来挙動。重複・空白文字列は呼び出し側で除去想定。
    */
   fflogs_match_keywords: string[] | null;
+  /**
+   * Phase 13 (2.1, 2026-05-13): Discord 取り込みフィルタ (video / strategy 別)。
+   * カンマ区切り入力を UI 層で string[] に正規化 (trim・空除去・重複排除) してから
+   * 渡す。空配列ではなく NULL を保存することで「フィルタ無効 (従来通り全件)」を表す。
+   */
+  discord_video_filter_keywords: string[] | null;
+  discord_strategy_filter_keywords: string[] | null;
 }>;
 
 /**

@@ -86,7 +86,16 @@ ALTER TABLE public.categories
   -- title / zoneName に含まれていれば、cross-group reject を override
   -- して score=0 (確信マッチ) として扱う。部分一致 + 大文字小文字無視。
   -- 空配列 / NULL = 従来挙動。
-  ADD COLUMN IF NOT EXISTS fflogs_match_keywords         text[];
+  ADD COLUMN IF NOT EXISTS fflogs_match_keywords         text[],
+  -- Phase 13 (2.1 (2026-05-13)): Discord 取り込みフィルタキーワード。
+  -- カテゴリごとに kind 別 (video / strategy) で別配列。Discord メッセージ本文
+  -- (m.content) または抽出 URL のどちらかに、配列内のいずれかが (大小無視・
+  -- 部分一致) 含まれている投稿だけを取り込む OR マッチ。
+  -- 空配列 / NULL = フィルタ無効 = 従来通り全件取り込み (後方互換)。
+  -- video ch では「クリア / 軽減 / 解説」、strategy ch では「軽減 / ロット /
+  -- 動き」など、ch ごとのノイズ排除のために用途を分けて使う。
+  ADD COLUMN IF NOT EXISTS discord_video_filter_keywords    text[],
+  ADD COLUMN IF NOT EXISTS discord_strategy_filter_keywords text[];
 
 -- NOTE: category_links / schedule_past_sessions の logs_url_source ALTER
 -- は、それぞれ該当 CREATE TABLE 直後に移動済 (新規 fork で table 未作成
