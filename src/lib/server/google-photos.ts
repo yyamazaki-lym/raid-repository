@@ -14,40 +14,15 @@ import { decodeHtmlEntities } from "@/lib/html-entities";
  *   - 共有 URL: `https://photos.google.com/share/<token>` → そのまま fetch
  *   - 直リンク: `https://lh3.googleusercontent.com/...` → アルバム扱いせず
  *     呼び出し側で単独 INSERT する想定 (classify のみ提供)
+ *
+ * `classifyGphotoInput` は client 側でも使えるよう
+ * `src/lib/google-photos-classify.ts` に切り出し、ここでは re-export だけ。
  */
 
-export type GphotoInputKind =
-  | { kind: "share"; canonical: string }
-  | { kind: "direct"; canonical: string }
-  | { kind: "invalid" };
-
-export function classifyGphotoInput(raw: string): GphotoInputKind {
-  let parsed: URL;
-  try {
-    parsed = new URL(raw.trim());
-  } catch {
-    return { kind: "invalid" };
-  }
-  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
-    return { kind: "invalid" };
-  }
-  const host = parsed.hostname.toLowerCase();
-  // 短縮 (Firebase Dynamic Links 経由)。
-  if (host === "photos.app.goo.gl") {
-    return { kind: "share", canonical: parsed.toString() };
-  }
-  // 共有ページ。`/share/<token>` 以外 (例: /photo/...) は確実な共有 URL とは
-  // 限らないが、フォトの個別画像共有ページも HTML 内に lh3 直リンクを含む
-  // 場合があるため一旦 share として fetch を試みる。
-  if (host === "photos.google.com") {
-    return { kind: "share", canonical: parsed.toString() };
-  }
-  // 画像直リンク。lh3〜lh6 の googleusercontent サブドメインを許可。
-  if (/^lh[3-6]\.googleusercontent\.com$/i.test(host)) {
-    return { kind: "direct", canonical: parsed.toString() };
-  }
-  return { kind: "invalid" };
-}
+export {
+  classifyGphotoInput,
+  type GphotoInputKind,
+} from "@/lib/google-photos-classify";
 
 export type GphotoAlbum = {
   /** og:title もしくは <title> から抽出した album タイトル。失敗時 null。 */
@@ -57,6 +32,13 @@ export type GphotoAlbum = {
 };
 
 const LH_URL_RE = /https:\/\/lh[3-6]\.googleusercontent\.com\/[^"'\\<>\s]+/g;
+
+// プロフィールアバター / アカウントアイコンを除外するパス判定。
+//   - `/a/<token>` … 通常のアカウントアバター
+//   - `/a-/<token>` … 別系統のアバター
+// アルバム写真は `/pw/<token>` あるいは長い base64-ish path で来るため、
+// `/a/` `/a-/` を確実なアイコン目印として弾く。
+const AVATAR_PATH_RE = /^https:\/\/lh[3-6]\.googleusercontent\.com\/a[-/]/i;
 
 /**
  * 共有アルバム URL から画像 URL 配列を抽出する。
@@ -122,11 +104,13 @@ export async function fetchGooglePhotosAlbum(
 
   // 画像 URL 抽出。サイズ suffix (`=w512-h384-...`) を剥がして重複排除し、
   // 表示用に `=s2048` を付与する。lh3 の URL は HTML エスケープされていない
-  // 平文で 1 つ以上の JSON チャンク内に出現する。
+  // 平文で 1 つ以上の JSON チャンク内に出現する。アバター系 (`/a/`,`/a-/`)
+  // も同じホストで埋め込まれるため、AVATAR_PATH_RE で除外する。
   const raw = Array.from(html.matchAll(LH_URL_RE), (m) => m[0]);
   const seen = new Set<string>();
   const imageUrls: string[] = [];
   for (const u of raw) {
+    if (AVATAR_PATH_RE.test(u)) continue;
     // 末尾の =foo (サイズ / 切り出しパラメータ群) を除去。
     const stripSize = u.replace(/=[^/=]+$/u, "");
     if (seen.has(stripSize)) continue;

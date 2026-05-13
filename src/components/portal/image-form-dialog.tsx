@@ -26,9 +26,11 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
   createCategoryLink,
+  createGphotoEntry,
   updateCategoryLink,
 } from "@/lib/category-links-client";
 import { createClient } from "@/lib/supabase/client";
+import { classifyGphotoInput } from "@/lib/google-photos-classify";
 import type { CategoryLink } from "@/lib/supabase/types";
 
 /**
@@ -41,6 +43,12 @@ import type { CategoryLink } from "@/lib/supabase/types";
  *     (DB の `title NOT NULL` を満たす)。
  *   - URL バリデーションは createCategoryLinkAction 側の isSafeUrl で再度
  *     行われるので、ここでは UX のための前段チェック (http(s) prefix) のみ。
+ *
+ * Phase 16 (2026-05-13): 新規追加時に URL を classifyGphotoInput で判定し、
+ * Google フォト共有 URL / `lh3.googleusercontent.com` 直リンクは
+ * `createGphotoEntry` 経路へ自動分岐 (= kind='gphoto' で保存)。アルバム URL
+ * の場合は中身を全枚展開する。編集モードでは URL の種別を変えても
+ * 既存 kind を保つだけ (再展開はしない)。
  */
 type Props = {
   categoryId: string;
@@ -156,6 +164,38 @@ export function ImageFormDialog({
     const t = title.trim() || DEFAULT_TITLE;
     const desc = description.trim() ? description.trim() : null;
 
+    // Phase 16: 新規追加時のみ Google フォト URL を自動判定し、専用 action
+    // (createGphotoEntry) で展開する。共有 URL → アルバム展開、直リンク →
+    // 単独 gphoto 行 1 件。編集モードでは経路分岐しない (URL を Google フォト
+    // 系に変えても、既存 kind を保ったまま update する)。
+    if (!isEdit) {
+      const classified = classifyGphotoInput(u);
+      if (classified.kind !== "invalid") {
+        setBusy(true);
+        const gphotoResult = await createGphotoEntry({
+          categoryId,
+          rawUrl: u,
+        });
+        setBusy(false);
+        if (!gphotoResult.ok) {
+          setError(`保存失敗: ${gphotoResult.reason}`);
+          return;
+        }
+        if (gphotoResult.kind === "album") {
+          const titleSuffix = gphotoResult.title
+            ? ` (${gphotoResult.title})`
+            : "";
+          toast.success(
+            `${gphotoResult.imageCount} 枚展開しました${titleSuffix}`,
+          );
+        } else {
+          toast.success("画像を追加しました");
+        }
+        setOpen(false);
+        return;
+      }
+    }
+
     setBusy(true);
     const result = isEdit
       ? await updateCategoryLink(link!.id, {
@@ -229,7 +269,7 @@ export function ImageFormDialog({
                 inputMode="url"
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
-                placeholder="https://... または下のアップロードボタンから"
+                placeholder="https://... / Google フォト共有 URL も可"
                 className="font-mono text-[12px]"
                 autoComplete="off"
                 spellCheck={false}
@@ -260,10 +300,13 @@ export function ImageFormDialog({
               </Button>
             </div>
             <p className="text-muted-foreground text-[11px] leading-relaxed">
-              ローカル画像 (最大 5MB / PNG·JPG·WebP·GIF) をアップロードするか、
-              既にどこかにある画像 URL を貼り付けてください。
+              ローカル画像 (最大 5MB / PNG·JPG·WebP·GIF) をアップロード、画像 URL
+              直接貼付、または Google フォト共有 URL を貼ると含まれる画像を
+              自動展開します。
             </p>
-            {url.trim() && /^https?:\/\//i.test(url.trim()) && (
+            {url.trim() &&
+              /^https?:\/\//i.test(url.trim()) &&
+              classifyGphotoInput(url.trim()).kind !== "share" && (
               <div
                 aria-hidden
                 className="relative mt-1 h-32 w-full overflow-hidden rounded-md border border-border/40 bg-secondary/30"
