@@ -185,11 +185,12 @@ ALTER TABLE public.category_links
 -- インライン CHECK 制約 (CREATE TABLE 時に postgres が自動命名) を一旦
 -- 落として、image を含む新制約で再定義する冪等パターン。既存行の値は
 -- ('strategy','video') のみなので、新制約適用時の violate は発生しない。
+-- Phase 16 (2026-05-13): kind=gphoto も追加 (Google フォト共有アルバム展開)。
 ALTER TABLE public.category_links
   DROP CONSTRAINT IF EXISTS category_links_kind_check;
 ALTER TABLE public.category_links
   ADD CONSTRAINT category_links_kind_check
-  CHECK (kind IN ('strategy','video','image'));
+  CHECK (kind IN ('strategy','video','image','gphoto'));
 
 CREATE INDEX IF NOT EXISTS category_links_category_kind_idx
   ON public.category_links(category_id, kind, sort_order);
@@ -198,6 +199,43 @@ DROP TRIGGER IF EXISTS set_updated_at_category_links ON public.category_links;
 CREATE TRIGGER set_updated_at_category_links
   BEFORE UPDATE ON public.category_links
   FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+-- ---- 2c. category_gphoto_albums (Phase 16, 2026-05-13) ----------------
+-- Google フォト共有アルバム URL を 1 件貼ると、アルバム内の全画像を
+-- server-side scrape で `lh3.googleusercontent.com` 直リンクとして抽出し、
+-- 個別の category_links 行 (kind='gphoto') に展開する。アルバム単位の
+-- メタ (タイトル / 最終同期日 / 共有元 URL) はこのテーブルで保持し、
+-- 子の category_links 行は gphoto_album_id で参照する。ON DELETE CASCADE
+-- でアルバム削除時に子行を一括消去できる。直リンク 1 枚貼り
+-- (lh3.googleusercontent.com 直接) は gphoto_album_id=NULL の単独行で扱う。
+CREATE TABLE IF NOT EXISTS public.category_gphoto_albums (
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  category_id     uuid NOT NULL REFERENCES public.categories(id) ON DELETE CASCADE,
+  share_url       text NOT NULL,
+  title           text,
+  image_count     integer NOT NULL DEFAULT 0,
+  last_synced_at  timestamptz,
+  sort_order      integer NOT NULL DEFAULT 0,
+  created_at      timestamptz NOT NULL DEFAULT now(),
+  updated_at      timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS category_gphoto_albums_category_idx
+  ON public.category_gphoto_albums(category_id, sort_order);
+
+DROP TRIGGER IF EXISTS set_updated_at_category_gphoto_albums
+  ON public.category_gphoto_albums;
+CREATE TRIGGER set_updated_at_category_gphoto_albums
+  BEFORE UPDATE ON public.category_gphoto_albums
+  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+-- 子の category_links に album 参照列を追加 (NULL 可)。
+-- ON DELETE CASCADE: アルバム削除で子行を 1 query で一括消去する。
+ALTER TABLE public.category_links
+  ADD COLUMN IF NOT EXISTS gphoto_album_id uuid
+    REFERENCES public.category_gphoto_albums(id) ON DELETE CASCADE;
+CREATE INDEX IF NOT EXISTS category_links_gphoto_album_idx
+  ON public.category_links(gphoto_album_id)
+  WHERE gphoto_album_id IS NOT NULL;
 
 -- ---- 3. loot -----------------------------------------------------------
 
@@ -605,6 +643,7 @@ CREATE INDEX IF NOT EXISTS tags_target_idx
 
 ALTER TABLE public.categories                    ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.category_links                ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.category_gphoto_albums        ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.app_settings                  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.schedule_past_sessions        ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.schedule_past_session_logs    ENABLE ROW LEVEL SECURITY;
@@ -630,7 +669,8 @@ DECLARE
   policy_name text;
 BEGIN
   FOR t IN SELECT unnest(ARRAY[
-    'categories','category_links','app_settings','schedule_past_sessions',
+    'categories','category_links','category_gphoto_albums',
+    'app_settings','schedule_past_sessions',
     'schedule_past_session_logs',
     'recruitment_templates','category_macros','schedule_session_memos',
     'loot_items','loot_entries',
@@ -716,6 +756,7 @@ CREATE POLICY native_schedule_attendances_self_update
 
 ALTER TABLE public.categories                    REPLICA IDENTITY FULL;
 ALTER TABLE public.category_links                REPLICA IDENTITY FULL;
+ALTER TABLE public.category_gphoto_albums        REPLICA IDENTITY FULL;
 ALTER TABLE public.app_settings                  REPLICA IDENTITY FULL;
 ALTER TABLE public.schedule_past_sessions        REPLICA IDENTITY FULL;
 ALTER TABLE public.schedule_past_session_logs    REPLICA IDENTITY FULL;
@@ -739,7 +780,8 @@ DECLARE
   t text;
 BEGIN
   FOR t IN SELECT unnest(ARRAY[
-    'categories','category_links','app_settings','schedule_past_sessions',
+    'categories','category_links','category_gphoto_albums',
+    'app_settings','schedule_past_sessions',
     'schedule_past_session_logs',
     'recruitment_templates','category_macros','schedule_session_memos',
     'loot_items','loot_entries',

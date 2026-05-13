@@ -165,7 +165,11 @@ export function rowToCategory(row: CategoryRow): Category {
 // Phase 15 (2.x, 2026-05-13): `image` を追加。攻略タブで画像 (Storage
 // アップロード or 外部 URL) を直接貼れる新エントリ。表示は strategy と
 // 別セクション。Discord cron 取り込みは生成しない (manual のみ)。
-export type CategoryLinkKind = "strategy" | "video" | "image";
+// Phase 16 (2026-05-13): `gphoto` を追加。Google フォト共有アルバム URL を
+// scrape して個別画像を `lh3.googleusercontent.com` 直リンクとして展開した
+// 行、もしくは直リンクを直接貼った単独行。アルバム所属の場合は
+// gphoto_album_id で category_gphoto_albums を参照する。
+export type CategoryLinkKind = "strategy" | "video" | "image" | "gphoto";
 export type CategoryLinkSource = "manual" | "discord";
 
 export type CategoryLinkRow = {
@@ -195,6 +199,11 @@ export type CategoryLinkRow = {
    * 表示は categories.show_strategy_thumbnails が true のときだけ走る。
    */
   thumbnail_url: string | null;
+  /**
+   * Phase 16 (2026-05-13): kind='gphoto' の行が属する Google フォト
+   * アルバムへの参照。NULL = 単独行 (直リンク 1 枚貼り)。
+   */
+  gphoto_album_id: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -214,6 +223,8 @@ export type CategoryLink = {
   isFavorite: boolean;
   /** og:image URL (新規追加時に fetchPageMeta で取得した値、Phase 14)。 */
   thumbnailUrl: string | null;
+  /** Phase 16: Google フォトアルバム所属時のアルバム id (それ以外は NULL)。 */
+  gphotoAlbumId: string | null;
   createdAt: string;
 };
 
@@ -232,6 +243,50 @@ export function rowToCategoryLink(row: CategoryLinkRow): CategoryLink {
     postedAt: row.posted_at ?? null,
     isFavorite: row.is_favorite ?? false,
     thumbnailUrl: row.thumbnail_url ?? null,
+    gphotoAlbumId: row.gphoto_album_id ?? null,
+    createdAt: row.created_at,
+  };
+}
+
+// =============================================================
+// category_gphoto_albums (Phase 16, 2026-05-13)
+// =============================================================
+// Google フォト共有アルバムを 1 行として保持し、子の category_links
+// (kind='gphoto') を gphoto_album_id で紐付ける構造。
+export type CategoryGphotoAlbumRow = {
+  id: string;
+  category_id: string;
+  share_url: string;
+  title: string | null;
+  image_count: number;
+  last_synced_at: string | null;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CategoryGphotoAlbum = {
+  id: string;
+  categoryId: string;
+  shareUrl: string;
+  title: string | null;
+  imageCount: number;
+  lastSyncedAt: string | null;
+  sortOrder: number;
+  createdAt: string;
+};
+
+export function rowToCategoryGphotoAlbum(
+  row: CategoryGphotoAlbumRow,
+): CategoryGphotoAlbum {
+  return {
+    id: row.id,
+    categoryId: row.category_id,
+    shareUrl: row.share_url,
+    title: row.title,
+    imageCount: row.image_count ?? 0,
+    lastSyncedAt: row.last_synced_at,
+    sortOrder: row.sort_order ?? 0,
     createdAt: row.created_at,
   };
 }
