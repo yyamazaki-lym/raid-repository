@@ -41,8 +41,9 @@ export type ImportResult = {
   ok: boolean;
   /**
    * Total URLs found in the Discord messages this run.
-   * Phase 13: `discord_*_filter_keywords` が設定されたカテゴリではフィルタ通過後の
-   * 件数になる (= 本文/URL のどちらかがキーワードに部分一致した URL のみカウント)。
+   * Phase 13.2: `discord_*_filter_keywords` が設定されたカテゴリでは
+   * フィルタ通過後の件数になる (= 本文/URL/動画タイトル のいずれかが
+   * キーワードに部分一致した URL のみカウント、video kind ではタイトルも対象)。
    */
   scanned?: number;
   /**
@@ -213,44 +214,43 @@ async function importChannel(
   void maybeAutoLinkSheetUrls;
 
   // 2. Extract URLs (oldest first for chronological insertion).
-  // Phase 13: kind 別の取り込みフィルタワード。空配列 = フィルタ無効 (従来挙動)。
-  // 本文または抽出 URL のどちらかにマッチした投稿だけが candidates に入る。
-  const filterKeywords =
-    kind === "video"
-      ? cat.discordVideoFilterKeywords
-      : cat.discordStrategyFilterKeywords;
-  type Candidate = { url: string; postedBy: string; postedAt: string };
+  // Phase 13.2 (2.1, 2026-05-13): フィルタ判定は enrichment (動画タイトル取得)
+  // の後ろに移動。ここでは抽出と dedupe だけ行い、本文/URL/タイトル の 3 つで
+  // 一括判定する。動画 URL しか投稿されないチャンネル (本文 = URL 文字列のみ)
+  // でも、動画タイトルでフィルタワードにマッチできるようにするのが目的。
+  // 元メッセージ本文も candidate に持ち回し、enrichment 後の判定で使う。
+  type Candidate = {
+    url: string;
+    postedBy: string;
+    postedAt: string;
+    messageContent: string;
+  };
   const candidates: Candidate[] = [];
   const seenInBatch = new Set<string>();
-  // Phase 13.1: フィルタ判定前のユニーク URL を別 Set で記録。フィルタ設定済
-  // カテゴリで `scanned === 0` のとき、これが 0 なら本当に URL が無く (チャンネル
-  // 空 or Bot 権限不足)、> 0 なら「フィルタで全部弾かれた」を UI が区別できる。
-  const prefilteredSeen = new Set<string>();
   for (const m of [...messages].reverse()) {
     // Defensive: m.content can be missing/non-string for system /
     // webhook / forwarded messages even though Discord docs say it's
     // always present. Skip silently rather than throw.
     const content = typeof m?.content === "string" ? m.content : "";
     if (!content) continue;
-    // メッセージ本文判定は per-message で 1 回。本文でヒットすれば全 URL を通し、
-    // 外れた場合は URL 個別で再判定する (要件: 「本文 OR URL」OR マッチ)。
-    const contentMatches = matchesAnyKeyword(content, filterKeywords);
     const found = content.matchAll(URL_RE);
     for (const match of found) {
       const url = stripTrailingPunctuation(match[0]);
-      if (!url) continue;
-      prefilteredSeen.add(url);
-      if (seenInBatch.has(url)) continue;
-      if (!contentMatches && !matchesAnyKeyword(url, filterKeywords)) continue;
+      if (!url || seenInBatch.has(url)) continue;
       seenInBatch.add(url);
       candidates.push({
         url,
         postedBy: m.author?.username ?? "unknown",
         postedAt: m.timestamp,
+        messageContent: content,
       });
     }
   }
-  const prefilteredCount = prefilteredSeen.size;
+  // Phase 13.1: prefilteredCount = フィルタ判定前のユニーク URL 数。案 A 移行に
+  // 伴い「抽出 dedupe 後のユニーク URL 数 = candidates.length」と一致する。
+  // フィルタ設定済カテゴリで scanned===0 となった場合、prefilteredCount>0 なら
+  // 「フィルタで全部弾かれた」、=0 なら「チャンネル空 or Bot 権限不足」と区別できる。
+  const prefilteredCount = candidates.length;
   if (candidates.length === 0) {
     return {
       category: cat.slug,
@@ -311,15 +311,48 @@ async function importChannel(
       url: c.url,
       postedBy: c.postedBy,
       postedAt: c.postedAt,
+      messageContent: c.messageContent,
       title: title ?? c.url,
       durationSeconds: meta.durationSeconds,
     };
   });
 
+  // Phase 13.2 (2.1, 2026-05-13): enrichment 後にフィルタ判定。
+  // 「本文 OR URL OR タイトル」のいずれかが、kind 別フィルタワードのいずれかに
+  // 部分一致 (大小無視) すれば取り込み対象。フィルタ未設定 (空配列) なら
+  // matchesAnyKeyword が常に true を返し、フィルタは透過する (後方互換)。
+  // タイトルを haystack に加えるのは video kind のみ — strategy kind では
+  // fetchPageTitle がサイト共通タイトル ("Google Docs" 等) を返す事が多く、
+  // 誤マッチの温床になりやすいため除外する。
+  const filterKeywords =
+    kind === "video"
+      ? cat.discordVideoFilterKeywords
+      : cat.discordStrategyFilterKeywords;
+  const filtered = enriched.filter((e) => {
+    if (matchesAnyKeyword(e.messageContent, filterKeywords)) return true;
+    if (matchesAnyKeyword(e.url, filterKeywords)) return true;
+    if (kind === "video" && matchesAnyKeyword(e.title, filterKeywords)) {
+      return true;
+    }
+    return false;
+  });
+  if (filtered.length === 0) {
+    return {
+      category: cat.slug,
+      kind,
+      ok: true,
+      scanned: 0,
+      duplicates,
+      inserted: 0,
+      failed: 0,
+      prefilteredCount,
+    };
+  }
+
   // Allocate sort_orders deterministically so chronological insertion
   // order is preserved even though fetches finished out-of-order.
   const startSortOrder = nextOrder;
-  const rowsToInsert = enriched.map((e, i) => ({
+  const rowsToInsert = filtered.map((e, i) => ({
     category_id: cat.id,
     kind,
     title: e.title,
@@ -375,9 +408,11 @@ async function importChannel(
   // 6. First-clear detection: pick the earliest clear-titled video's
   // posted_at out of the just-inserted rows. Only fires if the category
   // doesn't already have first_clear_at set; race-safe via IS NULL guard.
+  // Phase 13.2: フィルタで弾かれた URL は insert されていないので、走査対象は
+  // enriched ではなく filtered (= 実際に insert 対象になった行) を使う。
   if (kind === "video" && !cat.firstClearAt && inserted > 0) {
     let earliestClearPostedAt: string | null = null;
-    for (const e of enriched) {
+    for (const e of filtered) {
       // 1.9.16: tier-aware — Savage requires "4 層" + clear keyword.
       if (!isClearTitleForCategory(e.title, cat.name)) continue;
       if (
@@ -407,7 +442,7 @@ async function importChannel(
     category: cat.slug,
     kind,
     ok: true,
-    scanned: candidates.length,
+    scanned: filtered.length,
     duplicates,
     inserted,
     failed,
