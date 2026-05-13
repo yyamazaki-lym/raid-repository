@@ -12,6 +12,7 @@ import {
   XCircle,
   Info,
   ChevronDown,
+  Image as ImageIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -23,11 +24,13 @@ import {
 import {
   backfillFirstClearFromExistingVideos,
   backfillPostedAtFromDiscordChannels,
+  backfillStrategyThumbnailsChunk,
   backfillVideoDurationsChunk,
   importDiscordNow,
   type BackfillResult,
   type DurationBackfillResult,
   type ImportNowItem,
+  type StrategyThumbnailBackfillResult,
 } from "@/lib/server/categories-actions";
 
 // Inline type since "use server" modules can't re-export pure types.
@@ -68,7 +71,9 @@ type ActionKind =
   | "discord"
   | "videoMeta"
   | "videoMetaForceRefresh"
-  | "firstClearForce";
+  | "firstClearForce"
+  | "strategyThumb"
+  | "strategyThumbForceRefresh";
 
 type Result =
   | { kind: "discord"; data: { items: ImportNowItem[] } }
@@ -79,7 +84,17 @@ type Result =
         postedAt: PostedAtBackfillResult;
       };
     }
-  | { kind: "firstClear"; data: BackfillResult; force: boolean };
+  | { kind: "firstClear"; data: BackfillResult; force: boolean }
+  | {
+      kind: "strategyThumb";
+      data: {
+        filled: number;
+        failed: number;
+        skippedNoImage: number;
+        scanned: number;
+      };
+      force: boolean;
+    };
 
 /**
  * 1.9.21: live progress shown next to the dropdown trigger while
@@ -92,6 +107,15 @@ type VideoMetaProgress = {
   total: number;
 };
 
+/**
+ * Phase 14 (2.x, 2026-05-13): 攻略リンクのサムネイル backfill 進捗。
+ * チャンク毎に processed/total を更新し、トリガーボタンに live 表示。
+ */
+type StrategyThumbProgress = {
+  processed: number;
+  total: number;
+};
+
 export function MaintenanceMenu() {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -100,6 +124,9 @@ export function MaintenanceMenu() {
   // 1.9.21: live progress for videoMeta. null while idle.
   const [videoMetaProgress, setVideoMetaProgress] =
     useState<VideoMetaProgress | null>(null);
+  // Phase 14: 攻略リンクサムネイル backfill のチャンク進捗。実行中だけ非 null。
+  const [strategyThumbProgress, setStrategyThumbProgress] =
+    useState<StrategyThumbProgress | null>(null);
   const popupRef = useRef<HTMLDivElement | null>(null);
 
   // Click-outside-to-dismiss for the result popup.
@@ -208,6 +235,68 @@ export function MaintenanceMenu() {
     return { durations: dur, postedAt: posted };
   };
 
+  /**
+   * Phase 14: 攻略リンクの thumbnail_url backfill をチャンクループで実行。
+   * 各 chunk の集計値を accumulate し、UI に live 進捗を反映する。
+   */
+  const runStrategyThumbPhase = async (
+    force: boolean,
+  ): Promise<StrategyThumbnailBackfillResult> => {
+    let totFilled = 0;
+    let totFailed = 0;
+    let totSkipped = 0;
+    let total = 0;
+    let processed = 0;
+    let lastId: string | null = null;
+    let fatal: string | undefined;
+    for (let iter = 0; iter < 500; iter++) {
+      const r = await backfillStrategyThumbnailsChunk({
+        afterId: lastId,
+        forceRefresh: force,
+      });
+      if (!r.ok) {
+        fatal = r.reason ?? "原因不明";
+        break;
+      }
+      if (iter === 0 && typeof r.totalPending === "number") {
+        total = r.totalPending;
+        setStrategyThumbProgress({ processed: 0, total });
+      }
+      const inc = r.filled + r.failed + r.skippedNoImage;
+      processed += inc;
+      totFilled += r.filled;
+      totFailed += r.failed;
+      totSkipped += r.skippedNoImage;
+      setStrategyThumbProgress({
+        processed,
+        total: Math.max(total, processed),
+      });
+      if (r.done) break;
+      if (r.lastProcessedId === null) break;
+      lastId = r.lastProcessedId;
+    }
+    setStrategyThumbProgress(null);
+    if (fatal) {
+      return {
+        ok: false,
+        reason: fatal,
+        filled: totFilled,
+        failed: totFailed,
+        skippedNoImage: totSkipped,
+        lastProcessedId: lastId,
+        done: false,
+      };
+    }
+    return {
+      ok: true,
+      filled: totFilled,
+      failed: totFailed,
+      skippedNoImage: totSkipped,
+      lastProcessedId: lastId,
+      done: true,
+    };
+  };
+
   const run = (kind: ActionKind) => {
     setResult(null);
     setPendingKind(kind);
@@ -291,6 +380,46 @@ export function MaintenanceMenu() {
           router.refresh();
           return;
         }
+        if (
+          kind === "strategyThumb" ||
+          kind === "strategyThumbForceRefresh"
+        ) {
+          const force = kind === "strategyThumbForceRefresh";
+          if (force) {
+            const ok = window.confirm(
+              "登録済みの攻略リンク全件について og:image を再取得します。\n" +
+                "(既に取得済みのサムネイルも上書きされます)\n\n" +
+                "登録件数 × 1 リクエスト発行されるため数十秒〜数分かかります。\n" +
+                "実行しますか?",
+            );
+            if (!ok) return;
+          }
+          const r = await runStrategyThumbPhase(force);
+          if (!r.ok) {
+            toast.error("サムネ取得失敗: " + (r.reason ?? "原因不明"));
+            return;
+          }
+          const scanned = r.filled + r.failed + r.skippedNoImage;
+          const summary =
+            r.filled > 0
+              ? `サムネ ${r.filled} 件取得`
+              : scanned > 0
+                ? `更新なし (取得不可 ${r.skippedNoImage} / 失敗 ${r.failed})`
+                : "対象なし";
+          toast.success(summary);
+          setResult({
+            kind: "strategyThumb",
+            data: {
+              filled: r.filled,
+              failed: r.failed,
+              skippedNoImage: r.skippedNoImage,
+              scanned,
+            },
+            force,
+          });
+          router.refresh();
+          return;
+        }
       } finally {
         setPendingKind(null);
       }
@@ -314,6 +443,17 @@ export function MaintenanceMenu() {
     return "② 投稿日時取得中…";
   })();
 
+  const strategyThumbProgressLabel = (() => {
+    if (!strategyThumbProgress) return "④ サムネ取得中…";
+    if (strategyThumbProgress.total > 0) {
+      const pct = Math.floor(
+        (strategyThumbProgress.processed / strategyThumbProgress.total) * 100,
+      );
+      return `④ サムネ ${strategyThumbProgress.processed}/${strategyThumbProgress.total} (${pct}%)`;
+    }
+    return `④ サムネ ${strategyThumbProgress.processed} 件`;
+  })();
+
   // pending 中はトリガーボタン側に該当ラベルを出す。実行中の phase が
   // 何かは見える方がユーザーの安心になるため、ラベル切替で表現。
   const triggerLabel = (() => {
@@ -325,6 +465,11 @@ export function MaintenanceMenu() {
       pendingKind === "videoMetaForceRefresh"
     )
       return videoMetaProgressLabel;
+    if (
+      pendingKind === "strategyThumb" ||
+      pendingKind === "strategyThumbForceRefresh"
+    )
+      return strategyThumbProgressLabel;
     return "実行中…";
   })();
 
@@ -403,6 +548,44 @@ export function MaintenanceMenu() {
               クリア日時 + 累計時間を上書き再計算
             </span>
           </DropdownMenuItem>
+          {/* Phase 14 (2.x, 2026-05-13): 攻略リンクの og:image を一括取得。
+              デフォルトは NULL のみ対象 (新規列の追加時の既存行 backfill)。
+              「全件再取得」は SHIFT 等の修飾なしで誤爆させないため確認ダイアログ
+              を runStrategyThumb 側で出す。 */}
+          <DropdownMenuItem
+            onClick={() => run("strategyThumb")}
+            disabled={pending}
+            className="flex flex-col items-start gap-0.5"
+          >
+            <span className="flex items-center gap-1.5 font-mono text-[12px]">
+              {isThisPending("strategyThumb") ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+              ) : (
+                <ImageIcon className="h-3.5 w-3.5 text-cyan-300" aria-hidden />
+              )}
+              ④ サムネ取得
+            </span>
+            <span className="pl-5 text-[10px] text-muted-foreground">
+              攻略リンクの og:image を取得 (NULL のみ)
+            </span>
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() => run("strategyThumbForceRefresh")}
+            disabled={pending}
+            className="flex flex-col items-start gap-0.5"
+          >
+            <span className="flex items-center gap-1.5 font-mono text-[12px]">
+              {isThisPending("strategyThumbForceRefresh") ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+              ) : (
+                <ImageIcon className="h-3.5 w-3.5 text-rose-300" aria-hidden />
+              )}
+              ④ サムネ全件再取得
+            </span>
+            <span className="pl-5 text-[10px] text-muted-foreground">
+              全攻略リンク (取得済も上書き)
+            </span>
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
 
@@ -431,6 +614,9 @@ export function MaintenanceMenu() {
           )}
           {result.kind === "firstClear" && (
             <FirstClearPanel data={result.data} force={result.force} />
+          )}
+          {result.kind === "strategyThumb" && (
+            <StrategyThumbPanel data={result.data} force={result.force} />
           )}
         </div>
       )}
@@ -783,5 +969,54 @@ function formatLong(iso: string): string {
   const day = String(d.getDate()).padStart(2, "0");
   const wd = ["日", "月", "火", "水", "木", "金", "土"][d.getDay()];
   return `${y}-${m}-${day} (${wd})`;
+}
+
+/**
+ * Phase 14 (2.x, 2026-05-13): 攻略リンクサムネイル backfill の結果サマリー。
+ * 取得成功 / og:image なし / Supabase エラー の 3 値を表示。
+ */
+function StrategyThumbPanel({
+  data,
+  force,
+}: {
+  data: {
+    filled: number;
+    failed: number;
+    skippedNoImage: number;
+    scanned: number;
+  };
+  force: boolean;
+}) {
+  return (
+    <>
+      <p className="mb-2 pr-6 font-mono text-[10px] tracking-[0.2em] text-muted-foreground uppercase">
+        攻略サムネ — {force ? "全件再取得" : "NULL のみ"} 結果
+      </p>
+      <ul className="flex flex-col gap-0.5 text-[11px]">
+        <li className="flex items-baseline gap-2">
+          <span className="font-mono text-emerald-300">取得</span>
+          <span className="font-mono text-foreground">{data.filled}</span>
+          <span className="text-muted-foreground">件</span>
+        </li>
+        <li className="flex items-baseline gap-2">
+          <span className="font-mono text-zinc-400">og:image なし</span>
+          <span className="font-mono text-foreground">
+            {data.skippedNoImage}
+          </span>
+          <span className="text-muted-foreground">件</span>
+        </li>
+        {data.failed > 0 && (
+          <li className="flex items-baseline gap-2">
+            <span className="font-mono text-rose-300">失敗</span>
+            <span className="font-mono text-foreground">{data.failed}</span>
+            <span className="text-muted-foreground">件</span>
+          </li>
+        )}
+        <li className="text-[10px] text-muted-foreground">
+          対象: {data.scanned} 件
+        </li>
+      </ul>
+    </>
+  );
 }
 

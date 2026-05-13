@@ -1943,6 +1943,178 @@ export async function backfillVideoDurationsChunk(opts: {
   };
 }
 
+// =============================================================
+// Phase 14 (2.x, 2026-05-13): 攻略リンクの thumbnail_url backfill
+// =============================================================
+
+export type StrategyThumbnailBackfillResult = {
+  ok: boolean;
+  reason?: string;
+  /** og:image を取得して DB に書き込めた行数。 */
+  filled: number;
+  /** UPDATE は試みたが Supabase エラーで失敗した行数。 */
+  failed: number;
+  /** og:image なし / タイムアウト等で取得できなかった行数 (致命視しない)。 */
+  skippedNoImage: number;
+  /** 初回呼び出し時のみ、対象 (NULL or 全件) 件数の snapshot。進捗分母用。 */
+  totalPending?: number;
+  lastProcessedId: string | null;
+  done: boolean;
+};
+
+/**
+ * `backfillVideoDurationsChunk` と同形の chunked backfill。
+ * kind=strategy の `thumbnail_url IS NULL` (force=false) or 全件 (force=true)
+ * に対して `fetchPageMeta` で og:image を取得し、有効ならカラムを更新する。
+ *
+ * Vercel Hobby plan の Edge function 上限 (25s) と外部 fetch の遅さに合わせ、
+ * BATCH_SIZE / FETCH_CONCURRENCY は video duration backfill より控えめ。
+ */
+export async function backfillStrategyThumbnailsChunk(opts: {
+  afterId?: string | null;
+  forceRefresh?: boolean;
+}): Promise<StrategyThumbnailBackfillResult> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) {
+    return {
+      ok: false,
+      reason: "ADMIN ロールが必要です",
+      filled: 0,
+      failed: 0,
+      skippedNoImage: 0,
+      lastProcessedId: null,
+      done: true,
+    };
+  }
+  const supabase = await createClient();
+  // 外部 HTML 取得は YouTube より遅い (任意ホスト・タイムアウト 8s) ので、
+  // 1 chunk は小さめに刻んで進捗フィードバックを早めに返す。
+  const BATCH_SIZE = 8;
+  const FETCH_CONCURRENCY = 4;
+  const force = opts.forceRefresh === true;
+
+  // First-call snapshot: 進捗分母を取得 (afterId なしのときだけ)。
+  let totalPending: number | undefined;
+  if (!opts.afterId) {
+    let countQ = supabase
+      .from("category_links")
+      .select("id", { count: "exact", head: true })
+      .eq("kind", "strategy");
+    if (!force) countQ = countQ.is("thumbnail_url", null);
+    const { count } = await countQ;
+    totalPending = count ?? 0;
+    if (totalPending === 0) {
+      return {
+        ok: true,
+        filled: 0,
+        failed: 0,
+        skippedNoImage: 0,
+        totalPending: 0,
+        lastProcessedId: null,
+        done: true,
+      };
+    }
+  }
+
+  let baseQ = supabase
+    .from("category_links")
+    .select("id, url, thumbnail_url")
+    .eq("kind", "strategy");
+  if (!force) baseQ = baseQ.is("thumbnail_url", null);
+  const { data, error } = await (opts.afterId
+    ? baseQ.gt("id", opts.afterId)
+    : baseQ
+  )
+    .order("id")
+    .limit(BATCH_SIZE);
+  if (error) {
+    return {
+      ok: false,
+      reason: dbError("攻略リンク一覧取得", error),
+      filled: 0,
+      failed: 0,
+      skippedNoImage: 0,
+      totalPending,
+      lastProcessedId: null,
+      done: false,
+    };
+  }
+  if (!data || data.length === 0) {
+    return {
+      ok: true,
+      filled: 0,
+      failed: 0,
+      skippedNoImage: 0,
+      totalPending,
+      lastProcessedId: null,
+      done: true,
+    };
+  }
+
+  const { fetchPageMeta } = await import("@/lib/server/page-title");
+  const { isSafeUrl } = await import("@/lib/url-safe");
+
+  type Outcome = "filled" | "skipped" | "failed";
+  const outcomes = await pmap<(typeof data)[number], Outcome>(
+    data,
+    FETCH_CONCURRENCY,
+    async (row) => {
+      try {
+        const meta = await fetchPageMeta(row.url as string);
+        if (!meta.imageUrl || !isSafeUrl(meta.imageUrl)) return "skipped";
+        // force=false で既に thumbnail_url が入っている行は SELECT 時に
+        // フィルタで弾いている (IS NULL 条件) ので、ここに来る row は
+        // 全部 NULL のはず。念のため二重ガード。
+        if (
+          !force &&
+          (row.thumbnail_url as string | null) !== null
+        ) {
+          return "skipped";
+        }
+        const { error: updErr } = await supabase
+          .from("category_links")
+          .update({ thumbnail_url: meta.imageUrl })
+          .eq("id", row.id as string);
+        if (updErr) {
+          console.warn(
+            "[strategy-thumb-backfill-chunk] update failed",
+            row.id,
+            updErr.message,
+          );
+          return "failed";
+        }
+        return "filled";
+      } catch (e) {
+        console.warn(
+          "[strategy-thumb-backfill-chunk] fetch failed",
+          row.id,
+          e,
+        );
+        return "failed";
+      }
+    },
+  );
+
+  let filled = 0;
+  let failed = 0;
+  let skippedNoImage = 0;
+  for (const o of outcomes) {
+    if (o === "filled") filled += 1;
+    else if (o === "failed") failed += 1;
+    else skippedNoImage += 1;
+  }
+
+  return {
+    ok: true,
+    filled,
+    failed,
+    skippedNoImage,
+    totalPending,
+    lastProcessedId: (data[data.length - 1]!.id as string) ?? null,
+    done: data.length < BATCH_SIZE,
+  };
+}
+
 /**
  * Sum of `duration_seconds` per category across all video links.
  * NULL durations are ignored. Used by the category index to render the
