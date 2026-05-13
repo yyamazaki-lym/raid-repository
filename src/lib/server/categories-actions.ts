@@ -32,6 +32,7 @@ import {
 import { videoBelongsToCategory } from "@/lib/content-groups";
 import { extractDateFromTitle, titleDateToIso } from "@/lib/title-date";
 import { createClient } from "@/lib/supabase/server";
+import type { CategoryLinkKind } from "@/lib/supabase/types";
 
 /**
  * 2.1 (2026-04-29): 動画の posted_at を決定する優先度ロジック。
@@ -303,7 +304,10 @@ export async function maybeSetFirstClearAtAction(
 
 export type ImportNowItem = {
   category: string;
-  kind: "strategy" | "video";
+  // Phase 15 (2.x, 2026-05-13): kind 型を CategoryLinkKind に揃える。
+  // Discord import は image を生成しないが、上流 ImportResult.kind が
+  // CategoryLinkKind なので型整合のため拡張 (実行時は strategy/video のみ)。
+  kind: CategoryLinkKind;
   ok: boolean;
   scanned: number;
   duplicates: number;
@@ -1291,7 +1295,7 @@ export async function setNativeScheduleDefaultRaidTimeAction(input: {
  */
 export async function createCategoryLinkAction(input: {
   categoryId: string;
-  kind: "strategy" | "video";
+  kind: "strategy" | "video" | "image";
   title: string;
   url: string;
   description?: string;
@@ -1346,6 +1350,10 @@ export async function createCategoryLinkAction(input: {
   // 制御するため、ここでは取得・保存だけ常に行う (将来 ON にしたとき即時
   // 表示可能になる)。動画は別系統 (youtubeThumbnailUrl) なのでスキップ。
   // 失敗・タイムアウト・og:image なしは NULL のまま登録 (致命視しない)。
+  //
+  // Phase 15: kind=image は URL 自体が画像コンテンツなので、メタ取得は
+  // 行わず thumbnail_url に url を直接コピー。一覧でのサムネ描画と
+  // Lightbox 表示の両方で同じ URL を使う。
   let thumbnailUrl: string | null = null;
   if (input.kind === "strategy") {
     try {
@@ -1358,6 +1366,8 @@ export async function createCategoryLinkAction(input: {
     } catch {
       // fall through — og:image 取得失敗は登録自体を妨げない
     }
+  } else if (input.kind === "image") {
+    thumbnailUrl = input.url;
   }
 
   const { data, error } = await supabase
