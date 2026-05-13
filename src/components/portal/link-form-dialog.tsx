@@ -135,11 +135,10 @@ export function LinkFormDialog({
       }
     }
 
-    // 2.x: 動画 kind の新規追加でタイトル空なら /api/page-title で自動補完。
+    // 2.x: 新規追加でタイトル空なら /api/page-title で自動補完 (kind 不問)。
     // UX 目的: 「URLから取得」ボタンを手動で押す手間を省く。失敗時は
-    // 手動入力を促すエラーへフォールバック (kind=strategy / 編集モードは
-    // 従来通り空タイトル禁止のまま)。
-    if (!t && !isEdit && kind === "video") {
+    // 手動入力を促すエラーへフォールバック (編集モードは従来通り空タイトル禁止)。
+    if (!t && !isEdit) {
       setFetchingTitle(true);
       try {
         const res = await fetch(
