@@ -45,6 +45,13 @@ export type ImportResult = {
    * 件数になる (= 本文/URL のどちらかがキーワードに部分一致した URL のみカウント)。
    */
   scanned?: number;
+  /**
+   * Phase 13.1 (2.1, 2026-05-13): フィルタ判定前にメッセージ本文から抽出された
+   * ユニーク URL 数。`scanned` は「フィルタ通過後」のため、フィルタ設定済カテゴリで
+   * `scanned === 0` のとき "チャンネル空 or Bot 権限不足" なのか "フィルタが
+   * 効きすぎて全部弾かれた" のかを UI が区別するために使う。
+   */
+  prefilteredCount?: number;
   /** Of `scanned`, how many were already in the DB and skipped. */
   duplicates?: number;
   /** Of (scanned - duplicates), how many INSERTs succeeded. */
@@ -215,6 +222,10 @@ async function importChannel(
   type Candidate = { url: string; postedBy: string; postedAt: string };
   const candidates: Candidate[] = [];
   const seenInBatch = new Set<string>();
+  // Phase 13.1: フィルタ判定前のユニーク URL を別 Set で記録。フィルタ設定済
+  // カテゴリで `scanned === 0` のとき、これが 0 なら本当に URL が無く (チャンネル
+  // 空 or Bot 権限不足)、> 0 なら「フィルタで全部弾かれた」を UI が区別できる。
+  const prefilteredSeen = new Set<string>();
   for (const m of [...messages].reverse()) {
     // Defensive: m.content can be missing/non-string for system /
     // webhook / forwarded messages even though Discord docs say it's
@@ -227,7 +238,9 @@ async function importChannel(
     const found = content.matchAll(URL_RE);
     for (const match of found) {
       const url = stripTrailingPunctuation(match[0]);
-      if (!url || seenInBatch.has(url)) continue;
+      if (!url) continue;
+      prefilteredSeen.add(url);
+      if (seenInBatch.has(url)) continue;
       if (!contentMatches && !matchesAnyKeyword(url, filterKeywords)) continue;
       seenInBatch.add(url);
       candidates.push({
@@ -237,8 +250,16 @@ async function importChannel(
       });
     }
   }
+  const prefilteredCount = prefilteredSeen.size;
   if (candidates.length === 0) {
-    return { category: cat.slug, kind, ok: true, scanned: 0, inserted: 0 };
+    return {
+      category: cat.slug,
+      kind,
+      ok: true,
+      scanned: 0,
+      inserted: 0,
+      prefilteredCount,
+    };
   }
 
   // 3. Dedupe vs existing rows.
@@ -260,6 +281,7 @@ async function importChannel(
       duplicates,
       inserted: 0,
       failed: 0,
+      prefilteredCount,
     };
   }
 
@@ -272,7 +294,7 @@ async function importChannel(
     .order("sort_order", { ascending: false })
     .limit(1)
     .maybeSingle();
-  let nextOrder = ((maxRow?.sort_order as number | undefined) ?? -1) + 1;
+  const nextOrder = ((maxRow?.sort_order as number | undefined) ?? -1) + 1;
 
   // 5. Enrich (fetch title + YouTube meta) in parallel, then bulk insert.
   // Concurrency cap of 6 keeps us well under any per-host rate limits
@@ -390,6 +412,7 @@ async function importChannel(
     inserted,
     failed,
     failReason: lastFailReason,
+    prefilteredCount,
   };
 }
 
