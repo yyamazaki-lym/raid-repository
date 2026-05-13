@@ -53,6 +53,13 @@ export type ImportResult = {
    * 効きすぎて全部弾かれた" のかを UI が区別するために使う。
    */
   prefilteredCount?: number;
+  /**
+   * Phase 13.3 (2.1, 2026-05-13): enrichment 段階で `fetchPageTitle` が成功した
+   * URL 数 (DB 未登録の fresh URL のみが対象)。フィルタが効きすぎる場合に「タイトル
+   * 取得が失敗していた」のか「取得できているがフィルタワードと一致しない」のかを
+   * 切り分けるため UI にも表示する。dedup で除外された既存 URL は含まれない。
+   */
+  titleFetchedCount?: number;
   /** Of `scanned`, how many were already in the DB and skipped. */
   duplicates?: number;
   /** Of (scanned - duplicates), how many INSERTs succeeded. */
@@ -300,6 +307,11 @@ async function importChannel(
   // Concurrency cap of 6 keeps us well under any per-host rate limits
   // while massively beating sequential fetches (8s × N → ~8s × ⌈N/6⌉).
   const FETCH_CONCURRENCY = 6;
+  // Phase 13.3 (2.1, 2026-05-13): title を nullable のまま保持する。元の
+  // `title ?? c.url` フォールバックを enrichment で行うと、フィルタ判定段階で
+  // 「タイトル取得失敗 → title === URL」となり、URL haystack と区別がつかなく
+  // なってフィルタが事実上無効になる。フォールバックは rowsToInsert 直前まで
+  // 遅らせ、フィルタ判定では `null = タイトル取得失敗 = マッチ不可` として扱う。
   const enriched = await pmap(fresh, FETCH_CONCURRENCY, async (c) => {
     const [title, meta] = await Promise.all([
       fetchPageTitle(c.url),
@@ -312,7 +324,7 @@ async function importChannel(
       postedBy: c.postedBy,
       postedAt: c.postedAt,
       messageContent: c.messageContent,
-      title: title ?? c.url,
+      title,
       durationSeconds: meta.durationSeconds,
     };
   });
@@ -331,12 +343,38 @@ async function importChannel(
   const filtered = enriched.filter((e) => {
     if (matchesAnyKeyword(e.messageContent, filterKeywords)) return true;
     if (matchesAnyKeyword(e.url, filterKeywords)) return true;
-    if (kind === "video" && matchesAnyKeyword(e.title, filterKeywords)) {
+    if (
+      kind === "video" &&
+      e.title !== null &&
+      matchesAnyKeyword(e.title, filterKeywords)
+    ) {
       return true;
     }
     return false;
   });
+  // Phase 13.3: タイトル取得成功数を統計として返値に載せる。フィルタが効きすぎる
+  // と見えた場合に、portal の取り込み結果パネルから「タイトル取得が失敗していた
+  // のか / 取得できているがワードが合わないだけか」を切り分けられるようにする。
+  const titleFetchedCount = enriched.filter((e) => e.title !== null).length;
   if (filtered.length === 0) {
+    // Vercel ログで実際のタイトルを確認できるようサンプルを warn 出力。
+    // フィルタ設定済 (filterKeywords > 0) のときだけ、出力 (運用ノイズ低減)。
+    if (filterKeywords.length > 0) {
+      console.warn(
+        "[discord-import] all candidates filtered out — フィルタ全件除外",
+        {
+          category: cat.slug,
+          kind,
+          total: enriched.length,
+          titleFetched: titleFetchedCount,
+          titleNull: enriched.length - titleFetchedCount,
+          filterKeywords,
+          sample: enriched
+            .slice(0, 8)
+            .map((e) => ({ url: e.url, title: e.title })),
+        },
+      );
+    }
     return {
       category: cat.slug,
       kind,
@@ -346,6 +384,7 @@ async function importChannel(
       inserted: 0,
       failed: 0,
       prefilteredCount,
+      titleFetchedCount,
     };
   }
 
@@ -355,7 +394,10 @@ async function importChannel(
   const rowsToInsert = filtered.map((e, i) => ({
     category_id: cat.id,
     kind,
-    title: e.title,
+    // Phase 13.3: タイトル取得失敗 (null) のときだけ URL 文字列で埋める
+    // フォールバック。フィルタ判定はもう終わっているので URL ↔ タイトル混同の
+    // 心配なし。DB の title カラムは NOT NULL のためフォールバック必要。
+    title: e.title ?? e.url,
     url: e.url,
     description: `Discord 取り込み (by ${e.postedBy})`,
     sort_order: startSortOrder + i,
@@ -414,6 +456,8 @@ async function importChannel(
     let earliestClearPostedAt: string | null = null;
     for (const e of filtered) {
       // 1.9.16: tier-aware — Savage requires "4 層" + clear keyword.
+      // Phase 13.3: title が null (取得失敗) のときは判定不可能なので skip。
+      if (!e.title) continue;
       if (!isClearTitleForCategory(e.title, cat.name)) continue;
       if (
         earliestClearPostedAt === null ||
@@ -448,6 +492,7 @@ async function importChannel(
     failed,
     failReason: lastFailReason,
     prefilteredCount,
+    titleFetchedCount,
   };
 }
 
