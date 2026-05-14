@@ -71,11 +71,6 @@ export function CategorySwitcher({ initialCategories, userRoleIds }: Props) {
       ? (categories.find((c) => c.slug === activeSlug) ?? null)
       : null;
 
-  // Preserve current sub-tab when switching categories — fall back to
-  // mitigation (most-used) when entering from outside.
-  const subSegment =
-    pathname.match(/^\/category\/[^/]+\/([^/]+)/)?.[1] ?? "mitigation";
-
   const triggerLabel = activeCategory ? activeCategory.name : "コンテンツ";
 
   return (
@@ -137,10 +132,12 @@ export function CategorySwitcher({ initialCategories, userRoleIds }: Props) {
         ) : (
           categories.map((cat) => {
             const isActive = cat.slug === activeSlug;
-            // Default-action target: preserve the user's current sub-tab
-            // when switching, fall back to mitigation. The 4 inline icons
-            // bypass that and navigate to specific sub-pages directly.
-            const defaultHref = `/category/${cat.slug}/${subSegment}`;
+            // Always navigate to the category's configured defaultTab —
+            // mirrors the behavior of the category cards on /category and
+            // the /category/{slug} root redirect (Phase 17). The 5 inline
+            // sub-page icons bypass this and navigate to specific
+            // sub-pages directly.
+            const defaultHref = `/category/${cat.slug}/${cat.defaultTab}`;
             return (
               <div
                 key={cat.id}
