@@ -99,7 +99,9 @@ FF14 レイド固定向けポータル — スケジュール / 軽減表 / ロ�
 
 ## Setup for your raid group
 
-このリポジトリを自分の固定で使う手順。所要時間は 30〜60分（うち Discord Bot 設定は任意で +20分）。
+> 📌 **2026-05 改訂**: Step 構成を Discord 認証先行順に再編しました。`DISCORD_BOT_TOKEN` / `DISCORD_GUILD_ID` および Discord Application の Client ID / Secret は Vercel デプロイ前に必要なので、新 Step 3 / 4 でまとめて取得・設定します。
+
+このリポジトリを自分の固定で使う手順。所要時間は 30〜60分（うち Discord 自動取り込みのチャンネル個別設定は任意で +10分）。
 
 ### 必要なもの
 
@@ -108,7 +110,7 @@ FF14 レイド固定向けポータル — スケジュール / 軽減表 / ロ�
 | ✅ | [GitHub](https://github.com) | リポジトリ管理（無料） |
 | ✅ | [Supabase](https://supabase.com) | DB + Realtime（無料枠で十分） |
 | ✅ | [Vercel](https://vercel.com) | ホスティング（Hobby 無料枠で十分） |
-| 任意 | [Discord Developer](https://discord.com/developers/applications) | 自動取り込みを使う場合のみ |
+| ✅ | [Discord Developer](https://discord.com/developers/applications) | OAuth gate (guild メンバー判定) + 自動取り込み |
 
 ローカル開発するなら追加で **Node.js 20+** と **npm**。
 
@@ -154,12 +156,12 @@ FF14 レイド固定向けポータル — スケジュール / 軽減表 / ロ�
 >
 > 📌 **demo / モックサイト用にデプロイする場合のみ**: 続けて [`supabase/seed-demo.sql`](./supabase/seed-demo.sql) を同様に SQL Editor で実行すると、demo 表示用のサンプルカテゴリ 7 件 + サンプルデータ (動画 / 軽減 / ロット / 募集文等) が一括投入されます。**本番運用では実行しないでください** — 本番テーブルに demo データが混入します。冪等 (ON CONFLICT / sentinel / URL NOT EXISTS guard) なので demo project への再実行は安全。
 >
-> 📌 **GitHub Actions で自動反映したい場合 (任意)**: `supabase/schema.sql` を更新する main push のたびに自動で SQL Editor 相当の処理を走らせる workflow を同梱しています。Supabase 接続文字列を repo secret に登録するだけで以後手動コピペ不要。手順は **[6. (任意) GitHub Actions で schema 自動反映](#6-任意-github-actions-で-schema-自動反映-5分)** を参照。
+> 📌 **GitHub Actions で自動反映したい場合 (任意)**: `supabase/schema.sql` を更新する main push のたびに自動で SQL Editor 相当の処理を走らせる workflow を同梱しています。Supabase 接続文字列を repo secret に登録するだけで以後手動コピペ不要。手順は **[10. (任意) GitHub Actions で schema 自動反映](#10-任意-github-actions-で-schema-自動反映-5分)** を参照。
 
 #### 2-3. 認証情報を取得
 
 1. 左メニュー **Settings**（歯車）→ **API**
-2. 以下の **3 つの値**をコピーしてメモ（次のステップで使う）：
+2. 以下の **3 つの値**をコピーしてメモ（Step 5 で使う）：
    | 項目 | 場所 |
    |---|---|
    | **Project URL** | Project URL 欄（`https://xxxxx.supabase.co` 形式） |
@@ -168,11 +170,80 @@ FF14 レイド固定向けポータル — スケジュール / 軽減表 / ロ�
 
 > ⚠️ `service_role` key は **絶対にブラウザ側に出さない**でください（RLS をバイパスする全権限キー）。Vercel の Environment Variables (server-only) に登録するのみで、`NEXT_PUBLIC_` プレフィックスは付けない。サーバー側の `/auth/callback` で Discord メンバーシップ判定を `app_metadata` に書き込むために必要。
 
+> 💡 ここで控えた **Project URL** のサブドメイン部 (例: `xxxxx.supabase.co` の `xxxxx`) は次の Step 4 で Discord Developer Portal に登録する Redirect URI にも使うのでメモしておくこと。
+
 ---
 
-### 3. Vercel デプロイ (5分)
+### 3. Discord Application + Bot 作成 (10分, 必須)
 
-#### 3-1. プロジェクトをインポート
+Discord guild メンバーシップが portal の **OAuth 認証ゲート**になっているため、Bot 取り込み機能を使わない場合でもここの設定は必須です。Application (OAuth) と Bot は同じ画面内で 1 アプリにまとめて作ります。
+
+#### 3-1. Application を作成
+
+1. https://discord.com/developers/applications にログイン
+2. 右上 **New Application** → 名前 (例: `Raid Repository`) → **Create**
+3. 左メニュー **General Information** で名前 / アイコンを必要に応じて調整
+
+#### 3-2. OAuth2 の Client ID / Client Secret を取得
+
+1. 左メニュー **OAuth2** → **OAuth2** ページ
+2. **CLIENT ID** をコピーしてメモ
+3. **CLIENT SECRET** 欄の **Reset Secret** ボタンを押し、表示された Secret をコピーしてメモ
+   - 一度しか表示されないので必ず控えること。漏れたら同じ画面で再 Reset 可
+
+> ⚠️ Client Secret は **Supabase の Authentication プロバイダ設定欄にだけ貼る値**。Vercel の Environment Variables や `.env.local` には登録しません。
+
+#### 3-3. Bot を有効化 + Intent を ON + Token を取得
+
+1. 左メニュー **Bot**
+2. ページを下にスクロールして **Privileged Gateway Intents** セクション:
+   - **SERVER MEMBERS INTENT** を **ON** （OAuth gate で guild メンバー判定に必須）
+   - **MESSAGE CONTENT INTENT** を **ON** （自動取り込みで添付メッセージ本文を読むため必須）
+   - 他は OFF のままで OK
+   - 下部 **Save Changes**
+3. 同じ Bot ページの **Token** セクション → **Reset Token** → 表示された**トークンをコピー**して保管（一度しか表示されない、Step 5 の `DISCORD_BOT_TOKEN` で使用）
+
+#### 3-4. Discord サーバー ID (Guild ID) を取得
+
+1. Discord 本体アプリの **設定 → 詳細設定 → 開発者モード** を ON
+2. 左サイドバーの自分のサーバーアイコンを**右クリック → サーバー ID をコピー**
+3. メモ（Step 5 の `DISCORD_GUILD_ID` で使用）
+
+> 💡 ここまでで「Client ID / Client Secret / Bot Token / Guild ID」の 4 つが揃っていることを確認してから次へ。
+
+---
+
+### 4. Discord ↔ Supabase OAuth 連携 (5分, 必須)
+
+Step 2 と Step 3 で取得した値を使い、Discord Developer Portal と Supabase ダッシュボードを双方向に紐付けます。**Vercel デプロイより前にここまで終わらせておくと、デプロイ直後にログインを試せます** (URL Configuration の Vercel ドメイン側は Step 7 で追記)。
+
+#### 4-1. Discord Developer Portal → OAuth2 → Redirects
+
+1. Step 3 で開いた Application の **OAuth2** ページ
+2. **Redirects** セクションで **Add Redirect** → 以下を貼り付け:
+   ```
+   https://YOUR_PROJECT_REF.supabase.co/auth/v1/callback
+   ```
+   - `YOUR_PROJECT_REF` は Step 2-3 で控えた Supabase Project URL のサブドメイン部
+   - これは Supabase 側の固定 callback URL なので、Vercel ドメインが変わっても Discord 側設定の変更は不要
+3. **Save Changes**
+
+#### 4-2. Supabase Dashboard → Authentication → Providers
+
+1. https://supabase.com/dashboard で対象プロジェクトを開く
+2. 左メニュー **Authentication → Providers**
+3. **Discord** を展開 → **Enable Discord provider** を ON
+4. **Client ID** に Step 3-2 でコピーした Client ID を貼り付け
+5. **Client Secret** に Step 3-2 でコピーした Client Secret を貼り付け
+6. **Save**
+
+> 📌 Site URL / Redirect URLs（=Vercel ドメイン側の登録）は Vercel のドメインが確定する Step 7 で行います。ここではまだ空のままで OK。
+
+---
+
+### 5. Vercel デプロイ (5分)
+
+#### 5-1. プロジェクトをインポート
 
 1. https://vercel.com/login で GitHub ログイン
 2. https://vercel.com/new
@@ -183,7 +254,7 @@ FF14 レイド固定向けポータル — スケジュール / 軽減表 / ロ�
    - Framework Preset: **Next.js**（自動検出）
    - そのまま下にスクロール
 
-#### 3-2. 環境変数を設定
+#### 5-2. 環境変数を設定
 
 **Environment Variables** セクションを展開して以下を登録（必須/任意の区別は `.env.local.example` に詳細あり、すべて Production / Preview / Development 全部にチェック）。
 
@@ -191,11 +262,11 @@ FF14 レイド固定向けポータル — スケジュール / 軽減表 / ロ�
 
 | Name | Value | 用途 |
 |---|---|---|
-| `NEXT_PUBLIC_SUPABASE_URL` | 2-3 の Project URL | DB 接続 |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | 2-3 の anon key | DB 接続 (read 専用相当、書き込みは RLS で admin 限定) |
-| `SUPABASE_SERVICE_ROLE_KEY` | 2-3 の service_role key | OAuth callback で `app_metadata` 書き込み + secret 暗号化テーブル ([⚠️ NEVER expose to browser](#)) |
-| `DISCORD_BOT_TOKEN` | Discord Bot トークン (5-1 で取得) | OAuth gate で guild メンバーシップ判定 + 自動取り込み |
-| `DISCORD_GUILD_ID` | Discord サーバー ID | OAuth gate のメンバー判定対象 |
+| `NEXT_PUBLIC_SUPABASE_URL` | Step 2-3 の Project URL | DB 接続 |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Step 2-3 の anon key | DB 接続 (read 専用相当、書き込みは RLS で admin 限定) |
+| `SUPABASE_SERVICE_ROLE_KEY` | Step 2-3 の service_role key | OAuth callback で `app_metadata` 書き込み + secret 暗号化テーブル ([⚠️ NEVER expose to browser](#)) |
+| `DISCORD_BOT_TOKEN` | Step 3-3 で取得した Bot トークン | OAuth gate で guild メンバーシップ判定 + 自動取り込み |
+| `DISCORD_GUILD_ID` | Step 3-4 で取得した Discord サーバー ID | OAuth gate のメンバー判定対象 |
 
 `SUPABASE_SERVICE_ROLE_KEY` 等の **server-only** 変数は `NEXT_PUBLIC_` プレフィックスを **絶対付けない**。付けるとブラウザバンドルに含まれて漏洩します。
 
@@ -204,36 +275,90 @@ FF14 レイド固定向けポータル — スケジュール / 軽減表 / ロ�
 | Name | Value | 用途 |
 |---|---|---|
 | `DISCORD_ADMIN_ROLE_IDS` | カンマ区切り Discord ロール ID | カテゴリ編集等を admin ロール所有者のみに制限 (未設定 = 全員 admin、後方互換) |
-| `CRON_SECRET` | 32 文字以上のランダム文字列 | Vercel Cron 認証 |
+| `CRON_SECRET` | 32 文字以上のランダム文字列 | Vercel Cron 認証 (自動取り込みを使う場合は必須) |
 | `YOUTUBE_API_KEY` | YouTube Data API v3 キー | 限定公開動画の duration / uploadDate 取得 (未設定だと HTML scrape fallback、Vercel IP の bot 検出で失敗することあり) |
 | `SECRET_ENCRYPTION_KEY` | 64 文字 hex (`openssl rand -hex 32`) | FFLogs token 等の AES-256-GCM 暗号化保管 (未設定だと旧 `app_settings` 平文保存にフォールバック) |
 | `FFLOGS_API_KEY` | FFLogs API v1 キー | レポート ↔ 動画 自動マッチ (Public レポート対象) |
 | `FFLOGS_OAUTH_CLIENT_ID` | FFLogs OAuth Client ID | **Private / Unlisted** レポートの自動マッチ用 (Authorization Code Flow)。v1 で十分なら未設定可 |
 | `FFLOGS_OAUTH_CLIENT_SECRET` | FFLogs OAuth Client Secret | 同上 (server-only)。詳細手順は `.env.local.example` |
 
-#### Discord OAuth (ダッシュボード設定のみ、env なし)
+`CRON_SECRET` 生成例（PowerShell）：
+```powershell
+-join ((48..57) + (65..90) + (97..122) | Get-Random -Count 32 | % {[char]$_})
+```
 
-1. Discord Developer Portal → アプリケーション → OAuth2 → Redirects に `https://YOUR_PROJECT_REF.supabase.co/auth/v1/callback` を追加
-2. Supabase ダッシュボード → Authentication → Providers → Discord を有効化、Discord Client ID / Secret を貼り付け
-3. Supabase ダッシュボード → Authentication → URL Configuration → Redirect URLs に `https://YOUR_VERCEL_DOMAIN/auth/callback` と `http://localhost:3000/auth/callback` を追加
+または Bash:
+```bash
+openssl rand -hex 16
+```
 
-#### 3-3. デプロイ実行
+#### 5-3. デプロイ実行
 
 1. **Deploy** ボタン
 2. 1〜2分待つ（ビルドログがリアルタイム表示）
-3. 完了すると `https://your-project-name.vercel.app` の URL が払い出される
+3. 完了すると `https://your-project-name.vercel.app` の URL が払い出される — この URL は Step 7 で使うのでコピーしておく
 
-#### 3-4. （任意）カスタムドメイン
+#### 5-4. （任意）カスタムドメイン
 
-`raid.example.com` のような自前ドメインを使いたい場合は **Settings → Domains** から追加できます。Cloudflare などの DNS で CNAME を Vercel に向ける流れ。
+`raid.example.com` のような自前ドメインを使いたい場合は **Settings → Domains** から追加できます。Cloudflare などの DNS で CNAME を Vercel に向ける流れ。Step 7 の Supabase URL Configuration ではカスタムドメイン側を Site URL にすると運用が綺麗。
 
 ---
 
-### 4. 初期設定 (5分)
+### 6. Bot を Discord サーバーに招待 (3分)
+
+Step 3 で作った Application を、自分の固定サーバーに Bot として参加させます。OAuth gate のメンバー判定だけなら参加させなくても通る場合がありますが、**`SERVER MEMBERS INTENT` を通じて guild member API を呼ぶには Bot が当該 guild に在籍している必要がある**ため、必ずこの Step を実行してください。
+
+1. Step 3 で開いた Application の左メニュー **OAuth2 → URL Generator**
+2. **Scopes**: `bot` にチェック
+3. **Bot Permissions**:
+   - `View Channels`
+   - `Read Message History`
+4. 下に生成された **GENERATED URL** を新タブで開く
+5. 自分の Discord サーバーを選択 → **認証**
+
+> 💡 自動取り込み用にチャンネル個別の権限上書きを設定する場合は Step 9 を参照。
+
+---
+
+### 7. デプロイ後の Supabase URL Configuration 更新 (3分, 必須)
+
+Vercel ドメインが Step 5 で確定したので、Supabase Auth に登録します。**これを忘れると Discord OAuth ログイン後の戻り先で `redirect_uri_mismatch` エラー** になります。
+
+1. Vercel ダッシュボード → 対象プロジェクト → **Settings → Domains** で Production URL を確認 (例: `your-project-name.vercel.app`)
+2. https://supabase.com/dashboard で対象プロジェクトを開く
+3. 左メニュー **Authentication → URL Configuration**
+4. **Site URL** に Vercel ドメインを設定:
+   ```
+   https://<your-vercel-domain>
+   ```
+5. **Redirect URLs** に以下 2 つを追加:
+   ```
+   https://<your-vercel-domain>/auth/callback
+   http://localhost:3000/auth/callback
+   ```
+   - `**` ワイルドカード形式 (`https://<your-vercel-domain>/**`) も併用しておくと preview deploy の戻り先まで広くカバーできる
+6. **Save**
+
+> 📌 後からカスタムドメインや別 Vercel プロジェクト名にリネームする場合の手順は [`.claude/todos/20.md`](./.claude/todos/20.md) を参照 (Site URL / Redirect URLs / FFLogs OAuth の同時更新が必要)。
+
+#### 7-1. ログイン動作確認
+
+1. `https://<your-vercel-domain>/` を開く → `/login` にリダイレクトされる
+2. **Discord でログイン** ボタンを押す → Discord の OAuth 同意画面 → portal TOP に着地すれば OK
+3. 着地しない場合のチェックポイント:
+   - Site URL が **新ドメイン**になっているか (`raid-repository.vercel.app` のまま等になっていないか)
+   - Redirect URLs に `https://<your-vercel-domain>/auth/callback` が exact match で入っているか
+   - Discord Developer Portal の Redirects に `https://YOUR_PROJECT_REF.supabase.co/auth/v1/callback` が exact match で入っているか
+   - Vercel の env に `DISCORD_BOT_TOKEN` / `DISCORD_GUILD_ID` が入っているか (= Step 5-2 のチェック)
+   - Bot が Step 6 で実際に guild に参加しているか
+
+---
+
+### 8. 初期設定 (5分)
 
 デプロイ完了 URL を開きます。最初は何も登録されていない状態です。
 
-#### 4-1. スケジュール URL の登録
+#### 8-1. スケジュール URL の登録
 
 1. ヘッダー右上の **⚙️ 設定**アイコンをクリック
 2. **Schedule Source** セクションで character-sheets の URL を入力
@@ -244,7 +369,7 @@ FF14 レイド固定向けポータル — スケジュール / 軽減表 / ロ�
 
 > この URL は Supabase の `app_settings` テーブルに保存され、**全メンバーで共有**されます。誰か1人が登録すれば全員に反映。
 
-#### 4-2. カテゴリーの追加・編集
+#### 8-2. カテゴリーの追加・編集
 
 1. 上部タブ **カテゴリー** へ
 2. デフォルトでサンプル 5 件 (現行零式 + Variant + Extreme + Ultimate × 2) が seed されているので、**自分達のコンテンツに編集**するか、削除して新規追加：
@@ -261,7 +386,7 @@ FF14 レイド固定向けポータル — スケジュール / 軽減表 / ロ�
    | Discord チャンネル ID | 後述（任意） |
 4. **保存**
 
-#### 4-3. Google Sheets URL の取得方法
+#### 8-3. Google Sheets URL の取得方法
 
 軽減表・ロット管理用のスプレッドシート URL は以下の形式が使えます：
 
@@ -271,7 +396,7 @@ FF14 レイド固定向けポータル — スケジュール / 軽減表 / ロ�
 | 埋め込み URL | `.../e/.../pubhtml?widget=true` | 同上、ウェブに公開時 |
 | 通常の共有URL | `.../edit#...` | 共有設定が「リンクを知っている全員が閲覧可」の場合のみ |
 
-#### 4-4. 動作確認
+#### 8-4. 動作確認
 
 - ホームにスケジュール表示
 - カテゴリーカードをクリック → **軽減表 / ロット管理 / 攻略情報 / 動画** タブが表示
@@ -279,32 +404,13 @@ FF14 レイド固定向けポータル — スケジュール / 軽減表 / ロ�
 
 ---
 
-### 5. Discord 自動取り込みを使う場合（任意, 20分）
+### 9. (任意) Discord 自動取り込みのチャンネル個別設定 (10分)
 
-毎日 1回、指定 Discord チャンネルから URL を自動取得して攻略情報・動画タブに投入する機能。設定が少し複雑なので、まずは手動運用してから後で追加でも OK。
+毎日 1回、指定 Discord チャンネルから URL を自動取得して攻略情報・動画タブに投入する機能。Step 3 / 6 で Bot 本体の作成と guild 参加は済んでいるので、ここでは「Bot にチャンネル単位の閲覧権限を付ける」「カテゴリーごとにチャンネル ID を登録する」の 2 点を行います。
 
-#### 5-1. Discord Bot を作成
+> 📌 Step 5 の env で `CRON_SECRET` を未登録の場合は、ここで Vercel ダッシュボード → Settings → Environment Variables に追加して **Deployments → 最新行の ⋯ → Redeploy** してください（環境変数は再ビルド時のみ反映）。
 
-1. https://discord.com/developers/applications にログイン
-2. 右上 **New Application** → 名前 (例: `Raid Repository Bot`) → **Create**
-3. 左メニュー **Bot**
-4. ページを下にスクロールして **Privileged Gateway Intents** セクション：
-   - **MESSAGE CONTENT INTENT** を **ON**
-   - 他はOFFのままでOK
-   - 下部 **Save Changes**
-5. 同じ Bot ページの **Token** セクション → **Reset Token** → 表示された**トークンをコピー**して保管（一度しか表示されない）
-
-#### 5-2. Bot を Discord サーバーに招待
-
-1. 左メニュー **OAuth2** → **URL Generator**
-2. **Scopes**: `bot` にチェック
-3. **Bot Permissions**: 
-   - `View Channels`
-   - `Read Message History`
-4. 下に生成された URL を新タブで開く
-5. 自分の Discord サーバーを選択 → **認証**
-
-#### 5-3. チャンネル個別の権限
+#### 9-1. チャンネル個別の権限上書き
 
 サーバー全体での Bot 権限と、各チャンネルの権限上書きは別です。**取り込み対象チャンネルそれぞれ**で：
 
@@ -318,40 +424,19 @@ FF14 レイド固定向けポータル — スケジュール / 軽減表 / ロ�
 
 > 💡 攻略・動画チャンネルが各カテゴリーに2つずつあるなら、Bot 専用ロールを作って一括許可する方法もあります。
 
-#### 5-4. Vercel に環境変数を追加
+#### 9-2. チャンネル ID を取得して portal に登録
 
-Vercel ダッシュボード → プロジェクト → **Settings → Environment Variables**：
-
-| Name | Value |
-|---|---|
-| `DISCORD_BOT_TOKEN` | 5-1 でコピーしたトークン |
-| `CRON_SECRET` | 任意のランダム文字列（32文字以上推奨） |
-
-`CRON_SECRET` 生成例（PowerShell）：
-```powershell
--join ((48..57) + (65..90) + (97..122) | Get-Random -Count 32 | % {[char]$_})
-```
-
-または Bash:
-```bash
-openssl rand -hex 16
-```
-
-設定後、**Deployments → 最新行の ⋯ → Redeploy** で再デプロイ（環境変数は再ビルド時のみ反映）。
-
-#### 5-5. チャンネル ID を取得
-
-1. Discord 設定 → **詳細設定** → **開発者モード** を ON
+1. Discord 設定 → **詳細設定** → **開発者モード** を ON (Step 3-4 で済ませていれば不要)
 2. 取り込み対象チャンネルを**右クリック → IDをコピー**
 3. アプリのカテゴリー編集ダイアログで「Discord 攻略チャンネルID」「Discord 動画チャンネルID」欄に貼り付け
 4. **保存**
 
-#### 5-6. 動作確認
+#### 9-3. 動作確認
 
 `/category` ページの **Discord 取り込み** ボタン → クリック後、結果がボタン下に表示：
 
 - ✅ `+N 件取り込み (...)` → 成功
-- ℹ️ `Discord メッセージから URL を検出できず` → チャンネル空 or Bot 権限不足（5-3 を見直し）
+- ℹ️ `Discord メッセージから URL を検出できず` → チャンネル空 or Bot 権限不足（9-1 を見直し）
 - ⚠️ `失敗 N` → DB 接続エラーなど（Vercel ログで詳細確認）
 - ❌ `エラー: discord 401/403/...` → Bot Token または権限の問題
 
@@ -359,7 +444,7 @@ openssl rand -hex 16
 
 ---
 
-### 6. (任意) GitHub Actions で schema 自動反映 (5分)
+### 10. (任意) GitHub Actions で schema 自動反映 (5分)
 
 `supabase/schema.sql` が更新されたとき (upstream `git pull` → `git push`、または自分でスキーマを編集したとき)、Supabase Dashboard で手動コピペする代わりに **push 1 回で自動反映**できます。
 
@@ -367,7 +452,7 @@ openssl rand -hex 16
 - 設定しなくても今までどおり手動運用できます (Step 2-2 と同じやり方)
 - ただし upstream に schema 拡張が入るたびに SQL Editor で再実行する手間がかかります
 
-#### 6-1. 接続文字列を取得
+#### 10-1. 接続文字列を取得
 
 1. Supabase ダッシュボード → **Settings → Database → Connection string**
 2. **Session pooler** タブを選択 (CI 向け、`postgres.<ref>` ユーザー)
@@ -375,17 +460,17 @@ openssl rand -hex 16
 3. URI 形式の文字列をコピー (`postgresql://postgres.xxxxx:[YOUR-PASSWORD]@aws-0-...:5432/postgres` 形式)
 4. `[YOUR-PASSWORD]` を Step 2-1 で保管した DB パスワードに置換
 
-#### 6-2. GitHub repo secret に登録
+#### 10-2. GitHub repo secret に登録
 
 1. fork した GitHub repo → **Settings → Secrets and variables → Actions** → **New repository secret**
 2. 入力:
    | 項目 | 値 |
    |---|---|
    | Name | `SUPABASE_DB_URL` |
-   | Value | 6-1 で組み立てた URI 全体 |
+   | Value | 10-1 で組み立てた URI 全体 |
 3. **Add secret**
 
-#### 6-3. 動作確認
+#### 10-3. 動作確認
 
 - これだけです。次回 `supabase/schema.sql` を含む main push が入ると、**Actions** タブで "Deploy Database (Production)" workflow が自動実行され schema が反映されます
 - (任意) Actions タブ → "Deploy Database (Production)" → 右上 **Run workflow** で手動 trigger も可能
@@ -402,7 +487,7 @@ openssl rand -hex 16
 将来このリポジトリを `git pull` で最新化した時にスキーマが拡張されている場合：
 
 1. プルしたコードに含まれる新しい `supabase/schema.sql` をそのまま Supabase SQL Editor で再実行
-   - **[Step 6](#6-任意-github-actions-で-schema-自動反映-5分) を設定済の場合は `git push origin main` するだけで GitHub Actions が自動反映**するので SQL Editor は不要です
+   - **[Step 10](#10-任意-github-actions-で-schema-自動反映-5分) を設定済の場合は `git push origin main` するだけで GitHub Actions が自動反映**するので SQL Editor は不要です
 2. すべての `CREATE TABLE` / `ALTER TABLE` が `IF NOT EXISTS` / `ADD COLUMN IF NOT EXISTS` で書かれているので**冪等**
 3. 既存データは破壊されません
 
@@ -411,10 +496,12 @@ openssl rand -hex 16
 | 症状 | 原因 / 対処 |
 |---|---|
 | デプロイ後に「Supabase に接続できませんでした」 | env vars 未設定 → Vercel Settings 確認 |
+| Login で `redirect_uri_mismatch` | Step 7 (Supabase URL Configuration) の Redirect URLs に新ドメイン `/auth/callback` が exact match で入っているか確認 |
+| Login 後すぐ `/auth/denied` に飛ぶ | (1) Bot が guild に参加していない (Step 6) / (2) `SERVER MEMBERS INTENT` が OFF (Step 3-3) / (3) `DISCORD_GUILD_ID` が誤り (Step 5-2) のいずれか |
 | 設定 dialog で URL 保存できない | Supabase の `app_settings` テーブル未作成 → schema.sql 再実行 |
 | カテゴリー追加でエラー | RLS ポリシー未適用 → schema.sql 再実行 |
 | Discord 取り込みボタンで `not configured` | `CRON_SECRET` または `DISCORD_BOT_TOKEN` 未設定 |
-| `scanned 0` ばかり | Bot がチャンネルを見えていない → 5-3 を再確認 |
+| `scanned 0` ばかり | Bot がチャンネルを見えていない → Step 9-1 を再確認 |
 | メンバーがホームでオンボーディング表示 | スケジュール URL が DB に未保存 → 設定 dialog で**保存**を押す |
 
 ## Local development
