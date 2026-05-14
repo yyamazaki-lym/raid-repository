@@ -56,6 +56,16 @@ export type ReleasePart = {
 export const RELEASES: ReleaseEntry[] = [
   {
     version: "2.2",
+    date: "2026-05-15",
+    parts: [
+      {
+        title: "✨ PR #128 — 上の「コンテンツ」タブからのカテゴリ切替もカテゴリごとの既定タブ (defaultTab) に着地させる",
+        body: "**経緯**: Phase 17 ([PR #123](https://github.com/yyamazaki-lym/raid-repository/pull/123)) でカテゴリごとの既定タブ (`Category.defaultTab`) を導入し、(a) カテゴリ一覧のカテゴリカード click と (b) `/category/{slug}` (タブ未指定 URL) アクセス時の redirect の 2 箇所では既定タブに飛ぶようになっていた。しかしヘッダー上の「コンテンツ」ドロップダウンメニュー内からカテゴリを選んだときだけ、現在のサブタブ (`subSegment`) を引き継ぐ古い挙動が残っており「カテゴリカードと挙動が一致しない」とユーザーから報告。\n\n**変更内容** [category-switcher.tsx](src/components/portal/category-switcher.tsx): ドロップダウン内カテゴリ項目の `defaultHref` を、現在の subSegment ベース (`/category/{slug}/{subSegment}`) から `cat.defaultTab` ベース (`/category/{slug}/{defaultTab}`) に置換し、未使用になった subSegment 計算 (pathname の正規表現マッチで「/category/{slug}/{sub}」を抽出するロジック) ごと削除。これでカテゴリカード / root redirect / コンテンツドロップダウンの 3 経路すべてが「常に defaultTab に着地」で統一。\n\n**変更しない範囲**: 同ファイル内の 5 個のサブページショートカットアイコン (盾=軽減 / サイコロ=ロット / 本=攻略 / フィルム=動画 / 端末=マクロ) は意図的に特定タブを指す UI なので従来通り該当タブに直接遷移する挙動を維持。`tab_config.enabled=false` のフォールバックは既存 2 箇所も実装していないため、3 箇所まとめて将来対応する想定でここでは入れない。\n\n**検証**: ユーザー実機で (a) 非カテゴリページから「コンテンツ」を開いて任意カテゴリ選択 → defaultTab に着地、(b) カテゴリ A のロット画面から B を選択 → B の defaultTab に着地 (ロットを引き継がない)、(c) defaultTab を変更すると上タブからの遷移にも即反映、(d) サブページアイコンは従来通り該当タブへ直行、を確認。",
+      },
+    ],
+  },
+  {
+    version: "2.2",
     date: "2026-05-13",
     parts: [
       {
