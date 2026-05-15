@@ -302,7 +302,8 @@ export function ImageFormDialog({
             <p className="text-muted-foreground text-[11px] leading-relaxed">
               ローカル画像 (最大 5MB / PNG·JPG·WebP·GIF) をアップロード、画像 URL
               直接貼付、または Google フォト共有 URL を貼ると含まれる画像を
-              自動展開します。
+              自動展開します。Discord 添付 URL は 24h で失効するため自動的に
+              Storage に取り込みます。
             </p>
             {url.trim() &&
               /^https?:\/\//i.test(url.trim()) &&

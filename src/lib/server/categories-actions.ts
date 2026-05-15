@@ -32,6 +32,10 @@ import {
 import { videoBelongsToCategory } from "@/lib/content-groups";
 import { extractDateFromTitle, titleDateToIso } from "@/lib/title-date";
 import { createClient } from "@/lib/supabase/server";
+import {
+  isDiscordCdnUrl,
+  migrateDiscordImageToStorage,
+} from "./discord-image-migrate";
 import type { CategoryLinkKind } from "@/lib/supabase/types";
 
 /**
@@ -1382,20 +1386,38 @@ export async function createCategoryLinkAction(input: {
     thumbnailUrl = input.url;
   }
 
+  // Phase 17 (2.x, 2026-05-15): kind='image' で Discord CDN URL を貼られた場合、
+  // 24h で署名失効するためここで Storage に退避し url/thumbnail_url を公開 URL に
+  // 差し替える。失敗時 (期限切れ取得 403、MIME 不一致 等) は INSERT を中断して
+  // reason をダイアログにそのまま返す。
+  let finalUrl = input.url;
+  let finalThumbnailUrl = thumbnailUrl;
+  if (input.kind === "image" && isDiscordCdnUrl(input.url)) {
+    const migrated = await migrateDiscordImageToStorage(
+      input.url,
+      input.categoryId,
+    );
+    if (!migrated.ok) {
+      return { ok: false, reason: migrated.reason };
+    }
+    finalUrl = migrated.publicUrl;
+    finalThumbnailUrl = migrated.publicUrl;
+  }
+
   const { data, error } = await supabase
     .from("category_links")
     .insert({
       category_id: input.categoryId,
       kind: input.kind,
       title: input.title,
-      url: input.url,
+      url: finalUrl,
       description: input.description ?? null,
       logs_url: input.logsUrl ?? null,
       logs_url_source: "manual",
       sort_order: nextOrder,
       duration_seconds: durationSeconds,
       posted_at: postedAt,
-      thumbnail_url: thumbnailUrl,
+      thumbnail_url: finalThumbnailUrl,
     })
     .select("id")
     .single();
@@ -1436,7 +1458,42 @@ export async function updateCategoryLinkAction(
     };
   }
   const supabase = await createClient();
+
+  // Phase 17 (2.x, 2026-05-15): kind='image' 行の URL が Discord CDN URL に編集
+  // された場合も Storage に退避する。kind は patch に含まれないので既存行を
+  // SELECT して確定 (画像 kind 以外は migrate しない)。
+  let urlPatch = patch.url;
+  let thumbnailPatch: string | undefined;
+  if (urlPatch !== undefined && isDiscordCdnUrl(urlPatch)) {
+    const { data: existing, error: selErr } = await supabase
+      .from("category_links")
+      .select("kind, category_id")
+      .eq("id", id)
+      .maybeSingle();
+    if (selErr || !existing) {
+      return {
+        ok: false,
+        reason: dbError("リンク取得", selErr ?? null),
+      };
+    }
+    if (existing.kind === "image") {
+      const migrated = await migrateDiscordImageToStorage(
+        urlPatch,
+        existing.category_id as string,
+      );
+      if (!migrated.ok) {
+        return { ok: false, reason: migrated.reason };
+      }
+      urlPatch = migrated.publicUrl;
+      // kind='image' は url と thumbnail_url を同値に保つ不変条件
+      // (createCategoryLinkAction の image kind 分岐と同じ規約)。
+      thumbnailPatch = migrated.publicUrl;
+    }
+  }
+
   const dbPatch: Record<string, unknown> = { ...patch };
+  if (urlPatch !== undefined) dbPatch.url = urlPatch;
+  if (thumbnailPatch !== undefined) dbPatch.thumbnail_url = thumbnailPatch;
   if ("logs_url" in patch) {
     dbPatch.logs_url_source = "manual";
   }
