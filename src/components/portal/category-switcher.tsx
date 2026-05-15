@@ -26,7 +26,7 @@ import {
 import { StatusBadge } from "./status-badge";
 import { useRealtimeCategories } from "@/lib/categories-client";
 import { filterVisibleCategories } from "@/lib/category-visibility";
-import type { Category } from "@/lib/supabase/types";
+import { isCategoryTabId, type Category } from "@/lib/supabase/types";
 
 const SUB_PAGES: Array<{ segment: string; label: string; Icon: LucideIcon }> = [
   { segment: "mitigation", label: "軽減表", Icon: ShieldHalf },
@@ -69,6 +69,17 @@ export function CategorySwitcher({ initialCategories, userRoleIds }: Props) {
   const activeCategory =
     activeSlug != null
       ? (categories.find((c) => c.slug === activeSlug) ?? null)
+      : null;
+
+  // 現在開いているサブタブを取得。pathname が /category/{slug}/{sub} 形式で
+  // {sub} が CategoryTabId に一致するときだけ採用、それ以外 (非カテゴリ
+  // ページから開いた / 子セグメントが規定タブ id でない) は null。
+  // 別カテゴリへ切替える時に同じサブタブに着地させるために使う。
+  const currentSubFromPath =
+    pathname.match(/^\/category\/[^/]+\/([^/]+)/)?.[1] ?? null;
+  const candidateTab =
+    currentSubFromPath && isCategoryTabId(currentSubFromPath)
+      ? currentSubFromPath
       : null;
 
   const triggerLabel = activeCategory ? activeCategory.name : "コンテンツ";
@@ -132,12 +143,18 @@ export function CategorySwitcher({ initialCategories, userRoleIds }: Props) {
         ) : (
           categories.map((cat) => {
             const isActive = cat.slug === activeSlug;
-            // Always navigate to the category's configured defaultTab —
-            // mirrors the behavior of the category cards on /category and
-            // the /category/{slug} root redirect (Phase 17). The 5 inline
-            // sub-page icons bypass this and navigate to specific
-            // sub-pages directly.
-            const defaultHref = `/category/${cat.slug}/${cat.defaultTab}`;
+            // 現在のサブタブを引き継ぐ。ただし対象カテゴリでそのタブが
+            // tab_config.{tab}.enabled === false で非表示になっている場合、
+            // あるいは引き継げる subSegment が取れない場合は defaultTab
+            // にフォールバック。判定式は sub-tabs.tsx の描画判定と同一。
+            // 5 個のサブページアイコンは特定タブを指す UI なので
+            // 引き継がず該当タブに直接遷移する (下の SUB_PAGES.map)。
+            const targetTab =
+              candidateTab !== null &&
+              cat.tabConfig?.[candidateTab]?.enabled !== false
+                ? candidateTab
+                : cat.defaultTab;
+            const defaultHref = `/category/${cat.slug}/${targetTab}`;
             return (
               <div
                 key={cat.id}
