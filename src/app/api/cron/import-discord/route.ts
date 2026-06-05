@@ -17,7 +17,7 @@ import { runDiscordImport } from "@/lib/server/discord-import";
  *   - `x-vercel-cron` header present (Vercel-issued cron triggers, both
  *     scheduled and dashboard "Run" button)
  *
- * Schedule defined in `vercel.json`: 0 0 * * * (09:00 JST).
+ * Schedule defined in `vercel.json`: 0 16 * * * (01:00 JST).
  */
 
 export const runtime = "nodejs";

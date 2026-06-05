@@ -3,11 +3,18 @@ import { NextResponse, type NextRequest } from "next/server";
 import { dispatchNoonNotifyForToday } from "@/lib/server/native-schedule-discord";
 
 /**
- * Vercel Cron (TODO #2 phase 4, 2026-05-08): 当日昼 12:00 JST に native
- * スケジュールの DECISION セッションを Discord 通知する。
+ * native スケジュールの DECISION セッションを Discord 通知する route
+ * (TODO #2 phase 4, 2026-05-08)。
  *
- * Schedule: `0 3 * * *` UTC = 12:00 JST。auth は snapshot-schedule cron と
- * 同パターン (`Authorization: Bearer ${CRON_SECRET}` または `x-vercel-cron`
+ * 発火元は Vercel Cron ではなく **Supabase pg_cron**
+ * (`supabase/schema.sql` Section 13 の `notify-native-schedule-hourly`、
+ * 毎時 0 分 UTC = JST 毎時 0 分発火、`pg_net.http_get` で本 route を叩く)。
+ * Vercel Hobby cron が sub-daily 限定のため毎時発火を pg_cron に逃がしている。
+ *
+ * 当日通知の目標時刻は `app_settings.native_schedule_discord_notify_hour`
+ * (default 12 = 12:00 JST)。route 側 HH gate で目標時のみ実通知し、それ以外の
+ * hour は 0 投稿で early return する。auth は snapshot-schedule cron と同
+ * パターン (`Authorization: Bearer ${CRON_SECRET}` または `x-vercel-cron`
  * header)。`app_settings.native_schedule_discord_notify_enabled='false'` の
  * ときは早期 return (`{ ok: true, skipped: "disabled" }`) で Discord 投稿 0。
  */
