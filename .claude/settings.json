@@ -51,7 +51,7 @@
           {
             "type": "command",
             "shell": "bash",
-            "command": "cd \"${CLAUDE_PROJECT_DIR:-/d/workd/portal}\" 2>/dev/null || cd \"D:/workd/portal\"; { echo \"[$(date '+%Y-%m-%d %H:%M:%S')] Stop hook fired (cwd=$PWD)\"; STATUS=$(git status --porcelain 2>/dev/null); AHEAD=$(git rev-list origin/main..HEAD 2>/dev/null | head -1); if [ -z \"$STATUS\" ] && [ -n \"$AHEAD\" ]; then echo \"[$(date '+%Y-%m-%d %H:%M:%S')] guard passed (ahead=$AHEAD), pushing\"; git push origin main 2>&1; echo \"[$(date '+%Y-%m-%d %H:%M:%S')] push exit=$?\"; else echo \"[$(date '+%Y-%m-%d %H:%M:%S')] guard skipped status_empty=[$([ -z \\\"$STATUS\\\" ] && echo yes || echo no)] ahead=[$AHEAD]\"; fi; } >> .claude/auto-push.log 2>&1"
+            "command": "cd \"${CLAUDE_PROJECT_DIR:-/d/workd/raid-repository}\" 2>/dev/null || cd \"D:/workd/raid-repository\"; { echo \"[$(date '+%Y-%m-%d %H:%M:%S')] Stop hook fired (cwd=$PWD)\"; STATUS=$(git status --porcelain 2>/dev/null); AHEAD=$(git rev-list origin/main..HEAD 2>/dev/null | head -1); if [ -z \"$STATUS\" ] && [ -n \"$AHEAD\" ]; then echo \"[$(date '+%Y-%m-%d %H:%M:%S')] guard passed (ahead=$AHEAD), pushing\"; git push origin main 2>&1; echo \"[$(date '+%Y-%m-%d %H:%M:%S')] push exit=$?\"; else echo \"[$(date '+%Y-%m-%d %H:%M:%S')] guard skipped status_empty=[$([ -z \\\"$STATUS\\\" ] && echo yes || echo no)] ahead=[$AHEAD]\"; fi; } >> .claude/auto-push.log 2>&1"
           }
         ]
       }
