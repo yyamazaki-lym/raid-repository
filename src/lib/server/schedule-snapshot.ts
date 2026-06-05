@@ -1,5 +1,5 @@
 import "server-only";
-import { createClient } from "@/lib/supabase/server";
+import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { dbError } from "@/lib/server/db-error";
 import { fetchScheduleRaw } from "@/lib/schedule/next-session";
 
@@ -73,7 +73,7 @@ export async function runScheduleSnapshot(): Promise<{
     };
   }
 
-  const supabase = await createClient();
+  const supabase = createSupabaseServiceRoleClient();
 
   // 既存 snapshot 由来 row のうち、char-sheets で現在 CANDIDATE な
   // rawDate に一致するものを delete。新規混入を止める DECISION フィルタ
