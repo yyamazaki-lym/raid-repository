@@ -10,7 +10,7 @@
   "crons": [
     {
       "path": "/api/cron/import-discord",
-      "schedule": "0 14 * * *"
+      "schedule": "0 16 * * *"
     },
     {
       "path": "/api/cron/snapshot-schedule",
