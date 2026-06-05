@@ -1,5 +1,5 @@
 import "server-only";
-import { createClient } from "@/lib/supabase/server";
+import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { dbError } from "@/lib/server/db-error";
 import { fetchPageTitle } from "@/lib/server/page-title";
 import {
@@ -86,7 +86,7 @@ export async function runDiscordImport(): Promise<{
     };
   }
 
-  const supabase = await createClient();
+  const supabase = createSupabaseServiceRoleClient();
   const { data: rows, error } = await supabase
     .from("categories")
     .select("*")
@@ -290,7 +290,7 @@ async function importChannel(
   }
 
   // 3. Dedupe vs existing rows.
-  const supabase = await createClient();
+  const supabase = createSupabaseServiceRoleClient();
   const { data: existing } = await supabase
     .from("category_links")
     .select("url")
@@ -614,7 +614,7 @@ async function maybeAutoLinkSheetUrls(
 
     if (!mitigationUrl && !lootUrl) return;
 
-    const supabase = await createClient();
+    const supabase = createSupabaseServiceRoleClient();
     // Issue per-kind UPDATEs so each WHERE clause carries the correct
     // `IS NULL` guard. Race-safe: a manual save mid-import that fills
     // the column will make the UPDATE a no-op instead of clobbering.
