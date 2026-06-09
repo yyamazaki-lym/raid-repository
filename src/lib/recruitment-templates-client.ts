@@ -69,14 +69,16 @@ export async function createRecruitmentTemplate(input: {
   body: string;
 }): Promise<{ ok: true; template: RecruitmentTemplate } | { ok: false; reason: string }> {
   const supabase = createClient();
-  // Append to end.
-  const { data: maxRow } = await supabase
-    .from("recruitment_templates")
-    .select("sort_order")
-    .order("sort_order", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  const nextOrder = ((maxRow?.sort_order as number | undefined) ?? -1) + 1;
+  // 2.4 (2026-06-09) TODO #83: sort_order は schema 側 RPC
+  // `next_recruitment_template_sort_order()` (SECURITY DEFINER) で計算。
+  // 1 round-trip 化 + RLS の影響を受けず確実に最新 max を返せる。
+  // INSERT との完全な atomic 化ではないが、JS 側で SELECT してから
+  // INSERT する従来パターンよりは race window が短い。
+  const { data: nextOrderData, error: rpcErr } = await supabase.rpc(
+    "next_recruitment_template_sort_order",
+  );
+  if (rpcErr) return { ok: false, reason: rpcErr.message };
+  const nextOrder = typeof nextOrderData === "number" ? nextOrderData : 0;
 
   const { data, error } = await supabase
     .from("recruitment_templates")
