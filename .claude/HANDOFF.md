@@ -1,6 +1,6 @@
 # Raid Repository — 引き継ぎノート
 
-> 2.1 (2026-05-08) 時点。完了済 TODO の詳細は `src/lib/changelog.ts` / 過去版番号は `.claude/done.md`。
+> 2.3 (2026-06-09) 時点。完了済 TODO の詳細は `src/lib/changelog.ts` / 過去版番号は `.claude/done.md`。
 >
 > **新規会話の手順**: このファイルを読んだ後、TODO 一覧は自動表示せずユーザーの要望を待つ。新規 TODO 追記時は part 単位ではなく TODO 完了時のみ統合追記する (part 細分は commit log に任せる)。
 
@@ -73,23 +73,37 @@
 | 7 | スマホでのレイアウト崩れ確認 | 中 |
 | 51 | マイクロインタラクション / ユーザビリティ向上。クリック時の press feedback / hover 時の subtle elevation / loading skeleton / focus ring 強化 / toast の出現位置・タイミング微調整 / フォーム入力の即時 validation / 空状態の illustration etc。framer-motion を残す方針なので springy な質感も維持しつつ portal 全体の polish を 1 周。観点リストの作成 + 優先順位付けから | 中 |
 | 11 | ページ全体のパフォーマンス最適化。phase 1-10 完了済、見送り候補あり。詳細: `.claude/todos/11.md` | — |
+| 84 | CSP `'unsafe-inline'` (script-src / style-src) を nonce 化または hash 化。現状は theme pre-hydration script のため緩めているが、`generateNonce()` + `<script nonce={...}>` パターンへ移行できれば script-src を厳格化できる。改修コストは大きく、当面据え置きで OK と PR #135 の punch list で判定済。実施時は dev (Turbopack の HMR / Fast Refresh) との両立も要確認 | 中〜大 |
 
 ### 🧹 コードベース最適化 / リファクタ
 
 | # | 項目 | 規模 |
 |---|---|---|
-| _(現在なし)_ | — | — |
+| 83 | `loot_items` / `mitigation_phases` / `mitigation_entries` / `recruitment_templates` / `category_macros` / `strategy_docs` 等の `sort_order` 計算で残っている JS 側 `SELECT max + 1` TOCTOU を、PR #135 と同パターンの Postgres SECURITY DEFINER RPC (`next_<table>_sort_order(...)`) に置換。実害は表示順の不安定化のみで、cron 並列書き込みが無い admin 手動経路なので race window は極短く優先度低。テーブル数分の RPC + JS 側差し替えで小〜中規模 | 小〜中 |
 
 ### 🚀 インフラ / デプロイ (コード外作業)
 
 | # | 項目 | 規模 |
 |---|---|---|
-| _(現在なし)_ | — | — |
+| 82 | `src/lib/rate-limit.ts` の in-memory fixed-window limiter を Vercel Marketplace の Upstash Redis (または Vercel KV) ベースの分散実装に置き換える。現状は Fluid Compute instance 跨ぎで状態を共有せず実効的に instance 数倍まで緩い (PR #135 の Medium #6 で punch list 化)。Vercel Dashboard → Storage → Upstash Redis を統合してから `kv.incr(key)` + `kv.expire(key, windowSec)` 相当に切り替え + proxy.ts / page-title rate rule を新 API に流す。env: integration が自動で `UPSTASH_REDIS_REST_URL` / `_TOKEN` を注入 | 中 |
 
 ## 完了済み TODO
 
 直近版のみ列挙。詳細経緯は `src/lib/changelog.ts`、過去版アーカイブは `.claude/done.md`。
 
+- **2.3 (2026-06-09)**: セキュリティ全体監査 batch 1 — Critical 5 件 + Medium/Low 6 件をまとめてクローズ ([PR #135](https://github.com/yyamazaki-lym/raid-repository/pull/135) squash merge `12ff809`)
+  - **発端**: ユーザー要望「全体を見てバグやセキュリティが甘い部分、動作的に問題がありそうな部分など、運用するにあたって支障が出そうなものがあれば修正していきたい」を受け、Workflow ベースの 10 次元 fan-out 監査を試みたが schema 出力リトライ失敗で停止。主要ファイルを直接精読して 16 件 (Critical 5 / Medium 6 / Low 5) の punch list を作成 → ユーザー選択で Critical 5 件を 1 PR、追って Medium #11+#9 / Medium #7+#8+#14+#10 / Low #12+#13 を順次同 branch に積み、最終的に 1 PR でまとめて投入
+  - **Critical 5 件 (PR #135 part 1)**: (a) `/api/auth/fflogs/*` (start / callback / disconnect) に `assertAdminResult()` admin gate 追加 — Route Handler は next-action 自動 CSRF が効かないので Server Action と同等の認可が必須、(b) FFLogs OAuth state を `app_settings` グローバル単一行 → HttpOnly cookie に移行 — multi-user OAuth 衝突 + anon SELECT 経由 state 漏洩を一括解消、(c) `/api/page-title` に SSRF + body-size + rate-limit ガード — `isPublicHttpUrl()` で IPv4/IPv6 private 範囲 (10.x / 127.x / 169.254.x / 172.16-31 / 192.168 / `::1` / `fe80::` / `fc..` / `fd..` / `[..]` brackets) + 内部 zone (localhost / .local / .internal) を遮断、`redirect: "manual"` で 1 hop だけ手動 follow、body は `getReader()` chunked 読み取りで 1MB 上限到達で `cancel()`、proxy.ts `RATE_LIMIT_RULES` に `30 req/60s` ルール追加、(d) FFLogs token の `app_settings` 平文 fallback 完全撤去 — `SECRET_ENCRYPTION_KEY` 未設定 fork で書かれた平文 token が anon SELECT 全開のテーブルから browser 経由で覗ける問題を fail-closed 化で解消、`persistTokens()` は暗号化保存失敗時 `{ok:false}` で caller に伝搬、schema.sql 末尾に legacy plaintext key を一掃する idempotent DELETE 追加、(e) `userIsAdmin([])` を fail-open → fail-closed に反転 — env `DISCORD_ADMIN_ROLE_IDS` 未設定 fork で「全員 admin」になっていた経路を閉鎖、dev 環境では `DEV_BYPASS_ADMIN_ROLE_ID = '__dev-bypass-admin__'` 固定 ID 特例で env なしでも admin 視点を維持
+  - **Medium 6 件 (PR #135 part 2-4)**: (#11) `src/lib/server/cron-auth.ts` 新規 — 3 cron route の `CRON_SECRET` + `x-vercel-cron` 認証ロジックを `assertCronAuth(req, label)` に集約、JSDoc に全 cron スケジュール表を 1 表で記載、(#9) 全 cron route の `maxDuration` を 60 → 300s に揃え (Discord import の pagination + enrichment で 60s 超になる事象を解消)、(#7) `discord-image-migrate.ts` を `redirect: "manual"` + `isDiscordCdnUrl` 再判定 (最大 2 hop) + `readBodyWithLimit` chunked 5MB guard に強化、(#8) `discord-import.ts` の Discord API エラー時の `reason` 文字列から body を除去して構造化メッセージのみに (詳細は `console.warn` 分離)、(#14) `maybeSetFirstClearAtAction` / `backfillFirstClearFromExistingVideos` に `assertAdminResult()` 追加 (fail-closed 化後の silent 空振り解消)、(#10) `next_category_sort_order()` / `next_category_link_sort_order(uuid, text)` SECURITY DEFINER RPC を schema.sql に追加 + `createCategoryAction` / `createCategoryLinkAction` / `discord-import.ts importChannel` の 3 箇所を `supabase.rpc(...)` 呼び出しに置換 (JS 側 TOCTOU を縮める、完全 atomic 化は将来 PR で `insert ... values (rpc())` まで踏み込む候補)
+  - **Low 2 件 (PR #135 part 5)**: (#12) FFLogs OAuth token 交換失敗時の `reason` から body 文字列除去 (URL に echo されたとき制御文字 / token 様文字列が漏れない、詳細は `console.warn` 分離)、(#13) `cron-auth.ts` JSDoc に「route × schedule(UTC) × JST × 発火元 (Vercel/pg_cron) × 設定ファイル」テーブル形式で全 cron スケジュールを集約
+  - **新規** [src/lib/server/cron-auth.ts](src/lib/server/cron-auth.ts) — `assertCronAuth(req, routeLabel)` + 全 cron スケジュール表 JSDoc
+  - **編集** 17 files: `src/lib/server/{auth,fflogs-oauth,categories-actions,discord-import,discord-image-migrate,page-title}.ts` / `src/lib/{url-safe,changelog}.ts` / `src/proxy.ts` / `src/app/api/auth/fflogs/{start,callback,disconnect}/route.ts` / `src/app/api/page-title/route.ts` / `src/app/api/cron/{import-discord,snapshot-schedule,notify-native-schedule}/route.ts` / `supabase/schema.sql`
+  - **触らない範囲**: Medium #6 (Vercel KV / Upstash Redis 化) は Marketplace integration のユーザー操作が必要なため別 PR (TODO #82 として 未完了 TODO 一覧 へ起票)。Low #15 (callback signOut on failure) / #16 (CSP 'unsafe-inline' nonce 化) は punch list で「現状で OK」と判定したが、CSP は将来余地として TODO #84 起票。`loot_items` / `mitigation_*` / `recruitment_templates` / `category_macros` 等の sort_order race も cron 並列書き込み無しの admin 手動経路なので TODO #83 として後回し
+  - **副作用**: (a) `SECRET_ENCRYPTION_KEY` 未設定の deployment では FFLogs 連携が起動しなくなる — merge 前に本番 / demo 両環境の env 設定を必ず確認 (本 PR 完了時点で本番 yurutto は 41d 前から設定済み、demo は read-only 公開なので未設定で OK)、(b) `DISCORD_ADMIN_ROLE_IDS` 未設定 fork は本 PR 後に全員「編集不可」状態 — README / `.env.local.example` でも必須化を明記すべきだが、当 fork は既に設定済 (demo は意図的に空 = read-only) のため即時影響なし
+  - **検証**: dev preview + curl で実測 — #11 cron 認証 (no auth / wrong bearer → 401、x-vercel-cron / 正規 bearer → 通過) / #3 SSRF (169.254.169.254 / 127.0.0.1 / localhost / 10.x / 192.168.x / `[::1]` / `[fe80::1]` / `[fc00::1]` / javascript: / file:// → 400、example.com → 200) / #3 rate limit (連打 30 超で 429 + retry-after) / #1 admin gate (非 admin → 403 / redirect、admin → 200 / OAuth flow) / #5 fail-closed (`DISCORD_ADMIN_ROLE_IDS=EMPTY + PUBLIC_DEMO_MODE` で roles=[] → userIsAdmin=false で書き込み 403)。`npx tsc --noEmit` 0 errors / `npm run build` ✓ Compiled (TypeScript clean + static gen 4/4 + 17 routes)。検証中に `URL.hostname` が IPv6 リテラルを `[::1]` (角括弧付き) で返すことを発見、bracket 剥がし 1 行 fix を同 PR に追加して再検証 PASS。#2 OAuth state cookie / #4 plaintext fallback 撤去 / #7 image migrate / #8 cron error body / #14 first_clear gate / #10 sort_order RPC はコードレビューでロジック確認 + 本番 merge 後の実機で fail-fast 確認
+  - **deploy 結果**: schema deploy 両方 success (29s / 36s) + Vercel 本番 Ready (1m) + Vercel demo Ready。ユーザー実機確認 OK (admin 編集 / FFLogs 接続維持 / cron 認証)
+  - **follow-up**: TODO #82 (Vercel KV / Upstash Redis rate-limit) / #83 (他テーブルの sort_order RPC 化) / #84 (CSP nonce 化) を新規起票。`loot_items` 系の sort_order race は cron 並列書き込み無しなので優先度低
+  - **設計ドキュメント**: `~/.claude/plans/fizzy-petting-comet.md` (16 件 punch list 全体 + First PR 実装プラン + 動作検証方針)
 - **2.1 (2026-05-12 part5)**: #81 native スケジュールで当月日付を auto-insert し空 row 状態を解消 — クローズ ([PR #100](https://github.com/yyamazaki-lym/raid-repository/pull/100) squash merge `ae55fd4`)
   - **発端**: TODO #77 (PR #94) で sync/native UI を flat 表に統一、TODO #80 (PR #96+#98) で `splitSessions` cutoff を「JST 今日 0:00」に揃えた後、native では `native_schedule_sessions` が当月分 0 件のままだと「予定なし」表示になり当月日付一覧がそもそも視認できない問題が残っていた。yurutto 本番 native は「Discord 通知時に候補日を都度追加」する運用で row が積まれていないのが常態
   - **採用方式 (ユーザー確認済み 3 点)**: (1) 実装方式 = **DB に空 row を auto-insert** (placeholder 擬似生成ではない、実 row 化により出欠 / 通知 / status toggle が普通に動く)、(2) 日付範囲 = JST 今日 0:00 〜 当月末日、当月末日まで残り 7 日以内なら翌月末日まで延長、(3) 起動タイミング = page レンダー毎に点検 + 不足分 bulk INSERT (`ON CONFLICT (raw_date) DO NOTHING` で冪等、2 回目以降のアクセスは noop)、デフォルト時刻 = app_settings 新規キー 2 件 + settings dialog UI で admin が編集可能 (fallback `21:00`〜`23:00`)、出欠 / 通知ボタン = 日付行から両方表示 (実 row なので既存 UI ロジックが動く)
