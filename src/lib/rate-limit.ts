@@ -6,11 +6,10 @@
  * 止まるリスクがあるため、最小限の防御として実装。
  *
  * バックエンド戦略 (TODO #82):
- *   - **Upstash Redis** が利用可能 (`UPSTASH_REDIS_REST_URL` +
- *     `UPSTASH_REDIS_REST_TOKEN` env が両方セット) なら分散 fixed-window
- *     を採用 (`@upstash/ratelimit` の `fixedWindow` algorithm)。
- *     Vercel Fluid Compute は instance 跨ぎで状態を共有しないため、
- *     分散 store を入れないと instance 数 × limit まで実効的に緩んでいた。
+ *   - **Upstash Redis** が利用可能なら分散 fixed-window を採用
+ *     (`@upstash/ratelimit` の `fixedWindow` algorithm)。Vercel Fluid
+ *     Compute は instance 跨ぎで状態を共有しないため、分散 store を
+ *     入れないと instance 数 × limit まで実効的に緩んでいた。
  *   - env 未設定 / Redis 呼び出し失敗時は **in-memory fallback** に
  *     graceful degrade。fork ユーザーが Vercel Marketplace で Upstash
  *     を入れる前 (= TODO #82 適用初期) でも従来挙動が壊れないように。
@@ -24,12 +23,19 @@
  *
  * Vercel Marketplace 連携手順 (ユーザー側 1 回作業):
  *   1. Vercel Dashboard → 該当プロジェクト → Storage → Browse Marketplace
- *   2. 「Upstash Redis」を選択して Connect
+ *   2. 「Upstash for Redis」を選択して Connect (旧 Vercel KV 後継)
  *   3. 環境 (Production / Preview / Development) を選んで Add
- *   4. `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` が自動で
- *      env に注入される (本実装は `Redis.fromEnv()` で自動取得)
+ *   4. `KV_REST_API_URL` / `KV_REST_API_TOKEN` が自動で env に注入される
+ *      (本実装は KV_* / UPSTASH_REDIS_REST_* の両 prefix に対応)
  *
- * Vercel KV は 2026 年に提供終了済 (Upstash Redis に統合された)。
+ * 対応 env (どちらでも動く):
+ *   - `KV_REST_API_URL` / `KV_REST_API_TOKEN` (Vercel Marketplace
+ *     「Upstash for Redis」が注入する prefix、旧 Vercel KV 後継)
+ *   - `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` (Upstash
+ *     アカウント直接連携 / Marketplace 非経由)
+ *
+ * Vercel KV (`@vercel/kv` package) は 2026 年に提供終了済で
+ * 「Upstash for Redis」に統合された (env prefix は KV_* のまま温存)。
  */
 
 import { Ratelimit } from "@upstash/ratelimit";
@@ -96,14 +102,24 @@ function checkInMemory(
  * 必要 (内部で固有 prefix を持つため)。proxy.ts は同じ rule を毎リクエスト
  * 使うので module-level でキャッシュして重複生成を避ける。
  *
- * Redis client は env から自動取得 (`Redis.fromEnv()`)。env が片方でも
- * 欠けていたら `null` を返して in-memory fallback に倒す。
+ * Redis client は env から自動取得。両方の prefix に対応:
+ * - **Vercel Marketplace「Upstash for Redis」** (旧 Vercel KV 後継):
+ *   `KV_REST_API_URL` / `KV_REST_API_TOKEN` を注入
+ * - **Upstash 直接アカウント連携** (Marketplace 非経由 / 他環境):
+ *   `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN`
+ *
+ * いずれも対応 (KV_* を優先)。両方欠けていたら `null` を返して
+ * in-memory fallback に倒す。
  */
 let cachedRedis: Redis | null | undefined = undefined; // undefined = まだ判定していない
 function getRedis(): Redis | null {
   if (cachedRedis !== undefined) return cachedRedis;
-  const url = process.env.UPSTASH_REDIS_REST_URL?.trim();
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN?.trim();
+  const url =
+    process.env.KV_REST_API_URL?.trim() ||
+    process.env.UPSTASH_REDIS_REST_URL?.trim();
+  const token =
+    process.env.KV_REST_API_TOKEN?.trim() ||
+    process.env.UPSTASH_REDIS_REST_TOKEN?.trim();
   if (!url || !token) {
     cachedRedis = null;
     return null;
