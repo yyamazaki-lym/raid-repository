@@ -1,6 +1,7 @@
 import "server-only";
 import { NextResponse, type NextRequest } from "next/server";
 import { dispatchNoonNotifyForToday } from "@/lib/server/native-schedule-discord";
+import { assertCronAuth } from "@/lib/server/cron-auth";
 
 /**
  * native スケジュールの DECISION セッションを Discord 通知する route
@@ -13,30 +14,26 @@ import { dispatchNoonNotifyForToday } from "@/lib/server/native-schedule-discord
  *
  * 当日通知の目標時刻は `app_settings.native_schedule_discord_notify_hour`
  * (default 12 = 12:00 JST)。route 側 HH gate で目標時のみ実通知し、それ以外の
- * hour は 0 投稿で early return する。auth は snapshot-schedule cron と同
- * パターン (`Authorization: Bearer ${CRON_SECRET}` または `x-vercel-cron`
- * header)。`app_settings.native_schedule_discord_notify_enabled='false'` の
+ * hour は 0 投稿で early return する。
+ *
+ * Authorization は `assertCronAuth` (src/lib/server/cron-auth.ts) に集約。
+ * `Authorization: Bearer ${CRON_SECRET}` (pg_cron が vault から取得) または
+ * `x-vercel-cron` ヘッダで通過。
+ *
+ * `app_settings.native_schedule_discord_notify_enabled='false'` の
  * ときは早期 return (`{ ok: true, skipped: "disabled" }`) で Discord 投稿 0。
+ *
+ * 2.x (2026-06-09): maxDuration を 60 → 300 に揃える (1 投稿あたりは軽量
+ * だが、対象セッション数 × Discord API レイテンシで稀にスパイクする)。
  */
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 export async function GET(req: NextRequest) {
-  const authHeader = req.headers.get("authorization");
-  const secret = process.env.CRON_SECRET?.trim();
-  if (!secret) {
-    console.warn("[cron/notify-native-schedule] CRON_SECRET not configured");
-    return NextResponse.json({ error: "not configured" }, { status: 503 });
-  }
-
-  const isVercelCron = req.headers.get("x-vercel-cron") !== null;
-  const expected = `Bearer ${secret}`;
-  const headerOk = authHeader === expected || authHeader?.trim() === expected;
-  if (!headerOk && !isVercelCron) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+  const denied = assertCronAuth(req, "cron/notify-native-schedule");
+  if (denied) return denied;
 
   const result = await dispatchNoonNotifyForToday();
   if (!result.ok) {

@@ -65,13 +65,45 @@ export async function migrateDiscordImageToStorage(
     return { ok: false, reason: "Discord CDN URL ではありません" };
   }
 
-  let res: Response;
+  // 2.x (2026-06-09): redirect を手動制御。Discord CDN は実運用ではほぼ
+  // リダイレクトしないが、防御として 3xx の Location を再度
+  // isDiscordCdnUrl で検証し、最大 2 hop だけ手動で追従する。
+  // (Discord CDN ホスト以外への redirect は遮断 → SSRF 余地を排除)
+  const MAX_HOPS = 2;
+  let current = sourceUrl;
+  let res: Response | null = null;
   try {
-    res = await fetch(sourceUrl, {
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-      redirect: "follow",
-      headers: { "User-Agent": "RaidRepository/0.1" },
-    });
+    for (let hop = 0; hop < MAX_HOPS; hop++) {
+      const r = await fetch(current, {
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+        redirect: "manual",
+        headers: { "User-Agent": "RaidRepository/0.1" },
+      });
+      if (r.status >= 300 && r.status < 400) {
+        const loc = r.headers.get("location");
+        if (!loc) {
+          res = r;
+          break;
+        }
+        let next: string;
+        try {
+          next = new URL(loc, current).toString();
+        } catch {
+          return { ok: false, reason: "Discord 画像取得失敗 (不正な redirect Location)" };
+        }
+        if (!isDiscordCdnUrl(next)) {
+          return {
+            ok: false,
+            reason:
+              "Discord 画像取得失敗 — redirect 先が Discord CDN 以外でした",
+          };
+        }
+        current = next;
+        continue;
+      }
+      res = r;
+      break;
+    }
   } catch (e) {
     return {
       ok: false,
@@ -80,6 +112,9 @@ export async function migrateDiscordImageToStorage(
         (e instanceof Error ? e.message : "unknown") +
         ")",
     };
+  }
+  if (!res) {
+    return { ok: false, reason: "Discord 画像取得失敗 — redirect ループ" };
   }
   if (!res.ok) {
     // 403 = 署名期限切れ、404 = 削除済、429 = レート制限。いずれも同じ文言で
@@ -105,8 +140,12 @@ export async function migrateDiscordImageToStorage(
   if (lenHeader > MAX_BYTES) {
     return { ok: false, reason: "画像サイズが 5MB を超えています" };
   }
-  const buf = Buffer.from(await res.arrayBuffer());
-  if (buf.byteLength > MAX_BYTES) {
+  // 2.x (2026-06-09): Content-Length は偽れるので chunked 読み取りで
+  // 実バイト数を見ながら上限到達で abort。`arrayBuffer()` だと上限超過の
+  // 巨大データを全部メモリに乗せてから判定することになり、Vercel 関数の
+  // メモリ圧を一時的に上げる問題があった。
+  const buf = await readBodyWithLimit(res, MAX_BYTES);
+  if (!buf) {
     return { ok: false, reason: "画像サイズが 5MB を超えています" };
   }
 
@@ -157,4 +196,38 @@ function mimeToExt(mime: string): string {
     default:
       return "bin";
   }
+}
+
+/**
+ * `res.body` を chunked に読み込み、`maxBytes` 超過時は abort して
+ * `null` を返す。完走時は Buffer。Content-Length を偽ったサーバーや
+ * 完全な arrayBuffer() を回避してメモリ圧を抑える目的。
+ */
+async function readBodyWithLimit(
+  res: Response,
+  maxBytes: number,
+): Promise<Buffer | null> {
+  const reader = res.body?.getReader();
+  if (!reader) {
+    const ab = await res.arrayBuffer();
+    return ab.byteLength > maxBytes ? null : Buffer.from(ab);
+  }
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    if (!value) continue;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      try {
+        await reader.cancel();
+      } catch {
+        // ignore
+      }
+      return null;
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks.map((c) => Buffer.from(c)));
 }

@@ -78,6 +78,17 @@ const RATE_LIMIT_RULES: RateLimitRule[] = [
     limit: 10,
     windowMs: 30_000,
   },
+  // 2.x (2026-06-09): /api/page-title は認証済ユーザー (および
+  // PUBLIC_DEMO_MODE の匿名読者) から任意 URL を fetch する経路で、
+  // 制限なしだと Vercel 関数の active CPU 課金と外部 HTTP quota が
+  // 浴び続ける。1 分 30 回あれば登録ダイアログの正規利用 (連打 5〜10
+  // 回程度) を遥かに超える上限。
+  {
+    scope: "api-page-title",
+    match: (p) => p === "/api/page-title",
+    limit: 30,
+    windowMs: 60_000,
+  },
 ];
 
 function applyRateLimit(request: NextRequest): NextResponse | null {

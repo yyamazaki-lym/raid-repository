@@ -195,14 +195,18 @@ export async function createCategoryAction(
   if (!auth.ok) return { ok: false, reason: auth.reason };
 
   const supabase = await createClient();
-  // Place new categories at the end (max sort_order + 1).
-  const { data: maxRow } = await supabase
-    .from("categories")
-    .select("sort_order")
-    .order("sort_order", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  const nextOrder = ((maxRow?.sort_order as number | undefined) ?? -1) + 1;
+  // 2.x (2026-06-09) TODO #10: sort_order は schema 側 RPC
+  // `next_category_sort_order()` (SECURITY DEFINER) で計算。1 round-trip
+  // 化 + RLS の影響を受けず確実に最新 max を返せる。INSERT との完全な
+  // atomic 化ではないが、JS 側で SELECT してから INSERT する従来パター
+  // ンよりは race window が短い。
+  const { data: nextOrderData, error: rpcErr } = await supabase.rpc(
+    "next_category_sort_order",
+  );
+  if (rpcErr) {
+    return { ok: false, reason: dbError("並び順計算", rpcErr) };
+  }
+  const nextOrder = typeof nextOrderData === "number" ? nextOrderData : 0;
 
   const { data, error } = await supabase
     .from("categories")
@@ -289,18 +293,21 @@ export async function updateCategoryStatusAction(
 }
 
 /**
- * Race-safe NULL→value setter for `first_clear_at`. Triggered automatically
- * when a clear-flagged video appears, so it must NOT require admin (any
- * member's video upload should be able to mark a clear). Returns whether
- * an update actually occurred.
+ * Race-safe NULL→value setter for `first_clear_at`.
+ *
+ * 2.x (2026-06-09): admin gate を追加。`userIsAdmin` を fail-closed 化
+ * した結果、非 admin が呼ぶと RLS で UPDATE が空振りして UI 上は
+ * 「Server Action が成功っぽく返ったが何も起きない」になり混乱を招く。
+ * 明示的に 403 を返して toast でわかるようにする。クリア動画追加自体は
+ * admin が手動でやる運用 (Discord import 経路は cron service role で別
+ * 経路) なので影響は限定的。
  */
 export async function maybeSetFirstClearAtAction(
   categoryId: string,
   isoTimestamp: string,
 ): Promise<{ updated: boolean; reason?: string }> {
-  // Note: NOT admin-gated by design. This fires from the client when a
-  // video with a clear keyword is added, and we want any member to be
-  // able to surface a clear date — not just admins.
+  const auth = await assertAdminResult();
+  if (!auth.ok) return { updated: false, reason: "ADMIN ロールが必要です" };
   const supabase = await createClient();
   const { data, error: selErr } = await supabase
     .from("categories")
@@ -488,6 +495,21 @@ export type BackfillResult = {
 export async function backfillFirstClearFromExistingVideos(
   opts: { overwrite?: boolean } = {},
 ): Promise<BackfillResult> {
+  // 2.x (2026-06-09): admin gate を追加。`overwrite=true` で全カテゴリの
+  // first_clear_at を再計算する破壊的操作なので、RLS 任せにせず action
+  // 入口で明示的に 403 を返す。
+  const auth = await assertAdminResult();
+  if (!auth.ok) {
+    return {
+      ok: false,
+      reason: "ADMIN ロールが必要です",
+      alreadySet: 0,
+      filled: 0,
+      noMatch: 0,
+      filledDetails: [],
+      noMatchDetails: [],
+    };
+  }
   const supabase = await createClient();
   const overwrite = opts.overwrite === true;
 
@@ -838,24 +860,14 @@ export async function getFflogsSessionCookieStatus(): Promise<{
   set: boolean;
   preview: string | null;
 }> {
-  // secrets テーブル (暗号化) を優先、無ければ旧 app_settings (平文)
-  // を fallback として確認。preview だけ返すので decrypt 結果は捨てる。
+  // 2.x (2026-06-09): `app_settings` 平文 fallback を撤去。`secrets`
+  // テーブル (暗号化, anon deny) のみを参照する。preview だけ返すので
+  // decrypt 結果は捨てる。
   const { getSecretValue } = await import("./secret-store");
   const encrypted = await getSecretValue("fflogs_session_cookie");
-  if (encrypted) {
-    const preview =
-      encrypted.length > 40 ? encrypted.slice(0, 40) + "…" : encrypted;
-    return { set: true, preview };
-  }
-  const supabase = await createClient();
-  const { data } = await supabase
-    .from("app_settings")
-    .select("value")
-    .eq("key", "fflogs_session_cookie")
-    .maybeSingle();
-  const value = (data?.value as string | null | undefined) ?? null;
-  if (!value) return { set: false, preview: null };
-  const preview = value.length > 40 ? value.slice(0, 40) + "…" : value;
+  if (!encrypted) return { set: false, preview: null };
+  const preview =
+    encrypted.length > 40 ? encrypted.slice(0, 40) + "…" : encrypted;
   return { set: true, preview };
 }
 
@@ -1335,15 +1347,16 @@ export async function createCategoryLinkAction(input: {
     };
   }
   const supabase = await createClient();
-  const { data: maxRow } = await supabase
-    .from("category_links")
-    .select("sort_order")
-    .eq("category_id", input.categoryId)
-    .eq("kind", input.kind)
-    .order("sort_order", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  const nextOrder = ((maxRow?.sort_order as number | undefined) ?? -1) + 1;
+  // 2.x (2026-06-09) TODO #10: sort_order は schema 側 RPC
+  // `next_category_link_sort_order(category_id, kind)` で計算。
+  const { data: nextOrderData, error: rpcErr } = await supabase.rpc(
+    "next_category_link_sort_order",
+    { p_category_id: input.categoryId, p_kind: input.kind },
+  );
+  if (rpcErr) {
+    return { ok: false, reason: dbError("並び順計算", rpcErr) };
+  }
+  const nextOrder = typeof nextOrderData === "number" ? nextOrderData : 0;
 
   // 2.x: 動画の手動追加でも Discord cron import と同型のメタを埋める。
   // 非 YouTube URL の場合 fetchYouTubeMeta は { null, null } を返すので

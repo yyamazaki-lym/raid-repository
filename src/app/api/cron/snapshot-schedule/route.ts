@@ -2,35 +2,28 @@ import "server-only";
 import { NextResponse, type NextRequest } from "next/server";
 import { runScheduleSnapshot } from "@/lib/server/schedule-snapshot";
 import { getScheduleSourceMode } from "@/lib/schedule/source-mode";
+import { assertCronAuth } from "@/lib/server/cron-auth";
 
 /**
  * Vercel Cron: snapshot character-sheets attendance into
  * `schedule_past_sessions` so the data survives upstream pruning.
  *
  * Schedule: 12:50 UTC = 21:50 JST. Right before raid time, when the
- * latest answers from members are most likely to be in. Same auth
- * pattern as the discord-import cron (CRON_SECRET bearer or
- * x-vercel-cron header).
+ * latest answers from members are most likely to be in.
+ *
+ * Authorization は `assertCronAuth` (src/lib/server/cron-auth.ts) に集約。
+ *
+ * 2.x (2026-06-09): maxDuration を 60 → 300 に揃える (char-sheets fetch
+ * + 多数 row の UPSERT を含むので余裕を持たせる)。
  */
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 export async function GET(req: NextRequest) {
-  const authHeader = req.headers.get("authorization");
-  const secret = process.env.CRON_SECRET?.trim();
-  if (!secret) {
-    console.warn("[cron/snapshot-schedule] CRON_SECRET not configured");
-    return NextResponse.json({ error: "not configured" }, { status: 503 });
-  }
-
-  const isVercelCron = req.headers.get("x-vercel-cron") !== null;
-  const expected = `Bearer ${secret}`;
-  const headerOk = authHeader === expected || authHeader?.trim() === expected;
-  if (!headerOk && !isVercelCron) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+  const denied = assertCronAuth(req, "cron/snapshot-schedule");
+  if (denied) return denied;
 
   const mode = await getScheduleSourceMode();
   if (mode !== "sync") {
