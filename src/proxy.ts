@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { updateSession } from "@/lib/supabase/middleware";
 import { checkRateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
+import { buildCspHeader, generateCspNonce, CSP_NONCE_HEADER } from "@/lib/csp";
 
 /**
  * サイト全体を Discord メンバー限定にする proxy。
@@ -137,46 +138,68 @@ function isPublicDemoModeEnabled(): boolean {
 }
 
 export async function proxy(request: NextRequest) {
+  // 2.4 (2026-06-09) TODO #84: CSP nonce をリクエストごとに生成し、
+  // (a) Server Components 側で `headers().get('x-nonce')` から取得できる
+  //     よう request header に書き込み、
+  // (b) browser 側へは response header の `Content-Security-Policy` 値
+  //     `script-src 'nonce-${nonce}'` として返す。
+  const nonce = generateCspNonce();
+  const cspHeader = buildCspHeader(nonce);
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set(CSP_NONCE_HEADER, nonce);
+  // Next.js docs: nonce を framework scripts (React runtime / page bundles /
+  // Next.js が生成する inline script) に自動適用させるには `Content-Security-Policy`
+  // を request header にも書き込む必要がある (Next.js が `'nonce-...'` パターンを
+  // パースして拾う仕組み)。response 側にも同値を書き込む。
+  requestHeaders.set("Content-Security-Policy", cspHeader);
+
+  // どの return path を通っても browser に CSP が届くよう、戻り値を
+  // 装飾するヘルパ。redirect / 429 / 通常 response いずれにも適用。
+  const withCsp = <T extends NextResponse>(res: T): T => {
+    res.headers.set("Content-Security-Policy", cspHeader);
+    return res;
+  };
+
   // TODO #40: rate limit は session refresh より前段で評価して、
   // 攻撃時に Supabase への往復も抑える。dev bypass は意図的に rate
   // limit より後に置いて、ローカル開発で 429 を踏まないようにする。
   const limited = await applyRateLimit(request);
-  if (limited) return limited;
+  if (limited) return withCsp(limited);
 
-  const { user, response } = await updateSession(request);
+  const { user, response } = await updateSession(request, requestHeaders);
   const { pathname, search } = request.nextUrl;
 
   if (isPublicPath(pathname)) {
-    return response;
+    return withCsp(response);
   }
 
   // Dev bypass: ログイン状態 / guild membership を一切問わずにそのまま通す。
   // この経路を取るのはローカル開発時のみ (NODE_ENV ガード済み)。
   if (isDevAuthBypassEnabled()) {
-    return response;
+    return withCsp(response);
   }
 
   // Public demo mode: 本番ビルドでも auth gate を skip。書き込みは
   // auth.ts 側の roles=[] non-admin user で弾かれるので read-only 公開。
   // 優先順位は dev bypass の後 (= ローカル開発で両方 true なら admin 視点維持)。
   if (isPublicDemoModeEnabled()) {
-    return response;
+    return withCsp(response);
   }
 
   if (!user) {
     const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set("next", pathname + search);
-    return NextResponse.redirect(loginUrl);
+    return withCsp(NextResponse.redirect(loginUrl));
   }
 
   const appMeta = (user.app_metadata ?? {}) as {
     discord_guild_member?: boolean;
   };
   if (appMeta.discord_guild_member !== true) {
-    return NextResponse.redirect(new URL("/auth/denied", request.url));
+    return withCsp(NextResponse.redirect(new URL("/auth/denied", request.url)));
   }
 
-  return response;
+  return withCsp(response);
 }
 
 export const config = {
