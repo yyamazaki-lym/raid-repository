@@ -205,12 +205,24 @@ async function importChannel(
         },
       );
       if (!res.ok) {
+        // 2.x (2026-06-09): Discord error body を response/JSON に直接
+        // 載せるのを止め、構造化メッセージ (status + page) のみ返す。
+        // 詳細は console.warn にだけ吐く (Vercel ログ画面共有時に
+        // token 断片 / rate-limit 詳細が漏れるリスクを避ける)。
         const body = await res.text().catch(() => "");
+        console.warn("[discord-import] discord api error", {
+          category: cat.slug,
+          kind,
+          channelId,
+          page: page + 1,
+          status: res.status,
+          bodyPreview: body.slice(0, 200),
+        });
         return {
           category: cat.slug,
           kind,
           ok: false,
-          reason: `discord ${res.status} (page ${page + 1}): ${body.slice(0, 200)}`,
+          reason: `discord api ${res.status} (page ${page + 1})`,
         };
       }
       const batch = (await res.json()) as DiscordMessage[];
@@ -313,15 +325,15 @@ async function importChannel(
   }
 
   // 4. Determine starting sort_order.
-  const { data: maxRow } = await supabase
-    .from("category_links")
-    .select("sort_order")
-    .eq("category_id", cat.id)
-    .eq("kind", kind)
-    .order("sort_order", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  const nextOrder = ((maxRow?.sort_order as number | undefined) ?? -1) + 1;
+  // 2.x (2026-06-09) TODO #10: schema 側 RPC で 1 round-trip 化。Discord
+  // cron は同カテゴリ内で strategy / video を順次実行するため自身との
+  // race は無いが、admin が同時に「Import now」を押したケース等で
+  // category_links の sort_order が衝突するのを抑える。
+  const { data: nextOrderData } = await supabase.rpc(
+    "next_category_link_sort_order",
+    { p_category_id: cat.id, p_kind: kind },
+  );
+  const nextOrder = typeof nextOrderData === "number" ? nextOrderData : 0;
 
   // 5. Enrich (fetch title + YouTube meta) in parallel, then bulk insert.
   // Concurrency cap of 6 keeps us well under any per-host rate limits

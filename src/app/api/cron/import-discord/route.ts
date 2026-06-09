@@ -1,6 +1,7 @@
 import "server-only";
 import { NextResponse, type NextRequest } from "next/server";
 import { runDiscordImport } from "@/lib/server/discord-import";
+import { assertCronAuth } from "@/lib/server/cron-auth";
 
 /**
  * Vercel Cron entrypoint — daily import of strategy / video URLs from
@@ -10,44 +11,24 @@ import { runDiscordImport } from "@/lib/server/discord-import";
  * deals with auth + JSON shaping. The same core function is also called
  * from the "Import now" Server Action (UI button).
  *
- * Authorization
- * -------------
- * Either of these is acceptable:
- *   - `Authorization: Bearer ${CRON_SECRET}` (for external/manual curl calls)
- *   - `x-vercel-cron` header present (Vercel-issued cron triggers, both
- *     scheduled and dashboard "Run" button)
+ * Authorization は `assertCronAuth` (src/lib/server/cron-auth.ts) に集約。
+ * `Authorization: Bearer ${CRON_SECRET}` または `x-vercel-cron` ヘッダで通過。
  *
  * Schedule defined in `vercel.json`: 0 16 * * * (01:00 JST).
+ *
+ * 2.x (2026-06-09): maxDuration を 60 → 300 に引き上げ。N カテゴリ並列 ×
+ * 5 ページの message fetch (15s timeout) × per-URL enrichment で 60s を
+ * 超えるケースがあり、全カテゴリの insert がロールバックされるリスクが
+ * あった。Vercel 標準 default (300s) に揃える。
  */
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 export async function GET(req: NextRequest) {
-  const authHeader = req.headers.get("authorization");
-  const secret = process.env.CRON_SECRET?.trim();
-  if (!secret) {
-    console.warn("[cron/discord] CRON_SECRET not configured");
-    return NextResponse.json({ error: "not configured" }, { status: 503 });
-  }
-
-  const isVercelCron = req.headers.get("x-vercel-cron") !== null;
-  const expected = `Bearer ${secret}`;
-  const headerOk = authHeader === expected || authHeader?.trim() === expected;
-
-  if (!headerOk && !isVercelCron) {
-    console.warn(
-      "[cron/discord] auth failed",
-      JSON.stringify({
-        receivedHeaderLength: authHeader?.length ?? 0,
-        receivedHeaderPrefix: authHeader?.slice(0, 14) ?? null,
-        expectedSecretLength: secret.length,
-        hasVercelCronHeader: isVercelCron,
-      }),
-    );
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+  const denied = assertCronAuth(req, "cron/discord");
+  if (denied) return denied;
 
   const result = await runDiscordImport();
   if (!result.ok) {

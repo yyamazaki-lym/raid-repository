@@ -1034,3 +1034,53 @@ SELECT cron.schedule(
     );
   $cron$
 );
+
+-- ---- 13b. Atomic sort_order allocator RPCs (TODO #10, 2.x) ------------
+-- 2.x (2026-06-09): SELECT max(sort_order)+1 → INSERT の TOCTOU で
+-- 並行 insert 同士が同じ sort_order を取り得る問題があった。実害は
+-- 並び順の不安定化だが、Discord cron が並列に同カテゴリの strategy /
+-- video を書く場合に踏みやすい。SQL 関数化して atomic に確定する。
+--
+-- 戻り値はその関数呼び出し時点で割り当てるべき次の sort_order 整数。
+-- 既存行が無い場合は 0 を返す (NOT NULL DEFAULT 0 と整合)。
+--
+-- SECURITY DEFINER で RLS を bypass するが、引数だけ参照する read-only
+-- 関数なので安全。anon / authenticated に EXECUTE GRANT して server
+-- action から呼び出せるようにする。
+CREATE OR REPLACE FUNCTION public.next_category_sort_order()
+RETURNS integer LANGUAGE sql SECURITY DEFINER SET search_path = public AS $$
+  SELECT COALESCE(MAX(sort_order), -1) + 1 FROM public.categories
+$$;
+
+CREATE OR REPLACE FUNCTION public.next_category_link_sort_order(
+  p_category_id uuid,
+  p_kind text
+)
+RETURNS integer LANGUAGE sql SECURITY DEFINER SET search_path = public AS $$
+  SELECT COALESCE(MAX(sort_order), -1) + 1
+  FROM public.category_links
+  WHERE category_id = p_category_id AND kind = p_kind
+$$;
+
+GRANT EXECUTE ON FUNCTION public.next_category_sort_order() TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.next_category_link_sort_order(uuid, text)
+  TO anon, authenticated;
+
+-- ---- 14. Migration: 旧 plaintext FFLogs token / OAuth state を一掃 -----
+-- 2.x (2026-06-09): `fflogs-oauth.ts` の app_settings 平文 fallback と
+-- `app_settings` 経由の OAuth state 保管を撤去した。anon SELECT が全テーブル
+-- 全開のため、`SECRET_ENCRYPTION_KEY` 未設定 fork で書かれた過去の plaintext
+-- token が browser から見える状態だったので一括削除する。idempotent。
+--
+-- 該当 key:
+--   - fflogs_oauth_access_token   ← 旧 plaintext fallback
+--   - fflogs_oauth_refresh_token  ← 旧 plaintext fallback
+--   - fflogs_session_cookie       ← 旧 plaintext fallback
+--   - fflogs_oauth_state_pending  ← cookie 化により app_settings には書かれない
+DELETE FROM public.app_settings
+  WHERE key IN (
+    'fflogs_oauth_access_token',
+    'fflogs_oauth_refresh_token',
+    'fflogs_session_cookie',
+    'fflogs_oauth_state_pending'
+  );

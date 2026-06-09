@@ -12,12 +12,14 @@ import {
  * FFLogs v2 OAuth (Authorization Code Flow) helpers.
  *
  * Flow:
- *   1. User clicks "Connect FFLogs" → /api/auth/fflogs/start
- *   2. Server builds authorize URL + sets state cookie → redirect
+ *   1. User clicks "Connect FFLogs" → /api/auth/fflogs/start (admin only)
+ *   2. Server builds authorize URL + sets `fflogs_oauth_state` HttpOnly
+ *      cookie → redirect to FFLogs
  *   3. User authorizes on fflogs.com → redirected to
  *      /api/auth/fflogs/callback?code=...&state=...
- *   4. Server validates state cookie, exchanges code for tokens,
- *      stores in `app_settings` keyed under `fflogs_oauth_*`
+ *   4. Server validates state against the cookie, exchanges code for
+ *      tokens, stores access/refresh in encrypted `secrets` table
+ *      and expires_at/user_name in `app_settings`
  *   5. User redirected back to app
  *
  * Token usage:
@@ -28,6 +30,8 @@ import {
  * Required env vars (server-side):
  *   - FFLOGS_OAUTH_CLIENT_ID
  *   - FFLOGS_OAUTH_CLIENT_SECRET
+ *   - SECRET_ENCRYPTION_KEY  (2.x で必須化)
+ *   - SUPABASE_SERVICE_ROLE_KEY  (secrets テーブル書き込みに必須)
  *
  * The redirect URI is built from the request origin at runtime so the
  * same code works for localhost dev and Vercel production. Make sure
@@ -35,12 +39,13 @@ import {
  *   - http://localhost:3000/api/auth/fflogs/callback
  *   - https://<your-prod-host>/api/auth/fflogs/callback
  *
- * SECURITY (TODO #35, 2.1+): access_token / refresh_token は新
- * `secrets` テーブルに AES-256-GCM 暗号化して保存する (server-side
- * service role 経由でのみ読み書き可)。expires_at / user_name は
- * 機密度が低いので従来どおり `app_settings` 平文。旧 `app_settings`
- * の plaintext token は読み取り fallback として 1 度だけ使い、書き
- * 込み時に消す (= 自動移行)。
+ * SECURITY history:
+ * - TODO #35 (2.1): access_token / refresh_token を `secrets` (AES-256-GCM)
+ *   に保存。旧 `app_settings` plaintext は読み取り fallback として残置。
+ * - 2.x (2026-06-09): plaintext fallback を完全撤去。`SECRET_ENCRYPTION_KEY`
+ *   未設定だと `app_settings` の anon SELECT (全開) 経由で token が漏れる
+ *   リスクがあったため、暗号化保存が成立しないなら早期失敗 (fail-closed)
+ *   に変更。state もここでは扱わず callback 側で cookie と照合する。
  */
 
 export const OAUTH_AUTHORIZE_URL = "https://www.fflogs.com/oauth/authorize";
@@ -56,8 +61,6 @@ const KEY_ACCESS = "fflogs_oauth_access_token";
 const KEY_REFRESH = "fflogs_oauth_refresh_token";
 const KEY_EXPIRES = "fflogs_oauth_expires_at";
 const KEY_USER_NAME = "fflogs_oauth_user_name";
-/** Random state value persisted to app_settings for CSRF check on callback. */
-const KEY_STATE_PENDING = "fflogs_oauth_state_pending";
 
 export type OAuthTokens = {
   accessToken: string;
@@ -78,8 +81,13 @@ function getOAuthClientCreds():
 
 /**
  * Build the authorization URL the user is redirected to. The `state`
- * is a random per-request token that we also persist server-side and
- * compare on callback to defend against CSRF.
+ * is a random per-request token; the caller is expected to persist it
+ * (now: HttpOnly cookie at /api/auth/fflogs/start) and compare it on
+ * callback to defend against CSRF.
+ *
+ * 2.x (2026-06-09): state を `app_settings` に書く処理を撤去。callback
+ * 側で cookie と照合する設計に変更したため、ここでは state を生成して
+ * 返すだけで永続化はしない。
  */
 export async function buildAuthorizeUrl(
   redirectUri: string,
@@ -98,16 +106,6 @@ export async function buildAuthorizeUrl(
   const state = Array.from(stateBytes)
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
-  // Persist state for callback verification (single in-flight handshake
-  // per app instance is fine for our scale).
-  const supabase = await createClient();
-  const { error } = await supabase
-    .from("app_settings")
-    .upsert(
-      { key: KEY_STATE_PENDING, value: state },
-      { onConflict: "key" },
-    );
-  if (error) return { ok: false, reason: dbError("OAuth state 保存", error) };
 
   const url = new URL(OAUTH_AUTHORIZE_URL);
   url.searchParams.set("client_id", creds.clientId);
@@ -119,12 +117,13 @@ export async function buildAuthorizeUrl(
 }
 
 /**
- * Exchange the auth code for access + refresh tokens. Validates the
- * state cookie before calling FFLogs.
+ * Exchange the auth code for access + refresh tokens.
+ *
+ * 2.x (2026-06-09): state 検証は callback route 側で cookie と照合する
+ * 形に分離。本関数は code → token の交換と保存だけを担当する。
  */
 export async function exchangeCodeForTokens(
   code: string,
-  state: string,
   redirectUri: string,
 ): Promise<{ ok: true; tokens: OAuthTokens } | { ok: false; reason: string }> {
   const creds = getOAuthClientCreds();
@@ -135,17 +134,6 @@ export async function exchangeCodeForTokens(
         "OAuth クライアント未設定 — Vercel の環境変数 FFLOGS_OAUTH_CLIENT_ID / FFLOGS_OAUTH_CLIENT_SECRET を設定して redeploy してください",
     };
   }
-  // Verify state matches what we issued.
-  const expectedState = await fetchAppSetting(KEY_STATE_PENDING);
-  if (!expectedState || expectedState !== state) {
-    return {
-      ok: false,
-      reason: "OAuth state が一致しません — リクエストが改ざんされた可能性",
-    };
-  }
-  // Clear the state immediately (one-time use).
-  const supabase = await createClient();
-  await supabase.from("app_settings").delete().eq("key", KEY_STATE_PENDING);
 
   // FFLogs requires HTTP Basic auth on the token endpoint (body-form
   // credentials returned `invalid_client` in the wild). Switch to the
@@ -185,9 +173,16 @@ export async function exchangeCodeForTokens(
             "OAuth クライアント認証失敗 — fflogs.com/api/clients/ で client_id / client_secret が正しいか、Public Client にチェックが入っていないかを確認してください",
         };
       }
+      // 2.x (2026-06-09): エラー詳細は console.warn 経由でログのみに出し、
+      // ユーザー向け reason には HTTP status と既知パターンのみ載せる
+      // (URL に echo されたとき制御文字 / token 様文字列が漏れない)。
+      console.warn("[fflogs-oauth] token exchange error", {
+        status: res.status,
+        bodyPreview: text.slice(0, 200),
+      });
       return {
         ok: false,
-        reason: `token 交換失敗 (${res.status}): ${text.slice(0, 200)}`,
+        reason: `token 交換失敗 (HTTP ${res.status}) — Vercel ログで詳細を確認してください`,
       };
     }
     const data = (await res.json()) as {
@@ -210,7 +205,10 @@ export async function exchangeCodeForTokens(
       refreshToken: data.refresh_token,
       expiresAt,
     };
-    await persistTokens(tokens);
+    const persisted = await persistTokens(tokens);
+    if (!persisted.ok) {
+      return { ok: false, reason: persisted.reason };
+    }
     // Best-effort: fetch the connected user's name for the UI badge.
     await fetchAndPersistUserName(tokens.accessToken);
     return { ok: true, tokens };
@@ -220,9 +218,9 @@ export async function exchangeCodeForTokens(
 }
 
 /**
- * Use refresh_token to get a new access_token. Updates app_settings
- * in-place. Returns null on failure (caller should treat as not
- * connected).
+ * Use refresh_token to get a new access_token. Persists the new tokens
+ * via `persistTokens` (encrypted `secrets` only). Returns null on
+ * failure (caller should treat as not connected).
  */
 async function refreshTokens(
   refreshToken: string,
@@ -266,7 +264,11 @@ async function refreshTokens(
       refreshToken: data.refresh_token ?? refreshToken,
       expiresAt: new Date(Date.now() + data.expires_in * 1000).toISOString(),
     };
-    await persistTokens(tokens);
+    const persisted = await persistTokens(tokens);
+    if (!persisted.ok) {
+      console.warn("[fflogs-oauth] refresh persist failed:", persisted.reason);
+      return null;
+    }
     return tokens;
   } catch (e) {
     console.warn("[fflogs-oauth] refresh exception:", e);
@@ -274,21 +276,20 @@ async function refreshTokens(
   }
 }
 
-/** Read stored tokens and refresh if within 60 seconds of expiry. */
+/**
+ * Read stored tokens and refresh if within 60 seconds of expiry.
+ *
+ * 2.x (2026-06-09): `app_settings` 平文 fallback を撤去。`secrets`
+ * テーブル (暗号化) のみを参照する。`SECRET_ENCRYPTION_KEY` 未設定 /
+ * service role 未設定 などで `getSecretValue` が null を返す環境では
+ * 接続なし扱いになる。
+ */
 export async function getValidFflogsOAuthToken(): Promise<string | null> {
-  // 新 secrets (暗号化) を優先、無ければ app_settings (旧 plaintext)
-  // を fallback として読む。secrets が読めない or 鍵未設定 の場合は
-  // ともに `null` で plaintext fallback に流れる。
-  const [encAccess, encRefresh, plainAccess, plainRefresh, expiresAtStr] =
-    await Promise.all([
-      getSecretValue(KEY_ACCESS),
-      getSecretValue(KEY_REFRESH),
-      fetchAppSetting(KEY_ACCESS),
-      fetchAppSetting(KEY_REFRESH),
-      fetchAppSetting(KEY_EXPIRES),
-    ]);
-  const accessToken = encAccess ?? plainAccess;
-  const refreshToken = encRefresh ?? plainRefresh;
+  const [accessToken, refreshToken, expiresAtStr] = await Promise.all([
+    getSecretValue(KEY_ACCESS),
+    getSecretValue(KEY_REFRESH),
+    fetchAppSetting(KEY_EXPIRES),
+  ]);
   if (!accessToken || !refreshToken || !expiresAtStr) return null;
   const expiresAt = new Date(expiresAtStr).getTime();
   if (Number.isNaN(expiresAt)) return null;
@@ -300,7 +301,12 @@ export async function getValidFflogsOAuthToken(): Promise<string | null> {
   return refreshed?.accessToken ?? null;
 }
 
-/** Returns connection metadata for the settings UI. */
+/**
+ * Returns connection metadata for the settings UI.
+ *
+ * 2.x (2026-06-09): plaintext fallback 撤去。access token は `secrets`
+ * のみを見る。
+ */
 export async function getFflogsOAuthStatus(): Promise<{
   connected: boolean;
   userName: string | null;
@@ -315,21 +321,24 @@ export async function getFflogsOAuthStatus(): Promise<{
   } catch {
     // best-effort
   }
-  // access token は secrets (新) → app_settings (旧 fallback) の順で確認。
-  const [encAccess, plainAccess, userName, expiresAt] = await Promise.all([
+  const [accessToken, userName, expiresAt] = await Promise.all([
     getSecretValue(KEY_ACCESS),
-    fetchAppSetting(KEY_ACCESS),
     fetchAppSetting(KEY_USER_NAME),
     fetchAppSetting(KEY_EXPIRES),
   ]);
   return {
-    connected: Boolean(encAccess ?? plainAccess),
+    connected: Boolean(accessToken),
     userName: userName ?? null,
     expiresAt: expiresAt ?? null,
   };
 }
 
-/** Disconnect — clears all OAuth state from app_settings + secrets. */
+/**
+ * Disconnect — clears all OAuth state from app_settings + secrets.
+ *
+ * 2.x (2026-06-09): 旧 `KEY_STATE_PENDING` は廃止 (cookie 化) のため
+ * 削除リストから外し、念のため legacy plaintext token も全て掃く。
+ */
 export async function disconnectFflogsOAuth(): Promise<{
   ok: true;
 } | { ok: false; reason: string }> {
@@ -338,11 +347,12 @@ export async function disconnectFflogsOAuth(): Promise<{
     .from("app_settings")
     .delete()
     .in("key", [
-      KEY_ACCESS,
-      KEY_REFRESH,
+      KEY_ACCESS, // legacy plaintext (2.x で書き込みは行われないが旧行を掃く)
+      KEY_REFRESH, // legacy plaintext
       KEY_EXPIRES,
       KEY_USER_NAME,
-      KEY_STATE_PENDING,
+      // 旧 state key (2.x で cookie 化により書かれなくなったが残ってる可能性)
+      "fflogs_oauth_state_pending",
     ]);
   if (error) return { ok: false, reason: dbError("FFLogs 連携解除", error) };
   // 新 secrets テーブルからも消す (best-effort)。
@@ -351,39 +361,48 @@ export async function disconnectFflogsOAuth(): Promise<{
   return { ok: true };
 }
 
-async function persistTokens(tokens: OAuthTokens): Promise<void> {
-  const supabase = await createClient();
-  // 機密 token は新 secrets (暗号化) に保存。
+/**
+ * 暗号化 `secrets` テーブルに access / refresh token を書き込む。
+ * `expires_at` だけは機密度が低いため `app_settings` (平文) に残す。
+ *
+ * 2.x (2026-06-09): 旧 `app_settings` 平文 fallback を撤去し、暗号化
+ * 保存が成立しなければ caller にエラーを返す (fail-closed)。fork が
+ * `SECRET_ENCRYPTION_KEY` / `SUPABASE_SERVICE_ROLE_KEY` を設定し忘れた
+ * まま OAuth を完走しても平文で token が漏れない。
+ */
+async function persistTokens(
+  tokens: OAuthTokens,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
   const accessRes = await setSecretValue(KEY_ACCESS, tokens.accessToken);
+  if (!accessRes.ok) {
+    return {
+      ok: false,
+      reason:
+        "FFLogs access_token を暗号化保存できませんでした: " +
+        accessRes.reason +
+        " (SECRET_ENCRYPTION_KEY と SUPABASE_SERVICE_ROLE_KEY を Vercel の env に設定してから再連携してください)",
+    };
+  }
   const refreshRes = await setSecretValue(KEY_REFRESH, tokens.refreshToken);
-  // expiresAt は機密度低なので app_settings (平文) に残す。
+  if (!refreshRes.ok) {
+    return {
+      ok: false,
+      reason:
+        "FFLogs refresh_token を暗号化保存できませんでした: " +
+        refreshRes.reason,
+    };
+  }
+  const supabase = await createClient();
   await supabase.from("app_settings").upsert(
     [{ key: KEY_EXPIRES, value: tokens.expiresAt }],
     { onConflict: "key" },
   );
-  if (accessRes.ok && refreshRes.ok) {
-    // secrets に書けたら旧 plaintext は片付ける (移行)。
-    await supabase
-      .from("app_settings")
-      .delete()
-      .in("key", [KEY_ACCESS, KEY_REFRESH]);
-  } else {
-    // SECRET_ENCRYPTION_KEY 未設定など暗号化保存に失敗した場合は
-    // 旧 app_settings (平文) に書いて従来どおり動かす (graceful
-    // degrade)。env 設定後の再保存で自動移行できる。
-    console.warn(
-      "[fflogs-oauth] secrets 保存失敗、app_settings 平文 fallback:",
-      accessRes,
-      refreshRes,
-    );
-    await supabase.from("app_settings").upsert(
-      [
-        { key: KEY_ACCESS, value: tokens.accessToken },
-        { key: KEY_REFRESH, value: tokens.refreshToken },
-      ],
-      { onConflict: "key" },
-    );
-  }
+  // 旧 plaintext 行が残っていれば idempotent に掃く (1 回限りの自動移行)。
+  await supabase
+    .from("app_settings")
+    .delete()
+    .in("key", [KEY_ACCESS, KEY_REFRESH]);
+  return { ok: true };
 }
 
 /**
