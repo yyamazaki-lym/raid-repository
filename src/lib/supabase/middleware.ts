@@ -27,8 +27,18 @@ export type AuthenticatedUser = {
   app_metadata: UserAppMetadata;
 };
 
-export async function updateSession(request: NextRequest) {
-  let response = NextResponse.next({ request });
+export async function updateSession(
+  request: NextRequest,
+  // 2.4 (2026-06-09) TODO #84: proxy.ts で生成した CSP nonce 等の追加
+  // request header を Server Components に伝搬させるための optional 引数。
+  // `NextResponse.next({ request: { headers } })` の `headers` は
+  // 「downstream の render が `headers()` で読む値」を決定する。
+  initialRequestHeaders?: Headers,
+) {
+  const nextInit = initialRequestHeaders
+    ? { request: { headers: initialRequestHeaders } }
+    : { request };
+  let response = NextResponse.next(nextInit);
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -42,7 +52,7 @@ export async function updateSession(request: NextRequest) {
           for (const { name, value } of cookiesToSet) {
             request.cookies.set(name, value);
           }
-          response = NextResponse.next({ request });
+          response = NextResponse.next(nextInit);
           for (const { name, value, options } of cookiesToSet) {
             response.cookies.set(name, value, options);
           }
