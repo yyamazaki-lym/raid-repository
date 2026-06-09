@@ -20,25 +20,20 @@
 **TODO #2 close 後の本番運用観察 + Vercel deploy 障害復旧** (2026-05-08):
 
 1. ⏳ Discord 通知 ON/OFF トグル **現在 OFF**、手動 Bell button で初期検証中。問題なければ ON に戻す。**24h 観察 (項目 2-iv) 期間中も OFF 維持**: ユーザー判断 (2026-05-08) で「Discord 投稿到達確認は 24h 観察と切離し、ON 切替は別タイミング」。24h 観察の検収条件は `cron.job_run_details` に毎時発火 24 行が `status='succeeded'` で並ぶことのみ
-2. ⏳ 候補 B 本対応 ([PR #71](https://github.com/yyamazaki-lym/raid-repository/pull/71) — 案 D: Supabase pg_cron): Vercel Hobby cron sub-daily 制約 (PR #69 で daily 暫定 revert 済) を回避するため、毎時 trigger を Supabase pg_cron + pg_net に移管。設計ドキュメント `.claude/plans/todo-2-b-dynamic-moore.md`。当初検討した案 C (GitHub Actions hourly cron) は通常 5–15 min 遅延・ピーク 1h+ で精度不足のため却下、pg_cron は DB 内 scheduler で秒単位精度。**Supabase Dashboard 手動操作が必要**:
+2. ✅ **完了 (2026-06-10 観察結果確定)** 候補 B 本対応 ([PR #71](https://github.com/yyamazaki-lym/raid-repository/pull/71) — 案 D: Supabase pg_cron): Vercel Hobby cron sub-daily 制約 (PR #69 で daily 暫定 revert 済) を回避するため、毎時 trigger を Supabase pg_cron + pg_net に移管。当初検討した案 C (GitHub Actions hourly cron) は通常 5–15 min 遅延・ピーク 1h+ で精度不足のため却下、pg_cron は DB 内 scheduler で秒単位精度。**Supabase Dashboard 手動操作が必要だった経路**:
    1. ✅ **完了**: SQL Editor で `SELECT vault.create_secret('<Vercel Env の CRON_SECRET と同値>', 'cron_notify_native_schedule_bearer');` を 1 回実行 (vault `secret_len=48` 確認済)
    2. ✅ **完了**: SQL Editor で `supabase/schema.sql` の追記された **13 章「Hourly cron for native schedule Discord notify」** (extensions + DO block + cron.schedule) を実行
    3. ✅ **完了 (2026-05-08)**: `SELECT * FROM cron.job WHERE jobname = 'notify-native-schedule-hourly';` で `jobid=1 / schedule='0 * * * *' / active=true` 確認、手動 trigger 200 OK 確認済
-   4. ⏳ **24h 自動運転後の観察**: `SELECT jobid, status, return_message, start_time FROM cron.job_run_details WHERE jobid = 1 ORDER BY start_time DESC LIMIT 24;` で発火履歴確認。**24h 観察起点 = 最初の自動発火 2026-05-08 15:00 JST** (Pre-check 時点 2026-05-08 14:25 JST で run_details 空、次回毎時 0 分が初回)、**観察完了は 2026-05-09 15:00 JST 以降**。検収条件: `status='succeeded'` 23–25 行 / `status='failed'` 0 行 (ENABLED='false' のため route は `{ok:true,posted:0,skipped:0}` 返却 → cron 側は SQL succeeded で記録)
+   4. ✅ **完了 (2026-06-10 確認)**: jobname='notify-native-schedule-hourly' 全 jobid 跨ぎ集計で **累計 786 succeeded / 0 failed** (2026-05-08 06:00 UTC 〜 2026-06-09 23:00 UTC、期待値 24 × 33 ≈ 792 に対し ~99% カバレッジ)。観察 24h ウィンドウ (2026-05-08 06:00〜2026-05-09 06:00 UTC) 内も jobid={1,4,5,6} の 4 jobid 跨ぎで **24 succeeded / 0 failed** で検収条件 (23–25 succeeded / 0 failed) 満たす。現行 `jobid=15 / active=true` で直近 24h も連続 succeeded、健全運転中
+      - **⚠ 観察 SQL 注意 (将来の確認時)**: `supabase/schema.sql` 13 章の `cron.unschedule` + `cron.schedule` パターンが **schema 再 deploy 毎に新規 jobid を採番** する (jobid=1 → 4 → 5 → 6 → 7 → 8 → 9 → 11 → 12 → 13 → 14 → 15 と 1 ヶ月で 12 回切替)。初回 plan の固定 `jobid=1` 観察は 2 件しか拾えなかった (再 deploy で jobid が変わるため)。今後の観察は `jobname` 単位 (`SELECT ... FROM cron.job_run_details jrd JOIN ... ON jobname = ...` または `WHERE start_time >= '<起点>'` で jobid 跨ぎ累計) で集計する。再 deploy 切替窓 (unschedule → schedule 間の数秒) で 1〜2 hour 単位の発火欠落が累計 6 hour 程度発生したが、failed ではなく未発火扱いで運用影響なし
 
-(項目 1/2 とも完了したらこの節を `_(現在なし)_` に戻す)
+(項目 1 (Discord 通知 ON 切替) 完了でこの節を `_(現在なし)_` に戻す)
 
-**Pre-check 結果サマリ (2026-05-08 14:25 JST 実行)**:
+**Pre-check 結果サマリ (2026-05-08 14:25 JST 実行)** [historical]:
 - `cron.job`: jobid=1, jobname='notify-native-schedule-hourly', schedule='0 * * * *', active=true
 - `app_settings`: enabled='false' / channel_id='924575227306975232' / role_id='1497960832284360706' / hour 未 seed (route 側 default=12)
 - `vault.decrypted_secrets`: cron_notify_native_schedule_bearer 登録済 (secret_len=48)
 - `cron.job_run_details`: 0 行 (自動発火未到来)
-
-**24h 観察フェーズ実行手順 (新規セッションで実施)**:
-- `.claude/plans/todo-2-b-shiny-pancake.md` の Step 2 SQL を実行
-- 結果 OK なら本節 項目 2-iv を ✅ 完了マーク + 集計件数 N を追記
-- 項目 1 (ON 切替 + Discord 到達確認) は別タスクとして残置
-- docs only commit + PR + squash merge
 
 ## 📌 次回の作業優先度
 
