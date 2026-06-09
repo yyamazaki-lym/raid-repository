@@ -91,11 +91,16 @@ const RATE_LIMIT_RULES: RateLimitRule[] = [
   },
 ];
 
-function applyRateLimit(request: NextRequest): NextResponse | null {
+async function applyRateLimit(
+  request: NextRequest,
+): Promise<NextResponse | null> {
   const rule = RATE_LIMIT_RULES.find((r) => r.match(request.nextUrl.pathname));
   if (!rule) return null;
   const ip = clientIpFromHeaders(request.headers);
-  const result = checkRateLimit(rule.scope, ip, rule.limit, rule.windowMs);
+  // 2.4 (2026-06-09) TODO #82: `checkRateLimit` は async に変更。Upstash
+  // Redis env がセットされていれば分散 fixed-window、未設定なら従来通り
+  // in-memory fallback (per-instance) に倒す。
+  const result = await checkRateLimit(rule.scope, ip, rule.limit, rule.windowMs);
   if (result.allowed) return null;
   return new NextResponse("Too Many Requests", {
     status: 429,
@@ -135,7 +140,7 @@ export async function proxy(request: NextRequest) {
   // TODO #40: rate limit は session refresh より前段で評価して、
   // 攻撃時に Supabase への往復も抑える。dev bypass は意図的に rate
   // limit より後に置いて、ローカル開発で 429 を踏まないようにする。
-  const limited = applyRateLimit(request);
+  const limited = await applyRateLimit(request);
   if (limited) return limited;
 
   const { user, response } = await updateSession(request);
