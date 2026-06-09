@@ -41,14 +41,15 @@ export async function createCategoryMacro(input: {
   body: string;
 }): Promise<{ ok: true; macro: CategoryMacro } | { ok: false; reason: string }> {
   const supabase = createClient();
-  const { data: maxRow } = await supabase
-    .from("category_macros")
-    .select("sort_order")
-    .eq("category_id", input.categoryId)
-    .order("sort_order", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  const nextOrder = ((maxRow?.sort_order as number | undefined) ?? -1) + 1;
+  // 2.4 (2026-06-09) TODO #83: sort_order は schema 側 RPC
+  // `next_category_macro_sort_order(p_category_id)` (SECURITY DEFINER) で計算。
+  // 1 round-trip 化 + RLS の影響を受けず確実に最新 max を返せる。
+  const { data: nextOrderData, error: rpcErr } = await supabase.rpc(
+    "next_category_macro_sort_order",
+    { p_category_id: input.categoryId },
+  );
+  if (rpcErr) return { ok: false, reason: rpcErr.message };
+  const nextOrder = typeof nextOrderData === "number" ? nextOrderData : 0;
 
   const { data, error } = await supabase
     .from("category_macros")

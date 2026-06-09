@@ -55,6 +55,16 @@ export type ReleasePart = {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    version: "2.4",
+    date: "2026-06-09",
+    parts: [
+      {
+        title: "🧹 PR — TODO #83: sort_order 計算 RPC 化を recruitment_templates / category_macros に横展開",
+        body: "**経緯**: PR #135 (TODO #10) で categories / category_links の sort_order を Postgres SECURITY DEFINER RPC 化したが、`recruitment_templates` (`recruitment-templates-client.ts`) と `category_macros` (`category-macros-client.ts`) の INSERT パスには `SELECT sort_order ORDER BY ... LIMIT 1 → +1 → INSERT` の JS 側 TOCTOU が残っていた。実害は表示順の不安定化のみで cron 並列書き込みは無いが、admin が複数 tab で同時に「テンプレ追加」を押す経路で衝突しうるため、同パターンの RPC に置換して race window を縮める。\n\n**変更内容**:\n- **編集** [supabase/schema.sql](supabase/schema.sql): Section 13c を新設し、`next_recruitment_template_sort_order()` と `next_category_macro_sort_order(p_category_id uuid)` を SECURITY DEFINER で追加 (anon, authenticated に EXECUTE GRANT)\n- **編集** [src/lib/recruitment-templates-client.ts](src/lib/recruitment-templates-client.ts): `createRecruitmentTemplate` の SELECT max を `supabase.rpc('next_recruitment_template_sort_order')` 呼び出しに置換\n- **編集** [src/lib/category-macros-client.ts](src/lib/category-macros-client.ts): `createCategoryMacro` の SELECT max を `supabase.rpc('next_category_macro_sort_order', { p_category_id })` 呼び出しに置換\n\n**触らない範囲**: TODO #83 文言が併記していた `loot_items` / `mitigation_phases` / `mitigation_entries` / `strategy_docs` は schema.sql にテーブル定義だけ残る legacy で、現行 portal に対応する insert UI が存在しない (mitigation_sheet_url 等の単一文字列カラム形式に移行済) ため JS 側 sort_order race の経路自体が無い。将来 UI が復活する際に同パターンで追加する想定。categories-actions.ts の `nextImageOrder()` (category_links を `kind IN ('image','gphoto')` で絞る特殊ケース) と `category_gphoto_albums` 末尾追加も同型の TOCTOU だが、TODO #83 のスコープ外なので別 PR / 別 TODO 候補に残す。reorder 系 (`setRecruitmentTemplateOrder` / `setCategoryMacroOrder`) は index を直接 update するだけで race と無関係なので無改修。\n\n**検証**: `npx tsc --noEmit` PASS / `npm run lint` baseline 維持。schema deploy 後 (main merge 時に GitHub Actions が本番/demo へ自動 psql) に dev preview の admin で (a) 募集テンプレ追加 → sort_order が連番、(b) カテゴリマクロ追加 → カテゴリ内 sort_order が連番で振られる、を確認予定。",
+      },
+    ],
+  },
+  {
     version: "2.3",
     date: "2026-06-09",
     parts: [

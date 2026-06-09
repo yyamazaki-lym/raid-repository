@@ -1066,6 +1066,40 @@ GRANT EXECUTE ON FUNCTION public.next_category_sort_order() TO anon, authenticat
 GRANT EXECUTE ON FUNCTION public.next_category_link_sort_order(uuid, text)
   TO anon, authenticated;
 
+-- ---- 13c. sort_order allocator RPCs (TODO #83, 2.4) -------------------
+-- TODO #83 (2026-06-09): `recruitment_templates` / `category_macros` の
+-- INSERT パス (`recruitment-templates-client.ts` / `category-macros-client.ts`)
+-- では `SELECT sort_order ORDER BY ... LIMIT 1 → +1 → INSERT` の JS 側
+-- TOCTOU が残っていた。実害は表示順の不安定化のみで cron 並列書き込みは
+-- 無いが、admin が複数 tab で同時に「テンプレ追加」を押す経路で衝突
+-- しうるため、PR #135 と同パターンの SECURITY DEFINER RPC を追加して
+-- 1 round-trip 化 + RLS の影響を受けず確実に最新 max を返せる形に揃える。
+--
+-- スコープ外: `loot_items` / `mitigation_phases` / `mitigation_entries` /
+-- `strategy_docs` は現行 portal に対応する insert UI が存在しない
+-- (schema.sql にテーブル定義のみ残る legacy) ため、JS 側 sort_order
+-- race の経路自体が無い。将来これらに UI が戻る際は同パターンで
+-- RPC を追加する想定。
+
+CREATE OR REPLACE FUNCTION public.next_recruitment_template_sort_order()
+RETURNS integer LANGUAGE sql SECURITY DEFINER SET search_path = public AS $$
+  SELECT COALESCE(MAX(sort_order), -1) + 1 FROM public.recruitment_templates
+$$;
+
+CREATE OR REPLACE FUNCTION public.next_category_macro_sort_order(
+  p_category_id uuid
+)
+RETURNS integer LANGUAGE sql SECURITY DEFINER SET search_path = public AS $$
+  SELECT COALESCE(MAX(sort_order), -1) + 1
+  FROM public.category_macros
+  WHERE category_id = p_category_id
+$$;
+
+GRANT EXECUTE ON FUNCTION public.next_recruitment_template_sort_order()
+  TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.next_category_macro_sort_order(uuid)
+  TO anon, authenticated;
+
 -- ---- 14. Migration: 旧 plaintext FFLogs token / OAuth state を一掃 -----
 -- 2.x (2026-06-09): `fflogs-oauth.ts` の app_settings 平文 fallback と
 -- `app_settings` 経由の OAuth state 保管を撤去した。anon SELECT が全テーブル
