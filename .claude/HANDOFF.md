@@ -66,7 +66,7 @@
 | # | 項目 | 規模 |
 |---|---|---|
 | 7 | スマホでのレイアウト崩れ確認 | 中 |
-| 51 | マイクロインタラクション / ユーザビリティ向上 — portal 全体の polish を 1 周 (framer-motion 維持、springy な質感)。**観点リスト + 優先順位付け作成済 (2026-06-10)**: P1 = toast 設定明示 / press feedback 統一 / focus-visible 欠落補修 の 3 点を 1 PR で着手 → P2 (pending 表示 / skeleton / 即時 validation / 空状態 component 化) → P3 (hover elevation / duration token 化 / framer-motion 拡大) は要否再判断。popover close transition 再追加禁止等の制約も明記。詳細: `.claude/todos/51.md` | 中 |
+| 51 | マイクロインタラクション / ユーザビリティ向上 — portal 全体の polish を 1 周 (framer-motion 維持、springy な質感)。**P1 + P2 完了** (2026-06-10、PR #156〜#159 の 4 PR、本番実機確認 OK): toast 設定明示 / press feedback 統一 / focus-visible 補修 / pending spinner 統一 / CSS-only skeleton / onBlur 即時 validation / `<EmptyState>` 化。**残り P3 (hover elevation / duration token 化 / framer-motion 拡大) の要否判断のみ** (やらない判断 = #51 〆もあり)。詳細・制約: `.claude/todos/51.md` | 小〜中 |
 | 11 | ページ全体のパフォーマンス最適化。phase 1-10 完了済、見送り候補あり。詳細: `.claude/todos/11.md` | — |
 
 ### 🧹 コードベース最適化 / リファクタ
