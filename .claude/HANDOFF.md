@@ -37,7 +37,7 @@
 
 ## 📌 次回の作業優先度
 
-未完了 TODO は **#11 (パフォーマンス、休眠中 = 新ボトルネック発見時のみ再開) のみ** = アクティブな TODO はゼロ。TODO #7 / #51 / #85〜#90 はいずれも 2.6 (2026-06-10) でクローズ + 本番実機確認 OK。残作業は TODO #86 の 24h 観察 (UTC 19:00 自動発火確認) + 保留オペレーション項目 1 (Discord 通知 ON 切替)。
+未完了 TODO は **#91 (デモサイトの owner 編集権限、中) と #11 (パフォーマンス、休眠中 = 新ボトルネック発見時のみ再開)**。TODO #7 / #51 / #85〜#90 はいずれも 2.6 (2026-06-10) でクローズ + 本番実機確認 OK。残作業は TODO #86 の 24h 観察 (UTC 19:00 自動発火確認) + 保留オペレーション項目 1 (Discord 通知 ON 切替)。
 
 ## 未完了 TODO 一覧
 
@@ -65,6 +65,7 @@
 
 | # | 項目 | 規模 |
 |---|---|---|
+| 91 | **デモサイトで owner だけ編集可能にする (案 A: 実セッション優先)** — `PUBLIC_DEMO_MODE` 下の `requireDiscordMember()` ([src/lib/server/auth.ts](src/lib/server/auth.ts) L102-127) は Supabase セッション確認**前**に roles=[] ゲストで短絡するため、demo では誰がログインしても編集不可。これを「**実セッションあり + guild member なら本物の roles を返す / セッションなし・非メンバー・検証失敗はゲスト fallback (redirect しない)**」に変更する。一般訪問者の read-only 体験は無変化、編集可能になるのは `DISCORD_ADMIN_ROLE_IDS` ロール持ちのみ (fail-closed 維持)。RLS は実セッション JWT の `is_admin` claim (auth/callback が書込) で通る。**前提確認**: (a) demo Vercel project の development env pull には `DISCORD_BOT_TOKEN` / `DISCORD_GUILD_ID` / `DISCORD_ADMIN_ROLE_IDS` が存在することを確認済 (2026-06-10) — **production env にも揃っているか Vercel Dashboard で要確認**、(b) **demo Supabase project の Auth > Providers > Discord 有効化 + Discord Developer Portal の OAuth redirect に demo Supabase callback (`https://<demo-ref>.supabase.co/auth/v1/callback`) 登録は未確認 (ユーザー確認待ち)**。実装時の注意: ゲスト fallback 時に /login や /auth/denied へ redirect しない (demo の公開体験を壊さない) / `cache()` の request dedupe 維持 / proxy.ts は無改修 (demo branch は gate skip のみで実セッション cookie はそのまま app 層へ届く) / ログイン導線は UI に出さず `/login` 直アクセス運用で開始 (導線露出は将来判断) / sign-out は既存 `/auth/sign-out` | 中 |
 | 11 | ページ全体のパフォーマンス最適化。phase 1-10 完了済、見送り候補あり。詳細: `.claude/todos/11.md` | — |
 
 ### 🧹 コードベース最適化 / リファクタ
