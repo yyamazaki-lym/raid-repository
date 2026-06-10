@@ -37,7 +37,7 @@
 
 ## 📌 次回の作業優先度
 
-未完了 TODO は **#90 (SubTabs active tab スクロール、小) と #11 (パフォーマンス、休眠中 = 新ボトルネック発見時のみ再開)**。TODO #7 (スマホレイアウト) / #51 (マイクロインタラクション polish) / #85〜#89 はいずれも 2.6 (2026-06-10) でクローズ + 本番実機確認 OK。残作業は TODO #86 の 24h 観察 (UTC 19:00 自動発火確認) + 保留オペレーション項目 1 (Discord 通知 ON 切替)。
+未完了 TODO は **#11 (パフォーマンス、休眠中 = 新ボトルネック発見時のみ再開) のみ** = アクティブな TODO はゼロ。TODO #7 / #51 / #85〜#90 はいずれも 2.6 (2026-06-10) でクローズ + 本番実機確認 OK。残作業は TODO #86 の 24h 観察 (UTC 19:00 自動発火確認) + 保留オペレーション項目 1 (Discord 通知 ON 切替)。
 
 ## 未完了 TODO 一覧
 
@@ -65,7 +65,6 @@
 
 | # | 項目 | 規模 |
 |---|---|---|
-| 90 | **SubTabs の active tab がモバイル初期表示で画面外に出るケースの解消** — タブ列 (`overflow-x-auto`、scrollbar 非表示) は `scrollLeft=0` 始まりのため、右端寄りの「動画」「マクロ」を開くと現在地が見えない。active tab (`data-active="true"`) が可視範囲から見切れている時だけ `ul.scrollLeft` 直接代入で中央へ寄せる (見えていれば no-op、desktop は常に no-op)。`scrollIntoView` は祖先の縦スクロールも動かし stuck/unstuck hysteresis (TODO #56/#58) や Link の `scrollTo(top)` と干渉しうるため不使用。TODO #7 監査の見送り所見から起票 (2026-06-10) | 小 |
 | 11 | ページ全体のパフォーマンス最適化。phase 1-10 完了済、見送り候補あり。詳細: `.claude/todos/11.md` | — |
 
 ### 🧹 コードベース最適化 / リファクタ
@@ -83,6 +82,12 @@
 ## 完了済み TODO
 
 直近版のみ列挙。詳細経緯は `src/lib/changelog.ts`、過去版アーカイブは `.claude/done.md`。
+
+- **2.6 (2026-06-10)**: TODO #90 クローズ — SubTabs の active tab がモバイル初期表示で画面外に出るケースの解消 (TODO #7 監査の見送り所見から同日起票 → 実装) ([PR #165](https://github.com/yyamazaki-lym/raid-repository/pull/165) 起票 / [PR #166](https://github.com/yyamazaki-lym/raid-repository/pull/166) 実装 squash merge `05311d8`、本番スマホ実機確認 OK)
+  - **発端**: SubTabs のタブ列 (`overflow-x-auto`、scrollbar 非表示) は `scrollLeft=0` 始まりのため、モバイル幅では右端寄りの「動画」「マクロ」を開いた時に active tab が画面外となり現在地が視認できなかった
+  - **変更内容** [src/components/portal/sub-tabs.tsx](src/components/portal/sub-tabs.tsx): `useEffect` (`pathname` 依存) で active tab (`data-active="true"`) が可視範囲から**見切れている時だけ** `ul.scrollLeft` を直接代入して中央へ寄せる。見えていれば no-op (クリック時の視覚ノイズ回避)、overflow しない desktop も常に no-op
+  - **設計判断**: `scrollIntoView` は祖先の縦スクロールも動かし stuck/unstuck hysteresis (TODO #56/#58) や Link onClick の `window.scrollTo(top)` (TODO #58 part2) と干渉しうるため不使用 (`scrollLeft` 代入は横軸のみで独立)。`offsetLeft` も offsetParent が sticky な `<nav>` になるため使わず、`getBoundingClientRect()` 差分 + 現 `scrollLeft` で算出。範囲外の代入値は browser が自動 clamp
+  - **検証**: `npx tsc --noEmit` PASS / `npm run build` ✓ / dev preview で (a) 375px マクロ直アクセス → `scrollLeft=134` + active 可視、(b) 先頭タブ → `scrollLeft=0` 維持、(c) 広幅 → no-op を実測 / 本番スマホ実機確認 OK (2026-06-10)
 
 - **2.6 (2026-06-10)**: TODO #7 クローズ — モバイル幅 (375px) レイアウト監査 + 攻略タブ header の折返し spill 修正 ([PR #163](https://github.com/yyamazaki-lym/raid-repository/pull/163) squash merge `bde0163`、本番スマホ実機確認 OK)
   - **発端**: 1.9 系からの積み残し「スマホでのレイアウト崩れ確認」。dev preview を 375×812 に固定し、横 overflow 検出 script (viewport 外への protrude 要素を overflow-x スクロールコンテナ除外で列挙) + screenshot で、主要ページ全部 + dialog 4 種 (設定 / コンテンツ追加 / リンク追加 / 画像追加) + popover 2 種 (メモ / PT募集文) を横断監査
