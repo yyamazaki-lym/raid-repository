@@ -614,6 +614,27 @@ CREATE TRIGGER set_updated_at_native_schedule_attendances
   BEFORE UPDATE ON public.native_schedule_attendances
   FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
+-- ---- 5f. native_schedule_session_logs (FFLogs link、TODO #73) ---------
+-- 2.5 (2026-06-10): native スケジュールの確定済 session (status='DECISION')
+-- に FFLogs report URL を紐づける子テーブル。sync 側の
+-- `schedule_past_session_logs` (raw_date FK) と並列の構造で、native は
+-- session の UUID PK (`native_schedule_sessions.id`) を FK ターゲットに採用。
+-- 別テーブル新設方針 (TODO #73 設計判断 D1) で sync/native の RLS / FK / 行
+-- スキーマを明確分離する。
+CREATE TABLE IF NOT EXISTS public.native_schedule_session_logs (
+  id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  native_session_id uuid NOT NULL
+                    REFERENCES public.native_schedule_sessions(id)
+                    ON DELETE CASCADE,
+  url               text NOT NULL,
+  source            text NOT NULL DEFAULT 'manual'
+                    CHECK (source IN ('auto','manual')),
+  created_at        timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (native_session_id, url)
+);
+CREATE INDEX IF NOT EXISTS native_schedule_session_logs_session_idx
+  ON public.native_schedule_session_logs(native_session_id);
+
 -- ---- 6. tags (universal — D scheme) ----------------------------------
 
 CREATE TABLE IF NOT EXISTS public.tags (
@@ -677,6 +698,7 @@ ALTER TABLE public.tags                          ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.native_schedule_sessions      ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.native_schedule_members       ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.native_schedule_attendances   ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.native_schedule_session_logs  ENABLE ROW LEVEL SECURITY;
 
 -- Replay-safe policy creation: drop then create per (table, action).
 DO $$
@@ -695,7 +717,8 @@ BEGIN
     'mitigation_phases','mitigation_entries',
     'strategy_docs','tags',
     'native_schedule_sessions','native_schedule_members',
-    'native_schedule_attendances'
+    'native_schedule_attendances',
+    'native_schedule_session_logs'
   ]) LOOP
     FOREACH op IN ARRAY ops LOOP
       policy_name := t || '_anon_' || op;
@@ -790,6 +813,7 @@ ALTER TABLE public.tags                          REPLICA IDENTITY FULL;
 ALTER TABLE public.native_schedule_sessions      REPLICA IDENTITY FULL;
 ALTER TABLE public.native_schedule_members       REPLICA IDENTITY FULL;
 ALTER TABLE public.native_schedule_attendances   REPLICA IDENTITY FULL;
+ALTER TABLE public.native_schedule_session_logs  REPLICA IDENTITY FULL;
 
 -- ---- 8. Realtime publication ------------------------------------------
 
@@ -806,7 +830,8 @@ BEGIN
     'mitigation_phases','mitigation_entries',
     'strategy_docs','tags',
     'native_schedule_sessions','native_schedule_members',
-    'native_schedule_attendances'
+    'native_schedule_attendances',
+    'native_schedule_session_logs'
   ]) LOOP
     BEGIN
       EXECUTE format(
