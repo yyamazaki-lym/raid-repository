@@ -197,13 +197,15 @@ export function StrategyImagesList({
 
   return (
     <section className="flex flex-col gap-3 border-t border-border/30 pt-4">
-      <div className="flex items-center justify-between">
+      {/* TODO #7 (2026-06-10): strategy-list と同型のモバイル幅対策
+          (flex-wrap + whitespace-nowrap + ドラッグヒント sm 未満非表示)。 */}
+      <div className="flex flex-wrap items-center justify-between gap-y-1.5">
         <button
           type="button"
           onClick={() => setCollapsed(!collapsed)}
           aria-expanded={!collapsed}
           aria-controls="strategy-images-body"
-          className="inline-flex items-center gap-1 font-mono text-[10px] tracking-[0.2em] text-muted-foreground uppercase transition-colors hover:text-foreground"
+          className="inline-flex items-center gap-1 font-mono text-[10px] tracking-[0.2em] whitespace-nowrap text-muted-foreground uppercase transition-colors hover:text-foreground"
         >
           {collapsed ? (
             <ChevronRight className="h-3 w-3" aria-hidden />
@@ -214,7 +216,7 @@ export function StrategyImagesList({
             Images · {totalCount} image{totalCount === 1 ? "" : "s"}
           </span>
           {!collapsed && looseLinks.length > 1 && (
-            <span className="ml-2 text-muted-foreground/60">
+            <span className="ml-2 hidden text-muted-foreground/60 sm:inline">
               · ドラッグで並び替え
             </span>
           )}
