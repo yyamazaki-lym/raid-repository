@@ -105,6 +105,14 @@ type Props = {
    * Phase 2-A では prop drill のみで UI 改修は次 phase。
    */
   isAdmin?: boolean;
+  /**
+   * TODO #81 follow-up (2.6, 2026-06-10): native スケジュールの候補日追加
+   * dialog (`CandidateDateDialog`) で時刻 input の初期値に使う app_settings
+   * default 値。`app_settings.native_schedule_default_start_time` /
+   * `..._end_time` の値そのまま (page.tsx で prefetch 済)。未設定なら null。
+   */
+  nativeDefaultStartTime?: string | null;
+  nativeDefaultEndTime?: string | null;
 };
 
 export function SchedulePageBody({
@@ -125,6 +133,8 @@ export function SchedulePageBody({
   // - isAdmin: ScheduleList → SessionRow に drill、status toggle の表示判定 + header の候補日追加 dialog の表示判定に使う。
   currentDiscordId = null,
   isAdmin = false,
+  nativeDefaultStartTime = null,
+  nativeDefaultEndTime = null,
 }: Props) {
   // Two-toggle state: simple list (top) and detailed table (bottom).
   // Both default to off; pinned values persist via localStorage.
@@ -212,8 +222,16 @@ export function SchedulePageBody({
             Icon={Table}
           />
           {/* Phase 2-B: native + admin の時のみ「候補日追加」trigger を表示。
-              dialog 内で日時 + 備考を入力して createNativeScheduleSessionAction を呼ぶ。 */}
-          {mode === "native" && isAdmin && <CandidateDateDialog />}
+              dialog 内で日時 + 備考を入力して createNativeScheduleSessionAction を呼ぶ。
+              2.6 (2026-06-10): 時刻初期値を app_settings default に追従させる
+              ため defaultStart/EndTime を drill。null fallback は dialog 側で
+              FALLBACK_DEFAULT_* (21:00 / 23:00) に倒す。 */}
+          {mode === "native" && isAdmin && (
+            <CandidateDateDialog
+              defaultStartTime={nativeDefaultStartTime}
+              defaultEndTime={nativeDefaultEndTime}
+            />
+          )}
           <RecruitmentTemplatesButton
             initial={recruitmentTemplates}
             categories={recruitmentCategories}
