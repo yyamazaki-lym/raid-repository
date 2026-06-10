@@ -24,6 +24,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Card } from "@/components/ui/card";
+import { EmptyState } from "@/components/portal/empty-state";
 import { CommentPopover } from "./comment-popover-lazy";
 import { ScheduleEditFrameDialog } from "./schedule-edit-frame-dialog-lazy";
 import { toast } from "sonner";
@@ -398,15 +399,12 @@ export function ScheduleList({
 
   if (upcoming.length === 0 && renderedPast.length === 0) {
     return (
-      <Card className={baseCardClass + "flex flex-col items-center gap-3 p-8 text-center"}>
-        <span className="grid h-10 w-10 place-items-center rounded-md border border-border/60 bg-background/40 text-muted-foreground">
-          <CalendarX2 className="h-4 w-4" aria-hidden />
-        </span>
-        <p className="font-display text-foreground text-sm">予定なし</p>
-        <p className="text-xs text-muted-foreground">
-          表示できる予定が見つかりませんでした。
-        </p>
-      </Card>
+      <EmptyState
+        tone="neutral"
+        icon={CalendarX2}
+        title="予定なし"
+        description="表示できる予定が見つかりませんでした。"
+      />
     );
   }
 
