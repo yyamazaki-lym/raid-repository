@@ -242,6 +242,44 @@ export async function updateNativeScheduleSessionTimeAction(
   return { ok: true };
 }
 
+/**
+ * 2.8 (2026-06-10) TODO #81 follow-up: native session の note を admin が
+ * 編集する action。空文字列は NULL に正規化 (= note 削除扱い)。200 文字超は
+ * reject (CandidateDateDialog の Textarea maxLength={200} と揃える)。
+ */
+export type UpdateNativeScheduleSessionNoteInput = {
+  sessionId: string;
+  note: string | null;
+};
+
+export async function updateNativeScheduleSessionNoteAction(
+  input: UpdateNativeScheduleSessionNoteInput,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
+  const trimmed = input.sessionId?.trim();
+  if (!trimmed) return { ok: false, reason: "sessionId が空です" };
+
+  const raw = (input.note ?? "").trim();
+  if (raw.length > 200) {
+    return { ok: false, reason: "備考は 200 文字以内で入力してください" };
+  }
+  const normalized = raw || null;
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("native_schedule_sessions")
+    .update({ note: normalized })
+    .eq("id", trimmed);
+  if (error) return { ok: false, reason: dbError("備考更新", error) };
+  try {
+    revalidatePath("/");
+  } catch {
+    // best-effort
+  }
+  return { ok: true };
+}
+
 // ---- members (admin gate) -------------------------------------------------
 
 const DISCORD_ID_RE = /^\d{17,20}$/;
