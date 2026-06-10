@@ -54,9 +54,16 @@ import { DangerZoneSection } from "./settings/danger-zone-section";
  *   - PastSessionsSection: Discord channel ID + 取り込み / snapshot (canEdit only)
  *   - FflogsSyncSection: v1 username + v2 OAuth + Cookie + 連動実行
  *   - ChangelogFooter: 更新履歴 + GitHub / Lodestone / Sign out
+ *     (demo ゲスト時は Sign out の代わりに Sign in 導線、TODO #91 follow-up)
  *   - DangerZoneSection: 全データ初期化 (canEdit only)
  */
-export function SettingsDialog({ canEdit }: { canEdit: boolean }) {
+export function SettingsDialog({
+  canEdit,
+  showSignIn = false,
+}: {
+  canEdit: boolean;
+  showSignIn?: boolean;
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [url, setUrl] = useState("");
@@ -264,7 +271,7 @@ export function SettingsDialog({ canEdit }: { canEdit: boolean }) {
             />
           )}
           <FflogsSyncSection open={open} canEdit={canEdit} />
-          <ChangelogFooter />
+          <ChangelogFooter showSignIn={showSignIn} />
           {canEdit && (
             <DangerZoneSection
               onComplete={(result) => {

@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { FileClock, Link2, LogOut } from "lucide-react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { FileClock, Link2, LogIn, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { RELEASES, type ReleaseEntry } from "@/lib/changelog";
 
@@ -32,8 +34,17 @@ function GithubMark({ className }: { className?: string }) {
  * archive lazy load (TODO #67 で導入したパターン): 最新リリース 1 件は
  * `RELEASES` で即時表示し、ボタン押下時に `import("@/lib/changelog-archive")`
  * で過去 9 件 (~210 KB) を初めて fetch して結合表示する。
+ *
+ * TODO #91 follow-up: `showSignIn` (= demo モードのゲスト閲覧時) は
+ * セッションが無く Sign out が意味を成さないため、代わりに owner 向けの
+ * サインイン導線 (/login) を表示する。
  */
-export function ChangelogFooter() {
+export function ChangelogFooter({
+  showSignIn = false,
+}: {
+  showSignIn?: boolean;
+}) {
+  const pathname = usePathname();
   const [showChangelog, setShowChangelog] = useState(false);
   const [archiveReleases, setArchiveReleases] = useState<ReleaseEntry[] | null>(
     null,
@@ -85,26 +96,41 @@ export function ChangelogFooter() {
         </a>
         {/* 2.1 (2026-04-29): サインアウトボタンは頻度が低いため
             SiteHeader から本ダイアログ内に移設。誤クリック防止
-            のため confirm を経由してから /auth/sign-out POST。 */}
-        <form
-          action="/auth/sign-out"
-          method="post"
-          className="inline-flex"
-          onSubmit={(e) => {
-            if (!window.confirm("サインアウトしますか?")) {
-              e.preventDefault();
-            }
-          }}
-        >
-          <button
-            type="submit"
-            title="サインアウト"
-            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-rose-400/30 bg-rose-400/5 px-3 font-mono text-[10px] tracking-[0.18em] text-rose-300 uppercase transition-colors hover:border-rose-400/60 hover:bg-rose-400/10 hover:text-rose-200"
+            のため confirm を経由してから /auth/sign-out POST。
+            2.7 (TODO #91 follow-up): demo ゲスト時はセッションが無いので
+            Sign out の代わりにサインイン導線 (/login) を表示。next= で
+            現在ページに戻す。ログインしても guild member 以外はゲスト
+            fallback のままなので一般訪問者の read-only 体験は変わらない。 */}
+        {showSignIn ? (
+          <Link
+            href={`/login?next=${encodeURIComponent(pathname)}`}
+            title="Discord アカウントでサインイン"
+            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[var(--neon-cyan)]/30 bg-[var(--neon-cyan)]/5 px-3 font-mono text-[10px] tracking-[0.18em] text-[var(--neon-cyan)]/85 uppercase transition-colors hover:border-[var(--neon-cyan)]/60 hover:bg-[var(--neon-cyan)]/10 hover:text-[var(--neon-cyan)]"
           >
-            <LogOut className="h-3 w-3" aria-hidden />
-            Sign out
-          </button>
-        </form>
+            <LogIn className="h-3 w-3" aria-hidden />
+            Sign in
+          </Link>
+        ) : (
+          <form
+            action="/auth/sign-out"
+            method="post"
+            className="inline-flex"
+            onSubmit={(e) => {
+              if (!window.confirm("サインアウトしますか?")) {
+                e.preventDefault();
+              }
+            }}
+          >
+            <button
+              type="submit"
+              title="サインアウト"
+              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-rose-400/30 bg-rose-400/5 px-3 font-mono text-[10px] tracking-[0.18em] text-rose-300 uppercase transition-colors hover:border-rose-400/60 hover:bg-rose-400/10 hover:text-rose-200"
+            >
+              <LogOut className="h-3 w-3" aria-hidden />
+              Sign out
+            </button>
+          </form>
+        )}
       </div>
       {showChangelog && (
         <div className="flex flex-col gap-3 rounded-sm border border-border/40 bg-secondary/20 px-3 py-2.5 text-[11px] leading-relaxed">
