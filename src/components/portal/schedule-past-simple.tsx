@@ -11,6 +11,7 @@ import {
   useRealtimeAllScheduleMemos,
   type ScheduleSessionMemo,
 } from "@/lib/schedule-memos-client";
+import { jstTodayStartMs } from "@/lib/schedule/jst-cutoff";
 import type { ScheduleSession } from "@/lib/schedule/next-session";
 import type { SessionLogEntry } from "@/lib/schedule/session-logs";
 import type { SessionVideoLink } from "@/lib/server/session-video-link";
@@ -42,7 +43,6 @@ const EMPTY_VIDEO_LINKS: SessionVideoLink[] = [];
  * subtle cyan tint to remain consistent with the upcoming list.
  */
 
-const STILL_RELEVANT_MS = 6 * 60 * 60 * 1000;
 // Reduced from 10 → 7: adding the video Link icon + Logs icon made
 // each chip ~30% wider, so 10 was wrapping to a second line on most
 // viewports. Seven fits comfortably on a single line at common widths.
@@ -71,7 +71,15 @@ export function SchedulePastSimple({
   const { memosByDate, refetchAll: refetchMemos } =
     useRealtimeAllScheduleMemos(initialMemosByDate);
 
-  const cutoff = Date.now() - STILL_RELEVANT_MS;
+  // 過去判定の cutoff は詳細テーブル (schedule-list.tsx の splitSessions)
+  // と同じ「JST 今日 0:00」に統一 (2.7, 2026-06-11)。旧実装は
+  // `Date.now() - 6h` (NextSessionCard の STILL_RELEVANT_MS と同じ
+  // グレース) で、開催翌日の 0:00〜開始+6h の間「詳細には出るが簡易
+  // には出ない」不一致が起きていた。統一の代償として、その時間帯は
+  // NextSessionCard (6h グレースで前日分を「次回」に残す) とこのチップ
+  // の両方に同じ日程が出るが、詳細テーブルが元々持っていた重複と同じ
+  // 挙動であり許容する。
+  const cutoff = jstTodayStartMs();
   // 過去側は「開催確定 (DECISION)」のみ表示。◯ は『参加可投票』であって
   // 実際に開催された記録ではないので fallback シグナルに使えない (流れ
   // た候補日でも投票だけ残るため、◯ 1 名以上を許可するとノイズが増える)。
