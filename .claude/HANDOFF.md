@@ -1,6 +1,6 @@
 # Raid Repository — 引き継ぎノート
 
-> 2.6 (2026-06-10) 時点。完了済 TODO の詳細は `src/lib/changelog.ts` / 過去版番号は `.claude/done.md`。
+> 2.7 (2026-06-10) 時点。完了済 TODO の詳細は `src/lib/changelog.ts` / 過去版番号は `.claude/done.md`。
 >
 > **新規会話の手順**: このファイルを読んだ後、TODO 一覧は自動表示せずユーザーの要望を待つ。新規 TODO 追記時は part 単位ではなく TODO 完了時のみ統合追記する (part 細分は commit log に任せる)。
 
@@ -12,7 +12,7 @@
 - **Path**: `D:\workd\raid-repository`
 - **Stack**: Next.js 16.2.4 (Turbopack) / React 19.2 / Supabase / Tailwind v4 / @base-ui/react
 - **Deploy**: Vercel auto-deploy from `main`
-- **Version**: `2.1 (2026-04-30)`。`package.json#version` は `1.9.38` のまま (履歴マーカー)、UI は `RELEASES[0].version + .date` を表示
+- **Version**: `2.7 (2026-06-10)`。`package.json#version` は `1.9.38` のまま (履歴マーカー)、UI は `RELEASES[0].version + .date` を表示
 - **Next.js 16 注意**: 破壊的変更含む。`node_modules/next/dist/docs/` を参照すること (詳細は `AGENTS.md`)
 
 ## 🔄 保留オペレーション
@@ -37,7 +37,7 @@
 
 ## 📌 次回の作業優先度
 
-未完了 TODO は **#91 (デモサイトの owner 編集権限、中) と #11 (パフォーマンス、休眠中 = 新ボトルネック発見時のみ再開)**。TODO #7 / #51 / #85〜#90 はいずれも 2.6 (2026-06-10) でクローズ + 本番実機確認 OK。残作業は TODO #86 の 24h 観察 (UTC 19:00 自動発火確認) + 保留オペレーション項目 1 (Discord 通知 ON 切替)。
+未完了 TODO は **#11 (パフォーマンス、休眠中 = 新ボトルネック発見時のみ再開) のみ**。TODO #91 は 2.7 (2026-06-10) でクローズ + demo 実機確認 OK (owner ログイン → 編集 → 書込成功 / ゲスト read-only 無変化 / Sign in 導線)。残作業は TODO #86 の 24h 観察 (UTC 19:00 自動発火確認) + 保留オペレーション項目 1 (Discord 通知 ON 切替)。
 
 ## 未完了 TODO 一覧
 
@@ -65,7 +65,6 @@
 
 | # | 項目 | 規模 |
 |---|---|---|
-| 91 | **デモサイトで owner だけ編集可能にする (案 A: 実セッション優先)** — `PUBLIC_DEMO_MODE` 下の `requireDiscordMember()` ([src/lib/server/auth.ts](src/lib/server/auth.ts) L102-127) は Supabase セッション確認**前**に roles=[] ゲストで短絡するため、demo では誰がログインしても編集不可。これを「**実セッションあり + guild member なら本物の roles を返す / セッションなし・非メンバー・検証失敗はゲスト fallback (redirect しない)**」に変更する。一般訪問者の read-only 体験は無変化、編集可能になるのは `DISCORD_ADMIN_ROLE_IDS` ロール持ちのみ (fail-closed 維持)。RLS は実セッション JWT の `is_admin` claim (auth/callback が書込) で通る。**前提確認**: (a) demo Vercel project の development env pull には `DISCORD_BOT_TOKEN` / `DISCORD_GUILD_ID` / `DISCORD_ADMIN_ROLE_IDS` が存在することを確認済 (2026-06-10) — **production env にも揃っているか Vercel Dashboard で要確認**、(b) **demo Supabase project の Auth > Providers > Discord 有効化 + Discord Developer Portal の OAuth redirect に demo Supabase callback (`https://<demo-ref>.supabase.co/auth/v1/callback`) 登録は未確認 (ユーザー確認待ち)**。実装時の注意: ゲスト fallback 時に /login や /auth/denied へ redirect しない (demo の公開体験を壊さない) / `cache()` の request dedupe 維持 / proxy.ts は無改修 (demo branch は gate skip のみで実セッション cookie はそのまま app 層へ届く) / ログイン導線は UI に出さず `/login` 直アクセス運用で開始 (導線露出は将来判断) / sign-out は既存 `/auth/sign-out` | 中 |
 | 11 | ページ全体のパフォーマンス最適化。phase 1-10 完了済、見送り候補あり。詳細: `.claude/todos/11.md` | — |
 
 ### 🧹 コードベース最適化 / リファクタ
@@ -83,6 +82,12 @@
 ## 完了済み TODO
 
 直近版のみ列挙。詳細経緯は `src/lib/changelog.ts`、過去版アーカイブは `.claude/done.md`。
+
+- **2.7 (2026-06-10)**: TODO #91 クローズ — デモサイトで owner だけ編集可能に (案 A: 実セッション優先 + ゲスト fallback) + follow-up: 設定ダイアログ footer の Sign in 導線 ([PR #168](https://github.com/yyamazaki-lym/raid-repository/pull/168) 起票 / [PR #169](https://github.com/yyamazaki-lym/raid-repository/pull/169) 実装 squash merge `2165978` / [PR #170](https://github.com/yyamazaki-lym/raid-repository/pull/170) env 反映 deploy trigger / [PR #171](https://github.com/yyamazaki-lym/raid-repository/pull/171) follow-up squash merge `2bc8a96`、demo 実機確認 OK 2026-06-10)
+  - **変更内容** [src/lib/server/auth.ts](src/lib/server/auth.ts): `requireDiscordMember()` の demo 短絡 (セッション確認前に roles=[] ゲスト返却) を撤去し、`PUBLIC_DEMO_MODE` でもセッション確認を常に実行。実セッション + guild member 検証済みなら本物の roles を返し (編集可能は `DISCORD_ADMIN_ROLE_IDS` 持ちのみ、fail-closed 維持)、セッションなし / 非メンバー / 検証失敗は **redirect せず** roles=[] ゲストへ fallback (一般訪問者の read-only 体験は無変化)。RLS は実セッション JWT の `is_admin` claim (auth/callback 書込、既存経路) で通過。`cache()` dedupe 維持、proxy.ts はコメントのみ追従 (ロジック無改修)
+  - **follow-up (Sign in 導線、同日ユーザー判断で起票時の「導線露出は将来判断」を解消)**: `AuthorizedUser.isDemoGuest` + `getCurrentUserIsDemoGuest()` を追加し、demo ゲスト時のみ設定ダイアログ footer の Sign out (セッションなしでは no-op) を `/login?next=<現在ページ>` への Sign in リンクに差替え ([changelog-footer.tsx](src/components/portal/settings/changelog-footer.tsx))。本番サイト / demo の実セッション owner / dev bypass は Sign out のまま完全互換
+  - **インフラ作業 (コード外、2026-06-10 実施済)**: (a) demo Vercel production env の空 placeholder 3 値 (`DISCORD_BOT_TOKEN` / `DISCORD_GUILD_ID` / `DISCORD_ADMIN_ROLE_IDS`) に本番 (yurutto) の実値をコピー — ⚠ CLI 製 production env は Sensitive 型になり `env pull` で読み戻し不可 (空に見えるが値は入っている) / (b) demo Supabase (`lspimctpoolzzikpixpc`) の Discord provider 有効化 (本番と同一 Discord アプリ `1497959750745198733` の Client ID/Secret) + URL Configuration (Site URL = demo ドメイン、Redirect URLs 4 件 — 未設定だと OAuth 後に localhost:3000 へ戻される) / (c) Discord Developer Portal の OAuth2 Redirects に demo callback を追加 (本番 redirect 無改修)。⚠ env 変更の反映は同一 commit の `vercel redeploy` が deploymentId 重複 (next.config.ts の skew protection) で不可のため、空 commit PR (#170) で deploy を発火させた
+  - **検証**: `npx tsc --noEmit` PASS / `npm run build` ✓ / dev preview で匿名ゲストの無 redirect read-only + dev bypass 優先 (demo 併用時 admin 視点) を実測 / demo 実機で owner ログイン → 編集 UI 表示 (コンテンツ追加 / メンテナンス / DnD) → リンク追加・削除成功 (admin gate + RLS 通過) → ゲスト状態で Sign in 導線表示 + read-only 無変化、を確認 OK (2026-06-10)
 
 - **2.6 (2026-06-10)**: TODO #90 クローズ — SubTabs の active tab がモバイル初期表示で画面外に出るケースの解消 (TODO #7 監査の見送り所見から同日起票 → 実装) ([PR #165](https://github.com/yyamazaki-lym/raid-repository/pull/165) 起票 / [PR #166](https://github.com/yyamazaki-lym/raid-repository/pull/166) 実装 squash merge `05311d8`、本番スマホ実機確認 OK)
   - **発端**: SubTabs のタブ列 (`overflow-x-auto`、scrollbar 非表示) は `scrollLeft=0` 始まりのため、モバイル幅では右端寄りの「動画」「マクロ」を開いた時に active tab が画面外となり現在地が視認できなかった
@@ -631,7 +636,8 @@
 
 - **dev bypass**: `.env.local` の `DEV_AUTH_BYPASS=true` (NODE_ENV != production 時のみ偽 admin で短絡)。`DEV_AUTH_BYPASS_NON_ADMIN=true` で roles=[] 視点
 - **Service role bypass**: `SUPABASE_SERVICE_ROLE_KEY` 設定で server-side createClient が service role 化 (RLS バイパス、dev 用)
-- **Admin 判定**: `DISCORD_ADMIN_ROLE_IDS` 未設定なら全員 admin (backward compat)
+- **Admin 判定**: `DISCORD_ADMIN_ROLE_IDS` 未設定なら **全員 false (fail-closed)**。2026-06-09 に fail-open (未設定 = 全員 admin) から変更済
+- **Public demo mode**: `PUBLIC_DEMO_MODE=true` で proxy gate を skip (実セッション cookie は app 層へ素通し)。TODO #91 (2.7) から実セッション優先 — guild member は本物の roles を取得 (owner は編集可能)、セッションなし / 非メンバーは roles=[] ゲスト fallback (redirect なし、read-only)。ログイン導線は demo ゲスト時のみ設定ダイアログ footer に Sign in 表示
 
 ### character-sheets iframe (編集ダイアログ)
 
