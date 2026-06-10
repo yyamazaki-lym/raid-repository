@@ -1138,6 +1138,137 @@ GRANT EXECUTE ON FUNCTION public.next_recruitment_template_sort_order()
 GRANT EXECUTE ON FUNCTION public.next_category_macro_sort_order(uuid)
   TO anon, authenticated;
 
+-- ---- 13d. native placeholder raid time retro-update RPC (TODO #85) ----
+-- 2.6 (2026-06-10): TODO #81 follow-up。`ensureNativeMonthlyPlaceholders()`
+-- が auto-insert する placeholder 行は raw_date (`YYYY/MM/DD(曜) HH:MM~HH:MM`)
+-- に生成時の default 時刻を焼き込む設計のため、admin が設定 dialog で
+-- default 時刻を変更しても既存 placeholder は旧 default のまま残る非対称が
+-- あった。本 RPC で `setNativeScheduleDefaultRaidTimeAction` の延長として
+-- JST 今日 0:00 以降の未来日付 placeholder を新 default で再構成する。
+--
+-- 設計判断 (ユーザー確認済):
+--  - 対象範囲: parsed_date >= JST 今日 0:00 のみ (過去 placeholder は履歴として温存)
+--  - placeholder 判定: created_by_id IS NULL AND start_time IS NULL AND end_time IS NULL
+--    (admin が CandidateDateDialog から手動追加した行は created_by_id 明示 INSERT なので除外)
+--  - 衝突処理: raw_date UPDATE が UNIQUE 違反 (23505) になった場合 (= admin が
+--    新 default と同 raw_date を手動追加済) は placeholder 行を DELETE して
+--    手動行を温存。admin の意図 (手動追加) を尊重して上書きしない
+--  - memo 同期: schedule_session_memos.raw_date は FK 制約なしの loose join
+--    (raw_date は string match で参照される) のため、UPDATE 分岐で同期 UPDATE
+--    する。DELETE 分岐では memo を temper せず、衝突先の手動行に紐付くまま温存
+--  - SECURITY DEFINER + search_path 固定 + GRANT は authenticated のみ
+--    (anon は除外、admin gate 通過済 server action 専用)
+--
+-- per-row LOOP + EXCEPTION で衝突を捕まえる: CTE 一括 UPDATE は最初の衝突で
+-- 全 ROLLBACK されるため、衝突した行だけ DELETE に分岐する PL/pgSQL LOOP を
+-- 採用 (UPDATE 試行 → unique_violation catch → DELETE)。
+
+CREATE OR REPLACE FUNCTION public.update_native_placeholder_raid_times(
+  p_start_time text,
+  p_end_time   text
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $func$
+DECLARE
+  v_today_jst_start timestamptz;
+  v_row             record;
+  v_date_prefix     text;
+  v_new_raw_date    text;
+  v_updated         integer := 0;
+  v_deleted         integer := 0;
+  v_memo_updated    integer := 0;
+  v_memo_delta      integer;
+BEGIN
+  -- 入力 validate (HH:MM regex、start != end)。サーバー側 server action でも
+  -- 同等 validate するが二重化して RPC 単体実行 (Supabase SQL Editor 等) でも
+  -- 不正値を弾けるようにする。
+  IF p_start_time !~ '^([01]?[0-9]|2[0-3]):[0-5][0-9]$' THEN
+    RAISE EXCEPTION 'invalid p_start_time: %', p_start_time USING ERRCODE = '22023';
+  END IF;
+  IF p_end_time !~ '^([01]?[0-9]|2[0-3]):[0-5][0-9]$' THEN
+    RAISE EXCEPTION 'invalid p_end_time: %', p_end_time USING ERRCODE = '22023';
+  END IF;
+  IF p_start_time = p_end_time THEN
+    RAISE EXCEPTION 'start equals end' USING ERRCODE = '22023';
+  END IF;
+
+  -- JST 今日 0:00 (timestamptz)。`AT TIME ZONE 'Asia/Tokyo'` で round-trip
+  -- することで「JST のカレンダー上の今日 0:00」を正確に timestamptz 化する
+  -- (DST 無しなので `now() - interval '9 hours'` でも数値上は同じだが、
+  -- 意図が読み取りづらいので明示的なタイムゾーン演算を採用)。
+  v_today_jst_start :=
+    ((now() AT TIME ZONE 'Asia/Tokyo')::date)::timestamp
+      AT TIME ZONE 'Asia/Tokyo';
+
+  FOR v_row IN
+    SELECT id, raw_date
+      FROM public.native_schedule_sessions
+     WHERE created_by_id IS NULL
+       AND start_time    IS NULL
+       AND end_time      IS NULL
+       AND parsed_date  >= v_today_jst_start
+     ORDER BY parsed_date
+  LOOP
+    -- 日付 prefix `YYYY/MM/DD(曜)` を抽出。time edit popover 等で override
+    -- された行は raw_date format が崩れている可能性があるが、placeholder
+    -- 判定 (start_time/end_time IS NULL) でほぼ弾かれるので safety net 程度。
+    v_date_prefix := substring(
+      v_row.raw_date FROM '^(\d{4}/\d{2}/\d{2}\([日月火水木金土]\))'
+    );
+    IF v_date_prefix IS NULL THEN
+      CONTINUE;
+    END IF;
+
+    v_new_raw_date := v_date_prefix || ' ' || p_start_time || '~' || p_end_time;
+
+    -- 既に新 default と同じ raw_date になっている場合 (例: 同じ default で
+    -- 連打された) は noop で次へ。
+    IF v_new_raw_date = v_row.raw_date THEN
+      CONTINUE;
+    END IF;
+
+    BEGIN
+      UPDATE public.native_schedule_sessions
+         SET raw_date = v_new_raw_date
+       WHERE id = v_row.id;
+      v_updated := v_updated + 1;
+
+      -- UPDATE 成功時のみ memo 同期。loose join (FK なし) なので明示的に
+      -- raw_date を追従させないと orphan 化する。複数 memo が同 raw_date
+      -- を持つ可能性も考慮して UPDATE ... RETURNING COUNT(*) で件数集計。
+      WITH memo_upd AS (
+        UPDATE public.schedule_session_memos
+           SET raw_date = v_new_raw_date
+         WHERE raw_date = v_row.raw_date
+        RETURNING 1
+      )
+      SELECT COUNT(*) INTO v_memo_delta FROM memo_upd;
+      v_memo_updated := v_memo_updated + v_memo_delta;
+
+    EXCEPTION WHEN unique_violation THEN
+      -- 衝突 (admin が新 default と同 raw_date を手動追加済の場合)。
+      -- placeholder 側を DELETE して手動行を温存 (user intent 尊重)。
+      -- memo は手動行に紐付くため touch しない。
+      DELETE FROM public.native_schedule_sessions WHERE id = v_row.id;
+      v_deleted := v_deleted + 1;
+    END;
+  END LOOP;
+
+  RETURN jsonb_build_object(
+    'updated_count',      v_updated,
+    'deleted_count',      v_deleted,
+    'memo_updated_count', v_memo_updated
+  );
+END;
+$func$;
+
+GRANT EXECUTE ON FUNCTION
+  public.update_native_placeholder_raid_times(text, text)
+  TO authenticated;
+
 -- ---- 14. Migration: 旧 plaintext FFLogs token / OAuth state を一掃 -----
 -- 2.x (2026-06-09): `fflogs-oauth.ts` の app_settings 平文 fallback と
 -- `app_settings` 経由の OAuth state 保管を撤去した。anon SELECT が全テーブル

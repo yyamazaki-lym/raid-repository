@@ -1369,18 +1369,41 @@ export async function setScheduleSourceModeAction(
 }
 
 /**
- * TODO #81 (2.1, 2026-05-12): native 経路で `ensureNativeMonthlyPlaceholders()`
- * が auto-insert する placeholder row の開始 / 終了時刻のデフォルト値を保存する。
+ * TODO #81 (2.1, 2026-05-12) / TODO #85 (2.6, 2026-06-10): native 経路で
+ * `ensureNativeMonthlyPlaceholders()` が auto-insert する placeholder row
+ * の開始 / 終了時刻のデフォルト値を保存する。
  *
  * - 値は HH:MM 形式 (24h)。深夜またぎ (例 23:00~01:00) は CandidateDateDialog
  *   と同じく start === end でなければ許容。
- * - 既存 placeholder の遡及更新は **しない**。本 action 保存後に新規追加される
- *   placeholder (= 翌月分 / 月末 7 日前境界後) から新値が反映される。
+ * - **TODO #85 (2.6)**: app_settings 保存成功直後に SECURITY DEFINER RPC
+ *   `update_native_placeholder_raid_times(p_start_time, p_end_time)` を呼び、
+ *   JST 今日 0:00 以降の未来日付 placeholder の raw_date を新 default で
+ *   再構成する。衝突 (admin が新 default と同 raw_date を手動追加済) は
+ *   placeholder 側を DELETE して手動行を温存。schedule_session_memos の
+ *   raw_date も同期 UPDATE。
+ * - RPC 失敗は **best-effort warn**: app_settings 保存は既に成功しているため、
+ *   次回 `ensureNativeMonthlyPlaceholders()` 実行で新値が反映される (= user
+ *   データ損害なし)。RPC エラーで全体 fail させると app_settings 保存も
+ *   ロールバックされ user 操作を 0 にしてしまうので採用しない。
+ * - 戻り値: `updatedCount` / `deletedCount` / `memoUpdatedCount` を UI 側 toast
+ *   で表示するため拡張 (TODO #85 以前は単純 `{ ok: true }`)。
  */
+export type SetNativeScheduleDefaultRaidTimeResult =
+  | {
+      ok: true;
+      /** raw_date を新 default で UPDATE した placeholder 行の件数 */
+      updatedCount: number;
+      /** 新 default が手動行と衝突したため DELETE した placeholder 件数 */
+      deletedCount: number;
+      /** UPDATE 分岐に伴い同期 UPDATE した schedule_session_memos 件数 */
+      memoUpdatedCount: number;
+    }
+  | { ok: false; reason: string };
+
 export async function setNativeScheduleDefaultRaidTimeAction(input: {
   startTime: string;
   endTime: string;
-}): Promise<{ ok: true } | { ok: false; reason: string }> {
+}): Promise<SetNativeScheduleDefaultRaidTimeResult> {
   const auth = await assertAdminResult();
   if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
   const startTime = input.startTime.trim();
@@ -1403,12 +1426,35 @@ export async function setNativeScheduleDefaultRaidTimeAction(input: {
       { onConflict: "key" },
     );
   if (error) return { ok: false, reason: dbError("デフォルト時刻保存", error) };
+
+  // TODO #85 (2.6, 2026-06-10): 未来日付 placeholder の raw_date を新 default で
+  // 再構成。衝突した行は DELETE (手動行温存)。RPC 失敗は best-effort で warn のみ。
+  let updatedCount = 0;
+  let deletedCount = 0;
+  let memoUpdatedCount = 0;
+  const { data: rpcData, error: rpcErr } = await supabase.rpc(
+    "update_native_placeholder_raid_times",
+    { p_start_time: startTime, p_end_time: endTime },
+  );
+  if (rpcErr) {
+    console.warn(
+      "[native-default-raid-time] retro-update RPC failed:",
+      rpcErr.message,
+    );
+  } else if (rpcData && typeof rpcData === "object") {
+    const d = rpcData as Record<string, unknown>;
+    updatedCount = typeof d.updated_count === "number" ? d.updated_count : 0;
+    deletedCount = typeof d.deleted_count === "number" ? d.deleted_count : 0;
+    memoUpdatedCount =
+      typeof d.memo_updated_count === "number" ? d.memo_updated_count : 0;
+  }
+
   try {
     revalidatePath("/");
   } catch {
     // best-effort
   }
-  return { ok: true };
+  return { ok: true, updatedCount, deletedCount, memoUpdatedCount };
 }
 
 /**
