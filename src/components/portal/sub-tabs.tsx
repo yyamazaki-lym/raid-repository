@@ -56,6 +56,7 @@ export function SubTabs({
 }) {
   const pathname = usePathname();
   const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const tabsListRef = useRef<HTMLUListElement | null>(null);
   const stuckRef = useRef(false);
   const [stuck, setStuck] = useState(false);
   // TODO #58: stuck 状態を ActionSlot context へ push し、各 page のアクション
@@ -101,6 +102,31 @@ export function SubTabs({
     };
   }, [setSlotStuck]);
 
+  // TODO #90 (2026-06-10): タブ列 (overflow-x-auto) は scrollLeft=0 始まり
+  // のため、モバイル幅では右端寄りの active tab (動画 / マクロ) が初期表示で
+  // 画面外に出る。active tab が可視範囲から見切れている時だけ scrollLeft を
+  // 直接代入して中央へ寄せる (見えていれば no-op、overflow しない desktop も
+  // no-op)。scrollIntoView は祖先の縦スクロールまで動かし、上の stuck/unstuck
+  // hysteresis や Link onClick の window.scrollTo(top) と干渉しうるため使わない。
+  useEffect(() => {
+    const ul = tabsListRef.current;
+    if (!ul) return;
+    const el = ul.querySelector<HTMLElement>('[data-active="true"]');
+    if (!el) return;
+    const ulRect = ul.getBoundingClientRect();
+    const elRect = el.getBoundingClientRect();
+    // ul コンテンツ座標系での active tab の位置 (offsetLeft は offsetParent が
+    // sticky な nav になるため使わず、rect 差分 + 現 scrollLeft で求める)
+    const leftInUl = elRect.left - ulRect.left + ul.scrollLeft;
+    const clipped =
+      leftInUl < ul.scrollLeft ||
+      leftInUl + elRect.width > ul.scrollLeft + ul.clientWidth;
+    if (clipped) {
+      // scrollLeft 代入は範囲外の値を browser が自動 clamp する
+      ul.scrollLeft = leftInUl - (ul.clientWidth - elRect.width) / 2;
+    }
+  }, [pathname]);
+
   return (
     <>
       <div ref={sentinelRef} aria-hidden className="h-px" />
@@ -111,6 +137,7 @@ export function SubTabs({
       >
         <div className="mx-auto flex max-w-5xl items-center gap-1 px-2 sm:px-6">
           <ul
+            ref={tabsListRef}
             className={cn(
               "flex min-w-0 flex-1 items-center gap-1 overflow-x-auto py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
             )}
