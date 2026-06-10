@@ -217,7 +217,7 @@ export function CategorySwitcher({ initialCategories, userRoleIds }: Props) {
                           aria-label={`${cat.name} - ${p.label}`}
                         />
                       }
-                      className="inline-flex h-6 w-6 cursor-pointer items-center justify-center rounded text-muted-foreground transition-all duration-150 hover:scale-110 hover:bg-[var(--neon-violet)]/15 hover:text-[var(--neon-violet)]"
+                      className="inline-flex h-6 w-6 cursor-pointer items-center justify-center rounded text-muted-foreground transition-all duration-150 hover:scale-110 hover:bg-[var(--neon-violet)]/15 hover:text-[var(--neon-violet)] active:scale-95"
                     >
                       <p.Icon className="h-3 w-3" aria-hidden />
                     </DropdownMenuItem>

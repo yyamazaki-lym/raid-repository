@@ -158,8 +158,8 @@ export function NativeMemberCommentPopover({
   // 同期式の CommentPopover と同じ trigger デザイン (cyan / 5×5 / MessageSquareText icon)。
   // 本人 cell でコメントなしのときだけ「outline-only」風に薄く出して「追加できる」hint。
   const triggerClass = hasComment
-    ? "inline-flex h-5 w-5 items-center justify-center rounded-sm border border-[var(--neon-cyan)]/40 bg-[var(--neon-cyan)]/8 text-[var(--neon-cyan)] transition-colors hover:bg-[var(--neon-cyan)]/15 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--neon-cyan)]/60"
-    : "inline-flex h-5 w-5 items-center justify-center rounded-sm border border-border/40 bg-transparent text-muted-foreground/50 transition-colors hover:bg-secondary/40 hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--neon-cyan)]/60";
+    ? "inline-flex h-5 w-5 items-center justify-center rounded-sm border border-[var(--neon-cyan)]/40 bg-[var(--neon-cyan)]/8 text-[var(--neon-cyan)] transition-all hover:bg-[var(--neon-cyan)]/15 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--neon-cyan)]/60 active:scale-95"
+    : "inline-flex h-5 w-5 items-center justify-center rounded-sm border border-border/40 bg-transparent text-muted-foreground/50 transition-all hover:bg-secondary/40 hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--neon-cyan)]/60 active:scale-95";
 
   return (
     <Popover open={open} onOpenChange={setOpen}>

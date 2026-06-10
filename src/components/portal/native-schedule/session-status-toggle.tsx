@@ -97,7 +97,7 @@ export function SessionStatusToggle({
         disabled={busy}
         aria-label={`${displayDate} のステータスを変更 (現在: ${STATUS_LABEL[currentStatus]})`}
         title={`ステータス: ${STATUS_LABEL[currentStatus]} (クリックで変更)`}
-        className="inline-flex items-center justify-center rounded-md transition-transform hover:scale-105 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--neon-cyan)]/60 disabled:opacity-50"
+        className="inline-flex items-center justify-center rounded-md transition-transform hover:scale-105 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--neon-cyan)]/60 active:scale-95 disabled:opacity-50"
       >
         {triggerLabel}
       </DropdownMenuTrigger>

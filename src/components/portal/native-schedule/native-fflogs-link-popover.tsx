@@ -177,7 +177,7 @@ export function NativeFflogsLinkPopover({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
-        className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-amber-300/70 transition-colors hover:bg-amber-400/15 hover:text-amber-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/60"
+        className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-amber-300/70 transition-all hover:bg-amber-400/15 hover:text-amber-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/60 active:scale-95"
         aria-label={`${displayDate} に FFLogs URL を追加 / 編集`}
         title="FFLogs URL を追加 / 編集 (admin)"
       >

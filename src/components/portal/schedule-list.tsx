@@ -1382,7 +1382,7 @@ function SessionRow({
               );
             };
             const sharedClass =
-              "inline-flex h-6 items-center justify-center rounded-md transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--neon-cyan)]/60";
+              "inline-flex h-6 items-center justify-center rounded-md transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--neon-cyan)]/60 active:translate-y-px";
 
             if (decided) {
               const badge = (
@@ -1507,7 +1507,7 @@ function SessionRow({
                   )
                 }
                 title={`${u.name} の出欠をその場で編集 (${dateLabel} を含む全日程)`}
-                className="group/cell inline-flex rounded-sm transition-transform hover:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--neon-cyan)]/60"
+                className="group/cell inline-flex rounded-sm transition-transform hover:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--neon-cyan)]/60 active:scale-95"
               >
                 {symbol}
               </button>
