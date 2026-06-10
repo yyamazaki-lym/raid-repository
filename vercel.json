@@ -15,6 +15,10 @@
     {
       "path": "/api/cron/snapshot-schedule",
       "schedule": "50 12 * * *"
+    },
+    {
+      "path": "/api/cron/fflogs-sync",
+      "schedule": "0 19 * * *"
     }
   ]
 }
