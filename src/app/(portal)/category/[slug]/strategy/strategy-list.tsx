@@ -148,13 +148,17 @@ export function StrategyList({
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex items-center justify-between">
+      {/* TODO #7 (2026-06-10): モバイル幅 (375px) で右側ボタン群が flex 圧縮
+          されラベルが折返し spill していたため、行を flex-wrap 化 + 各ボタンを
+          whitespace-nowrap 化。ドラッグヒントは sm 未満では非表示にして横幅を
+          確保 (タッチでは長押し DnD でヒント文の有用性も低い)。 */}
+      <div className="flex flex-wrap items-center justify-between gap-y-1.5">
         <button
           type="button"
           onClick={() => setCollapsed(!collapsed)}
           aria-expanded={!collapsed}
           aria-controls="strategy-links-body"
-          className="inline-flex items-center gap-1 font-mono text-[10px] tracking-[0.2em] text-muted-foreground uppercase transition-colors hover:text-foreground"
+          className="inline-flex items-center gap-1 font-mono text-[10px] tracking-[0.2em] whitespace-nowrap text-muted-foreground uppercase transition-colors hover:text-foreground"
         >
           {collapsed ? (
             <ChevronRight className="h-3 w-3" aria-hidden />
@@ -165,7 +169,7 @@ export function StrategyList({
             Links · {links.length} link{links.length === 1 ? "" : "s"}
           </span>
           {!collapsed && links.length > 1 && (
-            <span className="ml-2 text-muted-foreground/60">
+            <span className="ml-2 hidden text-muted-foreground/60 sm:inline">
               · ドラッグで並び替え
             </span>
           )}
@@ -188,7 +192,7 @@ export function StrategyList({
                   : "サムネイル表示をオン"
               }
               className={
-                "inline-flex h-7 items-center gap-1 rounded-md border px-2 font-mono text-[10px] tracking-[0.18em] uppercase transition-colors disabled:opacity-50 " +
+                "inline-flex h-7 shrink-0 items-center gap-1 rounded-md border px-2 font-mono text-[10px] tracking-[0.18em] whitespace-nowrap uppercase transition-colors disabled:opacity-50 " +
                 (showThumbnails
                   ? "border-[var(--neon-cyan)]/60 bg-[var(--neon-cyan)]/12 text-[var(--neon-cyan)]"
                   : "border-border/40 bg-background/30 text-muted-foreground hover:text-foreground")
