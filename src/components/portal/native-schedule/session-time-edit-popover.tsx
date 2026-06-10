@@ -11,7 +11,11 @@ import {
 } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { updateNativeScheduleSessionTimeAction } from "@/lib/server/native-schedule-actions";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  updateNativeScheduleSessionNoteAction,
+  updateNativeScheduleSessionTimeAction,
+} from "@/lib/server/native-schedule-actions";
 
 /**
  * 2.1 (2026-05-12): native スケジュールの日個別 raid time を admin が編集する popover。
@@ -23,12 +27,18 @@ import { updateNativeScheduleSessionTimeAction } from "@/lib/server/native-sched
  *   endTime: null` で UPDATE)。
  * - 入力が default と異なる string なら override (`startTime / endTime` 値で UPDATE)。
  *
+ * 2.8 (2026-06-10) TODO #81 follow-up: 同 popover に note (備考) Textarea を
+ * 追加。save 時に「時刻 diff だけ」「note diff だけ」「両方 diff」で対応する
+ * action を呼び分け、無駄な UPDATE と revalidatePath を抑止。「default に戻す」
+ * は時刻専用 (note は空文字保存で NULL 化、別経路)。
+ *
  * popover 構造は `native-attendance-popover.tsx` の TODO #72 教訓踏襲:
  *   - `<Popover open={open} onOpenChange={setOpen}>` controlled
  *   - `{open && <PopoverContent finalFocus={false}>}` で close 時 DOM 残留を回避
  */
 
 const HHMM_RE = /^([01]?\d|2[0-3]):([0-5]\d)$/;
+const NOTE_MAX_LENGTH = 200;
 
 type Props = {
   /** native_schedule_sessions.id (uuid) */
@@ -41,6 +51,11 @@ type Props = {
   defaultEndTime: string;
   /** 表示日 (rawDate の date 部分)。aria-label / toast 文言で使用。 */
   displayDate: string;
+  /**
+   * 2.8 (2026-06-10) TODO #81 follow-up: 現在の note (NULL = 未設定)。
+   * Textarea の初期値 + 「未変更時に action 呼ばない」差分判定に使う。
+   */
+  note?: string | null;
   /** trigger の追加クラス。schedule-list 側で色味を寄せたい場合用。 */
   triggerClass?: string;
 };
@@ -52,6 +67,7 @@ export function SessionTimeEditPopover({
   defaultStartTime,
   defaultEndTime,
   displayDate,
+  note = null,
   triggerClass = "",
 }: Props) {
   const router = useRouter();
@@ -62,6 +78,7 @@ export function SessionTimeEditPopover({
   const [draftEnd, setDraftEnd] = useState<string>(
     overrideEnd ?? defaultEndTime,
   );
+  const [draftNote, setDraftNote] = useState<string>(note ?? "");
   const [error, setError] = useState<string | null>(null);
   const [busy, startTransition] = useTransition();
 
@@ -70,48 +87,112 @@ export function SessionTimeEditPopover({
     if (open) {
       setDraftStart(overrideStart ?? defaultStartTime);
       setDraftEnd(overrideEnd ?? defaultEndTime);
+      setDraftNote(note ?? "");
       setError(null);
     }
-  }, [open, overrideStart, overrideEnd, defaultStartTime, defaultEndTime]);
+  }, [open, overrideStart, overrideEnd, defaultStartTime, defaultEndTime, note]);
 
   const isOverridden = overrideStart !== null || overrideEnd !== null;
 
-  const persist = (nextStart: string | null, nextEnd: string | null) => {
+  /**
+   * 時刻 + note を Save する複合ハンドラ。
+   * - time 差分あり → updateNativeScheduleSessionTimeAction
+   * - note 差分あり → updateNativeScheduleSessionNoteAction
+   * - 両方差分あり → 順次呼び出し (片方失敗で残りは skip して error 表示)
+   * - 両方無差分 → 何もせず close
+   */
+  const onSave = () => {
     setError(null);
-    if (nextStart !== null && !HHMM_RE.test(nextStart)) {
+
+    // time validate
+    if (!HHMM_RE.test(draftStart)) {
       setError("開始時刻は HH:MM 形式で入力してください");
       return;
     }
-    if (nextEnd !== null && !HHMM_RE.test(nextEnd)) {
+    if (!HHMM_RE.test(draftEnd)) {
       setError("終了時刻は HH:MM 形式で入力してください");
       return;
     }
-    if (nextStart !== null && nextEnd !== null && nextStart === nextEnd) {
+    if (draftStart === draftEnd) {
       setError("開始時刻と終了時刻が同じです");
       return;
     }
+
+    // note validate (長さは Textarea maxLength でも縛っているが二重 guard)
+    const normalizedNote = draftNote.trim();
+    if (normalizedNote.length > NOTE_MAX_LENGTH) {
+      setError(`備考は ${NOTE_MAX_LENGTH} 文字以内で入力してください`);
+      return;
+    }
+    const nextNote = normalizedNote || null;
+
+    // diff 判定: 現在の DB 値と比較
+    const currentDisplayStart = overrideStart ?? defaultStartTime;
+    const currentDisplayEnd = overrideEnd ?? defaultEndTime;
+    const timeChanged =
+      draftStart !== currentDisplayStart || draftEnd !== currentDisplayEnd;
+    const noteChanged = nextNote !== (note ?? null);
+
+    if (!timeChanged && !noteChanged) {
+      // 何も変わってないので action なしで close
+      setOpen(false);
+      return;
+    }
+
     startTransition(async () => {
-      const result = await updateNativeScheduleSessionTimeAction({
-        sessionId,
-        startTime: nextStart,
-        endTime: nextEnd,
-      });
-      if (!result.ok) {
-        setError(result.reason);
-        return;
+      if (timeChanged) {
+        const r = await updateNativeScheduleSessionTimeAction({
+          sessionId,
+          startTime: draftStart,
+          endTime: draftEnd,
+        });
+        if (!r.ok) {
+          setError(r.reason);
+          return;
+        }
       }
-      toast.success(
-        nextStart === null
-          ? `${displayDate} の時刻を default に戻しました`
-          : `${displayDate} の時刻を ${nextStart}〜${nextEnd} に変更しました`,
-      );
+      if (noteChanged) {
+        const r = await updateNativeScheduleSessionNoteAction({
+          sessionId,
+          note: nextNote,
+        });
+        if (!r.ok) {
+          setError(r.reason);
+          return;
+        }
+      }
+      const msgs: string[] = [];
+      if (timeChanged) msgs.push(`時刻を ${draftStart}〜${draftEnd}`);
+      if (noteChanged) {
+        msgs.push(nextNote === null ? "備考をクリア" : "備考を更新");
+      }
+      toast.success(`${displayDate} の ${msgs.join(" / ")} に変更しました`);
       setOpen(false);
       router.refresh();
     });
   };
 
-  const onSave = () => persist(draftStart, draftEnd);
-  const onResetToDefault = () => persist(null, null);
+  /**
+   * 「default に戻す」は時刻のみ対象 (note は空文字保存で別経路の NULL 化)。
+   */
+  const onResetToDefault = () => {
+    setError(null);
+    startTransition(async () => {
+      const r = await updateNativeScheduleSessionTimeAction({
+        sessionId,
+        startTime: null,
+        endTime: null,
+      });
+      if (!r.ok) {
+        setError(r.reason);
+        return;
+      }
+      toast.success(`${displayDate} の時刻を default に戻しました`);
+      setOpen(false);
+      router.refresh();
+    });
+  };
+
   const onCancel = () => setOpen(false);
 
   return (
@@ -180,6 +261,24 @@ export function SessionTimeEditPopover({
                   </span>
                 ) : null}
               </span>
+            </div>
+
+            {/* 2.8 (2026-06-10) TODO #81 follow-up: note Textarea。空文字で
+                NULL 化 (= 備考削除)。CandidateDateDialog と同じ maxLength=200。 */}
+            <div className="flex flex-col gap-1.5">
+              <span className="font-mono text-[10px] tracking-[0.18em] text-muted-foreground uppercase">
+                備考
+              </span>
+              <Textarea
+                value={draftNote}
+                onChange={(e) => setDraftNote(e.target.value)}
+                disabled={busy}
+                rows={2}
+                maxLength={NOTE_MAX_LENGTH}
+                placeholder="例: アルカディア LH4 練習"
+                spellCheck={false}
+                className="text-sm"
+              />
             </div>
 
             {error && (
