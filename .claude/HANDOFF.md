@@ -37,7 +37,7 @@
 
 ## 📌 次回の作業優先度
 
-未完了 TODO はユーザー選択。残りは #7 (スマホレイアウト) と #11 (パフォーマンス、休眠中) のみ。TODO #51 (マイクロインタラクション polish) は 2.6 (2026-06-10) で P1〜P3 全 phase 完了 + 本番実機確認 OK でクローズ。TODO #85〜#89 も同日 5 PR merge + 実機確認 OK。残作業は TODO #86 の 24h 観察 (UTC 19:00 自動発火確認) + 保留オペレーション項目 1 (Discord 通知 ON 切替)。
+未完了 TODO は **#11 (パフォーマンス、休眠中 = 新ボトルネック発見時のみ再開) のみ**。TODO #7 (スマホレイアウト) / #51 (マイクロインタラクション polish) / #85〜#89 はいずれも 2.6 (2026-06-10) でクローズ + 本番実機確認 OK。残作業は TODO #86 の 24h 観察 (UTC 19:00 自動発火確認) + 保留オペレーション項目 1 (Discord 通知 ON 切替)。SubTabs の active tab 画面外問題 (scrollIntoView 改善) は TODO #7 監査の見送り所見として未起票 (必要になったら新規 TODO 化)。
 
 ## 未完了 TODO 一覧
 
@@ -65,7 +65,6 @@
 
 | # | 項目 | 規模 |
 |---|---|---|
-| 7 | スマホでのレイアウト崩れ確認 | 中 |
 | 11 | ページ全体のパフォーマンス最適化。phase 1-10 完了済、見送り候補あり。詳細: `.claude/todos/11.md` | — |
 
 ### 🧹 コードベース最適化 / リファクタ
@@ -83,6 +82,13 @@
 ## 完了済み TODO
 
 直近版のみ列挙。詳細経緯は `src/lib/changelog.ts`、過去版アーカイブは `.claude/done.md`。
+
+- **2.6 (2026-06-10)**: TODO #7 クローズ — モバイル幅 (375px) レイアウト監査 + 攻略タブ header の折返し spill 修正 ([PR #163](https://github.com/yyamazaki-lym/raid-repository/pull/163) squash merge `bde0163`、本番スマホ実機確認 OK)
+  - **発端**: 1.9 系からの積み残し「スマホでのレイアウト崩れ確認」。dev preview を 375×812 に固定し、横 overflow 検出 script (viewport 外への protrude 要素を overflow-x スクロールコンテナ除外で列挙) + screenshot で、主要ページ全部 + dialog 4 種 (設定 / コンテンツ追加 / リンク追加 / 画像追加) + popover 2 種 (メモ / PT募集文) を横断監査
+  - **監査結果**: 横 overflow はゼロ。schedule の出欠表 / 過去詳細表は横スクロールコンテナで正常、dialog は `max-w-[calc(100%-1.5rem)]`、popover は viewport 内 clamp。**唯一の崩れが攻略タブ section header** — 375px で「Links · N links · ドラッグで並び替え」+「サムネ」+「リンク追加」が flex 圧縮され、サムネ toggle のラベルが 1 文字ずつ折り返して h-7 固定 box から spill (縦積み表示)
+  - **変更内容**: [strategy-list.tsx](src/app/(portal)/category/[slug]/strategy/strategy-list.tsx) + [strategy-images-list.tsx](src/app/(portal)/category/[slug]/strategy/strategy-images-list.tsx) の header 行を `flex-wrap` 化 + ドラッグヒントを `hidden sm:inline` (モバイル非表示) + サムネ / 折りたたみ toggle と [link-form-dialog.tsx](src/components/portal/link-form-dialog.tsx) / [image-form-dialog.tsx](src/components/portal/image-form-dialog.tsx) の defaultTrigger に `whitespace-nowrap` (+`shrink-0`)
+  - **見送り所見**: SubTabs の active tab が画面外に出るケース (横スクロール自体は scrollbar 非表示で機能) → `scrollIntoView` 改善は将来候補、未起票 / native mode 画面は demo env が sync mode のため未監査 (mode 切替に DB 書込が必要) / 実機特有挙動 (iOS Safari URL bar / safe-area / touch) は本番スマホ実機確認でカバー
+  - **検証**: `npx tsc --noEmit` PASS / `npm run build` ✓ / dev preview 375px で header 1 行表示 + 全ページ docOverflow 0 を再確認 / merge 後の本番スマホ実機でユーザー確認 OK (2026-06-10)
 
 - **2.6 (2026-06-10)**: TODO #51 クローズ — マイクロインタラクション / ユーザビリティ向上 (portal 全体の体感 polish 1 周、観点 10 項目を P1〜P3 の 6 PR で完遂) ([PR #155](https://github.com/yyamazaki-lym/raid-repository/pull/155) 観点リスト / [PR #156](https://github.com/yyamazaki-lym/raid-repository/pull/156) P1 `1c5c5c4` / [PR #157](https://github.com/yyamazaki-lym/raid-repository/pull/157) P2-4 `dc2c6b4` / [PR #158](https://github.com/yyamazaki-lym/raid-repository/pull/158) P2-5 `e584288` / [PR #159](https://github.com/yyamazaki-lym/raid-repository/pull/159) P2-6+7 `5ad17d3` / [PR #161](https://github.com/yyamazaki-lym/raid-repository/pull/161) P3 `c9322dd`、全て squash merge + 本番実機確認 OK)
   - **発端**: 1.9 系から積み残しの横断 polish 項目。性能数値 (TODO #11) と切り分け、操作の体感品質 (press / hover / focus / loading / validation / 空状態) を portal 全体で 1 周する
