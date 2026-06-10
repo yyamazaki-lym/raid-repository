@@ -9,12 +9,15 @@ import { Input } from "@/components/ui/input";
 import { setNativeScheduleDefaultRaidTimeAction } from "@/lib/server/categories-actions";
 
 /**
- * TODO #81 (2.1, 2026-05-12): native 経路で `ensureNativeMonthlyPlaceholders()`
- * が auto-insert する placeholder row の開始 / 終了時刻のデフォルト値を編集する。
+ * TODO #81 (2.1, 2026-05-12) / TODO #85 (2.6, 2026-06-10): native 経路で
+ * `ensureNativeMonthlyPlaceholders()` が auto-insert する placeholder row の
+ * 開始 / 終了時刻のデフォルト値を編集する。
  *
  * - HH:MM input × 2。保存ボタン押下で `setNativeScheduleDefaultRaidTimeAction`。
- * - 既存 placeholder の遡及更新は **しない** (server action 側コメント参照)。
- *   翌月分や月末閾値到達後に追加される新規 placeholder から新値が反映される。
+ * - **TODO #85 (2.6)**: 保存時に未来日付 (JST 今日 0:00 以降) の placeholder
+ *   行を新 default で自動的に遡及更新する。手動で同じ raw_date を追加済の
+ *   候補日と衝突した場合は placeholder 側を削除して手動行を温存する。
+ *   toast に「候補日 N 件を更新 / M 件を削除」を表示する。
  */
 
 const TIME_RE = /^([01]?\d|2[0-3]):([0-5]\d)$/;
@@ -73,8 +76,20 @@ export function NativeDefaultRaidTimeSection({
         toast.error(r.reason);
         return;
       }
+      // TODO #85 (2.6, 2026-06-10): 遡及更新の件数を toast に併記。
+      // 0 件のときは詳細を省略し従来通り簡素に。M>0 (= 衝突で DELETE
+      // が発生) のときは admin に衝突の発生を意識させる文言を付ける。
+      const total = r.updatedCount + r.deletedCount;
+      const detail =
+        total === 0
+          ? ""
+          : ` (候補日 ${r.updatedCount} 件を更新${
+              r.deletedCount > 0
+                ? ` / ${r.deletedCount} 件を削除 (手動行と衝突)`
+                : ""
+            })`;
       toast.success(
-        `デフォルト時刻を保存しました (${draftStart}〜${draftEnd})`,
+        `デフォルト時刻を ${draftStart}〜${draftEnd} に変更しました${detail}`,
       );
       onChanged();
       router.refresh();
@@ -95,8 +110,9 @@ export function NativeDefaultRaidTimeSection({
 
       <p className="text-[10px] leading-relaxed text-muted-foreground">
         当月日付の自動補完で使うレイド開始 / 終了時刻のデフォルト値。
-        保存後に新しく自動追加される候補日 (翌月分など) から反映されます。
-        既存の候補日は遡及更新されません。
+        保存時に未来日付 (今日以降) の候補日も新しい時刻に自動更新されます。
+        手動で同じ日時の候補日を追加済の場合は、衝突した自動生成行を削除して
+        手動行を温存します。
       </p>
 
       <div className="flex flex-col gap-2">
