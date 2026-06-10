@@ -1073,6 +1073,103 @@ export async function deleteSessionLogsUrl(
 }
 
 /**
+ * 2.9 (2026-06-10) TODO #73 follow-up: native スケジュール版の manual link
+ * 追加 server action。schema 上 `native_schedule_session_logs` は TODO #73
+ * (2.5 / 2026-06-10) で準備済 (id PK / native_session_id UUID FK / url / source
+ * CHECK('auto'|'manual') / UNIQUE(native_session_id, url))。本 action は
+ * `source='manual'` で INSERT する経路を提供する。auto link 経路
+ * (`linkReportsToNativeSessions()`) は cleanup で `source='auto'` のみ wipe
+ * するため、manual 行は cron 再走でも温存される。
+ *
+ * sync 側 `addSessionLogsUrl()` と異なり parent row の placeholder INSERT は
+ * 不要 (`native_schedule_sessions.id` UUID が FK ターゲットで、parent row が
+ * 存在しなければ FK 制約で reject される — DECISION 化済の session に対し
+ * てしか trigger UI が出ないので parent は必ず存在する前提)。
+ */
+export async function addNativeSessionLogsUrl(
+  nativeSessionId: string,
+  logsUrl: string,
+): Promise<{ ok: true; id: string } | { ok: false; reason: string }> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
+  const trimmedId = nativeSessionId.trim();
+  if (!trimmedId) {
+    return { ok: false, reason: "nativeSessionId が空です" };
+  }
+  const t = logsUrl.trim();
+  if (!t) {
+    return { ok: false, reason: "FFLogs URL を入力してください" };
+  }
+  if (!/^https?:\/\//i.test(t)) {
+    return {
+      ok: false,
+      reason: "FFLogs URL は http:// か https:// で始めてください",
+    };
+  }
+  if (!/fflogs\.com\/reports\//i.test(t)) {
+    return {
+      ok: false,
+      reason:
+        "FFLogs レポート URL を入力してください (例: https://www.fflogs.com/reports/abc123)",
+    };
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("native_schedule_session_logs")
+    .insert({
+      native_session_id: trimmedId,
+      url: t,
+      source: "manual",
+    })
+    .select("id")
+    .single();
+  if (error) {
+    if ((error as { code?: string }).code === "23505") {
+      return { ok: false, reason: "同じ URL が既に紐付いています" };
+    }
+    return { ok: false, reason: dbError("logs URL 追加", error) };
+  }
+  try {
+    revalidatePath("/");
+  } catch {
+    // best-effort
+  }
+  return { ok: true, id: data.id as string };
+}
+
+/**
+ * 2.9 (2026-06-10) TODO #73 follow-up: native スケジュール版の manual link
+ * 削除 server action。id ベースで `native_schedule_session_logs` から DELETE。
+ * source 列は問わず (UI で「× で削除」が出るのは admin 視点なので auto/manual
+ * 両方を削除可能、誤 auto-match を inline で掃除できる sync 側と同パターン)。
+ * ただし auto 行を削除しても next cron で再 INSERT される (auto cleanup +
+ * re-INSERT の挙動は変えない)、manual 行のみ恒久的に削除される。
+ */
+export async function deleteNativeSessionLogsUrl(
+  id: string,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
+  const trimmed = id.trim();
+  if (!trimmed) {
+    return { ok: false, reason: "id が空です" };
+  }
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("native_schedule_session_logs")
+    .delete()
+    .eq("id", trimmed);
+  if (error) return { ok: false, reason: dbError("logs URL 削除", error) };
+  try {
+    revalidatePath("/");
+  } catch {
+    // best-effort
+  }
+  return { ok: true };
+}
+
+/**
  * Server Action: take a snapshot of the current character-sheets
  * attendance into `schedule_past_sessions`. Triggered manually from
  * the maintenance menu (rare) — the typical run is the daily Vercel
