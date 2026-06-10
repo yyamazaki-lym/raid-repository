@@ -127,12 +127,15 @@ function isDevAuthBypassEnabled(): boolean {
 // gate を skip する。モックサイト (TODO #8) 用に portal を一般公開する用途。
 // dev bypass と違って NODE_ENV ガードを設けず production でも有効になる。
 //
-// 書き込みは別途 `auth.ts` の publicDemoModeUser が roles=[] (= 非 admin) を
-// 返すことで `requireAdmin()` / `assertAdminResult()` 経由でアプリ層で弾く。
-// さらに demo mode user は実 Supabase auth session を持たないため、書き込み
-// 時の `createClient()` は anon key で動作 → RLS の `WITH CHECK
-// (auth.jwt()->>is_admin = 'true')` も通過できず 4 層防御の最深層 (RLS)
-// でも block される。
+// gate skip のみで実セッション cookie はそのまま app 層へ届く。TODO #91
+// (案 A) 以降、`auth.ts` の `requireDiscordMember()` が demo でもセッション
+// を先に確認し、guild member 検証済みなら本物の roles を返す (= admin
+// ロール持ちの owner だけ編集可能)。セッションなし / 非メンバーは roles=[]
+// (= 非 admin) のゲストに fallback し、`requireAdmin()` /
+// `assertAdminResult()` 経由でアプリ層が書き込みを弾く。ゲストは実
+// Supabase auth session を持たないため、書き込み時の `createClient()` は
+// anon key で動作 → RLS の `WITH CHECK (auth.jwt()->>is_admin = 'true')`
+// も通過できず 4 層防御の最深層 (RLS) でも block される。
 function isPublicDemoModeEnabled(): boolean {
   return process.env.PUBLIC_DEMO_MODE === "true";
 }
