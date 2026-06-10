@@ -37,7 +37,7 @@
 
 ## 📌 次回の作業優先度
 
-未完了 TODO はユーザー選択。残りは中〜大規模 (#7 / #51 / #11) の見送り候補のみ。TODO #85〜#89 (placeholder 時刻遡及更新 / FFLogs cron 自動化 / dialog 初期値 / placeholder auto chip + note 編集 / FFLogs manual link UI native) は 2.6 (2026-06-10) で 5 PR 同日 merge し、本番実機確認 OK。残作業は TODO #86 の 24h 観察 (UTC 19:00 自動発火確認) + 保留オペレーション項目 1 (Discord 通知 ON 切替)。
+未完了 TODO はユーザー選択。残りは #7 (スマホレイアウト) と #11 (パフォーマンス、休眠中) のみ。TODO #51 (マイクロインタラクション polish) は 2.6 (2026-06-10) で P1〜P3 全 phase 完了 + 本番実機確認 OK でクローズ。TODO #85〜#89 も同日 5 PR merge + 実機確認 OK。残作業は TODO #86 の 24h 観察 (UTC 19:00 自動発火確認) + 保留オペレーション項目 1 (Discord 通知 ON 切替)。
 
 ## 未完了 TODO 一覧
 
@@ -66,7 +66,6 @@
 | # | 項目 | 規模 |
 |---|---|---|
 | 7 | スマホでのレイアウト崩れ確認 | 中 |
-| 51 | マイクロインタラクション / ユーザビリティ向上 — portal 全体の polish を 1 周 (framer-motion 維持、springy な質感)。**P1 + P2 完了** (2026-06-10、PR #156〜#159 の 4 PR、本番実機確認 OK): toast 設定明示 / press feedback 統一 / focus-visible 補修 / pending spinner 統一 / CSS-only skeleton / onBlur 即時 validation / `<EmptyState>` 化。**残り P3 (hover elevation / duration token 化 / framer-motion 拡大) の要否判断のみ** (やらない判断 = #51 〆もあり)。詳細・制約: `.claude/todos/51.md` | 小〜中 |
 | 11 | ページ全体のパフォーマンス最適化。phase 1-10 完了済、見送り候補あり。詳細: `.claude/todos/11.md` | — |
 
 ### 🧹 コードベース最適化 / リファクタ
@@ -84,6 +83,21 @@
 ## 完了済み TODO
 
 直近版のみ列挙。詳細経緯は `src/lib/changelog.ts`、過去版アーカイブは `.claude/done.md`。
+
+- **2.6 (2026-06-10)**: TODO #51 クローズ — マイクロインタラクション / ユーザビリティ向上 (portal 全体の体感 polish 1 周、観点 10 項目を P1〜P3 の 6 PR で完遂) ([PR #155](https://github.com/yyamazaki-lym/raid-repository/pull/155) 観点リスト / [PR #156](https://github.com/yyamazaki-lym/raid-repository/pull/156) P1 `1c5c5c4` / [PR #157](https://github.com/yyamazaki-lym/raid-repository/pull/157) P2-4 `dc2c6b4` / [PR #158](https://github.com/yyamazaki-lym/raid-repository/pull/158) P2-5 `e584288` / [PR #159](https://github.com/yyamazaki-lym/raid-repository/pull/159) P2-6+7 `5ad17d3` / [PR #161](https://github.com/yyamazaki-lym/raid-repository/pull/161) P3 `c9322dd`、全て squash merge + 本番実機確認 OK)
+  - **発端**: 1.9 系から積み残しの横断 polish 項目。性能数値 (TODO #11) と切り分け、操作の体感品質 (press / hover / focus / loading / validation / 空状態) を portal 全体で 1 周する
+  - **進め方**: 最初にコードベース横断調査 → 観点リスト + 優先順位付けを `.claude/todos/51.md` に作成 ([PR #155](https://github.com/yyamazaki-lym/raid-repository/pull/155))、P1 (効果大/リスク小) → P2 (設計必要) → P3 (質感/要否ユーザー判断) の 3 段階で phase ごとに 1 PR + changelog.ts 同梱
+  - **変更内容 (phase 別)**:
+    - **P1**: sonner Toaster の position/duration 明示化 + 文体規範策定 / 小型 trigger 11 箇所に `active:scale-95` press feedback (badge 系は `translate-y-px`) / focus-visible 欠落 3 箇所補修 (portal 既存の `ring-2` + neon 色パターンに統一)
+    - **P2-4**: dialog 系保存 button 5 箇所 + onboarding card 2 箇所を settings section と同じ `busy ? <Loader2 spin> : <Save>` に統一
+    - **P2-5**: [/category/loading.tsx](src/app/(portal)/category/loading.tsx) + [[slug]/loading.tsx](src/app/(portal)/category/[slug]/loading.tsx) を CSS-only (animate-pulse) Server Component で新設。SubTabs は layout 側のためタブ切替時はコンテンツ領域のみ skeleton 化
+    - **P2-6+7**: [src/lib/url-validation.ts](src/lib/url-validation.ts) `httpUrlError()` helper + URL input 4 箇所の onBlur 即時 validation (`aria-invalid` 初活用で input primitive の destructive border が発火、inline field error + 入力し直しで即クリア) / [src/components/portal/empty-state.tsx](src/components/portal/empty-state.tsx) `<EmptyState tone="violet"|"neutral">` で空状態 4 箇所統一
+    - **P3**: マクロ行 + 募集文テンプレート行 (アコーディオン行) に `hover:border-border/80` 補完 / [globals.css](src/app/globals.css) に transition duration 4 段規約 (micro=default 150 / popup-open=100 / panel=200 / page-fallback=300) をコメント明文化
+  - **見送り判断 (ユーザー確認済)**: 観点 10 (framer-motion 活用拡大) は close transition 再追加禁止の制約下で費用対効果が低く見送り / toast 呼び出し 171 箇所の文言一括統一は regression リスクに見合わず見送り (新規コードの文体規範のみ策定) / `<SubmitButton>` 共通抽出は適用箇所が少なく見送り
+  - **調査と実態の差分 (教訓)**: 初回調査の「card hover が弱い」「pending spinner なし」は primitive だけを見た過大評価で、使用側 (neon-edge + hover lift / settings section の spinner) は既適用だった。各 phase 着手時に対象を再調査し、欠落箇所の補完に絞った
+  - **触らない範囲**: popover / tooltip / dropdown の close transition (再導入禁止リスト維持) / button.tsx primitive / DnD ハンドル (drag UX 干渉) / 初期 bundle (新規 client ライブラリ追加ゼロ、skeleton / EmptyState は server 互換)
+  - **検証**: 各 PR で `npx tsc --noEmit` + `npm run build` + dev preview (skeleton は client navigation 中の出現を MutationObserver 実測、aria-invalid border は computed style 実測 — headless renderer の transition 凍結に注意) + 本番実機確認 OK (2026-06-10)
+  - **規約の置き場所**: duration 4 段規約 = globals.css コメント / 観点リスト + 実装判断の経緯 = `.claude/todos/51.md` (クローズ済マーカー付きで温存)
 
 - **2.6 (2026-06-10)**: TODO #85 クローズ — native placeholder の default 時刻遡及更新 (Default Raid Time 変更時に未来日付 placeholder を新値で自動更新、TODO #81 follow-up シリーズ最終) ([PR #153](https://github.com/yyamazaki-lym/raid-repository/pull/153) squash merge `05b70d3`)
   - **発端**: TODO #81 (2.1 / 2026-05-12) で `ensureNativeMonthlyPlaceholders()` が auto-insert する placeholder 行は `raw_date` 文字列に生成時の default 時刻を焼き込むため、admin が設定 dialog で default 時刻を変更しても既存 placeholder は旧 default のまま残る非対称があった。TODO #87/#88 (2.6) では UNIQUE 衝突回避が必要なためスコープ外として見送り → 本 TODO で JST 今日 0:00 以降の未来日付 placeholder を新値で自動再構成する経路を追加
