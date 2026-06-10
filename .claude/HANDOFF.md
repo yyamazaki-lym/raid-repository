@@ -1,6 +1,6 @@
 # Raid Repository — 引き継ぎノート
 
-> 2.4 (2026-06-09) 時点。完了済 TODO の詳細は `src/lib/changelog.ts` / 過去版番号は `.claude/done.md`。
+> 2.4 (2026-06-10) 時点。完了済 TODO の詳細は `src/lib/changelog.ts` / 過去版番号は `.claude/done.md`。
 >
 > **新規会話の手順**: このファイルを読んだ後、TODO 一覧は自動表示せずユーザーの要望を待つ。新規 TODO 追記時は part 単位ではなく TODO 完了時のみ統合追記する (part 細分は commit log に任せる)。
 
@@ -85,6 +85,14 @@
 
 直近版のみ列挙。詳細経緯は `src/lib/changelog.ts`、過去版アーカイブは `.claude/done.md`。
 
+- **2.4 (2026-06-10)**: TODO #2 24h 観察フェーズ完了 (項目 2-iv ✅、項目 2 全体クローズ) + 観察過程で発覚した cron jobid 採番副作用の構造修正 ([PR #142](https://github.com/yyamazaki-lym/raid-repository/pull/142) squash merge `deb4ad9` + [PR #143](https://github.com/yyamazaki-lym/raid-repository/pull/143) squash merge `cbf9dbe`)
+  - **発端**: TODO #2 follow-up 保留オペレーション項目 2-iv (notify-native-schedule-hourly の 24h 自動運転観察) を消化する目的で本番 Supabase SQL Editor を実行、累計 **786 succeeded / 0 failed** (2026-05-08 06:00 UTC 〜 2026-06-09 23:00 UTC、期待値 ~792 に対し ~99% カバレッジ) を確認 → 項目 2-iv ✅ 化。観察過程で `cron.job_run_details` を固定 jobid=1 で見ると 2 件しか拾えない現象から、schema 再 deploy 毎に新規 jobid が採番される副作用が発覚 (1 ヶ月で jobid=1→4→5→6→7→8→9→11→12→13→14→15 と 12 回切替)
+  - **PR #142 (docs only)**: 保留オペレーション節の項目 2-iv ✅ 化 + 項目 2 全体クローズ、jobid evolution 補注を追記 (将来の観察は `jobname` 単位 or `start_time` 範囲で jobid 跨ぎ集計するよう注意喚起)。観察 24h ウィンドウ単独でも jobid={1,4,5,6} の 4 jobid 跨ぎで **24 succeeded / 0 failed** で検収条件 (23–25 succeeded / 0 failed) 満たす
+  - **PR #143 (schema fix + changelog)**: `supabase/schema.sql` Section 13 の cron 登録 DO block を `cron.unschedule + cron.schedule` から「jobname 既存判定 + 初回 `cron.schedule` / 既存時 `cron.alter_job(job_id, schedule, command)`」パターンに置換。alter_job は jobid を維持したまま schedule/command を上書きするため、schema 再 deploy 毎の jobid 採番が止まる。`c_schedule` / `c_command` を DO block 内 constant 変数化 + `$cmd$` delimiter で 2 path 共通化。changelog.ts に新 2.4 (2026-06-10) entry を `RELEASES[0]` として追加 (ポータル左上 Ver 表示も自動で 2.4 (2026-06-10) に切替)
+  - **触らない範囲**: pg_cron / pg_net extension の `CREATE EXTENSION IF NOT EXISTS`、vault secret 経由 Bearer 取得ロジック、cron URL / schedule (`0 * * * *`) は無改修。Section 13b / 13c (sort_order RPC) も無改修。route 側 ([src/app/api/cron/notify-native-schedule/route.ts](src/app/api/cron/notify-native-schedule/route.ts)) / app_settings 系 / app コード全般も無改修。ENABLED='false'/'true' どちらでも挙動変化なし
+  - **検証**: PR #143 merge 後の schema 自動 deploy ([本番 32s success](https://github.com/yyamazaki-lym/raid-repository/actions/runs/27243978619) / [demo success](https://github.com/yyamazaki-lym/raid-repository/actions/runs/27243978607)) → ユーザー実機 `SELECT jobid, jobname, schedule, active FROM cron.job WHERE jobname = 'notify-native-schedule-hourly';` で **`jobid=15 / active=true` 維持** を確認、即時効果あり。長期確証は後続の main push 数回後も jobid=15 のままを確認する継続観察に委ねる
+  - **保留オペレーション残作業**: 項目 1 (Discord 通知 ON/OFF トグル ON 切替 + 投稿到達確認) のみ ⏳ で残置、ユーザー判断で別タイミング着手
+  - **過去 cron.job_run_details の扱い**: jobid 12 種にまたがる history record は cleanup なしで残置、観察観点ではむしろ jobid evolution の証跡として有用
 - **2.4 (2026-06-09)**: セキュリティ全体監査 batch 1 (PR #135) の follow-up 3 件 (TODO #82 / #83 / #84) をまとめてクローズ ([PR #137](https://github.com/yyamazaki-lym/raid-repository/pull/137) squash merge `aac714f` + [PR #138](https://github.com/yyamazaki-lym/raid-repository/pull/138) squash merge `6b9b948` + [PR #139](https://github.com/yyamazaki-lym/raid-repository/pull/139) squash merge `4a54a0f` + [PR #140](https://github.com/yyamazaki-lym/raid-repository/pull/140) squash merge `8ef3b75`)
   - **発端**: PR #135 で punch list 化された Medium #6 (Vercel KV / Upstash Redis 化 = TODO #82) / `loot_items` 系 sort_order race (TODO #83) / Low #16 (CSP `'unsafe-inline'` nonce 化 = TODO #84) の 3 件をユーザー判断で同一セッション順次着手。各々独立 PR で投入し、merge 順序は #137 → #138 → #139 → #140 (KV_* env prefix follow-up)
   - **TODO #83 (PR #137, 🧹 リファクタ系)**: `recruitment_templates` / `category_macros` の `SELECT max(sort_order) → +1 → INSERT` JS 側 TOCTOU を、PR #135 と同パターンの SECURITY DEFINER RPC (`next_recruitment_template_sort_order()` / `next_category_macro_sort_order(p_category_id uuid)`) に置換。schema.sql Section 13c に追加 + anon/authenticated に EXECUTE GRANT。`recruitment-templates-client.ts` / `category-macros-client.ts` の create 関数を `supabase.rpc(...)` 呼び出しに差し替え。元 TODO 文言の `loot_items` / `mitigation_phases` / `mitigation_entries` / `strategy_docs` は schema.sql にテーブル定義だけ残る legacy で現行 portal に対応する insert UI が存在しない (mitigation_sheet_url 等の単一文字列カラム形式に移行済) ためスコープ外、将来 UI が復活する際に同パターンで追加する想定。categories-actions.ts の `nextImageOrder()` (`category_links` を kind IN image+gphoto で絞る特殊ケース) と `category_gphoto_albums` 末尾追加も同型 TOCTOU だが本 TODO 外で別 PR 候補
