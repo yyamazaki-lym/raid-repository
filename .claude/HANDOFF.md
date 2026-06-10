@@ -1,6 +1,6 @@
 # Raid Repository — 引き継ぎノート
 
-> 2.4 (2026-06-10) 時点。完了済 TODO の詳細は `src/lib/changelog.ts` / 過去版番号は `.claude/done.md`。
+> 2.5 (2026-06-10) 時点。完了済 TODO の詳細は `src/lib/changelog.ts` / 過去版番号は `.claude/done.md`。
 >
 > **新規会話の手順**: このファイルを読んだ後、TODO 一覧は自動表示せずユーザーの要望を待つ。新規 TODO 追記時は part 単位ではなく TODO 完了時のみ統合追記する (part 細分は commit log に任せる)。
 
@@ -37,7 +37,7 @@
 
 ## 📌 次回の作業優先度
 
-未完了 TODO はユーザー選択。残りはほぼ全て中〜大規模 (#73 / #7 / #51 / #11) の見送り候補。TODO #81 完了後の機能面 follow-up (CandidateDateDialog 初期値統合、月切替 UI 等) は新規会話で別 TODO 起票予定。
+未完了 TODO はユーザー選択。残りはほぼ全て中〜大規模 (#7 / #51 / #11) の見送り候補。TODO #81 完了後の機能面 follow-up (CandidateDateDialog 初期値統合、月切替 UI 等) は新規会話で別 TODO 起票予定。
 
 ## 未完了 TODO 一覧
 
@@ -47,7 +47,7 @@
 
 | # | 項目 | 規模 |
 |---|---|---|
-| 73 | **FFLogs 連携 native 拡張** — `src/lib/server/fflogs.ts` の `linkReportsToSessions()` は現状 `schedule_past_sessions` 直読みなので native mode の sessions では FFLogs auto-link が動かない。native sessions 対応への拡張、`schedule_past_session_logs` の sync/native 統合 vs 別テーブル新設の設計議論、`schedule_past_sessions` 直読みからの脱却を含む。TODO #2 から分離 (2026-05-08)。詳細は `.claude/plans/todo-2-claude-handoff-md-spicy-seahorse.md` の「FFLogs 部分の扱い (本 TODO から除外)」節 | 中 |
+| _(現在なし)_ | — | — |
 
 ### 📂 カテゴリ詳細ページ (`/category/[slug]`)
 
@@ -85,6 +85,24 @@
 
 直近版のみ列挙。詳細経緯は `src/lib/changelog.ts`、過去版アーカイブは `.claude/done.md`。
 
+- **2.5 (2026-06-10)**: TODO #73 クローズ — FFLogs 連携 native 拡張 (status='DECISION' な native session への auto-link 経路実装) ([PR #145](https://github.com/yyamazaki-lym/raid-repository/pull/145) squash merge `9c051f0`)
+  - **発端**: TODO #2 で native スケジュール基盤を実装した時点で意図的に切り離していた FFLogs auto-link 経路を埋める。従来は `linkReportsToSessions()` が `schedule_past_sessions` (sync 専用) 直読みで、native mode の確定済 sessions には FFLogs アイコンが一切出ない状態だった
+  - **設計判断 (ユーザー確認済)**: D1=**別テーブル新設** (`native_schedule_session_logs`、sync 側 `schedule_past_session_logs` と並列構造、FK ターゲット `native_schedule_sessions.id` UUID PK)、D5=**auto-link のみ実装** (manual UI は本 TODO スコープ外、sync 側も未実装なので native だけ先行しない)
+  - **schema** [supabase/schema.sql](supabase/schema.sql) Section 5f: `native_schedule_session_logs` (id PK / native_session_id UUID FK ON DELETE CASCADE / url / source CHECK('auto'|'manual') / created_at / UNIQUE(native_session_id, url) + index)。Section 7 RLS ループ / 7b REPLICA IDENTITY FULL / 8 Realtime publication にも追加
+  - **fflogs.ts refactor + native wrapper** [src/lib/server/fflogs.ts](src/lib/server/fflogs.ts):
+    - `FflogsLinkResult` 型に `nativeSessionsScanned` / `nativeSessionsMatched` 追加
+    - cleanup 段階に `native_schedule_session_logs` WHERE `source='auto'` 並列 wipe を追加 (sync と対称)
+    - 共通 helper `MatchingSession<T>` 型 + `matchReportsToSessions<T>()` (同 JST 日 + 時間差スコア greedy 1:1 ペアリング、1.9.24 由来挙動を完全踏襲) + `buildSessionLinkDetail<T>()` フォーマッタを抽出。これで「`schedule_past_sessions` 直読みからの脱却」(TODO #73 元文言) も達成
+    - `linkReportsToSessions()` を helper 経由に refactor (外部 API 完全互換、sync regression なし)
+    - `linkReportsToNativeSessions()` 新規 (DECISION のみ対象、`alreadyLinked` Set は native_session_id ベース、`native_schedule_session_logs` に source='auto' INSERT)
+    - `linkFflogsReportsToVideos()` の `Promise.all` を 3 並列化 (video + sync session + native session)、戻り値オブジェクトに native フィールド + details 連結
+    - `fetchNativeSessionLogsByDate()` 新規 (`native_schedule_sessions!inner(raw_date)` JOIN で sync 同 shape `rawDate → SessionLogEntry[]` を返す)
+  - **UI 配線** [src/app/(portal)/page.tsx](src/app/(portal)/page.tsx): native ブランチの `Promise.all` に `fetchNativeSessionLogsByDate()` を追加、`SchedulePageBody` に prop drill (`sessionLogsByDate={{}}` → `sessionLogsByDate={nativeSessionLogsByDate}`)。TODO #77 で 過去詳細表 `mode!=='native'` ガード撤去済なので Logs アイコンは自動的に描画される
+  - **その他**: [src/lib/server/categories-actions.ts](src/lib/server/categories-actions.ts) admin gate fallback 戻り値にも native フィールド追加。[src/lib/changelog.ts](src/lib/changelog.ts) に 2.5 (2026-06-10) entry を `RELEASES[0]` として追加 (機能追加で minor bump、ポータル左上 Ver も自動切替)
+  - **触らない範囲**: `schedule_past_sessions` / `schedule_past_session_logs` の DDL / `native_schedule_sessions` 系既存テーブル / schedule-list.tsx / schedule-past-simple.tsx / schedule-page-body.tsx (map shape 不変) / FFLogs OAuth 経路 / video matching ロジック / cron 系すべて無改修
+  - **検証**: `npx tsc --noEmit` PASS / `npm run build` ✓ Compiled (17 routes すべて Dynamic、変化なし) / schema 自動 deploy 両環境成功 ([本番 30s](https://github.com/yyamazaki-lym/raid-repository/actions/runs/27244999430) / [demo](https://github.com/yyamazaki-lym/raid-repository/actions/runs/27244999438)) / ユーザー実機で publication 登録 (`SELECT FROM pg_publication_tables` で `native_schedule_session_logs` 確認) + FFLogs 同期 button 押下でエラーなく完走を確認、`nativeSessionsMatched=0` は「新たな FFLogs report が存在しないだけ」とユーザー判断 (= マッチロジックは健全動作)
+  - **follow-up**: manual link UI (`source='manual'` 追加 / 削除) は将来余地、別 TODO 化判断はユーザー。sync 側の manual UI も同様に未実装。auto cron 化 (admin button を待たず時間トリガー化) も検討余地あり
+  - **設計プラン**: `~/.claude/plans/todo-jiggly-feigenbaum.md`
 - **2.4 (2026-06-10)**: TODO #2 24h 観察フェーズ完了 (項目 2-iv ✅、項目 2 全体クローズ) + 観察過程で発覚した cron jobid 採番副作用の構造修正 ([PR #142](https://github.com/yyamazaki-lym/raid-repository/pull/142) squash merge `deb4ad9` + [PR #143](https://github.com/yyamazaki-lym/raid-repository/pull/143) squash merge `cbf9dbe`)
   - **発端**: TODO #2 follow-up 保留オペレーション項目 2-iv (notify-native-schedule-hourly の 24h 自動運転観察) を消化する目的で本番 Supabase SQL Editor を実行、累計 **786 succeeded / 0 failed** (2026-05-08 06:00 UTC 〜 2026-06-09 23:00 UTC、期待値 ~792 に対し ~99% カバレッジ) を確認 → 項目 2-iv ✅ 化。観察過程で `cron.job_run_details` を固定 jobid=1 で見ると 2 件しか拾えない現象から、schema 再 deploy 毎に新規 jobid が採番される副作用が発覚 (1 ヶ月で jobid=1→4→5→6→7→8→9→11→12→13→14→15 と 12 回切替)
   - **PR #142 (docs only)**: 保留オペレーション節の項目 2-iv ✅ 化 + 項目 2 全体クローズ、jobid evolution 補注を追記 (将来の観察は `jobname` 単位 or `start_time` 範囲で jobid 跨ぎ集計するよう注意喚起)。観察 24h ウィンドウ単独でも jobid={1,4,5,6} の 4 jobid 跨ぎで **24 succeeded / 0 failed** で検収条件 (23–25 succeeded / 0 failed) 満たす
