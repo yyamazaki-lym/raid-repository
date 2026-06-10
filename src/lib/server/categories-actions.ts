@@ -769,6 +769,8 @@ export async function linkFflogsReports(): Promise<FflogsLinkResult> {
       matched: 0,
       sessionsScanned: 0,
       sessionsMatched: 0,
+      nativeSessionsScanned: 0,
+      nativeSessionsMatched: 0,
       details: [],
     };
   }

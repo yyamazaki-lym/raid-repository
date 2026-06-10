@@ -14,7 +14,10 @@ import {
 import { getScheduleSourceMode } from "@/lib/schedule/source-mode";
 import { getScheduleSourceUrl } from "@/lib/schedule/source-url";
 import { SCHEDULE_TOP_TEXT_OVERRIDE_KEY } from "@/lib/schedule-top-text-keys";
-import { fetchSessionLogsByDate } from "@/lib/server/fflogs";
+import {
+  fetchSessionLogsByDate,
+  fetchNativeSessionLogsByDate,
+} from "@/lib/server/fflogs";
 import {
   ensureNativeMonthlyPlaceholders,
   NATIVE_DEFAULT_END_TIME_KEY,
@@ -200,8 +203,10 @@ async function ScheduleContent() {
   // mode === "native": phase 2-A 以降の native_schedule_* 取得 + 認証情報配線。
   // TODO #77 (2.1, 2026-05-12): UI を sync 同等のフラット表に統一したので、
   // sync 経路と同じく memos / topTextOverride も fetch して同等の体験にする。
-  // sessionLogsByDate は TODO #73 (FFLogs 連携 native 拡張) のスコープなので
-  // ここでは空のまま (= 過去詳細表に FFLogs アイコンは出ない)。
+  //
+  // TODO #73 (2.5, 2026-06-10): FFLogs 連携 native 拡張。
+  // `fetchNativeSessionLogsByDate()` で native 用 Logs map を取得し、sync と
+  // 同じ shape (`rawDate → SessionLogEntry[]`) で SchedulePageBody に渡す。
   //
   // TODO #81 (2.1, 2026-05-12 part5): native では「Discord 通知のたびに候補日を
   // 都度追加」する運用が現実的に存在するため、当月分が 0 件のままだと「予定なし」
@@ -217,6 +222,7 @@ async function ScheduleContent() {
     userRoles,
     member,
     initialMemosByDate,
+    nativeSessionLogsByDate,
   ] = await Promise.all([
     fetchAppSettings([
       SCHEDULE_TOP_TEXT_OVERRIDE_KEY,
@@ -229,6 +235,7 @@ async function ScheduleContent() {
     getAuthorizedUserRoles(),
     requireDiscordMember(),
     fetchScheduleMemosByDateBulk(),
+    fetchNativeSessionLogsByDate(),
   ]);
   await ensureNativeMonthlyPlaceholders({
     startTime: appSettings[NATIVE_DEFAULT_START_TIME_KEY],
@@ -271,7 +278,7 @@ async function ScheduleContent() {
       recruitmentTemplates={recruitmentTemplates}
       recruitmentCategories={recruitmentCategoryOptions}
       sessionVideoLinks={sessionVideoLinks}
-      sessionLogsByDate={{}}
+      sessionLogsByDate={nativeSessionLogsByDate}
       hasUltimateClear={hasUltimateClear}
       topTextOverride={topTextOverride}
       initialMemosByDate={initialMemosByDate}

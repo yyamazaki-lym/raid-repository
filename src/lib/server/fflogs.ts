@@ -769,6 +769,10 @@ export type FflogsLinkResult = {
   sessionsScanned: number;
   /** Past sessions that got their logs_url set this run. */
   sessionsMatched: number;
+  /** Native (TODO #2) sessions checked (status='DECISION', not yet linked). */
+  nativeSessionsScanned: number;
+  /** Native sessions that got their FFLogs URL set this run. */
+  nativeSessionsMatched: number;
   /** Per-match detail for the result panel. */
   details: FflogsLinkDetail[];
   /** Diagnostic — date range of fetched FFLogs reports (for empty-match debugging). */
@@ -903,6 +907,14 @@ export async function linkFflogsReportsToVideos(): Promise<FflogsLinkResult> {
         .from("schedule_past_session_logs")
         .delete()
         .eq("source", "auto"),
+      // TODO #73 (2.5, 2026-06-10): native 側も同じ source='auto' wipe を
+      // 走らせて再 match 時に重複 / 古い結果が残らないようにする。manual
+      // entry は将来 UI 化されるまで native 側には存在しない予定だが、
+      // source='manual' 行を温存する設計 (sync と対称) を最初から踏襲。
+      cleanupClient
+        .from("native_schedule_session_logs")
+        .delete()
+        .eq("source", "auto"),
     ]);
   } catch (e) {
     console.warn("[fflogs] auto-cleanup failed", e);
@@ -931,6 +943,8 @@ export async function linkFflogsReportsToVideos(): Promise<FflogsLinkResult> {
       matched: 0,
       sessionsScanned: 0,
       sessionsMatched: 0,
+      nativeSessionsScanned: 0,
+      nativeSessionsMatched: 0,
       details: [],
     };
   }
@@ -1073,18 +1087,22 @@ export async function linkFflogsReportsToVideos(): Promise<FflogsLinkResult> {
         matched: 0,
         sessionsScanned: 0,
         sessionsMatched: 0,
+        nativeSessionsScanned: 0,
+        nativeSessionsMatched: 0,
         details: [],
       };
     }
   }
 
-  // Run both linkers (independently — they don't share their used-set
-  // because each FFLogs report legitimately maps to both a video and
-  // a session for the same raid night).
+  // Run all linkers (independently — they don't share their used-set
+  // because each FFLogs report legitimately maps to a video AND a sync
+  // session AND a native session for the same raid night). TODO #73
+  // (2.5, 2026-06-10): native session linker added in parallel.
   const supabase = await createClient();
-  const [videoResult, sessionResult] = await Promise.all([
+  const [videoResult, sessionResult, nativeSessionResult] = await Promise.all([
     linkReportsToVideos(supabase, reports),
     linkReportsToSessions(supabase, reports),
+    linkReportsToNativeSessions(supabase, reports),
   ]);
 
   // Compute report date range for diagnostics — if matched=0 the user
@@ -1122,7 +1140,13 @@ export async function linkFflogsReportsToVideos(): Promise<FflogsLinkResult> {
     matched: videoResult.matched,
     sessionsScanned: sessionResult.scanned,
     sessionsMatched: sessionResult.matched,
-    details: [...videoResult.details, ...sessionResult.details],
+    nativeSessionsScanned: nativeSessionResult.scanned,
+    nativeSessionsMatched: nativeSessionResult.matched,
+    details: [
+      ...videoResult.details,
+      ...sessionResult.details,
+      ...nativeSessionResult.details,
+    ],
     reportsDateRange,
     videosDateRange: videoResult.dateRange,
     sessionsDateRange: sessionResult.dateRange,
@@ -1542,6 +1566,104 @@ async function linkReportsToVideos(
   };
 }
 
+/**
+ * Session ↔ FFLogs matching の入出力で sync/native 共通化された
+ * 軽量レコード。`key` は INSERT 時の FK 値 (sync=raw_date / native=UUID)、
+ * `rawDate` は detail label と JST 解析の表示用に使う。
+ *
+ * TODO #73 (2.5, 2026-06-10): linkReportsToSessions と
+ * linkReportsToNativeSessions が共有するため `MatchingSession<T>` 形で
+ * 抽象化。両 wrapper は table-specific な read / insert だけ担当。
+ */
+type MatchingSession<T extends string> = {
+  key: T;
+  rawDate: string;
+  tMs: number;
+};
+
+/**
+ * 同 JST カレンダー日マッチ + 時間差スコアの greedy 1:1 ペアリング。
+ * linkReportsToSessions / linkReportsToNativeSessions の共通 matcher。
+ *
+ * 1.9.24 由来の挙動を完全踏襲: 同日のみ候補化、Math.abs(report.start -
+ * session.parsed_date) スコア昇順、各 session / 各 report は 1 回だけ
+ * 消費される (グリーディ)。
+ */
+function matchReportsToSessions<T extends string>(
+  reports: FflogsReport[],
+  sessions: MatchingSession<T>[],
+): Array<{ session: MatchingSession<T>; report: FflogsReport }> {
+  const sameJstDay = (
+    a: { y: number; m: number; d: number },
+    b: { y: number; m: number; d: number },
+  ) => a.y === b.y && a.m === b.m && a.d === b.d;
+  type SPair = {
+    session: MatchingSession<T>;
+    report: FflogsReport;
+    score: number;
+  };
+  const pairs: SPair[] = [];
+  for (const s of sessions) {
+    const sJst = jstCalendarDate(s.tMs);
+    for (const r of reports) {
+      const rJst = jstCalendarDate(r.startMs);
+      if (!sameJstDay(sJst, rJst)) continue;
+      pairs.push({
+        session: s,
+        report: r,
+        // Tie-breaker: prefer report closer to session.parsed_date
+        // when the same date has multiple reports.
+        score: Math.abs(r.startMs - s.tMs),
+      });
+    }
+  }
+  pairs.sort((a, b) => a.score - b.score);
+  const usedSessionKeys = new Set<T>();
+  const usedReports = new Set<string>();
+  const out: Array<{ session: MatchingSession<T>; report: FflogsReport }> = [];
+  for (const pair of pairs) {
+    if (usedSessionKeys.has(pair.session.key)) continue;
+    if (usedReports.has(pair.report.id)) continue;
+    usedSessionKeys.add(pair.session.key);
+    usedReports.add(pair.report.id);
+    out.push({ session: pair.session, report: pair.report });
+  }
+  return out;
+}
+
+/**
+ * session ↔ report ペアから result panel 用の FflogsLinkDetail を組み立てる
+ * 共通フォーマッタ。sync / native で同じ形式を出す。
+ */
+function buildSessionLinkDetail<T extends string>(
+  pair: { session: MatchingSession<T>; report: FflogsReport },
+  logsUrl: string,
+): FflogsLinkDetail {
+  const sessionJst = jstCalendarDate(pair.session.tMs);
+  const reportJst = jstCalendarDate(pair.report.startMs);
+  const fmt = (d: { y: number; m: number; d: number }) =>
+    `${d.y}-${String(d.m).padStart(2, "0")}-${String(d.d).padStart(2, "0")}`;
+  const HOUR_MS_LOCAL = 60 * 60 * 1000;
+  const formatJstSession = (ms: number) => {
+    const dt = new Date(ms + 9 * HOUR_MS_LOCAL);
+    const Y = dt.getUTCFullYear();
+    const M = String(dt.getUTCMonth() + 1).padStart(2, "0");
+    const D = String(dt.getUTCDate()).padStart(2, "0");
+    const h = String(dt.getUTCHours()).padStart(2, "0");
+    const mi = String(dt.getUTCMinutes()).padStart(2, "0");
+    return `${Y}-${M}-${D} ${h}:${mi}`;
+  };
+  return {
+    kind: "session",
+    label: pair.session.rawDate,
+    reportTitle: pair.report.title || "(無題のレポート)",
+    reportUrl: logsUrl,
+    videoDate: fmt(sessionJst),
+    reportDate: fmt(reportJst),
+    reportStartJst: formatJstSession(pair.report.startMs),
+  };
+}
+
 async function linkReportsToSessions(
   supabase: SupabaseLike,
   reports: FflogsReport[],
@@ -1572,95 +1694,136 @@ async function linkReportsToSessions(
     (existingLogs ?? []).map((r) => r.raw_date as string),
   );
 
-  const sortedSessions = sessions
+  // TODO #73 (2.5, 2026-06-10): matching helper に乗せる形に refactor。
+  // sync は key=raw_date (FK target も raw_date)、greedy ペアリング後に
+  // schedule_past_session_logs に INSERT。
+  const sortedSessions: MatchingSession<string>[] = sessions
     .filter((s) => !alreadyLinked.has(s.raw_date as string))
     .map((s) => {
+      const rawDate = s.raw_date as string;
       const tMs = new Date(s.parsed_date as string).getTime();
-      return { ...s, tMs: Number.isFinite(tMs) ? tMs : null };
+      return Number.isFinite(tMs)
+        ? ({ key: rawDate, rawDate, tMs } as MatchingSession<string>)
+        : null;
     })
-    .filter((s): s is typeof s & { tMs: number } => s.tMs !== null)
+    .filter((s): s is MatchingSession<string> => s !== null)
     .sort((a, b) => a.tMs - b.tMs);
 
-  const usedReports = new Set<string>();
+  const pairs = matchReportsToSessions(reports, sortedSessions);
+
   const details: FflogsLinkDetail[] = [];
   let matched = 0;
-
-  // 1.9.24 simplified: 「同 JST 日」だけで判定。session の parsed_date
-  // と report の startMs が同じ JST カレンダー日なら候補。±時間
-  // ウィンドウは撤廃 (Log は実際の挑戦日なので日跨ぎ以外で外れ値に
-  // ならない、というユーザー知見ベース)。
-  type SPair = {
-    session: (typeof sortedSessions)[number];
-    report: FflogsReport;
-    score: number;
-  };
-  const sameJstDay = (
-    a: { y: number; m: number; d: number },
-    b: { y: number; m: number; d: number },
-  ) => a.y === b.y && a.m === b.m && a.d === b.d;
-  const pairs: SPair[] = [];
-  for (const s of sortedSessions) {
-    const sJst = jstCalendarDate(s.tMs);
-    for (const r of reports) {
-      const rJst = jstCalendarDate(r.startMs);
-      if (!sameJstDay(sJst, rJst)) continue;
-      pairs.push({
-        session: s,
-        report: r,
-        // Tie-breaker: prefer report closer to session.parsed_date
-        // when the same date has multiple reports.
-        score: Math.abs(r.startMs - s.tMs),
-      });
-    }
-  }
-  pairs.sort((a, b) => a.score - b.score);
-  const usedSessions = new Set<string>();
   for (const pair of pairs) {
-    const sKey = pair.session.raw_date as string;
-    if (usedSessions.has(sKey)) continue;
-    if (usedReports.has(pair.report.id)) continue;
     const logsUrl = `https://www.fflogs.com/reports/${pair.report.id}`;
     // TODO #64: insert into `schedule_past_session_logs` with
-    // `source='auto'`. ON CONFLICT DO NOTHING is implied by Supabase
-    // when no `onConflict` option is given — but to be explicit we
-    // rely on the UNIQUE (raw_date, url) constraint to prevent dup.
+    // `source='auto'`. UNIQUE (raw_date, url) constraint で重複を防止。
     const { error } = await supabase
       .from("schedule_past_session_logs")
-      .insert({ raw_date: sKey, url: logsUrl, source: "auto" });
+      .insert({ raw_date: pair.session.key, url: logsUrl, source: "auto" });
     if (error) {
       console.warn(
         "[fflogs-link/session] insert failed",
-        sKey,
+        pair.session.key,
         error.message,
       );
       continue;
     }
-    usedReports.add(pair.report.id);
-    usedSessions.add(sKey);
     matched += 1;
-    const sessionJst = jstCalendarDate(pair.session.tMs);
-    const reportJst = jstCalendarDate(pair.report.startMs);
-    const fmt = (d: { y: number; m: number; d: number }) =>
-      `${d.y}-${String(d.m).padStart(2, "0")}-${String(d.d).padStart(2, "0")}`;
-    const HOUR_MS_LOCAL = 60 * 60 * 1000;
-    const formatJstSession = (ms: number) => {
-      const dt = new Date(ms + 9 * HOUR_MS_LOCAL);
-      const Y = dt.getUTCFullYear();
-      const M = String(dt.getUTCMonth() + 1).padStart(2, "0");
-      const D = String(dt.getUTCDate()).padStart(2, "0");
-      const h = String(dt.getUTCHours()).padStart(2, "0");
-      const mi = String(dt.getUTCMinutes()).padStart(2, "0");
-      return `${Y}-${M}-${D} ${h}:${mi}`;
-    };
-    details.push({
-      kind: "session",
-      label: sKey,
-      reportTitle: pair.report.title || "(無題のレポート)",
-      reportUrl: logsUrl,
-      videoDate: fmt(sessionJst),
-      reportDate: fmt(reportJst),
-      reportStartJst: formatJstSession(pair.report.startMs),
-    });
+    details.push(buildSessionLinkDetail(pair, logsUrl));
+  }
+
+  const dateRange =
+    sortedSessions.length > 0
+      ? {
+          earliest: new Date(sortedSessions[0]!.tMs)
+            .toISOString()
+            .slice(0, 10),
+          latest: new Date(sortedSessions[sortedSessions.length - 1]!.tMs)
+            .toISOString()
+            .slice(0, 10),
+        }
+      : undefined;
+
+  return { scanned: sortedSessions.length, matched, details, dateRange };
+}
+
+/**
+ * TODO #73 (2.5, 2026-06-10): native スケジュール (`native_schedule_sessions`)
+ * の確定済 session に FFLogs report URL を auto-link する。
+ *
+ * sync の `linkReportsToSessions` と並列に呼び出される (admin が
+ * 設定 dialog の「FFLogs 同期」を押した経路、`linkFflogsReportsToVideos`
+ * 内の Promise.all で発火)。
+ *
+ * 振る舞いは sync 版と対称:
+ *   - `status='DECISION'` の native session のみ対象 (CANDIDATE / CANCELLED は除外)
+ *   - `source='manual'` 行を持つ session は除外 (auto wipe 後に残った manual を尊重)
+ *   - 同 JST 日マッチ + 時間差スコア greedy 1:1 ペアリング
+ *   - 成功時に `native_schedule_session_logs` (`source='auto'`) に INSERT
+ */
+async function linkReportsToNativeSessions(
+  supabase: SupabaseLike,
+  reports: FflogsReport[],
+): Promise<{
+  scanned: number;
+  matched: number;
+  details: FflogsLinkDetail[];
+  dateRange?: { earliest: string; latest: string };
+}> {
+  if (reports.length === 0) return { scanned: 0, matched: 0, details: [] };
+
+  const { data: sessions } = await supabase
+    .from("native_schedule_sessions")
+    .select("id, raw_date, parsed_date")
+    .eq("status", "DECISION");
+  if (!sessions || sessions.length === 0) {
+    return { scanned: 0, matched: 0, details: [] };
+  }
+
+  const { data: existingLogs } = await supabase
+    .from("native_schedule_session_logs")
+    .select("native_session_id");
+  const alreadyLinked = new Set(
+    (existingLogs ?? []).map((r) => r.native_session_id as string),
+  );
+
+  // native は key=native_session_id (UUID PK)、rawDate は表示用に保持。
+  const sortedSessions: MatchingSession<string>[] = sessions
+    .filter((s) => !alreadyLinked.has(s.id as string))
+    .map((s) => {
+      const id = s.id as string;
+      const rawDate = s.raw_date as string;
+      const tMs = new Date(s.parsed_date as string).getTime();
+      return Number.isFinite(tMs)
+        ? ({ key: id, rawDate, tMs } as MatchingSession<string>)
+        : null;
+    })
+    .filter((s): s is MatchingSession<string> => s !== null)
+    .sort((a, b) => a.tMs - b.tMs);
+
+  const pairs = matchReportsToSessions(reports, sortedSessions);
+
+  const details: FflogsLinkDetail[] = [];
+  let matched = 0;
+  for (const pair of pairs) {
+    const logsUrl = `https://www.fflogs.com/reports/${pair.report.id}`;
+    const { error } = await supabase
+      .from("native_schedule_session_logs")
+      .insert({
+        native_session_id: pair.session.key,
+        url: logsUrl,
+        source: "auto",
+      });
+    if (error) {
+      console.warn(
+        "[fflogs-link/native-session] insert failed",
+        pair.session.key,
+        error.message,
+      );
+      continue;
+    }
+    matched += 1;
+    details.push(buildSessionLinkDetail(pair, logsUrl));
   }
 
   const dateRange =
@@ -1709,6 +1872,55 @@ export async function fetchSessionLogsByDate(): Promise<
     return out;
   } catch (e) {
     console.warn("[fflogs] fetchSessionLogsByDate error:", e);
+    return {};
+  }
+}
+
+/**
+ * TODO #73 (2.5, 2026-06-10): native スケジュール版の Logs map reader。
+ * `native_schedule_session_logs` を `native_schedule_sessions!inner(raw_date)`
+ * JOIN で SELECT し、sync 版と同じ shape (`rawDate → SessionLogEntry[]`) を返す。
+ *
+ * UI 側 (schedule-list.tsx / schedule-past-simple.tsx) は本マップを sync
+ * 版と同等に扱えるので、prop 名 / 経路は変えず page.tsx の native ブランチ
+ * で本関数の戻り値を渡すだけで対応完了。
+ */
+export async function fetchNativeSessionLogsByDate(): Promise<
+  Record<string, SessionLogEntry[]>
+> {
+  try {
+    const supabase = await createClient();
+    const { data, error } = await supabase
+      .from("native_schedule_session_logs")
+      .select("id, url, source, native_schedule_sessions!inner(raw_date)")
+      .order("created_at", { ascending: true });
+    if (error || !data) return {};
+    const out: Record<string, SessionLogEntry[]> = {};
+    for (const row of data) {
+      const url = (row as { url?: string | null }).url ?? null;
+      const id = (row as { id?: string }).id;
+      const sourceRaw = (row as { source?: string }).source;
+      const source = sourceRaw === "auto" ? "auto" : "manual";
+      // JOIN 結果: Supabase typegen で
+      // `native_schedule_sessions: { raw_date: string } | { raw_date: string }[]`
+      // のどちらにもなり得るので runtime narrowing。
+      const joined = (
+        row as {
+          native_schedule_sessions:
+            | { raw_date: string | null }
+            | { raw_date: string | null }[]
+            | null;
+        }
+      ).native_schedule_sessions;
+      const k = Array.isArray(joined)
+        ? (joined[0]?.raw_date ?? null)
+        : (joined?.raw_date ?? null);
+      if (!k || !url || !id) continue;
+      (out[k] ??= []).push({ id, url, source });
+    }
+    return out;
+  } catch (e) {
+    console.warn("[fflogs] fetchNativeSessionLogsByDate error:", e);
     return {};
   }
 }
