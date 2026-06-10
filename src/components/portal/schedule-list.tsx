@@ -46,6 +46,7 @@ import {
   getJapaneseHolidayName,
   isJapaneseHoliday,
 } from "@/lib/japanese-holidays";
+import { jstTodayStartMs } from "@/lib/schedule/jst-cutoff";
 import { safeHref } from "@/lib/url-safe";
 import { useScrollClosingMenu } from "@/lib/use-scroll-closing-menu";
 import type { JapaneseHolidaysMap } from "@/lib/japanese-holidays";
@@ -1912,20 +1913,10 @@ function splitSessions(
   sessions: ScheduleSession[],
   limit?: number,
 ): { upcoming: ScheduleSession[]; past: ScheduleSession[] } {
-  // JST 今日 0:00 を UTC ms に変換 (JST_OFFSET_MS は他経路の
-  // discord-schedule.ts / native-schedule-discord.ts と同値の 9h)。
-  const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
-  const nowJst = new Date(Date.now() + JST_OFFSET_MS);
-  const cutoff =
-    Date.UTC(
-      nowJst.getUTCFullYear(),
-      nowJst.getUTCMonth(),
-      nowJst.getUTCDate(),
-      0,
-      0,
-      0,
-      0,
-    ) - JST_OFFSET_MS;
+  // JST 今日 0:00 (UTC ms)。計算は jst-cutoff.ts に一本化 — 過去簡易
+  // チップ (schedule-past-simple.tsx) と同じ cutoff を共有し、片方だけ
+  // 変更されて past 判定が食い違うのを防ぐ (2.7, 2026-06-11)。
+  const cutoff = jstTodayStartMs();
   const upcoming: ScheduleSession[] = [];
   const past: ScheduleSession[] = [];
   for (const s of sessions) {
