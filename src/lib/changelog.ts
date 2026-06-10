@@ -55,6 +55,17 @@ export type ReleasePart = {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    version: "2.7",
+    date: "2026-06-10",
+    parts: [
+      {
+        title:
+          "🔓 PR — TODO #91 クローズ: デモサイトで owner だけ編集可能に (実セッション優先 + ゲスト fallback)",
+        body: "**経緯**: `PUBLIC_DEMO_MODE` 下の `requireDiscordMember()` は Supabase セッション確認**前**に roles=[] ゲストで短絡していたため、demo サイトでは誰がログインしても編集不可だった (TODO #8 の read-only 公開設計)。owner が demo サイトのデータを UI から直接整備できるよう、案 A (実セッション優先) で「実セッションあり + guild member なら本物の roles を返す」挙動に変更 (TODO #91)。\n\n**変更内容**:\n- [src/lib/server/auth.ts](src/lib/server/auth.ts): `requireDiscordMember()` の demo 短絡を撤去し、demo mode でもセッション確認を常に実行。(a) 実セッションあり + `discord_guild_member` 検証済み → 実ユーザーの roles を返す (= 編集可能になるのは `DISCORD_ADMIN_ROLE_IDS` ロール持ちのみ、fail-closed 維持)、(b) セッションなし / 非メンバー / 検証失敗 → roles=[] ゲストに fallback (**/login や /auth/denied へ redirect しない** — 一般訪問者の read-only 体験は無変化)。`cache()` の request dedupe 維持。セッション cookie が無い場合 `getUser()` は AuthSessionMissingError を即時返す (ネットワーク往復なし) ので匿名訪問のコスト増もなし。旧 `publicDemoModeUser()` は `isPublicDemoModeEnabled()` + `publicDemoGuestUser()` に分割\n- [src/proxy.ts](src/proxy.ts): demo mode 説明コメントのみ追従更新 (旧記述が「demo user は実セッションを持たない」前提だった)。ロジック無改修\n\n**仕組み**: proxy は demo でも gate skip のみで実セッション cookie を app 層へ素通しする (既存挙動)。owner は `/login` 直アクセス → Discord OAuth → `/auth/callback` が guild member 検証 + `is_admin` claim を JWT に書込 (既存経路をそのまま流用) → RLS の `WITH CHECK (auth.jwt()->>'is_admin' = 'true')` も実セッションで通過。ゲスト・非 admin メンバーは従来どおり app 層 (`requireAdmin()` / `assertAdminResult()`) + RLS の両方で書き込み block。\n\n**前提 (インフラ、コード外)**: demo Vercel project の **production** env に `DISCORD_BOT_TOKEN` / `DISCORD_GUILD_ID` / `DISCORD_ADMIN_ROLE_IDS` が必要 (development env には存在確認済 2026-06-10、production は Vercel Dashboard で要確認) / demo Supabase project の Auth > Providers > Discord 有効化 + Discord Developer Portal の OAuth redirect に demo Supabase callback (`https://<demo-ref>.supabase.co/auth/v1/callback`) 登録が必要 (未確認)。これらが未設定でもログインが失敗するだけで、ゲスト fallback により公開閲覧は壊れない (fail-safe)。\n\n**触らない範囲**: proxy.ts のロジック / `/login` ページ・`/auth/callback`・`/auth/sign-out` (demo 用の分岐なし、既存のまま流用) / ログイン導線 UI は出さない (`/login` 直アクセス運用で開始、導線露出は将来判断) / dev bypass (`DEV_AUTH_BYPASS`) の優先順位 (demo 併用時は dev bypass 勝ち) / RLS・schema 変更なし / 本番サイト (PUBLIC_DEMO_MODE 未設定) は demo 分岐に入らず完全互換。\n\n**検証**: `npx tsc --noEmit` PASS / `npm run build` ✓ / dev preview (`PUBLIC_DEMO_MODE=true` + dev bypass OFF) で (a) セッションなしの匿名アクセスが redirect されず read-only 表示、(b) 編集 UI 非表示、を実測。実セッション経路 (Discord OAuth) はローカルで再現不可のため、merge + インフラ前提の完了後に demo 実機で owner ログイン → 編集 UI 表示 → 書込成功 → sign-out でゲスト復帰、を確認予定。",
+      },
+    ],
+  },
+  {
     version: "2.6",
     date: "2026-06-10",
     parts: [

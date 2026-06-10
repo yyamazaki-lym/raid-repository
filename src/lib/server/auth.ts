@@ -71,21 +71,34 @@ function devAuthBypassUser(): AuthorizedUser | null {
 }
 
 /**
- * Public demo mode bypass: `PUBLIC_DEMO_MODE=true` で本番ビルドでも Discord
- * OAuth gate を skip し、roles=[] (非 admin) の偽ゲストを返す。モックサイト
- * (TODO #8) で portal を一般公開しつつ、書き込みは admin gate で禁止する用途。
+ * Public demo mode (`PUBLIC_DEMO_MODE=true`): 本番ビルドでも Discord OAuth
+ * gate を skip して portal を一般公開する (TODO #8)。
+ *
+ * TODO #91 (案 A: 実セッション優先) で「常に roles=[] ゲスト」から
+ * 「実セッションがあれば本物の roles を返す」に変更した:
+ * - Supabase セッションあり + guild member 検証済み → 実ユーザーの roles
+ *   を返す (= `DISCORD_ADMIN_ROLE_IDS` ロール持ちなら編集可能になる)
+ * - セッションなし / 非メンバー / 検証失敗 → この関数が返す roles=[] の
+ *   偽ゲストに fallback する。**redirect はしない** (demo の公開 read-only
+ *   体験を壊さないため)。分岐は `requireDiscordMember()` 側に実装
  *
  * dev bypass との違い:
  * - NODE_ENV ガードを設けず production でも有効
- * - roles は常に空 ([]) — `userIsAdmin()` は false を返し、`requireAdmin()`
- *   や `assertAdminResult()` で書き込み Server Action を弾く
+ * - ゲストの roles は常に空 ([]) — `userIsAdmin()` は false を返し、
+ *   `requireAdmin()` や `assertAdminResult()` で書き込み Server Action を弾く
  * - createClient() は service role に切替えない (anon key で動作)
- *   → RLS の `WITH CHECK (auth.jwt()->>is_admin = 'true')` でも block される
+ *   → ゲストは RLS の `WITH CHECK (auth.jwt()->>is_admin = 'true')` でも
+ *   block される。実セッションの admin は auth/callback が書き込む
+ *   `is_admin` claim で RLS を通過する
  *
  * 優先順位は dev bypass の後 (= ローカル開発で両方 true なら admin 視点維持)。
+ * ログイン導線は UI に出さず `/login` 直アクセス運用 (導線露出は将来判断)。
  */
-function publicDemoModeUser(): AuthorizedUser | null {
-  if (process.env.PUBLIC_DEMO_MODE !== "true") return null;
+function isPublicDemoModeEnabled(): boolean {
+  return process.env.PUBLIC_DEMO_MODE === "true";
+}
+
+function publicDemoGuestUser(): AuthorizedUser {
   return {
     userId: "00000000-0000-0000-0000-0000000d3m0u",
     discordId: "public-demo-mode-guest",
@@ -104,17 +117,25 @@ export const requireDiscordMember = cache(
     const bypass = devAuthBypassUser();
     if (bypass) return bypass;
 
-    const demo = publicDemoModeUser();
-    if (demo) return demo;
+    // TODO #91: demo mode でもセッション確認を先に行い、実セッション持ちの
+    // guild member には本物の roles を返す (owner が demo サイトを編集できる
+    // ようにする)。認可不足は redirect ではなくゲスト fallback。
+    // セッション cookie が無い場合 `getUser()` は AuthSessionMissingError を
+    // 即時返す (ネットワーク往復なし) ので、匿名訪問者のコストは増えない。
+    const demoMode = isPublicDemoModeEnabled();
 
     const supabase = await createClient();
     const {
       data: { user },
     } = await supabase.auth.getUser();
-    if (!user) redirect("/login");
+    if (!user) {
+      if (demoMode) return publicDemoGuestUser();
+      redirect("/login");
+    }
 
     const meta = (user.app_metadata ?? {}) as DiscordAppMetadata;
     if (meta.discord_guild_member !== true || !meta.discord_id) {
+      if (demoMode) return publicDemoGuestUser();
       redirect("/auth/denied");
     }
 
