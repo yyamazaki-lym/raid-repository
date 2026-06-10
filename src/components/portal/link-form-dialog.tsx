@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Plus, Save, AlertTriangle, Pencil, Wand2 } from "lucide-react";
+import { Plus, Save, AlertTriangle, Pencil, Wand2, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -366,7 +366,11 @@ export function LinkFormDialog({
             disabled={busy}
             className="gap-1.5 font-mono text-[11px] tracking-[0.18em] uppercase"
           >
-            <Save className="h-3.5 w-3.5" aria-hidden />
+            {busy ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+            ) : (
+              <Save className="h-3.5 w-3.5" aria-hidden />
+            )}
             {busy ? "保存中..." : isEdit ? "更新" : "追加"}
           </Button>
         </DialogFooter>
