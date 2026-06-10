@@ -9,6 +9,7 @@ import {
   AlertTriangle,
   ExternalLink,
   Copy,
+  Loader2,
   type LucideIcon,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -17,6 +18,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { updateCategory } from "@/lib/categories-client";
+import { httpUrlError } from "@/lib/url-validation";
 
 type Kind = "mitigation" | "loot";
 
@@ -69,6 +71,8 @@ export function SheetUrlOnboarding({
   const [url, setUrl] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // onBlur 即時バリデーション (TODO #51 P2-6)
+  const [fieldError, setFieldError] = useState<string | null>(null);
 
   const Icon = KIND_ICON[kind];
   const label = KIND_LABEL[kind];
@@ -78,12 +82,10 @@ export function SheetUrlOnboarding({
     setError(null);
     const trimmed = url.trim();
     if (!trimmed) return setError("URLを入力してください");
-    if (!/^https?:\/\//i.test(trimmed))
-      return setError("http:// または https:// で始めてください");
-    try {
-      new URL(trimmed);
-    } catch {
-      return setError("URLの形式が正しくありません");
+    const err = httpUrlError(trimmed);
+    if (err) {
+      setFieldError(err);
+      return setError(err);
     }
 
     setBusy(true);
@@ -129,13 +131,23 @@ export function SheetUrlOnboarding({
             type="url"
             inputMode="url"
             value={url}
-            onChange={(e) => setUrl(e.target.value)}
+            onChange={(e) => {
+              setUrl(e.target.value);
+              if (fieldError) setFieldError(null);
+            }}
+            onBlur={() => setFieldError(httpUrlError(url))}
+            aria-invalid={fieldError ? true : undefined}
             placeholder="https://docs.google.com/spreadsheets/d/.../pubhtml"
             className="font-mono text-[12px]"
             spellCheck={false}
             autoComplete="off"
             autoFocus
           />
+          {fieldError && (
+            <p className="text-destructive text-[11px] leading-relaxed">
+              {fieldError}
+            </p>
+          )}
           <p className="text-muted-foreground text-[11px] leading-relaxed">
             Google Sheets の「ウェブに公開」/「埋め込み」URLか、共有URLを指定してください。
           </p>
@@ -192,7 +204,11 @@ export function SheetUrlOnboarding({
             disabled={busy}
             className="gap-1.5 font-mono text-[11px] tracking-[0.18em] uppercase"
           >
-            <Save className="h-3.5 w-3.5" aria-hidden />
+            {busy ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+            ) : (
+              <Save className="h-3.5 w-3.5" aria-hidden />
+            )}
             {busy ? "保存中..." : "URL を登録"}
           </Button>
         </div>

@@ -47,6 +47,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { EmptyState } from "@/components/portal/empty-state";
 import { StatusBadge } from "@/components/portal/status-badge";
 // 1.9 (2026-04-28) TODO #11: lazy 化で初期 client bundle から外す
 import { CategoryFormDialog } from "@/components/portal/category-form-dialog-lazy";
@@ -147,19 +148,11 @@ export function CategoryList({
 
   if (sorted.length === 0) {
     return (
-      <Card className="glass flex flex-col items-center gap-4 p-10 text-center">
-        <span className="grid h-12 w-12 place-items-center rounded-full border border-[var(--neon-violet)]/30 bg-background/60 text-[var(--neon-violet)] shadow-[0_0_24px_-6px_var(--neon-violet)]">
-          <Layers className="h-5 w-5" aria-hidden />
-        </span>
-        <div className="space-y-1">
-          <p className="font-display text-foreground text-sm">
-            コンテンツがありません
-          </p>
-          <p className="text-muted-foreground text-xs">
-            右上の「コンテンツ追加」ボタンから登録できます。
-          </p>
-        </div>
-      </Card>
+      <EmptyState
+        icon={Layers}
+        title="コンテンツがありません"
+        description="右上の「コンテンツ追加」ボタンから登録できます。"
+      />
     );
   }
 

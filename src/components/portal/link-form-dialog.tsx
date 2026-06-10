@@ -20,6 +20,7 @@ import {
   createCategoryLink,
   updateCategoryLink,
 } from "@/lib/category-links-client";
+import { httpUrlError } from "@/lib/url-validation";
 import type {
   CategoryLink,
   CategoryLinkKind,
@@ -78,6 +79,10 @@ export function LinkFormDialog({
   const [busy, setBusy] = useState(false);
   const [fetchingTitle, setFetchingTitle] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // onBlur 即時バリデーション (TODO #51 P2-6)。submit を待たずに形式エラー
+  // を input 直下 + aria-invalid (赤 border) で知らせる。入力し直しで消す。
+  const [urlFieldError, setUrlFieldError] = useState<string | null>(null);
+  const [logsFieldError, setLogsFieldError] = useState<string | null>(null);
 
   // Reset form when opening (handles consecutive opens with stale state).
   useEffect(() => {
@@ -87,6 +92,8 @@ export function LinkFormDialog({
       setDescription(link?.description ?? "");
       setLogsUrl(link?.logsUrl ?? "");
       setError(null);
+      setUrlFieldError(null);
+      setLogsFieldError(null);
     }
   }, [open, link]);
 
@@ -125,25 +132,19 @@ export function LinkFormDialog({
     let t = title.trim();
     const u = url.trim();
     // URL バリデーションを先に通す: タイトル空時の自動取得は URL が valid な前提
-    if (!/^https?:\/\//i.test(u))
-      return setError("URLは http:// または https:// で始めてください");
-    try {
-      new URL(u);
-    } catch {
-      return setError("URLの形式が正しくありません");
+    if (!u) return setError("URLを入力してください");
+    const uErr = httpUrlError(u);
+    if (uErr) {
+      setUrlFieldError(uErr);
+      return setError("URL: " + uErr);
     }
 
     // Validate optional logs URL.
     const trimmedLogs = logsUrl.trim();
-    if (trimmedLogs && !/^https?:\/\//i.test(trimmedLogs)) {
-      return setError("Logs URL は http:// または https:// で始めてください");
-    }
-    if (trimmedLogs) {
-      try {
-        new URL(trimmedLogs);
-      } catch {
-        return setError("Logs URL の形式が正しくありません");
-      }
+    const logsErr = httpUrlError(trimmedLogs);
+    if (logsErr) {
+      setLogsFieldError(logsErr);
+      return setError("Logs URL: " + logsErr);
     }
 
     // 2.x: 新規追加でタイトル空なら /api/page-title で自動補完 (kind 不問)。
@@ -252,7 +253,12 @@ export function LinkFormDialog({
               type="url"
               inputMode="url"
               value={url}
-              onChange={(e) => setUrl(e.target.value)}
+              onChange={(e) => {
+                setUrl(e.target.value);
+                if (urlFieldError) setUrlFieldError(null);
+              }}
+              onBlur={() => setUrlFieldError(httpUrlError(url))}
+              aria-invalid={urlFieldError ? true : undefined}
               placeholder={
                 kind === "video"
                   ? "https://www.youtube.com/watch?v=..."
@@ -263,6 +269,11 @@ export function LinkFormDialog({
               spellCheck={false}
               autoFocus
             />
+            {urlFieldError && (
+              <p className="text-destructive text-[11px] leading-relaxed">
+                {urlFieldError}
+              </p>
+            )}
           </div>
 
           <div className="flex flex-col gap-1.5">
@@ -325,12 +336,22 @@ export function LinkFormDialog({
                 type="url"
                 inputMode="url"
                 value={logsUrl}
-                onChange={(e) => setLogsUrl(e.target.value)}
+                onChange={(e) => {
+                  setLogsUrl(e.target.value);
+                  if (logsFieldError) setLogsFieldError(null);
+                }}
+                onBlur={() => setLogsFieldError(httpUrlError(logsUrl))}
+                aria-invalid={logsFieldError ? true : undefined}
                 placeholder="https://www.fflogs.com/reports/..."
                 className="font-mono text-[12px]"
                 autoComplete="off"
                 spellCheck={false}
               />
+              {logsFieldError && (
+                <p className="text-destructive text-[11px] leading-relaxed">
+                  {logsFieldError}
+                </p>
+              )}
               <p className="text-muted-foreground text-[11px] leading-relaxed">
                 登録するとカードに「Logs」ボタンが追加され、ワンタップで報告ページに飛べます。
               </p>

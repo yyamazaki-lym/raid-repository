@@ -2,13 +2,14 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Calendar, Save, ExternalLink, AlertTriangle } from "lucide-react";
+import { Calendar, Save, ExternalLink, AlertTriangle, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { setScheduleUrlAction } from "@/lib/server/categories-actions";
+import { httpUrlError } from "@/lib/url-validation";
 
 /**
  * Onboarding card shown on the schedule page when no source URL is configured.
@@ -20,9 +21,18 @@ export function ScheduleOnboarding() {
   const [url, setUrl] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // onBlur 即時バリデーション (TODO #51 P2-6)。詳細な形式チェック
+  // (character-sheets の URL か等) は server action 側が引き続き担う。
+  const [fieldError, setFieldError] = useState<string | null>(null);
 
   const onSave = async () => {
     setError(null);
+    const err = httpUrlError(url);
+    if (err) {
+      setFieldError(err);
+      setError(err);
+      return;
+    }
     setBusy(true);
     const result = await setScheduleUrlAction(url);
     setBusy(false);
@@ -65,13 +75,23 @@ export function ScheduleOnboarding() {
             type="url"
             inputMode="url"
             value={url}
-            onChange={(e) => setUrl(e.target.value)}
+            onChange={(e) => {
+              setUrl(e.target.value);
+              if (fieldError) setFieldError(null);
+            }}
+            onBlur={() => setFieldError(httpUrlError(url))}
+            aria-invalid={fieldError ? true : undefined}
             placeholder="https://character-sheets.appspot.com/schedule/list?key=..."
             className="font-mono text-[12px]"
             spellCheck={false}
             autoComplete="off"
             autoFocus
           />
+          {fieldError && (
+            <p className="text-destructive text-[11px] leading-relaxed">
+              {fieldError}
+            </p>
+          )}
           <p className="text-muted-foreground text-[11px] leading-relaxed">
             character-sheets.appspot.com の{" "}
             <code className="font-mono">schedule/list?key=…</code>{" "}
@@ -116,7 +136,11 @@ export function ScheduleOnboarding() {
             disabled={busy}
             className="gap-1.5 font-mono text-[11px] tracking-[0.18em] uppercase"
           >
-            <Save className="h-3.5 w-3.5" aria-hidden />
+            {busy ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+            ) : (
+              <Save className="h-3.5 w-3.5" aria-hidden />
+            )}
             {busy ? "保存中..." : "URL を登録"}
           </Button>
         </div>

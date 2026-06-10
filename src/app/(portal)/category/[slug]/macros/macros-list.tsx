@@ -34,7 +34,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { EmptyState } from "@/components/portal/empty-state";
 import {
   Dialog,
   DialogContent,
@@ -266,15 +266,11 @@ function MacrosSection({
       </header>
 
       {ordered.length === 0 ? (
-        <Card className="glass flex flex-col items-center gap-3 p-10 text-center">
-          <span className="grid h-10 w-10 place-items-center rounded-md border border-[var(--neon-violet)]/40 bg-background/40 text-[var(--neon-violet)]">
-            <Terminal className="h-4 w-4" aria-hidden />
-          </span>
-          <p className="font-display text-foreground text-sm">マクロ未登録</p>
-          <p className="text-muted-foreground max-w-md text-xs leading-relaxed">
-            攻略に用いる戦術のテンプレ等をここに保存できます。
-          </p>
-        </Card>
+        <EmptyState
+          icon={Terminal}
+          title="マクロ未登録"
+          description="攻略に用いる戦術のテンプレ等をここに保存できます。"
+        />
       ) : (
         <DndContext
           sensors={sensors}
@@ -604,13 +600,15 @@ function TemplatesSection({
       </header>
 
       {orderedTemplates.length === 0 ? (
-        <Card className="glass flex flex-col items-center gap-2 p-6 text-center">
-          <p className="text-muted-foreground text-xs leading-relaxed">
-            このコンテンツに紐づく募集文テンプレートはまだ登録されていません。
-            <br />
-            上の「+ 追加」ボタンから登録できます。
-          </p>
-        </Card>
+        <EmptyState
+          description={
+            <>
+              このコンテンツに紐づく募集文テンプレートはまだ登録されていません。
+              <br />
+              上の「+ 追加」ボタンから登録できます。
+            </>
+          }
+        />
       ) : (
         <DndContext
           sensors={dndSensors}
