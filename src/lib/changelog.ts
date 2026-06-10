@@ -55,6 +55,16 @@ export type ReleasePart = {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    version: "2.7",
+    date: "2026-06-10",
+    parts: [
+      {
+        title: "🕒 PR — TODO #81 follow-up: 候補日追加 dialog の時刻初期値を app_settings default に追従",
+        body: "**経緯**: TODO #81 (2.1 / 2026-05-12) で native スケジュールに当月日付の placeholder auto-insert を導入し、設定 dialog で default 開始 / 終了時刻を編集可能にしたが、候補日追加 dialog (`CandidateDateDialog`) の時刻 input は `\"21:00\"` / `\"23:00\"` を hardcode したままで、admin が default 時刻を変更しても候補日追加 dialog では旧 default のまま表示される非対称な状態だった (HANDOFF.md L147 で follow-up 候補として明記)。\n\n**変更内容**:\n- **新規** [src/lib/schedule/native-defaults.ts](src/lib/schedule/native-defaults.ts): `NATIVE_DEFAULT_START_TIME_KEY` / `NATIVE_DEFAULT_END_TIME_KEY` / `FALLBACK_DEFAULT_START_TIME` (`\"21:00\"`) / `FALLBACK_DEFAULT_END_TIME` (`\"23:00\"`) の純粋定数を切り出し。元の定義場所だった `src/lib/server/native-schedule-placeholders.ts` は `import \"server-only\"` のため Client Component から import 不可で build エラーになるため、定数だけを server/client 両方から import 可能な `.ts` モジュールに分離\n- **編集** [src/lib/server/native-schedule-placeholders.ts](src/lib/server/native-schedule-placeholders.ts): 4 定数の定義を削除し、新ファイルから re-export に置換。既存呼び出し側 ([src/app/(portal)/page.tsx](src/app/(portal)/page.tsx) / [src/lib/schedule/native-admin-client.ts](src/lib/schedule/native-admin-client.ts)) は無改修で動作\n- **編集** [src/components/portal/native-schedule/candidate-date-dialog.tsx](src/components/portal/native-schedule/candidate-date-dialog.tsx): `defaultStartTime?: string \\| null` / `defaultEndTime?: string \\| null` props を追加。`normalizeTime(value, fallback)` ヘルパで「未指定 / 空文字 / 無効な HH:MM」を `FALLBACK_DEFAULT_*` にフォールバック (graceful degrade)。`useState` 初期値と `useEffect` の open リセット時に props 由来へ\n- **編集** [src/components/portal/schedule-page-body.tsx](src/components/portal/schedule-page-body.tsx): `nativeDefaultStartTime?: string \\| null` / `nativeDefaultEndTime?: string \\| null` props を追加、`<CandidateDateDialog>` に drill\n- **編集** [src/app/(portal)/page.tsx](src/app/(portal)/page.tsx): 既に `fetchAppSettings([..., NATIVE_DEFAULT_START_TIME_KEY, NATIVE_DEFAULT_END_TIME_KEY])` で取得済の 2 値を `<SchedulePageBody>` に drill\n\n**触らない範囲**: `ensureNativeMonthlyPlaceholders()` の placeholder 生成ロジック / app_settings save 経路 ([setNativeScheduleDefaultRaidTimeAction](src/lib/server/categories-actions.ts)) / `<input type=\"time\">` native 挙動 / TIME_RE validate / rawDate-parsedDate 組立式 / 深夜またぎ判定は無改修。schema 変更も無し。candidate-date-dialog の他 form (date / 備考 textarea) も無改修。\n\n**副作用**: 既に作成済の placeholder 行 (native_schedule_sessions の `start_time IS NULL` 行) の遡及更新は本 PR スコープ外。default 時刻を変更しても、過去に auto-insert された行は旧 default で生成された raw_date 文字列のまま (UI 表示は `fetchNativeSchedule` の COALESCE で新 default に追従)。raw_date 文字列ベースの再構成は UNIQUE 衝突回避が必要で別 TODO 候補。\n\n**検証**: `npx tsc --noEmit` PASS / `npm run build` ✓ Compiled (17 routes、変化なし)。worktree dev preview は Supabase env 取得が別 terminal 必須のため本セッション内では未実施、merge 後の本番実機 (demo + yurutto) で (a) 設定 dialog で default 時刻を変更 (例: 20:00 / 22:30)、(b) リロード後に候補日追加 dialog (+ icon) を開くと time input が新 default 値で表示、(c) app_settings 未設定 / 空文字 状態でも 21:00 / 23:00 fallback、を確認予定。",
+      },
+    ],
+  },
+  {
     version: "2.5",
     date: "2026-06-10",
     parts: [

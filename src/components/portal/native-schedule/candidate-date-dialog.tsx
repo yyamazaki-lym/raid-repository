@@ -18,6 +18,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { createNativeScheduleSessionAction } from "@/lib/server/native-schedule-actions";
+import {
+  FALLBACK_DEFAULT_END_TIME,
+  FALLBACK_DEFAULT_START_TIME,
+} from "@/lib/schedule/native-defaults";
 
 /**
  * TODO #2 phase 2-B: admin が native スケジュールに候補日を追加する dialog。
@@ -30,6 +34,12 @@ import { createNativeScheduleSessionAction } from "@/lib/server/native-schedule-
  *   に渡す。同一 raw_date 重複 (PG 23505) は server action 側で「同じ日時の候補日が
  *   すでにあります」に変換済 ([native-schedule-actions.ts:72-74])
  * - 成功時 toast + dialog close + `router.refresh()`
+ *
+ * TODO #81 follow-up (2.6, 2026-06-10): 時刻初期値の hardcode を撤去し、
+ * `app_settings.native_schedule_default_start_time` / `..._end_time` を
+ * defaultStartTime / defaultEndTime props 経由で受け取って初期値にする。
+ * props 未指定時は `FALLBACK_DEFAULT_*` (= 既存 hardcode 値 21:00 / 23:00)
+ * に倒れる graceful degrade。
  */
 
 const DOW_LABELS = ["日", "月", "火", "水", "木", "金", "土"] as const;
@@ -38,26 +48,55 @@ const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
 
 const TIME_RE = /^([01]?\d|2[0-3]):([0-5]\d)$/;
 
-export function CandidateDateDialog() {
+type CandidateDateDialogProps = {
+  /**
+   * `app_settings.native_schedule_default_start_time` の値。
+   * 候補日追加時の開始時刻 input の初期値に使う。未指定 / 空 / 無効な
+   * HH:MM 形式の場合は FALLBACK_DEFAULT_START_TIME ("21:00") にフォールバック。
+   */
+  defaultStartTime?: string | null;
+  /**
+   * `app_settings.native_schedule_default_end_time` の値。
+   * 候補日追加時の終了時刻 input の初期値に使う。未指定 / 空 / 無効な
+   * HH:MM 形式の場合は FALLBACK_DEFAULT_END_TIME ("23:00") にフォールバック。
+   */
+  defaultEndTime?: string | null;
+};
+
+const normalizeTime = (value: string | null | undefined, fallback: string) => {
+  if (!value) return fallback;
+  const trimmed = value.trim();
+  if (!trimmed || !TIME_RE.test(trimmed)) return fallback;
+  return trimmed;
+};
+
+export function CandidateDateDialog({
+  defaultStartTime,
+  defaultEndTime,
+}: CandidateDateDialogProps = {}) {
+  const initialStart = normalizeTime(defaultStartTime, FALLBACK_DEFAULT_START_TIME);
+  const initialEnd = normalizeTime(defaultEndTime, FALLBACK_DEFAULT_END_TIME);
+
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [date, setDate] = useState("");
-  const [startTime, setStartTime] = useState("21:00");
-  const [endTime, setEndTime] = useState("23:00");
+  const [startTime, setStartTime] = useState(initialStart);
+  const [endTime, setEndTime] = useState(initialEnd);
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, startTransition] = useTransition();
 
   // Reset on dialog open (新規追加 dialog なので、開くたびに blank に戻す)。
+  // 時刻は app_settings default に追従するため、render 時に解決した値を再利用。
   useEffect(() => {
     if (open) {
       setDate("");
-      setStartTime("21:00");
-      setEndTime("23:00");
+      setStartTime(initialStart);
+      setEndTime(initialEnd);
       setNote("");
       setError(null);
     }
-  }, [open]);
+  }, [open, initialStart, initialEnd]);
 
   const onSubmit = () => {
     setError(null);

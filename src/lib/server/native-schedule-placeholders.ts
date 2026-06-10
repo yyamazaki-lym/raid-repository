@@ -1,6 +1,22 @@
 import "server-only";
 
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
+import {
+  FALLBACK_DEFAULT_END_TIME,
+  FALLBACK_DEFAULT_START_TIME,
+  NATIVE_DEFAULT_END_TIME_KEY,
+  NATIVE_DEFAULT_START_TIME_KEY,
+} from "@/lib/schedule/native-defaults";
+
+// 2.6 (2026-06-10): 純粋な定数は server / client 両方の境界から import 可能な
+// `src/lib/schedule/native-defaults.ts` に切り出し、ここでは re-export のみ
+// 維持して既存呼び出し側 (page.tsx, native-admin-client.ts) を無改修で動作させる。
+export {
+  FALLBACK_DEFAULT_END_TIME,
+  FALLBACK_DEFAULT_START_TIME,
+  NATIVE_DEFAULT_END_TIME_KEY,
+  NATIVE_DEFAULT_START_TIME_KEY,
+};
 
 /**
  * TODO #81 (2.1, 2026-05-12): native スケジュール経路で、当月分の row が
@@ -44,12 +60,6 @@ const DOW_LABELS = ["日", "月", "火", "水", "木", "金", "土"] as const;
 
 /** 当月末日まで残り何日以内になったら翌月分も先行投入するか。 */
 const PLACEHOLDER_PREMONTH_THRESHOLD_DAYS = 7;
-
-export const NATIVE_DEFAULT_START_TIME_KEY = "native_schedule_default_start_time";
-export const NATIVE_DEFAULT_END_TIME_KEY = "native_schedule_default_end_time";
-
-export const FALLBACK_DEFAULT_START_TIME = "21:00";
-export const FALLBACK_DEFAULT_END_TIME = "23:00";
 
 const TIME_RE = /^([01]?\d|2[0-3]):([0-5]\d)$/;
 

@@ -284,6 +284,8 @@ async function ScheduleContent() {
       initialMemosByDate={initialMemosByDate}
       currentDiscordId={member.discordId}
       isAdmin={isAdmin}
+      nativeDefaultStartTime={appSettings[NATIVE_DEFAULT_START_TIME_KEY]}
+      nativeDefaultEndTime={appSettings[NATIVE_DEFAULT_END_TIME_KEY]}
     />
   );
 }
