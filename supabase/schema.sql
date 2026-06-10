@@ -1002,23 +1002,18 @@ CREATE POLICY "category-strategy-images authenticated insert"
 CREATE EXTENSION IF NOT EXISTS pg_cron;
 CREATE EXTENSION IF NOT EXISTS pg_net;
 
--- 既存 job の unschedule (idempotent: jobname 未登録なら no-op)
--- pg_cron の `cron.unschedule()` は jobname 未登録時に
--- `XX000 (internal_error)` を投げる版があり、明示列挙では catch 漏れ → DO block abort
--- → 同 transaction 内の後続 cron.schedule() も skip。idempotent 化が目的なので
--- WHEN OTHERS で全捕捉する
+-- 初回は cron.schedule、既存時は cron.alter_job で更新 (jobid 安定化、2.4 2026-06-10)。
+-- 旧実装は毎回 cron.unschedule + cron.schedule で再登録していたが、GitHub Actions の
+-- schema 自動再 deploy (PR #86) で main push 毎に新規 jobid が採番される副作用が判明
+-- (TODO #2 24h 観察 follow-up、1 ヶ月で jobid=1→4→...→15 と 12 回切替を観測)。
+-- alter_job は jobid を維持したまま schedule/command を上書きするため、観察 SQL を
+-- 固定 jobid で書ける + 再 deploy 切替窓の発火欠落 (累計 6 hour 程度) も解消。
+-- 毎時 0 分 UTC = JST 毎時 0 分 (JST/UTC は分単位ずれなし)。
 DO $$
-BEGIN
-  PERFORM cron.unschedule('notify-native-schedule-hourly');
-EXCEPTION WHEN OTHERS THEN
-  NULL;
-END $$;
-
--- 毎時 0 分 UTC = JST 毎時 0 分 (JST/UTC は分単位ずれなし)
-SELECT cron.schedule(
-  'notify-native-schedule-hourly',
-  '0 * * * *',
-  $cron$
+DECLARE
+  existing_jobid bigint;
+  c_schedule constant text := '0 * * * *';
+  c_command constant text := $cmd$
     SELECT net.http_get(
       url := 'https://yurutto-raid-repository.vercel.app/api/cron/notify-native-schedule',
       headers := jsonb_build_object(
@@ -1032,8 +1027,26 @@ SELECT cron.schedule(
       ),
       timeout_milliseconds := 60000
     );
-  $cron$
-);
+  $cmd$;
+BEGIN
+  SELECT jobid INTO existing_jobid
+  FROM cron.job
+  WHERE jobname = 'notify-native-schedule-hourly';
+
+  IF existing_jobid IS NULL THEN
+    PERFORM cron.schedule(
+      'notify-native-schedule-hourly',
+      c_schedule,
+      c_command
+    );
+  ELSE
+    PERFORM cron.alter_job(
+      job_id := existing_jobid,
+      schedule := c_schedule,
+      command := c_command
+    );
+  END IF;
+END $$;
 
 -- ---- 13b. Atomic sort_order allocator RPCs (TODO #10, 2.x) ------------
 -- 2.x (2026-06-09): SELECT max(sort_order)+1 → INSERT の TOCTOU で
