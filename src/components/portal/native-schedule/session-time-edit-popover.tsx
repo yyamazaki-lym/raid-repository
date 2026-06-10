@@ -199,7 +199,7 @@ export function SessionTimeEditPopover({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
         className={
-          "inline-flex h-5 w-5 items-center justify-center rounded-sm border text-[10px] leading-none transition-colors hover:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--neon-cyan)]/60 " +
+          "inline-flex h-5 w-5 items-center justify-center rounded-sm border text-[10px] leading-none transition-all hover:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--neon-cyan)]/60 active:scale-95 " +
           (isOverridden
             ? "border-[var(--neon-cyan)]/50 bg-[var(--neon-cyan)]/10 text-[var(--neon-cyan)]"
             : "border-border/40 text-muted-foreground/70 hover:text-foreground ") +

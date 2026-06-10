@@ -109,7 +109,7 @@ export function NativeAttendancePopover({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
         className={
-          "inline-flex h-5 min-w-[1.75rem] items-center justify-center rounded-sm border px-1 text-[12px] leading-none transition-transform hover:scale-105 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--neon-cyan)]/60 " +
+          "inline-flex h-5 min-w-[1.75rem] items-center justify-center rounded-sm border px-1 text-[12px] leading-none transition-transform hover:scale-105 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--neon-cyan)]/60 active:scale-95 " +
           triggerClass
         }
         aria-label={`${userName} ${displayDate} の出欠を編集`}

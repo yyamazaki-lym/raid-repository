@@ -11,6 +11,10 @@ const Toaster = ({ ...props }: ToasterProps) => {
     <Sonner
       theme={theme as ToasterProps["theme"]}
       className="toaster group"
+      // sonner default と同値の明示設定 (TODO #51 P1)。表示位置 / 表示時間を
+      // 調整したくなった時にここが唯一のつまみになる (呼び出し側で個別指定しない)。
+      position="bottom-right"
+      duration={4000}
       icons={{
         success: (
           <CircleCheckIcon className="size-4" />
