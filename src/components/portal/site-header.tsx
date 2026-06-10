@@ -9,7 +9,10 @@ import { SettingsDialog } from "./settings-dialog-lazy";
 import { DeployColorBadge } from "./deploy-color-badge";
 import packageJson from "../../../package.json";
 import { RELEASES } from "@/lib/changelog";
-import { getCurrentUserCanEdit } from "@/lib/server/auth";
+import {
+  getCurrentUserCanEdit,
+  getCurrentUserIsDemoGuest,
+} from "@/lib/server/auth";
 
 /**
  * App version for the header badge.
@@ -111,6 +114,10 @@ export async function SiteHeader() {
   // 二重に守るが、UI が露出していると non-admin が触って失敗 toast を
   // 食らうので、見せないのが本来の意図。
   const canEdit = await getCurrentUserCanEdit();
+  // TODO #91 follow-up: demo モードのゲスト (実セッションなし) のときだけ
+  // 設定ダイアログ footer に「サインイン」導線を出す。requireDiscordMember
+  // は cache() 済みなので canEdit と合わせても auth 解決は 1 回。
+  const isDemoGuest = await getCurrentUserIsDemoGuest();
   return (
     <header className="glass-bar sticky top-0 z-30">
       <div className="mx-auto flex h-14 max-w-5xl items-center gap-3 px-4 sm:h-16 sm:px-6">
@@ -145,7 +152,7 @@ export async function SiteHeader() {
         <div className="ml-auto flex items-center gap-2">
           <ThemeSwitcher />
           {/* サインアウトは設定ダイアログ内に移設 (2.1 2026-04-29)。 */}
-          <SettingsDialog canEdit={canEdit} />
+          <SettingsDialog canEdit={canEdit} showSignIn={isDemoGuest} />
           <span
             aria-hidden
             className="hidden h-2 w-2 animate-pulse rounded-full bg-[var(--neon-cyan)] shadow-[0_0_10px_var(--neon-cyan)] sm:inline-block"

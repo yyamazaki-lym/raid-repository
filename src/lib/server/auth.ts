@@ -29,6 +29,12 @@ export type AuthorizedUser = {
   userId: string;
   discordId: string;
   roles: string[];
+  /**
+   * PUBLIC_DEMO_MODE のゲスト fallback (実セッションなし) かどうか。
+   * 設定ダイアログ footer の「サインイン / サインアウト」切替に使う
+   * (TODO #91 follow-up)。実セッションユーザー / dev bypass では undefined。
+   */
+  isDemoGuest?: boolean;
 };
 
 /**
@@ -103,6 +109,7 @@ function publicDemoGuestUser(): AuthorizedUser {
     userId: "00000000-0000-0000-0000-0000000d3m0u",
     discordId: "public-demo-mode-guest",
     roles: [], // always non-admin — read-only public demo
+    isDemoGuest: true,
   };
 }
 
@@ -233,6 +240,17 @@ export function userIsAdmin(userRoleIds: readonly string[]): boolean {
 export async function getCurrentUserCanEdit(): Promise<boolean> {
   const { roles } = await requireDiscordMember();
   return userIsAdmin(roles);
+}
+
+/**
+ * 現在のリクエストが demo モードのゲスト fallback (実セッションなし) か
+ * を返す (TODO #91 follow-up)。設定ダイアログ footer が「サインイン」
+ * 導線を出すかの判定に使う。demo 以外 / 実セッション / dev bypass では
+ * 常に false。`requireDiscordMember()` は cache() 済みなので追加コストなし。
+ */
+export async function getCurrentUserIsDemoGuest(): Promise<boolean> {
+  const user = await requireDiscordMember();
+  return user.isDemoGuest === true;
 }
 
 /**
