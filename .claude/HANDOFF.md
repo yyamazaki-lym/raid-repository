@@ -1,6 +1,6 @@
 # Raid Repository — 引き継ぎノート
 
-> 2.8 (2026-06-10) 時点。完了済 TODO の詳細は `src/lib/changelog.ts` / 過去版番号は `.claude/done.md`。
+> 2.6 (2026-06-10) 時点。完了済 TODO の詳細は `src/lib/changelog.ts` / 過去版番号は `.claude/done.md`。
 >
 > **新規会話の手順**: このファイルを読んだ後、TODO 一覧は自動表示せずユーザーの要望を待つ。新規 TODO 追記時は part 単位ではなく TODO 完了時のみ統合追記する (part 細分は commit log に任せる)。
 
@@ -37,7 +37,7 @@
 
 ## 📌 次回の作業優先度
 
-未完了 TODO はユーザー選択。残りはほぼ全て中〜大規模 (#7 / #51 / #11) の見送り候補 + TODO #85 (placeholder の過去日付遡及更新、大規模)。FFLogs manual link UI (native) は新規会話で TODO 化判断ユーザー (PR1 = TODO #86 cron 自動化が安定稼働後に着手する想定、auto 結果が貯まった状態で source badge の動作確認が現実的)。
+未完了 TODO はユーザー選択。残りはほぼ全て中〜大規模 (#7 / #51 / #11) の見送り候補 + TODO #85 (placeholder の過去日付遡及更新、大規模)。TODO #86〜#89 (FFLogs cron 自動化 / dialog 初期値 / placeholder auto chip + note 編集 / FFLogs manual link UI native) は 2.6 (2026-06-10) で 4 PR 同日 merge し、本番実機確認 OK。残作業は TODO #86 の 24h 観察 (UTC 19:00 自動発火確認) + 保留オペレーション項目 1 (Discord 通知 ON 切替)。
 
 ## 未完了 TODO 一覧
 
@@ -85,7 +85,19 @@
 
 直近版のみ列挙。詳細経緯は `src/lib/changelog.ts`、過去版アーカイブは `.claude/done.md`。
 
-- **2.8 (2026-06-10)**: TODO #88 クローズ — placeholder 自動生成タグ (auto chip) + native session note 編集 UI (TODO #81 follow-up 2-in-1 合流) ([PR #149](https://github.com/yyamazaki-lym/raid-repository/pull/149) squash merge `aa69323`)
+- **2.6 (2026-06-10)**: TODO #89 クローズ — native スケジュールに FFLogs URL manual link 追加 / 削除 UI (TODO #73 follow-up) ([PR #151](https://github.com/yyamazaki-lym/raid-repository/pull/151) squash merge `6e28ebd`)
+  - **発端**: TODO #73 (2.5 / 2026-06-10) で FFLogs ⇔ native 確定済セッション の auto-link 経路を実装し、TODO #86 (2.6 / 2026-06-10) で日次 cron 自動化まで揃ったが、auto-match が誤一致を返した時の手動削除経路と、cron が拾えなかった report を後追いで手動紐付けする経路が無かった (sync 側は TODO #64 で `session-memo-popover.tsx` 内に既実装、native だけ未対応の非対称状態)
+  - **設計判断 (ユーザー確認済)**: native 専用 popover を新規作成 (sync 側 popover は無改修)。`session-memo-popover.tsx` の FFLogs URL editor block (L722-813) を縮約コピーして native 用に縮約。共通 helper 抽出は scope 拡大のため見送り、各 popover は独立。MVP として削除確認は `window.confirm` (sync 側の `createPortal` modal は後追い PR で揃える余地あり)
+  - **変更内容**:
+    - **新規 popover** [src/components/portal/native-schedule/native-fflogs-link-popover.tsx](src/components/portal/native-schedule/native-fflogs-link-popover.tsx): `+` icon trigger + popover content (既存 entries list: URL truncate + source badge `auto`/`manual` + 「開く」 external link + `×` 削除 / 新規 URL input + 「追加」 button)。client-side URL validate (`/^https?:\/\//i` + `/fflogs\.com\/reports\//i` の 2 段) + UNIQUE 衝突 up-front guard + optimistic state パターン (sync 側と同型)。TODO #72 教訓踏襲: `<Popover open={open} onOpenChange={setOpen}>` controlled + `{open && <PopoverContent finalFocus={false}>}` で close 時 DOM 残留を回避
+    - **新規 server actions** [src/lib/server/categories-actions.ts](src/lib/server/categories-actions.ts):
+      - `addNativeSessionLogsUrl(nativeSessionId, logsUrl)`: admin gate + URL validate + `native_schedule_session_logs` に `source='manual'` INSERT + UNIQUE 違反 (23505) を「同じ URL が既に紐付いています」に変換 + `revalidatePath('/')`。sync 側と異なり parent row の placeholder INSERT は不要 (DECISION 化済の session に対してしか trigger UI が出ない = parent は必ず存在)
+      - `deleteNativeSessionLogsUrl(id)`: admin gate + id ベースで DELETE + `revalidatePath('/')`。auto 行も削除可能 (誤 auto-match の inline 掃除、ただし next cron で再 INSERT、manual のみ恒久削除)
+    - **配線** [src/components/portal/schedule-list.tsx](src/components/portal/schedule-list.tsx): SessionRow の date cell の `SessionActionIcons` 直後に `<NativeFflogsLinkPopover>` を 4 条件 AND (`mode === 'native' && isAdmin && session.status === 'DECISION' && nativeSessionId`) で mount。past / 未来両方の DECISION 行に出す
+  - **触らない範囲**: schema 変更なし (`native_schedule_session_logs` は TODO #73 で準備済) / `linkReportsToNativeSessions()` (auto link 経路) / cleanup の `source='auto'` wipe / `fetchNativeSessionLogsByDate()` (read 経路) / `SessionActionIcons` 共通 component / sync 側 `session-memo-popover.tsx` の FFLogs URL editor は完全無改修。sync mode では mount 条件で trigger 非表示 = sync 経路完全互換
+  - **副作用**: cron 再走時に `source='auto'` 行は wipe → re-INSERT されるが `source='manual'` 行は温存されるので、admin 手動追加 URL は cron 自動化 (TODO #86) と共存。auto 行を `×` で削除しても次回 cron で再 INSERT (auto cleanup → re-INSERT パターン維持)、admin が「常に消したい」誤 auto-match は FFLogs OAuth 側の対応が必要
+  - **検証**: `npx tsc --noEmit` PASS / `npm run build` ✓ Compiled (18 routes、変化なし) / merge 後の本番実機 (yurutto) でユーザーが (a) admin で native DECISION 行に `+` icon、(b) popover open + 既存 entries 表示 + 新規 URL 追加 + `×` 削除を確認
+- **2.6 (2026-06-10)**: TODO #88 クローズ — placeholder 自動生成タグ (auto chip) + native session note 編集 UI (TODO #81 follow-up 2-in-1 合流) ([PR #149](https://github.com/yyamazaki-lym/raid-repository/pull/149) squash merge `aa69323`)
   - **発端**: TODO #81 (2.1 / 2026-05-12) で `ensureNativeMonthlyPlaceholders()` の auto-insert 行と、admin が CandidateDateDialog から手動追加した候補日が UI 上区別できない問題、および日個別 note (備考) を後から編集する経路が無い問題 (作成時の insert でしか設定できない) の 2 件をまとめて解消
   - **設計判断 (ユーザー確認済)**: (a) placeholder 判定列を新規追加せず **`created_by_id IS NULL` を auto シグナル** に採用 — `ensureNativeMonthlyPlaceholders()` は service_role で `created_by_id` 不指定 INSERT、`createNativeScheduleSessionAction()` は `auth.user.discordId` を明示 INSERT という既存挙動の差分を利用、schema 変更不要。(b) 既存 `SessionTimeEditPopover` を **拡張して時刻 + note を 1 popover で同時編集** — 専用 popover 新設は scope 拡大のため避け、admin UI の hit area を増やさない方針。rename は scope 抑制で見送り、役割拡張のみ
   - **変更内容**:
@@ -99,7 +111,7 @@
   - **副作用**: past 行でも auto chip は表示 (placeholder と手動候補の区別は運用追跡に有用)。past 行 / 非 admin では Time edit popover 自体が出ないため note 編集導線も自動的に塞がる
   - **見送り**: default time 変更後の過去 placeholder の **遡及更新は本 PR スコープ外** = TODO #85 として「未完了 TODO 一覧」🗓 スケジュールページ section に新規起票 (UNIQUE 衝突回避が必要、大規模)
   - **検証**: `npx tsc --noEmit` PASS / `npm run build` ✓ Compiled (17 routes、変化なし) / merge 後の本番実機 (yurutto) でユーザーが (a) placeholder 行の auto chip 表示、(b) clock icon → 時刻 + note の同時編集を確認
-- **2.7 (2026-06-10)**: TODO #87 クローズ — 候補日追加 dialog (`CandidateDateDialog`) の時刻初期値を app_settings default に追従 (TODO #81 follow-up) ([PR #148](https://github.com/yyamazaki-lym/raid-repository/pull/148) squash merge `de35cb0`)
+- **2.6 (2026-06-10)**: TODO #87 クローズ — 候補日追加 dialog (`CandidateDateDialog`) の時刻初期値を app_settings default に追従 (TODO #81 follow-up) ([PR #148](https://github.com/yyamazaki-lym/raid-repository/pull/148) squash merge `de35cb0`)
   - **発端**: TODO #81 (2.1 / 2026-05-12) で native スケジュールに当月日付の placeholder auto-insert と admin 編集可能な default 開始/終了時刻 (`app_settings.native_schedule_default_start_time` / `..._end_time`) を導入したが、候補日追加 dialog (`CandidateDateDialog`) の時刻 input は `"21:00"` / `"23:00"` を hardcode したままで、admin が default 時刻を変更しても候補日追加 dialog では旧 default のまま表示される非対称な状態だった
   - **変更内容**:
     - **新規** [src/lib/schedule/native-defaults.ts](src/lib/schedule/native-defaults.ts): `NATIVE_DEFAULT_*_KEY` / `FALLBACK_DEFAULT_*` (`"21:00"` / `"23:00"`) の純粋定数を切り出し。元の定義場所だった `src/lib/server/native-schedule-placeholders.ts` は `import "server-only"` のため Client Component から import 不可で build エラーになるため、定数だけを server/client 両境界から import 可能な `.ts` モジュールに分離
