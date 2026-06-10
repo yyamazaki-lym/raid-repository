@@ -33,6 +33,7 @@ import { NextResponse, type NextRequest } from "next/server";
  * | ---------------------------------- | --------------- | ------ | --------- | ----------------------- |
  * | /api/cron/import-discord           | `0 16 * * *`    | 01:00  | Vercel    | vercel.json             |
  * | /api/cron/snapshot-schedule        | `50 12 * * *`   | 21:50  | Vercel    | vercel.json             |
+ * | /api/cron/fflogs-sync              | `0 19 * * *`    | 04:00  | Vercel    | vercel.json             |
  * | /api/cron/notify-native-schedule   | `0 * * * *`     | 毎時00 | pg_cron   | supabase/schema.sql §13 |
  *
  * Vercel Hobby plan は cron 頻度 sub-daily (= 日 1 回以下) に限定されるため、
@@ -42,6 +43,10 @@ import { NextResponse, type NextRequest } from "next/server";
  *
  * notify-native-schedule route 内では `app_settings.native_schedule_discord_notify_hour`
  * (default 12 JST) と現在時刻を比較し、目標時のみ実通知。それ以外の hour は早期 return。
+ *
+ * fflogs-sync route は `app_settings.fflogs_cron_enabled='false'` で skip
+ * (未設定 / 'true' は実行)。OAuth token 失敗時は 200 で silent skip
+ * (5xx 返すと Vercel cron retry ループに陥るため)。
  * -------------------------------------------------------------------
  */
 export function assertCronAuth(

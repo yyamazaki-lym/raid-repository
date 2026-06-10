@@ -55,6 +55,16 @@ export type ReleasePart = {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    version: "2.6",
+    date: "2026-06-10",
+    parts: [
+      {
+        title: "⏱ PR — TODO #73 follow-up: FFLogs 連携の日次 cron 自動化 (`/api/cron/fflogs-sync`、JST 04:00 daily)",
+        body: "**経緯**: TODO #73 (2.5、2026-06-10) で FFLogs ⇔ 動画 / sync 過去セッション / native 確定済セッション の auto-link 経路を実装したが、起動は admin が settings dialog の「FFLogs と動画を連動」button を押した時のみで、運用面では admin が毎日手動押下する負担があった。日次自動化で運用負荷を解消する。\n\n**設計判断 (ユーザー確認済)**: 頻度 = 日 1 回 (FFLogs 自身が raid 後の日次 upload 中心、毎時発火は過剰 + Vercel Hobby cron sub-daily 制約)。発火時刻 = UTC 19:00 = JST 04:00 (既存 import-discord 01:00 / snapshot-schedule 21:50 と被らない深夜帯)。経路 = Vercel cron (1 行追加で済む、pg_cron 経由は毎時発火が必要な場合のみ)。\n\n**変更内容**:\n- **新規** [src/app/api/cron/fflogs-sync/route.ts](src/app/api/cron/fflogs-sync/route.ts): GET ハンドラ。`assertCronAuth(req, 'cron/fflogs-sync')` で auth → `fetchAppSetting('fflogs_cron_enabled') === 'false'` で skip (未設定 / 'true' は実行 = fail-open) → `linkFflogsReportsToVideos()` 呼出。`runtime: 'nodejs'` / `dynamic: 'force-dynamic'` / `maxDuration: 300` (既存 cron 3 系統と揃え)。`linkFflogsReportsToVideos()` が `ok: false` を返した場合 (OAuth token 期限切れ / FFLogs API 障害) は 200 で silent skip + `console.warn` (Vercel cron は 5xx で retry する仕様、503 を返すと token 失敗時に再試行ループに陥るため)\n- **編集** [vercel.json](vercel.json): `crons` 配列に `{ path: '/api/cron/fflogs-sync', schedule: '0 19 * * *' }` を追加 (UTC 19:00)\n- **編集** [src/lib/server/cron-auth.ts](src/lib/server/cron-auth.ts): JSDoc の cron スケジュール表に新 route 行を追加 + 「fflogs_cron_enabled で skip / OAuth 失敗時は 200 silent skip」運用注を追記\n\n**ON/OFF toggle UI は本 PR スコープ外**: `app_settings.fflogs_cron_enabled` は未設定なら fail-open で動作 (= 何もせず cron は走る)、明示停止が必要なら admin が Supabase Dashboard で `value='false'` を直接 set する運用。UI Switch は後続 PR で `fflogs-sync-section.tsx` に追加候補 (TODO #2 phase 4 の `native-discord-notify-section.tsx` パターン踏襲)。\n\n**触らない範囲**: `linkFflogsReportsToVideos()` 本体 (admin button から呼ばれる既存経路と共有)、既存 cron 3 系統 (import-discord / snapshot-schedule / notify-native-schedule)、pg_cron / Supabase vault 設定、`fflogs-sync-section.tsx` UI、admin の手動 button 経路は完全無改修 (cron と手動 button は両立)。\n\n**検証**: `npx tsc --noEmit` PASS / `npm run build` ✓ Compiled (18 routes = 既存 17 + `/api/cron/fflogs-sync` 追加、すべて ƒ Dynamic)。本 PR merge & 本番 deploy 後、Vercel Dashboard → Cron Jobs から `/api/cron/fflogs-sync` を Run ボタンで手動 trigger → 200 + 結果 JSON (`reportsScanned` / `videosScanned` / `matched` / `sessionsMatched` / `nativeSessionsMatched`) を確認 / `curl https://<host>/api/cron/fflogs-sync` (auth なし) で 401、`curl -H 'Authorization: Bearer $CRON_SECRET'` で 200、を確認。本番 deploy 24h 観察で UTC 19:00 (JST 04:00) 自動発火 → Function logs に `[cron/fflogs-sync]` ログ確認予定。",
+      },
+    ],
+  },
+  {
     version: "2.5",
     date: "2026-06-10",
     parts: [
