@@ -334,7 +334,7 @@ function SortableMacroRow({
       ref={setNodeRef}
       style={style}
       {...attributes}
-      className="rounded-md border border-border/40 bg-secondary/20"
+      className="rounded-md border border-border/40 bg-secondary/20 transition-colors hover:border-border/80"
     >
       <div
         className={
@@ -691,10 +691,10 @@ function SortableTemplateRow({
       style={dragStyle}
       {...attributes}
       className={
-        "rounded-md border bg-secondary/20 " +
+        "rounded-md border bg-secondary/20 transition-colors " +
         (isGlobalTop
           ? "border-[var(--neon-cyan)]/50 ring-1 ring-inset ring-[var(--neon-cyan)]/30"
-          : "border-border/40")
+          : "border-border/40 hover:border-border/80")
       }
     >
       <div
