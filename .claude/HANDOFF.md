@@ -37,7 +37,7 @@
 
 ## 📌 次回の作業優先度
 
-未完了 TODO はユーザー選択。残りはほぼ全て中〜大規模 (#7 / #51 / #11) の見送り候補 + TODO #85 (placeholder の過去日付遡及更新、大規模)。TODO #86〜#89 (FFLogs cron 自動化 / dialog 初期値 / placeholder auto chip + note 編集 / FFLogs manual link UI native) は 2.6 (2026-06-10) で 4 PR 同日 merge し、本番実機確認 OK。残作業は TODO #86 の 24h 観察 (UTC 19:00 自動発火確認) + 保留オペレーション項目 1 (Discord 通知 ON 切替)。
+未完了 TODO はユーザー選択。残りは中〜大規模 (#7 / #51 / #11) の見送り候補のみ。TODO #85〜#89 (placeholder 時刻遡及更新 / FFLogs cron 自動化 / dialog 初期値 / placeholder auto chip + note 編集 / FFLogs manual link UI native) は 2.6 (2026-06-10) で 5 PR 同日 merge し、本番実機確認 OK。残作業は TODO #86 の 24h 観察 (UTC 19:00 自動発火確認) + 保留オペレーション項目 1 (Discord 通知 ON 切替)。
 
 ## 未完了 TODO 一覧
 
@@ -47,7 +47,7 @@
 
 | # | 項目 | 規模 |
 |---|---|---|
-| 85 | native placeholder の **default 時刻遡及更新** — 設定 dialog で default 開始/終了時刻を変更した時、既存の auto-insert 行 (`created_by_id IS NULL` かつ `start_time IS NULL`) の `raw_date` 文字列を新 default で再構成する経路。`raw_date` UNIQUE 衝突回避が必要 (旧 default 値で生成された raw_date が UNIQUE key なので、新 raw_date への UPDATE が他行と衝突しうる)。TODO #81 follow-up シリーズ (#86/#87/#88) の **見送り項目** として温存 (2026-06-10、ユーザー判断) | 大 |
+| _(現在なし)_ | — | — |
 
 ### 📂 カテゴリ詳細ページ (`/category/[slug]`)
 
@@ -84,6 +84,17 @@
 ## 完了済み TODO
 
 直近版のみ列挙。詳細経緯は `src/lib/changelog.ts`、過去版アーカイブは `.claude/done.md`。
+
+- **2.6 (2026-06-10)**: TODO #85 クローズ — native placeholder の default 時刻遡及更新 (Default Raid Time 変更時に未来日付 placeholder を新値で自動更新、TODO #81 follow-up シリーズ最終) ([PR #153](https://github.com/yyamazaki-lym/raid-repository/pull/153) squash merge `05b70d3`)
+  - **発端**: TODO #81 (2.1 / 2026-05-12) で `ensureNativeMonthlyPlaceholders()` が auto-insert する placeholder 行は `raw_date` 文字列に生成時の default 時刻を焼き込むため、admin が設定 dialog で default 時刻を変更しても既存 placeholder は旧 default のまま残る非対称があった。TODO #87/#88 (2.6) では UNIQUE 衝突回避が必要なためスコープ外として見送り → 本 TODO で JST 今日 0:00 以降の未来日付 placeholder を新値で自動再構成する経路を追加
+  - **設計判断 (ユーザー確認済)**: 対象は **JST 今日 0:00 以降のみ** (過去 placeholder は履歴温存) / placeholder 判定は `created_by_id IS NULL AND start_time IS NULL AND end_time IS NULL` (手動追加行・個別 override 行は除外) / UNIQUE 衝突 (admin が新 default と同 raw_date を手動追加済) は **placeholder 側 DELETE で手動行温存** (user intent 尊重) / `schedule_session_memos.raw_date` は loose join なので UPDATE 分岐で同期 UPDATE・DELETE 分岐は温存 / 実装は SECURITY DEFINER RPC + `setNativeScheduleDefaultRaidTimeAction` の延長で自動同期、RPC 失敗は best-effort warn (`app_settings` 保存は既に成功済 → user データ損害なし)
+  - **変更内容**:
+    - **新規 SQL RPC** [supabase/schema.sql](supabase/schema.sql) Section 13d: `update_native_placeholder_raid_times(text, text) RETURNS jsonb`。PL/pgSQL LOOP で per-row UPDATE 試行 → `unique_violation` EXCEPTION で DELETE 分岐 → UPDATE 成功時のみ memo 同期。JST 今日 0:00 は `((now() AT TIME ZONE 'Asia/Tokyo')::date)::timestamp AT TIME ZONE 'Asia/Tokyo'`、日付 prefix は `substring(... FROM '^(\d{4}/\d{2}/\d{2}\([日月火水木金土]\))')`。GRANT EXECUTE TO authenticated のみ (anon 除外)
+    - **server action 拡張** [src/lib/server/categories-actions.ts](src/lib/server/categories-actions.ts): `setNativeScheduleDefaultRaidTimeAction` の `app_settings` upsert 成功直後に `supabase.rpc(...)` を呼出、戻り値型を `{ ok: true; updatedCount; deletedCount; memoUpdatedCount } | { ok: false; reason }` に拡張 (`SetNativeScheduleDefaultRaidTimeResult` 型 export)
+    - **UI 拡張** [native-default-raid-time-section.tsx](src/components/portal/settings/native-default-raid-time-section.tsx): 保存 toast を「デフォルト時刻を 20:00〜22:00 に変更しました (候補日 N 件を更新 / M 件を削除 (手動行と衝突))」形式に拡張 (両カウント 0 で末尾省略、M > 0 で衝突文言併記)
+  - **触らない範囲**: `ensureNativeMonthlyPlaceholders()` の新規 auto-insert 経路 (新規挿入は引き続き新 default で生成) / CandidateDateDialog (`created_by_id` 明示 INSERT で placeholder 判定から除外される設計を温存) / `fetchNativeSchedule()` の COALESCE 表示 / sync 系 (`schedule_past_session_logs` 等) / `native_schedule_session_logs` (UUID FK で raw_date 非依存) は完全無改修
+  - **副作用**: placeholder DELETE 分岐は `native_schedule_sessions` 1 行削除に閉じる (子テーブルは ON DELETE CASCADE で自動連鎖)。raw_date が新 default に揃っても popover trigger / status toggle / Discord notify button は全て id ベースで影響なし
+  - **検証**: `npx tsc --noEmit` PASS / `npm run build` ✓ Compiled (18 routes、変化なし) / schema deploy は merge 時に GitHub Actions で本番 / demo 両環境へ自動適用 / merge 後の本番実機でユーザー確認 OK (2026-06-10)
 
 - **2.6 (2026-06-10)**: TODO #89 クローズ — native スケジュールに FFLogs URL manual link 追加 / 削除 UI (TODO #73 follow-up) ([PR #151](https://github.com/yyamazaki-lym/raid-repository/pull/151) squash merge `6e28ebd`)
   - **発端**: TODO #73 (2.5 / 2026-06-10) で FFLogs ⇔ native 確定済セッション の auto-link 経路を実装し、TODO #86 (2.6 / 2026-06-10) で日次 cron 自動化まで揃ったが、auto-match が誤一致を返した時の手動削除経路と、cron が拾えなかった report を後追いで手動紐付けする経路が無かった (sync 側は TODO #64 で `session-memo-popover.tsx` 内に既実装、native だけ未対応の非対称状態)
