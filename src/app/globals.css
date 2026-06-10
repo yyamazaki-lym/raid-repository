@@ -539,6 +539,16 @@
     0 12px 32px -12px color-mix(in oklch, black 65%, transparent);
 }
 
+/* Transition duration 規約 (TODO #51 P3 観点 9、2026-06-10 明文化)。
+   新規 UI を書くときは下記 4 段から選び、用途外の duration-* 追加は避ける:
+   - micro (hover / press の色・transform): Tailwind default の 150ms。
+     `duration-*` を明示しない (= transition-colors / transition-transform 素のまま)
+   - popup-open (dialog / dropdown / popover の data-open 開アニメ): duration-100。
+     close 側のアニメは TODO #65/#70-72 の DOM 残留問題により再追加禁止
+   - panel (sub-tabs collapse 等の領域開閉): duration-200
+   - page-fallback (Suspense fallback の遅延 fade-in 等): 300ms
+   下の .neon-edge border glow (250ms) は装飾専用の例外。 */
+
 /* Frosted edge — silver-blue glow on hover/active. */
 .neon-edge {
   position: relative;
