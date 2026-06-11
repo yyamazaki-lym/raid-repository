@@ -1,5 +1,8 @@
 import "server-only";
-import { createClient } from "@/lib/supabase/server";
+import {
+  createClient,
+  createSupabaseServiceRoleClient,
+} from "@/lib/supabase/server";
 import { fetchAppSetting } from "@/lib/supabase/app-settings";
 import { findContentGroups } from "@/lib/content-groups";
 import { extractDateFromTitle } from "@/lib/title-date";
@@ -850,8 +853,28 @@ export type FflogsLinkResult = {
  *
  * Each linker greedily claims the earliest unmatched report that fits
  * the target's window — same heuristic as the video↔session matching.
+ *
+ * 書き込みクライアントの選択 (2.8 follow-up, 2026-06-11):
+ * cron 経路 (/api/cron/fflogs-sync) はユーザーセッション cookie を持たず
+ * anon ロールになるため、cookie ベースの `createClient()` だと RLS の
+ * admin write ポリシーで全書き込みが silent に 0 行更新されていた
+ * (discord-import / schedule-snapshot は service role を使うのに本関数
+ * だけ漏れていた設計不整合)。cron からは `useServiceRole: true` を渡して
+ * service role で書き込む。手動 button 経路 (`linkFflogsReports`、
+ * `assertAdminResult` 済み) は従来どおり cookie クライアントで RLS を通す。
  */
-export async function linkFflogsReportsToVideos(): Promise<FflogsLinkResult> {
+export async function linkFflogsReportsToVideos(opts?: {
+  /**
+   * true でテーブル書き込みに service role クライアントを使う (RLS バイパス)。
+   * セッション cookie を持たない cron entrypoint 専用。呼び出し元で
+   * CRON_SECRET 認証 (assertCronAuth) を済ませていることが前提。
+   */
+  useServiceRole?: boolean;
+}): Promise<FflogsLinkResult> {
+  const newWriteClient = async () =>
+    opts?.useServiceRole
+      ? createSupabaseServiceRoleClient()
+      : await createClient();
   // 1.9.11: ONE-TIME BOOTSTRAP for `category_links.logs_url_source`. The
   // 1.9.10 schema added the column with `NOT NULL DEFAULT 'manual'`, so
   // every pre-existing logs_url row got tagged 'manual'. Flip them to
@@ -862,7 +885,7 @@ export async function linkFflogsReportsToVideos(): Promise<FflogsLinkResult> {
   // column — the new `schedule_past_session_logs` child table stores
   // its own `source` value at row creation time so no flip is needed.
   try {
-    const flagClient = await createClient();
+    const flagClient = await newWriteClient();
     const { data: flagRow } = await flagClient
       .from("app_settings")
       .select("value")
@@ -896,7 +919,7 @@ export async function linkFflogsReportsToVideos(): Promise<FflogsLinkResult> {
   // consistent set of auto matches without requiring the user to click
   // "全 logs URL クリア" first.
   try {
-    const cleanupClient = await createClient();
+    const cleanupClient = await newWriteClient();
     await Promise.all([
       cleanupClient
         .from("category_links")
@@ -1012,7 +1035,7 @@ export async function linkFflogsReportsToVideos(): Promise<FflogsLinkResult> {
       // そのまま再試行できるようにする。
       if (cookieUsed && scrapeResult.ok) {
         try {
-          const cleanupClient = await createClient();
+          const cleanupClient = await newWriteClient();
           await cleanupClient
             .from("app_settings")
             .delete()
@@ -1098,7 +1121,7 @@ export async function linkFflogsReportsToVideos(): Promise<FflogsLinkResult> {
   // because each FFLogs report legitimately maps to a video AND a sync
   // session AND a native session for the same raid night). TODO #73
   // (2.5, 2026-06-10): native session linker added in parallel.
-  const supabase = await createClient();
+  const supabase = await newWriteClient();
   const [videoResult, sessionResult, nativeSessionResult] = await Promise.all([
     linkReportsToVideos(supabase, reports),
     linkReportsToSessions(supabase, reports),

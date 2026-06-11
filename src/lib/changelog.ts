@@ -74,6 +74,12 @@ export const RELEASES: ReleaseEntry[] = [
         body:
           "**経緯**: lint 整備を merge 後、抑制した 40 件を改めて精査したところ、category-list.tsx の react-hooks/rules-of-hooks (条件付き早期 return より後の useMemo) が誤検知ではなく実バグと判明。realtime でカテゴリ数が 0↔非0 に遷移すると hook 呼び出し数が変わり React がクラッシュしうる (他の 39 件は挙動依存のリファクタ案件で実害なしだが、これだけは実行時クラッシュを誘発しうる)。\n\n**変更内容**:\n- slugIds の useMemo を早期 return (sorted.length===0) より前へ移動し hook 呼び出し順を固定\n- 解消した違反を eslint-suppressions.json から prune (40→39 件)\n- ci.yml のコメントを正しい運用 (解消時は --prune-suppressions、未削除だと exit 2 で CI fail) に訂正\n\n**検証**: npm run lint (error 0) / npx tsc --noEmit / npm run build すべて pass。",
       },
+      {
+        title:
+          "🐛 FFLogs 日次自動連携が cron 経路で silent に書き込めていなかった問題を修正",
+        body:
+          "**経緯**: セキュリティ監査の RLS 整合性チェックで検出 (権限昇格ではなく fail-closed 側の機能不全)。cron (/api/cron/fflogs-sync、JST 04:00) はユーザーセッション cookie を持たず anon ロールになるため、linkFflogsReportsToVideos() 内の書き込み (auto wipe / logs_url 更新 / session logs insert) が RLS の admin write ポリシーで全て 0 行更新になっていた。route は 200 を返すため監視でも気付けず、手動 button を押した時だけ動く状態だった。discord-import / schedule-snapshot は service role を使っており、fflogs だけパターンから漏れていた設計不整合。\n\n**変更内容**:\n- linkFflogsReportsToVideos() に useServiceRole オプションを追加し、テーブル書き込みクライアントを選択可能に (linker 3 本は既にクライアント注入式だったので入口の差し替えのみ)\n- cron route から useServiceRole: true を渡して service role で書き込む (CRON_SECRET 認証済みの経路)\n- admin 手動 button 経路 (設定ダイアログの「FFLogs と動画を連動」) は従来どおり cookie クライアント + RLS 通過で無変更\n- 読み取り専用の fetchSessionLogsByDate / fetchNativeSessionLogsByDate は対象外 (SELECT は anon 開放)\n\n**検証**: npx tsc --noEmit / npm run lint (error 0) / npm run build pass。cron 実発火後に logs が自動付与されることの実機確認は次回 cron (JST 04:00) 後。",
+      },
     ],
   },
   {
