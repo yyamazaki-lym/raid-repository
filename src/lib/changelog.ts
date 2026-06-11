@@ -80,6 +80,12 @@ export const RELEASES: ReleaseEntry[] = [
         body:
           "**経緯**: セキュリティ監査の RLS 整合性チェックで検出 (権限昇格ではなく fail-closed 側の機能不全)。cron (/api/cron/fflogs-sync、JST 04:00) はユーザーセッション cookie を持たず anon ロールになるため、linkFflogsReportsToVideos() 内の書き込み (auto wipe / logs_url 更新 / session logs insert) が RLS の admin write ポリシーで全て 0 行更新になっていた。route は 200 を返すため監視でも気付けず、手動 button を押した時だけ動く状態だった。discord-import / schedule-snapshot は service role を使っており、fflogs だけパターンから漏れていた設計不整合。\n\n**変更内容**:\n- linkFflogsReportsToVideos() に useServiceRole オプションを追加し、テーブル書き込みクライアントを選択可能に (linker 3 本は既にクライアント注入式だったので入口の差し替えのみ)\n- cron route から useServiceRole: true を渡して service role で書き込む (CRON_SECRET 認証済みの経路)\n- admin 手動 button 経路 (設定ダイアログの「FFLogs と動画を連動」) は従来どおり cookie クライアント + RLS 通過で無変更\n- 読み取り専用の fetchSessionLogsByDate / fetchNativeSessionLogsByDate は対象外 (SELECT は anon 開放)\n\n**検証**: npx tsc --noEmit / npm run lint (error 0) / npm run build pass。cron 実発火後に logs が自動付与されることの実機確認は次回 cron (JST 04:00) 後。",
       },
+      {
+        title:
+          "🛡️ 追加監査 — Discord 通知本文への非 admin テキスト注入を防止",
+        body:
+          "**経緯**: 監査の追加深掘り (Discord outbound インジェクション) で検出。出欠の symbol は本人 (非 admin) が書ける唯一の cron 通知本文流入経路で、Server Action / RLS とも内容を検証していなかった。UI の radio を経由せず直接 action を叩けば、改行込みの複数行フィッシング文や長文を symbol に仕込み、当日通知 (JST 12:00) にそのまま配信できた。allowed_mentions により @everyone 等の ping 発火自体は元々抑止されていたが、本文への任意テキスト混入は防げていなかった。\n\n**変更内容**:\n- upsertNativeScheduleAttendanceAction で symbol の制御文字 (改行/タブ) を空白化し 32 文字に制限 (凡例は短い記号前提なので実運用に影響なし)\n- 通知本文ビルダー (buildMessage) に mention 無害化を追加し、note / display_name / symbol に適用。allowed_mentions 単一依存からの脱却 (将来 allowed_mentions が緩められた場合の退行耐性)\n\n**確認済み (問題なし)**: Discord 送信は POST 1 箇所のみで allowed_mentions 実装済み / webhook 送信なし / channel ID・role ID は admin gate + 桁数 validate / bot token のログ・エラー混入なし。\n\n**検証**: npx tsc --noEmit / npm run lint (error 0) / npm run build pass。",
+      },
     ],
   },
   {
