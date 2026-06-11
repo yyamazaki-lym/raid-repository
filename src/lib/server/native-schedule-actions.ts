@@ -793,7 +793,15 @@ export async function upsertNativeScheduleAttendanceAction(
   if (!sessionId) return { ok: false, reason: "sessionId が空です" };
 
   const supabase = await createClient();
-  const symbol = input.symbol?.trim() ?? "";
+  // symbol は出欠記号 (凡例マスター由来の短い記号/ラベル)。本人 (非 admin) が
+  // 書ける唯一の通知本文 (native-schedule-discord の cron 通知) 流入経路なので、
+  // 制御文字 (改行/タブ含む) を空白化し長さを制限して、複数行フィッシング文や
+  // 長文の注入を防ぐ。凡例は短い記号前提なので 32 文字制限は実運用に影響しない。
+  const symbol = (input.symbol ?? "")
+    .replace(/\p{Cc}/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 32);
   const comment = input.comment?.trim() ?? null;
 
   if (!symbol) {

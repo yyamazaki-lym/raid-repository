@@ -257,6 +257,22 @@ function computeJstTodayUtcRange(): {
 
 type SupabaseClient = ReturnType<typeof createSupabaseServiceRoleClient>;
 
+/**
+ * Discord mention の発火トリガーを無害化する二次防御 (2.8 follow-up)。
+ * 通知本文に入るユーザー/admin 入力 (note / display_name / symbol) に適用する。
+ * postToDiscord の `allowed_mentions` で ping 自体は既に抑止しているが、その
+ * 単一防御が将来緩められた場合の退行に備え、`@everyone`/`@here` とユーザー/
+ * ロール/チャンネル mention 構文をゼロ幅スペースで崩す (表示はほぼ不変)。
+ */
+function neutralizeMentions(s: string): string {
+  // U+200B (ゼロ幅スペース) を mention トリガー直後に挿入して構文を崩す。
+  // ソースに不可視文字を埋め込まないよう codePoint から組み立てる。
+  const zwsp = String.fromCharCode(0x200b);
+  return s
+    .replace(/@(everyone|here)/g, "@" + zwsp + "$1")
+    .replace(/<(@[!&]?|#)/g, "<" + zwsp + "$1");
+}
+
 async function buildMessage(
   supabase: SupabaseClient,
   session: SessionRow,
@@ -283,19 +299,21 @@ async function buildMessage(
 
   const symbolBy: Record<string, string> = {};
   for (const a of attendances) {
-    if (a.symbol && a.symbol.trim()) symbolBy[a.discord_user_id] = a.symbol;
+    if (a.symbol && a.symbol.trim())
+      symbolBy[a.discord_user_id] = neutralizeMentions(a.symbol.trim());
   }
 
   const buckets = new Map<string, string[]>();
   const unanswered: string[] = [];
   for (const m of members) {
+    const displayName = neutralizeMentions(m.display_name);
     const sym = symbolBy[m.discord_user_id];
     if (sym) {
       const list = buckets.get(sym) ?? [];
-      list.push(m.display_name);
+      list.push(displayName);
       buckets.set(sym, list);
     } else {
-      unanswered.push(m.display_name);
+      unanswered.push(displayName);
     }
   }
   const answered = members.length - unanswered.length;
@@ -304,7 +322,10 @@ async function buildMessage(
   // 2.1 (2026-05-12): NULL の row は default 時刻に追従させる。
   const startTime = session.start_time ?? timeDefaults.startTime;
   const endTime = session.end_time ?? timeDefaults.endTime;
-  const note = session.note && session.note.trim() ? session.note.trim() : "";
+  const note =
+    session.note && session.note.trim()
+      ? neutralizeMentions(session.note.trim())
+      : "";
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim() ?? "";
 
   // 出欠ブロック (template / hardcode 共通)。
