@@ -6,6 +6,7 @@ import { CalendarDays } from "lucide-react";
 import { motion } from "motion/react";
 import { cn } from "@/lib/utils";
 import { CategorySwitcher } from "./category-switcher";
+import { LinkPendingIndicator } from "./link-pending-indicator";
 import { MainActionSlotTarget } from "./action-slot";
 import type { Category } from "@/lib/supabase/types";
 import type { ScheduleSourceMode } from "@/lib/schedule/source-mode";
@@ -67,6 +68,9 @@ export function MainTabs({
                     aria-hidden
                   />
                   <span>スケジュール</span>
+                  {/* 2.9 (2026-06-11): cold start 等で RSC 応答が遅い時の
+                      「無音 stuck」対策。prefetch 済みなら出ない。 */}
+                  <LinkPendingIndicator className="text-[var(--neon-cyan)]" />
                   {scheduleActive && (
                     <motion.span
                       layoutId="main-tab-underline"

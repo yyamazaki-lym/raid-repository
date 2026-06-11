@@ -56,11 +56,23 @@ export function CategorySwitcher({ initialCategories, userRoleIds }: Props) {
   // without this we'd need a way to force-close.
   const [open, setOpen] = useState(false);
 
+  // 2.9 (2026-06-11): メニュー内リンクのクリック後、遷移完了 (pathname
+  // 変化) までトリガーに pending ドットを点灯する。menu item はクリックで
+  // 即閉じるため `useLinkStatus` (Link 配下限定) は使えず、Link の
+  // `onNavigate` (SPA 遷移時のみ発火、修飾キークリックでは発火しない) で
+  // 点灯 → 下の pathname effect で消灯する。同一 pathname への遷移は
+  // pathname が変化せず消灯契機が無いので点灯させない。
+  const [navPending, setNavPending] = useState(false);
+  const handleNavigate = (href: string) => {
+    if (href !== pathname) setNavPending(true);
+  };
+
   // Close on route change — single source of truth for "navigation
   // happened, dismiss the menu". No per-Link onClick handlers
   // necessary, which keeps the JSX simple.
   useEffect(() => {
     setOpen(false);
+    setNavPending(false);
   }, [pathname]);
 
   const isCategoryRoute = pathname.startsWith("/category");
@@ -111,6 +123,15 @@ export function CategorySwitcher({ initialCategories, userRoleIds }: Props) {
         <ChevronDown
           className="h-3 w-3 opacity-70 transition-transform data-[popup-open]:rotate-180"
           aria-hidden
+        />
+        {/* 2.9 (2026-06-11): メニュー内リンククリック後の遷移 pending 表示。
+            cold start 等で RSC 応答が遅い時の「無音 stuck」対策。 */}
+        <span
+          aria-hidden
+          className={cn(
+            "link-pending-dot text-[var(--neon-violet)]",
+            navPending && "is-pending",
+          )}
         />
         {isCategoryRoute && (
           <motion.span
@@ -175,6 +196,7 @@ export function CategorySwitcher({ initialCategories, userRoleIds }: Props) {
                       prefetch
                       title={cat.name}
                       aria-label={cat.name}
+                      onNavigate={() => handleNavigate(defaultHref)}
                     />
                   }
                   className={cn(
@@ -215,6 +237,9 @@ export function CategorySwitcher({ initialCategories, userRoleIds }: Props) {
                           prefetch
                           title={p.label}
                           aria-label={`${cat.name} - ${p.label}`}
+                          onNavigate={() =>
+                            handleNavigate(`/category/${cat.slug}/${p.segment}`)
+                          }
                         />
                       }
                       className="inline-flex h-6 w-6 cursor-pointer items-center justify-center rounded text-muted-foreground transition-all duration-150 hover:scale-110 hover:bg-[var(--neon-violet)]/15 hover:text-[var(--neon-violet)] active:scale-95"
@@ -231,7 +256,13 @@ export function CategorySwitcher({ initialCategories, userRoleIds }: Props) {
         <DropdownMenuSeparator />
 
         <DropdownMenuItem
-          render={<Link href="/category" prefetch />}
+          render={
+            <Link
+              href="/category"
+              prefetch
+              onNavigate={() => handleNavigate("/category")}
+            />
+          }
           className="flex cursor-pointer items-center gap-2"
         >
           <ListChecks className="h-4 w-4 text-muted-foreground" aria-hidden />
