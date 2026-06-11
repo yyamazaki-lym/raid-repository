@@ -86,6 +86,12 @@ export const RELEASES: ReleaseEntry[] = [
         body:
           "**経緯**: 監査の追加深掘り (Discord outbound インジェクション) で検出。出欠の symbol は本人 (非 admin) が書ける唯一の cron 通知本文流入経路で、Server Action / RLS とも内容を検証していなかった。UI の radio を経由せず直接 action を叩けば、改行込みの複数行フィッシング文や長文を symbol に仕込み、当日通知 (JST 12:00) にそのまま配信できた。allowed_mentions により @everyone 等の ping 発火自体は元々抑止されていたが、本文への任意テキスト混入は防げていなかった。\n\n**変更内容**:\n- upsertNativeScheduleAttendanceAction で symbol の制御文字 (改行/タブ) を空白化し 32 文字に制限 (凡例は短い記号前提なので実運用に影響なし)\n- 通知本文ビルダー (buildMessage) に mention 無害化を追加し、note / display_name / symbol に適用。allowed_mentions 単一依存からの脱却 (将来 allowed_mentions が緩められた場合の退行耐性)\n\n**確認済み (問題なし)**: Discord 送信は POST 1 箇所のみで allowed_mentions 実装済み / webhook 送信なし / channel ID・role ID は admin gate + 桁数 validate / bot token のログ・エラー混入なし。\n\n**検証**: npx tsc --noEmit / npm run lint (error 0) / npm run build pass。",
       },
+      {
+        title:
+          "📝 ロール制限カテゴリの位置づけを明文化 (機密境界ではない)",
+        body:
+          "**経緯**: 追加監査で、ロール制限カテゴリ (categories.required_role_ids) がアプリ層フィルタのみで RLS になく、公開値の anon key で Supabase REST/Realtime を直接叩けば非ロールメンバー/第三者も中身を読めることを確認。「SELECT 全開」の単一テナント設計との不整合。\n\n**判断 (コード挙動は不変)**: ロール制限は『表示の出し分け/誤クリック防止』であって機密境界ではない、と category-visibility.ts と schema.sql にコメントで明記。ロール制限カテゴリに『同ギルドの他メンバーにも秘匿したい機密』は置かない運用とする。真の秘匿が必要になったら RLS にロール条件を実装する (= SELECT 全開設計の部分撤回が必要)。真の機密 (FFLogs token 等) は既に secrets テーブルで anon 完全 deny 済みで影響なし。",
+      },
     ],
   },
   {
