@@ -1,5 +1,7 @@
 import "server-only";
 import { decodeHtmlEntities } from "@/lib/html-entities";
+import { isPublicHttpUrl } from "@/lib/url-safe";
+import { fetchWithSafeRedirect } from "./page-title";
 
 /**
  * Phase 16 (2026-05-13): Google フォト共有アルバム / 直リンクの解析。
@@ -56,39 +58,30 @@ export async function fetchGooglePhotosAlbum(
     throw new Error("URL が不正です");
   }
 
-  // 短縮 URL は HEAD redirect follow で展開し、最終 URL を canonical 化する。
-  let canonical = parsed.toString();
-  if (parsed.hostname.toLowerCase() === "photos.app.goo.gl") {
-    try {
-      const head = await fetch(canonical, {
-        method: "HEAD",
-        redirect: "follow",
-        signal: AbortSignal.timeout(8000),
-        headers: { "User-Agent": "Mozilla/5.0 (compatible; RaidRepositoryBot/0.1)" },
-      });
-      // HEAD を許可しないサーバでは fall back で GET。
-      if (!head.ok && head.status !== 405) {
-        // 5xx / 404 などは そのまま エラー扱い (後段 fetch でも失敗するので)
-        canonical = head.url || canonical;
-      } else {
-        canonical = head.url || canonical;
-      }
-    } catch {
-      // HEAD 失敗時は GET で展開を試みる (Firebase Dynamic Links は HEAD 拒否がある)
-    }
+  // SSRF defense-in-depth: 入口と各 redirect hop で公開 http(s) ホストを強制。
+  // 短縮 URL (photos.app.goo.gl) の展開も GET の manual follow で行い、内部 IP /
+  // loopback へ誘導するリダイレクトを遮断する (admin 操作だが多層防御)。Firebase
+  // Dynamic Links は多段 redirect しうるので hop 上限は 5 まで許容。
+  if (!isPublicHttpUrl(parsed.toString())) {
+    throw new Error("URL が不正です");
   }
 
-  const res = await fetch(canonical, {
-    method: "GET",
-    redirect: "follow",
-    signal: AbortSignal.timeout(10000),
-    headers: {
-      "User-Agent": "Mozilla/5.0 (compatible; RaidRepositoryBot/0.1)",
-      Accept: "text/html,application/xhtml+xml,application/xml;q=0.9",
+  const res = await fetchWithSafeRedirect(
+    parsed.toString(),
+    {
+      method: "GET",
+      signal: AbortSignal.timeout(10000),
+      headers: {
+        "User-Agent": "Mozilla/5.0 (compatible; RaidRepositoryBot/0.1)",
+        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9",
+      },
     },
-  });
-  if (!res.ok) {
-    throw new Error(`アルバムを取得できませんでした (HTTP ${res.status})`);
+    5,
+  );
+  if (!res || !res.ok) {
+    throw new Error(
+      `アルバムを取得できませんでした (HTTP ${res?.status ?? "?"})`,
+    );
   }
   const html = await res.text();
 

@@ -62,7 +62,7 @@ async function readBodyWithLimit(
  * `isPublicHttpUrl` で検証して手動で 1 段 follow する。最大 hop 数で
  * リダイレクトループから守る。
  */
-async function fetchWithSafeRedirect(
+export async function fetchWithSafeRedirect(
   url: string,
   init: RequestInit,
   maxHops = MAX_REDIRECT_HOPS,

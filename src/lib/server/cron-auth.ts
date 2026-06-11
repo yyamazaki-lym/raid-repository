@@ -1,5 +1,21 @@
 import "server-only";
+import { timingSafeEqual } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
+
+/**
+ * タイミング攻撃耐性のある文字列比較。
+ *
+ * 素の `a === b` は先頭から 1 文字ずつ短絡比較するため、理論上は応答時間差
+ * から secret を 1 文字ずつ推測されうる。`timingSafeEqual` は同長 Buffer 同士を
+ * 定数時間で比較する。長さが異なる場合は即 false を返す (長さの差はタイミング
+ * 非依存で漏れるが、secret の長さ自体は低機微なので許容)。
+ */
+function timingSafeStringEqual(a: string, b: string): boolean {
+  const aBuf = Buffer.from(a);
+  const bBuf = Buffer.from(b);
+  if (aBuf.length !== bBuf.length) return false;
+  return timingSafeEqual(aBuf, bBuf);
+}
 
 /**
  * Vercel Cron entrypoint 用の認証ヘルパ (2.x, 2026-06-09)。
@@ -63,7 +79,9 @@ export function assertCronAuth(
   const isVercelCron = req.headers.get("x-vercel-cron") !== null;
   const expected = `Bearer ${secret}`;
   const headerOk =
-    authHeader === expected || authHeader?.trim() === expected;
+    authHeader !== null &&
+    (timingSafeStringEqual(authHeader, expected) ||
+      timingSafeStringEqual(authHeader.trim(), expected));
 
   if (!headerOk && !isVercelCron) {
     // 詳細は本体ログにのみ吐く (response body には載せない)。

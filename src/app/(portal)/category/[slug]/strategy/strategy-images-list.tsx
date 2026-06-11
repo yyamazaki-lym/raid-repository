@@ -270,7 +270,7 @@ export function StrategyImagesList({
             <AlbumSection
               key={album.id}
               album={album}
-              children={albumChildren.get(album.id) ?? []}
+              links={albumChildren.get(album.id) ?? []}
               onOpenImage={(id) => onOpenAlbumLightbox(album.id, id)}
               onEditImage={(link) => setEditTarget(link)}
             />
@@ -590,12 +590,12 @@ function ImageLightbox({
  */
 function AlbumSection({
   album,
-  children,
+  links,
   onOpenImage,
   onEditImage,
 }: {
   album: CategoryGphotoAlbum;
-  children: CategoryLink[];
+  links: CategoryLink[];
   onOpenImage: (id: string) => void;
   onEditImage: (link: CategoryLink) => void;
 }) {
@@ -631,7 +631,7 @@ function AlbumSection({
     const label = album.title ?? "Google フォト";
     if (
       !window.confirm(
-        `「${label}」のアルバムと含まれる画像 ${children.length} 枚を削除します。よろしいですか？`,
+        `「${label}」のアルバムと含まれる画像 ${links.length} 枚を削除します。よろしいですか？`,
       )
     ) {
       return;
@@ -671,7 +671,7 @@ function AlbumSection({
               {album.title ?? "Google フォト"}
             </span>
             <span className="font-mono text-[10px] tracking-[0.18em] text-muted-foreground uppercase">
-              {children.length} image{children.length === 1 ? "" : "s"}
+              {links.length} image{links.length === 1 ? "" : "s"}
               {lastSyncedLabel && (
                 <span className="ml-2 text-muted-foreground/60">
                   · last sync {lastSyncedLabel}
@@ -723,13 +723,13 @@ function AlbumSection({
 
       {!collapsed && (
         <div id={`gphoto-album-body-${album.id}`}>
-          {children.length === 0 ? (
+          {links.length === 0 ? (
             <p className="px-1 py-3 text-xs text-muted-foreground">
               画像がありません。共有設定 / 同期を確認してください。
             </p>
           ) : (
             <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {children.map((link) => (
+              {links.map((link) => (
                 <AlbumImageCard
                   key={link.id}
                   link={link}

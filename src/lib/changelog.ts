@@ -55,6 +55,23 @@ export type ReleasePart = {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    version: "2.8",
+    date: "2026-06-11",
+    parts: [
+      {
+        title:
+          "🔒 セキュリティ監査対応 — 依存更新 / 認可ガード / SSRF 多層防御 / cron 認証強化",
+        body:
+          "**経緯**: ユーザー依頼でセキュリティ全体監査を実施。RLS / 認可 / 入力検証 / 依存パッケージを点検し、検出した Medium / Low の穴を解消した。\n\n**変更内容**:\n- 依存更新: Next.js を 16.2.4 → 16.2.9 に更新し、App Router の middleware / proxy bypass (GHSA-267c-6grr-h53f) ほか既知脆弱性を解消。`npm audit` の High を一掃 (残るのは next 内蔵 postcss の moderate のみ)\n- 認可ガード: 認可チェックが無かった Server Action (fetchFflogsOAuthStatus / getFflogsSessionCookieStatus / enrichVideoLinkDuration / diagnoseYouTubeUrl) に admin gate を追加\n- SSRF 多層防御: schedule_url の fetch と Google フォト短縮 URL 展開を isPublicHttpUrl + 手動 redirect 検証に統一。parseYouTubeId は 11 文字 ID 以外を弾くよう厳格化\n- cron 認証: CRON_SECRET の比較をタイミング攻撃耐性のある定数時間比較に変更\n- demo モード: 匿名ゲストが service role 経由でコメントを書ける経路と、/api/page-title を匿名 SSRF プロキシとして悪用できる経路を遮断\n\n**検証**: `npm run build` / `npx tsc --noEmit` / `npm run lint` (error 0) すべて pass。",
+      },
+      {
+        title: "🧹 ESLint error 一掃 + CI (lint / 型チェック) ゲート新設",
+        body:
+          "**経緯**: CI に lint / 型チェックのゲートが無く、react-hooks 系の ESLint error (set-state-in-effect 等 40 件) が検知されないまま蓄積していた。\n\n**変更内容**:\n- 確実に安全な react/no-children-prop (Google フォトアルバムの children prop) を links にリネームして解消\n- 既存の react-hooks error 40 件は挙動 (SSR hydration / props 同期等) を変えないよう eslint-suppressions.json に記録して抑制。新規 error のみ CI で fail させる\n- GitHub Actions に CI workflow (ESLint + tsc --noEmit) を新設し、今後の違反混入を防止\n\n**触らない範囲**: 抑制した 40 件の実リファクタ (挙動検証が要るため別タスク) / CSP style-src unsafe-inline 撤去 / DNS rebinding 対策 (改修コストと互換性から現状維持と判断し、コードにコメントで記録)。",
+      },
+    ],
+  },
+  {
     version: "2.7",
     date: "2026-06-11",
     parts: [

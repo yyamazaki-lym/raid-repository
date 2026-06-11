@@ -108,6 +108,8 @@ export function isPublicHttpUrl(raw: string | null | undefined): boolean {
   // ホスト名: ドットを 1 つ以上含み、解決時に内部 IP を引かない前提
   // (DNS rebinding 対策は本ヘルパでは扱わない — ホスト名ベースの自明な
   // 内部 zone のみ弾く)。
+  // 2026-06-11 セキュリティ監査: DNS rebinding は Vercel egress NAT で実害が
+  // 低く、pinned-IP fetch の実装コストが高いため現状維持と判断 (受容リスク)。
   return true;
 }
 

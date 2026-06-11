@@ -20,6 +20,9 @@
  *   Base UI / sonner / Tailwind v4 が広く inline style に依存しており、
  *   nonce 化には大規模な改修コストが必要。`style-src-elem` / `style-src-attr`
  *   分割案は CSP Level 3 でブラウザ互換が割れる。改善余地は別 TODO 候補。
+ *   **2026-06-11 セキュリティ監査**: 上記の改修コストと互換性リスクを踏まえ
+ *   現状維持と判断 (受容リスク)。script-src は nonce 化済みで XSS の主経路は
+ *   塞がれており、inline style 経由の残存リスクは限定的。
  * - **dev mode** (Turbopack / React Refresh) は `'unsafe-eval'` を script-src
  *   に追加。React が source map 復元で eval する。production では削除。
  */

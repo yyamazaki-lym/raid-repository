@@ -397,6 +397,15 @@ export async function updateNativeScheduleMemberCommentAction(input: {
 }): Promise<{ ok: true } | { ok: false; reason: string }> {
   const member = await requireDiscordMember();
 
+  // PUBLIC_DEMO_MODE の匿名ゲスト (実セッションなし) はこの action 唯一の
+  // service role 経由書き込みで RLS を bypass できてしまうため明示的に弾く。
+  // demo は read-only 公開が前提で、ゲストの discord_id は固定値
+  // ("public-demo-mode-guest") なので該当 row を改竄させない。実セッションを
+  // 持つ guild member (owner 等) は isDemoGuest が undefined なので通過する。
+  if (member.isDemoGuest) {
+    return { ok: false, reason: "デモ表示中はコメントを編集できません" };
+  }
+
   const raw = (input.comment ?? "").trim();
   if (raw.length > 500) {
     return { ok: false, reason: "コメントは 500 文字以内で入力してください" };

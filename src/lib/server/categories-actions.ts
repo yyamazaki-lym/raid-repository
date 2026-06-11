@@ -793,6 +793,10 @@ export async function fetchFflogsOAuthStatus(): Promise<{
   userName: string | null;
   expiresAt: string | null;
 }> {
+  // admin gate: OAuth 接続状態 (接続先ユーザー名 / 失効日時) は設定情報なので
+  // admin 専用。非 admin には未接続相当を返す (設定セクションは admin のみ表示)。
+  const auth = await assertAdminResult();
+  if (!auth.ok) return { connected: false, userName: null, expiresAt: null };
   return getFflogsOAuthStatus();
 }
 
@@ -862,6 +866,9 @@ export async function getFflogsSessionCookieStatus(): Promise<{
   set: boolean;
   preview: string | null;
 }> {
+  // admin gate: preview は cookie 先頭 40 文字を含むため非 admin に漏らさない。
+  const auth = await assertAdminResult();
+  if (!auth.ok) return { set: false, preview: null };
   // 2.x (2026-06-09): `app_settings` 平文 fallback を撤去。`secrets`
   // テーブル (暗号化, anon deny) のみを参照する。preview だけ返すので
   // decrypt 結果は捨てる。
@@ -1823,6 +1830,10 @@ export async function enrichVideoLinkDuration(
   linkId: string,
   url: string,
 ): Promise<{ ok: boolean; durationSeconds: number | null }> {
+  // admin gate: 任意 linkId の duration_seconds / posted_at を上書きする
+  // 書き込み経路。RLS でも最終防御されるが action 入口でも弾く。
+  const auth = await assertAdminResult();
+  if (!auth.ok) return { ok: false, durationSeconds: null };
   const meta = await fetchYouTubeMeta(url);
   if (meta.durationSeconds === null && meta.uploadDate === null) {
     return { ok: true, durationSeconds: null };
@@ -1884,6 +1895,12 @@ export type YouTubeDiagnosticResult = {
 export async function diagnoseYouTubeUrl(
   url: string,
 ): Promise<YouTubeDiagnosticResult> {
+  // admin gate: 任意 URL を server fetch する保守メニュー専用診断。非 admin は
+  // 空結果。fetch 先は parseYouTubeId が ID を抽出できた YouTube URL に限られる。
+  const auth = await assertAdminResult();
+  if (!auth.ok) {
+    return { url, durationSeconds: null, uploadDate: null, attempts: [] };
+  }
   const { meta, debug } = await fetchYouTubeMetaWithDebug(url);
   return {
     url,

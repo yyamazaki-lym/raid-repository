@@ -1,0 +1,38 @@
+# CI (Lint + Typecheck)
+#
+# main への push と全 PR で ESLint と TypeScript の型チェックを実行する。
+# これまで lint/型チェックを CI で回しておらず、react-hooks 系の error が
+# 蓄積していた (2026-06-11 セキュリティ監査で検出)。
+#
+# ESLint の既存違反 (react-hooks 系 40 件) は `eslint-suppressions.json` に
+# 記録して抑制済みなので、このジョブが fail するのは「新規に増えた error」
+# だけ。抑制済みの違反を実際に直したら、`npx eslint --suppress-all` を再実行
+# して suppressions ファイルを更新する (件数が減る)。
+# warning (no-unused-vars 等) は exit code に影響しないので fail しない。
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: ESLint
+        run: npx eslint
+
+      - name: TypeScript typecheck
+        run: npx tsc --noEmit
