@@ -1,6 +1,4 @@
-import { Suspense } from "react";
 import { redirect } from "next/navigation";
-import { Loader2 } from "lucide-react";
 import { ScheduleDisabledNotice } from "@/components/portal/schedule-disabled-notice";
 import { ScheduleOnboarding } from "@/components/portal/schedule-onboarding";
 import { SchedulePageBody } from "@/components/portal/schedule-page-body";
@@ -40,68 +38,33 @@ export const metadata = {
 };
 
 /**
- * 1.9 (2026-04-28) TODO #11: Edge Runtime 化でコールドスタートを短縮。
+ * 2.9 (2026-06-11): Edge → Node runtime 化。経緯と判断根拠は
+ * `(portal)/layout.tsx` の runtime コメントを参照 (cold start 対策。旧
+ * Edge 維持の根拠だった「FFLogs scrape は Edge IP 必須」は cron の Node
+ * scrape 成功実績で崩れた)。
  *
- * Vercel Free tier では Node.js Function に 500ms〜1.5s のコールド
- * スタートペナルティがあるが、Edge Function は ~50ms。リロード時の
- * 「引っ掛かり」体感の主要因なのでまず Edge を試す。
- *
- * 互換性チェック済み:
- *   - `@supabase/ssr` server client: Edge 公式対応
- *   - `next/headers` cookies(): Edge 対応
- *   - 外部 fetch (character-sheets / fflogs / 祝日 API): Edge 対応
- *   - `Buffer.from(...).toString("base64")` を `btoa()` に置換済み
- *     (`fflogs-oauth.ts` の OAuth Basic 認証ヘッダー)
- *
- * 別ルート (/api/auth/fflogs/callback など) は Node Runtime 維持。
- * runtime config は per-route なので独立に運用できる。
+ * 描画パスの FFLogs 処理 `fetchSessionLogsByDate()` は Supabase SELECT
+ * のみで外部 scrape を含まないため、runtime 変更の影響を受けない。
  */
-export const runtime = "edge";
+export const runtime = "nodejs";
 
 /**
  * 2.1 (2026-05-01) TODO #55 part2 — Suspense streaming で FCP 改善。
- *
- * 旧 (1.9 (2026-04-28) 初期): 主データロードを `<Suspense fallback={skeleton}>`
- * でラップしていたが、「skeleton → 実コンテンツ swap」体感が悪く synchronous
- * に戻していた経緯あり (詳細は git log)。
- *
  * `(portal)/layout.tsx` の SiteHeader / MainTabs が data 完了直後に flush
- * されて FCP を計上するため、page 側の重い `Promise.all` を Suspense 境界の
- * 向こう側に追い出すだけで効果が出る。h1 は SchedulePageBody 内で既に描画
- * されているので shell には重複させない。
+ * されて FCP を計上するため、page 側の重い `Promise.all` を Suspense 境界
+ * の向こう側に追い出す構成。h1 は SchedulePageBody 内で描画されるので
+ * shell には重複させない。
  *
- * 2.1 (2026-05-01) TODO #57 — fallback に遅延 fade-in "Now Loading" を投入。
- * `scheduleLoadingFadeIn` keyframe (globals.css) で `opacity: 0 → 1` を
- * `0.5s delay + 0.3s duration` で発火。ロードが 500ms 未満なら fallback は
- * 視認されず TODO #55 part2 の swap 違和感回避は維持、500ms を超える場合
- * のみ穏やかに "Now Loading" が出るので「真っ白」体感を解消できる。
+ * 2.9 (2026-06-11): その Suspense 境界を page 内の `<Suspense>` から
+ * `(portal)/loading.tsx` (同じ遅延 fade-in "Now Loading" fallback) に移設。
+ * loading.tsx は prefetch に含まれるため、タブ遷移で TOP に戻る時もサーバー
+ * の RSC 応答を待たずに即 fallback が出る (旧構成は応答到着まで無反応 =
+ * cold start 時の「無音 stuck」)。page 内に `<Suspense>` を残すと client
+ * 遷移時に「loading.tsx fallback → page shell 到着で fallback 再マウント
+ * (遅延 500ms ぶん一時消灯)」のチラつきが出るため、境界は loading.tsx の
+ * 1 枚に集約する。
  */
-export default function SchedulePage() {
-  return (
-    <Suspense fallback={<ScheduleLoadingFallback />}>
-      <ScheduleContent />
-    </Suspense>
-  );
-}
-
-function ScheduleLoadingFallback() {
-  return (
-    <div
-      className="flex min-h-[40vh] items-center justify-center gap-2 text-muted-foreground"
-      style={{
-        opacity: 0,
-        animation: "scheduleLoadingFadeIn 300ms ease-out 500ms forwards",
-      }}
-      role="status"
-      aria-live="polite"
-    >
-      <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-      <span className="text-sm">Now Loading...</span>
-    </div>
-  );
-}
-
-async function ScheduleContent() {
+export default async function SchedulePage() {
   // TODO #2 phase 1 (2026-05-07): スケジュールソースモードで分岐。
   // - sync     → 既存の character-sheets fetch + parse path
   // - native   → 自前テーブル fetch (phase 1 では空 skeleton)
@@ -144,6 +107,11 @@ async function ScheduleContent() {
       );
     }
 
+    // 2.9 (2026-06-11): buildSessionVideoLinkMap は fetchSchedule の結果に
+    // しか依存しないので、Promise.all 完了後の直列 await (= 最遅 fetch を
+    // 待ってからさらに Supabase SELECT) ではなく fetchSchedule にチェーン
+    // して他の fetch と並走させる。
+    const schedulePromise = fetchSchedule();
     const [
       result,
       holidays,
@@ -153,8 +121,9 @@ async function ScheduleContent() {
       sessionLogsByDate,
       appSettings,
       initialMemosByDate,
+      sessionVideoLinks,
     ] = await Promise.all([
-      fetchSchedule(),
+      schedulePromise,
       fetchJapaneseHolidays(),
       fetchRecruitmentTemplatesServer(),
       fetchCategories(),
@@ -162,6 +131,9 @@ async function ScheduleContent() {
       fetchSessionLogsByDate(),
       fetchAppSettings([SCHEDULE_TOP_TEXT_OVERRIDE_KEY]),
       fetchScheduleMemosByDateBulk(),
+      schedulePromise.then((r) =>
+        r.ok ? buildSessionVideoLinkMap(r.data.sessions) : {},
+      ),
     ]);
     const topTextOverride = appSettings[SCHEDULE_TOP_TEXT_OVERRIDE_KEY] ?? null;
     const visibleCategories = categoriesResult.ok
@@ -175,9 +147,6 @@ async function ScheduleContent() {
     const hasUltimateClear = visibleCategories.some(
       (c) => c.name.startsWith("絶") && c.status === "クリア済",
     );
-    const sessionVideoLinks = result.ok
-      ? await buildSessionVideoLinkMap(result.data.sessions)
-      : {};
     const nextResult: NextSessionResult = result.ok
       ? { ok: true, session: pickNextDecision(result.data.sessions) }
       : { ok: false, reason: result.reason };
@@ -214,6 +183,29 @@ async function ScheduleContent() {
   // 拾い、`ensureNativeMonthlyPlaceholders()` で不足分を auto-insert してから
   // `fetchNativeSchedule()` を走らせる順次実行に組み替える (Promise.all 並列だと
   // race で初回 read が空配列になる可能性がある)。
+  // 2.9 (2026-06-11): ensureNativeMonthlyPlaceholders → fetchNativeSchedule
+  // → buildSessionVideoLinkMap の直列 3 連鎖を appSettings にチェーンして
+  // 他の fetch と並走させる。TODO #81 の「placeholder insert → read は順次
+  // 必須 (並列だと初回 read が空配列になる race)」はチェーン内の await 順で
+  // 維持される。
+  const appSettingsPromise = fetchAppSettings([
+    SCHEDULE_TOP_TEXT_OVERRIDE_KEY,
+    NATIVE_DEFAULT_START_TIME_KEY,
+    NATIVE_DEFAULT_END_TIME_KEY,
+  ]);
+  const nativeResultPromise = appSettingsPromise.then(async (settings) => {
+    await ensureNativeMonthlyPlaceholders({
+      startTime: settings[NATIVE_DEFAULT_START_TIME_KEY],
+      endTime: settings[NATIVE_DEFAULT_END_TIME_KEY],
+    });
+    // 2.1 (2026-05-12): native_schedule_sessions.start_time / end_time が NULL の row
+    // は default に追従させたいので、ensureNativeMonthlyPlaceholders と同じ default を
+    // fetchNativeSchedule にも渡して COALESCE する。
+    return fetchNativeSchedule({
+      startTime: settings[NATIVE_DEFAULT_START_TIME_KEY],
+      endTime: settings[NATIVE_DEFAULT_END_TIME_KEY],
+    });
+  });
   const [
     appSettings,
     holidays,
@@ -223,12 +215,10 @@ async function ScheduleContent() {
     member,
     initialMemosByDate,
     nativeSessionLogsByDate,
+    nativeResult,
+    sessionVideoLinks,
   ] = await Promise.all([
-    fetchAppSettings([
-      SCHEDULE_TOP_TEXT_OVERRIDE_KEY,
-      NATIVE_DEFAULT_START_TIME_KEY,
-      NATIVE_DEFAULT_END_TIME_KEY,
-    ]),
+    appSettingsPromise,
     fetchJapaneseHolidays(),
     fetchRecruitmentTemplatesServer(),
     fetchCategories(),
@@ -236,18 +226,11 @@ async function ScheduleContent() {
     requireDiscordMember(),
     fetchScheduleMemosByDateBulk(),
     fetchNativeSessionLogsByDate(),
+    nativeResultPromise,
+    nativeResultPromise.then((r) =>
+      r.ok ? buildSessionVideoLinkMap(r.data.sessions) : {},
+    ),
   ]);
-  await ensureNativeMonthlyPlaceholders({
-    startTime: appSettings[NATIVE_DEFAULT_START_TIME_KEY],
-    endTime: appSettings[NATIVE_DEFAULT_END_TIME_KEY],
-  });
-  // 2.1 (2026-05-12): native_schedule_sessions.start_time / end_time が NULL の row
-  // は default に追従させたいので、ensureNativeMonthlyPlaceholders と同じ default を
-  // fetchNativeSchedule にも渡して COALESCE する。
-  const nativeResult = await fetchNativeSchedule({
-    startTime: appSettings[NATIVE_DEFAULT_START_TIME_KEY],
-    endTime: appSettings[NATIVE_DEFAULT_END_TIME_KEY],
-  });
   const topTextOverride = appSettings[SCHEDULE_TOP_TEXT_OVERRIDE_KEY] ?? null;
   const visibleCategories = categoriesResult.ok
     ? filterVisibleCategories(categoriesResult.categories, userRoles)
@@ -260,9 +243,6 @@ async function ScheduleContent() {
   const hasUltimateClear = visibleCategories.some(
     (c) => c.name.startsWith("絶") && c.status === "クリア済",
   );
-  const sessionVideoLinks = nativeResult.ok
-    ? await buildSessionVideoLinkMap(nativeResult.data.sessions)
-    : {};
   const nextResult: NextSessionResult = nativeResult.ok
     ? { ok: true, session: pickNextDecision(nativeResult.data.sessions) }
     : { ok: false, reason: nativeResult.reason };

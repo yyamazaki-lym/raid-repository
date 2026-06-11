@@ -605,10 +605,50 @@
 
 /* TODO #57: スケジュール TOP の Suspense fallback 用、遅延 fade-in。
  * 短いロード (<500ms) では視認されず TODO #55 part2 の swap 違和感を回避、
- * 長いロード時のみ "Now Loading" が穏やかに表示される。 */
+ * 長いロード時のみ "Now Loading" が穏やかに表示される。
+ * 2.9 (2026-06-11): 使用箇所は page.tsx 内 Suspense → (portal)/loading.tsx
+ * に移動 (境界の移設、アニメーション自体は不変)。 */
 @keyframes scheduleLoadingFadeIn {
   to {
     opacity: 1;
+  }
+}
+
+/* 2.9 (2026-06-11): ナビゲーション pending インジケーター
+ * (link-pending-indicator.tsx / category-switcher.tsx)。
+ * 固定サイズでスペースを常時確保し (layout shift 回避)、pending 時のみ
+ * 150ms 遅延の fade-in + パルスで点灯する。150ms 以内に遷移が完了する
+ * 高速ナビではフラッシュしない (use-link-status docs の推奨パターン)。 */
+.link-pending-dot {
+  display: inline-block;
+  width: 0.375rem;
+  height: 0.375rem;
+  border-radius: 9999px;
+  background: currentColor;
+  opacity: 0;
+  visibility: hidden; /* 非 pending 時もスペースだけ確保 */
+}
+
+.link-pending-dot.is-pending {
+  visibility: visible;
+  /* fade-in (1 回, 状態維持) + パルス (無限) の 2 本立て */
+  animation-name: linkPendingFadeIn, linkPendingPulse;
+  animation-duration: 200ms, 1s;
+  animation-delay: 150ms, 150ms;
+  animation-timing-function: ease, ease-in-out;
+  animation-iteration-count: 1, infinite;
+  animation-fill-mode: forwards, none;
+}
+
+@keyframes linkPendingFadeIn {
+  to {
+    opacity: 0.7;
+  }
+}
+
+@keyframes linkPendingPulse {
+  50% {
+    opacity: 0.25;
   }
 }
 

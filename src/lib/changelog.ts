@@ -55,6 +55,24 @@ export type ReleasePart = {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    version: "2.9",
+    date: "2026-06-11",
+    parts: [
+      {
+        title:
+          "⚡ デプロイ後/アイドル後の初回表示が遅い問題の対策 — TOP を Node runtime 化 + 直列クエリ並列化",
+        body:
+          "**経緯**: ユーザー報告「Vercel デプロイ後や、しばらく間をおいてアクセスした際のページ描画まで体感 5 秒近くかかる」(TODO #54 の再調査)。TODO #54 では category 系 6 ページを Edge → Node runtime 化して「デプロイ後でも表示が早くなった」と確認済みだったが、TOP (スケジュール) と portal layout だけが「FFLogs scrape は Edge IP 必須」を理由に Edge のまま残っていた。再調査の結果、この前提は崩れていると判明 — ①TOP 描画時の FFLogs 処理 (fetchSessionLogsByDate) は Supabase SELECT のみで外部 scrape を含まない、②cron (runtime=nodejs) が Node IP で日次 scrape に成功 (2.8 実測)、③Node 化済み category ページからも同じ scrape Server Action を呼べる状態で運用済み。Edge runtime は Fluid Compute のインスタンス再利用に乗れず毎回 cold start を踏むため、デプロイ後/アイドル後の初回アクセス (= TOP) が最も遅くなる構図だった。\n\n**変更内容**:\n- (portal)/layout.tsx と (portal)/page.tsx の runtime を edge → nodejs に変更 (取り残し 2 ファイルを category 系と統一)\n- TOP の buildSessionVideoLinkMap (動画リンク map) を Promise.all 完了後の直列実行 (~0.5-1s 追加) から fetchSchedule へのチェーンに変更し、他の fetch と並走させる\n- native モードの placeholder 補充 → スケジュール読込 → 動画リンク map の直列 3 連鎖も appSettings チェーン化で他 fetch と並走 (insert → read の順次制約は維持)\n\n**ロールバック**: FFLogs 同期 (設定ダイアログ) で 403 が頻発する場合は page.tsx のみ runtime=\"edge\" に戻す部分ロールバックが可能。\n\n**検証**: npx tsc --noEmit / npm run lint / npm run build pass。デプロイ後/アイドル後の体感はユーザー実機確認 (TODO #54 と同じ判定方法)。",
+      },
+      {
+        title:
+          "🌀 ロード中スピナー拡充 — TOP へのタブ遷移に即時 \"Now Loading\" + ナビに pending インジケーター",
+        body:
+          "**経緯**: 上記と同件。category 配下は loading.tsx (skeleton) 整備済みだが、タブで TOP (スケジュール) に戻る遷移だけはサーバー応答が来るまで何も表示されない「無音 stuck」が残っていた (TODO #54 part1 で progress bar を試みて撤退した箇所の正式対策)。\n\n**変更内容**:\n- (portal)/loading.tsx を新設し、TOP の Suspense 境界を page 内から移設。loading.tsx は prefetch に含まれるため、タブ遷移で TOP に戻る時にサーバー応答を待たず既存の遅延 fade-in \"Now Loading\" が即表示される (500ms 未満の高速遷移では従来どおり何も出ない)\n- メインタブ「スケジュール」に useLinkStatus (Next 16 公式 API) ベースの pending ドットを追加 — prefetch 未完了でサーバー待ちになった時だけ 150ms 遅延で点灯\n- コンテンツ切替メニューのトリガーにも同じ pending ドットを追加 (メニューはクリックで即閉じるため、Link の onNavigate → pathname 変化で消灯する方式)\n\n**補足**: デプロイ直後のハードロードで HTML 自体が届く前の白画面は技術的にスピナーを出せない領域 — そこは上記 Node runtime 化による短縮が対策。\n\n**検証**: dev preview でタブ遷移時のスピナー表示 / 高速遷移でのフラッシュ無しを確認。",
+      },
+    ],
+  },
+  {
     version: "2.8",
     date: "2026-06-11",
     parts: [

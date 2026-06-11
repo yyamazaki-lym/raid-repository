@@ -8,21 +8,29 @@ import { filterVisibleCategories } from "@/lib/category-visibility";
 import { getScheduleSourceMode } from "@/lib/schedule/source-mode";
 
 /**
- * 2.1 (2026-04-29) TODO #45: 全ポータルページを Edge Runtime に統一。
+ * 2.9 (2026-06-11): Edge → Node runtime 化 (デプロイ後/アイドル後の初回
+ * 描画 5 秒問題の根本対策)。
  *
- * Server Action は呼び出し元ページの runtime で実行される仕様のため、
- * 旧構成では TOP (`page.tsx` が `runtime = "edge"`) からの linkFflogsReports
- * は Edge IP、`/category/...` 等からは Node Lambda IP で fflogs.com に
- * fetch していた。Vercel の Node Lambda IP 帯は Cloudflare の bot 判定で
- * 403 を引きやすく、HTML scrape による Unlisted/Private レポート取得が
- * ページによって失敗する原因になっていた。
+ * 旧構成 (TODO #45, 2026-04-29) は「FFLogs scrape は Edge IP 必須 —
+ * Vercel の Node Lambda IP 帯は Cloudflare bot 判定で 403 を引く」を
+ * 根拠に全ポータルページを Edge に統一していたが、この前提は崩れた:
+ *   - cron (/api/cron/fflogs-sync, runtime="nodejs") が Node IP で日次
+ *     scrape に成功している (2.8 実測: 459 件取得 / 403 は間欠的)
+ *   - TODO #54 part3 で Node 化済みの category 系ページからも settings
+ *     dialog 経由で同じ scrape Server Action を呼べる状態で運用済み
  *
- * Layout 配下の全 page は明示しない限りこの runtime を継承する。子 page
- * 側で `export const runtime = "nodejs"` を明示すれば個別に上書き可能。
- * Edge 互換性は TOP `page.tsx` で既に検証済 (Supabase ssr / fetch /
- * cookies() / fflogs OAuth Basic は btoa で Edge 対応)。
+ * 一方 Edge runtime は Fluid Compute の instance 再利用に乗れず、デプロイ
+ * 後/アイドル後の初回アクセスで毎回 cold start を踏む。TODO #54 part3 の
+ * Node 化 6 ページで「デプロイ後でも表示が早くなった」体感改善が実証済み
+ * のため、取り残されていた本 layout + TOP `page.tsx` も Node に揃える。
+ *
+ * 注意: Server Action は呼び出し元 page の runtime で実行されるため、
+ * FFLogs scrape 系 action (linkFflogsReports / setFflogsSessionCookie) は
+ * TOP 滞在中の実行も Node IP 経由になる。403 が頻発するようなら
+ * `page.tsx` のみ "edge" に戻す部分ロールバックを検討 (経緯:
+ * .claude/todos/54.md)。
  */
-export const runtime = "edge";
+export const runtime = "nodejs";
 
 export default async function PortalLayout({
   children,
