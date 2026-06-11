@@ -8,6 +8,12 @@ import { findContentGroups } from "@/lib/content-groups";
 import { extractDateFromTitle } from "@/lib/title-date";
 import type { SessionLogEntry } from "@/lib/schedule/session-logs";
 import { getValidFflogsOAuthToken } from "./fflogs-oauth";
+import {
+  buildFflogsReportsListUrl,
+  buildFflogsScrapeHeaders,
+  FFLOGS_SCRAPE_MAX_PAGES,
+  FFLOGS_SCRAPE_TIMEOUT_MS,
+} from "./fflogs-scrape-request";
 
 /**
  * FFLogs v2 GraphQL wrapper.
@@ -593,6 +599,140 @@ function extractTimestampMs(
   return candidates[0]!.ms;
 }
 
+const SCRAPE_REDIRECT_REASON =
+  "FFLogs にリダイレクトされました — session cookie が期限切れか無効です。fflogs.com に再ログインして cookie を取り直してください";
+
+type ScrapePageResult =
+  | { ok: true; html: string }
+  | { ok: false; reason: string };
+
+/**
+ * 2.9 (2026-06-11): scrape の HTTP 取得部を経路選択つきで切り出し。
+ *
+ * ポータル全ページの Node runtime 化 (#181) 直後の本番実測で、Node Lambda
+ * IP からの fflogs.com scrape は Cloudflare bot 判定で**恒常的に** 403 に
+ * なることが確定した (Edge IP は通る — 2.8 実測 459 件取得)。ページ側
+ * runtime を Edge に戻すと cold start が再発するため、外向き fetch だけを
+ * Edge route (`/api/fflogs/scrape-proxy`) に切り出して中継する。
+ *
+ * 経路:
+ *   - Vercel 上 → Edge proxy 経由 (manual 連動 / cron の両方)。cron も
+ *     元々 Node runtime なので、これで日次 scrape も Edge IP 化される
+ *   - ローカル dev → 直接 fetch (IP 経路の差が無いので proxy 不要)
+ *   - proxy 自体に到達できない (env 不備等) → 直接 fetch に fallback
+ *     (Vercel 上では結局 403 になり得るが、「proxy 設定ミスで全停止」
+ *     より failure モードが一段マシで、reason の経路表記で切り分け可能)
+ */
+async function fetchScrapePageHtml(
+  userId: number,
+  page: number,
+  sessionCookie?: string | null,
+): Promise<ScrapePageResult> {
+  if (process.env.VERCEL === "1") {
+    const viaProxy = await fetchScrapePageViaEdgeProxy(
+      userId,
+      page,
+      sessionCookie,
+    );
+    if (viaProxy !== null) return viaProxy;
+  }
+  return fetchScrapePageDirect(userId, page, sessionCookie);
+}
+
+/**
+ * Edge proxy 経由の 1 ページ取得。戻り値 `null` は「proxy 経路自体が
+ * 使えない / 到達できない」を意味し、呼び出し元が直接 fetch に fallback
+ * する。fflogs からの 403 等は proxy が 200 JSON で中継してくるので
+ * fallback せずそのまま結果として返す (Node 直叩きでも 403 になるだけ)。
+ */
+async function fetchScrapePageViaEdgeProxy(
+  userId: number,
+  page: number,
+  sessionCookie?: string | null,
+): Promise<ScrapePageResult | null> {
+  const secret = process.env.CRON_SECRET?.trim();
+  // VERCEL_PROJECT_PRODUCTION_URL は Vercel が自動注入する本番ドメイン
+  // (protocol なし)。deployment URL (VERCEL_URL) と違い Deployment
+  // Protection の対象外で、本番 / demo 両プロジェクトで自身を指す。
+  const host = process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim();
+  if (!secret || !host) {
+    console.warn(
+      "[fflogs] scrape-proxy 経路に必要な env が無い (CRON_SECRET / VERCEL_PROJECT_PRODUCTION_URL) — 直接 fetch に fallback",
+    );
+    return null;
+  }
+  try {
+    const res = await fetch(`https://${host}/api/fflogs/scrape-proxy`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${secret}`,
+      },
+      body: JSON.stringify({
+        userId,
+        page,
+        sessionCookie: sessionCookie?.trim() || null,
+      }),
+      // proxy 側の fflogs fetch タイムアウト (20s) + 中継マージン
+      signal: AbortSignal.timeout(FFLOGS_SCRAPE_TIMEOUT_MS + 5_000),
+      cache: "no-store",
+    });
+    if (!res.ok) {
+      console.warn(
+        `[fflogs] scrape-proxy が ${res.status} を返却 — 直接 fetch に fallback`,
+      );
+      return null;
+    }
+    const data = (await res.json()) as {
+      status: number;
+      redirected: boolean;
+      html: string | null;
+    };
+    if (data.redirected) return { ok: false, reason: SCRAPE_REDIRECT_REASON };
+    if (data.status !== 200 || typeof data.html !== "string") {
+      return {
+        ok: false,
+        reason: `fflogs HTML scrape ${data.status} (page ${page}, edge 経由)`,
+      };
+    }
+    return { ok: true, html: data.html };
+  } catch (e) {
+    console.warn("[fflogs] scrape-proxy fetch error — 直接 fetch に fallback:", e);
+    return null;
+  }
+}
+
+/** 直接 fetch (ローカル dev / proxy 不達時の fallback)。 */
+async function fetchScrapePageDirect(
+  userId: number,
+  page: number,
+  sessionCookie?: string | null,
+): Promise<ScrapePageResult> {
+  try {
+    const res = await fetch(buildFflogsReportsListUrl(userId, page), {
+      headers: buildFflogsScrapeHeaders(sessionCookie),
+      signal: AbortSignal.timeout(FFLOGS_SCRAPE_TIMEOUT_MS),
+      // Don't auto-follow login redirects — if the cookie is invalid
+      // FFLogs will redirect to /login, and a redirect signals "not
+      // really logged in". We want to detect that.
+      redirect: "manual",
+    });
+    // Manual redirect: 3xx means cookie expired or invalid.
+    if (res.status >= 300 && res.status < 400) {
+      return { ok: false, reason: SCRAPE_REDIRECT_REASON };
+    }
+    if (!res.ok) {
+      return {
+        ok: false,
+        reason: `fflogs HTML scrape ${res.status} (page ${page}, direct)`,
+      };
+    }
+    return { ok: true, html: await res.text() };
+  } catch (e) {
+    return { ok: false, reason: "HTML scrape fetch error: " + String(e) };
+  }
+}
+
 async function fetchFflogsReportsHtmlScrape(
   userId: number,
   sessionCookie?: string | null,
@@ -609,115 +749,63 @@ async function fetchFflogsReportsHtmlScrape(
 > {
   const all: FflogsReport[] = [];
   const seen = new Set<string>();
-  const MAX_PAGES = 25;
   let firstPageSize = 0;
   let totalCodesSeen = 0;
   let htmlSample: string | undefined;
-  for (let page = 1; page <= MAX_PAGES; page++) {
-    const url = `https://www.fflogs.com/user/reports-list/${userId}?page=${page}`;
-    try {
-      // 2.1 (2026-04-29): UA を実 Chrome 風に変更。旧 UA は
-      // `Mozilla/5.0 (compatible; RaidRepository/1.0; ...)` で、
-      // Cloudflare/FFLogs の bot 判定に弾かれて 403 を返していた
-      // (Vercel IP からの署名でも、UA が真っ当に見えれば通ること
-      // が多い)。Sec-Fetch-* / Referer 等の "browser-like" ヘッダー
-      // を一通り付けて、自然なナビゲーション風のリクエストに偽装。
-      const headers: Record<string, string> = {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        Accept:
-          "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-        "Accept-Language": "ja-JP,ja;q=0.9,en-US;q=0.8,en;q=0.7",
-        "Accept-Encoding": "gzip, deflate, br",
-        "Cache-Control": "no-cache",
-        Pragma: "no-cache",
-        Referer: "https://www.fflogs.com/",
-        "Sec-Ch-Ua":
-          '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
-        "Sec-Ch-Ua-Mobile": "?0",
-        "Sec-Ch-Ua-Platform": '"Windows"',
-        "Sec-Fetch-Dest": "document",
-        "Sec-Fetch-Mode": "navigate",
-        "Sec-Fetch-Site": "same-origin",
-        "Sec-Fetch-User": "?1",
-        "Upgrade-Insecure-Requests": "1",
-      };
-      if (sessionCookie && sessionCookie.trim()) {
-        headers.Cookie = sessionCookie.trim();
+  for (let page = 1; page <= FFLOGS_SCRAPE_MAX_PAGES; page++) {
+    // 2.9 (2026-06-11): HTTP 取得は fetchScrapePageHtml に委譲 (Vercel 上は
+    // Edge proxy 経由 / dev は直接 fetch)。偽装ヘッダー・redirect 検出・
+    // タイムアウトは fflogs-scrape-request.ts + ヘルパー側に集約。
+    const fetched = await fetchScrapePageHtml(userId, page, sessionCookie);
+    if (!fetched.ok) return fetched;
+    const html = fetched.html;
+    if (page === 1) firstPageSize = html.length;
+    const before = all.length;
+    // Permissive: scan for any `/reports/{code}` link, then look at
+    // the surrounding ~3000 chars (above + below) for a date in any
+    // of several formats (EN, JP, ISO, data-timestamp, datetime).
+    const linkPattern =
+      /\/reports\/([A-Za-z0-9]{8,})(?:[?#"\s]|$)/g;
+    let m;
+    while ((m = linkPattern.exec(html)) !== null) {
+      const code = m[1]!;
+      if (seen.has(code)) continue;
+      totalCodesSeen += 1;
+      // 1.9.25: tightened from ±1500 → ±400 chars (= 800 total).
+      // Wider windows leak adjacent rows' dates and the page-wide
+      // "Created by NAME on DATE" header, producing wrong matches.
+      // 800 chars is enough to span 1 report row's HTML in most
+      // FFLogs templates without bleeding into neighbors.
+      const ctxStart = Math.max(0, m.index - 400);
+      const ctxEnd = Math.min(html.length, m.index + 400);
+      const ctx = html.slice(ctxStart, ctxEnd);
+      // Anchor: the link's position WITHIN ctx (used by the closest-
+      // date selection in extractTimestampMs).
+      const anchorPos = m.index - ctxStart;
+      if (!htmlSample) {
+        htmlSample = ctx.slice(0, 800);
       }
-      const res = await fetch(url, {
-        headers,
-        signal: AbortSignal.timeout(20000),
-        // Don't auto-follow login redirects — if the cookie is invalid
-        // FFLogs will redirect to /login, and a redirect signals "not
-        // really logged in". We want to detect that.
-        redirect: "manual",
+      const tMs = extractTimestampMs(ctx, anchorPos);
+      if (tMs == null) continue;
+      // Title: try `<a href="/reports/CODE">TITLE</a>` form first.
+      const titleMatch = ctx.match(
+        new RegExp(
+          `<a[^>]+href="/reports/${code}[^"]*"[^>]*>([^<]+)</a>`,
+        ),
+      );
+      const title = titleMatch?.[1]?.replace(/\s+/g, " ").trim() ?? "";
+      seen.add(code);
+      all.push({
+        id: code,
+        title,
+        startMs: tMs,
+        endMs: tMs,
+        zone: null,
+        zoneName: null,
       });
-      // Manual redirect: 3xx means cookie expired or invalid.
-      if (res.status >= 300 && res.status < 400) {
-        return {
-          ok: false,
-          reason:
-            "FFLogs にリダイレクトされました — session cookie が期限切れか無効です。fflogs.com に再ログインして cookie を取り直してください",
-        };
-      }
-      if (!res.ok) {
-        return {
-          ok: false,
-          reason: `fflogs HTML scrape ${res.status} (page ${page})`,
-        };
-      }
-      const html = await res.text();
-      if (page === 1) firstPageSize = html.length;
-      const before = all.length;
-      // Permissive: scan for any `/reports/{code}` link, then look at
-      // the surrounding ~3000 chars (above + below) for a date in any
-      // of several formats (EN, JP, ISO, data-timestamp, datetime).
-      const linkPattern =
-        /\/reports\/([A-Za-z0-9]{8,})(?:[?#"\s]|$)/g;
-      let m;
-      while ((m = linkPattern.exec(html)) !== null) {
-        const code = m[1]!;
-        if (seen.has(code)) continue;
-        totalCodesSeen += 1;
-        // 1.9.25: tightened from ±1500 → ±400 chars (= 800 total).
-        // Wider windows leak adjacent rows' dates and the page-wide
-        // "Created by NAME on DATE" header, producing wrong matches.
-        // 800 chars is enough to span 1 report row's HTML in most
-        // FFLogs templates without bleeding into neighbors.
-        const ctxStart = Math.max(0, m.index - 400);
-        const ctxEnd = Math.min(html.length, m.index + 400);
-        const ctx = html.slice(ctxStart, ctxEnd);
-        // Anchor: the link's position WITHIN ctx (used by the closest-
-        // date selection in extractTimestampMs).
-        const anchorPos = m.index - ctxStart;
-        if (!htmlSample) {
-          htmlSample = ctx.slice(0, 800);
-        }
-        const tMs = extractTimestampMs(ctx, anchorPos);
-        if (tMs == null) continue;
-        // Title: try `<a href="/reports/CODE">TITLE</a>` form first.
-        const titleMatch = ctx.match(
-          new RegExp(
-            `<a[^>]+href="/reports/${code}[^"]*"[^>]*>([^<]+)</a>`,
-          ),
-        );
-        const title = titleMatch?.[1]?.replace(/\s+/g, " ").trim() ?? "";
-        seen.add(code);
-        all.push({
-          id: code,
-          title,
-          startMs: tMs,
-          endMs: tMs,
-          zone: null,
-          zoneName: null,
-        });
-      }
-      // Stop once a page yields no new reports (end of list).
-      if (all.length === before) break;
-    } catch (e) {
-      return { ok: false, reason: "HTML scrape fetch error: " + String(e) };
     }
+    // Stop once a page yields no new reports (end of list).
+    if (all.length === before) break;
   }
   return {
     ok: true,
