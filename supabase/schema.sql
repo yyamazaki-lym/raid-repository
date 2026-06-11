@@ -68,6 +68,14 @@ ALTER TABLE public.categories
   -- contains at least one of these IDs can see / open the category.
   -- Role IDs are Discord snowflakes (text) fetched via the bot from
   -- `GET /guilds/{id}/roles` and selected in the category edit dialog.
+  -- NOTE (2026-06-11 audit): this gating is APPLICATION-LAYER ONLY (a UI
+  -- show/hide convenience), NOT a security boundary. SELECT is open to anon
+  -- on every table (single-tenant trust model, see file header), so anyone
+  -- with the public anon key can read role-gated categories' rows + child
+  -- content directly via REST/Realtime, bypassing the app-layer filter. Do
+  -- NOT store group-internal secrets in role-gated categories. Making this a
+  -- real boundary requires RLS role conditions (a partial walk-back of the
+  -- "SELECT open to anon" design).
   ADD COLUMN IF NOT EXISTS required_role_ids             text[],
   -- Phase 11 (TODO #26, 2.1 (2026-04-29)): free-form 説明文 (description)。
   -- 例: 「絶バハムート討滅戦 — TODO」「LH 級零式 — 8 月から練習開始」。
