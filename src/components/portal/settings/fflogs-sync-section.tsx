@@ -75,6 +75,7 @@ type FflogsLinkResultLite = {
     htmlPageSize?: number;
     htmlCodesFound?: number;
     cookieUsed?: boolean;
+    cookieDeleted?: boolean;
     htmlReportCount?: number;
     htmlScrapeError?: string;
     htmlSample?: string;
@@ -82,6 +83,19 @@ type FflogsLinkResultLite = {
     titleDateHitCount?: number;
     titleDateMissCount?: number;
     titleDateMissSample?: string[];
+    v2UnfRawCount?: number;
+    v2UnfOwnedCount?: number;
+    v2UnfNewCount?: number;
+    v2UnfVisibilityCounts?: Record<string, number>;
+    v2UnfHitPageCap?: boolean;
+    v2UnfSince?: string;
+    v2UnfError?: string;
+    v2UnfNewSamples?: Array<{
+      date: string;
+      title: string;
+      url: string;
+      visibility?: string;
+    }>;
   };
   userTypeFields?: string[];
 };

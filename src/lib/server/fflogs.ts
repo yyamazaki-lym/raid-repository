@@ -453,6 +453,188 @@ export async function fetchFflogsReportsV2(
   };
 }
 
+export type FflogsV2UnfilteredResult =
+  | {
+      ok: true;
+      /** 自分名義 (owner = me) のレポートのみ。 */
+      reports: FflogsReport[];
+      /** owner filter 前の全件数 (guild 共有の他人名義を含む)。 */
+      rawCount: number;
+      /** owner filter 通過件数 (= reports.length)。 */
+      ownedCount: number;
+      /** raw 結果の owner 上位 5 (診断用)。 */
+      ownersSample: Array<{
+        id: number | null;
+        name: string | null;
+        count: number;
+      }>;
+      /** Report 型に visibility フィールドが存在したか。 */
+      visibilityAvailable: boolean;
+      /** 自分名義レポートの visibility 別件数。 */
+      visibilityCounts: Record<string, number>;
+      /** 自分名義レポート code → visibility (サンプル表示用)。 */
+      visibilityByCode: Record<string, string>;
+      /** 25 ページ上限まで読んでも has_more_pages だったか。 */
+      hitPageCap: boolean;
+      /** クエリ対象期間の下限 (YYYY-MM-DD、診断表示用)。 */
+      sinceIso: string;
+    }
+  | { ok: false; reason: string };
+
+/**
+ * 再実測診断 (2.8 follow-up, 2026-06-11): `reports()` を userID フィルタ
+ * なしで取得し、owner が自分のものだけ抽出する。
+ *
+ * 背景: `reports(userID:)` は本人 OAuth でも Public しか返さない (上の
+ * fetchFflogsReportsV2 の実測コメント参照)。一方このファイルには
+ * 「フィルタなしなら自分の Unlisted / Private も含まれる」と「フィルタ
+ * なしは guild 共有の他人レポートばかりで自分名義はゼロだった」という
+ * 矛盾する 2 つの 1.9.x 実測記録が残っている。後者は 25 ページ × 25 件
+ * = 625 件のページング上限が他人のレポートで埋まっていた可能性がある
+ * ため、`startTime` で直近 2 年に絞って再実測する。
+ *
+ * 自分名義で取れたレポートは呼び出し側で取得対象に合流させる —
+ * Private/Unlisted がこの経路で見えるなら、Cloudflare に弾かれ続けて
+ * いる HTML scrape (session cookie 方式) を将来廃止できる。
+ */
+export async function fetchFflogsReportsV2Unfiltered(
+  accessToken: string,
+  me: { id: number; name: string },
+): Promise<FflogsV2UnfilteredResult> {
+  const sinceMs = Date.now() - 2 * 365 * 24 * 60 * 60 * 1000;
+  const all: FflogsReport[] = [];
+  const allOwners = new Map<
+    string,
+    { id: number | null; name: string | null; count: number }
+  >();
+  const visibilityCounts: Record<string, number> = {};
+  const visibilityByCode: Record<string, string> = {};
+  let rawCount = 0;
+  // Report 型に visibility が無いスキーマだった場合、最初の GraphQL
+  // エラーで false に倒して同ページから visibility なしで再試行する。
+  let includeVisibility = true;
+  let hitPageCap = false;
+  const MAX_PAGES = 25;
+  for (let page = 1; page <= MAX_PAGES; page++) {
+    const reportFields = `code title startTime endTime zone { id name } owner { id name }${
+      includeVisibility ? " visibility" : ""
+    }`;
+    const query = `query ($page: Int!, $since: Float!) {
+      reportData {
+        reports(limit: 25, page: $page, startTime: $since) {
+          has_more_pages
+          data { ${reportFields} }
+        }
+      }
+    }`;
+    try {
+      const res = await fetch(FFLOGS_GRAPHQL_URL, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({ query, variables: { page, since: sinceMs } }),
+        signal: AbortSignal.timeout(20000),
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        return {
+          ok: false,
+          reason: `fflogs v2 unfiltered ${res.status}: ${text.slice(0, 200)}`,
+        };
+      }
+      const json = (await res.json()) as {
+        errors?: Array<{ message?: string }>;
+        data?: {
+          reportData?: {
+            reports?: {
+              has_more_pages?: boolean;
+              data?: Array<{
+                code: string;
+                title?: string | null;
+                startTime: number;
+                endTime: number;
+                visibility?: string | null;
+                zone?: { id?: number | null; name?: string | null } | null;
+                owner?: { id?: number | null; name?: string | null } | null;
+              }>;
+            };
+          };
+        };
+      };
+      if (json.errors?.length) {
+        const msg = json.errors[0]!.message ?? "";
+        if (includeVisibility && /visibility/i.test(msg)) {
+          includeVisibility = false;
+          page -= 1; // 同じページを visibility なしで再取得
+          continue;
+        }
+        return {
+          ok: false,
+          reason: "fflogs v2 unfiltered GraphQL error: " + msg,
+        };
+      }
+      const reports = json.data?.reportData?.reports;
+      if (!reports?.data) break;
+      for (const r of reports.data) {
+        rawCount += 1;
+        const ownerKey = String(r.owner?.id ?? r.owner?.name ?? "(unknown)");
+        const existing = allOwners.get(ownerKey);
+        if (existing) {
+          existing.count += 1;
+        } else {
+          allOwners.set(ownerKey, {
+            id: typeof r.owner?.id === "number" ? r.owner.id : null,
+            name: r.owner?.name ?? null,
+            count: 1,
+          });
+        }
+        // unfiltered は guild 共有 (他人名義) が大半 — 自分名義のみ採用。
+        const isMine =
+          (r.owner?.id != null && String(r.owner.id) === String(me.id)) ||
+          (Boolean(r.owner?.name) && r.owner?.name === me.name);
+        if (!isMine) continue;
+        if (r.visibility) {
+          visibilityCounts[r.visibility] =
+            (visibilityCounts[r.visibility] ?? 0) + 1;
+          visibilityByCode[r.code] = r.visibility;
+        }
+        const sMs = r.startTime < 1e11 ? r.startTime * 1000 : r.startTime;
+        const eMs = r.endTime < 1e11 ? r.endTime * 1000 : r.endTime;
+        all.push({
+          id: r.code,
+          title: r.title ?? "",
+          startMs: sMs,
+          endMs: eMs,
+          zone: r.zone?.id ?? null,
+          zoneName: r.zone?.name ?? null,
+        });
+      }
+      if (!reports.has_more_pages) break;
+      if (page === MAX_PAGES) hitPageCap = true;
+    } catch (e) {
+      return { ok: false, reason: "unfiltered fetch error: " + String(e) };
+    }
+  }
+  const ownersSample = [...allOwners.values()]
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 5);
+  return {
+    ok: true,
+    reports: all,
+    rawCount,
+    ownedCount: all.length,
+    ownersSample,
+    visibilityAvailable: includeVisibility,
+    visibilityCounts,
+    visibilityByCode,
+    hitPageCap,
+    sinceIso: new Date(sinceMs).toISOString().slice(0, 10),
+  };
+}
+
 /**
  * HTML scrape fallback — fetches the public reports-list page
  * (`https://www.fflogs.com/user/reports-list/{userId}`) and parses
@@ -829,6 +1011,29 @@ export type FflogsLinkResult = {
     titleDateMissCount?: number;
     /** Sample of video titles where title-date extraction failed (first 10). */
     titleDateMissSample?: string[];
+    /** 診断 (2.8): unfiltered reports() の全件数 (owner filter 前)。 */
+    v2UnfRawCount?: number;
+    /** 診断 (2.8): unfiltered のうち自分名義の件数。 */
+    v2UnfOwnedCount?: number;
+    /** 診断 (2.8): 自分名義のうち userID フィルタ付き v2 結果に無かった新規件数 (= Private/Unlisted 候補)。 */
+    v2UnfNewCount?: number;
+    /** 診断 (2.8): 自分名義レポートの visibility 内訳。Report 型に visibility が無いスキーマなら undefined。 */
+    v2UnfVisibilityCounts?: Record<string, number>;
+    /** 診断 (2.8): unfiltered 取得が 25 ページ上限に到達したか (true なら取りこぼしの可能性)。 */
+    v2UnfHitPageCap?: boolean;
+    /** 診断 (2.8): unfiltered クエリの対象期間下限 (YYYY-MM-DD)。 */
+    v2UnfSince?: string;
+    /** 診断 (2.8): unfiltered 取得エラー。 */
+    v2UnfError?: string;
+    /** 診断 (2.8): 新規 (Private/Unlisted 候補) レポートのサンプル (新しい順、最大 10 件)。 */
+    v2UnfNewSamples?: Array<{
+      date: string;
+      title: string;
+      url: string;
+      visibility?: string;
+    }>;
+    /** 診断 (2.8): session cookie が scrape 成功により実際に削除されたか。false なら温存中 (次回も使われる)。 */
+    cookieDeleted?: boolean;
   };
 };
 
@@ -998,17 +1203,27 @@ export async function linkFflogsReportsToVideos(opts?: {
   const v2Reports = v2Result && v2Result.ok ? v2Result.reports : [];
   const v2Error = v2Result && !v2Result.ok ? v2Result.reason : undefined;
 
+  // 2.8 follow-up: unfiltered reports() の再実測 — Private/Unlisted が
+  // API 経由で見えるかの診断 + 見えた自分名義分は取得対象に合流させる
+  // (詳細は fetchFflogsReportsV2Unfiltered の docstring)。
+  let v2UnfResult: FflogsV2UnfilteredResult | null = null;
+  if (oauthToken && v2Result && v2Result.ok) {
+    v2UnfResult = await fetchFflogsReportsV2Unfiltered(
+      oauthToken,
+      v2Result.me,
+    );
+  }
+  const unfOk = v2UnfResult && v2UnfResult.ok ? v2UnfResult : null;
+  const v2UnfReports = unfOk ? unfOk.reports : [];
+  const v2UnfError =
+    v2UnfResult && !v2UnfResult.ok ? v2UnfResult.reason : undefined;
+
   let reports: FflogsReport[] = [];
-  let usedSource:
-    | "v1"
-    | "v2-owned"
-    | "html-scrape"
-    | "v1+v2"
-    | "v1+html"
-    | "v2+html"
-    | "v1+v2+html"
-    | "none" = "none";
+  // ソースの組み合わせラベル (v2-unf 追加で組み合わせ列挙が現実的で
+  // なくなったため string。表示にしか使われない)。
+  let usedSource = "none";
   let cookieUsed = false;
+  let cookieDeleted = false;
   let htmlReportCount: number | undefined;
   let htmlScrapeError: string | undefined;
   let htmlSampleForDiag: string | undefined;
@@ -1049,6 +1264,10 @@ export async function linkFflogsReportsToVideos(opts?: {
         } catch {
           // best-effort
         }
+        // 診断パネル用 — scrape 成功して削除を実行した (= 消費された)
+        // ことを記録。従来は scrape 失敗・未実行でも「自動削除済」と
+        // 表示される嘘があった (2.8 follow-up で実態表示に修正)。
+        cookieDeleted = true;
       }
       if (scrapeResult.ok) {
         htmlPageSize = scrapeResult.htmlPageSize;
@@ -1062,15 +1281,25 @@ export async function linkFflogsReportsToVideos(opts?: {
     }
   }
 
-  // Union all sources (v1 + v2 + HTML scrape) and dedupe by report id.
-  // Priority: prefer entries with richer metadata (v2 has zone id;
-  // v1 also has zone; html scrape has neither). Order of insertion
-  // matters because Map preserves first-seen entry on collision.
+  // Union all sources (v1 + v2 + v2-unfiltered + HTML scrape) and
+  // dedupe by report id. Priority: prefer entries with richer metadata
+  // (v2 / v2-unf have zone id; v1 also has zone; html scrape has
+  // neither). Order of insertion matters because Map preserves
+  // first-seen entry on collision.
   const byCode = new Map<string, FflogsReport>();
   for (const r of v2Reports) byCode.set(r.id, r);
+  // 2.8 follow-up: unfiltered で見えた自分名義レポート (Private/
+  // Unlisted 候補) も合流。
+  for (const r of v2UnfReports) if (!byCode.has(r.id)) byCode.set(r.id, r);
   for (const r of v1Reports) if (!byCode.has(r.id)) byCode.set(r.id, r);
   for (const r of htmlReports) if (!byCode.has(r.id)) byCode.set(r.id, r);
   reports = [...byCode.values()];
+
+  // 診断: userID フィルタ付き v2 に無かった自分名義レポート =
+  // unfiltered でのみ見えた分 (Private/Unlisted 候補)。これが 0 より
+  // 大きければ「unfiltered 経由で非 Public が取れる」ことの実証になる。
+  const v2CodeSet = new Set(v2Reports.map((r) => r.id));
+  const v2UnfNew = v2UnfReports.filter((r) => !v2CodeSet.has(r.id));
 
   // Note (1.9.23): tried filtering "non-raid" content (group 14 =
   // Criterion / Variant) but user clarified those are challenge
@@ -1086,20 +1315,16 @@ export async function linkFflogsReportsToVideos(opts?: {
   const labels: string[] = [];
   if (v1Reports.length > 0) labels.push("v1");
   if (v2Reports.length > 0) labels.push("v2-owned");
+  if (v2UnfNew.length > 0) labels.push("v2-unf");
   if (htmlReports.length > 0) labels.push("html-scrape");
-  if (labels.length === 0) {
-    usedSource = "none";
-  } else if (labels.length === 1) {
-    usedSource = labels[0] as typeof usedSource;
-  } else {
-    usedSource = labels.join("+") as typeof usedSource;
-  }
+  usedSource = labels.length === 0 ? "none" : labels.join("+");
 
   // Surface fatal-style errors when nothing was retrieved.
   if (reports.length === 0) {
     const errors: string[] = [];
     if (v1Error) errors.push("v1: " + v1Error);
     if (v2Error) errors.push("v2: " + v2Error);
+    if (v2UnfError) errors.push("v2-unf: " + v2UnfError);
     if (htmlScrapeError) errors.push("scrape: " + htmlScrapeError);
     if (errors.length > 0) {
       return {
@@ -1187,6 +1412,7 @@ export async function linkFflogsReportsToVideos(opts?: {
       htmlPageSize,
       htmlCodesFound,
       cookieUsed,
+      cookieDeleted,
       htmlReportCount,
       htmlScrapeError,
       htmlSample: htmlSampleForDiag,
@@ -1194,6 +1420,28 @@ export async function linkFflogsReportsToVideos(opts?: {
       titleDateHitCount: videoResult.titleDateHits,
       titleDateMissCount: videoResult.titleDateMisses,
       titleDateMissSample: videoResult.titleDateMissSample,
+      v2UnfRawCount: unfOk ? unfOk.rawCount : undefined,
+      v2UnfOwnedCount: unfOk ? unfOk.ownedCount : undefined,
+      v2UnfNewCount: unfOk ? v2UnfNew.length : undefined,
+      v2UnfVisibilityCounts:
+        unfOk && unfOk.visibilityAvailable
+          ? unfOk.visibilityCounts
+          : undefined,
+      v2UnfHitPageCap: unfOk ? unfOk.hitPageCap : undefined,
+      v2UnfSince: unfOk ? unfOk.sinceIso : undefined,
+      v2UnfError,
+      v2UnfNewSamples:
+        unfOk && v2UnfNew.length > 0
+          ? [...v2UnfNew]
+              .sort((a, b) => b.startMs - a.startMs)
+              .slice(0, 10)
+              .map((r) => ({
+                date: new Date(r.startMs).toISOString().slice(0, 10),
+                title: r.title || "(無題のレポート)",
+                url: `https://www.fflogs.com/reports/${r.id}`,
+                visibility: unfOk.visibilityByCode[r.id],
+              }))
+          : undefined,
     },
   };
 }
