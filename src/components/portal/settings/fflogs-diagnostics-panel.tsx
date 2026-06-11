@@ -44,20 +44,6 @@ export type FflogsDiagInfo = {
   titleDateHitCount?: number;
   titleDateMissCount?: number;
   titleDateMissSample?: string[];
-  /** v2 unfiltered 再実測診断 (2.8 follow-up)。 */
-  v2UnfRawCount?: number;
-  v2UnfOwnedCount?: number;
-  v2UnfNewCount?: number;
-  v2UnfVisibilityCounts?: Record<string, number>;
-  v2UnfHitPageCap?: boolean;
-  v2UnfSince?: string;
-  v2UnfError?: string;
-  v2UnfNewSamples?: Array<{
-    date: string;
-    title: string;
-    url: string;
-    visibility?: string;
-  }>;
 };
 
 export function FflogsDiagnosticsPanel({
@@ -101,86 +87,6 @@ export function FflogsDiagnosticsPanel({
               ))}
             </ul>
           </>
-        )}
-        {(diag.v2UnfRawCount !== undefined || diag.v2UnfError) && (
-          <div className="mt-1 flex flex-col gap-0.5 rounded-sm border border-[var(--neon-cyan)]/25 bg-[var(--neon-cyan)]/5 px-1.5 py-1">
-            <p className="text-[var(--neon-cyan)]/85">
-              v2 unfiltered 再実測 — フィルタなし reports()
-              {diag.v2UnfSince && ` (${diag.v2UnfSince} 以降)`}
-            </p>
-            {diag.v2UnfError ? (
-              <p className="text-rose-300/85">エラー: {diag.v2UnfError}</p>
-            ) : (
-              <>
-                <p>
-                  raw=
-                  <strong className="text-foreground/85">
-                    {diag.v2UnfRawCount}
-                  </strong>
-                  {" / 自分名義="}
-                  <strong className="text-foreground/85">
-                    {diag.v2UnfOwnedCount}
-                  </strong>
-                  {" / userID フィルタに無い新規="}
-                  <strong
-                    className={
-                      (diag.v2UnfNewCount ?? 0) > 0
-                        ? "text-emerald-300"
-                        : "text-rose-300/80"
-                    }
-                  >
-                    {diag.v2UnfNewCount}
-                  </strong>
-                  {diag.v2UnfHitPageCap && (
-                    <span className="ml-1 text-amber-200/85">
-                      (25 ページ上限到達 — 取りこぼしの可能性)
-                    </span>
-                  )}
-                </p>
-                <p>
-                  visibility 内訳:{" "}
-                  {diag.v2UnfVisibilityCounts
-                    ? Object.entries(diag.v2UnfVisibilityCounts)
-                        .map(([k, v]) => `${k}×${v}`)
-                        .join(" / ") || "(自分名義 0 件)"
-                    : "(visibility フィールドなし)"}
-                </p>
-                <p className="text-muted-foreground/75">
-                  新規 &gt; 0 なら Private/Unlisted を API
-                  経由で取得できています (cookie/scrape の不要化が可能)。0
-                  なら unfiltered でも非 Public は露出されていません。
-                </p>
-                {diag.v2UnfNewSamples && diag.v2UnfNewSamples.length > 0 && (
-                  <ul className="ml-3 flex flex-col gap-0.5">
-                    {diag.v2UnfNewSamples.map((r, i) => (
-                      <li
-                        key={i}
-                        className="flex items-baseline gap-1.5 break-words"
-                      >
-                        <span className="shrink-0 tabular-nums text-amber-200/70">
-                          {r.date}
-                        </span>
-                        {r.visibility && (
-                          <span className="shrink-0 rounded-sm border border-emerald-400/40 px-1 text-[9px] text-emerald-200/90">
-                            {r.visibility}
-                          </span>
-                        )}
-                        <a
-                          href={r.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="min-w-0 flex-1 truncate underline decoration-dotted underline-offset-2 hover:text-[var(--neon-cyan)]"
-                          title={r.title}
-                        >
-                          {r.title}
-                        </a>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </>
-            )}
-          </div>
         )}
         {diag.htmlPageSize !== undefined && (
           <p className="mt-0.5">
