@@ -44,7 +44,11 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: true, skipped: "disabled" });
   }
 
-  const result = await linkFflogsReportsToVideos();
+  // useServiceRole: cron はユーザーセッション cookie を持たず anon ロールに
+  // なるため、cookie ベースのクライアントだと RLS の admin write ポリシーで
+  // 全書き込みが silent に 0 行更新される (2.8 follow-up で修正)。CRON_SECRET
+  // 認証 (上の assertCronAuth) 済みの経路なので service role で書き込む。
+  const result = await linkFflogsReportsToVideos({ useServiceRole: true });
   if (!result.ok) {
     console.warn(
       "[cron/fflogs-sync] linkFflogsReportsToVideos failed:",
