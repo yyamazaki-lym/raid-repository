@@ -130,6 +130,11 @@ export function CategoryList({
     });
   }, [live, optimisticOrder]);
 
+  // slugIds は SortableContext の items に渡す。早期 return (sorted.length===0)
+  // より前で hook を呼ぶ必要があるため (rules-of-hooks)、sorted の直後に置く。
+  // realtime でカテゴリ数が 0↔非0 に遷移しても hook 呼び出し順が変わらない。
+  const slugIds = useMemo(() => sorted.map((c) => c.id), [sorted]);
+
   // Sensor strategy:
   // - MouseSensor: distance-based activation so a click on the link inside the
   //   card isn't interpreted as a drag.
@@ -206,8 +211,6 @@ export function CategoryList({
     // re-run yet on the user's deployment).
     router.refresh();
   };
-
-  const slugIds = useMemo(() => sorted.map((c) => c.id), [sorted]);
 
   return (
     <div className="flex flex-col gap-2">
