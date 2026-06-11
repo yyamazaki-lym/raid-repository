@@ -10,6 +10,14 @@
  *   - https://www.youtube.com/shorts/ID
  *   - https://www.youtube.com/live/ID
  */
+// YouTube 動画 ID は 11 文字の [A-Za-z0-9_-]。これ以外は URL 由来の
+// 想定外文字列 (例: `?v=abc&x=y` で `abc&x=y` が混入) なので null 扱いにし、
+// 下流の scrape URL (`youtube-duration.ts`) へ追加クエリが注入されるのを防ぐ。
+const YOUTUBE_ID_RE = /^[A-Za-z0-9_-]{11}$/;
+function validYouTubeId(id: string | null | undefined): string | null {
+  return id && YOUTUBE_ID_RE.test(id) ? id : null;
+}
+
 export function parseYouTubeId(url: string): string | null {
   let parsed: URL;
   try {
@@ -20,14 +28,14 @@ export function parseYouTubeId(url: string): string | null {
   const host = parsed.hostname.replace(/^www\./, "");
   if (host === "youtu.be") {
     const id = parsed.pathname.slice(1).split("/")[0];
-    return id || null;
+    return validYouTubeId(id);
   }
   if (host === "youtube.com" || host === "m.youtube.com") {
     if (parsed.pathname === "/watch") {
-      return parsed.searchParams.get("v");
+      return validYouTubeId(parsed.searchParams.get("v"));
     }
     const m = parsed.pathname.match(/^\/(embed|shorts|live)\/([^/]+)/);
-    if (m) return m[2] ?? null;
+    if (m) return validYouTubeId(m[2]);
   }
   return null;
 }

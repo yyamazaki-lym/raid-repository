@@ -186,6 +186,20 @@ export async function proxy(request: NextRequest) {
   // auth.ts 側の roles=[] non-admin user で弾かれるので read-only 公開。
   // 優先順位は dev bypass の後 (= ローカル開発で両方 true なら admin 視点維持)。
   if (isPublicDemoModeEnabled()) {
+    // gate を外す副作用として、実セッションを持たない匿名ゲストでも
+    // /api/page-title (任意 URL を server 側で fetch する経路) を叩けてしまい、
+    // 匿名 SSRF / 外部 URL プロキシ・DoS 中継として悪用されうる。内部 IP は
+    // isPublicHttpUrl で遮断済みだが、外部 URL への踏み台化を防ぐため demo の
+    // 匿名ゲスト (user 無し) には外部 fetch 系 API を 403 で閉じる。実セッションを
+    // 持つ owner (リンク登録ダイアログで利用) は user があるので通過する。
+    if (!user && pathname === "/api/page-title") {
+      return withCsp(
+        new NextResponse("Forbidden", {
+          status: 403,
+          headers: { "Cache-Control": "no-store" },
+        }),
+      );
+    }
     return withCsp(response);
   }
 

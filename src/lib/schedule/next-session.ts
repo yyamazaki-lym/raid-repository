@@ -22,6 +22,7 @@ import {
 } from "./parse";
 import { getScheduleSourceUrl } from "./source-url";
 import { fetchStoredPastSessions } from "@/lib/server/discord-schedule";
+import { isPublicHttpUrl } from "@/lib/url-safe";
 
 export type {
   ScheduleSession,
@@ -74,6 +75,12 @@ function deriveEditUrl(listUrl: string): string | null {
 }
 
 async function fetchHtmlOrNull(target: string): Promise<string | null> {
+  // SSRF defense-in-depth: schedule_url は admin が設定する DB 値だが、
+  // 内部 IP / loopback / link-local への fetch を明示的に弾く。
+  if (!isPublicHttpUrl(target)) {
+    console.warn("[schedule] blocked non-public url:", target);
+    return null;
+  }
   try {
     const res = await fetch(target, {
       next: { revalidate: 60, tags: [SCHEDULE_CACHE_TAG] },
