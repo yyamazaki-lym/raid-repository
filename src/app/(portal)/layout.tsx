@@ -24,11 +24,12 @@ import { getScheduleSourceMode } from "@/lib/schedule/source-mode";
  * Node 化 6 ページで「デプロイ後でも表示が早くなった」体感改善が実証済み
  * のため、取り残されていた本 layout + TOP `page.tsx` も Node に揃える。
  *
- * 注意: Server Action は呼び出し元 page の runtime で実行されるため、
- * FFLogs scrape 系 action (linkFflogsReports / setFflogsSessionCookie) は
- * TOP 滞在中の実行も Node IP 経由になる。403 が頻発するようなら
- * `page.tsx` のみ "edge" に戻す部分ロールバックを検討 (経緯:
- * .claude/todos/54.md)。
+ * 注意: Server Action は呼び出し元 page の runtime で実行される。Node 化
+ * 直後の本番実測で、Node IP からの FFLogs scrape は Cloudflare 403 が
+ * **恒常化** することが確定した (間欠ではなかった) ため、scrape の外向き
+ * fetch だけを Edge route (`/api/fflogs/scrape-proxy`) に切り出して中継
+ * している (fflogs.ts の `fetchScrapePageHtml` 参照)。ページ runtime を
+ * Edge に戻す部分ロールバックは不要になった (経緯: .claude/todos/54.md)。
  */
 export const runtime = "nodejs";
 

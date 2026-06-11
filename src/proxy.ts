@@ -33,6 +33,11 @@ const PUBLIC_PATHS = new Set<string>([
   "/auth/callback",
   "/auth/denied",
   "/auth/sign-out",
+  // 2.9 (2026-06-11): FFLogs scrape の Edge IP 中継 (サーバー間専用 API)。
+  // 呼び出し元 (fflogs.ts) はブラウザ cookie を持たない self-fetch なので
+  // login redirect から除外し、認証は route 内の CRON_SECRET (Bearer) で
+  // 完結させる (/api/cron/ と同じパターン)。
+  "/api/fflogs/scrape-proxy",
 ]);
 
 // 前方一致で公開するパス
@@ -88,6 +93,16 @@ const RATE_LIMIT_RULES: RateLimitRule[] = [
     scope: "api-page-title",
     match: (p) => p === "/api/page-title",
     limit: 30,
+    windowMs: 60_000,
+  },
+  // 2.9 (2026-06-11): /api/fflogs/scrape-proxy は CRON_SECRET 認証済みの
+  // サーバー間 API だが、誤った Bearer での連打に備えて前段で抑える。
+  // 1 回の FFLogs 連動が最大 25 ページ (= 25 リクエスト) を数十秒で
+  // 順次叩くため、cron 系 (10/30s) より広い 60 req / 60 sec にする。
+  {
+    scope: "api-fflogs-scrape-proxy",
+    match: (p) => p === "/api/fflogs/scrape-proxy",
+    limit: 60,
     windowMs: 60_000,
   },
 ];

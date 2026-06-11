@@ -60,6 +60,12 @@ export const RELEASES: ReleaseEntry[] = [
     parts: [
       {
         title:
+          "🛰️ FFLogs scrape を Edge route 中継に変更 — Node 化で恒常 403 になった HTML scrape を修復",
+        body:
+          "**経緯**: 下記の Node runtime 化を本番反映した直後、FFLogs 連動の HTML scrape が「fflogs HTML scrape 403 (page 1)」で常時失敗するようになった (ユーザー実機確認: リトライ含め全敗)。Cloudflare の bot 判定は Edge IP は通すが Node Lambda IP を恒常的に弾くことが確定 — 2.8 時点の「403 は間欠的」は Edge 経路での観測だった。また cron (/api/cron/fflogs-sync) は元から Node runtime のため、日次自動連携の scrape も従来から同じ理由で失敗していた可能性が高い。\n\n**変更内容**:\n- Edge runtime の中継 API (/api/fflogs/scrape-proxy) を新設し、fflogs.com への scrape fetch だけを Edge IP 経由に切り替え (ページ側の Node runtime = cold start 改善は維持)\n- manual 連動 / cron の両方がこの中継を通るため、cron の日次 scrape も Edge IP 化される\n- 認証は CRON_SECRET (Bearer) のサーバー間認証 + rate limit (60 req/60s)。fetch 先は userId / page から組み立てる fflogs の reports-list URL 固定で、任意 URL の中継はできない (SSRF 不可)\n- 中継に到達できない場合 (env 不備等) は従来の直接 fetch に fallback し、エラーメッセージに経路 (edge 経由 / direct) を表記して今後の切り分けを容易化\n- ローカル dev は IP 経路の差が無いので従来どおり直接 fetch\n\n**検証**: npx tsc --noEmit / npm run lint / npm run build pass。本番での scrape 成否 (403 解消) は merge 後にユーザーが FFLogs 連動で確認。",
+      },
+      {
+        title:
           "⚡ デプロイ後/アイドル後の初回表示が遅い問題の対策 — TOP を Node runtime 化 + 直列クエリ並列化",
         body:
           "**経緯**: ユーザー報告「Vercel デプロイ後や、しばらく間をおいてアクセスした際のページ描画まで体感 5 秒近くかかる」(TODO #54 の再調査)。TODO #54 では category 系 6 ページを Edge → Node runtime 化して「デプロイ後でも表示が早くなった」と確認済みだったが、TOP (スケジュール) と portal layout だけが「FFLogs scrape は Edge IP 必須」を理由に Edge のまま残っていた。再調査の結果、この前提は崩れていると判明 — ①TOP 描画時の FFLogs 処理 (fetchSessionLogsByDate) は Supabase SELECT のみで外部 scrape を含まない、②cron (runtime=nodejs) が Node IP で日次 scrape に成功 (2.8 実測)、③Node 化済み category ページからも同じ scrape Server Action を呼べる状態で運用済み。Edge runtime は Fluid Compute のインスタンス再利用に乗れず毎回 cold start を踏むため、デプロイ後/アイドル後の初回アクセス (= TOP) が最も遅くなる構図だった。\n\n**変更内容**:\n- (portal)/layout.tsx と (portal)/page.tsx の runtime を edge → nodejs に変更 (取り残し 2 ファイルを category 系と統一)\n- TOP の buildSessionVideoLinkMap (動画リンク map) を Promise.all 完了後の直列実行 (~0.5-1s 追加) から fetchSchedule へのチェーンに変更し、他の fetch と並走させる\n- native モードの placeholder 補充 → スケジュール読込 → 動画リンク map の直列 3 連鎖も appSettings チェーン化で他 fetch と並走 (insert → read の順次制約は維持)\n\n**ロールバック**: FFLogs 同期 (設定ダイアログ) で 403 が頻発する場合は page.tsx のみ runtime=\"edge\" に戻す部分ロールバックが可能。\n\n**検証**: npx tsc --noEmit / npm run lint / npm run build pass。デプロイ後/アイドル後の体感はユーザー実機確認 (TODO #54 と同じ判定方法)。",
