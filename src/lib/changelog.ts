@@ -60,6 +60,12 @@ export const RELEASES: ReleaseEntry[] = [
     parts: [
       {
         title:
+          "🔍 FFLogs — Private/Unlisted 取得の再実測 (unfiltered reports) + Cookie 診断表示の実態化",
+        body:
+          "**経緯**: Private/Unlisted レポートの自動取得経路 (Session Cookie + HTML scrape) が Cloudflare の bot 判定 (403) で恒常的に失敗しており、cookie が消費されないまま Private/Unlisted も紐づかない状態だった。v2 API の `reports(userID:)` は Public しか返さないが、フィルタなし `reports()` なら自分名義の Private/Unlisted が見える可能性を示す実測記録が過去に残っていたため、実データで再検証する診断経路を追加した。\n\n**変更内容**:\n- 連動実行時に `reports()` (userID フィルタなし、直近 2 年、最大 625 件) も取得し、自分名義のレポートを取得対象に合流。Private/Unlisted がこの経路で見えるなら自動紐づけがそのまま復活する\n- 詳細診断パネルに unfiltered の実測値を表示 — raw 件数 / 自分名義件数 / userID フィルタに無い新規件数 (= Private/Unlisted 候補) / visibility 内訳 / 新規レポートのサンプル一覧\n- Session Cookie の診断表示を実態に合わせて修正 — 従来は scrape が失敗・未実行でも「自動削除済」と表示していたが、実際に削除された時のみそう表示し、温存時は「次回連動でも使われます」と出す\n\n**検証**: npm run build / npx tsc --noEmit / npm run lint pass。unfiltered の実測値は本番での次回連動時に詳細診断パネルで確認する。",
+      },
+      {
+        title:
           "🔒 セキュリティ監査対応 — 依存更新 / 認可ガード / SSRF 多層防御 / cron 認証強化",
         body:
           "**経緯**: ユーザー依頼でセキュリティ全体監査を実施。RLS / 認可 / 入力検証 / 依存パッケージを点検し、検出した Medium / Low の穴を解消した。\n\n**変更内容**:\n- 依存更新: Next.js を 16.2.4 → 16.2.9 に更新し、App Router の middleware / proxy bypass (GHSA-267c-6grr-h53f) ほか既知脆弱性を解消。`npm audit` の High を一掃 (残るのは next 内蔵 postcss の moderate のみ)\n- 認可ガード: 認可チェックが無かった Server Action (fetchFflogsOAuthStatus / getFflogsSessionCookieStatus / enrichVideoLinkDuration / diagnoseYouTubeUrl) に admin gate を追加\n- SSRF 多層防御: schedule_url の fetch と Google フォト短縮 URL 展開を isPublicHttpUrl + 手動 redirect 検証に統一。parseYouTubeId は 11 文字 ID 以外を弾くよう厳格化\n- cron 認証: CRON_SECRET の比較をタイミング攻撃耐性のある定数時間比較に変更\n- demo モード: 匿名ゲストが service role 経由でコメントを書ける経路と、/api/page-title を匿名 SSRF プロキシとして悪用できる経路を遮断\n\n**検証**: `npm run build` / `npx tsc --noEmit` / `npm run lint` (error 0) すべて pass。",
