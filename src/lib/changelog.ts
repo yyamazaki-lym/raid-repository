@@ -69,6 +69,11 @@ export const RELEASES: ReleaseEntry[] = [
         body:
           "**経緯**: CI に lint / 型チェックのゲートが無く、react-hooks 系の ESLint error (set-state-in-effect 等 40 件) が検知されないまま蓄積していた。\n\n**変更内容**:\n- 確実に安全な react/no-children-prop (Google フォトアルバムの children prop) を links にリネームして解消\n- 既存の react-hooks error 40 件は挙動 (SSR hydration / props 同期等) を変えないよう eslint-suppressions.json に記録して抑制。新規 error のみ CI で fail させる\n- GitHub Actions に CI workflow (ESLint + tsc --noEmit) を新設し、今後の違反混入を防止\n\n**触らない範囲**: 抑制した 40 件の実リファクタ (挙動検証が要るため別タスク) / CSP style-src unsafe-inline 撤去 / DNS rebinding 対策 (改修コストと互換性から現状維持と判断し、コードにコメントで記録)。",
       },
+      {
+        title: "🐛 category-list の rules-of-hooks 実バグ修正 (merge 後の精査で発見)",
+        body:
+          "**経緯**: lint 整備を merge 後、抑制した 40 件を改めて精査したところ、category-list.tsx の react-hooks/rules-of-hooks (条件付き早期 return より後の useMemo) が誤検知ではなく実バグと判明。realtime でカテゴリ数が 0↔非0 に遷移すると hook 呼び出し数が変わり React がクラッシュしうる (他の 39 件は挙動依存のリファクタ案件で実害なしだが、これだけは実行時クラッシュを誘発しうる)。\n\n**変更内容**:\n- slugIds の useMemo を早期 return (sorted.length===0) より前へ移動し hook 呼び出し順を固定\n- 解消した違反を eslint-suppressions.json から prune (40→39 件)\n- ci.yml のコメントを正しい運用 (解消時は --prune-suppressions、未削除だと exit 2 で CI fail) に訂正\n\n**検証**: npm run lint (error 0) / npx tsc --noEmit / npm run build すべて pass。",
+      },
     ],
   },
   {

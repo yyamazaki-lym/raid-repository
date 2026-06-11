@@ -4,10 +4,13 @@
 # これまで lint/型チェックを CI で回しておらず、react-hooks 系の error が
 # 蓄積していた (2026-06-11 セキュリティ監査で検出)。
 #
-# ESLint の既存違反 (react-hooks 系 40 件) は `eslint-suppressions.json` に
+# ESLint の既存違反 (react-hooks 系 39 件) は `eslint-suppressions.json` に
 # 記録して抑制済みなので、このジョブが fail するのは「新規に増えた error」
-# だけ。抑制済みの違反を実際に直したら、`npx eslint --suppress-all` を再実行
-# して suppressions ファイルを更新する (件数が減る)。
+# だけ。運用:
+#   - 既存違反を実際に直したら `npx eslint --prune-suppressions` で解消分を
+#     suppressions から除く (残したままだと unused 扱いで eslint が exit 2 を
+#     返し CI が fail する)
+#   - 新たに意図的な抑制を増やす場合のみ `npx eslint --suppress-all`
 # warning (no-unused-vars 等) は exit code に影響しないので fail しない。
 
 name: CI
