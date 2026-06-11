@@ -1,6 +1,6 @@
 # Raid Repository — 引き継ぎノート
 
-> 2.7 (2026-06-10) 時点。完了済 TODO の詳細は `src/lib/changelog.ts` / 過去版番号は `.claude/done.md`。
+> 2.9 (2026-06-11) 時点。完了済 TODO の詳細は `src/lib/changelog.ts` / 過去版番号は `.claude/done.md`。
 >
 > **新規会話の手順**: このファイルを読んだ後、TODO 一覧は自動表示せずユーザーの要望を待つ。新規 TODO 追記時は part 単位ではなく TODO 完了時のみ統合追記する (part 細分は commit log に任せる)。
 
@@ -10,9 +10,9 @@
 
 - **Repo**: https://github.com/yyamazaki-lym/raid-repository
 - **Path**: `D:\workd\raid-repository`
-- **Stack**: Next.js 16.2.4 (Turbopack) / React 19.2 / Supabase / Tailwind v4 / @base-ui/react
+- **Stack**: Next.js 16.2.9 (Turbopack) / React 19.2 / Supabase / Tailwind v4 / @base-ui/react
 - **Deploy**: Vercel auto-deploy from `main`
-- **Version**: `2.7 (2026-06-10)`。`package.json#version` は `1.9.38` のまま (履歴マーカー)、UI は `RELEASES[0].version + .date` を表示
+- **Version**: `2.9 (2026-06-11)`。`package.json#version` は `1.9.38` のまま (履歴マーカー)、UI は `RELEASES[0].version + .date` を表示
 - **Next.js 16 注意**: 破壊的変更含む。`node_modules/next/dist/docs/` を参照すること (詳細は `AGENTS.md`)
 
 ## 🔄 保留オペレーション
@@ -27,7 +27,11 @@
    4. ✅ **完了 (2026-06-10 確認)**: jobname='notify-native-schedule-hourly' 全 jobid 跨ぎ集計で **累計 786 succeeded / 0 failed** (2026-05-08 06:00 UTC 〜 2026-06-09 23:00 UTC、期待値 24 × 33 ≈ 792 に対し ~99% カバレッジ)。観察 24h ウィンドウ (2026-05-08 06:00〜2026-05-09 06:00 UTC) 内も jobid={1,4,5,6} の 4 jobid 跨ぎで **24 succeeded / 0 failed** で検収条件 (23–25 succeeded / 0 failed) 満たす。現行 `jobid=15 / active=true` で直近 24h も連続 succeeded、健全運転中
       - **⚠ 観察 SQL 注意 (将来の確認時)**: `supabase/schema.sql` 13 章の `cron.unschedule` + `cron.schedule` パターンが **schema 再 deploy 毎に新規 jobid を採番** する (jobid=1 → 4 → 5 → 6 → 7 → 8 → 9 → 11 → 12 → 13 → 14 → 15 と 1 ヶ月で 12 回切替)。初回 plan の固定 `jobid=1` 観察は 2 件しか拾えなかった (再 deploy で jobid が変わるため)。今後の観察は `jobname` 単位 (`SELECT ... FROM cron.job_run_details jrd JOIN ... ON jobname = ...` または `WHERE start_time >= '<起点>'` で jobid 跨ぎ累計) で集計する。再 deploy 切替窓 (unschedule → schedule 間の数秒) で 1〜2 hour 単位の発火欠落が累計 6 hour 程度発生したが、failed ではなく未発火扱いで運用影響なし
 
-(項目 1 (Discord 通知 ON 切替) 完了でこの節を `_(現在なし)_` に戻す)
+**FFLogs cron scrape の Edge proxy 化後の初回観察** (2026-06-11、PR #182):
+
+3. ⏳ cron (/api/cron/fflogs-sync、JST 04:00) の scrape が Edge proxy 経由になった後の初回発火で、過去予定への logs 自動付与が機能するか観察。cron は元から Node runtime で scrape は恒常 403 だった可能性が高く、proxy 化後が事実上の初成功見込み。manual 連動の scrape 成功は確認済み (2026-06-11) なので、失敗するなら cron 固有要因 (CRON_SECRET env / VERCEL_PROJECT_PRODUCTION_URL) を疑う
+
+(項目 1 (Discord 通知 ON 切替) + 項目 3 完了でこの節を `_(現在なし)_` に戻す)
 
 **Pre-check 結果サマリ (2026-05-08 14:25 JST 実行)** [historical]:
 - `cron.job`: jobid=1, jobname='notify-native-schedule-hourly', schedule='0 * * * *', active=true
@@ -82,6 +86,13 @@
 ## 完了済み TODO
 
 直近版のみ列挙。詳細経緯は `src/lib/changelog.ts`、過去版アーカイブは `.claude/done.md`。
+
+- **2.9 (2026-06-11)**: TODO #54 follow-up (再調査) クローズ — デプロイ後/アイドル後の TOP 初回描画 ~5s の根本対策 (TOP/layout の Node 化 + 直列クエリ並列化 + ロード時スピナー拡充) と、その副作用で表面化した FFLogs scrape 恒常 403 の修復 (Edge proxy 中継) ([PR #181](https://github.com/yyamazaki-lym/raid-repository/pull/181) squash merge `435683d` / [PR #182](https://github.com/yyamazaki-lym/raid-repository/pull/182) squash merge `641b389`、本番実機確認 OK 2026-06-11)
+  - **発端**: ユーザー報告「デプロイ後/しばらく間をおいたアクセスで描画まで体感 5 秒」(#54 の主訴の再発)。#54 (2026-05-01) で category 系 6 ページは Node 化済みだったが、TOP + `(portal)/layout.tsx` だけ「FFLogs scrape は Edge IP 必須」を根拠に Edge のまま残っていた。再調査で前提の崩壊を確認 — TOP 描画時の FFLogs 処理 (`fetchSessionLogsByDate`) は Supabase SELECT のみで scrape を含まない
+  - **PR #181 (perf + UX)**: ① `(portal)/{layout,page}.tsx` を `runtime = "nodejs"` 化 (Edge は Fluid Compute の instance 再利用に乗れず毎回 cold start) ② TOP の `buildSessionVideoLinkMap` を Promise.all 完了後の直列 await から `fetchSchedule` チェーンに並走化、native モードの ensure → fetchNative → linkMap 直列 3 連鎖も appSettings チェーン化 (TODO #81 の insert → read 順次制約はチェーン内で維持) ③ [`(portal)/loading.tsx`](../src/app/(portal)/loading.tsx) 新設 — TOP の Suspense 境界を page 内から移設 (境界 2 枚だと client 遷移時に fallback 再マウントでチラつくため 1 枚に集約)。loading.tsx は prefetch されるためタブ遷移で即 "Now Loading" ④ メインタブに `useLinkStatus` ベースの pending ドット ([link-pending-indicator.tsx](../src/components/portal/link-pending-indicator.tsx))、コンテンツ切替トリガーに `Link.onNavigate` + pathname 監視ベースの pending ドット (dropdown はクリックで即閉じるため useLinkStatus 不可)
+  - **PR #182 (緊急 follow-up)**: #181 反映直後に FFLogs scrape が常時 403 化 (ユーザー実機: リトライ全敗)。**Cloudflare bot 判定は Edge IP を通すが Node Lambda IP を恒常ブロック**と確定 (2.8 の「403 は間欠的」は Edge 経路での観測だった)。`/api/fflogs/scrape-proxy` (runtime="edge" / CRON_SECRET Bearer 認証 / fetch 先は userId+page から組む reports-list URL 固定で SSRF 不可 / rate limit 60req/60s) を新設し、scrape の外向き fetch だけ Edge IP 中継。manual 連動と cron の両方が経由 — cron は元から Node runtime のため日次 scrape は以前から失敗していた可能性が高く、これも修復
+  - **検証**: 両 PR とも tsc / lint (error 0) / build PASS + dev preview 実測 (loading fallback 即マウント・高速遷移でフラッシュ無し / proxy の 401・400・中継透過)。本番実機: scrape 成功確認 OK (2026-06-11)。cron の logs 自動付与は翌朝 JST 04:00 以降に観察 (保留オペレーション参照)
+  - **記録**: 経緯詳細 = `.claude/todos/54.md` (2026-06-11 follow-up 追記) / scrape 経路の結論は `fflogs.ts` の `fetchScrapePageHtml` コメントにも記録。**FFLogs scrape 系コードを Node 直 fetch に戻してはいけない** (エラー reason の経路表記 `edge 経由`/`direct` で切り分け可能)
 
 - **2.7 (2026-06-10)**: TODO #91 クローズ — デモサイトで owner だけ編集可能に (案 A: 実セッション優先 + ゲスト fallback) + follow-up: 設定ダイアログ footer の Sign in 導線 ([PR #168](https://github.com/yyamazaki-lym/raid-repository/pull/168) 起票 / [PR #169](https://github.com/yyamazaki-lym/raid-repository/pull/169) 実装 squash merge `2165978` / [PR #170](https://github.com/yyamazaki-lym/raid-repository/pull/170) env 反映 deploy trigger / [PR #171](https://github.com/yyamazaki-lym/raid-repository/pull/171) follow-up squash merge `2bc8a96`、demo 実機確認 OK 2026-06-10)
   - **変更内容** [src/lib/server/auth.ts](src/lib/server/auth.ts): `requireDiscordMember()` の demo 短絡 (セッション確認前に roles=[] ゲスト返却) を撤去し、`PUBLIC_DEMO_MODE` でもセッション確認を常に実行。実セッション + guild member 検証済みなら本物の roles を返し (編集可能は `DISCORD_ADMIN_ROLE_IDS` 持ちのみ、fail-closed 維持)、セッションなし / 非メンバー / 検証失敗は **redirect せず** roles=[] ゲストへ fallback (一般訪問者の read-only 体験は無変化)。RLS は実セッション JWT の `is_admin` claim (auth/callback 書込、既存経路) で通過。`cache()` dedupe 維持、proxy.ts はコメントのみ追従 (ロジック無改修)
@@ -623,7 +634,7 @@
 - カスタムマッチワード: カテゴリ毎の `fflogs_match_keywords` で part 一致 cross-group reject を override
 - 1 レポート → N 動画 OK (`usedReports` 撤廃)
 - 取得経路: v2 GraphQL (Public のみ) + HTML scrape (Public + Unlisted + Private、session cookie 必要)
-- 全ポータルページが Edge runtime — Vercel Edge IP は Cloudflare bot 判定をすり抜けやすい (Node Lambda IP は 403 になりがち)
+- **scrape の外向き fetch は `/api/fflogs/scrape-proxy` (Edge runtime) 経由必須** — Cloudflare bot 判定は Edge IP を通すが Node Lambda IP を**恒常 403** (2026-06-11 実測確定、「間欠的」ではない)。ポータルページ自体は 2.9 で全て Node runtime 化済み (cold start 対策) なので、scrape 系コードを Node 直 fetch に変えてはいけない。エラー reason の経路表記 (`edge 経由` / `direct`) で切り分け可能
 
 ### 認証 / 認可 — 4 層防御
 
