@@ -1277,6 +1277,57 @@ GRANT EXECUTE ON FUNCTION
   public.update_native_placeholder_raid_times(text, text)
   TO authenticated;
 
+-- ---- 13e. Warmup ping cron (2.9 follow-up, 2026-06-11) ------------------
+-- ポータル全ページの Node runtime 化 (PR #181) 後、デプロイ後/アイドル後の
+-- 初回アクセスに Node 関数の cold start ≒ 3.4s が残ることを実測で確認
+-- (demo 実測: cold TTFB 3.84s / warm TTFB 0.40〜0.45s)。Fluid Compute の
+-- インスタンスはアイドルで回収されるため、5 分毎に ping して常時 warm に保つ。
+--
+-- 設計判断:
+--   * ping 先は `/login` — 公開パス (proxy の PUBLIC_PATHS) なので認証不要で
+--     Node page 関数を実際に起動できる。`/` は未認証だと proxy (middleware) が
+--     302 を返すだけで page 関数が起きないため warmup にならない。/login は
+--     force-dynamic + DB アクセスなしの最軽量ページ
+--   * Vercel Hobby の vercel.json cron は daily 限定 (§13 と同じ制約) なので
+--     pg_cron + pg_net で組む。認証ヘッダー不要なので vault も不要
+--   * 過去に撤廃した warmup (/api/health、58432aa) は全ページ Edge runtime
+--     時代のもの — Node 関数を温めてもユーザーが踏むのは Edge だったため無意味
+--     だった。現在はページ自体が Node なので温め先 = ユーザーが踏む関数
+--   * demo Supabase にも本 schema が自動 deploy されるため、demo 側 pg_cron も
+--     本番 URL を ping する (§13 の notify cron と同じ割り切り)。本番が 5 分間隔
+--     ×2 系統で温まるだけで実害なし。demo 自体は温まらないが mock site なので不要
+--   * デプロイ直後の最初の 1 アクセス (ping 間隔の隙間) には効かない — そこは
+--     Cache Components (PPR) の静的シェル化が構造的対策 (別途調査)
+DO $$
+DECLARE
+  existing_jobid bigint;
+  c_schedule constant text := '*/5 * * * *';
+  c_command constant text := $cmd$
+    SELECT net.http_get(
+      url := 'https://yurutto-raid-repository.vercel.app/login',
+      timeout_milliseconds := 30000
+    );
+  $cmd$;
+BEGIN
+  SELECT jobid INTO existing_jobid
+  FROM cron.job
+  WHERE jobname = 'warmup-portal-function';
+
+  IF existing_jobid IS NULL THEN
+    PERFORM cron.schedule(
+      'warmup-portal-function',
+      c_schedule,
+      c_command
+    );
+  ELSE
+    PERFORM cron.alter_job(
+      job_id := existing_jobid,
+      schedule := c_schedule,
+      command := c_command
+    );
+  END IF;
+END $$;
+
 -- ---- 14. Migration: 旧 plaintext FFLogs token / OAuth state を一掃 -----
 -- 2.x (2026-06-09): `fflogs-oauth.ts` の app_settings 平文 fallback と
 -- `app_settings` 経由の OAuth state 保管を撤去した。anon SELECT が全テーブル

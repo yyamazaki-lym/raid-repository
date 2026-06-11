@@ -60,6 +60,12 @@ export const RELEASES: ReleaseEntry[] = [
     parts: [
       {
         title:
+          "🔥 warmup ping cron 追加 — アイドル後の cold start 3.4 秒を常時 warm 化で解消",
+        body:
+          "**経緯**: Node runtime 化後もユーザー体感で「デプロイ後/アイドル後のアクセスが重いまま」と報告があり、再計測 (demo 実測) で cold TTFB 3.84s / warm TTFB 0.40〜0.45s と確認。warm 側は Node 化で改善済みだが、Fluid Compute のインスタンスがアイドル回収された後の初回ヒットに関数起動 ≒ 3.4 秒が残っていた。これは HTML の 1 バイト目より前の時間なので、スピナーでは対処できない領域。\n\n**変更内容**:\n- Supabase pg_cron + pg_net で 5 分毎に /login (認証不要・DB アクセスなしの最軽量ページ) へ GET し、Node 関数インスタンスを常時 warm に保つ (schema.sql §13e)\n- Vercel Hobby の cron は daily 限定のため pg_cron で実装 (毎時 Discord 通知 cron と同じ構成の横展開)\n- 過去に撤廃した warmup (/api/health) は全ページ Edge 時代のもので、Node を温めてもユーザーが踏むのは Edge だったため無意味だった — 現在はページ自体が Node なので状況が逆転\n\n**効果範囲**: アイドル後の cold start はほぼ根絶見込み。デプロイ直後の最初の 1 アクセス (ping 間隔 5 分の隙間) には効かない — そこは Cache Components (PPR) の静的シェル化が構造的対策で、別途調査中。\n\n**検証**: schema 自動 deploy 後に `SELECT * FROM cron.job WHERE jobname = 'warmup-portal-function'` で登録確認 + アイドル後 TTFB の再計測。",
+      },
+      {
+        title:
           "🛰️ FFLogs scrape を Edge route 中継に変更 — Node 化で恒常 403 になった HTML scrape を修復",
         body:
           "**経緯**: 下記の Node runtime 化を本番反映した直後、FFLogs 連動の HTML scrape が「fflogs HTML scrape 403 (page 1)」で常時失敗するようになった (ユーザー実機確認: リトライ含め全敗)。Cloudflare の bot 判定は Edge IP は通すが Node Lambda IP を恒常的に弾くことが確定 — 2.8 時点の「403 は間欠的」は Edge 経路での観測だった。また cron (/api/cron/fflogs-sync) は元から Node runtime のため、日次自動連携の scrape も従来から同じ理由で失敗していた可能性が高い。\n\n**変更内容**:\n- Edge runtime の中継 API (/api/fflogs/scrape-proxy) を新設し、fflogs.com への scrape fetch だけを Edge IP 経由に切り替え (ページ側の Node runtime = cold start 改善は維持)\n- manual 連動 / cron の両方がこの中継を通るため、cron の日次 scrape も Edge IP 化される\n- 認証は CRON_SECRET (Bearer) のサーバー間認証 + rate limit (60 req/60s)。fetch 先は userId / page から組み立てる fflogs の reports-list URL 固定で、任意 URL の中継はできない (SSRF 不可)\n- 中継に到達できない場合 (env 不備等) は従来の直接 fetch に fallback し、エラーメッセージに経路 (edge 経由 / direct) を表記して今後の切り分けを容易化\n- ローカル dev は IP 経路の差が無いので従来どおり直接 fetch\n\n**検証**: npx tsc --noEmit / npm run lint / npm run build pass。本番での scrape 成否 (403 解消) は merge 後にユーザーが FFLogs 連動で確認。",
