@@ -60,6 +60,12 @@ export const RELEASES: ReleaseEntry[] = [
     parts: [
       {
         title:
+          "📊 FFLogs — unfiltered 再実測の結果確定 (自分名義 0 件) を受けて診断コードを撤去",
+        body:
+          "**実測結果 (本番)**: フィルタなし reports() は raw=625 / 自分名義=0 — guild 共有の他人名義レポートだけが返り、自分の Private/Unlisted は 1 件も露出されないと確定。FFLogs v2 API だけで Private/Unlisted を取得する道は存在しない。一方、同じ連動で HTML scrape は成功し (459 件取得、動画 98 / 過去予定 18 件を紐づけ)、Cloudflare 403 は恒常ではなく間欠的と判明 — cookie + scrape 経路は引き続き機能する。\n\n**変更内容**:\n- 役目を終えた unfiltered 再実測コード (毎連動・毎日の cron で最大 25 回の追加 GraphQL リクエスト = 数十秒の遅延要因) を撤去し、連動時間を元に戻した\n- 実測の最終結論を fetchFflogsReportsV2 のコメントに記録し、矛盾していた過去の実測記録 2 件を上書き (再調査ループの防止)\n- Cookie 診断の実態表示 (scrape 成功時のみ「自動削除済」、温存時は「次回連動でも使われます」) は有用なので存置\n\n**検証**: npx tsc --noEmit / npm run lint / npm run build pass。",
+      },
+      {
+        title:
           "🔍 FFLogs — Private/Unlisted 取得の再実測 (unfiltered reports) + Cookie 診断表示の実態化",
         body:
           "**経緯**: Private/Unlisted レポートの自動取得経路 (Session Cookie + HTML scrape) が Cloudflare の bot 判定 (403) で恒常的に失敗しており、cookie が消費されないまま Private/Unlisted も紐づかない状態だった。v2 API の `reports(userID:)` は Public しか返さないが、フィルタなし `reports()` なら自分名義の Private/Unlisted が見える可能性を示す実測記録が過去に残っていたため、実データで再検証する診断経路を追加した。\n\n**変更内容**:\n- 連動実行時に `reports()` (userID フィルタなし、直近 2 年、最大 625 件) も取得し、自分名義のレポートを取得対象に合流。Private/Unlisted がこの経路で見えるなら自動紐づけがそのまま復活する\n- 詳細診断パネルに unfiltered の実測値を表示 — raw 件数 / 自分名義件数 / userID フィルタに無い新規件数 (= Private/Unlisted 候補) / visibility 内訳 / 新規レポートのサンプル一覧\n- Session Cookie の診断表示を実態に合わせて修正 — 従来は scrape が失敗・未実行でも「自動削除済」と表示していたが、実際に削除された時のみそう表示し、温存時は「次回連動でも使われます」と出す\n\n**検証**: npm run build / npx tsc --noEmit / npm run lint pass。unfiltered の実測値は本番での次回連動時に詳細診断パネルで確認する。",
