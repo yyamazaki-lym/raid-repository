@@ -60,6 +60,12 @@ export const RELEASES: ReleaseEntry[] = [
     parts: [
       {
         title:
+          "🎨 上部タブ (スケジュール / コンテンツ) の内側余白の偏りを修正",
+        body:
+          "**経緯**: 上部ナビの「スケジュール」「コンテンツ」タブで、枠内の余白が左 16px / 右 30px と右に偏っていた。2.9 で追加した遷移 pending ドット (非 pending 時も透明なままスペースを確保する方式) がラベル末尾の flex フローに入っており、間隔 8px + ドット 6px ぶん右側だけ広がっていたため。あわせて 2 つのタブで上下 padding が 4px 違い、枠の高さも不揃いだった。\n\n**変更内容**: pending ドットを absolute 配置で右 padding 域に重ねてフローから外し、左右余白を均等に統一。ドットの点灯位置と「点灯してもレイアウトがずれない」挙動は従来どおり。スケジュールタブの上下 padding をコンテンツ側に合わせ、枠の高さも統一。\n\n**検証**: npx tsc --noEmit / npx eslint pass。dev preview で両タブの左右余白 17px (border 込み)・高さ 36px の一致を実測し、pending 点灯時もタブ幅が変化しないことを確認。",
+      },
+      {
+        title:
           "⚙️ FFLogs 日次自動連動 (cron) の ON/OFF トグルを設定ダイアログに追加",
         body:
           "**経緯**: FFLogs と動画 / 過去予定の自動紐づけは毎日 04:00 JST の cron で実行されているが、停止する手段が Supabase Dashboard で `app_settings.fflogs_cron_enabled` を直接書き換える運用しかなく、UI からは切り替えられなかった (cron 導入時に toggle UI はスコープ外とされていた)。\n\n**変更内容**: 設定ダイアログの FFLogs Sync セクション (連動ボタンの直上) に「日次自動連動 (cron)」の ON/OFF トグルを追加。OFF にすると cron は何もせず skip する。未設定時は従来どおり ON 扱い (fail-open 設計は変更なし)。手動の「FFLogs と動画を連動」ボタンはトグルと無関係に常時動作する。\n\n**検証**: npx tsc --noEmit / npx eslint pass。dev preview で OFF 切替が `app_settings` に保存されること (demo DB 実測) と、ダイアログ再オープンで OFF 状態が復元されることを確認。ON 方向の切替はユーザー実機確認。",

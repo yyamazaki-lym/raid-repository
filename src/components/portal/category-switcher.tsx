@@ -142,11 +142,13 @@ export function CategorySwitcher({ initialCategories, userRoleIds }: Props) {
           aria-hidden
         />
         {/* 2.9 (2026-06-11): メニュー内リンククリック後の遷移 pending 表示。
-            cold start 等で RSC 応答が遅い時の「無音 stuck」対策。 */}
+            cold start 等で RSC 応答が遅い時の「無音 stuck」対策。
+            absolute で右 padding 域に重ね、flow に置かない
+            (flow に入れるとタブ内余白が左 16px / 右 30px に偏る)。 */}
         <span
           aria-hidden
           className={cn(
-            "link-pending-dot text-[var(--neon-violet)]",
+            "link-pending-dot absolute top-1/2 right-1.5 -translate-y-1/2 text-[var(--neon-violet)]",
             navPending && "is-pending",
           )}
         />
