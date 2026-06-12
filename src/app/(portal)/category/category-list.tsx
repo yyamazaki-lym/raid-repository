@@ -411,6 +411,7 @@ function SortableCategoryCard({
 
           <SubPageShortcuts
             slug={category.slug}
+            tabConfig={category.tabConfig}
             statusSlot={
               <span
                 onClick={(e) => e.stopPropagation()}
@@ -552,9 +553,16 @@ const SUB_PAGES: Array<{ segment: string; label: string; Icon: LucideIcon }> = [
 
 function SubPageShortcuts({
   slug,
+  tabConfig,
   statusSlot,
 }: {
   slug: string;
+  /**
+   * 2.9 (2026-06-12): カテゴリごとのタブ設定。enabled=false のタブは
+   * アイコン行から除外、label が非空なら tooltip / aria-label を上書き
+   * (sub-tabs.tsx の描画判定と同一)。
+   */
+  tabConfig?: Category["tabConfig"];
   /** 2.1 (2026-04-29): 行の右端に StatusBadge を配置するためのスロット。 */
   statusSlot?: React.ReactNode;
 }) {
@@ -566,18 +574,24 @@ function SubPageShortcuts({
       // (= レイアウト変更なし、padding のみ調整)。
       className="flex items-center gap-1 pt-1 pr-2 pb-3 pl-3"
     >
-      {SUB_PAGES.map((p) => (
-        <Link
-          key={p.segment}
-          href={`/category/${slug}/${p.segment}`}
-          prefetch={false}
-          aria-label={p.label}
-          title={p.label}
-          className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border/40 bg-background/30 text-muted-foreground transition-all duration-150 hover:scale-110 hover:border-[var(--neon-violet)]/60 hover:bg-[var(--neon-violet)]/10 hover:text-[var(--neon-violet)] hover:shadow-[0_0_10px_-4px_var(--neon-violet)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--neon-violet)]/60 active:scale-95"
-        >
-          <p.Icon className="h-3.5 w-3.5" aria-hidden />
-        </Link>
-      ))}
+      {SUB_PAGES.map((p) => {
+        const cfg = tabConfig?.[p.segment];
+        if (cfg?.enabled === false) return null;
+        const labelOverride = cfg?.label?.trim();
+        const label = labelOverride ? labelOverride : p.label;
+        return (
+          <Link
+            key={p.segment}
+            href={`/category/${slug}/${p.segment}`}
+            prefetch={false}
+            aria-label={label}
+            title={label}
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border/40 bg-background/30 text-muted-foreground transition-all duration-150 hover:scale-110 hover:border-[var(--neon-violet)]/60 hover:bg-[var(--neon-violet)]/10 hover:text-[var(--neon-violet)] hover:shadow-[0_0_10px_-4px_var(--neon-violet)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--neon-violet)]/60 active:scale-95"
+          >
+            <p.Icon className="h-3.5 w-3.5" aria-hidden />
+          </Link>
+        );
+      })}
       {statusSlot && <span className="ml-auto">{statusSlot}</span>}
     </nav>
   );
