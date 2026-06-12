@@ -60,6 +60,12 @@ export const RELEASES: ReleaseEntry[] = [
     parts: [
       {
         title:
+          "🐛 ページ下部でメモのポップアップが見切れて読めない問題を修正",
+        body:
+          "**経緯**: スケジュール表の下のほう (特に過去の出欠表) でメモを開くと、ポップアップが画面下端に押し潰されてヘッダーしか見えず読めない状態だった。ポップアップが常に「クリックした日付の下側」に固定配置され、高さ上限が「画面下端までの残り」になっていたため。\n\n**変更内容**: 下側に十分な高さ (320px) が確保できず、かつ上側のほうが広い場合は、ポップアップを日付の上側に反転配置するようにした。画面上部の行では従来どおり下側に開く。スクロール / リサイズ時の追従配置も反転判定込みで再計算される。\n\n**検証**: dev preview で画面下端付近の日付メモを開き、上側に全文表示されることを確認。画面上部の行では従来どおり下側に開くことも確認。",
+      },
+      {
+        title:
           "🐛 出欠「未回答に戻す」の RLS silent fail 修正 + symbol 制約の DB 層追加 (RLS 監査残課題)",
         body:
           "**経緯**: 2026-06-12 の RLS 監査 (総点検の延長) で 2 件検出。① `upsertNativeScheduleAttendanceAction` は「未回答に戻す」を空 symbol → 本人 row DELETE で実装しているが、`native_schedule_attendances` の delete policy は admin-only (self policy は insert/update のみ) のため、非 admin メンバーが UI の「未回答」radio を押すと 0 行 DELETE + 成功 toast の silent fail になっていた (#176 と同クラス。schema コメント「本人 delete は不要 — symbol 変更で表現」が実装と食い違っていた)。② #177 (2.8) の symbol サニタイズ (制御文字除去 + 32 字制限) は Server Action 層のみで、member 本人が PostgREST を直接叩くと self-row policy を通って迂回でき、cron Discord 通知本文への複数行/長文注入が依然可能だった。\n\n**変更内容**:\n- schema.sql §7a に `native_schedule_attendances_self_delete` policy を追加 (app 実装に合わせて本人 row の DELETE を許可)、食い違いコメントを訂正\n- schema.sql §5e に symbol の CHECK 制約 (`char_length <= 32` + 制御文字禁止) を NOT VALID で追加 — 新規 INSERT/UPDATE のみ検証し、万一 legacy 違反行があっても schema 自動 deploy (本番/demo 一括) は失敗しない\n- `buildMessage` (native-schedule-discord.ts) に read 時サニタイズ `sanitizeSymbol` を追加 — write 側と同一の正規化を通知本文の組み立て時にも適用し、迂回行・legacy 行も無害化 (mention 無害化と同じ二重防御方針)\n\n**検証**: tsc / eslint pass。schema deploy 後に `pg_policies` で self_delete policy / `pg_constraint` で CHECK 制約の存在確認。非 admin メンバーでの「未回答に戻す」実機確認はユーザー側で実施。",
