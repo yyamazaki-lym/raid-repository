@@ -183,7 +183,7 @@ export function PastSessionsSection({
       </div>
 
       <div className="flex flex-col gap-2">
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-1.5">
           <Button
             type="button"
             variant="outline"
@@ -226,19 +226,27 @@ export function PastSessionsSection({
             size="sm"
             onClick={onCount}
             disabled={counting}
-            className="gap-1.5 font-mono text-[10px] tracking-[0.18em] uppercase"
+            className="gap-1.5 font-mono text-[11px] tracking-[0.18em] uppercase"
             title="schedule_past_sessions の現在の保存件数を確認（デバッグ用）"
           >
             {counting ? (
-              <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
+              <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
             ) : (
-              <Database className="h-3 w-3" aria-hidden />
+              <Database className="h-3.5 w-3.5" aria-hidden />
             )}
             DB の保存件数
           </Button>
         </div>
         {importResult && (
-          <div className="flex flex-col gap-0.5 rounded-sm border border-border/40 bg-secondary/20 px-2.5 py-1.5 text-[11px] leading-relaxed">
+          <div className="relative flex flex-col gap-0.5 rounded-sm border border-border/40 bg-secondary/20 px-2.5 py-1.5 pr-7 text-[11px] leading-relaxed">
+            <button
+              type="button"
+              onClick={() => setImportResult(null)}
+              aria-label="取り込み結果を閉じる"
+              className="absolute right-1 top-1 inline-flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
+            >
+              <X className="h-3 w-3" aria-hidden />
+            </button>
             {importResult.ok ? (
               <>
                 <p className="font-mono">

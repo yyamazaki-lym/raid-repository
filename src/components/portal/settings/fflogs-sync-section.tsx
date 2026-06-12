@@ -245,7 +245,7 @@ export function FflogsSyncSection({
                 placeholder="例: Ascian_Emet-Selch"
                 // min-w only on sm+ so narrow phones (<640px) don't get
                 // a 12rem-wide input forced into a tighter row layout.
-                className="font-mono text-[12px] flex-1 sm:min-w-[12rem]"
+                className="h-7 font-mono text-[12px] flex-1 sm:min-w-[12rem]"
                 spellCheck={false}
                 autoComplete="off"
               />
@@ -366,9 +366,9 @@ export function FflogsSyncSection({
                   </p>
                   <a
                     href="/api/auth/fflogs/start"
-                    className="self-start inline-flex items-center gap-1.5 rounded-md border border-amber-400/55 bg-amber-400/15 px-3 py-1.5 font-mono text-[10px] tracking-[0.22em] text-amber-100 uppercase transition-colors hover:border-amber-400/80 hover:bg-amber-400/25"
+                    className="self-start inline-flex items-center gap-1.5 rounded-md border border-amber-400/55 bg-amber-400/15 px-2.5 py-1.5 font-mono text-[10px] tracking-[0.18em] text-amber-100 uppercase transition-colors hover:border-amber-400/80 hover:bg-amber-400/25"
                   >
-                    <Link2 className="h-3.5 w-3.5" aria-hidden />
+                    <Link2 className="h-3 w-3" aria-hidden />
                     FFLogs と OAuth 接続
                   </a>
                   <p className="text-[10px] leading-relaxed text-muted-foreground/80">

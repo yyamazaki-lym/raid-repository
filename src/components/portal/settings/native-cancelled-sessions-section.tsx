@@ -1,6 +1,6 @@
 "use client";
 
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Archive, RotateCcw, CheckCircle2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -47,6 +47,9 @@ export function NativeCancelledSessionsSection({
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  // spinner を「押したボタン」にだけ出すための識別子 (`${id}:${next}`)。
+  // pending boolean だけだと隣のボタンの icon まで spinner に変わる。
+  const [pendingKey, setPendingKey] = useState<string | null>(null);
 
   const onRestore = (
     s: NativeCancelledSessionRow,
@@ -56,15 +59,20 @@ export function NativeCancelledSessionsSection({
     const nextLabel = next === "DECISION" ? "確定 (DECISION)" : "候補 (CANDIDATE)";
     if (!confirm(`「${label}」を ${nextLabel} に戻します。よろしいですか?`))
       return;
+    setPendingKey(`${s.id}:${next}`);
     startTransition(async () => {
-      const r = await setNativeScheduleSessionStatusAction(s.id, next);
-      if (!r.ok) {
-        toast.error(r.reason);
-        return;
+      try {
+        const r = await setNativeScheduleSessionStatusAction(s.id, next);
+        if (!r.ok) {
+          toast.error(r.reason);
+          return;
+        }
+        toast.success(`「${label}」を ${nextLabel} に戻しました`);
+        onChanged();
+        router.refresh();
+      } finally {
+        setPendingKey(null);
       }
-      toast.success(`「${label}」を ${nextLabel} に戻しました`);
-      onChanged();
-      router.refresh();
     });
   };
 
@@ -115,7 +123,7 @@ export function NativeCancelledSessionsSection({
                     onClick={() => onRestore(s, "CANDIDATE")}
                     className="h-7 gap-1 px-2 text-[10px]"
                   >
-                    {pending ? (
+                    {pending && pendingKey === `${s.id}:CANDIDATE` ? (
                       <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
                     ) : (
                       <RotateCcw className="h-3 w-3" aria-hidden />
@@ -129,7 +137,11 @@ export function NativeCancelledSessionsSection({
                     onClick={() => onRestore(s, "DECISION")}
                     className="h-7 gap-1 px-2 text-[10px]"
                   >
-                    <CheckCircle2 className="h-3 w-3" aria-hidden />
+                    {pending && pendingKey === `${s.id}:DECISION` ? (
+                      <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
+                    ) : (
+                      <CheckCircle2 className="h-3 w-3" aria-hidden />
+                    )}
                     確定に戻す
                   </Button>
                 </div>

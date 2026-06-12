@@ -95,7 +95,9 @@ export function NextSessionCard({
       {/* Header line: label + 確定 badge inline. */}
       <div className="flex flex-wrap items-center gap-2">
         <Label>次回開催日</Label>
-        <span className="rounded-sm border border-[var(--neon-cyan)]/40 bg-[var(--neon-cyan)]/8 px-1.5 py-px font-mono text-[10px] tracking-[0.22em] text-[var(--neon-cyan)] uppercase">
+        {/* 予定表の status 列の「確定」バッジ (schedule-list.tsx) と同一様式。
+            同じ意味のバッジが画面内で 2 形態にならないよう揃えている。 */}
+        <span className="inline-flex h-6 items-center justify-center rounded-md border border-emerald-400/60 bg-emerald-400/15 px-2 font-mono text-[10px] font-bold tracking-[0.16em] text-emerald-300 uppercase shadow-[0_0_12px_-3px_rgb(52_211_153)]">
           確定
         </span>
       </div>

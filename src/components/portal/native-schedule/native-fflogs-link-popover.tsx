@@ -197,13 +197,13 @@ export function NativeFflogsLinkPopover({
                 className="h-3.5 w-3.5 text-amber-300/85"
                 aria-hidden
               />
-              <span className="font-mono text-[10px] tracking-[0.22em] text-muted-foreground uppercase">
+              <span className="font-mono text-[9px] tracking-[0.2em] text-muted-foreground uppercase">
                 {displayDate} の FFLogs URL
               </span>
               {displayedLogs.length > 0 && (
                 <span
                   aria-hidden
-                  className="font-mono text-[10px] tracking-[0.18em] text-amber-300/70"
+                  className="font-mono text-[9px] tracking-[0.18em] text-amber-300/70"
                 >
                   · {displayedLogs.length} 件
                 </span>
@@ -274,7 +274,7 @@ export function NativeFflogsLinkPopover({
                 type="button"
                 onClick={() => void handleAddLogs()}
                 disabled={logsBusy || newLogsInput.trim().length === 0}
-                className="inline-flex items-center gap-1.5 rounded-md border border-amber-400/45 bg-amber-400/10 px-3 py-1.5 font-mono text-[10px] tracking-[0.22em] text-amber-200 uppercase transition-colors hover:border-amber-400/70 hover:bg-amber-400/18 disabled:opacity-50"
+                className="inline-flex h-7 items-center gap-1 rounded-md border border-amber-400/45 bg-amber-400/10 px-2.5 font-mono text-[10px] tracking-[0.18em] text-amber-200 uppercase transition-colors hover:border-amber-400/70 hover:bg-amber-400/18 disabled:opacity-50"
               >
                 <Save className="h-3 w-3" aria-hidden />
                 追加

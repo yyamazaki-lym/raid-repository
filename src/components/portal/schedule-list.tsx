@@ -425,11 +425,11 @@ export function ScheduleList({
   const tableHead = (showDecided: boolean, showComments = true) => (
     <thead>
       <tr className="border-b border-border/60 font-mono text-[10px] tracking-[0.22em] text-muted-foreground uppercase">
-        <th scope="col" className="pl-3 pr-1 py-2.5">
+        <th scope="col" className="pl-3 pr-1 py-2">
           日程
         </th>
         {showDecided && (
-          <th scope="col" className="px-1 py-2.5 text-center">
+          <th scope="col" className="px-1 py-2 text-center">
             確定
           </th>
         )}

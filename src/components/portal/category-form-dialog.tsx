@@ -694,7 +694,7 @@ export function CategoryFormDialog({
                                 [id]: { ...prev[id], enabled: e.target.checked },
                               }))
                             }
-                            className="h-3.5 w-3.5"
+                            className="h-3.5 w-3.5 cursor-pointer accent-[var(--neon-cyan)]"
                           />
                           <span className="w-16 text-muted-foreground">
                             {DEFAULT_SUB_TAB_LABELS[id]}
@@ -1128,13 +1128,14 @@ export function CategoryFormDialog({
             >
               FFLogs マッチワード（任意）
             </Label>
-            <textarea
+            <Textarea
               id="fflogs-match-keywords"
               value={matchKeywordsInput}
               onChange={(e) => setMatchKeywordsInput(e.target.value)}
               placeholder="例: 絶アレキサンダー, リットアティン強襲戦, M4S"
-              className="min-h-[2.4rem] w-full resize-y rounded-md border border-border/60 bg-background/40 px-2.5 py-1.5 font-mono text-[12px] leading-relaxed outline-none transition-colors placeholder:text-muted-foreground focus:border-[var(--neon-cyan)]/60"
+              className="min-h-[2.4rem] font-mono text-[12px] leading-relaxed"
               autoComplete="off"
+              spellCheck={false}
               rows={2}
             />
             <p className="text-muted-foreground text-[11px] leading-relaxed">
