@@ -75,6 +75,23 @@ export function CategorySwitcher({ initialCategories, userRoleIds }: Props) {
     setNavPending(false);
   }, [pathname]);
 
+  // 2.9 follow-up (2026-06-12): 遷移が完了しないケース (サーバーエラー等で
+  // pathname が変わらない) では上の effect が走らず点灯しっぱなしになる。
+  // safety timeout で自動消灯する。正常系の遷移は cold start 込みでも
+  // 数秒で完了して pathname 変化が先に来るので、体感には影響しない。
+  useEffect(() => {
+    if (!navPending) return;
+    const timer = setTimeout(() => setNavPending(false), 15_000);
+    return () => clearTimeout(timer);
+  }, [navPending]);
+
+  // メニューを開き直した = 直前の遷移は完了しなかったとみなしてリセット
+  // (失敗した遷移のドットを引きずったまま次の操作に入らない)。
+  const handleOpenChange = (nextOpen: boolean) => {
+    setOpen(nextOpen);
+    if (nextOpen) setNavPending(false);
+  };
+
   const isCategoryRoute = pathname.startsWith("/category");
   const slugMatch = pathname.match(/^\/category\/([^/]+)/);
   const activeSlug = slugMatch ? decodeURIComponent(slugMatch[1]) : null;
@@ -97,7 +114,7 @@ export function CategorySwitcher({ initialCategories, userRoleIds }: Props) {
   const triggerLabel = activeCategory ? activeCategory.name : "コンテンツ";
 
   return (
-    <DropdownMenu open={open} onOpenChange={setOpen}>
+    <DropdownMenu open={open} onOpenChange={handleOpenChange}>
       <DropdownMenuTrigger
         data-active={isCategoryRoute}
         aria-current={isCategoryRoute ? "page" : undefined}
