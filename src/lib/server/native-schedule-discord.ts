@@ -273,6 +273,24 @@ function neutralizeMentions(s: string): string {
     .replace(/<(@[!&]?|#)/g, "<" + zwsp + "$1");
 }
 
+/**
+ * 2.9 follow-up (2026-06-12): symbol の read 時サニタイズ。
+ * write 側 (upsertNativeScheduleAttendanceAction の制御文字除去 + 32 字制限,
+ * #177) と DB の CHECK 制約 (schema.sql §5e, NOT VALID = 既存行は未検証) を
+ * 迂回した legacy/直叩き行が混ざっていても、通知本文には複数行・長文が
+ * 流入しないよう mention 無害化と同じ「読み出し時防御」を重ねる。
+ * write 側と同一の正規化 (制御文字→空白 / 連続空白圧縮 / trim / 32 字)。
+ */
+function sanitizeSymbol(s: string): string {
+  return neutralizeMentions(
+    s
+      .replace(/\p{Cc}/gu, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 32),
+  );
+}
+
 async function buildMessage(
   supabase: SupabaseClient,
   session: SessionRow,
@@ -299,8 +317,11 @@ async function buildMessage(
 
   const symbolBy: Record<string, string> = {};
   for (const a of attendances) {
-    if (a.symbol && a.symbol.trim())
-      symbolBy[a.discord_user_id] = neutralizeMentions(a.symbol.trim());
+    if (a.symbol && a.symbol.trim()) {
+      const sym = sanitizeSymbol(a.symbol);
+      // sanitize 後に空になる行 (制御文字のみ等) は未回答扱いに落とす
+      if (sym) symbolBy[a.discord_user_id] = sym;
+    }
   }
 
   const buckets = new Map<string, string[]>();
