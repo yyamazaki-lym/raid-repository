@@ -1,6 +1,6 @@
 # Raid Repository — 引き継ぎノート
 
-> 2.9 (2026-06-11) 時点。完了済 TODO の詳細は `src/lib/changelog.ts` / 過去版番号は `.claude/done.md`。
+> 2.9 (2026-06-12) 時点。完了済 TODO の詳細は `src/lib/changelog.ts` / 過去版番号は `.claude/done.md`。
 >
 > **新規会話の手順**: このファイルを読んだ後、TODO 一覧は自動表示せずユーザーの要望を待つ。新規 TODO 追記時は part 単位ではなく TODO 完了時のみ統合追記する (part 細分は commit log に任せる)。
 
@@ -12,7 +12,7 @@
 - **Path**: `D:\workd\raid-repository`
 - **Stack**: Next.js 16.2.9 (Turbopack) / React 19.2 / Supabase / Tailwind v4 / @base-ui/react
 - **Deploy**: Vercel auto-deploy from `main`
-- **Version**: `2.9 (2026-06-11)`。`package.json#version` は `1.9.38` のまま (履歴マーカー)、UI は `RELEASES[0].version + .date` を表示
+- **Version**: `2.9 (2026-06-12)`。`package.json#version` は `1.9.38` のまま (履歴マーカー)、UI は `RELEASES[0].version + .date` を表示
 - **Next.js 16 注意**: 破壊的変更含む。`node_modules/next/dist/docs/` を参照すること (詳細は `AGENTS.md`)
 
 ## 🔄 保留オペレーション
@@ -29,9 +29,9 @@
 
 **FFLogs cron scrape の Edge proxy 化後の初回観察** (2026-06-11、PR #182):
 
-3. ⏳ cron (/api/cron/fflogs-sync、JST 04:00) の scrape が Edge proxy 経由になった後の初回発火で、過去予定への logs 自動付与が機能するか観察。cron は元から Node runtime で scrape は恒常 403 だった可能性が高く、proxy 化後が事実上の初成功見込み。manual 連動の scrape 成功は確認済み (2026-06-11) なので、失敗するなら cron 固有要因 (CRON_SECRET env / VERCEL_PROJECT_PRODUCTION_URL) を疑う
+3. ✅ **完了 (2026-06-12 DB 実測確認)** cron (/api/cron/fflogs-sync) の Edge proxy 経由 scrape の初回発火を確認 — 2026-06-11 19:58 UTC (= JST 04:58。Vercel Hobby の cron は指定時刻から 1h 以内に発火する仕様で、19:00 指定に対し +58 分は正常) に auto 紐づけが再生成された (`schedule_past_session_logs` source='auto' 10 件 + `native_schedule_session_logs` source='auto' 1 件、created_at が同時刻で揃う)。直近セッションへの紐づけには Private/Unlisted レポート (scrape でしか取得不可、v2 API の公開レポートは 2017-2022 の stale 12 件のみ) が必要なため、Edge proxy 経由 cron scrape の end-to-end 成功の実証になる。TODO #86 の「UTC 19:00 自動発火確認」もこれで完了
 
-(項目 1 (Discord 通知 ON 切替) + 項目 3 完了でこの節を `_(現在なし)_` に戻す)
+(項目 1 (Discord 通知 ON 切替) 完了でこの節を `_(現在なし)_` に戻す)
 
 **Pre-check 結果サマリ (2026-05-08 14:25 JST 実行)** [historical]:
 - `cron.job`: jobid=1, jobname='notify-native-schedule-hourly', schedule='0 * * * *', active=true
@@ -41,7 +41,10 @@
 
 ## 📌 次回の作業優先度
 
-未完了 TODO は **#11 (パフォーマンス、休眠中 = 新ボトルネック発見時のみ再開) のみ**。TODO #91 は 2.7 (2026-06-10) でクローズ + demo 実機確認 OK (owner ログイン → 編集 → 書込成功 / ゲスト read-only 無変化 / Sign in 導線)。残作業は TODO #86 の 24h 観察 (UTC 19:00 自動発火確認) + 保留オペレーション項目 1 (Discord 通知 ON 切替)。
+未完了 TODO は **#11 (パフォーマンス、休眠中 = 新ボトルネック発見時のみ再開) のみ**。TODO #86 の 24h 観察 (UTC 19:00 自動発火確認) は 2026-06-12 に DB 実測で完了 (保留オペレーション項目 3 参照)。残作業は:
+1. 保留オペレーション項目 1 (Discord 通知 ON 切替、ユーザー判断)
+2. [PR #187](https://github.com/yyamazaki-lym/raid-repository/pull/187) の merge 判断 (anon から実行可能だった placeholder 時刻更新 RPC への明示 REVOKE 追加。CI pass 済、schema 変更のため merge はユーザー判断待ち)
+3. 2026-06-12 の RLS 監査で見つかった残課題 2 件の対応要否判断 (詳細は完了済み TODO の 2.9 (2026-06-12) エントリ「残課題」参照): ①非 admin メンバーの出欠「未回答に戻す」が RLS delete policy (admin-only) で silent fail する実バグ ②attendance symbol のサニタイズが app 層のみで DB 直叩きで迂回可能
 
 ## 未完了 TODO 一覧
 
@@ -86,6 +89,18 @@
 ## 完了済み TODO
 
 直近版のみ列挙。詳細経緯は `src/lib/changelog.ts`、過去版アーカイブは `.claude/done.md`。
+
+- **2.9 (2026-06-12)**: 2.8〜2.9 変更一式 (#174〜#185) の総点検 (エンバグ精査) + follow-up 修正 4 件 ([PR #186](https://github.com/yyamazaki-lym/raid-repository/pull/186) squash merge `314c1ed`、本番反映済) + warmup cron 検証実測 + 保留オペレーション項目 3 クローズ + anon RPC 修正起票 ([PR #187](https://github.com/yyamazaki-lym/raid-repository/pull/187) merge 待ち)
+  - **総点検の結論**: #174〜#185 に重大なエンバグなし。専門レビュー 2 系統でも裏付け — Next.js 16 / React 19 整合レビュー「指摘なし」(scrape-proxy Edge route / loading.tsx 境界移設 / useLinkStatus / Link onNavigate / proxy.ts いずれも現行仕様準拠)、RLS 監査も #176 service role 化のスコープ妥当 (auto 行のみ wipe・固定 key のみ) / scrape-proxy 認証 fail-closed / #186 認可順序 OK を確認 (新規発見は下記「残課題」)
+  - **#186 (修正 4 件)**: ① scrape 経路判定を `VERCEL === "1"` 単独 → `+ NODE_ENV === "production"` に強化 — `vercel env pull` 製 .env.local にも `VERCEL="1"` が含まれるため、ローカル dev が proxy 経路に誤進入していた (現状は host 欠如 warn → direct fallback で動作、将来 env pull に `VERCEL_PROJECT_PRODUCTION_URL` が入ると dev scrape が本番 Edge proxy を経由する footgun) ② scrape-proxy の 429 (rate limit) は direct fetch に fallback せず fail-fast (fallback しても Node IP 恒常 403 で 20s × 残ページ浪費のため) ③ TOP native 分岐の placeholder INSERT (service role) を `requireDiscordMember()` 解決後にチェーン — 2.9 並列化 (#181) で authz 前に書込副作用が走る構造になっていたのを並列化前の順序保証に復元 (proxy 前段ブロックがあり実害は無かった) ④ コンテンツメニューの遷移 pending ドットに 15s safety timeout + メニュー再オープン時リセット (遷移未完了時の点灯しっぱなし対策)
+  - **warmup cron (#185) 検証完了 (2026-06-12 実測)**: 本番 `cron.job` jobid=16 active / `cron.job_run_details` 205 回連続 succeeded / `net._http_response` 直近 6h 全件 200 / 本番 /login TTFB 0.16〜0.23s (3 回計測) — アイドル後 cold start 解消を確認 (schema.sql §13e の検証 TODO 消化)
+  - **新規発見 → PR #187 起票 (CI pass、schema 変更のため merge はユーザー判断待ち)**: TODO #85 (2.6) の `update_native_placeholder_raid_times` RPC (SECURITY DEFINER) が **anon から実行可能だった** — Postgres は関数作成時にデフォルトで PUBLIC へ EXECUTE を付与するため、`GRANT TO authenticated` を足すだけでは意図した「anon 除外」にならない (schema.sql に REVOKE が 1 行も無かった。Supabase security advisor の実 ACL 検査で検出)。公開されている anon key だけで未来 placeholder の時刻書き換え / 衝突 DELETE / memo 追従書き換えが可能な状態だった (機密漏洩なし、表示改竄ベクタ)。§13d に `REVOKE EXECUTE FROM PUBLIC, anon` を追加。**merge 後のフォローアップ**: security advisor の `anon_security_definer_function_executable` 指摘消滅 + `pg_proc.proacl` 実 ACL 確認。なお §13b/13c の sort_order allocator 4 関数の anon EXECUTE は明示 GRANT した設計どおり (read-only) で対象外
+  - **残課題 (RLS 監査の新規発見、未対応 — 対応要否はユーザー判断)**:
+    1. **非 admin メンバーの「未回答に戻す」が silent fail する実バグ (#176 と同クラス)**: `upsertNativeScheduleAttendanceAction` は空 symbol で cookie client DELETE するが ([native-schedule-actions.ts:807](../src/lib/server/native-schedule-actions.ts))、`native_schedule_attendances` の delete policy は admin-only (§7 ループ生成。§7a の self policy は insert/update のみで、§7a コメント「本人 delete は不要」と実装が食い違い)。UI の「未回答」radio ([native-attendance-popover.tsx:171](../src/components/portal/native-schedule/native-attendance-popover.tsx)) から非 admin が操作すると 0 行 DELETE + `ok: true` + 成功 toast で実際は消えない。修正案: §7a に self-row delete policy を追加 (app 実装に合わせる、推奨) or 未回答を UPDATE で表現 (schema コメントの設計意図に合わせる)
+    2. **attendance symbol のサニタイズ (#177) が app 層のみ (中低)**: member 本人は anon key + 自分のセッション JWT で PostgREST を直接叩けば self-row RLS を通るため、改行・長文 symbol を Server Action を迂回して書ける (mention 無害化は read 側 `neutralizeMentions` で二次防御済だが、制御文字除去 + 32 字制限は write 側のみ)。修正案: schema に CHECK 制約 (長さ + 改行禁止) or `buildMessage` 側にも read 時サニタイズ
+    3. (低、既存) `assertCronAuth` の `x-vercel-cron` ヘッダ fallback は CRON_SECRET 不一致でも通す — Vercel proxy が外部からの `x-vercel-*` を剥がす仕様に依存しており実害は低いが、#176 で service role write が接続され依存の重みが増した。CRON_SECRET 必須化 (fallback 撤去) の検討余地
+  - **その他観測 (対応不要)**: Supabase performance advisor は `auth_rls_initplan` 59 件ほか既存ヒュージーンのみ (新規変更起因なし) / dev サーバーの単発 `transformAlgorithm is not a function` TypeError は応答 200 のまま出る無害な Turbopack dev ノイズ (持続的 404 を伴う時だけ `.next\dev` 削除で対処) / fflogs.ts の `daysApart` が未使用 (eslint warning、削除候補)
+  - **検証**: #186 は tsc / eslint / CI pass + dev preview で TOP sync/native 両分岐の描画とメニュー遷移を実測 (native は source-mode 一時ハードコードで確認後復元)。demo ヘッダー版数 2026-06-12 で本番反映確認済
 
 - **2.9 (2026-06-11)**: TODO #54 follow-up (再調査) クローズ — デプロイ後/アイドル後の TOP 初回描画 ~5s の根本対策 (TOP/layout の Node 化 + 直列クエリ並列化 + ロード時スピナー拡充) と、その副作用で表面化した FFLogs scrape 恒常 403 の修復 (Edge proxy 中継) ([PR #181](https://github.com/yyamazaki-lym/raid-repository/pull/181) squash merge `435683d` / [PR #182](https://github.com/yyamazaki-lym/raid-repository/pull/182) squash merge `641b389`、本番実機確認 OK 2026-06-11)
   - **発端**: ユーザー報告「デプロイ後/しばらく間をおいたアクセスで描画まで体感 5 秒」(#54 の主訴の再発)。#54 (2026-05-01) で category 系 6 ページは Node 化済みだったが、TOP + `(portal)/layout.tsx` だけ「FFLogs scrape は Edge IP 必須」を根拠に Edge のまま残っていた。再調査で前提の崩壊を確認 — TOP 描画時の FFLogs 処理 (`fetchSessionLogsByDate`) は Supabase SELECT のみで scrape を含まない
