@@ -51,7 +51,7 @@ export function MainTabs({
                   href="/"
                   data-active={scheduleActive}
                   className={cn(
-                    "neon-edge group relative flex items-center gap-2 rounded-md border border-transparent px-4 py-1.5 font-mono text-[12px] tracking-[0.16em] uppercase transition-colors",
+                    "neon-edge group relative flex items-center gap-2 rounded-md border border-transparent px-4 py-2 font-mono text-[12px] tracking-[0.16em] uppercase transition-colors",
                     scheduleActive
                       ? "text-foreground"
                       : "text-muted-foreground hover:text-foreground/90",
@@ -69,8 +69,10 @@ export function MainTabs({
                   />
                   <span>スケジュール</span>
                   {/* 2.9 (2026-06-11): cold start 等で RSC 応答が遅い時の
-                      「無音 stuck」対策。prefetch 済みなら出ない。 */}
-                  <LinkPendingIndicator className="text-[var(--neon-cyan)]" />
+                      「無音 stuck」対策。prefetch 済みなら出ない。
+                      absolute で右 padding 域に重ね、flow に置かない
+                      (flow に入れるとタブ内余白が左 16px / 右 30px に偏る)。 */}
+                  <LinkPendingIndicator className="absolute top-1/2 right-1.5 -translate-y-1/2 text-[var(--neon-cyan)]" />
                   {scheduleActive && (
                     <motion.span
                       layoutId="main-tab-underline"

@@ -13,7 +13,8 @@ import { cn } from "@/lib/utils";
  *
  * 挙動 (use-link-status docs のレイアウトシフト回避パターン準拠):
  *   - 固定サイズの dot を常時 render し、非 pending 時は visibility:
- *     hidden (スペースは確保したまま)
+ *     hidden。呼び出し側で absolute 配置して flow から外す (flow に
+ *     置くとタブ内余白が右に偏る)
  *   - pending になっても 150ms の animation-delay 内に遷移が完了すれば
  *     視認されない (prefetch 済みの高速遷移でフラッシュしない)
  *   - prefetch 済みルートでは pending 自体がスキップされるので、実際に
