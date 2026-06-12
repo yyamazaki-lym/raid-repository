@@ -245,25 +245,34 @@ export function CategorySwitcher({ initialCategories, userRoleIds }: Props) {
                   aria-label={`${cat.name} のサブページ`}
                   className="flex shrink-0 items-center gap-0.5 pr-1.5"
                 >
-                  {SUB_PAGES.map((p) => (
-                    <DropdownMenuItem
-                      key={p.segment}
-                      render={
-                        <Link
-                          href={`/category/${cat.slug}/${p.segment}`}
-                          prefetch
-                          title={p.label}
-                          aria-label={`${cat.name} - ${p.label}`}
-                          onNavigate={() =>
-                            handleNavigate(`/category/${cat.slug}/${p.segment}`)
-                          }
-                        />
-                      }
-                      className="inline-flex h-6 w-6 cursor-pointer items-center justify-center rounded text-muted-foreground transition-all duration-150 hover:scale-110 hover:bg-[var(--neon-violet)]/15 hover:text-[var(--neon-violet)] active:scale-95"
-                    >
-                      <p.Icon className="h-3 w-3" aria-hidden />
-                    </DropdownMenuItem>
-                  ))}
+                  {SUB_PAGES.map((p) => {
+                    // 2.9 (2026-06-12): tab_config.{tab}.enabled === false の
+                    // タブはアイコン行からも除外、label 上書きは tooltip に
+                    // 反映 (sub-tabs.tsx / category-list.tsx と同一判定)。
+                    const cfg = cat.tabConfig?.[p.segment];
+                    if (cfg?.enabled === false) return null;
+                    const labelOverride = cfg?.label?.trim();
+                    const label = labelOverride ? labelOverride : p.label;
+                    return (
+                      <DropdownMenuItem
+                        key={p.segment}
+                        render={
+                          <Link
+                            href={`/category/${cat.slug}/${p.segment}`}
+                            prefetch
+                            title={label}
+                            aria-label={`${cat.name} - ${label}`}
+                            onNavigate={() =>
+                              handleNavigate(`/category/${cat.slug}/${p.segment}`)
+                            }
+                          />
+                        }
+                        className="inline-flex h-6 w-6 cursor-pointer items-center justify-center rounded text-muted-foreground transition-all duration-150 hover:scale-110 hover:bg-[var(--neon-violet)]/15 hover:text-[var(--neon-violet)] active:scale-95"
+                      >
+                        <p.Icon className="h-3 w-3" aria-hidden />
+                      </DropdownMenuItem>
+                    );
+                  })}
                 </nav>
               </div>
             );
