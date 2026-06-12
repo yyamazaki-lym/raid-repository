@@ -60,6 +60,12 @@ export const RELEASES: ReleaseEntry[] = [
     parts: [
       {
         title:
+          "🐛 出欠「未回答に戻す」の RLS silent fail 修正 + symbol 制約の DB 層追加 (RLS 監査残課題)",
+        body:
+          "**経緯**: 2026-06-12 の RLS 監査 (総点検の延長) で 2 件検出。① `upsertNativeScheduleAttendanceAction` は「未回答に戻す」を空 symbol → 本人 row DELETE で実装しているが、`native_schedule_attendances` の delete policy は admin-only (self policy は insert/update のみ) のため、非 admin メンバーが UI の「未回答」radio を押すと 0 行 DELETE + 成功 toast の silent fail になっていた (#176 と同クラス。schema コメント「本人 delete は不要 — symbol 変更で表現」が実装と食い違っていた)。② #177 (2.8) の symbol サニタイズ (制御文字除去 + 32 字制限) は Server Action 層のみで、member 本人が PostgREST を直接叩くと self-row policy を通って迂回でき、cron Discord 通知本文への複数行/長文注入が依然可能だった。\n\n**変更内容**:\n- schema.sql §7a に `native_schedule_attendances_self_delete` policy を追加 (app 実装に合わせて本人 row の DELETE を許可)、食い違いコメントを訂正\n- schema.sql §5e に symbol の CHECK 制約 (`char_length <= 32` + 制御文字禁止) を NOT VALID で追加 — 新規 INSERT/UPDATE のみ検証し、万一 legacy 違反行があっても schema 自動 deploy (本番/demo 一括) は失敗しない\n- `buildMessage` (native-schedule-discord.ts) に read 時サニタイズ `sanitizeSymbol` を追加 — write 側と同一の正規化を通知本文の組み立て時にも適用し、迂回行・legacy 行も無害化 (mention 無害化と同じ二重防御方針)\n\n**検証**: tsc / eslint pass。schema deploy 後に `pg_policies` で self_delete policy / `pg_constraint` で CHECK 制約の存在確認。非 admin メンバーでの「未回答に戻す」実機確認はユーザー側で実施。",
+      },
+      {
+        title:
           "🔒 placeholder 時刻更新 RPC の anon 実行可能状態を修正 (明示 REVOKE 追加)",
         body:
           "**経緯**: 総点検の延長で Supabase security advisor を実行したところ、TODO #85 (2.6) の `update_native_placeholder_raid_times` RPC (SECURITY DEFINER) が anon ロールから実行可能と検出された。schema.sql の意図は「GRANT は authenticated のみ (admin gate 通過済 server action 専用)」だったが、Postgres は関数作成時にデフォルトで PUBLIC へ EXECUTE を付与するため、GRANT 文を足すだけでは anon を除外できていなかった。公開されている anon key だけで PostgREST RPC 経由の未来 placeholder 時刻書き換え / 衝突 DELETE / memo 追従書き換えが可能な状態 (機密漏洩は無し、スケジュール表示の改竄ベクタ)。\n\n**変更内容**: schema.sql §13d に `REVOKE EXECUTE ... FROM PUBLIC, anon` を追加し、authenticated への GRANT を再付与。schema 自動 deploy (GitHub Actions) で本番 / demo 両 Supabase に適用される。\n\n**検証**: deploy 後に Supabase security advisor の `anon_security_definer_function_executable` 指摘が消えること + `pg_proc.proacl` の実 ACL 確認。なお同 advisor が挙げる sort_order allocator 4 関数の anon EXECUTE は schema.sql §13b/13c で明示 GRANT した設計どおり (引数参照のみの read-only) で対象外。",
