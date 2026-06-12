@@ -304,7 +304,7 @@ export function NativeMembersSection({
                       size="sm"
                       disabled={!canEdit || pending}
                       onClick={() => onSaveRow(m)}
-                      className="h-7 gap-1 px-2 text-[10px]"
+                      className="h-7 gap-1 px-2 font-mono text-[10px] tracking-[0.18em] uppercase"
                     >
                       <Save className="h-3 w-3" aria-hidden />
                       保存
@@ -377,7 +377,7 @@ export function NativeMembersSection({
               size="sm"
               disabled={pending}
               onClick={onAdd}
-              className="h-7 gap-1 px-3 text-[10px]"
+              className="h-7 gap-1 px-3 font-mono text-[10px] tracking-[0.18em] uppercase"
             >
               {pending ? (
                 <Loader2 className="h-3 w-3 animate-spin" aria-hidden />

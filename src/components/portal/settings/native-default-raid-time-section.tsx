@@ -122,7 +122,7 @@ export function NativeDefaultRaidTimeSection({
             value={draftStart}
             onChange={(e) => setDraftStart(e.target.value)}
             disabled={!canEdit || !loaded || pending}
-            className="w-32 font-mono text-[12px]"
+            className="h-7 w-32 font-mono text-[12px]"
             aria-label="開始時刻"
           />
           <span className="text-xs text-muted-foreground">〜</span>
@@ -131,7 +131,7 @@ export function NativeDefaultRaidTimeSection({
             value={draftEnd}
             onChange={(e) => setDraftEnd(e.target.value)}
             disabled={!canEdit || !loaded || pending}
-            className="w-32 font-mono text-[12px]"
+            className="h-7 w-32 font-mono text-[12px]"
             aria-label="終了時刻"
           />
         </div>
@@ -146,7 +146,7 @@ export function NativeDefaultRaidTimeSection({
               size="sm"
               disabled={!loaded || pending || !dirty || !validRange}
               onClick={onSave}
-              className="h-7 gap-1 px-3 text-[10px]"
+              className="h-7 gap-1 px-3 font-mono text-[10px] tracking-[0.18em] uppercase"
             >
               {pending ? (
                 <Loader2 className="h-3 w-3 animate-spin" aria-hidden />

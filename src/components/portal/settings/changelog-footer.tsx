@@ -57,13 +57,13 @@ export function ChangelogFooter({
       {/* 更新履歴ボタン + GitHub リポジトリへのリンクを横並び。
           GitHub アイコンを単独配置すると意図が伝わりにくいので、
           ラベル "Source" を併記してアウトラインボタンと統一感を出す。 */}
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-1.5">
         <Button
           type="button"
           variant="outline"
           size="sm"
           onClick={() => setShowChangelog((v) => !v)}
-          className="gap-1.5 font-mono text-[10px] tracking-[0.18em] uppercase"
+          className="h-8 gap-1.5 rounded-md px-3 font-mono text-[10px] tracking-[0.18em] uppercase"
           title="更新履歴を表示 / 非表示"
           aria-expanded={showChangelog}
         >
@@ -134,7 +134,7 @@ export function ChangelogFooter({
       </div>
       {showChangelog && (
         <div className="flex flex-col gap-3 rounded-sm border border-border/40 bg-secondary/20 px-3 py-2.5 text-[11px] leading-relaxed">
-          <p className="font-mono text-[10px] tracking-[0.2em] text-muted-foreground uppercase">
+          <p className="font-mono text-[10px] tracking-[0.22em] text-muted-foreground uppercase">
             更新履歴 — Release Notes
           </p>
           {(() => {

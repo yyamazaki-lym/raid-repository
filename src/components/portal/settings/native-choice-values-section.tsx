@@ -115,7 +115,7 @@ export function NativeChoiceValuesSection({
           onChange={(e) => setDraft(e.target.value)}
           disabled={!canEdit || !loaded || pending}
           placeholder="○,×,△,⏰,─"
-          className="h-8 text-xs"
+          className="h-7 text-xs"
         />
 
         <div className="flex flex-wrap items-center gap-1.5 rounded-md border border-border/30 bg-secondary/20 px-2.5 py-2">
@@ -151,7 +151,7 @@ export function NativeChoiceValuesSection({
                 size="sm"
                 disabled={pending}
                 onClick={onReset}
-                className="h-7 gap-1 px-2 text-[10px]"
+                className="h-7 gap-1 px-2 font-mono text-[10px] tracking-[0.18em] uppercase"
               >
                 <RotateCcw className="h-3 w-3" aria-hidden />
                 既定値に戻す
@@ -162,7 +162,7 @@ export function NativeChoiceValuesSection({
               size="sm"
               disabled={!loaded || pending || !dirty}
               onClick={onSave}
-              className="h-7 gap-1 px-3 text-[10px]"
+              className="h-7 gap-1 px-3 font-mono text-[10px] tracking-[0.18em] uppercase"
             >
               {pending ? (
                 <Loader2 className="h-3 w-3 animate-spin" aria-hidden />

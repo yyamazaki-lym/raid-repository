@@ -25,7 +25,7 @@ export function DangerZoneSection({
   return (
     <>
       <section className="flex flex-col gap-3">
-        <h3 className="flex items-center gap-2 font-mono text-[11px] tracking-[0.18em] text-rose-300 uppercase">
+        <h3 className="flex items-center gap-2 border-b border-border/30 pb-2 font-mono text-[10px] tracking-[0.22em] text-rose-300 uppercase">
           <AlertTriangle className="h-3.5 w-3.5" aria-hidden />
           Danger Zone
         </h3>
