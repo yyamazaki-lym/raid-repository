@@ -628,7 +628,15 @@ async function fetchScrapePageHtml(
   page: number,
   sessionCookie?: string | null,
 ): Promise<ScrapePageResult> {
-  if (process.env.VERCEL === "1") {
+  // 2.9 follow-up (2026-06-12): `VERCEL === "1"` 単独の判定だと、
+  // `vercel env pull` 製の .env.local にも VERCEL="1" が含まれるため
+  // ローカル dev でも proxy 経路に入ってしまう (host 未設定の warn を
+  // 出して fallback で動いてはいたが、将来 env pull に
+  // VERCEL_PROJECT_PRODUCTION_URL が入ると dev の scrape が本番 Edge
+  // proxy を経由する footgun になる)。`next dev` では NODE_ENV が必ず
+  // "development" になる (.env からの上書き不可) ことを利用して dev を
+  // 確実に直接 fetch に倒す。
+  if (process.env.VERCEL === "1" && process.env.NODE_ENV === "production") {
     const viaProxy = await fetchScrapePageViaEdgeProxy(
       userId,
       page,
@@ -677,6 +685,16 @@ async function fetchScrapePageViaEdgeProxy(
       signal: AbortSignal.timeout(FFLOGS_SCRAPE_TIMEOUT_MS + 5_000),
       cache: "no-store",
     });
+    // 2.9 follow-up (2026-06-12): 429 は proxy.ts 前段の rate limit
+    // (60 req/60s)。直接 fetch に fallback しても Node IP の恒常 403 で
+    // 20s × 残ページを浪費して結局失敗するだけなので、即時に明確な
+    // reason で打ち切る (cron は翌日再実行、手動はユーザーが再実行)。
+    if (res.status === 429) {
+      return {
+        ok: false,
+        reason: `scrape-proxy がレート制限中 (429, page ${page}) — 連動が同時に複数走っていないか確認し、1 分ほど待って再実行してください`,
+      };
+    }
     if (!res.ok) {
       console.warn(
         `[fflogs] scrape-proxy が ${res.status} を返却 — 直接 fetch に fallback`,

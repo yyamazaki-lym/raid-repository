@@ -188,12 +188,20 @@ export default async function SchedulePage() {
   // 他の fetch と並走させる。TODO #81 の「placeholder insert → read は順次
   // 必須 (並列だと初回 read が空配列になる race)」はチェーン内の await 順で
   // 維持される。
+  // 2.9 follow-up (2026-06-12): placeholder INSERT (service role write) は
+  // requireDiscordMember() の解決も待ってから走らせる。並走化前の直列実装は
+  // member 検証 (redirect throw) を通過した後にだけ書き込んでいた順序保証が
+  // あり、これを復元する (検証は JWT 読みだけで速いので並走効果は維持)。
   const appSettingsPromise = fetchAppSettings([
     SCHEDULE_TOP_TEXT_OVERRIDE_KEY,
     NATIVE_DEFAULT_START_TIME_KEY,
     NATIVE_DEFAULT_END_TIME_KEY,
   ]);
-  const nativeResultPromise = appSettingsPromise.then(async (settings) => {
+  const memberPromise = requireDiscordMember();
+  const nativeResultPromise = Promise.all([
+    appSettingsPromise,
+    memberPromise,
+  ]).then(async ([settings]) => {
     await ensureNativeMonthlyPlaceholders({
       startTime: settings[NATIVE_DEFAULT_START_TIME_KEY],
       endTime: settings[NATIVE_DEFAULT_END_TIME_KEY],
@@ -223,7 +231,7 @@ export default async function SchedulePage() {
     fetchRecruitmentTemplatesServer(),
     fetchCategories(),
     getAuthorizedUserRoles(),
-    requireDiscordMember(),
+    memberPromise,
     fetchScheduleMemosByDateBulk(),
     fetchNativeSessionLogsByDate(),
     nativeResultPromise,

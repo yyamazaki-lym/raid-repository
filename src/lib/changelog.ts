@@ -56,6 +56,18 @@ export type ReleasePart = {
 export const RELEASES: ReleaseEntry[] = [
   {
     version: "2.9",
+    date: "2026-06-12",
+    parts: [
+      {
+        title:
+          "🔍 2.9 リリース後の総点検 — 精査で見つけた潜在課題 4 件を修正",
+        body:
+          "**経緯**: 2.8〜2.9 の変更一式 (Node runtime 化 / scrape Edge proxy / warmup cron / 並列化ほか) をエンバグ観点で総点検。重大な不具合は無し (warmup cron は本番実測で 205 回連続成功・warm TTFB 0.16〜0.23s を確認) だったが、低リスクの潜在課題 4 件を検出したため先回りで修正。\n\n**変更内容**:\n- scrape の経路判定を `VERCEL=1` 単独 → `+ NODE_ENV=production` に強化 — `vercel env pull` 製 .env.local にも `VERCEL=\"1\"` が含まれるため、ローカル dev が proxy 経路に入り warn ログを出していた (将来 env pull の内容次第で dev の scrape が本番 Edge proxy を経由しうる footgun も解消)\n- scrape-proxy が rate limit (429) を返した場合は直接 fetch に fallback せず即時失敗に変更 — fallback しても Node IP の恒常 403 で 20 秒 × 残ページを浪費して結局失敗するだけのため、明確なメッセージで早期に打ち切る\n- TOP native 分岐の並列化 (2.9) で placeholder 自動 INSERT が member 検証完了を待たずに走るようになっていたのを、検証後に走る元の順序保証に復元 (proxy 前段ブロックがあるため実害は無かったが、認可前に書き込み副作用が走らない構造に戻す)\n- コンテンツメニューの遷移 pending ドットに自動消灯を追加 — 遷移が完了しないケース (サーバーエラー等) で点灯しっぱなしになる消灯漏れを、15 秒の safety timeout + メニュー再オープン時のリセットで解消\n\n**検証**: npx tsc --noEmit / npx eslint (変更ファイル) pass。warmup cron は本番 Supabase で `cron.job_run_details` 全件 succeeded / `net._http_response` 直近 6h 全件 200 を実測確認。",
+      },
+    ],
+  },
+  {
+    version: "2.9",
     date: "2026-06-11",
     parts: [
       {
