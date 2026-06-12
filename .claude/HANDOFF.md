@@ -89,6 +89,11 @@
 
 直近版のみ列挙。詳細経緯は `src/lib/changelog.ts`、過去版アーカイブは `.claude/done.md`。
 
+- **2.9 (2026-06-12)**: ページ下部でメモポップアップが見切れて読めない問題の修正 ([PR #191](https://github.com/yyamazaki-lym/raid-repository/pull/191) squash merge `c9faa94`、本番実機確認 OK 2026-06-12)
+  - **発端**: ユーザー報告「ページ下部でコメントを開くと見切れて読めなくなる」(過去の出欠表など下端付近の行)。[session-memo-popover.tsx](../src/components/portal/session-memo-popover.tsx) はポップアップを常にトリガー (日付) の下側に fixed 配置し、maxHeight を「viewport 下端までの残り」にしていたため、下端付近ではヘッダーしか見えない高さに潰れていた
+  - **修正**: 下側に最低 320px を確保できず、かつ上側のほうが広い場合は bottom アンカーでトリガーの上側に反転配置 (上方向に伸びる)。`place()` がスクロール / リサイズ追従の再配置でも同じ反転判定を通る。手動 fixed 配置はこのコンポーネント固有 (他 popover は該当パターンなしを grep 確認済)
+  - **検証**: tsc / eslint / CI pass + dev preview 実測 (下端の行 → 上側に全文表示、上部の行 → 従来どおり下側)。changelog 2.9 同日 part 追記を同 PR に同梱
+
 - **2.9 (2026-06-12)**: 2.8〜2.9 変更一式 (#174〜#185) の総点検 (エンバグ精査) + follow-up 修正 4 件 ([PR #186](https://github.com/yyamazaki-lym/raid-repository/pull/186) squash merge `314c1ed`) + warmup cron 検証実測 + 保留オペレーション項目 3 クローズ + RLS 監査で発見した 3 件の修正 ([PR #187](https://github.com/yyamazaki-lym/raid-repository/pull/187) `018ef4c` anon RPC REVOKE / [PR #189](https://github.com/yyamazaki-lym/raid-repository/pull/189) `0499e99` 出欠 silent fail + symbol 制約。いずれも本番/demo schema deploy 成功 + 本番 DB で実 ACL/policy/制約を SQL 確認済)
   - **総点検の結論**: #174〜#185 に重大なエンバグなし。専門レビュー 2 系統でも裏付け — Next.js 16 / React 19 整合レビュー「指摘なし」(scrape-proxy Edge route / loading.tsx 境界移設 / useLinkStatus / Link onNavigate / proxy.ts いずれも現行仕様準拠)、RLS 監査も #176 service role 化のスコープ妥当 (auto 行のみ wipe・固定 key のみ) / scrape-proxy 認証 fail-closed / #186 認可順序 OK を確認 (新規発見は下記「残課題」)
   - **#186 (修正 4 件)**: ① scrape 経路判定を `VERCEL === "1"` 単独 → `+ NODE_ENV === "production"` に強化 — `vercel env pull` 製 .env.local にも `VERCEL="1"` が含まれるため、ローカル dev が proxy 経路に誤進入していた (現状は host 欠如 warn → direct fallback で動作、将来 env pull に `VERCEL_PROJECT_PRODUCTION_URL` が入ると dev scrape が本番 Edge proxy を経由する footgun) ② scrape-proxy の 429 (rate limit) は direct fetch に fallback せず fail-fast (fallback しても Node IP 恒常 403 で 20s × 残ページ浪費のため) ③ TOP native 分岐の placeholder INSERT (service role) を `requireDiscordMember()` 解決後にチェーン — 2.9 並列化 (#181) で authz 前に書込副作用が走る構造になっていたのを並列化前の順序保証に復元 (proxy 前段ブロックがあり実害は無かった) ④ コンテンツメニューの遷移 pending ドットに 15s safety timeout + メニュー再オープン時リセット (遷移未完了時の点灯しっぱなし対策)
