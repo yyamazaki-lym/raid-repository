@@ -380,7 +380,7 @@ function SortableCategorySection({
             categoryName ?? "（コンテンツ未設定）"
           } のカテゴリブロックをドラッグ`}
           title="ドラッグでこのカテゴリ全体 (中の募集文も全部) を並び替え"
-          className="inline-flex h-6 w-5 shrink-0 cursor-grab items-center justify-center rounded text-muted-foreground hover:text-foreground active:cursor-grabbing"
+          className="inline-flex h-7 w-5 shrink-0 cursor-grab items-center justify-center rounded text-muted-foreground hover:text-foreground active:cursor-grabbing"
         >
           <GripVertical className="h-3 w-3" aria-hidden />
         </button>

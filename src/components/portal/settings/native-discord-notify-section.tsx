@@ -240,7 +240,7 @@ export function NativeDiscordNotifySection({
           value={hour}
           disabled={!canEdit || !loaded || pending}
           onChange={(e) => onChangeHour(e.target.value)}
-          className="h-8 rounded-md border border-border/40 bg-background px-2 font-mono text-xs"
+          className="h-7 rounded-md border border-border/40 bg-background px-2 font-mono text-xs"
         >
           {Array.from({ length: 24 }, (_, i) => (
             <option key={i} value={String(i)}>
@@ -261,7 +261,7 @@ export function NativeDiscordNotifySection({
             onChange={(e) => setChannelDraft(e.target.value)}
             disabled={!canEdit || !loaded || pending}
             placeholder="123456789012345678"
-            className="h-8 text-xs font-mono"
+            className="h-7 text-xs font-mono"
             inputMode="numeric"
           />
           {canEdit && (
@@ -270,7 +270,7 @@ export function NativeDiscordNotifySection({
               size="sm"
               disabled={!loaded || pending || !channelDirty}
               onClick={onSaveChannel}
-              className="h-7 gap-1 px-3 text-[10px]"
+              className="h-7 gap-1 px-3 font-mono text-[10px] tracking-[0.18em] uppercase"
             >
               {pending ? (
                 <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
@@ -294,7 +294,7 @@ export function NativeDiscordNotifySection({
             onChange={(e) => setRoleDraft(e.target.value)}
             disabled={!canEdit || !loaded || pending}
             placeholder="123456789012345678 (空なら mention なし)"
-            className="h-8 text-xs font-mono"
+            className="h-7 text-xs font-mono"
             inputMode="numeric"
           />
           {canEdit && (
@@ -303,7 +303,7 @@ export function NativeDiscordNotifySection({
               size="sm"
               disabled={!loaded || pending || !roleDirty}
               onClick={onSaveRole}
-              className="h-7 gap-1 px-3 text-[10px]"
+              className="h-7 gap-1 px-3 font-mono text-[10px] tracking-[0.18em] uppercase"
             >
               {pending ? (
                 <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
@@ -379,7 +379,7 @@ export function NativeDiscordNotifySection({
                 size="sm"
                 disabled={!loaded || pending}
                 onClick={onResetTemplateToDefault}
-                className="h-7 gap-1 px-2 text-[10px]"
+                className="h-7 gap-1 px-2 font-mono text-[10px] tracking-[0.18em] uppercase"
                 title="既定テンプレートを textarea に流し込む (保存はまだしない)"
               >
                 <RotateCcw className="h-3 w-3" aria-hidden />
@@ -391,7 +391,7 @@ export function NativeDiscordNotifySection({
                 size="sm"
                 disabled={!loaded || pending || !templateDraft}
                 onClick={onClearTemplate}
-                className="h-7 px-2 text-[10px]"
+                className="h-7 px-2 font-mono text-[10px] tracking-[0.18em] uppercase"
                 title="textarea をクリア (保存すると DB から削除、既定に戻る)"
               >
                 クリア
@@ -402,7 +402,7 @@ export function NativeDiscordNotifySection({
                 size="sm"
                 disabled={!loaded || pending || !templateDirty}
                 onClick={onSaveTemplate}
-                className="h-7 gap-1 px-3 text-[10px]"
+                className="h-7 gap-1 px-3 font-mono text-[10px] tracking-[0.18em] uppercase"
               >
                 {pending ? (
                   <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
