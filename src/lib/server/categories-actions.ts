@@ -32,6 +32,7 @@ import {
 import { videoBelongsToCategory } from "@/lib/content-groups";
 import { extractDateFromTitle, titleDateToIso } from "@/lib/title-date";
 import { createClient } from "@/lib/supabase/server";
+import { fetchAppSetting } from "@/lib/supabase/app-settings";
 import {
   isDiscordCdnUrl,
   migrateDiscordImageToStorage,
@@ -1785,6 +1786,47 @@ export async function setFflogsUsernameAction(
     .from("app_settings")
     .upsert({ key: "fflogs_username", value }, { onConflict: "key" });
   if (error) return { ok: false, reason: dbError("FFLogs ユーザー名保存", error) };
+  return { ok: true };
+}
+
+/**
+ * Server Action: fflogs-sync cron (日次自動連動) の ON/OFF 現在値。
+ *
+ * cron route (/api/cron/fflogs-sync) は `app_settings.fflogs_cron_enabled`
+ * を fail-open で解釈する — `'false'` のときだけ skip し、未設定 / `'true'`
+ * なら実行。UI 表示用の本 getter も同じ規則で boolean 化する。
+ */
+export async function getFflogsCronEnabled(): Promise<boolean> {
+  // admin gate: cron の稼働状態は設定情報なので admin 専用。非 admin には
+  // default (= ON) を返す (設定セクション自体 admin のみ表示)。
+  const auth = await assertAdminResult();
+  if (!auth.ok) return true;
+  const value = await fetchAppSetting("fflogs_cron_enabled");
+  return value !== "false";
+}
+
+/**
+ * Server Action: fflogs-sync cron (日次自動連動、JST 04:00) の ON/OFF を
+ * `app_settings.fflogs_cron_enabled` に保存。手動の「FFLogs と動画を連動」
+ * button は本トグルを参照しない (常時動作)。
+ *
+ * ON は行 DELETE (= 未設定 fail-open) に戻さず `'true'` を明示保存する —
+ * Dashboard で値を見た時に状態が読み取りやすい。値はページ描画に使われず
+ * cron route が request ごとに読むため revalidatePath は不要。
+ */
+export async function setFflogsCronEnabledAction(
+  enabled: boolean,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("app_settings")
+    .upsert(
+      { key: "fflogs_cron_enabled", value: enabled ? "true" : "false" },
+      { onConflict: "key" },
+    );
+  if (error) return { ok: false, reason: dbError("自動連動 ON/OFF 保存", error) };
   return { ok: true };
 }
 

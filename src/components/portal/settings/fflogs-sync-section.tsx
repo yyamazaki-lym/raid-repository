@@ -18,8 +18,10 @@ import {
   clearAllFflogsLinks,
   disconnectFflogsOAuthAction,
   fetchFflogsOAuthStatus,
+  getFflogsCronEnabled,
   getFflogsSessionCookieStatus,
   linkFflogsReports,
+  setFflogsCronEnabledAction,
   setFflogsSessionCookie,
   setFflogsUsernameAction,
 } from "@/lib/server/categories-actions";
@@ -134,28 +136,49 @@ export function FflogsSyncSection({
   // 瞬間にだけ dynamic chunk が fetch される (連動実行のみで開かない場合
   // chunk fetch されない、PR #24 比でさらに lazy 度を 1 段引き上げ)。
   const [diagOpen, setDiagOpen] = useState(false);
+  // 日次自動連動 cron (fflogs_cron_enabled) の ON/OFF。null = 読み込み中。
+  const [cronEnabled, setCronEnabled] = useState<boolean | null>(null);
+  const [togglingCron, startToggleCron] = useTransition();
 
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
     void (async () => {
-      const [currentOauth, currentCookie, currentUsername] = await Promise.all([
-        fetchFflogsOAuthStatus(),
-        getFflogsSessionCookieStatus(),
-        getFflogsUsername(),
-      ]);
+      const [currentOauth, currentCookie, currentUsername, currentCron] =
+        await Promise.all([
+          fetchFflogsOAuthStatus(),
+          getFflogsSessionCookieStatus(),
+          getFflogsUsername(),
+          getFflogsCronEnabled(),
+        ]);
       if (!cancelled) {
         setOauthStatus(currentOauth);
         setCookieStatus(currentCookie);
         setFflogsUsernameState(currentUsername ?? "");
         setSessionCookieInput("");
         setLogsResult(null);
+        setCronEnabled(currentCron);
       }
     })();
     return () => {
       cancelled = true;
     };
   }, [open]);
+
+  const onToggleCron = (next: boolean) => {
+    if (cronEnabled === null || next === cronEnabled) return;
+    startToggleCron(async () => {
+      const r = await setFflogsCronEnabledAction(next);
+      if (!r.ok) {
+        toast.error(r.reason);
+        return;
+      }
+      setCronEnabled(next);
+      toast.success(
+        next ? "日次自動連動を ON にしました" : "日次自動連動を OFF にしました",
+      );
+    });
+  };
 
   const onLinkLogs = () => {
     setLogsResult(null);
@@ -502,6 +525,34 @@ export function FflogsSyncSection({
               </div>
             </div>
           </details>
+
+          {/* 日次自動連動 cron の ON/OFF — `app_settings.fflogs_cron_enabled`。
+              native-discord-notify-section の toggle パターン踏襲。OFF でも
+              下の手動「FFLogs と動画を連動」button は常時動作する。 */}
+          <div className="flex items-center justify-between gap-2 rounded-md border border-border/30 bg-secondary/20 px-3 py-2">
+            <div className="flex flex-col gap-0.5">
+              <span className="text-xs">日次自動連動 (cron)</span>
+              <span className="font-mono text-[9px] text-muted-foreground/60">
+                {cronEnabled === null
+                  ? "読み込み中..."
+                  : cronEnabled
+                    ? "ON (毎日 04:00 JST に自動で連動を実行)"
+                    : "OFF (cron は何もせず skip)"}
+              </span>
+            </div>
+            <label className="inline-flex cursor-pointer items-center gap-2">
+              <input
+                type="checkbox"
+                checked={cronEnabled ?? true}
+                disabled={!canEdit || cronEnabled === null || togglingCron}
+                onChange={(e) => onToggleCron(e.target.checked)}
+                className="h-4 w-4 cursor-pointer accent-[var(--neon-cyan)]"
+              />
+              <span className="font-mono text-[10px] tracking-[0.18em] text-muted-foreground uppercase">
+                {(cronEnabled ?? true) ? "ON" : "OFF"}
+              </span>
+            </label>
+          </div>
 
           <div className="flex flex-col gap-2">
             <div className="flex flex-wrap items-center gap-1.5">
