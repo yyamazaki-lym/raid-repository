@@ -1165,7 +1165,12 @@ GRANT EXECUTE ON FUNCTION public.next_category_macro_sort_order(uuid)
 --    (raw_date は string match で参照される) のため、UPDATE 分岐で同期 UPDATE
 --    する。DELETE 分岐では memo を temper せず、衝突先の手動行に紐付くまま温存
 --  - SECURITY DEFINER + search_path 固定 + GRANT は authenticated のみ
---    (anon は除外、admin gate 通過済 server action 専用)
+--    (anon は除外、admin gate 通過済 server action 専用)。
+--    ⚠ 2.9 follow-up (2026-06-12): Postgres は関数作成時にデフォルトで
+--    PUBLIC へ EXECUTE を付与するため、GRANT 文だけでは anon を除外
+--    できておらず、anon key だけで PostgREST RPC (/rest/v1/rpc/...) から
+--    実行可能な状態だった (Supabase security advisor の実 ACL 検査で検出)。
+--    下の明示 REVOKE で意図どおりに修正
 --
 -- per-row LOOP + EXCEPTION で衝突を捕まえる: CTE 一括 UPDATE は最初の衝突で
 -- 全 ROLLBACK されるため、衝突した行だけ DELETE に分岐する PL/pgSQL LOOP を
@@ -1273,6 +1278,14 @@ BEGIN
 END;
 $func$;
 
+-- 2.9 follow-up (2026-06-12): デフォルト PUBLIC EXECUTE を明示剥奪してから
+-- authenticated にだけ再付与する (REVOKE が無いと anon が default grant 経由で
+-- 実行できてしまう — 未認証で未来 placeholder の時刻書き換え / 衝突 DELETE /
+-- memo 追従書き換えが可能だった)。anon は PUBLIC 経由の継承のみだが、意図の
+-- 明文化として両方から剥奪する。
+REVOKE EXECUTE ON FUNCTION
+  public.update_native_placeholder_raid_times(text, text)
+  FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION
   public.update_native_placeholder_raid_times(text, text)
   TO authenticated;
