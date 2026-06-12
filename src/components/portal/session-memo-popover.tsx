@@ -124,9 +124,15 @@ export const SessionMemoPopover = forwardRef<
   );
   const popupRef = useRef<HTMLDivElement | null>(null);
   const wrapperRef = useRef<HTMLSpanElement | null>(null);
-  const [coords, setCoords] = useState<{ top: number; left: number } | null>(
-    null,
-  );
+  // top / bottom はどちらか一方のみ設定される (下側配置 = top、上側
+  // 配置 = bottom アンカーで上方向に伸びる)。maxHeight は配置側で
+  // 使える実高さ (px)。
+  const [coords, setCoords] = useState<{
+    top?: number;
+    bottom?: number;
+    left: number;
+    maxHeight: number;
+  } | null>(null);
 
   // Compute the popup's fixed-position coordinates whenever it
   // opens. On scroll/resize, REPOSITION (track the trigger) instead
@@ -143,19 +149,30 @@ export const SessionMemoPopover = forwardRef<
       if (!rect) return;
       // Default: below trigger, left-aligned. Clamp horizontally so
       // the popup never escapes the viewport on small screens.
-      const popupWidth = Math.min(
-        448,
-        document.documentElement.clientWidth - 32,
-      );
+      const viewportWidth = document.documentElement.clientWidth;
+      const viewportHeight = document.documentElement.clientHeight;
+      const popupWidth = Math.min(448, viewportWidth - 32);
       const left = Math.max(
         16,
-        Math.min(
-          rect.left,
-          document.documentElement.clientWidth - popupWidth - 16,
-        ),
+        Math.min(rect.left, viewportWidth - popupWidth - 16),
       );
-      const top = rect.bottom + 4;
-      setCoords({ top, left });
+      // トリガーの上下それぞれで使える高さ (4px = トリガーとの隙間、
+      // 16px = viewport 端とのマージン)。
+      const spaceBelow = viewportHeight - rect.bottom - 4 - 16;
+      const spaceAbove = rect.top - 4 - 16;
+      // ページ下部の行では下側配置だとヘッダーしか見えない高さまで
+      // 潰れて読めない (2026-06-12 報告)。下側に最低限の高さが確保
+      // できず、かつ上側のほうが広い場合はトリガーの上に反転配置する。
+      const MIN_POPUP_HEIGHT = 320;
+      if (spaceBelow < MIN_POPUP_HEIGHT && spaceAbove > spaceBelow) {
+        setCoords({
+          bottom: viewportHeight - rect.top + 4,
+          left,
+          maxHeight: spaceAbove,
+        });
+      } else {
+        setCoords({ top: rect.bottom + 4, left, maxHeight: spaceBelow });
+      }
     };
     place();
     const onResize = () => place();
@@ -239,14 +256,15 @@ export const SessionMemoPopover = forwardRef<
             style={{
               position: "fixed",
               top: coords.top,
+              bottom: coords.bottom,
               left: coords.left,
               width: "min(28rem,calc(100vw - 2rem))",
               // Cap height so the popup never extends past the
-              // bottom of the viewport. Inner sections handle their
+              // edge of the viewport. Inner sections handle their
               // own scrolling, and the popup body itself can also
               // scroll when content (form + lots of memos) exceeds
               // this cap.
-              maxHeight: `calc(100vh - ${coords.top + 16}px)`,
+              maxHeight: coords.maxHeight,
             }}
             className="glass-popup z-50 flex flex-col overflow-hidden rounded-lg border border-[var(--neon-violet)]/35 shadow-[0_12px_40px_-16px_rgba(167,139,250,0.45),0_2px_8px_-2px_rgba(0,0,0,0.4)]"
           >
