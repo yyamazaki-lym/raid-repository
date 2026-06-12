@@ -89,6 +89,11 @@
 
 直近版のみ列挙。詳細経緯は `src/lib/changelog.ts`、過去版アーカイブは `.claude/done.md`。
 
+- **2.9 (2026-06-12)**: 非表示設定タブのアイコンがコンテンツカード / コンテンツ切替メニューに出ていた問題の修正 ([PR #193](https://github.com/yyamazaki-lym/raid-repository/pull/193) squash merge `9dc258c`、本番実機確認 OK 2026-06-12)
+  - **発端**: ユーザー報告「コンテンツのカードに非表示に設定した項目を出さないようにしたい」。タブ設定 (Phase 17, 2.6) の enabled=false 判定は詳細ページのタブ列 ([sub-tabs.tsx](../src/components/portal/sub-tabs.tsx)) にしか実装されておらず、/category カードのショートカットアイコン行 ([category-list.tsx](../src/app/(portal)/category/category-list.tsx) `SubPageShortcuts`) とヘッダーのコンテンツ切替メニュー内アイコン行 ([category-switcher.tsx](../src/components/portal/category-switcher.tsx)) は `tab_config` を見ずに常時 5 アイコン全部描画していた
+  - **修正**: 両箇所で sub-tabs.tsx と同一判定 (`enabled === false` を除外、label 上書きを tooltip / aria-label に反映) を適用。切替メニュー側はクリック先の defaultTab フォールバック判定のみ実装済でアイコン行が未対応だった
+  - **検証**: tsc / eslint / CI pass + dev preview 実測 — `rowToCategory` に一時 tabConfig 注入 (DB 書き込みなし、検証後復元) でカード / 切替メニュー双方からアイコンが消え、ラベル上書きが tooltip に反映されることを確認。changelog 2.9 同日 part 追記を同 PR に同梱
+
 - **2.9 (2026-06-12)**: ページ下部でメモポップアップが見切れて読めない問題の修正 ([PR #191](https://github.com/yyamazaki-lym/raid-repository/pull/191) squash merge `c9faa94`、本番実機確認 OK 2026-06-12)
   - **発端**: ユーザー報告「ページ下部でコメントを開くと見切れて読めなくなる」(過去の出欠表など下端付近の行)。[session-memo-popover.tsx](../src/components/portal/session-memo-popover.tsx) はポップアップを常にトリガー (日付) の下側に fixed 配置し、maxHeight を「viewport 下端までの残り」にしていたため、下端付近ではヘッダーしか見えない高さに潰れていた
   - **修正**: 下側に最低 320px を確保できず、かつ上側のほうが広い場合は bottom アンカーでトリガーの上側に反転配置 (上方向に伸びる)。`place()` がスクロール / リサイズ追従の再配置でも同じ反転判定を通る。手動 fixed 配置はこのコンポーネント固有 (他 popover は該当パターンなしを grep 確認済)
