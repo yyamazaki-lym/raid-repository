@@ -120,7 +120,7 @@ export async function SiteHeader() {
   const isDemoGuest = await getCurrentUserIsDemoGuest();
   return (
     <header className="glass-bar sticky top-0 z-30">
-      <div className="mx-auto flex h-14 max-w-5xl items-center gap-3 px-4 sm:h-16 sm:px-6">
+      <div className="mx-auto flex h-[var(--header-h)] max-w-5xl items-center gap-3 px-4 sm:px-6">
         <Link
           href="/"
           className="group flex items-center gap-2.5"

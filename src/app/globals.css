@@ -93,6 +93,22 @@
   --neon-magenta: oklch(0.92 0.02 220); /* silver-white */
   --neon-violet: oklch(0.7 0.1 230);    /* steel blue */
   --frost: oklch(0.97 0.02 220);        /* near-white frost */
+
+  /* ---- レイアウト高さ (F-3, 2026-06-13) --------------------------------
+   * sticky オフセットの単一ソース。site-header / main-tabs / sub-tabs の
+   * sticky top と sub-tabs.tsx の JS hysteresis 閾値 (STICK_AT/UNSTICK_AT) が
+   * この 2 値から導出される。高さを変えるときはここだけ直せば全箇所が追従する。
+   *   --header-h: site-header の高さ (旧 h-14 / sm:h-16)。sm 以上で 4rem に上書き。
+   *   --nav-h:    main-tabs の実測高さ (content 由来。padding/フォント変更時は要追従)。
+   * 旧来の magic number: sub-tabs top-[102px]/sm:top-[110px] = header(56/64)+nav(46)。 */
+  --header-h: 3.5rem; /* 56px */
+  --nav-h: 2.875rem; /* 46px */
+}
+
+@media (min-width: 640px) {
+  :root {
+    --header-h: 4rem; /* 64px (sm:h-16 相当) */
+  }
 }
 
 /* ============================================================
