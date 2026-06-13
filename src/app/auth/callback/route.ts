@@ -92,7 +92,15 @@ export async function GET(req: NextRequest) {
   // refresh しないと初回リダイレクトでまた /auth/denied に飛ばされる。
   await supabase.auth.refreshSession();
 
-  return NextResponse.redirect(new URL(next, req.url));
+  // 二重防御: sanitizeNextParam をすり抜けても、解決後の URL が自オリジン以外を
+  // 指していたら "/" に落とす。`new URL(next, req.url)` は WHATWG 正規化で
+  // バックスラッシュを "/" 等価に扱うため、相対パス前提の sanitize だけでは
+  // protocol-relative (`/\evil.com` → `//evil.com`) を取りこぼし得る。
+  const target = new URL(next, req.url);
+  if (target.origin !== req.nextUrl.origin) {
+    return NextResponse.redirect(new URL("/", req.url));
+  }
+  return NextResponse.redirect(target);
 }
 
 function redirectTo(
@@ -110,9 +118,17 @@ function redirectTo(
 /**
  * `?next=` の中身は攻撃者が制御できる文字列なので、相対パスかつ "/" 始まり
  * (かつ "//" 始まりでない) にしか飛ばさない。
+ *
+ * ⚠ バックスラッシュは拒否する: `searchParams.get` でデコード済みの値に対し、
+ * 後段の `new URL(next, req.url)` が WHATWG URL 正規化でバックスラッシュを "/"
+ * 等価に扱うため、`?next=/%5Cevil.com` (= `/\evil.com`) が "/" 始まり・非 "//"
+ * を通過したうえで `//evil.com` (protocol-relative) に解決され外部オリジンへ
+ * 飛んでしまう (オープンリダイレクト)。解決後の origin 検証 (GET 側) と二重で
+ * 防ぐ。
  */
 function sanitizeNextParam(value: string | null): string {
   if (!value) return "/";
+  if (value.includes("\\")) return "/";
   if (!value.startsWith("/")) return "/";
   if (value.startsWith("//")) return "/";
   return value;
