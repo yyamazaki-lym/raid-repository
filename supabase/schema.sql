@@ -1197,7 +1197,10 @@ GRANT EXECUTE ON FUNCTION public.next_category_macro_sort_order(uuid)
 --    (raw_date は string match で参照される) のため、UPDATE 分岐で同期 UPDATE
 --    する。DELETE 分岐では memo を temper せず、衝突先の手動行に紐付くまま温存
 --  - SECURITY DEFINER + search_path 固定 + GRANT は authenticated のみ
---    (anon は除外、admin gate 通過済 server action 専用)。
+--    (anon は除外)。⚠ admin 限定は GRANT ではなく関数本体の is_admin claim
+--    検査で担保する (2.9 follow-up, 2026-06-13)。authenticated GRANT だけでは
+--    非 admin のログイン済みメンバーも実行できてしまい、app 層 assertAdminResult
+--    を迂回した REST 直叩きが通る穴になっていたため、本体冒頭にゲートを追加。
 --    ⚠ 2.9 follow-up (2026-06-12): Postgres は関数作成時にデフォルトで
 --    PUBLIC へ EXECUTE を付与するため、GRANT 文だけでは anon を除外
 --    できておらず、anon key だけで PostgREST RPC (/rest/v1/rpc/...) から
@@ -1227,6 +1230,21 @@ DECLARE
   v_memo_updated    integer := 0;
   v_memo_delta      integer;
 BEGIN
+  -- ⚠ admin ゲート (2.9 follow-up, 2026-06-13): この関数は SECURITY DEFINER で
+  -- RLS をバイパスするため、`GRANT TO authenticated` だけだと「ログイン済みなら
+  -- 誰でも実行可能」になり、非 admin の guild メンバーが自身の JWT で PostgREST
+  -- RPC (/rest/v1/rpc/...) を直叩きすると、app 層の assertAdminResult
+  -- (categories-actions.ts) を迂回して未来 placeholder の raw_date 書き換え /
+  -- 衝突行 DELETE / memo 追従書き換えができてしまう (表示改竄ベクタ)。RLS と同じ
+  -- is_admin claim を関数本体でも検査し、authenticated かつ非 admin の呼び出しを
+  -- 拒否する。service_role / SQL Editor 等 JWT を持たない経路は role claim が
+  -- 'authenticated' にならないため従来どおり実行可 (運用 / メンテナンス用)。
+  IF coalesce(auth.jwt() ->> 'role', '') = 'authenticated'
+     AND coalesce(auth.jwt() -> 'app_metadata' ->> 'is_admin', '') <> 'true' THEN
+    RAISE EXCEPTION 'update_native_placeholder_raid_times: admin only'
+      USING ERRCODE = '42501';
+  END IF;
+
   -- 入力 validate (HH:MM regex、start != end)。サーバー側 server action でも
   -- 同等 validate するが二重化して RPC 単体実行 (Supabase SQL Editor 等) でも
   -- 不正値を弾けるようにする。
