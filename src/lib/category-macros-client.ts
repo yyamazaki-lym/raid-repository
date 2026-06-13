@@ -70,11 +70,18 @@ export async function updateCategoryMacro(
   patch: Partial<{ label: string; body: string }>,
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
   const supabase = createClient();
-  const { error } = await supabase
+  // `.select("id")` で返却行数を確認する。RLS の UPDATE は USING で行が
+  // 見えなくなるだけなので、非 admin が実行すると 0 行更新 + error=null に
+  // なり、付けないと成功扱い (silent fail) になる。
+  const { data, error } = await supabase
     .from("category_macros")
     .update(patch)
-    .eq("id", id);
+    .eq("id", id)
+    .select("id")
+    .maybeSingle();
   if (error) return { ok: false, reason: error.message };
+  if (!data)
+    return { ok: false, reason: "更新できませんでした（権限がない可能性があります）" };
   return { ok: true };
 }
 
@@ -82,11 +89,15 @@ export async function deleteCategoryMacro(
   id: string,
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
   const supabase = createClient();
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("category_macros")
     .delete()
-    .eq("id", id);
+    .eq("id", id)
+    .select("id")
+    .maybeSingle();
   if (error) return { ok: false, reason: error.message };
+  if (!data)
+    return { ok: false, reason: "削除できませんでした（権限がない可能性があります）" };
   return { ok: true };
 }
 
@@ -99,11 +110,18 @@ export async function setCategoryMacroOrder(
       supabase
         .from("category_macros")
         .update({ sort_order: index })
-        .eq("id", id),
+        .eq("id", id)
+        .select("id"),
     ),
   );
   const failed = results.find((r) => r.error);
   if (failed?.error) return { ok: false, reason: failed.error.message };
+  // 1 件でも 0 行更新 = RLS で弾かれた (権限なし) → 失敗扱い。
+  if (results.some((r) => !r.data || r.data.length === 0))
+    return {
+      ok: false,
+      reason: "並び替えを保存できませんでした（権限がない可能性があります）",
+    };
   return { ok: true };
 }
 

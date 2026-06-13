@@ -33,21 +33,34 @@ export async function setScheduleTopTextOverride(
   const trimmed = raw.trim();
   const supabase = createClient();
   if (!trimmed) {
-    // 空文字なら override を削除 (= scraped 値に戻る)
-    const { error } = await supabase
+    // 空文字なら override を削除 (= scraped 値に戻る)。
+    // `.select("key")` で返却 0 件 (= RLS USING で弾かれた非 admin) を失敗扱いに。
+    const { data, error } = await supabase
       .from("app_settings")
       .delete()
-      .eq("key", TOP_TEXT_OVERRIDE_KEY);
+      .eq("key", TOP_TEXT_OVERRIDE_KEY)
+      .select("key");
     if (error) return { ok: false, reason: error.message };
+    if (!data || data.length === 0)
+      return {
+        ok: false,
+        reason: "保存できませんでした（権限がない可能性があります）",
+      };
     return { ok: true };
   }
-  const { error } = await supabase
+  // upsert は新規行なら INSERT (WITH CHECK でエラー化) だが、override キーが既存
+  // だと ON CONFLICT DO UPDATE が USING で 0 行になり silent fail し得る。
+  // `.select("key")` で返却 0 件を失敗扱いにして両ケースを塞ぐ。
+  const { data, error } = await supabase
     .from("app_settings")
-    .upsert(
-      { key: TOP_TEXT_OVERRIDE_KEY, value: trimmed },
-      { onConflict: "key" },
-    );
+    .upsert({ key: TOP_TEXT_OVERRIDE_KEY, value: trimmed }, { onConflict: "key" })
+    .select("key");
   if (error) return { ok: false, reason: error.message };
+  if (!data || data.length === 0)
+    return {
+      ok: false,
+      reason: "保存できませんでした（権限がない可能性があります）",
+    };
   return { ok: true };
 }
 
@@ -66,11 +79,17 @@ export async function clearScheduleTopTextOverride(): Promise<
   { ok: true } | { ok: false; reason: string }
 > {
   const supabase = createClient();
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("app_settings")
     .delete()
-    .eq("key", TOP_TEXT_OVERRIDE_KEY);
+    .eq("key", TOP_TEXT_OVERRIDE_KEY)
+    .select("key");
   if (error) return { ok: false, reason: error.message };
+  if (!data || data.length === 0)
+    return {
+      ok: false,
+      reason: "クリアできませんでした（権限がない可能性があります）",
+    };
   return { ok: true };
 }
 
