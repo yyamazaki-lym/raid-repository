@@ -14,7 +14,7 @@ import {
   Terminal,
   type LucideIcon,
 } from "lucide-react";
-import { motion } from "motion/react";
+import { motion, useReducedMotion } from "motion/react";
 import { cn } from "@/lib/utils";
 import {
   DropdownMenu,
@@ -55,6 +55,11 @@ export function CategorySwitcher({ initialCategories, userRoleIds }: Props) {
   // layout so the dropdown component instance survives route changes;
   // without this we'd need a way to force-close.
   const [open, setOpen] = useState(false);
+  // F-2: prefers-reduced-motion 時は underline の spring を即時化する。
+  const reduceMotion = useReducedMotion();
+  const underlineTransition = reduceMotion
+    ? { duration: 0 }
+    : { type: "spring" as const, bounce: 0.2, duration: 0.5 };
 
   // 2.9 (2026-06-11): メニュー内リンクのクリック後、遷移完了 (pathname
   // 変化) までトリガーに pending ドットを点灯する。menu item はクリックで
@@ -155,7 +160,7 @@ export function CategorySwitcher({ initialCategories, userRoleIds }: Props) {
         {isCategoryRoute && (
           <motion.span
             layoutId="main-tab-underline"
-            transition={{ type: "spring", bounce: 0.2, duration: 0.5 }}
+            transition={underlineTransition}
             className="absolute right-2 -bottom-px left-2 h-px bg-[var(--neon-violet)] shadow-[0_0_10px_var(--neon-violet)]"
           />
         )}

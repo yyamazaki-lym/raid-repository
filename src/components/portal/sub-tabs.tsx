@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { motion } from "motion/react";
+import { motion, useReducedMotion } from "motion/react";
 import {
   ChevronLeft,
   Dice5,
@@ -59,6 +59,11 @@ export function SubTabs({
   const tabsListRef = useRef<HTMLUListElement | null>(null);
   const stuckRef = useRef(false);
   const [stuck, setStuck] = useState(false);
+  // F-2: prefers-reduced-motion 時は underline の spring を即時化する。
+  const reduceMotion = useReducedMotion();
+  const underlineTransition = reduceMotion
+    ? { duration: 0 }
+    : { type: "spring" as const, bounce: 0.2, duration: 0.4 };
   // TODO #58: stuck 状態を ActionSlot context へ push し、各 page のアクション
   // ボタンを SubTabs 右端 portal target へ集約させる。Provider 不在時は無視。
   const slotCtx = useActionSlotContext();
@@ -225,7 +230,7 @@ export function SubTabs({
                     {active && (
                       <motion.span
                         layoutId="sub-tab-underline"
-                        transition={{ type: "spring", bounce: 0.2, duration: 0.4 }}
+                        transition={underlineTransition}
                         className={cn(
                           "absolute -bottom-[3px] h-px bg-[var(--neon-violet)]",
                           stuck

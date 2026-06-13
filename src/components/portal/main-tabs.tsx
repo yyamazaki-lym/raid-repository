@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { CalendarDays } from "lucide-react";
-import { motion } from "motion/react";
+import { motion, useReducedMotion } from "motion/react";
 import { cn } from "@/lib/utils";
 import { CategorySwitcher } from "./category-switcher";
 import { LinkPendingIndicator } from "./link-pending-indicator";
@@ -36,6 +36,11 @@ export function MainTabs({
   const pathname = usePathname();
   const scheduleActive = pathname === "/";
   const showScheduleTab = scheduleSourceMode !== "disabled";
+  // F-2: prefers-reduced-motion 時は underline の spring を即時化する。
+  const reduceMotion = useReducedMotion();
+  const underlineTransition = reduceMotion
+    ? { duration: 0 }
+    : { type: "spring" as const, bounce: 0.2, duration: 0.5 };
 
   return (
     <nav
@@ -76,7 +81,7 @@ export function MainTabs({
                   {scheduleActive && (
                     <motion.span
                       layoutId="main-tab-underline"
-                      transition={{ type: "spring", bounce: 0.2, duration: 0.5 }}
+                      transition={underlineTransition}
                       className="absolute right-2 -bottom-px left-2 h-px bg-[var(--neon-cyan)] shadow-[0_0_10px_var(--neon-cyan)]"
                     />
                   )}
