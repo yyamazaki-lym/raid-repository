@@ -106,11 +106,16 @@ export async function updateRecruitmentTemplate(
   if (patch.label !== undefined) dbPatch.label = patch.label;
   if (patch.body !== undefined) dbPatch.body = patch.body;
   if (patch.categoryId !== undefined) dbPatch.category_id = patch.categoryId;
-  const { error } = await supabase
+  // `.select("id")` で返却 0 件 (= RLS USING で弾かれた非 admin) を失敗扱いに。
+  const { data, error } = await supabase
     .from("recruitment_templates")
     .update(dbPatch)
-    .eq("id", id);
+    .eq("id", id)
+    .select("id")
+    .maybeSingle();
   if (error) return { ok: false, reason: error.message };
+  if (!data)
+    return { ok: false, reason: "更新できませんでした（権限がない可能性があります）" };
   return { ok: true };
 }
 
@@ -127,11 +132,17 @@ export async function setRecruitmentTemplateOrder(
       supabase
         .from("recruitment_templates")
         .update({ sort_order: index })
-        .eq("id", id),
+        .eq("id", id)
+        .select("id"),
     ),
   );
   const failed = results.find((r) => r.error);
   if (failed?.error) return { ok: false, reason: failed.error.message };
+  if (results.some((r) => !r.data || r.data.length === 0))
+    return {
+      ok: false,
+      reason: "並び替えを保存できませんでした（権限がない可能性があります）",
+    };
   return { ok: true };
 }
 
@@ -139,11 +150,15 @@ export async function deleteRecruitmentTemplate(
   id: string,
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
   const supabase = createClient();
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("recruitment_templates")
     .delete()
-    .eq("id", id);
+    .eq("id", id)
+    .select("id")
+    .maybeSingle();
   if (error) return { ok: false, reason: error.message };
+  if (!data)
+    return { ok: false, reason: "削除できませんでした（権限がない可能性があります）" };
   return { ok: true };
 }
 

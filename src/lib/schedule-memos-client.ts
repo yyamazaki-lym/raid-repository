@@ -91,11 +91,16 @@ export async function updateScheduleMemo(
   const dbPatch: Record<string, unknown> = {};
   if (patch.body !== undefined) dbPatch.body = patch.body;
   if (patch.authorName !== undefined) dbPatch.author_name = patch.authorName;
-  const { error } = await supabase
+  // `.select("id")` で返却 0 件 (= RLS USING で弾かれた非 admin) を失敗扱いに。
+  const { data, error } = await supabase
     .from("schedule_session_memos")
     .update(dbPatch)
-    .eq("id", id);
+    .eq("id", id)
+    .select("id")
+    .maybeSingle();
   if (error) return { ok: false, reason: error.message };
+  if (!data)
+    return { ok: false, reason: "更新できませんでした（権限がない可能性があります）" };
   return { ok: true };
 }
 
@@ -103,11 +108,15 @@ export async function deleteScheduleMemo(
   id: string,
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
   const supabase = createClient();
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("schedule_session_memos")
     .delete()
-    .eq("id", id);
+    .eq("id", id)
+    .select("id")
+    .maybeSingle();
   if (error) return { ok: false, reason: error.message };
+  if (!data)
+    return { ok: false, reason: "削除できませんでした（権限がない可能性があります）" };
   return { ok: true };
 }
 
