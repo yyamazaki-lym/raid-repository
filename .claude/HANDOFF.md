@@ -44,7 +44,7 @@
 未完了 TODO は **#11 (パフォーマンス、休眠中 = 新ボトルネック発見時のみ再開) のみ**。TODO #86 の 24h 観察 (UTC 19:00 自動発火確認) は 2026-06-12 に DB 実測で完了 (保留オペレーション項目 3 参照)。残作業は:
 1. 保留オペレーション項目 1 (Discord 通知 ON 切替、ユーザー判断)
 2. 非 admin メンバーでの出欠「未回答に戻す」実機確認 — [PR #189](https://github.com/yyamazaki-lym/raid-repository/pull/189) の RLS 修正の検収 (self_delete policy / CHECK 制約の本番 DB 反映は SQL で確認済、UI 経由の実操作のみ未確認)
-3. **総合レビューレポート (`docs/code-review-2026-06-13.md`) P1 の残り** — 計画は `.claude/plans/p1-structured-mccarthy.md`。1 PR ずつ merge → 検証 → 次の方針で進行中。残: **PR-B F-3 sticky 定数の単一ソース化 / PR-C F-2 prefers-reduced-motion / PR-D A-5 冪等性 2 件 (schema 変更)**。B-1 motion はスキップ確定 (過去に視覚価値優先で再導入済)、B-2 は lucide-react が Next 16 既定最適化のためスコープ外
+3. **総合レビューレポート (`docs/code-review-2026-06-13.md`) の P2 / P3** (P0 + P1 は完了済。下記「完了済み TODO」参照)。未着手の主な残り: C-1 楽観更新 timeout 競合 / C-4 DnD・Realtime 重複の共通化 / A-4 memos 意図不一致 / B-3 /login・force-dynamic / F-1 極小タイポ・日本語 mono / F-4 カード情報密度・window.confirm / C-2 日付 TZ / C-3 バリデーション / C-5 巨大ファイル分割 / D Next.js 低重大度 3 件 / E badge.tsx 削除 など。着手はユーザー要望待ち
 
 ## 未完了 TODO 一覧
 
@@ -89,6 +89,14 @@
 ## 完了済み TODO
 
 直近版のみ列挙。詳細経緯は `src/lib/changelog.ts`、過去版アーカイブは `.claude/done.md`。
+
+- **2.9 (2026-06-13)**: 総合レビューレポート P1 残り 3 件 (F-3 / F-2 / A-5) を完了 — これで報告書の **P0 + P1 を全消化** ([PR #206](https://github.com/yyamazaki-lym/raid-repository/pull/206) squash merge `e0c17c8` / [PR #207](https://github.com/yyamazaki-lym/raid-repository/pull/207) `6d77517` / [PR #208](https://github.com/yyamazaki-lym/raid-repository/pull/208) `c553584`、検証は Claude 実施でユーザー委任 2026-06-13)
+  - **F-3 sticky 定数の単一ソース化 (#206)**: sub-tabs の `top-[102px]/sm:top-[110px]` + JS `STICK_AT=102/UNSTICK_AT=118` のヘッダー高手計算依存を解消。globals.css に `--header-h` (3.5rem/sm:4rem) / `--nav-h` (2.875rem=46px) を定義し、site-header 高・main-tabs/sub-tabs の sticky top・JS hysteresis 閾値 (getComputedStyle + resize 再計算) を全て導出。見た目・挙動不変
+  - **F-2 prefers-reduced-motion (#207)**: `@media (prefers-reduced-motion: reduce)` が 0 箇所だったのを追加。背景アニメは全テーマで `.bg-grid-animate`/`.bg-scanlines` に乗るため 2 クラスを `animation:none !important` で一括停止 (!important が theme 別の高 specificity に勝つ)。link-pending は `animation:none + opacity:0.7` で静止可視維持。ONLINE ドットは `motion-reduce:animate-none`、tab underline は 3 コンポーネントの `useReducedMotion()` で spring 即時化。reduce OFF 時は完全不変
+  - **A-5 冪等性 2 件 (#208、schema 変更)**: ① `category_links` に `UNIQUE(category_id, kind, url)` 追加 (NOT VALID 不可のため ctid ベース dedup DELETE を先行。再デプロイ時 0 行の冪等) + discord-import を `upsert(onConflict ignoreDuplicates)` 化で cron×手動の race window でも二重挿入を防止 ② native 通知 (`respectDedup=true`=cron) を「先取り条件付き UPDATE (`is last_notified_at null`) → claim 成功時のみ POST、失敗で rollback」に反転して二重通知を行ロックで排他。手動 Bell 再通知 (`respectDedup=false`) は従来どおり
+  - **検証 (Claude 実施、ユーザー委任)**: 各 PR で tsc/eslint/build/CI pass。merge 後 dev preview (merged main) で実測 — F-3: sub-tabs top 102px(375)/110px(1280)・scroll で stuck false→true→false / F-2: reduced-motion `@media` ブロックが served CSS に存在 (`.bg-grid-animate/.bg-scanlines`→none, link-pending→opacity 0.7)・デフォルトは ec-snow-big 稼働・更新履歴に 5 part 表示・console error 0 / A-5: **本番 DB 実測で UNIQUE 制約存在 + 756→755 行 (asphodelos 重複 1 圧縮) + 重複グループ 0**。schema 自動デプロイは本番/demo 両 success。※ reduced-motion ON 時の実視覚は preview がメディアをエミュレートできず未確認 (CSS 出荷は prod build + dev CSSOM で確認済)、cron 競合・自動通知の実地挙動はロジック/コードレビューで担保
+  - **方針メモ**: B-1 motion バンドルはスキップ確定 (過去 2.3 で CSS 化 -46KB → 視覚価値優先で再導入した経緯を尊重)、B-2 は lucide-react が Next 16 既定最適化のためスコープ外。残りは報告書 P2/P3 (次回の作業優先度 3 参照)
+  - **changelog**: `2.9 (2026-06-13)` に 5 part 統合 (P0 セキュリティ / A-3 / F-3 / F-2 / A-5。各 PR の changelog 先頭衝突は merge 時 rebase で 1 entry に統合)
 
 - **2.9 (2026-06-13)**: 総合レビューレポート (`docs/code-review-2026-06-13.md`) 対応開始 — P0 セキュリティ 2 件 + P1 A-3 を実機確認 OK で merge ([PR #203](https://github.com/yyamazaki-lym/raid-repository/pull/203) squash merge `bf62ef7` / [PR #204](https://github.com/yyamazaki-lym/raid-repository/pull/204) squash merge `38f2270`、本番実機確認 OK 2026-06-13)
   - **発端**: #202 で統合した総合レビューレポートの指摘事項に着手。ユーザー判断でスコープを段階化 (P0 → P1)。実装計画 = `.claude/plans/p1-structured-mccarthy.md`、進め方は「1 PR ずつ merge → 検証 → 次へ」
