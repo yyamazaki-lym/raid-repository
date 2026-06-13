@@ -443,40 +443,50 @@ async function importChannel(
   let inserted = 0;
   let failed = 0;
   let lastFailReason: string | undefined;
-  // One bulk insert is dramatically faster than N round-trips, but
-  // also fails atomically — if any row's URL violates a unique index
-  // we'd lose the rest. We checked dedup earlier so duplicates aren't
-  // expected; a constraint violation here would indicate a race with
-  // another import. Fall back to per-row inserts on bulk failure so
-  // we still get partial progress.
-  const { error: bulkErr } = await supabase
+  // A-5.1 (2026-06-13): bulk upsert + onConflict ignore で冪等化する。
+  // category_links の UNIQUE (category_id, kind, url) と組み合わせ、cron ×
+  // 手動「Import now」の競合 (上の SELECT dedup の race window) で同一 URL が
+  // 来ても二重挿入されず skip される。`.select("id")` で実挿入行数を数える
+  // (重複 skip 分は返らない)。NOT NULL 違反等の dup 以外のエラーで bulk が
+  // atomic に失敗した場合は per-row にフォールバックして部分前進を確保する
+  // (各行も同じ upsert なので race-dup は skip 扱い)。
+  const { data: insertedRows, error: bulkErr } = await supabase
     .from("category_links")
-    .insert(rowsToInsert);
+    .upsert(rowsToInsert, {
+      onConflict: "category_id,kind,url",
+      ignoreDuplicates: true,
+    })
+    .select("id");
   if (bulkErr) {
     console.warn(
-      "[discord-import] bulk insert failed, retrying per-row",
+      "[discord-import] bulk upsert failed, retrying per-row",
       cat.slug,
       bulkErr.message,
     );
     for (const row of rowsToInsert) {
-      const { error: rowErr } = await supabase
+      const { data: rowData, error: rowErr } = await supabase
         .from("category_links")
-        .insert(row);
+        .upsert(row, {
+          onConflict: "category_id,kind,url",
+          ignoreDuplicates: true,
+        })
+        .select("id");
       if (rowErr) {
         console.warn(
-          "[discord-import] row insert failed",
+          "[discord-import] row upsert failed",
           cat.slug,
           row.url,
           rowErr.message,
         );
         failed += 1;
         lastFailReason = rowErr.message;
-      } else {
+      } else if (rowData && rowData.length > 0) {
         inserted += 1;
       }
+      // rowData が空 = 既存と重複で skip (inserted にも failed にも数えない)
     }
   } else {
-    inserted = rowsToInsert.length;
+    inserted = insertedRows?.length ?? 0;
   }
 
   // 6. First-clear detection: pick the earliest clear-titled video's

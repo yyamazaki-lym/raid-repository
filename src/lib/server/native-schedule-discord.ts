@@ -130,10 +130,56 @@ export async function notifyNativeScheduleSession(
   }
   const session = sessionData as SessionRow;
 
-  if (input.respectDedup && session.last_notified_at !== null) {
-    return { ok: true, posted: 0, skipped: 1 };
+  const nowIso = new Date().toISOString();
+
+  // A-5.2 (2026-06-13): respectDedup=true (cron) は「先取り条件付き UPDATE →
+  // 成功時のみ POST」に反転する。旧来は POST 成功 *後* に last_notified_at を
+  // UPDATE していたため、毎時 cron の候補 SELECT (`is last_notified_at null`) と
+  // この UPDATE の間に別 cron 実行が割り込むと、両方が null を見て二重通知し得た。
+  // `is("last_notified_at", null)` 付き UPDATE を先に走らせ、行を claim できた
+  // 実行だけが POST する (Postgres の行ロックで排他)。claim できなければ既に
+  // 他実行が通知済み → skip。POST 失敗時は claim を null に戻して次回 cron で
+  // 再試行可能にする (at-most-once claim + best-effort 再送)。
+  if (input.respectDedup) {
+    const { data: claimed, error: claimErr } = await supabase
+      .from("native_schedule_sessions")
+      .update({ last_notified_at: nowIso })
+      .eq("id", session.id)
+      .is("last_notified_at", null)
+      .select("id")
+      .maybeSingle();
+    if (claimErr) {
+      return { ok: false, reason: `claim: ${claimErr.message}` };
+    }
+    if (!claimed) {
+      // 既に他実行が claim 済 (= 通知済み)。二重通知を防ぐため skip。
+      return { ok: true, posted: 0, skipped: 1 };
+    }
+    const message = await buildMessage(supabase, session, roleId);
+    const postResult = await postToDiscord({
+      botToken,
+      channelId,
+      content: message,
+      roleId,
+    });
+    if (!postResult.ok) {
+      const { error: rbErr } = await supabase
+        .from("native_schedule_sessions")
+        .update({ last_notified_at: null })
+        .eq("id", session.id);
+      if (rbErr) {
+        console.warn(
+          "[native-discord] rollback of last_notified_at failed:",
+          rbErr.message,
+        );
+      }
+      return { ok: false, reason: postResult.reason };
+    }
+    return { ok: true, posted: 1, skipped: 0 };
   }
 
+  // respectDedup=false (手動 Bell の再通知): 意図的に毎回送るため、従来どおり
+  // POST → タイムスタンプ更新の順序。
   const message = await buildMessage(supabase, session, roleId);
   const postResult = await postToDiscord({
     botToken,
@@ -147,7 +193,7 @@ export async function notifyNativeScheduleSession(
 
   const { error: updErr } = await supabase
     .from("native_schedule_sessions")
-    .update({ last_notified_at: new Date().toISOString() })
+    .update({ last_notified_at: nowIso })
     .eq("id", session.id);
   if (updErr) {
     console.warn(
