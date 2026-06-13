@@ -40,7 +40,7 @@ export function MainTabs({
   return (
     <nav
       aria-label="メインナビゲーション"
-      className="glass-bar sticky top-14 z-20 sm:top-16"
+      className="glass-bar sticky top-[var(--header-h)] z-20"
     >
       <div className="mx-auto max-w-5xl px-2 sm:px-6">
         <div className="flex items-center gap-1">

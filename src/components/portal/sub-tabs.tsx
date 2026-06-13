@@ -73,8 +73,22 @@ export function SubTabs({
   useEffect(() => {
     const sentinel = sentinelRef.current;
     if (!sentinel) return;
-    const STICK_AT = 102; // sentinel.top < STICK_AT で stuck=true (MainTabs bottom + 1px)
-    const UNSTICK_AT = 118; // sentinel.top > UNSTICK_AT で stuck=false (16px buffer)
+    // F-3 (2026-06-13): 旧来は STICK_AT=102 / UNSTICK_AT=118 の magic number
+    // (header 56 + nav 46 = 102 を直書き)。globals.css の --header-h / --nav-h
+    // から算出し、breakpoint (sm で header 64) を resize で再計算する。CSS 変数が
+    // 読めない環境では従来値に fallback。
+    let STICK_AT = 102; // sentinel.top < STICK_AT で stuck=true (MainTabs bottom)
+    let UNSTICK_AT = 118; // sentinel.top > UNSTICK_AT で stuck=false (16px buffer)
+    const recomputeThresholds = () => {
+      const cs = getComputedStyle(document.documentElement);
+      const px = (v: string) => parseFloat(cs.getPropertyValue(v)) * 16; // rem→px
+      const h = px("--header-h") + px("--nav-h");
+      if (Number.isFinite(h) && h > 0) {
+        STICK_AT = h;
+        UNSTICK_AT = h + 16;
+      }
+    };
+    recomputeThresholds();
     let raf = 0;
     const apply = (next: boolean) => {
       if (stuckRef.current === next) return;
@@ -92,12 +106,16 @@ export function SubTabs({
       if (raf) return;
       raf = requestAnimationFrame(check);
     };
+    const onResize = () => {
+      recomputeThresholds(); // breakpoint 跨ぎで header 高が変わるため再算出
+      onScroll();
+    };
     check();
     window.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("resize", onScroll);
+    window.addEventListener("resize", onResize);
     return () => {
       window.removeEventListener("scroll", onScroll);
-      window.removeEventListener("resize", onScroll);
+      window.removeEventListener("resize", onResize);
       if (raf) cancelAnimationFrame(raf);
     };
   }, [setSlotStuck]);
@@ -133,7 +151,7 @@ export function SubTabs({
       <nav
         aria-label="コンテンツ内ナビゲーション"
         data-stuck={stuck}
-        className="glass-bar border-border/40 sticky top-[102px] z-15 border-b transition-[top] sm:top-[110px]"
+        className="glass-bar border-border/40 sticky top-[calc(var(--header-h)_+_var(--nav-h))] z-15 border-b transition-[top]"
       >
         <div className="mx-auto flex max-w-5xl items-center gap-1 px-2 sm:px-6">
           <ul
