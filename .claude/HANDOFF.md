@@ -1,6 +1,6 @@
 # Raid Repository — 引き継ぎノート
 
-> 2.9 (2026-06-12) 時点。完了済 TODO の詳細は `src/lib/changelog.ts` / 過去版番号は `.claude/done.md`。
+> 2.9 (2026-06-13) 時点。完了済 TODO の詳細は `src/lib/changelog.ts` / 過去版番号は `.claude/done.md`。
 >
 > **新規会話の手順**: このファイルを読んだ後、TODO 一覧は自動表示せずユーザーの要望を待つ。新規 TODO 追記時は part 単位ではなく TODO 完了時のみ統合追記する (part 細分は commit log に任せる)。
 
@@ -44,6 +44,7 @@
 未完了 TODO は **#11 (パフォーマンス、休眠中 = 新ボトルネック発見時のみ再開) のみ**。TODO #86 の 24h 観察 (UTC 19:00 自動発火確認) は 2026-06-12 に DB 実測で完了 (保留オペレーション項目 3 参照)。残作業は:
 1. 保留オペレーション項目 1 (Discord 通知 ON 切替、ユーザー判断)
 2. 非 admin メンバーでの出欠「未回答に戻す」実機確認 — [PR #189](https://github.com/yyamazaki-lym/raid-repository/pull/189) の RLS 修正の検収 (self_delete policy / CHECK 制約の本番 DB 反映は SQL で確認済、UI 経由の実操作のみ未確認)
+3. **総合レビューレポート (`docs/code-review-2026-06-13.md`) P1 の残り** — 計画は `.claude/plans/p1-structured-mccarthy.md`。1 PR ずつ merge → 検証 → 次の方針で進行中。残: **PR-B F-3 sticky 定数の単一ソース化 / PR-C F-2 prefers-reduced-motion / PR-D A-5 冪等性 2 件 (schema 変更)**。B-1 motion はスキップ確定 (過去に視覚価値優先で再導入済)、B-2 は lucide-react が Next 16 既定最適化のためスコープ外
 
 ## 未完了 TODO 一覧
 
@@ -88,6 +89,16 @@
 ## 完了済み TODO
 
 直近版のみ列挙。詳細経緯は `src/lib/changelog.ts`、過去版アーカイブは `.claude/done.md`。
+
+- **2.9 (2026-06-13)**: 総合レビューレポート (`docs/code-review-2026-06-13.md`) 対応開始 — P0 セキュリティ 2 件 + P1 A-3 を実機確認 OK で merge ([PR #203](https://github.com/yyamazaki-lym/raid-repository/pull/203) squash merge `bf62ef7` / [PR #204](https://github.com/yyamazaki-lym/raid-repository/pull/204) squash merge `38f2270`、本番実機確認 OK 2026-06-13)
+  - **発端**: #202 で統合した総合レビューレポートの指摘事項に着手。ユーザー判断でスコープを段階化 (P0 → P1)。実装計画 = `.claude/plans/p1-structured-mccarthy.md`、進め方は「1 PR ずつ merge → 検証 → 次へ」
+  - **#203 (P0 セキュリティ 2 件)**:
+    - **A-1 OAuth callback オープンリダイレクト** ([auth/callback/route.ts](../src/app/auth/callback/route.ts)): `sanitizeNextParam` が `?next=/%5Cevil.com` を取りこぼし、`new URL(next, req.url)` の WHATWG 正規化でバックスラッシュが `//evil.com` (protocol-relative) → 外部オリジンに解決されていた (実機 PoC 済)。バックスラッシュ拒否 + 解決後 origin 一致検証で二重防御。Node でロジック実証 (有効な OAuth code を伴わないと最終リダイレクトに到達しないため手動再現は不要扱い)
+    - **A-2 SECURITY DEFINER RPC の admin 迂回** ([schema.sql](../supabase/schema.sql) `update_native_placeholder_raid_times`): authenticated 全体に GRANT + 関数本体に admin 検査なしで、非 admin の guild メンバーが自身の JWT で PostgREST RPC を直叩きすると app 層 `assertAdminResult` を迂回して未来 placeholder の時刻書換 / 衝突 DELETE / memo 追従書換ができた (表示改竄ベクタ)。PR #187 の REVOKE は anon 除外のみで authenticated 非 admin は素通りだった。RLS と同じ is_admin claim 検査を関数冒頭に追加 (`auth.jwt() ->> 'role' = 'authenticated'` かつ `is_admin != 'true'` のみ RAISE 42501、service_role / SQL Editor 等 JWT 無し経路は維持)。**schema 自動デプロイ成功 (本番/demo 両 success 確認)**
+  - **#204 (P1 A-3 silent fail)**: RLS の UPDATE/DELETE は USING で行が見えなくなるだけなので、非 admin 実行時に 0 行更新 + error=null → `{ok:true}` + 成功 toast になっていた (INSERT は WITH CHECK で正しくエラー)。マクロ / 募集テンプレ / メモ / スケジュール上部テキストの client 関数 4 ファイルの update/delete/upsert に `.select("id"/"key")` を付け返却 0 件を `{ok:false}`「権限がない可能性があります」に変換。reorder は各 update に付けて 1 件でも 0 行なら失敗扱い。top-text の upsert も既存キーの `ON CONFLICT DO UPDATE` が USING で 0 行 silent fail し得るため両ケース対応 (計画より踏込み)。admin 正規操作は対象行が見えるため挙動不変
+  - **検証**: 各 PR で tsc / eslint / build / CI pass。本番実機で admin 経路の無回帰 (デフォルト時刻変更・各種編集/削除/並び替え・更新履歴表示) を確認 OK。非 admin 経路は実 RLS への非 admin セッションが必要で dev preview (demo + bypass = admin 視点) では再現不可のため、ユーザー判断で OK 扱い (2026-06-13)。changelog 2.9 (2026-06-13) に 2 part 同梱 (#204 は #203 と changelog 先頭が衝突するため rebase で 1 entry 2 part に統合)
+  - **残り P1 (計画済・未着手)**: PR-B F-3 sticky 定数の単一ソース化 / PR-C F-2 prefers-reduced-motion / PR-D A-5 冪等性 2 件 (schema 変更)。B-1 motion はスキップ確定、B-2 はスコープ外 (次回の作業優先度 3 参照)
+  - **教訓**: SECURITY DEFINER 関数を admin 限定にするには GRANT/REVOKE だけでなく**関数本体の claim 検査が必須** (authenticated GRANT は「ログイン済み全員」を意味する)。client 直 supabase の UPDATE/DELETE は RLS USING で silent fail するため `.select()` で返却行数確認が定石 (PR #189 の出欠 silent fail と同クラス)
 
 - **2.9 (2026-06-12)**: 上部タブの余白偏り修正 + UI 全体のデザイン整合性総点検・一括調整 13 箇所 ([PR #197](https://github.com/yyamazaki-lym/raid-repository/pull/197) squash merge `0836e1a` / [PR #199](https://github.com/yyamazaki-lym/raid-repository/pull/199) squash merge `de56507`、本番実機確認 OK 2026-06-12)
   - **発端**: ユーザー報告「上部タブのスケジュール、コンテンツの前後空白が一致していないバランスなのが気になる」→ 修正後「他にもデザイン的におかしい部分がないか確認してみて」で全体総点検に拡大
