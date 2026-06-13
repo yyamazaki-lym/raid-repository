@@ -221,6 +221,28 @@ ALTER TABLE public.category_links
 CREATE INDEX IF NOT EXISTS category_links_category_kind_idx
   ON public.category_links(category_id, kind, sort_order);
 
+-- A-5.1 (2026-06-13): (category_id, kind, url) の UNIQUE 制約。
+-- Discord cron 取り込みの dedupe が SELECT→INSERT で非原子的なため、
+-- cron × 手動「Import now」の競合で同一 URL が二重挿入され得た
+-- (discord-import.ts を upsert(onConflict, ignoreDuplicates) に変更して
+-- 原子的に冪等化する。その土台となる制約)。
+-- ⚠ UNIQUE は NOT VALID にできず、既存重複があると ADD CONSTRAINT が失敗する。
+--   先に重複を 1 行へ圧縮する (各グループで最小 ctid を残す。重複行は
+--   category_id/kind/url が同一なので、どの行を残しても参照内容は変わらない)。
+--   制約適用後は重複が発生し得ないため、この DELETE は再デプロイ時には 0 行
+--   (= 冪等な no-op)。本番では適用時に 1 行のみ圧縮 (asphodelos の手動二重登録)。
+DELETE FROM public.category_links a
+  USING public.category_links b
+ WHERE a.category_id = b.category_id
+   AND a.kind        = b.kind
+   AND a.url         = b.url
+   AND a.ctid        > b.ctid;
+ALTER TABLE public.category_links
+  DROP CONSTRAINT IF EXISTS category_links_category_kind_url_key;
+ALTER TABLE public.category_links
+  ADD CONSTRAINT category_links_category_kind_url_key
+  UNIQUE (category_id, kind, url);
+
 DROP TRIGGER IF EXISTS set_updated_at_category_links ON public.category_links;
 CREATE TRIGGER set_updated_at_category_links
   BEFORE UPDATE ON public.category_links
