@@ -155,7 +155,7 @@ export async function SiteHeader() {
           <SettingsDialog canEdit={canEdit} showSignIn={isDemoGuest} />
           <span
             aria-hidden
-            className="hidden h-2 w-2 animate-pulse rounded-full bg-[var(--neon-cyan)] shadow-[0_0_10px_var(--neon-cyan)] sm:inline-block"
+            className="hidden h-2 w-2 animate-pulse rounded-full bg-[var(--neon-cyan)] shadow-[0_0_10px_var(--neon-cyan)] motion-reduce:animate-none sm:inline-block"
           />
           <span className="hidden font-mono text-[11px] tracking-[0.22em] text-muted-foreground sm:inline">
             ONLINE

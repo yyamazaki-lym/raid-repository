@@ -671,6 +671,30 @@
 }
 
 /* ============================================================
+ * prefers-reduced-motion (F-2, 2026-06-13)
+ * OS / ブラウザで「視差効果を減らす」設定の利用者向けに、常時動作する
+ * 装飾アニメ (背景の雪/オーロラ/砂/twinkle/aether-pulse/drift、link-pending
+ * パルス) を停止する。背景アニメは全テーマで .bg-grid-animate / .bg-scanlines
+ * に乗っているため、この 2 クラスを !important で止めればテーマ別 (より高
+ * specificity の .dark.theme-* セレクタ) も含めて一括無効化できる。
+ * 動作の合図として必要な要素 (link-pending ドット) は静止 + 可視のまま残す。
+ * tab underline の motion spring は各コンポーネント側 useReducedMotion() で
+ * 即時化、ONLINE ドットの animate-pulse は site-header の motion-reduce: で停止。
+ * ※ ホバー時の色/不透明度 transition (neon-edge 等) は vestibular な動きでは
+ *   ないため意図的に残す (プロジェクトの transition duration 規約を維持)。
+ * ============================================================ */
+@media (prefers-reduced-motion: reduce) {
+  .bg-grid-animate,
+  .bg-scanlines {
+    animation: none !important;
+  }
+  .link-pending-dot.is-pending {
+    animation: none !important;
+    opacity: 0.7; /* fade-in 完了後の静止可視状態を維持 */
+  }
+}
+
+/* ============================================================
  * Per-theme background effects — fully distinct atmospheres.
  * Each theme overrides .bg-grid and/or .bg-scanlines with a
  * different pattern (sparkles / lattice / ember / aurora /
