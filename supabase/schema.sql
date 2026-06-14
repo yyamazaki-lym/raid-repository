@@ -390,7 +390,11 @@ CREATE TRIGGER set_updated_at_app_settings
 -- Free-form notes attached to a particular session (keyed by rawDate
 -- so the same key joins both live character-sheets data and the
 -- snapshot table). Multiple memos per date, all visible to every
--- viewer (no auth model — same trust scope as the rest of the app).
+-- viewer (read は anon 含め全員)。
+-- 書込は「ログイン済みメンバーなら誰でも」(admin 限定ではない): 汎用ループの
+-- admin policy に加えて 7a-2 で authenticated 全体に INSERT/UPDATE/DELETE を
+-- 開放している (所有者カラムを持たない共有メモ。総合レビュー A-4)。anon は
+-- read-only。本番は proxy で全 viewer が認証済みメンバー = 実質「全員編集可」。
 
 CREATE TABLE IF NOT EXISTS public.schedule_session_memos (
   id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -845,6 +849,37 @@ CREATE POLICY native_schedule_attendances_self_delete
   USING (
     (auth.jwt() -> 'app_metadata' ->> 'discord_id') = discord_user_id
   );
+
+-- ---- 7a-2. schedule_session_memos メンバー書込 (総合レビュー A-4) -----------
+-- 5c-2 のコメント設計どおり「ログイン済みメンバーなら誰でも共有メモを編集可」
+-- にする。汎用ループ (7 章) が生成する admin-only policy と OR 評価され、admin
+-- か authenticated のどちらかが TRUE なら許可される。所有者カラムが無い
+-- (author_name は情報用のみ) ため self-row ではなく authenticated 全体に開放
+-- する。信頼境界は「ログイン済み guild メンバー = 本サイトの読み書きスコープ」。
+-- anon は read-only のまま (公開インターネットからの vandalism 防止)。
+-- 本番は proxy で全 viewer が認証済みメンバーに限定されるので実質「全員編集可」、
+-- demo は実セッション owner のみ書込可・guest (anon key) は RLS で block。
+DROP POLICY IF EXISTS schedule_session_memos_member_insert
+  ON public.schedule_session_memos;
+CREATE POLICY schedule_session_memos_member_insert
+  ON public.schedule_session_memos
+  FOR INSERT TO authenticated
+  WITH CHECK (true);
+
+DROP POLICY IF EXISTS schedule_session_memos_member_update
+  ON public.schedule_session_memos;
+CREATE POLICY schedule_session_memos_member_update
+  ON public.schedule_session_memos
+  FOR UPDATE TO authenticated
+  USING (true)
+  WITH CHECK (true);
+
+DROP POLICY IF EXISTS schedule_session_memos_member_delete
+  ON public.schedule_session_memos;
+CREATE POLICY schedule_session_memos_member_delete
+  ON public.schedule_session_memos
+  FOR DELETE TO authenticated
+  USING (true);
 
 -- ---- 7b. Realtime: REPLICA IDENTITY FULL ------------------------------
 -- Without this, Supabase Realtime DELETE events only carry the primary

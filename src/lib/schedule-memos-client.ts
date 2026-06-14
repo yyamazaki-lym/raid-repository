@@ -5,9 +5,12 @@ import { createClient } from "@/lib/supabase/client";
 
 /**
  * CRUD + Realtime hook for `schedule_session_memos` — per-date shared
- * notes that any viewer can leave. Same auth scope as the rest of the
- * app (no per-user identity), so anyone can edit anyone's note. The
- * `author_name` field is informational only.
+ * notes. **Read は anon 含め全員**、**書込はログイン済みメンバーなら誰でも**
+ * (admin 限定ではない: schema 7a-2 で authenticated 全体に INSERT/UPDATE/DELETE
+ * を開放。総合レビュー A-4)。所有者カラムを持たない共有メモなので、ログイン
+ * メンバーは誰のメモでも編集できる。`author_name` は情報表示用のみ。anon
+ * (未ログイン) の書込は RLS で弾かれ `{ok:false}` を返す (本番は proxy で全
+ * viewer が認証済みメンバーのため通常は到達しない / demo guest のみ該当)。
  *
  * Author name is persisted to localStorage so a returning user
  * doesn't have to re-type their name every memo session.
