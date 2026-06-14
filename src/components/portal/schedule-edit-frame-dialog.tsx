@@ -116,7 +116,7 @@ export function ScheduleEditFrameDialog({
                 href={safeUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 rounded-md border border-border/60 bg-background/40 px-2.5 py-1.5 font-mono text-[10px] tracking-[0.18em] text-muted-foreground uppercase transition-colors hover:border-[var(--neon-cyan)]/60 hover:text-foreground"
+                className="inline-flex items-center gap-1.5 rounded-md border border-border/60 bg-background/40 px-2.5 py-1.5 text-[10px] tracking-normal text-muted-foreground transition-colors hover:border-[var(--neon-cyan)]/60 hover:text-foreground"
                 title="埋め込みが表示されない場合は新しいタブで開いてください"
               >
                 <ExternalLink className="h-3 w-3" aria-hidden />

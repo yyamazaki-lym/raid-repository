@@ -82,7 +82,7 @@ export function SessionStatusToggle({
   // trigger 表示は sync 経路の確定列と同じ見た目を踏襲。CANDIDATE = `·`、DECISION = 確定 badge。
   const triggerLabel =
     currentStatus === "DECISION" ? (
-      <span className="inline-flex h-6 items-center justify-center rounded-md border border-emerald-400/60 bg-emerald-400/15 px-2 font-mono text-[10px] font-bold tracking-[0.16em] text-emerald-300 uppercase shadow-[0_0_12px_-3px_rgb(52_211_153)]">
+      <span className="inline-flex h-6 items-center justify-center rounded-md border border-emerald-400/60 bg-emerald-400/15 px-2 text-[10px] font-bold tracking-normal text-emerald-300 shadow-[0_0_12px_-3px_rgb(52_211_153)]">
         確定
       </span>
     ) : (

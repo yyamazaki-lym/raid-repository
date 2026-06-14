@@ -190,7 +190,7 @@ export function PastSessionsSection({
             size="sm"
             onClick={onImport}
             disabled={importing || !channelId.trim()}
-            className="gap-1.5 font-mono text-[11px] tracking-[0.18em] uppercase"
+            className="gap-1.5 text-[11px] tracking-normal"
             title={
               !channelId.trim()
                 ? "チャンネル ID を入力してください（先に保存）"
@@ -210,7 +210,7 @@ export function PastSessionsSection({
             size="sm"
             onClick={onSnapshot}
             disabled={snapshotting}
-            className="gap-1.5 font-mono text-[11px] tracking-[0.18em] uppercase"
+            className="gap-1.5 text-[11px] tracking-normal"
             title="現在の出席状況を即時スナップショット（自動: 毎日21:50 JST）"
           >
             {snapshotting ? (
@@ -226,7 +226,7 @@ export function PastSessionsSection({
             size="sm"
             onClick={onCount}
             disabled={counting}
-            className="gap-1.5 font-mono text-[11px] tracking-[0.18em] uppercase"
+            className="gap-1.5 text-[11px] tracking-normal"
             title="schedule_past_sessions の現在の保存件数を確認（デバッグ用）"
           >
             {counting ? (
@@ -249,7 +249,7 @@ export function PastSessionsSection({
             </button>
             {importResult.ok ? (
               <>
-                <p className="font-mono">
+                <p>
                   scanned {importResult.scanned} / 検出{" "}
                   {importResult.parsed} / 新規 {importResult.inserted} /
                   重複 {importResult.duplicates}
@@ -285,7 +285,7 @@ export function PastSessionsSection({
           </button>
           {snapshotResult.ok ? (
             <>
-              <p className="font-mono">
+              <p>
                 対象 {snapshotResult.scanned} 件 / 新規{" "}
                 <strong>{snapshotResult.inserted}</strong> / 更新{" "}
                 <strong>{snapshotResult.updated}</strong>
@@ -322,7 +322,7 @@ export function PastSessionsSection({
           </button>
           {storedInfo.ok ? (
             <>
-              <p className="font-mono">
+              <p>
                 DB 保存件数: <strong>{storedInfo.count}</strong>
               </p>
               {storedInfo.recentRows.length > 0 && (

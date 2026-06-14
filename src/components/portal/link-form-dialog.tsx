@@ -206,7 +206,7 @@ export function LinkFormDialog({
   };
 
   const defaultTrigger = (
-    <DialogTrigger className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-border/60 bg-background/30 px-3 py-1.5 font-mono text-[11px] tracking-[0.18em] whitespace-nowrap text-muted-foreground uppercase transition-colors hover:border-[var(--neon-cyan)]/60 hover:text-foreground">
+    <DialogTrigger className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-border/60 bg-background/30 px-3 py-1.5 text-[11px] tracking-normal whitespace-nowrap text-muted-foreground transition-colors hover:border-[var(--neon-cyan)]/60 hover:text-foreground">
       <Plus className="h-3.5 w-3.5" aria-hidden />
       {KIND_LABEL[kind]}追加
     </DialogTrigger>
@@ -285,7 +285,7 @@ export function LinkFormDialog({
                 type="button"
                 onClick={onFetchTitle}
                 disabled={fetchingTitle || !url.trim()}
-                className="inline-flex items-center gap-1 rounded-sm border border-[var(--neon-cyan)]/40 bg-[var(--neon-cyan)]/8 px-2 py-0.5 font-mono text-[10px] tracking-[0.18em] text-[var(--neon-cyan)] uppercase transition-colors hover:bg-[var(--neon-cyan)]/15 disabled:opacity-40"
+                className="inline-flex items-center gap-1 rounded-sm border border-[var(--neon-cyan)]/40 bg-[var(--neon-cyan)]/8 px-2 py-0.5 text-[10px] tracking-normal text-[var(--neon-cyan)] transition-colors hover:bg-[var(--neon-cyan)]/15 disabled:opacity-40"
                 aria-label="URLからタイトルを取得"
               >
                 <Wand2 className="h-3 w-3" aria-hidden />
@@ -376,7 +376,7 @@ export function LinkFormDialog({
             size="sm"
             onClick={() => setOpen(false)}
             disabled={busy}
-            className="font-mono text-[11px] tracking-[0.18em] uppercase"
+            className="text-[11px] tracking-normal"
           >
             キャンセル
           </Button>
@@ -385,7 +385,7 @@ export function LinkFormDialog({
             size="sm"
             onClick={onSubmit}
             disabled={busy}
-            className="gap-1.5 font-mono text-[11px] tracking-[0.18em] uppercase"
+            className="gap-1.5 text-[11px] tracking-normal"
           >
             {busy ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />

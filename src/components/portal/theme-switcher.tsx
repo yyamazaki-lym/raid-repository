@@ -18,7 +18,7 @@ export function ThemeSwitcher() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
-        className="group flex items-center gap-2 rounded-md border border-border/40 bg-background/30 px-2.5 py-1.5 font-mono text-[10px] tracking-[0.18em] text-muted-foreground uppercase transition-colors hover:border-[var(--neon-cyan)]/40 hover:text-foreground"
+        className="group flex items-center gap-2 rounded-md border border-border/40 bg-background/30 px-2.5 py-1.5 text-[10px] tracking-normal text-muted-foreground transition-colors hover:border-[var(--neon-cyan)]/40 hover:text-foreground"
         aria-label="テーマを切り替え"
       >
         <Palette className="h-3.5 w-3.5 text-[var(--neon-cyan)]" aria-hidden />

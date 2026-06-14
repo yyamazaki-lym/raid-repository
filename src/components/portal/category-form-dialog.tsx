@@ -506,7 +506,7 @@ export function CategoryFormDialog({
   };
 
   const defaultTrigger = (
-    <DialogTrigger className="inline-flex items-center gap-1.5 rounded-md border border-border/60 bg-background/30 px-3 py-1.5 font-mono text-[11px] tracking-[0.18em] text-muted-foreground uppercase transition-colors hover:border-[var(--neon-cyan)]/60 hover:text-foreground">
+    <DialogTrigger className="inline-flex items-center gap-1.5 rounded-md border border-border/60 bg-background/30 px-3 py-1.5 text-[11px] tracking-normal text-muted-foreground transition-colors hover:border-[var(--neon-cyan)]/60 hover:text-foreground">
       <Plus className="h-3.5 w-3.5" aria-hidden />
       コンテンツ追加
     </DialogTrigger>
@@ -607,7 +607,7 @@ export function CategoryFormDialog({
                   type="button"
                   onClick={() => setStatus(s)}
                   className={cn(
-                    "inline-flex items-center gap-1.5 rounded-sm border px-2 py-1 font-mono text-[10px] tracking-[0.18em] uppercase transition-colors",
+                    "inline-flex items-center gap-1.5 rounded-sm border px-2 py-1 text-[10px] tracking-normal transition-colors",
                     status === s
                       ? "border-[var(--neon-cyan)]/60 bg-[var(--neon-cyan)]/10 text-foreground"
                       : "border-border bg-background/30 text-muted-foreground hover:text-foreground/80",
@@ -649,7 +649,7 @@ export function CategoryFormDialog({
                             : undefined
                         }
                         className={cn(
-                          "inline-flex items-center gap-1.5 rounded-sm border px-2 py-1 font-mono text-[10px] tracking-[0.18em] uppercase transition-colors",
+                          "inline-flex items-center gap-1.5 rounded-sm border px-2 py-1 text-[10px] tracking-normal transition-colors",
                           defaultTab === id
                             ? "border-[var(--neon-cyan)]/60 bg-[var(--neon-cyan)]/10 text-foreground"
                             : "border-border bg-background/30 text-muted-foreground hover:text-foreground/80",
@@ -679,7 +679,7 @@ export function CategoryFormDialog({
                         key={id}
                         className="flex items-center gap-2 rounded-sm border border-border/40 bg-background/30 p-2"
                       >
-                        <label className="inline-flex items-center gap-1.5 font-mono text-[11px] tracking-[0.16em] uppercase">
+                        <label className="inline-flex items-center gap-1.5 text-[11px] tracking-normal">
                           <input
                             type="checkbox"
                             checked={s.enabled}
@@ -705,7 +705,7 @@ export function CategoryFormDialog({
                             }))
                           }
                           placeholder={`名前を変更（空欄＝既定「${DEFAULT_SUB_TAB_LABELS[id]}」）`}
-                          className="font-mono text-[11px]"
+                          className="text-[11px] tracking-normal"
                           disabled={!s.enabled}
                         />
                       </li>
@@ -790,7 +790,7 @@ export function CategoryFormDialog({
               value={strategyFilterInput}
               onChange={(e) => setStrategyFilterInput(e.target.value)}
               placeholder="例: 軽減, ロット, 動き"
-              className="font-mono text-[12px]"
+              className="text-[12px]"
               autoComplete="off"
               spellCheck={false}
             />
@@ -835,7 +835,7 @@ export function CategoryFormDialog({
               value={videoFilterInput}
               onChange={(e) => setVideoFilterInput(e.target.value)}
               placeholder="例: クリア, 軽減, 解説"
-              className="font-mono text-[12px]"
+              className="text-[12px]"
               autoComplete="off"
               spellCheck={false}
             />
@@ -895,7 +895,7 @@ export function CategoryFormDialog({
                 size="sm"
                 onClick={onPickBackgroundFile}
                 disabled={uploadingBg}
-                className="shrink-0 gap-1.5 font-mono text-[10px] tracking-[0.18em] uppercase"
+                className="shrink-0 gap-1.5 text-[10px] tracking-normal"
               >
                 {uploadingBg ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
@@ -910,7 +910,7 @@ export function CategoryFormDialog({
                   variant="ghost"
                   size="sm"
                   onClick={() => setBackgroundImageUrl("")}
-                  className="shrink-0 font-mono text-[10px] tracking-[0.18em] uppercase"
+                  className="shrink-0 text-[10px] tracking-normal"
                 >
                   クリア
                 </Button>
@@ -949,11 +949,11 @@ export function CategoryFormDialog({
               <Shield className="h-3 w-3" aria-hidden />
               閲覧可能ロール（任意）
               {selectedRoleIds.length > 0 && (
-                <span className="inline-flex items-center rounded-sm border border-[var(--neon-cyan)]/40 bg-[var(--neon-cyan)]/10 px-1.5 py-px font-mono text-[9px] tracking-[0.18em] text-[var(--neon-cyan)] uppercase">
+                <span className="inline-flex items-center rounded-sm border border-[var(--neon-cyan)]/40 bg-[var(--neon-cyan)]/10 px-1.5 py-px text-[9px] tracking-normal text-[var(--neon-cyan)]">
                   {selectedRoleIds.length} 選択中
                 </span>
               )}
-              <span className="ml-auto font-mono text-[10px] tracking-[0.18em] text-muted-foreground uppercase">
+              <span className="ml-auto text-[10px] tracking-normal text-muted-foreground">
                 クリックで展開
               </span>
             </summary>
@@ -1018,7 +1018,7 @@ export function CategoryFormDialog({
                 <button
                   type="button"
                   onClick={() => setSelectedRoleIds([])}
-                  className="self-start font-mono text-[10px] tracking-[0.18em] text-muted-foreground uppercase hover:text-foreground"
+                  className="self-start text-[10px] tracking-normal text-muted-foreground hover:text-foreground"
                 >
                   選択をクリア
                 </button>
@@ -1044,7 +1044,7 @@ export function CategoryFormDialog({
                   variant="ghost"
                   size="sm"
                   onClick={() => setFirstClearDate("")}
-                  className="font-mono text-[10px] tracking-[0.18em] uppercase"
+                  className="text-[10px] tracking-normal"
                 >
                   クリア
                 </Button>
@@ -1099,7 +1099,7 @@ export function CategoryFormDialog({
                     setManualHours("");
                     setManualMinutes("");
                   }}
-                  className="font-mono text-[10px] tracking-[0.18em] uppercase"
+                  className="text-[10px] tracking-normal"
                 >
                   クリア
                 </Button>
@@ -1128,7 +1128,7 @@ export function CategoryFormDialog({
               value={matchKeywordsInput}
               onChange={(e) => setMatchKeywordsInput(e.target.value)}
               placeholder="例: 絶アレキサンダー, リットアティン強襲戦, M4S"
-              className="min-h-[2.4rem] font-mono text-[12px] leading-relaxed"
+              className="min-h-[2.4rem] text-[12px] leading-relaxed"
               autoComplete="off"
               spellCheck={false}
               rows={2}
@@ -1160,7 +1160,7 @@ export function CategoryFormDialog({
             size="sm"
             onClick={() => setOpen(false)}
             disabled={busy}
-            className="font-mono text-[11px] tracking-[0.18em] uppercase"
+            className="text-[11px] tracking-normal"
           >
             キャンセル
           </Button>
@@ -1169,7 +1169,7 @@ export function CategoryFormDialog({
             size="sm"
             onClick={onSubmit}
             disabled={busy}
-            className="gap-1.5 font-mono text-[11px] tracking-[0.18em] uppercase"
+            className="gap-1.5 text-[11px] tracking-normal"
           >
             {busy ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />

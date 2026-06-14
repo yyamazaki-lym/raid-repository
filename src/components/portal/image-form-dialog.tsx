@@ -222,7 +222,7 @@ export function ImageFormDialog({
   };
 
   const defaultTrigger = (
-    <DialogTrigger className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-border/60 bg-background/30 px-3 py-1.5 font-mono text-[11px] tracking-[0.18em] whitespace-nowrap text-muted-foreground uppercase transition-colors hover:border-[var(--neon-cyan)]/60 hover:text-foreground">
+    <DialogTrigger className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-border/60 bg-background/30 px-3 py-1.5 text-[11px] tracking-normal whitespace-nowrap text-muted-foreground transition-colors hover:border-[var(--neon-cyan)]/60 hover:text-foreground">
       <ImagePlus className="h-3.5 w-3.5" aria-hidden />
       画像追加
     </DialogTrigger>
@@ -289,7 +289,7 @@ export function ImageFormDialog({
                 size="sm"
                 onClick={onPickFile}
                 disabled={uploading || busy}
-                className="shrink-0 gap-1.5 font-mono text-[10px] tracking-[0.18em] uppercase"
+                className="shrink-0 gap-1.5 text-[10px] tracking-normal"
               >
                 {uploading ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
@@ -369,7 +369,7 @@ export function ImageFormDialog({
             size="sm"
             onClick={() => setOpen(false)}
             disabled={busy}
-            className="font-mono text-[11px] tracking-[0.18em] uppercase"
+            className="text-[11px] tracking-normal"
           >
             キャンセル
           </Button>
@@ -378,7 +378,7 @@ export function ImageFormDialog({
             size="sm"
             onClick={onSubmit}
             disabled={busy || uploading}
-            className="gap-1.5 font-mono text-[11px] tracking-[0.18em] uppercase"
+            className="gap-1.5 text-[11px] tracking-normal"
           >
             {busy ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />

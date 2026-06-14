@@ -122,7 +122,7 @@ export function SheetUrlOnboarding({
         <div className="flex flex-col gap-1.5">
           <Label
             htmlFor={`sheet-url-${kind}`}
-            className="font-mono text-[10px] tracking-[0.18em] text-muted-foreground uppercase"
+            className="text-[10px] tracking-normal text-muted-foreground"
           >
             {label} URL
           </Label>
@@ -155,7 +155,7 @@ export function SheetUrlOnboarding({
 
         {template && (
           <div className="flex flex-col gap-2 rounded-md border border-[var(--neon-cyan)]/30 bg-[var(--neon-cyan)]/5 px-3 py-2.5">
-            <p className="font-mono text-[10px] tracking-[0.18em] text-[var(--neon-cyan)]/85 uppercase">
+            <p className="text-[10px] tracking-normal text-[var(--neon-cyan)]/85">
               テンプレート ({template.authorLabel} 提供)
             </p>
             <p className="text-foreground/85 text-[11px] leading-relaxed">
@@ -168,7 +168,7 @@ export function SheetUrlOnboarding({
                 href={template.sourceUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 rounded-md border border-[var(--neon-cyan)]/40 bg-background/40 px-2.5 py-1 font-mono text-[10px] tracking-[0.18em] text-[var(--neon-cyan)] uppercase transition-colors hover:border-[var(--neon-cyan)]/80 hover:bg-[var(--neon-cyan)]/10"
+                className="inline-flex items-center gap-1.5 rounded-md border border-[var(--neon-cyan)]/40 bg-background/40 px-2.5 py-1 text-[10px] tracking-normal text-[var(--neon-cyan)] transition-colors hover:border-[var(--neon-cyan)]/80 hover:bg-[var(--neon-cyan)]/10"
               >
                 <Copy className="h-3 w-3" aria-hidden />
                 コピー元シート
@@ -177,7 +177,7 @@ export function SheetUrlOnboarding({
                 href={template.guideUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 rounded-md border border-amber-400/40 bg-background/40 px-2.5 py-1 font-mono text-[10px] tracking-[0.18em] text-amber-300 uppercase transition-colors hover:border-amber-300/80 hover:bg-amber-400/10"
+                className="inline-flex items-center gap-1.5 rounded-md border border-amber-400/40 bg-background/40 px-2.5 py-1 text-[10px] tracking-normal text-amber-300 transition-colors hover:border-amber-300/80 hover:bg-amber-400/10"
               >
                 <ExternalLink className="h-3 w-3" aria-hidden />
                 使い方 (note)
@@ -202,7 +202,7 @@ export function SheetUrlOnboarding({
             size="sm"
             onClick={onSave}
             disabled={busy}
-            className="gap-1.5 font-mono text-[11px] tracking-[0.18em] uppercase"
+            className="gap-1.5 text-[11px] tracking-normal"
           >
             {busy ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />

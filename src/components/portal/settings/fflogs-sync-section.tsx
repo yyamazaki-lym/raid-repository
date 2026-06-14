@@ -266,7 +266,7 @@ export function FflogsSyncSection({
                   });
                 }}
                 disabled={savingUsername}
-                className="gap-1.5 font-mono text-[10px] tracking-[0.18em] uppercase"
+                className="gap-1.5 text-[10px] tracking-normal"
               >
                 <Save className="h-3 w-3" aria-hidden />
                 保存
@@ -289,7 +289,7 @@ export function FflogsSyncSection({
           <details className="group/oauth flex flex-col gap-2">
             <summary className="cursor-pointer list-none [&::-webkit-details-marker]:hidden">
               <div className="flex items-center justify-between gap-2 rounded-md border border-border/40 bg-secondary/15 px-3 py-2 hover:bg-secondary/25 transition-colors">
-                <span className="flex items-center gap-1.5 font-mono text-[10px] tracking-[0.22em] text-muted-foreground uppercase">
+                <span className="flex items-center gap-1.5 text-[10px] tracking-normal text-muted-foreground">
                   <span className="text-[var(--neon-cyan)]/70 transition-transform group-open/oauth:rotate-90">
                     ▸
                   </span>
@@ -297,7 +297,7 @@ export function FflogsSyncSection({
                   OAuth 認証 (v2 API・オプション)
                 </span>
                 {oauthStatus?.connected && (
-                  <span className="inline-flex items-center gap-1 rounded-sm border border-emerald-400/45 bg-emerald-400/10 px-1.5 py-px font-mono text-[9px] tracking-[0.18em] text-emerald-200 uppercase">
+                  <span className="inline-flex items-center gap-1 rounded-sm border border-emerald-400/45 bg-emerald-400/10 px-1.5 py-px text-[9px] tracking-normal text-emerald-200">
                     <span className="inline-block h-1 w-1 rounded-full bg-emerald-400 shadow-[0_0_6px_rgb(52_211_153)]" />
                     接続済
                   </span>
@@ -306,12 +306,12 @@ export function FflogsSyncSection({
             </summary>
             <div className="ml-2 flex flex-col gap-2 rounded-md border border-amber-400/35 bg-amber-400/5 px-3 py-2.5">
               <div className="flex items-center justify-between gap-2">
-                <span className="flex items-center gap-1.5 font-mono text-[10px] tracking-[0.22em] text-amber-200/95 uppercase">
+                <span className="flex items-center gap-1.5 text-[10px] tracking-normal text-amber-200/95">
                   <Link2 className="h-3 w-3" aria-hidden />
                   OAuth 認証 (v2 API)
                 </span>
                 {oauthStatus?.connected && (
-                  <span className="inline-flex items-center gap-1 rounded-sm border border-emerald-400/45 bg-emerald-400/10 px-1.5 py-px font-mono text-[9px] tracking-[0.18em] text-emerald-200 uppercase">
+                  <span className="inline-flex items-center gap-1 rounded-sm border border-emerald-400/45 bg-emerald-400/10 px-1.5 py-px text-[9px] tracking-normal text-emerald-200">
                     <span className="inline-block h-1 w-1 rounded-full bg-emerald-400 shadow-[0_0_6px_rgb(52_211_153)]" />
                     接続済
                   </span>
@@ -329,7 +329,7 @@ export function FflogsSyncSection({
                     )}
                   </p>
                   {oauthStatus.expiresAt && (
-                    <p className="font-mono text-[10px] text-muted-foreground/70">
+                    <p className="text-[10px] text-muted-foreground/70">
                       access_token 有効期限:{" "}
                       {new Date(oauthStatus.expiresAt).toLocaleString("ja-JP")}
                       （期限切れ時は refresh_token で自動更新）
@@ -353,7 +353,7 @@ export function FflogsSyncSection({
                       });
                     }}
                     disabled={disconnecting}
-                    className="self-start inline-flex items-center gap-1.5 rounded-md border border-border/50 px-2.5 py-1.5 font-mono text-[10px] tracking-[0.18em] text-muted-foreground uppercase transition-colors hover:bg-secondary/60 hover:text-rose-200 disabled:opacity-50"
+                    className="self-start inline-flex items-center gap-1.5 rounded-md border border-border/50 px-2.5 py-1.5 text-[10px] tracking-normal text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-rose-200 disabled:opacity-50"
                   >
                     <X className="h-3 w-3" aria-hidden />
                     {disconnecting ? "切断中..." : "切断"}
@@ -368,7 +368,7 @@ export function FflogsSyncSection({
                   </p>
                   <a
                     href="/api/auth/fflogs/start"
-                    className="self-start inline-flex items-center gap-1.5 rounded-md border border-amber-400/55 bg-amber-400/15 px-2.5 py-1.5 font-mono text-[10px] tracking-[0.18em] text-amber-100 uppercase transition-colors hover:border-amber-400/80 hover:bg-amber-400/25"
+                    className="self-start inline-flex items-center gap-1.5 rounded-md border border-amber-400/55 bg-amber-400/15 px-2.5 py-1.5 text-[10px] tracking-normal text-amber-100 transition-colors hover:border-amber-400/80 hover:bg-amber-400/25"
                   >
                     <Link2 className="h-3 w-3" aria-hidden />
                     FFLogs と OAuth 接続
@@ -410,7 +410,7 @@ export function FflogsSyncSection({
                   Session Cookie (Private/Unlisted 用・オプション)
                 </span>
                 {cookieStatus?.set && (
-                  <span className="inline-flex items-center gap-1 rounded-sm border border-amber-400/45 bg-amber-400/10 px-1.5 py-px font-mono text-[9px] tracking-[0.18em] text-amber-200 uppercase">
+                  <span className="inline-flex items-center gap-1 rounded-sm border border-amber-400/45 bg-amber-400/10 px-1.5 py-px text-[9px] tracking-normal text-amber-200">
                     <span className="inline-block h-1 w-1 rounded-full bg-amber-400 shadow-[0_0_6px_rgb(251_191_36)]" />
                     セット済 (次回連動で消費)
                   </span>
@@ -496,7 +496,7 @@ export function FflogsSyncSection({
                     });
                   }}
                   disabled={savingCookie || !sessionCookieInput.trim()}
-                  className="gap-1.5 font-mono text-[10px] tracking-[0.18em] uppercase"
+                  className="gap-1.5 text-[10px] tracking-normal"
                 >
                   <Save className="h-3 w-3" aria-hidden />
                   Cookie 保存
@@ -518,7 +518,7 @@ export function FflogsSyncSection({
                       });
                     }}
                     disabled={savingCookie}
-                    className="gap-1.5 font-mono text-[10px] tracking-[0.18em] uppercase text-muted-foreground"
+                    className="gap-1.5 text-[10px] tracking-normal text-muted-foreground"
                   >
                     <X className="h-3 w-3" aria-hidden />
                     今すぐ削除
@@ -534,7 +534,7 @@ export function FflogsSyncSection({
           <div className="flex items-center justify-between gap-2 rounded-md border border-border/30 bg-secondary/20 px-3 py-2">
             <div className="flex flex-col gap-0.5">
               <span className="text-xs">日次自動連動 (cron)</span>
-              <span className="font-mono text-[9px] text-muted-foreground/60">
+              <span className="text-[9px] text-muted-foreground/60">
                 {cronEnabled === null
                   ? "読み込み中..."
                   : cronEnabled
@@ -567,7 +567,7 @@ export function FflogsSyncSection({
                   linkingLogs ||
                   (!oauthStatus?.connected && !fflogsUsername.trim())
                 }
-                className="gap-1.5 font-mono text-[11px] tracking-[0.18em] uppercase"
+                className="gap-1.5 text-[11px] tracking-normal"
                 title={
                   !oauthStatus?.connected && !fflogsUsername.trim()
                     ? "先に「FFLogs 表示名」を保存するか「OAuth 接続」を実行してください"
@@ -607,7 +607,7 @@ export function FflogsSyncSection({
                   });
                 }}
                 disabled={clearingLogs}
-                className="gap-1.5 font-mono text-[11px] tracking-[0.18em] uppercase text-rose-200"
+                className="gap-1.5 text-[11px] tracking-normal text-rose-200"
                 title="全 logs URL を一括削除（過去の v1 fallback で誤って紐づいたものをリセット）"
               >
                 {clearingLogs ? (
@@ -630,7 +630,7 @@ export function FflogsSyncSection({
                 </button>
                 {logsResult.ok ? (
                   <>
-                    <p className="font-mono">
+                    <p>
                       動画 <strong>{logsResult.matched}</strong> /{" "}
                       過去予定 <strong>{logsResult.sessionsMatched}</strong>
                       {" "}件を紐づけ · レポート {logsResult.reportsScanned}
@@ -643,7 +643,7 @@ export function FflogsSyncSection({
                         </span>
                       )}
                     </p>
-                    <p className="font-mono text-[10px] text-muted-foreground/70">
+                    <p className="text-[10px] text-muted-foreground/70">
                       候補: 動画 {logsResult.videosScanned} / 過去予定{" "}
                       {logsResult.sessionsScanned}
                     </p>
@@ -657,10 +657,10 @@ export function FflogsSyncSection({
                       logsResult.sessionsMatched === 0 &&
                       logsResult.reportsScanned > 0 && (
                         <div className="mt-2 flex flex-col gap-1 rounded-sm border border-amber-400/30 bg-amber-400/5 px-2 py-1.5">
-                          <p className="font-mono text-[10px] text-amber-200/90">
+                          <p className="text-[10px] text-amber-200/90">
                             ⚠ どれもマッチしませんでした — 期間の不一致が原因の可能性
                           </p>
-                          <ul className="ml-2 flex flex-col gap-0.5 font-mono text-[10px] text-muted-foreground">
+                          <ul className="ml-2 flex flex-col gap-0.5 text-[10px] text-muted-foreground">
                             {logsResult.queriedUsername && (
                               <li>
                                 クエリしたユーザー名:{" "}
@@ -701,7 +701,7 @@ export function FflogsSyncSection({
                             )}
                           </ul>
                           <div className="mt-1.5 flex flex-col gap-1 rounded-sm bg-secondary/30 px-2 py-1.5 text-[10px] leading-relaxed">
-                            <p className="font-mono text-[10px] text-amber-200/90">
+                            <p className="text-[10px] text-amber-200/90">
                               想定される原因 — FFLogs API の制約：
                             </p>
                             <p className="text-muted-foreground leading-relaxed">

@@ -635,7 +635,7 @@ function MemoList({
                       type="button"
                       onClick={cancelEdit}
                       disabled={busy}
-                      className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 font-mono text-[10px] tracking-[0.18em] text-muted-foreground uppercase transition-colors hover:bg-secondary/60 hover:text-foreground disabled:opacity-50"
+                      className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[10px] tracking-normal text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground disabled:opacity-50"
                     >
                       <X className="h-3 w-3" aria-hidden />
                       キャンセル
@@ -644,7 +644,7 @@ function MemoList({
                       type="button"
                       onClick={() => saveEdit(m.id)}
                       disabled={busy}
-                      className="inline-flex items-center gap-1.5 rounded-md border border-[var(--neon-cyan)]/45 bg-[var(--neon-cyan)]/10 px-2.5 py-1.5 font-mono text-[10px] tracking-[0.18em] text-[var(--neon-cyan)] uppercase transition-colors hover:border-[var(--neon-cyan)]/70 hover:bg-[var(--neon-cyan)]/18 disabled:opacity-50"
+                      className="inline-flex items-center gap-1.5 rounded-md border border-[var(--neon-cyan)]/45 bg-[var(--neon-cyan)]/10 px-2.5 py-1.5 text-[10px] tracking-normal text-[var(--neon-cyan)] transition-colors hover:border-[var(--neon-cyan)]/70 hover:bg-[var(--neon-cyan)]/18 disabled:opacity-50"
                     >
                       <Save className="h-3 w-3" aria-hidden />
                       保存
@@ -698,7 +698,7 @@ function MemoList({
       )}
 
       <div className="flex flex-col gap-1.5 border-t border-border/40 pt-2.5">
-        <div className="flex items-center gap-1.5 font-mono text-[10px] tracking-[0.22em] text-muted-foreground uppercase">
+        <div className="flex items-center gap-1.5 text-[10px] tracking-normal text-muted-foreground">
           <MessageSquarePlus
             className="h-3 w-3 text-[var(--neon-violet)]/80"
             aria-hidden
@@ -725,7 +725,7 @@ function MemoList({
             type="button"
             onClick={submitDraft}
             disabled={busy || draftBody.trim().length === 0}
-            className="inline-flex items-center gap-1.5 rounded-md border border-[var(--neon-violet)]/50 bg-[var(--neon-violet)]/10 px-3 py-1.5 font-mono text-[10px] tracking-[0.22em] text-[var(--neon-violet)] uppercase transition-colors hover:border-[var(--neon-violet)]/70 hover:bg-[var(--neon-violet)]/18 disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 rounded-md border border-[var(--neon-violet)]/50 bg-[var(--neon-violet)]/10 px-3 py-1.5 text-[10px] tracking-normal text-[var(--neon-violet)] transition-colors hover:border-[var(--neon-violet)]/70 hover:bg-[var(--neon-violet)]/18 disabled:opacity-50"
           >
             <Send className="h-3 w-3" aria-hidden />
             投稿
@@ -818,7 +818,7 @@ function MemoList({
             type="button"
             onClick={() => void handleAddLogs()}
             disabled={logsBusy || newLogsInput.trim().length === 0}
-            className="inline-flex items-center gap-1.5 rounded-md border border-amber-400/45 bg-amber-400/10 px-3 py-1.5 font-mono text-[10px] tracking-[0.22em] text-amber-200 uppercase transition-colors hover:border-amber-400/70 hover:bg-amber-400/18 disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 rounded-md border border-amber-400/45 bg-amber-400/10 px-3 py-1.5 text-[10px] tracking-normal text-amber-200 transition-colors hover:border-amber-400/70 hover:bg-amber-400/18 disabled:opacity-50"
           >
             <Save className="h-3 w-3" aria-hidden />
             追加
@@ -899,7 +899,7 @@ function DeleteConfirmModal({
       >
         <header className="flex items-center gap-2 rounded-t-lg border-b border-rose-400/25 bg-rose-500/10 px-4 py-2.5">
           <Trash2 className="h-3.5 w-3.5 text-rose-300" aria-hidden />
-          <p className="font-mono text-[11px] tracking-[0.22em] text-rose-200 uppercase">
+          <p className="text-[11px] tracking-normal text-rose-200">
             メモを削除
           </p>
         </header>
@@ -921,7 +921,7 @@ function DeleteConfirmModal({
               type="button"
               onClick={onCancel}
               disabled={busy}
-              className="inline-flex items-center gap-1.5 rounded-md border border-border/50 px-3 py-1.5 font-mono text-[10px] tracking-[0.22em] text-muted-foreground uppercase transition-colors hover:bg-secondary/60 hover:text-foreground disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded-md border border-border/50 px-3 py-1.5 text-[10px] tracking-normal text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground disabled:opacity-50"
             >
               <X className="h-3 w-3" aria-hidden />
               キャンセル
@@ -930,7 +930,7 @@ function DeleteConfirmModal({
               type="button"
               onClick={onConfirm}
               disabled={busy}
-              className="inline-flex items-center gap-1.5 rounded-md border border-rose-400/55 bg-rose-500/15 px-3 py-1.5 font-mono text-[10px] tracking-[0.22em] text-rose-100 uppercase transition-colors hover:border-rose-400/80 hover:bg-rose-500/25 disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded-md border border-rose-400/55 bg-rose-500/15 px-3 py-1.5 text-[10px] tracking-normal text-rose-100 transition-colors hover:border-rose-400/80 hover:bg-rose-500/25 disabled:opacity-50"
             >
               <Trash2 className="h-3 w-3" aria-hidden />
               削除

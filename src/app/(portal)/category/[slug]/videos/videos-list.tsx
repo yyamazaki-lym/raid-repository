@@ -727,7 +727,7 @@ export function VideosList({
               });
             }}
             className={
-              "inline-flex h-7 items-center gap-1 rounded-md border px-2 font-mono text-[10px] tracking-[0.18em] uppercase transition-colors " +
+              "inline-flex h-7 items-center gap-1 rounded-md border px-2 text-[10px] tracking-normal transition-colors " +
               (selectMode
                 ? "border-[var(--neon-cyan)]/60 bg-[var(--neon-cyan)]/12 text-[var(--neon-cyan)]"
                 : "border-border/40 bg-background/30 text-muted-foreground hover:text-foreground")
@@ -779,7 +779,7 @@ export function VideosList({
           </button>
           {/* Sort mode toggle: 日付順 (newest first) or カスタム順 (DnD). */}
           <div
-            className="inline-flex items-center rounded-md border border-border/40 bg-background/30 p-0.5 font-mono text-[10px] tracking-[0.18em] uppercase"
+            className="inline-flex items-center rounded-md border border-border/40 bg-background/30 p-0.5 text-[10px] tracking-normal"
             role="radiogroup"
             aria-label="並び順"
           >
@@ -927,7 +927,7 @@ export function VideosList({
           aria-live="polite"
         >
           <div className="glass pointer-events-auto flex max-w-[calc(100vw-1.5rem)] flex-wrap items-center gap-1.5 rounded-xl border border-border/50 bg-background/85 px-2.5 py-2 shadow-[0_18px_48px_-18px_rgba(0,0,0,0.8)] backdrop-blur-md">
-            <span className="px-1 font-mono text-[10px] tracking-[0.18em] text-[var(--neon-cyan)] uppercase">
+            <span className="px-1 text-[10px] tracking-normal text-[var(--neon-cyan)]">
               {selectedIds.size} 件選択中
             </span>
             <span
@@ -938,7 +938,7 @@ export function VideosList({
               type="button"
               disabled={bulkFavoriting}
               onClick={onBulkToggleFavorite}
-              className="inline-flex h-7 items-center gap-1 rounded-md border border-amber-400/55 bg-amber-400/10 px-2 font-mono text-[10px] tracking-[0.18em] text-amber-200 uppercase transition-colors hover:border-amber-400/80 hover:bg-amber-400/20 disabled:opacity-50"
+              className="inline-flex h-7 items-center gap-1 rounded-md border border-amber-400/55 bg-amber-400/10 px-2 text-[10px] tracking-normal text-amber-200 transition-colors hover:border-amber-400/80 hover:bg-amber-400/20 disabled:opacity-50"
               title={
                 bulkFavoriteAction === "add"
                   ? "選択した動画をすべてお気に入りに追加"
@@ -962,7 +962,7 @@ export function VideosList({
               type="button"
               disabled={savingClearTime}
               onClick={onBulkSaveClearTime}
-              className="inline-flex h-7 items-center gap-1 rounded-md border border-emerald-400/55 bg-emerald-400/10 px-2 font-mono text-[10px] tracking-[0.18em] text-emerald-200 uppercase transition-colors hover:border-emerald-400/80 hover:bg-emerald-400/20 disabled:opacity-50"
+              className="inline-flex h-7 items-center gap-1 rounded-md border border-emerald-400/55 bg-emerald-400/10 px-2 text-[10px] tracking-normal text-emerald-200 transition-colors hover:border-emerald-400/80 hover:bg-emerald-400/20 disabled:opacity-50"
               title="選択した動画の合計再生時間をクリアまでの累計時間として保存"
             >
               <Hourglass className="h-3 w-3" aria-hidden />
@@ -974,7 +974,7 @@ export function VideosList({
               type="button"
               disabled={bulkDeleting}
               onClick={onBulkDelete}
-              className="inline-flex h-7 items-center gap-1 rounded-md border border-rose-400/60 bg-rose-400/10 px-2 font-mono text-[10px] tracking-[0.18em] text-rose-200 uppercase transition-colors hover:border-rose-400/80 hover:bg-rose-400/20 disabled:opacity-50"
+              className="inline-flex h-7 items-center gap-1 rounded-md border border-rose-400/60 bg-rose-400/10 px-2 text-[10px] tracking-normal text-rose-200 transition-colors hover:border-rose-400/80 hover:bg-rose-400/20 disabled:opacity-50"
               title="選択した動画を削除"
             >
               <Trash2 className="h-3 w-3" aria-hidden />

@@ -65,7 +65,7 @@ export function ChangelogFooter({
           variant="outline"
           size="sm"
           onClick={() => setShowChangelog((v) => !v)}
-          className="h-8 gap-1.5 rounded-md px-3 font-mono text-[10px] tracking-[0.18em] uppercase"
+          className="h-8 gap-1.5 rounded-md px-3 text-[10px] tracking-normal"
           title="更新履歴を表示 / 非表示"
           aria-expanded={showChangelog}
         >
@@ -145,7 +145,7 @@ export function ChangelogFooter({
       </div>
       {showChangelog && (
         <div className="flex flex-col gap-3 rounded-sm border border-border/40 bg-secondary/20 px-3 py-2.5 text-[11px] leading-relaxed">
-          <p className="font-mono text-[10px] tracking-[0.22em] text-muted-foreground uppercase">
+          <p className="text-[10px] tracking-normal text-muted-foreground">
             更新履歴 — Release Notes
           </p>
           {(() => {
@@ -242,14 +242,14 @@ export function ChangelogFooter({
                   });
               }}
               disabled={loadingArchive}
-              className="self-start cursor-pointer rounded-sm border border-[var(--neon-cyan)]/30 bg-secondary/30 px-2.5 py-1 font-mono text-[10px] tracking-[0.18em] text-[var(--neon-cyan)]/85 uppercase transition-colors hover:border-[var(--neon-cyan)]/60 hover:bg-secondary/50 hover:text-[var(--neon-cyan)] disabled:cursor-wait disabled:opacity-60"
+              className="self-start cursor-pointer rounded-sm border border-[var(--neon-cyan)]/30 bg-secondary/30 px-2.5 py-1 text-[10px] tracking-normal text-[var(--neon-cyan)]/85 transition-colors hover:border-[var(--neon-cyan)]/60 hover:bg-secondary/50 hover:text-[var(--neon-cyan)] disabled:cursor-wait disabled:opacity-60"
               aria-busy={loadingArchive}
             >
               {loadingArchive ? "読み込み中…" : "↓ 過去の更新履歴を見る"}
             </button>
           ) : null}
           {archiveError && (
-            <p className="font-mono text-[10px] text-rose-400/80" role="status">
+            <p className="text-[10px] text-rose-400/80" role="status">
               {archiveError}
             </p>
           )}
@@ -257,7 +257,7 @@ export function ChangelogFooter({
             href="https://github.com/yyamazaki-lym/raid-repository/commits/main"
             target="_blank"
             rel="noopener noreferrer"
-            className="self-start font-mono text-[10px] tracking-[0.18em] text-[var(--neon-cyan)]/85 uppercase transition-colors hover:text-[var(--neon-cyan)]"
+            className="self-start text-[10px] tracking-normal text-[var(--neon-cyan)]/85 transition-colors hover:text-[var(--neon-cyan)]"
             title="これ以前の commit log は GitHub で確認"
           >
             ↗ commit log を GitHub で見る

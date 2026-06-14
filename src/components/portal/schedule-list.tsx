@@ -425,7 +425,7 @@ export function ScheduleList({
   // しまう事故を防ぐ。upcoming 表は引き続き clickable のまま。
   const tableHead = (showDecided: boolean, showComments = true) => (
     <thead>
-      <tr className="border-b border-border/60 font-mono text-[10px] tracking-[0.22em] text-muted-foreground uppercase">
+      <tr className="border-b border-border/60 text-[10px] font-medium tracking-normal text-muted-foreground">
         <th scope="col" className="pl-3 pr-1 py-2">
           日程
         </th>
@@ -541,7 +541,7 @@ export function ScheduleList({
                 · 詳細ログ (出欠表)
               </span>
             </div>
-            <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
+            <span className="text-[11px] tabular-nums text-muted-foreground">
               {showOlderPast || olderPast.length === 0
                 ? `${renderedPast.length} 件`
                 : `直近 ${recentPast.length} 件 / 全 ${renderedPast.length} 件`}
@@ -616,7 +616,7 @@ export function ScheduleList({
                         ref={olderToggleBtnRef}
                         type="button"
                         onClick={onToggleOlderPast}
-                        className="inline-flex items-center gap-1.5 rounded-md border border-border/40 bg-background/30 px-3 py-1 font-mono text-[11px] tracking-[0.18em] text-muted-foreground uppercase transition-colors hover:border-[var(--neon-cyan)]/60 hover:text-foreground"
+                        className="inline-flex items-center gap-1.5 rounded-md border border-border/40 bg-background/30 px-3 py-1 text-[11px] tracking-normal text-muted-foreground transition-colors hover:border-[var(--neon-cyan)]/60 hover:text-foreground"
                         aria-expanded={showOlderPast}
                       >
                         {showOlderPast ? (
@@ -1393,7 +1393,7 @@ function SessionRow({
                       ? `日程確定 — クリックで ${dateLabel} の行までスクロール`
                       : "日程確定"
                   }
-                  className="inline-flex h-6 items-center justify-center rounded-md border border-emerald-400/60 bg-emerald-400/15 px-2 font-mono text-[10px] font-bold tracking-[0.16em] text-emerald-300 uppercase shadow-[0_0_12px_-3px_rgb(52_211_153)]"
+                  className="inline-flex h-6 items-center justify-center rounded-md border border-emerald-400/60 bg-emerald-400/15 px-2 text-[10px] font-bold tracking-normal text-emerald-300 shadow-[0_0_12px_-3px_rgb(52_211_153)]"
                 >
                   確定
                 </span>
@@ -1676,7 +1676,7 @@ export function Legend({
               aria-label="運用ルール / 注意事項を表示"
               title="運用ルール / 注意事項"
               aria-expanded={showTopText}
-              className="inline-flex h-6 items-center gap-1 rounded-md border border-[var(--neon-violet)]/40 bg-[var(--neon-violet)]/8 px-2 font-mono text-[10px] tracking-[0.18em] text-[var(--neon-violet)]/90 uppercase transition-all hover:border-[var(--neon-violet)]/70 hover:bg-[var(--neon-violet)]/15 hover:shadow-[0_0_8px_-2px_rgba(167,139,250,0.55)]"
+              className="inline-flex h-6 items-center gap-1 rounded-md border border-[var(--neon-violet)]/40 bg-[var(--neon-violet)]/8 px-2 text-[10px] tracking-normal text-[var(--neon-violet)]/90 transition-all hover:border-[var(--neon-violet)]/70 hover:bg-[var(--neon-violet)]/15 hover:shadow-[0_0_8px_-2px_rgba(167,139,250,0.55)]"
             >
               <MessageSquare className="h-3 w-3" aria-hidden />
               ルール
@@ -1696,7 +1696,7 @@ export function Legend({
                 className="glass-popup absolute top-full right-0 z-40 mt-1 w-[min(36rem,calc(100vw-2rem))] rounded-lg border border-[var(--neon-violet)]/35 px-3.5 py-3 text-[12px] leading-relaxed text-foreground/85 shadow-[0_12px_40px_-16px_rgba(167,139,250,0.45),0_2px_8px_-2px_rgba(0,0,0,0.4)]"
               >
                 <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                  <p className="font-mono text-[10px] tracking-[0.22em] text-[var(--neon-violet)]/85 uppercase">
+                  <p className="text-[10px] font-medium tracking-normal text-[var(--neon-violet)]/85">
                     運用ルール / 注意事項
                   </p>
                   {!editing && (
@@ -1715,7 +1715,7 @@ export function Legend({
                             onClick={() => setView("scraped")}
                             title="元サイトから取り込んだ最新のテキスト"
                             className={
-                              "px-1.5 py-0.5 font-mono text-[9px] tracking-[0.18em] uppercase transition-colors " +
+                              "px-1.5 py-0.5 text-[9px] tracking-normal transition-colors " +
                               (view === "scraped"
                                 ? "bg-[var(--neon-violet)]/25 text-foreground"
                                 : "text-muted-foreground hover:bg-secondary/50")
@@ -1730,7 +1730,7 @@ export function Legend({
                             onClick={() => setView("edited")}
                             title="ポータル側で編集したカスタム版 (同期で上書きされない)"
                             className={
-                              "inline-flex items-center gap-0.5 px-1.5 py-0.5 font-mono text-[9px] tracking-[0.18em] uppercase transition-colors " +
+                              "inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[9px] tracking-normal transition-colors " +
                               (view === "edited"
                                 ? "bg-[var(--neon-cyan)]/25 text-foreground"
                                 : "text-muted-foreground hover:bg-secondary/50")
@@ -1750,7 +1750,7 @@ export function Legend({
                         }}
                         aria-label="運用ルール / 注意事項を編集 (override に保存)"
                         title="override として編集 (元サイトには影響しない、同期でも上書きされない)"
-                        className="inline-flex h-6 items-center gap-1 rounded-md border border-[var(--neon-violet)]/40 bg-[var(--neon-violet)]/10 px-2 font-mono text-[10px] tracking-[0.18em] text-[var(--neon-violet)]/90 uppercase transition-colors hover:border-[var(--neon-violet)]/70 hover:bg-[var(--neon-violet)]/20"
+                        className="inline-flex h-6 items-center gap-1 rounded-md border border-[var(--neon-violet)]/40 bg-[var(--neon-violet)]/10 px-2 text-[10px] tracking-normal text-[var(--neon-violet)]/90 transition-colors hover:border-[var(--neon-violet)]/70 hover:bg-[var(--neon-violet)]/20"
                       >
                         <Pencil className="h-3 w-3" aria-hidden />
                         編集
@@ -1813,7 +1813,7 @@ export function Legend({
                           setDraft("");
                         }}
                         disabled={saving}
-                        className="inline-flex h-6 items-center gap-1 rounded-md border border-border/60 px-2 font-mono text-[10px] tracking-[0.18em] text-muted-foreground uppercase transition-colors hover:bg-secondary/40 disabled:opacity-50"
+                        className="inline-flex h-6 items-center gap-1 rounded-md border border-border/60 px-2 text-[10px] tracking-normal text-muted-foreground transition-colors hover:bg-secondary/40 disabled:opacity-50"
                       >
                         <X className="h-3 w-3" aria-hidden />
                         キャンセル
@@ -1843,7 +1843,7 @@ export function Legend({
                           toast.success("override を保存しました");
                           router.refresh();
                         }}
-                        className="inline-flex h-6 items-center gap-1 rounded-md border border-[var(--neon-cyan)]/50 bg-[var(--neon-cyan)]/15 px-2 font-mono text-[10px] tracking-[0.18em] text-[var(--neon-cyan)] uppercase transition-colors hover:bg-[var(--neon-cyan)]/25 disabled:opacity-50"
+                        className="inline-flex h-6 items-center gap-1 rounded-md border border-[var(--neon-cyan)]/50 bg-[var(--neon-cyan)]/15 px-2 text-[10px] tracking-normal text-[var(--neon-cyan)] transition-colors hover:bg-[var(--neon-cyan)]/25 disabled:opacity-50"
                       >
                         {saving ? (
                           <Loader2 className="h-3 w-3 animate-spin" aria-hidden />

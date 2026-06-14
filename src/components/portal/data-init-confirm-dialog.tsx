@@ -87,7 +87,7 @@ export function DataInitConfirmDialog({
 
         {step === "warn" ? (
           <div className="flex flex-col gap-3 px-1 text-[12px] leading-relaxed">
-            <p className="font-mono text-[10px] tracking-[0.18em] text-rose-300/90 uppercase">
+            <p className="text-[10px] tracking-normal text-rose-300/90">
               削除対象
             </p>
             <ul className="ml-4 list-disc text-foreground/85 [&>li]:leading-snug">
@@ -116,7 +116,7 @@ export function DataInitConfirmDialog({
             <div className="flex flex-col gap-1.5">
               <Label
                 htmlFor="data-init-confirm-input"
-                className="font-mono text-[10px] tracking-[0.18em] text-muted-foreground uppercase"
+                className="text-[10px] tracking-normal text-muted-foreground"
               >
                 確認入力
               </Label>
@@ -143,7 +143,7 @@ export function DataInitConfirmDialog({
                 variant="ghost"
                 size="sm"
                 onClick={() => handleOpenChange(false)}
-                className="font-mono text-[11px] tracking-[0.18em] uppercase"
+                className="text-[11px] tracking-normal"
               >
                 キャンセル
               </Button>
@@ -151,7 +151,7 @@ export function DataInitConfirmDialog({
                 type="button"
                 size="sm"
                 onClick={() => setStep("type")}
-                className="gap-1.5 border border-rose-400/40 bg-rose-500/15 font-mono text-[11px] tracking-[0.18em] text-rose-100 uppercase hover:bg-rose-500/25"
+                className="gap-1.5 border border-rose-400/40 bg-rose-500/15 text-[11px] tracking-normal text-rose-100 hover:bg-rose-500/25"
               >
                 <AlertTriangle className="h-3.5 w-3.5" aria-hidden />
                 次へ
@@ -165,7 +165,7 @@ export function DataInitConfirmDialog({
                 size="sm"
                 onClick={() => handleOpenChange(false)}
                 disabled={running}
-                className="font-mono text-[11px] tracking-[0.18em] uppercase"
+                className="text-[11px] tracking-normal"
               >
                 キャンセル
               </Button>
@@ -174,7 +174,7 @@ export function DataInitConfirmDialog({
                 size="sm"
                 disabled={!canExecute}
                 onClick={onExecute}
-                className="gap-1.5 border border-rose-400/60 bg-rose-500/30 font-mono text-[11px] tracking-[0.18em] text-rose-50 uppercase hover:bg-rose-500/40 disabled:opacity-50"
+                className="gap-1.5 border border-rose-400/60 bg-rose-500/30 text-[11px] tracking-normal text-rose-50 hover:bg-rose-500/40 disabled:opacity-50"
               >
                 {running ? (
                   <>

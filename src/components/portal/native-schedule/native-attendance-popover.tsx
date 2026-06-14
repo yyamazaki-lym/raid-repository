@@ -146,7 +146,7 @@ export function NativeAttendancePopover({
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <span className="font-mono text-[10px] tracking-[0.18em] text-muted-foreground uppercase">
+              <span className="text-[10px] tracking-normal text-muted-foreground">
                 参加状況 (クリックで即保存)
               </span>
               <div className="flex flex-wrap gap-1">

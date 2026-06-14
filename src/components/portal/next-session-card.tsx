@@ -97,7 +97,7 @@ export function NextSessionCard({
         <Label>次回開催日</Label>
         {/* 予定表の status 列の「確定」バッジ (schedule-list.tsx) と同一様式。
             同じ意味のバッジが画面内で 2 形態にならないよう揃えている。 */}
-        <span className="inline-flex h-6 items-center justify-center rounded-md border border-emerald-400/60 bg-emerald-400/15 px-2 font-mono text-[10px] font-bold tracking-[0.16em] text-emerald-300 uppercase shadow-[0_0_12px_-3px_rgb(52_211_153)]">
+        <span className="inline-flex h-6 items-center justify-center rounded-md border border-emerald-400/60 bg-emerald-400/15 px-2 text-[10px] font-bold tracking-normal text-emerald-300 shadow-[0_0_12px_-3px_rgb(52_211_153)]">
           確定
         </span>
       </div>
@@ -115,7 +115,7 @@ export function NextSessionCard({
         {relative && (
           <span
             className={
-              "font-mono text-[11px] tracking-[0.22em] uppercase " +
+              "text-[11px] tracking-normal " +
               (inSession
                 ? // 開催時間中: amber で発光 + animate-pulse、本日とは違う緊張感のある色味で「今、戦闘中」を強調。
                   "rounded-sm border border-amber-400/70 bg-amber-400/15 px-1.5 py-px font-bold text-amber-300 shadow-[0_0_14px_-2px_rgba(251,191,36,0.65)] animate-pulse"
@@ -179,7 +179,7 @@ function Frame({
 
 function Label({ children }: { children: React.ReactNode }) {
   return (
-    <span className="font-mono text-[10px] tracking-[0.22em] text-muted-foreground uppercase">
+    <span className="text-[10px] font-medium tracking-normal text-muted-foreground">
       {children}
     </span>
   );

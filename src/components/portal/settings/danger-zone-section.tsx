@@ -40,7 +40,7 @@ export function DangerZoneSection({
               type="button"
               size="sm"
               onClick={() => setShowDataInitDialog(true)}
-              className="gap-1.5 border border-rose-400/50 bg-rose-500/20 font-mono text-[11px] tracking-[0.18em] text-rose-100 uppercase hover:bg-rose-500/30"
+              className="gap-1.5 border border-rose-400/50 bg-rose-500/20 text-[11px] tracking-normal text-rose-100 hover:bg-rose-500/30"
             >
               <AlertTriangle className="h-3.5 w-3.5" aria-hidden />
               全データ初期化

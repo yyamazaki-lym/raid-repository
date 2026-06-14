@@ -66,7 +66,7 @@ export function ScheduleOnboarding() {
         <div className="flex flex-col gap-1.5">
           <Label
             htmlFor="onboard-url"
-            className="font-mono text-[10px] tracking-[0.18em] text-muted-foreground uppercase"
+            className="text-[10px] font-medium tracking-normal text-muted-foreground"
           >
             スケジュールページの URL
           </Label>
@@ -134,7 +134,7 @@ export function ScheduleOnboarding() {
             size="sm"
             onClick={onSave}
             disabled={busy}
-            className="gap-1.5 font-mono text-[11px] tracking-[0.18em] uppercase"
+            className="gap-1.5 text-[11px] tracking-normal"
           >
             {busy ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />

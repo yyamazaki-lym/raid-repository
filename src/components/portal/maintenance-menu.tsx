@@ -487,7 +487,7 @@ export function MaintenanceMenu() {
           disabled={pending}
           aria-label="メンテナンスメニューを開く"
           title="Discord 取込 / 動画メタ / クリア再計算"
-          className="inline-flex items-center gap-1.5 rounded-md border border-border/60 bg-background/30 px-3 py-1.5 font-mono text-[11px] tracking-[0.18em] text-muted-foreground uppercase transition-colors hover:border-[var(--neon-cyan)]/60 hover:text-foreground disabled:opacity-60"
+          className="inline-flex items-center gap-1.5 rounded-md border border-border/60 bg-background/30 px-3 py-1.5 text-[11px] tracking-normal text-muted-foreground transition-colors hover:border-[var(--neon-cyan)]/60 hover:text-foreground disabled:opacity-60"
         >
           {pending ? (
             <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
@@ -505,7 +505,7 @@ export function MaintenanceMenu() {
             disabled={pending}
             className="flex flex-col items-start gap-0.5"
           >
-            <span className="flex items-center gap-1.5 font-mono text-[12px]">
+            <span className="flex items-center gap-1.5 text-[12px]">
               {isThisPending("discord") ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
               ) : (
@@ -522,7 +522,7 @@ export function MaintenanceMenu() {
             disabled={pending}
             className="flex flex-col items-start gap-0.5"
           >
-            <span className="flex items-center gap-1.5 font-mono text-[12px]">
+            <span className="flex items-center gap-1.5 text-[12px]">
               {isThisPending("videoMeta") ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
               ) : (
@@ -539,7 +539,7 @@ export function MaintenanceMenu() {
             disabled={pending}
             className="flex flex-col items-start gap-0.5"
           >
-            <span className="flex items-center gap-1.5 font-mono text-[12px]">
+            <span className="flex items-center gap-1.5 text-[12px]">
               {isThisPending("firstClearForce") ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
               ) : (
@@ -560,7 +560,7 @@ export function MaintenanceMenu() {
             disabled={pending}
             className="flex flex-col items-start gap-0.5"
           >
-            <span className="flex items-center gap-1.5 font-mono text-[12px]">
+            <span className="flex items-center gap-1.5 text-[12px]">
               {isThisPending("strategyThumb") ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
               ) : (
@@ -577,7 +577,7 @@ export function MaintenanceMenu() {
             disabled={pending}
             className="flex flex-col items-start gap-0.5"
           >
-            <span className="flex items-center gap-1.5 font-mono text-[12px]">
+            <span className="flex items-center gap-1.5 text-[12px]">
               {isThisPending("strategyThumbForceRefresh") ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
               ) : (
@@ -632,7 +632,7 @@ export function MaintenanceMenu() {
 function DiscordPanel({ items }: { items: ImportNowItem[] }) {
   return (
     <>
-      <p className="mb-2 pr-6 font-mono text-[10px] tracking-[0.2em] text-muted-foreground uppercase">
+      <p className="mb-2 pr-6 text-[10px] font-medium tracking-normal text-muted-foreground">
         Discord 取り込み結果
       </p>
       {items.length === 0 ? (
@@ -711,7 +711,7 @@ function VideoMetaPanel({
 }) {
   return (
     <>
-      <p className="mb-2 pr-6 font-mono text-[10px] tracking-[0.2em] text-muted-foreground uppercase">
+      <p className="mb-2 pr-6 text-[10px] font-medium tracking-normal text-muted-foreground">
         動画メタデータ — 取得結果
       </p>
       <div className="flex flex-col gap-2 text-[11px] leading-relaxed">
@@ -721,14 +721,14 @@ function VideoMetaPanel({
           </p>
           <ul className="mt-0.5 flex flex-col gap-0.5">
             <li className="flex items-baseline gap-2">
-              <span className="font-mono text-emerald-300">取得</span>
+              <span className="text-emerald-300">取得</span>
               <span className="font-mono text-foreground">
                 {durations.filled}
               </span>
               <span className="text-muted-foreground">件</span>
             </li>
             <li className="flex items-baseline gap-2">
-              <span className="font-mono text-zinc-400">
+              <span className="text-zinc-400">
                 YouTube 以外 / 取得不可
               </span>
               <span className="font-mono text-foreground">
@@ -737,7 +737,7 @@ function VideoMetaPanel({
             </li>
             {durations.failed > 0 && (
               <li className="flex items-baseline gap-2">
-                <span className="font-mono text-rose-300">失敗</span>
+                <span className="text-rose-300">失敗</span>
                 <span className="font-mono text-foreground">
                   {durations.failed}
                 </span>
@@ -754,14 +754,14 @@ function VideoMetaPanel({
           </p>
           <ul className="mt-0.5 flex flex-col gap-0.5">
             <li className="flex items-baseline gap-2">
-              <span className="font-mono text-emerald-300">更新</span>
+              <span className="text-emerald-300">更新</span>
               <span className="font-mono text-foreground">
                 {postedAt.updated}
               </span>
               <span className="text-muted-foreground">件</span>
             </li>
             <li className="flex items-baseline gap-2">
-              <span className="font-mono text-zinc-400">URL 一致</span>
+              <span className="text-zinc-400">URL 一致</span>
               <span className="font-mono text-foreground">
                 {postedAt.matched}
               </span>
@@ -811,7 +811,7 @@ function FirstClearPanel({
 }) {
   return (
     <>
-      <p className="mb-2 pr-6 font-mono text-[10px] tracking-[0.2em] text-muted-foreground uppercase">
+      <p className="mb-2 pr-6 text-[10px] font-medium tracking-normal text-muted-foreground">
         クリア日時 / クリア時間 取得結果
       </p>
       {data.filled === 0 && data.noMatchDetails.length === 0 ? (
@@ -864,7 +864,7 @@ function FirstClearPanel({
                     )}
                     {d.videosWithoutDurationCount > 0 && (
                       <span
-                        className="ml-2 inline-flex items-center rounded-sm border border-amber-400/45 bg-amber-400/10 px-1 text-[9px] font-mono tracking-[0.18em] uppercase text-amber-200"
+                        className="ml-2 inline-flex items-center rounded-sm border border-amber-400/45 bg-amber-400/10 px-1 text-[9px] tracking-normal text-amber-200"
                         title={`動画時間が未取得の動画が ${d.videosWithoutDurationCount} 件あります — 「動画時間 + 投稿日時を取得」で取り込んでからクリア時間を再計算してください`}
                       >
                         ⚠ {d.videosWithoutDurationCount} 件未取得
@@ -872,7 +872,7 @@ function FirstClearPanel({
                     )}
                     {d.excludedForeignCount > 0 && (
                       <span
-                        className="ml-2 inline-flex items-center rounded-sm border border-zinc-400/45 bg-zinc-400/10 px-1 text-[9px] font-mono tracking-[0.18em] uppercase text-zinc-300"
+                        className="ml-2 inline-flex items-center rounded-sm border border-zinc-400/45 bg-zinc-400/10 px-1 text-[9px] tracking-normal text-zinc-300"
                         title={`他コンテンツの動画を ${d.excludedForeignCount} 件除外`}
                       >
                         -{d.excludedForeignCount} 異
@@ -888,7 +888,7 @@ function FirstClearPanel({
           )}
           {data.noMatchDetails.length > 0 && (
             <div className="mt-3 flex flex-col gap-1.5 border-t border-border/30 pt-2">
-              <p className="font-mono text-[10px] text-rose-300/85 tracking-[0.18em] uppercase">
+              <p className="text-[10px] font-medium text-rose-300/85 tracking-normal">
                 該当なし — 詳細
               </p>
               <ul className="flex flex-col gap-1 text-[11px] leading-relaxed">
@@ -992,17 +992,17 @@ function StrategyThumbPanel({
 }) {
   return (
     <>
-      <p className="mb-2 pr-6 font-mono text-[10px] tracking-[0.2em] text-muted-foreground uppercase">
+      <p className="mb-2 pr-6 text-[10px] font-medium tracking-normal text-muted-foreground">
         攻略サムネ — {force ? "全件再取得" : "NULL のみ"} 結果
       </p>
       <ul className="flex flex-col gap-0.5 text-[11px]">
         <li className="flex items-baseline gap-2">
-          <span className="font-mono text-emerald-300">取得</span>
+          <span className="text-emerald-300">取得</span>
           <span className="font-mono text-foreground">{data.filled}</span>
           <span className="text-muted-foreground">件</span>
         </li>
         <li className="flex items-baseline gap-2">
-          <span className="font-mono text-zinc-400">og:image なし</span>
+          <span className="text-zinc-400">og:image なし</span>
           <span className="font-mono text-foreground">
             {data.skippedNoImage}
           </span>
@@ -1010,7 +1010,7 @@ function StrategyThumbPanel({
         </li>
         {data.failed > 0 && (
           <li className="flex items-baseline gap-2">
-            <span className="font-mono text-rose-300">失敗</span>
+            <span className="text-rose-300">失敗</span>
             <span className="font-mono text-foreground">{data.failed}</span>
             <span className="text-muted-foreground">件</span>
           </li>

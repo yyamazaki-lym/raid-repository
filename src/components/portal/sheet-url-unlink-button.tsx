@@ -69,7 +69,7 @@ export function SheetUrlUnlinkButton({
       disabled={busy}
       title={`${label}のスプレッドシート紐付けを解除 (URL を消去)`}
       aria-label={`${label}のスプレッドシート紐付けを解除`}
-      className="inline-flex items-center gap-1.5 rounded-md border border-rose-400/40 bg-rose-500/5 px-3 py-1.5 font-mono text-[11px] tracking-[0.18em] text-rose-300 uppercase transition-colors hover:border-rose-300/60 hover:bg-rose-500/15 hover:text-rose-200 disabled:opacity-40"
+      className="inline-flex items-center gap-1.5 rounded-md border border-rose-400/40 bg-rose-500/5 px-3 py-1.5 text-[11px] tracking-normal text-rose-300 transition-colors hover:border-rose-300/60 hover:bg-rose-500/15 hover:text-rose-200 disabled:opacity-40"
     >
       <Link2Off className="h-3.5 w-3.5" aria-hidden />
       {busy ? "解除中..." : "紐付け解除"}
