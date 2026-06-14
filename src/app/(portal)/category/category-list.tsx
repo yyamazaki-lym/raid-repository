@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   GripVertical,
   Layers,
@@ -21,21 +21,10 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { toast } from "sonner";
-import {
-  DndContext,
-  KeyboardSensor,
-  MouseSensor,
-  TouchSensor,
-  closestCenter,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-} from "@dnd-kit/core";
+import { DndContext, closestCenter } from "@dnd-kit/core";
 import {
   SortableContext,
-  arrayMove,
   rectSortingStrategy,
-  sortableKeyboardCoordinates,
   useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -62,6 +51,10 @@ import {
   updateCategoryStatus,
   useRealtimeCategories,
 } from "@/lib/categories-client";
+import {
+  applyOptimisticOrder,
+  useSortableReorder,
+} from "@/lib/use-sortable-reorder";
 import { isCategoryVisibleToRoles } from "@/lib/category-visibility";
 import type { Category, CategoryStatus } from "@/lib/supabase/types";
 import { isOptimizableImageHost, isSafeUrl } from "@/lib/url-safe";
@@ -108,48 +101,29 @@ export function CategoryList({
   // に各カードに「rolesVisible」を渡し、見えないものは 🔒 + ロール ID
   // バッジで描画して、編集ダイアログから undo できる経路を残す。
   const live = useRealtimeCategories(initialCategories);
-  // Local mirror so DnD can rearrange optimistically without waiting on
-  // round-trip+realtime — Realtime overwrites once the server confirms.
-  const [optimisticOrder, setOptimisticOrder] = useState<string[] | null>(null);
+  // DnD 並び替えの共通フック (C-1/C-4)。setCategoryOrder で永続化し、
+  // 値マッチ (syncOnSettle) で楽観 state を畳む (旧 setTimeout 方式を廃止)。
+  const { optimisticOrder, sensors, handleDragEnd, syncOnSettle } =
+    useSortableReorder({ persist: setCategoryOrder });
   // Single edit dialog controlled at the list level. Lifting state here
   // (rather than embedding the dialog inside the per-card menu) avoids the
   // focus collision where a DropdownMenuItem closing immediately re-closes
   // the dialog it just opened.
   const [editTarget, setEditTarget] = useState<Category | null>(null);
 
-  const sorted = useMemo(() => {
-    if (!optimisticOrder) return live;
-    const idx = new Map(optimisticOrder.map((id, i) => [id, i] as const));
-    return [...live].sort((a, b) => {
-      const ai = idx.get(a.id);
-      const bi = idx.get(b.id);
-      if (ai === undefined && bi === undefined) return 0;
-      if (ai === undefined) return 1;
-      if (bi === undefined) return -1;
-      return ai - bi;
-    });
-  }, [live, optimisticOrder]);
+  const sorted = useMemo(
+    () => applyOptimisticOrder(live, optimisticOrder),
+    [live, optimisticOrder],
+  );
+  // DB 確定順 (live) が楽観順に追いついたら楽観 state を畳む (値マッチ)。
+  useEffect(() => {
+    syncOnSettle(live.map((c) => c.id));
+  }, [live, syncOnSettle]);
 
   // slugIds は SortableContext の items に渡す。早期 return (sorted.length===0)
   // より前で hook を呼ぶ必要があるため (rules-of-hooks)、sorted の直後に置く。
   // realtime でカテゴリ数が 0↔非0 に遷移しても hook 呼び出し順が変わらない。
   const slugIds = useMemo(() => sorted.map((c) => c.id), [sorted]);
-
-  // Sensor strategy:
-  // - MouseSensor: distance-based activation so a click on the link inside the
-  //   card isn't interpreted as a drag.
-  // - TouchSensor: delay-based (long-press) so the user can scroll the page
-  //   normally; pressing-and-holding on the grip starts the drag.
-  // - KeyboardSensor: arrow-key reorder for accessibility.
-  const sensors = useSensors(
-    useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(TouchSensor, {
-      activationConstraint: { delay: 200, tolerance: 6 },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    }),
-  );
 
   if (sorted.length === 0) {
     return (
@@ -160,26 +134,6 @@ export function CategoryList({
       />
     );
   }
-
-  const onDragEnd = async (event: DragEndEvent) => {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    const oldIndex = sorted.findIndex((c) => c.id === active.id);
-    const newIndex = sorted.findIndex((c) => c.id === over.id);
-    if (oldIndex < 0 || newIndex < 0) return;
-
-    const next = arrayMove(sorted, oldIndex, newIndex).map((c) => c.id);
-    setOptimisticOrder(next);
-
-    const result = await setCategoryOrder(next);
-    if (!result.ok) {
-      toast.error("並び替えの保存に失敗しました: " + result.reason);
-      setOptimisticOrder(null);
-    }
-    // On success, Realtime broadcasts and overwrites with DB values; clear
-    // optimistic state so future changes start from the DB-confirmed order.
-    setTimeout(() => setOptimisticOrder(null), 1500);
-  };
 
   const onChangeStatus = async (id: string, status: CategoryStatus) => {
     const result = await updateCategoryStatus(id, status);
@@ -226,7 +180,7 @@ export function CategoryList({
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
-        onDragEnd={canEdit ? onDragEnd : undefined}
+        onDragEnd={canEdit ? (e) => handleDragEnd(e, sorted) : undefined}
       >
         <SortableContext items={slugIds} strategy={rectSortingStrategy}>
           <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">

@@ -20,21 +20,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import {
-  DndContext,
-  KeyboardSensor,
-  MouseSensor,
-  TouchSensor,
-  closestCenter,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-} from "@dnd-kit/core";
+import { DndContext, closestCenter } from "@dnd-kit/core";
 import {
   SortableContext,
-  arrayMove,
   rectSortingStrategy,
-  sortableKeyboardCoordinates,
   useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -56,6 +45,10 @@ import {
   useRealtimeCategoryLinks,
   useRealtimeGphotoAlbums,
 } from "@/lib/category-links-client";
+import {
+  applyOptimisticOrder,
+  useSortableReorder,
+} from "@/lib/use-sortable-reorder";
 import { isOptimizableImageHost, safeHref } from "@/lib/url-safe";
 import { jstDateTimeString } from "@/lib/jst-date";
 import { useCollapsible } from "@/lib/use-collapsible";
@@ -90,7 +83,9 @@ export function StrategyImagesList({
   const albums = useRealtimeGphotoAlbums(categoryId, initialAlbums);
 
   const [editTarget, setEditTarget] = useState<CategoryLink | null>(null);
-  const [optimistic, setOptimistic] = useState<string[] | null>(null);
+  // DnD 並び替えの共通フック (C-1/C-4)。
+  const { optimisticOrder, sensors, handleDragEnd, syncOnSettle } =
+    useSortableReorder({ persist: setCategoryLinkOrder });
   // Phase 17 (2026-05-13): Lightbox を「集合 + 現在 id」モデルに拡張。
   // 同じ集合の中で左右に前後画像へ遷移できるようにするため、Lightbox を
   // 開いた時点でどのリスト (loose or album:<id>) を集合とするかを保持する。
@@ -102,25 +97,26 @@ export function StrategyImagesList({
   // 「ばら」セクション用: kind=image 全件 + アルバム未所属の gphoto。
   // sortOrder + createdAt で素直に整列したものを基準とし、optimistic 並び
   // 替え中だけ手動 index 順で上書きする。
-  const looseLinks = useMemo(() => {
-    const base: CategoryLink[] = [
+  // sortOrder + createdAt で整列した DB 確定順 (optimistic 適用前)。
+  const looseBase = useMemo<CategoryLink[]>(() => {
+    return [
       ...liveImages,
       ...liveGphotos.filter((l) => l.gphotoAlbumId === null),
     ].sort((a, b) => {
       if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
       return a.createdAt.localeCompare(b.createdAt);
     });
-    if (!optimistic) return base;
-    const idx = new Map(optimistic.map((id, i) => [id, i] as const));
-    return [...base].sort((a, b) => {
-      const ai = idx.get(a.id);
-      const bi = idx.get(b.id);
-      if (ai === undefined && bi === undefined) return 0;
-      if (ai === undefined) return 1;
-      if (bi === undefined) return -1;
-      return ai - bi;
-    });
-  }, [liveImages, liveGphotos, optimistic]);
+  }, [liveImages, liveGphotos]);
+
+  // optimistic 並び替え中だけ手動 index 順で上書きする。
+  const looseLinks = useMemo(
+    () => applyOptimisticOrder(looseBase, optimisticOrder),
+    [looseBase, optimisticOrder],
+  );
+  // DB 確定順 (looseBase) が楽観順に追いついたら畳む (値マッチ)。
+  useEffect(() => {
+    syncOnSettle(looseBase.map((l) => l.id));
+  }, [looseBase, syncOnSettle]);
 
   // アルバム所属 gphoto を albumId 別にグループ化。
   const albumChildren = useMemo(() => {
@@ -142,34 +138,6 @@ export function StrategyImagesList({
 
   const totalCount =
     liveImages.length + liveGphotos.length;
-
-  const sensors = useSensors(
-    useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(TouchSensor, {
-      activationConstraint: { delay: 200, tolerance: 6 },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    }),
-  );
-
-  const onDragEnd = async (event: DragEndEvent) => {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    const oldIndex = looseLinks.findIndex((l) => l.id === active.id);
-    const newIndex = looseLinks.findIndex((l) => l.id === over.id);
-    if (oldIndex < 0 || newIndex < 0) return;
-
-    const next = arrayMove(looseLinks, oldIndex, newIndex).map((l) => l.id);
-    setOptimistic(next);
-    const result = await setCategoryLinkOrder(next);
-    if (!result.ok) {
-      toast.error("並び替えの保存に失敗: " + result.reason);
-      setOptimistic(null);
-      return;
-    }
-    setTimeout(() => setOptimistic(null), 1500);
-  };
 
   const looseIds = useMemo(
     () => looseLinks.map((l) => l.id),
@@ -250,7 +218,7 @@ export function StrategyImagesList({
             <DndContext
               sensors={sensors}
               collisionDetection={closestCenter}
-              onDragEnd={onDragEnd}
+              onDragEnd={(e) => handleDragEnd(e, looseLinks)}
             >
               <SortableContext items={looseIds} strategy={rectSortingStrategy}>
                 <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">

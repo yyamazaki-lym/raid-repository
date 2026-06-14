@@ -24,21 +24,10 @@ import {
 import { LinkSiteIcon } from "@/components/portal/link-site-icon";
 import { LINK_SITE_LABEL, detectLinkSite } from "@/lib/link-site";
 import { toast } from "sonner";
-import {
-  DndContext,
-  KeyboardSensor,
-  MouseSensor,
-  TouchSensor,
-  closestCenter,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-} from "@dnd-kit/core";
+import { DndContext, closestCenter } from "@dnd-kit/core";
 import {
   SortableContext,
-  arrayMove,
   rectSortingStrategy,
-  sortableKeyboardCoordinates,
   useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -67,6 +56,10 @@ import {
 import { safeHref } from "@/lib/url-safe";
 import { extractDateFromTitle } from "@/lib/title-date";
 import { jstYmd, jstYmdString } from "@/lib/jst-date";
+import {
+  applyOptimisticOrder,
+  useSortableReorder,
+} from "@/lib/use-sortable-reorder";
 import type { CategoryLink, CategoryStatus } from "@/lib/supabase/types";
 
 type Props = {
@@ -105,7 +98,10 @@ export function VideosList({
 }: Props) {
   const live = useRealtimeCategoryLinks(categoryId, "video", initial);
   const [editTarget, setEditTarget] = useState<CategoryLink | null>(null);
-  const [optimistic, setOptimistic] = useState<string[] | null>(null);
+  // DnD 並び替えの共通フック (C-1/C-4)。動画は表示が sort_order DESC なので
+  // 永続化時に reverse する (toPersistIds)。
+  const { optimisticOrder, sensors, handleDragEnd, syncOnSettle } =
+    useSortableReorder({ persist: setCategoryLinkOrder });
   // ページ全体で「いま再生中の動画」を 1 つだけ保持する。別の動画カードで
   // 再生を開くと前のは自動で閉じる (= iframe unmount = 再生停止)。
   const [activeVideoId, setActiveVideoId] = useState<string | null>(null);
@@ -395,19 +391,17 @@ export function VideosList({
     // while still respecting whatever DnD reorder the user has applied.
     // `optimistic` is stored in display order (= sort_order DESC) so it can
     // be applied as-is.
-    if (optimistic) {
-      const idx = new Map(optimistic.map((id, i) => [id, i] as const));
-      return [...base].sort((a, b) => {
-        const ai = idx.get(a.id);
-        const bi = idx.get(b.id);
-        if (ai === undefined && bi === undefined) return 0;
-        if (ai === undefined) return 1;
-        if (bi === undefined) return -1;
-        return ai - bi;
-      });
+    if (optimisticOrder) {
+      return applyOptimisticOrder(base, optimisticOrder);
     }
     return [...base].reverse();
-  }, [liveWithFav, optimistic, sortMode, favoritesOnly]);
+  }, [liveWithFav, optimisticOrder, sortMode, favoritesOnly]);
+
+  // custom 並び替えの DB 確定表示順 (sort_order ASC を表示 DESC に反転) が
+  // 楽観順に追いついたら畳む (値マッチ、C-1)。
+  useEffect(() => {
+    syncOnSettle([...liveWithFav].reverse().map((v) => v.id));
+  }, [liveWithFav, syncOnSettle]);
 
   const favoriteCount = useMemo(
     () => liveWithFav.reduce((n, v) => (v.isFavorite ? n + 1 : n), 0),
@@ -451,37 +445,8 @@ export function VideosList({
     [],
   );
 
-  const sensors = useSensors(
-    useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(TouchSensor, {
-      activationConstraint: { delay: 200, tolerance: 6 },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    }),
-  );
-
-  const onDragEnd = async (event: DragEndEvent) => {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    const oldIndex = videos.findIndex((v) => v.id === active.id);
-    const newIndex = videos.findIndex((v) => v.id === over.id);
-    if (oldIndex < 0 || newIndex < 0) return;
-
-    // `videos` is in display order (newest-at-top). After arrayMove, the
-    // result is also in display order. Persist by reversing so DB
-    // `sort_order` keeps its ASC convention (smallest = bottom of list).
-    const nextDisplay = arrayMove(videos, oldIndex, newIndex).map((v) => v.id);
-    setOptimistic(nextDisplay);
-    const result = await setCategoryLinkOrder([...nextDisplay].reverse());
-    if (!result.ok) {
-      toast.error("並び替えの保存に失敗: " + result.reason);
-      setOptimistic(null);
-      return;
-    }
-    setTimeout(() => setOptimistic(null), 1500);
-  };
-
+  // `videos` は表示順 (newest-at-top)。arrayMove 後も表示順なので、永続化時は
+  // reverse して DB `sort_order` の ASC 慣例 (最小 = リスト下端) を保つ。
   const ids = useMemo(() => videos.map((v) => v.id), [videos]);
 
   // ============================================================
@@ -886,7 +851,7 @@ export function VideosList({
         <DndContext
           sensors={sensors}
           collisionDetection={closestCenter}
-          onDragEnd={onDragEnd}
+          onDragEnd={(e) => handleDragEnd(e, videos, (ids) => [...ids].reverse())}
         >
           <SortableContext items={ids} strategy={rectSortingStrategy}>
             <ul className="grid gap-4 sm:grid-cols-2">
