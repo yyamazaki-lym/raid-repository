@@ -42,6 +42,16 @@
   --color-neon-cyan: var(--neon-cyan);
   --color-neon-magenta: var(--neon-magenta);
   --color-neon-violet: var(--neon-violet);
+
+  /* ステータス進捗のセマンティックカラー (総合レビュー F-1、2026-06-14)。
+   * 旧来は status-badge / category カードに生 Tailwind 色 (zinc/amber/emerald/
+   * slate) を直書きしていたのをトークンに集約。**意図的に全テーマ共通の固定色**
+   * (テーマ var を経由しない) — 「emerald=クリア済」等の意味色は信号機的な
+   * 明確さを優先し、7 テーマ切替でも不変にする。値は Tailwind の *-400 相当。 */
+  --color-status-todo: oklch(0.705 0.015 286);     /* zinc-400: 未着手 */
+  --color-status-practice: oklch(0.828 0.189 84);  /* amber-400: 練習中 */
+  --color-status-clear: oklch(0.765 0.177 163);    /* emerald-400: クリア済 */
+  --color-status-idle: oklch(0.704 0.04 257);      /* slate-400: 休止中 */
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
