@@ -124,7 +124,7 @@ export function CategorySwitcher({ initialCategories, userRoleIds }: Props) {
         data-active={isCategoryRoute}
         aria-current={isCategoryRoute ? "page" : undefined}
         className={cn(
-          "neon-edge group relative flex shrink-0 items-center gap-2 rounded-md border border-transparent px-4 py-2 font-mono text-[12px] tracking-[0.16em] uppercase transition-colors",
+          "neon-edge group relative flex shrink-0 items-center gap-2 rounded-md border border-transparent px-4 py-2 text-[12px] font-medium tracking-normal transition-colors",
           isCategoryRoute
             ? "text-foreground"
             : "text-muted-foreground hover:text-foreground/90",

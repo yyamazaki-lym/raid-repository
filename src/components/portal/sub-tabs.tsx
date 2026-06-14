@@ -206,7 +206,7 @@ export function SubTabs({
                       if (!active) window.scrollTo({ top: 0, behavior: "instant" });
                     }}
                     className={cn(
-                      "relative flex items-center rounded-md font-mono tracking-[0.16em] uppercase transition-all duration-200",
+                      "relative flex items-center rounded-md font-medium tracking-normal transition-all duration-200",
                       stuck
                         ? "gap-1 px-2 py-1 text-[10px]"
                         : "gap-1.5 px-3 py-1.5 text-[11px]",
