@@ -196,6 +196,7 @@ async function importChannel(
       const res = await fetch(
         `https://discord.com/api/v10/channels/${channelId}/messages?${params.toString()}`,
         {
+          cache: "no-store",
           headers: {
             Authorization: `Bot ${botToken}`,
             // Generic UA — fork deployments shouldn't all impersonate one URL.

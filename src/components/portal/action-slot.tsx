@@ -39,7 +39,7 @@ export function ActionSlotProvider({ children }: { children: ReactNode }) {
     () => ({ stuck, setStuck, target, setTarget }),
     [stuck, target],
   );
-  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+  return <Ctx value={value}>{children}</Ctx>;
 }
 
 export function useActionSlotContext() {
@@ -83,7 +83,7 @@ export function MainActionSlotProvider({ children }: { children: ReactNode }) {
     () => ({ stuck, setStuck, target, setTarget }),
     [stuck, target],
   );
-  return <MainCtx.Provider value={value}>{children}</MainCtx.Provider>;
+  return <MainCtx value={value}>{children}</MainCtx>;
 }
 
 export function MainActionSlotTarget({ className }: { className?: string }) {

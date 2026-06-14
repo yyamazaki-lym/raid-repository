@@ -177,6 +177,7 @@ async function processChannel(
     const res = await fetch(
       `https://discord.com/api/v10/channels/${channelId}/messages?limit=100`,
       {
+        cache: "no-store",
         headers: {
           Authorization: `Bot ${botToken}`,
           "User-Agent": "RaidRepositoryBot/0.1",

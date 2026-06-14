@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  forwardRef,
   useEffect,
   useImperativeHandle,
   useMemo,
@@ -83,6 +82,8 @@ type Props = {
     dayOfWeek: string;
   };
   children: React.ReactNode;
+  /** React 19: ref を通常 prop で受け取る (旧 forwardRef を置換)。 */
+  ref?: React.Ref<SessionMemoPopoverHandle>;
 };
 
 /**
@@ -97,24 +98,19 @@ export type SessionMemoPopoverHandle = {
   toggle: () => void;
 };
 
-export const SessionMemoPopover = forwardRef<
-  SessionMemoPopoverHandle,
-  Props
->(function SessionMemoPopover(
-  {
-    rawDate,
-    displayDate,
-    memos,
-    onRefresh,
-    sessionLogs = EMPTY_SESSION_LOGS,
-    sessionDetails,
-    children,
-  },
-  handleRef,
-) {
+export function SessionMemoPopover({
+  rawDate,
+  displayDate,
+  memos,
+  onRefresh,
+  sessionLogs = EMPTY_SESSION_LOGS,
+  sessionDetails,
+  children,
+  ref,
+}: Props) {
   const [open, setOpen] = useState(false);
   useImperativeHandle(
-    handleRef,
+    ref,
     () => ({
       open: () => setOpen(true),
       close: () => setOpen(false),
@@ -312,7 +308,7 @@ export const SessionMemoPopover = forwardRef<
         )}
     </span>
   );
-});
+}
 
 /**
  * Tiny purple dot indicator. Parent renders this wherever it wants

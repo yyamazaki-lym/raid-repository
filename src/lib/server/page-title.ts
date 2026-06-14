@@ -69,7 +69,11 @@ export async function fetchWithSafeRedirect(
 ): Promise<Response | null> {
   let current = url;
   for (let hop = 0; hop < maxHops; hop++) {
-    const res = await fetch(current, { ...init, redirect: "manual" });
+    const res = await fetch(current, {
+      ...init,
+      redirect: "manual",
+      cache: "no-store",
+    });
     if (res.status >= 300 && res.status < 400) {
       const loc = res.headers.get("location");
       if (!loc) return res;
@@ -124,6 +128,7 @@ export async function fetchPageMeta(url: string): Promise<PageMeta> {
         "https://www.youtube.com/oembed?format=json&url=" +
         encodeURIComponent(parsed.toString());
       const res = await fetch(oembedUrl, {
+        cache: "no-store",
         headers: { "User-Agent": "RaidRepository/0.1" },
         signal: AbortSignal.timeout(8000),
       });
