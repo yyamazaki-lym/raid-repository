@@ -10,20 +10,22 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ALL_STATUSES, type CategoryStatus } from "@/lib/supabase/types";
 
-// Semantic task-progress palette — distinct across all themes.
-// Gray → amber → emerald → slate = "未着手 → 練習中 → クリア済 → 休止中".
+// Semantic task-progress palette — globals.css の `--color-status-*` トークン
+// 経由 (総合レビュー F-1)。gray → amber → emerald → slate =
+// "未着手 → 練習中 → クリア済 → 休止中"。意味色なので 7 テーマ共通で固定
+// (信号機的な明確さを優先)。glow shadow はトークン色に対応する literal。
 const STATUS_TONE: Record<CategoryStatus, string> = {
-  未着手: "text-zinc-300 border-zinc-500/40 bg-zinc-500/10",
-  練習中: "text-amber-300 border-amber-400/45 bg-amber-400/12",
-  クリア済: "text-emerald-300 border-emerald-400/45 bg-emerald-400/12",
-  休止中: "text-slate-300 border-slate-400/45 bg-slate-400/14",
+  未着手: "text-status-todo border-status-todo/40 bg-status-todo/10",
+  練習中: "text-status-practice border-status-practice/45 bg-status-practice/12",
+  クリア済: "text-status-clear border-status-clear/45 bg-status-clear/12",
+  休止中: "text-status-idle border-status-idle/45 bg-status-idle/14",
 };
 
 const STATUS_DOT: Record<CategoryStatus, string> = {
-  未着手: "bg-zinc-400/60",
-  練習中: "bg-amber-400 shadow-[0_0_8px_rgb(251_191_36_/_0.7)]",
-  クリア済: "bg-emerald-400 shadow-[0_0_8px_rgb(52_211_153_/_0.7)]",
-  休止中: "bg-slate-400 shadow-[0_0_8px_rgb(148_163_184_/_0.6)]",
+  未着手: "bg-status-todo/60",
+  練習中: "bg-status-practice shadow-[0_0_8px_rgb(251_191_36_/_0.7)]",
+  クリア済: "bg-status-clear shadow-[0_0_8px_rgb(52_211_153_/_0.7)]",
+  休止中: "bg-status-idle shadow-[0_0_8px_rgb(148_163_184_/_0.6)]",
 };
 
 type Variant = "compact" | "default";

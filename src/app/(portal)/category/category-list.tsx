@@ -345,7 +345,10 @@ function SortableCategoryCard({
             className="flex flex-col gap-1 px-4 pt-4 pb-1"
           >
             <div className="flex items-start justify-between gap-2">
-              <p className="font-display text-foreground text-sm leading-tight tracking-[0.04em]">
+              {/* F-4 (2026-06-14): カード第 1 階層 = 名前を強調 (font-medium 付与)。
+                  サイズは text-sm 据置で長い名前の折返しを回避しつつ、右カラムの
+                  メトリクス群 (9px) との階層差を太さで明確化。 */}
+              <p className="font-display text-foreground text-sm font-medium leading-tight tracking-[0.04em]">
                 {category.name}
               </p>
               {!viewerCanSee && (
