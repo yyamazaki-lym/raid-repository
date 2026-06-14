@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   CaseSensitive,
   ChevronDown,
@@ -15,20 +15,9 @@ import {
   X,
 } from "lucide-react";
 import { toast } from "sonner";
-import {
-  DndContext,
-  KeyboardSensor,
-  MouseSensor,
-  TouchSensor,
-  closestCenter,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-} from "@dnd-kit/core";
+import { DndContext, closestCenter } from "@dnd-kit/core";
 import {
   SortableContext,
-  arrayMove,
-  sortableKeyboardCoordinates,
   useSortable,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
@@ -62,6 +51,10 @@ import {
   useRealtimeRecruitmentTemplates,
   type RecruitmentTemplate,
 } from "@/lib/recruitment-templates-client";
+import {
+  applyOptimisticOrder,
+  useSortableReorder,
+} from "@/lib/use-sortable-reorder";
 import { MirrorActionSlot } from "@/components/portal/action-slot";
 
 /**
@@ -149,45 +142,18 @@ function MacrosSection({
     body: string;
   } | null>(null);
   const [busy, setBusy] = useState(false);
-  const [optimistic, setOptimistic] = useState<string[] | null>(null);
+  // DnD 並び替えの共通フック (C-1/C-4)。
+  const { optimisticOrder, sensors, handleDragEnd, syncOnSettle } =
+    useSortableReorder({ persist: setCategoryMacroOrder });
 
-  const ordered = useMemo(() => {
-    if (!optimistic) return macros;
-    const idx = new Map(optimistic.map((id, i) => [id, i] as const));
-    return [...macros].sort((a, b) => {
-      const ai = idx.get(a.id);
-      const bi = idx.get(b.id);
-      if (ai === undefined && bi === undefined) return 0;
-      if (ai === undefined) return 1;
-      if (bi === undefined) return -1;
-      return ai - bi;
-    });
-  }, [macros, optimistic]);
-
-  const sensors = useSensors(
-    useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(TouchSensor, {
-      activationConstraint: { delay: 200, tolerance: 6 },
-    }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  const ordered = useMemo(
+    () => applyOptimisticOrder(macros, optimisticOrder),
+    [macros, optimisticOrder],
   );
-
-  const onDragEnd = async (event: DragEndEvent) => {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    const oldIndex = ordered.findIndex((m) => m.id === active.id);
-    const newIndex = ordered.findIndex((m) => m.id === over.id);
-    if (oldIndex < 0 || newIndex < 0) return;
-    const next = arrayMove(ordered, oldIndex, newIndex).map((m) => m.id);
-    setOptimistic(next);
-    const result = await setCategoryMacroOrder(next);
-    if (!result.ok) {
-      toast.error("並び替え保存失敗: " + result.reason);
-      setOptimistic(null);
-      return;
-    }
-    setTimeout(() => setOptimistic(null), 1500);
-  };
+  // DB 確定順が楽観順に追いついたら畳む (値マッチ)。
+  useEffect(() => {
+    syncOnSettle(macros.map((m) => m.id));
+  }, [macros, syncOnSettle]);
 
   const startNew = () => setEditing({ label: "", body: "" });
   const startEdit = (m: CategoryMacro) =>
@@ -275,7 +241,7 @@ function MacrosSection({
         <DndContext
           sensors={sensors}
           collisionDetection={closestCenter}
-          onDragEnd={onDragEnd}
+          onDragEnd={(e) => handleDragEnd(e, ordered)}
         >
           <SortableContext items={ids} strategy={verticalListSortingStrategy}>
             <ul className="flex flex-col gap-2">
@@ -458,69 +424,37 @@ function TemplatesSection({
   } | null>(null);
   const [busy, setBusy] = useState(false);
 
-  // DnD 並び替え用 — 楽観反映でドラッグ直後に UI 即時更新、失敗時 revert
-  const [optimisticOrder, setOptimisticOrder] = useState<string[] | null>(null);
-  const orderedTemplates = useMemo(() => {
-    if (!optimisticOrder) return templates;
-    const idx = new Map(optimisticOrder.map((id, i) => [id, i] as const));
-    return [...templates].sort((a, b) => {
-      const ai = idx.get(a.id);
-      const bi = idx.get(b.id);
-      if (ai === undefined && bi === undefined) return 0;
-      if (ai === undefined) return 1;
-      if (bi === undefined) return -1;
-      return ai - bi;
-    });
-  }, [templates, optimisticOrder]);
+  // DnD 並び替えの共通フック (C-1/C-4)。
+  const {
+    optimisticOrder,
+    sensors: dndSensors,
+    handleDragEnd,
+    syncOnSettle,
+  } = useSortableReorder({ persist: setRecruitmentTemplateOrder });
 
-  const dndSensors = useSensors(
-    useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(TouchSensor, {
-      activationConstraint: { delay: 200, tolerance: 6 },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    }),
+  const orderedTemplates = useMemo(
+    () => applyOptimisticOrder(templates, optimisticOrder),
+    [templates, optimisticOrder],
   );
+  // DB 確定順 (templates) が楽観順に追いついたら畳む (値マッチ)。
+  useEffect(() => {
+    syncOnSettle(templates.map((t) => t.id));
+  }, [templates, syncOnSettle]);
 
   /**
-   * このカテゴリ内でのドラッグを「グローバル sort_order」に反映する。
-   *
-   * macro page はカテゴリで filter したテンプレしか表示しないが、
-   * `recruitment_templates.sort_order` 自体はグローバルに連番。
-   * トップ (スケジュール) ページの「募集」ボタンはグローバル
-   * `templates[0]` をコピー対象にしているため、このカテゴリ内で
-   * 上に動かしたテンプレが偶々グローバル先頭になればトップ表示も
-   * 自動で切り替わる仕組み。
-   *
-   * 並び替えアルゴリズム:
-   *   1. このカテゴリ内の新順 (`newFiltered`) を arrayMove で算出
-   *   2. グローバル全体 (`allLive`) を頭から走査し、要素がこのカテゴリの
-   *      ものなら `newFiltered` の対応位置の id に置換、それ以外は据え置き
-   *   → 他カテゴリ要素の絶対位置は変わらず、このカテゴリの slot 内でのみ
-   *      順序が入れ替わる
+   * このカテゴリ内のドラッグを「グローバル sort_order」に反映する変換。
+   * macro page はカテゴリ filter 後のテンプレしか表示しないが
+   * `recruitment_templates.sort_order` はグローバル連番。`allLive` を頭から
+   * 走査し、このカテゴリ要素を新順 (`filteredIds`) の対応位置の id に置換、
+   * 他カテゴリ要素は据え置き → このカテゴリの slot 内でのみ順序が入れ替わる。
+   * トップ「募集」ボタンはグローバル先頭をコピー対象にするため、この slot 内
+   * 並び替えがグローバル先頭に波及し得る。handleDragEnd の toPersistIds に渡す。
    */
-  const onDragEnd = async (event: DragEndEvent) => {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    const oldIndex = orderedTemplates.findIndex((t) => t.id === active.id);
-    const newIndex = orderedTemplates.findIndex((t) => t.id === over.id);
-    if (oldIndex < 0 || newIndex < 0) return;
-
-    const newFiltered = arrayMove(orderedTemplates, oldIndex, newIndex);
+  const toGlobalOrder = (filteredIds: string[]) => {
     let cursor = 0;
-    const newGlobal = allLive.map((t) =>
-      t.categoryId === categoryId ? newFiltered[cursor++]!.id : t.id,
+    return allLive.map((t) =>
+      t.categoryId === categoryId ? filteredIds[cursor++]! : t.id,
     );
-
-    setOptimisticOrder(newFiltered.map((t) => t.id));
-    const result = await setRecruitmentTemplateOrder(newGlobal);
-    if (!result.ok) {
-      toast.error("並び替え保存失敗: " + result.reason);
-      setOptimisticOrder(null);
-      return;
-    }
-    setTimeout(() => setOptimisticOrder(null), 1500);
   };
 
   // Top (グローバル先頭) のテンプレ id — トップページの「募集」ボタンが
@@ -613,7 +547,7 @@ function TemplatesSection({
         <DndContext
           sensors={dndSensors}
           collisionDetection={closestCenter}
-          onDragEnd={onDragEnd}
+          onDragEnd={(e) => handleDragEnd(e, orderedTemplates, toGlobalOrder)}
         >
           <SortableContext
             items={orderedTemplates.map((t) => t.id)}

@@ -13,21 +13,10 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { LinkSiteIcon } from "@/components/portal/link-site-icon";
-import {
-  DndContext,
-  KeyboardSensor,
-  MouseSensor,
-  TouchSensor,
-  closestCenter,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-} from "@dnd-kit/core";
+import { DndContext, closestCenter } from "@dnd-kit/core";
 import {
   SortableContext,
-  arrayMove,
   rectSortingStrategy,
-  sortableKeyboardCoordinates,
   useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -40,6 +29,10 @@ import {
   setCategoryLinkOrder,
   useRealtimeCategoryLinks,
 } from "@/lib/category-links-client";
+import {
+  applyOptimisticOrder,
+  useSortableReorder,
+} from "@/lib/use-sortable-reorder";
 import { updateCategory } from "@/lib/categories-client";
 import { safeHref } from "@/lib/url-safe";
 import { useCollapsible } from "@/lib/use-collapsible";
@@ -63,7 +56,9 @@ export function StrategyList({
 }: Props) {
   const live = useRealtimeCategoryLinks(categoryId, "strategy", initial);
   const [editTarget, setEditTarget] = useState<CategoryLink | null>(null);
-  const [optimistic, setOptimistic] = useState<string[] | null>(null);
+  // DnD 並び替えの共通フック (C-1/C-4)。
+  const { optimisticOrder, sensors, handleDragEnd, syncOnSettle } =
+    useSortableReorder({ persist: setCategoryLinkOrder });
   // Phase 14: サムネイル表示 ON/OFF。カテゴリ単位の共有設定 (DB) を
   // local mirror して optimistic に反映。toggle 失敗時に元に戻す。
   // initial が変わった時 (router.refresh 等) は state を再同期。
@@ -73,46 +68,14 @@ export function StrategyList({
     setShowThumbnails(initialShowThumbnails);
   }, [initialShowThumbnails]);
 
-  const links = useMemo(() => {
-    if (!optimistic) return live;
-    const idx = new Map(optimistic.map((id, i) => [id, i] as const));
-    return [...live].sort((a, b) => {
-      const ai = idx.get(a.id);
-      const bi = idx.get(b.id);
-      if (ai === undefined && bi === undefined) return 0;
-      if (ai === undefined) return 1;
-      if (bi === undefined) return -1;
-      return ai - bi;
-    });
-  }, [live, optimistic]);
-
-  const sensors = useSensors(
-    useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(TouchSensor, {
-      activationConstraint: { delay: 200, tolerance: 6 },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    }),
+  const links = useMemo(
+    () => applyOptimisticOrder(live, optimisticOrder),
+    [live, optimisticOrder],
   );
-
-  const onDragEnd = async (event: DragEndEvent) => {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    const oldIndex = links.findIndex((l) => l.id === active.id);
-    const newIndex = links.findIndex((l) => l.id === over.id);
-    if (oldIndex < 0 || newIndex < 0) return;
-
-    const next = arrayMove(links, oldIndex, newIndex).map((l) => l.id);
-    setOptimistic(next);
-    const result = await setCategoryLinkOrder(next);
-    if (!result.ok) {
-      toast.error("並び替えの保存に失敗: " + result.reason);
-      setOptimistic(null);
-      return;
-    }
-    setTimeout(() => setOptimistic(null), 1500);
-  };
+  // DB 確定順が楽観順に追いついたら畳む (値マッチ)。
+  useEffect(() => {
+    syncOnSettle(live.map((l) => l.id));
+  }, [live, syncOnSettle]);
 
   const ids = useMemo(() => links.map((l) => l.id), [links]);
 
@@ -228,7 +191,7 @@ export function StrategyList({
             <DndContext
               sensors={sensors}
               collisionDetection={closestCenter}
-              onDragEnd={onDragEnd}
+              onDragEnd={(e) => handleDragEnd(e, links)}
             >
               <SortableContext items={ids} strategy={rectSortingStrategy}>
                 <ul className="grid gap-3 sm:grid-cols-2">

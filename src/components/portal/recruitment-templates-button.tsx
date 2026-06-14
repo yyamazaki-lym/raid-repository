@@ -12,18 +12,12 @@ import {
 import { toast } from "sonner";
 import {
   DndContext,
-  KeyboardSensor,
-  MouseSensor,
-  TouchSensor,
   closestCenter,
-  useSensor,
-  useSensors,
   type DragEndEvent,
 } from "@dnd-kit/core";
 import {
   SortableContext,
   arrayMove,
-  sortableKeyboardCoordinates,
   useSortable,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
@@ -38,6 +32,10 @@ import {
   useRealtimeRecruitmentTemplates,
   type RecruitmentTemplate,
 } from "@/lib/recruitment-templates-client";
+import {
+  applyOptimisticOrder,
+  useSortableReorder,
+} from "@/lib/use-sortable-reorder";
 import { cn } from "@/lib/utils";
 
 /**
@@ -89,22 +87,19 @@ export function RecruitmentTemplatesButton({ initial, categories }: Props) {
     [categories],
   );
 
-  // Optimistic local order for instant DnD feedback. Server confirms via
-  // realtime refetch; on failure we revert.
-  const [optimisticOrder, setOptimisticOrder] = useState<string[] | null>(null);
+  // DnD 並び替えの共通フック (C-1/C-4)。group / row の 2 ハンドラで 1 つの
+  // optimistic state を共有する (どちらもグローバル sort_order を更新)。
+  const { optimisticOrder, sensors, commit, handleDragEnd, syncOnSettle } =
+    useSortableReorder({ persist: setRecruitmentTemplateOrder });
 
-  const ordered = useMemo(() => {
-    if (!optimisticOrder) return templates;
-    const idx = new Map(optimisticOrder.map((id, i) => [id, i] as const));
-    return [...templates].sort((a, b) => {
-      const ai = idx.get(a.id);
-      const bi = idx.get(b.id);
-      if (ai === undefined && bi === undefined) return 0;
-      if (ai === undefined) return 1;
-      if (bi === undefined) return -1;
-      return ai - bi;
-    });
-  }, [templates, optimisticOrder]);
+  const ordered = useMemo(
+    () => applyOptimisticOrder(templates, optimisticOrder),
+    [templates, optimisticOrder],
+  );
+  // DB 確定順 (templates) が楽観順に追いついたら畳む (値マッチ)。
+  useEffect(() => {
+    syncOnSettle(templates.map((t) => t.id));
+  }, [templates, syncOnSettle]);
 
   const grouped = useMemo(() => groupByCategory(ordered), [ordered]);
 
@@ -145,16 +140,6 @@ export function RecruitmentTemplatesButton({ initial, categories }: Props) {
     });
   };
 
-  const sensors = useSensors(
-    useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(TouchSensor, {
-      activationConstraint: { delay: 200, tolerance: 6 },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    }),
-  );
-
   // 上位 SortableContext のキー = カテゴリグループキー (categoryId
   // か "__none__")。block 単位の useSortable で section ごと並び替え。
   //
@@ -169,6 +154,9 @@ export function RecruitmentTemplatesButton({ initial, categories }: Props) {
     [grouped],
   );
 
+  // section (= category group) 単位の並び替え。grouped を arrayMove して
+  // グローバル flat 順に展開し commit (group 単位なので handleDragEnd の
+  // 単純 flat reorder には乗らず、専用ロジックで next を組む)。
   const onCategoryDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
@@ -178,46 +166,28 @@ export function RecruitmentTemplatesButton({ initial, categories }: Props) {
 
     const reorderedGroups = arrayMove(grouped, oldIndex, newIndex);
     const next = reorderedGroups.flatMap((g) => g.items.map((t) => t.id));
-    setOptimisticOrder(next);
-
     const srcName = grouped[oldIndex]?.categoryName ?? "未分類";
     const dstName = grouped[newIndex]?.categoryName ?? "未分類";
 
-    const result = await setRecruitmentTemplateOrder(next);
-    if (!result.ok) {
-      toast.error("並び替え保存失敗: " + result.reason);
-      setOptimisticOrder(null);
-      return;
+    const result = await commit(next);
+    if (result.ok) {
+      toast.success(`「${srcName}」を「${dstName}」の位置に移動しました`);
     }
-    toast.success(`「${srcName}」を「${dstName}」の位置に移動しました`);
-    setTimeout(() => setOptimisticOrder(null), 1500);
   };
 
   // 行並び替えは groupId で限定して同 category 内に閉じる (cross-category
   // drag は groupBy 再描画で結果が直感に反するため)。section ごとの inner
   // DndContext で発火するので、active / over はその section のテンプレ
   // id のみ。
+  // 行並び替えは inner DndContext で発火し active/over は section 内テンプレ
+  // id のみ。grouped が category 内を連続配置するので、グローバル flat
+  // (`ordered`) 上の arrayMove = section 内並び替えと一致する → handleDragEnd
+  // (単純 flat reorder) に乗せられる。
   const onRowDragEnd = async (event: DragEndEvent) => {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    const aId = String(active.id);
-    const oId = String(over.id);
-
-    const flat = ordered.map((t) => t.id);
-    const oldIndex = flat.indexOf(aId);
-    const newIndex = flat.indexOf(oId);
-    if (oldIndex < 0 || newIndex < 0) return;
-    const next = arrayMove(flat, oldIndex, newIndex);
-    setOptimisticOrder(next);
-
-    const result = await setRecruitmentTemplateOrder(next);
-    if (!result.ok) {
-      toast.error("並び替え保存失敗: " + result.reason);
-      setOptimisticOrder(null);
-      return;
+    const result = await handleDragEnd(event, ordered);
+    if (result?.ok) {
+      toast.success("並び順を保存しました");
     }
-    toast.success("並び順を保存しました");
-    setTimeout(() => setOptimisticOrder(null), 1500);
   };
 
   const copyToClipboard = async (template: RecruitmentTemplate) => {
@@ -337,7 +307,7 @@ function SortableCategorySection({
   onToggle: () => void;
   onCopy: (t: RecruitmentTemplate) => void;
   /** 親と同じ sensor 設定を共有 (距離 / 遅延ガードを揃えるため) */
-  sensors: ReturnType<typeof useSensors>;
+  sensors: ReturnType<typeof useSortableReorder>["sensors"];
   /** 行並び替えの onDragEnd。section ごとに独立した inner DndContext で発火 */
   onRowDragEnd: (event: DragEndEvent) => void;
 }) {
