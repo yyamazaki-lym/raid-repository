@@ -10,6 +10,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { deleteCategoryLink } from "@/lib/category-links-client";
+import { useConfirm } from "@/components/portal/confirm-dialog";
 import type { CategoryLink } from "@/lib/supabase/types";
 
 /**
@@ -25,8 +26,14 @@ export function LinkCardMenu({
   link: CategoryLink;
   onEdit: () => void;
 }) {
+  const confirm = useConfirm();
   const onDelete = async () => {
-    if (!window.confirm(`「${link.title}」を削除しますか？`)) return;
+    const ok = await confirm({
+      title: `「${link.title}」を削除しますか？`,
+      confirmText: "削除",
+      destructive: true,
+    });
+    if (!ok) return;
     const result = await deleteCategoryLink(link.id);
     if (!result.ok) {
       toast.error("削除失敗: " + result.reason);

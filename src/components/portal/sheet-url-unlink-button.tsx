@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Link2Off } from "lucide-react";
 import { toast } from "sonner";
 import { updateCategory } from "@/lib/categories-client";
+import { useConfirm } from "@/components/portal/confirm-dialog";
 
 type Kind = "mitigation" | "loot";
 
@@ -36,13 +37,17 @@ export function SheetUrlUnlinkButton({
   kind: Kind;
 }) {
   const router = useRouter();
+  const confirm = useConfirm();
   const [busy, setBusy] = useState(false);
   const label = KIND_LABEL[kind];
 
   const onClick = async () => {
-    const confirmed = window.confirm(
-      `${label}のスプレッドシート紐付けを解除しますか?\n\n表示中の URL は ${label}カードから消え、再登録するまで未設定状態に戻ります。スプレッドシート自体は削除されません。`,
-    );
+    const confirmed = await confirm({
+      title: `${label}のスプレッドシート紐付けを解除しますか?`,
+      description: `表示中の URL は ${label}カードから消え、再登録するまで未設定状態に戻ります。スプレッドシート自体は削除されません。`,
+      confirmText: "解除",
+      destructive: true,
+    });
     if (!confirmed) return;
     setBusy(true);
     const result = await updateCategory(categoryId, {

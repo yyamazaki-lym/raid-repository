@@ -55,6 +55,7 @@ import {
   applyOptimisticOrder,
   useSortableReorder,
 } from "@/lib/use-sortable-reorder";
+import { useConfirm } from "@/components/portal/confirm-dialog";
 import { MirrorActionSlot } from "@/components/portal/action-slot";
 
 /**
@@ -145,6 +146,7 @@ function MacrosSection({
   // DnD 並び替えの共通フック (C-1/C-4)。
   const { optimisticOrder, sensors, handleDragEnd, syncOnSettle } =
     useSortableReorder({ persist: setCategoryMacroOrder });
+  const confirm = useConfirm();
 
   const ordered = useMemo(
     () => applyOptimisticOrder(macros, optimisticOrder),
@@ -181,7 +183,12 @@ function MacrosSection({
   };
 
   const onDelete = async (m: CategoryMacro) => {
-    if (!window.confirm(`「${m.label || "（未命名）"}」を削除しますか？`)) return;
+    const ok = await confirm({
+      title: `「${m.label || "（未命名）"}」を削除しますか？`,
+      confirmText: "削除",
+      destructive: true,
+    });
+    if (!ok) return;
     const result = await deleteCategoryMacro(m.id);
     if (!result.ok) {
       toast.error("削除失敗: " + result.reason);
@@ -431,6 +438,7 @@ function TemplatesSection({
     handleDragEnd,
     syncOnSettle,
   } = useSortableReorder({ persist: setRecruitmentTemplateOrder });
+  const confirm = useConfirm();
 
   const orderedTemplates = useMemo(
     () => applyOptimisticOrder(templates, optimisticOrder),
@@ -488,7 +496,12 @@ function TemplatesSection({
   };
 
   const onDelete = async (t: RecruitmentTemplate) => {
-    if (!window.confirm(`「${t.label || "通常募集"}」を削除しますか？`)) return;
+    const ok = await confirm({
+      title: `「${t.label || "通常募集"}」を削除しますか？`,
+      confirmText: "削除",
+      destructive: true,
+    });
+    if (!ok) return;
     const result = await deleteRecruitmentTemplate(t.id);
     if (!result.ok) {
       toast.error("削除失敗: " + result.reason);

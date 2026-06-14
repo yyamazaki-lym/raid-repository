@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { FileClock, Link2, LogIn, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { RELEASES, type ReleaseEntry } from "@/lib/changelog";
+import { useConfirm } from "@/components/portal/confirm-dialog";
 
 /**
  * Inline GitHub mark — `lucide-react` v1.x removed brand icons (Github
@@ -45,6 +46,7 @@ export function ChangelogFooter({
   showSignIn?: boolean;
 }) {
   const pathname = usePathname();
+  const confirm = useConfirm();
   const [showChangelog, setShowChangelog] = useState(false);
   const [archiveReleases, setArchiveReleases] = useState<ReleaseEntry[] | null>(
     null,
@@ -116,9 +118,18 @@ export function ChangelogFooter({
             method="post"
             className="inline-flex"
             onSubmit={(e) => {
-              if (!window.confirm("サインアウトしますか?")) {
-                e.preventDefault();
-              }
+              // async confirm のため一旦既定動作を止め、承諾時のみ native
+              // submit する (form.submit() は onSubmit を再発火しない)。
+              e.preventDefault();
+              const form = e.currentTarget;
+              void (async () => {
+                const ok = await confirm({
+                  title: "サインアウトしますか?",
+                  confirmText: "サインアウト",
+                  destructive: true,
+                });
+                if (ok) form.submit();
+              })();
             }}
           >
             <button

@@ -55,6 +55,7 @@ import {
   applyOptimisticOrder,
   useSortableReorder,
 } from "@/lib/use-sortable-reorder";
+import { useConfirm } from "@/components/portal/confirm-dialog";
 import { isCategoryVisibleToRoles } from "@/lib/category-visibility";
 import type { Category, CategoryStatus } from "@/lib/supabase/types";
 import { isOptimizableImageHost, isSafeUrl } from "@/lib/url-safe";
@@ -105,6 +106,7 @@ export function CategoryList({
   // 値マッチ (syncOnSettle) で楽観 state を畳む (旧 setTimeout 方式を廃止)。
   const { optimisticOrder, sensors, handleDragEnd, syncOnSettle } =
     useSortableReorder({ persist: setCategoryOrder });
+  const confirm = useConfirm();
   // Single edit dialog controlled at the list level. Lifting state here
   // (rather than embedding the dialog inside the per-card menu) avoids the
   // focus collision where a DropdownMenuItem closing immediately re-closes
@@ -146,13 +148,13 @@ export function CategoryList({
   };
 
   const onDelete = async (cat: Category) => {
-    if (
-      !window.confirm(
-        `「${cat.name}」を削除しますか？\nロット・軽減・攻略情報もすべて削除されます。`,
-      )
-    ) {
-      return;
-    }
+    const ok = await confirm({
+      title: `「${cat.name}」を削除しますか？`,
+      description: "ロット・軽減・攻略情報もすべて削除されます。",
+      confirmText: "削除",
+      destructive: true,
+    });
+    if (!ok) return;
     const result = await deleteCategory(cat.id);
     if (!result.ok) {
       toast.error("削除失敗: " + result.reason);
