@@ -20,6 +20,7 @@ import {
 } from "@/lib/server/categories-actions";
 import type { SessionLogEntry } from "@/lib/schedule/session-logs";
 import { safeHref } from "@/lib/url-safe";
+import { useConfirm } from "@/components/portal/confirm-dialog";
 
 /**
  * 2.9 (2026-06-10) TODO #73 follow-up: native スケジュール版の FFLogs URL
@@ -43,8 +44,8 @@ import { safeHref } from "@/lib/url-safe";
  *   - `<Popover open={open} onOpenChange={setOpen}>` controlled
  *   - `{open && <PopoverContent finalFocus={false}>}` で close 時 DOM 残留を回避
  *
- * 削除確認は `window.confirm` で MVP (sync 側の `createPortal` modal は
- * 行数が多くなるため省略、必要なら後追い PR で揃える)。
+ * 削除確認は共通 `useConfirm()` (ConfirmDialog) を使用 (総合レビュー F-4 で
+ * window.confirm から移行)。
  *
  * optimistic state パターンは sync 側と同型: add → 即時表示 + server action
  * 発火 + revalidatePath 後の sessionLogs prop 更新で reconcile、delete →
@@ -75,6 +76,7 @@ export function NativeFflogsLinkPopover({
   const [open, setOpen] = useState(false);
   const [newLogsInput, setNewLogsInput] = useState("");
   const [logsBusy, setLogsBusy] = useState(false);
+  const confirm = useConfirm();
 
   // Optimistic state (sync 側と同パターン)。
   const [optimisticAdds, setOptimisticAdds] = useState<SessionLogEntry[]>([]);
@@ -153,7 +155,12 @@ export function NativeFflogsLinkPopover({
       setOptimisticAdds((prev) => prev.filter((e) => e.id !== id));
       return;
     }
-    if (!window.confirm("この URL を削除しますか?")) return;
+    const ok = await confirm({
+      title: "この URL を削除しますか?",
+      confirmText: "削除",
+      destructive: true,
+    });
+    if (!ok) return;
     setPendingDeletes((prev) => {
       const next = new Set(prev);
       next.add(id);

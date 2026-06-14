@@ -1,4 +1,5 @@
 import { ChunkErrorHandler } from "@/components/portal/chunk-error-handler";
+import { ConfirmProvider } from "@/components/portal/confirm-dialog";
 import { SiteHeader } from "@/components/portal/site-header";
 import { MainTabs } from "@/components/portal/main-tabs";
 import { MainActionSlotProvider } from "@/components/portal/action-slot";
@@ -54,7 +55,7 @@ export default async function PortalLayout({
     : result.categories;
 
   return (
-    <>
+    <ConfirmProvider>
       <ChunkErrorHandler />
       <SiteHeader />
       {/* TODO #58 part2: /category 一覧の Maintenance + 追加ボタンを MainTabs
@@ -77,6 +78,6 @@ export default async function PortalLayout({
           {children}
         </main>
       </MainActionSlotProvider>
-    </>
+    </ConfirmProvider>
   );
 }

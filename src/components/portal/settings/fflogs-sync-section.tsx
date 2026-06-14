@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
+import { useConfirm } from "@/components/portal/confirm-dialog";
 import {
   clearAllFflogsLinks,
   disconnectFflogsOAuthAction,
@@ -139,6 +140,7 @@ export function FflogsSyncSection({
   // 日次自動連動 cron (fflogs_cron_enabled) の ON/OFF。null = 読み込み中。
   const [cronEnabled, setCronEnabled] = useState<boolean | null>(null);
   const [togglingCron, startToggleCron] = useTransition();
+  const confirm = useConfirm();
 
   useEffect(() => {
     if (!open) return;
@@ -583,13 +585,15 @@ export function FflogsSyncSection({
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={() => {
-                  if (
-                    !window.confirm(
-                      "全ての logs URL（動画 / 過去予定の自動紐づけ + 手動紐づけの両方）をクリアします。よろしいですか？",
-                    )
-                  )
-                    return;
+                onClick={async () => {
+                  const ok = await confirm({
+                    title: "全ての logs URL をクリアしますか？",
+                    description:
+                      "動画 / 過去予定の自動紐づけ + 手動紐づけの両方が対象です。",
+                    confirmText: "クリア",
+                    destructive: true,
+                  });
+                  if (!ok) return;
                   startClearLogs(async () => {
                     const r = await clearAllFflogsLinks();
                     if (!r.ok) {

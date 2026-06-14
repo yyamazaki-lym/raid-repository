@@ -60,6 +60,7 @@ import {
   applyOptimisticOrder,
   useSortableReorder,
 } from "@/lib/use-sortable-reorder";
+import { useConfirm } from "@/components/portal/confirm-dialog";
 import type { CategoryLink, CategoryStatus } from "@/lib/supabase/types";
 
 type Props = {
@@ -102,6 +103,7 @@ export function VideosList({
   // 永続化時に reverse する (toPersistIds)。
   const { optimisticOrder, sensors, handleDragEnd, syncOnSettle } =
     useSortableReorder({ persist: setCategoryLinkOrder });
+  const confirm = useConfirm();
   // ページ全体で「いま再生中の動画」を 1 つだけ保持する。別の動画カードで
   // 再生を開くと前のは自動で閉じる (= iframe unmount = 再生停止)。
   const [activeVideoId, setActiveVideoId] = useState<string | null>(null);
@@ -456,13 +458,13 @@ export function VideosList({
   const onBulkDelete = useCallback(async () => {
     const count = selectedIds.size;
     if (count === 0) return;
-    if (
-      !window.confirm(
-        `選択した ${count} 件の動画を削除します。元に戻せません。よろしいですか？`,
-      )
-    ) {
-      return;
-    }
+    const ok = await confirm({
+      title: `選択した ${count} 件の動画を削除します`,
+      description: "元に戻せません。よろしいですか？",
+      confirmText: "削除",
+      destructive: true,
+    });
+    if (!ok) return;
     setBulkDeleting(true);
     const ids = [...selectedIds];
     const results = await Promise.all(
@@ -483,7 +485,7 @@ export function VideosList({
       );
       setSelectedIds(new Set(failed.map((x) => x.id)));
     }
-  }, [selectedIds]);
+  }, [selectedIds, confirm]);
 
   const onBulkSaveClearTime = useCallback(async () => {
     let total = 0;
@@ -504,15 +506,15 @@ export function VideosList({
       missing > 0
         ? `\n(${missing} 件は再生時間未取得 — 0 として扱います)`
         : "";
-    if (
-      !window.confirm(
+    const ok = await confirm({
+      title: "クリアまでの累計時間として保存しますか？",
+      description:
         `選択した ${selectedIds.size} 件の合計再生時間 ${summary} を` +
-          `「クリアまでの累計時間」として保存します。${missingNote}\n` +
-          `既存の手動入力は上書きされます。よろしいですか？`,
-      )
-    ) {
-      return;
-    }
+        `「クリアまでの累計時間」として保存します。${missingNote}\n` +
+        `既存の手動入力は上書きされます。`,
+      confirmText: "保存",
+    });
+    if (!ok) return;
     setSavingClearTime(true);
     const result = await updateCategory(categoryId, {
       manual_time_to_clear_seconds: total,
@@ -525,7 +527,7 @@ export function VideosList({
     toast.success(`クリア時間 ${summary} を保存しました`);
     setSelectedIds(new Set());
     setSelectMode(false);
-  }, [categoryId, liveWithFav, selectedIds]);
+  }, [categoryId, liveWithFav, selectedIds, confirm]);
 
   // 選択中の全動画が既にお気に入りなら「外す」、そうでなければ「追加」。
   // ユーザーが手元の選択集合を 1 ボタンで揃えられる方が UX がシンプル。

@@ -15,6 +15,7 @@ import {
   Image as ImageIcon,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useConfirm } from "@/components/portal/confirm-dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -118,6 +119,7 @@ type StrategyThumbProgress = {
 
 export function MaintenanceMenu() {
   const router = useRouter();
+  const confirm = useConfirm();
   const [pending, startTransition] = useTransition();
   const [pendingKind, setPendingKind] = useState<ActionKind | null>(null);
   const [result, setResult] = useState<Result | null>(null);
@@ -297,7 +299,27 @@ export function MaintenanceMenu() {
     };
   };
 
-  const run = (kind: ActionKind) => {
+  const run = async (kind: ActionKind) => {
+    // 強制再取得系は確認を transition の外で取る (ダイアログ表示中に
+    // pending スピナーが先行点灯しないように)。
+    if (kind === "videoMetaForceRefresh") {
+      const ok = await confirm({
+        title: "全動画の posted_at を再取得しますか？",
+        description:
+          "古い動画を Discord に貼って posted_at が誤って取り込み日になっている場合の修復用 (TODO #22)。\n動画件数 × 1 リクエスト発行されるため数十秒〜数分かかります。",
+        confirmText: "実行",
+      });
+      if (!ok) return;
+    }
+    if (kind === "strategyThumbForceRefresh") {
+      const ok = await confirm({
+        title: "攻略リンク全件の og:image を再取得しますか？",
+        description:
+          "既に取得済みのサムネイルも上書きされます。\n登録件数 × 1 リクエスト発行されるため数十秒〜数分かかります。",
+        confirmText: "実行",
+      });
+      if (!ok) return;
+    }
     setResult(null);
     setPendingKind(kind);
     startTransition(async () => {
@@ -323,16 +345,6 @@ export function MaintenanceMenu() {
         }
         if (kind === "videoMeta" || kind === "videoMetaForceRefresh") {
           const force = kind === "videoMetaForceRefresh";
-          if (force) {
-            const ok = window.confirm(
-              "全動画の posted_at を YouTube uploadDate で再取得します。\n" +
-                "(古い動画を Discord に貼って posted_at が誤って取り込み日に\n" +
-                "なっている場合の修復用、TODO #22 追加対応)\n\n" +
-                "動画件数 × 1 リクエスト発行されるため数十秒〜数分かかります。\n" +
-                "実行しますか?",
-            );
-            if (!ok) return;
-          }
           const { durations: dur, postedAt: posted } =
             await runVideoMetaPhase(force);
           if (!dur.ok) {
@@ -385,15 +397,6 @@ export function MaintenanceMenu() {
           kind === "strategyThumbForceRefresh"
         ) {
           const force = kind === "strategyThumbForceRefresh";
-          if (force) {
-            const ok = window.confirm(
-              "登録済みの攻略リンク全件について og:image を再取得します。\n" +
-                "(既に取得済みのサムネイルも上書きされます)\n\n" +
-                "登録件数 × 1 リクエスト発行されるため数十秒〜数分かかります。\n" +
-                "実行しますか?",
-            );
-            if (!ok) return;
-          }
           const r = await runStrategyThumbPhase(force);
           if (!r.ok) {
             toast.error("サムネ取得失敗: " + (r.reason ?? "原因不明"));

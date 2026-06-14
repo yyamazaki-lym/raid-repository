@@ -42,6 +42,7 @@ import {
   useRealtimeAllScheduleMemos,
   type ScheduleSessionMemo,
 } from "@/lib/schedule-memos-client";
+import { useConfirm } from "@/components/portal/confirm-dialog";
 import {
   getJapaneseHolidayName,
   isJapaneseHoliday,
@@ -1546,6 +1547,7 @@ export function Legend({
 }) {
   const legend = buildAttendanceLegend(attendanceChoices);
   const router = useRouter();
+  const confirm = useConfirm();
   // Local controlled-popover state for the top-text comment icon.
   const [showTopText, setShowTopText] = useState(false);
   const topTextRef = useRef<HTMLDivElement | null>(null);
@@ -1758,13 +1760,14 @@ export function Legend({
                         <button
                           type="button"
                           onClick={async () => {
-                            if (
-                              !window.confirm(
-                                "編集後の override を削除して、元サイトのテキスト表示に戻しますか?",
-                              )
-                            ) {
-                              return;
-                            }
+                            const ok = await confirm({
+                              title: "編集後テキストを削除しますか？",
+                              description:
+                                "元サイトのテキスト表示に戻ります。",
+                              confirmText: "削除",
+                              destructive: true,
+                            });
+                            if (!ok) return;
                             // 楽観的に「クリア済」を即時反映 → 失敗時 revert
                             setOptimisticOverride(null);
                             setView("scraped");

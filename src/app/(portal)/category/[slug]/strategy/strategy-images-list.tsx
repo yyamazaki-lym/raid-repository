@@ -49,6 +49,7 @@ import {
   applyOptimisticOrder,
   useSortableReorder,
 } from "@/lib/use-sortable-reorder";
+import { useConfirm } from "@/components/portal/confirm-dialog";
 import { isOptimizableImageHost, safeHref } from "@/lib/url-safe";
 import { jstDateTimeString } from "@/lib/jst-date";
 import { useCollapsible } from "@/lib/use-collapsible";
@@ -570,6 +571,7 @@ function AlbumSection({
 }) {
   const [syncing, setSyncing] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const confirm = useConfirm();
   // Phase 17 (2026-05-13): アルバム単位の折りたたみ。localStorage key は
   // album.id を含めて個別保持 (削除されたアルバムの key はそのまま残置 = 害なし)。
   const [collapsed, setCollapsed] = useCollapsible(
@@ -598,13 +600,13 @@ function AlbumSection({
   const onDelete = async () => {
     if (deleting) return;
     const label = album.title ?? "Google フォト";
-    if (
-      !window.confirm(
-        `「${label}」のアルバムと含まれる画像 ${links.length} 枚を削除します。よろしいですか？`,
-      )
-    ) {
-      return;
-    }
+    const ok = await confirm({
+      title: `「${label}」のアルバムを削除しますか？`,
+      description: `含まれる画像 ${links.length} 枚も削除されます。`,
+      confirmText: "削除",
+      destructive: true,
+    });
+    if (!ok) return;
     setDeleting(true);
     const result = await deleteGphotoAlbum(album.id);
     setDeleting(false);
