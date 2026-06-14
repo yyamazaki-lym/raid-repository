@@ -128,7 +128,7 @@ export function SheetIframeFrame({
           href={url}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 rounded-md border border-border/60 px-3 py-1.5 font-mono text-[11px] tracking-[0.18em] uppercase transition-colors hover:border-[var(--neon-cyan)]/60"
+          className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 rounded-md border border-border/60 px-3 py-1.5 text-[11px] tracking-normal transition-colors hover:border-[var(--neon-cyan)]/60"
         >
           <ExternalLink className="h-3.5 w-3.5" aria-hidden />
           元サイトを開く

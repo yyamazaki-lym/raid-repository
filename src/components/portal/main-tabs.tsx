@@ -56,7 +56,7 @@ export function MainTabs({
                   href="/"
                   data-active={scheduleActive}
                   className={cn(
-                    "neon-edge group relative flex items-center gap-2 rounded-md border border-transparent px-4 py-2 font-mono text-[12px] tracking-[0.16em] uppercase transition-colors",
+                    "neon-edge group relative flex items-center gap-2 rounded-md border border-transparent px-4 py-2 text-[12px] font-medium tracking-normal transition-colors",
                     scheduleActive
                       ? "text-foreground"
                       : "text-muted-foreground hover:text-foreground/90",

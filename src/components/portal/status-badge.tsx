@@ -52,11 +52,11 @@ export function StatusBadge({
   // (未着手/練習中/クリア済/休止中) all occupy the same horizontal space.
   // Without this, dropdown items show jagged content-name start positions.
   const baseBadge = cn(
-    "inline-flex items-center justify-center gap-1.5 rounded-sm border font-mono uppercase",
+    "inline-flex items-center justify-center gap-1.5 rounded-sm border font-medium tracking-normal",
     STATUS_TONE[status],
     variant === "compact"
-      ? "min-w-[4.5rem] px-1.5 py-px text-[9px] tracking-[0.18em]"
-      : "min-w-[5.5rem] px-2 py-0.5 text-[10px] tracking-[0.22em]",
+      ? "min-w-[4.5rem] px-1.5 py-px text-[11px]"
+      : "min-w-[5.5rem] px-2 py-0.5 text-[11px]",
     className,
   );
 

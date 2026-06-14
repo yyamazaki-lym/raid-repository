@@ -219,7 +219,7 @@ function MacrosSection({
           variant="outline"
           size="sm"
           onClick={startNew}
-          className="gap-1.5 font-mono text-[11px] tracking-[0.18em] uppercase"
+          className="gap-1.5 text-[11px] tracking-normal"
         >
           <Plus className="h-3.5 w-3.5" aria-hidden />
           マクロ追加
@@ -230,7 +230,7 @@ function MacrosSection({
             variant="outline"
             size="sm"
             onClick={startNew}
-            className="gap-1.5 font-mono text-[11px] tracking-[0.18em] uppercase"
+            className="gap-1.5 text-[11px] tracking-normal"
           >
             <Plus className="h-3.5 w-3.5" aria-hidden />
             マクロ追加
@@ -527,7 +527,7 @@ function TemplatesSection({
           variant="outline"
           size="sm"
           onClick={startNew}
-          className="gap-1.5 font-mono text-[11px] tracking-[0.18em] uppercase"
+          className="gap-1.5 text-[11px] tracking-normal"
         >
           <Plus className="h-3.5 w-3.5" aria-hidden />
           募集文追加
@@ -538,7 +538,7 @@ function TemplatesSection({
             variant="outline"
             size="sm"
             onClick={startNew}
-            className="gap-1.5 font-mono text-[11px] tracking-[0.18em] uppercase"
+            className="gap-1.5 text-[11px] tracking-normal"
           >
             <Plus className="h-3.5 w-3.5" aria-hidden />
             募集文追加
@@ -839,7 +839,7 @@ function EditDialog({
                         onChange({ ...value, body: next });
                         toast.success("全角を半角に変換しました");
                       }}
-                      className="inline-flex items-center gap-1 rounded-sm border border-[var(--neon-cyan)]/40 bg-[var(--neon-cyan)]/8 px-2 py-0.5 font-mono text-[10px] tracking-[0.18em] text-[var(--neon-cyan)] uppercase transition-colors hover:bg-[var(--neon-cyan)]/15"
+                      className="inline-flex items-center gap-1 rounded-sm border border-[var(--neon-cyan)]/40 bg-[var(--neon-cyan)]/8 px-2 py-0.5 text-[10px] tracking-normal text-[var(--neon-cyan)] transition-colors hover:bg-[var(--neon-cyan)]/15"
                       title="全角→半角"
                     >
                       <CaseSensitive className="h-3 w-3" aria-hidden />
@@ -867,7 +867,7 @@ function EditDialog({
             size="sm"
             onClick={() => setOpen(false)}
             disabled={busy}
-            className="font-mono text-[11px] tracking-[0.18em] uppercase"
+            className="text-[11px] tracking-normal"
           >
             <X className="h-3.5 w-3.5 mr-1" aria-hidden />
             キャンセル
@@ -877,7 +877,7 @@ function EditDialog({
             size="sm"
             onClick={onSave}
             disabled={busy}
-            className="gap-1.5 font-mono text-[11px] tracking-[0.18em] uppercase"
+            className="gap-1.5 text-[11px] tracking-normal"
           >
             <Save className="h-3.5 w-3.5" aria-hidden />
             {busy ? "保存中..." : isEdit ? "更新" : "追加"}

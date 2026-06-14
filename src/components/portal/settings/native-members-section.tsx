@@ -271,7 +271,7 @@ export function NativeMembersSection({
                   />
                 </div>
                 <div className="flex items-center gap-1.5 sm:w-28">
-                  <span className="font-mono text-[10px] text-muted-foreground">
+                  <span className="text-[10px] text-muted-foreground">
                     並び
                   </span>
                   <Input
@@ -304,7 +304,7 @@ export function NativeMembersSection({
                       size="sm"
                       disabled={!canEdit || pending}
                       onClick={() => onSaveRow(m)}
-                      className="h-7 gap-1 px-2 font-mono text-[10px] tracking-[0.18em] uppercase"
+                      className="h-7 gap-1 px-2 text-[10px] tracking-normal"
                     >
                       <Save className="h-3 w-3" aria-hidden />
                       保存
@@ -377,7 +377,7 @@ export function NativeMembersSection({
               size="sm"
               disabled={pending}
               onClick={onAdd}
-              className="h-7 gap-1 px-3 font-mono text-[10px] tracking-[0.18em] uppercase"
+              className="h-7 gap-1 px-3 text-[10px] tracking-normal"
             >
               {pending ? (
                 <Loader2 className="h-3 w-3 animate-spin" aria-hidden />

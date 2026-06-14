@@ -370,7 +370,7 @@ function SortableCategorySection({
             )}
             aria-hidden
           />
-          <span className="truncate font-mono text-[10px] tracking-[0.18em] text-muted-foreground uppercase">
+          <span className="truncate text-[10px] tracking-normal text-muted-foreground">
             {categoryName ?? "（コンテンツ未設定）"}
           </span>
           <span className="font-mono text-[9px] text-muted-foreground/60">
@@ -572,7 +572,7 @@ export function RecruitmentTopCopyButton({
         aria-label={`「${subLabel}」を募集文としてコピー`}
         title={`${subLabel} をコピー`}
         className={
-          "inline-flex h-7 items-center gap-1.5 rounded-md border px-2.5 font-mono text-[11px] tracking-[0.18em] uppercase transition-colors " +
+          "inline-flex h-7 items-center gap-1.5 rounded-md border px-2.5 text-[11px] tracking-normal transition-colors " +
           (justCopied
             ? "border-emerald-400/60 bg-emerald-400/15 text-emerald-300 shadow-[0_0_10px_-4px_color-mix(in_oklch,oklch(0.78_0.18_155)_50%,transparent)]"
             : "border-[var(--neon-cyan)]/40 bg-[var(--neon-cyan)]/10 text-[var(--neon-cyan)] hover:border-[var(--neon-cyan)]/60 hover:bg-[var(--neon-cyan)]/15")
@@ -592,7 +592,7 @@ export function RecruitmentTopCopyButton({
         >
           {/* Sub-label only — category name is implicit (this is the
               top template; the user picked it as default). */}
-          <p className="mb-1 font-mono text-[10px] tracking-[0.2em] text-[var(--neon-cyan)] uppercase">
+          <p className="mb-1 text-[10px] tracking-normal text-[var(--neon-cyan)]">
             ★ {top.label || "通常募集"}
           </p>
           <pre className="max-h-[14rem] overflow-y-auto font-mono text-[11px] leading-relaxed whitespace-pre-wrap text-foreground/90">

@@ -227,13 +227,13 @@ export function SessionTimeEditPopover({
         >
           <div className="flex flex-col gap-3 p-3">
             <div className="flex items-center gap-1.5 border-b border-border/50 pb-1.5">
-              <span className="font-mono text-[9px] tracking-[0.2em] text-muted-foreground uppercase">
+              <span className="text-[9px] font-medium tracking-normal text-muted-foreground">
                 {displayDate} の時刻
               </span>
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <span className="font-mono text-[10px] tracking-[0.18em] text-muted-foreground uppercase">
+              <span className="text-[10px] tracking-normal text-muted-foreground">
                 開始 / 終了
               </span>
               <div className="flex items-center gap-1.5">
@@ -266,7 +266,7 @@ export function SessionTimeEditPopover({
             {/* 2.8 (2026-06-10) TODO #81 follow-up: note Textarea。空文字で
                 NULL 化 (= 備考削除)。CandidateDateDialog と同じ maxLength=200。 */}
             <div className="flex flex-col gap-1.5">
-              <span className="font-mono text-[10px] tracking-[0.18em] text-muted-foreground uppercase">
+              <span className="text-[10px] tracking-normal text-muted-foreground">
                 備考
               </span>
               <Textarea
@@ -298,7 +298,7 @@ export function SessionTimeEditPopover({
                 size="sm"
                 onClick={onResetToDefault}
                 disabled={busy || !isOverridden}
-                className="gap-1 font-mono text-[10px] tracking-[0.18em] uppercase"
+                className="gap-1 text-[10px] tracking-normal"
                 title="この日の時刻を default に戻す"
               >
                 <RotateCcw className="h-3 w-3" aria-hidden />
@@ -311,7 +311,7 @@ export function SessionTimeEditPopover({
                 size="sm"
                 onClick={onCancel}
                 disabled={busy}
-                className="font-mono text-[10px] tracking-[0.18em] uppercase"
+                className="text-[10px] tracking-normal"
               >
                 キャンセル
               </Button>
@@ -320,7 +320,7 @@ export function SessionTimeEditPopover({
                 size="sm"
                 onClick={onSave}
                 disabled={busy}
-                className="gap-1 font-mono text-[10px] tracking-[0.18em] uppercase"
+                className="gap-1 text-[10px] tracking-normal"
               >
                 <Save className="h-3 w-3" aria-hidden />
                 {busy ? "保存中..." : "保存"}

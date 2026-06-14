@@ -155,7 +155,7 @@ export function StrategyList({
                   : "サムネイル表示をオン"
               }
               className={
-                "inline-flex h-7 shrink-0 items-center gap-1 rounded-md border px-2 font-mono text-[10px] tracking-[0.18em] whitespace-nowrap uppercase transition-colors disabled:opacity-50 " +
+                "inline-flex h-7 shrink-0 items-center gap-1 rounded-md border px-2 text-[10px] tracking-normal whitespace-nowrap transition-colors disabled:opacity-50 " +
                 (showThumbnails
                   ? "border-[var(--neon-cyan)]/60 bg-[var(--neon-cyan)]/12 text-[var(--neon-cyan)]"
                   : "border-border/40 bg-background/30 text-muted-foreground hover:text-foreground")

@@ -565,6 +565,17 @@
    - page-fallback (Suspense fallback の遅延 fade-in 等): 300ms
    下の .neon-edge border glow (250ms) は装飾専用の例外。 */
 
+/* タイポグラフィ規約 (総合レビュー F-1、2026-06-14 明文化)。
+   - **最小サイズの床 = 11px**: 本文 / ラベル / バッジなど「読ませる」テキストは
+     `text-[11px]` 以上を使う (`text-xs`=12px / `text-sm`=14px が基本)。9-10px は
+     視認性が落ちるため新規では使わない。
+     例外: カテゴリカード右カラムの高密度メトリクスバッジ (Trophy 日付 / Hourglass
+     時間 / +N/wk / Lock 等、主に数値・Latin) は意図的な極小装飾として 9px を許容。
+   - **font-mono + uppercase + tracking は Latin 専用**: `uppercase` は日本語に
+     無効で `tracking` がかな漢字を不自然に間延びさせるため、日本語ラベルは
+     `font-sans` + `tracking-normal` を使う (mono/uppercase/wide-tracking は
+     "ONLINE" "Contents" "current" 等の Latin 文字列に限定する)。 */
+
 /* Frosted edge — silver-blue glow on hover/active. */
 .neon-edge {
   position: relative;

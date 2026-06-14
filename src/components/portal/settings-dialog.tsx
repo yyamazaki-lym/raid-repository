@@ -294,7 +294,7 @@ export function SettingsDialog({
             size="sm"
             onClick={() => setOpen(false)}
             disabled={busy}
-            className="font-mono text-[11px] tracking-[0.18em] uppercase"
+            className="text-[11px] tracking-normal"
           >
             キャンセル
           </Button>
@@ -307,7 +307,7 @@ export function SettingsDialog({
               size="sm"
               onClick={onSave}
               disabled={busy}
-              className="gap-1.5 font-mono text-[11px] tracking-[0.18em] uppercase"
+              className="gap-1.5 text-[11px] tracking-normal"
             >
               {busy ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />

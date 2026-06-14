@@ -146,7 +146,7 @@ export function NativeDefaultRaidTimeSection({
               size="sm"
               disabled={!loaded || pending || !dirty || !validRange}
               onClick={onSave}
-              className="h-7 gap-1 px-3 font-mono text-[10px] tracking-[0.18em] uppercase"
+              className="h-7 gap-1 px-3 text-[10px] tracking-normal"
             >
               {pending ? (
                 <Loader2 className="h-3 w-3 animate-spin" aria-hidden />

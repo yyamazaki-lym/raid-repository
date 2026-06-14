@@ -197,7 +197,7 @@ export function NativeMemberCommentPopover({
                 className="h-3 w-3 text-[var(--neon-cyan)]"
                 aria-hidden
               />
-              <span className="font-mono text-[9px] tracking-[0.2em] text-muted-foreground uppercase">
+              <span className="text-[9px] font-medium tracking-normal text-muted-foreground">
                 {userName} のコメント
               </span>
             </div>
@@ -235,7 +235,7 @@ export function NativeMemberCommentPopover({
                       size="sm"
                       onClick={onClear}
                       disabled={busy || !draft}
-                      className="gap-1 font-mono text-[10px] tracking-[0.18em] uppercase"
+                      className="gap-1 text-[10px] tracking-normal"
                       title="textarea をクリア (保存すると DB から削除)"
                     >
                       <Trash2 className="h-3 w-3" aria-hidden />
@@ -248,7 +248,7 @@ export function NativeMemberCommentPopover({
                     size="sm"
                     onClick={onSave}
                     disabled={busy}
-                    className="gap-1 font-mono text-[10px] tracking-[0.18em] uppercase"
+                    className="gap-1 text-[10px] tracking-normal"
                   >
                     <Save className="h-3 w-3" aria-hidden />
                     {busy ? "保存中..." : "保存"}

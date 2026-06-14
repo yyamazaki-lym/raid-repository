@@ -657,7 +657,7 @@ function AlbumSection({
               href={shareHref}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 rounded-md px-2 py-1 font-mono text-[10px] tracking-[0.18em] text-muted-foreground uppercase transition-colors hover:bg-secondary/50 hover:text-foreground"
+              className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[10px] tracking-normal text-muted-foreground transition-colors hover:bg-secondary/50 hover:text-foreground"
             >
               <ExternalLink className="h-3.5 w-3.5" aria-hidden />
               共有元
@@ -669,7 +669,7 @@ function AlbumSection({
             size="sm"
             onClick={onSync}
             disabled={syncing}
-            className="gap-1 font-mono text-[10px] tracking-[0.18em] uppercase"
+            className="gap-1 text-[10px] tracking-normal"
           >
             {syncing ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
@@ -684,7 +684,7 @@ function AlbumSection({
             size="sm"
             onClick={onDelete}
             disabled={deleting}
-            className="gap-1 font-mono text-[10px] tracking-[0.18em] uppercase text-destructive hover:text-destructive"
+            className="gap-1 text-[10px] tracking-normal text-destructive hover:text-destructive"
           >
             <Trash2 className="h-3.5 w-3.5" aria-hidden />
             削除

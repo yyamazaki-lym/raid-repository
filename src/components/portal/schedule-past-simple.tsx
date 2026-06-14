@@ -103,7 +103,7 @@ export function SchedulePastSimple({
             · 簡易ログ (日付チップ)
           </span>
         </div>
-        <span className="font-mono text-[10px] tabular-nums text-muted-foreground/80">
+        <span className="text-[10px] tabular-nums text-muted-foreground/80">
           直近 {recent.length} 件
         </span>
       </header>

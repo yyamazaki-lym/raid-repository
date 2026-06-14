@@ -211,7 +211,7 @@ export function NativeDiscordNotifySection({
       <div className="flex items-center justify-between gap-2 rounded-md border border-border/30 bg-secondary/20 px-3 py-2">
         <div className="flex flex-col gap-0.5">
           <span className="text-xs">当日の自動通知</span>
-          <span className="font-mono text-[9px] text-muted-foreground/60">
+          <span className="text-[9px] text-muted-foreground/60">
             {enabled ? `ON (${String(parseInt(hour, 10)).padStart(2, "0")}:00 JST cron が動作)` : "OFF (cron 停止)"}
           </span>
         </div>
@@ -232,7 +232,7 @@ export function NativeDiscordNotifySection({
       <div className="flex items-center justify-between gap-2 rounded-md border border-border/30 bg-secondary/20 px-3 py-2">
         <div className="flex flex-col gap-0.5">
           <span className="text-xs">通知時刻 (JST)</span>
-          <span className="font-mono text-[9px] text-muted-foreground/60">
+          <span className="text-[9px] text-muted-foreground/60">
             毎時 cron が発火し、選択時刻のみ Discord に投稿
           </span>
         </div>
@@ -251,7 +251,7 @@ export function NativeDiscordNotifySection({
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <label className="font-mono text-[10px] tracking-[0.18em] text-muted-foreground uppercase">
+        <label className="text-[10px] tracking-normal text-muted-foreground">
           通知先 Channel ID
         </label>
         <div className="flex items-center gap-1.5">
@@ -270,7 +270,7 @@ export function NativeDiscordNotifySection({
               size="sm"
               disabled={!loaded || pending || !channelDirty}
               onClick={onSaveChannel}
-              className="h-7 gap-1 px-3 font-mono text-[10px] tracking-[0.18em] uppercase"
+              className="h-7 gap-1 px-3 text-[10px] tracking-normal"
             >
               {pending ? (
                 <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
@@ -284,7 +284,7 @@ export function NativeDiscordNotifySection({
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <label className="font-mono text-[10px] tracking-[0.18em] text-muted-foreground uppercase">
+        <label className="text-[10px] tracking-normal text-muted-foreground">
           mention 対象 Role ID (任意)
         </label>
         <div className="flex items-center gap-1.5">
@@ -303,7 +303,7 @@ export function NativeDiscordNotifySection({
               size="sm"
               disabled={!loaded || pending || !roleDirty}
               onClick={onSaveRole}
-              className="h-7 gap-1 px-3 font-mono text-[10px] tracking-[0.18em] uppercase"
+              className="h-7 gap-1 px-3 text-[10px] tracking-normal"
             >
               {pending ? (
                 <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
@@ -320,7 +320,7 @@ export function NativeDiscordNotifySection({
       <div className="flex items-center justify-between gap-2 rounded-md border border-border/30 bg-secondary/20 px-3 py-2">
         <div className="flex flex-col gap-0.5">
           <span className="text-xs">確定時に自動通知</span>
-          <span className="font-mono text-[9px] text-muted-foreground/60">
+          <span className="text-[9px] text-muted-foreground/60">
             開催日を「確定」に切替えた瞬間に 1 回だけ Discord 投稿 (同セッションの再送は last_notified_at で抑止)
           </span>
         </div>
@@ -341,7 +341,7 @@ export function NativeDiscordNotifySection({
       {/* 2.1 (2026-05-12) PR3-A: 通知 message template 編集。空文字列で保存すると
           DB から DELETE され、buildMessage は hardcode default に戻る。 */}
       <div className="flex flex-col gap-1.5">
-        <label className="font-mono text-[10px] tracking-[0.18em] text-muted-foreground uppercase">
+        <label className="text-[10px] tracking-normal text-muted-foreground">
           通知メッセージ テンプレート (任意)
         </label>
         <Textarea
@@ -379,7 +379,7 @@ export function NativeDiscordNotifySection({
                 size="sm"
                 disabled={!loaded || pending}
                 onClick={onResetTemplateToDefault}
-                className="h-7 gap-1 px-2 font-mono text-[10px] tracking-[0.18em] uppercase"
+                className="h-7 gap-1 px-2 text-[10px] tracking-normal"
                 title="既定テンプレートを textarea に流し込む (保存はまだしない)"
               >
                 <RotateCcw className="h-3 w-3" aria-hidden />
@@ -391,7 +391,7 @@ export function NativeDiscordNotifySection({
                 size="sm"
                 disabled={!loaded || pending || !templateDraft}
                 onClick={onClearTemplate}
-                className="h-7 px-2 font-mono text-[10px] tracking-[0.18em] uppercase"
+                className="h-7 px-2 text-[10px] tracking-normal"
                 title="textarea をクリア (保存すると DB から削除、既定に戻る)"
               >
                 クリア
@@ -402,7 +402,7 @@ export function NativeDiscordNotifySection({
                 size="sm"
                 disabled={!loaded || pending || !templateDirty}
                 onClick={onSaveTemplate}
-                className="h-7 gap-1 px-3 font-mono text-[10px] tracking-[0.18em] uppercase"
+                className="h-7 gap-1 px-3 text-[10px] tracking-normal"
               >
                 {pending ? (
                   <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
