@@ -44,39 +44,34 @@ import {
 import { fetchAvailableGuildRoles } from "@/lib/server/categories-actions";
 import type { DiscordGuildRole } from "@/lib/server/discord-roles";
 import { isOptimizableImageHost } from "@/lib/url-safe";
+import { jstMidnightIso, jstYmdString } from "@/lib/jst-date";
 import { cn } from "@/lib/utils";
 
 const SLUG_RE = /^[a-z0-9][a-z0-9-]{1,40}[a-z0-9]?$/;
 
 /**
- * Format an ISO timestamp as `YYYY-MM-DD` for `<input type="date">`,
- * using the user's local timezone. Returns "" for null/invalid input.
+ * Format an ISO timestamp as `YYYY-MM-DD` for `<input type="date">`.
+ * 閲覧者の壁時計ではなく JST 暦日で組み立てる — first_clear_at は JST 暦日
+ * 基準で扱う (動画のクリア日ジャンプ等と統一)。Returns "" for null/invalid.
  */
 function isoToDateInput(iso: string | null): string {
   if (!iso) return "";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
-  // Use local components — `<input type="date">` works in local TZ.
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
+  return jstYmdString(d);
 }
 
 /**
  * Convert a `<input type="date">` value (`YYYY-MM-DD`) to an ISO timestamp
- * at midnight local time, or null if empty. The timezone offset comes from
- * `Date(...)` so the round-trip with `isoToDateInput` is stable.
+ * at **JST midnight**, or null if empty. JST 暦日基準なので `isoToDateInput`
+ * との round-trip が閲覧者の TZ に依存せず安定する。
  */
 function dateInputToIso(value: string): string | null {
   const v = value.trim();
   if (!v) return null;
-  // Construct as local midnight, not UTC, so the displayed date matches.
   const [y, m, d] = v.split("-").map(Number);
   if (!y || !m || !d) return null;
-  const dt = new Date(y, m - 1, d, 0, 0, 0, 0);
-  if (Number.isNaN(dt.getTime())) return null;
-  return dt.toISOString();
+  return jstMidnightIso(y, m, d);
 }
 
 type Props = {
