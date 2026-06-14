@@ -66,6 +66,7 @@ import {
 } from "@/lib/duration-format";
 import { safeHref } from "@/lib/url-safe";
 import { extractDateFromTitle } from "@/lib/title-date";
+import { jstYmd, jstYmdString } from "@/lib/jst-date";
 import type { CategoryLink, CategoryStatus } from "@/lib/supabase/types";
 
 type Props = {
@@ -152,8 +153,8 @@ export function VideosList({
     (dateIso: string): string | null => {
       for (const v of live) {
         const fallbackYear = v.postedAt
-          ? new Date(v.postedAt).getUTCFullYear()
-          : new Date(v.createdAt).getUTCFullYear();
+          ? jstYmd(new Date(v.postedAt)).y
+          : jstYmd(new Date(v.createdAt)).y;
         const titleD = extractDateFromTitle(v.title, fallbackYear);
         if (titleD) {
           const iso = `${titleD.y}-${String(titleD.m).padStart(2, "0")}-${String(titleD.d).padStart(2, "0")}`;
@@ -307,17 +308,13 @@ export function VideosList({
   }, [focusedVideoId, focusActive, focusKey]);
 
   // クリア日時バッジ (Trophy) クリック時のスクロールハンドラ。
-  // firstClearAt はカテゴリ初クリアの ISO timestamp (UTC 保存だが
-  // ユーザー表示は JST)。ローカルタイムゾーンで YYYY-MM-DD を
-  // 構築して `findVideoIdByDate` に渡す — これで extractDateFromTitle
-  // が拾う JST 日付と一致しやすい。該当動画が無ければ toast で通知。
+  // firstClearAt はカテゴリ初クリアの ISO timestamp (UTC 保存)。
+  // extractDateFromTitle が拾うのは JST の暦日なので、閲覧者の壁時計
+  // ではなく JST 暦日に正規化して `findVideoIdByDate` に渡す
+  // (非 JST 環境でも 1 日ずれない)。該当動画が無ければ toast で通知。
   const onJumpToFirstClear = useCallback(() => {
     if (!firstClearAt) return;
-    const d = new Date(firstClearAt);
-    const iso =
-      `${d.getFullYear()}-` +
-      `${String(d.getMonth() + 1).padStart(2, "0")}-` +
-      `${String(d.getDate()).padStart(2, "0")}`;
+    const iso = jstYmdString(new Date(firstClearAt));
     const matched = findVideoIdByDate(iso);
     if (!matched) {
       toast.error(`${iso} のクリア動画が見つかりませんでした`);

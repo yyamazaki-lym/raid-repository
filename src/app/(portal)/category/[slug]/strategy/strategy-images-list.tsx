@@ -57,6 +57,7 @@ import {
   useRealtimeGphotoAlbums,
 } from "@/lib/category-links-client";
 import { isOptimizableImageHost, safeHref } from "@/lib/url-safe";
+import { jstDateTimeString } from "@/lib/jst-date";
 import { useCollapsible } from "@/lib/use-collapsible";
 import type {
   CategoryGphotoAlbum,
@@ -793,16 +794,8 @@ function AlbumImageCard({
 
 function formatLastSynced(iso: string | null): string | null {
   if (!iso) return null;
-  try {
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return null;
-    const yyyy = d.getFullYear();
-    const mm = String(d.getMonth() + 1).padStart(2, "0");
-    const dd = String(d.getDate()).padStart(2, "0");
-    const hh = String(d.getHours()).padStart(2, "0");
-    const mi = String(d.getMinutes()).padStart(2, "0");
-    return `${yyyy}-${mm}-${dd} ${hh}:${mi}`;
-  } catch {
-    return null;
-  }
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  // 閲覧者の壁時計ではなく JST 表示で統一する。
+  return jstDateTimeString(d);
 }

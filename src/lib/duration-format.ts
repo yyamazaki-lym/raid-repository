@@ -7,6 +7,8 @@
  * everywhere.
  */
 
+import { jstWeekday, jstYmd } from "@/lib/jst-date";
+
 /**
  * Compact duration label. Designed for tight badge layouts.
  *   <60m: `42m`
@@ -35,21 +37,25 @@ export function formatDurationLong(seconds: number): string {
 
 /**
  * Format the first-clear timestamp:
- *   "short" → `25/12/15` (YY/M/D in local TZ — 1.9.17 added the year
+ *   "short" → `25/12/15` (YY/M/D in JST — 1.9.17 added the year
  *               so users can disambiguate clears from different years
  *               at a glance, since the badge is otherwise tiny)
  *   "long"  → `2025-12-15 (月)` for hover tooltip
+ *
+ * 日付は閲覧者の壁時計ではなく JST 暦日で組み立てる (`jst-date.ts`)。
+ * クリア日はタイトル抽出の JST 日付と突き合わせるため、非 JST 環境でも
+ * 表示・ジャンプが同じ JST 暦日で揃う。
  */
 export function formatFirstClear(iso: string, mode: "short" | "long"): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
+  const { y, m, d: day } = jstYmd(d);
   if (mode === "short") {
-    const yy = String(d.getFullYear()).slice(-2);
-    return `${yy}/${d.getMonth() + 1}/${d.getDate()}`;
+    const yy = String(y).slice(-2);
+    return `${yy}/${m}/${day}`;
   }
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  const wd = ["日", "月", "火", "水", "木", "金", "土"][d.getDay()];
-  return `${y}-${m}-${day} (${wd})`;
+  const mm = String(m).padStart(2, "0");
+  const dd = String(day).padStart(2, "0");
+  const wd = ["日", "月", "火", "水", "木", "金", "土"][jstWeekday(d)];
+  return `${y}-${mm}-${dd} (${wd})`;
 }

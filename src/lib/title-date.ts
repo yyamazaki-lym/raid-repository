@@ -24,8 +24,14 @@ export function extractDateFromTitle(
   fallbackYear?: number,
 ): { y: number; m: number; d: number } | null {
   if (!title) return null;
-  const validate = (y: number, m: number, d: number) =>
-    m >= 1 && m <= 12 && d >= 1 && d <= 31;
+  // 実在する暦日のみ許可する。`2月31日` / `4/31` のような存在しない日は
+  // `Date` が翌月へ繰り上がる (例 2月31日 → 3月2/3日) ので、組み立てた日付の
+  // 月日が入力と一致しなければ弾く。うるう年 (2/29) も自動で正しく判定される。
+  const validate = (y: number, m: number, d: number) => {
+    if (m < 1 || m > 12 || d < 1 || d > 31) return false;
+    const dt = new Date(Date.UTC(y, m - 1, d));
+    return dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d;
+  };
 
   // Year-explicit: 「2026 04 01」「2026/04/01」「2026-04-01」「2026年4月1日」
   const yexp = title.match(
