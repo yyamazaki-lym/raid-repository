@@ -75,6 +75,7 @@ export async function migrateDiscordImageToStorage(
   try {
     for (let hop = 0; hop < MAX_HOPS; hop++) {
       const r = await fetch(current, {
+        cache: "no-store",
         signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
         redirect: "manual",
         headers: { "User-Agent": "RaidRepository/0.1" },

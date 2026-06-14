@@ -265,6 +265,7 @@ async function fetchDataApiMeta(videoId: string): Promise<YouTubeMeta> {
       `?part=snippet,contentDetails&id=${encodeURIComponent(videoId)}` +
       `&key=${encodeURIComponent(apiKey)}`;
     const res = await fetch(url, {
+      cache: "no-store",
       headers: { Accept: "application/json" },
       signal: AbortSignal.timeout(8000),
     });
@@ -493,6 +494,7 @@ async function fetchYouTubeMetaInternal(
     let note: string | undefined;
     try {
       const res = await fetch(target, {
+        cache: "no-store",
         headers: {
           // Real-browser UA — bot UAs sometimes get a stripped page.
           "User-Agent": BROWSER_UA,

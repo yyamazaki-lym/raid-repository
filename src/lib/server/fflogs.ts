@@ -64,6 +64,7 @@ export async function fetchFflogsReportsV1(
   url.searchParams.set("api_key", apiKey);
   try {
     const res = await fetch(url.toString(), {
+      cache: "no-store",
       headers: { Accept: "application/json" },
       signal: AbortSignal.timeout(15000),
     });
@@ -728,6 +729,7 @@ async function fetchScrapePageDirect(
 ): Promise<ScrapePageResult> {
   try {
     const res = await fetch(buildFflogsReportsListUrl(userId, page), {
+      cache: "no-store",
       headers: buildFflogsScrapeHeaders(sessionCookie),
       signal: AbortSignal.timeout(FFLOGS_SCRAPE_TIMEOUT_MS),
       // Don't auto-follow login redirects — if the cookie is invalid
