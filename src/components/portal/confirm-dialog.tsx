@@ -84,7 +84,10 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
           if (!next) settle(false);
         }}
       >
-        <DialogContent className="max-w-md">
+        {/* PC では基底 DialogContent の sm:max-w-sm (384px) だとタイトルが
+            折り返して窮屈なため、sm:max-w-lg (512px) に広げる。モバイルは基底の
+            余白付き全幅 (max-w-[calc(100%-2rem)]) のまま。 */}
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle
               className={
