@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useRealtimeTable } from "@/lib/use-realtime-table";
 
 /**
  * CRUD + Realtime hook for the `recruitment_templates` table.
@@ -164,66 +164,26 @@ export async function deleteRecruitmentTemplate(
 
 /**
  * Live list — refetches on any DB change. Mirrors `useRealtimeCategories`.
+ * 共通土台は `useRealtimeTable` (全件 refetch モード)。
  */
 export function useRealtimeRecruitmentTemplates(
   initial: RecruitmentTemplate[],
 ): RecruitmentTemplate[] {
-  const [templates, setTemplates] = useState<RecruitmentTemplate[]>(initial);
-  const id = useId();
-
-  const initialRef = useRef(initial);
-  useEffect(() => {
-    if (initial !== initialRef.current) {
-      initialRef.current = initial;
-      setTemplates(initial);
-    }
-  }, [initial]);
-
-  useEffect(() => {
-    let cancelled = false;
-    const supabase = createClient();
-
-    const refetch = async () => {
-      if (cancelled) return;
-      try {
-        const { data, error } = await supabase
-          .from("recruitment_templates")
-          .select(SELECT_WITH_CATEGORY)
-          .order("sort_order", { ascending: true })
-          .order("created_at", { ascending: true });
-        if (cancelled) return;
-        if (error) {
-          console.warn("[recruitment-templates] refetch error:", error.message);
-          return;
-        }
-        setTemplates(
-          ((data ?? []) as unknown as RecruitmentTemplateRow[]).map(rowToTemplate),
-        );
-      } catch (e) {
-        console.warn("[recruitment-templates] refetch exception:", e);
-      }
-    };
-
-    const channel = supabase
-      .channel(`recruitment-templates-${id}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "recruitment_templates" },
-        () => {
-          void refetch();
-        },
-      )
-      .subscribe();
-
-    return () => {
-      cancelled = true;
-      try {
-        void supabase.removeChannel(channel);
-      } catch (e) {
-        console.warn("[recruitment-templates] removeChannel error:", e);
-      }
-    };
-  }, [id]);
-
-  return templates;
+  return useRealtimeTable<RecruitmentTemplateRow, RecruitmentTemplate>({
+    channelPrefix: "recruitment-templates",
+    table: "recruitment_templates",
+    initial,
+    load: async () => {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from("recruitment_templates")
+        .select(SELECT_WITH_CATEGORY)
+        .order("sort_order", { ascending: true })
+        .order("created_at", { ascending: true });
+      if (error) throw new Error(error.message);
+      return ((data ?? []) as unknown as RecruitmentTemplateRow[]).map(
+        rowToTemplate,
+      );
+    },
+  });
 }
