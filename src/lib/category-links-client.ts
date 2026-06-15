@@ -5,15 +5,19 @@ import { useRealtimeTable } from "@/lib/use-realtime-table";
 import { isClearTitleForCategory } from "@/lib/clear-detection";
 import { maybeSetFirstClearAt } from "@/lib/categories-client";
 import {
+  addCategoryDiscordBlocklistAction,
   createCategoryLinkAction,
   createGphotoEntryAction,
   deleteCategoryLinkAction,
   deleteGphotoAlbumAction,
   enrichVideoLinkDuration,
+  listCategoryDiscordBlocklistAction,
+  removeCategoryDiscordBlocklistAction,
   setCategoryLinkFavoriteAction,
   setCategoryLinkOrderAction,
   syncGphotoAlbumAction,
   updateCategoryLinkAction,
+  type CategoryDiscordBlocklistRow,
 } from "@/lib/server/categories-actions";
 import { parseYouTubeId } from "@/lib/youtube";
 import {
@@ -111,6 +115,36 @@ export async function deleteCategoryLink(
   id: string,
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
   return deleteCategoryLinkAction(id);
+}
+
+// =========================================================
+// Discord 取り込み除外リスト (2026-06-15)
+// =========================================================
+export type { CategoryDiscordBlocklistRow };
+
+/** この URL を「今後取り込まない」= 除外登録 + 既存 Discord リンク削除。 */
+export async function addDiscordLinkBlocklist(
+  categoryId: string,
+  url: string,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  return addCategoryDiscordBlocklistAction(categoryId, url);
+}
+
+/** 除外リストの 1 行を解除。 */
+export async function removeDiscordLinkBlocklist(
+  id: string,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  return removeCategoryDiscordBlocklistAction(id);
+}
+
+/** カテゴリの除外リストを取得 (管理 UI 用)。 */
+export async function fetchDiscordLinkBlocklist(
+  categoryId: string,
+): Promise<
+  | { ok: true; items: CategoryDiscordBlocklistRow[] }
+  | { ok: false; reason: string }
+> {
+  return listCategoryDiscordBlocklistAction(categoryId);
 }
 
 export async function setCategoryLinkFavorite(

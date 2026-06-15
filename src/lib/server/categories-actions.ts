@@ -1685,6 +1685,107 @@ export async function deleteCategoryLinkAction(
   return { ok: true };
 }
 
+// =============================================================
+// Discord 取り込み除外リスト (category_discord_blocklist)、2026-06-15
+// =============================================================
+// 登録された URL は cron / 手動「Discord 取込」で skip される
+// (discord-import.ts の filter)。動画/攻略を削除しても dedup は URL の在不在
+// しか見ず Discord メッセージが残れば復活するため、「削除 + 除外登録」をセット
+// で行う。admin 限定 (assertAdminResult の app gate + RLS の is_admin policy)。
+
+export type CategoryDiscordBlocklistRow = {
+  id: string;
+  url: string;
+  createdAt: string;
+};
+
+/** 除外リストに URL を登録し、同 URL の Discord 取り込み分リンクを削除する。 */
+export async function addCategoryDiscordBlocklistAction(
+  categoryId: string,
+  url: string,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
+  const t = url.trim();
+  if (!t) return { ok: false, reason: "URL が空です" };
+  const supabase = await createClient();
+  // 1. 除外リストに登録。UNIQUE(category_id, url) 違反 (23505) = 既に登録済なので
+  //    success 扱い (冪等)。それ以外の error は失敗を返す。
+  const { error: blockErr } = await supabase
+    .from("category_discord_blocklist")
+    .insert({ category_id: categoryId, url: t });
+  if (blockErr && (blockErr as { code?: string }).code !== "23505") {
+    return { ok: false, reason: dbError("除外 URL 登録", blockErr) };
+  }
+  // 2. 同 URL の Discord 取り込み分 (source='discord') リンクを削除 = 除外で即消える。
+  //    手動追加分 (source='manual') は対象外。削除失敗でも除外登録は成立済みなので
+  //    ok 扱い (次回取り込みからは確実に skip される)。
+  const { error: delErr } = await supabase
+    .from("category_links")
+    .delete()
+    .eq("category_id", categoryId)
+    .eq("url", t)
+    .eq("source", "discord");
+  if (delErr) {
+    console.warn(
+      "[blocklist] 除外登録は成立、リンク削除に失敗:",
+      delErr.message,
+    );
+  }
+  return { ok: true };
+}
+
+/** 除外リストの 1 行を解除 (削除)。 */
+export async function removeCategoryDiscordBlocklistAction(
+  id: string,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
+  const trimmed = id.trim();
+  if (!trimmed) return { ok: false, reason: "id が空です" };
+  const supabase = await createClient();
+  // `.select("id")` で返却 0 件 (= RLS USING で弾かれた非 admin) を失敗扱いに。
+  const { data, error } = await supabase
+    .from("category_discord_blocklist")
+    .delete()
+    .eq("id", trimmed)
+    .select("id")
+    .maybeSingle();
+  if (error) return { ok: false, reason: dbError("除外 URL 解除", error) };
+  if (!data)
+    return {
+      ok: false,
+      reason: "解除できませんでした（権限がない可能性があります）",
+    };
+  return { ok: true };
+}
+
+/** 除外リストを取得 (管理 UI 用、admin の cookie client → admin SELECT policy)。 */
+export async function listCategoryDiscordBlocklistAction(
+  categoryId: string,
+): Promise<
+  | { ok: true; items: CategoryDiscordBlocklistRow[] }
+  | { ok: false; reason: string }
+> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("category_discord_blocklist")
+    .select("id, url, created_at")
+    .eq("category_id", categoryId)
+    .order("created_at", { ascending: false });
+  if (error) return { ok: false, reason: dbError("除外 URL 取得", error) };
+  return {
+    ok: true,
+    items: (data ?? []).map((r) => ({
+      id: r.id as string,
+      url: r.url as string,
+      createdAt: r.created_at as string,
+    })),
+  };
+}
+
 /**
  * TODO #47 (2.1, 2026-04-30): toggle the per-link favorite flag.
  * Admin-gated to match the rest of `category_links` writes — keeping

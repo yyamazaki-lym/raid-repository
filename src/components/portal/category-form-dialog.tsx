@@ -41,6 +41,11 @@ import {
   createCategory,
   updateCategory,
 } from "@/lib/categories-client";
+import {
+  fetchDiscordLinkBlocklist,
+  removeDiscordLinkBlocklist,
+  type CategoryDiscordBlocklistRow,
+} from "@/lib/category-links-client";
 import { fetchAvailableGuildRoles } from "@/lib/server/categories-actions";
 import type { DiscordGuildRole } from "@/lib/server/discord-roles";
 import { isOptimizableImageHost } from "@/lib/url-safe";
@@ -134,6 +139,30 @@ export function CategoryFormDialog({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // 2026-06-15: Discord 取り込み除外 URL の管理 (編集時のみ)。<details> を開いた
+  // ときに lazy fetch する。null = 未取得。
+  const [blocklist, setBlocklist] = useState<
+    CategoryDiscordBlocklistRow[] | null
+  >(null);
+  const [blocklistLoading, setBlocklistLoading] = useState(false);
+  const loadBlocklist = async () => {
+    if (!category) return;
+    setBlocklistLoading(true);
+    const r = await fetchDiscordLinkBlocklist(category.id);
+    setBlocklistLoading(false);
+    if (r.ok) setBlocklist(r.items);
+    else toast.error("除外 URL 取得失敗: " + r.reason);
+  };
+  const onRemoveBlocklist = async (id: string) => {
+    const r = await removeDiscordLinkBlocklist(id);
+    if (!r.ok) {
+      toast.error("解除失敗: " + r.reason);
+      return;
+    }
+    setBlocklist((prev) => (prev ? prev.filter((x) => x.id !== id) : prev));
+    toast.success("除外を解除しました（次回取り込みから対象に戻ります）");
+  };
 
   // TODO #26 (2.1, 2026-04-29): 自由記述の説明文。空欄なら DB 保存時 null。
   const [description, setDescription] = useState(category?.description ?? "");
@@ -861,6 +890,61 @@ export function CategoryFormDialog({
               </p>
             </div>
           </label>
+
+          {isEdit && (
+            <details
+              className="rounded-md border border-border/40 bg-secondary/15 px-3 py-2"
+              onToggle={(e) => {
+                if (
+                  (e.currentTarget as HTMLDetailsElement).open &&
+                  blocklist === null
+                ) {
+                  void loadBlocklist();
+                }
+              }}
+            >
+              <summary className="cursor-pointer text-xs text-foreground/80">
+                取り込み除外 URL{blocklist ? `（${blocklist.length}）` : ""}
+              </summary>
+              <p className="text-muted-foreground mt-1.5 text-[11px] leading-relaxed">
+                登録した URL は Discord 自動取り込みで今後取り込まれません。動画 /
+                攻略の ⋮ メニュー「今後取り込まない」で登録されます。「解除」で
+                再び取り込み対象に戻ります。
+              </p>
+              {blocklistLoading ? (
+                <p className="text-muted-foreground mt-2 text-[11px]">
+                  読み込み中…
+                </p>
+              ) : blocklist && blocklist.length > 0 ? (
+                <ul className="mt-2 flex flex-col gap-1">
+                  {blocklist.map((b) => (
+                    <li
+                      key={b.id}
+                      className="flex items-center gap-2 rounded-sm border border-border/40 bg-background/30 px-2 py-1"
+                    >
+                      <span
+                        className="flex-1 truncate font-mono text-[11px] text-foreground/80"
+                        title={b.url}
+                      >
+                        {b.url}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => onRemoveBlocklist(b.id)}
+                        className="shrink-0 rounded-md border border-border/50 px-2 py-0.5 text-[10px] tracking-normal text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground"
+                      >
+                        解除
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : blocklist ? (
+                <p className="text-muted-foreground mt-2 text-[11px]">
+                  除外 URL はありません
+                </p>
+              ) : null}
+            </details>
+          )}
 
           <div className="flex flex-col gap-1.5 border-t border-border/30 pt-4">
             <Label
