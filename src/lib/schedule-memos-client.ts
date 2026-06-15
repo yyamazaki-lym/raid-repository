@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useRealtimeChannel } from "@/lib/use-realtime-table";
 
 /**
  * CRUD + Realtime hook for `schedule_session_memos` — per-date shared
@@ -154,7 +155,6 @@ export function useRealtimeAllScheduleMemos(
 } {
   const [memosByDate, setMemosByDate] =
     useState<Record<string, ScheduleSessionMemo[]>>(initialByDate);
-  const id = useId();
 
   // server prefetch の initial が SSR 後に差し替わったら state を追従させる
   // (ScheduleList の initialMemosByDate prop が new reference で来るケース)。
@@ -190,78 +190,61 @@ export function useRealtimeAllScheduleMemos(
     }
   }, []);
 
-  useEffect(() => {
-    const supabase = createClient();
-
-    const channel = supabase
-      .channel(`schedule-memos-all-${id}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "schedule_session_memos",
-        },
-        (payload) => {
-          if (payload.eventType === "INSERT") {
-            const row = payload.new as ScheduleSessionMemoRow | null;
-            if (!row) return;
-            const m = rowToMemo(row);
-            setMemosByDate((prev) => {
-              const list = prev[m.rawDate] ?? [];
-              const merged = [...list, m].sort((a, b) =>
-                a.createdAt.localeCompare(b.createdAt),
-              );
-              return { ...prev, [m.rawDate]: merged };
-            });
-            return;
-          }
-          if (payload.eventType === "UPDATE") {
-            const row = payload.new as ScheduleSessionMemoRow | null;
-            if (!row) return;
-            const m = rowToMemo(row);
-            setMemosByDate((prev) => {
-              const next: Record<string, ScheduleSessionMemo[]> = {};
-              for (const [k, v] of Object.entries(prev)) {
-                next[k] = v.filter((x) => x.id !== m.id);
-              }
-              const list = next[m.rawDate] ?? [];
-              next[m.rawDate] = [...list, m].sort((a, b) =>
-                a.createdAt.localeCompare(b.createdAt),
-              );
-              return next;
-            });
-            return;
-          }
-          if (payload.eventType === "DELETE") {
-            const oldRow = payload.old as
-              | { id?: string; raw_date?: string }
-              | null;
-            const targetId = oldRow?.id;
-            if (!targetId) {
-              void refetchAll();
-              return;
-            }
-            setMemosByDate((prev) => {
-              const next: Record<string, ScheduleSessionMemo[]> = {};
-              for (const [k, v] of Object.entries(prev)) {
-                next[k] = v.filter((x) => x.id !== targetId);
-              }
-              return next;
-            });
-          }
-        },
-      )
-      .subscribe();
-
-    return () => {
-      try {
-        void supabase.removeChannel(channel);
-      } catch (e) {
-        console.warn("[schedule-memos:all] removeChannel error:", e);
+  // channel ライフサイクルは共通土台 `useRealtimeChannel` に委譲。grouped-map
+  // への delta 適用 (rawDate バケット) はこのフック固有のため onChange に残す。
+  useRealtimeChannel({
+    channelPrefix: "schedule-memos-all",
+    table: "schedule_session_memos",
+    onChange: (payload) => {
+      if (payload.eventType === "INSERT") {
+        const row = payload.new as ScheduleSessionMemoRow | null;
+        if (!row) return;
+        const m = rowToMemo(row);
+        setMemosByDate((prev) => {
+          const list = prev[m.rawDate] ?? [];
+          const merged = [...list, m].sort((a, b) =>
+            a.createdAt.localeCompare(b.createdAt),
+          );
+          return { ...prev, [m.rawDate]: merged };
+        });
+        return;
       }
-    };
-  }, [id, refetchAll]);
+      if (payload.eventType === "UPDATE") {
+        const row = payload.new as ScheduleSessionMemoRow | null;
+        if (!row) return;
+        const m = rowToMemo(row);
+        setMemosByDate((prev) => {
+          const next: Record<string, ScheduleSessionMemo[]> = {};
+          for (const [k, v] of Object.entries(prev)) {
+            next[k] = v.filter((x) => x.id !== m.id);
+          }
+          const list = next[m.rawDate] ?? [];
+          next[m.rawDate] = [...list, m].sort((a, b) =>
+            a.createdAt.localeCompare(b.createdAt),
+          );
+          return next;
+        });
+        return;
+      }
+      if (payload.eventType === "DELETE") {
+        const oldRow = payload.old as
+          | { id?: string; raw_date?: string }
+          | null;
+        const targetId = oldRow?.id;
+        if (!targetId) {
+          void refetchAll();
+          return;
+        }
+        setMemosByDate((prev) => {
+          const next: Record<string, ScheduleSessionMemo[]> = {};
+          for (const [k, v] of Object.entries(prev)) {
+            next[k] = v.filter((x) => x.id !== targetId);
+          }
+          return next;
+        });
+      }
+    },
+  });
 
   return { memosByDate, refetchAll };
 }

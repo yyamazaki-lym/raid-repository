@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useRealtimeTable } from "@/lib/use-realtime-table";
 import { isClearTitleForCategory } from "@/lib/clear-detection";
 import { maybeSetFirstClearAt } from "@/lib/categories-client";
 import {
@@ -155,117 +155,33 @@ export function useRealtimeCategoryLinks(
   kind: CategoryLinkKind,
   initial: CategoryLink[],
 ): CategoryLink[] {
-  const [links, setLinks] = useState<CategoryLink[]>(initial);
-  const id = useId();
-
-  const initialRef = useRef(initial);
-  useEffect(() => {
-    if (initial !== initialRef.current) {
-      initialRef.current = initial;
-      setLinks(initial);
-    }
-  }, [initial]);
-
-  useEffect(() => {
-    let cancelled = false;
-    const supabase = createClient();
-
-    const refetch = async () => {
-      if (cancelled) return;
-      try {
-        const { data, error } = await supabase
-          .from("category_links")
-          .select("*")
-          .eq("category_id", categoryId)
-          .eq("kind", kind)
-          .order("sort_order", { ascending: true })
-          .order("created_at", { ascending: true });
-        if (cancelled) return;
-        if (error) {
-          console.warn("[category-links-client] refetch error:", error.message);
-          return;
-        }
-        setLinks(((data ?? []) as CategoryLinkRow[]).map(rowToCategoryLink));
-      } catch (e) {
-        console.warn("[category-links-client] refetch exception:", e);
-      }
-    };
-
-    const channel = supabase
-      .channel(`category-links-${id}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "category_links",
-          // postgres-side filter は category_id 単一しか指定できない
-          // (`and(...)` 構文は v2 で未サポート)。kind の絞り込みは下記
-          // payload handler 内で実施。
-          filter: `category_id=eq.${categoryId}`,
-        },
-        (payload) => {
-          if (cancelled) return;
-          if (payload.eventType === "INSERT") {
-            const row = payload.new as CategoryLinkRow | null;
-            if (!row || row.kind !== kind) return;
-            const next = rowToCategoryLink(row);
-            setLinks((prev) =>
-              prev.some((l) => l.id === next.id)
-                ? prev
-                : sortLinks([...prev, next]),
-            );
-          } else if (payload.eventType === "UPDATE") {
-            const row = payload.new as CategoryLinkRow | null;
-            if (!row || row.kind !== kind) return;
-            const updated = rowToCategoryLink(row);
-            setLinks((prev) => {
-              const exists = prev.some((l) => l.id === updated.id);
-              return exists
-                ? sortLinks(prev.map((l) => (l.id === updated.id ? updated : l)))
-                : sortLinks([...prev, updated]);
-            });
-          } else if (payload.eventType === "DELETE") {
-            const oldRow = payload.old as { id?: string } | null;
-            if (!oldRow?.id) return;
-            setLinks((prev) => prev.filter((l) => l.id !== oldRow.id));
-          }
-        },
-      )
-      .subscribe((status, err) => {
-        if (err) {
-          console.warn(
-            "[category-links-client] subscribe error:",
-            status,
-            err,
-          );
-          // subscribe 失敗時は payload を取れないので保険で再 fetch。
-          void refetch();
-        }
-      });
-
-    // initial が空 = server prefetch が無かった経路 (旧パス / DEV bypass
-    // 等) の保険として 1 度だけ実 fetch。通常経路では server-side で
-    // initial が満たされているため SELECT は走らない。
-    if (initial.length === 0) {
-      void refetch();
-    }
-
-    return () => {
-      cancelled = true;
-      try {
-        void supabase.removeChannel(channel);
-      } catch (e) {
-        console.warn("[category-links-client] removeChannel error:", e);
-      }
-    };
-    // initial.length は mount 時の判定だけに使う。length 変動で
-    // subscription を作り直すと既存 channel が無駄に剥がれるので依存配列
-    // に入れない。
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, categoryId, kind]);
-
-  return links;
+  return useRealtimeTable<CategoryLinkRow, CategoryLink>({
+    channelPrefix: "category-links",
+    table: "category_links",
+    // postgres-side filter は category_id 単一しか指定できない (`and(...)`
+    // 構文は v2 で未サポート)。kind の絞り込みは `accept` で実施。
+    filter: `category_id=eq.${categoryId}`,
+    initial,
+    load: async () => {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from("category_links")
+        .select("*")
+        .eq("category_id", categoryId)
+        .eq("kind", kind)
+        .order("sort_order", { ascending: true })
+        .order("created_at", { ascending: true });
+      if (error) throw new Error(error.message);
+      return ((data ?? []) as CategoryLinkRow[]).map(rowToCategoryLink);
+    },
+    incremental: {
+      map: rowToCategoryLink,
+      sort: sortLinks,
+      accept: (row) => row.kind === kind,
+    },
+    refetchIfEmpty: true,
+    refetchOnSubscribeError: true,
+  });
 }
 
 // =============================================================
@@ -317,119 +233,29 @@ export function useRealtimeGphotoAlbums(
   categoryId: string,
   initial: CategoryGphotoAlbum[],
 ): CategoryGphotoAlbum[] {
-  const [albums, setAlbums] = useState<CategoryGphotoAlbum[]>(initial);
-  const id = useId();
-
-  const initialRef = useRef(initial);
-  useEffect(() => {
-    if (initial !== initialRef.current) {
-      initialRef.current = initial;
-      setAlbums(initial);
-    }
-  }, [initial]);
-
-  useEffect(() => {
-    let cancelled = false;
-    const supabase = createClient();
-
-    const refetch = async () => {
-      if (cancelled) return;
-      try {
-        const { data, error } = await supabase
-          .from("category_gphoto_albums")
-          .select("*")
-          .eq("category_id", categoryId)
-          .order("sort_order", { ascending: true })
-          .order("created_at", { ascending: true });
-        if (cancelled) return;
-        if (error) {
-          console.warn(
-            "[category-links-client] album refetch error:",
-            error.message,
-          );
-          return;
-        }
-        setAlbums(
-          ((data ?? []) as CategoryGphotoAlbumRow[]).map(
-            rowToCategoryGphotoAlbum,
-          ),
-        );
-      } catch (e) {
-        console.warn(
-          "[category-links-client] album refetch exception:",
-          e,
-        );
-      }
-    };
-
-    const channel = supabase
-      .channel(`category-gphoto-albums-${id}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "category_gphoto_albums",
-          filter: `category_id=eq.${categoryId}`,
-        },
-        (payload) => {
-          if (cancelled) return;
-          if (payload.eventType === "INSERT") {
-            const row = payload.new as CategoryGphotoAlbumRow | null;
-            if (!row) return;
-            const next = rowToCategoryGphotoAlbum(row);
-            setAlbums((prev) =>
-              prev.some((a) => a.id === next.id)
-                ? prev
-                : sortAlbums([...prev, next]),
-            );
-          } else if (payload.eventType === "UPDATE") {
-            const row = payload.new as CategoryGphotoAlbumRow | null;
-            if (!row) return;
-            const updated = rowToCategoryGphotoAlbum(row);
-            setAlbums((prev) => {
-              const exists = prev.some((a) => a.id === updated.id);
-              return exists
-                ? sortAlbums(
-                    prev.map((a) => (a.id === updated.id ? updated : a)),
-                  )
-                : sortAlbums([...prev, updated]);
-            });
-          } else if (payload.eventType === "DELETE") {
-            const oldRow = payload.old as { id?: string } | null;
-            if (!oldRow?.id) return;
-            setAlbums((prev) => prev.filter((a) => a.id !== oldRow.id));
-          }
-        },
-      )
-      .subscribe((status, err) => {
-        if (err) {
-          console.warn(
-            "[category-links-client] album subscribe error:",
-            status,
-            err,
-          );
-          void refetch();
-        }
-      });
-
-    if (initial.length === 0) {
-      void refetch();
-    }
-
-    return () => {
-      cancelled = true;
-      try {
-        void supabase.removeChannel(channel);
-      } catch (e) {
-        console.warn(
-          "[category-links-client] album removeChannel error:",
-          e,
-        );
-      }
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, categoryId]);
-
-  return albums;
+  return useRealtimeTable<CategoryGphotoAlbumRow, CategoryGphotoAlbum>({
+    channelPrefix: "category-gphoto-albums",
+    table: "category_gphoto_albums",
+    filter: `category_id=eq.${categoryId}`,
+    initial,
+    load: async () => {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from("category_gphoto_albums")
+        .select("*")
+        .eq("category_id", categoryId)
+        .order("sort_order", { ascending: true })
+        .order("created_at", { ascending: true });
+      if (error) throw new Error(error.message);
+      return ((data ?? []) as CategoryGphotoAlbumRow[]).map(
+        rowToCategoryGphotoAlbum,
+      );
+    },
+    incremental: {
+      map: rowToCategoryGphotoAlbum,
+      sort: sortAlbums,
+    },
+    refetchIfEmpty: true,
+    refetchOnSubscribeError: true,
+  });
 }

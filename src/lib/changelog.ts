@@ -56,6 +56,17 @@ export type ReleasePart = {
 export const RELEASES: ReleaseEntry[] = [
   {
     version: "2.9",
+    date: "2026-06-15",
+    parts: [
+      {
+        title: "🧹 内部コード整理 — リアルタイム自動更新フックの共通化",
+        body:
+          "ユーザー体験には影響しない内部的なコード整理 (総合レビューの冗長性削減項目 C-4)。\n\nコンテンツ一覧・動画・攻略リンク・攻略画像・マクロ・募集文テンプレート・日付メモのリアルタイム自動更新を担う 6 つのフックが、購読チャネルの開始 / 購読 / 後始末という同じ定型コードを個別にコピーしていたのを、共通の土台 (`useRealtimeChannel` / `useRealtimeTable`) に集約した (画面の見た目・自動更新の挙動は不変)。\n\n**検証**: npx tsc --noEmit / npx eslint / npm run build pass。dev preview でコンテンツ一覧・動画・マクロ・攻略・予定表が従来どおり描画され、コンソールエラーが無いことを確認。",
+      },
+    ],
+  },
+  {
+    version: "2.9",
     date: "2026-06-14",
     parts: [
       {

@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useRealtimeTable } from "@/lib/use-realtime-table";
 
 /**
  * CRUD + Realtime hook for `category_macros` (per-category in-game
@@ -129,66 +129,21 @@ export function useRealtimeCategoryMacros(
   categoryId: string,
   initial: CategoryMacro[],
 ): CategoryMacro[] {
-  const [macros, setMacros] = useState<CategoryMacro[]>(initial);
-  const id = useId();
-
-  const initialRef = useRef(initial);
-  useEffect(() => {
-    if (initial !== initialRef.current) {
-      initialRef.current = initial;
-      setMacros(initial);
-    }
-  }, [initial]);
-
-  useEffect(() => {
-    let cancelled = false;
-    const supabase = createClient();
-
-    const refetch = async () => {
-      if (cancelled) return;
-      try {
-        const { data, error } = await supabase
-          .from("category_macros")
-          .select("*")
-          .eq("category_id", categoryId)
-          .order("sort_order", { ascending: true })
-          .order("created_at", { ascending: true });
-        if (cancelled) return;
-        if (error) {
-          console.warn("[category-macros] refetch error:", error.message);
-          return;
-        }
-        setMacros(((data ?? []) as CategoryMacroRow[]).map(rowToMacro));
-      } catch (e) {
-        console.warn("[category-macros] refetch exception:", e);
-      }
-    };
-
-    const channel = supabase
-      .channel(`category-macros-${id}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "category_macros",
-          filter: `category_id=eq.${categoryId}`,
-        },
-        () => {
-          void refetch();
-        },
-      )
-      .subscribe();
-
-    return () => {
-      cancelled = true;
-      try {
-        void supabase.removeChannel(channel);
-      } catch (e) {
-        console.warn("[category-macros] removeChannel error:", e);
-      }
-    };
-  }, [id, categoryId]);
-
-  return macros;
+  return useRealtimeTable<CategoryMacroRow, CategoryMacro>({
+    channelPrefix: "category-macros",
+    table: "category_macros",
+    filter: `category_id=eq.${categoryId}`,
+    initial,
+    load: async () => {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from("category_macros")
+        .select("*")
+        .eq("category_id", categoryId)
+        .order("sort_order", { ascending: true })
+        .order("created_at", { ascending: true });
+      if (error) throw new Error(error.message);
+      return ((data ?? []) as CategoryMacroRow[]).map(rowToMacro);
+    },
+  });
 }

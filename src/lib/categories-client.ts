@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useRealtimeTable } from "@/lib/use-realtime-table";
 import {
   rowToCategory,
   type Category,
@@ -88,69 +88,22 @@ export type { Category, CategoryRow };
  * Realtime changes on the `categories` table. On any change, refetches the
  * full list (keeps the implementation simple; categories are <50 rows).
  *
- * Channel name uses React's `useId()` so two component instances on the same
- * page (e.g. CategoryList + CategorySwitcher) get different subscriptions.
+ * 共通土台は `useRealtimeTable` (全件 refetch モード)。
  */
 export function useRealtimeCategories(initial: Category[]): Category[] {
-  const [categories, setCategories] = useState<Category[]>(initial);
-  const id = useId();
-
-  // Update when initial changes (e.g. after router.refresh()).
-  const initialRef = useRef(initial);
-  useEffect(() => {
-    if (initial !== initialRef.current) {
-      initialRef.current = initial;
-      setCategories(initial);
-    }
-  }, [initial]);
-
-  useEffect(() => {
-    let cancelled = false;
-    const supabase = createClient();
-
-    const refetch = async () => {
-      if (cancelled) return;
-      try {
-        const { data, error } = await supabase
-          .from("categories")
-          .select("*")
-          .order("sort_order", { ascending: true })
-          .order("created_at", { ascending: true });
-        if (cancelled) return;
-        if (error) {
-          console.warn("[categories-client] refetch error:", error.message);
-          return;
-        }
-        setCategories(((data ?? []) as CategoryRow[]).map(rowToCategory));
-      } catch (e) {
-        console.warn("[categories-client] refetch exception:", e);
-      }
-    };
-
-    const channel = supabase
-      .channel(`categories-${id}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "categories" },
-        () => {
-          void refetch();
-        },
-      )
-      .subscribe((status, err) => {
-        if (err) {
-          console.warn("[categories-client] subscribe error:", status, err);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-      try {
-        void supabase.removeChannel(channel);
-      } catch (e) {
-        console.warn("[categories-client] removeChannel error:", e);
-      }
-    };
-  }, [id]);
-
-  return categories;
+  return useRealtimeTable<CategoryRow, Category>({
+    channelPrefix: "categories",
+    table: "categories",
+    initial,
+    load: async () => {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from("categories")
+        .select("*")
+        .order("sort_order", { ascending: true })
+        .order("created_at", { ascending: true });
+      if (error) throw new Error(error.message);
+      return ((data ?? []) as CategoryRow[]).map(rowToCategory);
+    },
+  });
 }
