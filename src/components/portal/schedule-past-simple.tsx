@@ -15,7 +15,7 @@ import { jstTodayStartMs } from "@/lib/schedule/jst-cutoff";
 import type { ScheduleSession } from "@/lib/schedule/next-session";
 import type { SessionLogEntry } from "@/lib/schedule/session-logs";
 import type { SessionVideoLink } from "@/lib/server/session-video-link";
-import { SessionActionIcons } from "./schedule-list";
+import { SessionActionIcons } from "./schedule/session-action-icons";
 import {
   SessionMemoDot,
   SessionMemoPopover,
