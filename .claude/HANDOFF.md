@@ -93,6 +93,12 @@
 
 直近版のみ列挙。詳細経緯は `src/lib/changelog.ts`、過去版アーカイブは `.claude/done.md`。
 
+- **2.9 (2026-06-15)**: スケジュールソースモードの「自前作成式」を**準備中表記から正式メニューに格上げ** ([PR #236](https://github.com/yyamazaki-lym/raid-repository/pull/236) `a8738ec` squash merge)
+  - **発端**: ユーザー要望「自前作成式のスケジュールはある程度実用レベルになったので分掌変更を求む」。native モードは候補日追加・出欠入力・開催確定・FFLogs 連携・Discord 通知まで実装済 (TODO #2 phase 1〜4 + #73/#77/#81/#85 等で完成) だが、設定ダイアログの**ラベル/説明文だけが当時の「(準備中) / Phase 1 では空の表示のみ / Phase 2 で実装予定」のまま取り残されていた**。スコープはユーザー確認で **ラベル/説明文の格上げのみ** (デフォルト sync 据え置き・本番挙動不変。native をデフォルト化する案は不採用)。
+  - **変更**: `schedule-source-mode-section.tsx` のラベル `自前作成式 (準備中)` → `自前作成式`、説明文を実機能 (候補日追加・出欠入力・開催確定・FFLogs 連携・Discord 通知) に更新、ヘッダーコメントの旧記述 (`phase 2 以降で UI 拡充`) も実態に更新。**機能変更なし** (admin が設定で native へ切替えた時だけ反映)。
+  - **検証**: tsc / eslint / build pass + CI lint pass。dev preview (admin 視点) で設定ダイアログのソースモード欄に「自前作成式」が準備中表記なし + 新説明文で表示・`sync` 選択のまま (デフォルト不変)・3 択の並び順不変を実測。
+  - **changelog**: 2.9 (2026-06-15) に user-facing part 同梱。
+
 - **2.9 (2026-06-15)**: Discord 自動取り込みに **特定 URL の除外 (blocklist) 機能** を追加 ([PR #232](https://github.com/yyamazaki-lym/raid-repository/pull/232) `fc4df6b` squash merge)
   - **発端**: ユーザー要望「特定動画のみ取り込ませないフラグ」。取り込みの dedup (discord-import §3) は URL の在不在しか見ないため、動画を削除しても Discord メッセージが残れば翌日 cron で復活する問題があった。方式は B (専用 blocklist テーブル) をユーザー選択。
   - **schema (2d 章)**: 新テーブル `category_discord_blocklist` (category_id FK CASCADE / url / reason / UNIQUE(category_id,url) + index)。RLS は **admin の is_admin claim のみ・anon deny** で、汎用ループ (anon に SELECT 全開) の外に secrets 同型の独立章で定義。取り込みは service role 読取で RLS bypass。GRANT / publication / updated_at トリガ不要。冪等。
