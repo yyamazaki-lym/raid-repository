@@ -34,6 +34,8 @@ import {
 } from "@/lib/server/categories-actions";
 import type { SessionLogEntry } from "@/lib/schedule/session-logs";
 import { safeHref } from "@/lib/url-safe";
+import { DeleteConfirmModal } from "./schedule/session-memo-delete-modal";
+import { formatRelativeTime } from "@/lib/schedule/time-formatters";
 
 const EMPTY_SESSION_LOGS: SessionLogEntry[] = [];
 
@@ -310,77 +312,7 @@ export function SessionMemoPopover({
   );
 }
 
-/**
- * Tiny purple dot indicator. Parent renders this wherever it wants
- * (e.g. trailing the time text rather than the date), so the visual
- * cue and the click-to-edit affordance can sit in different spots.
- *
- * When given an `onClick`, renders as a button — typically wired to
- * `popoverRef.current?.open()` so clicking the dot opens the same
- * popover that the date label opens. The button gets a hit-target
- * larger than the visual dot (extra padding) so taps work on touch.
- */
-export function SessionMemoDot({
-  count,
-  className = "",
-  onClick,
-  reserveSpace = false,
-}: {
-  count: number;
-  className?: string;
-  onClick?: () => void;
-  /**
-   * 1.9.27: when true, render an invisible h-4 w-4 placeholder for
-   * count=0 (used in tabular contexts where memo / video / Logs
-   * icons need vertical column alignment across rows). Default false
-   * — compact strips (chips) prefer no empty gap.
-   */
-  reserveSpace?: boolean;
-}) {
-  const dotClass =
-    "inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--neon-violet)] shadow-[0_0_6px_var(--neon-violet)] transition-shadow";
-  if (count <= 0) {
-    if (!reserveSpace) return null;
-    return (
-      <span
-        aria-hidden
-        className={`inline-block h-4 w-4 shrink-0 ${className}`}
-      />
-    );
-  }
-  if (!onClick) {
-    return (
-      <span
-        aria-label={`メモ ${count} 件`}
-        title={`メモ ${count} 件`}
-        className={`inline-flex h-4 w-4 shrink-0 items-center justify-center ${className}`}
-      >
-        <span aria-hidden className={dotClass} />
-      </span>
-    );
-  }
-  return (
-    <button
-      type="button"
-      data-memo-dot-trigger
-      onClick={(e) => {
-        e.stopPropagation();
-        onClick();
-      }}
-      aria-label={`メモ ${count} 件 を開く`}
-      title={`メモ ${count} 件（クリックで開く）`}
-      className={
-        "group/memodot inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-[var(--neon-violet)]/18 " +
-        className
-      }
-    >
-      <span
-        aria-hidden
-        className={`${dotClass} group-hover/memodot:shadow-[0_0_10px_var(--neon-violet)]`}
-      />
-    </button>
-  );
-}
+// SessionMemoDot は C-5 で `@/components/portal/schedule/session-memo-dot` に移動。
 
 function MemoList({
   rawDate,
@@ -845,123 +777,6 @@ function MemoList({
   );
 }
 
-/**
- * Centered modal asking the user to confirm a memo deletion. Esc to
- * cancel, click-on-backdrop to cancel. Stops mousedown propagation on
- * the panel itself so the parent popover's outside-click handler
- * doesn't close the popover behind the modal.
- */
-function DeleteConfirmModal({
-  memo,
-  busy,
-  onCancel,
-  onConfirm,
-}: {
-  memo: ScheduleSessionMemo;
-  busy: boolean;
-  onCancel: () => void;
-  onConfirm: () => void;
-}) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onCancel();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onCancel]);
-
-  // Truncate the memo body for the prompt — long memos shouldn't blow
-  // out the modal, but a short preview confirms which one is being
-  // deleted. 120 chars is enough for context without dominating.
-  const preview =
-    memo.body.length > 120 ? memo.body.slice(0, 120) + "…" : memo.body;
-
-  return (
-    // Transparent click-catcher — keeps the rest of the page fully
-    // visible (no dim / blur), but still allows click-outside to
-    // cancel and prevents accidental interaction with content
-    // underneath while the dialog is up.
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="メモ削除の確認"
-      className="fixed inset-0 z-[60] flex items-center justify-center p-4"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) {
-          e.stopPropagation();
-          onCancel();
-        }
-      }}
-    >
-      <div
-        onMouseDown={(e) => e.stopPropagation()}
-        className="glass-popup w-full max-w-sm rounded-lg border border-rose-400/55 shadow-[0_16px_48px_-12px_rgba(244,63,94,0.4),0_4px_16px_-4px_rgba(0,0,0,0.5)]"
-      >
-        <header className="flex items-center gap-2 rounded-t-lg border-b border-rose-400/25 bg-rose-500/10 px-4 py-2.5">
-          <Trash2 className="h-3.5 w-3.5 text-rose-300" aria-hidden />
-          <p className="text-[11px] tracking-normal text-rose-200">
-            メモを削除
-          </p>
-        </header>
-        <div className="px-4 py-3">
-          <p className="mb-2.5 rounded-md border border-border/40 bg-secondary/20 px-2.5 py-2 text-[12px] leading-relaxed whitespace-pre-wrap break-words text-foreground/85">
-            {preview || (
-              <span className="text-muted-foreground/70">（本文なし）</span>
-            )}
-          </p>
-          <p className="mb-3 flex items-center gap-1 text-[10px] text-muted-foreground">
-            <span
-              aria-hidden
-              className="inline-block h-1 w-1 rounded-full bg-rose-400/70"
-            />
-            この操作は元に戻せません
-          </p>
-          <div className="flex justify-end gap-1.5">
-            <button
-              type="button"
-              onClick={onCancel}
-              disabled={busy}
-              className="inline-flex items-center gap-1.5 rounded-md border border-border/50 px-3 py-1.5 text-[10px] tracking-normal text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground disabled:opacity-50"
-            >
-              <X className="h-3 w-3" aria-hidden />
-              キャンセル
-            </button>
-            <button
-              type="button"
-              onClick={onConfirm}
-              disabled={busy}
-              className="inline-flex items-center gap-1.5 rounded-md border border-rose-400/55 bg-rose-500/15 px-3 py-1.5 text-[10px] tracking-normal text-rose-100 transition-colors hover:border-rose-400/80 hover:bg-rose-500/25 disabled:opacity-50"
-            >
-              <Trash2 className="h-3 w-3" aria-hidden />
-              削除
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/**
- * Quick "5分前 / 2時間前 / 3日前 / YYYY-MM-DD" formatter for the memo
- * timestamp. Long-form date once it gets old enough that relative
- * units stop being meaningful.
- */
-function formatRelativeTime(iso: string): string {
-  const d = new Date(iso);
-  const t = d.getTime();
-  if (Number.isNaN(t)) return "";
-  const diffMs = Date.now() - t;
-  const min = Math.round(diffMs / 60_000);
-  if (min < 1) return "たった今";
-  if (min < 60) return `${min}分前`;
-  const hr = Math.round(diffMs / 3_600_000);
-  if (hr < 24) return `${hr}時間前`;
-  const day = Math.round(diffMs / 86_400_000);
-  if (day < 7) return `${day}日前`;
-  // Older — absolute date.
-  const y = d.getFullYear();
-  const mo = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${y}-${mo}-${dd}`;
-}
+// DeleteConfirmModal は C-5 で
+// `@/components/portal/schedule/session-memo-delete-modal` に、
+// formatRelativeTime は `@/lib/schedule/time-formatters` に移動。

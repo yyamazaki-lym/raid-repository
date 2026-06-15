@@ -16,8 +16,8 @@ import type { ScheduleSession } from "@/lib/schedule/next-session";
 import type { SessionLogEntry } from "@/lib/schedule/session-logs";
 import type { SessionVideoLink } from "@/lib/server/session-video-link";
 import { SessionActionIcons } from "./schedule/session-action-icons";
+import { SessionMemoDot } from "./schedule/session-memo-dot";
 import {
-  SessionMemoDot,
   SessionMemoPopover,
   type SessionMemoPopoverHandle,
 } from "./session-memo-popover";

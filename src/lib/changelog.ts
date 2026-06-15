@@ -83,6 +83,11 @@ export const RELEASES: ReleaseEntry[] = [
         body:
           "見た目・挙動を変えない内部的な整理 (総合レビューの保守性項目 C-5)。最大のファイルだった予定表本体 (約 1943 行) から、凡例 (Legend) と日付セルの動画 / FFLogs アイコン (SessionActionIcons) を個別ファイルに、出欠記号の色定義や純粋なヘルパー関数を共通ライブラリに切り出した (本体は約 1155 行に縮小)。表示・操作は一切変わらない。\n\n**検証**: npx tsc --noEmit / npx eslint / npm run build pass。dev preview で予定表・凡例・出欠の色・ルール popover・動画 / FFLogs アイコンが従来どおり表示・動作することを確認。",
       },
+      {
+        title: "🧹 内部コード整理 — 日付メモ popover のファイル分割",
+        body:
+          "見た目・挙動を変えない内部的な整理 (総合レビューの保守性項目 C-5)。日付メモの popover ファイル (約 967 行) から、メモ件数ドット (SessionMemoDot)・削除確認モーダル・相対時刻フォーマッタを個別ファイル / 共通ライブラリに切り出した (本体は約 782 行に縮小)。表示・操作は一切変わらない。\n\n**検証**: npx tsc --noEmit / npx eslint / npm run build pass。dev preview で予定表のメモ popover が従来どおり開き、メモ一覧 / 新規入力 / FFLogs URL 欄が表示されることを確認。",
+      },
     ],
   },
   {
