@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { createClient } from "@/lib/supabase/client";
 
 /**
  * Discord OAuth でサインインするだけのボタン。
@@ -23,6 +22,10 @@ export function LoginButton({ next }: { next: string }) {
     setError(null);
     setLoading(true);
     try {
+      // B-3 (2026-06-15): Supabase client を動的 import で遅延化。未認証エント
+      // リ /login の初期バンドルから `@supabase/ssr`/`supabase-js` を外す。
+      // クリック後の OAuth リダイレクトに比べてチャンク取得の遅延は無視できる。
+      const { createClient } = await import("@/lib/supabase/client");
       const supabase = createClient();
       const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`;
       const { data, error } = await supabase.auth.signInWithOAuth({
