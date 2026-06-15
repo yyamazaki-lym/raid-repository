@@ -1,6 +1,6 @@
 # Raid Repository — 引き継ぎノート
 
-> 2.9 (2026-06-14) 時点。完了済 TODO の詳細は `src/lib/changelog.ts` / 過去版番号は `.claude/done.md`。
+> 2.9 (2026-06-15) 時点。完了済 TODO の詳細は `src/lib/changelog.ts` / 過去版番号は `.claude/done.md`。
 >
 > **新規会話の手順**: このファイルを読んだ後、TODO 一覧は自動表示せずユーザーの要望を待つ。新規 TODO 追記時は part 単位ではなく TODO 完了時のみ統合追記する (part 細分は commit log に任せる)。
 
@@ -12,7 +12,7 @@
 - **Path**: `D:\workd\raid-repository`
 - **Stack**: Next.js 16.2.9 (Turbopack) / React 19.2 / Supabase / Tailwind v4 / @base-ui/react
 - **Deploy**: Vercel auto-deploy from `main`
-- **Version**: `2.9 (2026-06-14)`。`package.json#version` は `1.9.38` のまま (履歴マーカー)、UI は `RELEASES[0].version + .date` を表示
+- **Version**: `2.9 (2026-06-15)`。`package.json#version` は `1.9.38` のまま (履歴マーカー)、UI は `RELEASES[0].version + .date` を表示
 - **Next.js 16 注意**: 破壊的変更含む。`node_modules/next/dist/docs/` を参照すること (詳細は `AGENTS.md`)
 
 ## 🔄 保留オペレーション
@@ -43,7 +43,7 @@
 
 未完了 TODO は **#11 (パフォーマンス、休眠中 = 新ボトルネック発見時のみ再開) のみ**。TODO #86 の 24h 観察 (UTC 19:00 自動発火確認) は 2026-06-12 に DB 実測で完了 (保留オペレーション項目 3 参照)。**非 admin メンバーの実機確認 2 件 (出欠「未回答に戻す」 #189 / 日付メモ CRUD #213 A-4) は 2026-06-15 ユーザー実機確認 OK で検収完了** (詳細は下記「完了済み TODO」2.9 (2026-06-15))。残作業は:
 1. 保留オペレーション項目 1 (Discord 通知 ON 切替、ユーザー判断)
-2. **総合レビューレポート (`docs/code-review-2026-06-13.md`) の P2 主要項目は完了** (P0 + P1 + P2 主要を消化。下記「完了済み TODO」参照)。**残り未着手 (低優先・別途判断)**: C-4 の Realtime フック集約 (DnD 共通化は #212 で完了) / C-5 巨大ファイル分割 (schedule-list 1897 行ほか) / B-3 ISR (force-dynamic は #181 で解消済、残るは静的ページ ISR のみ) / F-1 の生 Tailwind 色の残り (Lock・recent・Hourglass メトリクスバッジ等。status バッジは #216 でトークン化済) / F-4 ONLINE ドット (ユーザー判断で現状維持) / D の fetch cache 以外の P3 細目。着手はユーザー要望待ち
+2. **総合レビューレポート (`docs/code-review-2026-06-13.md`) の P2/P3 を消化完了** (P0+P1+P2 主要に続き、残 P2/P3 を 2026-06-15 に 4 PR で実装。下記「完了済み TODO」2.9 (2026-06-15) 参照)。完了: C-4 Realtime 集約 (#219) / F-1 生 Tailwind 色 (#220) / B-3 login 軽量化 (#221) / C-5 maintenance-menu 分割 (#222)。**残り (任意・低優先)**: C-5 の他候補 (schedule-list 1943 行 / category-form-dialog / session-memo-popover / fflogs-sync-section。maintenance-menu のみ #222 で実施) のみ。見送り確定: B-3 の ISR (mitigation/loot は per-user 認証=canEdit で ISR 不可、cold start は #181 済) / F-4 ONLINE ドット (現状維持)。着手はユーザー要望待ち
 
 ## 未完了 TODO 一覧
 
@@ -88,6 +88,15 @@
 ## 完了済み TODO
 
 直近版のみ列挙。詳細経緯は `src/lib/changelog.ts`、過去版アーカイブは `.claude/done.md`。
+
+- **2.9 (2026-06-15)**: 総合レビューレポート (`docs/code-review-2026-06-13.md`) の **残 P2/P3 を 4 PR で消化** ([PR #219](https://github.com/yyamazaki-lym/raid-repository/pull/219) C-4 / [PR #220](https://github.com/yyamazaki-lym/raid-repository/pull/220) F-1 / [PR #221](https://github.com/yyamazaki-lym/raid-repository/pull/221) B-3 / [PR #222](https://github.com/yyamazaki-lym/raid-repository/pull/222) C-5、いずれも squash merge)
+  - **発端 / 進め方**: 非 admin 検収 OK 後、ユーザー要望で未着手 P2/P3 に着手。ユーザー判断で「1 PR ずつ merge→検証→次へ」、各 PR の着手順・スコープを都度確認。検証は Claude 実施 (dev preview + tsc/eslint/build)。HANDOFF はこの 1 エントリに集約 (per-PR docs PR は出さない)。
+  - **#219 (C-4)**: Realtime 購読フック 6 本 (categories / category-links links+albums / category-macros / recruitment-templates / schedule-memos) を共通土台 `src/lib/use-realtime-table.ts` (`useRealtimeChannel` = channel ライフサイクル / `useRealtimeTable<Row,T>` = フラットリスト state + initial 追従 + refetch/incremental 両モード) に集約。schedule-memos の rawDate グループ Map だけは `useRealtimeChannel` 直使い。公開シグネチャ不変、重複スケルトン ~470 行 → 共通土台 207 行。DnD 集約 (#212) の対。
+  - **#220 (F-1 残り)**: category-list メトリクスバッジ (Lock/Trophy=amber, Hourglass クリア=emerald/未=violet, recent=indigo, ロック ring=amber) の生 Tailwind 色を #216 同様の**全テーマ共通固定**のセマンティックトークン (`--color-badge-*` + `-fg`) に集約。値は Tailwind 既定パレットの**厳密 oklch ソース値** (node_modules 由来) で**見た目不変** (dev preview で amber/violet/emerald の computed color 完全一致を実測)。削除メニューの rose はメニューアクションのため対象外。
+  - **#221 (B-3)**: /login の `LoginButton` で Supabase client を動的 import 化し未認証エントリの初期バンドルから `@supabase/ssr`/`supabase-js` を遅延チャンクへ分離。**ISR サブ課題は見送り確定**: mitigation/loot は per-user の `canEdit` + 認証ゲートに依存し単一 HTML 配信の ISR と相性が悪く安全に行えない (cold start は #181 の nodejs runtime で対処済)。
+  - **#222 (C-5)**: `maintenance-menu.tsx` (1025 行) の結果パネル 4 種 (Discord/VideoMeta/FirstClear/StrategyThumb) + 共有型を `src/components/portal/maintenance/` 配下 5 ファイルに分割 (本体 615 行)。逐語コピーで挙動・見た目不変、`MaintenanceMenu` signature 不変。**他の巨大ファイル (schedule-list 1943 行ほか) は未着手 (任意・次回優先度 2 参照)**。
+  - **教訓**: ①Tailwind v4 の色トークンは `@theme inline` + 厳密 oklch literal で見た目不変を保証する (`var(--color-amber-400)` 参照方式は raw クラス削除で Tailwind が tree-shake し参照が壊れうる) ②**per-user 認証 / `canEdit` に依存するページは ISR 不可** (単一 HTML を全員配信のため admin UI 漏れ等) ③React 19 で「最新コールバックを async 購読から参照する」latest-ref は render 中の `ref.current=` 代入が `react-hooks/refs` で error になるため effect 内で更新する。
+  - **changelog**: 2.9 (2026-06-15) に 4 part 同梱。
 
 - **2.9 (2026-06-15)**: 非 admin メンバーの本番実機検収 2 件 OK — 出欠「未回答に戻す」([PR #189](https://github.com/yyamazaki-lym/raid-repository/pull/189)) / 日付メモ CRUD ([PR #213](https://github.com/yyamazaki-lym/raid-repository/pull/213) A-4)。いずれも実 JWT 必須で dev preview bypass 再現不可だった残検収項目 (本番 policy/制約反映は SQL 確認済)。これで総合レビュー (`docs/code-review-2026-06-13.md`) の P0/P1/P2 主要の実機検収が全て完了。**コード変更なし** (merge 済み PR の検収記録のみ、changelog.ts / 版番号は据え置き)。
 
