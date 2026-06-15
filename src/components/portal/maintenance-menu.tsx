@@ -482,7 +482,7 @@ export function MaintenanceMenu() {
             <ChevronDown className="h-3 w-3 opacity-70" aria-hidden />
           )}
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-64">
+        <DropdownMenuContent align="end" className="w-80">
           <DropdownMenuItem
             onClick={() => run("discord")}
             disabled={pending}
@@ -496,7 +496,7 @@ export function MaintenanceMenu() {
               )}
               ① Discord 取込
             </span>
-            <span className="pl-5 text-[10px] text-muted-foreground">
+            <span className="pl-5 text-[10px] text-muted-foreground whitespace-nowrap">
               攻略情報 / 動画チャンネルから新着 URL を取り込み
             </span>
           </DropdownMenuItem>
@@ -513,7 +513,7 @@ export function MaintenanceMenu() {
               )}
               ② 動画メタ取得
             </span>
-            <span className="pl-5 text-[10px] text-muted-foreground">
+            <span className="pl-5 text-[10px] text-muted-foreground whitespace-nowrap">
               YouTube 再生時間 + Discord 投稿日時
             </span>
           </DropdownMenuItem>
@@ -530,7 +530,7 @@ export function MaintenanceMenu() {
               )}
               ③ クリア再計算
             </span>
-            <span className="pl-5 text-[10px] text-muted-foreground">
+            <span className="pl-5 text-[10px] text-muted-foreground whitespace-nowrap">
               クリア日時 + 累計時間を上書き再計算
             </span>
           </DropdownMenuItem>
@@ -551,7 +551,7 @@ export function MaintenanceMenu() {
               )}
               ④ サムネ取得
             </span>
-            <span className="pl-5 text-[10px] text-muted-foreground">
+            <span className="pl-5 text-[10px] text-muted-foreground whitespace-nowrap">
               攻略リンクの og:image を取得 (NULL のみ)
             </span>
           </DropdownMenuItem>
@@ -568,7 +568,7 @@ export function MaintenanceMenu() {
               )}
               ④ サムネ全件再取得
             </span>
-            <span className="pl-5 text-[10px] text-muted-foreground">
+            <span className="pl-5 text-[10px] text-muted-foreground whitespace-nowrap">
               全攻略リンク (取得済も上書き)
             </span>
           </DropdownMenuItem>
