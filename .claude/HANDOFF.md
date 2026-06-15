@@ -43,7 +43,8 @@
 
 未完了 TODO は **#11 (パフォーマンス、休眠中 = 新ボトルネック発見時のみ再開) のみ**。TODO #86 の 24h 観察 (UTC 19:00 自動発火確認) は 2026-06-12 に DB 実測で完了 (保留オペレーション項目 3 参照)。**非 admin メンバーの実機確認 2 件 (出欠「未回答に戻す」 #189 / 日付メモ CRUD #213 A-4) は 2026-06-15 ユーザー実機確認 OK で検収完了** (詳細は下記「完了済み TODO」2.9 (2026-06-15))。残作業は:
 1. 保留オペレーション項目 1 (Discord 通知 ON 切替、ユーザー判断)
-2. **総合レビューレポート (`docs/code-review-2026-06-13.md`) の P2/P3 を消化完了** (P0+P1+P2 主要に続き、残 P2/P3 を 2026-06-15 に 4 PR で実装。下記「完了済み TODO」2.9 (2026-06-15) 参照)。完了: C-4 Realtime 集約 (#219) / F-1 生 Tailwind 色 (#220) / B-3 login 軽量化 (#221) / C-5 ファイル分割 (maintenance-menu #222 / schedule-list 1943→1155 #224 / session-memo-popover 967→782 #225)。**残り (任意・低優先)**: C-5 の category-form-dialog (1185 行) / fflogs-sync-section (879 行) のみ — 本体が単一の巨大 state マシン (25 / 13 useState) で安全に切れるのは小ヘルパー/型のみ・分割価値が低いため見送り寄り (着手時は同型の「兄弟コンポーネント抽出」が困難な点に注意)。見送り確定: B-3 の ISR (mitigation/loot は per-user 認証=canEdit で ISR 不可、cold start は #181 済) / F-4 ONLINE ドット (現状維持)。着手はユーザー要望待ち
+2. **総合レビューレポート (`docs/code-review-2026-06-13.md`) の P2/P3 を消化完了 — 残課題なし** (P0+P1+P2 主要に続き、残 P2/P3 を 2026-06-15 に実装。下記「完了済み TODO」2.9 (2026-06-15) 参照)。完了: C-4 Realtime 集約 (#219) / F-1 生 Tailwind 色 (#220) / B-3 login 軽量化 (#221) / C-5 ファイル分割 (maintenance-menu #222 / schedule-list 1943→1155 #224 / session-memo-popover 967→782 #225)。**見送り確定 (ユーザー判断 2026-06-15)**: ① B-3 の ISR — mitigation/loot は per-user 認証=canEdit + cookie 読みで Next が動的化し ISR 不可 (cold start は #181 済) ② C-5 の残り 2 ファイル (category-form-dialog 1185 行 / fflogs-sync-section 879 行) — 本体が単一の巨大 state マシン (25 / 13 useState) で安全分割不可
+3. **F-4 ONLINE ドットに意味付け (presence)** — 常時装飾だった ONLINE ドットを Supabase Realtime Presence で「オンライン中のメンバー数」表示に変える。ユーザー判断 (2026-06-15) で realtime 接続状態案より presence 案を採用。別途プランで実装予定 (新規)
 
 ## 未完了 TODO 一覧
 
