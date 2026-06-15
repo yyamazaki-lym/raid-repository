@@ -285,6 +285,61 @@ CREATE INDEX IF NOT EXISTS category_links_gphoto_album_idx
   ON public.category_links(gphoto_album_id)
   WHERE gphoto_album_id IS NOT NULL;
 
+-- ---- 2d. category_discord_blocklist (2026-06-15) ----------------------
+-- Discord 自動取り込み (cron / 手動「Discord 取込」) で **skip する URL** の
+-- リスト。動画/攻略リンクを「削除」しても dedup は URL の在不在だけを見るため
+-- (discord-import.ts §3)、Discord メッセージが残る限り次の取り込みで復活する。
+-- ここに URL を登録すると取り込み処理 (service role) が当該 URL を除外する。
+--
+-- これは公開コンテンツではない運用情報なので、汎用 RLS ループ (第 7 章、SELECT
+-- を anon に全開) には **入れず**、secrets と同様に当章で個別 policy を張る
+-- (read/write 共に is_admin claim のみ、anon deny)。取り込み処理は service role
+-- で読むため RLS をバイパスする。
+CREATE TABLE IF NOT EXISTS public.category_discord_blocklist (
+  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  category_id uuid NOT NULL REFERENCES public.categories(id) ON DELETE CASCADE,
+  url         text NOT NULL,
+  reason      text,
+  created_at  timestamptz NOT NULL DEFAULT now()
+);
+
+-- 同一カテゴリへの同一 URL の重複登録を防ぐ。再デプロイ安全のため
+-- DROP IF EXISTS → ADD の対で書く (2b の UNIQUE と同型)。
+ALTER TABLE public.category_discord_blocklist
+  DROP CONSTRAINT IF EXISTS category_discord_blocklist_category_url_key;
+ALTER TABLE public.category_discord_blocklist
+  ADD CONSTRAINT category_discord_blocklist_category_url_key
+  UNIQUE (category_id, url);
+
+CREATE INDEX IF NOT EXISTS category_discord_blocklist_category_idx
+  ON public.category_discord_blocklist(category_id);
+
+ALTER TABLE public.category_discord_blocklist ENABLE ROW LEVEL SECURITY;
+
+-- read/write 共に admin (is_admin claim) のみ。anon は TO 句に含めないので
+-- policy にマッチせず 0 行 = deny。service role は RLS bypass = 取り込み処理は
+-- 影響を受けない。is_admin 検査式は category_links 等 (第 7 章) と同一。
+DROP POLICY IF EXISTS category_discord_blocklist_admin_select
+  ON public.category_discord_blocklist;
+CREATE POLICY category_discord_blocklist_admin_select
+  ON public.category_discord_blocklist
+  FOR SELECT TO authenticated
+  USING ((auth.jwt() -> 'app_metadata' ->> 'is_admin') = 'true');
+
+DROP POLICY IF EXISTS category_discord_blocklist_admin_insert
+  ON public.category_discord_blocklist;
+CREATE POLICY category_discord_blocklist_admin_insert
+  ON public.category_discord_blocklist
+  FOR INSERT TO authenticated
+  WITH CHECK ((auth.jwt() -> 'app_metadata' ->> 'is_admin') = 'true');
+
+DROP POLICY IF EXISTS category_discord_blocklist_admin_delete
+  ON public.category_discord_blocklist;
+CREATE POLICY category_discord_blocklist_admin_delete
+  ON public.category_discord_blocklist
+  FOR DELETE TO authenticated
+  USING ((auth.jwt() -> 'app_metadata' ->> 'is_admin') = 'true');
+
 -- ---- 3. loot -----------------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS public.loot_items (

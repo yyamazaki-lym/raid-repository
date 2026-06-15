@@ -369,11 +369,23 @@ async function importChannel(
   // タイトルを haystack に加えるのは video kind のみ — strategy kind では
   // fetchPageTitle がサイト共通タイトル ("Google Docs" 等) を返す事が多く、
   // 誤マッチの温床になりやすいため除外する。
+  // 2026-06-15: 取り込み除外リスト (category_discord_blocklist) に登録された
+  // URL は、フィルタを通っても skip する。動画/攻略リンクを削除しても dedup
+  // (§3) は URL の在不在しか見ず、Discord メッセージが残れば次回取り込みで
+  // 復活してしまうため、明示除外で「今後取り込まない」を実現する。service role
+  // 読取なので RLS は bypass (admin 限定 policy の影響を受けない)。category 単位
+  // で video/strategy 両 pass それぞれ 1 回 SELECT する (件数は数十程度で軽い)。
+  const { data: blockedRows } = await supabase
+    .from("category_discord_blocklist")
+    .select("url")
+    .eq("category_id", cat.id);
+  const blockedUrls = new Set((blockedRows ?? []).map((r) => r.url as string));
   const filterKeywords =
     kind === "video"
       ? cat.discordVideoFilterKeywords
       : cat.discordStrategyFilterKeywords;
   const filtered = enriched.filter((e) => {
+    if (blockedUrls.has(e.url)) return false; // 除外リスト最優先
     if (matchesAnyKeyword(e.messageContent, filterKeywords)) return true;
     if (matchesAnyKeyword(e.url, filterKeywords)) return true;
     if (

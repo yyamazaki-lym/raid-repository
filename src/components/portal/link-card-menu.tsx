@@ -1,6 +1,6 @@
 "use client";
 
-import { MoreVertical, Pencil, Trash2 } from "lucide-react";
+import { Ban, MoreVertical, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   DropdownMenu,
@@ -9,7 +9,10 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { deleteCategoryLink } from "@/lib/category-links-client";
+import {
+  addDiscordLinkBlocklist,
+  deleteCategoryLink,
+} from "@/lib/category-links-client";
 import { useConfirm } from "@/components/portal/confirm-dialog";
 import type { CategoryLink } from "@/lib/supabase/types";
 
@@ -45,6 +48,26 @@ export function LinkCardMenu({
     // 位置が頭に戻る挙動を引き起こすため意図的に呼ばない (TODO #49)。
   };
 
+  // Discord 取り込み分のみ「今後取り込まない」(除外リスト登録 + リンク削除)。
+  // 削除だけだと Discord メッセージが残る限り次回 cron で復活するため
+  // (discord-import の dedup は URL の在不在しか見ない)、除外登録で恒久化する。
+  const onExclude = async () => {
+    const ok = await confirm({
+      title: `「${link.title}」を今後取り込まないようにしますか？`,
+      description:
+        "このリンクを削除し、Discord 自動取り込みでも今後この URL を取り込みません。コンテンツ編集ダイアログの「除外 URL」から解除できます。",
+      confirmText: "除外",
+      destructive: true,
+    });
+    if (!ok) return;
+    const result = await addDiscordLinkBlocklist(link.categoryId, link.url);
+    if (!result.ok) {
+      toast.error("除外失敗: " + result.reason);
+      return;
+    }
+    toast.success(`「${link.title}」を除外しました（今後取り込まれません）`);
+  };
+
   return (
     <span
       onClick={(e) => e.stopPropagation()}
@@ -66,6 +89,15 @@ export function LinkCardMenu({
             <span className="text-sm">編集</span>
           </DropdownMenuItem>
           <DropdownMenuSeparator />
+          {link.source === "discord" && (
+            <DropdownMenuItem
+              onClick={onExclude}
+              className="flex cursor-pointer items-center gap-2 text-amber-300 focus:text-amber-200"
+            >
+              <Ban className="h-3.5 w-3.5" aria-hidden />
+              <span className="text-sm">今後取り込まない</span>
+            </DropdownMenuItem>
+          )}
           <DropdownMenuItem
             onClick={onDelete}
             className="flex cursor-pointer items-center gap-2 text-rose-300 focus:text-rose-200"
