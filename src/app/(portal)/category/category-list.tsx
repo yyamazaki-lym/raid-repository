@@ -297,7 +297,7 @@ function SortableCategoryCard({
           // 2.0 (2026-04-29): viewer cannot view → 視覚的に「ロック中」を
           // 示すため彩度を落とす + 枠を amber 寄りにずらす。クリックすると
           // /auth/denied に飛ぶが、編集メニューから role 解除可能。
-          !viewerCanSee && "opacity-70 ring-1 ring-amber-400/30",
+          !viewerCanSee && "opacity-70 ring-1 ring-badge-accent/30",
         )}
       >
         {bgImageUrl && (
@@ -353,7 +353,7 @@ function SortableCategoryCard({
               </p>
               {!viewerCanSee && (
                 <span
-                  className="inline-flex shrink-0 items-center gap-1 rounded-sm border border-amber-400/40 bg-amber-400/10 px-1.5 py-px font-mono text-[9px] tracking-[0.18em] text-amber-200 uppercase"
+                  className="inline-flex shrink-0 items-center gap-1 rounded-sm border border-badge-accent/40 bg-badge-accent/10 px-1.5 py-px font-mono text-[9px] tracking-[0.18em] text-badge-accent-fg uppercase"
                   title={`このコンテンツは ${category.requiredRoleIds.length} 個のロールに制限されています (あなたは閲覧不可)`}
                 >
                   <Lock className="h-2.5 w-2.5" aria-hidden />
@@ -416,7 +416,7 @@ function SortableCategoryCard({
                     { scroll: false },
                   );
                 }}
-                className="inline-flex items-center gap-1 rounded-sm border border-amber-400/45 bg-amber-400/10 px-1.5 py-px font-mono text-[9px] tracking-[0.18em] text-amber-200 uppercase transition-colors hover:border-amber-400/80 hover:bg-amber-400/20"
+                className="inline-flex items-center gap-1 rounded-sm border border-badge-accent/45 bg-badge-accent/10 px-1.5 py-px font-mono text-[9px] tracking-[0.18em] text-badge-accent-fg uppercase transition-colors hover:border-badge-accent/80 hover:bg-badge-accent/20"
                 title={`初クリア: ${formatFirstClear(category.firstClearAt, "long")} (クリックでクリア日の動画へジャンプ)`}
               >
                 <Trophy className="h-2.5 w-2.5" aria-hidden />
@@ -445,8 +445,8 @@ function SortableCategoryCard({
                 className={
                   "inline-flex items-center gap-1 rounded-sm border px-1.5 py-px font-mono text-[9px] tracking-[0.18em] " +
                   (isCleared
-                    ? "border-emerald-400/45 bg-emerald-400/10 text-emerald-200"
-                    : "border-violet-400/45 bg-violet-400/10 text-violet-200")
+                    ? "border-badge-clear/45 bg-badge-clear/10 text-badge-clear-fg"
+                    : "border-badge-progress/45 bg-badge-progress/10 text-badge-progress-fg")
                 }
                 title={`${challengeTimeLabel}: ${formatDurationLong(challengeTimeSeconds)}${category.manualTimeToClearSeconds !== null ? " (手動入力)" : ""}`}
               >
@@ -467,7 +467,7 @@ function SortableCategoryCard({
             <div className="flex items-center gap-1">
               {recentImports > 0 ? (
                 <span
-                  className="inline-flex items-center gap-1 rounded-sm border border-indigo-400/40 bg-indigo-400/10 px-1.5 py-px font-mono text-[9px] tracking-[0.18em] text-indigo-300 uppercase"
+                  className="inline-flex items-center gap-1 rounded-sm border border-badge-recent/40 bg-badge-recent/10 px-1.5 py-px font-mono text-[9px] tracking-[0.18em] text-badge-recent-fg uppercase"
                   title={`過去7日で Discord から ${recentImports} 件取り込み`}
                 >
                   +{recentImports}/wk
