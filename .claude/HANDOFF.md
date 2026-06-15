@@ -45,8 +45,9 @@
 1. 保留オペレーション項目 1 (Discord 通知 ON 切替、ユーザー判断)
 2. **総合レビューレポート (`docs/code-review-2026-06-13.md`) の P2/P3 を消化完了 — 残課題なし** (P0+P1+P2 主要に続き、残 P2/P3 を 2026-06-15 に実装。下記「完了済み TODO」2.9 (2026-06-15) 参照)。完了: C-4 Realtime 集約 (#219) / F-1 生 Tailwind 色 (#220) / B-3 login 軽量化 (#221) / C-5 ファイル分割 (maintenance-menu #222 / schedule-list 1943→1155 #224 / session-memo-popover 967→782 #225)。**見送り確定 (ユーザー判断 2026-06-15)**: ① B-3 の ISR — mitigation/loot は per-user 認証=canEdit + cookie 読みで Next が動的化し ISR 不可 (cold start は #181 済) ② C-5 の残り 2 ファイル (category-form-dialog 1185 行 / fflogs-sync-section 879 行) — 本体が単一の巨大 state マシン (25 / 13 useState) で安全分割不可
 3. **✅ F-4 ONLINE ドットに意味付け (presence) — 完了 ([#228](https://github.com/yyamazaki-lym/raid-repository/pull/228))**: 常時装飾だった ONLINE 表示を Supabase Realtime Presence で「オンライン中のメンバー数」表示に変更 (新 `src/lib/use-online-presence.ts` / `src/components/portal/online-presence-indicator.tsx`、presence key = Discord ID で複数タブ=1カウント、DB/RLS 変更なし)。dev preview + **実機で self=1 (オンライン 1 人) 表示をユーザー確認 OK (2026-06-15)**。複数人時の増分は実メンバーが集まった際に目視。
+4. **✅ Discord 取り込み除外 (blocklist) — 実装完了 ([#232](https://github.com/yyamazaki-lym/raid-repository/pull/232))**: 特定の動画/攻略 URL を「今後取り込まない」除外する機能 (ユーザー要望 2026-06-15)。削除しても dedup は URL 在不在しか見ず cron で復活する問題への対処。新テーブル `category_discord_blocklist` (admin-only RLS、汎用ループ外の独立章) + 取り込み skip (service role 読取) + ⋮ メニュー「今後取り込まない」(source='discord' 限定) + 編集ダイアログの「取り込み除外 URL」管理 (lazy fetch + 解除)。schema は本番/demo 自動デプロイ成功、本番で **admin policy 3 種 (select/insert/delete) + UNIQUE + RLS 有効** を SQL 実査済。**RLS gated のため、実 admin での除外操作 (消える + 除外一覧表示 + 解除 + cron で復活しない) はユーザー実機検証待ち** (#189/#213 同クラス。import skip 読取は service role で RLS 非依存)。
 
-**→ 実質の残作業は項目 1 (Discord 通知 ON 切替、ユーザー判断) のみ。** 総合レビュー (P0/P1/P2/P3) は実施対象を全消化 (見送り確定分を除く)。
+**→ 実質の残作業は項目 1 (Discord 通知 ON 切替、ユーザー判断) と、項目 4 blocklist の実 admin 実機検証のみ。** 総合レビュー (P0/P1/P2/P3) は実施対象を全消化 (見送り確定分を除く)。
 
 ## 未完了 TODO 一覧
 
@@ -91,6 +92,15 @@
 ## 完了済み TODO
 
 直近版のみ列挙。詳細経緯は `src/lib/changelog.ts`、過去版アーカイブは `.claude/done.md`。
+
+- **2.9 (2026-06-15)**: Discord 自動取り込みに **特定 URL の除外 (blocklist) 機能** を追加 ([PR #232](https://github.com/yyamazaki-lym/raid-repository/pull/232) `fc4df6b` squash merge)
+  - **発端**: ユーザー要望「特定動画のみ取り込ませないフラグ」。取り込みの dedup (discord-import §3) は URL の在不在しか見ないため、動画を削除しても Discord メッセージが残れば翌日 cron で復活する問題があった。方式は B (専用 blocklist テーブル) をユーザー選択。
+  - **schema (2d 章)**: 新テーブル `category_discord_blocklist` (category_id FK CASCADE / url / reason / UNIQUE(category_id,url) + index)。RLS は **admin の is_admin claim のみ・anon deny** で、汎用ループ (anon に SELECT 全開) の外に secrets 同型の独立章で定義。取り込みは service role 読取で RLS bypass。GRANT / publication / updated_at トリガ不要。冪等。
+  - **import skip**: `discord-import.ts` importChannel の filter 先頭で blocklist URL を除外 (service role、category 単位 1 SELECT)。`filtered` が除外済みになり空判定・insert・first-clear がすべて従う。
+  - **server actions / client**: `add` / `remove` / `list` を admin-gated (assertAdminResult + cookie client。add は 23505 を冪等扱い + 同 URL の `source='discord'` リンク削除、remove は `.select()` で silent-fail 対策) + client wrapper 3 本。
+  - **UI**: link-card-menu の ⋮ に「今後取り込まない」(`source='discord'` 限定) / category-form-dialog に「取り込み除外 URL」`<details>` (lazy fetch + 解除)。
+  - **検証**: tsc / eslint / build pass。dev preview で ⋮ 条件表示 (manual 非表示) + 除外セクション描画・展開を確認 (console エラー 0)。schema 本番/demo 自動デプロイ成功、本番で **admin policy 3 種 (select/insert/delete) + UNIQUE + RLS 有効** を SQL 実査。**RLS gated の実 admin 動作 (除外→消える / 一覧 / 解除 / cron 復活せず) はユーザー実機検証待ち** (#189/#213 同クラス。import skip 読取は service role で RLS 非依存)。
+  - **changelog**: 2.9 (2026-06-15) に user-facing part 同梱。
 
 - **2.9 (2026-06-15)**: 総合レビューレポート (`docs/code-review-2026-06-13.md`) の **残 P2/P3 を 4 PR で消化** ([PR #219](https://github.com/yyamazaki-lym/raid-repository/pull/219) C-4 / [PR #220](https://github.com/yyamazaki-lym/raid-repository/pull/220) F-1 / [PR #221](https://github.com/yyamazaki-lym/raid-repository/pull/221) B-3 / [PR #222](https://github.com/yyamazaki-lym/raid-repository/pull/222) C-5、いずれも squash merge)
   - **発端 / 進め方**: 非 admin 検収 OK 後、ユーザー要望で未着手 P2/P3 に着手。ユーザー判断で「1 PR ずつ merge→検証→次へ」、各 PR の着手順・スコープを都度確認。検証は Claude 実施 (dev preview + tsc/eslint/build)。HANDOFF はこの 1 エントリに集約 (per-PR docs PR は出さない)。
