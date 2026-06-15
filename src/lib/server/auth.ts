@@ -243,6 +243,17 @@ export async function getCurrentUserCanEdit(): Promise<boolean> {
 }
 
 /**
+ * 現在のユーザの Discord ID を返す。Realtime Presence のキー等、client に
+ * 安定した本人識別子を渡したい用途で使う。`requireDiscordMember()` 経由
+ * なので `cache()` 済み (同一リクエスト内で追加コストなし)。demo ゲストは
+ * 固定値 `public-demo-mode-guest` を返す。
+ */
+export async function getCurrentUserDiscordId(): Promise<string> {
+  const { discordId } = await requireDiscordMember();
+  return discordId;
+}
+
+/**
  * 現在のリクエストが demo モードのゲスト fallback (実セッションなし) か
  * を返す (TODO #91 follow-up)。設定ダイアログ footer が「サインイン」
  * 導線を出すかの判定に使う。demo 以外 / 実セッション / dev bypass では
