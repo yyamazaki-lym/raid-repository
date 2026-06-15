@@ -44,7 +44,9 @@
 未完了 TODO は **#11 (パフォーマンス、休眠中 = 新ボトルネック発見時のみ再開) のみ**。TODO #86 の 24h 観察 (UTC 19:00 自動発火確認) は 2026-06-12 に DB 実測で完了 (保留オペレーション項目 3 参照)。**非 admin メンバーの実機確認 2 件 (出欠「未回答に戻す」 #189 / 日付メモ CRUD #213 A-4) は 2026-06-15 ユーザー実機確認 OK で検収完了** (詳細は下記「完了済み TODO」2.9 (2026-06-15))。残作業は:
 1. 保留オペレーション項目 1 (Discord 通知 ON 切替、ユーザー判断)
 2. **総合レビューレポート (`docs/code-review-2026-06-13.md`) の P2/P3 を消化完了 — 残課題なし** (P0+P1+P2 主要に続き、残 P2/P3 を 2026-06-15 に実装。下記「完了済み TODO」2.9 (2026-06-15) 参照)。完了: C-4 Realtime 集約 (#219) / F-1 生 Tailwind 色 (#220) / B-3 login 軽量化 (#221) / C-5 ファイル分割 (maintenance-menu #222 / schedule-list 1943→1155 #224 / session-memo-popover 967→782 #225)。**見送り確定 (ユーザー判断 2026-06-15)**: ① B-3 の ISR — mitigation/loot は per-user 認証=canEdit + cookie 読みで Next が動的化し ISR 不可 (cold start は #181 済) ② C-5 の残り 2 ファイル (category-form-dialog 1185 行 / fflogs-sync-section 879 行) — 本体が単一の巨大 state マシン (25 / 13 useState) で安全分割不可
-3. **F-4 ONLINE ドットに意味付け (presence)** — 常時装飾だった ONLINE ドットを Supabase Realtime Presence で「オンライン中のメンバー数」表示に変える。ユーザー判断 (2026-06-15) で realtime 接続状態案より presence 案を採用。別途プランで実装予定 (新規)
+3. **✅ F-4 ONLINE ドットに意味付け (presence) — 完了 ([#228](https://github.com/yyamazaki-lym/raid-repository/pull/228))**: 常時装飾だった ONLINE 表示を Supabase Realtime Presence で「オンライン中のメンバー数」表示に変更 (新 `src/lib/use-online-presence.ts` / `src/components/portal/online-presence-indicator.tsx`、presence key = Discord ID で複数タブ=1カウント、DB/RLS 変更なし)。dev preview で self=1 を確認、複数人時の増分は本番で目視可。
+
+**→ 実質の残作業は項目 1 (Discord 通知 ON 切替、ユーザー判断) のみ。** 総合レビュー (P0/P1/P2/P3) は実施対象を全消化 (見送り確定分を除く)。
 
 ## 未完了 TODO 一覧
 
@@ -98,8 +100,9 @@
   - **#222 (C-5 その1)**: `maintenance-menu.tsx` (1025 行) の結果パネル 4 種 (Discord/VideoMeta/FirstClear/StrategyThumb) + 共有型を `src/components/portal/maintenance/` 配下 5 ファイルに分割 (本体 615 行)。逐語コピーで挙動・見た目不変、`MaintenanceMenu` signature 不変。
   - **#224 (C-5 その2)**: 最大ファイル `schedule-list.tsx` (1943→1155 行) から `Legend` / `SessionActionIcons` (+`renderSingleVideoLink`) を `src/components/portal/schedule/` へ、出欠色定数 (`attendance-ui.ts`) / 純関数 (`session-utils.ts`) を `src/lib/schedule/` へ抽出。`ScheduleList` / `SessionRow` は無改修。**`schedule-past-simple` も `SessionActionIcons` を import していた点を tsc が捕捉** (import 元差替)。**eslint-suppressions: `Legend` 移動で `set-state-in-effect` 抑制を legend.tsx へ移設** (schedule-list 側 prune、`purity` 抑制は残置)。
   - **#225 (C-5 その3)**: `session-memo-popover.tsx` (967→782 行) から `SessionMemoDot` / `DeleteConfirmModal` / `formatRelativeTime` を `schedule/` + `lib/schedule/` へ抽出。`SessionMemoPopover` / `MemoList` は無改修。set-state 違反は残置側にあり移動していないため suppressions 変更なし。
+  - **#228 (F-4 presence)**: 常時装飾だったヘッダー ONLINE 表示を Supabase Realtime Presence の「オンライン中のメンバー数」表示に意味付け (新 `src/lib/use-online-presence.ts` フック + `online-presence-indicator.tsx`、presence key = Discord ID で複数タブ=1カウント、DB/RLS 変更なし)。ユーザー判断で realtime 接続状態案より presence 案を採用。名前一覧は非対象 (Discord 名 ≠ 予定表メンバー名)。dev で self=1 確認、複数人増分は本番目視。
   - **教訓**: ①Tailwind v4 の色トークンは `@theme inline` + 厳密 oklch literal で見た目不変を保証する (`var(--color-amber-400)` 参照方式は raw クラス削除で Tailwind が tree-shake し参照が壊れうる) ②**per-user 認証 / `canEdit` に依存するページは ISR 不可** (単一 HTML を全員配信のため admin UI 漏れ等) ③React 19 で「最新コールバックを async 購読から参照する」latest-ref は render 中の `ref.current=` 代入が `react-hooks/refs` で error になるため effect 内で更新する ④**eslint-suppressions.json はファイル path キーなので、suppress 済み違反を含むコードを別ファイルへ移すと抑制が外れ「新規 error」化する → 移動先で `--suppress-all`、旧 path を `--prune-suppressions` で reconcile** ⑤**ファイル分割は移動コンポーネントの外部 import 先を grep だけでなく tsc で確認** (今回 schedule-past-simple の取りこぼしを tsc が検出)。
-  - **changelog**: 2.9 (2026-06-15) に 6 part 同梱。
+  - **changelog**: 2.9 (2026-06-15) に 7 part 同梱。
 
 - **2.9 (2026-06-15)**: 非 admin メンバーの本番実機検収 2 件 OK — 出欠「未回答に戻す」([PR #189](https://github.com/yyamazaki-lym/raid-repository/pull/189)) / 日付メモ CRUD ([PR #213](https://github.com/yyamazaki-lym/raid-repository/pull/213) A-4)。いずれも実 JWT 必須で dev preview bypass 再現不可だった残検収項目 (本番 policy/制約反映は SQL 確認済)。これで総合レビュー (`docs/code-review-2026-06-13.md`) の P0/P1/P2 主要の実機検収が全て完了。**コード変更なし** (merge 済み PR の検収記録のみ、changelog.ts / 版番号は据え置き)。
 
