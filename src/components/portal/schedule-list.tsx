@@ -10,8 +10,8 @@ import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/portal/empty-state";
 import { CommentPopover } from "./comment-popover-lazy";
 import { ScheduleEditFrameDialog } from "./schedule-edit-frame-dialog-lazy";
+import { SessionMemoDot } from "./schedule/session-memo-dot";
 import {
-  SessionMemoDot,
   SessionMemoPopover,
   type SessionMemoPopoverHandle,
 } from "./session-memo-popover";
