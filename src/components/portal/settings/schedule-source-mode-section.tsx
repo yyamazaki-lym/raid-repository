@@ -13,7 +13,7 @@ import type { ScheduleSourceMode } from "@/lib/schedule/source-mode";
  *
  * 3 択 radio:
  *   - sync     既存 character-sheets 同期式 (default)
- *   - native   自前作成式 (phase 2 以降で UI 拡充)
+ *   - native   自前作成式 (候補日 / 出欠 / 確定 / FFLogs / Discord 通知まで実装済)
  *   - disabled 機能無効
  *
  * 値変更で即時 server action を呼び、`router.refresh()` で page を再取得。
@@ -33,9 +33,9 @@ const MODES: ReadonlyArray<{
   },
   {
     value: "native",
-    label: "自前作成式 (準備中)",
+    label: "自前作成式",
     description:
-      "portal 内でスケジュールを作成 / 編集 / 確定。Phase 1 では空の表示のみ。Phase 2 で候補日追加・出欠入力 UI を実装予定。",
+      "portal 内で候補日の追加・出欠入力・開催確定まで完結。FFLogs 連携と Discord 通知にも対応。",
   },
   {
     value: "disabled",
