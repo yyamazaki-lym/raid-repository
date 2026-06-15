@@ -80,12 +80,14 @@
   "src/components/portal/schedule-list.tsx": {
     "react-hooks/purity": {
       "count": 1
-    },
+    }
+  },
+  "src/components/portal/schedule-page-body.tsx": {
     "react-hooks/set-state-in-effect": {
       "count": 1
     }
   },
-  "src/components/portal/schedule-page-body.tsx": {
+  "src/components/portal/schedule/legend.tsx": {
     "react-hooks/set-state-in-effect": {
       "count": 1
     }
