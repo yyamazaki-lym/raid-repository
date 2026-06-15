@@ -1,6 +1,6 @@
 # Raid Repository — 引き継ぎノート
 
-> 2.9 (2026-06-13) 時点。完了済 TODO の詳細は `src/lib/changelog.ts` / 過去版番号は `.claude/done.md`。
+> 2.9 (2026-06-14) 時点。完了済 TODO の詳細は `src/lib/changelog.ts` / 過去版番号は `.claude/done.md`。
 >
 > **新規会話の手順**: このファイルを読んだ後、TODO 一覧は自動表示せずユーザーの要望を待つ。新規 TODO 追記時は part 単位ではなく TODO 完了時のみ統合追記する (part 細分は commit log に任せる)。
 
@@ -12,7 +12,7 @@
 - **Path**: `D:\workd\raid-repository`
 - **Stack**: Next.js 16.2.9 (Turbopack) / React 19.2 / Supabase / Tailwind v4 / @base-ui/react
 - **Deploy**: Vercel auto-deploy from `main`
-- **Version**: `2.9 (2026-06-12)`。`package.json#version` は `1.9.38` のまま (履歴マーカー)、UI は `RELEASES[0].version + .date` を表示
+- **Version**: `2.9 (2026-06-14)`。`package.json#version` は `1.9.38` のまま (履歴マーカー)、UI は `RELEASES[0].version + .date` を表示
 - **Next.js 16 注意**: 破壊的変更含む。`node_modules/next/dist/docs/` を参照すること (詳細は `AGENTS.md`)
 
 ## 🔄 保留オペレーション
@@ -43,8 +43,8 @@
 
 未完了 TODO は **#11 (パフォーマンス、休眠中 = 新ボトルネック発見時のみ再開) のみ**。TODO #86 の 24h 観察 (UTC 19:00 自動発火確認) は 2026-06-12 に DB 実測で完了 (保留オペレーション項目 3 参照)。残作業は:
 1. 保留オペレーション項目 1 (Discord 通知 ON 切替、ユーザー判断)
-2. 非 admin メンバーでの出欠「未回答に戻す」実機確認 — [PR #189](https://github.com/yyamazaki-lym/raid-repository/pull/189) の RLS 修正の検収 (self_delete policy / CHECK 制約の本番 DB 反映は SQL で確認済、UI 経由の実操作のみ未確認)
-3. **総合レビューレポート (`docs/code-review-2026-06-13.md`) の P2 / P3** (P0 + P1 は完了済。下記「完了済み TODO」参照)。未着手の主な残り: C-1 楽観更新 timeout 競合 / C-4 DnD・Realtime 重複の共通化 / A-4 memos 意図不一致 / B-3 /login・force-dynamic / F-1 極小タイポ・日本語 mono / F-4 カード情報密度・window.confirm / C-2 日付 TZ / C-3 バリデーション / C-5 巨大ファイル分割 / D Next.js 低重大度 3 件 / E badge.tsx 削除 など。着手はユーザー要望待ち
+2. **非 admin メンバーの実機確認 2 件** (いずれも client 直 supabase = 実 JWT 必須で dev preview bypass では再現不可、本番実機でユーザー確認): ① 出欠「未回答に戻す」 — [PR #189](https://github.com/yyamazaki-lym/raid-repository/pull/189) の RLS 修正の検収 (self_delete policy / CHECK 制約の本番 DB 反映は SQL 確認済) ② **日付メモの作成/編集/削除 — [PR #213](https://github.com/yyamazaki-lym/raid-repository/pull/213) (A-4) の member 書込 policy 検収** (本番 `pg_policies` に member policy 反映は SQL 確認済)
+3. **総合レビューレポート (`docs/code-review-2026-06-13.md`) の P2 主要項目は完了** (P0 + P1 + P2 主要を消化。下記「完了済み TODO」参照)。**残り未着手 (低優先・別途判断)**: C-4 の Realtime フック集約 (DnD 共通化は #212 で完了) / C-5 巨大ファイル分割 (schedule-list 1897 行ほか) / B-3 ISR (force-dynamic は #181 で解消済、残るは静的ページ ISR のみ) / F-1 の生 Tailwind 色の残り (Lock・recent・Hourglass メトリクスバッジ等。status バッジは #216 でトークン化済) / F-4 ONLINE ドット (ユーザー判断で現状維持) / D の fetch cache 以外の P3 細目。着手はユーザー要望待ち
 
 ## 未完了 TODO 一覧
 
@@ -89,6 +89,18 @@
 ## 完了済み TODO
 
 直近版のみ列挙。詳細経緯は `src/lib/changelog.ts`、過去版アーカイブは `.claude/done.md`。
+
+- **2.9 (2026-06-14)**: 総合レビューレポート (`docs/code-review-2026-06-13.md`) の **P2 主要項目を 7 PR で消化** ([PR #210](https://github.com/yyamazaki-lym/raid-repository/pull/210) `53c7a4f` / [PR #211](https://github.com/yyamazaki-lym/raid-repository/pull/211) `d2011c7` / [PR #212](https://github.com/yyamazaki-lym/raid-repository/pull/212) `8e0c562` / [PR #213](https://github.com/yyamazaki-lym/raid-repository/pull/213) `dc2fbc0` / [PR #214](https://github.com/yyamazaki-lym/raid-repository/pull/214) `d15a50b` / [PR #215](https://github.com/yyamazaki-lym/raid-repository/pull/215) `5ed1f55` / [PR #216](https://github.com/yyamazaki-lym/raid-repository/pull/216) `49ea149`、いずれも squash merge)
+  - **発端 / 進め方**: P0+P1 消化後の続きとして P2/P3 に着手。実装計画 = `.claude/plans/md-splendid-starlight.md`。ユーザー判断で「correctness/掃除 先行 → 1 PR ずつ merge→検証→次へ」。検証は Claude 実施 (dev preview + 一部 node 単体)、非 admin 実機等の一部はユーザー委任。
+  - **#210 (C-2/C-3)**: クリア日ジャンプ等の日付処理を JST 暦日に正規化 (新 `src/lib/jst-date.ts`、Intl Asia/Tokyo)。**※素の getUTC* は JST ユーザーも前日にずれるため不可、JST オフセット正規化が正解** (`formatFirstClear` / `onJumpToFirstClear` / category-form-dialog の round-trip / strategy-images の最終同期表示を統一) / `title-date.ts` の validate を月別実在日チェックに (2/31・4/31 を弾く)。
+  - **#211 (D/E)**: forwardRef→ref prop (session-memo-popover) / `<Ctx.Provider value>`→`<Ctx value>` (action-slot) / lib/server 外部 GET fetch に `cache:"no-store"` 明示 (**Next16 既定は no-store でなく `auto no cache` と docs 確認**、消費側は全て動的なので挙動不変・防御的明示) / 未使用 `badge.tsx` 削除。
+  - **#212 (C-1/C-4)**: DnD 並び替え 8 箇所 (6 ファイル) を共通フック `src/lib/use-sortable-reorder.ts` に集約。**C-1**: `setTimeout(1500)` の楽観巻戻りちらつきを schedule-list と同じ「DB 確定順が楽観順に追いついたら畳む」値マッチ方式に統一。高レベル `handleDragEnd` (単純) + 低レベル `commit` (videos の reverse / macros の filtered→global / recruitment の group・row) を公開。
+  - **#213 (A-4、schema 変更)**: `schedule_session_memos` をログイン済みメンバー全員が編集可に (schema 7a-2 に `authenticated` 書込 policy 追加、汎用ループの admin policy と OR 評価、**anon は read-only 維持**)。本番/demo へ自動デプロイ + 本番 `pg_policies` で member policy 反映確認済 (read=全員 / 書込=admin∪member)。コメント (schema 5c-2 / schedule-memos-client) を実 policy に整合。**非 admin メンバーの UI 実機編集は未確認** (次回優先度 2-②)。
+  - **#214 (F-4)**: 破壊的操作の `window.confirm` 14 箇所を共通 ConfirmDialog (`src/components/portal/confirm-dialog.tsx` の Promise ベース `useConfirm()`、`(portal)/layout` に 1 mount) に統一。destructive は実行ボタン赤系 + 初期フォーカス cancel。maintenance の強制再取得は確認を `startTransition` の外へ、サインアウト form は「承諾時のみ `form.submit()`」化。
+  - **#215 (F-1、見た目大)**: portal 全体の日本語ラベルの `font-mono`+`uppercase`+`tracking` を `font-sans`+`tracking-normal` に統一 (約 170 箇所/40 ファイル)。**当初タブ/バッジ限定 → ユーザー指摘の不統一を受け portal 全体に拡大** (判定基準「日本語=sans / 英字・数値・日付等のデータ値=mono / 迷ったら mono」を統一し並列エージェント 6 系統で分担→中央検証)。globals.css に型スケール規約 (最小 11px 床 + mono は英字専用) 明文化、status バッジ 9-10px→11px。
+  - **#216 (F-1/F-4)**: status バッジ色を `globals.css @theme` の `--color-status-*` トークンに集約 (**意味色は全テーマ共通で固定** = 信号機的明確さ優先、テーマ可変にはしない=ユーザー判断) / カテゴリ名を `font-medium` で強調 (15px だと長名が 2 行折返しのため weight のみ)。**F-4 ONLINE ドットはユーザー判断で現状維持**。
+  - **教訓**: ①ナビタブのサイズは F-3 の sticky offset (`--header-h`/`--nav-h`) 高さ依存のため変えない (font/tracking のみ) ②**branch 切替後の Turbopack stale chunk は HMR/リロードでは消えず `.next/dev` 削除 + preview 再起動で解消** (今回 3 回発生、`dev-preview-verification-quirks` memory の追補) ③日本語 mono 解消は部分適用だと周囲と不統一になる ④client 直 supabase の RLS 系は dev preview bypass (実 JWT 無し) で検証不可。
+  - **changelog**: 2.9 (2026-06-14) に 7 part 同梱済。**スコープ外 (残)**: 次回優先度 3 参照。
 
 - **2.9 (2026-06-13)**: 総合レビューレポート P1 残り 3 件 (F-3 / F-2 / A-5) を完了 — これで報告書の **P0 + P1 を全消化** ([PR #206](https://github.com/yyamazaki-lym/raid-repository/pull/206) squash merge `e0c17c8` / [PR #207](https://github.com/yyamazaki-lym/raid-repository/pull/207) `6d77517` / [PR #208](https://github.com/yyamazaki-lym/raid-repository/pull/208) `c553584`、検証は Claude 実施でユーザー委任 2026-06-13)
   - **F-3 sticky 定数の単一ソース化 (#206)**: sub-tabs の `top-[102px]/sm:top-[110px]` + JS `STICK_AT=102/UNSTICK_AT=118` のヘッダー高手計算依存を解消。globals.css に `--header-h` (3.5rem/sm:4rem) / `--nav-h` (2.875rem=46px) を定義し、site-header 高・main-tabs/sub-tabs の sticky top・JS hysteresis 閾値 (getComputedStyle + resize 再計算) を全て導出。見た目・挙動不変
