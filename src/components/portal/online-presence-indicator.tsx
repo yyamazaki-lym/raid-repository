@@ -5,7 +5,8 @@ import { useOnlinePresence } from "@/lib/use-online-presence";
 /**
  * ヘッダー右上の「● ONLINE」表示。常時点灯の装飾だったものを、Supabase
  * Realtime Presence で取得した**オンライン中のメンバー数**を出す形に変更
- * (総合レビュー F-4)。`selfKey` は本人の Discord ID (presence key)。
+ * (総合レビュー F-4)。`selfKey` は本人由来の不可逆ハッシュ (presence key、
+ * server 側生成)。生の Discord ID を client に載せないための措置。
  *
  * 見た目は従来どおり (シアンの脈動ドット + mono の "ONLINE")。人数が取れたら
  * "ONLINE {n}" に、sync 前 / 取得不可なら従来どおり "ONLINE" を表示。

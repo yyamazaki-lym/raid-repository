@@ -27,7 +27,7 @@ import type { ScheduleFetchResult } from "./next-session";
  * - `sessions`     ← native_schedule_sessions (status != CANCELLED, parsed_date DESC)
  * - `attendances`  ← native_schedule_attendances (session_id IN matrix)
  * - `choices`      ← app_settings.native_schedule_choice_values (CSV) / 既定値
- * - `comments`     ← []  (Phase 2-B で attendance.comment を表示する別経路)
+ * - `comments`     ← []  (native に sync 由来の "■コメント" 概念なし)
  * - `topText`      ← null (Phase 3 で Discord 通知文等を表示する余地)
  *
  * いずれかの SELECT 失敗時は `{ ok: false, reason: "fetch-failed" }` を返却。
@@ -65,8 +65,6 @@ type NativeAttendanceRow = {
   session_id: string;
   discord_user_id: string;
   symbol: string;
-  // TODO #2 phase 2-B: popover の textarea 初期値復元 (commentsByPair) に使う。
-  comment: string | null;
 };
 
 export type FetchNativeScheduleDefaults = {
@@ -131,15 +129,12 @@ export async function fetchNativeSchedule(
   }));
 
   // attendances を session_id IN(...) で一括 fetch → session_id ごとに matrix 構築。
-  // TODO #2 phase 2-B: comment 列も fetch して `commentsByPair` に蓄積、
-  // popover の textarea 初期値復元に使う。
   const attendancesBySession = new Map<string, Record<string, Attendance>>();
-  const commentsByPair: Record<string, string> = {};
   if (sessionRows.length > 0) {
     const sessionIds = sessionRows.map((s) => s.id);
     const { data: attData, error: attErr } = await supabase
       .from("native_schedule_attendances")
-      .select("session_id, discord_user_id, symbol, comment")
+      .select("session_id, discord_user_id, symbol")
       .in("session_id", sessionIds);
     if (attErr) {
       console.warn("[native-schedule] attendances fetch error:", attErr);
@@ -149,10 +144,6 @@ export async function fetchNativeSchedule(
       const map = attendancesBySession.get(row.session_id) ?? {};
       map[row.discord_user_id] = row.symbol;
       attendancesBySession.set(row.session_id, map);
-      // 空文字列は entry を持たない (popover 側 `?? ""` で fallback)。
-      if (row.comment && row.comment.trim()) {
-        commentsByPair[`${row.session_id}__${row.discord_user_id}`] = row.comment;
-      }
     }
   }
 
@@ -213,7 +204,6 @@ export async function fetchNativeSchedule(
     },
     nativeMeta: {
       sessionIdByRawDate,
-      commentsByPair,
       timeOverridesByRawDate,
       defaultStartTime,
       defaultEndTime,
