@@ -12,7 +12,7 @@ import packageJson from "../../../package.json";
 import { RELEASES } from "@/lib/changelog";
 import {
   getCurrentUserCanEdit,
-  getCurrentUserDiscordId,
+  getCurrentUserPresenceKey,
   getCurrentUserIsDemoGuest,
 } from "@/lib/server/auth";
 
@@ -121,8 +121,10 @@ export async function SiteHeader() {
   // は cache() 済みなので canEdit と合わせても auth 解決は 1 回。
   const isDemoGuest = await getCurrentUserIsDemoGuest();
   // F-4: ヘッダーの ONLINE 表示を presence ベースのオンライン人数にするため、
-  // presence key に使う本人の Discord ID を取得 (requireDiscordMember は cache 済)。
-  const discordId = await getCurrentUserDiscordId();
+  // presence key を取得 (requireDiscordMember は cache 済)。生の Discord ID では
+  // なく不可逆ハッシュ — presence チャンネルは anon でも join でき presenceState()
+  // でキーが列挙されるため、生 ID を client に渡さない (auth.ts の docstring 参照)。
+  const presenceKey = await getCurrentUserPresenceKey();
   return (
     <header className="glass-bar sticky top-0 z-30">
       <div className="mx-auto flex h-[var(--header-h)] max-w-5xl items-center gap-3 px-4 sm:px-6">
@@ -158,7 +160,7 @@ export async function SiteHeader() {
           <ThemeSwitcher />
           {/* サインアウトは設定ダイアログ内に移設 (2.1 2026-04-29)。 */}
           <SettingsDialog canEdit={canEdit} showSignIn={isDemoGuest} />
-          <OnlinePresenceIndicator selfKey={discordId} />
+          <OnlinePresenceIndicator selfKey={presenceKey} />
         </div>
       </div>
     </header>

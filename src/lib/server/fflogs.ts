@@ -1304,16 +1304,6 @@ function jstCalendarDate(ms: number): { y: number; m: number; d: number } {
   };
 }
 
-/** Days apart between two calendar dates (always non-negative integer). */
-function daysApart(
-  a: { y: number; m: number; d: number },
-  b: { y: number; m: number; d: number },
-): number {
-  const aMs = Date.UTC(a.y, a.m - 1, a.d);
-  const bMs = Date.UTC(b.y, b.m - 1, b.d);
-  return Math.abs(aMs - bMs) / (24 * 60 * 60 * 1000);
-}
-
 // 1.9.17: CONTENT_GROUPS / normalizeContentText / findContentGroups
 // were moved to `@/lib/content-groups.ts` so backfill / discord-import
 // can reuse the classifier for video-vs-category filtering. Re-import

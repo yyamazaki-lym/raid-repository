@@ -1,4 +1,5 @@
 import "server-only";
+import { createHash, createHmac } from "node:crypto";
 import { cache } from "react";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
@@ -243,14 +244,30 @@ export async function getCurrentUserCanEdit(): Promise<boolean> {
 }
 
 /**
- * 現在のユーザの Discord ID を返す。Realtime Presence のキー等、client に
- * 安定した本人識別子を渡したい用途で使う。`requireDiscordMember()` 経由
- * なので `cache()` 済み (同一リクエスト内で追加コストなし)。demo ゲストは
- * 固定値 `public-demo-mode-guest` を返す。
+ * 現在のユーザの Realtime Presence 用キー (本人由来の不可逆ハッシュ) を返す。
+ *
+ * presence チャンネル (`online-presence`) は公開 anon key だけで join できる
+ * ため、生の Discord ID を presence key にすると `presenceState()` の列挙で
+ * オンライン中メンバーの Discord ID が誰にでも見えてしまう。そこで server 側で
+ * HMAC-SHA256 (salt = `SECRET_ENCRYPTION_KEY`) にかけた hex を presence key と
+ * して client に渡し、生 ID を RSC payload / client bundle に一切載せない。
+ *
+ * - 同一 discordId → 決定的に同一ハッシュ → 同一 presence key に畳まれるので
+ *   「複数タブ = 1 カウント」「distinct key 数 = メンバー数」は不変。
+ * - salt 未設定 fork では plain SHA-256 に fallback (人数カウント機能は維持、
+ *   逆引き耐性のみ低下。snowflake は低エントロピーなので salt 付きを推奨)。
+ * - demo ゲスト / dev bypass の固定値もそのままハッシュにかける (生値は渡さない)。
+ *
+ * `requireDiscordMember()` 経由なので `cache()` 済み (追加コストなし)。生の
+ * Discord ID が必要な DB / 本人判定用途は `requireDiscordMember().discordId`
+ * を直接使うこと (presence key とは意味が違う、混同しないため別関数にする)。
  */
-export async function getCurrentUserDiscordId(): Promise<string> {
+export async function getCurrentUserPresenceKey(): Promise<string> {
   const { discordId } = await requireDiscordMember();
-  return discordId;
+  const salt = process.env.SECRET_ENCRYPTION_KEY?.trim();
+  return salt
+    ? createHmac("sha256", salt).update(discordId).digest("hex")
+    : createHash("sha256").update(discordId).digest("hex");
 }
 
 /**
