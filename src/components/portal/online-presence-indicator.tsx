@@ -13,8 +13,16 @@ import { useOnlinePresence } from "@/lib/use-online-presence";
  * dot / text は親ヘッダーの flex に直接並ぶよう Fragment で返す (従来のレイ
  * アウト・gap を維持)。
  */
-export function OnlinePresenceIndicator({ selfKey }: { selfKey: string }) {
-  const count = useOnlinePresence(selfKey);
+export function OnlinePresenceIndicator({
+  selfKey,
+  isDemoGuest = false,
+}: {
+  selfKey: string;
+  isDemoGuest?: boolean;
+}) {
+  // demo ゲストは全員が固定 presence key に畳まれ「ONLINE 1」固定の誤カウントに
+  // なるため、集計をオフにして装飾の "ONLINE" のみ表示する。
+  const count = useOnlinePresence(selfKey, !isDemoGuest);
   return (
     <>
       <span
