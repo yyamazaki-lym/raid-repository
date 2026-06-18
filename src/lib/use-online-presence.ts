@@ -14,15 +14,24 @@ import { createClient } from "@/lib/supabase/client";
  *   生の Discord ID を渡さないのは presence チャンネルが anon でも join でき
  *   `presenceState()` のキーが列挙されるため (露出防止)。
  * - `presence` の `sync` イベントで `presenceState()` の distinct key 数を数える。
- *   sync 前 / 接続失敗時は 0 を返す (表示側で「ONLINE」だけ出すフォールバック)。
+ *   sync 前 / 接続失敗 (CHANNEL_ERROR / TIMED_OUT / CLOSED) 時は 0 を返す
+ *   (表示側で「ONLINE」だけ出すフォールバック)。通信断中は presenceState() が
+ *   stale な map を返し続けるため明示的に 0 へ戻し、再接続時の sync 再発火で
+ *   正しい人数に自己回復させる。
+ * - `enabled=false` のときは購読・track を一切行わず常に 0 を返す。demo ゲストは
+ *   全員が固定 presence key に畳まれ「常に 1」の誤カウントになるため、呼び出し側
+ *   (online-presence-indicator) が demo 時に false を渡して集計を止める用途。
  *
  * presence は Realtime のチャンネル機能で DB / RLS とは無関係。postgres_changes
  * 用の `useRealtimeTable` / `useRealtimeChannel` (C-4) とは別 API のため独立実装。
  */
-export function useOnlinePresence(selfKey: string): number {
+export function useOnlinePresence(selfKey: string, enabled = true): number {
   const [count, setCount] = useState(0);
 
   useEffect(() => {
+    // 集計対象外 (demo ゲスト等) では購読・track をせず無駄な WS 接続と
+    // 固定 key 畳み込みによる誤カウントを回避。count は初期 0 のまま。
+    if (!enabled) return;
     const supabase = createClient();
     const channel = supabase.channel("online-presence", {
       config: { presence: { key: selfKey } },
@@ -36,6 +45,14 @@ export function useOnlinePresence(selfKey: string): number {
       .subscribe((status) => {
         if (status === "SUBSCRIBED") {
           void channel.track({ online_at: new Date().toISOString() });
+        } else if (
+          status === "CHANNEL_ERROR" ||
+          status === "TIMED_OUT" ||
+          status === "CLOSED"
+        ) {
+          // 通信断: stale な人数を出し続けないよう 0 に戻す。rejoin 後の
+          // presence_state 再送 → sync 再発火で正しい人数に自己回復する。
+          setCount(0);
         }
       });
 
@@ -46,7 +63,7 @@ export function useOnlinePresence(selfKey: string): number {
         console.warn("[online-presence] removeChannel error:", e);
       }
     };
-  }, [selfKey]);
+  }, [selfKey, enabled]);
 
   return count;
 }

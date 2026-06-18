@@ -160,7 +160,7 @@ export async function SiteHeader() {
           <ThemeSwitcher />
           {/* サインアウトは設定ダイアログ内に移設 (2.1 2026-04-29)。 */}
           <SettingsDialog canEdit={canEdit} showSignIn={isDemoGuest} />
-          <OnlinePresenceIndicator selfKey={presenceKey} />
+          <OnlinePresenceIndicator selfKey={presenceKey} isDemoGuest={isDemoGuest} />
         </div>
       </div>
     </header>

@@ -59,7 +59,13 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
 
   const confirm = useCallback<ConfirmFn>((options = {}) => {
     return new Promise<boolean>((resolve) => {
-      setPending({ options, resolve });
+      // 並行 confirm() 呼び出しへの防御: 既に保留中の確認があれば前の Promise
+      // を false で解決してから上書きし、未解決 Promise (await の永久ハング) の
+      // リークを防ぐ。現状 caller は全て直列 await だが将来の保険。
+      setPending((prev) => {
+        prev?.resolve(false);
+        return { options, resolve };
+      });
     });
   }, []);
 
