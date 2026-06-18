@@ -93,6 +93,15 @@
 
 直近版のみ列挙。詳細経緯は `src/lib/changelog.ts`、過去版アーカイブは `.claude/done.md`。
 
+- **2.9 (2026-06-15)**: 上記 #238 後の **多角的バグ再点検 (11 エージェント × 敵対的検証)** で確定した低重大度 P3 3 件を修正 ([PR #240](https://github.com/yyamazaki-lym/raid-repository/pull/240) `6cf0f97` squash merge、2026-06-16)
+  - **発端**: ユーザー要望「バグがないか再確認」。#238 マージ後の main を対象に、presence ハッシュ化 / dead code 削除を中心へ #223 以降の新規分を 5 次元 (presence-hash / deadcode / blocklist / presence-228 / 広域スイープ+批評) で並列バグ探索 → 各検出を敵対的に検証する review workflow を実行。結論: **P0/P1/P2 級なし** (#238 の変更が新規バグを入れた事実もなし)。確定 P3 3 件を本 PR で解消、誤検知 3 件は反証。
+  - **修正 (P3 3 件、いずれも非ユーザー可視)**:
+    - **presence 通信断時の stale 凍結**: `use-online-presence.ts` の subscribe が `SUBSCRIBED` のみ処理していたのを `CHANNEL_ERROR`/`TIMED_OUT`/`CLOSED` で `setCount(0)` するよう追加。再接続の sync 再発火で自己回復、docstring とも整合。
+    - **demo の「ONLINE 1」固定誤カウント**: 全 demo ゲストが固定 presence key に畳まれるため `useOnlinePresence(selfKey, enabled=false)` で購読をオフ (装飾「ONLINE」のみ + 無駄な WS 接続削減)。`online-presence-indicator` に `isDemoGuest` prop 追加、`site-header` から既算出値を渡す。本番は全員実セッションで非該当。
+    - **confirm() 並行呼び出しの Promise リーク**: `confirm-dialog.tsx` の `confirm()` に旧 pending を `resolve(false)` してから上書きするガードを追加し、未解決 Promise (await 永久ハング) を防止。現 caller は全て直列 await で発火経路なしの潜在欠陥への保険。
+  - **棄却した誤検知 3 件 (修正不要)**: blocklist add の RLS silent-fail (INSERT/DELETE が同一 client・JWT・RLS 述語で片側抜け不可) / presence 再接続後の re-track 漏れ (P2 申告、Phoenix `resend` が recHooks 経由で `SUBSCRIBED` 再発火) / StrictMode の channel 競合 (`removeChannel` が cleanup 内で同期 teardown 完了) — いずれも `@supabase/realtime-js 2.104.1` 実コードまで辿って反証。
+  - **検証**: tsc / eslint (0 errors) / build pass + CI lint pass。changelog / 版番号は据え置き (非ユーザー可視、#231 同方針)。
+
 - **2.9 (2026-06-15)**: 総合レビュー後の追加確認で検出した **presence key の Discord ID 露出** を解消 + 周辺 dead code 掃除 ([PR #238](https://github.com/yyamazaki-lym/raid-repository/pull/238) `147d9b5` squash merge、2026-06-16)
   - **発端**: ユーザー要望「色々追加したので全体的にエンバグ / バグ / デザイン崩れ / セキュリティ抜け / チェック漏れを確認」。#223 以降の新規分 (blocklist #232 / presence #228 / ファイル分割 #224 #225 / UI #231 #234 / ラベル #236) を専門レビュー 3 系統 (RLS / Next16 整合 / 分割挙動保持) + 自己精査。結果 **P0/P1 級のエンバグ・認可漏れ・デザイン崩れなし**、blocklist の RLS/認可も三層防御 (app gate + is_admin RLS + 汎用ループ外で非公開) で健全と確認、分割 #224/#225 もバイト単位一致で挙動保持。検出した低重大度 1 件 + 既存 dead code をこの PR で解消。
   - **① presence key のハッシュ化 (情報露出、Low)**: ヘッダー ONLINE 表示 (#228) は presence key に**生の Discord ID** を使用していた。presence チャンネル `online-presence` は公開 anon key だけで join でき `presenceState()` のキーが列挙可能なため、オンライン中メンバーの Discord ID が誰にでも見えうる新規露出面だった (単一テナント・低重大度だが #228 で装飾→実データ broadcast 化した分)。`auth.ts` の `getCurrentUserDiscordId()` を廃止し `getCurrentUserPresenceKey()` を新設 (`HMAC-SHA256(discordId, salt=SECRET_ENCRYPTION_KEY)` の hex、salt 未設定 fork は plain SHA-256 fallback、**既存 server secret 流用で本番/demo への新規 env 追加不要**)。`site-header.tsx` の selfKey を opaque ハッシュに差替えて生 ID を RSC payload / client bundle に一切載せない。同一 ID → 同一ハッシュなので「複数タブ=1カウント」「distinct数=メンバー数」は不変、hook (`use-online-presence.ts`) / indicator はロジック不変 (docstring のみ更新)。
