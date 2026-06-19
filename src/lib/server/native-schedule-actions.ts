@@ -9,7 +9,10 @@ import {
 
 import { assertAdminResult, requireDiscordMember } from "./auth";
 import { dbError } from "./db-error";
-import { notifyNativeScheduleSession } from "./native-schedule-discord";
+import {
+  computeJstTodayUtcRange,
+  notifyNativeScheduleSession,
+} from "./native-schedule-discord";
 
 /**
  * TODO #2 phase 2-A (2026-05-07): native スケジュール用 Server Actions。
@@ -109,6 +112,14 @@ export async function createNativeScheduleSessionAction(
  * 投稿が起きない (status を CANDIDATE←→DECISION で連打しても通知は 1 回)。
  *
  * 失敗時は warn log のみで握りつぶす (status 更新自体は成功している)。
+ *
+ * P3-q (2026-06-19 監査): 通知本文は「本日の固定活動予定日です」が固定文言の
+ * ため、開催日が JST の今日でないセッション (= 数日先の候補を事前確定した場合)
+ * に発火すると先頭文と日付が食い違う。当日リマインドは cron 経路
+ * (`dispatchNoonNotifyForToday`) に一本化し、on-decision 自動通知は **開催日が
+ * JST 今日のセッションのみ**に限定する。日付判定は cron と同じ timestamptz 範囲
+ * クエリ (`computeJstTodayUtcRange`) を Postgres 側で評価して ISO 表記揺れを避ける。
+ * 手動 Bell ボタン (`notifyNativeScheduleSessionAction`) は日付を問わず従来どおり。
  */
 async function maybeAutoNotifyOnDecision(sessionId: string): Promise<void> {
   try {
@@ -120,6 +131,16 @@ async function maybeAutoNotifyOnDecision(sessionId: string): Promise<void> {
       .maybeSingle();
     const enabled = (data as { value?: string } | null)?.value === "true";
     if (!enabled) return;
+    // 開催日が JST 今日でなければ当日通知しない (cron と同じ範囲判定を Postgres 側で)。
+    const { todayStartUtc, tomorrowStartUtc } = computeJstTodayUtcRange();
+    const { data: todaySession } = await supabase
+      .from("native_schedule_sessions")
+      .select("id")
+      .eq("id", sessionId)
+      .gte("parsed_date", todayStartUtc)
+      .lt("parsed_date", tomorrowStartUtc)
+      .maybeSingle();
+    if (!todaySession) return;
     const r = await notifyNativeScheduleSession({
       sessionId,
       respectToggle: true,
