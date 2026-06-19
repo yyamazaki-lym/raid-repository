@@ -49,7 +49,7 @@
 
 **→ 実質の残作業は項目 1 (Discord 通知 ON 切替、ユーザー判断) のみ。** 総合レビュー (P0/P1/P2/P3) は実施対象を全消化、追加機能 (presence / blocklist) も実機検収完了 (見送り確定分を除く)。
 
-5. **✅ 全体再監査 (2026-06-19) — 確定 20 件を全修正済 (#242–#248)**: 13 領域マルチエージェント監査で P0/P1 ゼロを再確認し、確定した P2 2 件 (SSRF #242 / FFLogs wipe #243) + P3 18 件 (#244–#248) を 7 PR で全修正・merge (changelog 据え置き)。詳細は下記「完了済み TODO」2.9 (2026-06-15) の 2026-06-19 エントリ。**実機確認推奨 5 点** (出欠コメント保存 / 未来日確定の「本日」非表示 / 無効タブ直URL 404 / reduced-motion / 画像孤児掃除) も同エントリ末尾に記載。
+5. **✅ 全体再監査 (2026-06-19) — 確定 20 件を全修正・実機検収済 (#242–#248)**: 13 領域マルチエージェント監査で P0/P1 ゼロを再確認し、確定した P2 2 件 (SSRF #242 / FFLogs wipe #243) + P3 18 件 (#244–#248) を 7 PR で全修正・merge (changelog 据え置き = #245 のユーザー可視分も載せない確定)。dev preview 再現不可だった実機確認 5 点 (出欠コメント保存 / 未来日確定の「本日」非表示 / 無効タブ直URL 404 / reduced-motion / 画像孤児掃除) は **2026-06-19 ユーザー実機確認 OK で検収完了**。詳細は下記「完了済み TODO」2.9 (2026-06-15) の 2026-06-19 エントリ。
 
 ## 未完了 TODO 一覧
 
@@ -107,8 +107,8 @@
     - **#247 (P3-j/k/l/r)**: Dialog/Popover/Dropdown の入場アニメを reduced-motion で zoom/slide/blur 抑止 (tw-animate CSS 変数を中立値化、fade のみ残す) / `MainActionSlot` の sticky 閾値を magic number から `--header-h`+`--nav-h` 導出に (F-3 #206 の取り残し) / legend 運用ルール popover に Escape 閉じ + aria-controls / native settings/通知系 5 ファイルの `window.confirm` を `useConfirm()` に統一。
     - **#248 (P3-g/h/m/n/p、schema 変更)**: 無効タブ (`tab_config.enabled=false`) の直 URL/ブックマークを各 sub-page で `notFound()` (ナビ非表示と到達性の一致) / 画像アップロード孤児を storage の admin DELETE policy + ダイアログ後始末で掃除 / gphoto 編集時も Discord CDN URL を Storage 退避 (image kind と対称、24h 失効防止) / `attendance.comment` に sanitize + DB CHECK (symbol と対称、将来の注入面を予防) / 祝日 fallback 表を 2029-2030 まで延長 (天文計算式で算出・既存と整合確認)。**schema 2 件 (comment CHECK / storage DELETE policy) は本番/demo 自動デプロイ成功**。
   - **検証**: 各 PR で tsc / eslint (0 errors) / build / CI lint pass。#242 は node 実測 (18 ケース)、サーバ系 (#243/#246 等) は制御フロー/ロジックレビューで担保。実 cron 競合・RLS・UI 操作系は dev preview 再現不可のためロジック検証 + 本番実機はユーザー委任。
-  - **changelog / 版番号**: **据え置き** (P2/P3 ともバグ硬化・予防で非ユーザー可視寄り。#238/#240 同方針)。**#245 の 3 件 (ボタン hover / お気に入り選択 / 確定通知文言) はユーザー可視のため、更新履歴へ載せる場合は別途 changelog 追記をユーザー判断で。**
-  - **実機確認推奨 (dev preview 再現不可分)**: ① 非 admin の出欠コメント保存 (P3-g sanitize) ② 未来日を確定したとき「本日」表記が出ない (P3-q) ③ 無効化したタブを直 URL で開くと 404 (P3-m) ④ reduced-motion 設定でダイアログの拡大/スライドが止まる (P3-j) ⑤ 画像アップロード→キャンセルで Storage に残骸が残らない (P3-n)。
+  - **changelog / 版番号**: **据え置き** (P2/P3 ともバグ硬化・予防で非ユーザー可視寄り。#238/#240 同方針)。**#245 の 3 件 (ボタン hover / お気に入り選択 / 確定通知文言) も更新履歴へ載せない確定 (ユーザー判断 2026-06-19)** — 再提案不要。
+  - **実機確認 OK (2026-06-19、ユーザー確認済)**: dev preview 再現不可だった 5 点 — ① 非 admin の出欠コメント保存 (P3-g sanitize) ② 未来日を確定したとき「本日」表記が出ない (P3-q) ③ 無効化したタブを直 URL で開くと 404 (P3-m) ④ reduced-motion 設定でダイアログの拡大/スライドが止まる (P3-j) ⑤ 画像アップロード→キャンセルで Storage に残骸が残らない (P3-n) — をユーザー実機で確認 OK。これで本監査 (#242–#248) の検収完了。
 
 - **2.9 (2026-06-15)**: 上記 #238 後の **多角的バグ再点検 (11 エージェント × 敵対的検証)** で確定した低重大度 P3 3 件を修正 ([PR #240](https://github.com/yyamazaki-lym/raid-repository/pull/240) `6cf0f97` squash merge、2026-06-16)
   - **発端**: ユーザー要望「バグがないか再確認」。#238 マージ後の main を対象に、presence ハッシュ化 / dead code 削除を中心へ #223 以降の新規分を 5 次元 (presence-hash / deadcode / blocklist / presence-228 / 広域スイープ+批評) で並列バグ探索 → 各検出を敵対的に検証する review workflow を実行。結論: **P0/P1/P2 級なし** (#238 の変更が新規バグを入れた事実もなし)。確定 P3 3 件を本 PR で解消、誤検知 3 件は反証。
