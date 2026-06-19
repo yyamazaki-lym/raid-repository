@@ -66,7 +66,18 @@ export function useRealtimeChannel(opts: {
         },
       )
       .subscribe((status, err) => {
-        if (err) optsRef.current.onSubscribeError?.(status, err);
+        // CHANNEL_ERROR のときだけ第 2 引数 Error が渡され、TIMED_OUT / CLOSED は
+        // status のみ (err=undefined) で配送される (@supabase/realtime-js)。
+        // `if (err)` だと最頻の一時切断 (TIMED_OUT) を取りこぼし
+        // refetchOnSubscribeError フォールバックが効かないため、status 文字列で
+        // 判定する (use-online-presence と同じ意味論)。
+        if (
+          status === "CHANNEL_ERROR" ||
+          status === "TIMED_OUT" ||
+          status === "CLOSED"
+        ) {
+          optsRef.current.onSubscribeError?.(status, err ?? new Error(status));
+        }
       });
 
     return () => {

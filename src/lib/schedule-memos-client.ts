@@ -195,6 +195,11 @@ export function useRealtimeAllScheduleMemos(
   useRealtimeChannel({
     channelPrefix: "schedule-memos-all",
     table: "schedule_session_memos",
+    // 一時的な subscribe 失敗 (CHANNEL_ERROR / TIMED_OUT / CLOSED) 後に全件
+    // 再取得して stale 表示から自己回復する (refetch モードの他フックと同様)。
+    onSubscribeError: () => {
+      void refetchAll();
+    },
     onChange: (payload) => {
       if (payload.eventType === "INSERT") {
         const row = payload.new as ScheduleSessionMemoRow | null;
