@@ -1,5 +1,6 @@
 import { SheetIframe } from "@/components/portal/sheet-iframe";
 import { SheetUrlOnboarding } from "@/components/portal/sheet-url-onboarding";
+import { notFound } from "next/navigation";
 import { findCategoryBySlug } from "@/lib/supabase/categories";
 import { getCurrentUserCanEdit } from "@/lib/server/auth";
 
@@ -28,6 +29,10 @@ export default async function LootPage({
       </p>
     );
   }
+
+  // 監査 P3-m: enabled=false のタブはナビから除外されるが直 URL では描画される。
+  // ナビ非表示と到達性を一致させるため無効タブは 404 にする。
+  if (category.tabConfig?.["loot"]?.enabled === false) notFound();
 
   if (!category.lootSheetUrl) {
     return (

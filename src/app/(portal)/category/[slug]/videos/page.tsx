@@ -1,3 +1,4 @@
+import { notFound } from "next/navigation";
 import { findCategoryBySlug } from "@/lib/supabase/categories";
 import { fetchCategoryLinks } from "@/lib/supabase/category-links";
 import { VideosList } from "./videos-list";
@@ -27,6 +28,10 @@ export default async function VideosPage({
       </p>
     );
   }
+
+  // 監査 P3-m: enabled=false のタブはナビから除外されるが直 URL では描画される。
+  // ナビ非表示と到達性を一致させるため無効タブは 404 にする。
+  if (category.tabConfig?.["videos"]?.enabled === false) notFound();
 
   const videos = await fetchCategoryLinks(category.id, "video");
   return (
