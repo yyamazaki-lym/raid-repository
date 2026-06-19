@@ -209,17 +209,22 @@ export async function checkRateLimit(
 
 /**
  * Vercel / 一般的な reverse proxy 配下から client IP を抽出。
- * `x-forwarded-for` の先頭エントリ (originating client) を採用。
- * fallback は `x-real-ip` → "unknown" (=共有 bucket になる、暴走を防ぐ
- * 観点では fail-closed)。
+ *
+ * ⚠ `x-forwarded-for` の先頭 (leftmost) はクライアントが任意に詐称できる
+ * (プラットフォームは既存ヘッダを剥がさず実 IP を右側に追記するため、leftmost
+ * は完全にクライアント可制御)。これを per-IP bucket のキーにすると、毎リクエスト
+ * 偽 IP を差し込むだけで rate limit を回避できてしまう。そこで Vercel が信頼できる
+ * 発信元 IP として設定する `x-real-ip` を優先する。`x-real-ip` が無い環境
+ * (非 Vercel 等) のみ XFF leftmost に best-effort でフォールバックし、最終 fallback
+ * は "unknown" (= 共有 bucket、暴走を防ぐ観点では fail-closed)。
  */
 export function clientIpFromHeaders(headers: Headers): string {
+  const real = headers.get("x-real-ip");
+  if (real && real.trim()) return real.trim();
   const xff = headers.get("x-forwarded-for");
   if (xff) {
     const first = xff.split(",")[0]?.trim();
     if (first) return first;
   }
-  const real = headers.get("x-real-ip");
-  if (real && real.trim()) return real.trim();
   return "unknown";
 }
