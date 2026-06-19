@@ -185,5 +185,7 @@ export function useRealtimeRecruitmentTemplates(
         rowToTemplate,
       );
     },
+    // 一時的な subscribe 失敗後に全件再取得して stale 表示から自己回復する。
+    refetchOnSubscribeError: true,
   });
 }

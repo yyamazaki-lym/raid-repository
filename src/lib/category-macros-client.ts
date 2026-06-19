@@ -145,5 +145,7 @@ export function useRealtimeCategoryMacros(
       if (error) throw new Error(error.message);
       return ((data ?? []) as CategoryMacroRow[]).map(rowToMacro);
     },
+    // 一時的な subscribe 失敗後に全件再取得して stale 表示から自己回復する。
+    refetchOnSubscribeError: true,
   });
 }

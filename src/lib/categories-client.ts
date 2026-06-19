@@ -105,5 +105,8 @@ export function useRealtimeCategories(initial: Category[]): Category[] {
       if (error) throw new Error(error.message);
       return ((data ?? []) as CategoryRow[]).map(rowToCategory);
     },
+    // 一時的な subscribe 失敗 (CHANNEL_ERROR / TIMED_OUT / CLOSED) 後に全件
+    // 再取得して stale 表示から自己回復する (incremental 版と挙動を揃える)。
+    refetchOnSubscribeError: true,
   });
 }
