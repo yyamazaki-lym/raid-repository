@@ -98,8 +98,9 @@ export function MainActionSlotTarget({ className }: { className?: string }) {
  * stuck=true を context に push、stuck 時は createPortal で children を MainTabs
  * 右端 target へ移送、それ以外は in-flow render。
  *
- * stuck 閾値: STICK_AT 92 / UNSTICK_AT 108 (MainTabs bottom ≈ mobile 94 / desktop 104,
- * 16px buffer)。SubTabs ActionSlot と同じ hysteresis パターンで振動ループを抑止。
+ * stuck 閾値は MainTabs bottom (= --header-h + --nav-h) を getComputedStyle で
+ * 算出し、breakpoint (sm で header 64) を resize で再計算する (F-3 / 監査 P3-k)。
+ * SubTabs ActionSlot と同じ hysteresis パターン (UNSTICK = STICK + 16px) で振動を抑止。
  */
 export function MainActionSlot({ children }: { children: ReactNode }) {
   const ctx = useContext(MainCtx);
@@ -110,8 +111,22 @@ export function MainActionSlot({ children }: { children: ReactNode }) {
   useEffect(() => {
     const sentinel = sentinelRef.current;
     if (!sentinel || !setStuck) return;
-    const STICK_AT = 92;
-    const UNSTICK_AT = 108;
+    // F-3 / 監査 P3-k: MainTabs bottom (= --header-h + --nav-h) を globals.css の
+    // CSS 変数から算出し、breakpoint (sm で header 64) を resize で再計算する。
+    // 旧来の magic number (92 / 108) は header 高変更で無言ズレし、desktop では
+    // 実通過位置 (110px) より早発火していた。CSS 変数が読めない環境は従来値に fallback。
+    let STICK_AT = 102; // header 56 + nav 46
+    let UNSTICK_AT = 118; // +16px buffer
+    const recomputeThresholds = () => {
+      const cs = getComputedStyle(document.documentElement);
+      const px = (v: string) => parseFloat(cs.getPropertyValue(v)) * 16; // rem→px
+      const h = px("--header-h") + px("--nav-h");
+      if (Number.isFinite(h) && h > 0) {
+        STICK_AT = h;
+        UNSTICK_AT = h + 16;
+      }
+    };
+    recomputeThresholds();
     let raf = 0;
     const apply = (next: boolean) => {
       if (stuckRef.current === next) return;
@@ -128,12 +143,16 @@ export function MainActionSlot({ children }: { children: ReactNode }) {
       if (raf) return;
       raf = requestAnimationFrame(check);
     };
+    const onResize = () => {
+      recomputeThresholds(); // breakpoint 跨ぎで header 高が変わるため再算出
+      onScroll();
+    };
     check();
     window.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("resize", onScroll);
+    window.addEventListener("resize", onResize);
     return () => {
       window.removeEventListener("scroll", onScroll);
-      window.removeEventListener("resize", onScroll);
+      window.removeEventListener("resize", onResize);
       if (raf) cancelAnimationFrame(raf);
     };
   }, [setStuck]);

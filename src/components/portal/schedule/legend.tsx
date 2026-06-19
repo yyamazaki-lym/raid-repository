@@ -119,12 +119,20 @@ export function Legend({
       if (editing) return; // 編集中は閉じない
       setShowTopText(false);
     };
+    // 監査 P3-l: Escape で閉じられるようにし、キーボードのみのユーザーが dismiss
+    // できるようにする (session-memo-popover と同じパターン)。click-outside と同様、
+    // 編集中は誤閉じ防止でスキップ (明示の保存/取消ボタンを使う)。
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !editing) setShowTopText(false);
+    };
     const handle = setTimeout(() => {
       document.addEventListener("mousedown", onDocClick);
     }, 0);
+    document.addEventListener("keydown", onKeyDown);
     return () => {
       clearTimeout(handle);
       document.removeEventListener("mousedown", onDocClick);
+      document.removeEventListener("keydown", onKeyDown);
     };
   }, [showTopText, editing]);
   // 1.9.16: ラベル "MEMBERS" デフォルト、絶クリア達成済みの固定なら
@@ -178,6 +186,7 @@ export function Legend({
               aria-label="運用ルール / 注意事項を表示"
               title="運用ルール / 注意事項"
               aria-expanded={showTopText}
+              aria-controls="legend-rules-panel"
               className="inline-flex h-6 items-center gap-1 rounded-md border border-[var(--neon-violet)]/40 bg-[var(--neon-violet)]/8 px-2 text-[10px] tracking-normal text-[var(--neon-violet)]/90 transition-all hover:border-[var(--neon-violet)]/70 hover:bg-[var(--neon-violet)]/15 hover:shadow-[0_0_8px_-2px_rgba(167,139,250,0.55)]"
             >
               <MessageSquare className="h-3 w-3" aria-hidden />
@@ -193,6 +202,7 @@ export function Legend({
             {showTopText && (
               <div
                 ref={topTextRef}
+                id="legend-rules-panel"
                 role="dialog"
                 aria-label="運用ルール / 注意事項"
                 className="glass-popup absolute top-full right-0 z-40 mt-1 w-[min(36rem,calc(100vw-2rem))] rounded-lg border border-[var(--neon-violet)]/35 px-3.5 py-3 text-[12px] leading-relaxed text-foreground/85 shadow-[0_12px_40px_-16px_rgba(167,139,250,0.45),0_2px_8px_-2px_rgba(0,0,0,0.4)]"
