@@ -1819,19 +1819,28 @@ async function linkReportsToSessions(
   let matched = 0;
   for (const pair of pairs) {
     const logsUrl = `https://www.fflogs.com/reports/${pair.report.id}`;
-    // TODO #64: insert into `schedule_past_session_logs` with
-    // `source='auto'`. UNIQUE (raw_date, url) constraint で重複を防止。
-    const { error } = await supabase
+    // TODO #64: insert into `schedule_past_session_logs` with `source='auto'`.
+    // P3-e (2026-06-19 監査): plain insert だと cron × 手動同期の競合や cron の
+    // at-least-once 重複実行で UNIQUE(raw_date,url) 違反 (23505) になり、matched
+    // 過少計上 + spurious error log を生んでいた。discord-import と同じ
+    // upsert(ignoreDuplicates) 化で重複 skip を正常系として扱う (整合性は UNIQUE が
+    // 担保)。`.select()` の返却行数で「実際に挿入できた分」だけ matched を数える。
+    const { data: inserted, error } = await supabase
       .from("schedule_past_session_logs")
-      .insert({ raw_date: pair.session.key, url: logsUrl, source: "auto" });
+      .upsert(
+        { raw_date: pair.session.key, url: logsUrl, source: "auto" },
+        { onConflict: "raw_date,url", ignoreDuplicates: true },
+      )
+      .select("url");
     if (error) {
       console.warn(
-        "[fflogs-link/session] insert failed",
+        "[fflogs-link/session] upsert failed",
         pair.session.key,
         error.message,
       );
       continue;
     }
+    if (!inserted || inserted.length === 0) continue; // 競合経路が先に挿入済み
     matched += 1;
     details.push(buildSessionLinkDetail(pair, logsUrl));
   }
@@ -1911,21 +1920,27 @@ async function linkReportsToNativeSessions(
   let matched = 0;
   for (const pair of pairs) {
     const logsUrl = `https://www.fflogs.com/reports/${pair.report.id}`;
-    const { error } = await supabase
+    // P3-e: 競合時の二重挿入を upsert(ignoreDuplicates) で冪等化 (session 版と対称)。
+    const { data: inserted, error } = await supabase
       .from("native_schedule_session_logs")
-      .insert({
-        native_session_id: pair.session.key,
-        url: logsUrl,
-        source: "auto",
-      });
+      .upsert(
+        {
+          native_session_id: pair.session.key,
+          url: logsUrl,
+          source: "auto",
+        },
+        { onConflict: "native_session_id,url", ignoreDuplicates: true },
+      )
+      .select("url");
     if (error) {
       console.warn(
-        "[fflogs-link/native-session] insert failed",
+        "[fflogs-link/native-session] upsert failed",
         pair.session.key,
         error.message,
       );
       continue;
     }
+    if (!inserted || inserted.length === 0) continue; // 競合経路が先に挿入済み
     matched += 1;
     details.push(buildSessionLinkDetail(pair, logsUrl));
   }

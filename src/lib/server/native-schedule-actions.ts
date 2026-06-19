@@ -195,17 +195,27 @@ export async function setNativeScheduleSessionStatusAction(
   }
 
   const supabase = await createClient();
-  const { error } = await supabase
+  // P3-f (2026-06-19 監査): `.select("id").maybeSingle()` で実更新行を確認する。
+  // 付けないと存在しない / 既に削除済みの id でも error=null → ok:true を返し、
+  // しかも DECISION なら下の maybeAutoNotifyOnDecision まで走って「成功」表示に
+  // なる (実際は no-op)。0 行なら失敗扱いにし、通知も行ヒット時のみ発火させる。
+  const { data: updated, error } = await supabase
     .from("native_schedule_sessions")
     .update({ status })
-    .eq("id", trimmed);
+    .eq("id", trimmed)
+    .select("id")
+    .maybeSingle();
   if (error) return { ok: false, reason: dbError("status 更新", error) };
+  if (!updated) {
+    return { ok: false, reason: "対象の候補日が見つかりませんでした" };
+  }
   try {
     revalidatePath("/");
   } catch {
     // best-effort
   }
   // 2.1 (2026-05-12) PR3-B: DECISION 切替時に auto-notify (flag 確認 + dedup あり)。
+  // P3-f: 実際に更新できた (行ヒット) 場合のみ発火し、stale id での誤通知を防ぐ。
   if ((status as NativeSessionStatus) === "DECISION") {
     await maybeAutoNotifyOnDecision(trimmed);
   }

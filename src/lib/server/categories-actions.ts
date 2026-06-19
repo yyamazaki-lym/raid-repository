@@ -1219,6 +1219,19 @@ export async function countStoredPastSessions(): Promise<{
   /** Recent rows for UI inspection / per-row deletion. */
   recentRows: { rawDate: string; parsedDate: string; source: string | null }[];
 }> {
+  // P3-b (2026-06-19 監査): 兄弟 action (snapshotScheduleNow / importPastSchedule
+  // FromDiscord / deleteStoredPastSession 等) と揃えて admin gate を追加。read-only
+  // かつ schedule_past_sessions の SELECT は公開済みのため情報漏洩はないが、admin
+  // 専用の保守 getter として認可境界を一貫させる (defense-in-depth)。
+  const auth = await assertAdminResult();
+  if (!auth.ok) {
+    return {
+      ok: false,
+      reason: "ADMIN ロールが必要です",
+      count: 0,
+      recentRows: [],
+    };
+  }
   const supabase = await createClient();
   const { count, error: cErr } = await supabase
     .from("schedule_past_sessions")
