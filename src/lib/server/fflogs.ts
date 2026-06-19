@@ -1007,38 +1007,6 @@ export async function linkFflogsReportsToVideos(opts?: {
     console.warn("[fflogs] 1.9.11 bootstrap flip failed", e);
   }
 
-  // 1.9.10: wipe stale AUTO entries before re-matching. Manual entries
-  // (set via the memo popover or the video edit dialog) are preserved.
-  // For `category_links` manual rows have `logs_url_source = 'manual'`;
-  // for `schedule_past_session_logs` the `source` column distinguishes
-  // 'auto' from 'manual' rows. This makes every sync produce a fresh,
-  // consistent set of auto matches without requiring the user to click
-  // "全 logs URL クリア" first.
-  try {
-    const cleanupClient = await newWriteClient();
-    await Promise.all([
-      cleanupClient
-        .from("category_links")
-        .update({ logs_url: null })
-        .eq("logs_url_source", "auto")
-        .not("logs_url", "is", null),
-      cleanupClient
-        .from("schedule_past_session_logs")
-        .delete()
-        .eq("source", "auto"),
-      // TODO #73 (2.5, 2026-06-10): native 側も同じ source='auto' wipe を
-      // 走らせて再 match 時に重複 / 古い結果が残らないようにする。manual
-      // entry は将来 UI 化されるまで native 側には存在しない予定だが、
-      // source='manual' 行を温存する設計 (sync と対称) を最初から踏襲。
-      cleanupClient
-        .from("native_schedule_session_logs")
-        .delete()
-        .eq("source", "auto"),
-    ]);
-  } catch (e) {
-    console.warn("[fflogs] auto-cleanup failed", e);
-  }
-
   // Read all sources' configuration.
   // session cookie は secrets テーブル (暗号化) を優先、無ければ
   // 旧 app_settings の plaintext fallback (TODO #35 移行期)。
@@ -1203,6 +1171,40 @@ export async function linkFflogsReportsToVideos(opts?: {
         details: [],
       };
     }
+  }
+
+  // 1.9.10 + 2.x (2026-06-19 監査 P2): wipe stale AUTO entries, then re-link
+  // below. Manual entries (set via the memo popover or the video edit dialog)
+  // are preserved — `category_links` manual rows have `logs_url_source =
+  // 'manual'`; `schedule_past_session_logs` / `native_schedule_session_logs`
+  // use their `source` column. Every successful sync thus produces a fresh,
+  // consistent set of auto matches without requiring the user to clear first.
+  //
+  // ⚠ この wipe は report 取得が成功した後 (= 上の `reports.length === 0 &&
+  // errors` の早期 return を通過した後) でのみ実行する。OAuth 失効 / FFLogs
+  // API 障害 / scrape 403 等の一過性障害で取得 0 件のまま wipe すると、再リンク
+  // されず既存の auto 紐づけが全消去され、日次 cron の度に Logs アイコンが全滅
+  // する (恒久損失ではないが次回成功 sync まで欠落)。取得成功で owned 0 件・
+  // errors 無しのケースは「正当に auto を空にすべき」なのでここに含める。
+  try {
+    const cleanupClient = await newWriteClient();
+    await Promise.all([
+      cleanupClient
+        .from("category_links")
+        .update({ logs_url: null })
+        .eq("logs_url_source", "auto")
+        .not("logs_url", "is", null),
+      cleanupClient
+        .from("schedule_past_session_logs")
+        .delete()
+        .eq("source", "auto"),
+      cleanupClient
+        .from("native_schedule_session_logs")
+        .delete()
+        .eq("source", "auto"),
+    ]);
+  } catch (e) {
+    console.warn("[fflogs] auto-cleanup failed", e);
   }
 
   // Run all linkers (independently — they don't share their used-set
