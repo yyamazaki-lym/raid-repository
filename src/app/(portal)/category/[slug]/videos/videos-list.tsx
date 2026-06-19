@@ -399,6 +399,25 @@ export function VideosList({
     return [...base].reverse();
   }, [liveWithFav, optimisticOrder, sortMode, favoritesOnly]);
 
+  // お気に入りフィルタ ON 中の一括お気に入り解除 (や favoritesOnly トグル) で
+  // 表示集合から外れたカードを選択集合からも掃除する。これをしないと、消えた
+  // カードが選択されたままフローティングバーに件数が残り、後続の bulk 操作が
+  // 不可視カードに作用しうる (総合監査 P3-o)。フィルタが効いていない通常時は
+  // 全カードが visible なので何も削らない (= 選択は維持)。
+  useEffect(() => {
+    setSelectedIds((prev) => {
+      if (prev.size === 0) return prev;
+      const visible = new Set(videos.map((v) => v.id));
+      let changed = false;
+      const next = new Set<string>();
+      for (const id of prev) {
+        if (visible.has(id)) next.add(id);
+        else changed = true;
+      }
+      return changed ? next : prev;
+    });
+  }, [videos]);
+
   // custom 並び替えの DB 確定表示順 (sort_order ASC を表示 DESC に反転) が
   // 楽観順に追いついたら畳む (値マッチ、C-1)。
   useEffect(() => {

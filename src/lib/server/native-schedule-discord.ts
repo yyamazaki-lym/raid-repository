@@ -277,7 +277,7 @@ function parseHour(raw: string | null): number {
  * JST 上の「今日 0:00 〜 明日 0:00」を UTC ISO 文字列で返す。
  * `parsed_date` (timestamptz) を範囲クエリで比較するため。
  */
-function computeJstTodayUtcRange(): {
+export function computeJstTodayUtcRange(): {
   todayStartUtc: string;
   tomorrowStartUtc: string;
 } {
