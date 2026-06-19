@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { setNativeScheduleSessionStatusAction } from "@/lib/server/native-schedule-actions";
 import type { NativeCancelledSessionRow } from "@/lib/schedule/native-admin-client";
+import { useConfirm } from "@/components/portal/confirm-dialog";
 
 /**
  * TODO #2 phase 2-C (2026-05-07): native スケジュールの CANCELLED 行を一覧
@@ -46,18 +47,25 @@ export function NativeCancelledSessionsSection({
   onChanged: () => void;
 }) {
   const router = useRouter();
+  const confirm = useConfirm();
   const [pending, startTransition] = useTransition();
   // spinner を「押したボタン」にだけ出すための識別子 (`${id}:${next}`)。
   // pending boolean だけだと隣のボタンの icon まで spinner に変わる。
   const [pendingKey, setPendingKey] = useState<string | null>(null);
 
-  const onRestore = (
+  const onRestore = async (
     s: NativeCancelledSessionRow,
     next: "CANDIDATE" | "DECISION",
   ) => {
     const label = formatDateLabel(s.parsed_date, s.day_of_week, s.raw_date);
     const nextLabel = next === "DECISION" ? "確定 (DECISION)" : "候補 (CANDIDATE)";
-    if (!confirm(`「${label}」を ${nextLabel} に戻します。よろしいですか?`))
+    if (
+      !(await confirm({
+        title: "ステータスを戻す",
+        description: `「${label}」を ${nextLabel} に戻します。よろしいですか?`,
+        confirmText: "戻す",
+      }))
+    )
       return;
     setPendingKey(`${s.id}:${next}`);
     startTransition(async () => {

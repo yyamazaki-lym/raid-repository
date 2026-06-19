@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Bell, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { notifyNativeScheduleSessionAction } from "@/lib/server/native-schedule-actions";
+import { useConfirm } from "@/components/portal/confirm-dialog";
 
 /**
  * TODO #2 phase 3 (2026-05-08): native セッションを Discord に手動通知する admin button。
@@ -26,13 +27,16 @@ export function SessionDiscordNotifyButton({
   displayDate: string;
 }) {
   const router = useRouter();
+  const confirm = useConfirm();
   const [busy, startTransition] = useTransition();
 
-  const handleClick = () => {
+  const handleClick = async () => {
     if (
-      !confirm(
-        `「${displayDate}」を Discord に通知します。よろしいですか?`,
-      )
+      !(await confirm({
+        title: "Discord に通知",
+        description: `「${displayDate}」を Discord に通知します。よろしいですか?`,
+        confirmText: "通知",
+      }))
     ) {
       return;
     }

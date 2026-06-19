@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
+import { useConfirm } from "@/components/portal/confirm-dialog";
 import {
   countStoredPastSessions,
   deleteStoredPastSession,
@@ -57,6 +58,7 @@ export function PastSessionsSection({
   onChannelIdChange: (value: string) => void;
 }) {
   const router = useRouter();
+  const confirm = useConfirm();
   const [importing, startImport] = useTransition();
   const [importResult, setImportResult] =
     useState<ScheduleHistoryImportResult | null>(null);
@@ -106,8 +108,15 @@ export function PastSessionsSection({
     });
   };
 
-  const onDeleteStoredRow = (rawDate: string) => {
-    if (!confirm(`削除しますか?\n${rawDate}\n\n過去日程からこの日が消えます。Discord 取り込みを再実行しても、この raw_date のメッセージが Discord 100 件に残っていれば再度 insert されます。`)) {
+  const onDeleteStoredRow = async (rawDate: string) => {
+    if (
+      !(await confirm({
+        title: "過去日程を削除",
+        description: `削除しますか?\n${rawDate}\n\n過去日程からこの日が消えます。Discord 取り込みを再実行しても、この raw_date のメッセージが Discord 100 件に残っていれば再度 insert されます。`,
+        confirmText: "削除",
+        destructive: true,
+      }))
+    ) {
       return;
     }
     startDeleteRow(async () => {

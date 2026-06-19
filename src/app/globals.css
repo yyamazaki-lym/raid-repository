@@ -731,6 +731,25 @@
     animation: none !important;
     opacity: 0.7; /* fade-in 完了後の静止可視状態を維持 */
   }
+  /* Dialog / Popover / DropdownMenu の入退場アニメ (#207 では対象外だった
+     user-initiated な popup) から vestibular な zoom (scale) / slide (translate)
+     / blur を除去し、fade (opacity) のみ残す (監査 P3-j)。@keyframes enter/exit が
+     参照する tw-animate-css の CSS 変数を中立値に上書きする方式。fade は残るため
+     Base UI の animationend ベースの unmount もそのまま機能する。 */
+  [data-slot="dialog-content"],
+  [data-slot="dialog-overlay"],
+  [data-slot="popover-content"],
+  [data-slot="dropdown-menu-content"],
+  [data-slot="dropdown-menu-sub-content"] {
+    --tw-enter-scale: 1;
+    --tw-exit-scale: 1;
+    --tw-enter-translate-x: 0;
+    --tw-enter-translate-y: 0;
+    --tw-exit-translate-x: 0;
+    --tw-exit-translate-y: 0;
+    --tw-enter-blur: 0;
+    --tw-exit-blur: 0;
+  }
 }
 
 /* ============================================================
