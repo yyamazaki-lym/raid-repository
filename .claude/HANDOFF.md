@@ -49,6 +49,8 @@
 
 **→ 実質の残作業は項目 1 (Discord 通知 ON 切替、ユーザー判断) のみ。** 総合レビュー (P0/P1/P2/P3) は実施対象を全消化、追加機能 (presence / blocklist) も実機検収完了 (見送り確定分を除く)。
 
+5. **✅ 全体再監査 (2026-06-19) — 確定 20 件を全修正済 (#242–#248)**: 13 領域マルチエージェント監査で P0/P1 ゼロを再確認し、確定した P2 2 件 (SSRF #242 / FFLogs wipe #243) + P3 18 件 (#244–#248) を 7 PR で全修正・merge (changelog 据え置き)。詳細は下記「完了済み TODO」2.9 (2026-06-15) の 2026-06-19 エントリ。**実機確認推奨 5 点** (出欠コメント保存 / 未来日確定の「本日」非表示 / 無効タブ直URL 404 / reduced-motion / 画像孤児掃除) も同エントリ末尾に記載。
+
 ## 未完了 TODO 一覧
 
 ページ / 領域ごとに分類。番号は履歴上の通番なので連続しないが、`changelog.ts` の参照キーとしてそのまま維持する。
@@ -92,6 +94,21 @@
 ## 完了済み TODO
 
 直近版のみ列挙。詳細経緯は `src/lib/changelog.ts`、過去版アーカイブは `.claude/done.md`。
+
+- **2.9 (2026-06-15)**: ユーザー要望「全体を通してエラー / バグ / 認証 / デザイン / 機能に問題がないかチェック」を受けた **13 領域 × (専門レビュー → 敵対的検証) のマルチエージェント全体監査** と、確定した **P2 2 件 + P3 18 件** の修正 (7 PR、いずれも squash merge、2026-06-19)。レポート全文 = `.claude/plans/snoopy-twirling-cupcake.md`
+  - **監査 (2026-06-19)**: #240 以降の main を対象に、セキュリティ/認証・バグ/挙動・Next16/React19 適合・デザイン/a11y・機能の 13 領域を並列レビュー → 各検出を実コードまで辿って敵対的に検証する workflow を実行 (36 エージェント)。総検出 23 → **確定 20 (P2 2 / P3 18)、誤検知 3 を反証棄却**。**P0/P1 はゼロ** (認証 4 層・RLS/GRANT・secrets/暗号・Next16 適合はクリーンと再確認)。棄却 3 件 = discord-schedule の DELETE/INSERT は対象集合 disjoint で損失なし / native TIME_RE は分グループが 2 桁必須で正常 / jstDateTimeString hour==24 は現行 V8 で到達不能な dead code。
+  - **P2 2 件**:
+    - **#242 SSRF (`url-safe.ts`)**: `isPublicHttpUrl` が IPv4-mapped IPv6 (`http://[::ffff:127.0.0.1]/` → WHATWG 正規化で 16 進形 `::ffff:7f00:1`) で loopback/private/**IMDS** ブロックを迂回していた (10 進専用正規表現が hex 形を取りこぼし `return true`)。`::` 始まりの埋め込み IPv4 を一律ブロック + link-local を `fe80::/10` 全体に拡張。node 18 ケース実測 pass。
+    - **#243 FFLogs wipe 順序 (`fflogs.ts`)**: `linkFflogsReportsToVideos` が report 取得**前**に source='auto' リンクを無条件 wipe → 一過性障害 (OAuth 失効 / API 障害 / scrape 403) で「削除だけ確定」し日次 cron の度に Logs アイコン全滅していた。wipe を取得成功確認後 (失敗系の早期 return 通過後) に移動し、失敗時は既存 auto を温存。manual リンク・戻り値契約は不変。
+  - **P3 18 件 (5 PR)**:
+    - **#244 (P3-c/d)**: `useRealtimeChannel` の subscribe エラー判定を `if(err)` から status ベースに変更 (CHANNEL_ERROR のみ err 付与で TIMED_OUT/CLOSED を取りこぼしていた) + refetch モード 3 フック (categories/macros/templates) と schedule-memos に subscribe 失敗フォールバックを付与。
+    - **#245 (P3-i/o/q、一部ユーザー可視)**: default ボタン hover の `[a]:hover:` (anchor 限定で素の `<button>` に効かない) → `hover:` で全域 primary ボタンの hover 復活 / お気に入りフィルタ ON 中の一括★解除で表示集合から外れたカードを選択集合から掃除 / on-decision 自動通知を開催日が JST 今日のセッションのみに限定 (未来日確定で「本日の固定活動予定日です」誤投稿の解消、cron と同じ範囲判定を Postgres 側で)。
+    - **#246 (P3-a/b/e/f)**: rate-limit の client IP を `x-real-ip` 優先 (spoofable な XFF leftmost 回避対策) / `countStoredPastSessions` に admin gate 追加 (兄弟と一貫) / fflogs session・native linker を `upsert(ignoreDuplicates).select()` 化 (競合時の 23505/matched 過少を解消) / `setNativeScheduleSessionStatusAction` を `.select().maybeSingle()` で 0 行検知し通知を行ヒット時のみに。
+    - **#247 (P3-j/k/l/r)**: Dialog/Popover/Dropdown の入場アニメを reduced-motion で zoom/slide/blur 抑止 (tw-animate CSS 変数を中立値化、fade のみ残す) / `MainActionSlot` の sticky 閾値を magic number から `--header-h`+`--nav-h` 導出に (F-3 #206 の取り残し) / legend 運用ルール popover に Escape 閉じ + aria-controls / native settings/通知系 5 ファイルの `window.confirm` を `useConfirm()` に統一。
+    - **#248 (P3-g/h/m/n/p、schema 変更)**: 無効タブ (`tab_config.enabled=false`) の直 URL/ブックマークを各 sub-page で `notFound()` (ナビ非表示と到達性の一致) / 画像アップロード孤児を storage の admin DELETE policy + ダイアログ後始末で掃除 / gphoto 編集時も Discord CDN URL を Storage 退避 (image kind と対称、24h 失効防止) / `attendance.comment` に sanitize + DB CHECK (symbol と対称、将来の注入面を予防) / 祝日 fallback 表を 2029-2030 まで延長 (天文計算式で算出・既存と整合確認)。**schema 2 件 (comment CHECK / storage DELETE policy) は本番/demo 自動デプロイ成功**。
+  - **検証**: 各 PR で tsc / eslint (0 errors) / build / CI lint pass。#242 は node 実測 (18 ケース)、サーバ系 (#243/#246 等) は制御フロー/ロジックレビューで担保。実 cron 競合・RLS・UI 操作系は dev preview 再現不可のためロジック検証 + 本番実機はユーザー委任。
+  - **changelog / 版番号**: **据え置き** (P2/P3 ともバグ硬化・予防で非ユーザー可視寄り。#238/#240 同方針)。**#245 の 3 件 (ボタン hover / お気に入り選択 / 確定通知文言) はユーザー可視のため、更新履歴へ載せる場合は別途 changelog 追記をユーザー判断で。**
+  - **実機確認推奨 (dev preview 再現不可分)**: ① 非 admin の出欠コメント保存 (P3-g sanitize) ② 未来日を確定したとき「本日」表記が出ない (P3-q) ③ 無効化したタブを直 URL で開くと 404 (P3-m) ④ reduced-motion 設定でダイアログの拡大/スライドが止まる (P3-j) ⑤ 画像アップロード→キャンセルで Storage に残骸が残らない (P3-n)。
 
 - **2.9 (2026-06-15)**: 上記 #238 後の **多角的バグ再点検 (11 エージェント × 敵対的検証)** で確定した低重大度 P3 3 件を修正 ([PR #240](https://github.com/yyamazaki-lym/raid-repository/pull/240) `6cf0f97` squash merge、2026-06-16)
   - **発端**: ユーザー要望「バグがないか再確認」。#238 マージ後の main を対象に、presence ハッシュ化 / dead code 削除を中心へ #223 以降の新規分を 5 次元 (presence-hash / deadcode / blocklist / presence-228 / 広域スイープ+批評) で並列バグ探索 → 各検出を敵対的に検証する review workflow を実行。結論: **P0/P1/P2 級なし** (#238 の変更が新規バグを入れた事実もなし)。確定 P3 3 件を本 PR で解消、誤検知 3 件は反証。
