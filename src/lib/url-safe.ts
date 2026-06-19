@@ -91,17 +91,21 @@ export function isPublicHttpUrl(raw: string | null | undefined): boolean {
     return true;
   }
 
-  // IPv6 リテラル判定 (簡易): `:` を含み、`.` を含まない (または IPv4-mapped) もの。
+  // IPv6 リテラル判定 (簡易): `:` を含む host。
   if (host.includes(":")) {
-    if (host === "::" || host === "::1") return false;
-    if (host.startsWith("fe80:") || host.startsWith("fe80::")) return false; // link-local
+    if (host === "::" || host === "::1") return false; // unspecified / loopback
+    // link-local fe80::/10 — 先頭 hextet は fe80〜febf。`startsWith("fe80:")` だと
+    // fe9x/feax/febx を取りこぼすため範囲全体を覆う正規表現にする。
+    if (/^fe[89ab][0-9a-f]?:/.test(host)) return false;
     if (/^f[cd][0-9a-f]{0,2}:/.test(host)) return false; // unique-local fc00::/7
-    // IPv4-mapped (`::ffff:10.0.0.1`) のような形式は末尾 IPv4 を再判定。
-    const mapped = host.match(/::(?:ffff:)?(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/);
-    if (mapped) {
-      return isPublicHttpUrl(`${parsed.protocol}//${mapped[1]}`);
-    }
-    // それ以外の IPv6 は公開アドレス扱い。
+    // IPv4-mapped / IPv4-compatible (`::ffff:127.0.0.1` 等) は `::` で始まる。
+    // ⚠ WHATWG URL は埋め込み IPv4 を 16 進 hextet に正規化する
+    // (例: `::ffff:127.0.0.1` → `::ffff:7f00:1`、`::ffff:169.254.169.254` → `::ffff:a9fe:a9fe`)
+    // ため、10 進ドット形だけを見る判定では loopback / private / link-local / IMDS を
+    // 取りこぼし公開扱いしてしまう。公開ホストへの到達に埋め込み IPv4 形式は不要なので、
+    // `::` 始まり (10 進/16 進いずれの表記でも) は一律ブロックして内部 IP 露出を防ぐ。
+    if (host.startsWith("::")) return false;
+    // それ以外の IPv6 (グローバル unicast 2000::/3 等) は公開アドレス扱い。
     return true;
   }
 
