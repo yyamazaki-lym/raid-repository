@@ -833,7 +833,13 @@ export async function upsertNativeScheduleAttendanceAction(
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, 32);
-  const comment = input.comment?.trim() ?? null;
+  // P3-g (2026-06-19 監査): comment も symbol と同じ脅威モデル (本人=非 admin が
+  // anon key + 自分の JWT で書ける唯一の経路、将来 UI/通知に露出した際の注入面)。
+  // symbol と対称に制御文字を空白化し 200 字に制限する (現状 UI 未露出だが予防的に)。
+  const commentRaw = input.comment
+    ? input.comment.replace(/\p{Cc}/gu, " ").replace(/\s+/g, " ").trim().slice(0, 200)
+    : "";
+  const comment = commentRaw ? commentRaw : null;
 
   if (!symbol) {
     const { error } = await supabase

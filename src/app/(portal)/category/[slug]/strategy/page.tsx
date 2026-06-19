@@ -1,3 +1,4 @@
+import { notFound } from "next/navigation";
 import { findCategoryBySlug } from "@/lib/supabase/categories";
 import { fetchCategoryLinks } from "@/lib/supabase/category-links";
 import { fetchCategoryGphotoAlbums } from "@/lib/supabase/category-gphoto-albums";
@@ -26,6 +27,10 @@ export default async function StrategyPage({
       </p>
     );
   }
+
+  // 監査 P3-m: enabled=false のタブはナビから除外されるが直 URL では描画される。
+  // ナビ非表示と到達性を一致させるため無効タブは 404 にする。
+  if (category.tabConfig?.["strategy"]?.enabled === false) notFound();
 
   // Phase 15 / 16 (2026-05-13): リンク / 画像 / Google フォト系を並行プリフェッチ。
   // fetchCategoryLinks は React.cache 済だが kind 違いは別キー扱いで

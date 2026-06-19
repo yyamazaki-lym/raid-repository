@@ -712,6 +712,16 @@ ALTER TABLE public.native_schedule_attendances
   ADD CONSTRAINT native_schedule_attendances_symbol_sane
   CHECK (char_length(symbol) <= 32 AND symbol !~ '[[:cntrl:]]') NOT VALID;
 
+-- 監査 P3-g (2026-06-19): comment も symbol と同じ脅威モデル (本人=非 admin が
+-- PostgREST 直叩きで self-row policy を通して書ける) のため、app 層サニタイズ
+-- (制御文字除去 + 200 字制限) を DB 層でも担保する。comment は nullable なので
+-- NULL は許可。NOT VALID で既存行は検証せず新規 INSERT/UPDATE のみ適用。
+ALTER TABLE public.native_schedule_attendances
+  DROP CONSTRAINT IF EXISTS native_schedule_attendances_comment_sane;
+ALTER TABLE public.native_schedule_attendances
+  ADD CONSTRAINT native_schedule_attendances_comment_sane
+  CHECK (comment IS NULL OR (char_length(comment) <= 200 AND comment !~ '[[:cntrl:]]')) NOT VALID;
+
 DROP TRIGGER IF EXISTS set_updated_at_native_schedule_attendances
   ON public.native_schedule_attendances;
 CREATE TRIGGER set_updated_at_native_schedule_attendances
@@ -1123,6 +1133,7 @@ ON CONFLICT (id) DO UPDATE SET
 
 DROP POLICY IF EXISTS "category-strategy-images public read"          ON storage.objects;
 DROP POLICY IF EXISTS "category-strategy-images authenticated insert" ON storage.objects;
+DROP POLICY IF EXISTS "category-strategy-images authenticated delete" ON storage.objects;
 
 CREATE POLICY "category-strategy-images public read"
   ON storage.objects FOR SELECT
@@ -1132,6 +1143,19 @@ CREATE POLICY "category-strategy-images authenticated insert"
   ON storage.objects FOR INSERT
   TO authenticated
   WITH CHECK (
+    bucket_id = 'category-strategy-images'
+    AND (auth.jwt() -> 'app_metadata' ->> 'is_admin') = 'true'
+  );
+
+-- 監査 P3-n (2026-06-19): admin が画像をアップロード→ダイアログをキャンセル /
+-- 別 URL で保存 / 重複アップロードすると、参照されない Storage オブジェクトが
+-- 孤児として残留する (DELETE policy が無いため client から消せなかった)。
+-- INSERT と対称の is_admin DELETE policy を追加し、image-form-dialog が自分の
+-- アップロード残骸を後始末できるようにする。
+CREATE POLICY "category-strategy-images authenticated delete"
+  ON storage.objects FOR DELETE
+  TO authenticated
+  USING (
     bucket_id = 'category-strategy-images'
     AND (auth.jwt() -> 'app_metadata' ->> 'is_admin') = 'true'
   );

@@ -1640,7 +1640,11 @@ export async function updateCategoryLinkAction(
 
   // Phase 17 (2.x, 2026-05-15): kind='image' 行の URL が Discord CDN URL に編集
   // された場合も Storage に退避する。kind は patch に含まれないので既存行を
-  // SELECT して確定 (画像 kind 以外は migrate しない)。
+  // SELECT して確定。
+  // P3-p (2026-06-19 監査): gphoto kind (Google フォト由来のばら画像) も
+  // <Image src={link.url}> で直接描画され、Discord CDN URL を貼られると 24h で
+  // 失効する。create 経路は image kind のみ退避していたため編集経路と非対称
+  // だった。image / gphoto の両 kind を退避対象にする (どちらも url=画像実体)。
   let urlPatch = patch.url;
   let thumbnailPatch: string | undefined;
   if (urlPatch !== undefined && isDiscordCdnUrl(urlPatch)) {
@@ -1655,7 +1659,7 @@ export async function updateCategoryLinkAction(
         reason: dbError("リンク取得", selErr ?? null),
       };
     }
-    if (existing.kind === "image") {
+    if (existing.kind === "image" || existing.kind === "gphoto") {
       const migrated = await migrateDiscordImageToStorage(
         urlPatch,
         existing.category_id as string,

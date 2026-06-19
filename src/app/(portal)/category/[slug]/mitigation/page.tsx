@@ -1,5 +1,6 @@
 import { SheetIframe } from "@/components/portal/sheet-iframe";
 import { SheetUrlOnboarding } from "@/components/portal/sheet-url-onboarding";
+import { notFound } from "next/navigation";
 import { findCategoryBySlug } from "@/lib/supabase/categories";
 import { getCurrentUserCanEdit } from "@/lib/server/auth";
 
@@ -28,6 +29,11 @@ export default async function MitigationPage({
       </p>
     );
   }
+
+  // 監査 P3-m: enabled=false のタブはナビ (sub-tabs / カード / 切替メニュー) から
+  // 除外されるが、直 URL / ブックマークでは page が描画されてしまう。ナビ非表示と
+  // 到達性を一致させるため無効タブは 404 にする (role gate は別途 layout で維持)。
+  if (category.tabConfig?.["mitigation"]?.enabled === false) notFound();
 
   if (!category.mitigationSheetUrl) {
     return (

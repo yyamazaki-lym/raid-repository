@@ -1,3 +1,4 @@
+import { notFound } from "next/navigation";
 import { findCategoryBySlug } from "@/lib/supabase/categories";
 import {
   fetchCategoryMacros,
@@ -27,6 +28,10 @@ export default async function MacrosPage({
       </p>
     );
   }
+
+  // 監査 P3-m: enabled=false のタブはナビから除外されるが直 URL では描画される。
+  // ナビ非表示と到達性を一致させるため無効タブは 404 にする。
+  if (category.tabConfig?.["macros"]?.enabled === false) notFound();
 
   const [macros, templates] = await Promise.all([
     fetchCategoryMacros(category.id),

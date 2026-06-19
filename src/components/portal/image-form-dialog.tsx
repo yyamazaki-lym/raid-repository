@@ -73,8 +73,28 @@ export function ImageFormDialog({
   const isEdit = !!link;
   const isControlled = controlledOpen !== undefined;
   const [internalOpen, setInternalOpen] = useState(false);
+  // 監査 P3-n: このダイアログ内でアップロード済みだが「最終的に保存へ採用され
+  // なかった」画像 (キャンセル / 別 URL で保存 / 重複アップロードで上書き) の
+  // Storage 残骸を後始末するため、直近アップロードの path / publicUrl を保持する。
+  const uploadedRef = useRef<{ path: string; publicUrl: string } | null>(null);
+  // 孤児オブジェクトを Storage から削除 (admin の is_admin DELETE policy 経由、
+  // best-effort)。当セッションでアップした path のみ渡るため既存参照の誤削除はない。
+  const removeOrphanUpload = (path: string) => {
+    try {
+      void createClient()
+        .storage.from("category-strategy-images")
+        .remove([path]);
+    } catch {
+      // best-effort — 残っても実害は緩慢な容量増のみ
+    }
+  };
   const open = isControlled ? controlledOpen! : internalOpen;
   const setOpen = (next: boolean) => {
+    // 保存に採用されなかったアップロード残骸を、閉じる時に掃除する。
+    if (!next && uploadedRef.current) {
+      removeOrphanUpload(uploadedRef.current.path);
+      uploadedRef.current = null;
+    }
     if (isControlled) controlledOnOpenChange?.(next);
     else setInternalOpen(next);
   };
@@ -142,6 +162,12 @@ export function ImageFormDialog({
       const { data } = supabase.storage
         .from("category-strategy-images")
         .getPublicUrl(path);
+      // 監査 P3-n: 同一セッションで再アップロードしたら直前の残骸を削除し、最新
+      // アップロードだけを保持する (保存採用判定は onSubmit / setOpen で行う)。
+      if (uploadedRef.current && uploadedRef.current.path !== path) {
+        removeOrphanUpload(uploadedRef.current.path);
+      }
+      uploadedRef.current = { path, publicUrl: data.publicUrl };
       setUrl(data.publicUrl);
       toast.success("画像をアップロードしました");
     } finally {
@@ -217,6 +243,11 @@ export function ImageFormDialog({
       return;
     }
 
+    // 監査 P3-n: アップロード画像が最終 URL として採用されたら残骸扱いしない
+    // (採用されなかった場合は uploadedRef を残し、下の setOpen(false) で削除)。
+    if (uploadedRef.current && uploadedRef.current.publicUrl === u) {
+      uploadedRef.current = null;
+    }
     toast.success(isEdit ? "更新しました" : "画像を追加しました");
     setOpen(false);
   };
