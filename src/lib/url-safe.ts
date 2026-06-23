@@ -66,6 +66,13 @@ export function isPublicHttpUrl(raw: string | null | undefined): boolean {
   if (host.startsWith("[") && host.endsWith("]")) {
     host = host.slice(1, -1);
   }
+  // 末尾ドット付き FQDN (例 `localhost.`) は WHATWG URL が正規化しない
+  // (実測: new URL("http://localhost./").hostname === "localhost.")。
+  // 剥がさないと下のホスト名ブロック (=== "localhost" / .endsWith(".local")
+  // 等) を素通りして loopback / 内部 zone へ到達できてしまう。IPv4-mapped
+  // IPv6 迂回 (#242) と同種の正規化漏れなので、ここで正規化する。なお IPv4
+  // リテラルの末尾ドット (`127.0.0.1.`) は URL 側が既に剥がすため影響しない。
+  host = host.replace(/\.+$/, "");
   if (!host) return false;
 
   // ホスト名ベースのブロック (loopback / 内部 zone)。

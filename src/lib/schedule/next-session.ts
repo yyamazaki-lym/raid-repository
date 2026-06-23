@@ -43,8 +43,9 @@ export type NextSessionResult =
 
 /**
  * Vercel Data Cache tag for character-sheets fetches。
- * iframe edit dialog 閉じる時に server action から `revalidateTag` で
- * 明示無効化される (`@/lib/server/schedule-cache-actions`)。
+ * iframe edit dialog 閉じる時に server action から `updateTag` で
+ * 明示無効化される (`@/lib/server/schedule-cache-actions`、Next.js 16 の
+ * read-your-own-writes 向け API)。
  */
 export const SCHEDULE_CACHE_TAG = "schedule";
 

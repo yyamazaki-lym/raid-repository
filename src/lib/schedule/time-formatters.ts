@@ -1,3 +1,5 @@
+import { jstYmdString } from "@/lib/jst-date";
+
 /**
  * Quick "5分前 / 2時間前 / 3日前 / YYYY-MM-DD" formatter for the memo
  * timestamp. Long-form date once it gets old enough that relative
@@ -15,9 +17,7 @@ export function formatRelativeTime(iso: string): string {
   if (hr < 24) return `${hr}時間前`;
   const day = Math.round(diffMs / 86_400_000);
   if (day < 7) return `${day}日前`;
-  // Older — absolute date.
-  const y = d.getFullYear();
-  const mo = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${y}-${mo}-${dd}`;
+  // Older — absolute date。アプリ全体が JST 暦日基準なので、閲覧者の local TZ
+  // ではなく jstYmdString で組み立てる (非 JST 環境での 1 日ずれを防ぐ)。
+  return jstYmdString(d);
 }

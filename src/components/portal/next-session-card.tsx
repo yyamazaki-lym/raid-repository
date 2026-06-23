@@ -118,9 +118,10 @@ export function NextSessionCard({
               "text-[11px] tracking-normal " +
               (inSession
                 ? // 開催時間中: amber で発光 + animate-pulse、本日とは違う緊張感のある色味で「今、戦闘中」を強調。
-                  "rounded-sm border border-amber-400/70 bg-amber-400/15 px-1.5 py-px font-bold text-amber-300 shadow-[0_0_14px_-2px_rgba(251,191,36,0.65)] animate-pulse"
+                  // reduced-motion では点滅を止める (#247 と同方針、online-presence-indicator と同じ motion-reduce:animate-none)。
+                  "rounded-sm border border-amber-400/70 bg-amber-400/15 px-1.5 py-px font-bold text-amber-300 shadow-[0_0_14px_-2px_rgba(251,191,36,0.65)] animate-pulse motion-reduce:animate-none"
                 : isToday
-                  ? "rounded-sm border border-[var(--neon-cyan)]/60 bg-[var(--neon-cyan)]/15 px-1.5 py-px font-bold text-[var(--neon-cyan)] shadow-[0_0_12px_-2px_var(--neon-cyan)] animate-pulse"
+                  ? "rounded-sm border border-[var(--neon-cyan)]/60 bg-[var(--neon-cyan)]/15 px-1.5 py-px font-bold text-[var(--neon-cyan)] shadow-[0_0_12px_-2px_var(--neon-cyan)] animate-pulse motion-reduce:animate-none"
                   : "text-[var(--neon-cyan)]")
             }
           >

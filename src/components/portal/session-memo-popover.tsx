@@ -89,10 +89,11 @@ type Props = {
 };
 
 /**
- * Imperative handle exposed via `forwardRef` so siblings (e.g. the
- * memo-count dot rendered outside this component's wrapper) can open
- * the popover without lifting state into the parent. Keeps the
- * popover self-contained while still allowing remote triggers.
+ * Imperative handle exposed via the `ref` prop (React 19 では `forwardRef`
+ * 不要) so siblings (e.g. the memo-count dot rendered outside this
+ * component's wrapper) can open the popover without lifting state into the
+ * parent. Keeps the popover self-contained while still allowing remote
+ * triggers.
  */
 export type SessionMemoPopoverHandle = {
   open: () => void;

@@ -779,8 +779,9 @@ CREATE INDEX IF NOT EXISTS tags_target_idx
 --     `discord_roles` の交差で計算され、`auth.users.app_metadata.is_admin`
 --     に書き込まれる。Supabase が JWT を発行する際 app_metadata 全体が
 --     claim として同梱される。
---   - 環境変数未設定時は `userIsAdmin()` が `true` を返すので backward
---     compat (= 既存運用は変わらない)。
+--   - 環境変数未設定時は `userIsAdmin()` が `false` を返す (fail-closed、
+--     2.x で fail-open から変更)。env 設定を忘れた fork で全 guild メンバーが
+--     RLS write を通過するリスクを断つため、未設定 = 全員 非admin = write deny。
 --
 --   既存 user の JWT が古い (is_admin claim 無し) 場合、RLS は false 扱
 --   いで write を deny する。1 時間以内の auto-refresh で claim が乗っ
