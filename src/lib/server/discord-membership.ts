@@ -65,8 +65,9 @@ export type AppMetadataUpdate = {
    * させて、Postgres RLS から `auth.jwt()->'app_metadata'->>'is_admin'`
    * で参照できるようにする。`getAdminRoleIds()` の結果と `discord_roles`
    * の交差で計算する (auth.ts の userIsAdmin と同じロジック)。
-   * 環境変数 `DISCORD_ADMIN_ROLE_IDS` 未設定時は backward compat で
-   * `true` (= 全員 admin) を入れる。
+   * 環境変数 `DISCORD_ADMIN_ROLE_IDS` 未設定時は fail-closed で `false`
+   * (= 全員 非admin) を入れる。`userIsAdmin` が空 adminIds で false を返す
+   * のと一致 (2.x で fail-open から変更、auth.ts:226-234 参照)。
    */
   is_admin: boolean;
 };

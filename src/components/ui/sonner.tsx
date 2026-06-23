@@ -1,18 +1,16 @@
 "use client"
 
-import { useTheme } from "next-themes"
 import { Toaster as Sonner, type ToasterProps } from "sonner"
 import { CircleCheckIcon, InfoIcon, TriangleAlertIcon, OctagonXIcon, Loader2Icon } from "lucide-react"
 
 const Toaster = ({ ...props }: ToasterProps) => {
-  const { theme = "system" } = useTheme()
-
   return (
     <Sonner
-      theme={theme as ToasterProps["theme"]}
+      // 既定値。実際の描画は layout.tsx の <DynamicToaster theme="dark"
+      // position="top-center" .../> が末尾の {...props} で上書きする
+      // (theme / position はここでなく呼び出し側が単一ソース)。
+      theme="dark"
       className="toaster group"
-      // sonner default と同値の明示設定 (TODO #51 P1)。表示位置 / 表示時間を
-      // 調整したくなった時にここが唯一のつまみになる (呼び出し側で個別指定しない)。
       position="bottom-right"
       duration={4000}
       icons={{

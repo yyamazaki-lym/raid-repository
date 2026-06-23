@@ -29,8 +29,14 @@ function timingSafeStringEqual(a: string, b: string): boolean {
  * 認証の判定:
  *   - 環境変数 `CRON_SECRET` が未設定 → 503 を返す (deploy ミス検知)
  *   - `Authorization: Bearer ${CRON_SECRET}` ヘッダが一致 → 通過
- *   - `x-vercel-cron` ヘッダ存在 (Vercel cron / Dashboard "Run") → 通過
- *     (Vercel は外部リクエストから x-vercel-* ヘッダを edge で剥がす)
+ *   - `x-vercel-cron` ヘッダ存在 → **本番 (VERCEL_ENV='production') 以外でのみ**
+ *     通過 (Dashboard "Run" / preview 検証用)。本番では Bearer を必須にする。
+ *     `x-vercel-cron` はヘッダ存在のみで通るため「Vercel が外部リクエストの
+ *     x-vercel-* を edge で剥がす」というプラットフォーム挙動への単一依存に
+ *     なる。Vercel は `CRON_SECRET` 設定時に scheduled cron へ Bearer を自動
+ *     付与する (本プロジェクトは設定済 = 未設定なら上で 503) ので、本番の 3
+ *     cron は Bearer 経路で通る。非 Vercel デプロイ / 将来のプラットフォーム
+ *     挙動変更で `x-vercel-cron: 1` を付けるだけの起動を防ぐための fail-safe。
  *   - いずれも満たさない → 401 を返す
  *
  * `routeLabel` はログ識別用の短い名前 (例 "cron/discord")。
@@ -82,8 +88,12 @@ export function assertCronAuth(
     authHeader !== null &&
     (timingSafeStringEqual(authHeader, expected) ||
       timingSafeStringEqual(authHeader.trim(), expected));
+  // x-vercel-cron ヘッダ単独通過は本番以外に限定 (Dashboard "Run" / preview
+  // 検証用)。本番は Bearer 必須にしてプラットフォーム単一依存を断つ。
+  const allowHeaderOnly =
+    isVercelCron && process.env.VERCEL_ENV !== "production";
 
-  if (!headerOk && !isVercelCron) {
+  if (!headerOk && !allowHeaderOnly) {
     // 詳細は本体ログにのみ吐く (response body には載せない)。
     // 長さ / prefix だけで攻撃側に full secret は推測できない。
     console.warn(
