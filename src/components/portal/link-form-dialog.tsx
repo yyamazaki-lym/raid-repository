@@ -259,6 +259,7 @@ export function LinkFormDialog({
               }}
               onBlur={() => setUrlFieldError(httpUrlError(url))}
               aria-invalid={urlFieldError ? true : undefined}
+              aria-describedby={urlFieldError ? "link-url-error" : undefined}
               placeholder={
                 kind === "video"
                   ? "https://www.youtube.com/watch?v=..."
@@ -270,7 +271,11 @@ export function LinkFormDialog({
               autoFocus
             />
             {urlFieldError && (
-              <p className="text-destructive text-[11px] leading-relaxed">
+              <p
+                id="link-url-error"
+                role="alert"
+                className="text-destructive text-[11px] leading-relaxed"
+              >
                 {urlFieldError}
               </p>
             )}
@@ -342,24 +347,37 @@ export function LinkFormDialog({
                 }}
                 onBlur={() => setLogsFieldError(httpUrlError(logsUrl))}
                 aria-invalid={logsFieldError ? true : undefined}
+                aria-describedby={
+                  (logsFieldError ? "link-logs-error " : "") + "link-logs-help"
+                }
                 placeholder="https://www.fflogs.com/reports/..."
                 className="font-mono text-[12px]"
                 autoComplete="off"
                 spellCheck={false}
               />
               {logsFieldError && (
-                <p className="text-destructive text-[11px] leading-relaxed">
+                <p
+                  id="link-logs-error"
+                  role="alert"
+                  className="text-destructive text-[11px] leading-relaxed"
+                >
                   {logsFieldError}
                 </p>
               )}
-              <p className="text-muted-foreground text-[11px] leading-relaxed">
+              <p
+                id="link-logs-help"
+                className="text-muted-foreground text-[11px] leading-relaxed"
+              >
                 登録するとカードに「Logs」ボタンが追加され、ワンタップで報告ページに飛べます。
               </p>
             </div>
           )}
 
           {error && (
-            <div className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive-foreground/90">
+            <div
+              role="alert"
+              className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive-foreground/90"
+            >
               <AlertTriangle
                 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive"
                 aria-hidden

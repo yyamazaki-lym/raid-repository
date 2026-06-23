@@ -137,6 +137,10 @@ export function SheetUrlOnboarding({
             }}
             onBlur={() => setFieldError(httpUrlError(url))}
             aria-invalid={fieldError ? true : undefined}
+            aria-describedby={
+              (fieldError ? `sheet-url-${kind}-error ` : "") +
+              `sheet-url-${kind}-help`
+            }
             placeholder="https://docs.google.com/spreadsheets/d/.../pubhtml"
             className="font-mono text-[12px]"
             spellCheck={false}
@@ -144,11 +148,18 @@ export function SheetUrlOnboarding({
             autoFocus
           />
           {fieldError && (
-            <p className="text-destructive text-[11px] leading-relaxed">
+            <p
+              id={`sheet-url-${kind}-error`}
+              role="alert"
+              className="text-destructive text-[11px] leading-relaxed"
+            >
               {fieldError}
             </p>
           )}
-          <p className="text-muted-foreground text-[11px] leading-relaxed">
+          <p
+            id={`sheet-url-${kind}-help`}
+            className="text-muted-foreground text-[11px] leading-relaxed"
+          >
             Google Sheets の「ウェブに公開」/「埋め込み」URLか、共有URLを指定してください。
           </p>
         </div>

@@ -81,6 +81,9 @@ export function ScheduleOnboarding() {
             }}
             onBlur={() => setFieldError(httpUrlError(url))}
             aria-invalid={fieldError ? true : undefined}
+            aria-describedby={
+              (fieldError ? "onboard-url-error " : "") + "onboard-url-help"
+            }
             placeholder="https://character-sheets.appspot.com/schedule/list?key=..."
             className="font-mono text-[12px]"
             spellCheck={false}
@@ -88,11 +91,18 @@ export function ScheduleOnboarding() {
             autoFocus
           />
           {fieldError && (
-            <p className="text-destructive text-[11px] leading-relaxed">
+            <p
+              id="onboard-url-error"
+              role="alert"
+              className="text-destructive text-[11px] leading-relaxed"
+            >
               {fieldError}
             </p>
           )}
-          <p className="text-muted-foreground text-[11px] leading-relaxed">
+          <p
+            id="onboard-url-help"
+            className="text-muted-foreground text-[11px] leading-relaxed"
+          >
             character-sheets.appspot.com の{" "}
             <code className="font-mono">schedule/list?key=…</code>{" "}
             形式のURLを指定してください。

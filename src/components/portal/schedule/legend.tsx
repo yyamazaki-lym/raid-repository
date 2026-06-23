@@ -53,6 +53,10 @@ export function Legend({
   // Local controlled-popover state for the top-text comment icon.
   const [showTopText, setShowTopText] = useState(false);
   const topTextRef = useRef<HTMLDivElement | null>(null);
+  const ruleTriggerRef = useRef<HTMLButtonElement | null>(null);
+  // フォーカス管理用の遷移トラッキング (非モーダル dialog)。
+  const focusedForOpenRef = useRef(false);
+  const wasOpenRef = useRef(false);
 
   // 楽観的 override 状態: save / clear 直後に prop が更新されるまでの
   // 間 UI を即時反映するためのローカル shadow state。
@@ -135,6 +139,36 @@ export function Legend({
       document.removeEventListener("keydown", onKeyDown);
     };
   }, [showTopText, editing]);
+
+  // フォーカス導入: ルールパネルを開いたらパネル本体 (role=dialog) へフォーカスを
+  // 移す。1 度だけ (再レンダーでは奪わない)。トラップは張らない (非モーダル)。
+  useEffect(() => {
+    if (!showTopText) {
+      focusedForOpenRef.current = false;
+      return;
+    }
+    if (focusedForOpenRef.current) return;
+    focusedForOpenRef.current = true;
+    topTextRef.current?.focus();
+  }, [showTopText]);
+
+  // フォーカス復帰: Esc / クリック外しで閉じてフォーカスが <body> に落ちた場合の
+  // みトリガー (ルールボタン) へ戻す。別コントロールへ移った場合は奪わない。
+  useEffect(() => {
+    if (showTopText) {
+      wasOpenRef.current = true;
+      return;
+    }
+    if (!wasOpenRef.current) return;
+    wasOpenRef.current = false;
+    if (
+      typeof document !== "undefined" &&
+      (document.activeElement === null ||
+        document.activeElement === document.body)
+    ) {
+      ruleTriggerRef.current?.focus();
+    }
+  }, [showTopText]);
   // 1.9.16: ラベル "MEMBERS" デフォルト、絶クリア達成済みの固定なら
   // "LEGENDS" 表記に昇格 (称号として)。
   const label = hasUltimateClear ? "Legends" : "Members";
@@ -178,6 +212,7 @@ export function Legend({
         {hasAny && (
           <span className="relative inline-flex">
             <button
+              ref={ruleTriggerRef}
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
@@ -205,6 +240,7 @@ export function Legend({
                 id="legend-rules-panel"
                 role="dialog"
                 aria-label="運用ルール / 注意事項"
+                tabIndex={-1}
                 className="glass-popup absolute top-full right-0 z-40 mt-1 w-[min(36rem,calc(100vw-2rem))] rounded-lg border border-[var(--neon-violet)]/35 px-3.5 py-3 text-[12px] leading-relaxed text-foreground/85 shadow-[0_12px_40px_-16px_rgba(167,139,250,0.45),0_2px_8px_-2px_rgba(0,0,0,0.4)]"
               >
                 <div className="mb-2 flex flex-wrap items-center justify-between gap-2">

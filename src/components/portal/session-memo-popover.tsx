@@ -122,6 +122,10 @@ export function SessionMemoPopover({
   );
   const popupRef = useRef<HTMLDivElement | null>(null);
   const wrapperRef = useRef<HTMLSpanElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  // フォーカス管理用の遷移トラッキング (非モーダル dialog)。
+  const focusedForOpenRef = useRef(false);
+  const wasOpenRef = useRef(false);
   // top / bottom はどちらか一方のみ設定される (下側配置 = top、上側
   // 配置 = bottom アンカーで上方向に伸びる)。maxHeight は配置側で
   // 使える実高さ (px)。
@@ -229,9 +233,44 @@ export function SessionMemoPopover({
     };
   }, [open]);
 
+  // フォーカス導入: 開いたらパネル本体 (role=dialog) へフォーカスを移す。
+  // このパネルは document.body へ portal されるため、トリガーから Tab して
+  // も DOM 順では届かない。coords が確定 = パネルが mount 済みなので、その
+  // タイミングで 1 度だけフォーカスする (スクロール/リサイズでの coords 更新
+  // では再フォーカスしない)。トラップは張らない (非モーダル)。
+  useEffect(() => {
+    if (!open) {
+      focusedForOpenRef.current = false;
+      return;
+    }
+    if (focusedForOpenRef.current || !coords) return;
+    focusedForOpenRef.current = true;
+    popupRef.current?.focus();
+  }, [open, coords]);
+
+  // フォーカス復帰: Esc / 閉じる×でパネル内の要素ごと unmount され、フォーカス
+  // が <body> に落ちた場合のみトリガーへ戻す。外クリックで別コントロールへ
+  // 移った場合 (activeElement が body 以外) はユーザーの操作を尊重して奪わない。
+  useEffect(() => {
+    if (open) {
+      wasOpenRef.current = true;
+      return;
+    }
+    if (!wasOpenRef.current) return;
+    wasOpenRef.current = false;
+    if (
+      typeof document !== "undefined" &&
+      (document.activeElement === null ||
+        document.activeElement === document.body)
+    ) {
+      triggerRef.current?.focus();
+    }
+  }, [open]);
+
   return (
     <span ref={wrapperRef} className="inline-flex">
       <button
+        ref={triggerRef}
         type="button"
         onClick={(e) => {
           e.stopPropagation();
@@ -251,6 +290,7 @@ export function SessionMemoPopover({
             ref={popupRef}
             role="dialog"
             aria-label={`${displayDate} のメモ`}
+            tabIndex={-1}
             style={{
               position: "fixed",
               top: coords.top,
