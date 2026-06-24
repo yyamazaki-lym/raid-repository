@@ -2,6 +2,10 @@
 
 import { createClient } from "@/lib/supabase/client";
 import { SCHEDULE_TOP_TEXT_OVERRIDE_KEY } from "@/lib/schedule-top-text-keys";
+import {
+  setScheduleTopTextOverrideAction,
+  clearScheduleTopTextOverrideAction,
+} from "@/lib/server/schedule-top-text-actions";
 
 /**
  * 運用ルール / 注意事項 (スケジュールページ上部の `topText`) の
@@ -30,38 +34,10 @@ const TOP_TEXT_OVERRIDE_KEY = SCHEDULE_TOP_TEXT_OVERRIDE_KEY;
 export async function setScheduleTopTextOverride(
   raw: string,
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
-  const trimmed = raw.trim();
-  const supabase = createClient();
-  if (!trimmed) {
-    // 空文字なら override を削除 (= scraped 値に戻る)。
-    // `.select("key")` で返却 0 件 (= RLS USING で弾かれた非 admin) を失敗扱いに。
-    const { data, error } = await supabase
-      .from("app_settings")
-      .delete()
-      .eq("key", TOP_TEXT_OVERRIDE_KEY)
-      .select("key");
-    if (error) return { ok: false, reason: error.message };
-    if (!data || data.length === 0)
-      return {
-        ok: false,
-        reason: "保存できませんでした（権限がない可能性があります）",
-      };
-    return { ok: true };
-  }
-  // upsert は新規行なら INSERT (WITH CHECK でエラー化) だが、override キーが既存
-  // だと ON CONFLICT DO UPDATE が USING で 0 行になり silent fail し得る。
-  // `.select("key")` で返却 0 件を失敗扱いにして両ケースを塞ぐ。
-  const { data, error } = await supabase
-    .from("app_settings")
-    .upsert({ key: TOP_TEXT_OVERRIDE_KEY, value: trimmed }, { onConflict: "key" })
-    .select("key");
-  if (error) return { ok: false, reason: error.message };
-  if (!data || data.length === 0)
-    return {
-      ok: false,
-      reason: "保存できませんでした（権限がない可能性があります）",
-    };
-  return { ok: true };
+  // 監査バッチC #18 (2026-06-24): anon 直書きから Server Action 経由に移行
+  // (categories と同じ assertAdminResult ゲート + RLS の二層)。空文字→delete /
+  // それ以外→upsert の分岐は action 側に集約。
+  return setScheduleTopTextOverrideAction(raw);
 }
 
 export async function getScheduleTopTextOverride(): Promise<string | null> {
@@ -78,19 +54,7 @@ export async function getScheduleTopTextOverride(): Promise<string | null> {
 export async function clearScheduleTopTextOverride(): Promise<
   { ok: true } | { ok: false; reason: string }
 > {
-  const supabase = createClient();
-  const { data, error } = await supabase
-    .from("app_settings")
-    .delete()
-    .eq("key", TOP_TEXT_OVERRIDE_KEY)
-    .select("key");
-  if (error) return { ok: false, reason: error.message };
-  if (!data || data.length === 0)
-    return {
-      ok: false,
-      reason: "クリアできませんでした（権限がない可能性があります）",
-    };
-  return { ok: true };
+  return clearScheduleTopTextOverrideAction();
 }
 
 /* `SCHEDULE_TOP_TEXT_OVERRIDE_KEY` は `schedule-top-text-keys.ts` で定義し、
