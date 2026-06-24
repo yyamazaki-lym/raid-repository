@@ -35,11 +35,29 @@ function rowToMacro(row: CategoryMacroRow): CategoryMacro {
   };
 }
 
+// schema 側 CHECK (category_macros_text_sane) と同じ上限。DB が弾く前に
+// 友好的なエラーを返すための入口検証。`.length` (UTF-16) は Postgres の
+// char_length (コードポイント) 以上なので、ここを通れば DB も通る安全側。
+const MACRO_BODY_MAX = 8000;
+const MACRO_LABEL_MAX = 200;
+function validateMacroText(
+  label: string | undefined,
+  body: string | undefined,
+): string | null {
+  if (body !== undefined && body.length > MACRO_BODY_MAX)
+    return `本文が長すぎます（最大 ${MACRO_BODY_MAX} 文字）`;
+  if (label !== undefined && label.length > MACRO_LABEL_MAX)
+    return `ラベルが長すぎます（最大 ${MACRO_LABEL_MAX} 文字）`;
+  return null;
+}
+
 export async function createCategoryMacro(input: {
   categoryId: string;
   label: string;
   body: string;
 }): Promise<{ ok: true; macro: CategoryMacro } | { ok: false; reason: string }> {
+  const lenError = validateMacroText(input.label, input.body);
+  if (lenError) return { ok: false, reason: lenError };
   const supabase = createClient();
   // 2.4 (2026-06-09) TODO #83: sort_order は schema 側 RPC
   // `next_category_macro_sort_order(p_category_id)` (SECURITY DEFINER) で計算。
@@ -69,6 +87,8 @@ export async function updateCategoryMacro(
   id: string,
   patch: Partial<{ label: string; body: string }>,
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const lenError = validateMacroText(patch.label, patch.body);
+  if (lenError) return { ok: false, reason: lenError };
   const supabase = createClient();
   // `.select("id")` で返却行数を確認する。RLS の UPDATE は USING で行が
   // 見えなくなるだけなので、非 admin が実行すると 0 行更新 + error=null に

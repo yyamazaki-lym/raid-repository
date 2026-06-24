@@ -491,6 +491,18 @@ CREATE TRIGGER set_updated_at_category_macros
   BEFORE UPDATE ON public.category_macros
   FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
+-- 監査バッチC #14 (2026-06-24): body は UI に大きく表示される領域で、admin
+-- 信頼モデル下でも巨大ペイロード / 異常長を防ぐため length CHECK を入れる
+-- (native_schedule_attendances の symbol/comment と同方針)。⚠ body は FF14
+-- チャットマクロ (/p ... の複数行) で改行を含むため、制御文字は弾かず長さのみ
+-- 制限する。label は短い単一行のサブ名。既存行は満たすが安全のため NOT VALID
+-- で追加し新規 write のみ検証する。
+ALTER TABLE public.category_macros
+  DROP CONSTRAINT IF EXISTS category_macros_text_sane;
+ALTER TABLE public.category_macros
+  ADD CONSTRAINT category_macros_text_sane
+  CHECK (char_length(body) <= 8000 AND char_length(label) <= 200) NOT VALID;
+
 -- ---- 5d. recruitment_templates (PT募集文 templates, shared) -----------
 -- Text templates that get copy-pasted into Discord / FF14 PT-募集 sites.
 -- Each template is associated with a category (heavy / cruiser / ...)
@@ -523,6 +535,14 @@ CREATE INDEX IF NOT EXISTS recruitment_templates_sort_idx
   ON public.recruitment_templates(sort_order);
 CREATE INDEX IF NOT EXISTS recruitment_templates_category_idx
   ON public.recruitment_templates(category_id);
+
+-- 監査バッチC #14 (2026-06-24): category_macros と同様に body / label の
+-- length CHECK。body は募集文で改行を含むため制御文字は弾かず長さのみ。NOT VALID。
+ALTER TABLE public.recruitment_templates
+  DROP CONSTRAINT IF EXISTS recruitment_templates_text_sane;
+ALTER TABLE public.recruitment_templates
+  ADD CONSTRAINT recruitment_templates_text_sane
+  CHECK (char_length(body) <= 8000 AND char_length(label) <= 200) NOT VALID;
 
 DROP TRIGGER IF EXISTS set_updated_at_recruitment_templates
   ON public.recruitment_templates;

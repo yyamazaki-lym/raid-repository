@@ -221,7 +221,10 @@ export function useRealtimeAllScheduleMemos(
         setMemosByDate((prev) => {
           const next: Record<string, ScheduleSessionMemo[]> = {};
           for (const [k, v] of Object.entries(prev)) {
-            next[k] = v.filter((x) => x.id !== m.id);
+            const filtered = v.filter((x) => x.id !== m.id);
+            // 空になったバケットは残さない (memory 蓄積 + 空/未取得の区別が
+            // つかなくなるのを防ぐ。表示は length 0 = 非表示で従来と同じ)。
+            if (filtered.length) next[k] = filtered;
           }
           const list = next[m.rawDate] ?? [];
           next[m.rawDate] = [...list, m].sort((a, b) =>
@@ -243,7 +246,9 @@ export function useRealtimeAllScheduleMemos(
         setMemosByDate((prev) => {
           const next: Record<string, ScheduleSessionMemo[]> = {};
           for (const [k, v] of Object.entries(prev)) {
-            next[k] = v.filter((x) => x.id !== targetId);
+            const filtered = v.filter((x) => x.id !== targetId);
+            // 空バケットは落とす (UPDATE 分岐と同方針)。
+            if (filtered.length) next[k] = filtered;
           }
           return next;
         });

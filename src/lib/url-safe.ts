@@ -112,6 +112,15 @@ export function isPublicHttpUrl(raw: string | null | undefined): boolean {
     // 取りこぼし公開扱いしてしまう。公開ホストへの到達に埋め込み IPv4 形式は不要なので、
     // `::` 始まり (10 進/16 進いずれの表記でも) は一律ブロックして内部 IP 露出を防ぐ。
     if (host.startsWith("::")) return false;
+    // NAT64 well-known prefix 64:ff9b::/96 (RFC6052) + local-use 64:ff9b:1::/48
+    // (RFC8215) は後続に IPv4 を埋め込み、NAT64 egress 経由で内部 IP に到達しうる。
+    // `::` 始まりでないため上の判定を素通りする (#242/#251 と同種の正規化漏れ)。
+    // 例: 64:ff9b::7f00:1 = 127.0.0.1、64:ff9b::a9fe:a9fe = IMDS 169.254.169.254。
+    if (/^64:ff9b:/.test(host)) return false;
+    // 6to4 2002::/16 (RFC3056、RFC7526 で非推奨) も後続 32bit に IPv4 を埋め込む。
+    // 例: 2002:7f00:1:: = 127.0.0.1、2002:c0a8:101:: = 192.168.1.1。実運用ほぼ
+    // 廃止のため公開コンテンツが該当することはなく、全帯域ブロックの副作用は無い。
+    if (/^2002:/.test(host)) return false;
     // それ以外の IPv6 (グローバル unicast 2000::/3 等) は公開アドレス扱い。
     return true;
   }
