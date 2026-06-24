@@ -219,13 +219,21 @@ export async function dispatchNoonNotifyForToday(): Promise<DispatchResult> {
   }
 
   // TODO #2 候補 B (2026-05-08): cron は毎時発火 (`0 * * * *`)、
-  // `app_settings.native_schedule_discord_notify_hour` (default '12') と
-  // 現在 JST hour が一致するときのみ実通知。dedup (`last_notified_at`) は
-  // 不変なので、同日内の重複発火は notifyNativeScheduleSession 側で抑止。
+  // `app_settings.native_schedule_discord_notify_hour` (default '12') を目標時とする。
+  //
+  // 監査バッチC #1 (2026-06-24): 旧実装は `nowJstHour !== targetHour` で「目標時
+  // ちょうど」の 1 回だけに発火を限定していたため、その単発が失敗 (Discord API
+  // エラー / cold start timeout / pg_net 一過性失敗) すると、parsed_date ベースの
+  // 当日窓が翌日には前進し、last_notified_at を rollback しても二度と拾われず当日
+  // 通知が恒久ミスしていた。`< targetHour` に緩め「目標時以降・当日内」の毎時 cron
+  // で未通知 DECISION を再試行する。dedup (`last_notified_at` の claim、
+  // notifyNativeScheduleSession 内) が二重送信を抑止するため、成功した最初の 1 回
+  // だけ送られる (目標時より遅れて届く可能性は許容)。notify を日中 OFF→ON した
+  // 場合も次の毎時 cron で当日分を送れる。
   const hourRaw = await fetchAppSetting(NOTIFY_HOUR_KEY);
   const targetHour = parseHour(hourRaw);
   const nowJstHour = getJstHour();
-  if (nowJstHour !== targetHour) {
+  if (nowJstHour < targetHour) {
     return { ok: true, posted: 0, skipped: 0 };
   }
 

@@ -97,6 +97,8 @@ FF14 レイド固定向けポータル — スケジュール / 軽減表 / ロ�
 
 その他: CSP / HSTS / X-Frame-Options / Referrer-Policy / Permissions-Policy 全付与、`/auth/callback` + `/api/cron/*` に rate limit、FFLogs token は AES-256-GCM 暗号化保管 (`secrets` テーブル)、Server Action の DB エラー文言は汎用化済 (生 PG エラー漏洩防止)。
 
+> 📌 **非 Vercel で自己ホストする場合の注意 (rate limit)**: レート制限は接続元 IP の特定に `x-real-ip` ヘッダを優先します。Vercel は常にこれを実接続元 IP で設定するため、標準構成 (Vercel + 任意の DNS CNAME / カスタムドメイン) では安全です。`x-real-ip` を付与しない reverse proxy (自前 nginx 等) を前段に挟んで自己ホストする場合のみ、**その proxy で `x-real-ip` を実接続元 IP に必ず設定してください**。さもないと攻撃者が `x-forwarded-for` を毎リクエスト偽装してレート制限を回避できます。
+
 ## Setup for your raid group
 
 > 📌 **2026-05 改訂**: Step 構成を Discord 認証先行順に再編しました。`DISCORD_BOT_TOKEN` / `DISCORD_GUILD_ID` および Discord Application の Client ID / Secret は Vercel デプロイ前に必要なので、新 Step 3 / 4 でまとめて取得・設定します。
