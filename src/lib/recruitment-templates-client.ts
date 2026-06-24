@@ -2,13 +2,23 @@
 
 import { createClient } from "@/lib/supabase/client";
 import { useRealtimeTable } from "@/lib/use-realtime-table";
+import {
+  createRecruitmentTemplateAction,
+  updateRecruitmentTemplateAction,
+  deleteRecruitmentTemplateAction,
+  setRecruitmentTemplateOrderAction,
+} from "@/lib/server/recruitment-templates-actions";
 
 /**
- * CRUD + Realtime hook for the `recruitment_templates` table.
+ * Read helpers + Realtime hook + 書き込み薄wrapper for `recruitment_templates`。
  *
  * Templates are pre-written PT-募集 message bodies that members copy
  * into Discord / FF14 PT-募集 sites. Stored in Supabase so all
  * members see the same library; one click copies to clipboard.
+ *
+ * WRITE: 監査バッチC #18 (2026-06-24) で anon 直書きから Server Action 経由に
+ * 移行 (categories と同じ assertAdminResult ゲート + RLS の二層)。READ
+ * (fetchRecruitmentTemplates / useRealtimeRecruitmentTemplates) は anon のまま。
  */
 
 export type RecruitmentTemplate = {
@@ -82,36 +92,10 @@ export async function createRecruitmentTemplate(input: {
   categoryId: string;
   label: string;
   body: string;
-}): Promise<{ ok: true; template: RecruitmentTemplate } | { ok: false; reason: string }> {
+}): Promise<{ ok: true } | { ok: false; reason: string }> {
   const lenError = validateTemplateText(input.label, input.body);
   if (lenError) return { ok: false, reason: lenError };
-  const supabase = createClient();
-  // 2.4 (2026-06-09) TODO #83: sort_order は schema 側 RPC
-  // `next_recruitment_template_sort_order()` (SECURITY DEFINER) で計算。
-  // 1 round-trip 化 + RLS の影響を受けず確実に最新 max を返せる。
-  // INSERT との完全な atomic 化ではないが、JS 側で SELECT してから
-  // INSERT する従来パターンよりは race window が短い。
-  const { data: nextOrderData, error: rpcErr } = await supabase.rpc(
-    "next_recruitment_template_sort_order",
-  );
-  if (rpcErr) return { ok: false, reason: rpcErr.message };
-  const nextOrder = typeof nextOrderData === "number" ? nextOrderData : 0;
-
-  const { data, error } = await supabase
-    .from("recruitment_templates")
-    .insert({
-      category_id: input.categoryId,
-      label: input.label,
-      body: input.body,
-      sort_order: nextOrder,
-    })
-    .select(SELECT_WITH_CATEGORY)
-    .single();
-  if (error || !data) return { ok: false, reason: error?.message ?? "unknown" };
-  return {
-    ok: true,
-    template: rowToTemplate(data as unknown as RecruitmentTemplateRow),
-  };
+  return createRecruitmentTemplateAction(input);
 }
 
 export async function updateRecruitmentTemplate(
@@ -120,22 +104,7 @@ export async function updateRecruitmentTemplate(
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
   const lenError = validateTemplateText(patch.label, patch.body);
   if (lenError) return { ok: false, reason: lenError };
-  const supabase = createClient();
-  const dbPatch: Record<string, unknown> = {};
-  if (patch.label !== undefined) dbPatch.label = patch.label;
-  if (patch.body !== undefined) dbPatch.body = patch.body;
-  if (patch.categoryId !== undefined) dbPatch.category_id = patch.categoryId;
-  // `.select("id")` で返却 0 件 (= RLS USING で弾かれた非 admin) を失敗扱いに。
-  const { data, error } = await supabase
-    .from("recruitment_templates")
-    .update(dbPatch)
-    .eq("id", id)
-    .select("id")
-    .maybeSingle();
-  if (error) return { ok: false, reason: error.message };
-  if (!data)
-    return { ok: false, reason: "更新できませんでした（権限がない可能性があります）" };
-  return { ok: true };
+  return updateRecruitmentTemplateAction(id, patch);
 }
 
 /**
@@ -145,40 +114,13 @@ export async function updateRecruitmentTemplate(
 export async function setRecruitmentTemplateOrder(
   orderedIds: string[],
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
-  const supabase = createClient();
-  const results = await Promise.all(
-    orderedIds.map((id, index) =>
-      supabase
-        .from("recruitment_templates")
-        .update({ sort_order: index })
-        .eq("id", id)
-        .select("id"),
-    ),
-  );
-  const failed = results.find((r) => r.error);
-  if (failed?.error) return { ok: false, reason: failed.error.message };
-  if (results.some((r) => !r.data || r.data.length === 0))
-    return {
-      ok: false,
-      reason: "並び替えを保存できませんでした（権限がない可能性があります）",
-    };
-  return { ok: true };
+  return setRecruitmentTemplateOrderAction(orderedIds);
 }
 
 export async function deleteRecruitmentTemplate(
   id: string,
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
-  const supabase = createClient();
-  const { data, error } = await supabase
-    .from("recruitment_templates")
-    .delete()
-    .eq("id", id)
-    .select("id")
-    .maybeSingle();
-  if (error) return { ok: false, reason: error.message };
-  if (!data)
-    return { ok: false, reason: "削除できませんでした（権限がない可能性があります）" };
-  return { ok: true };
+  return deleteRecruitmentTemplateAction(id);
 }
 
 /**
