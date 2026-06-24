@@ -52,6 +52,21 @@ function rowToTemplate(row: RecruitmentTemplateRow): RecruitmentTemplate {
 const SELECT_WITH_CATEGORY =
   "id, label, body, sort_order, category_id, categories(name)";
 
+// schema 側 CHECK (recruitment_templates_text_sane) と同じ上限。DB が弾く前に
+// 友好的なエラーを返すための入口検証 (category-macros-client と同方針)。
+const TEMPLATE_BODY_MAX = 8000;
+const TEMPLATE_LABEL_MAX = 200;
+function validateTemplateText(
+  label: string | undefined,
+  body: string | undefined,
+): string | null {
+  if (body !== undefined && body.length > TEMPLATE_BODY_MAX)
+    return `本文が長すぎます（最大 ${TEMPLATE_BODY_MAX} 文字）`;
+  if (label !== undefined && label.length > TEMPLATE_LABEL_MAX)
+    return `ラベルが長すぎます（最大 ${TEMPLATE_LABEL_MAX} 文字）`;
+  return null;
+}
+
 export async function fetchRecruitmentTemplates(): Promise<RecruitmentTemplate[]> {
   const supabase = createClient();
   const { data, error } = await supabase
@@ -68,6 +83,8 @@ export async function createRecruitmentTemplate(input: {
   label: string;
   body: string;
 }): Promise<{ ok: true; template: RecruitmentTemplate } | { ok: false; reason: string }> {
+  const lenError = validateTemplateText(input.label, input.body);
+  if (lenError) return { ok: false, reason: lenError };
   const supabase = createClient();
   // 2.4 (2026-06-09) TODO #83: sort_order は schema 側 RPC
   // `next_recruitment_template_sort_order()` (SECURITY DEFINER) で計算。
@@ -101,6 +118,8 @@ export async function updateRecruitmentTemplate(
   id: string,
   patch: Partial<{ label: string; body: string; categoryId: string | null }>,
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const lenError = validateTemplateText(patch.label, patch.body);
+  if (lenError) return { ok: false, reason: lenError };
   const supabase = createClient();
   const dbPatch: Record<string, unknown> = {};
   if (patch.label !== undefined) dbPatch.label = patch.label;

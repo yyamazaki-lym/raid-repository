@@ -176,7 +176,16 @@ export function useRealtimeTable<Row, T extends { id: string }>(opts: {
         );
       } else if (payload.eventType === "UPDATE") {
         const row = payload.new as Row | null;
-        if (!row || (accept && !accept(row))) return;
+        if (!row) return;
+        // accept が false に転じた行 (既存リストに居たが UPDATE で対象外に
+        // なった = 例: kind が別値に変わった) は、無視するだけだと古い値が
+        // 残り続けるため、リストから除去してから return する。
+        if (accept && !accept(row)) {
+          const rejectedId = (row as { id?: string }).id;
+          if (rejectedId)
+            setItems((prev) => prev.filter((x) => x.id !== rejectedId));
+          return;
+        }
         const updated = map(row);
         setItems((prev) =>
           prev.some((x) => x.id === updated.id)
