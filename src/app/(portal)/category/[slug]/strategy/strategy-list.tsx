@@ -253,6 +253,10 @@ function SortableStrategyCard({
   // og:image を取りに行かないので、既存リンクや og:image 未設定サイトは
   // NULL → ここで undefined → 描画しない (= 従来のテキストカードのまま)。
   const thumbHref = showThumbnail ? safeHref(link.thumbnailUrl) : undefined;
+  // 外部リンクの href も render 時多層防御として safeHref を通す (videos-list と
+  // 同方針)。書込側 (isSafeUrl / Discord import) が http(s) を強制しているが、
+  // 万一 javascript:/data: 等が混入しても安全側 (undefined=非リンク化) に倒す。
+  const linkHref = safeHref(link.url);
 
   return (
     <li ref={setNodeRef} style={style} {...attributes}>
@@ -272,7 +276,7 @@ function SortableStrategyCard({
             // Image Optimization を通さず素通し。aspect-video で枠を確保し
             // CLS を抑える。クリックで外部リンクへ。
             <a
-              href={link.url}
+              href={linkHref}
               target="_blank"
               rel="noopener noreferrer"
               className="relative block aspect-video overflow-hidden bg-secondary/30"
@@ -291,7 +295,7 @@ function SortableStrategyCard({
           )}
           <div className="flex items-start gap-2 px-3 pt-3 pb-1">
             <a
-              href={link.url}
+              href={linkHref}
               target="_blank"
               rel="noopener noreferrer"
               className="flex flex-1 items-start gap-2"

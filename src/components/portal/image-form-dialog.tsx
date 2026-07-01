@@ -383,7 +383,10 @@ export function ImageFormDialog({
           </div>
 
           {error && (
-            <div className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive-foreground/90">
+            <div
+              role="alert"
+              className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive-foreground/90"
+            >
               <AlertTriangle
                 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive"
                 aria-hidden

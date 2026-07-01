@@ -244,9 +244,11 @@ export async function updateNativeScheduleSessionTimeAction(
   const trimmed = input.sessionId?.trim();
   if (!trimmed) return { ok: false, reason: "sessionId が空です" };
 
-  // どちらか片方だけ null は想定しない (UI 上は両方同時に切り替わる)。
-  // 受け入れるが「両方 null = default に戻す」「両方 string = override」
-  // どちらかにする運用を前提に validate。
+  // 「両方 null = default に戻す」「両方 string = override」のいずれかのみ許容。
+  // 片方だけ null の半 override は、通知/表示側 (native-schedule-discord.ts) が
+  // start/end を各々独立に COALESCE するため「開始=個別 override / 終了=default」
+  // の混在時刻を生む。UI は常に両方送るが、Server Action 直叩き等で半 null が
+  // 永続化されるのを防ぐため明示的に弾く。
   const startTime = input.startTime?.trim() || null;
   const endTime = input.endTime?.trim() || null;
   if (startTime !== null && !HHMM_RE.test(startTime)) {
@@ -254,6 +256,12 @@ export async function updateNativeScheduleSessionTimeAction(
   }
   if (endTime !== null && !HHMM_RE.test(endTime)) {
     return { ok: false, reason: "終了時刻は HH:MM 形式で入力してください" };
+  }
+  if ((startTime === null) !== (endTime === null)) {
+    return {
+      ok: false,
+      reason: "開始・終了時刻は両方指定するか、両方 default に戻してください",
+    };
   }
   if (startTime !== null && endTime !== null && startTime === endTime) {
     return { ok: false, reason: "開始時刻と終了時刻が同じです" };

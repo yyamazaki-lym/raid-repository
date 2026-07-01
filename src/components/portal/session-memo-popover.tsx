@@ -593,6 +593,7 @@ function MemoList({
                     value={editingAuthor}
                     onChange={(e) => setEditingAuthor(e.target.value)}
                     placeholder="名前（任意）"
+                    aria-label="投稿者名"
                     spellCheck={false}
                     className={inputClass}
                   />
@@ -600,6 +601,7 @@ function MemoList({
                     value={editingBody}
                     onChange={(e) => setEditingBody(e.target.value)}
                     rows={3}
+                    aria-label="メモ本文"
                     spellCheck={false}
                     className={inputClass}
                   />
@@ -682,6 +684,7 @@ function MemoList({
           value={draftAuthor}
           onChange={(e) => setDraftAuthor(e.target.value)}
           placeholder="名前（任意・次回も使用）"
+          aria-label="投稿者名"
           spellCheck={false}
           className={inputClass}
         />
@@ -690,6 +693,7 @@ function MemoList({
           onChange={(e) => setDraftBody(e.target.value)}
           rows={3}
           placeholder="メモ内容…"
+          aria-label="メモ本文"
           spellCheck={false}
           className={inputClass}
         />
@@ -781,6 +785,7 @@ function MemoList({
             value={newLogsInput}
             onChange={(e) => setNewLogsInput(e.target.value)}
             placeholder="https://www.fflogs.com/reports/abc123..."
+            aria-label="FFLogs URL"
             type="url"
             inputMode="url"
             spellCheck={false}

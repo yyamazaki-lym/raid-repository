@@ -1,10 +1,25 @@
 import "server-only";
+import { timingSafeEqual } from "node:crypto";
 import { type NextRequest, NextResponse } from "next/server";
 import {
   buildRedirectUri,
   exchangeCodeForTokens,
 } from "@/lib/server/fflogs-oauth";
 import { assertAdminResult } from "@/lib/server/auth";
+
+/**
+ * CSRF state (乱数トークン) の定数時間比較。`===` は先頭一致長で早期 return
+ * するため理論上タイミング差が出る。実害はほぼ無い (cookieState は HttpOnly・
+ * state は単回使用の乱数) が、暗号トークン照合のベストプラクティスに揃える。
+ * 長さ差は先に弾く (timingSafeEqual は等長要求。state は固定長なので長さ自体の
+ * リークは無害)。
+ */
+function timingSafeStrEqual(a: string, b: string): boolean {
+  const ab = Buffer.from(a, "utf8");
+  const bb = Buffer.from(b, "utf8");
+  if (ab.length !== bb.length) return false;
+  return timingSafeEqual(ab, bb);
+}
 
 /**
  * FFLogs OAuth callback.
@@ -75,7 +90,7 @@ export async function GET(req: NextRequest) {
     return clearStateCookie(NextResponse.redirect(homeUrl));
   }
 
-  if (!cookieState || cookieState !== state) {
+  if (!cookieState || !timingSafeStrEqual(cookieState, state)) {
     homeUrl.searchParams.set(
       "fflogs_oauth_error",
       "OAuth state が一致しません — リクエストが改ざんされたか cookie が失効した可能性",

@@ -1,7 +1,12 @@
 import "server-only";
 import { decodeHtmlEntities } from "@/lib/html-entities";
 import { isPublicHttpUrl } from "@/lib/url-safe";
-import { fetchWithSafeRedirect } from "./page-title";
+import { fetchWithSafeRedirect, readBodyWithLimit } from "./page-title";
+
+// アルバムページの body 読み取り上限。写真数の多い共有アルバムは埋め込み
+// JSON が数 MB になりうるので page-title の 1MB より緩めに取るが、巨大
+// レスポンスによる Vercel 関数の OOM / 課金増を防ぐため上限は設ける。
+const MAX_GPHOTO_HTML_BYTES = 10_000_000; // 10MB
 
 /**
  * Phase 16 (2026-05-13): Google フォト共有アルバム / 直リンクの解析。
@@ -83,7 +88,16 @@ export async function fetchGooglePhotosAlbum(
       `アルバムを取得できませんでした (HTTP ${res?.status ?? "?"})`,
     );
   }
-  const html = await res.text();
+  // body サイズ上限。Content-Length が宣言されていれば読み始める前に拒否し、
+  // 未宣言でも chunked 読み取りで上限到達時に abort する (page-title と同方式)。
+  const declaredLen = Number(res.headers.get("content-length") ?? "0");
+  if (declaredLen > MAX_GPHOTO_HTML_BYTES) {
+    throw new Error("アルバムページが大きすぎます");
+  }
+  const html = await readBodyWithLimit(res, MAX_GPHOTO_HTML_BYTES);
+  if (html === null) {
+    throw new Error("アルバムページが大きすぎます");
+  }
 
   // タイトル抽出 (og:title 優先、`<title>` フォールバック)。
   const ogTitleMatch = html.match(

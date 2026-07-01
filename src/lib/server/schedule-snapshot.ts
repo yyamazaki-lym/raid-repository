@@ -82,12 +82,31 @@ export async function runScheduleSnapshot(): Promise<{
   // authoritative / admin 操作なので touch しない。
   let cleanedCandidates = 0;
   if (candidateRawDates.length > 0) {
-    const { count } = await supabase
-      .from("schedule_past_sessions")
-      .delete({ count: "exact" })
+    // 手動紐づけした FFLogs ログ (schedule_past_session_logs.source='manual')
+    // を持つ raw_date は掃除対象から除外する。schedule_past_session_logs.raw_date
+    // は親 schedule_past_sessions への ON DELETE CASCADE 参照なので、親 snapshot
+    // 行を消すと同じ raw_date の手入力ログまで巻き添え削除されてしまう
+    // (再入力でしか復旧できないサイレントなデータ喪失)。親を残せば cascade は
+    // 起きないため、手動ログのある日付は snapshot 行を残す方を優先する。
+    const { data: manualLogRows } = await supabase
+      .from("schedule_past_session_logs")
+      .select("raw_date")
       .in("raw_date", candidateRawDates)
-      .eq("source", "snapshot");
-    cleanedCandidates = count ?? 0;
+      .eq("source", "manual");
+    const protectedDates = new Set(
+      (manualLogRows ?? []).map((r) => r.raw_date as string),
+    );
+    const deletableDates = candidateRawDates.filter(
+      (d) => !protectedDates.has(d),
+    );
+    if (deletableDates.length > 0) {
+      const { count } = await supabase
+        .from("schedule_past_sessions")
+        .delete({ count: "exact" })
+        .in("raw_date", deletableDates)
+        .eq("source", "snapshot");
+      cleanedCandidates = count ?? 0;
+    }
   }
 
   if (decisionSessions.length === 0) {
@@ -110,7 +129,7 @@ export async function runScheduleSnapshot(): Promise<{
     start_time: string;
     end_time: string;
     day_of_week: string;
-    source: "snapshot";
+    source: "snapshot" | "manual";
     attendances: Record<string, string>;
     user_names: string[];
   };
@@ -136,18 +155,32 @@ export async function runScheduleSnapshot(): Promise<{
   const rawDates = rows.map((r) => r.raw_date);
   const { data: existing } = await supabase
     .from("schedule_past_sessions")
-    .select("raw_date")
+    .select("raw_date, source")
     .in("raw_date", rawDates);
   const existingSet = new Set(
     (existing ?? []).map((r) => r.raw_date as string),
   );
+  // admin が手動作成した行 (source='manual') は、DECISION 再スナップショット時も
+  // 'manual' を維持する。ここで 'snapshot' に上書きすると、後で同じ日付が
+  // CANDIDATE 化した際に snapshot 限定の掃除 (上記) の巻き添え対象へ落ちてしまう。
+  const manualParentDates = new Set(
+    (existing ?? [])
+      .filter((r) => (r.source as string) === "manual")
+      .map((r) => r.raw_date as string),
+  );
 
   // UPSERT all rows. For Discord-only rows (source='discord') we
   // overwrite source to 'snapshot' since we now have richer data —
-  // but we don't touch the date columns that match anyway.
+  // but we don't touch the date columns that match anyway. Existing
+  // 'manual' rows keep their source (see above).
+  const rowsToUpsert = rows.map((r) =>
+    manualParentDates.has(r.raw_date)
+      ? { ...r, source: "manual" as const }
+      : r,
+  );
   const { error } = await supabase
     .from("schedule_past_sessions")
-    .upsert(rows, { onConflict: "raw_date" });
+    .upsert(rowsToUpsert, { onConflict: "raw_date" });
   if (error) {
     return {
       ok: false,

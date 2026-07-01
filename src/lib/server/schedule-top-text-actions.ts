@@ -22,6 +22,16 @@ export async function setScheduleTopTextOverrideAction(
   if (!auth.ok) return { ok: false, reason: auth.reason };
 
   const trimmed = raw.trim();
+  // category_macros (char_length<=8000 CHECK) と揃えた長さ上限。app_settings.value
+  // は長さ CHECK が無い裸の text なので、巨大ペイロードによる DB/描画肥大を
+  // action 側で防ぐ。
+  const MAX_TOP_TEXT_LEN = 8000;
+  if (trimmed.length > MAX_TOP_TEXT_LEN) {
+    return {
+      ok: false,
+      reason: `本文が長すぎます (最大 ${MAX_TOP_TEXT_LEN} 文字)`,
+    };
+  }
   const supabase = await createClient();
   if (!trimmed) {
     const { error } = await supabase
