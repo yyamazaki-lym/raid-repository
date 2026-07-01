@@ -14,9 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { useConfirm } from "@/components/portal/confirm-dialog";
 import {
-  clearAllFflogsLinks,
   disconnectFflogsOAuthAction,
   fetchFflogsOAuthStatus,
   getFflogsCronEnabled,
@@ -114,7 +112,6 @@ export function FflogsSyncSection({
   const [logsResult, setLogsResult] = useState<FflogsLinkResultLite | null>(
     null,
   );
-  const [clearingLogs, startClearLogs] = useTransition();
   // FFLogs OAuth state — fetched from server when dialog opens. Lets
   // us show "Connected as XYZ" vs "Connect" in the OAuth section.
   const [oauthStatus, setOauthStatus] = useState<{
@@ -140,7 +137,6 @@ export function FflogsSyncSection({
   // 日次自動連動 cron (fflogs_cron_enabled) の ON/OFF。null = 読み込み中。
   const [cronEnabled, setCronEnabled] = useState<boolean | null>(null);
   const [togglingCron, startToggleCron] = useTransition();
-  const confirm = useConfirm();
 
   useEffect(() => {
     if (!open) return;
@@ -580,42 +576,6 @@ export function FflogsSyncSection({
                   <Link2 className="h-3.5 w-3.5" aria-hidden />
                 )}
                 {linkingLogs ? "連動中..." : "FFLogs と動画を連動"}
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={async () => {
-                  const ok = await confirm({
-                    title: "全ての logs URL をクリアしますか？",
-                    description:
-                      "動画 / 過去予定の自動紐づけ + 手動紐づけの両方が対象です。",
-                    confirmText: "クリア",
-                    destructive: true,
-                  });
-                  if (!ok) return;
-                  startClearLogs(async () => {
-                    const r = await clearAllFflogsLinks();
-                    if (!r.ok) {
-                      toast.error("クリア失敗: " + (r.reason ?? "原因不明"));
-                      return;
-                    }
-                    toast.success(
-                      `動画 ${r.videosCleared} 件 / 過去予定 ${r.sessionsCleared} 件の logs URL をクリア`,
-                    );
-                    router.refresh();
-                  });
-                }}
-                disabled={clearingLogs}
-                className="gap-1.5 text-[11px] tracking-normal text-rose-200"
-                title="全 logs URL を一括削除（過去の v1 fallback で誤って紐づいたものをリセット）"
-              >
-                {clearingLogs ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
-                ) : (
-                  <X className="h-3.5 w-3.5" aria-hidden />
-                )}
-                {clearingLogs ? "クリア中..." : "全 logs URL クリア"}
               </Button>
             </div>
             {logsResult && (

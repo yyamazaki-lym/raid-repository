@@ -86,6 +86,12 @@ export const RELEASES: ReleaseEntry[] = [
         body:
           "見た目・操作は変えない内部的な最適化 (多角的レビューのパフォーマンス項目)。動画一覧で 1 枚のカードを再生・選択・お気に入り操作した際に全カードが再描画されていたのを、カードを memo 化 + コールバックを安定化して該当カードのみの更新に抑えた。加えて、リアルタイム更新 (他の人の追加・削除) のたびにスクロール用のタイマー群を張り直していた無駄を解消。\n\n**検証**: npx tsc --noEmit / npx eslint / npm run build pass。dev preview で動画ページの選択モードに入り、各カードの選択トグルが独立に切り替わること (aria-pressed 反映)・コンソールエラー無しを確認。",
       },
+      {
+        title:
+          "🧭 設定 — 「全 logs URL クリア」を Danger Zone（全データ初期化の隣）へ移動",
+        body:
+          "管理者向け設定ダイアログで、FFLogs 連携セクションにあった「全 logs URL クリア」ボタンを、末尾の Danger Zone（全データ初期化の区画）へ移動した。全 logs URL クリア・全データ初期化という破壊的なリセット操作を 1 箇所にまとめて見つけやすく / 誤操作しにくくする狙い。機能・確認ダイアログの挙動は不変で、置き場所のみの変更。\n\n**検証**: npx tsc --noEmit / npx eslint / npm run build pass。dev preview (admin) で FFLogs セクションから当該ボタンが消え、Danger Zone に「全 logs URL クリア」→「全データ初期化」の順で並ぶこと・コンソールエラー無しを確認。",
+      },
     ],
   },
   {
