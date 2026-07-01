@@ -21,8 +21,10 @@ const MAX_REDIRECT_HOPS = 3;
 /**
  * `res.body` を chunked に読み込み、`maxBytes` を超えたら abort して
  * `null` を返す。完走時は UTF-8 デコード済の文字列を返す。
+ * 外部 HTML 取得経路 (google-photos など) で body サイズ上限を共有するため
+ * export している。
  */
-async function readBodyWithLimit(
+export async function readBodyWithLimit(
   res: Response,
   maxBytes: number,
 ): Promise<string | null> {

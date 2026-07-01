@@ -471,6 +471,20 @@ function parseRawDate(raw: string): {
   if (!m) return null;
   const [, y, mo, d, dow, sh, sm, eh, em] = m;
   const hasTime = sh !== undefined && sm !== undefined;
+  // 時/分の上限検証。RAW_DATE_RE は時 \d{1,2} (0-99) / 分 \d{2} (00-99) を
+  // 許容するため、`25:00` のような不正時刻もマッチしてしまう。範囲外を
+  // 検証せず Date.UTC に渡すと桁上がりで別日時へサイレントにロールオーバー
+  // し、past/future 判定や表示が静かにズレる。範囲外は不正データとして skip。
+  // hasTime のとき end (eh:em) も同じ optional group で必ず揃う。
+  if (
+    hasTime &&
+    (Number(sh) > 23 ||
+      Number(sm) > 59 ||
+      Number(eh) > 23 ||
+      Number(em) > 59)
+  ) {
+    return null;
+  }
   // The schedule labels are JST. Build a UTC instant directly so the result
   // is timezone-independent — `Date.UTC(...)` plus a -9h shift represents
   // "JST clock time" → "the same moment expressed as UTC". This means the

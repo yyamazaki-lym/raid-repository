@@ -1297,6 +1297,11 @@ RETURNS integer LANGUAGE sql SECURITY DEFINER SET search_path = public AS $$
   WHERE category_id = p_category_id AND kind = p_kind
 $$;
 
+-- 13d 節の mutating RPC と同じく PUBLIC から明示剥奪してから付与先を絞る。
+-- read-only allocator なので実害は無いが、ACL 上で意図 (anon/authenticated のみ)
+-- を明示し、security advisor の PUBLIC EXECUTE 指摘も消す。
+REVOKE EXECUTE ON FUNCTION public.next_category_sort_order() FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.next_category_link_sort_order(uuid, text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.next_category_sort_order() TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.next_category_link_sort_order(uuid, text)
   TO anon, authenticated;
@@ -1330,6 +1335,8 @@ RETURNS integer LANGUAGE sql SECURITY DEFINER SET search_path = public AS $$
   WHERE category_id = p_category_id
 $$;
 
+REVOKE EXECUTE ON FUNCTION public.next_recruitment_template_sort_order() FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.next_category_macro_sort_order(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.next_recruitment_template_sort_order()
   TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.next_category_macro_sort_order(uuid)

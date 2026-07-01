@@ -202,6 +202,14 @@ async function mergeStoredPastSessions(
 
   // stored 行のうち char-sheets で既出ではないものを additions として
   // 追加 (char-sheets と一致するものは上で残しているので skip)。
+  //
+  // 不変条件: validStored の past 判定 (dateMs <= nowMs) と charSheetsKept の
+  // past 判定 (date >= nowMs-6h) は 6h ずれているが、dedup キー
+  // charSheetsRawDates は cutoff に依存せず parsed.sessions 全件から構築し、
+  // rawDate 一致行を無条件 skip する。よって 2 つの cutoff がどうずれても
+  // 同一 rawDate の重複追加は起きない (cutoff は「past として残すか」だけを
+  // 決め、「重複するか」は rawDate 一致のみで決まる)。将来 cutoff を統一/変更
+  // する際もこの dedup が効いている限り重複しない。
   const charSheetsRawDates = new Set(parsed.sessions.map((s) => s.rawDate));
   const additions: ScheduleSession[] = [];
   for (const s of validStored) {

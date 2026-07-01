@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Image from "next/image";
 import {
@@ -123,14 +123,17 @@ export function VideosList({
   const [optimisticFavorites, setOptimisticFavorites] = useState<
     Map<string, boolean>
   >(new Map());
-  const toggleSelected = (id: string) => {
+  // VideoCard を memo 化するため、参照が毎回変わらないよう useCallback で固定。
+  const toggleSelected = useCallback((id: string) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
-  };
+  }, []);
+  // 再生中カードを閉じる安定コールバック (同上、memo の props を安定させる)。
+  const handleCloseActive = useCallback(() => setActiveVideoId(null), []);
   // ?focus=<videoId> — set when navigating from the schedule page's
   // past date cell. Used to scroll the matching card into view and
   // briefly highlight it.
@@ -272,7 +275,11 @@ export function VideosList({
       if (rafId !== null) cancelAnimationFrame(rafId);
       obs.disconnect();
     };
-  }, [focusedVideoId, live.length, focusKey]);
+    // live.length は依存に含めない: effect 本体は live を参照せず、rAF polling +
+    // ResizeObserver がマウント待ちを吸収するため、realtime の INSERT/DELETE で
+    // 長さが変わるたびに 7 個の setTimeout + rAF + Observer を張り直すのは冗長。
+    // URL 再訪時の再スクロールは focusKey 更新で別途カバーされる。
+  }, [focusedVideoId, focusKey]);
 
   // フォーカス強調 (ring) は「ユーザーが次の操作 (枠外クリック /
   // スクロール) をした時点」で off にする。Trophy 経由 / URL 経由
@@ -880,18 +887,18 @@ export function VideosList({
                 <SortableVideoCard
                   key={v.id}
                   video={v}
-                  onEdit={() => setEditTarget(v)}
-                  onToggleFavorite={() => onToggleFavorite(v)}
+                  onEdit={setEditTarget}
+                  onToggleFavorite={onToggleFavorite}
                   focused={focusActive && v.id === focusedVideoId}
                   refIfFocused={
                     v.id === focusedVideoId ? focusedRef : null
                   }
                   selectMode={selectMode}
                   selected={selectedIds.has(v.id)}
-                  onToggleSelect={() => toggleSelected(v.id)}
+                  onToggleSelect={toggleSelected}
                   isActive={activeVideoId === v.id}
-                  onActivate={() => setActiveVideoId(v.id)}
-                  onClose={() => setActiveVideoId(null)}
+                  onActivate={setActiveVideoId}
+                  onClose={handleCloseActive}
                 />
               ))}
             </ul>
@@ -912,14 +919,14 @@ export function VideosList({
             >
               <VideoCard
                 video={v}
-                onEdit={() => setEditTarget(v)}
-                onToggleFavorite={() => onToggleFavorite(v)}
+                onEdit={setEditTarget}
+                onToggleFavorite={onToggleFavorite}
                 selectMode={selectMode}
                 selected={selectedIds.has(v.id)}
-                onToggleSelect={() => toggleSelected(v.id)}
+                onToggleSelect={toggleSelected}
                 isActive={activeVideoId === v.id}
-                onActivate={() => setActiveVideoId(v.id)}
-                onClose={() => setActiveVideoId(null)}
+                onActivate={setActiveVideoId}
+                onClose={handleCloseActive}
               />
             </li>
           ))}
@@ -1022,7 +1029,7 @@ export function VideosList({
   );
 }
 
-function SortableVideoCard({
+const SortableVideoCard = memo(function SortableVideoCard({
   video,
   onEdit,
   onToggleFavorite,
@@ -1036,15 +1043,15 @@ function SortableVideoCard({
   onClose,
 }: {
   video: CategoryLink;
-  onEdit: () => void;
-  onToggleFavorite?: () => void;
+  onEdit: (video: CategoryLink) => void;
+  onToggleFavorite?: (video: CategoryLink) => void;
   focused?: boolean;
   refIfFocused?: React.RefObject<HTMLLIElement | null> | null;
   selectMode?: boolean;
   selected?: boolean;
-  onToggleSelect?: () => void;
+  onToggleSelect?: (id: string) => void;
   isActive?: boolean;
-  onActivate?: () => void;
+  onActivate?: (id: string) => void;
   onClose?: () => void;
 }) {
   const {
@@ -1098,9 +1105,9 @@ function SortableVideoCard({
       />
     </li>
   );
-}
+});
 
-function VideoCard({
+const VideoCard = memo(function VideoCard({
   video,
   onEdit,
   onToggleFavorite,
@@ -1113,17 +1120,32 @@ function VideoCard({
   onClose,
 }: {
   video: CategoryLink;
-  onEdit: () => void;
-  onToggleFavorite?: () => void;
+  onEdit: (video: CategoryLink) => void;
+  onToggleFavorite?: (video: CategoryLink) => void;
   dragListeners?: ReturnType<typeof useSortable>["listeners"];
   selectMode?: boolean;
   selected?: boolean;
-  onToggleSelect?: () => void;
+  onToggleSelect?: (id: string) => void;
   isActive?: boolean;
-  onActivate?: () => void;
+  onActivate?: (id: string) => void;
   onClose?: () => void;
 }) {
   const ytId = parseYouTubeId(video.url);
+  // memo の props を安定させるため、親から受けた引数付きコールバックを
+  // このカードの video/id に束ねた安定関数へ変換して子孫へ渡す。
+  const handleEdit = useCallback(() => onEdit(video), [onEdit, video]);
+  const handleToggleFavorite = useCallback(
+    () => onToggleFavorite?.(video),
+    [onToggleFavorite, video],
+  );
+  const handleToggleSelect = useCallback(
+    () => onToggleSelect?.(video.id),
+    [onToggleSelect, video.id],
+  );
+  const handleActivate = useCallback(
+    () => onActivate?.(video.id),
+    [onActivate, video.id],
+  );
   // safeHref returns undefined for non-http(s) values, which renders the
   // anchor as inert (no clickable XSS surface) — defense in depth alongside
   // the form-level + server-action validators.
@@ -1163,7 +1185,7 @@ function VideoCard({
             url={video.url}
             title={video.title}
             isActive={isActive}
-            onActivate={onActivate}
+            onActivate={handleActivate}
             onClose={onClose}
           />
         ) : (
@@ -1194,7 +1216,7 @@ function VideoCard({
             onClick={(e) => {
               e.stopPropagation();
               e.preventDefault();
-              onToggleSelect?.();
+              handleToggleSelect();
             }}
             aria-pressed={selected}
             aria-label={
@@ -1268,7 +1290,7 @@ function VideoCard({
           onClick={(e) => {
             e.stopPropagation();
             e.preventDefault();
-            onToggleFavorite?.();
+            handleToggleFavorite();
           }}
           aria-pressed={video.isFavorite}
           aria-label={
@@ -1296,7 +1318,7 @@ function VideoCard({
             aria-hidden
           />
         </button>
-        <LinkCardMenu link={video} onEdit={onEdit} />
+        <LinkCardMenu link={video} onEdit={handleEdit} />
       </div>
       {/* Description は無くても 1 行分を確保してカード高さを揃える
           (text-xs 0.75rem × leading-relaxed 1.625 = 1.21875rem/line)。
@@ -1351,7 +1373,7 @@ function VideoCard({
       </a>
     </Card>
   );
-}
+});
 
 /**
  * Click-to-load YouTube preview. Avoids embedding N iframes upfront so the

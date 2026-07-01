@@ -634,6 +634,7 @@ export function CategoryFormDialog({
                 <button
                   key={s}
                   type="button"
+                  aria-pressed={status === s}
                   onClick={() => setStatus(s)}
                   className={cn(
                     "inline-flex items-center gap-1.5 rounded-sm border px-2 py-1 text-[10px] tracking-normal transition-colors",
@@ -670,6 +671,7 @@ export function CategoryFormDialog({
                       <button
                         key={id}
                         type="button"
+                        aria-pressed={defaultTab === id}
                         onClick={() => setDefaultTab(id)}
                         disabled={disabled}
                         title={
@@ -1227,7 +1229,10 @@ export function CategoryFormDialog({
           </div>
 
           {error && (
-            <div className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive-foreground/90">
+            <div
+              role="alert"
+              className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive-foreground/90"
+            >
               <AlertTriangle
                 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive"
                 aria-hidden

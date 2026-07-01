@@ -66,8 +66,24 @@ const buckets = new Map<string, Bucket>();
 const MAX_BUCKETS = 5_000;
 function maybeCleanup(now: number) {
   if (buckets.size < MAX_BUCKETS) return;
+  let removed = 0;
   for (const [key, bucket] of buckets) {
-    if (bucket.resetAt <= now) buckets.delete(key);
+    if (bucket.resetAt <= now) {
+      buckets.delete(key);
+      removed++;
+    }
+  }
+  // 全 bucket が生存 (resetAt 未来) で 1 件も掃けないと、以降リクエスト毎に
+  // O(MAX_BUCKETS) の空振り全走査を繰り返す。挿入順 = Map の反復順の古い側
+  // から一定割合を強制 evict する簡易 LRU で頭打ちにする (非 Vercel + Upstash
+  // 未設定の fallback 経路でのみ到達しうる縮退状態への保険)。
+  if (removed === 0) {
+    const evictTarget = Math.floor(MAX_BUCKETS / 10);
+    let evicted = 0;
+    for (const key of buckets.keys()) {
+      buckets.delete(key);
+      if (++evicted >= evictTarget) break;
+    }
   }
 }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { Trash2, X } from "lucide-react";
 import type { ScheduleSessionMemo } from "@/lib/schedule-memos-client";
 
@@ -23,9 +23,45 @@ export function DeleteConfirmModal({
   onCancel: () => void;
   onConfirm: () => void;
 }) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  const cancelRef = useRef<HTMLButtonElement>(null);
+
+  // マウント時に破壊的操作の安全側 (キャンセル) へフォーカスを移し、閉じる時に
+  // 元のトリガー要素へ戻す。aria-modal='true' を名乗る以上、フォーカスを内側へ
+  // 導入しないと SR/キーボード利用者に存在が伝わらず背後を操作できてしまう。
+  useEffect(() => {
+    const prevActive = document.activeElement as HTMLElement | null;
+    cancelRef.current?.focus();
+    return () => prevActive?.focus?.();
+  }, []);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onCancel();
+      if (e.key === "Escape") {
+        onCancel();
+        return;
+      }
+      // 単純なフォーカストラップ: Tab をモーダル内の操作ボタンに閉じ込める。
+      if (e.key !== "Tab") return;
+      const panel = panelRef.current;
+      if (!panel) return;
+      const focusables = Array.from(
+        panel.querySelectorAll<HTMLElement>("button:not([disabled])"),
+      );
+      if (focusables.length === 0) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      const active = document.activeElement;
+      if (!panel.contains(active)) {
+        e.preventDefault();
+        first.focus();
+      } else if (e.shiftKey && active === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && active === last) {
+        e.preventDefault();
+        first.focus();
+      }
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
@@ -55,6 +91,7 @@ export function DeleteConfirmModal({
       }}
     >
       <div
+        ref={panelRef}
         onMouseDown={(e) => e.stopPropagation()}
         className="glass-popup w-full max-w-sm rounded-lg border border-rose-400/55 shadow-[0_16px_48px_-12px_rgba(244,63,94,0.4),0_4px_16px_-4px_rgba(0,0,0,0.5)]"
       >
@@ -79,6 +116,7 @@ export function DeleteConfirmModal({
           </p>
           <div className="flex justify-end gap-1.5">
             <button
+              ref={cancelRef}
               type="button"
               onClick={onCancel}
               disabled={busy}

@@ -114,21 +114,31 @@ export function MaintenanceMenu() {
     useState<StrategyThumbProgress | null>(null);
   const popupRef = useRef<HTMLDivElement | null>(null);
 
-  // Click-outside-to-dismiss for the result popup.
+  // 結果ポップアップ: 外側クリック / Escape で閉じる。開いた時に結果領域へ
+  // フォーカスを移して SR に出現を知らせ (role="region" + aria-label を読み上げ)、
+  // 閉じたら元のトリガーへフォーカスを戻す。
   useEffect(() => {
     if (!result) return;
+    const prevActive = document.activeElement as HTMLElement | null;
+    popupRef.current?.focus();
     const onDocClick = (e: MouseEvent) => {
       const target = e.target as Node | null;
       if (!target) return;
       if (popupRef.current && popupRef.current.contains(target)) return;
       setResult(null);
     };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setResult(null);
+    };
     const handle = setTimeout(() => {
       document.addEventListener("mousedown", onDocClick);
     }, 0);
+    document.addEventListener("keydown", onKey);
     return () => {
       clearTimeout(handle);
       document.removeEventListener("mousedown", onDocClick);
+      document.removeEventListener("keydown", onKey);
+      prevActive?.focus?.();
     };
   }, [result]);
 
@@ -578,7 +588,10 @@ export function MaintenanceMenu() {
       {result && (
         <div
           ref={popupRef}
-          className="glass-popup relative z-30 max-h-[70vh] w-full overflow-y-auto rounded-md p-3 sm:absolute sm:top-full sm:right-0 sm:mt-2 sm:w-[36rem] sm:max-w-[calc(100vw-2rem)]"
+          role="region"
+          aria-label="実行結果"
+          tabIndex={-1}
+          className="glass-popup relative z-30 max-h-[70vh] w-full overflow-y-auto rounded-md p-3 focus:outline-none sm:absolute sm:top-full sm:right-0 sm:mt-2 sm:w-[36rem] sm:max-w-[calc(100vw-2rem)]"
         >
           <button
             type="button"

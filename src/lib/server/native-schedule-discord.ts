@@ -232,8 +232,13 @@ export async function dispatchNoonNotifyForToday(): Promise<DispatchResult> {
   // 場合も次の毎時 cron で当日分を送れる。
   const hourRaw = await fetchAppSetting(NOTIFY_HOUR_KEY);
   const targetHour = parseHour(hourRaw);
+  // 遅い hour (例 23) だと当日の毎時 cron 再試行が 1 回だけになり、その単発失敗
+  // (Discord API エラー / cold start timeout / pg_net 一過性失敗) で当日通知が
+  // 恒久ミスに戻ってしまう。当日内に必ず複数回の再試行余地を残すため、実効ゲート
+  // 時刻を 20 時で頭打ちにする (targetHour<=20 は従来どおり不変)。
+  const effectiveTargetHour = Math.min(targetHour, 20);
   const nowJstHour = getJstHour();
-  if (nowJstHour < targetHour) {
+  if (nowJstHour < effectiveTargetHour) {
     return { ok: true, posted: 0, skipped: 0 };
   }
 
