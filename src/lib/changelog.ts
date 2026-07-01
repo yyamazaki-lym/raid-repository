@@ -92,6 +92,11 @@ export const RELEASES: ReleaseEntry[] = [
         body:
           "管理者向け設定ダイアログで、FFLogs 連携セクションにあった「全 logs URL クリア」ボタンを、末尾の Danger Zone（全データ初期化の区画）へ移動した。全 logs URL クリア・全データ初期化という破壊的なリセット操作を 1 箇所にまとめて見つけやすく / 誤操作しにくくする狙い。機能・確認ダイアログの挙動は不変で、置き場所のみの変更。\n\n**検証**: npx tsc --noEmit / npx eslint / npm run build pass。dev preview (admin) で FFLogs セクションから当該ボタンが消え、Danger Zone に「全 logs URL クリア」→「全データ初期化」の順で並ぶこと・コンソールエラー無しを確認。",
       },
+      {
+        title: "🧭 設定 — Danger Zone を折りたたみ式に",
+        body:
+          "設定ダイアログ末尾の Danger Zone（全 logs URL クリア / 全データ初期化）を、既定で折りたたんだ状態にした。破壊的操作の誤操作防止と UI ノイズ削減が狙いで、見出しをクリックすると展開する（FFLogs の OAuth / Session Cookie 節と同じ折りたたみ方式）。\n\n**検証**: npx tsc --noEmit / npx eslint / npm run build pass。dev preview (admin) で既定は「DANGER ZONE」見出しのみ表示 → クリックで 2 つのカードが展開・シェブロンが回転することをコンソールエラー無しで確認。",
+      },
     ],
   },
   {
