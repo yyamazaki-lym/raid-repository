@@ -95,6 +95,11 @@
 
 直近版のみ列挙。詳細経緯は `src/lib/changelog.ts`、過去版アーカイブは `.claude/done.md`。
 
+- **2026-07-12 (2): 日付登録 Logs ↔ 同日動画の橋渡し** — ユーザー報告「日付から登録した Logs が同日の動画と紐づいていない」(観測面 = 動画ページのバッジ)。原因は **保存先 2 系統の構造ギャップ**: 手動の日付登録 (`addSessionLogsUrl` 系) は `schedule_past_session_logs` にのみ書き、動画カードのバッジが参照する `category_links.logs_url` を更新しない (auto 同期だけが両方に書く非対称。#259 のリグレッションではないと差分検証で確定)。修正:
+  - **書込時橋渡し**: 日付登録時に同日 (JST) の `logs_url IS NULL` 動画へ `logs_url` + `source='manual'` を設定 (既存リンクは上書きしない)。**削除対称 (ユーザー決定)**: manual 行の削除時、同日動画の `logs_url == URL AND source='manual'` をクリア。sync/native 4 アクション対応、toast に件数表示
+  - **同日判定の共有化**: `resolveVideoJstYmd` 等を新規 `src/lib/video-jst-date.ts` に抽出し、TOP の `buildSessionVideoLinkMap` と橋渡し (`src/lib/server/session-logs-video-bridge.ts`) で完全同一ロジックに (タイトル日付優先 → posted_at JST fallback)
+  - **cron 第4ステップ**: fflogs-sync の 3 リンカー後に manual logs → 同日 NULL 動画のバックフィルを追加 (Discord 取込で動画が翌日入るケース + 既存登録分を毎晩自己修復。時間予算 deadline 尊重・冪等・auto wipe 非干渉)。結果パネル/cron JSON に `manualLogsBridged` 追加
+  - schema.sql / RLS / publication 変更ゼロ。実機確認: 日付登録 → videos ページに realtime でバッジ即出現 / 削除でバッジ解除 / 手動 sync で「日付登録 Logs から動画 N 件に補完」
 - **2026-07-12: 全体監査 (動作性/安定性/堅牢性) + TOP 高速化 + DB 最適化** — ユーザー要望「全体を精査、特に TOP が重い、DB 最適化も」を受けた 3 領域並列精査 → 確定約 20 件をバッチ 4 コミットで実装 (ブランチ `claude/site-performance-stability-audit-fcobyi`)。**レポート全文 = `docs/audit-2026-07-12.md`**。TODO #11 (パフォーマンス) の新ボトルネック発見に相当。骨子:
   - **TOP レイテンシ (A)**: 外部 fetch timeout 8s / app_settings 6 キーを 1 SELECT に統合 (`fetchPortalSettings`) / native placeholder 書込を cron 移設 (描画パスは空月フォールバックのみ) / **過去履歴を直近 12 ヶ月に窓化 (ユーザー決定、データは削除しない)**
   - **DB (B)**: `category_links(kind, posted_at)` index / Realtime publication を実購読 6 テーブルへ縮小 + 非購読 13 を REPLICA IDENTITY DEFAULT 化 / RLS `auth.jwt()` の initPlan 化 (全 write + self-row + storage) / 冗長 index 4 本削除 / memos・native comment/note の長さ CHECK / backgrounds DELETE policy + カテゴリ削除時 Storage 掃除 / 練習時間集計の RPC 化。**fix: seed-demo.sql が DROP 済み legacy 列へ INSERT しており再適用が必ず失敗する潜在バグを修正** (ローカル PG16 で 2 回適用 + pg_* 実査済)

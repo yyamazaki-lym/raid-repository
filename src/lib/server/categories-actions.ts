@@ -3,6 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { runDiscordImport } from "./discord-import";
 import {
+  bridgeLogsUrlToSameDayVideos,
+  unbridgeLogsUrlFromSameDayVideos,
+} from "./session-logs-video-bridge";
+import {
   backfillPostedAtFromDiscord,
   type PostedAtBackfillResult,
 } from "./discord-postedat-backfill";
@@ -1075,7 +1079,10 @@ export async function addSessionLogsUrl(
     endTime: string;
     dayOfWeek: string;
   },
-): Promise<{ ok: true; id: string } | { ok: false; reason: string }> {
+): Promise<
+  | { ok: true; id: string; bridgedVideos?: number }
+  | { ok: false; reason: string }
+> {
   const auth = await assertAdminResult();
   if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
   const trimmedDate = rawDate.trim();
@@ -1104,9 +1111,10 @@ export async function addSessionLogsUrl(
   // Ensure parent row exists. If the session hasn't been snapshotted
   // yet but the caller knows the session shape (passed via the
   // popover), insert a `source='manual'` placeholder row.
+  // parsed_date も同時に取得 (橋渡しの同日判定に使う。追加クエリ不要)。
   const { data: existing } = await supabase
     .from("schedule_past_sessions")
-    .select("raw_date")
+    .select("raw_date, parsed_date")
     .eq("raw_date", trimmedDate)
     .maybeSingle();
   // 2026-07-12 監査 D-2: この呼び出しで placeholder 親を新規挿入したかを
@@ -1168,12 +1176,27 @@ export async function addSessionLogsUrl(
     }
     return { ok: false, reason: dbError("logs URL 追加", logErr) };
   }
+
+  // 2026-07-12: 日付登録した Logs を同日の動画 (logs_url 未設定) にも橋渡し
+  // する。動画カードの FFLogs バッジは category_links.logs_url 単独駆動の
+  // ため、session_logs だけでは「同日の動画に紐づかない」ギャップがあった。
+  // 失敗は warn + 継続 (本処理の INSERT は成功済み。橋渡し漏れは翌朝の
+  // fflogs-sync 第4ステップが自己修復する)。
+  const parsedDateIso =
+    (existing?.parsed_date as string | undefined) ?? sessionDetails?.parsedDate;
+  let bridgedVideos = 0;
+  if (parsedDateIso) {
+    const b = await bridgeLogsUrlToSameDayVideos(supabase, parsedDateIso, t);
+    if (b.ok) bridgedVideos = b.updated;
+    else console.warn("[session-logs] video bridge failed:", b.reason);
+  }
+
   try {
     revalidatePath("/");
   } catch {
     // best-effort
   }
-  return { ok: true, id: inserted.id as string };
+  return { ok: true, id: inserted.id as string, bridgedVideos };
 }
 
 /**
@@ -1181,10 +1204,17 @@ export async function addSessionLogsUrl(
  * its primary key. Used by the memo popover to remove an existing
  * URL entry — both 'auto' and 'manual' rows are deletable so the user
  * can clean up wrong auto-matches inline.
+ *
+ * 2026-07-12: manual 行の削除時は、橋渡し (`bridgeLogsUrlToSameDayVideos`)
+ * で同日動画に設定された同一 URL の logs_url も対称に解除する (auto 行の
+ * 削除では解除しない — auto の動画側リンクはコンテンツ照合済みで独立、
+ * かつ次回 sync でどのみち再構成されるため)。
  */
 export async function deleteSessionLogsUrl(
   id: string,
-): Promise<{ ok: true } | { ok: false; reason: string }> {
+): Promise<
+  { ok: true; unbridgedVideos?: number } | { ok: false; reason: string }
+> {
   const auth = await assertAdminResult();
   if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
   const trimmed = id.trim();
@@ -1192,17 +1222,42 @@ export async function deleteSessionLogsUrl(
     return { ok: false, reason: "id が空です" };
   }
   const supabase = await createClient();
+  // 対称解除に必要な url/source/raw_date を DELETE 前に控える。
+  const { data: row } = await supabase
+    .from("schedule_past_session_logs")
+    .select("url, source, raw_date")
+    .eq("id", trimmed)
+    .maybeSingle();
   const { error } = await supabase
     .from("schedule_past_session_logs")
     .delete()
     .eq("id", trimmed);
   if (error) return { ok: false, reason: dbError("logs URL 削除", error) };
+
+  let unbridgedVideos = 0;
+  if (row?.source === "manual") {
+    const { data: parent } = await supabase
+      .from("schedule_past_sessions")
+      .select("parsed_date")
+      .eq("raw_date", row.raw_date as string)
+      .maybeSingle();
+    if (parent?.parsed_date) {
+      const u = await unbridgeLogsUrlFromSameDayVideos(
+        supabase,
+        parent.parsed_date as string,
+        row.url as string,
+      );
+      if (u.ok) unbridgedVideos = u.updated;
+      else console.warn("[session-logs] video unbridge failed:", u.reason);
+    }
+  }
+
   try {
     revalidatePath("/");
   } catch {
     // best-effort
   }
-  return { ok: true };
+  return { ok: true, unbridgedVideos };
 }
 
 /**
@@ -1222,7 +1277,10 @@ export async function deleteSessionLogsUrl(
 export async function addNativeSessionLogsUrl(
   nativeSessionId: string,
   logsUrl: string,
-): Promise<{ ok: true; id: string } | { ok: false; reason: string }> {
+): Promise<
+  | { ok: true; id: string; bridgedVideos?: number }
+  | { ok: false; reason: string }
+> {
   const auth = await assertAdminResult();
   if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
   const trimmedId = nativeSessionId.trim();
@@ -1263,12 +1321,33 @@ export async function addNativeSessionLogsUrl(
     }
     return { ok: false, reason: dbError("logs URL 追加", error) };
   }
+
+  // 2026-07-12: sync 版 addSessionLogsUrl と同じ橋渡し。native は action が
+  // session id しか持たないため parsed_date の追加 SELECT が 1 本必要。
+  let bridgedVideos = 0;
+  {
+    const { data: parent } = await supabase
+      .from("native_schedule_sessions")
+      .select("parsed_date")
+      .eq("id", trimmedId)
+      .maybeSingle();
+    if (parent?.parsed_date) {
+      const b = await bridgeLogsUrlToSameDayVideos(
+        supabase,
+        parent.parsed_date as string,
+        t,
+      );
+      if (b.ok) bridgedVideos = b.updated;
+      else console.warn("[native-session-logs] video bridge failed:", b.reason);
+    }
+  }
+
   try {
     revalidatePath("/");
   } catch {
     // best-effort
   }
-  return { ok: true, id: data.id as string };
+  return { ok: true, id: data.id as string, bridgedVideos };
 }
 
 /**
@@ -1278,10 +1357,15 @@ export async function addNativeSessionLogsUrl(
  * 両方を削除可能、誤 auto-match を inline で掃除できる sync 側と同パターン)。
  * ただし auto 行を削除しても next cron で再 INSERT される (auto cleanup +
  * re-INSERT の挙動は変えない)、manual 行のみ恒久的に削除される。
+ *
+ * 2026-07-12: manual 行の削除時は sync 版 deleteSessionLogsUrl と同じく、
+ * 橋渡しで同日動画に設定された同一 URL の logs_url を対称に解除する。
  */
 export async function deleteNativeSessionLogsUrl(
   id: string,
-): Promise<{ ok: true } | { ok: false; reason: string }> {
+): Promise<
+  { ok: true; unbridgedVideos?: number } | { ok: false; reason: string }
+> {
   const auth = await assertAdminResult();
   if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
   const trimmed = id.trim();
@@ -1289,17 +1373,43 @@ export async function deleteNativeSessionLogsUrl(
     return { ok: false, reason: "id が空です" };
   }
   const supabase = await createClient();
+  // 対称解除に必要な url/source/native_session_id を DELETE 前に控える。
+  const { data: row } = await supabase
+    .from("native_schedule_session_logs")
+    .select("url, source, native_session_id")
+    .eq("id", trimmed)
+    .maybeSingle();
   const { error } = await supabase
     .from("native_schedule_session_logs")
     .delete()
     .eq("id", trimmed);
   if (error) return { ok: false, reason: dbError("logs URL 削除", error) };
+
+  let unbridgedVideos = 0;
+  if (row?.source === "manual") {
+    const { data: parent } = await supabase
+      .from("native_schedule_sessions")
+      .select("parsed_date")
+      .eq("id", row.native_session_id as string)
+      .maybeSingle();
+    if (parent?.parsed_date) {
+      const u = await unbridgeLogsUrlFromSameDayVideos(
+        supabase,
+        parent.parsed_date as string,
+        row.url as string,
+      );
+      if (u.ok) unbridgedVideos = u.updated;
+      else
+        console.warn("[native-session-logs] video unbridge failed:", u.reason);
+    }
+  }
+
   try {
     revalidatePath("/");
   } catch {
     // best-effort
   }
-  return { ok: true };
+  return { ok: true, unbridgedVideos };
 }
 
 /**

@@ -458,7 +458,13 @@ function MemoList({
       toast.error("Logs URL 追加失敗: " + r.reason);
       return;
     }
-    toast.success("Logs URL を追加しました");
+    // 2026-07-12: 同日の動画へ橋渡しされた件数を toast に出す (動画カード
+    // の FFLogs バッジに即反映されることを実機で確認しやすくする)。
+    toast.success(
+      r.bridgedVideos
+        ? `Logs URL を追加しました (同日の動画 ${r.bridgedVideos} 件にバッジ表示)`
+        : "Logs URL を追加しました",
+    );
     // Reconciliation happens when `sessionLogs` prop updates from the
     // server's `revalidatePath('/')` re-render — the useEffect above
     // drops the matching optimistic row.
@@ -487,7 +493,11 @@ function MemoList({
       toast.error("Logs URL 削除失敗: " + r.reason);
       return;
     }
-    toast.success("Logs URL を削除しました");
+    toast.success(
+      r.unbridgedVideos
+        ? `Logs URL を削除しました (同日の動画 ${r.unbridgedVideos} 件のバッジも解除)`
+        : "Logs URL を削除しました",
+    );
   };
 
   // Compose state for adding a new memo. Author name initialized

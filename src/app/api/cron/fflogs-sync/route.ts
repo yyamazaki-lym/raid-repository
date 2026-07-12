@@ -73,5 +73,8 @@ export async function GET(req: NextRequest) {
     sessionsMatched: result.sessionsMatched,
     nativeSessionsScanned: result.nativeSessionsScanned,
     nativeSessionsMatched: result.nativeSessionsMatched,
+    // 第4ステップ (2026-07-12): 日付登録 Logs → 同日動画への橋渡し件数。
+    manualLogsBridged: result.manualLogsBridged ?? 0,
+    manualLogDaysScanned: result.manualLogDaysScanned ?? 0,
   });
 }

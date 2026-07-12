@@ -48,6 +48,10 @@ type FflogsLinkResultLite = {
   matched: number;
   sessionsScanned: number;
   sessionsMatched: number;
+  /** 第4ステップ (2026-07-12): 日付登録 Logs → 同日動画への橋渡し件数。 */
+  manualLogsBridged?: number;
+  /** 第4ステップ: manual log を持つ対象日数。 */
+  manualLogDaysScanned?: number;
   details: Array<{
     kind: "video" | "session";
     label: string;
@@ -187,10 +191,14 @@ export function FflogsSyncSection({
         toast.error("FFLogs 連動失敗: " + (r.reason ?? "原因不明"));
         return;
       }
-      const totalMatched = r.matched + r.sessionsMatched;
+      const bridged = r.manualLogsBridged ?? 0;
+      const totalMatched = r.matched + r.sessionsMatched + bridged;
       toast.success(
         totalMatched > 0
-          ? `動画 ${r.matched} 件 / 過去予定 ${r.sessionsMatched} 件 に Logs URL を紐づけ`
+          ? `動画 ${r.matched} 件 / 過去予定 ${r.sessionsMatched} 件 に Logs URL を紐づけ` +
+              (bridged > 0
+                ? ` · 日付登録 Logs から動画 ${bridged} 件に補完`
+                : "")
           : r.videosScanned === 0 && r.sessionsScanned === 0
             ? "logs_url 未設定の動画 / 過去予定なし"
             : `合うレポートなし (報告 ${r.reportsScanned} / 動画 ${r.videosScanned} / 予定 ${r.sessionsScanned})`,
@@ -603,6 +611,13 @@ export function FflogsSyncSection({
                         </span>
                       )}
                     </p>
+                    {(logsResult.manualLogsBridged ?? 0) > 0 && (
+                      <p>
+                        日付登録 Logs から動画{" "}
+                        <strong>{logsResult.manualLogsBridged}</strong>{" "}
+                        件に補完
+                      </p>
+                    )}
                     <p className="text-[10px] text-muted-foreground/70">
                       候補: 動画 {logsResult.videosScanned} / 過去予定{" "}
                       {logsResult.sessionsScanned}
