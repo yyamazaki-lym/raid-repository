@@ -1,6 +1,11 @@
 import "server-only";
 import { cache } from "react";
-import { fetchAppSetting } from "@/lib/supabase/app-settings";
+import { getPortalSetting } from "@/lib/supabase/app-settings";
+import { SCHEDULE_SOURCE_MODE_KEY } from "./settings-keys";
+
+// 2026-07-12 監査 A-2: キー定数は settings-keys.ts (純定数モジュール) へ移動。
+// 既存 import 互換のため re-export を維持する。
+export { SCHEDULE_SOURCE_MODE_KEY };
 
 /**
  * スケジュール機能のソースモード (TODO #2 phase 1, 2026-05-07)。
@@ -18,19 +23,18 @@ import { fetchAppSetting } from "@/lib/supabase/app-settings";
  */
 export type ScheduleSourceMode = "sync" | "native" | "disabled";
 
-export const SCHEDULE_SOURCE_MODE_KEY = "schedule_source_mode";
-
 /**
  * `app_settings.schedule_source_mode` を読み出して返す。
  *
  * - 行が無い (= 一度も保存していない) → `'sync'` (既存運用と互換)
  * - 値が想定外 (typo 等) → `'sync'` (fail-safe で既存挙動)
  *
- * `React.cache` で同一 render 内のクエリ重複を排除。
+ * `React.cache` で同一 render 内のクエリ重複を排除。読み出しは
+ * `fetchPortalSettings()` の一括 SELECT に相乗りする (A-2)。
  */
 export const getScheduleSourceMode = cache(
   async (): Promise<ScheduleSourceMode> => {
-    const v = await fetchAppSetting(SCHEDULE_SOURCE_MODE_KEY);
+    const v = await getPortalSetting(SCHEDULE_SOURCE_MODE_KEY);
     if (v === "native" || v === "disabled" || v === "sync") return v;
     return "sync";
   },

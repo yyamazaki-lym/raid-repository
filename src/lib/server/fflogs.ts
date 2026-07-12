@@ -45,6 +45,23 @@ export type FflogsReport = {
 };
 
 const FFLOGS_GRAPHQL_URL = "https://www.fflogs.com/api/v2/user";
+
+/**
+ * fflogs 同期全体の時間予算 (2026-07-12 監査 D-3)。
+ *
+ * cron / 手動 sync の実行関数は maxDuration=300s だが、v2 GraphQL
+ * (25 頁 × 20s timeout) と HTML scrape (25 頁 × 20s) は逐次実行のため、
+ * FFLogs が「全ページ遅いが応答はする」最悪ケースで理論 ~1000s に達し
+ * 関数が途中 kill され得た。kill のタイミング次第では auto wipe 後・
+ * relink 中に落ちて「Logs アイコンが翌日の cron まで部分欠落」する。
+ *
+ * 対策: 開始時に deadline を切り、各ページ取得の前に残余を確認して
+ * 予算超過なら **部分結果 + truncated フラグ** で打ち切る。truncated 時は
+ * auto wipe をスキップし (linkers は upsert/ignoreDuplicates + NULL 行のみ
+ * 更新の追加型なので安全)、stale な auto リンクは次回の全量 sync で解消する。
+ * 240s = maxDuration 300s - リンカー書き込み/診断集計の余白 60s。
+ */
+const FFLOGS_SYNC_TIME_BUDGET_MS = 240_000;
 const FFLOGS_V1_BASE = "https://www.fflogs.com/v1";
 
 /**
@@ -287,11 +304,14 @@ export type FflogsV2Result =
       me: { id: number; name: string };
       /** Diagnostic: top owners of fetched reports (helps diagnose why ownedCount = 0). */
       ownersSample: Array<{ id: number | null; name: string | null; count: number }>;
+      /** D-3: 時間予算超過でページングを途中打ち切りした (部分結果)。 */
+      truncated?: boolean;
     }
   | { ok: false; reason: string };
 
 export async function fetchFflogsReportsV2(
   accessToken: string,
+  deadlineAtMs?: number,
 ): Promise<FflogsV2Result> {
   // Step 1: identify the authenticated user.
   const me = await fetchCurrentUser(accessToken);
@@ -319,7 +339,13 @@ export async function fetchFflogsReportsV2(
   // per page, total cap = 25 × 25 = 625 reports, which is plenty for
   // any active group.
   const MAX_PAGES = 25;
+  let truncated = false;
   for (let page = 1; page <= MAX_PAGES; page++) {
+    // D-3: 時間予算超過なら部分結果で打ち切り (呼び出し側が wipe をスキップ)。
+    if (deadlineAtMs !== undefined && Date.now() > deadlineAtMs) {
+      truncated = true;
+      break;
+    }
     const query = `query ($userID: Int!, $page: Int!) {
       reportData {
         reports(userID: $userID, limit: 25, page: $page) {
@@ -443,6 +469,7 @@ export async function fetchFflogsReportsV2(
     ownedCount: all.length,
     me: { id: me.id, name: me.name },
     ownersSample,
+    truncated,
   };
 }
 
@@ -756,6 +783,7 @@ async function fetchScrapePageDirect(
 async function fetchFflogsReportsHtmlScrape(
   userId: number,
   sessionCookie?: string | null,
+  deadlineAtMs?: number,
 ): Promise<
   | {
       ok: true;
@@ -764,6 +792,8 @@ async function fetchFflogsReportsHtmlScrape(
       htmlCodesFound: number;
       /** Sample of HTML around the first detected report code — for debugging. */
       htmlSample?: string;
+      /** D-3: 時間予算超過でページングを途中打ち切りした (部分結果)。 */
+      truncated?: boolean;
     }
   | { ok: false; reason: string }
 > {
@@ -772,7 +802,13 @@ async function fetchFflogsReportsHtmlScrape(
   let firstPageSize = 0;
   let totalCodesSeen = 0;
   let htmlSample: string | undefined;
+  let truncated = false;
   for (let page = 1; page <= FFLOGS_SCRAPE_MAX_PAGES; page++) {
+    // D-3: 時間予算超過なら部分結果で打ち切り。
+    if (deadlineAtMs !== undefined && Date.now() > deadlineAtMs) {
+      truncated = true;
+      break;
+    }
     // 2.9 (2026-06-11): HTTP 取得は fetchScrapePageHtml に委譲 (Vercel 上は
     // Edge proxy 経由 / dev は直接 fetch)。偽装ヘッダー・redirect 検出・
     // タイムアウトは fflogs-scrape-request.ts + ヘルパー側に集約。
@@ -832,6 +868,8 @@ async function fetchFflogsReportsHtmlScrape(
     reports: all,
     htmlPageSize: firstPageSize,
     htmlCodesFound: totalCodesSeen,
+    htmlSample,
+    truncated,
   };
 }
 
@@ -872,6 +910,12 @@ export type FflogsLinkResult = {
   nativeSessionsMatched: number;
   /** Per-match detail for the result panel. */
   details: FflogsLinkDetail[];
+  /**
+   * D-3 (2026-07-12 監査): 時間予算超過でレポート取得を途中打ち切りした。
+   * この run は部分同期 — auto wipe はスキップされ、追加リンクのみ実施。
+   * stale な auto リンクは次回の全量 sync で解消される。
+   */
+  truncated?: boolean;
   /** Diagnostic — date range of fetched FFLogs reports (for empty-match debugging). */
   reportsDateRange?: { earliest: string; latest: string };
   /** Diagnostic — fields available on FFLogs `User` type (introspected). */
@@ -971,6 +1015,9 @@ export async function linkFflogsReportsToVideos(opts?: {
     opts?.useServiceRole
       ? createSupabaseServiceRoleClient()
       : await createClient();
+  // D-3 (2026-07-12 監査): 実行全体の時間予算。各フェッチャーはページ取得の
+  // 前に残余を確認し、超過時は部分結果 + truncated で戻る。
+  const deadlineAtMs = Date.now() + FFLOGS_SYNC_TIME_BUDGET_MS;
   // 1.9.11: ONE-TIME BOOTSTRAP for `category_links.logs_url_source`. The
   // 1.9.10 schema added the column with `NOT NULL DEFAULT 'manual'`, so
   // every pre-existing logs_url row got tagged 'manual'. Flip them to
@@ -1057,10 +1104,11 @@ export async function linkFflogsReportsToVideos(opts?: {
   if (oauthToken) {
     schemaIntrospect = await introspectFflogsSchema(oauthToken);
     userTypeFields = schemaIntrospect.user;
-    v2Result = await fetchFflogsReportsV2(oauthToken);
+    v2Result = await fetchFflogsReportsV2(oauthToken, deadlineAtMs);
   }
   const v2Reports = v2Result && v2Result.ok ? v2Result.reports : [];
   const v2Error = v2Result && !v2Result.ok ? v2Result.reason : undefined;
+  const v2Truncated = Boolean(v2Result && v2Result.ok && v2Result.truncated);
 
   let reports: FflogsReport[] = [];
   // ソースの組み合わせラベル (表示にしか使われないため自由形 string)。
@@ -1079,19 +1127,24 @@ export async function linkFflogsReportsToVideos(opts?: {
   // scrape requires v2 OAuth to be configured. With session cookie,
   // it returns Public + Unlisted + Private; without, only Public.
   cookieUsed = Boolean(sessionCookie?.trim());
+  let scrapeTruncated = false;
   if (oauthToken) {
     const me = await fetchCurrentUser(oauthToken);
     if (me.ok) {
       const scrapeResult = await fetchFflogsReportsHtmlScrape(
         me.id,
         sessionCookie,
+        deadlineAtMs,
       );
+      scrapeTruncated = Boolean(scrapeResult.ok && scrapeResult.truncated);
       // TODO #45 (2.1): scrape 成功時のみ cookie を auto-delete する。
       // 旧設計では成功 / 失敗を問わず削除していたため、Cloudflare の
       // 一時的な 403 で cookie だけ消費される事故 (= 「貼り直しの無限
       // ループ」) が発生していた。失敗時は cookie 残しユーザーが
       // そのまま再試行できるようにする。
-      if (cookieUsed && scrapeResult.ok) {
+      // D-3: truncated (時間切れ部分取得) 時も cookie を残す — 次回の
+      // 全量 sync が同じ cookie で Private/Unlisted を拾い直せるように。
+      if (cookieUsed && scrapeResult.ok && !scrapeResult.truncated) {
         try {
           const cleanupClient = await newWriteClient();
           await cleanupClient
@@ -1186,25 +1239,39 @@ export async function linkFflogsReportsToVideos(opts?: {
   // されず既存の auto 紐づけが全消去され、日次 cron の度に Logs アイコンが全滅
   // する (恒久損失ではないが次回成功 sync まで欠落)。取得成功で owned 0 件・
   // errors 無しのケースは「正当に auto を空にすべき」なのでここに含める。
-  try {
-    const cleanupClient = await newWriteClient();
-    await Promise.all([
-      cleanupClient
-        .from("category_links")
-        .update({ logs_url: null })
-        .eq("logs_url_source", "auto")
-        .not("logs_url", "is", null),
-      cleanupClient
-        .from("schedule_past_session_logs")
-        .delete()
-        .eq("source", "auto"),
-      cleanupClient
-        .from("native_schedule_session_logs")
-        .delete()
-        .eq("source", "auto"),
-    ]);
-  } catch (e) {
-    console.warn("[fflogs] auto-cleanup failed", e);
+  //
+  // D-3 (2026-07-12 監査): 時間予算超過の **部分取得 (truncated)** でも wipe
+  // しない — 部分集合で wipe→relink すると取得できなかったレポート分の auto
+  // リンクが消える (#243 の一過性障害ガードと同じ症状)。truncated 時は既存
+  // auto を温存したまま追加リンクのみ行い (linkers は upsert ignoreDuplicates
+  // + logs_url IS NULL 行のみ更新の追加型)、次回の全量 sync で整合させる。
+  const truncated = v2Truncated || scrapeTruncated;
+  if (!truncated) {
+    try {
+      const cleanupClient = await newWriteClient();
+      await Promise.all([
+        cleanupClient
+          .from("category_links")
+          .update({ logs_url: null })
+          .eq("logs_url_source", "auto")
+          .not("logs_url", "is", null),
+        cleanupClient
+          .from("schedule_past_session_logs")
+          .delete()
+          .eq("source", "auto"),
+        cleanupClient
+          .from("native_schedule_session_logs")
+          .delete()
+          .eq("source", "auto"),
+      ]);
+    } catch (e) {
+      console.warn("[fflogs] auto-cleanup failed", e);
+    }
+  } else {
+    console.warn(
+      "[fflogs] time budget exceeded — partial sync (wipe skipped; stale auto links resolve on next full sync)",
+      { v2Truncated, scrapeTruncated },
+    );
   }
 
   // Run all linkers (independently — they don't share their used-set
@@ -1248,6 +1315,7 @@ export async function linkFflogsReportsToVideos(opts?: {
 
   return {
     ok: true,
+    truncated,
     reportsScanned: reports.length,
     videosScanned: videoResult.scanned,
     matched: videoResult.matched,

@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
+import { requireSupabaseEnv } from "./env";
 
 /**
  * Server-side Supabase client.
@@ -18,6 +19,8 @@ import { cookies } from "next/headers";
  */
 export async function createClient() {
   const cookieStore = await cookies();
+  // D-4 (2026-07-12 監査): `!` アサーションを fail-fast 検証に置換。
+  const { url, anonKey } = requireSupabaseEnv();
 
   // Dev bypass: service role で RLS バイパス (development のみ)。
   const isDevBypass =
@@ -26,7 +29,7 @@ export async function createClient() {
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
   if (isDevBypass && serviceKey) {
     return createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      url,
       serviceKey,
       {
         cookies: {
@@ -43,8 +46,8 @@ export async function createClient() {
   }
 
   return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    url,
+    anonKey,
     {
       cookies: {
         getAll() {

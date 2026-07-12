@@ -53,6 +53,28 @@ export const SCHEDULE_CACHE_TAG = "schedule";
 const STILL_RELEVANT_MS = 6 * 60 * 60 * 1000;
 
 /**
+ * character-sheets fetch の上限 (2026-07-12 監査)。Data Cache は
+ * stale-while-revalidate なので通常はブロックしないが、cold cache と
+ * `updateTag` 直後の同期再取得だけは応答をそのまま待つ。外部サイトが
+ * 「遅いが生きている」状態のとき TOP 描画が関数タイムアウトまで張り付く
+ * のを防ぐ。8s 超は既存の catch → fetch-failed カードに落ち、60s 以内の
+ * 再訪 (revalidate) で自然回復する。
+ */
+const SCHEDULE_FETCH_TIMEOUT_MS = 8_000;
+
+/**
+ * 過去セッション merge の読み込み窓 (2026-07-12 監査 A-4、ユーザー決定)。
+ *
+ * `schedule_past_sessions` は追記のみで無制限成長するため、全件 merge だと
+ * DB 読み・RSC ペイロード・過去詳細表の DOM が年単位で線形に重くなる。
+ * 直近 12 ヶ月に絞る (それより古い行は DB に残る — 削除はしない。表示が
+ * 必要になったら「もっと見る」の遅延取得を別途足す)。副次効果として
+ * `buildSessionVideoLinkMap` の posted_at 窓 (セッション日付範囲 ±7d) も
+ * 全履歴の min に引きずられなくなり、video クエリが有界になる。
+ */
+const PAST_MERGE_WINDOW_MONTHS = 12;
+
+/**
  * Fetch + parse character-sheets WITHOUT merging stored past sessions.
  *
  * Used by the snapshot action to get raw upstream data (the merge would
@@ -83,9 +105,14 @@ async function fetchHtmlOrNull(target: string): Promise<string | null> {
     return null;
   }
   try {
+    // `signal` 付き fetch は request memoization の対象外になる (Next.js 16
+    // fetch docs) が、fetchSchedule の呼び出しは page.tsx の 1 箇所のみで
+    // 同一 render 内の重複 fetch が無く、Data Cache (revalidate/tags) は
+    // signal の有無に関係なく効くため実害なし。
     const res = await fetch(target, {
       next: { revalidate: 60, tags: [SCHEDULE_CACHE_TAG] },
       headers: { "User-Agent": "RaidRepository/0.1" },
+      signal: AbortSignal.timeout(SCHEDULE_FETCH_TIMEOUT_MS),
     });
     if (!res.ok) {
       console.warn("[schedule] non-OK response:", res.status, target);
@@ -160,7 +187,9 @@ async function mergeStoredPastSessions(
 ): Promise<ParsedSchedule> {
   let stored: Awaited<ReturnType<typeof fetchStoredPastSessions>>;
   try {
-    stored = await fetchStoredPastSessions();
+    const since = new Date();
+    since.setUTCMonth(since.getUTCMonth() - PAST_MERGE_WINDOW_MONTHS);
+    stored = await fetchStoredPastSessions({ sinceIso: since.toISOString() });
   } catch {
     return parsed; // best-effort merge — return raw on DB failure
   }

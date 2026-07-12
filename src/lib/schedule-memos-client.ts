@@ -66,6 +66,34 @@ export function persistAuthorName(name: string): void {
   }
 }
 
+// schema 側 CHECK (schedule_session_memos_text_sane、2026-07-12 監査 B-5) と
+// 同じ上限。DB が弾く前に友好的なエラーを返すための入口検証
+// (recruitment-templates-client の validateTemplateText と同方針)。
+export const MEMO_BODY_MAX = 4000;
+export const MEMO_AUTHOR_NAME_MAX = 100;
+function validateMemoText(
+  body: string | undefined,
+  authorName: string | undefined,
+): string | null {
+  if (body !== undefined && body.length > MEMO_BODY_MAX)
+    return `メモが長すぎます（最大 ${MEMO_BODY_MAX} 文字）`;
+  if (authorName !== undefined && authorName.length > MEMO_AUTHOR_NAME_MAX)
+    return `名前が長すぎます（最大 ${MEMO_AUTHOR_NAME_MAX} 文字）`;
+  return null;
+}
+
+/**
+ * author_name から制御文字を除去する (2026-07-12 監査 follow-up)。
+ * DB CHECK は `author_name !~ '[[:cntrl:]]'` を要求するが、UI 側 trim は
+ * 端の空白しか落とさないため、貼り付けた内部タブ等が生 Postgres エラーに
+ * なっていた。native-schedule-actions の symbol/comment と同じ `\p{Cc}`
+ * 除去で表示名を無害化する (表示名に制御文字は不要)。body は本文で改行を
+ * 含むため触らない (DB CHECK も body には cntrl 節を持たない)。
+ */
+function sanitizeAuthorName(name: string): string {
+  return name.replace(/\p{Cc}/gu, "");
+}
+
 export async function createScheduleMemo(input: {
   rawDate: string;
   body: string;
@@ -73,13 +101,15 @@ export async function createScheduleMemo(input: {
 }): Promise<
   { ok: true; memo: ScheduleSessionMemo } | { ok: false; reason: string }
 > {
+  const lenError = validateMemoText(input.body, input.authorName);
+  if (lenError) return { ok: false, reason: lenError };
   const supabase = createClient();
   const { data, error } = await supabase
     .from("schedule_session_memos")
     .insert({
       raw_date: input.rawDate,
       body: input.body,
-      author_name: input.authorName,
+      author_name: sanitizeAuthorName(input.authorName),
     })
     .select("*")
     .single();
@@ -91,10 +121,13 @@ export async function updateScheduleMemo(
   id: string,
   patch: Partial<{ body: string; authorName: string }>,
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const lenError = validateMemoText(patch.body, patch.authorName);
+  if (lenError) return { ok: false, reason: lenError };
   const supabase = createClient();
   const dbPatch: Record<string, unknown> = {};
   if (patch.body !== undefined) dbPatch.body = patch.body;
-  if (patch.authorName !== undefined) dbPatch.author_name = patch.authorName;
+  if (patch.authorName !== undefined)
+    dbPatch.author_name = sanitizeAuthorName(patch.authorName);
   // `.select("id")` で返却 0 件 (= RLS USING で弾かれた非 admin) を失敗扱いに。
   const { data, error } = await supabase
     .from("schedule_session_memos")

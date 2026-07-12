@@ -1,11 +1,12 @@
 import "server-only";
 
-import { fetchAppSetting } from "@/lib/supabase/app-settings";
+import { getPortalSetting } from "@/lib/supabase/app-settings";
 import { createClient } from "@/lib/supabase/server";
 import {
   FALLBACK_DEFAULT_END_TIME,
   FALLBACK_DEFAULT_START_TIME,
 } from "@/lib/server/native-schedule-placeholders";
+import { NATIVE_CHOICE_VALUES_KEY } from "./settings-keys";
 
 import type {
   Attendance,
@@ -33,8 +34,6 @@ import type { ScheduleFetchResult } from "./next-session";
  * いずれかの SELECT 失敗時は `{ ok: false, reason: "fetch-failed" }` を返却。
  * `page.tsx` 側で sync 経路と同じ error UI に流れる。
  */
-
-const NATIVE_CHOICE_VALUES_KEY = "native_schedule_choice_values";
 
 /** 凡例マスター未設定時のフォールバック (sync mode の固定 5 種と同じ並び)。 */
 const DEFAULT_CHOICES: readonly string[] = ["○", "×", "△", "⏰", "－"];
@@ -107,7 +106,9 @@ export async function fetchNativeSchedule(
       )
       .neq("status", "CANCELLED")
       .order("parsed_date", { ascending: false }),
-    fetchAppSetting(NATIVE_CHOICE_VALUES_KEY),
+    // A-2: fetchPortalSettings() の一括 SELECT に相乗り (page.tsx が先に
+    // 解決済みのため実質キャッシュヒット)。
+    getPortalSetting(NATIVE_CHOICE_VALUES_KEY),
   ]);
 
   if (membersRes.error) {

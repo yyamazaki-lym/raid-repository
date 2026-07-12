@@ -18,6 +18,16 @@ import "server-only";
 
 const DISCORD_API = "https://discord.com/api/v10";
 
+/**
+ * ログイン callback 経路の外部 fetch 上限 (2026-07-12 監査 D-1)。
+ * Discord API / Supabase Admin API が「遅いが生きている」状態のとき、
+ * タイムアウト無しだとログイン自体が関数上限まで吊ってしまう。超過時は
+ * 呼び出し側の既存エラー経路 (discord_error → /auth/denied、admin update
+ * 失敗 → metadata_write_failed) に落ちる。supabase-js 内部の fetch
+ * (exchangeCodeForSession / refreshSession) は本定数のスコープ外。
+ */
+const MEMBERSHIP_FETCH_TIMEOUT_MS = 10_000;
+
 export type GuildMembership =
   | { ok: true; roles: string[] }
   | {
@@ -35,13 +45,25 @@ export async function fetchGuildMember(
     return { ok: false, reason: "missing_config" };
   }
 
-  const res = await fetch(
-    `${DISCORD_API}/guilds/${guildId}/members/${discordUserId}`,
-    {
-      headers: { Authorization: `Bot ${botToken}` },
-      cache: "no-store",
-    },
-  );
+  let res: Response;
+  try {
+    res = await fetch(
+      `${DISCORD_API}/guilds/${guildId}/members/${discordUserId}`,
+      {
+        headers: { Authorization: `Bot ${botToken}` },
+        cache: "no-store",
+        signal: AbortSignal.timeout(MEMBERSHIP_FETCH_TIMEOUT_MS),
+      },
+    );
+  } catch (err) {
+    // timeout / DNS / 接続断 — メンバー検証不能はログイン拒否側に倒す
+    // (callback が signOut + /auth/denied へ)。
+    return {
+      ok: false,
+      reason: "discord_error",
+      detail: err instanceof Error ? err.message.slice(0, 500) : "fetch failed",
+    };
+  }
 
   if (res.status === 404) {
     return { ok: false, reason: "not_in_guild" };
@@ -91,16 +113,28 @@ export async function updateUserAppMetadata(
     );
   }
 
-  const res = await fetch(`${supabaseUrl}/auth/v1/admin/users/${userId}`, {
-    method: "PUT",
-    headers: {
-      apikey: serviceKey,
-      Authorization: `Bearer ${serviceKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ app_metadata: appMetadata }),
-    cache: "no-store",
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${supabaseUrl}/auth/v1/admin/users/${userId}`, {
+      method: "PUT",
+      headers: {
+        apikey: serviceKey,
+        Authorization: `Bearer ${serviceKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ app_metadata: appMetadata }),
+      cache: "no-store",
+      signal: AbortSignal.timeout(MEMBERSHIP_FETCH_TIMEOUT_MS),
+    });
+  } catch (err) {
+    // timeout 等 — throw は callback 側の既存 catch (metadata_write_failed)
+    // に拾わせ、明確な文言で原因を残す。
+    throw new Error(
+      `Supabase admin update fetch failed: ${
+        err instanceof Error ? err.message : "unknown"
+      }`,
+    );
+  }
 
   if (!res.ok) {
     const detail = await res.text().catch(() => "");
