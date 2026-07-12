@@ -20,7 +20,7 @@ import { SessionMemoDot } from "./schedule/session-memo-dot";
 import {
   SessionMemoPopover,
   type SessionMemoPopoverHandle,
-} from "./session-memo-popover";
+} from "./session-memo-popover-lazy";
 
 // Stable reference for the realtime hook's initial param. Passing `[]`
 // inline creates a fresh array on every render, which trips the hook's

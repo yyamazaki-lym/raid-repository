@@ -3,7 +3,9 @@
 import { useEffect, useState } from "react";
 import { History, Table, ExternalLink } from "lucide-react";
 import { NextSessionCard } from "./next-session-card";
-import { CandidateDateDialog } from "./native-schedule/candidate-date-dialog";
+// C-2 (2026-07-12): mode==="native" && isAdmin でのみ render されるため
+// lazy re-export 経由 (sync モードの TOP からチャンクごと外す)。
+import { CandidateDateDialog } from "./native-schedule/lazy";
 import {
   RecruitmentTemplatesButton,
   RecruitmentTopCopyButton,
@@ -11,7 +13,10 @@ import {
 import { ScheduleList } from "./schedule-list";
 import { SchedulePastSimple } from "./schedule-past-simple";
 import type { JapaneseHolidaysMap } from "@/lib/japanese-holidays";
-import type { RecruitmentTemplate } from "@/lib/recruitment-templates-client";
+import {
+  useRealtimeRecruitmentTemplates,
+  type RecruitmentTemplate,
+} from "@/lib/recruitment-templates-client";
 import type { ScheduleSessionMemo } from "@/lib/schedule-memos-client";
 import type { NextSessionResult, ScheduleFetchResult } from "@/lib/schedule/next-session";
 import type { SessionLogEntry } from "@/lib/schedule/session-logs";
@@ -136,6 +141,15 @@ export function SchedulePageBody({
   nativeDefaultStartTime = null,
   nativeDefaultEndTime = null,
 }: Props) {
+  // 2026-07-12 監査 C-3: recruitment_templates の realtime 購読はここで
+  // 1 本だけ張り、live 値を RecruitmentTemplatesButton /
+  // RecruitmentTopCopyButton の両方へ props で配る。従来は両ボタンが
+  // それぞれ購読しており (同一テーブル 2 channel)、変更のたびに全件
+  // refetch が 2 回走っていた。副次修正: TopCopy の表示ゲートが server
+  // initial 固定 → live 追従になる (テンプレ 0→1 件目の追加が
+  // リロードなしでボタンに反映される)。
+  const liveTemplates = useRealtimeRecruitmentTemplates(recruitmentTemplates);
+
   // Two-toggle state: simple list (top) and detailed table (bottom).
   // Both default to off; pinned values persist via localStorage.
   //
@@ -233,7 +247,7 @@ export function SchedulePageBody({
             />
           )}
           <RecruitmentTemplatesButton
-            initial={recruitmentTemplates}
+            templates={liveTemplates}
             categories={recruitmentCategories}
           />
           {scheduleUrl && (
@@ -254,8 +268,8 @@ export function SchedulePageBody({
       <NextSessionCard
         result={nextResult}
         recruitmentTopButton={
-          recruitmentTemplates.length > 0 ? (
-            <RecruitmentTopCopyButton initial={recruitmentTemplates} />
+          liveTemplates.length > 0 ? (
+            <RecruitmentTopCopyButton templates={liveTemplates} />
           ) : null
         }
       />
