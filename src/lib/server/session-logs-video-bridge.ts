@@ -73,6 +73,13 @@ async function fetchSameDayVideos(
 /**
  * 手動 Logs URL を同日 (JST) の logs_url 未設定動画すべてへ設定する。
  * 同日複数動画は全件に設定 (TOP link map の「1 session : N videos」と同じ)。
+ *
+ * 注意 (仕様、レビュー 2026-07-12): 手動橋渡しは auto linker のような
+ * コンテンツ照合 (contentMismatchPenalty) を行わず、同日の未設定動画へ
+ * 無条件に URL を設定する。1 日に複数コンテンツ (例 零式 + Criterion) の
+ * 動画があると 1 本の Logs URL が両方にバッジ表示される。これは「日付
+ * 起点の登録」という仕様上の定義挙動で、TOP の buildSessionVideoLinkMap
+ * (1 session : N videos) と一致し、toast で件数も提示される。
  */
 export async function bridgeLogsUrlToSameDayVideos(
   supabase: SupabaseLike,
@@ -105,6 +112,19 @@ export async function bridgeLogsUrlToSameDayVideos(
  * 対称解除: 同日動画のうち `logs_url == url` かつ `logs_url_source='manual'`
  * の行のみ NULL に戻す。auto 由来のリンク (コンテンツ照合済み) は消さない。
  * logs_url_source は既定 'manual' のまま放置 (clearAllFflogsLinks と同じ流儀)。
+ *
+ * 「同日 (targetKey)」でスコープするのは、動画編集ダイアログから独立に
+ * 設定された同一 URL の manual リンク (別日の動画) を巻き添え解除しない
+ * ための保守的な設計。bridge/dialog はどちらも source='manual' で由来を
+ * 区別できないため、日付一致を橋渡し由来の proxy として使う。
+ *
+ * 既知の非破壊エッジ (許容、レビュー 2026-07-12): タイトルに日付が無い
+ * 動画は posted_at で日付解決されるため、bridge 後に posted_at が
+ * 再取得 (resolvePostedAt) で別日へずれると、この unbridge の日付判定から
+ * 外れて logs_url が残る (stale バッジ)。発生条件が狭く非破壊 (実在の
+ * FFLogs URL を指すだけ) で、動画編集ダイアログから 1 操作で消せる。
+ * 恒久解決には橋渡し由来を示す第3の source 値 ('bridge') 導入 = CHECK
+ * 制約変更が要るためコスト対効果で見送り。
  */
 export async function unbridgeLogsUrlFromSameDayVideos(
   supabase: SupabaseLike,
