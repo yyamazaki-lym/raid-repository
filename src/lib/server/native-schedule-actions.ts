@@ -13,6 +13,7 @@ import {
   computeJstTodayUtcRange,
   notifyNativeScheduleSession,
 } from "./native-schedule-discord";
+import { NATIVE_CHOICE_VALUES_KEY } from "@/lib/schedule/settings-keys";
 
 /**
  * TODO #2 phase 2-A (2026-05-07): native スケジュール用 Server Actions。
@@ -32,7 +33,7 @@ import {
 const SESSION_STATUSES = ["CANDIDATE", "DECISION", "CANCELLED"] as const;
 type NativeSessionStatus = (typeof SESSION_STATUSES)[number];
 
-const NATIVE_CHOICE_VALUES_KEY = "native_schedule_choice_values";
+// NATIVE_CHOICE_VALUES_KEY は settings-keys.ts へ集約 (A-2、読み書き両側で単一ソース)。
 const NATIVE_DISCORD_NOTIFY_ENABLED_KEY =
   "native_schedule_discord_notify_enabled";
 const NATIVE_DISCORD_NOTIFY_CHANNEL_KEY =

@@ -1,5 +1,15 @@
 import { cache } from "react";
 import { createClient } from "./server";
+import { SCHEDULE_TOP_TEXT_OVERRIDE_KEY } from "@/lib/schedule-top-text-keys";
+import {
+  NATIVE_DEFAULT_END_TIME_KEY,
+  NATIVE_DEFAULT_START_TIME_KEY,
+} from "@/lib/schedule/native-defaults";
+import {
+  NATIVE_CHOICE_VALUES_KEY,
+  SCHEDULE_SOURCE_MODE_KEY,
+  SCHEDULE_URL_KEY,
+} from "@/lib/schedule/settings-keys";
 
 /**
  * 1.9 (2026-04-28) TODO #11: 複数 app_settings キーを 1 round-trip で
@@ -47,6 +57,45 @@ export const fetchAppSettings = cache(
     }
   },
 );
+
+/**
+ * TOP (スケジュールページ) 描画が必要とする app_settings キーの固定集合
+ * (2026-07-12 監査 A-2)。
+ *
+ * 従来は `getScheduleSourceMode` (mode) → `getScheduleSourceUrl` (url) →
+ * `fetchAppSettings([top_text])` (+ native は choice_values / default 時刻)
+ * が別々の React.cache エントリになり、TOP 1 リクエストで app_settings に
+ * 3〜4 本の SELECT が直列/並列に飛んでいた。`fetchAppSettings` は引数配列の
+ * **参照 identity** が cache キーになるため、呼び出し元ごとの配列リテラルでは
+ * 共有されない。引数なしの `fetchPortalSettings()` に束ねることで
+ * リクエスト毎ちょうど 1 SELECT になる。
+ *
+ * キーを増やす際の注意: ここは「TOP 描画パスで参照するキー」だけを足す。
+ * cron / 通知系 (native-schedule-discord.ts 等) は従来どおり
+ * `fetchAppSetting()` を個別に呼ぶ (描画パスと違い RTT が問題にならない)。
+ */
+const PORTAL_SETTING_KEYS: string[] = [
+  SCHEDULE_SOURCE_MODE_KEY,
+  SCHEDULE_URL_KEY,
+  SCHEDULE_TOP_TEXT_OVERRIDE_KEY,
+  NATIVE_DEFAULT_START_TIME_KEY,
+  NATIVE_DEFAULT_END_TIME_KEY,
+  NATIVE_CHOICE_VALUES_KEY,
+];
+
+/**
+ * TOP 描画用の app_settings 一括リーダー。モジュールレベルの固定配列を
+ * `fetchAppSettings` に渡すため、どの呼び出し元から呼んでも同一 cache
+ * エントリ = リクエスト毎 1 SELECT。
+ */
+export function fetchPortalSettings(): Promise<Record<string, string | null>> {
+  return fetchAppSettings(PORTAL_SETTING_KEYS);
+}
+
+/** `fetchPortalSettings()` から単一キーを取り出す convenience リーダー。 */
+export async function getPortalSetting(key: string): Promise<string | null> {
+  return (await fetchPortalSettings())[key] ?? null;
+}
 
 /**
  * Server-side reader for the shared `app_settings` table.

@@ -23,7 +23,8 @@ import {
 } from "@/lib/server/native-schedule-placeholders";
 import { fetchScheduleMemosByDateBulk } from "@/lib/server/schedule-memos-fetch";
 import { buildSessionVideoLinkMap } from "@/lib/server/session-video-link";
-import { fetchAppSettings } from "@/lib/supabase/app-settings";
+import { fetchPortalSettings } from "@/lib/supabase/app-settings";
+import { jstTodayStartMs } from "@/lib/schedule/jst-cutoff";
 import { fetchCategories } from "@/lib/supabase/categories";
 import { fetchRecruitmentTemplatesServer } from "@/lib/supabase/recruitment-templates";
 import {
@@ -129,7 +130,10 @@ export default async function SchedulePage() {
       fetchCategories(),
       getAuthorizedUserRoles(),
       fetchSessionLogsByDate(),
-      fetchAppSettings([SCHEDULE_TOP_TEXT_OVERRIDE_KEY]),
+      // A-2 (2026-07-12): mode / url / top_text は fetchPortalSettings() の
+      // 一括 SELECT を共有 — このリクエストでは getScheduleSourceMode 解決時に
+      // 取得済みなので実質キャッシュヒット。
+      fetchPortalSettings(),
       fetchScheduleMemosByDateBulk(),
       schedulePromise.then((r) =>
         r.ok ? buildSessionVideoLinkMap(r.data.sessions) : {},
@@ -179,40 +183,42 @@ export default async function SchedulePage() {
   //
   // TODO #81 (2.1, 2026-05-12 part5): native では「Discord 通知のたびに候補日を
   // 都度追加」する運用が現実的に存在するため、当月分が 0 件のままだと「予定なし」
-  // 表示になり日付一覧がそもそも視認できない。先に bulk fetch で default time を
-  // 拾い、`ensureNativeMonthlyPlaceholders()` で不足分を auto-insert してから
-  // `fetchNativeSchedule()` を走らせる順次実行に組み替える (Promise.all 並列だと
-  // race で初回 read が空配列になる可能性がある)。
-  // 2.9 (2026-06-11): ensureNativeMonthlyPlaceholders → fetchNativeSchedule
-  // → buildSessionVideoLinkMap の直列 3 連鎖を appSettings にチェーンして
-  // 他の fetch と並走させる。TODO #81 の「placeholder insert → read は順次
-  // 必須 (並列だと初回 read が空配列になる race)」はチェーン内の await 順で
-  // 維持される。
-  // 2.9 follow-up (2026-06-12): placeholder INSERT (service role write) は
-  // requireDiscordMember() の解決も待ってから走らせる。並走化前の直列実装は
-  // member 検証 (redirect throw) を通過した後にだけ書き込んでいた順序保証が
-  // あり、これを復元する (検証は JWT 読みだけで速いので並走効果は維持)。
-  const appSettingsPromise = fetchAppSettings([
-    SCHEDULE_TOP_TEXT_OVERRIDE_KEY,
-    NATIVE_DEFAULT_START_TIME_KEY,
-    NATIVE_DEFAULT_END_TIME_KEY,
-  ]);
+  // 表示になり日付一覧がそもそも視認できない。
+  // 2026-07-12 監査 A-3: placeholder 敷設 (service role write) は日次 cron
+  // (/api/cron/snapshot-schedule の native 分岐) へ移設し、GET 描画の通常経路を
+  // 読み取り専用化 (SELECT 1 本 + 条件付き INSERT を毎リクエスト行っていた)。
+  // ここでは「JST 今日以降の行が 1 件も無い」ときだけ従来どおり
+  // ensureNativeMonthlyPlaceholders → 再 read で自己修復する (cron 未設定の
+  // fork / 月初に cron が落ちた場合のフォールバック)。TODO #81 の
+  // 「INSERT → read は順次必須 (並列だと初回 read が空配列になる race)」は
+  // このフォールバック内の await 順で維持される。
+  // 2.9 follow-up (2026-06-12) の「placeholder INSERT は requireDiscordMember()
+  // の解決後にのみ走らせる」順序保証も Promise.all の待ち合わせで維持。
+  const appSettingsPromise = fetchPortalSettings();
   const memberPromise = requireDiscordMember();
   const nativeResultPromise = Promise.all([
     appSettingsPromise,
     memberPromise,
   ]).then(async ([settings]) => {
-    await ensureNativeMonthlyPlaceholders({
+    // 2.1 (2026-05-12): native_schedule_sessions.start_time / end_time が NULL の
+    // row は default に追従させたいので、placeholder 敷設と read の両方に同じ
+    // default を渡して COALESCE する。
+    const defaults = {
       startTime: settings[NATIVE_DEFAULT_START_TIME_KEY],
       endTime: settings[NATIVE_DEFAULT_END_TIME_KEY],
-    });
-    // 2.1 (2026-05-12): native_schedule_sessions.start_time / end_time が NULL の row
-    // は default に追従させたいので、ensureNativeMonthlyPlaceholders と同じ default を
-    // fetchNativeSchedule にも渡して COALESCE する。
-    return fetchNativeSchedule({
-      startTime: settings[NATIVE_DEFAULT_START_TIME_KEY],
-      endTime: settings[NATIVE_DEFAULT_END_TIME_KEY],
-    });
+    };
+    let result = await fetchNativeSchedule(defaults);
+    const hasUpcoming =
+      result.ok &&
+      result.data.sessions.some((s) => s.date.getTime() >= jstTodayStartMs());
+    if (result.ok && !hasUpcoming) {
+      // 稀経路 (未セットアップ / cron 欠落月) のみ書き込み → 再 read。
+      // 全日 CANCELLED の月もここに入るが、ensure 側の既存日付 dedup が
+      // CANCELLED 行も見るため重複投入はされず、追加 SELECT 1 本で済む。
+      await ensureNativeMonthlyPlaceholders(defaults);
+      result = await fetchNativeSchedule(defaults);
+    }
+    return result;
   });
   const [
     appSettings,

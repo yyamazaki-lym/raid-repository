@@ -245,13 +245,22 @@ export async function importDiscordScheduleHistory(): Promise<ScheduleHistoryImp
 }
 
 /**
- * Read all stored past sessions ordered newest-first. Used by the
+ * Read stored past sessions ordered newest-first. Used by the
  * schedule page to merge with the live character-sheets feed.
  *
  * The optional `attendances` + `userNames` fields come from the
  * snapshot mechanism — for date-only Discord rows they're null.
+ *
+ * 2026-07-12 監査 A-4: `sinceIso` で読み込み窓を指定できるようにした。
+ * テーブルは追記のみで無制限成長するため、TOP 描画毎の全件 SELECT +
+ * 全件 RSC ペイロード送信が年単位で線形劣化していた。既存の
+ * `(parsed_date DESC)` index がそのまま効く。省略時は従来どおり全件
+ * (cron / メンテ用途)。
  */
-export async function fetchStoredPastSessions(): Promise<
+export async function fetchStoredPastSessions(opts?: {
+  /** この UTC ISO 以降 (`parsed_date >= sinceIso`) の行のみ返す。 */
+  sinceIso?: string;
+}): Promise<
   Array<{
     rawDate: string;
     parsedDate: string;
@@ -265,12 +274,16 @@ export async function fetchStoredPastSessions(): Promise<
   }>
 > {
   const supabase = await createClient();
-  const { data, error } = await supabase
+  let query = supabase
     .from("schedule_past_sessions")
     .select(
       "raw_date, parsed_date, start_time, end_time, day_of_week, attendances, user_names",
     )
     .order("parsed_date", { ascending: false });
+  if (opts?.sinceIso) {
+    query = query.gte("parsed_date", opts.sinceIso);
+  }
+  const { data, error } = await query;
   if (error || !data) return [];
   return data.map((r) => ({
     rawDate: r.raw_date as string,
