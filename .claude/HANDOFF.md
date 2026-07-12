@@ -1,6 +1,6 @@
 # Raid Repository — 引き継ぎノート
 
-> 2.9 (2026-06-15) 時点。完了済 TODO の詳細は `src/lib/changelog.ts` / 過去版番号は `.claude/done.md`。
+> 2.9 (2026-07-12) 時点。完了済 TODO の詳細は `src/lib/changelog.ts` / 過去版番号は `.claude/done.md`。
 >
 > **新規会話の手順**: このファイルを読んだ後、TODO 一覧は自動表示せずユーザーの要望を待つ。新規 TODO 追記時は part 単位ではなく TODO 完了時のみ統合追記する (part 細分は commit log に任せる)。
 
@@ -99,13 +99,15 @@
   - **書込時橋渡し**: 日付登録時に同日 (JST) の `logs_url IS NULL` 動画へ `logs_url` + `source='manual'` を設定 (既存リンクは上書きしない)。**削除対称 (ユーザー決定)**: manual 行の削除時、同日動画の `logs_url == URL AND source='manual'` をクリア。sync/native 4 アクション対応、toast に件数表示
   - **同日判定の共有化**: `resolveVideoJstYmd` 等を新規 `src/lib/video-jst-date.ts` に抽出し、TOP の `buildSessionVideoLinkMap` と橋渡し (`src/lib/server/session-logs-video-bridge.ts`) で完全同一ロジックに (タイトル日付優先 → posted_at JST fallback)
   - **cron 第4ステップ**: fflogs-sync の 3 リンカー後に manual logs → 同日 NULL 動画のバックフィルを追加 (Discord 取込で動画が翌日入るケース + 既存登録分を毎晩自己修復。時間予算 deadline 尊重・冪等・auto wipe 非干渉)。結果パネル/cron JSON に `manualLogsBridged` 追加
-  - schema.sql / RLS / publication 変更ゼロ。実機確認: 日付登録 → videos ページに realtime でバッジ即出現 / 削除でバッジ解除 / 手動 sync で「日付登録 Logs から動画 N 件に補完」
+  - schema.sql / RLS / publication 変更ゼロ。**[PR #260](https://github.com/yyamazaki-lym/raid-repository/pull/260) squash merge `a89d9d5`**
+  - **✅ 2026-07-12 ユーザー実機検収 OK (3 点全て)**: ① 日付登録 → videos ページに realtime でバッジ即出現 ② 削除でバッジ解除 ③ 手動 sync で「**日付登録 Logs から動画 3 件に補完**」を確認 = cron 第4ステップ (バックフィル) の実データ動作を実証。橋渡し機能はエンドツーエンドで検収完了
 - **2026-07-12: 全体監査 (動作性/安定性/堅牢性) + TOP 高速化 + DB 最適化** — ユーザー要望「全体を精査、特に TOP が重い、DB 最適化も」を受けた 3 領域並列精査 → 確定約 20 件をバッチ 4 コミットで実装 (ブランチ `claude/site-performance-stability-audit-fcobyi`)。**レポート全文 = `docs/audit-2026-07-12.md`**。TODO #11 (パフォーマンス) の新ボトルネック発見に相当。骨子:
   - **TOP レイテンシ (A)**: 外部 fetch timeout 8s / app_settings 6 キーを 1 SELECT に統合 (`fetchPortalSettings`) / native placeholder 書込を cron 移設 (描画パスは空月フォールバックのみ) / **過去履歴を直近 12 ヶ月に窓化 (ユーザー決定、データは削除しない)**
   - **DB (B)**: `category_links(kind, posted_at)` index / Realtime publication を実購読 6 テーブルへ縮小 + 非購読 13 を REPLICA IDENTITY DEFAULT 化 / RLS `auth.jwt()` の initPlan 化 (全 write + self-row + storage) / 冗長 index 4 本削除 / memos・native comment/note の長さ CHECK / backgrounds DELETE policy + カテゴリ削除時 Storage 掃除 / 練習時間集計の RPC 化。**fix: seed-demo.sql が DROP 済み legacy 列へ INSERT しており再適用が必ず失敗する潜在バグを修正** (ローカル PG16 で 2 回適用 + pg_* 実査済)
   - **バンドル (C)**: @dnd-kit を popover 中身ごと lazy 化 (トリガー静的維持) / native 系 8 コンポーネント + memo-popover (828 行) を ssr:true dynamic 分離 (sync モードから ~1,700 行が chunk ごと消滅) / recruitment realtime 重複購読解消 / nuqs 削除。**実測 raw 247.6KB / gzip 78.6KB を初期→async へ移動**
   - **堅牢性 (D)**: ログイン callback 2 fetch に timeout / addSessionLogsUrl 孤児親 rollback / fflogs 同期に 240s 時間予算 (truncated 時は wipe スキップ + cookie 温存) / Supabase env の fail-fast (`requireSupabaseEnv`)
-  - **見送り**: getClaims 化 (ユーザー決定②) / unstable_cache (利得 < ステール事故リスク) / gphoto RPC 化。**実機確認依頼 6 点は `docs/audit-2026-07-12.md` 末尾参照**
+  - **見送り**: getClaims 化 (ユーザー決定②) / unstable_cache (利得 < ステール事故リスク) / gphoto RPC 化
+  - **[PR #259](https://github.com/yyamazaki-lym/raid-repository/pull/259) squash merge `71ecb35`**。⚠ **実機確認依頼 6 点は未検収 (次回持ち越し)** — `docs/audit-2026-07-12.md` 末尾参照 (① TOP sync/native 表示 + 過去 12 ヶ月窓 ② メモ popover CRUD ③ 募集テンプレ popover ④ /category バッジ値一致 ⑤ カテゴリ削除 Storage 掃除 ⑥ 本番 EXPLAIN で新 index 使用)。今回ユーザーが検収したのは #260 の 3 点のみで #259 分とは別
 - **2.9 (2026-06-15)**: ユーザー要望「全体を通してエラー / バグ / 認証 / デザイン / 機能に問題がないかチェック」を受けた **13 領域 × (専門レビュー → 敵対的検証) のマルチエージェント全体監査** と、確定した **P2 2 件 + P3 18 件** の修正 (7 PR、いずれも squash merge、2026-06-19)。レポート全文 = `.claude/plans/snoopy-twirling-cupcake.md`
   - **監査 (2026-06-19)**: #240 以降の main を対象に、セキュリティ/認証・バグ/挙動・Next16/React19 適合・デザイン/a11y・機能の 13 領域を並列レビュー → 各検出を実コードまで辿って敵対的に検証する workflow を実行 (36 エージェント)。総検出 23 → **確定 20 (P2 2 / P3 18)、誤検知 3 を反証棄却**。**P0/P1 はゼロ** (認証 4 層・RLS/GRANT・secrets/暗号・Next16 適合はクリーンと再確認)。棄却 3 件 = discord-schedule の DELETE/INSERT は対象集合 disjoint で損失なし / native TIME_RE は分グループが 2 桁必須で正常 / jstDateTimeString hour==24 は現行 V8 で到達不能な dead code。
   - **P2 2 件**:
