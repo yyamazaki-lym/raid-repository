@@ -24,6 +24,8 @@ import {
   createScheduleMemo,
   deleteScheduleMemo,
   getStoredAuthorName,
+  MEMO_AUTHOR_NAME_MAX,
+  MEMO_BODY_MAX,
   persistAuthorName,
   updateScheduleMemo,
   type ScheduleSessionMemo,
@@ -595,6 +597,7 @@ function MemoList({
                     placeholder="名前（任意）"
                     aria-label="投稿者名"
                     spellCheck={false}
+                    maxLength={MEMO_AUTHOR_NAME_MAX}
                     className={inputClass}
                   />
                   <textarea
@@ -603,6 +606,7 @@ function MemoList({
                     rows={3}
                     aria-label="メモ本文"
                     spellCheck={false}
+                    maxLength={MEMO_BODY_MAX}
                     className={inputClass}
                   />
                   <div className="flex justify-end gap-1.5">
@@ -686,6 +690,7 @@ function MemoList({
           placeholder="名前（任意・次回も使用）"
           aria-label="投稿者名"
           spellCheck={false}
+          maxLength={MEMO_AUTHOR_NAME_MAX}
           className={inputClass}
         />
         <textarea
@@ -695,6 +700,7 @@ function MemoList({
           placeholder="メモ内容…"
           aria-label="メモ本文"
           spellCheck={false}
+          maxLength={MEMO_BODY_MAX}
           className={inputClass}
         />
         <div className="flex justify-end">

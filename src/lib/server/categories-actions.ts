@@ -31,7 +31,10 @@ import {
 } from "@/lib/clear-detection";
 import { videoBelongsToCategory } from "@/lib/content-groups";
 import { extractDateFromTitle, titleDateToIso } from "@/lib/title-date";
-import { createClient } from "@/lib/supabase/server";
+import {
+  createClient,
+  createSupabaseServiceRoleClient,
+} from "@/lib/supabase/server";
 import { fetchAppSetting } from "@/lib/supabase/app-settings";
 import {
   isDiscordCdnUrl,
@@ -243,6 +246,43 @@ export async function updateCategoryAction(
   return { ok: true };
 }
 
+/**
+ * カテゴリ行が参照する URL のうち、自プロジェクトの Storage public URL
+ * だけを (bucket → path[]) に解決する (2026-07-12 監査 B-6)。
+ * prefix 厳密一致 + bucket 名固定で外部 URL (YouTube サムネ / lh3 直リンク /
+ * 他プロジェクト) を誤って削除対象にしない。
+ */
+const STORAGE_CLEANUP_BUCKETS = [
+  "category-backgrounds",
+  "category-strategy-images",
+] as const;
+
+function collectOwnedStorageObjects(
+  urls: Array<string | null | undefined>,
+): Map<string, string[]> {
+  const out = new Map<string, string[]>();
+  const base = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/+$/, "");
+  if (!base) return out;
+  for (const bucket of STORAGE_CLEANUP_BUCKETS) {
+    const prefix = `${base}/storage/v1/object/public/${bucket}/`;
+    for (const u of urls) {
+      if (!u || !u.startsWith(prefix)) continue;
+      const rawPath = u.slice(prefix.length).split("?")[0];
+      if (!rawPath) continue;
+      let path: string;
+      try {
+        path = decodeURIComponent(rawPath);
+      } catch {
+        continue;
+      }
+      const list = out.get(bucket) ?? [];
+      list.push(path);
+      out.set(bucket, list);
+    }
+  }
+  return out;
+}
+
 export async function deleteCategoryAction(
   id: string,
 ): Promise<CategoryWriteResult> {
@@ -250,8 +290,58 @@ export async function deleteCategoryAction(
   if (!auth.ok) return { ok: false, reason: auth.reason };
 
   const supabase = await createClient();
+
+  // 2026-07-12 監査 B-6: CASCADE 削除は DB 行しか消さず Storage オブジェクト
+  // (背景画像 / 攻略タブのアップロード画像) が恒久残置されていた。削除前に
+  // 参照 URL を控え、行削除の成功後に best-effort で後始末する (失敗しても
+  // カテゴリ削除自体は成功扱い — 掃除失敗は warn ログのみ)。
+  let storageCleanup = new Map<string, string[]>();
+  try {
+    const [catRes, imageLinksRes] = await Promise.all([
+      supabase
+        .from("categories")
+        .select("background_image_url")
+        .eq("id", id)
+        .maybeSingle(),
+      supabase
+        .from("category_links")
+        .select("url")
+        .eq("category_id", id)
+        .eq("kind", "image"),
+    ]);
+    storageCleanup = collectOwnedStorageObjects([
+      (catRes.data as { background_image_url?: string | null } | null)
+        ?.background_image_url,
+      ...((imageLinksRes.data ?? []) as Array<{ url: string | null }>).map(
+        (r) => r.url,
+      ),
+    ]);
+  } catch (e) {
+    console.warn("[category-delete] storage url collect failed:", e);
+  }
+
   const { error } = await supabase.from("categories").delete().eq("id", id);
   if (error) return { ok: false, reason: dbError("カテゴリ削除", error) };
+
+  if (storageCleanup.size > 0) {
+    try {
+      const svc = createSupabaseServiceRoleClient();
+      for (const [bucket, paths] of storageCleanup) {
+        const { error: rmErr } = await svc.storage.from(bucket).remove(paths);
+        if (rmErr) {
+          console.warn(
+            "[category-delete] storage cleanup failed:",
+            bucket,
+            rmErr.message,
+          );
+        }
+      }
+    } catch (e) {
+      // service role 未設定の fork 等 — 従来挙動 (残置) に degrade。
+      console.warn("[category-delete] storage cleanup skipped:", e);
+    }
+  }
+
   revalidateCategoryPages();
   return { ok: true };
 }
@@ -2533,23 +2623,28 @@ export async function backfillStrategyThumbnailsChunk(opts: {
  * Sum of `duration_seconds` per category across all video links.
  * NULL durations are ignored. Used by the category index to render the
  * "累計練習時間" badge on each card.
+ *
+ * 2026-07-12 監査 B-7: 全 video 行の転送 + JS 集計を DB 側 GROUP BY
+ * (`practice_seconds_by_category` RPC、schema.sql 13c-2) に置換。転送量が
+ * 動画数比例 → カテゴリ数比例になる。エラー時は従来どおり `{}` (バッジ
+ * 非表示に degrade) — schema 未適用の瞬間も UI は壊れない。
  */
 export async function fetchPracticeSecondsByCategory(): Promise<
   Record<string, number>
 > {
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("category_links")
-    .select("category_id, duration_seconds")
-    .eq("kind", "video")
-    .not("duration_seconds", "is", null);
+  const { data, error } = await supabase.rpc("practice_seconds_by_category");
   if (error || !data) return {};
   const totals: Record<string, number> = {};
-  for (const row of data) {
-    const cid = row.category_id as string;
-    const sec = row.duration_seconds as number | null;
-    if (typeof sec !== "number" || sec <= 0) continue;
-    totals[cid] = (totals[cid] ?? 0) + sec;
+  for (const row of data as Array<{
+    category_id: string;
+    total_seconds: number | string | null;
+  }>) {
+    // bigint は PostgREST 経由で number (安全域内) or string になり得るので
+    // 両対応で正規化する。
+    const sec = Number(row.total_seconds);
+    if (!Number.isFinite(sec) || sec <= 0) continue;
+    totals[row.category_id] = sec;
   }
   return totals;
 }
@@ -2597,11 +2692,24 @@ export async function fetchTimeToClearByCategory(): Promise<
     ]),
   );
 
+  // 2026-07-12 監査 B-7: クリア後に増え続けるファーム動画 (集計対象は
+  // first_clear_at までなので絶対に使われない尾) を DB 段で落とす転送上限。
+  // タイトル日付優先ロジック (posted_at より古い開催日をタイトルから採る)
+  // があるため、最遅 first_clear_at + 30 日の余白を持たせる。posted_at IS
+  // NULL の行はタイトル/created_at 判定に回るため従来どおり全て取る。
+  const maxFirstClearMs = Math.max(
+    ...cats.map((c) => new Date(c.first_clear_at as string).getTime()),
+  );
+  const postedAtCapIso = new Date(
+    maxFirstClearMs + 30 * 24 * 60 * 60 * 1000,
+  ).toISOString();
+
   const { data: videos, error: vErr } = await supabase
     .from("category_links")
     .select("category_id, title, duration_seconds, posted_at, created_at")
     .in("category_id", catIds)
-    .eq("kind", "video");
+    .eq("kind", "video")
+    .or(`posted_at.lte.${postedAtCapIso},posted_at.is.null`);
   if (vErr || !videos) return {};
 
   // Annotate each video with its effective ISO timestamp (title >

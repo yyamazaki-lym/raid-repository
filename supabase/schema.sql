@@ -221,6 +221,15 @@ ALTER TABLE public.category_links
 CREATE INDEX IF NOT EXISTS category_links_category_kind_idx
   ON public.category_links(category_id, kind, sort_order);
 
+-- 2026-07-12 監査 B-1: kind 先頭の複合 index。TOP 描画の
+-- buildSessionVideoLinkMap (kind='video' + posted_at 範囲 or IS NULL) と
+-- 日次 fflogs-sync の対象抽出 (kind='video' + logs_url IS NULL) は
+-- category_id で絞らないため、上の (category_id, kind, ...) 複合では効かず
+-- 最大成長テーブルを seq scan していた。`.or(and(gte,lte),is.null)` は
+-- BitmapOr で範囲枝 / NULL 枝の両方に本 index が使える。
+CREATE INDEX IF NOT EXISTS category_links_kind_posted_at_idx
+  ON public.category_links(kind, posted_at);
+
 -- A-5.1 (2026-06-13): (category_id, kind, url) の UNIQUE 制約。
 -- Discord cron 取り込みの dedupe が SELECT→INSERT で非原子的なため、
 -- cron × 手動「Import now」の競合で同一 URL が二重挿入され得た
@@ -311,34 +320,38 @@ ALTER TABLE public.category_discord_blocklist
   ADD CONSTRAINT category_discord_blocklist_category_url_key
   UNIQUE (category_id, url);
 
-CREATE INDEX IF NOT EXISTS category_discord_blocklist_category_idx
-  ON public.category_discord_blocklist(category_id);
+-- 2026-07-12 監査 B-4: 単独 (category_id) index は UNIQUE(category_id, url)
+-- の先頭列が包含するため冗長 — 削除 (過去デプロイ分の掃除、再適用は no-op)。
+DROP INDEX IF EXISTS public.category_discord_blocklist_category_idx;
 
 ALTER TABLE public.category_discord_blocklist ENABLE ROW LEVEL SECURITY;
 
 -- read/write 共に admin (is_admin claim) のみ。anon は TO 句に含めないので
 -- policy にマッチせず 0 行 = deny。service role は RLS bypass = 取り込み処理は
 -- 影響を受けない。is_admin 検査式は category_links 等 (第 7 章) と同一。
+-- 2026-07-12 監査 B-3: `auth.jwt()` を `(SELECT auth.jwt() ...)` に包み
+-- per-row → per-statement 評価 (initPlan キャッシュ、Supabase lint
+-- auth_rls_initplan と同型)。意味は等価。
 DROP POLICY IF EXISTS category_discord_blocklist_admin_select
   ON public.category_discord_blocklist;
 CREATE POLICY category_discord_blocklist_admin_select
   ON public.category_discord_blocklist
   FOR SELECT TO authenticated
-  USING ((auth.jwt() -> 'app_metadata' ->> 'is_admin') = 'true');
+  USING ((SELECT auth.jwt() -> 'app_metadata' ->> 'is_admin') = 'true');
 
 DROP POLICY IF EXISTS category_discord_blocklist_admin_insert
   ON public.category_discord_blocklist;
 CREATE POLICY category_discord_blocklist_admin_insert
   ON public.category_discord_blocklist
   FOR INSERT TO authenticated
-  WITH CHECK ((auth.jwt() -> 'app_metadata' ->> 'is_admin') = 'true');
+  WITH CHECK ((SELECT auth.jwt() -> 'app_metadata' ->> 'is_admin') = 'true');
 
 DROP POLICY IF EXISTS category_discord_blocklist_admin_delete
   ON public.category_discord_blocklist;
 CREATE POLICY category_discord_blocklist_admin_delete
   ON public.category_discord_blocklist
   FOR DELETE TO authenticated
-  USING ((auth.jwt() -> 'app_metadata' ->> 'is_admin') = 'true');
+  USING ((SELECT auth.jwt() -> 'app_metadata' ->> 'is_admin') = 'true');
 
 -- ---- 3. loot -----------------------------------------------------------
 
@@ -461,6 +474,22 @@ CREATE TABLE IF NOT EXISTS public.schedule_session_memos (
 );
 CREATE INDEX IF NOT EXISTS schedule_session_memos_date_idx
   ON public.schedule_session_memos(raw_date, created_at);
+
+-- 2026-07-12 監査 B-5: 本テーブルは 7a-2 の member policy で **非 admin の
+-- authenticated 全員が INSERT/UPDATE 可能** なのに length CHECK が無く、
+-- PostgREST 直叩きで巨大 body / 異常 author_name を注入できた
+-- (category_macros / recruitment_templates の監査 #253 と同クラスの残存)。
+-- body はメモ本文で改行を含むため長さのみ、author_name は単一行の表示名
+-- なので制御文字も弾く。NOT VALID で既存行は検証せず新規 write のみ適用。
+ALTER TABLE public.schedule_session_memos
+  DROP CONSTRAINT IF EXISTS schedule_session_memos_text_sane;
+ALTER TABLE public.schedule_session_memos
+  ADD CONSTRAINT schedule_session_memos_text_sane
+  CHECK (
+    char_length(body) <= 4000
+    AND char_length(author_name) <= 100
+    AND author_name !~ '[[:cntrl:]]'
+  ) NOT VALID;
 
 DROP TRIGGER IF EXISTS set_updated_at_schedule_session_memos
   ON public.schedule_session_memos;
@@ -605,8 +634,9 @@ CREATE TABLE IF NOT EXISTS public.schedule_past_session_logs (
   created_at  timestamptz NOT NULL DEFAULT now(),
   UNIQUE (raw_date, url)
 );
-CREATE INDEX IF NOT EXISTS schedule_past_session_logs_raw_date_idx
-  ON public.schedule_past_session_logs(raw_date);
+-- 2026-07-12 監査 B-4: 単独 (raw_date) index は UNIQUE(raw_date, url) の
+-- 先頭列が包含するため冗長 — 削除 (過去デプロイ分の掃除、再適用は no-op)。
+DROP INDEX IF EXISTS public.schedule_past_session_logs_raw_date_idx;
 
 -- One-shot migration: fold legacy logs_url + logs_url_source columns
 -- into rows. Idempotent guard via information_schema so re-runs after
@@ -677,6 +707,14 @@ ALTER TABLE public.native_schedule_sessions
 CREATE INDEX IF NOT EXISTS native_schedule_sessions_date_idx
   ON public.native_schedule_sessions(parsed_date DESC);
 
+-- 2026-07-12 監査 B-5: note の app 層 200 字制限
+-- (updateNativeScheduleSessionNoteAction) を DB 層でも担保。NOT VALID。
+ALTER TABLE public.native_schedule_sessions
+  DROP CONSTRAINT IF EXISTS native_schedule_sessions_note_sane;
+ALTER TABLE public.native_schedule_sessions
+  ADD CONSTRAINT native_schedule_sessions_note_sane
+  CHECK (note IS NULL OR char_length(note) <= 200) NOT VALID;
+
 DROP TRIGGER IF EXISTS set_updated_at_native_schedule_sessions
   ON public.native_schedule_sessions;
 CREATE TRIGGER set_updated_at_native_schedule_sessions
@@ -698,6 +736,16 @@ CREATE TABLE IF NOT EXISTS public.native_schedule_members (
 ALTER TABLE public.native_schedule_members
   ADD COLUMN IF NOT EXISTS comment text;
 
+-- 2026-07-12 監査 B-5: comment は本人 (非 admin) が Server Action 経由で
+-- 書ける列。app 層の 500 字制限 (updateNativeScheduleMemberCommentAction) を
+-- DB 層でも担保する。attendances.symbol/comment の CHECK (#253) と同方針、
+-- NOT VALID で既存行は検証しない。
+ALTER TABLE public.native_schedule_members
+  DROP CONSTRAINT IF EXISTS native_schedule_members_comment_sane;
+ALTER TABLE public.native_schedule_members
+  ADD CONSTRAINT native_schedule_members_comment_sane
+  CHECK (comment IS NULL OR char_length(comment) <= 500) NOT VALID;
+
 DROP TRIGGER IF EXISTS set_updated_at_native_schedule_members
   ON public.native_schedule_members;
 CREATE TRIGGER set_updated_at_native_schedule_members
@@ -714,8 +762,10 @@ CREATE TABLE IF NOT EXISTS public.native_schedule_attendances (
   updated_at      timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (session_id, discord_user_id)
 );
-CREATE INDEX IF NOT EXISTS native_schedule_attendances_session_idx
-  ON public.native_schedule_attendances(session_id);
+-- 2026-07-12 監査 B-4: 単独 (session_id) index は PK(session_id,
+-- discord_user_id) の先頭列が包含するため冗長 — 削除 (本テーブルは最も
+-- write が多い出欠トグル先なので index 維持コスト減の実益もある)。
+DROP INDEX IF EXISTS public.native_schedule_attendances_session_idx;
 
 -- 2.9 follow-up (2026-06-12): symbol の内容制約を DB 層にも追加。
 -- #177 (2.8) の Server Action 側サニタイズ (制御文字除去 + 32 字制限) は
@@ -766,8 +816,9 @@ CREATE TABLE IF NOT EXISTS public.native_schedule_session_logs (
   created_at        timestamptz NOT NULL DEFAULT now(),
   UNIQUE (native_session_id, url)
 );
-CREATE INDEX IF NOT EXISTS native_schedule_session_logs_session_idx
-  ON public.native_schedule_session_logs(native_session_id);
+-- 2026-07-12 監査 B-4: 単独 (native_session_id) index は
+-- UNIQUE(native_session_id, url) の先頭列が包含するため冗長 — 削除。
+DROP INDEX IF EXISTS public.native_schedule_session_logs_session_idx;
 
 -- ---- 6. tags (universal — D scheme) ----------------------------------
 
@@ -869,18 +920,23 @@ BEGIN
         -- 書き込みは authenticated + is_admin claim (TODO #36 phase 2)。
         -- `auth.jwt() -> 'app_metadata' ->> 'is_admin'` は text なので
         -- 文字列 'true' と比較。NULL の場合 (claim 無し) は deny。
+        -- 2026-07-12 監査 B-3: `(SELECT auth.jwt() ...)` に包んで per-row →
+        -- per-statement 評価 (initPlan キャッシュ)。単一行 write では差が
+        -- 無いが、discord-import / snapshot のバルク upsert が行数分
+        -- auth.jwt() を評価していた。意味は等価 (Supabase lint
+        -- auth_rls_initplan と同型)。
         EXECUTE format(
-          $sql$CREATE POLICY %I ON public.%I FOR INSERT TO authenticated WITH CHECK ((auth.jwt() -> 'app_metadata' ->> 'is_admin') = 'true')$sql$,
+          $sql$CREATE POLICY %I ON public.%I FOR INSERT TO authenticated WITH CHECK ((SELECT auth.jwt() -> 'app_metadata' ->> 'is_admin') = 'true')$sql$,
           policy_name, t
         );
       ELSIF op = 'update' THEN
         EXECUTE format(
-          $sql$CREATE POLICY %I ON public.%I FOR UPDATE TO authenticated USING ((auth.jwt() -> 'app_metadata' ->> 'is_admin') = 'true') WITH CHECK ((auth.jwt() -> 'app_metadata' ->> 'is_admin') = 'true')$sql$,
+          $sql$CREATE POLICY %I ON public.%I FOR UPDATE TO authenticated USING ((SELECT auth.jwt() -> 'app_metadata' ->> 'is_admin') = 'true') WITH CHECK ((SELECT auth.jwt() -> 'app_metadata' ->> 'is_admin') = 'true')$sql$,
           policy_name, t
         );
       ELSIF op = 'delete' THEN
         EXECUTE format(
-          $sql$CREATE POLICY %I ON public.%I FOR DELETE TO authenticated USING ((auth.jwt() -> 'app_metadata' ->> 'is_admin') = 'true')$sql$,
+          $sql$CREATE POLICY %I ON public.%I FOR DELETE TO authenticated USING ((SELECT auth.jwt() -> 'app_metadata' ->> 'is_admin') = 'true')$sql$,
           policy_name, t
         );
       END IF;
@@ -905,6 +961,9 @@ END $$;
 --
 -- マッチ条件: `auth.jwt() -> 'app_metadata' ->> 'discord_id' = discord_user_id`
 -- discord_id claim は OAuth callback で書き込まれる (Phase 1 と同じ経路)。
+-- 2026-07-12 監査 B-3: claim 抽出を `(SELECT ...)` に包んで per-statement
+-- 評価 (initPlan)。列比較 (`= discord_user_id`) 自体は行ごとに評価される
+-- (self-row 判定なので当然)。意味は等価。
 
 DROP POLICY IF EXISTS native_schedule_attendances_self_insert
   ON public.native_schedule_attendances;
@@ -912,7 +971,7 @@ CREATE POLICY native_schedule_attendances_self_insert
   ON public.native_schedule_attendances
   FOR INSERT TO authenticated
   WITH CHECK (
-    (auth.jwt() -> 'app_metadata' ->> 'discord_id') = discord_user_id
+    (SELECT auth.jwt() -> 'app_metadata' ->> 'discord_id') = discord_user_id
   );
 
 DROP POLICY IF EXISTS native_schedule_attendances_self_update
@@ -921,10 +980,10 @@ CREATE POLICY native_schedule_attendances_self_update
   ON public.native_schedule_attendances
   FOR UPDATE TO authenticated
   USING (
-    (auth.jwt() -> 'app_metadata' ->> 'discord_id') = discord_user_id
+    (SELECT auth.jwt() -> 'app_metadata' ->> 'discord_id') = discord_user_id
   )
   WITH CHECK (
-    (auth.jwt() -> 'app_metadata' ->> 'discord_id') = discord_user_id
+    (SELECT auth.jwt() -> 'app_metadata' ->> 'discord_id') = discord_user_id
   );
 
 DROP POLICY IF EXISTS native_schedule_attendances_self_delete
@@ -933,7 +992,7 @@ CREATE POLICY native_schedule_attendances_self_delete
   ON public.native_schedule_attendances
   FOR DELETE TO authenticated
   USING (
-    (auth.jwt() -> 'app_metadata' ->> 'discord_id') = discord_user_id
+    (SELECT auth.jwt() -> 'app_metadata' ->> 'discord_id') = discord_user_id
   );
 
 -- ---- 7a-2. schedule_session_memos メンバー書込 (総合レビュー A-4) -----------
@@ -977,44 +1036,60 @@ CREATE POLICY schedule_session_memos_member_delete
 -- REPLICA IDENTITY FULL ships the entire OLD row in DELETE events, so
 -- filters on any column work as expected. Slight WAL overhead, but
 -- our row sizes are small.
+--
+-- 2026-07-12 監査 B-2: FULL は **client 購読があるテーブルのみ** に絞る。
+-- 従来は全 19 テーブルに FULL を張っていたが、購読が存在するのは下の
+-- 6 テーブルだけで、残り 13 (特に write が最多の native_schedule_attendances
+-- と daily insert の schedule_past_sessions 系) は UPDATE/DELETE のたびに
+-- 旧行全体を WAL に書く恒常コストだけを払っていた。非購読テーブルは
+-- Postgres 既定の DEFAULT (PK のみ) に戻す (冪等)。
+-- ⚠ 新しく Realtime 購読 (use-realtime-table / useRealtimeChannel) を追加
+--   するときは、ここへの FULL 追加と下 8 章 publication への追加を忘れずに。
 
 ALTER TABLE public.categories                    REPLICA IDENTITY FULL;
 ALTER TABLE public.category_links                REPLICA IDENTITY FULL;
 ALTER TABLE public.category_gphoto_albums        REPLICA IDENTITY FULL;
-ALTER TABLE public.app_settings                  REPLICA IDENTITY FULL;
-ALTER TABLE public.schedule_past_sessions        REPLICA IDENTITY FULL;
-ALTER TABLE public.schedule_past_session_logs    REPLICA IDENTITY FULL;
 ALTER TABLE public.recruitment_templates         REPLICA IDENTITY FULL;
 ALTER TABLE public.category_macros               REPLICA IDENTITY FULL;
 ALTER TABLE public.schedule_session_memos        REPLICA IDENTITY FULL;
-ALTER TABLE public.loot_items                    REPLICA IDENTITY FULL;
-ALTER TABLE public.loot_entries                  REPLICA IDENTITY FULL;
-ALTER TABLE public.mitigation_phases             REPLICA IDENTITY FULL;
-ALTER TABLE public.mitigation_entries            REPLICA IDENTITY FULL;
-ALTER TABLE public.strategy_docs                 REPLICA IDENTITY FULL;
-ALTER TABLE public.tags                          REPLICA IDENTITY FULL;
-ALTER TABLE public.native_schedule_sessions      REPLICA IDENTITY FULL;
-ALTER TABLE public.native_schedule_members       REPLICA IDENTITY FULL;
-ALTER TABLE public.native_schedule_attendances   REPLICA IDENTITY FULL;
-ALTER TABLE public.native_schedule_session_logs  REPLICA IDENTITY FULL;
+
+-- 非購読 13 テーブル: DEFAULT (PK) に戻す。過去デプロイで FULL が付いた
+-- 既存 DB の掃除を兼ねる (再適用は no-op)。
+ALTER TABLE public.app_settings                  REPLICA IDENTITY DEFAULT;
+ALTER TABLE public.schedule_past_sessions        REPLICA IDENTITY DEFAULT;
+ALTER TABLE public.schedule_past_session_logs    REPLICA IDENTITY DEFAULT;
+ALTER TABLE public.loot_items                    REPLICA IDENTITY DEFAULT;
+ALTER TABLE public.loot_entries                  REPLICA IDENTITY DEFAULT;
+ALTER TABLE public.mitigation_phases             REPLICA IDENTITY DEFAULT;
+ALTER TABLE public.mitigation_entries            REPLICA IDENTITY DEFAULT;
+ALTER TABLE public.strategy_docs                 REPLICA IDENTITY DEFAULT;
+ALTER TABLE public.tags                          REPLICA IDENTITY DEFAULT;
+ALTER TABLE public.native_schedule_sessions      REPLICA IDENTITY DEFAULT;
+ALTER TABLE public.native_schedule_members       REPLICA IDENTITY DEFAULT;
+ALTER TABLE public.native_schedule_attendances   REPLICA IDENTITY DEFAULT;
+ALTER TABLE public.native_schedule_session_logs  REPLICA IDENTITY DEFAULT;
 
 -- ---- 8. Realtime publication ------------------------------------------
+-- 2026-07-12 監査 B-2: publication も client 購読がある 6 テーブルに絞る。
+-- 購読ゼロのテーブルが publication に載っていると、write のたびに Realtime
+-- サーバーが WAL デコード + ブロードキャスト変換を行う無駄が恒常発生する。
+-- 現在の購読 (grep -r useRealtimeTable / channel().on("postgres_changes")):
+--   categories            (categories-client.ts / CategorySwitcher)
+--   category_links        (category-links-client.ts / videos・strategy)
+--   category_gphoto_albums (category-links-client.ts / strategy)
+--   category_macros       (category-macros-client.ts / macros)
+--   recruitment_templates (recruitment-templates-client.ts / TOP header)
+--   schedule_session_memos (schedule-memos-client.ts / TOP schedule-list)
+-- ⚠ 新しい購読を追加したら、この ADD 配列 + 上 7b の FULL に必ず追加すること。
 
 DO $$
 DECLARE
   t text;
 BEGIN
+  -- client 購読があるテーブルのみ publication へ。
   FOR t IN SELECT unnest(ARRAY[
     'categories','category_links','category_gphoto_albums',
-    'app_settings','schedule_past_sessions',
-    'schedule_past_session_logs',
-    'recruitment_templates','category_macros','schedule_session_memos',
-    'loot_items','loot_entries',
-    'mitigation_phases','mitigation_entries',
-    'strategy_docs','tags',
-    'native_schedule_sessions','native_schedule_members',
-    'native_schedule_attendances',
-    'native_schedule_session_logs'
+    'recruitment_templates','category_macros','schedule_session_memos'
   ]) LOOP
     BEGIN
       EXECUTE format(
@@ -1024,6 +1099,30 @@ BEGIN
     EXCEPTION
       WHEN duplicate_object THEN
         -- already in publication, ignore
+        NULL;
+    END;
+  END LOOP;
+
+  -- 購読の無い 13 テーブルを publication から外す (過去デプロイで載った分の
+  -- 掃除。未登録 / テーブル不存在は no-op 扱いで冪等)。
+  FOR t IN SELECT unnest(ARRAY[
+    'app_settings','schedule_past_sessions','schedule_past_session_logs',
+    'loot_items','loot_entries',
+    'mitigation_phases','mitigation_entries',
+    'strategy_docs','tags',
+    'native_schedule_sessions','native_schedule_members',
+    'native_schedule_attendances','native_schedule_session_logs'
+  ]) LOOP
+    BEGIN
+      EXECUTE format(
+        'ALTER PUBLICATION supabase_realtime DROP TABLE public.%I',
+        t
+      );
+    EXCEPTION
+      WHEN undefined_object THEN
+        -- not in publication, ignore
+        NULL;
+      WHEN undefined_table THEN
         NULL;
     END;
   END LOOP;
@@ -1112,6 +1211,7 @@ DROP POLICY IF EXISTS "category-backgrounds anon insert"          ON storage.obj
 DROP POLICY IF EXISTS "category-backgrounds anon update"          ON storage.objects;
 DROP POLICY IF EXISTS "category-backgrounds anon delete"          ON storage.objects;
 DROP POLICY IF EXISTS "category-backgrounds authenticated insert" ON storage.objects;
+DROP POLICY IF EXISTS "category-backgrounds authenticated delete" ON storage.objects;
 
 CREATE POLICY "category-backgrounds public read"
   ON storage.objects FOR SELECT
@@ -1121,17 +1221,26 @@ CREATE POLICY "category-backgrounds public read"
 -- TODO #36 phase 2 (2.1, 2026-04-29): さらに is_admin claim も要求。
 -- Discord OAuth callback で `is_admin` が true で書かれたユーザー
 -- (= DISCORD_ADMIN_ROLE_IDS のロール持ち) のみアップロード可能。
+-- 2026-07-12 監査 B-3: is_admin 抽出を `(SELECT ...)` に (initPlan、10b と同型)。
 CREATE POLICY "category-backgrounds authenticated insert"
   ON storage.objects FOR INSERT
   TO authenticated
   WITH CHECK (
     bucket_id = 'category-backgrounds'
-    AND (auth.jwt() -> 'app_metadata' ->> 'is_admin') = 'true'
+    AND (SELECT auth.jwt() -> 'app_metadata' ->> 'is_admin') = 'true'
   );
--- NOTE: anon UPDATE / anon DELETE は撤去 (TODO #34)。anon INSERT も
--- TODO #36 phase 1 で削除して authenticated 限定にした。古い画像の
--- クリーンアップは将来 admin Server Action で対応 (現状は新 path 別名
--- でアップロード→旧画像はオブジェクトストレージに残置)。
+
+-- 2026-07-12 監査 B-6: INSERT と対称の is_admin DELETE policy を追加
+-- (strategy-images の P3-n と同型)。カテゴリ削除・背景差し替え時に
+-- deleteCategoryAction 等の Server Action が旧オブジェクトを後始末できる
+-- ようにする (従来は DELETE policy 自体が無く恒久残置だった)。
+CREATE POLICY "category-backgrounds authenticated delete"
+  ON storage.objects FOR DELETE
+  TO authenticated
+  USING (
+    bucket_id = 'category-backgrounds'
+    AND (SELECT auth.jwt() -> 'app_metadata' ->> 'is_admin') = 'true'
+  );
 
 -- ---- 10b. Storage bucket for strategy images (Phase 15, 2026-05-13) ----
 -- 攻略タブの画像エントリ (category_links kind=image) 用の public bucket。
@@ -1165,7 +1274,7 @@ CREATE POLICY "category-strategy-images authenticated insert"
   TO authenticated
   WITH CHECK (
     bucket_id = 'category-strategy-images'
-    AND (auth.jwt() -> 'app_metadata' ->> 'is_admin') = 'true'
+    AND (SELECT auth.jwt() -> 'app_metadata' ->> 'is_admin') = 'true'
   );
 
 -- 監査 P3-n (2026-06-19): admin が画像をアップロード→ダイアログをキャンセル /
@@ -1178,7 +1287,7 @@ CREATE POLICY "category-strategy-images authenticated delete"
   TO authenticated
   USING (
     bucket_id = 'category-strategy-images'
-    AND (auth.jwt() -> 'app_metadata' ->> 'is_admin') = 'true'
+    AND (SELECT auth.jwt() -> 'app_metadata' ->> 'is_admin') = 'true'
   );
 
 -- ============================================================================
@@ -1340,6 +1449,32 @@ REVOKE EXECUTE ON FUNCTION public.next_category_macro_sort_order(uuid) FROM PUBL
 GRANT EXECUTE ON FUNCTION public.next_recruitment_template_sort_order()
   TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.next_category_macro_sort_order(uuid)
+  TO anon, authenticated;
+
+-- ---- 13c-2. practice seconds aggregate RPC (2026-07-12 監査 B-7) -------
+-- /category 一覧の「累計練習時間」バッジ用の集計。従来は
+-- `fetchPracticeSecondsByCategory` が全カテゴリ横断で video 行の
+-- (category_id, duration_seconds) を **全件転送**して JS 側で合計しており、
+-- 動画の累積 (日次 Discord 取込) に比例して /category 表示が線形劣化して
+-- いた。DB 側 GROUP BY でカテゴリ数行に縮約する。
+--
+-- STABLE read-only。SECURITY DEFINER だが category_links の SELECT は元々
+-- RLS `USING (true)` で anon に全開なので露出は増えない (13c と同方針で
+-- RLS 影響を受けず確実に全行を集計するために DEFINER を採用)。
+-- `duration_seconds > 0` は JS 実装の `sec <= 0 continue` と同じ除外。
+CREATE OR REPLACE FUNCTION public.practice_seconds_by_category()
+RETURNS TABLE (category_id uuid, total_seconds bigint)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT category_id, SUM(duration_seconds)::bigint AS total_seconds
+    FROM public.category_links
+   WHERE kind = 'video'
+     AND duration_seconds IS NOT NULL
+     AND duration_seconds > 0
+   GROUP BY category_id
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.practice_seconds_by_category() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.practice_seconds_by_category()
   TO anon, authenticated;
 
 -- ---- 13d. native placeholder raid time retro-update RPC (TODO #85) ----

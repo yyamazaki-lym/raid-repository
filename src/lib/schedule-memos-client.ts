@@ -66,6 +66,22 @@ export function persistAuthorName(name: string): void {
   }
 }
 
+// schema 側 CHECK (schedule_session_memos_text_sane、2026-07-12 監査 B-5) と
+// 同じ上限。DB が弾く前に友好的なエラーを返すための入口検証
+// (recruitment-templates-client の validateTemplateText と同方針)。
+export const MEMO_BODY_MAX = 4000;
+export const MEMO_AUTHOR_NAME_MAX = 100;
+function validateMemoText(
+  body: string | undefined,
+  authorName: string | undefined,
+): string | null {
+  if (body !== undefined && body.length > MEMO_BODY_MAX)
+    return `メモが長すぎます（最大 ${MEMO_BODY_MAX} 文字）`;
+  if (authorName !== undefined && authorName.length > MEMO_AUTHOR_NAME_MAX)
+    return `名前が長すぎます（最大 ${MEMO_AUTHOR_NAME_MAX} 文字）`;
+  return null;
+}
+
 export async function createScheduleMemo(input: {
   rawDate: string;
   body: string;
@@ -73,6 +89,8 @@ export async function createScheduleMemo(input: {
 }): Promise<
   { ok: true; memo: ScheduleSessionMemo } | { ok: false; reason: string }
 > {
+  const lenError = validateMemoText(input.body, input.authorName);
+  if (lenError) return { ok: false, reason: lenError };
   const supabase = createClient();
   const { data, error } = await supabase
     .from("schedule_session_memos")
@@ -91,6 +109,8 @@ export async function updateScheduleMemo(
   id: string,
   patch: Partial<{ body: string; authorName: string }>,
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const lenError = validateMemoText(patch.body, patch.authorName);
+  if (lenError) return { ok: false, reason: lenError };
   const supabase = createClient();
   const dbPatch: Record<string, unknown> = {};
   if (patch.body !== undefined) dbPatch.body = patch.body;
