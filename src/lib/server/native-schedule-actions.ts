@@ -74,7 +74,14 @@ export async function createNativeScheduleSessionAction(
   if (!rawDate || !parsedDate || !startTime || !endTime || !dayOfWeek) {
     return { ok: false, reason: "日時情報が不足しています" };
   }
-  const note = input.note?.trim() || null;
+  const noteRaw = input.note?.trim() ?? "";
+  // 2026-07-12 監査 follow-up: update 側 (updateNativeScheduleSessionNoteAction)
+  // と対称に 200 字を検証。DB の native_schedule_sessions_note_sane CHECK で
+  // 生エラーになる前に友好メッセージを返す。
+  if (noteRaw.length > 200) {
+    return { ok: false, reason: "備考は 200 文字以内で入力してください" };
+  }
+  const note = noteRaw || null;
 
   const supabase = await createClient();
   const { data, error } = await supabase

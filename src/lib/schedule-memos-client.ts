@@ -82,6 +82,18 @@ function validateMemoText(
   return null;
 }
 
+/**
+ * author_name から制御文字を除去する (2026-07-12 監査 follow-up)。
+ * DB CHECK は `author_name !~ '[[:cntrl:]]'` を要求するが、UI 側 trim は
+ * 端の空白しか落とさないため、貼り付けた内部タブ等が生 Postgres エラーに
+ * なっていた。native-schedule-actions の symbol/comment と同じ `\p{Cc}`
+ * 除去で表示名を無害化する (表示名に制御文字は不要)。body は本文で改行を
+ * 含むため触らない (DB CHECK も body には cntrl 節を持たない)。
+ */
+function sanitizeAuthorName(name: string): string {
+  return name.replace(/\p{Cc}/gu, "");
+}
+
 export async function createScheduleMemo(input: {
   rawDate: string;
   body: string;
@@ -97,7 +109,7 @@ export async function createScheduleMemo(input: {
     .insert({
       raw_date: input.rawDate,
       body: input.body,
-      author_name: input.authorName,
+      author_name: sanitizeAuthorName(input.authorName),
     })
     .select("*")
     .single();
@@ -114,7 +126,8 @@ export async function updateScheduleMemo(
   const supabase = createClient();
   const dbPatch: Record<string, unknown> = {};
   if (patch.body !== undefined) dbPatch.body = patch.body;
-  if (patch.authorName !== undefined) dbPatch.author_name = patch.authorName;
+  if (patch.authorName !== undefined)
+    dbPatch.author_name = sanitizeAuthorName(patch.authorName);
   // `.select("id")` で返却 0 件 (= RLS USING で弾かれた非 admin) を失敗扱いに。
   const { data, error } = await supabase
     .from("schedule_session_memos")

@@ -480,7 +480,20 @@ CREATE INDEX IF NOT EXISTS schedule_session_memos_date_idx
 -- PostgREST 直叩きで巨大 body / 異常 author_name を注入できた
 -- (category_macros / recruitment_templates の監査 #253 と同クラスの残存)。
 -- body はメモ本文で改行を含むため長さのみ、author_name は単一行の表示名
--- なので制御文字も弾く。NOT VALID で既存行は検証せず新規 write のみ適用。
+-- なので制御文字も弾く。
+--
+-- ⚠ NOT VALID は既存行の一括検証をスキップするだけで、その行を **次に
+-- UPDATE する時には CHECK が効く**。違反 legacy 行が残っていると
+-- 無関係なカラムだけの UPDATE (例: update_native_placeholder_raid_times の
+-- memo raw_date 同期) が失敗し RPC 全体を abort しうる。ADD の前に
+-- 一回きりの丸め cleanup を入れる (A-5.1 の dedupe DELETE と同じ先例。
+-- 通常は WHERE で 0 行 = 冪等 no-op、違反行があるときだけ丸める)。
+UPDATE public.schedule_session_memos
+   SET body = left(body, 4000)
+ WHERE char_length(body) > 4000;
+UPDATE public.schedule_session_memos
+   SET author_name = left(regexp_replace(author_name, '[[:cntrl:]]', '', 'g'), 100)
+ WHERE char_length(author_name) > 100 OR author_name ~ '[[:cntrl:]]';
 ALTER TABLE public.schedule_session_memos
   DROP CONSTRAINT IF EXISTS schedule_session_memos_text_sane;
 ALTER TABLE public.schedule_session_memos
@@ -709,6 +722,12 @@ CREATE INDEX IF NOT EXISTS native_schedule_sessions_date_idx
 
 -- 2026-07-12 監査 B-5: note の app 層 200 字制限
 -- (updateNativeScheduleSessionNoteAction) を DB 層でも担保。NOT VALID。
+-- ⚠ 違反 legacy 行を後続 UPDATE (last_notified_at 書き込みの通知 cron /
+-- status トグル / raw_date 同期 RPC) が abort しうるため、ADD 前に丸める
+-- (通常は 0 行 = 冪等)。
+UPDATE public.native_schedule_sessions
+   SET note = left(note, 200)
+ WHERE note IS NOT NULL AND char_length(note) > 200;
 ALTER TABLE public.native_schedule_sessions
   DROP CONSTRAINT IF EXISTS native_schedule_sessions_note_sane;
 ALTER TABLE public.native_schedule_sessions
@@ -739,7 +758,11 @@ ALTER TABLE public.native_schedule_members
 -- 2026-07-12 監査 B-5: comment は本人 (非 admin) が Server Action 経由で
 -- 書ける列。app 層の 500 字制限 (updateNativeScheduleMemberCommentAction) を
 -- DB 層でも担保する。attendances.symbol/comment の CHECK (#253) と同方針、
--- NOT VALID で既存行は検証しない。
+-- NOT VALID で既存行は検証しない。ADD 前の丸めは上記 note と同趣旨
+-- (違反行の後続 UPDATE abort を防ぐ、通常 0 行)。
+UPDATE public.native_schedule_members
+   SET comment = left(comment, 500)
+ WHERE comment IS NOT NULL AND char_length(comment) > 500;
 ALTER TABLE public.native_schedule_members
   DROP CONSTRAINT IF EXISTS native_schedule_members_comment_sane;
 ALTER TABLE public.native_schedule_members
@@ -1231,9 +1254,13 @@ CREATE POLICY "category-backgrounds authenticated insert"
   );
 
 -- 2026-07-12 監査 B-6: INSERT と対称の is_admin DELETE policy を追加
--- (strategy-images の P3-n と同型)。カテゴリ削除・背景差し替え時に
--- deleteCategoryAction 等の Server Action が旧オブジェクトを後始末できる
--- ようにする (従来は DELETE policy 自体が無く恒久残置だった)。
+-- (strategy-images の P3-n と同型)。
+-- 注意: deleteCategoryAction の Storage 掃除は service role client で行う
+-- ため storage RLS はバイパスされ、本 policy には依存しない。本 policy が
+-- 効くのは「ブラウザ (authenticated client) からの孤児掃除」経路で、現状
+-- category-backgrounds には image-form-dialog 相当のブラウザ側掃除が未実装。
+-- strategy-images との対称性維持 + 将来のブラウザ側掃除への備えとして張る
+-- (張っても既存挙動は不変、anon/非 admin は 0 行)。
 CREATE POLICY "category-backgrounds authenticated delete"
   ON storage.objects FOR DELETE
   TO authenticated

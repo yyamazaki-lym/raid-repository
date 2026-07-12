@@ -275,6 +275,10 @@ function collectOwnedStorageObjects(
       } catch {
         continue;
       }
+      // Storage `remove()` は bucket 内 key の完全一致で解決し path 正規化を
+      // しないため実害は無いが、念のため traversal を含む値は掃除対象から
+      // 外す (defense-in-depth)。
+      if (path.includes("../")) continue;
       const list = out.get(bucket) ?? [];
       list.push(path);
       out.set(bucket, list);
@@ -297,6 +301,11 @@ export async function deleteCategoryAction(
   // カテゴリ削除自体は成功扱い — 掃除失敗は warn ログのみ)。
   let storageCleanup = new Map<string, string[]>();
   try {
+    // kind='image' に加え 'gphoto' も対象 — updateCategoryLinkAction が
+    // gphoto 行の Discord CDN 画像を category-strategy-images へ移行して
+    // url / thumbnail_url に保存するため (両カラムを collect)。image 行は
+    // thumbnail_url を使わないが select しても collect 側の bucket/prefix
+    // 判定で無関係な値は弾かれる。
     const [catRes, imageLinksRes] = await Promise.all([
       supabase
         .from("categories")
@@ -305,16 +314,17 @@ export async function deleteCategoryAction(
         .maybeSingle(),
       supabase
         .from("category_links")
-        .select("url")
+        .select("url, thumbnail_url")
         .eq("category_id", id)
-        .eq("kind", "image"),
+        .in("kind", ["image", "gphoto"]),
     ]);
     storageCleanup = collectOwnedStorageObjects([
       (catRes.data as { background_image_url?: string | null } | null)
         ?.background_image_url,
-      ...((imageLinksRes.data ?? []) as Array<{ url: string | null }>).map(
-        (r) => r.url,
-      ),
+      ...((imageLinksRes.data ?? []) as Array<{
+        url: string | null;
+        thumbnail_url: string | null;
+      }>).flatMap((r) => [r.url, r.thumbnail_url]),
     ]);
   } catch (e) {
     console.warn("[category-delete] storage url collect failed:", e);
