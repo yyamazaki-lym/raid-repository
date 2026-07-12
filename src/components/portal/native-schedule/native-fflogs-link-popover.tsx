@@ -146,7 +146,12 @@ export function NativeFflogsLinkPopover({
       toast.error("Logs URL 追加失敗: " + r.reason);
       return;
     }
-    toast.success("Logs URL を追加しました");
+    // 2026-07-12: sync 側 (session-memo-popover) と同じく橋渡し件数を表示。
+    toast.success(
+      r.bridgedVideos
+        ? `Logs URL を追加しました (同日の動画 ${r.bridgedVideos} 件にバッジ表示)`
+        : "Logs URL を追加しました",
+    );
   };
 
   const handleDeleteLogs = async (id: string) => {
@@ -178,7 +183,11 @@ export function NativeFflogsLinkPopover({
       toast.error("Logs URL 削除失敗: " + r.reason);
       return;
     }
-    toast.success("Logs URL を削除しました");
+    toast.success(
+      r.unbridgedVideos
+        ? `Logs URL を削除しました (同日の動画 ${r.unbridgedVideos} 件のバッジも解除)`
+        : "Logs URL を削除しました",
+    );
   };
 
   return (

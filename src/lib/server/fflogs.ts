@@ -7,6 +7,7 @@ import { fetchAppSetting } from "@/lib/supabase/app-settings";
 import { findContentGroups } from "@/lib/content-groups";
 import { extractDateFromTitle } from "@/lib/title-date";
 import type { SessionLogEntry } from "@/lib/schedule/session-logs";
+import { bridgeAllManualSessionLogsToVideos } from "./session-logs-video-bridge";
 import { getValidFflogsOAuthToken } from "./fflogs-oauth";
 import {
   buildFflogsReportsListUrl,
@@ -916,6 +917,13 @@ export type FflogsLinkResult = {
    * stale な auto リンクは次回の全量 sync で解消される。
    */
   truncated?: boolean;
+  /**
+   * 第4ステップ (2026-07-12): 日付登録された manual session logs から
+   * 同日の logs_url 未設定動画へ橋渡しした動画数。
+   */
+  manualLogsBridged?: number;
+  /** 第4ステップ: manual log を持つ対象日数。 */
+  manualLogDaysScanned?: number;
   /** Diagnostic — date range of fetched FFLogs reports (for empty-match debugging). */
   reportsDateRange?: { earliest: string; latest: string };
   /** Diagnostic — fields available on FFLogs `User` type (introspected). */
@@ -969,6 +977,8 @@ export type FflogsLinkResult = {
     titleDateMissCount?: number;
     /** Sample of video titles where title-date extraction failed (first 10). */
     titleDateMissSample?: string[];
+    /** 第4ステップ (2026-07-12): 時間予算超過で manual 橋渡しを打ち切った。 */
+    manualBridgeSkippedBudget?: boolean;
   };
 };
 
@@ -1285,6 +1295,23 @@ export async function linkFflogsReportsToVideos(opts?: {
     linkReportsToNativeSessions(supabase, reports),
   ]);
 
+  // 第4ステップ (2026-07-12): 日付登録された manual session logs → 同日の
+  // logs_url 未設定動画への橋渡し。
+  //   (a) 動画が Discord 取込 (JST 01:00) で登録の翌日に入るケース (登録
+  //       時点で橋渡し先の動画行が無い) を本 cron (JST 04:00 台) が回収
+  //   (b) 本機能導入前の既存 manual 登録分のバックフィル
+  // を日次で自己修復する。logs_url IS NULL のみ更新 + source='manual' 書込
+  // のため冪等で、auto wipe (source='auto' のみ) とも干渉しない。3 リンカー
+  // の後に置くのは、コンテンツ照合済みの auto マッチが先に NULL 動画を
+  // claim し、残りを manual 橋渡しが埋める精度順にするため。
+  // 注意: 本ステップはレポート取得に依存しないが、FFLogs ソース未設定 /
+  // 全ソース fetch 失敗の早期 return 経路では実行されない (書込時橋渡しが
+  // 主経路なので許容。翌晩以降の成功 run で回収される)。
+  const bridgeResult = await bridgeAllManualSessionLogsToVideos(
+    supabase,
+    deadlineAtMs,
+  );
+
   // Compute report date range for diagnostics — if matched=0 the user
   // can compare this against video / session ranges to see if the
   // problem is "no overlap" (different time periods) vs "match logic
@@ -1323,10 +1350,13 @@ export async function linkFflogsReportsToVideos(opts?: {
     sessionsMatched: sessionResult.matched,
     nativeSessionsScanned: nativeSessionResult.scanned,
     nativeSessionsMatched: nativeSessionResult.matched,
+    manualLogsBridged: bridgeResult.updated,
+    manualLogDaysScanned: bridgeResult.scannedDays,
     details: [
       ...videoResult.details,
       ...sessionResult.details,
       ...nativeSessionResult.details,
+      ...bridgeResult.details,
     ],
     reportsDateRange,
     videosDateRange: videoResult.dateRange,
@@ -1353,6 +1383,7 @@ export async function linkFflogsReportsToVideos(opts?: {
       titleDateHitCount: videoResult.titleDateHits,
       titleDateMissCount: videoResult.titleDateMisses,
       titleDateMissSample: videoResult.titleDateMissSample,
+      manualBridgeSkippedBudget: bridgeResult.skippedBudget || undefined,
     },
   };
 }

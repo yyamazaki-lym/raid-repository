@@ -1,6 +1,11 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
-import { extractDateFromTitle } from "@/lib/title-date";
+import {
+  jstYmdKey,
+  resolveVideoJstYmd,
+  toJstYmd,
+  VIDEO_POSTED_AT_BUFFER_MS,
+} from "@/lib/video-jst-date";
 
 /**
  * Match each schedule session to its recording by comparing
@@ -49,19 +54,11 @@ export type SessionVideoLink = {
   logsUrl: string | null;
 };
 
-const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
+// toJstYmd / 動画の日付解決は video-jst-date.ts へ移設 (2026-07-12)。
+// 日付登録 Logs の橋渡し (session-logs-video-bridge.ts) が本ファイルの
+// 「同日」判定と完全一致する必要があるため、共有モジュール化した。
 
 type SessionLite = { rawDate: string; date: Date };
-
-/** Convert a UTC instant to its JST calendar Y/M/D. */
-function toJstYmd(ms: number): { y: number; m: number; d: number } {
-  const j = new Date(ms + JST_OFFSET_MS);
-  return {
-    y: j.getUTCFullYear(),
-    m: j.getUTCMonth() + 1,
-    d: j.getUTCDate(),
-  };
-}
 
 export async function buildSessionVideoLinkMap(
   sessions: SessionLite[],
@@ -80,9 +77,8 @@ export async function buildSessionVideoLinkMap(
   const sessionMs = sessions.map((s) => s.date.getTime());
   const minMs = Math.min(...sessionMs);
   const maxMs = Math.max(...sessionMs);
-  const BUFFER_MS = 7 * 24 * 60 * 60 * 1000;
-  const minIso = new Date(minMs - BUFFER_MS).toISOString();
-  const maxIso = new Date(maxMs + BUFFER_MS).toISOString();
+  const minIso = new Date(minMs - VIDEO_POSTED_AT_BUFFER_MS).toISOString();
+  const maxIso = new Date(maxMs + VIDEO_POSTED_AT_BUFFER_MS).toISOString();
 
   const supabase = await createClient();
   type Row = {
@@ -119,13 +115,8 @@ export async function buildSessionVideoLinkMap(
       const cat = Array.isArray(v.categories) ? v.categories[0] : v.categories;
       if (!cat?.slug) return null;
 
-      const postedMs = v.posted_at ? new Date(v.posted_at).getTime() : NaN;
-      const postedJst = Number.isNaN(postedMs) ? null : toJstYmd(postedMs);
-
-      // Year-less title formats ("4/1") need a year hint — use posted_at's
-      // JST year when we have it.
-      const titleD = extractDateFromTitle(v.title, postedJst?.y);
-      const ymd = titleD ?? postedJst;
+      // タイトル日付優先 → posted_at JST fallback (video-jst-date.ts)。
+      const ymd = resolveVideoJstYmd(v.title, v.posted_at);
       if (!ymd) return null;
 
       return {
@@ -145,7 +136,7 @@ export async function buildSessionVideoLinkMap(
   // 配列のままセッション側に展開して dropdown UI に最古→最新の順で渡す。
   const videosByDate = new Map<string, typeof videoEntries>();
   for (const v of videoEntries) {
-    const key = `${v.y}-${v.m}-${v.d}`;
+    const key = jstYmdKey(v);
     const bucket = videosByDate.get(key);
     if (bucket) bucket.push(v);
     else videosByDate.set(key, [v]);
@@ -153,8 +144,7 @@ export async function buildSessionVideoLinkMap(
 
   const out: Record<string, SessionVideoLink[]> = {};
   for (const s of sessions) {
-    const sj = toJstYmd(s.date.getTime());
-    const bucket = videosByDate.get(`${sj.y}-${sj.m}-${sj.d}`);
+    const bucket = videosByDate.get(jstYmdKey(toJstYmd(s.date.getTime())));
     if (!bucket || bucket.length === 0) continue;
     out[s.rawDate] = bucket.map((match) => ({
       href: `/category/${match.categorySlug}/videos?focus=${match.id}`,
