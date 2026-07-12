@@ -63,6 +63,9 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({
     ok: true,
+    // D-3: 時間予算超過の部分同期 (wipe スキップ・追加リンクのみ)。
+    // 次回 cron の全量 sync で整合する。
+    truncated: result.truncated ?? false,
     reportsScanned: result.reportsScanned,
     videosScanned: result.videosScanned,
     matched: result.matched,

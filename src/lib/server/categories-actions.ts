@@ -1099,6 +1099,10 @@ export async function addSessionLogsUrl(
     .select("raw_date")
     .eq("raw_date", trimmedDate)
     .maybeSingle();
+  // 2026-07-12 監査 D-2: この呼び出しで placeholder 親を新規挿入したかを
+  // 覚えておき、子 insert 失敗時に best-effort で親を巻き戻す (従来は
+  // 「親だけ挿入済み・logs 0 件」の孤児 placeholder が残った)。
+  let insertedParent = false;
   if (!existing) {
     if (!sessionDetails) {
       return {
@@ -1118,6 +1122,7 @@ export async function addSessionLogsUrl(
         source: "manual",
       });
     if (insErr) return { ok: false, reason: dbError("過去予定登録", insErr) };
+    insertedParent = true;
   }
 
   const { data: inserted, error: logErr } = await supabase
@@ -1129,7 +1134,27 @@ export async function addSessionLogsUrl(
     // Likely UNIQUE (raw_date, url) violation — surface a friendlier
     // message so users know the URL is already linked.
     if ((logErr as { code?: string }).code === "23505") {
+      // 23505 = 同一 URL の child が既に存在 (親を今作った直後なら並行
+      // リクエストが同じ日付に挿入したケース)。親は実在の child に使われて
+      // いるので rollback しない (DELETE すると CASCADE で相手の child を
+      // 巻き添えにする)。
       return { ok: false, reason: "同じ URL が既に紐付いています" };
+    }
+    if (insertedParent) {
+      // gphoto (createGphotoEntryAction) と同型の best-effort rollback。
+      // 失敗しても致命ではない (孤児 placeholder は過去表示に空行が出る
+      // だけで、次のスナップショット/手動削除で解消できる) ため warn のみ。
+      const { error: rbErr } = await supabase
+        .from("schedule_past_sessions")
+        .delete()
+        .eq("raw_date", trimmedDate)
+        .eq("source", "manual");
+      if (rbErr) {
+        console.warn(
+          "[session-logs] placeholder rollback failed:",
+          rbErr.message,
+        );
+      }
     }
     return { ok: false, reason: dbError("logs URL 追加", logErr) };
   }

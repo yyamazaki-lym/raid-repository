@@ -2,6 +2,7 @@ import "server-only";
 import { createServerClient } from "@supabase/ssr";
 import type { UserAppMetadata } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
+import { requireSupabaseEnv } from "./env";
 
 /**
  * Supabase の SSR セッション維持を proxy.ts から呼ぶためのヘルパー。
@@ -40,9 +41,11 @@ export async function updateSession(
     : { request };
   let response = NextResponse.next(nextInit);
 
+  // D-4 (2026-07-12 監査): `!` アサーションを fail-fast 検証に置換。
+  const { url: supabaseUrl, anonKey } = requireSupabaseEnv();
   const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    supabaseUrl,
+    anonKey,
     {
       cookies: {
         getAll() {
