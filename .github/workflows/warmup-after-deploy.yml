@@ -33,6 +33,15 @@
 #     新しい関数を踏む。
 #   - warmup は best-effort。curl が失敗してもジョブは緑のまま終える
 #     (デプロイ済み commit に赤 × を出すほどの事象ではない)。
+#   - state / environment の判定はジョブの `if:` ではなく step 内の shell
+#     で行う (2026-07-22 修正)。初版は
+#     `github.event.deployment_status.environment == 'Production'` の完全
+#     一致で判定していたが、Vercel 由来イベントで全 run が skip された。
+#     Vercel の environment 名は 'Production' 単体とは限らず
+#     ('Production – <project>' 形式の報告例あり)、payload によっては
+#     deployment_status 側でなく deployment 側にしか environment が無い
+#     ケースもあるため、両方を拾って大文字小文字無視の部分一致で判定し、
+#     実際の値をログに残して以後の診断を可能にする。
 
 name: Warmup (After Deploy)
 
@@ -51,30 +60,45 @@ concurrency:
 
 jobs:
   warmup:
-    # Vercel Git 連携が作る deployment_status のうち「Production 環境 &
-    # success (= READY、Production は昇格済み)」のみ。environment は
-    # Vercel が大文字始まり ('Production' / 'Preview') で送る。preview
-    # deploy は vercel.json で無効化済みだが防御的に判定を残す。
-    # repository ガードは、Vercel 連携済み fork が upstream 本番を
-    # 無駄に ping しないため (fork は URL を自分の本番に変えて使う)。
+    # fork ガードのみ job レベルで判定 (Vercel 連携済み fork が upstream
+    # 本番を無駄に ping しないため。fork は URL を自分の本番に変えて使う)。
+    # state / environment の判定は step 内 shell で行う (冒頭コメント参照)。
     if: >-
       github.event_name == 'workflow_dispatch' ||
-      (
-        github.repository == 'yyamazaki-lym/raid-repository' &&
-        github.event.deployment_status.state == 'success' &&
-        github.event.deployment_status.environment == 'Production'
-      )
+      github.repository == 'yyamazaki-lym/raid-repository'
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
       - name: Ping /login (cold start を先に踏む)
         env:
           TARGET_URL: https://yurutto-raid-repository.vercel.app/login
-          # payload 由来の値は script injection 回避のため env 経由で参照
+          # payload 由来の値は script injection 回避のため env 経由で参照。
+          # environment は deployment_status 側に無ければ deployment 側を拾う。
+          EVENT_NAME: ${{ github.event_name }}
+          DEPLOY_STATE: ${{ github.event.deployment_status.state }}
+          DEPLOY_ENV: ${{ github.event.deployment_status.environment || github.event.deployment.environment }}
           DEPLOY_URL: ${{ github.event.deployment_status.environment_url }}
           DEPLOY_SHA: ${{ github.event.deployment.sha }}
         run: |
+          echo "event=${EVENT_NAME} state=${DEPLOY_STATE:-n/a} environment=${DEPLOY_ENV:-n/a}"
           echo "deployment: ${DEPLOY_URL:-<manual run>} (sha ${DEPLOY_SHA:-n/a})"
+
+          if [ "$EVENT_NAME" = "deployment_status" ]; then
+            state=$(printf '%s' "$DEPLOY_STATE" | tr '[:upper:]' '[:lower:]')
+            envname=$(printf '%s' "$DEPLOY_ENV" | tr '[:upper:]' '[:lower:]')
+            if [ "$state" != "success" ]; then
+              echo "skip: state=${DEPLOY_STATE:-n/a} (success のみ対象)"
+              exit 0
+            fi
+            case "$envname" in
+              *production*) ;;
+              *)
+                echo "skip: environment=${DEPLOY_ENV:-n/a} (Production のみ対象)"
+                exit 0
+                ;;
+            esac
+          fi
+
           for i in 1 2 3; do
             [ "$i" -gt 1 ] && sleep 20
             curl -sS -o /dev/null \
