@@ -1,0 +1,88 @@
+# Warmup (デプロイ直後)
+#
+# Vercel の Production デプロイ完了直後に本番 URL を数回 ping して、
+# 新しい Node 関数インスタンスの cold start (実測 cold TTFB 3.4〜3.8s /
+# warm 0.4s 台) をユーザーより先に踏んでおく workflow。
+#
+# 経緯:
+#   - 定常の warmup は Supabase pg_cron + pg_net が 5 分毎に /login を GET
+#     して担っている (supabase/schema.sql §13e 'warmup-portal-function')。
+#     ただし「デプロイ直後〜次の ping (最大 5 分)」の隙間は新しい関数が
+#     cold のままで、最初の 1 アクセスが cold start を踏む。本 workflow は
+#     その隙間だけを埋める補完で、pg_cron 側の置き換えではない。
+#   - 過去に /api/health を ping する warmup Action を撤廃した経緯がある
+#     (58432aa)。当時は全ページ Edge runtime で、Node 関数を温めても
+#     ユーザーが踏むのは Edge だったため無意味だった。ポータル全ページの
+#     Node runtime 化 (2.9, 2026-06-11) 後は「温め先 = ユーザーが踏む関数」
+#     なので再導入する意味がある。
+#   - Vercel Hobby は vercel.json cron が daily 限定でデプロイ webhook も
+#     使えないため、Git 連携 (vercel.json git.deploymentEnabled.main) が
+#     作る GitHub Deployments の deployment_status イベントで起動する。
+#     deployment_status は default branch 上の workflow だけが発火する
+#     (= main へのマージ後に有効化される)。
+#
+# 設計判断:
+#   - ping 先は本番エイリアス /login 固定 (proxy の PUBLIC_PATHS +
+#     force-dynamic + DB アクセス無しの最軽量 Node ページ — schema.sql の
+#     warmup と同じ理由。`/` は未認証だと proxy が 302 を返すだけで page
+#     関数が起きない)。payload の environment_url (デプロイ固有 URL) は
+#     Vercel の Standard Protection で 401 になり得るため ping 先には
+#     使わない (ログ出力のみ)。
+#   - success 通知とエイリアス切替には僅かなレースがあり得るため、20 秒
+#     間隔で 3 回 ping する。1 回目が旧デプロイに当たっても 2〜3 回目で
+#     新しい関数を踏む。
+#   - warmup は best-effort。curl が失敗してもジョブは緑のまま終える
+#     (デプロイ済み commit に赤 × を出すほどの事象ではない)。
+
+name: Warmup (After Deploy)
+
+on:
+  deployment_status:
+  # curl ループの動作確認用 (deployment_status はローカルで再現できない)
+  workflow_dispatch:
+
+# ping するだけなので GITHUB_TOKEN の権限は一切不要
+permissions: {}
+
+# 連続デプロイ時は最新デプロイ分の warmup だけ残す
+concurrency:
+  group: warmup-production
+  cancel-in-progress: true
+
+jobs:
+  warmup:
+    # Vercel Git 連携が作る deployment_status のうち「Production 環境 &
+    # success (= READY、Production は昇格済み)」のみ。environment は
+    # Vercel が大文字始まり ('Production' / 'Preview') で送る。preview
+    # deploy は vercel.json で無効化済みだが防御的に判定を残す。
+    # repository ガードは、Vercel 連携済み fork が upstream 本番を
+    # 無駄に ping しないため (fork は URL を自分の本番に変えて使う)。
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.repository == 'yyamazaki-lym/raid-repository' &&
+        github.event.deployment_status.state == 'success' &&
+        github.event.deployment_status.environment == 'Production'
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Ping /login (cold start を先に踏む)
+        env:
+          TARGET_URL: https://yurutto-raid-repository.vercel.app/login
+          # payload 由来の値は script injection 回避のため env 経由で参照
+          DEPLOY_URL: ${{ github.event.deployment_status.environment_url }}
+          DEPLOY_SHA: ${{ github.event.deployment.sha }}
+        run: |
+          echo "deployment: ${DEPLOY_URL:-<manual run>} (sha ${DEPLOY_SHA:-n/a})"
+          for i in 1 2 3; do
+            [ "$i" -gt 1 ] && sleep 20
+            curl -sS -o /dev/null \
+              --max-time 30 \
+              -A "raid-repository-warmup-action" \
+              -w "ping #${i}: HTTP %{http_code} / TTFB %{time_starttransfer}s / total %{time_total}s\n" \
+              "$TARGET_URL" \
+              || echo "ping #${i}: failed (best-effort につき無視)"
+          done
+          # warmup は best-effort — どの ping が失敗しても常に成功で終える
+          exit 0
