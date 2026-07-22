@@ -1686,7 +1686,10 @@ GRANT EXECUTE ON FUNCTION
 --     本番 URL を ping する (§13 の notify cron と同じ割り切り)。本番が 5 分間隔
 --     ×2 系統で温まるだけで実害なし。demo 自体は温まらないが mock site なので不要
 --   * デプロイ直後の最初の 1 アクセス (ping 間隔の隙間) には効かない — そこは
---     Cache Components (PPR) の静的シェル化が構造的対策 (別途調査)
+--     デプロイ完了 (deployment_status success) をトリガーに数回 ping する
+--     GitHub Actions (.github/workflows/warmup-after-deploy.yml, 2026-07-22)
+--     が埋める。Cache Components (PPR) の静的シェル化は白画面そのものの
+--     構造的対策として引き続き別途調査
 DO $$
 DECLARE
   existing_jobid bigint;

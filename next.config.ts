@@ -104,6 +104,19 @@ const nextConfig: NextConfig = {
         source: "/:path*",
         headers: securityHeaders,
       },
+      {
+        // cold start スプラッシュ SW。ブラウザの SW 更新チェックが常に
+        // 最新版を取得できるようキャッシュ禁止 (public/ のデフォルト
+        // max-age=0 でも動くが明示する)。SplashSwRegistrar 側の
+        // updateViaCache:"none" と併せて二重の保険。
+        source: "/sw.js",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "no-cache, no-store, must-revalidate",
+          },
+        ],
+      },
     ];
   },
 };

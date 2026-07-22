@@ -8,8 +8,7 @@ import { ThemeSwitcher } from "./theme-switcher";
 import { SettingsDialog } from "./settings-dialog-lazy";
 import { DeployColorBadge } from "./deploy-color-badge";
 import { OnlinePresenceIndicator } from "./online-presence-indicator";
-import packageJson from "../../../package.json";
-import { RELEASES } from "@/lib/changelog";
+import { LATEST_RELEASE_META } from "@/lib/changelog-meta";
 import {
   getCurrentUserCanEdit,
   getCurrentUserPresenceKey,
@@ -19,12 +18,13 @@ import {
 /**
  * App version for the header badge.
  *
- * Single source of truth:
- *   - `RELEASES[0].version` — the current MAJOR.MINOR (under new scheme)
- *   - `RELEASES[0].date` — the date suffix
- *   `package.json#version` is left at the final pre-scheme value
- *   (`1.9.38`) as a historical marker; bump it only on major/minor bumps
- *   if you also want it to reflect the new scheme.
+ * Single source of truth: `@/lib/changelog-meta` (`LATEST_RELEASE_META`).
+ *   `changelog.ts` の `RELEASES[0]` も同オブジェクトを spread して組み立てる
+ *   ため、ヘッダーと更新履歴の最新エントリーはズレない。以前は `RELEASES[0]`
+ *   を直接参照していたが、その import で ~306 KB の changelog 本文が全
+ *   ポータルページのサーバーバンドルに混入し cold start を重くしていた
+ *   ため分離 (2026-07-22)。`package.json#version` fallback は meta が必ず
+ *   存在するため廃止 (経緯コメントは changelog-meta.ts に移設)。
  *
  * Versioning convention (from v1.9, 2026-04-28):
  *   `MAJOR.MINOR (YYYY-MM-DD)` — patch dropped.
@@ -41,8 +41,8 @@ import {
  *     RC    — release candidate, only show-stoppers being fixed
  *     (none) — stable
  */
-const APP_VERSION = RELEASES[0]?.version ?? packageJson.version;
-const APP_DATE = RELEASES[0]?.date ?? null;
+const APP_VERSION = LATEST_RELEASE_META.version;
+const APP_DATE = LATEST_RELEASE_META.date;
 const APP_STAGE = "BETA";
 
 /**
@@ -55,9 +55,10 @@ const APP_STAGE = "BETA";
  * Seed の優先順:
  *   1. `VERCEL_GIT_COMMIT_SHA` — Vercel ビルド時に commit SHA を埋め込む。
  *      コミットが変われば必ず別シードになるので push のたびに色が変わる。
- *   2. `JSON.stringify(RELEASES[0])` — ローカル dev / Vercel 以外。
- *      changelog の最新エントリーを編集すれば色が変わるので、同日内の
- *      連続コミット運用 (新スキーム) ともよく合う。
+ *   2. `JSON.stringify(LATEST_RELEASE_META)` — ローカル dev / Vercel 以外。
+ *      changelog メタ分離 (2026-07-22) 以降は version / date が変わった時
+ *      だけ色が変わる (本文 parts の編集では変わらない)。Vercel 上では
+ *      常に SHA が存在するので、この劣化はローカル dev 表示のみに影響。
  *
  * 7 色は dark / light 双方で識別可能な飽和度の Tailwind 標準色から選定。
  * テーマの neon トークンは theme 切替で意味が変わるので使わない。
@@ -79,7 +80,7 @@ const DEPLOY_COLORS = [
 
 function deployColorIndex(): number {
   const seed =
-    process.env.VERCEL_GIT_COMMIT_SHA ?? JSON.stringify(RELEASES[0] ?? "");
+    process.env.VERCEL_GIT_COMMIT_SHA ?? JSON.stringify(LATEST_RELEASE_META);
   let h = 0;
   for (let i = 0; i < seed.length; i++) {
     h = (h * 31 + seed.charCodeAt(i)) >>> 0;
@@ -100,7 +101,6 @@ const DEFAULT_COLOR = DEPLOY_COLORS[0]!;
  * している (5 行程度なのでコピーが妥当)。
  */
 function pickInitialColor(): string {
-  if (APP_DATE === null) return DEFAULT_COLOR;
   const today = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Tokyo",
     year: "numeric",
@@ -148,7 +148,7 @@ export async function SiteHeader() {
             >
               <span>
                 v{APP_VERSION}
-                {APP_DATE ? ` (${APP_DATE})` : ""}
+                {` (${APP_DATE})`}
               </span>
               <span aria-hidden className="opacity-50">·</span>
               <span className="tracking-[0.22em]">{APP_STAGE}</span>

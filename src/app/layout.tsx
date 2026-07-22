@@ -4,6 +4,7 @@ import { Geist, JetBrains_Mono, Orbitron } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { DynamicToaster } from "@/components/ui/toaster-dynamic";
+import { SplashSwRegistrar } from "@/components/splash-sw-registrar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { CSP_NONCE_HEADER } from "@/lib/csp";
 import { PRE_HYDRATION_THEME_SCRIPT } from "@/lib/theme-store";
@@ -110,6 +111,10 @@ export default async function RootLayout({
         */}
         <SpeedInsights />
         <Analytics />
+        {/* Cold start スプラッシュ SW の登録/解除 (NEXT_PUBLIC_SPLASH_SW)。
+            root layout に置くのは /login 含む全ページでキルスイッチの
+            unregister 経路を動かすため。詳細は public/sw.js 冒頭コメント。 */}
+        <SplashSwRegistrar />
       </body>
     </html>
   );

@@ -38,6 +38,18 @@ const PUBLIC_PATHS = new Set<string>([
   // login redirect から除外し、認証は route 内の CRON_SECRET (Bearer) で
   // 完結させる (/api/cron/ と同じパターン)。
   "/api/fflogs/scrape-proxy",
+  // 2.9 (2026-07-22): cold start スプラッシュ SW 用の静的アセット。
+  // matcher は .js / .html を除外していないため proxy を通り、未追加だと
+  // 未ログイン時 (および SW install 時の fetch) に /login へリダイレクト
+  // され、SW 登録が「redirect された script は登録不可」で失敗する。
+  // セキュリティ考慮: いずれも public/ 配下の完全静的ファイルでユーザー
+  // データ・セッション情報を一切含まず、matcher が素通ししている svg/png
+  // と同等の公開度。認証境界には影響しない。matcher 側の正規表現除外に
+  // しない理由: (a) .js/.html の一括除外は広すぎる、(b) この経路を通す
+  // ことで CSP / セキュリティヘッダが他レスポンスと同一に付与される。
+  "/sw.js",
+  "/splash.html",
+  "/splash.js",
 ]);
 
 // 前方一致で公開するパス

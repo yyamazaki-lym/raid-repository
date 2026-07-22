@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#0a0e18">
+<title>Raid Repository</title>
+<style>
+  /* 自己完結スタイル — SW キャッシュから配信されるため globals.css には
+     依存しない。配色は root layout の viewport.themeColor (#0a0e18) +
+     dark テーマの cyan アクセントを手書きで合わせている。
+     インライン <style> は CSP `style-src 'unsafe-inline'` で許可済み。
+     インライン <script> は nonce 必須で使えないため /splash.js を参照
+     (`script-src 'self'` で許可される)。 */
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: #0a0e18;
+    color: #dbe7f3;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    display: grid;
+    place-items: center;
+  }
+  .wrap {
+    display: flex; flex-direction: column; align-items: center; gap: 16px;
+    padding: 36px 44px;
+    border-radius: 16px;
+    border: 1px solid rgba(127, 212, 232, 0.14);
+    background: rgba(255, 255, 255, 0.03);
+    backdrop-filter: blur(8px);
+    /* warm 境界 (600ms 前後で応答が来たケース) のチラつき緩和:
+       描画後 200ms は透明のまま → 短命スプラッシュでも一瞬のフラッシュに
+       しない ((portal)/loading.tsx の遅延 fade-in と同じ発想)。 */
+    opacity: 0;
+    animation: fadein 0.35s ease 0.2s forwards;
+  }
+  .spinner {
+    width: 36px; height: 36px; border-radius: 50%;
+    border: 3px solid rgba(127, 212, 232, 0.18);
+    border-top-color: #7fd4e8;
+    animation: spin 0.8s linear infinite;
+  }
+  .msg { font-size: 14px; color: #8fa3b8; letter-spacing: 0.05em; }
+  .retry { display: none; font-size: 13px; color: #8fa3b8; }
+  .retry a { color: #7fd4e8; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes fadein { to { opacity: 1; } }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="spinner" aria-hidden="true"></div>
+    <p class="msg" role="status">サーバーを起動しています…</p>
+    <p class="retry" id="retry">時間がかかっています — <a id="retry-link" href="/">再読み込み</a></p>
+  </div>
+  <script src="/splash.js"></script>
+</body>
+</html>

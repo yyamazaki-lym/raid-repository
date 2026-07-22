@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // public/ は素の静的アセット。sw.js / splash.js は Service Worker /
+    // ブラウザグローバル前提の plain JS で、Next 向けルールの対象外とする。
+    "public/**",
   ]),
 ]);
 
