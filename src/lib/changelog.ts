@@ -13,6 +13,14 @@
  * When a release graduates from this module, prepend it to the top
  * of `RELEASES_ARCHIVE`.
  *
+ * **Meta split** (2026-07-22): the latest entry's `version` / `date` live
+ * in `./changelog-meta.ts` (`LATEST_RELEASE_META`) and are spread into
+ * `RELEASES[0]`, so `site-header.tsx` can show the header badge without
+ * pulling this ~300 KB module into every page's server bundle. When
+ * adding a new entry, follow the 3-step procedure documented in
+ * `changelog-meta.ts`. When a release graduates to the archive it must
+ * be literal (frozen) — never move an entry that still spreads the meta.
+ *
  * Versioning scheme (from 2026-04-28, while staying on v1.9):
  *   `MAJOR.MINOR` + `(YYYY-MM-DD)` date suffix — patch dropped.
  *     - Small fixes / tweaks: keep MAJOR.MINOR, add a NEW entry with the
@@ -26,6 +34,8 @@
  *
  * Order: newest first (the UI renders top-to-bottom as-is).
  */
+
+import { LATEST_RELEASE_META } from "./changelog-meta";
 
 export type ReleaseEntry = {
   version: string;
@@ -54,6 +64,20 @@ export type ReleasePart = {
 };
 
 export const RELEASES: ReleaseEntry[] = [
+  {
+    // 最新エントリーの version / date は changelog-meta.ts が single source
+    // of truth (site-header がヘッダーバッジ用に参照)。新エントリー追加時の
+    // 3 点セット手順は changelog-meta.ts の docstring を参照。
+    ...LATEST_RELEASE_META,
+    parts: [
+      {
+        title:
+          "⚡ 久しぶりに開いたときの白画面を「起動中」表示に + 初回表示の高速化",
+        body:
+          "しばらく誰もアクセスしていない状態でサイトを開くと、サーバーの起動待ち (3〜4 秒) の間ずっと白画面のままだった体験を改善。\n\n応答に時間がかかっている場合のみ「サーバーを起動しています…」のスプラッシュ画面を即座に表示し、準備ができ次第そのままページに切り替わる (Service Worker 対応ブラウザで、2 回目以降のアクセスから有効)。通常の速い応答時には何も変わらない。\n\nあわせて裏側の起動時間そのものも短縮: 更新履歴の本文データ (約 300KB) が全ページのサーバー処理に読み込まれていたのを分離してサーバーバンドルを約 24% 軽量化。さらにデプロイ直後の最初のアクセスが遅くなる問題も、デプロイ完了と同時にサーバーを温めておく仕組み (GitHub Actions) で解消。\n\n**検証**: npx tsc --noEmit / npx eslint / npm run build pass。全 8 ポータルページのサーバーバンドルから changelog チャンクの消失を grep で確認。Service Worker は Playwright E2E (cold/warm/認証パス除外/ループガード/直接アクセス) 全パス。本番での有効化は Vercel env `NEXT_PUBLIC_SPLASH_SW=true` 設定後 (未設定時は登録済み SW も自動解除される安全設計)。",
+      },
+    ],
+  },
   {
     version: "2.9",
     date: "2026-07-12",
