@@ -26,13 +26,22 @@
    キルスイッチ: 登録/解除は SplashSwRegistrar (NEXT_PUBLIC_SPLASH_SW) が
    管理。フラグ off でデプロイすると次回ページロードで unregister される。 */
 
-const VERSION = "v1"; // splash.html / splash.js / 本ファイル変更時にインクリメント
+const VERSION = "v2"; // splash.html / splash.js / 本ファイル変更時にインクリメント
 const CACHE_NAME = `splash-${VERSION}`;
 const GUARD_CACHE = "splash-guard"; // ループガード (SW kill を跨いで永続)
 const SPLASH_PATH = "/splash.html";
 const SPLASH_ASSETS = ["/splash.html", "/splash.js"];
 
-const SPLASH_TIMEOUT_MS = 600; // warm TTFB 実測 0.16〜0.23s に対し十分な余白
+// v1 は 600ms (warmup ping 先 /login の warm TTFB 0.16〜0.23s 基準) だったが、
+// 認証済みユーザーの TOP は 1 バイト目より前に「proxy の Supabase Auth 往復
+// (HS256 のため getClaims が getUser にフォールバック) + layout のもう 1 往復
+// + DB SELECT×2」が直列に走るため warm でも 0.4〜1.0s 級になり、通常表示
+// なのにスプラッシュが一瞬出る誤発動が頻発した (2026-07-23 実地報告:
+// 1 時間間隔の初回アクセスで高頻度、1 秒弱で本物に置換 = warm 確定)。
+// cold の実測は 3〜4s なので、1500ms なら cold は確実に拾いつつ warm の
+// 重ページ (〜1.2s) を素通しできる。トレードオフ: 本物の cold 時に白画面が
+// 0.6s → 1.5s に伸びるが、従来の 3〜4s よりは十分短い。
+const SPLASH_TIMEOUT_MS = 1500;
 const GUARD_TTL_MS = 30_000; // 同一 URL への再スプラッシュ禁止期間
 const PENDING_TTL_MS = 30_000; // 回収されなかった pending の掃除期限
 
