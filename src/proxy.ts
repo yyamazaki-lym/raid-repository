@@ -2,6 +2,10 @@ import { NextResponse, type NextRequest } from "next/server";
 import { updateSession } from "@/lib/supabase/middleware";
 import { checkRateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
 import { buildCspHeader, generateCspNonce, CSP_NONCE_HEADER } from "@/lib/csp";
+import {
+  revalidateMembership,
+  type MembershipClaims,
+} from "@/lib/server/membership-revalidation";
 
 /**
  * サイト全体を Discord メンバー限定にする proxy。
@@ -196,17 +200,20 @@ export async function proxy(request: NextRequest) {
   const limited = await applyRateLimit(request);
   if (limited) return withCsp(limited);
 
-  const { user, response } = await updateSession(request, requestHeaders);
+  const { user, supabase, readClaims, getResponse } = await updateSession(
+    request,
+    requestHeaders,
+  );
   const { pathname, search } = request.nextUrl;
 
   if (isPublicPath(pathname)) {
-    return withCsp(response);
+    return withCsp(getResponse());
   }
 
   // Dev bypass: ログイン状態 / guild membership を一切問わずにそのまま通す。
   // この経路を取るのはローカル開発時のみ (NODE_ENV ガード済み)。
   if (isDevAuthBypassEnabled()) {
-    return withCsp(response);
+    return withCsp(getResponse());
   }
 
   // Public demo mode: 本番ビルドでも auth gate を skip。書き込みは
@@ -227,7 +234,7 @@ export async function proxy(request: NextRequest) {
         }),
       );
     }
-    return withCsp(response);
+    return withCsp(getResponse());
   }
 
   if (!user) {
@@ -236,20 +243,67 @@ export async function proxy(request: NextRequest) {
     return withCsp(NextResponse.redirect(loginUrl));
   }
 
-  const appMeta = (user.app_metadata ?? {}) as {
-    discord_guild_member?: boolean;
-  };
+  const appMeta = (user.app_metadata ?? {}) as MembershipClaims;
   if (appMeta.discord_guild_member !== true) {
     return withCsp(NextResponse.redirect(new URL("/auth/denied", request.url)));
   }
 
-  return withCsp(response);
+  // 2026-08-05 監査 H-1: メンバーシップ / admin ロールの定期再検証。
+  //
+  // ここ (proxy) で行うのは cookie を書ける唯一の前段だから。app_metadata を
+  // 更新しただけでは JWT の claim は古いままで、RLS の
+  // `auth.jwt()->'app_metadata'->>'is_admin'` が失効を反映しない。
+  // `refreshSession()` まで実行して初めて 4 層すべてが揃う。
+  //
+  // TTL 内なら Discord API を叩かないので、通常リクエストのコストは
+  // `Date.parse` 1 回分。
+  const outcome = await revalidateMembership(user.id, appMeta);
+
+  if (outcome.status === "revoked") {
+    await supabase.auth.signOut();
+    const deniedUrl = new URL("/auth/denied", request.url);
+    deniedUrl.searchParams.set(
+      "reason",
+      outcome.reason === "not_in_guild"
+        ? "membership_revoked"
+        : "membership_unverifiable",
+    );
+    // signOut() が書いた cookie 削除を redirect に載せ替える。
+    const revoked = NextResponse.redirect(deniedUrl);
+    for (const cookie of getResponse().cookies.getAll()) {
+      revoked.cookies.set(cookie);
+    }
+    return withCsp(revoked);
+  }
+
+  if (outcome.status === "refreshed") {
+    // 新しい app_metadata を JWT に載せ直す。これで同一リクエスト中の
+    // Server Component / RLS も更新後の roles・is_admin を見る。
+    await supabase.auth.refreshSession();
+    const refreshedUser = await readClaims();
+    const refreshedMeta = (refreshedUser?.app_metadata ?? {}) as MembershipClaims;
+    if (refreshedMeta.discord_guild_member !== true) {
+      return withCsp(
+        NextResponse.redirect(new URL("/auth/denied", request.url)),
+      );
+    }
+  }
+
+  return withCsp(getResponse());
 }
 
 export const config = {
   // 静的アセット / 画像最適化は proxy を通さない (cookie 書き戻しが
   // 無駄に発生し、Vercel の関数呼び出し料金にも効く)。
+  //
+  // 2026-08-05 監査 L-5: 拡張子の除外を `[^/]+\.(…)$` (ルート直下 1
+  // セグメント = public/ 配下の実ファイル) に限定した。以前の `.*\.(…)$` は
+  // パス全体の末尾一致だったため、動的ルートまで巻き込んでいた:
+  // `/category/[slug]` があるので `/category/anything.png` が proxy を
+  // 完全にスキップし、gate・rate limit・CSP がいずれも適用されなかった。
+  // 認可バイパスには至らない ((portal)/layout.tsx が独立に redirect する)
+  // が、この経路だけ nonce ベース CSP が外れて XSS の緩和層が消えていた。
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|mp4)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|[^/]+\\.(?:svg|png|jpg|jpeg|gif|webp|ico|mp4)$).*)",
   ],
 };

@@ -1909,7 +1909,17 @@ export async function updateCategoryLinkAction(
     }
   }
 
-  const dbPatch: Record<string, unknown> = { ...patch };
+  // 2026-08-05 監査 L-12: `{ ...patch }` の展開をやめ allow-list にする。
+  // `patch` の型注釈は実行時に消えるうえ Server Action は任意 JSON を
+  // 受け取れるため、宣言に無いカラムもそのまま `.update()` に流れていた。
+  // 特に `thumbnail_url` を直接指定すると、上の `isSafeUrl(patch.url)`
+  // 検証を迂回して任意値を保存できた (create 経路は `isSafeUrl` を通して
+  // おり非対称だった)。`recruitment-templates-actions.ts` と同じ方式に統一。
+  const dbPatch: Record<string, unknown> = {};
+  if (patch.title !== undefined) dbPatch.title = patch.title;
+  if (patch.description !== undefined) dbPatch.description = patch.description;
+  if (patch.logs_url !== undefined) dbPatch.logs_url = patch.logs_url;
+  // url / thumbnail_url は検証済みのローカル変数からのみ代入する。
   if (urlPatch !== undefined) dbPatch.url = urlPatch;
   if (thumbnailPatch !== undefined) dbPatch.thumbnail_url = thumbnailPatch;
   if ("logs_url" in patch) {
@@ -2923,8 +2933,17 @@ export async function fetchTimeToClearByCategory(): Promise<
 export async function fetchRecentImportCountsByCategory(
   daysAgo = 7,
 ): Promise<Record<string, number>> {
+  // 2026-08-05 監査 L-10: `"use server"` モジュールの export は公開 POST
+  // エンドポイントなので、引数はランタイム検証が要る。型注釈だけだった頃は
+  // `daysAgo` に null / 文字列 / 1e12 を渡すと `toISOString()` が
+  // `RangeError: Invalid time value` を投げ、try/catch が無いため unhandled
+  // で 500 になった。有効な巨大値 (例 100000) でも `category_links` の全行
+  // スキャンを毎回強制できた。1〜365 日に丸める。
+  const days = Number.isFinite(Number(daysAgo))
+    ? Math.min(Math.max(Math.trunc(Number(daysAgo)), 1), 365)
+    : 7;
   const supabase = await createClient();
-  const sinceIso = new Date(Date.now() - daysAgo * 86400000).toISOString();
+  const sinceIso = new Date(Date.now() - days * 86400000).toISOString();
   const { data, error } = await supabase
     .from("category_links")
     .select("category_id, created_at")

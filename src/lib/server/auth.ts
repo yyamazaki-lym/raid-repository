@@ -3,6 +3,20 @@ import { createHash, createHmac } from "node:crypto";
 import { cache } from "react";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import {
+  DEV_BYPASS_ADMIN_ROLE_ID,
+  getAdminRoleIds,
+  userIsAdmin,
+} from "./admin-roles";
+import {
+  membershipAgeMs,
+  membershipHardTtlMs,
+} from "./membership-revalidation";
+
+// admin ロール判定は proxy.ts からも使うため `admin-roles.ts` (next/headers
+// 非依存のリーフ) へ切り出した。既存の import 経路を壊さないよう re-export
+// する (2026-08-05 監査 H-1)。
+export { getAdminRoleIds, userIsAdmin };
 
 /**
  * Server Component / Server Action / Route Handler から auth を強制する
@@ -37,14 +51,6 @@ export type AuthorizedUser = {
    */
   isDemoGuest?: boolean;
 };
-
-/**
- * Dev-only bypass 用の擬似 admin ロール ID。
- * `DISCORD_ADMIN_ROLE_IDS` env から独立した固定値にすることで、
- * env 未設定の dev 環境でも admin 視点を再現できるようにする
- * (2.x: userIsAdmin の fail-closed 化対応)。
- */
-const DEV_BYPASS_ADMIN_ROLE_ID = "__dev-bypass-admin__";
 
 /**
  * Dev-only bypass: `DEV_AUTH_BYPASS=true` + `NODE_ENV !== "production"`
@@ -147,6 +153,22 @@ export const requireDiscordMember = cache(
       redirect("/auth/denied");
     }
 
+    // 2026-08-05 監査 H-1 の defense-in-depth。
+    //
+    // 再検証の本体は proxy.ts にある (cookie を書けるのがそこだけなので)。
+    // ここは matcher のカバレッジが外れた経路 — Server Function は POST
+    // として扱われ matcher 変更で silent に漏れうる、という上のコメントの
+    // ケース — で古い claim がそのまま通るのを防ぐ最終防壁。
+    //
+    // Server Component からは cookie を書けず `refreshSession()` も
+    // no-op になるため、ここでは **書き込みを伴わない拒否のみ** を行う。
+    // 閾値は proxy の soft TTL ではなく hard TTL を使う: proxy が正常に
+    // 走っている限り hard TTL に達することはなく、通常利用者を巻き込まない。
+    if (membershipAgeMs(meta, Date.now()) >= membershipHardTtlMs()) {
+      if (demoMode) return publicDemoGuestUser();
+      redirect("/auth/denied?reason=membership_stale");
+    }
+
     return {
       userId: user.id,
       discordId: meta.discord_id,
@@ -198,40 +220,10 @@ export async function getAuthorizedUserRoles(): Promise<string[]> {
 // を非 admin に対して隠す。Server Action 側は `requireAdmin()` (ハード)
 // もしくは `assertAdminResult()` (ソフト = エラーオブジェクト返却) で
 // 防御する。
-
-/** env からカンマ区切りで admin role ID 一覧を取り出す。trim + 空除去。 */
-export function getAdminRoleIds(): string[] {
-  const raw = process.env.DISCORD_ADMIN_ROLE_IDS?.trim();
-  if (!raw) return [];
-  return raw
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
-}
-
-/**
- * ユーザが admin かどうか。
- *
- * 2.x (2026-06-09): **fail-closed** 化。`DISCORD_ADMIN_ROLE_IDS` 未設定
- * なら **false** を返す (= 編集機能は全員 OFF)。以前は env 未設定で全員
- * admin (= fail-open) という後方互換動作だったが、fork で env 設定を
- * 忘れた瞬間に全 guild メンバーが anon key + JWT で REST 直叩きから
- * RLS の書き込みを通過できてしまうリスクがあった。
- *
- * Dev bypass (NODE_ENV != production && DEV_AUTH_BYPASS=true) のみ、
- * env から切り離した固定 ID (`DEV_BYPASS_ADMIN_ROLE_ID`) を保有する
- * 偽ユーザーが admin として扱われる特例を設ける。これで dev 環境では
- * env なしでも admin 視点が再現できる (devAuthBypassUser 参照)。
- */
-export function userIsAdmin(userRoleIds: readonly string[]): boolean {
-  // Dev bypass の擬似 admin: env と無関係に常に admin として扱う。
-  // production ビルドでは devAuthBypassUser が null を返すのでこの
-  // ID は roles に乗らない。
-  if (userRoleIds.includes(DEV_BYPASS_ADMIN_ROLE_ID)) return true;
-  const adminIds = getAdminRoleIds();
-  if (adminIds.length === 0) return false; // fail-closed
-  return adminIds.some((id) => userRoleIds.includes(id));
-}
+//
+// `getAdminRoleIds()` / `userIsAdmin()` の実体は `./admin-roles` にあり
+// (proxy.ts から next/headers 抜きで使うため)、このモジュール冒頭で
+// re-export している。
 
 /**
  * 現在のユーザが編集可能かを返す (UI から「ボタン出すか」判定する用途)。

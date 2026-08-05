@@ -17,6 +17,93 @@
 Critical はありません。基礎構造（RLS 有効化・書き込み側 gate・CSP・シークレット管理）は良好で、
 過去監査（`audit-2026-07-12.md`）の対処も実際に反映されています。
 
+## 修正状況（2026-08-05 時点）
+
+| # | 状態 | 対応 |
+|---|---|---|
+| H-1 | ✅ 修正済 | proxy に TTL 再検証を追加（soft 6h / hard 72h）。`admin-roles.ts` / `membership-revalidation.ts` を新設 |
+| H-2 | ✅ 修正済 | §7 の SELECT を `TO authenticated` に。demo は `app.public_demo` GUC で明示 opt-in。`app_settings` 読み取りを service role へ |
+| H-3 | ✅ 修正済 | `safe-fetch.ts` を新設し DNS 解決結果を検証 + ピン留め。実ペイロード 4 種でブロックを実測確認 |
+| M-1 | ⏸ **保留** | 製品挙動の判断が要る（下記）|
+| M-2 | ✅ 修正済 | `setAll` ごとに request headers を再構築 |
+| M-3 | ✅ 修正済 | `/api/page-title` にハンドラ内 `requireDiscordMember()` + demo ゲスト 403 |
+| M-4 | ✅ 修正済 | `invalidateScheduleCache` に admin gate |
+| L-1,2 | ✅ 修正済 | `import "server-only"` 追加 |
+| L-4 | ✅ 修正済 | `REVOKE ALL ON public.secrets FROM anon, authenticated` |
+| L-5 | ✅ 修正済 | matcher の拡張子除外をルート直下 1 セグメントに限定 |
+| L-7 | ✅ 修正済 | `?detail=` 廃止。`/login` 側の任意テキスト描画も削除 |
+| L-10 | ✅ 修正済 | `daysAgo` を 1〜365 に丸め |
+| L-12 | ✅ 修正済 | `{...patch}` を allow-list に置換 |
+| L-3,6,8,9,11 | ⬜ 未対応 | 影響が限定的なため見送り（内容は下表参照）|
+
+### 検証
+
+- `tsc --noEmit` / `eslint`（0 error、既存 warning 1 件のみ）/ `next build`（全 22 route + proxy）通過
+- **schema.sql をローカル PostgreSQL 16 に実適用**して確認:
+  - SELECT ポリシー 19 本すべてが `authenticated` 単独、anon SELECT ポリシーは 0 本
+  - `SET ROLE anon` で `app_settings.schedule_url` / `native_schedule_members` が読めないことを実測
+  - `app.public_demo='true'` で anon 読み取りが復活、RESET で戻ることを実測
+  - `secrets` の anon/authenticated 権限が消えていること（比較対象の `categories` は 14 件保持）
+  - `authenticated` は従来どおり読めること（回帰チェック）
+- SSRF は `127.0.0.1.nip.io` / `169.254.169.254.nip.io` / `localtest.me` / `10.0.0.1.nip.io` の
+  4 種が接続前に `BLOCKED internal address` で落ちること、公開ホストは通ることを実測
+
+### H-2 のデプロイ手順（重要）
+
+demo プロジェクトの DB で **1 度だけ** 実行しておくこと。忘れるとデモサイトが真っ白になる。
+
+```sql
+ALTER DATABASE postgres SET app.public_demo = 'true';
+```
+
+本番プロジェクトでは未設定のままにする（= `authenticated` 限定）。
+
+### M-1 を保留した理由
+
+修正には「メンバー全員が誰のメモでも編集できる」という**意図的な製品仕様**を変える判断が要る。
+`schema.sql:5c-2` と `7a-2` のコメントが明示的にそう設計しており（所有者カラムを持たない共有メモ、
+信頼境界は「ログイン済み guild メンバー」）、`author_name` も localStorage 由来の表示名にすぎない。
+
+一方で実害は実測済み。ローカル PG16 で非 admin の JWT を模した状態から、
+
+```sql
+DELETE FROM schedule_session_memos WHERE id <> '00000000-0000-0000-0000-000000000000';
+-- DELETE 3  → 全メモ消失
+```
+
+が通る。UI は 1 件ずつしか削除できないので、誰がやったかも残らない。UPDATE も `USING (true)` なので
+同様に一括改竄が可能。RLS では「1 文あたりの行数」を制限できないため、所有者概念を入れる以外に手がない。
+
+適用するなら以下。`author_user_id` を入れて owner または admin に限定する（＝他人のメモは編集不可になる）。
+
+```sql
+ALTER TABLE public.schedule_session_memos
+  ADD COLUMN IF NOT EXISTS author_user_id uuid DEFAULT auth.uid();
+
+DROP POLICY IF EXISTS schedule_session_memos_member_insert ON public.schedule_session_memos;
+CREATE POLICY schedule_session_memos_member_insert ON public.schedule_session_memos
+  FOR INSERT TO authenticated
+  WITH CHECK (author_user_id = (SELECT auth.uid()));
+
+DROP POLICY IF EXISTS schedule_session_memos_member_update ON public.schedule_session_memos;
+CREATE POLICY schedule_session_memos_member_update ON public.schedule_session_memos
+  FOR UPDATE TO authenticated
+  USING (author_user_id = (SELECT auth.uid())
+         OR (SELECT auth.jwt() -> 'app_metadata' ->> 'is_admin') = 'true')
+  WITH CHECK (author_user_id = (SELECT auth.uid())
+         OR (SELECT auth.jwt() -> 'app_metadata' ->> 'is_admin') = 'true');
+
+DROP POLICY IF EXISTS schedule_session_memos_member_delete ON public.schedule_session_memos;
+CREATE POLICY schedule_session_memos_member_delete ON public.schedule_session_memos
+  FOR DELETE TO authenticated
+  USING (author_user_id = (SELECT auth.uid())
+         OR (SELECT auth.jwt() -> 'app_metadata' ->> 'is_admin') = 'true');
+```
+
+既存行は `author_user_id IS NULL` になるため、移行期は admin のみが触れる状態になる。
+UI 側（`session-memo-delete-modal.tsx` / `schedule-memos-client.ts`）で
+「自分のメモだけ編集ボタンを出す」対応も併せて必要。
+
 ---
 
 ## High

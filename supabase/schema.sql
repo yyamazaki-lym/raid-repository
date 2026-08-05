@@ -909,6 +909,45 @@ ALTER TABLE public.native_schedule_members       ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.native_schedule_attendances   ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.native_schedule_session_logs  ENABLE ROW LEVEL SECURITY;
 
+-- ---- 7-0. 公開デモ用トグル (2026-08-05 監査 H-2) --------------------------
+--
+-- 既定では SELECT を `TO authenticated` に閉じる。以前は全 19 テーブルに
+-- `FOR SELECT TO anon, authenticated USING (true)` を張っていたが、
+-- `/login` が未認証公開で、そこのログインボタンが `@/lib/supabase/client` を
+-- dynamic import するため `NEXT_PUBLIC_SUPABASE_ANON_KEY` はビルド時
+-- インラインされたチャンクとして誰でも取得できる。anon key の公開自体は
+-- 設計どおり (NEXT_PUBLIC_ は公開前提) だが、RLS 側が anon に全開放して
+-- いたことと噛み合い、guild 外の第三者が Supabase REST を直叩きして
+--   - native_schedule_members  → 全メンバーの Discord snowflake / 表示名
+--   - categories + category_links → required_role_ids で制限したカテゴリの中身
+--   - app_settings             → schedule_url (URL-as-capability)、通知先 ID
+--   - schedule_session_memos / native_schedule_attendances → 全メモ・全出欠
+-- を読める状態だった。Supabase REST は Vercel proxy の外側にあるので、
+-- proxy のメンバーゲートは読み取りに一切効かない。
+--
+-- ただし PUBLIC_DEMO_MODE=true のデプロイ (TODO #8 のモックサイト) は
+-- 匿名ゲストが anon key で読む前提なので、そこだけ anon SELECT を残す。
+-- **demo プロジェクトの DB で 1 度だけ** 次を実行しておくこと:
+--
+--     ALTER DATABASE postgres SET app.public_demo = 'true';
+--     -- 反映は新規接続から。取り消しは RESET:
+--     -- ALTER DATABASE postgres RESET app.public_demo;
+--
+-- 本番プロジェクトでは未設定のままにする (= authenticated 限定)。
+-- `current_setting(..., true)` は missing_ok なので未設定でもエラーにならない。
+--
+-- なお `app_settings` はアプリ側の読み取りを service role に寄せた
+-- (`src/lib/supabase/app-settings.ts`)。cron 4 本と demo の匿名描画は
+-- そちら経由なので、このトグルとは独立に動く。
+DO $$
+BEGIN
+  IF coalesce(current_setting('app.public_demo', true), '') = 'true' THEN
+    RAISE NOTICE '[RLS] app.public_demo=true — SELECT を anon にも開放します (公開デモ用)';
+  ELSE
+    RAISE NOTICE '[RLS] SELECT は authenticated 限定です (本番既定)';
+  END IF;
+END $$;
+
 -- Replay-safe policy creation: drop then create per (table, action).
 DO $$
 DECLARE
@@ -916,6 +955,12 @@ DECLARE
   ops text[] := ARRAY['select','insert','update','delete'];
   op text;
   policy_name text;
+  -- SELECT を許可するロール。公開デモのみ anon を含める (7-0 参照)。
+  select_roles text := CASE
+    WHEN coalesce(current_setting('app.public_demo', true), '') = 'true'
+      THEN 'anon, authenticated'
+    ELSE 'authenticated'
+  END;
 BEGIN
   FOR t IN SELECT unnest(ARRAY[
     'categories','category_links','category_gphoto_albums',
@@ -933,11 +978,13 @@ BEGIN
       policy_name := t || '_anon_' || op;
       EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', policy_name, t);
       IF op = 'select' THEN
-        -- SELECT は anon にも開放: Realtime subscribe や server-side
-        -- 公開読み取り (next-session.ts 等) を壊さないため。
+        -- SELECT は既定で authenticated 限定 (2026-08-05 監査 H-2)。
+        -- 公開デモ (app.public_demo=true) のみ anon を含める。Realtime
+        -- subscribe はブラウザがユーザーの JWT で張るので authenticated
+        -- で足りる。server-side の設定読み取りは service role へ移行済み。
         EXECUTE format(
-          'CREATE POLICY %I ON public.%I FOR SELECT TO anon, authenticated USING (true)',
-          policy_name, t
+          'CREATE POLICY %I ON public.%I FOR SELECT TO %s USING (true)',
+          policy_name, t, select_roles
         );
       ELSIF op = 'insert' THEN
         -- 書き込みは authenticated + is_admin claim (TODO #36 phase 2)。
@@ -1200,6 +1247,18 @@ CREATE POLICY "secrets deny all anon"
   TO anon, authenticated
   USING (false)
   WITH CHECK (false);
+
+-- 2026-08-05 監査 L-4: テーブル権限そのものを落とす。
+--
+-- schema.sql には (関数以外の) 明示 GRANT/REVOKE が 1 つも無く、Supabase の
+-- default privileges で anon / authenticated は `secrets` に対しても DML 権限を
+-- 保持していた。上の `USING (false)` ポリシー **1 本だけ** が FFLogs OAuth
+-- トークンの暗号文を守っている状態で、ポリシーの消し忘れ / 書き換えが即座に
+-- 露出につながる。このテーブルに触るのは service role
+-- (`src/lib/server/secret-store.ts`) だけなので、権限自体を剥がして
+-- 「ポリシー + 権限」の二重で閉じる。service role は RLS も GRANT も
+-- バイパスするため影響しない。
+REVOKE ALL ON TABLE public.secrets FROM anon, authenticated;
 
 -- ---- 10. Storage bucket for category background images ---------------
 -- Phase 9 (TODO #17 follow-up, 1.9 (2026-04-28)): public bucket so the
