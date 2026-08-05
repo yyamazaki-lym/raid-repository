@@ -36,6 +36,7 @@ export function SessionActionIcons({
   displayDate,
   size = "default",
   placeholder = true,
+  reserve,
 }: {
   videoLinks: SessionVideoLink[];
   sessionLogs: SessionLogEntry[];
@@ -53,7 +54,16 @@ export function SessionActionIcons({
    * doesn't grow when there's no video / Logs URL for the date.
    */
   placeholder?: boolean;
+  /**
+   * スロット単位の `placeholder` 上書き。省略したスロットは `placeholder`
+   * に従う。表側で「この表のどの行もそのスロットを使っていない」と分かる
+   * ときに false を渡すと、列全体から空枠ぶんの幅が消える (行間の縦揃えは
+   * 1 行でも使っていれば維持される)。
+   */
+  reserve?: { video?: boolean; logs?: boolean };
 }) {
+  const reserveVideo = reserve?.video ?? placeholder;
+  const reserveLogs = reserve?.logs ?? placeholder;
   // TODO #65 (2.1, 2026-05-02 part6): non-modal dropdowns that close
   // on page scroll. `useScrollClosingMenu` returns `{open, onOpenChange,
   // modal:false}` — spread once per dropdown.
@@ -64,7 +74,7 @@ export function SessionActionIcons({
   // -- Film slot: 動画候補 --
   let filmSlot: ReactNode;
   if (videoLinks.length === 0) {
-    filmSlot = placeholder ? (
+    filmSlot = reserveVideo ? (
       <span aria-hidden className={`inline-block ${triggerSizeClass} shrink-0`} />
     ) : null;
   } else if (videoLinks.length === 1) {
@@ -163,7 +173,7 @@ export function SessionActionIcons({
 
   let logsSlot: ReactNode;
   if (logsCandidates.length === 0) {
-    logsSlot = placeholder ? (
+    logsSlot = reserveLogs ? (
       <span aria-hidden className={`inline-block ${triggerSizeClass} shrink-0`} />
     ) : null;
   } else if (logsCandidates.length === 1) {
