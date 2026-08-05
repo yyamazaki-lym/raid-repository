@@ -17,7 +17,7 @@ export function httpUrlError(value: string): string | null {
   try {
     new URL(trimmed);
   } catch {
-    return "URLの形式が正しくありません";
+    return "URL の形式が正しくありません";
   }
   return null;
 }

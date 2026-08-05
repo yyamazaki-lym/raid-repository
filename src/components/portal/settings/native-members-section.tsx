@@ -17,7 +17,7 @@ import { useConfirm } from "@/components/portal/confirm-dialog";
 /**
  * TODO #2 phase 2-C (2026-05-07): native スケジュール member CRUD section。
  *
- * - 一覧 (Discord ID または ローカルキー + 表示名 + sort_order + is_active toggle + delete)
+ * - 一覧 (Discord ID またはローカルキー + 表示名 + sort_order + is_active toggle + delete)
  * - 「+ 追加」inline form (キー入力 + ローカルキー自動生成 button + 表示名 + sort_order + 追加)
  *
  * メンバーキーは下記 2 種を受け付ける:
@@ -35,7 +35,7 @@ import { useConfirm } from "@/components/portal/confirm-dialog";
 
 const MEMBER_KEY_RE = /^(?:\d{17,20}|local_[A-Za-z0-9_-]{3,32})$/;
 const MEMBER_KEY_REASON =
-  "Discord ID (17〜20 桁の数字) または ローカルキー (local_<英数字>, 3〜32 文字) を入力してください";
+  "Discord ID (17〜20 桁の数字) またはローカルキー (local_<英数字>, 3〜32 文字) を入力してください";
 
 const generateLocalKey = () =>
   // 衝突しにくく短めの suffix。Date.now base36 (約 8 文字) + random base36 4 文字。
@@ -194,7 +194,7 @@ export function NativeMembersSection({
         description:
           `「${m.display_name}」(${m.discord_user_id}) を削除します。\n` +
           `関連する出欠データも一緒に削除されます (元に戻せません)。\n` +
-          `よろしいですか?`,
+          `よろしいですか？`,
         confirmText: "削除",
         destructive: true,
       }))
@@ -224,8 +224,7 @@ export function NativeMembersSection({
 
       <p className="text-[10px] leading-relaxed text-muted-foreground">
         スケジュール表に出欠列として表示するメンバー。Discord ID
-        または ローカルキーで識別し、並び順 (昇順) で左から並びます。無効化された
-        メンバーはスケジュール表に出ませんが、過去の出欠履歴は DB に残ります。
+        またはローカルキーで識別し、並び順 (昇順) で左から並びます。無効化されたメンバーはスケジュール表に出ませんが、過去の出欠履歴は DB に残ります。
         <br />
         <span className="text-muted-foreground/80">
           ※ ローカルキー (
@@ -236,7 +235,7 @@ export function NativeMembersSection({
 
       {!loaded ? (
         <div className="text-[11px] text-muted-foreground italic">
-          読み込み中...
+          読み込み中…
         </div>
       ) : members.length === 0 ? (
         <div className="rounded-md border border-border/30 px-3 py-2 text-[11px] text-muted-foreground">
@@ -259,8 +258,13 @@ export function NativeMembersSection({
                     : "border-border/20 bg-secondary/30 opacity-70")
                 }
               >
-                <div className="flex flex-col gap-0.5 sm:w-1/3">
-                  <span className="font-mono text-[10px] text-muted-foreground/70">
+                <div className="flex min-w-0 flex-col gap-0.5 sm:w-1/3">
+                  {/* Discord ID / local_ キーは最長 38 文字の 1 トークンで
+                      折り返せないため truncate (full 値は title で参照可)。 */}
+                  <span
+                    className="truncate font-mono text-[10px] text-muted-foreground/70"
+                    title={m.discord_user_id}
+                  >
                     {m.discord_user_id}
                   </span>
                   <Input
@@ -276,8 +280,8 @@ export function NativeMembersSection({
                     className="h-7 text-xs"
                   />
                 </div>
-                <div className="flex items-center gap-1.5 sm:w-28">
-                  <span className="text-[10px] text-muted-foreground">
+                <div className="flex shrink-0 items-center gap-1.5 sm:w-28">
+                  <span className="text-[10px] whitespace-nowrap text-muted-foreground">
                     並び
                   </span>
                   <Input
@@ -302,7 +306,7 @@ export function NativeMembersSection({
                   />
                   有効
                 </label>
-                <div className="ml-auto flex gap-1.5">
+                <div className="ml-auto flex shrink-0 gap-1.5">
                   {dirty && (
                     <Button
                       type="button"

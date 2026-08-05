@@ -63,8 +63,8 @@ export function RecruitmentTemplatesButton({ templates, categories }: Props) {
   return (
     <Popover>
       <PopoverTrigger
-        aria-label={`PT募集文を選択してコピー (${templates.length}件)`}
-        title={`PT募集文 ${templates.length}件 — クリックで一覧`}
+        aria-label={`PT募集文を選択してコピー (${templates.length} 件)`}
+        title={`PT募集文 ${templates.length} 件 — クリックで一覧`}
         onMouseEnter={preloadPopoverBody}
         onFocus={preloadPopoverBody}
         className={cn(
@@ -156,7 +156,7 @@ export function RecruitmentTopCopyButton({
         ) : (
           <ClipboardCopy className="h-3.5 w-3.5" aria-hidden />
         )}
-        {justCopied ? "コピー済" : "募集"}
+        {justCopied ? "コピー済み" : "募集"}
       </button>
       {hovered && (
         <div

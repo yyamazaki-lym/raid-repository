@@ -62,7 +62,7 @@ export function NativeCancelledSessionsSection({
     if (
       !(await confirm({
         title: "ステータスを戻す",
-        description: `「${label}」を ${nextLabel} に戻します。よろしいですか?`,
+        description: `「${label}」を ${nextLabel} に戻します。よろしいですか？`,
         confirmText: "戻す",
       }))
     )
@@ -94,17 +94,16 @@ export function NativeCancelledSessionsSection({
       </header>
 
       <p className="text-[10px] leading-relaxed text-muted-foreground">
-        キャンセル済の候補日。スケジュール表からは非表示ですが、ここから候補
-        または確定に戻すと再びスケジュール表に出現します。
+        キャンセル済みの候補日。スケジュール表からは非表示ですが、ここから候補または確定に戻すと再びスケジュール表に出現します。
       </p>
 
       {!loaded ? (
         <div className="text-[11px] text-muted-foreground italic">
-          読み込み中...
+          読み込み中…
         </div>
       ) : cancelledSessions.length === 0 ? (
         <div className="rounded-md border border-border/30 px-3 py-2 text-[11px] text-muted-foreground">
-          キャンセル済の候補日はありません。
+          キャンセル済みの候補日はありません。
         </div>
       ) : (
         <ul className="flex flex-col gap-1.5">
@@ -115,14 +114,18 @@ export function NativeCancelledSessionsSection({
                 key={s.id}
                 className="flex flex-col gap-1.5 rounded-md border border-border/30 bg-secondary/20 px-3 py-2 sm:flex-row sm:items-center"
               >
-                <div className="flex flex-1 flex-col gap-0.5">
+                <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                   <span className="text-xs text-foreground">{label}</span>
-                  <span className="font-mono text-[10px] text-muted-foreground/70">
-                    {s.start_time}〜{s.end_time}
+                  {/* 時刻は nowrap で「21:00 / 〜24:00」への分断を防ぎ、
+                      自由記述 note は break-words で枠内に折り返す。 */}
+                  <span className="font-mono text-[10px] break-words text-muted-foreground/70">
+                    <span className="whitespace-nowrap">
+                      {s.start_time}〜{s.end_time}
+                    </span>
                     {s.note ? ` · ${s.note}` : ""}
                   </span>
                 </div>
-                <div className="flex items-center gap-1.5">
+                <div className="flex shrink-0 items-center gap-1.5">
                   <Button
                     type="button"
                     variant="outline"

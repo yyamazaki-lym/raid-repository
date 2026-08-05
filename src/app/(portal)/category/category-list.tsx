@@ -150,7 +150,7 @@ export function CategoryList({
   const onDelete = async (cat: Category) => {
     const ok = await confirm({
       title: `「${cat.name}」を削除しますか？`,
-      description: "ロット・軽減・攻略情報もすべて削除されます。",
+      description: "ロット管理・軽減表・攻略情報もすべて削除されます。",
       confirmText: "削除",
       destructive: true,
     });
@@ -289,8 +289,10 @@ function SortableCategoryCard({
       ? category.backgroundImageUrl
       : null;
 
+  // min-w-0: grid item は min-width:auto のため、空白を含まない長い
+  // カテゴリ名 (英数字 1 トークン等) で列幅が押し広げられるのを防ぐ。
   return (
-    <li ref={setNodeRef} style={style} {...attributes}>
+    <li ref={setNodeRef} style={style} {...attributes} className="min-w-0">
       <Card
         className={cn(
           "glass neon-edge group relative flex items-stretch gap-2 p-0 transition-transform hover:-translate-y-0.5",
@@ -338,17 +340,19 @@ function SortableCategoryCard({
             click-anywhere behavior) above an always-visible icon row that
             short-cuts to each sub-page. Icon row is OUTSIDE the parent
             Link to keep nested-anchor invalid HTML out of the tree. */}
-        <div className="relative z-10 flex flex-1 flex-col">
+        <div className="relative z-10 flex min-w-0 flex-1 flex-col">
           <Link
             href={`/category/${category.slug}/${category.defaultTab}`}
             prefetch={false}
             className="flex flex-col gap-1 px-4 pt-4 pb-1"
           >
-            <div className="flex items-start justify-between gap-2">
+            <div className="flex min-w-0 items-start justify-between gap-2">
               {/* F-4 (2026-06-14): カード第 1 階層 = 名前を強調 (font-medium 付与)。
                   サイズは text-sm 据置で長い名前の折返しを回避しつつ、右カラムの
-                  メトリクス群 (9px) との階層差を太さで明確化。 */}
-              <p className="font-display text-foreground text-sm font-medium leading-tight tracking-[0.04em]">
+                  メトリクス群 (9px) との階層差を太さで明確化。
+                  min-w-0 + break-words: 空白なしの長トークン名でも flex 列を
+                  押し広げず語中で折り返す (通常の日本語名には影響しない)。 */}
+              <p className="min-w-0 font-display break-words text-foreground text-sm font-medium leading-tight tracking-[0.04em]">
                 {category.name}
               </p>
               {!viewerCanSee && (
@@ -361,7 +365,7 @@ function SortableCategoryCard({
                 </span>
               )}
             </div>
-            <p className="mt-1 font-mono text-[11px] tracking-[0.18em] text-muted-foreground uppercase">
+            <p className="mt-1 font-mono break-all text-[11px] tracking-[0.18em] text-muted-foreground uppercase">
               /{category.slug}
             </p>
             {/* 2.1 (2026-04-29): Timer (累計練習時間) は card 上に出さない

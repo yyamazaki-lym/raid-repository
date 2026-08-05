@@ -624,7 +624,7 @@ function MemoList({
                       type="button"
                       onClick={cancelEdit}
                       disabled={busy}
-                      className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[10px] tracking-normal text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground disabled:opacity-50"
+                      className="inline-flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[10px] whitespace-nowrap tracking-normal text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground disabled:opacity-50"
                     >
                       <X className="h-3 w-3" aria-hidden />
                       キャンセル
@@ -633,7 +633,7 @@ function MemoList({
                       type="button"
                       onClick={() => saveEdit(m.id)}
                       disabled={busy}
-                      className="inline-flex items-center gap-1.5 rounded-md border border-[var(--neon-cyan)]/45 bg-[var(--neon-cyan)]/10 px-2.5 py-1.5 text-[10px] tracking-normal text-[var(--neon-cyan)] transition-colors hover:border-[var(--neon-cyan)]/70 hover:bg-[var(--neon-cyan)]/18 disabled:opacity-50"
+                      className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-[var(--neon-cyan)]/45 bg-[var(--neon-cyan)]/10 px-2.5 py-1.5 text-[10px] whitespace-nowrap tracking-normal text-[var(--neon-cyan)] transition-colors hover:border-[var(--neon-cyan)]/70 hover:bg-[var(--neon-cyan)]/18 disabled:opacity-50"
                     >
                       <Save className="h-3 w-3" aria-hidden />
                       保存
@@ -718,7 +718,7 @@ function MemoList({
             type="button"
             onClick={submitDraft}
             disabled={busy || draftBody.trim().length === 0}
-            className="inline-flex items-center gap-1.5 rounded-md border border-[var(--neon-violet)]/50 bg-[var(--neon-violet)]/10 px-3 py-1.5 text-[10px] tracking-normal text-[var(--neon-violet)] transition-colors hover:border-[var(--neon-violet)]/70 hover:bg-[var(--neon-violet)]/18 disabled:opacity-50"
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-[var(--neon-violet)]/50 bg-[var(--neon-violet)]/10 px-3 py-1.5 text-[10px] whitespace-nowrap tracking-normal text-[var(--neon-violet)] transition-colors hover:border-[var(--neon-violet)]/70 hover:bg-[var(--neon-violet)]/18 disabled:opacity-50"
           >
             <Send className="h-3 w-3" aria-hidden />
             投稿
@@ -812,7 +812,7 @@ function MemoList({
             type="button"
             onClick={() => void handleAddLogs()}
             disabled={logsBusy || newLogsInput.trim().length === 0}
-            className="inline-flex items-center gap-1.5 rounded-md border border-amber-400/45 bg-amber-400/10 px-3 py-1.5 text-[10px] tracking-normal text-amber-200 transition-colors hover:border-amber-400/70 hover:bg-amber-400/18 disabled:opacity-50"
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-amber-400/45 bg-amber-400/10 px-3 py-1.5 text-[10px] whitespace-nowrap tracking-normal text-amber-200 transition-colors hover:border-amber-400/70 hover:bg-amber-400/18 disabled:opacity-50"
           >
             <Save className="h-3 w-3" aria-hidden />
             追加

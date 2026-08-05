@@ -89,7 +89,7 @@ export function NativeDefaultRaidTimeSection({
                 : ""
             })`;
       toast.success(
-        `デフォルト時刻を ${draftStart}〜${draftEnd} に変更しました${detail}`,
+        `既定時刻を ${draftStart}〜${draftEnd} に変更しました${detail}`,
       );
       onChanged();
       router.refresh();
@@ -109,10 +109,9 @@ export function NativeDefaultRaidTimeSection({
       </header>
 
       <p className="text-[10px] leading-relaxed text-muted-foreground">
-        当月日付の自動補完で使うレイド開始 / 終了時刻のデフォルト値。
+        当月日付の自動補完で使うレイド開始 / 終了時刻の既定値。
         保存時に未来日付 (今日以降) の候補日も新しい時刻に自動更新されます。
-        手動で同じ日時の候補日を追加済の場合は、衝突した自動生成行を削除して
-        手動行を温存します。
+        手動で同じ日時の候補日を追加済みの場合は、衝突した自動生成行を削除して手動行を温存します。
       </p>
 
       <div className="flex flex-col gap-2">
@@ -136,7 +135,7 @@ export function NativeDefaultRaidTimeSection({
           />
         </div>
         <p className="text-muted-foreground text-[10px] leading-relaxed">
-          JST 基準。深夜またぎ (例: 22:00〜00:00) も登録できます。
+          JST 基準。深夜またぎ (例: <span className="whitespace-nowrap">22:00〜00:00</span>) も登録できます。
         </p>
 
         {canEdit && (

@@ -38,7 +38,13 @@ export default async function CategoryDetailLayout({
           Contents
         </Link>
         <span className="text-muted-foreground/50">/</span>
-        <span className="font-display text-foreground text-sm">{display}</span>
+        {/* min-w-0 + truncate: 長いカテゴリ名でも行を突き破らず省略表示。 */}
+        <span
+          className="min-w-0 max-w-full truncate font-display text-foreground text-sm"
+          title={display}
+        >
+          {display}
+        </span>
         {/* Status here is read-only — editing happens in /category list
             view only, so the per-page status edit doesn't drift across
             multiple sources of truth. */}

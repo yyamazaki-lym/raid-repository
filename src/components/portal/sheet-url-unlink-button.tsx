@@ -43,7 +43,7 @@ export function SheetUrlUnlinkButton({
 
   const onClick = async () => {
     const confirmed = await confirm({
-      title: `${label}のスプレッドシート紐付けを解除しますか?`,
+      title: `${label}のスプレッドシート紐付けを解除しますか？`,
       description: `表示中の URL は ${label}カードから消え、再登録するまで未設定状態に戻ります。スプレッドシート自体は削除されません。`,
       confirmText: "解除",
       destructive: true,
@@ -72,7 +72,7 @@ export function SheetUrlUnlinkButton({
       className="inline-flex items-center gap-1.5 rounded-md border border-rose-400/40 bg-rose-500/5 px-3 py-1.5 text-[11px] tracking-normal text-rose-300 transition-colors hover:border-rose-300/60 hover:bg-rose-500/15 hover:text-rose-200 disabled:opacity-40"
     >
       <Link2Off className="h-3.5 w-3.5" aria-hidden />
-      {busy ? "解除中..." : "紐付け解除"}
+      {busy ? "解除中…" : "紐付け解除"}
     </button>
   );
 }

@@ -224,7 +224,7 @@ export function CandidateDateDialog({
               />
             </div>
             <p className="text-muted-foreground text-[11px] leading-relaxed">
-              JST 基準。深夜またぎ (例: 22:00~0:00) も登録できます。
+              JST 基準。深夜またぎ (例: <span className="whitespace-nowrap">22:00〜00:00</span>) も登録できます。
             </p>
           </div>
 
@@ -278,7 +278,7 @@ export function CandidateDateDialog({
             ) : (
               <Save className="h-3.5 w-3.5" aria-hidden />
             )}
-            {busy ? "保存中..." : "追加"}
+            {busy ? "保存中…" : "追加"}
           </Button>
         </DialogFooter>
       </DialogContent>

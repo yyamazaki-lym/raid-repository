@@ -426,7 +426,7 @@ export function MaintenanceMenu() {
   // ローダーを出し、それ以外はラベル維持 (ボタン disabled で同時実行防止)。
   const isThisPending = (k: ActionKind) => pending && pendingKind === k;
   const videoMetaProgressLabel = (() => {
-    if (!videoMetaProgress) return "② メタ取込中…";
+    if (!videoMetaProgress) return "② メタ取り込み中…";
     if (videoMetaProgress.phase === "duration") {
       if (videoMetaProgress.total > 0) {
         const pct = Math.floor(
@@ -454,7 +454,7 @@ export function MaintenanceMenu() {
   // 何かは見える方がユーザーの安心になるため、ラベル切替で表現。
   const triggerLabel = (() => {
     if (!pending) return "メンテナンス";
-    if (pendingKind === "discord") return "① Discord 取込中…";
+    if (pendingKind === "discord") return "① Discord 取り込み中…";
     if (pendingKind === "firstClearForce") return "③ クリア再計算中…";
     if (
       pendingKind === "videoMeta" ||
@@ -479,7 +479,7 @@ export function MaintenanceMenu() {
         <DropdownMenuTrigger
           disabled={pending}
           aria-label="メンテナンスメニューを開く"
-          title="Discord 取込 / 動画メタ / クリア再計算"
+          title="Discord 取り込み / 動画メタ / クリア再計算"
           className="inline-flex items-center gap-1.5 rounded-md border border-border/60 bg-background/30 px-3 py-1.5 text-[11px] tracking-normal text-muted-foreground transition-colors hover:border-[var(--neon-cyan)]/60 hover:text-foreground disabled:opacity-60"
         >
           {pending ? (
@@ -504,7 +504,7 @@ export function MaintenanceMenu() {
               ) : (
                 <Settings2 className="h-3.5 w-3.5" aria-hidden />
               )}
-              ① Discord 取込
+              ① Discord 取り込み
             </span>
             <span className="pl-5 text-[10px] text-muted-foreground whitespace-nowrap">
               攻略情報 / 動画チャンネルから新着 URL を取り込み
@@ -579,7 +579,7 @@ export function MaintenanceMenu() {
               ④ サムネ全件再取得
             </span>
             <span className="pl-5 text-[10px] text-muted-foreground whitespace-nowrap">
-              全攻略リンク (取得済も上書き)
+              全攻略リンク (取得済みも上書き)
             </span>
           </DropdownMenuItem>
         </DropdownMenuContent>

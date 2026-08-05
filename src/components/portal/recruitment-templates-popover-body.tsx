@@ -192,7 +192,7 @@ export function RecruitmentTemplatesPopoverBody({
         <span className="font-mono tracking-[0.18em] text-[var(--neon-cyan)]/80 uppercase">
           ★ Top
         </span>
-        {" が次回開催日カードのコピー対象。ハンドルをドラッグでカテゴリブロックごと並び替え。"}
+        {" が次回開催日カードのコピー対象。ハンドルをドラッグでコンテンツブロックごと並び替え。"}
       </p>
       <DndContext
         sensors={sensors}
@@ -303,8 +303,8 @@ function SortableCategorySection({
           {...listeners}
           aria-label={`${
             categoryName ?? "（コンテンツ未設定）"
-          } のカテゴリブロックをドラッグ`}
-          title="ドラッグでこのカテゴリ全体 (中の募集文も全部) を並び替え"
+          } のコンテンツブロックをドラッグ`}
+          title="ドラッグでこのコンテンツ全体 (中の募集文も全部) を並び替え"
           className="inline-flex h-7 w-5 shrink-0 cursor-grab items-center justify-center rounded text-muted-foreground hover:text-foreground active:cursor-grabbing"
         >
           <GripVertical className="h-3 w-3" aria-hidden />
@@ -334,7 +334,7 @@ function SortableCategorySection({
           {containsTop && (
             <span
               className="font-mono text-[9px] tracking-[0.18em] text-[var(--neon-cyan)]/85 uppercase"
-              title="このカテゴリに ★ Top のテンプレが含まれる"
+              title="このコンテンツに ★ Top のテンプレが含まれる"
             >
               ★
             </span>

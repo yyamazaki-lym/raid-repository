@@ -202,7 +202,10 @@ export function CommentPopover({
                 className="h-3 w-3 text-[var(--neon-cyan)]"
                 aria-hidden
               />
-              <span className="text-[9px] tracking-normal text-muted-foreground">
+              <span
+                className="min-w-0 truncate text-[9px] tracking-normal text-muted-foreground"
+                title={user.name}
+              >
                 {user.name} の一言
               </span>
             </div>

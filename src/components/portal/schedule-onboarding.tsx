@@ -151,7 +151,7 @@ export function ScheduleOnboarding() {
             ) : (
               <Save className="h-3.5 w-3.5" aria-hidden />
             )}
-            {busy ? "保存中..." : "URL を登録"}
+            {busy ? "保存中…" : "URL を登録"}
           </Button>
         </div>
       </div>

@@ -410,7 +410,7 @@ async function buildMessage(
 
   // 出欠ブロック (template / hardcode 共通)。
   const attendanceLines: string[] = [];
-  attendanceLines.push(`出欠 (回答済 ${answered}/${members.length}):`);
+  attendanceLines.push(`出欠 (回答済み ${answered}/${members.length}):`);
   for (const [sym, names] of buckets) {
     attendanceLines.push(`　${sym}: ${names.join(", ")}`);
   }

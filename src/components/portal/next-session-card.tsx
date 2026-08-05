@@ -106,7 +106,7 @@ export function NextSessionCard({
           {rawDate}
         </Value>
         {(startTime || endTime) && (
-          <span className="font-mono text-sm tabular-nums text-foreground/80">
+          <span className="font-mono text-sm tabular-nums whitespace-nowrap text-foreground/80">
             {startTime}
             <span className="mx-1 opacity-60">~</span>
             {endTime}
@@ -115,7 +115,8 @@ export function NextSessionCard({
         {relative && (
           <span
             className={
-              "text-[11px] tracking-normal " +
+              // whitespace-nowrap: 「あと 3」/「日」への分断防止 (枠付きで目立つ)。
+              "text-[11px] whitespace-nowrap tracking-normal " +
               (inSession
                 ? // 開催時間中: amber で発光 + animate-pulse、本日とは違う緊張感のある色味で「今、戦闘中」を強調。
                   // reduced-motion では点滅を止める (#247 と同方針、online-presence-indicator と同じ motion-reduce:animate-none)。

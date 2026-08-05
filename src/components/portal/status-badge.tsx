@@ -53,8 +53,10 @@ export function StatusBadge({
   // Fixed min-width + centered content so different status labels
   // (未着手/練習中/クリア済/休止中) all occupy the same horizontal space.
   // Without this, dropdown items show jagged content-name start positions.
+  // shrink-0 + whitespace-nowrap: 狭い flex 行 (カード下段や breadcrumb) で
+  // バッジが圧縮されてラベルが「練習/中」のように折り返すのを防ぐ。
   const baseBadge = cn(
-    "inline-flex items-center justify-center gap-1.5 rounded-sm border font-medium tracking-normal",
+    "inline-flex shrink-0 items-center justify-center gap-1.5 rounded-sm border font-medium whitespace-nowrap tracking-normal",
     STATUS_TONE[status],
     variant === "compact"
       ? "min-w-[4.5rem] px-1.5 py-px text-[11px]"

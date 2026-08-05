@@ -34,7 +34,7 @@ export function SessionDiscordNotifyButton({
     if (
       !(await confirm({
         title: "Discord に通知",
-        description: `「${displayDate}」を Discord に通知します。よろしいですか?`,
+        description: `「${displayDate}」を Discord に通知します。よろしいですか？`,
         confirmText: "通知",
       }))
     ) {

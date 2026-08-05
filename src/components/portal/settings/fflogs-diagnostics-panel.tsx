@@ -123,7 +123,7 @@ export function FflogsDiagnosticsPanel({
               }
             >
               {diag.cookieDeleted
-                ? "(scrape 成功 → 自動削除済)"
+                ? "(scrape 成功 → 自動削除済み)"
                 : "(scrape 失敗/未実行のため温存 — 次回連動でも使われます)"}
             </span>
           )}
@@ -139,9 +139,7 @@ export function FflogsDiagnosticsPanel({
             <strong>{diag.videosSkippedNoPostedAt}</strong>
             {" 件"}
             <span className="ml-1 text-muted-foreground/85">
-              ※ 1.9.9 から、タイトルに raid 日が無い動画は 自動マッチ対象から
-              除外（誤マッチ防止）。 動画編集ダイアログから FFLogs URL を手動
-              指定してください
+              ※ 1.9.9 から、タイトルに raid 日が無い動画は自動マッチ対象から除外（誤マッチ防止）。動画編集ダイアログから FFLogs URL を手動指定してください。
             </span>
           </p>
         )}

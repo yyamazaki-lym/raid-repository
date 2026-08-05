@@ -23,9 +23,8 @@ export function ScheduleDisabledNotice() {
           <p className="text-muted-foreground text-xs leading-relaxed">
             スケジュール機能は現在無効化されています。
             <br />
-            再開するには、ヘッダー右上の <strong>設定</strong> ダイアログから
-            ソースモードを <code>同期式</code> または <code>自前作成式</code>
-            に切替えてください (ADMIN ロール必須)。
+            再開するには、ヘッダー右上の <strong>設定</strong> ダイアログからソースモードを <code>同期式</code> または <code>自前作成式</code>
+            に切り替えてください (ADMIN ロール必須)。
           </p>
         </div>
       </div>

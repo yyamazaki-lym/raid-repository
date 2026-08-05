@@ -205,8 +205,7 @@ export function SettingsDialog({
         <div className="flex max-h-[80svh] flex-col gap-5 overflow-y-auto p-5 sm:max-h-[70svh]">
           {!canEdit && (
             <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] leading-relaxed text-amber-200">
-              スケジュール / FFLogs / DB 編集系の設定は ADMIN ロールを持つ
-              ユーザーのみ操作できます。閲覧専用モードで表示中です。
+              スケジュール / FFLogs / DB 編集系の設定は ADMIN ロールを持つユーザーのみ操作できます。閲覧専用モードで表示中です。
             </div>
           )}
           <ScheduleSourceModeSection
@@ -314,7 +313,7 @@ export function SettingsDialog({
               ) : (
                 <Save className="h-3.5 w-3.5" aria-hidden />
               )}
-              {busy ? "保存中..." : "保存"}
+              {busy ? "保存中…" : "保存"}
             </Button>
           )}
         </DialogFooter>

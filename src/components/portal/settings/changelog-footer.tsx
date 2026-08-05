@@ -106,7 +106,7 @@ export function ChangelogFooter({
         {showSignIn ? (
           <Link
             href={`/login?next=${encodeURIComponent(pathname)}`}
-            title="Discord アカウントでサインイン"
+            title="Discord アカウントでログイン"
             className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[var(--neon-cyan)]/30 bg-[var(--neon-cyan)]/5 px-3 font-mono text-[10px] tracking-[0.18em] text-[var(--neon-cyan)]/85 uppercase transition-colors hover:border-[var(--neon-cyan)]/60 hover:bg-[var(--neon-cyan)]/10 hover:text-[var(--neon-cyan)]"
           >
             <LogIn className="h-3 w-3" aria-hidden />
@@ -124,7 +124,7 @@ export function ChangelogFooter({
               const form = e.currentTarget;
               void (async () => {
                 const ok = await confirm({
-                  title: "サインアウトしますか?",
+                  title: "サインアウトしますか？",
                   confirmText: "サインアウト",
                   destructive: true,
                 });

@@ -213,7 +213,8 @@ function DateChip({
         // tight inline-flex layout. The slight font-metric drift on
         // Windows is accepted — pursuing it further was hurting
         // icon alignment.
-        "inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] tabular-nums leading-tight transition-colors " +
+        // whitespace-nowrap: 「8月5日」/「（水）」の分断防止 (（ は改行可能)。
+        "inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] tabular-nums whitespace-nowrap leading-tight transition-colors " +
         chipColor
       }
       title={tooltip}

@@ -91,7 +91,7 @@ export function DataInitConfirmDialog({
               削除対象
             </p>
             <ul className="ml-4 list-disc text-foreground/85 [&>li]:leading-snug">
-              <li>カテゴリ + 関連 (動画 / 戦略 / マクロ / 募集文 / Loot / 軽減)</li>
+              <li>コンテンツ + 関連 (動画 / 攻略情報 / マクロ / 募集文 / ロット管理 / 軽減表)</li>
               <li>過去スケジュール / 日付メモ / タグ</li>
               <li>
                 アプリ設定 (Schedule URL / FFLogs username / Discord channel ID 等)
@@ -101,7 +101,7 @@ export function DataInitConfirmDialog({
               認証情報 / FFLogs OAuth トークンは保持されます。
             </p>
             <p className="font-bold text-rose-200">
-              本当にすべてのデータを初期化しますか?
+              本当にすべてのデータを初期化しますか？
             </p>
           </div>
         ) : (
@@ -179,7 +179,7 @@ export function DataInitConfirmDialog({
                 {running ? (
                   <>
                     <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
-                    実行中...
+                    実行中…
                   </>
                 ) : (
                   <>

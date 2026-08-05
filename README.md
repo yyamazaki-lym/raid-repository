@@ -10,7 +10,7 @@ FF14 レイド固定向けポータル — スケジュール / 軽減表 / ロ�
 
 🔗 **https://demo-raid-repository.vercel.app**
 
-サンプルデータ (7 カテゴリ + 過去 8 週分のスケジュール + 軽減表 / ロット表 / 攻略リンク / 動画リンク / マクロ / 募集文等) が seed 済 (`supabase/seed-demo.sql` 由来、demo project にのみ適用)。`PUBLIC_DEMO_MODE=true` で Discord OAuth gate を skip しつつ、書き込みは admin gate で全件弾く 4 層防御 (proxy / app / RLS) で閲覧専用にしています。
+サンプルデータ (7 カテゴリ + 過去 8 週分のスケジュール + 軽減表 / ロット表 / 攻略リンク / 動画リンク / マクロ / 募集文等) が seed 済 (`supabase/seed-demo.sql` 由来、demo project にのみ適用)。`PUBLIC_DEMO_MODE=true` で Discord OAuth gate を skip しつつ、書き込みは admin gate で全件弾く 4 層防御 (proxy / ページ / Server Action / RLS) で閲覧専用にしています。
 
 ## Deploy
 
@@ -32,36 +32,37 @@ FF14 レイド固定向けポータル — スケジュール / 軽減表 / ロ�
 ## What it does
 
 ### スケジュール
-- character-sheets.appspot.com の予定一覧を取り込み
+- ソースモードを設定ダイアログから 3 択で選択：**同期式**（character-sheets 取り込み、デフォルト）/ **自前作成式**（portal 内で候補日の追加・出欠入力・開催確定まで完結、FFLogs 連携 + Discord 通知対応）/ **使わない**（機能停止）
 - 「日程確定」(`DECISION`) 行を抽出して**次回開催日**を強調表示
 - メンバー名のホバー（PC）/ タップ（モバイル）でその人の一言コメントをポップアップ
-- 名前クリックで character-sheets の自分の入力画面に直行
 - 過去日程トグル（デフォルト非表示）
+- 同期式では character-sheets.appspot.com の予定一覧を取り込み。名前クリックで character-sheets の自分の入力画面に直行
 - スケジュール URL は **Supabase の `app_settings` テーブルで全員共有**
   （誰かが登録すれば全員に反映 / リロードで取得）
 
-### カテゴリー
+### コンテンツ（カテゴリー）
 - レイドコンテンツ単位で **ステータス**（未着手 / 練習中 / クリア済 / 休止中）を切替
 - ドラッグで並び替え（マウス + 長押しタッチ + キーボード対応）
-- 編集ダイアログから名前 / Slug / ステータス + 各種URL + Discord チャンネルIDを設定
+- 編集ダイアログから名前 / URL識別子 / ステータス + 各種URL + Discord チャンネルIDを設定
 - 削除確認ダイアログ付き
 - Supabase Realtime でメンバー全員に即時同期
 
-### サブタブ（カテゴリーごと）
+### サブタブ（コンテンツごと）
 - **軽減表 / ロット管理**: 既存 Google Sheets を iframe で全幅表示（80% スケール）
 - **攻略情報**: wiki/記事リンクの一覧、DnD 並べ替え、URL からタイトル自動取得
 - **動画**: YouTube はサムネ + クリック再生（lazy embed）、他の動画サイトはリンクカード
-  - オプションで FFLogs URL を登録可能（ワンタップで報告ページへ）
+  - オプションで FFLogs URL を登録可能（ワンタップで FFLogs のレポートページへ）
+- **マクロ**: ゲーム内マクロをラベル + 本文で保存、ワンタップコピー、DnD 並べ替え
 
 ### Discord 自動取り込み
-- カテゴリーごとに「攻略チャンネルID」「動画チャンネルID」を設定可能
-- Vercel Cron が**毎日 09:00 JST** に各チャンネルの直近100件を pull
+- コンテンツごとに「攻略チャンネルID」「動画チャンネルID」を設定可能
+- Vercel Cron が**毎日 01:00 JST** に各チャンネルの直近100件を pull
 - URL 抽出 + 重複排除 + ページタイトル自動取得 → 該当サブタブに自動投入
-- カテゴリー単位で**取り込みの一時停止**トグル
-- カテゴリー一覧の「**Discord 取り込み**」ボタンで**手動即時実行**
-  （カテゴリーごとに `+件数 / 重複 / 失敗 / scanned 0` を表示）
+- コンテンツ単位で**取り込みの一時停止**トグル
+- コンテンツ一覧の「**Discord 取り込み**」ボタンで**手動即時実行**
+  （コンテンツごとに `+件数 / 重複 / 失敗 / scanned 0` を表示）
 - 取り込まれたリンクには**指紋アイコン**が付与され、手動登録分と区別可能
-- カテゴリーカードに**過去7日の取り込み件数バッジ** (`+N/wk`)
+- コンテンツカードに**過去 7 日の取り込み件数バッジ** (`+N/wk`)
 
 ### テーマ
 7つの FF14 拡張テーマ（拡張ごとに専用エフェクト）：
@@ -154,7 +155,7 @@ FF14 レイド固定向けポータル — スケジュール / 軽減表 / ロ�
 4. 「Success. No rows returned」が出れば完了
 5. （確認）左メニュー **Table Editor** で `categories`, `category_links`, `app_settings` などのテーブルが作られていればOK
 
-> 📌 **本番 / 実際の固定で使う場合**: schema.sql の実行のみで OK。`/category` は空 portal で起動するので、運営者が固定で扱うコンテンツを「カテゴリ追加」から登録してください。
+> 📌 **本番 / 実際の固定で使う場合**: schema.sql の実行のみで OK。`/category` は空 portal で起動するので、運営者が固定で扱うコンテンツを「+ コンテンツ追加」から登録してください。
 >
 > 📌 **demo / モックサイト用にデプロイする場合のみ**: 続けて [`supabase/seed-demo.sql`](./supabase/seed-demo.sql) を同様に SQL Editor で実行すると、demo 表示用のサンプルカテゴリ 7 件 + サンプルデータ (動画 / 軽減 / ロット / 募集文等) が一括投入されます。**本番運用では実行しないでください** — 本番テーブルに demo データが混入します。冪等 (ON CONFLICT / sentinel / URL NOT EXISTS guard) なので demo project への再実行は安全。
 >
@@ -266,7 +267,7 @@ Step 2 と Step 3 で取得した値を使い、Discord Developer Portal と Sup
 |---|---|---|
 | `NEXT_PUBLIC_SUPABASE_URL` | Step 2-3 の Project URL | DB 接続 |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Step 2-3 の anon key | DB 接続 (read 専用相当、書き込みは RLS で admin 限定) |
-| `SUPABASE_SERVICE_ROLE_KEY` | Step 2-3 の service_role key | OAuth callback で `app_metadata` 書き込み + secret 暗号化テーブル ([⚠️ NEVER expose to browser](#)) |
+| `SUPABASE_SERVICE_ROLE_KEY` | Step 2-3 の service_role key | OAuth callback で `app_metadata` 書き込み + secret 暗号化テーブル（⚠️ NEVER expose to browser） |
 | `DISCORD_BOT_TOKEN` | Step 3-3 で取得した Bot トークン | OAuth gate で guild メンバーシップ判定 + 自動取り込み |
 | `DISCORD_GUILD_ID` | Step 3-4 で取得した Discord サーバー ID | OAuth gate のメンバー判定対象 |
 
@@ -372,17 +373,16 @@ Vercel ドメインが Step 5 で確定したので、Supabase Auth に登録し
 
 > この URL は Supabase の `app_settings` テーブルに保存され、**全メンバーで共有**されます。誰か1人が登録すれば全員に反映。
 
-#### 8-2. カテゴリーの追加・編集
+#### 8-2. コンテンツの追加・編集
 
-1. 上部タブ **カテゴリー** へ
-2. デフォルトでサンプル 5 件 (現行零式 + Variant + Extreme + Ultimate × 2) が seed されているので、**自分達のコンテンツに編集**するか、削除して新規追加：
-   - カードの **⋯ → 削除**
-   - 右上 **カテゴリー追加** で新規
+1. 上部タブ **コンテンツ** へ
+2. 最初は空の状態なので、右上 **+ コンテンツ追加** から自分達のコンテンツを登録（登録後の編集・削除はカードの **⋮** メニューから）
 3. 編集ダイアログ各項目：
    | 項目 | 説明 |
    |---|---|
    | 名前 | 表示名（例: 万魔殿パンデモニウム:辺獄編） |
    | URL識別子 | URLパスに使う英数字-（例: `pandaemonium-edge`） |
+   | 説明文 | カードに表示する補足テキスト（任意） |
    | ステータス | 未着手 / 練習中 / クリア済 / 休止中 |
    | 軽減表 URL | Google Sheets の埋め込み URL（任意） |
    | ロット管理 URL | 同上（任意） |
@@ -402,14 +402,14 @@ Vercel ドメインが Step 5 で確定したので、Supabase Auth に登録し
 #### 8-4. 動作確認
 
 - ホームにスケジュール表示
-- カテゴリーカードをクリック → **軽減表 / ロット管理 / 攻略情報 / 動画** タブが表示
+- コンテンツカードをクリック → **軽減表 / ロット管理 / 攻略情報 / 動画 / マクロ** タブが表示
 - 攻略情報・動画タブで「**+ 追加**」からリンク登録できる
 
 ---
 
 ### 9. (任意) Discord 自動取り込みのチャンネル個別設定 (10分)
 
-毎日 1回、指定 Discord チャンネルから URL を自動取得して攻略情報・動画タブに投入する機能。Step 3 / 6 で Bot 本体の作成と guild 参加は済んでいるので、ここでは「Bot にチャンネル単位の閲覧権限を付ける」「カテゴリーごとにチャンネル ID を登録する」の 2 点を行います。
+毎日 1回、指定 Discord チャンネルから URL を自動取得して攻略情報・動画タブに投入する機能。Step 3 / 6 で Bot 本体の作成と guild 参加は済んでいるので、ここでは「Bot にチャンネル単位の閲覧権限を付ける」「コンテンツごとにチャンネル ID を登録する」の 2 点を行います。
 
 > 📌 Step 5 の env で `CRON_SECRET` を未登録の場合は、ここで Vercel ダッシュボード → Settings → Environment Variables に追加して **Deployments → 最新行の ⋯ → Redeploy** してください（環境変数は再ビルド時のみ反映）。
 
@@ -425,13 +425,13 @@ Vercel ドメインが Step 5 で確定したので、Supabase Auth に登録し
    - **メッセージ履歴を読む**
 5. **変更を保存**
 
-> 💡 攻略・動画チャンネルが各カテゴリーに2つずつあるなら、Bot 専用ロールを作って一括許可する方法もあります。
+> 💡 攻略・動画チャンネルが各コンテンツに 2 つずつあるなら、Bot 専用ロールを作って一括許可する方法もあります。
 
 #### 9-2. チャンネル ID を取得して portal に登録
 
 1. Discord 設定 → **詳細設定** → **開発者モード** を ON (Step 3-4 で済ませていれば不要)
 2. 取り込み対象チャンネルを**右クリック → IDをコピー**
-3. アプリのカテゴリー編集ダイアログで「Discord 攻略チャンネルID」「Discord 動画チャンネルID」欄に貼り付け
+3. アプリのコンテンツ編集ダイアログで「Discord 攻略チャンネルID」「Discord 動画チャンネルID」欄に貼り付け
 4. **保存**
 
 #### 9-3. 動作確認
@@ -443,7 +443,7 @@ Vercel ドメインが Step 5 で確定したので、Supabase Auth に登録し
 - ⚠️ `失敗 N` → DB 接続エラーなど（Vercel ログで詳細確認）
 - ❌ `エラー: discord 401/403/...` → Bot Token または権限の問題
 
-正常動作を確認できたら、毎日 09:00 JST に自動実行されます（`vercel.json` の cron schedule）。手動でも `/category` のボタンからいつでも実行可。
+正常動作を確認できたら、毎日 01:00 JST に自動実行されます（`vercel.json` の cron schedule）。手動でも `/category` のボタンからいつでも実行可。
 
 ---
 
@@ -502,7 +502,7 @@ Vercel ドメインが Step 5 で確定したので、Supabase Auth に登録し
 | Login で `redirect_uri_mismatch` | Step 7 (Supabase URL Configuration) の Redirect URLs に新ドメイン `/auth/callback` が exact match で入っているか確認 |
 | Login 後すぐ `/auth/denied` に飛ぶ | (1) Bot が guild に参加していない (Step 6) / (2) `SERVER MEMBERS INTENT` が OFF (Step 3-3) / (3) `DISCORD_GUILD_ID` が誤り (Step 5-2) のいずれか |
 | 設定 dialog で URL 保存できない | Supabase の `app_settings` テーブル未作成 → schema.sql 再実行 |
-| カテゴリー追加でエラー | RLS ポリシー未適用 → schema.sql 再実行 |
+| コンテンツ追加でエラー | RLS ポリシー未適用 → schema.sql 再実行 |
 | Discord 取り込みボタンで `not configured` | `CRON_SECRET` または `DISCORD_BOT_TOKEN` 未設定 |
 | `scanned 0` ばかり | Bot がチャンネルを見えていない → Step 9-1 を再確認 |
 | メンバーがホームでオンボーディング表示 | スケジュール URL が DB に未保存 → 設定 dialog で**保存**を押す |
