@@ -48,3 +48,25 @@ jobs:
             -v ON_ERROR_STOP=1 \
             --single-transaction \
             -f supabase/schema.sql
+
+      # 2026-08-05 セキュリティ監査 H-2 の回帰ガード。
+      #
+      # 本番では anon SELECT が 1 本も存在しないのが正。`app.public_demo` は
+      # デモ専用フラグ (deploy-database-demo.yml が設定する) で、本番 DB に
+      # 誤って立つと 19 テーブル全部が未認証読み取り可能に戻る — しかも
+      # 「サイトは正常に見える」ので気付けない。デプロイ時に必ず検知する。
+      - name: Assert anon SELECT stays closed
+        if: steps.guard.outputs.skip == 'false'
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          n=$(psql "$SUPABASE_DB_URL" -tAc "
+            SELECT count(*) FROM pg_policies
+            WHERE schemaname='public' AND cmd='SELECT' AND 'anon' = ANY(roles);")
+          flag=$(psql "$SUPABASE_DB_URL" -tAc "
+            SELECT coalesce(current_setting('app.public_demo', true), '');")
+          echo "anon SELECT policies: $n / app.public_demo: '${flag}'"
+          if [ "$n" -ne 0 ]; then
+            echo "::error::本番 DB で anon SELECT ポリシーが ${n} 本検出されました。app.public_demo が立っている可能性があります (RESET してください: ALTER DATABASE <db> RESET app.public_demo)。"
+            exit 1
+          fi

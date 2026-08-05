@@ -48,15 +48,32 @@ Critical はありません。基礎構造（RLS 有効化・書き込み側 gat
 - SSRF は `127.0.0.1.nip.io` / `169.254.169.254.nip.io` / `localtest.me` / `10.0.0.1.nip.io` の
   4 種が接続前に `BLOCKED internal address` で落ちること、公開ホストは通ることを実測
 
-### H-2 のデプロイ手順（重要）
+### H-2 のデプロイ（手動作業は不要）
 
-demo プロジェクトの DB で **1 度だけ** 実行しておくこと。忘れるとデモサイトが真っ白になる。
+当初は demo DB での手動 `ALTER DATABASE` を想定していたが、**設定漏れでデモサイトが空になる**
+footgun なので CI に組み込んだ。手動実行は不要。
+
+- `deploy-database-demo.yml` — schema.sql 適用の**前**に `app.public_demo='true'` を設定し、
+  適用後に anon SELECT ポリシーが 1 本以上あることを検証して落とす。
+  このワークフローは `SUPABASE_DB_URL_DEMO` secret があるプロジェクト（= デモ環境）でしか
+  走らないため、本番に混入しない。
+- `deploy-database.yml`（本番） — 適用後に anon SELECT が **0 本**であることを表明する。
+  誤ってフラグが立つと 19 テーブルが未認証読み取りに戻るが、**サイトは正常に見えるので
+  気付けない**。デプロイのたびに検知する。
+
+DB 名は接続先で異なりうるので `current_database()` から組み立てている。
+`ALTER DATABASE ... SET` は既存セッションに反映されないため、GUC 設定と schema.sql 適用は
+別ステップ（別接続）に分けてある。ローカル PG16 で以下を実測確認済み:
+`--single-transaction` 下でも通ること、新規接続で読めること、`RESET` で戻ること。
+
+手動で切り替える場合は次のとおり。
 
 ```sql
+-- 有効化（デモのみ）
 ALTER DATABASE postgres SET app.public_demo = 'true';
+-- 無効化
+ALTER DATABASE postgres RESET app.public_demo;
 ```
-
-本番プロジェクトでは未設定のままにする（= `authenticated` 限定）。
 
 ### M-1 を保留した理由
 

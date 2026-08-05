@@ -42,6 +42,33 @@ jobs:
             echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
 
+      # 2026-08-05 セキュリティ監査 H-2: schema.sql は既定で SELECT を
+      # `TO authenticated` に閉じる。公開デモは匿名訪問者が anon key で読む
+      # 前提なので、このプロジェクトだけ `app.public_demo` を立てて anon
+      # SELECT を残す (schema.sql の §7-0 が読むフラグ)。
+      #
+      # このワークフローは SUPABASE_DB_URL_DEMO secret が登録された
+      # プロジェクト = デモ環境でしか走らないので、ここで設定するのが
+      # 「本番に絶対混入しない」最も安全な置き場所になる。手動運用にすると
+      # 設定漏れでデモサイトが空になる。
+      #
+      # ⚠ 必ず schema.sql 適用より **前** の独立したステップにすること。
+      # `ALTER DATABASE ... SET` は既存セッションには反映されず、次の接続から
+      # 効く。psql の起動が分かれていれば別接続になるので次ステップで読める。
+      - name: Enable public demo flag (anon SELECT)
+        if: steps.guard.outputs.skip == 'false'
+        env:
+          SUPABASE_DB_URL_DEMO: ${{ secrets.SUPABASE_DB_URL_DEMO }}
+        run: |
+          # DB 名は接続先によって異なる (postgres とは限らない) ため
+          # current_database() から組み立てる。
+          psql "$SUPABASE_DB_URL_DEMO" -v ON_ERROR_STOP=1 -c "
+            DO \$\$
+            BEGIN
+              EXECUTE format('ALTER DATABASE %I SET app.public_demo = %L',
+                             current_database(), 'true');
+            END \$\$;"
+
       - name: Apply supabase/schema.sql
         if: steps.guard.outputs.skip == 'false'
         env:
@@ -51,6 +78,21 @@ jobs:
             -v ON_ERROR_STOP=1 \
             --single-transaction \
             -f supabase/schema.sql
+
+      - name: Verify anon SELECT is enabled on demo
+        if: steps.guard.outputs.skip == 'false'
+        env:
+          SUPABASE_DB_URL_DEMO: ${{ secrets.SUPABASE_DB_URL_DEMO }}
+        run: |
+          # 反映漏れはデモサイトが空になる形で表面化するので、ここで落とす。
+          n=$(psql "$SUPABASE_DB_URL_DEMO" -tAc "
+            SELECT count(*) FROM pg_policies
+            WHERE schemaname='public' AND cmd='SELECT' AND 'anon' = ANY(roles);")
+          echo "anon SELECT policies: $n"
+          if [ "$n" -eq 0 ]; then
+            echo "::error::app.public_demo が効いていません (anon SELECT ポリシーが 0 本)。デモサイトが読めなくなります。"
+            exit 1
+          fi
 
       - name: Apply supabase/seed-demo.sql
         if: steps.guard.outputs.skip == 'false'
