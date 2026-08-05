@@ -31,7 +31,23 @@
 
 3. ✅ **完了 (2026-06-12 DB 実測確認)** cron (/api/cron/fflogs-sync) の Edge proxy 経由 scrape の初回発火を確認 — 2026-06-11 19:58 UTC (= JST 04:58。Vercel Hobby の cron は指定時刻から 1h 以内に発火する仕様で、19:00 指定に対し +58 分は正常) に auto 紐づけが再生成された (`schedule_past_session_logs` source='auto' 10 件 + `native_schedule_session_logs` source='auto' 1 件、created_at が同時刻で揃う)。直近セッションへの紐づけには Private/Unlisted レポート (scrape でしか取得不可、v2 API の公開レポートは 2017-2022 の stale 12 件のみ) が必要なため、Edge proxy 経由 cron scrape の end-to-end 成功の実証になる。TODO #86 の「UTC 19:00 自動発火確認」もこれで完了
 
-(項目 1 (Discord 通知 ON 切替) 完了でこの節を `_(現在なし)_` に戻す)
+**セキュリティ監査 (2026-08-05) の保留 1 件** (`docs/security-audit-2026-08-05.md`):
+
+4. ⏳ **TODO #92 — 日付メモ (`schedule_session_memos`) の所有者概念**: 監査 M-1。非 admin メンバー
+   1 人が PostgREST 直叩き 1 リクエストで**全メモを削除・改竄できる**
+   (`DELETE /rest/v1/schedule_session_memos?id=neq.<uuid>`)。ローカル PG16 で 3 件全消しを実測再現済。
+   UI は 1 件ずつしか削除できないので**誰がやったかも残らない**。UPDATE も `USING (true)` なので同様。
+   - **保留の理由**: 修正には「メンバー全員が誰のメモでも編集できる」という**意図的な製品仕様**を
+     変える判断が要る (`schema.sql` 5c-2 / 7a-2 のコメントが所有者カラムを持たない共有メモとして
+     明示設計、`author_name` も localStorage 由来の表示名にすぎない)。RLS では「1 文あたりの行数」を
+     制限できないため、所有者概念を入れる以外に手がない。
+   - **適用する場合**: `author_user_id uuid DEFAULT auth.uid()` を追加し insert/update/delete を
+     owner または admin に限定 (SQL 全文は監査レポートに記載)。既存行は `author_user_id IS NULL` に
+     なるため移行期は admin のみ操作可。UI 側 (`session-memo-delete-modal.tsx` /
+     `schedule-memos-client.ts`) で「自分のメモだけ編集ボタンを出す」対応も併せて必要。
+   - **判断待ち**: 共有編集を維持するか (現状維持 = リスク受容)、所有者限定に変えるか。
+
+(項目 1 (Discord 通知 ON 切替) + 項目 4 (TODO #92 判断) 完了でこの節を `_(現在なし)_` に戻す)
 
 **Pre-check 結果サマリ (2026-05-08 14:25 JST 実行)** [historical]:
 - `cron.job`: jobid=1, jobname='notify-native-schedule-hourly', schedule='0 * * * *', active=true
@@ -47,7 +63,18 @@
 3. **✅ F-4 ONLINE ドットに意味付け (presence) — 完了 ([#228](https://github.com/yyamazaki-lym/raid-repository/pull/228))**: 常時装飾だった ONLINE 表示を Supabase Realtime Presence で「オンライン中のメンバー数」表示に変更 (新 `src/lib/use-online-presence.ts` / `src/components/portal/online-presence-indicator.tsx`、presence key = Discord ID で複数タブ=1カウント、DB/RLS 変更なし)。dev preview + **実機で self=1 (オンライン 1 人) 表示をユーザー確認 OK (2026-06-15)**。複数人時の増分は実メンバーが集まった際に目視。
 4. **✅ Discord 取り込み除外 (blocklist) — 実装完了 ([#232](https://github.com/yyamazaki-lym/raid-repository/pull/232))**: 特定の動画/攻略 URL を「今後取り込まない」除外する機能 (ユーザー要望 2026-06-15)。削除しても dedup は URL 在不在しか見ず cron で復活する問題への対処。新テーブル `category_discord_blocklist` (admin-only RLS、汎用ループ外の独立章) + 取り込み skip (service role 読取) + ⋮ メニュー「今後取り込まない」(source='discord' 限定) + 編集ダイアログの「取り込み除外 URL」管理 (lazy fetch + 解除)。schema は本番/demo 自動デプロイ成功、本番で **admin policy 3 種 (select/insert/delete) + UNIQUE + RLS 有効** を SQL 実査済。**実 admin での除外操作は 2026-06-15 ユーザー実機確認 OK** (除外 → 消える + 以後取り込まれないことを確認済)。import skip 読取は service role で RLS 非依存。
 
-**→ 実質の残作業は項目 1 (Discord 通知 ON 切替、ユーザー判断) のみ。** 総合レビュー (P0/P1/P2/P3) は実施対象を全消化、追加機能 (presence / blocklist) も実機検収完了 (見送り確定分を除く)。
+**→ 実質の残作業は項目 1 (Discord 通知 ON 切替) と保留オペレーション項目 4 (TODO #92 メモ所有者、いずれもユーザー判断) の 2 件。** 総合レビュー (P0/P1/P2/P3) は実施対象を全消化、追加機能 (presence / blocklist) も実機検収完了 (見送り確定分を除く)。
+
+6. **✅ 重点セキュリティ監査 (2026-08-05) — High 3 / Medium 3 / Low 8 を修正済、M-1 のみ保留**:
+   5 領域 (認証認可 / RLS / Server Actions / API routes / 境界) の並列監査。Critical ゼロ。
+   修正した High は (a) **メンバーシップ / admin ロールの失効が反映されない** —
+   `discord_member_verified_at` を書くだけで読む箇所が無く、kick / ロール剥奪後も 4 層の gate を
+   通過し続けた (proxy に TTL 再検証を実装、soft 6h / hard 72h)、(b) **全 19 テーブルの anon SELECT** —
+   `/login` 経由で誰でも入手できる anon key と噛み合い、guild 外から Supabase REST 直叩きで
+   全メンバーの Discord ID・ロール制限カテゴリ・`app_settings` が読めた (`TO authenticated` 化、
+   demo は `app.public_demo` GUC で opt-in、CI 化済)、(c) **ホスト名経由の SSRF** —
+   `nip.io` 等で rebinding 無しに内部 IP へ到達できた (DNS 解決結果を検証 + ピン留めする
+   `safe-fetch.ts` を新設)。詳細は `docs/security-audit-2026-08-05.md`。
 
 5. **✅ 全体再監査 (2026-06-19) — 確定 20 件を全修正・実機検収済 (#242–#248)**: 13 領域マルチエージェント監査で P0/P1 ゼロを再確認し、確定した P2 2 件 (SSRF #242 / FFLogs wipe #243) + P3 18 件 (#244–#248) を 7 PR で全修正・merge (changelog 据え置き = #245 のユーザー可視分も載せない確定)。dev preview 再現不可だった実機確認 5 点 (出欠コメント保存 / 未来日確定の「本日」非表示 / 無効タブ直URL 404 / reduced-motion / 画像孤児掃除) は **2026-06-19 ユーザー実機確認 OK で検収完了**。詳細は下記「完了済み TODO」2.9 (2026-06-15) の 2026-06-19 エントリ。
 
