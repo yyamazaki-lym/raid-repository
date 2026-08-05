@@ -350,7 +350,10 @@ export function ScheduleList({
   const tableHead = (showDecided: boolean, showComments = true) => (
     <thead>
       <tr className="border-b border-border/60 text-[10px] font-medium tracking-normal text-muted-foreground">
-        <th scope="col" className="pl-3 pr-1 py-2">
+        {/* 日程列はメンバー数が増えて横スクロールに入っても左端に固定する
+            (`.sticky-col`, globals.css — sm 以上でのみ固定)。thead は行 tint が
+            ないので疑似要素のオーバーレイは不要。 */}
+        <th scope="col" className="sticky-col pl-3 pr-1 py-2">
           日程
         </th>
         {showDecided && (
@@ -820,7 +823,9 @@ function SessionRow({
   return (
     <tr
       className={
-        "border-b border-border/30 transition-colors last:border-b-0 " +
+        // group/row: 日程列は sticky で不透明背景を持つため、行の hover tint が
+        // 届かない。固定セル側で group-hover/row: を使って tint を載せ直す。
+        "group/row border-b border-border/30 transition-colors last:border-b-0 " +
         (isPast
           ? "" // past rows render at full opacity with no hover effect — once the past view is open, dimming-then-revealing on hover is just visual noise
           : decided
@@ -835,7 +840,21 @@ function SessionRow({
         // row content; with both tables sharing identical icon slot
         // reservations the auto-size is consistent across them, so
         // the explicit `min-w-[15rem]` is no longer needed.
-        className="pl-3 pr-1 py-2 align-middle font-mono text-[12px] tabular-nums whitespace-nowrap text-foreground"
+        //
+        // `.sticky-col` (globals.css) で横スクロール時も左端に固定 (sm 以上)。
+        // tr の背景 tint は固定列の不透明背景に隠れるので、同じ tint を
+        // before: オーバーレイで再現する (past は tint も hover も無いので
+        // 素のまま)。tint も `sm:` で揃える — 固定していないスマホ幅では tr の
+        // 背景が普通に見えるため、載せると tint が二重になる。
+        className={
+          "sticky-col pl-3 pr-1 py-2 align-middle font-mono text-[12px] tabular-nums whitespace-nowrap text-foreground " +
+          "before:pointer-events-none before:absolute before:inset-0 before:-z-10 before:content-[''] before:transition-colors " +
+          (isPast
+            ? ""
+            : decided
+              ? "sm:before:bg-[var(--neon-cyan)]/4 sm:group-hover/row:before:bg-[var(--neon-cyan)]/8"
+              : "sm:group-hover/row:before:bg-secondary/40")
+        }
       >
         <div className="flex items-center gap-1">
           {/* Date label color priority:

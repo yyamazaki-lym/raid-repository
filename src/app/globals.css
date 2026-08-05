@@ -583,6 +583,51 @@
     0 12px 32px -12px color-mix(in oklch, black 65%, transparent);
 }
 
+/* Sticky first column — 出欠表 (schedule-list.tsx) の「日程」列を横スクロール中
+ * も左端に固定する。メンバー数が増えると表が card 幅を超えて overflow-x-auto の
+ * 横スクロールに入るため (8 人前後で丁度収まる設計)、日付を見失わないように pin
+ * する。
+ *
+ * background に bg-card を使えない理由: 表を載せている Card は `.glass`
+ * (= `--card` 55% を背景に重ねた半透明) なので、不透明な `--card` をそのまま
+ * 敷くと固定列だけ濃い帯として浮く。ここでは同じ合成結果を先に作っておく
+ * ことで「見た目は card と同一・でも下を流れる列は透けない」を満たす。
+ * (`.glass` の backdrop blur ぶんの差は bg-grid が非常に薄いため無視できる)
+ *
+ * 行の tint (DECISION の cyan / hover の secondary) は不透明背景に隠れるので、
+ * 呼び出し側が `before:` 疑似要素のオーバーレイで載せ直す。`-z-10` により
+ * 疑似要素は「自身の background の上・セル内容の下」に描画される。
+ * 呼び出し側の tint も同じ `sm:` で揃えること — 固定していない幅では tr の
+ * 背景がそのまま見えるので、オーバーレイを載せると tint が二重になる。
+ *
+ * `sm` (40rem=640px) 未満で固定しないのは、日程セルが
+ * `2026/08/06(木) 21:00~24:00` + アイコン枠で 250px 前後あり、スマホ幅
+ * (390px → 本文領域 358px) では画面の 7 割を占有してしまうため。固定すると
+ * メンバー列が 1 列ぶんしか見えなくなり、日付が残る利点を食い潰す。
+ * 640px 以上なら残り幅で 3 列以上見えるので固定が効いてくる。 */
+@media (min-width: 40rem) {
+  .sticky-col {
+    position: sticky;
+    left: 0;
+    /* 出欠セル側の popover trigger より前面。thead / tbody 共通で 2 を使う。 */
+    z-index: 2;
+    background: color-mix(in oklch, var(--card) 55%, var(--background));
+  }
+  /* 右端の区切り線。`border-collapse: collapse` の border は sticky セルだと
+   * スクロール中に描画が崩れるブラウザがあるため、疑似要素で自前に引く。
+   * 固定列の下をコンテンツが流れていることの視覚的な手掛かりも兼ねる。 */
+  .sticky-col::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 1px;
+    background: color-mix(in oklch, var(--border) 70%, transparent);
+    pointer-events: none;
+  }
+}
+
 /* Transition duration 規約 (TODO #51 P3 観点 9、2026-06-10 明文化)。
    新規 UI を書くときは下記 4 段から選び、用途外の duration-* 追加は避ける:
    - micro (hover / press の色・transform): Tailwind default の 150ms。
