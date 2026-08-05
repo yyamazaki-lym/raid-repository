@@ -74,6 +74,14 @@ const EMPTY_SESSION_LOGS: SessionLogEntry[] = [];
 // `reserveSlotsFor()` の結果を渡さない呼び出し元の後方互換用。
 const DEFAULT_ROW_SLOTS = { video: true, logs: true, memo: true } as const;
 
+// 日程セルで日付 / 時刻の右に続く chip + アイコン群のクラス。
+// `gap-1` のままだと時刻との間隔が日付↔時刻と同じ 4px で、アイコンが時刻の
+// 一部のように見える (ユーザー指摘 2026-08-05「時間によりすぎる」)。
+// `mx-auto` で列の余り幅を左右に等分し、アイコンの左右の空白が同じ程度に
+// 見えるようにする (右端寄せだと今度は確定列側に張り付いて見える)。余りが
+// 無い行では `pl-2` ぶんだけ時刻から離れる。
+const ICON_GROUP_CLASS = "mx-auto flex items-center gap-1 pl-2";
+
 type Props = {
   result: ScheduleFetchResult;
   /** Maximum sessions to render. Defaults to all upcoming + a small past buffer. */
@@ -883,7 +891,7 @@ function SessionRow({
         // 素のまま)。tint も `sm:` で揃える — 固定していないスマホ幅では tr の
         // 背景が普通に見えるため、載せると tint が二重になる。
         className={
-          "sticky-col pl-3 pr-1 py-2 align-middle font-mono text-[12px] tabular-nums whitespace-nowrap text-foreground " +
+          "sticky-col pl-3 pr-2 py-2 align-middle font-mono text-[12px] tabular-nums whitespace-nowrap text-foreground " +
           "before:pointer-events-none before:absolute before:inset-0 before:-z-10 before:content-[''] before:transition-colors " +
           (isPast
             ? ""
@@ -927,6 +935,10 @@ function SessionRow({
               {session.endTime}
             </span>
           )}
+          {/* 日付 / 時刻の右に続く chip + アイコン群。時刻と地続きに見えて
+              「時刻に寄りすぎ」に見えるため、1 つの塊として ICON_GROUP_CLASS
+              で時刻から離す (ユーザー指摘 2026-08-05)。 */}
+          <span className={ICON_GROUP_CLASS}>
           {/* 2.8 (2026-06-10) TODO #81 follow-up: placeholder auto-insert 行
               (`created_by_id IS NULL`) には「auto」chip を表示。admin / 非 admin /
               past / 未来の全行で出す (placeholder と手動候補の区別は全員に有用)。
@@ -992,6 +1004,7 @@ function SessionRow({
                 sessionLogs={sessionLogs}
               />
             )}
+          </span>
         </div>
       </th>
       {showDecided && (
