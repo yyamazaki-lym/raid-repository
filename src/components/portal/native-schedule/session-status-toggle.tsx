@@ -12,6 +12,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { setNativeScheduleSessionStatusAction } from "@/lib/server/native-schedule-actions";
+import { DECISION_BADGE_CLASS } from "@/lib/schedule/status-ui";
 
 /**
  * TODO #2 phase 2-B: native スケジュールの session status を admin が切替えるための
@@ -82,7 +83,7 @@ export function SessionStatusToggle({
   // trigger 表示は sync 経路の確定列と同じ見た目を踏襲。CANDIDATE = `·`、DECISION = 確定 badge。
   const triggerLabel =
     currentStatus === "DECISION" ? (
-      <span className="inline-flex h-6 items-center justify-center rounded-md border border-emerald-400/60 bg-emerald-400/15 px-2 text-[10px] font-bold tracking-normal text-emerald-300 shadow-[0_0_12px_-3px_rgb(52_211_153)]">
+      <span className={DECISION_BADGE_CLASS}>
         確定
       </span>
     ) : (

@@ -1,5 +1,6 @@
 import { CalendarCheck2, AlertTriangle } from "lucide-react";
 import type { NextSessionResult } from "@/lib/schedule/next-session";
+import { DECISION_BADGE_CLASS } from "@/lib/schedule/status-ui";
 
 export function NextSessionCard({
   result,
@@ -97,7 +98,7 @@ export function NextSessionCard({
         <Label>次回開催日</Label>
         {/* 予定表の status 列の「確定」バッジ (schedule-list.tsx) と同一様式。
             同じ意味のバッジが画面内で 2 形態にならないよう揃えている。 */}
-        <span className="inline-flex h-6 items-center justify-center rounded-md border border-emerald-400/60 bg-emerald-400/15 px-2 text-[10px] font-bold tracking-normal text-emerald-300 shadow-[0_0_12px_-3px_rgb(52_211_153)]">
+        <span className={DECISION_BADGE_CLASS}>
           確定
         </span>
       </div>
