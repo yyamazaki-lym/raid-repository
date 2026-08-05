@@ -206,7 +206,7 @@ function MacrosSection({
           <Terminal className="h-4 w-4 text-[var(--neon-violet)]" aria-hidden />
           <h2 className="font-display text-base">マクロ</h2>
           <span className="font-mono text-[10px] tracking-[0.18em] text-muted-foreground">
-            {ordered.length}件
+            {ordered.length} 件
           </span>
         </div>
         {/* TODO #58 part2 (2026-05-01): macros は量が少なく中途半端なスクロール
@@ -517,7 +517,7 @@ function TemplatesSection({
           <ClipboardList className="h-4 w-4 text-[var(--neon-cyan)]" aria-hidden />
           <h2 className="font-display text-base">募集文テンプレート</h2>
           <span className="font-mono text-[10px] tracking-[0.18em] text-muted-foreground">
-            {templates.length}件
+            {templates.length} 件
           </span>
         </div>
         {/* TODO #58 part2: 元位置 in-flow + stuck 時 SubTabs 右端に複製ボタン。
@@ -552,7 +552,7 @@ function TemplatesSection({
             <>
               このコンテンツに紐づく募集文テンプレートはまだ登録されていません。
               <br />
-              上の「+ 追加」ボタンから登録できます。
+              上の「募集文追加」ボタンから登録できます。
             </>
           }
         />
@@ -880,7 +880,7 @@ function EditDialog({
             className="gap-1.5 text-[11px] tracking-normal"
           >
             <Save className="h-3.5 w-3.5" aria-hidden />
-            {busy ? "保存中..." : isEdit ? "更新" : "追加"}
+            {busy ? "保存中…" : isEdit ? "更新" : "追加"}
           </Button>
         </DialogFooter>
       </DialogContent>

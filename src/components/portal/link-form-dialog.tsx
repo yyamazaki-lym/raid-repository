@@ -132,7 +132,7 @@ export function LinkFormDialog({
     let t = title.trim();
     const u = url.trim();
     // URL バリデーションを先に通す: タイトル空時の自動取得は URL が valid な前提
-    if (!u) return setError("URLを入力してください");
+    if (!u) return setError("URL を入力してください");
     const uErr = httpUrlError(u);
     if (uErr) {
       setUrlFieldError(uErr);
@@ -368,7 +368,7 @@ export function LinkFormDialog({
                 id="link-logs-help"
                 className="text-muted-foreground text-[11px] leading-relaxed"
               >
-                登録するとカードに「Logs」ボタンが追加され、ワンタップで報告ページに飛べます。
+                登録するとカードに「FFLogs」リンクが追加され、ワンタップでレポートページに飛べます。
               </p>
             </div>
           )}
@@ -410,7 +410,7 @@ export function LinkFormDialog({
             ) : (
               <Save className="h-3.5 w-3.5" aria-hidden />
             )}
-            {busy ? "保存中..." : isEdit ? "更新" : "追加"}
+            {busy ? "保存中…" : isEdit ? "更新" : "追加"}
           </Button>
         </DialogFooter>
       </DialogContent>

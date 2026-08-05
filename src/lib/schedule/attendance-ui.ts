@@ -14,6 +14,11 @@ export const ATT_TONE_FALLBACK =
 
 export const ATT_TONE: Record<string, string> = {
   "◯": "text-[var(--neon-cyan)] bg-[var(--neon-cyan)]/10 border-[var(--neon-cyan)]/30",
+  // sync (character-sheets) は ◯ (U+25EF)、native の既定値 (native-fetch.ts)
+  // は ○ (U+25CB) と、経路で文字が異なる。既存 DB に両方が保存されうるため
+  // どちらのキーも同じ表現に解決する (片方だけだと native 既定構成で凡例
+  // ラベルが消え、tone も amber fallback に落ちる)。
+  "○": "text-[var(--neon-cyan)] bg-[var(--neon-cyan)]/10 border-[var(--neon-cyan)]/30",
   "⏰": "text-amber-300 bg-amber-300/10 border-amber-300/30",
   "△": "text-[var(--neon-violet)] bg-[var(--neon-violet)]/10 border-[var(--neon-violet)]/30",
   "×": "text-rose-400 bg-rose-400/10 border-rose-400/30",
@@ -34,6 +39,8 @@ export const ATT_TONE: Record<string, string> = {
  */
 export const ATT_LABEL_DICT: Record<string, string> = {
   "◯": "参加可",
+  // ○ (U+25CB) は native 既定値の同義記号 (ATT_TONE の note 参照)。
+  "○": "参加可",
   "⏰": "遅刻",
   "△": "未定",
   "×": "不可",

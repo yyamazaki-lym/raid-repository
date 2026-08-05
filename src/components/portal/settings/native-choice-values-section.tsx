@@ -13,9 +13,9 @@ import { useConfirm } from "@/components/portal/confirm-dialog";
  * TODO #2 phase 2-C (2026-05-07): native スケジュール凡例 (choice values)
  * 編集 section。
  *
- * - CSV textarea (1 行、Input で十分) で「○,×,△,⏰,─」のような記号列を編集
+ * - CSV textarea (1 行、Input で十分) で「○,×,△,⏰,－」のような記号列を編集
  * - 保存 → setNativeScheduleChoiceValuesAction(csv)、空保存または「既定値に
- *   戻す」 で fallback (`["○","×","△","⏰","─"]`) に戻る
+ *   戻す」 で fallback (`["○","×","△","⏰","－"]`) に戻る
  * - 入力中に live preview chip 列を描画 (split → trim → filter → map)
  *
  * `parseCsv` は `native-fetch.ts#parseChoiceValues` と同じ split 仕様
@@ -23,7 +23,7 @@ import { useConfirm } from "@/components/portal/confirm-dialog";
  * 重複は許容 (server-only / client 境界跨ぎを避けるため)。
  */
 
-const DEFAULT_CHOICES = ["○", "×", "△", "⏰", "─"];
+const DEFAULT_CHOICES = ["○", "×", "△", "⏰", "－"];
 
 function parseCsv(csv: string): string[] {
   return csv
@@ -79,7 +79,7 @@ export function NativeChoiceValuesSection({
     if (
       !(await confirm({
         title: "凡例を既定値に戻す",
-        description: "凡例を既定値 (○,×,△,⏰,─) に戻します。よろしいですか?",
+        description: "凡例を既定値 (○,×,△,⏰,－) に戻します。よろしいですか？",
         confirmText: "戻す",
       }))
     )
@@ -110,8 +110,7 @@ export function NativeChoiceValuesSection({
       </header>
 
       <p className="text-[10px] leading-relaxed text-muted-foreground">
-        スケジュール表の出欠列で選べる凡例。CSV 形式 (カンマ区切り) で記号を
-        並べます。空のまま保存すると既定値 (○, ×, △, ⏰, ─) に戻ります。
+        スケジュール表の出欠列で選べる凡例。CSV 形式 (カンマ区切り) で記号を並べます。空のまま保存すると既定値 (○, ×, △, ⏰, －) に戻ります。
       </p>
 
       <div className="flex flex-col gap-2">
@@ -120,7 +119,7 @@ export function NativeChoiceValuesSection({
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           disabled={!canEdit || !loaded || pending}
-          placeholder="○,×,△,⏰,─"
+          placeholder="○,×,△,⏰,－"
           className="h-7 text-xs"
         />
 
@@ -132,7 +131,7 @@ export function NativeChoiceValuesSection({
             <span
               key={`${c}-${i}`}
               className={
-                "inline-flex h-6 min-w-[1.5rem] items-center justify-center rounded border px-1.5 text-xs " +
+                "inline-flex h-6 max-w-[7rem] min-w-[1.5rem] items-center justify-center truncate rounded border px-1.5 text-xs whitespace-nowrap " +
                 (usingFallback
                   ? "border-border/30 text-muted-foreground/70 italic"
                   : "border-[var(--neon-cyan)]/40 bg-[var(--neon-cyan)]/5 text-foreground")

@@ -13,7 +13,7 @@ export function FirstClearPanel({
   return (
     <>
       <p className="mb-2 pr-6 text-[10px] font-medium tracking-normal text-muted-foreground">
-        クリア日時 / クリア時間 取得結果
+        クリア日時 / クリア時間 — 取得結果
       </p>
       {data.filled === 0 && data.noMatchDetails.length === 0 ? (
         <p className="text-[11px] text-muted-foreground">
@@ -32,8 +32,8 @@ export function FirstClearPanel({
                     className="mt-0.5 h-3 w-3 shrink-0 text-amber-300"
                     aria-hidden
                   />
-                  <div className="flex-1">
-                    <span className="font-mono text-foreground">
+                  <div className="min-w-0 flex-1">
+                    <span className="font-mono break-all text-foreground">
                       {d.slug}
                     </span>
                     <span className="ml-2 text-amber-200">
@@ -76,7 +76,7 @@ export function FirstClearPanel({
                         className="ml-2 inline-flex items-center rounded-sm border border-zinc-400/45 bg-zinc-400/10 px-1 text-[9px] tracking-normal text-zinc-300"
                         title={`他コンテンツの動画を ${d.excludedForeignCount} 件除外`}
                       >
-                        -{d.excludedForeignCount} 異
+                        他 -{d.excludedForeignCount} 件
                       </span>
                     )}
                     <p className="mt-0.5 text-muted-foreground/80 break-words">
@@ -99,8 +99,8 @@ export function FirstClearPanel({
                       className="mt-1 inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-rose-400/70"
                       aria-hidden
                     />
-                    <div className="flex-1">
-                      <span className="font-mono text-foreground">
+                    <div className="min-w-0 flex-1">
+                      <span className="font-mono break-all text-foreground">
                         {nm.slug}
                       </span>
                       <span className="ml-2 text-[10px] text-rose-200/85">
@@ -127,9 +127,11 @@ export function FirstClearPanel({
         </>
       )}
       {(data.filled > 0 || data.noMatchDetails.length > 0) && (
-        <p className="mt-2 text-[10px] text-muted-foreground">
-          設定済み {data.alreadySet} ／ 該当なし {data.noMatch} ／ 更新{" "}
-          {data.filled}
+        // 各項目を nowrap span にして「/」始まりの行を防ぐ。
+        <p className="mt-2 flex flex-wrap gap-x-1.5 text-[10px] text-muted-foreground">
+          <span className="whitespace-nowrap">設定済み {data.alreadySet} /</span>
+          <span className="whitespace-nowrap">該当なし {data.noMatch} /</span>
+          <span className="whitespace-nowrap">更新 {data.filled}</span>
         </p>
       )}
     </>
@@ -144,7 +146,7 @@ function explainNoMatchReason(
     case "no-videos":
       return "動画が登録されていません";
     case "all-foreign":
-      return "他コンテンツの動画のみ (フィルター除外)";
+      return "他コンテンツの動画のみ (フィルタ除外)";
     case "no-clear-keyword":
       return "「クリア」/「clear」を含む動画がありません";
     case "no-final-floor":

@@ -1109,7 +1109,9 @@ function SessionRow({
             // forces every cell to render the glyph at the same
             // baseline within a fixed h-5 box.
             className={
-              "inline-flex h-5 min-w-[1.75rem] items-center justify-center rounded-sm border px-1 text-[12px] leading-none transition-transform " +
+              // max-w + truncate: 記号は設定画面で自由編集できるため、長い値で
+              // h-5 のセル高が壊れないよう抑える。
+              "inline-flex h-5 max-w-[5rem] min-w-[1.75rem] items-center justify-center truncate rounded-sm border px-1 text-[12px] whitespace-nowrap leading-none transition-transform " +
               tone
             }
             aria-label={`${u.name}: ${att}`}

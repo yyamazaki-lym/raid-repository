@@ -338,7 +338,7 @@ const DISCORD_ID_RE = /^\d{17,20}$/;
  */
 const MEMBER_KEY_RE = /^(?:\d{17,20}|local_[A-Za-z0-9_-]{3,32})$/;
 const MEMBER_KEY_REASON =
-  "Discord ID (17〜20 桁の数字) または ローカルキー (local_<英数字>, 3〜32 文字) を入力してください";
+  "Discord ID (17〜20 桁の数字) またはローカルキー (local_<英数字>, 3〜32 文字) を入力してください";
 
 export type AddNativeScheduleMemberInput = {
   discordUserId: string;

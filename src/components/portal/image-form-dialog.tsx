@@ -283,7 +283,7 @@ export function ImageFormDialog({
             </DialogTitle>
             <DialogDescription className="text-xs">
               スクリーンショットや散開図などの画像
-              （ローカルアップロード または URL 直接指定）
+              （ローカルアップロードまたは URL 直接指定）
             </DialogDescription>
           </div>
         </DialogHeader>
@@ -419,7 +419,7 @@ export function ImageFormDialog({
             ) : (
               <Save className="h-3.5 w-3.5" aria-hidden />
             )}
-            {busy ? "保存中..." : isEdit ? "更新" : "追加"}
+            {busy ? "保存中…" : isEdit ? "更新" : "追加"}
           </Button>
         </DialogFooter>
       </DialogContent>

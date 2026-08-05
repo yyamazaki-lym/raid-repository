@@ -134,7 +134,10 @@ export function NativeAttendancePopover({
         >
           <div className="flex flex-col gap-3 p-3">
             <div className="flex items-center gap-1.5 border-b border-border/50 pb-1.5">
-              <span className="font-mono text-[9px] tracking-[0.2em] text-muted-foreground uppercase">
+              <span
+                className="min-w-0 truncate font-mono text-[9px] tracking-[0.2em] text-muted-foreground uppercase"
+                title={`${userName} — ${displayDate}`}
+              >
                 {userName} — {displayDate}
               </span>
               {busy && (
@@ -223,7 +226,7 @@ function SymbolRadio({
       disabled={disabled}
       aria-pressed={selected}
       className={
-        "inline-flex min-w-[2.4rem] items-center justify-center rounded-sm border px-2 py-1 font-mono text-[11px] tabular-nums leading-none transition-colors disabled:opacity-50 disabled:cursor-not-allowed " +
+        "inline-flex max-w-[7rem] min-w-[2.4rem] items-center justify-center truncate rounded-sm border px-2 py-1 font-mono text-[11px] tabular-nums whitespace-nowrap leading-none transition-colors disabled:opacity-50 disabled:cursor-not-allowed " +
         (selected
           ? "border-[var(--neon-cyan)]/70 bg-[var(--neon-cyan)]/15 text-[var(--neon-cyan)] shadow-[0_0_8px_-3px_var(--neon-cyan)]"
           : "border-border/60 bg-background/40 text-muted-foreground hover:border-[var(--neon-cyan)]/40 hover:text-foreground")

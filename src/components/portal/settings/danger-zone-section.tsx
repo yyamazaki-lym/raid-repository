@@ -54,8 +54,7 @@ export function DangerZoneSection({
           <div className="flex flex-col gap-2.5 rounded-md border border-rose-400/30 bg-rose-400/5 p-3">
             <p className="text-[12px] leading-relaxed text-rose-100/90">
               動画 / 過去予定に紐づいた FFLogs レポート URL をすべて削除します
-              （自動紐づけ + 手動紐づけの両方が対象）。過去の誤紐づけを
-              リセットしたいときに使います。
+              （自動紐づけ + 手動紐づけの両方が対象）。過去の誤紐づけをリセットしたいときに使います。
             </p>
             <div>
               <Button
@@ -92,15 +91,15 @@ export function DangerZoneSection({
                 ) : (
                   <X className="h-3.5 w-3.5" aria-hidden />
                 )}
-                {clearingLogs ? "クリア中..." : "全 logs URL クリア"}
+                {clearingLogs ? "クリア中…" : "全 logs URL クリア"}
               </Button>
             </div>
           </div>
 
           <div className="flex flex-col gap-2.5 rounded-md border border-rose-400/30 bg-rose-400/5 p-3">
             <p className="text-[12px] leading-relaxed text-rose-100/90">
-              サイト全体のデータを削除して初期化します。すべてのカテゴリ
-              / 動画 / 戦略 / 過去スケジュール / アプリ設定が消去されます。
+              サイト全体のデータを削除して初期化します。すべてのコンテンツ
+              / 動画 / 攻略情報 / 過去スケジュール / アプリ設定が消去されます。
               この操作は取り消せません。
             </p>
             <div>

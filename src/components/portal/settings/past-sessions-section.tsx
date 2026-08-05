@@ -112,7 +112,7 @@ export function PastSessionsSection({
     if (
       !(await confirm({
         title: "過去日程を削除",
-        description: `削除しますか?\n${rawDate}\n\n過去日程からこの日が消えます。Discord 取り込みを再実行しても、この raw_date のメッセージが Discord 100 件に残っていれば再度 insert されます。`,
+        description: `削除しますか？\n${rawDate}\n\n過去日程からこの日が消えます。Discord 取り込みを再実行しても、この raw_date のメッセージが Discord 100 件に残っていれば再度 insert されます。`,
         confirmText: "削除",
         destructive: true,
       }))
@@ -182,8 +182,7 @@ export function PastSessionsSection({
         />
         <p className="text-muted-foreground text-[11px] leading-relaxed">
           日次の活動予定通知が投稿されているチャンネル ID。設定すると
-          「<strong>本日YYYY/MM/DD(曜) HH:MM~HH:MM</strong>」形式の
-          メッセージから過去の開催日を取得できます。
+          「<strong>本日YYYY/MM/DD(曜) HH:MM~HH:MM</strong>」形式のメッセージから過去の開催日を取得できます。
         </p>
         <p className="text-muted-foreground/80 text-[10px] leading-relaxed">
           Bot がこのチャンネルにアクセスできる必要があります（View
@@ -211,7 +210,7 @@ export function PastSessionsSection({
             ) : (
               <Cloud className="h-3.5 w-3.5" aria-hidden />
             )}
-            {importing ? "取り込み中..." : "Discord 履歴から取り込み"}
+            {importing ? "取り込み中…" : "Discord 履歴から取り込み"}
           </Button>
           <Button
             type="button"
@@ -227,7 +226,7 @@ export function PastSessionsSection({
             ) : (
               <Camera className="h-3.5 w-3.5" aria-hidden />
             )}
-            {snapshotting ? "保存中..." : "出席状況を即時保存"}
+            {snapshotting ? "保存中…" : "出席状況を即時保存"}
           </Button>
           <Button
             type="button"
@@ -268,9 +267,7 @@ export function PastSessionsSection({
                     ` / 未来日時 cleanup ${importResult.cleanedFuture}`}
                 </p>
                 <p className="text-muted-foreground text-[10px]">
-                  Discord は最新 100 件まで取得します（必要なら時間を
-                  おいて再実行）。未来日時の通知メッセージは過去日程に
-                  混ざらないよう自動で除外・クリーンアップされます。
+                  Discord は最新 100 件まで取得します（必要なら時間をおいて再実行）。未来日時の通知メッセージは過去日程に混ざらないよう自動で除外・クリーンアップされます。
                 </p>
               </>
             ) : (
@@ -308,8 +305,7 @@ export function PastSessionsSection({
               </p>
               <p className="text-muted-foreground text-[10px]">
                 character-sheets の DECISION (確定) 行のみを出席情報込みで保存します。
-                CANDIDATE 行は対象外、過去 snapshot に混入していた CANDIDATE 行は
-                自動 cleanup されます。
+                CANDIDATE 行は対象外、過去 snapshot に混入していた CANDIDATE 行は自動 cleanup されます。
               </p>
             </>
           ) : (
@@ -364,10 +360,7 @@ export function PastSessionsSection({
                 </ul>
               )}
               <p className="mt-1 text-muted-foreground text-[10px]">
-                この件数はスケジュールページの「過去」に
-                マージされる候補数です。実際は開催されていない日が
-                混ざっていれば × ボタンで個別削除できます。0 なら
-                保存されていない or SELECT が RLS で拒否されています。
+                この件数はスケジュールページの「過去」にマージされる候補数です。実際は開催されていない日が混ざっていれば × ボタンで個別削除できます。0 なら保存されていない or SELECT が RLS で拒否されています。
               </p>
             </>
           ) : (

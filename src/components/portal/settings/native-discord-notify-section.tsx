@@ -285,7 +285,7 @@ export function NativeDiscordNotifySection({
 
       <div className="flex flex-col gap-1.5">
         <label className="text-[10px] tracking-normal text-muted-foreground">
-          mention 対象 Role ID (任意)
+          mention 対象 Role ID（任意）
         </label>
         <div className="flex items-center gap-1.5">
           <Input
@@ -321,7 +321,7 @@ export function NativeDiscordNotifySection({
         <div className="flex flex-col gap-0.5">
           <span className="text-xs">確定時に自動通知</span>
           <span className="text-[9px] text-muted-foreground/60">
-            開催日を「確定」に切替えた瞬間に 1 回だけ Discord 投稿 (同セッションの再送は last_notified_at で抑止)
+            開催日を「確定」に切り替えた瞬間に 1 回だけ Discord 投稿 (同セッションの再送は last_notified_at で抑止)
           </span>
         </div>
         <label className="inline-flex cursor-pointer items-center gap-2">
@@ -342,7 +342,7 @@ export function NativeDiscordNotifySection({
           DB から DELETE され、buildMessage は hardcode default に戻る。 */}
       <div className="flex flex-col gap-1.5">
         <label className="text-[10px] tracking-normal text-muted-foreground">
-          通知メッセージ テンプレート (任意)
+          通知メッセージテンプレート（任意）
         </label>
         <Textarea
           value={templateDraft}

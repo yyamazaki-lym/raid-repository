@@ -59,7 +59,7 @@ export function SessionMemoDot({
         e.stopPropagation();
         onClick();
       }}
-      aria-label={`メモ ${count} 件 を開く`}
+      aria-label={`メモ ${count} 件を開く`}
       title={`メモ ${count} 件（クリックで開く）`}
       className={
         "group/memodot inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-[var(--neon-violet)]/18 " +

@@ -81,7 +81,7 @@ export function SheetUrlOnboarding({
   const onSave = async () => {
     setError(null);
     const trimmed = url.trim();
-    if (!trimmed) return setError("URLを入力してください");
+    if (!trimmed) return setError("URL を入力してください");
     const err = httpUrlError(trimmed);
     if (err) {
       setFieldError(err);
@@ -170,9 +170,7 @@ export function SheetUrlOnboarding({
               テンプレート ({template.authorLabel} 提供)
             </p>
             <p className="text-foreground/85 text-[11px] leading-relaxed">
-              下記のスプレッドシートを自分の Google Drive にコピーして
-              編集 → 共有 URL をここに貼り付けてください。テンプレ作成
-              者の使い方解説も併せて参考に。
+              下記のスプレッドシートを自分の Google Drive にコピーして編集 → 共有 URL をここに貼り付けてください。テンプレ作成者の使い方解説も併せて参考に。
             </p>
             <div className="flex flex-wrap gap-1.5">
               <a
@@ -220,7 +218,7 @@ export function SheetUrlOnboarding({
             ) : (
               <Save className="h-3.5 w-3.5" aria-hidden />
             )}
-            {busy ? "保存中..." : "URL を登録"}
+            {busy ? "保存中…" : "URL を登録"}
           </Button>
         </div>
       </div>

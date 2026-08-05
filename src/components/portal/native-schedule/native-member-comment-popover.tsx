@@ -197,7 +197,10 @@ export function NativeMemberCommentPopover({
                 className="h-3 w-3 text-[var(--neon-cyan)]"
                 aria-hidden
               />
-              <span className="text-[9px] font-medium tracking-normal text-muted-foreground">
+              <span
+                className="min-w-0 truncate text-[9px] font-medium tracking-normal text-muted-foreground"
+                title={userName}
+              >
                 {userName} のコメント
               </span>
             </div>
@@ -251,7 +254,7 @@ export function NativeMemberCommentPopover({
                     className="gap-1 text-[10px] tracking-normal"
                   >
                     <Save className="h-3 w-3" aria-hidden />
-                    {busy ? "保存中..." : "保存"}
+                    {busy ? "保存中…" : "保存"}
                   </Button>
                 </div>
               </>

@@ -187,7 +187,7 @@ export function SessionTimeEditPopover({
         setError(r.reason);
         return;
       }
-      toast.success(`${displayDate} の時刻を default に戻しました`);
+      toast.success(`${displayDate} の時刻を既定に戻しました`);
       setOpen(false);
       router.refresh();
     });
@@ -209,10 +209,10 @@ export function SessionTimeEditPopover({
         aria-label={`${displayDate} の時刻を編集 (現在: ${
           isOverridden
             ? `${overrideStart ?? defaultStartTime}〜${overrideEnd ?? defaultEndTime} (override)`
-            : `${defaultStartTime}〜${defaultEndTime} (default)`
+            : `${defaultStartTime}〜${defaultEndTime} (既定)`
         })`}
         title={
-          isOverridden ? "個別時刻 (クリックで編集)" : "default 時刻 (クリックで個別変更)"
+          isOverridden ? "個別時刻 (クリックで編集)" : "既定時刻 (クリックで個別変更)"
         }
       >
         <ClockIcon />
@@ -254,7 +254,11 @@ export function SessionTimeEditPopover({
                 />
               </div>
               <span className="text-[10px] text-muted-foreground/80">
-                既定 (admin で変更): {defaultStartTime}〜{defaultEndTime}
+                既定 (admin で変更):{" "}
+                {/* nowrap: 「21:00 / 〜24:00」の分断を防ぐ (〜 は改行可能文字)。 */}
+                <span className="whitespace-nowrap">
+                  {defaultStartTime}〜{defaultEndTime}
+                </span>
                 {isOverridden ? (
                   <span className="ml-1 text-[var(--neon-cyan)]">
                     (現在この日は個別 override)
@@ -299,7 +303,7 @@ export function SessionTimeEditPopover({
                 onClick={onResetToDefault}
                 disabled={busy || !isOverridden}
                 className="gap-1 text-[10px] tracking-normal"
-                title="この日の時刻を default に戻す"
+                title="この日の時刻を既定に戻す"
               >
                 <RotateCcw className="h-3 w-3" aria-hidden />
                 既定に戻す
@@ -323,7 +327,7 @@ export function SessionTimeEditPopover({
                 className="gap-1 text-[10px] tracking-normal"
               >
                 <Save className="h-3 w-3" aria-hidden />
-                {busy ? "保存中..." : "保存"}
+                {busy ? "保存中…" : "保存"}
               </Button>
             </div>
           </div>

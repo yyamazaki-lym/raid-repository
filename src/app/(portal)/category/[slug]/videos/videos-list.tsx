@@ -753,7 +753,7 @@ export function VideosList({
               });
             }}
             className={
-              "inline-flex h-7 items-center gap-1 rounded-md border px-2 text-[10px] tracking-normal transition-colors " +
+              "inline-flex h-7 items-center whitespace-nowrap gap-1 rounded-md border px-2 text-[10px] tracking-normal transition-colors " +
               (selectMode
                 ? "border-[var(--neon-cyan)]/60 bg-[var(--neon-cyan)]/12 text-[var(--neon-cyan)]"
                 : "border-border/40 bg-background/30 text-muted-foreground hover:text-foreground")
@@ -783,7 +783,7 @@ export function VideosList({
             type="button"
             onClick={() => persistFavoritesOnly(!favoritesOnly)}
             className={
-              "inline-flex h-7 items-center gap-1 rounded-md border px-2 font-mono text-[10px] tracking-[0.18em] uppercase transition-colors " +
+              "inline-flex h-7 items-center whitespace-nowrap gap-1 rounded-md border px-2 font-mono text-[10px] tracking-[0.18em] uppercase transition-colors " +
               (favoritesOnly
                 ? "border-amber-400/60 bg-amber-400/12 text-amber-200"
                 : "border-border/40 bg-background/30 text-muted-foreground hover:text-foreground")
@@ -964,7 +964,7 @@ export function VideosList({
               type="button"
               disabled={bulkFavoriting}
               onClick={onBulkToggleFavorite}
-              className="inline-flex h-7 items-center gap-1 rounded-md border border-amber-400/55 bg-amber-400/10 px-2 text-[10px] tracking-normal text-amber-200 transition-colors hover:border-amber-400/80 hover:bg-amber-400/20 disabled:opacity-50"
+              className="inline-flex h-7 items-center whitespace-nowrap gap-1 rounded-md border border-amber-400/55 bg-amber-400/10 px-2 text-[10px] tracking-normal text-amber-200 transition-colors hover:border-amber-400/80 hover:bg-amber-400/20 disabled:opacity-50"
               title={
                 bulkFavoriteAction === "add"
                   ? "選択した動画をすべてお気に入りに追加"
@@ -988,7 +988,7 @@ export function VideosList({
               type="button"
               disabled={savingClearTime}
               onClick={onBulkSaveClearTime}
-              className="inline-flex h-7 items-center gap-1 rounded-md border border-emerald-400/55 bg-emerald-400/10 px-2 text-[10px] tracking-normal text-emerald-200 transition-colors hover:border-emerald-400/80 hover:bg-emerald-400/20 disabled:opacity-50"
+              className="inline-flex h-7 items-center whitespace-nowrap gap-1 rounded-md border border-emerald-400/55 bg-emerald-400/10 px-2 text-[10px] tracking-normal text-emerald-200 transition-colors hover:border-emerald-400/80 hover:bg-emerald-400/20 disabled:opacity-50"
               title="選択した動画の合計再生時間をクリアまでの累計時間として保存"
             >
               <Hourglass className="h-3 w-3" aria-hidden />
@@ -1000,7 +1000,7 @@ export function VideosList({
               type="button"
               disabled={bulkDeleting}
               onClick={onBulkDelete}
-              className="inline-flex h-7 items-center gap-1 rounded-md border border-rose-400/60 bg-rose-400/10 px-2 text-[10px] tracking-normal text-rose-200 transition-colors hover:border-rose-400/80 hover:bg-rose-400/20 disabled:opacity-50"
+              className="inline-flex h-7 items-center whitespace-nowrap gap-1 rounded-md border border-rose-400/60 bg-rose-400/10 px-2 text-[10px] tracking-normal text-rose-200 transition-colors hover:border-rose-400/80 hover:bg-rose-400/20 disabled:opacity-50"
               title="選択した動画を削除"
             >
               <Trash2 className="h-3 w-3" aria-hidden />
@@ -1510,7 +1510,7 @@ function YouTubePreview({
         rel="noopener noreferrer"
         onClick={(e) => e.stopPropagation()}
         className="absolute top-2 right-2 inline-flex items-center gap-1 rounded-md bg-black/60 px-1.5 py-1 font-mono text-[9px] tracking-[0.18em] text-white/80 uppercase transition-colors hover:text-white"
-        aria-label="YouTubeで開く"
+        aria-label="YouTube で開く"
       >
         <ExternalLink className="h-3 w-3" aria-hidden />
         YouTube

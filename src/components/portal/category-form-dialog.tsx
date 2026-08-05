@@ -372,7 +372,7 @@ export function CategoryFormDialog({
       new URL(raw);
       return null;
     } catch {
-      return "URLの形式が正しくありません";
+      return "URL の形式が正しくありません";
     }
   };
 
@@ -402,10 +402,10 @@ export function CategoryFormDialog({
     // Discord channel IDs are 17–20 digit snowflakes.
     const SNOWFLAKE_RE = /^\d{17,20}$/;
     if (trimmedDiscordStrategy && !SNOWFLAKE_RE.test(trimmedDiscordStrategy)) {
-      return setError("攻略チャンネルIDは17〜20桁の数字です");
+      return setError("攻略チャンネル ID は 17〜20 桁の数字です");
     }
     if (trimmedDiscordVideo && !SNOWFLAKE_RE.test(trimmedDiscordVideo)) {
-      return setError("動画チャンネルIDは17〜20桁の数字です");
+      return setError("動画チャンネル ID は 17〜20 桁の数字です");
     }
 
     setBusy(true);
@@ -658,7 +658,7 @@ export function CategoryFormDialog({
             <div className="mt-2 flex flex-col gap-3">
               <div className="flex flex-col gap-1.5">
                 <Label className="text-xs text-foreground/80">
-                  カテゴリカードから最初に開くタブ
+                  コンテンツカードから最初に開くタブ
                 </Label>
                 <div className="flex flex-wrap gap-1.5">
                   {CATEGORY_TAB_IDS.map((id) => {
@@ -693,7 +693,7 @@ export function CategoryFormDialog({
                   })}
                 </div>
                 <p className="text-muted-foreground text-[11px] leading-relaxed">
-                  カテゴリカードをクリックしたときの遷移先。非表示タブを既定にすると、
+                  コンテンツカードをクリックしたときの遷移先。非表示タブを既定にすると、
                   保存時に表示されているタブの先頭にフォールバックします。
                 </p>
               </div>
@@ -792,7 +792,7 @@ export function CategoryFormDialog({
               htmlFor="discord-strategy"
               className="text-xs text-foreground/80"
             >
-              Discord 攻略チャンネルID（任意）
+              Discord 攻略チャンネル ID（任意）
             </Label>
             <Input
               id="discord-strategy"
@@ -814,7 +814,7 @@ export function CategoryFormDialog({
               htmlFor="discord-strategy-filter"
               className="text-xs text-foreground/80"
             >
-              攻略 取り込みフィルタワード（任意）
+              攻略チャンネルの取り込みフィルタワード（任意）
             </Label>
             <Input
               id="discord-strategy-filter"
@@ -835,7 +835,7 @@ export function CategoryFormDialog({
               htmlFor="discord-video"
               className="text-xs text-foreground/80"
             >
-              Discord 動画チャンネルID（任意）
+              Discord 動画チャンネル ID（任意）
             </Label>
             {/* 動画ch だけ、フィルタワード説明にタイトル判定の有効化を明記 */}
             <Input
@@ -859,7 +859,7 @@ export function CategoryFormDialog({
               htmlFor="discord-video-filter"
               className="text-xs text-foreground/80"
             >
-              動画 取り込みフィルタワード（任意）
+              動画チャンネルの取り込みフィルタワード（任意）
             </Label>
             <Input
               id="discord-video-filter"
@@ -910,8 +910,7 @@ export function CategoryFormDialog({
               </summary>
               <p className="text-muted-foreground mt-1.5 text-[11px] leading-relaxed">
                 登録した URL は Discord 自動取り込みで今後取り込まれません。動画 /
-                攻略の ⋮ メニュー「今後取り込まない」で登録されます。「解除」で
-                再び取り込み対象に戻ります。
+                攻略の ⋮ メニュー「今後取り込まない」で登録されます。「解除」で再び取り込み対象に戻ります。
               </p>
               {blocklistLoading ? (
                 <p className="text-muted-foreground mt-2 text-[11px]">
@@ -1192,8 +1191,7 @@ export function CategoryFormDialog({
               )}
             </div>
             <p className="text-muted-foreground text-[11px] leading-relaxed">
-              YouTube から duration が取得できない動画 (限定公開等) があると
-              自動計算が欠落するため、手動値を入れるとそちらが優先表示されます。
+              YouTube から duration が取得できない動画 (限定公開等) があると自動計算が欠落するため、手動値を入れるとそちらが優先表示されます。
               空欄なら自動集計を使用。
             </p>
           </div>
@@ -1222,8 +1220,7 @@ export function CategoryFormDialog({
             <p className="text-muted-foreground text-[11px] leading-relaxed">
               カンマ区切りで複数指定可。コンテンツ名 (例: 「絶アレキサンダー」
               「リットアティン強襲戦」) や層指定 (例: 「M4S」) を入れておくと、
-              レポートの zone / タイトルにそれらが部分一致 (大小文字無視) した
-              ときに自動紐づけでこのカテゴリのものとして採用されます。
+              レポートの zone / タイトルにそれらが部分一致 (大小文字無視) したときに自動紐づけでこのコンテンツのものとして採用されます。
               標準キーワードでマッチしない独自命名レポートの救済用途。
             </p>
           </div>
@@ -1265,7 +1262,7 @@ export function CategoryFormDialog({
             ) : (
               <Save className="h-3.5 w-3.5" aria-hidden />
             )}
-            {busy ? "保存中..." : isEdit ? "更新" : "追加"}
+            {busy ? "保存中…" : isEdit ? "更新" : "追加"}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -192,15 +192,20 @@ export function Legend({
       {legend.map((l) => (
         <span key={l.symbol} className="inline-flex items-center gap-1.5">
           <span
+            // 凡例記号は設定画面で自由に編集できるため、長い値でも h-4 の
+            // chip を壊さないよう max-w + truncate + nowrap で抑える。
             className={
-              "inline-flex h-4 min-w-5 items-center justify-center rounded-sm border px-0.5 text-[11px] leading-none " +
+              "inline-flex h-4 min-w-5 max-w-[6rem] items-center justify-center truncate rounded-sm border px-0.5 text-[11px] whitespace-nowrap leading-none " +
               (ATT_TONE[l.symbol] ?? ATT_TONE_FALLBACK)
             }
+            title={l.symbol}
           >
             {l.symbol}
           </span>
           {l.label !== null && (
-            <span className="text-[11px] text-muted-foreground">{l.label}</span>
+            <span className="text-[11px] whitespace-nowrap text-muted-foreground">
+              {l.label}
+            </span>
           )}
         </span>
       ))}
@@ -222,7 +227,7 @@ export function Legend({
               title="運用ルール / 注意事項"
               aria-expanded={showTopText}
               aria-controls="legend-rules-panel"
-              className="inline-flex h-6 items-center gap-1 rounded-md border border-[var(--neon-violet)]/40 bg-[var(--neon-violet)]/8 px-2 text-[10px] tracking-normal text-[var(--neon-violet)]/90 transition-all hover:border-[var(--neon-violet)]/70 hover:bg-[var(--neon-violet)]/15 hover:shadow-[0_0_8px_-2px_rgba(167,139,250,0.55)]"
+              className="inline-flex h-6 items-center whitespace-nowrap gap-1 rounded-md border border-[var(--neon-violet)]/40 bg-[var(--neon-violet)]/8 px-2 text-[10px] tracking-normal text-[var(--neon-violet)]/90 transition-all hover:border-[var(--neon-violet)]/70 hover:bg-[var(--neon-violet)]/15 hover:shadow-[0_0_8px_-2px_rgba(167,139,250,0.55)]"
             >
               <MessageSquare className="h-3 w-3" aria-hidden />
               ルール
@@ -298,7 +303,7 @@ export function Legend({
                         }}
                         aria-label="運用ルール / 注意事項を編集 (override に保存)"
                         title="override として編集 (元サイトには影響しない、同期でも上書きされない)"
-                        className="inline-flex h-6 items-center gap-1 rounded-md border border-[var(--neon-violet)]/40 bg-[var(--neon-violet)]/10 px-2 text-[10px] tracking-normal text-[var(--neon-violet)]/90 transition-colors hover:border-[var(--neon-violet)]/70 hover:bg-[var(--neon-violet)]/20"
+                        className="inline-flex h-6 items-center whitespace-nowrap gap-1 rounded-md border border-[var(--neon-violet)]/40 bg-[var(--neon-violet)]/10 px-2 text-[10px] tracking-normal text-[var(--neon-violet)]/90 transition-colors hover:border-[var(--neon-violet)]/70 hover:bg-[var(--neon-violet)]/20"
                       >
                         <Pencil className="h-3 w-3" aria-hidden />
                         編集
@@ -361,7 +366,7 @@ export function Legend({
                           setDraft("");
                         }}
                         disabled={saving}
-                        className="inline-flex h-6 items-center gap-1 rounded-md border border-border/60 px-2 text-[10px] tracking-normal text-muted-foreground transition-colors hover:bg-secondary/40 disabled:opacity-50"
+                        className="inline-flex h-6 items-center whitespace-nowrap gap-1 rounded-md border border-border/60 px-2 text-[10px] tracking-normal text-muted-foreground transition-colors hover:bg-secondary/40 disabled:opacity-50"
                       >
                         <X className="h-3 w-3" aria-hidden />
                         キャンセル
@@ -391,7 +396,7 @@ export function Legend({
                           toast.success("override を保存しました");
                           router.refresh();
                         }}
-                        className="inline-flex h-6 items-center gap-1 rounded-md border border-[var(--neon-cyan)]/50 bg-[var(--neon-cyan)]/15 px-2 text-[10px] tracking-normal text-[var(--neon-cyan)] transition-colors hover:bg-[var(--neon-cyan)]/25 disabled:opacity-50"
+                        className="inline-flex h-6 items-center whitespace-nowrap gap-1 rounded-md border border-[var(--neon-cyan)]/50 bg-[var(--neon-cyan)]/15 px-2 text-[10px] tracking-normal text-[var(--neon-cyan)] transition-colors hover:bg-[var(--neon-cyan)]/25 disabled:opacity-50"
                       >
                         {saving ? (
                           <Loader2 className="h-3 w-3 animate-spin" aria-hidden />

@@ -195,13 +195,13 @@ export function FflogsSyncSection({
       const totalMatched = r.matched + r.sessionsMatched + bridged;
       toast.success(
         totalMatched > 0
-          ? `動画 ${r.matched} 件 / 過去予定 ${r.sessionsMatched} 件 に Logs URL を紐づけ` +
+          ? `動画 ${r.matched} 件 / 過去予定 ${r.sessionsMatched} 件に Logs URL を紐づけ` +
               (bridged > 0
                 ? ` · 日付登録 Logs から動画 ${bridged} 件に補完`
                 : "")
           : r.videosScanned === 0 && r.sessionsScanned === 0
             ? "logs_url 未設定の動画 / 過去予定なし"
-            : `合うレポートなし (報告 ${r.reportsScanned} / 動画 ${r.videosScanned} / 予定 ${r.sessionsScanned})`,
+            : `合うレポートなし (レポート ${r.reportsScanned} / 動画 ${r.videosScanned} / 予定 ${r.sessionsScanned})`,
       );
       // 連動完了直後 — session cookie は使われていれば server 側で
       // 自動削除されているはず。UI のステータスを再フェッチ。
@@ -303,7 +303,7 @@ export function FflogsSyncSection({
                 {oauthStatus?.connected && (
                   <span className="inline-flex items-center gap-1 rounded-sm border border-emerald-400/45 bg-emerald-400/10 px-1.5 py-px text-[9px] tracking-normal text-emerald-200">
                     <span className="inline-block h-1 w-1 rounded-full bg-emerald-400 shadow-[0_0_6px_rgb(52_211_153)]" />
-                    接続済
+                    接続済み
                   </span>
                 )}
               </div>
@@ -317,7 +317,7 @@ export function FflogsSyncSection({
                 {oauthStatus?.connected && (
                   <span className="inline-flex items-center gap-1 rounded-sm border border-emerald-400/45 bg-emerald-400/10 px-1.5 py-px text-[9px] tracking-normal text-emerald-200">
                     <span className="inline-block h-1 w-1 rounded-full bg-emerald-400 shadow-[0_0_6px_rgb(52_211_153)]" />
-                    接続済
+                    接続済み
                   </span>
                 )}
               </div>
@@ -360,15 +360,14 @@ export function FflogsSyncSection({
                     className="self-start inline-flex items-center gap-1.5 rounded-md border border-border/50 px-2.5 py-1.5 text-[10px] tracking-normal text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-rose-200 disabled:opacity-50"
                   >
                     <X className="h-3 w-3" aria-hidden />
-                    {disconnecting ? "切断中..." : "切断"}
+                    {disconnecting ? "切断中…" : "切断"}
                   </button>
                 </div>
               ) : (
                 <div className="flex flex-col gap-1.5">
                   <p className="text-[11px] leading-relaxed text-foreground/85">
                     FFLogs にログインして認可すると、Public / Unlisted /
-                    Private を含む自分のレポートを動画 / 過去予定に
-                    自動紐づけできます。
+                    Private を含む自分のレポートを動画 / 過去予定に自動紐づけできます。
                   </p>
                   <a
                     href="/api/auth/fflogs/start"
@@ -391,8 +390,7 @@ export function FflogsSyncSection({
                     >
                       fflogs.com/api/clients/
                     </a>
-                    {" "}で OAuth クライアントを作成）。リダイレクト URI には
-                    現在のドメイン{" "}
+                    {" "}で OAuth クライアントを作成）。リダイレクト URI には現在のドメイン{" "}
                     <code className="font-mono">/api/auth/fflogs/callback</code>{" "}
                     を登録。
                   </p>
@@ -416,7 +414,7 @@ export function FflogsSyncSection({
                 {cookieStatus?.set && (
                   <span className="inline-flex items-center gap-1 rounded-sm border border-amber-400/45 bg-amber-400/10 px-1.5 py-px text-[9px] tracking-normal text-amber-200">
                     <span className="inline-block h-1 w-1 rounded-full bg-amber-400 shadow-[0_0_6px_rgb(251_191_36)]" />
-                    セット済 (次回連動で消費)
+                    セット済み (次回連動で消費)
                   </span>
                 )}
               </div>
@@ -430,8 +428,7 @@ export function FflogsSyncSection({
               </p>
               <p className="text-[10px] leading-relaxed text-rose-200/85">
                 <strong>⚠ セキュリティ注意</strong>: cookie は FFLogs
-                アカウントの全権限を持ちます。漏れると当該アカウントに
-                自由にアクセスできてしまいます。リスクを最小化するため、
+                アカウントの全権限を持ちます。漏れると当該アカウントに自由にアクセスできてしまいます。リスクを最小化するため、
                 <strong>連動実行直後に自動削除</strong>される設計です
                 （ワンタイムユース）。次回紐づけ時に都度再貼り付けが必要。
               </p>
@@ -463,8 +460,7 @@ export function FflogsSyncSection({
                 </ol>
                 <p className="mt-1 ml-3.5 text-muted-foreground/75 leading-relaxed">
                   ※ Cookie の名前は FFLogs 側の実装で変わる可能性があるため、
-                  特定の cookie 名を探すのではなく <strong>Cookie ヘッダー
-                  全体</strong> をそのまま使うのが確実です。
+                  特定の cookie 名を探すのではなく <strong>Cookie ヘッダー全体</strong> をそのまま使うのが確実です。
                   <br />
                   ※ 値は{" "}
                   <code className="font-mono">name1=value1; name2=value2; ...</code>
@@ -540,7 +536,7 @@ export function FflogsSyncSection({
               <span className="text-xs">日次自動連動 (cron)</span>
               <span className="text-[9px] text-muted-foreground/60">
                 {cronEnabled === null
-                  ? "読み込み中..."
+                  ? "読み込み中…"
                   : cronEnabled
                     ? "ON (毎日 04:00 JST に自動で連動を実行)"
                     : "OFF (cron は何もせず skip)"}
@@ -583,7 +579,7 @@ export function FflogsSyncSection({
                 ) : (
                   <Link2 className="h-3.5 w-3.5" aria-hidden />
                 )}
-                {linkingLogs ? "連動中..." : "FFLogs と動画を連動"}
+                {linkingLogs ? "連動中…" : "FFLogs と動画を連動"}
               </Button>
             </div>
             {logsResult && (
@@ -647,7 +643,8 @@ export function FflogsSyncSection({
                             {logsResult.reportsDateRange && (
                               <li>
                                 レポート期間:{" "}
-                                <strong className="text-amber-200/80">
+                                {/* nowrap: 行頭「〜 2025-12-31」への分断防止。 */}
+                                <strong className="whitespace-nowrap text-amber-200/80">
                                   {logsResult.reportsDateRange.earliest}
                                   {" 〜 "}
                                   {logsResult.reportsDateRange.latest}
@@ -657,7 +654,7 @@ export function FflogsSyncSection({
                             {logsResult.videosDateRange && (
                               <li>
                                 未紐づけ動画期間:{" "}
-                                <span className="text-foreground/85">
+                                <span className="whitespace-nowrap text-foreground/85">
                                   {logsResult.videosDateRange.earliest}
                                   {" 〜 "}
                                   {logsResult.videosDateRange.latest}
@@ -667,7 +664,7 @@ export function FflogsSyncSection({
                             {logsResult.sessionsDateRange && (
                               <li>
                                 未紐づけ過去予定期間:{" "}
-                                <span className="text-foreground/85">
+                                <span className="whitespace-nowrap text-foreground/85">
                                   {logsResult.sessionsDateRange.earliest}
                                   {" 〜 "}
                                   {logsResult.sessionsDateRange.latest}
@@ -677,20 +674,17 @@ export function FflogsSyncSection({
                           </ul>
                           <div className="mt-1.5 flex flex-col gap-1 rounded-sm bg-secondary/30 px-2 py-1.5 text-[10px] leading-relaxed">
                             <p className="text-[10px] text-amber-200/90">
-                              想定される原因 — FFLogs API の制約：
+                              想定される原因 — FFLogs API の制約:
                             </p>
                             <p className="text-muted-foreground leading-relaxed">
-                              FFLogs v2 API は <strong>Public</strong> 設定の
-                              レポートしか自動取得できません（OAuth で本人認証
-                              していても <strong>Private (非公開)</strong> /{" "}
+                              FFLogs v2 API は <strong>Public</strong> 設定のレポートしか自動取得できません（OAuth で本人認証していても <strong>Private (非公開)</strong> /{" "}
                               <strong>Unlisted (限定公開)</strong> は API
                               では露出されない仕様）。レポート期間が
                               <strong> 古い日付に偏っている</strong>場合、
-                              最近のレポートは Public 以外の visibility に
-                              なっている可能性が高いです。
+                              最近のレポートは Public 以外の visibility になっている可能性が高いです。
                             </p>
                             <p className="text-muted-foreground leading-relaxed mt-1">
-                              対処：
+                              対処:
                             </p>
                             <ol className="ml-3.5 flex list-decimal flex-col gap-1 text-muted-foreground">
                               <li>
@@ -699,15 +693,13 @@ export function FflogsSyncSection({
                               </li>
                               <li>
                                 <strong>個別に手動紐づけ</strong>
-                                {" "}— スケジュール上の日付をクリックして
-                                メモポップオーバー最下部の{" "}
-                                <strong>FFLogs URL 欄</strong>に
-                                レポート URL を貼り付け
+                                {" "}— スケジュール上の日付をクリックしてメモポップオーバー最下部の{" "}
+                                <strong>FFLogs URL 欄</strong>にレポート URL を貼り付け
                               </li>
                               <li>
                                 <strong>表示名 / API キーが別人の可能性</strong>
-                                {" "}— 上の「v2 currentUser」が想定通りの
-                                ユーザーになっているか確認
+                                {" "}— 下の「詳細診断」を開いて「v2
+                                currentUser」が想定通りのユーザーになっているか確認
                               </li>
                             </ol>
                           </div>
@@ -725,7 +717,7 @@ export function FflogsSyncSection({
                               <span className="text-[var(--neon-cyan)]/70 transition-transform group-open/reports:rotate-90">
                                 ▸
                               </span>
-                              取得済みレポート (新しい順 上位
+                              取得済みレポート (新しい順・上位
                               {logsResult.reportSamples.length} 件)
                             </span>
                           </summary>

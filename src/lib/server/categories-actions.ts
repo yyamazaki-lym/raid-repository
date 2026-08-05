@@ -1539,14 +1539,14 @@ export async function setScheduleUrlAction(
   const auth = await assertAdminResult();
   if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
   const url = rawUrl.trim();
-  if (!url) return { ok: false, reason: "URLを入力してください" };
+  if (!url) return { ok: false, reason: "URL を入力してください" };
   if (!/^https?:\/\//i.test(url)) {
     return { ok: false, reason: "http:// または https:// で始めてください" };
   }
   try {
     new URL(url);
   } catch {
-    return { ok: false, reason: "URLの形式が正しくありません" };
+    return { ok: false, reason: "URL の形式が正しくありません" };
   }
   const supabase = await createClient();
   const { error } = await supabase
