@@ -40,10 +40,14 @@ export async function GET(req: NextRequest) {
 
   const { data, error } = await supabase.auth.exchangeCodeForSession(code);
   if (error || !data.user) {
-    return redirectTo(req, "/login", {
-      error: "exchange_failed",
-      detail: error?.message ?? "no_user",
-    });
+    // 2026-08-05 監査 L-7: Supabase の内部エラー文字列を `?detail=` で
+    // 返していたため、ブラウザ履歴 / URL バー / referer に残っていた。
+    // 診断情報はサーバーログにだけ残す。
+    console.error(
+      "[auth/callback] exchangeCodeForSession failed",
+      error?.message ?? "no_user",
+    );
+    return redirectTo(req, "/login", { error: "exchange_failed" });
   }
 
   const discordIdentity = data.user.identities?.find(

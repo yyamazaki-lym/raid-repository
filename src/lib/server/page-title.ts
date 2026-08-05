@@ -2,6 +2,7 @@ import "server-only";
 import { decodeHtmlEntities } from "@/lib/html-entities";
 import { parseYouTubeId } from "@/lib/youtube";
 import { isPublicHttpUrl } from "@/lib/url-safe";
+import { safeFetch } from "./safe-fetch";
 
 export type PageMeta = {
   title: string | null;
@@ -63,6 +64,11 @@ export async function readBodyWithLimit(
  * `redirect: "manual"` で初手 fetch → 3xx なら `Location` を再度
  * `isPublicHttpUrl` で検証して手動で 1 段 follow する。最大 hop 数で
  * リダイレクトループから守る。
+ *
+ * 2026-08-05 監査 H-3: 各 hop の実 fetch を `safeFetch` に置換。
+ * `isPublicHttpUrl` はホスト名の解決先までは見ないため、これ単独では
+ * `http://127.0.0.1.nip.io/` 系を初手でも redirect 先でも通していた。
+ * `safeFetch` が解決済み IP を検証 + ピン留めするので、両方が塞がる。
  */
 export async function fetchWithSafeRedirect(
   url: string,
@@ -71,7 +77,7 @@ export async function fetchWithSafeRedirect(
 ): Promise<Response | null> {
   let current = url;
   for (let hop = 0; hop < maxHops; hop++) {
-    const res = await fetch(current, {
+    const res = await safeFetch(current, {
       ...init,
       redirect: "manual",
       cache: "no-store",

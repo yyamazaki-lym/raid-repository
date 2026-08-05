@@ -1,5 +1,6 @@
+import "server-only";
 import { cache } from "react";
-import { createClient } from "./server";
+import { createClient, createSupabaseServiceRoleClient } from "./server";
 import { SCHEDULE_TOP_TEXT_OVERRIDE_KEY } from "@/lib/schedule-top-text-keys";
 import {
   NATIVE_DEFAULT_END_TIME_KEY,
@@ -10,6 +11,28 @@ import {
   SCHEDULE_SOURCE_MODE_KEY,
   SCHEDULE_URL_KEY,
 } from "@/lib/schedule/settings-keys";
+
+/**
+ * app_settings **読み取り専用** の client を返す (2026-08-05 監査 H-2)。
+ *
+ * この表はサーバー設定であって「セッションの有無に関わらず読む」必要がある:
+ *   - cron 4 本はユーザー cookie を持たないので anon ロールになる
+ *   - PUBLIC_DEMO_MODE の匿名訪問者も TOP 描画で schedule_url 等を要る
+ *
+ * H-2 で anon の SELECT を閉じたため、従来の cookie ベース `createClient()`
+ * のままだとこの 2 経路が壊れる。読み取りは service role に寄せ、書き込みは
+ * 従来どおり RLS の is_admin ポリシーで守る (書き込み経路はこの関数を使わない)。
+ *
+ * service role key 未設定の fork では cookie ベースに graceful degrade する
+ * (ログイン済みメンバーの閲覧は authenticated ロールで従来どおり動く)。
+ */
+function settingsReadClient() {
+  try {
+    return createSupabaseServiceRoleClient();
+  } catch {
+    return createClient();
+  }
+}
 
 /**
  * 1.9 (2026-04-28) TODO #11: 複数 app_settings キーを 1 round-trip で
@@ -24,7 +47,7 @@ export const fetchAppSettings = cache(
   async (keys: string[]): Promise<Record<string, string | null>> => {
     if (keys.length === 0) return {};
     try {
-      const supabase = await createClient();
+      const supabase = await settingsReadClient();
       const { data, error } = await supabase
         .from("app_settings")
         .select("key, value")
@@ -110,7 +133,7 @@ export async function getPortalSetting(key: string): Promise<string | null> {
 export const fetchAppSetting = cache(
   async (key: string): Promise<string | null> => {
     try {
-      const supabase = await createClient();
+      const supabase = await settingsReadClient();
       const { data, error } = await supabase
         .from("app_settings")
         .select("value")

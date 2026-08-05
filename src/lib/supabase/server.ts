@@ -1,3 +1,10 @@
+// 2026-08-05 監査 L-1: service_role key を読むモジュールなので明示的に
+// クライアントバンドルから締め出す。従来は冒頭の `next/headers` import が
+// 暗黙のガードとして機能していただけで、cookie を使わない
+// `createSupabaseServiceRoleClient` を別ファイルへ切り出した瞬間にその
+// ガードが消える構造だった (他のシークレット取扱モジュールは全て付与済みで、
+// ここだけ非対称だった)。
+import "server-only";
 import { createServerClient } from "@supabase/ssr";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";

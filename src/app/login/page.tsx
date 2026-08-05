@@ -11,9 +11,14 @@ export const dynamic = "force-dynamic";
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ next?: string; error?: string; detail?: string }>;
+  // 2026-08-05 監査 L-7: `detail` (Supabase の内部エラー文字列) の受け渡しを
+  // 廃止。診断はサーバーログ側に寄せた。クエリ由来の任意文字列をエラー
+  // ボックスに描画する口でもあったため、パラメータごと落としている
+  // (React のエスケープで XSS にはならないが、攻撃者が任意の「案内文」を
+  // 出せる状態だった)。表示する文言は `describeError` の既知集合のみ。
+  searchParams: Promise<{ next?: string; error?: string }>;
 }) {
-  const { next, error, detail } = await searchParams;
+  const { next, error } = await searchParams;
   const errorMessage = describeError(error);
 
   return (
@@ -37,7 +42,6 @@ export default async function LoginPage({
           className="w-full rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-center text-xs text-destructive"
         >
           {errorMessage}
-          {detail && <div className="mt-1 opacity-70">{detail}</div>}
         </div>
       )}
     </main>

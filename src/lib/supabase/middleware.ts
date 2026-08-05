@@ -36,10 +36,35 @@ export async function updateSession(
   // 「downstream の render が `headers()` で読む値」を決定する。
   initialRequestHeaders?: Headers,
 ) {
-  const nextInit = initialRequestHeaders
-    ? { request: { headers: initialRequestHeaders } }
-    : { request };
-  let response = NextResponse.next(nextInit);
+  /**
+   * `NextResponse.next({ request: { headers } })` の `headers` は「downstream の
+   * render が `headers()` / `cookies()` で読む値」を決める。cookie は Cookie
+   * ヘッダそのもの (Next 16 docs `proxy.md` "Using cookies": *Cookies are regular
+   * headers. On a `Request`, they are stored in the `Cookie` header.*) なので、
+   * refresh でローテーションした cookie を下流に届けるには **setAll のたびに**
+   * `request.headers` から作り直す必要がある。
+   *
+   * 2026-08-05 監査 M-2: ここを初回スナップショットの使い回しにしていたため、
+   * Supabase がトークンをローテーションした当該リクエストで Server Component
+   * 側が失効済み access token + 消費済み refresh token を受け取っていた。
+   * proxy は「認証済み」と判定するのに `requireDiscordMember()` は `/login` へ
+   * redirect する不整合が起き、refresh token 再利用検知の猶予を外れると
+   * セッション一族ごと失効して強制ログアウトになる。
+   */
+  const buildNextInit = () => {
+    if (!initialRequestHeaders) return { request };
+    // `request.cookies.set()` は request.headers の Cookie を書き換えるので、
+    // 最新の request.headers を土台にしたうえで、proxy.ts が足した追加ヘッダ
+    // (CSP nonce / Content-Security-Policy) だけを上書きで戻す。
+    const headers = new Headers(request.headers);
+    for (const [key, value] of initialRequestHeaders) {
+      if (key.toLowerCase() === "cookie") continue;
+      headers.set(key, value);
+    }
+    return { request: { headers } };
+  };
+
+  let response = NextResponse.next(buildNextInit());
 
   // D-4 (2026-07-12 監査): `!` アサーションを fail-fast 検証に置換。
   const { url: supabaseUrl, anonKey } = requireSupabaseEnv();
@@ -55,7 +80,7 @@ export async function updateSession(
           for (const { name, value } of cookiesToSet) {
             request.cookies.set(name, value);
           }
-          response = NextResponse.next(nextInit);
+          response = NextResponse.next(buildNextInit());
           for (const { name, value, options } of cookiesToSet) {
             response.cookies.set(name, value, options);
           }
@@ -64,15 +89,27 @@ export async function updateSession(
     },
   );
 
-  const { data } = await supabase.auth.getClaims();
-
-  let user: AuthenticatedUser | null = null;
-  if (data?.claims) {
-    user = {
+  const readClaims = async (): Promise<AuthenticatedUser | null> => {
+    const { data } = await supabase.auth.getClaims();
+    if (!data?.claims) return null;
+    return {
       id: data.claims.sub,
       app_metadata: (data.claims.app_metadata ?? {}) as UserAppMetadata,
     };
-  }
+  };
 
-  return { user, response };
+  const user = await readClaims();
+
+  return {
+    user,
+    supabase,
+    readClaims,
+    /**
+     * `response` は `setAll` のたびに差し替わる。呼び出し側が
+     * `refreshSession()` 等で cookie を更新したあとに最新の response を
+     * 取れるよう、参照ではなく getter で返す (2026-08-05 監査 H-1:
+     * proxy 側のメンバーシップ再検証が cookie を書き戻すため)。
+     */
+    getResponse: () => response,
+  };
 }

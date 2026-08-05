@@ -1,3 +1,10 @@
+// 2026-08-05 監査 L-2: `KV_REST_API_TOKEN` / `UPSTASH_REDIS_REST_TOKEN` を
+// 参照するモジュールだが、クライアント向けユーティリティが同居する
+// `src/lib/` 直下にあり、`next/headers` のような暗黙ガードも無かった。
+// 誤って client から import してもビルドが通ってしまい、Redis rate limit が
+// 無言で in-memory fallback に落ちる (= DoS 耐性の劣化) 事故を防ぐ。
+import "server-only";
+
 /**
  * TODO #40 (2.1) → TODO #82 (2.4, 2026-06-09): proxy.ts 用の rate limiter。
  *
