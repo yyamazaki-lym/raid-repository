@@ -927,13 +927,21 @@ ALTER TABLE public.native_schedule_session_logs  ENABLE ROW LEVEL SECURITY;
 --
 -- ただし PUBLIC_DEMO_MODE=true のデプロイ (TODO #8 のモックサイト) は
 -- 匿名ゲストが anon key で読む前提なので、そこだけ anon SELECT を残す。
--- **demo プロジェクトの DB で 1 度だけ** 次を実行しておくこと:
 --
---     ALTER DATABASE postgres SET app.public_demo = 'true';
---     -- 反映は新規接続から。取り消しは RESET:
---     -- ALTER DATABASE postgres RESET app.public_demo;
+-- このフラグは **この DO ブロックが適用時に 1 度読むだけ** で、アプリの
+-- ランタイムは参照しない (生成された policy が永続する)。したがって永続設定は
+-- 不要で、schema.sql と同一セッションで SET すれば足りる:
 --
--- 本番プロジェクトでは未設定のままにする (= authenticated 限定)。
+--     psql "$URL" --single-transaction \
+--       -c "SET app.public_demo = 'true';" -f supabase/schema.sql
+--
+-- `deploy-database-demo.yml` がこの形で自動適用するので手動作業は不要。
+--
+-- ⚠ `ALTER DATABASE ... SET app.public_demo` は使えない。Supabase の postgres
+-- ロールは superuser ではなく `permission denied to set parameter` で落ちる
+-- (2026-08-05 の初回デプロイで実際に踏んだ)。
+--
+-- 本番プロジェクトでは SET せずに適用する (= authenticated 限定)。
 -- `current_setting(..., true)` は missing_ok なので未設定でもエラーにならない。
 --
 -- なお `app_settings` はアプリ側の読み取りを service role に寄せた

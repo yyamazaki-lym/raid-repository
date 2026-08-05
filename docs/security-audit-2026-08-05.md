@@ -61,19 +61,28 @@ footgun なので CI に組み込んだ。手動実行は不要。
   誤ってフラグが立つと 19 テーブルが未認証読み取りに戻るが、**サイトは正常に見えるので
   気付けない**。デプロイのたびに検知する。
 
-DB 名は接続先で異なりうるので `current_database()` から組み立てている。
-`ALTER DATABASE ... SET` は既存セッションに反映されないため、GUC 設定と schema.sql 適用は
-別ステップ（別接続）に分けてある。ローカル PG16 で以下を実測確認済み:
-`--single-transaction` 下でも通ること、新規接続で読めること、`RESET` で戻ること。
+フラグは **schema.sql と同一セッションの `SET`** で渡す。
 
-手動で切り替える場合は次のとおり。
-
-```sql
--- 有効化（デモのみ）
-ALTER DATABASE postgres SET app.public_demo = 'true';
--- 無効化
-ALTER DATABASE postgres RESET app.public_demo;
+```bash
+psql "$URL" --single-transaction -c "SET app.public_demo = 'true';" -f supabase/schema.sql
 ```
+
+**当初は `ALTER DATABASE ... SET` にしていたが、初回デプロイで失敗した**
+（`permission denied to set parameter "app.public_demo"`）。Supabase の `postgres` ロールは
+superuser ではないため、データベースレベルの GUC 設定ができない。
+
+そもそもこのフラグは §7-0 の DO ブロックが**適用時に 1 度読むだけ**で、アプリのランタイムは
+参照しない（生成された policy が永続する）。永続設定にする必要がなかった。
+psql は複数の `-c` / `-f` を同一セッションで順に実行するので、先頭の `SET` が後続の `-f` から
+見える。DB に痕跡も残らない。
+
+ローカル PG16 に **非 superuser ロールを作って** 実測確認済み:
+`ALTER DATABASE` が同じエラーで落ちること、セッション `SET` は通ること、
+anon SELECT ポリシー数が demo で 19 本 / 本番で 0 本に正しく切り替わること、
+再適用で戻せること、`current_setting` が DB に残らないこと。
+
+なお失敗したのは schema 適用より前のステップだったため、demo DB は変更されず旧スキーマのまま
+だった（デモサイトは無停止）。本番は同じ merge で成功し、anon SELECT == 0 の表明も通っている。
 
 ### M-1 を保留した理由
 
