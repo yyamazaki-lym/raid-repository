@@ -1608,11 +1608,15 @@ export async function excludePastSessionAction(input: {
     return { ok: false, reason: dbError("過去ログからの除外", updErr) };
   }
   if (marked) {
-    try {
-      revalidatePath("/");
-    } catch {
-      // best-effort
-    }
+    // revalidatePath("/") は呼ばない (2026-08-24 実機フィードバック)。
+    // sync mode の TOP 描画は character-sheets の外部 fetch (Data Cache
+    // 60s + tag) を含み、path 無効化に巻き込むと action 応答のページ再
+    // 描画がコールド同期 fetch をブロック待ちする。外部サイトが 8s
+    // timeout を超えると fetch-failed カード (「スケジュール取得失敗」)
+    // に落ち、60s 後の revalidate まで表示が壊れる + 削除完了までが遅い
+    // という二重の劣化になっていた。今回の変更は DB (`excluded_at`) のみ
+    // で外部 HTML は無関係なので、`deleteStoredPastSession` と同じく
+    // クライアント側の `router.refresh()` (warm cache 再描画) に任せる。
     return { ok: true, method: "excluded" };
   }
 
@@ -1641,11 +1645,7 @@ export async function excludePastSessionAction(input: {
   if (insErr) {
     return { ok: false, reason: dbError("過去ログからの除外", insErr) };
   }
-  try {
-    revalidatePath("/");
-  } catch {
-    // best-effort
-  }
+  // revalidatePath は上の marked 分岐と同じ理由で呼ばない。
   return { ok: true, method: "excluded" };
 }
 
@@ -1691,11 +1691,9 @@ export async function restoreExcludedPastSession(rawDate: string): Promise<{
     .maybeSingle();
   if (error) return { ok: false, reason: dbError("除外の解除", error) };
   if (!updated) return { ok: false, reason: "対象の行が見つかりませんでした" };
-  try {
-    revalidatePath("/");
-  } catch {
-    // best-effort
-  }
+  // revalidatePath は呼ばない (`excludePastSessionAction` の sync 分岐と
+  // 同じ理由 — 外部 fetch のコールド再取得を誘発する)。設定ダイアログが
+  // `router.refresh()` を発火する。
   return { ok: true };
 }
 
