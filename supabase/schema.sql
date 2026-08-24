@@ -629,6 +629,28 @@ ALTER TABLE public.schedule_past_sessions
   ADD CONSTRAINT schedule_past_sessions_source_check
   CHECK (source IN ('discord','manual','snapshot'));
 
+-- 2.9 (2026-08-24): 「実施しなかったのに記録された過去日程」を過去ログから
+-- 外すための除外マーカー (ユーザー要望: 取り消し忘れで記録された日を消す)。
+--
+-- なぜ DELETE ではなく列マーカーなのか:
+--   (a) 行を消すと `schedule_past_session_logs` の FK ON DELETE CASCADE で
+--       手動紐づけした FFLogs URL まで巻き添えになる (再入力でしか復旧不能)
+--   (b) 消しても翌日の snapshot cron (21:50 JST) が char-sheets の DECISION 行
+--       を再 UPSERT し、Discord 取り込みも同じ raw_date を再 insert しうるため
+--       「消したのに翌朝復活する」(category_discord_blocklist を導入したのと
+--       同型の問題)。excluded_at は snapshot / import の書き込み payload に
+--       含まれないため上書きされず、除外が永続する
+--   (c) 解除 (NULL 戻し) で出席スナップショットも FFLogs URL もそのまま復帰
+--
+-- 表示側は `fetchStoredPastSessions()` が `excluded_at IS NULL` で絞る。
+-- 除外された raw_date は「実開催の証拠なし」扱いになるので、char-sheets 由来
+-- の過去行も `mergeStoredPastSessions` の verified 判定から落ちて消える。
+--
+-- native mode (`native_schedule_sessions`) 側は status='CANCELLED' が同じ役割を
+-- 果たすため、この列は sync mode 専用。
+ALTER TABLE public.schedule_past_sessions
+  ADD COLUMN IF NOT EXISTS excluded_at timestamptz;
+
 -- ---- 5d. schedule_past_session_logs (multi-URL per date) ------------
 -- TODO #64 (2.1, 2026-05-02 part5): replaces the legacy
 -- `schedule_past_sessions.logs_url` (single text) + `logs_url_source`

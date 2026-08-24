@@ -1880,7 +1880,11 @@ async function linkReportsToSessions(
 
   const { data: sessions } = await supabase
     .from("schedule_past_sessions")
-    .select("raw_date, parsed_date");
+    .select("raw_date, parsed_date")
+    // 2.9 (2026-08-24): 過去ログから除外した日 (実施しなかった日) は
+    // auto 紐づけの対象外。除外中の日付にログが付くと、解除したときに
+    // 身に覚えのない FFLogs バッジが復活する。
+    .is("excluded_at", null);
   if (!sessions || sessions.length === 0) {
     return { scanned: 0, matched: 0, details: [] };
   }

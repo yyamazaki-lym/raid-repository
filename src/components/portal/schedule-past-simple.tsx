@@ -14,7 +14,9 @@ import {
 import { jstTodayStartMs } from "@/lib/schedule/jst-cutoff";
 import type { ScheduleSession } from "@/lib/schedule/next-session";
 import type { SessionLogEntry } from "@/lib/schedule/session-logs";
+import type { ScheduleSourceMode } from "@/lib/schedule/source-mode";
 import type { SessionVideoLink } from "@/lib/server/session-video-link";
+import { PastSessionRemoveButton } from "./schedule/past-session-remove-button";
 import { SessionActionIcons } from "./schedule/session-action-icons";
 import { SessionMemoDot } from "./schedule/session-memo-dot";
 import {
@@ -54,6 +56,8 @@ export function SchedulePastSimple({
   sessionVideoLinks,
   sessionLogsByDate,
   initialMemosByDate = {},
+  mode = "sync",
+  isAdmin = false,
 }: {
   sessions: ScheduleSession[];
   holidays?: JapaneseHolidaysMap;
@@ -66,6 +70,16 @@ export function SchedulePastSimple({
   sessionLogsByDate?: Record<string, SessionLogEntry[]>;
   /** TODO #11: server prefetched memos (rawDate → memos[]) */
   initialMemosByDate?: Record<string, ScheduleSessionMemo[]>;
+  /**
+   * 2.9 (2026-08-24): スケジュールソースモード。チップの削除ボタン
+   * (`PastSessionRemoveButton`) の確認文言分岐に使う。
+   */
+  mode?: ScheduleSourceMode;
+  /**
+   * 2.9 (2026-08-24): admin role 持ちか。true のときだけチップに
+   * 「実施しなかった日を過去ログから消す」ゴミ箱アイコンを出す。
+   */
+  isAdmin?: boolean;
 }) {
   // TODO #11 phase 7: 親で 1 channel だけ subscribe (旧: 各 DateChip が個別)。
   const { memosByDate, refetchAll: refetchMemos } =
@@ -117,6 +131,8 @@ export function SchedulePastSimple({
             sessionLogs={sessionLogsByDate?.[s.rawDate] ?? EMPTY_SESSION_LOGS}
             memos={memosByDate[s.rawDate] ?? EMPTY_MEMOS}
             onRefreshMemos={refetchMemos}
+            mode={mode}
+            isAdmin={isAdmin}
           />
         ))}
       </ul>
@@ -131,6 +147,8 @@ function DateChip({
   sessionLogs,
   memos,
   onRefreshMemos,
+  mode,
+  isAdmin,
 }: {
   session: ScheduleSession;
   holidays?: JapaneseHolidaysMap;
@@ -150,6 +168,10 @@ function DateChip({
   memos: ScheduleSessionMemo[];
   /** Server-action 後の保険 refetch (旧 useRealtimeScheduleMemos の refetch 互換)。 */
   onRefreshMemos: () => Promise<void>;
+  /** 削除ボタンの確認文言分岐用 (native = 中止 / sync = 除外)。 */
+  mode: ScheduleSourceMode;
+  /** admin のときだけ削除 (ゴミ箱) アイコンを描画。 */
+  isAdmin: boolean;
 }) {
   // Ref to the popover so the (separately-rendered) memo dot can
   // open it. Keeping the dot outside the popover wrapper preserves
@@ -253,6 +275,23 @@ function DateChip({
         className="ml-0.5"
         onClick={() => popoverRef.current?.toggle()}
       />
+      {/* 2.9 (2026-08-24): admin のみ。実施しなかったのに記録された日を
+          チップから直接消せるようにする (詳細表と同じ Server Action)。
+          チップは幅がタイトなので compact サイズ。 */}
+      {isAdmin && (
+        <PastSessionRemoveButton
+          rawDate={session.rawDate}
+          displayDate={`${monthDay}（${session.dayOfWeek}）`}
+          mode={mode}
+          sessionDetails={{
+            parsedDate: session.date.toISOString(),
+            startTime: session.startTime,
+            endTime: session.endTime,
+            dayOfWeek: session.dayOfWeek,
+          }}
+          size="compact"
+        />
+      )}
     </li>
   );
 }

@@ -15,6 +15,7 @@ import {
   SessionMemoPopover,
   type SessionMemoPopoverHandle,
 } from "./session-memo-popover-lazy";
+import { PastSessionRemoveButton } from "./schedule/past-session-remove-button";
 import {
   useRealtimeAllScheduleMemos,
   type ScheduleSessionMemo,
@@ -1004,6 +1005,25 @@ function SessionRow({
                 sessionLogs={sessionLogs}
               />
             )}
+          {/* 2.9 (2026-08-24): 過去ログの admin 専用ゴミ箱。実施しなかったのに
+              取り消し忘れで記録された日を消すための導線 (詳細は
+              `past-session-remove-button.tsx`)。過去行 (`isPast`) の admin に
+              だけ出す — 未来 / 当日行は候補日の中止 (確定列の status toggle) で
+              扱うので二重の導線を作らない。sync / native 両モードで表示し、
+              消し方の分岐は Server Action 側に寄せている。 */}
+          {isPast && isAdmin && (
+            <PastSessionRemoveButton
+              rawDate={session.rawDate}
+              displayDate={session.rawDate.split(" ")[0] ?? session.rawDate}
+              mode={mode}
+              sessionDetails={{
+                parsedDate: session.date.toISOString(),
+                startTime: session.startTime,
+                endTime: session.endTime,
+                dayOfWeek: session.dayOfWeek,
+              }}
+            />
+          )}
           </span>
         </div>
       </th>

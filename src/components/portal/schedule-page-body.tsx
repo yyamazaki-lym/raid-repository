@@ -284,6 +284,8 @@ export function SchedulePageBody({
           sessionVideoLinks={sessionVideoLinks}
           sessionLogsByDate={sessionLogsByDate}
           initialMemosByDate={initialMemosByDate}
+          mode={mode}
+          isAdmin={isAdmin}
         />
       )}
 
