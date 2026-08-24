@@ -11,9 +11,11 @@ import {
   type PostedAtBackfillResult,
 } from "./discord-postedat-backfill";
 import {
+  fetchExcludedPastSessions,
   importDiscordScheduleHistory,
   type ScheduleHistoryImportResult,
 } from "./discord-schedule";
+import { getScheduleSourceMode } from "@/lib/schedule/source-mode";
 import { runScheduleSnapshot } from "./schedule-snapshot";
 import {
   linkFflogsReportsToVideos,
@@ -1452,7 +1454,16 @@ export async function countStoredPastSessions(): Promise<{
   reason?: string;
   count: number;
   /** Recent rows for UI inspection / per-row deletion. */
-  recentRows: { rawDate: string; parsedDate: string; source: string | null }[];
+  recentRows: {
+    rawDate: string;
+    parsedDate: string;
+    source: string | null;
+    /**
+     * 2.9 (2026-08-24): 過去ログから除外中の行は一覧でもそう分かるように
+     * 印を返す (除外は行削除ではなくマーカーなのでここには残り続ける)。
+     */
+    excludedAt: string | null;
+  }[];
 }> {
   // P3-b (2026-06-19 監査): 兄弟 action (snapshotScheduleNow / importPastSchedule
   // FromDiscord / deleteStoredPastSession 等) と揃えて admin gate を追加。read-only
@@ -1484,7 +1495,7 @@ export async function countStoredPastSessions(): Promise<{
   // determined to be non-events).
   const { data } = await supabase
     .from("schedule_past_sessions")
-    .select("raw_date, parsed_date, source")
+    .select("raw_date, parsed_date, source, excluded_at")
     .order("parsed_date", { ascending: false })
     .limit(20);
   return {
@@ -1494,6 +1505,7 @@ export async function countStoredPastSessions(): Promise<{
       rawDate: r.raw_date as string,
       parsedDate: r.parsed_date as string,
       source: (r.source as string | null) ?? null,
+      excludedAt: (r.excluded_at as string | null) ?? null,
     })),
   };
 }
@@ -1520,6 +1532,170 @@ export async function deleteStoredPastSession(rawDate: string): Promise<{
     .delete()
     .eq("raw_date", trimmed);
   if (error) return { ok: false, reason: dbError("過去予定削除", error) };
+  return { ok: true };
+}
+
+/**
+ * 2.9 (2026-08-24): 過去ログに載ってしまった「実施しなかった日」を消す
+ * Server Action (ユーザー要望: 取り消しを忘れて記録された日を消したい)。
+ *
+ * スケジュールソースモードで消し方が変わるが、呼び出し側 (過去ログの
+ * ゴミ箱アイコン) は 1 つの action を叩くだけで済むようここで分岐する:
+ *
+ * - `native`: `native_schedule_sessions.status` を `CANCELLED` にする。
+ *   一覧 fetch が CANCELLED を除外するので過去ログから消え、出欠データは
+ *   残る。復帰は設定ダイアログの「中止した日程」セクションから。
+ * - `sync` (既定): `schedule_past_sessions.excluded_at` に印を付ける。
+ *   行を消すと (a) FFLogs URL が FK CASCADE で巻き添えになり、(b) 翌日の
+ *   snapshot / Discord 取り込みが同じ raw_date を再挿入して復活するため、
+ *   マーカー方式にしている (詳細は `supabase/schema.sql` 5c)。まだ
+ *   snapshot されていない日 (行が無い) は `sessionDetails` から
+ *   `source='manual'` の除外済みプレースホルダ行を作る。
+ *
+ * 戻り値の `method` は呼び出し側の toast 文言 (「中止」/「除外」) 用。
+ */
+export async function excludePastSessionAction(input: {
+  rawDate: string;
+  /** 行が未作成の sync mode 用。無い場合は行が既存でなければ失敗する。 */
+  sessionDetails?: {
+    parsedDate: string;
+    startTime: string;
+    endTime: string;
+    dayOfWeek: string;
+  };
+}): Promise<
+  | { ok: true; method: "native-cancelled" | "excluded" }
+  | { ok: false; reason: string }
+> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
+  const rawDate = input.rawDate?.trim();
+  if (!rawDate) return { ok: false, reason: "日付が空です" };
+
+  const supabase = await createClient();
+  const mode = await getScheduleSourceMode();
+
+  if (mode === "native") {
+    // native の過去ログは native_schedule_sessions のみが供給源。
+    // status='CANCELLED' で一覧から外れ、設定ダイアログから復帰できる。
+    const { data: updated, error } = await supabase
+      .from("native_schedule_sessions")
+      .update({ status: "CANCELLED" })
+      .eq("raw_date", rawDate)
+      .select("id")
+      .maybeSingle();
+    if (error) return { ok: false, reason: dbError("日程の中止", error) };
+    if (!updated) {
+      return { ok: false, reason: "対象の日程が見つかりませんでした" };
+    }
+    try {
+      revalidatePath("/");
+    } catch {
+      // best-effort
+    }
+    return { ok: true, method: "native-cancelled" };
+  }
+
+  // sync mode: 既存行があれば excluded_at を立てる。
+  const nowIso = new Date().toISOString();
+  const { data: marked, error: updErr } = await supabase
+    .from("schedule_past_sessions")
+    .update({ excluded_at: nowIso })
+    .eq("raw_date", rawDate)
+    .select("raw_date")
+    .maybeSingle();
+  if (updErr) {
+    return { ok: false, reason: dbError("過去ログからの除外", updErr) };
+  }
+  if (marked) {
+    try {
+      revalidatePath("/");
+    } catch {
+      // best-effort
+    }
+    return { ok: true, method: "excluded" };
+  }
+
+  // 行が無いケース (snapshot 前 / Discord 通知なしで char-sheets にだけ
+  // 載っている日)。除外済みのプレースホルダ行を作っておけば、後から
+  // snapshot / 取り込みが同じ raw_date を触っても excluded_at は残る。
+  const details = input.sessionDetails;
+  if (!details) {
+    return {
+      ok: false,
+      reason:
+        "対象の過去日程が見つかりませんでした — セッション情報を含めて再度お試しください",
+    };
+  }
+  const { error: insErr } = await supabase
+    .from("schedule_past_sessions")
+    .insert({
+      raw_date: rawDate,
+      parsed_date: details.parsedDate,
+      start_time: details.startTime,
+      end_time: details.endTime,
+      day_of_week: details.dayOfWeek,
+      source: "manual",
+      excluded_at: nowIso,
+    });
+  if (insErr) {
+    return { ok: false, reason: dbError("過去ログからの除外", insErr) };
+  }
+  try {
+    revalidatePath("/");
+  } catch {
+    // best-effort
+  }
+  return { ok: true, method: "excluded" };
+}
+
+/**
+ * 2.9 (2026-08-24): 過去ログから除外中の日付一覧 (設定ダイアログの解除 UI)。
+ * `excludePastSessionAction` の sync 経路で付けた `excluded_at` 印を持つ行のみ。
+ * native mode の中止 (`status='CANCELLED'`) は別セクション
+ * (`NativeCancelledSessionsSection`) が担当する。
+ */
+export async function listExcludedPastSessions(): Promise<{
+  ok: boolean;
+  reason?: string;
+  rows: {
+    rawDate: string;
+    parsedDate: string;
+    source: string | null;
+    excludedAt: string;
+  }[];
+}> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です", rows: [] };
+  return { ok: true, rows: await fetchExcludedPastSessions() };
+}
+
+/**
+ * 2.9 (2026-08-24): 除外 (`excluded_at`) を解除して過去ログに戻す。
+ * 出席スナップショットも FFLogs URL も行に残っているので、そのまま復活する。
+ */
+export async function restoreExcludedPastSession(rawDate: string): Promise<{
+  ok: boolean;
+  reason?: string;
+}> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
+  const trimmed = rawDate?.trim();
+  if (!trimmed) return { ok: false, reason: "raw_date is empty" };
+  const supabase = await createClient();
+  const { data: updated, error } = await supabase
+    .from("schedule_past_sessions")
+    .update({ excluded_at: null })
+    .eq("raw_date", trimmed)
+    .select("raw_date")
+    .maybeSingle();
+  if (error) return { ok: false, reason: dbError("除外の解除", error) };
+  if (!updated) return { ok: false, reason: "対象の行が見つかりませんでした" };
+  try {
+    revalidatePath("/");
+  } catch {
+    // best-effort
+  }
   return { ok: true };
 }
 

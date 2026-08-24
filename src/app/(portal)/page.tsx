@@ -169,6 +169,11 @@ export default async function SchedulePage() {
         hasUltimateClear={hasUltimateClear}
         topTextOverride={topTextOverride}
         initialMemosByDate={initialMemosByDate}
+        // 2.9 (2026-08-24): sync mode でも admin 判定を渡す。過去ログの
+        // 「実施しなかった日を消す」ゴミ箱アイコンの表示判定に使う
+        // (schedule-list / schedule-past-simple の他の isAdmin 用途は
+        // すべて mode === "native" ガード付きなので sync の挙動は変わらない)。
+        isAdmin={userIsAdmin(userRoles)}
       />
     );
   }

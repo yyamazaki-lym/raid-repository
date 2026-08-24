@@ -8,6 +8,8 @@ import {
   Loader2,
   Database,
   Camera,
+  EyeOff,
+  RotateCcw,
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -19,6 +21,8 @@ import {
   countStoredPastSessions,
   deleteStoredPastSession,
   importPastScheduleFromDiscord,
+  listExcludedPastSessions,
+  restoreExcludedPastSession,
   snapshotScheduleNow,
   type ScheduleSnapshotResult,
 } from "@/lib/server/categories-actions";
@@ -66,10 +70,31 @@ export function PastSessionsSection({
   const [storedInfo, setStoredInfo] = useState<{
     ok: boolean;
     count: number;
-    recentRows: { rawDate: string; parsedDate: string; source: string | null }[];
+    recentRows: {
+      rawDate: string;
+      parsedDate: string;
+      source: string | null;
+      /** 2.9 (2026-08-24): 過去ログから除外中なら timestamp、通常は null。 */
+      excludedAt: string | null;
+    }[];
     reason?: string;
   } | null>(null);
   const [deletingRow, startDeleteRow] = useTransition();
+  // 2.9 (2026-08-24): 過去ログから除外中 (excluded_at) の日付一覧 + 解除。
+  // 除外操作自体はトップの過去ログのゴミ箱アイコン
+  // (`PastSessionRemoveButton`) 側で、ここは確認と解除だけを担当する。
+  const [loadingExcluded, startLoadExcluded] = useTransition();
+  const [restoring, startRestore] = useTransition();
+  const [excludedInfo, setExcludedInfo] = useState<{
+    ok: boolean;
+    reason?: string;
+    rows: {
+      rawDate: string;
+      parsedDate: string;
+      source: string | null;
+      excludedAt: string;
+    }[];
+  } | null>(null);
   const [snapshotting, startSnapshot] = useTransition();
   const [snapshotResult, setSnapshotResult] =
     useState<ScheduleSnapshotResult | null>(null);
@@ -128,6 +153,39 @@ export function PastSessionsSection({
       toast.success(`削除しました: ${rawDate}`);
       const refreshed = await countStoredPastSessions();
       setStoredInfo(refreshed);
+      router.refresh();
+    });
+  };
+
+  const onLoadExcluded = () => {
+    setExcludedInfo(null);
+    startLoadExcluded(async () => {
+      const r = await listExcludedPastSessions();
+      setExcludedInfo(r);
+      if (!r.ok) toast.error("取得失敗: " + (r.reason ?? "原因不明"));
+      else if (r.rows.length === 0) toast.success("除外中の日程はありません");
+    });
+  };
+
+  const onRestoreExcluded = async (rawDate: string) => {
+    if (
+      !(await confirm({
+        title: "除外を解除",
+        description: `「${rawDate}」を過去ログに戻します。\n\n出欠のスナップショットと FFLogs URL は行に残っているので、そのまま復活します。`,
+        confirmText: "戻す",
+      }))
+    ) {
+      return;
+    }
+    startRestore(async () => {
+      const r = await restoreExcludedPastSession(rawDate);
+      if (!r.ok) {
+        toast.error("解除失敗: " + (r.reason ?? "原因不明"));
+        return;
+      }
+      toast.success(`過去ログに戻しました: ${rawDate}`);
+      const refreshed = await listExcludedPastSessions();
+      setExcludedInfo(refreshed);
       router.refresh();
     });
   };
@@ -244,6 +302,25 @@ export function PastSessionsSection({
             )}
             DB の保存件数
           </Button>
+          {/* 2.9 (2026-08-24): 過去ログのゴミ箱アイコンで「実施しなかった日」
+              として外した日付の確認 / 解除。除外は行削除ではなくマーカーなので
+              いつでも元に戻せる。 */}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={onLoadExcluded}
+            disabled={loadingExcluded}
+            className="gap-1.5 text-[11px] tracking-normal"
+            title="過去ログから外した日付を一覧表示 / 解除"
+          >
+            {loadingExcluded ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+            ) : (
+              <EyeOff className="h-3.5 w-3.5" aria-hidden />
+            )}
+            過去ログから除外中の日程
+          </Button>
         </div>
         {importResult && (
           <div className="relative flex flex-col gap-0.5 rounded-sm border border-border/40 bg-secondary/20 px-2.5 py-1.5 pr-7 text-[11px] leading-relaxed">
@@ -315,6 +392,57 @@ export function PastSessionsSection({
           )}
         </div>
       )}
+      {excludedInfo && (
+        <div className="relative flex flex-col gap-0.5 rounded-sm border border-border/40 bg-secondary/20 px-2.5 py-1.5 pr-7 text-[11px] leading-relaxed">
+          <button
+            type="button"
+            onClick={() => setExcludedInfo(null)}
+            aria-label="除外中の日程表示を閉じる"
+            className="absolute right-1 top-1 inline-flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
+          >
+            <X className="h-3 w-3" aria-hidden />
+          </button>
+          {excludedInfo.ok ? (
+            <>
+              <p>
+                除外中: <strong>{excludedInfo.rows.length}</strong> 件
+              </p>
+              {excludedInfo.rows.length > 0 && (
+                <ul className="font-mono text-[10px] text-muted-foreground">
+                  {excludedInfo.rows.map((row) => (
+                    <li
+                      key={row.rawDate}
+                      className="flex items-center gap-1.5 break-words py-0.5"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => onRestoreExcluded(row.rawDate)}
+                        disabled={restoring}
+                        aria-label={`${row.rawDate} の除外を解除`}
+                        title="過去ログに戻す"
+                        className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-[var(--neon-cyan)]/20 hover:text-[var(--neon-cyan)] disabled:opacity-40"
+                      >
+                        <RotateCcw className="h-3 w-3" aria-hidden />
+                      </button>
+                      <span className="text-muted-foreground/70">
+                        [{row.source ?? "?"}]
+                      </span>
+                      <span>{row.rawDate}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <p className="mt-1 text-muted-foreground text-[10px]">
+                スケジュールページの過去ログでゴミ箱アイコンから外した「実施しなかった日」です。出欠のスナップショットと FFLogs URL は残っているので、↺ で過去ログに戻せます。自前作成式 (native) で中止にした日程は「中止した日程」セクションから戻してください。
+              </p>
+            </>
+          ) : (
+            <p className="text-rose-300">
+              エラー: {excludedInfo.reason ?? "原因不明"}
+            </p>
+          )}
+        </div>
+      )}
       {storedInfo && (
         <div className="relative flex flex-col gap-0.5 rounded-sm border border-border/40 bg-secondary/20 px-2.5 py-1.5 pr-7 text-[11px] leading-relaxed">
           <button
@@ -355,12 +483,15 @@ export function PastSessionsSection({
                         [{row.source ?? "?"}]
                       </span>
                       <span>{row.rawDate}</span>
+                      {row.excludedAt && (
+                        <span className="text-amber-300/80">除外中</span>
+                      )}
                     </li>
                   ))}
                 </ul>
               )}
               <p className="mt-1 text-muted-foreground text-[10px]">
-                この件数はスケジュールページの「過去」にマージされる候補数です。実際は開催されていない日が混ざっていれば × ボタンで個別削除できます。0 なら保存されていない or SELECT が RLS で拒否されています。
+                この件数はスケジュールページの「過去」にマージされる候補数です (「除外中」の行はマージ対象外)。実際は開催されていない日が混ざっていれば × ボタンで個別削除できます。0 なら保存されていない or SELECT が RLS で拒否されています。
               </p>
             </>
           ) : (

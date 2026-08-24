@@ -279,6 +279,12 @@ export async function fetchStoredPastSessions(opts?: {
     .select(
       "raw_date, parsed_date, start_time, end_time, day_of_week, attendances, user_names",
     )
+    // 2.9 (2026-08-24): admin が「実施しなかった日」として過去ログから除外した
+    // 行は読み飛ばす。除外は行削除ではなく `excluded_at` マーカーなので、
+    // FFLogs URL / 出席スナップショットは温存され、解除で元に戻る。
+    // char-sheets 由来の同日行も verified 判定から落ちて past から消える
+    // (`mergeStoredPastSessions` は stored を実開催の証拠として扱う)。
+    .is("excluded_at", null)
     .order("parsed_date", { ascending: false });
   if (opts?.sinceIso) {
     query = query.gte("parsed_date", opts.sinceIso);
@@ -293,5 +299,35 @@ export async function fetchStoredPastSessions(opts?: {
     dayOfWeek: r.day_of_week as string,
     attendances: (r.attendances as Record<string, string> | null) ?? null,
     userNames: (r.user_names as string[] | null) ?? null,
+  }));
+}
+
+/**
+ * 過去ログから除外中 (`excluded_at IS NOT NULL`) の行を新しい日付順で返す。
+ *
+ * 設定ダイアログの「過去ログから除外中の日程」一覧 (解除 UI) 用。表示経路
+ * (`fetchStoredPastSessions`) はこれらを読み飛ばすため、除外した日は
+ * この getter からしか見えない。
+ */
+export async function fetchExcludedPastSessions(): Promise<
+  Array<{
+    rawDate: string;
+    parsedDate: string;
+    source: string | null;
+    excludedAt: string;
+  }>
+> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("schedule_past_sessions")
+    .select("raw_date, parsed_date, source, excluded_at")
+    .not("excluded_at", "is", null)
+    .order("parsed_date", { ascending: false });
+  if (error || !data) return [];
+  return data.map((r) => ({
+    rawDate: r.raw_date as string,
+    parsedDate: r.parsed_date as string,
+    source: (r.source as string | null) ?? null,
+    excludedAt: r.excluded_at as string,
   }));
 }
