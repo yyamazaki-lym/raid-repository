@@ -9,7 +9,9 @@ import { excludePastSessionAction } from "@/lib/server/categories-actions";
 import type { ScheduleSourceMode } from "@/lib/schedule/source-mode";
 
 /**
- * 2.9 (2026-08-24): 過去ログ (簡易チップ / 詳細表) の admin 専用ゴミ箱アイコン。
+ * 2.9 (2026-08-24): 過去ログ (詳細表) の admin 専用ゴミ箱アイコン。
+ * 簡易チップにも一時期出していたが、チップが横に伸びて 1 行に収まらなく
+ * なるため詳細表のみに絞った (ユーザー判断 2026-08-24)。
  *
  * 用途 (ユーザー要望): 「実施しなかったのに、取り消しを忘れたせいで記録された
  * 日」を過去ログから消す。設定ダイアログの「DB の保存件数」の × 削除は
@@ -29,7 +31,6 @@ export function PastSessionRemoveButton({
   displayDate,
   mode,
   sessionDetails,
-  size = "default",
 }: {
   /** `2026/08/05(水) 21:00~23:00` 形式の元表記 (DB のキー)。 */
   rawDate: string;
@@ -47,18 +48,10 @@ export function PastSessionRemoveButton({
     endTime: string;
     dayOfWeek: string;
   };
-  /**
-   * `default` (h-5 w-5) は詳細表、`compact` (h-4 w-4) は簡易チップ用。
-   * `SessionActionIcons` の size と同じ寸法体系。
-   */
-  size?: "default" | "compact";
 }) {
   const router = useRouter();
   const confirm = useConfirm();
   const [busy, startTransition] = useTransition();
-
-  const triggerSizeClass = size === "compact" ? "h-4 w-4" : "h-5 w-5";
-  const iconSizeClass = size === "compact" ? "h-2.5 w-2.5" : "h-3 w-3";
 
   const onClick = async () => {
     const description =
@@ -98,16 +91,16 @@ export function PastSessionRemoveButton({
       aria-label={`${displayDate} を過去ログから消す`}
       title="実施しなかった日を過去ログから消す (admin)"
       className={
-        `inline-flex ${triggerSizeClass} shrink-0 items-center justify-center rounded ` +
+        "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded " +
         "text-muted-foreground/70 transition-all hover:bg-rose-500/15 hover:text-rose-300 " +
         "focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/60 active:scale-95 " +
         "disabled:opacity-40"
       }
     >
       {busy ? (
-        <Loader2 className={`${iconSizeClass} animate-spin`} aria-hidden />
+        <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
       ) : (
-        <Trash2 className={iconSizeClass} aria-hidden />
+        <Trash2 className="h-3 w-3" aria-hidden />
       )}
     </button>
   );
