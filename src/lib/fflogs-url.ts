@@ -35,12 +35,30 @@ export function parseFflogsReportCode(
     return null;
   }
   if (!/(^|\.)fflogs\.com$/i.test(u.hostname)) return null;
-  const m = /^\/reports\/([A-Za-z0-9]{8,})\/?$/.exec(u.pathname.replace(/\/+$/, "") + "");
-  if (m) return m[1]!;
-  // `/reports/<code>/<何か>` 形も code だけ拾う (compare / attendance は除外)。
-  const m2 = /^\/reports\/([A-Za-z0-9]{8,})(?:\/|$)/.exec(u.pathname);
-  return m2 ? m2[1]! : null;
+  const m = /^\/reports\/([A-Za-z0-9]{8,})(?:\/|$)/.exec(u.pathname);
+  if (!m) return null;
+  const code = m[1]!;
+  // `/reports/` の下には code 以外のルートもある。`rankings` `attendance`
+  // `statistics` などは 8 文字以上の英数字なので、長さだけの判定では code
+  // として通ってしまい、存在しないレポートの同期失敗行を作ってしまう。
+  return REPORT_ROUTE_WORDS.has(code.toLowerCase()) ? null : code;
 }
+
+/** `/reports/` 直下に現れる、レポートコードではないルート語。 */
+const REPORT_ROUTE_WORDS = new Set([
+  "compare",
+  "rankings",
+  "ranking",
+  "attendance",
+  "statistics",
+  "character",
+  "characters",
+  "guild",
+  "guilds",
+  "search",
+  "upload",
+  "recent",
+]);
 
 /** report code から FFLogs のレポート URL を組み立てる。 */
 export function buildFflogsReportUrl(code: string, fightId?: number | null): string {

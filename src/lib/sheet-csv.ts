@@ -62,7 +62,10 @@ export function toSheetCsvUrl(raw: string | null | undefined): string | null {
   }
 
   // (3) 通常の共有 URL 形: /spreadsheets/d/<id>/...
-  const doc = /^\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/.exec(u.pathname);
+  //     `/d/e/<token>/...` が (1) にマッチしなかった場合、この正規表現は
+  //     `e` を doc id として拾ってしまい壊れた URL を作る。実際の Google の
+  //     doc id は 40 文字前後なので、下限を設けて弾く。
+  const doc = /^\/spreadsheets\/d\/([a-zA-Z0-9-_]{10,})/.exec(u.pathname);
   if (doc) {
     const out = new URL(
       `https://docs.google.com/spreadsheets/d/${doc[1]}/gviz/tq`,
@@ -175,12 +178,18 @@ export function findMemberColumn(
   for (let i = 0; i < table.headers.length; i++) {
     if (normalizeName(table.headers[i]!) === target) return i;
   }
-  // 見出しが完全一致しない場合は部分一致も許す (「D3 たろう」等)。
+  // 完全一致が無ければ部分一致 (「D3 たろう」等)。ただし
+  //   - 1 文字の見出し (「T」「H」) は誰の名前にも含まれやすく誤爆するので除外
+  //   - 先頭一致ではなく **最長一致** を採る (「T」より「MT」を優先)
+  let best: { index: number; length: number } | null = null;
   for (let i = 0; i < table.headers.length; i++) {
     const h = normalizeName(table.headers[i]!);
-    if (h && (h.includes(target) || target.includes(h))) return i;
+    if (h.length < 2) continue;
+    if (h.includes(target) || target.includes(h)) {
+      if (!best || h.length > best.length) best = { index: i, length: h.length };
+    }
   }
-  return null;
+  return best ? best.index : null;
 }
 
 function normalizeName(s: string): string {
