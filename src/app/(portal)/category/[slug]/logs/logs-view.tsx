@@ -153,7 +153,7 @@ export function LogsView({
               "レポートは「動画に FFLogs URL を紐づける」「コンテンツ編集の FFLogs zone ID / マッチワード」" +
               "またはレポートの zone 名からこのコンテンツに割り当てられます。" +
               "非公開 (private / unlisted) レポートは連携した本人のもの以外 API では取得できません" +
-              " (設定の FFLogs 連携で session cookie を登録すると取得できます)。"
+              " (確実な対処はレポートを Public にすること。アップローダの既定公開設定を Public にすると以後は自動で入ります)。"
             }
           />
           <p className="text-center text-[11px] text-muted-foreground">

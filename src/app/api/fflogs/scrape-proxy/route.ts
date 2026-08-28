@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import {
   buildFflogsReportsListUrl,
   buildFflogsScrapeHeaders,
+  buildFflogsXhrHeaders,
   FFLOGS_SCRAPE_MAX_PAGES,
   FFLOGS_SCRAPE_TIMEOUT_MS,
 } from "@/lib/server/fflogs-scrape-request";
@@ -96,12 +97,10 @@ export async function POST(request: NextRequest) {
       const res = await fetch(
         `https://www.fflogs.com/reports/fights-and-participants/${reportCode}/0`,
         {
-          headers: {
-            ...buildFflogsScrapeHeaders(
-              typeof sessionCookie === "string" ? sessionCookie : null,
-            ),
-            Accept: "application/json,*/*",
-          },
+          headers: buildFflogsXhrHeaders(
+            reportCode,
+            typeof sessionCookie === "string" ? sessionCookie : null,
+          ),
           signal: AbortSignal.timeout(FFLOGS_SCRAPE_TIMEOUT_MS),
           redirect: "manual",
         },

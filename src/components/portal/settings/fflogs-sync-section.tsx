@@ -682,6 +682,10 @@ export function FflogsSyncSection({
                               では露出されない仕様）。レポート期間が
                               <strong> 古い日付に偏っている</strong>場合、
                               最近のレポートは Public 以外の visibility になっている可能性が高いです。
+                              また session cookie による補完取得 (scrape) も、
+                              FFLogs 側の bot 対策強化により現在はブロックされる
+                              (403) ことがあります — <strong>確実に自動取得したい場合は
+                              アップローダの既定公開設定を Public にしてください</strong>。
                             </p>
                             <p className="text-muted-foreground leading-relaxed mt-1">
                               対処:
