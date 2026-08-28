@@ -164,11 +164,33 @@ export function WaymarksSection({
       </header>
 
       {ordered.length === 0 ? (
-        <EmptyState
-          icon={MapPin}
-          title="ウェイマーク未登録"
-          description="EchoPlan / Waymark Preset などが出力する markercode を貼り付けて保存すると、ワンタップでコピーして配れます。"
-        />
+        <div className="flex flex-col gap-2">
+          <EmptyState
+            icon={MapPin}
+            title="ウェイマーク未登録"
+            description="作図ツールが出力する markercode を貼り付けて保存すると、ワンタップでコピーして配れます。"
+          />
+          <p className="text-center text-[11px] text-muted-foreground">
+            markercode を出力できるツール:{" "}
+            <a
+              href="https://echoplan.xivhub.net/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[var(--neon-cyan)] underline underline-offset-2 hover:text-foreground"
+            >
+              EchoPlan
+            </a>
+            {" / "}
+            <a
+              href="https://github.com/PunishedPineapple/WaymarkPresetPlugin"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[var(--neon-cyan)] underline underline-offset-2 hover:text-foreground"
+            >
+              Waymark Preset Plugin
+            </a>
+          </p>
+        </div>
       ) : (
         <DndContext
           // dnd-kit の採番 (`DndDescribedBy-<n>`) は SSR とクライアントで
@@ -208,7 +230,16 @@ export function WaymarksSection({
             </DialogTitle>
             <DialogDescription>
               ゲーム内のフィールドマーカーはコンテンツごとに 5
-              枠までしか保存できません。配置の markercode
+              枠までしか保存できません。
+              <a
+                href="https://echoplan.xivhub.net/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[var(--neon-cyan)] underline underline-offset-2 hover:text-foreground"
+              >
+                EchoPlan
+              </a>{" "}
+              などが出力する markercode
               をここに置いておくと、必要な人が必要なときにコピーできます。
             </DialogDescription>
           </DialogHeader>

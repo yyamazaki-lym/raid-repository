@@ -6,6 +6,7 @@ import {
 import { getValidFflogsOAuthToken } from "./fflogs-oauth";
 import { parseFflogsReportCode } from "@/lib/fflogs-url";
 import { jstYmdString } from "@/lib/jst-date";
+import { findContentGroups } from "@/lib/content-groups";
 
 /**
  * FFLogs の pull 単位データ (fights) を portal に materialize する
@@ -22,7 +23,12 @@ import { jstYmdString } from "@/lib/jst-date";
  * だけを使う:
  *   1. `category_links.logs_url` (kind='video')      → category_id
  *   2. `categories.expected_fflogs_zone_ids`         → category_id (1 件に定まる時のみ)
- *   3. `schedule_past_session_logs` / `native_schedule_session_logs` → session_date
+ *   3. レポートの zone 名 / タイトルを `CONTENT_GROUPS` で分類し、カテゴリ名
+ *      (+ `fflogs_match_keywords`) と同じグループなら紐づけ。動画リンクも
+ *      zone ID も無い固定でログが 1 つも出ない、という取りこぼしを防ぐ。
+ *      これは FFLogs 自動リンク (`fflogs.ts`) が既に使っている分類器の再利用で、
+ *      新しいマッチングロジックではない
+ *   4. `schedule_past_session_logs` / `native_schedule_session_logs` → session_date
  *
  * **個人 DPS は取得しない**。クエリは fight のメタ情報だけで、
  * ランキングや個人成績は 1 度も触らない (調査ノート §1-F の設計原則:
@@ -49,6 +55,8 @@ export type FflogsFightsSyncResult =
       fightsUpserted: number;
       failed: number;
       truncated: boolean;
+      /** 保存済み zone 名から後追いでカテゴリが決まった report 数。 */
+      reattributed: number;
     }
   | { ok: false; reason: string };
 
@@ -88,7 +96,10 @@ export async function syncFflogsFights(opts?: {
     : await createClient();
   const deadlineAtMs = Date.now() + TIME_BUDGET_MS;
 
-  const refs = await collectReportRefs(db);
+  const [refs, categories] = await Promise.all([
+    collectReportRefs(db),
+    loadCategories(db),
+  ]);
   if (refs.size === 0) {
     return {
       ok: true,
@@ -97,13 +108,14 @@ export async function syncFflogsFights(opts?: {
       fightsUpserted: 0,
       failed: 0,
       truncated: false,
+      reattributed: 0,
     };
   }
 
   // 既存の同期台帳を読み、再取得が要るものだけに絞る。
   const { data: ledger } = await db
     .from("fflogs_report_syncs")
-    .select("report_code, ok, synced_at, session_date, category_id");
+    .select("report_code, ok, synced_at, session_date, category_id, zone_name");
   const ledgerMap = new Map<
     string,
     {
@@ -111,6 +123,7 @@ export async function syncFflogsFights(opts?: {
       syncedAt: string | null;
       sessionDate: string | null;
       categoryId: string | null;
+      zoneName: string | null;
     }
   >();
   for (const row of ledger ?? []) {
@@ -119,6 +132,7 @@ export async function syncFflogsFights(opts?: {
       syncedAt: (row.synced_at as string | null) ?? null,
       sessionDate: (row.session_date as string | null) ?? null,
       categoryId: (row.category_id as string | null) ?? null,
+      zoneName: (row.zone_name as string | null) ?? null,
     });
   }
 
@@ -132,10 +146,10 @@ export async function syncFflogsFights(opts?: {
       targets.push(withDate);
       continue;
     }
-    // 初回同期時にはカテゴリが決まらず (動画リンクが後から付く等)、
-    // その後リンクが付いても 14 日を過ぎると再取得されないままになる。
-    // 今なら決められると分かっている場合は取り直して属性を埋める。
-    if (prev.categoryId === null && ref.categoryId !== null) {
+    // カテゴリ未確定の report は取り直す。ただし zone 名が既に台帳にあれば
+    // 下の「オフライン再解決」で API を叩かずに埋められるので対象外にする
+    // (再取得が毎回同じ report で埋まって新しい report に届かなくなるのを防ぐ)。
+    if (prev.categoryId === null && (ref.categoryId !== null || !prev.zoneName)) {
       targets.push(withDate);
       continue;
     }
@@ -180,9 +194,10 @@ export async function syncFflogsFights(opts?: {
       continue;
     }
 
-    // zone id から category を引く (video リンクで決まらなかった場合のみ)。
+    // 動画リンクで決まらなかった場合は zone ID / 内容分類で解決する。
     const categoryId =
-      ref.categoryId ?? (await categoryIdByZone(db, res.zoneId));
+      ref.categoryId ??
+      resolveCategory(categories, res.zoneId, res.zoneName, res.title);
     const sessionDate =
       ref.sessionDate ?? jstYmdString(new Date(res.startMs));
 
@@ -222,6 +237,7 @@ export async function syncFflogsFights(opts?: {
         session_date: sessionDate,
         title: res.title?.slice(0, 300) ?? null,
         zone_id: res.zoneId,
+        zone_name: res.zoneName?.slice(0, 200) ?? null,
         report_start_ms: res.startMs,
         fight_count: res.fights.length,
         ok: true,
@@ -232,6 +248,52 @@ export async function syncFflogsFights(opts?: {
     );
   }
 
+  // ---- オフライン再解決 + 掃除 (FFLogs を叩かない後処理) ----------------
+  //
+  // (a) 台帳にありながら category_id が NULL の report を、保存済みの
+  //     zone 名 / タイトルで再分類する。動画リンクが後から付いた場合や、
+  //     カテゴリの `fflogs_match_keywords` を後から設定した場合に、次の同期で
+  //     ここが埋まる (再取得は不要)。fights 側の category_id も追随させる。
+  // (b) Trash Fight (encounter_id = 0 / NULL) の既存行を削除する。取り込み側の
+  //     フィルタ追加 (2026-08-28) より前に入ったゴミの掃除。
+  let reattributed = 0;
+  try {
+    const { data: orphans } = await db
+      .from("fflogs_report_syncs")
+      .select("report_code, title, zone_name")
+      .is("category_id", null)
+      .eq("ok", true);
+    for (const row of orphans ?? []) {
+      const code = row.report_code as string;
+      const cid = resolveCategory(
+        categories,
+        null,
+        (row.zone_name as string | null) ?? null,
+        (row.title as string | null) ?? null,
+      ) ?? refs.get(code)?.categoryId ?? null;
+      if (!cid) continue;
+      await db
+        .from("fflogs_report_syncs")
+        .update({ category_id: cid })
+        .eq("report_code", code);
+      await db
+        .from("fflogs_fights")
+        .update({ category_id: cid })
+        .eq("report_code", code)
+        .is("category_id", null);
+      reattributed += 1;
+    }
+  } catch (e) {
+    console.warn("[fflogs-fights] re-attribution failed:", e);
+  }
+
+  try {
+    await db.from("fflogs_fights").delete().eq("encounter_id", 0);
+    await db.from("fflogs_fights").delete().is("encounter_id", null);
+  } catch (e) {
+    console.warn("[fflogs-fights] trash cleanup failed:", e);
+  }
+
   return {
     ok: true,
     reportsKnown: refs.size,
@@ -239,6 +301,7 @@ export async function syncFflogsFights(opts?: {
     fightsUpserted: upserted,
     failed,
     truncated,
+    reattributed,
   };
 }
 
@@ -319,22 +382,59 @@ async function collectReportRefs(db: Db): Promise<Map<string, ReportRef>> {
   return out;
 }
 
-/**
- * zone id からカテゴリを引く。`categories.expected_fflogs_zone_ids` は
- * FFLogs auto-link 用に既に運用されている設定なので、それを再利用する。
- * 2 件以上該当する場合は曖昧なので null (誤配属を作らない)。
- */
-async function categoryIdByZone(
-  db: Db,
-  zoneId: number | null,
-): Promise<string | null> {
-  if (zoneId == null) return null;
+type CategoryRef = {
+  id: string;
+  name: string;
+  zoneIds: number[];
+  keywords: string[];
+};
+
+/** カテゴリ一覧 (紐づけ用の最小フィールド)。同期 1 回につき 1 度だけ読む。 */
+async function loadCategories(db: Db): Promise<CategoryRef[]> {
   const { data } = await db
     .from("categories")
-    .select("id, expected_fflogs_zone_ids")
-    .contains("expected_fflogs_zone_ids", [zoneId]);
-  if (!data || data.length !== 1) return null;
-  return (data[0] as { id: string }).id;
+    .select("id, name, expected_fflogs_zone_ids, fflogs_match_keywords");
+  return (data ?? []).map((r) => ({
+    id: r.id as string,
+    name: (r.name as string) ?? "",
+    zoneIds: (r.expected_fflogs_zone_ids as number[] | null) ?? [],
+    keywords: (r.fflogs_match_keywords as string[] | null) ?? [],
+  }));
+}
+
+/**
+ * レポート → カテゴリの解決。
+ *
+ * (a) `expected_fflogs_zone_ids` の一致を最優先 (運用者が明示した対応)
+ * (b) 次に zone 名 / タイトルの内容分類 (`CONTENT_GROUPS`) がカテゴリ名または
+ *     `fflogs_match_keywords` と同じグループに落ちるもの
+ *
+ * どちらも「候補が 1 件に定まるときだけ」返す。2 件以上該当したら曖昧なので
+ * null にして誤配属を作らない。
+ */
+function resolveCategory(
+  categories: CategoryRef[],
+  zoneId: number | null,
+  zoneName: string | null,
+  title: string | null,
+): string | null {
+  if (zoneId != null) {
+    const byZone = categories.filter((c) => c.zoneIds.includes(zoneId));
+    if (byZone.length === 1) return byZone[0]!.id;
+    if (byZone.length > 1) return null;
+  }
+
+  const reportText = [zoneName, title].filter(Boolean).join(" ");
+  if (!reportText) return null;
+  const reportGroups = findContentGroups(reportText);
+  if (reportGroups.size === 0) return null;
+
+  const byContent = categories.filter((c) => {
+    const catGroups = findContentGroups([c.name, ...c.keywords].join(" "));
+    for (const g of catGroups) if (reportGroups.has(g)) return true;
+    return false;
+  });
+  return byContent.length === 1 ? byContent[0]!.id : null;
 }
 
 type ReportFightsResult =
@@ -342,6 +442,7 @@ type ReportFightsResult =
       ok: true;
       title: string | null;
       zoneId: number | null;
+      zoneName: string | null;
       startMs: number;
       fights: FightPayload[];
     }
@@ -362,7 +463,7 @@ async function fetchReportFights(
       report(code: $code) {
         title
         startTime
-        zone { id }
+        zone { id name }
         fights {
           id
           name
@@ -382,7 +483,7 @@ async function fetchReportFights(
       report(code: $code) {
         title
         startTime
-        zone { id }
+        zone { id name }
         fights {
           id
           name
@@ -447,7 +548,7 @@ async function postGraphql(
           report?: {
             title?: string | null;
             startTime?: number | null;
-            zone?: { id?: number | null } | null;
+            zone?: { id?: number | null; name?: string | null } | null;
             fights?: FightPayload[] | null;
           } | null;
         } | null;
@@ -468,9 +569,18 @@ async function postGraphql(
       ok: true,
       title: report.title ?? null,
       zoneId: report.zone?.id ?? null,
+      zoneName: report.zone?.name ?? null,
       startMs: report.startTime,
       fights: (report.fights ?? []).filter(
-        (f) => typeof f?.id === "number" && typeof f?.startTime === "number",
+        (f) =>
+          typeof f?.id === "number" &&
+          typeof f?.startTime === "number" &&
+          // Trash Fight を除外する。FFLogs は雑魚戦を encounterID = 0 で返す
+          // ので、ボス戦 (正の encounterID) だけを pull として取り込む。
+          // これを入れないと道中の雑魚が「残 HP 不明の pull」として練習ログに
+          // 混ざる (2026-08-28 ユーザー報告)。
+          typeof f?.encounterID === "number" &&
+          f.encounterID > 0,
       ),
     };
   } catch (e) {

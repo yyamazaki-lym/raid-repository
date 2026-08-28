@@ -1072,6 +1072,11 @@ CREATE TABLE IF NOT EXISTS public.fflogs_report_syncs (
   reason          text,
   synced_at       timestamptz NOT NULL DEFAULT now()
 );
+-- 2026-08-28: zone 名を保持する。カテゴリ紐づけを後から (FFLogs を叩かずに)
+-- やり直せるようにするため — 動画リンクも zone ID も無い固定では初回同期時に
+-- カテゴリが決まらず、ログが 1 件も表示されない状態になっていた。
+ALTER TABLE public.fflogs_report_syncs
+  ADD COLUMN IF NOT EXISTS zone_name text;
 
 -- ---- 6b-6. fflogs_report_videos (A-2: 動画オフセット) ------------------
 -- 「レポート開始時刻が動画の何秒地点か」を report ごとに 1 回だけ入力すれば、

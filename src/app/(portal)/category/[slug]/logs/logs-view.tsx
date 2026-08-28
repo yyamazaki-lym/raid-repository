@@ -41,6 +41,7 @@ import {
   buildXivAnalysisUrl,
   formatClock,
 } from "@/lib/fflogs-url";
+import { isUltimateContent } from "@/lib/content-groups";
 import type { ReportVideoLink } from "@/lib/supabase/fflogs-fights";
 import {
   setReportVideoAction,
@@ -91,11 +92,14 @@ export function LogsView({
   } | null>(null);
 
   const summary = useMemo(() => summarize(fights), [fights]);
+  // フェーズ (P1〜) 単位で管理するのは実質「絶」だけ。零式で「P2 8.3%」の
+  // ような表記を出すとノイズになる (2026-08-28 ユーザー指摘) ので、
+  // 絶コンテンツと判定できたときだけフェーズを表示する。
+  const showPhase = useMemo(() => isUltimateContent(categoryName), [categoryName]);
   const timeline = useMemo(
     () => progressTimeline(summary.days),
     [summary.days],
   );
-  const maxPulls = Math.max(1, ...timeline.map((t) => t.pulls));
 
   const runSync = () => {
     startSync(async () => {
@@ -106,6 +110,7 @@ export function LogsView({
       }
       toast.success(
         `同期完了 — ${result.reportsFetched} レポート / ${result.fightsUpserted} pull` +
+          (result.reattributed > 0 ? ` / 再分類 ${result.reattributed}` : "") +
           (result.failed > 0 ? ` (失敗 ${result.failed})` : "") +
           (result.truncated ? " ※途中まで" : ""),
       );
@@ -134,14 +139,37 @@ export function LogsView({
     return (
       <div className="flex flex-col gap-3 p-3">
         <div className="flex justify-end">{syncButton}</div>
-        <EmptyState
-          icon={Activity}
-          title="練習ログがまだありません"
-          description={
-            "FFLogs のレポートを取り込むと、pull 数・到達フェーズ・残 HP% がここに並びます。" +
-            "レポートは「動画に FFLogs URL を紐づける」か「コンテンツ編集の FFLogs zone ID」経由でこのコンテンツに割り当てられます。"
-          }
-        />
+        <div className="flex flex-col gap-2">
+          <EmptyState
+            icon={Activity}
+            title="練習ログがまだありません"
+            description={
+              "FFLogs のレポートを取り込むと、pull 数・到達度・残 HP% がここに並びます。" +
+              "レポートは「動画に FFLogs URL を紐づける」「コンテンツ編集の FFLogs zone ID / マッチワード」" +
+              "またはレポートの zone 名からこのコンテンツに割り当てられます。"
+            }
+          />
+          <p className="text-center text-[11px] text-muted-foreground">
+            データ元:{" "}
+            <a
+              href="https://www.fflogs.com/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[var(--neon-cyan)] underline underline-offset-2 hover:text-foreground"
+            >
+              FFLogs
+            </a>
+            {" / 解析: "}
+            <a
+              href="https://xivanalysis.com/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[var(--neon-cyan)] underline underline-offset-2 hover:text-foreground"
+            >
+              XIVAnalysis
+            </a>
+          </p>
+        </div>
         {failedSyncs.length > 0 && (
           <FailedList failedSyncs={failedSyncs} />
         )}
@@ -176,14 +204,21 @@ export function LogsView({
         <StatCard
           label="最深到達"
           value={
-            summary.bestPhase !== null
-              ? `P${summary.bestPhase}`
-              : formatPercentage(summary.bestPercentage)
+            // クリア済みなら「残 0%」ではなく「討伐」と言い切る。
+            totalKills > 0
+              ? "討伐"
+              : showPhase && summary.bestPhase !== null
+                ? `P${summary.bestPhase}`
+                : summary.bestPercentage !== null
+                  ? `残 ${formatPercentage(summary.bestPercentage)}`
+                  : "—"
           }
           sub={
-            summary.bestPhase !== null
-              ? formatPercentage(summary.bestPercentage)
-              : undefined
+            totalKills > 0
+              ? undefined
+              : showPhase && summary.bestPhase !== null
+                ? `残 ${formatPercentage(summary.bestPercentage)}`
+                : undefined
           }
         />
         <StatCard
@@ -200,46 +235,69 @@ export function LogsView({
         />
       </ul>
 
-      {/* A-1: 日ごとの pull 数と到達の推移。ライブラリを足さず CSS 幅だけで描く。 */}
+      {/* A-1: 日ごとの到達度の推移。
+          バーの長さ = その日のベスト到達度 (100 − 残 HP%)。バーが右端に
+          届いたらクリア、伸びていく様子がそのまま「進んでいる実感」になる。
+          旧実装はバー = pull 数で「量」しか見えず、肝心の「どこまで行けたか」
+          が読み取れなかった (2026-08-28 ユーザー指摘)。 */}
       <section className="flex flex-col gap-1.5">
-        <h3 className="font-mono text-[10px] tracking-[0.18em] text-muted-foreground uppercase">
-          日ごとの推移
-        </h3>
+        <div className="flex items-baseline justify-between gap-2">
+          <h3 className="font-mono text-[10px] tracking-[0.18em] text-muted-foreground uppercase">
+            日ごとの到達度
+          </h3>
+          <span className="font-mono text-[9px] tracking-[0.12em] text-muted-foreground/70">
+            バー = ベスト到達度 / 右端 = 討伐
+          </span>
+        </div>
         <ul className="flex flex-col gap-1">
-          {[...timeline].reverse().map((t) => (
-            <li key={t.date} className="flex items-center gap-2">
-              <span className="w-[4.5rem] shrink-0 font-mono text-[10px] text-muted-foreground tabular-nums">
-                {t.date.slice(5)}
-              </span>
-              <span className="flex h-4 min-w-0 flex-1 items-center">
+          {[...timeline].reverse().map((t) => {
+            // 到達度 (%)。kill 日は 100、残 HP 不明の日は 0 扱いで薄く出す。
+            const progress = t.hasKill
+              ? 100
+              : t.bestPercentage !== null
+                ? Math.max(0, Math.min(100, 100 - t.bestPercentage))
+                : 0;
+            return (
+              <li key={t.date} className="flex items-center gap-2">
+                <span className="w-[4.5rem] shrink-0 font-mono text-[10px] text-muted-foreground tabular-nums">
+                  {t.date.slice(5)}
+                </span>
+                <span className="relative flex h-4 min-w-0 flex-1 items-center rounded-sm bg-secondary/40">
+                  <span
+                    className={
+                      "h-full rounded-sm " +
+                      (t.hasKill
+                        ? "bg-emerald-400/75"
+                        : t.isRecord
+                          ? "bg-[var(--neon-cyan)]/70"
+                          : "bg-[var(--neon-cyan)]/35")
+                    }
+                    style={{ width: `${Math.max(2, progress)}%` }}
+                    aria-hidden
+                  />
+                </span>
                 <span
-                  className={
-                    "h-2 rounded-sm " +
-                    (t.hasKill
-                      ? "bg-emerald-400/70"
-                      : t.isRecord
-                        ? "bg-[var(--neon-cyan)]/70"
-                        : "bg-secondary")
-                  }
-                  style={{ width: `${Math.max(4, (t.pulls / maxPulls) * 100)}%` }}
-                  aria-hidden
-                />
-              </span>
-              <span className="w-10 shrink-0 text-right font-mono text-[10px] text-muted-foreground tabular-nums">
-                {t.pulls}
-              </span>
-              <span className="w-14 shrink-0 text-right font-mono text-[10px] tabular-nums">
-                {t.bestPhase !== null ? `P${t.bestPhase}` : ""}{" "}
-                {formatPercentage(t.bestPercentage)}
-              </span>
-              {t.isRecord && (
-                <Flag
-                  className="h-3 w-3 shrink-0 text-[var(--neon-cyan)]"
-                  aria-label="記録更新"
-                />
-              )}
-            </li>
-          ))}
+                  className="w-[4.5rem] shrink-0 text-right font-mono text-[10px] tabular-nums"
+                  title={t.hasKill ? "討伐" : "その日のベスト (ボス残 HP)"}
+                >
+                  {t.hasKill
+                    ? "討伐"
+                    : `${showPhase && t.bestPhase !== null ? `P${t.bestPhase} ` : ""}残${formatPercentage(t.bestPercentage)}`}
+                </span>
+                <span className="w-12 shrink-0 text-right font-mono text-[10px] text-muted-foreground tabular-nums">
+                  {t.pulls} pull
+                </span>
+                <span className="w-3 shrink-0">
+                  {t.isRecord && (
+                    <Flag
+                      className="h-3 w-3 text-[var(--neon-cyan)]"
+                      aria-label="自己ベスト更新"
+                    />
+                  )}
+                </span>
+              </li>
+            );
+          })}
         </ul>
       </section>
 
@@ -255,6 +313,7 @@ export function LogsView({
               day={day}
               videoLinks={videoLinks}
               canEdit={canEdit}
+              showPhase={showPhase}
               onEditOffset={(reportCode) => {
                 const existing = videoLinks[reportCode];
                 setOffsetTarget({
@@ -317,11 +376,13 @@ function DayRow({
   day,
   videoLinks,
   canEdit,
+  showPhase,
   onEditOffset,
 }: {
   day: DaySummary;
   videoLinks: Record<string, ReportVideoLink>;
   canEdit: boolean;
+  showPhase: boolean;
   onEditOffset: (reportCode: string) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -353,10 +414,12 @@ function DayRow({
               CLEAR
             </span>
           )}
-          <span className="font-mono text-[10px] tabular-nums text-muted-foreground">
-            {day.bestPhase !== null ? `P${day.bestPhase} / ` : ""}
-            {formatPercentage(day.bestPercentage)}
-          </span>
+          {day.kills === 0 && (
+            <span className="font-mono text-[10px] tabular-nums text-muted-foreground">
+              {showPhase && day.bestPhase !== null ? `P${day.bestPhase} / ` : ""}
+              残{formatPercentage(day.bestPercentage)}
+            </span>
+          )}
         </span>
       </button>
 
@@ -393,6 +456,7 @@ function DayRow({
                 index={i + 1}
                 fight={f}
                 video={videoLinks[f.reportCode] ?? null}
+                showPhase={showPhase}
               />
             ))}
           </ul>
@@ -406,10 +470,12 @@ function PullRow({
   index,
   fight,
   video,
+  showPhase,
 }: {
   index: number;
   fight: FightRow;
   video: ReportVideoLink | null;
+  showPhase: boolean;
 }) {
   const durationSec = Math.max(0, Math.round((fight.endMs - fight.startMs) / 1000));
   // 日付のグルーピングが JST 基準なので時刻も JST に固定する
@@ -454,7 +520,7 @@ function PullRow({
       >
         {fight.kill
           ? "CLEAR"
-          : `${fight.lastPhase !== null ? `P${fight.lastPhase} ` : ""}${formatPercentage(fight.fightPercentage)}`}
+          : `${showPhase && fight.lastPhase !== null ? `P${fight.lastPhase} ` : ""}残${formatPercentage(fight.fightPercentage)}`}
       </span>
       <span className="ml-auto flex shrink-0 items-center gap-1">
         <a

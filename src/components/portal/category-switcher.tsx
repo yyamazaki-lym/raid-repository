@@ -7,13 +7,8 @@ import {
   ChevronDown,
   Layers,
   ListChecks,
-  ShieldHalf,
-  Dice5,
-  BookOpen,
-  Film,
-  Terminal,
-  type LucideIcon,
 } from "lucide-react";
+import { SUB_TAB_DEFS } from "@/lib/sub-tab-defs";
 import { motion, useReducedMotion } from "motion/react";
 import { cn } from "@/lib/utils";
 import {
@@ -28,13 +23,9 @@ import { useRealtimeCategories } from "@/lib/categories-client";
 import { filterVisibleCategories } from "@/lib/category-visibility";
 import { isCategoryTabId, type Category } from "@/lib/supabase/types";
 
-const SUB_PAGES: Array<{ segment: string; label: string; Icon: LucideIcon }> = [
-  { segment: "mitigation", label: "軽減表", Icon: ShieldHalf },
-  { segment: "loot", label: "ロット管理", Icon: Dice5 },
-  { segment: "strategy", label: "攻略情報", Icon: BookOpen },
-  { segment: "videos", label: "動画", Icon: Film },
-  { segment: "macros", label: "マクロ", Icon: Terminal },
-];
+// タブ定義は `@/lib/sub-tab-defs` に集約 (旧: この 3 ファイルに同じ配列を
+// コピーしていたため、タブ追加時にここだけ更新漏れが起きていた)。
+const SUB_PAGES = SUB_TAB_DEFS;
 
 type Props = {
   initialCategories: Category[];
