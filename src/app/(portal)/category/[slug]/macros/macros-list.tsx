@@ -256,6 +256,10 @@ function MacrosSection({
         />
       ) : (
         <DndContext
+          // dnd-kit の採番 (`DndDescribedBy-<n>`) は SSR とクライアントで
+          // ずれて hydration mismatch になるため id を明示する
+          // (category-list.tsx の詳しい注記を参照)。
+          id="dnd-macros"
           sensors={sensors}
           collisionDetection={closestCenter}
           onDragEnd={(e) => handleDragEnd(e, ordered)}
@@ -568,6 +572,10 @@ function TemplatesSection({
         />
       ) : (
         <DndContext
+          // dnd-kit の採番 (`DndDescribedBy-<n>`) は SSR とクライアントで
+          // ずれて hydration mismatch になるため id を明示する
+          // (category-list.tsx の詳しい注記を参照)。
+          id="dnd-macro-templates"
           sensors={dndSensors}
           collisionDetection={closestCenter}
           onDragEnd={(e) => handleDragEnd(e, orderedTemplates, toGlobalOrder)}

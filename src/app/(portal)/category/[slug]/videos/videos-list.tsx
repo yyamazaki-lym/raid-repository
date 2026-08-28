@@ -879,6 +879,10 @@ export function VideosList({
       ) : sortMode === "custom" ? (
         // Custom (DnD-enabled) layout. Each card carries a drag handle.
         <DndContext
+          // dnd-kit の採番 (`DndDescribedBy-<n>`) は SSR とクライアントで
+          // ずれて hydration mismatch になるため id を明示する
+          // (category-list.tsx の詳しい注記を参照)。
+          id="dnd-videos"
           sensors={sensors}
           collisionDetection={closestCenter}
           onDragEnd={(e) => handleDragEnd(e, videos, (ids) => [...ids].reverse())}

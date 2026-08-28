@@ -189,6 +189,10 @@ export function StrategyList({
             </Card>
           ) : (
             <DndContext
+              // dnd-kit の採番 (`DndDescribedBy-<n>`) は SSR とクライアントで
+              // ずれて hydration mismatch になるため id を明示する
+              // (category-list.tsx の詳しい注記を参照)。
+              id="dnd-strategy-links"
               sensors={sensors}
               collisionDetection={closestCenter}
               onDragEnd={(e) => handleDragEnd(e, links)}
