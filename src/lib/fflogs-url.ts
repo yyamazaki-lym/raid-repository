@@ -82,6 +82,20 @@ export function extractFflogsReportCodes(text: string): string[] {
   return out;
 }
 
+/**
+ * FFLogs のレポート一覧ページから全レポート URL を一括コピーする
+ * ブックマークレット (2026-08-28)。
+ *
+ * 一覧ページのリンクはテキストがコンテンツ名 (「クルーザー級」等) で、
+ * URL は href の中にしか無い — ページを Ctrl+A でコピーしても URL は
+ * 取れない (実機で確認)。ブラウザのブックマークにこの文字列を URL として
+ * 登録し、fflogs.com の一覧ページ上で実行すると、表示中の全レポート URL が
+ * クリップボードに入る。ユーザーのブラウザ内 (= 本人のセッション) で
+ * 動くので、unlisted / private の一覧もそのまま拾える。
+ */
+export const FFLOGS_REPORT_LINKS_BOOKMARKLET =
+  "javascript:(()=>{const s=new Set();for(const a of document.querySelectorAll('a[href*=\\\"/reports/\\\"]')){const m=a.href.match(/reports\\/([A-Za-z0-9]{8,32})(?![A-Za-z0-9])/);if(m&&!/^(rankings|ranking|attendance|statistics|compare|guilds?|characters?|search|upload|recent)$/i.test(m[1]))s.add('https://www.fflogs.com/reports/'+m[1])}const t=[...s].join('\\n');if(!t){alert('レポート URL が見つかりません');return}(navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(()=>alert(s.size+' 件のレポート URL をコピーしました'),()=>prompt('自動コピーできませんでした。以下を手動でコピーしてください:',t))})();";
+
 /** report code から FFLogs のレポート URL を組み立てる。 */
 export function buildFflogsReportUrl(code: string, fightId?: number | null): string {
   const base = `https://www.fflogs.com/reports/${encodeURIComponent(code)}`;
