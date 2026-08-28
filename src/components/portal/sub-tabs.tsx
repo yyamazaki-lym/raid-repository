@@ -4,45 +4,19 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { motion, useReducedMotion } from "motion/react";
-import {
-  Activity,
-  ChevronLeft,
-  Dice5,
-  ShieldHalf,
-  BookOpen,
-  Film,
-  Terminal,
-  type LucideIcon,
-} from "lucide-react";
+import { ChevronLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { DEFAULT_SUB_TAB_LABELS, SUB_TAB_DEFS } from "@/lib/sub-tab-defs";
 import {
   ActionSlotTarget,
   useActionSlotContext,
 } from "@/components/portal/action-slot";
 
-type SubTab = {
-  id: string;
-  label: string;
-  segment: string;
-  Icon: LucideIcon;
-};
+// 定義は `@/lib/sub-tab-defs` に集約 (3 箇所コピーによる取りこぼし防止)。
+const SUB_TABS = SUB_TAB_DEFS;
 
-// Order = use frequency: 軽減表 > ロット管理 > 攻略情報 > 動画 > マクロ.
-const SUB_TABS: SubTab[] = [
-  { id: "mitigation", label: "軽減表", segment: "mitigation", Icon: ShieldHalf },
-  { id: "loot", label: "ロット管理", segment: "loot", Icon: Dice5 },
-  { id: "strategy", label: "攻略情報", segment: "strategy", Icon: BookOpen },
-  { id: "videos", label: "動画", segment: "videos", Icon: Film },
-  { id: "macros", label: "マクロ", segment: "macros", Icon: Terminal },
-  // TODO #94: FFLogs の pull 単位ログ (進捗 + 振り返り)。使用頻度は練習期の
-  // 終わりに集中するので末尾に置く。不要な固定は tab_config で非表示にできる。
-  { id: "logs", label: "練習ログ", segment: "logs", Icon: Activity },
-];
-
-// SUB_TABS の id をデフォルトラベルから引くため (form dialog でも参照)。
-export const DEFAULT_SUB_TAB_LABELS: Record<string, string> = Object.fromEntries(
-  SUB_TABS.map((t) => [t.id, t.label]),
-);
+// 既存の import 互換のため re-export (category-form-dialog が参照)。
+export { DEFAULT_SUB_TAB_LABELS };
 
 type TabConfig = Record<string, { enabled?: boolean; label?: string | null }>;
 

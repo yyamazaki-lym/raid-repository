@@ -25,7 +25,16 @@ export const CONTENT_GROUPS: Array<string[]> = [
   // 4: Ultimate Omega Protocol (TOP)
   ["絶オメガ検証戦", "絶オメガ検証", "the omega protocol", "top "],
   // 5: Ultimate Futures Rewritten (FRU)
-  ["絶エンドシンガー", "futures rewritten", "fru "],
+  // 2026-08-28: 日本語の通称を追加。公式名は「絶もうひとつの未来」で、
+  // コミュニティでは「絶エデン」とも呼ばれる。従来は「絶エンドシンガー」
+  // しか無く、カテゴリ名を通称にしている固定で分類に失敗していた。
+  [
+    "絶もうひとつの未来",
+    "絶エンドシンガー",
+    "絶エデン",
+    "futures rewritten",
+    "fru ",
+  ],
   // 6: Ultimate Zodiark
   ["絶ゾディアーク", "ultimate zodiark"],
   // 7: Asphodelos (P1-4S, EW Tier 1)
@@ -139,6 +148,29 @@ export function findContentGroups(text: string): Set<number> {
     }
   }
   return groups;
+}
+
+/**
+ * CONTENT_GROUPS のうち絶 (Ultimate) コンテンツのグループ index。
+ * 配列の並び (0-6 = 絶) に依存するので、グループを追加するときは
+ * ここも合わせて更新すること。
+ */
+const ULTIMATE_GROUP_INDICES = new Set([0, 1, 2, 3, 4, 5, 6]);
+
+/**
+ * テキスト (カテゴリ名 / zone 名) が絶コンテンツを指すか (TODO #94 改善)。
+ *
+ * 用途: 練習ログのフェーズ表示。フェーズ (P1〜) 単位で管理するのは実質
+ * 絶だけで、零式では「P2 8.3%」のような表記がノイズになる (2026-08-28
+ * ユーザー指摘)。分類器で判定できないときは名前に「絶」/「ultimate」を
+ * 含むかの素朴な判定にフォールバックする。
+ */
+export function isUltimateContent(text: string | null | undefined): boolean {
+  if (!text) return false;
+  const groups = findContentGroups(text);
+  for (const g of groups) if (ULTIMATE_GROUP_INDICES.has(g)) return true;
+  if (groups.size > 0) return false; // 分類できて絶グループ外 = 絶ではない
+  return /絶|ultimate/i.test(text);
 }
 
 /**

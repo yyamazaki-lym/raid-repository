@@ -24,6 +24,7 @@ export async function syncFflogsFightsAction(): Promise<
       fightsUpserted: number;
       failed: number;
       truncated: boolean;
+      reattributed: number;
     }
   | { ok: false; reason: string }
 > {

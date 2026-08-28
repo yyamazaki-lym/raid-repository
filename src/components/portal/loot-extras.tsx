@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   CalendarClock,
   Check,
+  ChevronDown,
   CircleDashed,
   ExternalLink,
   Pencil,
@@ -26,6 +27,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useConfirm } from "@/components/portal/confirm-dialog";
+import { useCollapsible } from "@/lib/use-collapsible";
 import { LinkSiteIcon } from "@/components/portal/link-site-icon";
 import { safeHref } from "@/lib/url-safe";
 import { getStoredAuthorName } from "@/lib/schedule-memos-client";
@@ -96,10 +98,27 @@ export function LootWeeklyPanel({
     });
   };
 
+  // 折りたたみ状態は localStorage で永続 (他セクションと同じ use-collapsible)。
+  const [collapsed, setCollapsed] = useCollapsible(
+    "raid-repo:loot-weekly-collapsed",
+  );
+
   return (
     <section className="flex flex-col gap-3 rounded-md border border-border/40 bg-secondary/10 p-3">
       <header className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setCollapsed(!collapsed)}
+          aria-expanded={!collapsed}
+          className="flex min-w-0 items-center gap-2 rounded px-1 text-left hover:bg-secondary/30"
+        >
+          <ChevronDown
+            className={
+              "h-3 w-3 shrink-0 text-muted-foreground transition-transform " +
+              (collapsed ? "-rotate-90" : "rotate-0")
+            }
+            aria-hidden
+          />
           <CalendarClock
             className="h-4 w-4 text-[var(--neon-cyan)]"
             aria-hidden
@@ -110,7 +129,7 @@ export function LootWeeklyPanel({
             <span className="whitespace-nowrap">{weekLabel}</span>
             <span className="whitespace-nowrap">{untilReset}</span>
           </span>
-        </div>
+        </button>
         <span
           className={
             "rounded-sm border px-2 py-1 font-mono text-[10px] tracking-[0.14em] " +
@@ -123,7 +142,7 @@ export function LootWeeklyPanel({
         </span>
       </header>
 
-      {rows.length === 0 ? (
+      {collapsed ? null : rows.length === 0 ? (
         <p className="text-[12px] leading-relaxed text-muted-foreground">
           メンバー一覧が未登録です。下のボタンで自分の状態を記録すると、この
           コンテンツの今週分としてカウントされます。
@@ -160,6 +179,7 @@ export function LootWeeklyPanel({
         </ul>
       )}
 
+      {!collapsed && (
       <div className="flex flex-wrap items-center gap-1.5">
         <span className="font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase">
           自分の状態
@@ -179,6 +199,7 @@ export function LootWeeklyPanel({
           </Button>
         ))}
       </div>
+      )}
     </section>
   );
 }
@@ -259,16 +280,32 @@ export function BisLinksPanel({
     router.refresh();
   };
 
+  const [collapsed, setCollapsed] = useCollapsible(
+    "raid-repo:loot-bis-collapsed",
+  );
+
   return (
     <section className="flex flex-col gap-3 rounded-md border border-border/40 bg-secondary/10 p-3">
       <header className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setCollapsed(!collapsed)}
+          aria-expanded={!collapsed}
+          className="flex min-w-0 items-center gap-2 rounded px-1 text-left hover:bg-secondary/30"
+        >
+          <ChevronDown
+            className={
+              "h-3 w-3 shrink-0 text-muted-foreground transition-transform " +
+              (collapsed ? "-rotate-90" : "rotate-0")
+            }
+            aria-hidden
+          />
           <Shirt className="h-4 w-4 text-[var(--neon-violet)]" aria-hidden />
           <h2 className="font-display text-base">最適装備 (BiS)</h2>
           <span className="font-mono text-[10px] tracking-[0.18em] text-muted-foreground">
             {links.length} 件
           </span>
-        </div>
+        </button>
         {canEdit && (
           <Button
             type="button"
@@ -283,9 +320,17 @@ export function BisLinksPanel({
         )}
       </header>
 
-      {links.length === 0 ? (
+      {collapsed ? null : links.length === 0 ? (
         <p className="text-[12px] leading-relaxed text-muted-foreground">
-          XivGear などの装備シミュレータで組んだ構成の URL を登録すると、
+          <a
+            href="https://xivgear.app/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[var(--neon-cyan)] underline underline-offset-2 hover:text-foreground"
+          >
+            XivGear
+          </a>{" "}
+          などの装備シミュレータで組んだ構成の URL を登録すると、
           このコンテンツの BiS としてここに並びます。
         </p>
       ) : (
@@ -376,7 +421,15 @@ export function BisLinksPanel({
               {editing?.id ? "BiS リンクを編集" : "BiS リンクを追加"}
             </DialogTitle>
             <DialogDescription>
-              XivGear などで作った構成の共有 URL
+              <a
+                href="https://xivgear.app/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[var(--neon-cyan)] underline underline-offset-2 hover:text-foreground"
+              >
+                XivGear
+              </a>{" "}
+              などで作った構成の共有 URL
               を登録します。シミュレータ自体は portal では持ちません。
             </DialogDescription>
           </DialogHeader>

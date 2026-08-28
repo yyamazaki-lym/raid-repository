@@ -122,15 +122,17 @@ export function MacrosList({
         categoryName={categoryName}
         macros={macros}
       />
-      <WaymarksSection
-        categoryId={categoryId}
-        categoryName={categoryName}
-        initialWaymarks={initialWaymarks}
-      />
       <TemplatesSection
         categoryId={categoryId}
         categoryName={categoryName}
         initialTemplates={initialTemplates}
+      />
+      {/* 2026-08-28 ユーザー指摘: ウェイマークは募集文テンプレより使用頻度が
+          低いので末尾に置く。 */}
+      <WaymarksSection
+        categoryId={categoryId}
+        categoryName={categoryName}
+        initialWaymarks={initialWaymarks}
       />
     </div>
   );
