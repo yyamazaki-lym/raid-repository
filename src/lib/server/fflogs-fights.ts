@@ -64,6 +64,12 @@ export type FflogsFightsSyncResult =
       truncated: boolean;
       /** 保存済み zone 名から後追いでカテゴリが決まった report 数。 */
       reattributed: number;
+      /**
+       * 今回の実行で取得に失敗した report とその理由 (最大 10 件)。
+       * 「どのコンテンツのページに失敗が表示されるか分からない」問題への
+       * 対応 (2026-08-28) — 同期を実行したその場で理由を見せる。
+       */
+      failures: Array<{ reportCode: string; reason: string }>;
     }
   | { ok: false; reason: string };
 
@@ -124,6 +130,7 @@ export async function syncFflogsFights(opts?: {
       failed: 0,
       truncated: false,
       reattributed: 0,
+      failures: [],
     };
   }
 
@@ -193,6 +200,7 @@ export async function syncFflogsFights(opts?: {
   let fetched = 0;
   let upserted = 0;
   let failed = 0;
+  const failures: Array<{ reportCode: string; reason: string }> = [];
   let truncated = targets.length > sliced.length;
 
   for (const ref of sliced) {
@@ -233,13 +241,17 @@ export async function syncFflogsFights(opts?: {
     }
     if (!res.ok) {
       failed += 1;
+      const savedReason = (failureReason ?? res.reason).slice(0, 300);
+      if (failures.length < 10) {
+        failures.push({ reportCode: ref.code, reason: savedReason });
+      }
       await db.from("fflogs_report_syncs").upsert(
         {
           report_code: ref.code,
           category_id: ref.categoryId,
           session_date: ref.sessionDate,
           ok: false,
-          reason: (failureReason ?? res.reason).slice(0, 300),
+          reason: savedReason,
           synced_at: new Date().toISOString(),
         },
         { onConflict: "report_code" },
@@ -355,6 +367,7 @@ export async function syncFflogsFights(opts?: {
     failed,
     truncated,
     reattributed,
+    failures,
   };
 }
 

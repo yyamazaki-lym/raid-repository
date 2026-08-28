@@ -90,6 +90,12 @@ export function LogsView({
 }) {
   const router = useRouter();
   const [syncing, startSync] = useTransition();
+  // 直近の手動同期で取得に失敗した report とその理由。失敗行はカテゴリ別の
+  // ページにしか表示されず「どこで見ればいいか分からない」ため (2026-08-28
+  // 実機報告)、同期を実行したその場にも表示する。
+  const [lastSyncFailures, setLastSyncFailures] = useState<
+    Array<{ reportCode: string; reason: string }>
+  >([]);
   const [offsetTarget, setOffsetTarget] = useState<{
     reportCode: string;
     videoUrl: string;
@@ -113,10 +119,11 @@ export function LogsView({
         toast.error(result.reason);
         return;
       }
+      setLastSyncFailures(result.failures ?? []);
       toast.success(
         `同期完了 — ${result.reportsFetched} レポート / ${result.fightsUpserted} pull` +
           (result.reattributed > 0 ? ` / 再分類 ${result.reattributed}` : "") +
-          (result.failed > 0 ? ` (失敗 ${result.failed})` : "") +
+          (result.failed > 0 ? ` (失敗 ${result.failed} — 理由は下に表示)` : "") +
           (result.truncated ? " ※途中まで" : ""),
       );
       router.refresh();
@@ -140,10 +147,40 @@ export function LogsView({
     </Button>
   ) : null;
 
+  const lastSyncFailuresBlock =
+    lastSyncFailures.length > 0 ? (
+      <section className="rounded-md border border-rose-400/35 bg-rose-400/5 px-3 py-2">
+        <h3 className="font-mono text-[10px] tracking-[0.16em] text-rose-200 uppercase">
+          今回の同期で取得できなかったレポート ({lastSyncFailures.length} 件)
+        </h3>
+        <ul className="mt-1 flex flex-col gap-1">
+          {lastSyncFailures.map((f) => (
+            <li
+              key={f.reportCode}
+              className="text-[11px] leading-relaxed text-muted-foreground"
+            >
+              <a
+                href={`https://www.fflogs.com/reports/${encodeURIComponent(f.reportCode)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-mono text-rose-200/90 underline underline-offset-2 hover:text-rose-100"
+              >
+                {f.reportCode}
+              </a>
+              <span className="block pl-2">
+                {humanizeFflogsSyncReason(f.reason)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </section>
+    ) : null;
+
   if (fights.length === 0) {
     return (
       <div className="flex flex-col gap-3 p-3">
         <div className="flex justify-end">{syncButton}</div>
+        {lastSyncFailuresBlock}
         <div className="flex flex-col gap-2">
           <EmptyState
             icon={Activity}
@@ -197,6 +234,8 @@ export function LogsView({
         {syncButton}
         {syncButton && <MirrorActionSlot>{syncButton}</MirrorActionSlot>}
       </header>
+
+      {lastSyncFailuresBlock}
 
       <ul className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         <StatCard
