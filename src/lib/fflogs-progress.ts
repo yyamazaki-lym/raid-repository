@@ -234,6 +234,23 @@ export function summarize(
       ? (floors.byEncounter.get(f.encounterId) ?? null)
       : null;
 
+  // 「最深層でのベスト残%」。層モデルがあるとき、下層の kill (消化) を
+  // 0% として混ぜると消化日が常に「残0%」になり数字が意味を失う
+  // (2026-08-28 実機報告)。最高到達層の戦闘だけで残% を出す。
+  const bestPercentageOf = (list: FightRow[]): number | null => {
+    let scope = list;
+    if (floors) {
+      const idxs = list
+        .map(floorOf)
+        .filter((v): v is number => v !== null);
+      if (idxs.length > 0) {
+        const top = Math.max(...idxs);
+        scope = list.filter((f) => floorOf(f) === top);
+      }
+    }
+    return minOrNull(scope.map((f) => (f.kill ? 0 : f.fightPercentage)));
+  };
+
   const days: DaySummary[] = [];
   for (const [date, list] of byDay) {
     const sorted = [...list].sort((a, b) => a.startMs - b.startMs);
@@ -242,9 +259,7 @@ export function summarize(
       pulls: sorted.length,
       kills: sorted.filter((f) => f.kill).length,
       clears: sorted.filter((f) => isClearFight(f, floors)).length,
-      bestPercentage: minOrNull(
-        sorted.map((f) => (f.kill ? 0 : f.fightPercentage)),
-      ),
+      bestPercentage: bestPercentageOf(sorted),
       bestPhase: maxOrNull(sorted.map((f) => f.lastPhase)),
       bestFloor: maxOrNull(sorted.map(floorOf)),
       fightSeconds: Math.round(
@@ -262,9 +277,7 @@ export function summarize(
   return {
     totalPulls: fights.length,
     totalClears: clears.length,
-    bestPercentage: minOrNull(
-      fights.map((f) => (f.kill ? 0 : f.fightPercentage)),
-    ),
+    bestPercentage: bestPercentageOf(fights),
     bestPhase: maxOrNull(fights.map((f) => f.lastPhase)),
     firstKill: chronological.find((f) => isClearFight(f, floors)) ?? null,
     fastestClearSeconds:
@@ -363,6 +376,9 @@ export function progressTimeline(
 export function formatPercentage(p: number | null): string {
   if (p === null) return "—";
   if (p <= 0) return "0%";
+  // 1% 未満を 1 桁丸めすると「0.0%」になり討伐 (0%) と区別できないため
+  // 2 桁で出す (惜しい wipe ほど小数が意味を持つ)。
+  if (p < 1) return `${p.toFixed(2)}%`;
   return `${p.toFixed(1)}%`;
 }
 

@@ -804,10 +804,15 @@ export function parseFightsPayload(text: string): ReportFightsResult {
         kill: f.kill === true,
         difficulty: num(f.difficulty),
         encounterID: enc,
-        // 内部 JSON の bossPercentage / fightPercentage は 100 倍値のことが
-        // ある。読み出し側の normalizePercentage が 0-100 に畳むので、
-        // ここではそのまま保存する。
-        fightPercentage: num(f.fightPercentage) ?? num(f.bossPercentage),
+        // v1 / 内部 JSON の百分率は 0-10000 の 100 倍整数 (v1 docs:
+        // 3421 = 34.21%)。旧実装は raw のまま保存して読み出し側の
+        // 「>100 なら /100」に頼っていたが、1% 未満の wipe (raw ≤ 100) が
+        // 100 倍のまま表示される穴があった。書き込み時に常に /100 して
+        // 真のパーセントで保存する (既存の 100 倍行は読み出し側の
+        // normalizePercentage が引き続き吸収し、再同期で置き換わる)。
+        fightPercentage: pct100x(
+          num(f.fightPercentage) ?? num(f.bossPercentage),
+        ),
         lastPhase:
           num(f.lastPhase) ?? num(f.lastPhaseForPercentageDisplay),
         startTime: st,
@@ -955,6 +960,12 @@ async function fetchFightsJsonDirect(
 
 function num(v: unknown): number | null {
   return typeof v === "number" && Number.isFinite(v) ? v : null;
+}
+
+/** v1 / 内部 JSON の 100 倍百分率 (0-10000) を 0-100 の実パーセントに。 */
+function pct100x(v: number | null): number | null {
+  if (v === null) return null;
+  return Math.max(0, Math.min(100, v / 100));
 }
 
 async function postGraphql(

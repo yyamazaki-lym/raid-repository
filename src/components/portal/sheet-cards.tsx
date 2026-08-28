@@ -5,7 +5,11 @@ import { ExternalLink, Filter, RotateCcw, Table2, UserRound } from "lucide-react
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { safeHref } from "@/lib/url-safe";
-import { findMemberColumn, type SheetTable } from "@/lib/sheet-csv";
+import {
+  buildSheetCardRows,
+  findMemberColumn,
+  type SheetTable,
+} from "@/lib/sheet-csv";
 import {
   getStoredAuthorName,
   persistAuthorName,
@@ -62,12 +66,18 @@ export function SheetCards({
 
   const href = safeHref(sheetUrl);
 
+  // 行 → カードデータ (ノイズセル除去・見出し昇格は buildSheetCardRows 参照)。
+  const cardRows = useMemo(
+    () => buildSheetCardRows(table, visibleColumns),
+    [table, visibleColumns],
+  );
+
   // 巨大なシート (数百行) をスマホで全部カード化すると描画が重くなるため
   // 上限を切る。超えた分は Sheets 本体で見てもらう (読み取り専用ビューなので
   // 情報が失われるわけではない)。
   const MAX_CARDS = 200;
-  const shown = table.rows.slice(0, MAX_CARDS);
-  const hidden = table.rows.length - shown.length;
+  const shown = cardRows.slice(0, MAX_CARDS);
+  const hidden = cardRows.length - shown.length;
 
   return (
     <div className="flex flex-col gap-3">
@@ -163,15 +173,7 @@ export function SheetCards({
       )}
 
       <ul className="flex flex-col gap-2">
-        {shown.map((row, ri) => {
-          const heading = row[0]?.trim();
-          const cells = visibleColumns
-            .map((ci) => ({
-              label: table.headers[ci]?.trim() ?? "",
-              value: row[ci]?.trim() ?? "",
-            }))
-            .filter((c) => c.value !== "");
-          if (!heading && cells.length === 0) return null;
+        {shown.map(({ heading, cells }, ri) => {
           return (
             <li
               key={ri}
