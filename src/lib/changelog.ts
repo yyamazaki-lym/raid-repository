@@ -71,6 +71,11 @@ export const RELEASES: ReleaseEntry[] = [
     ...LATEST_RELEASE_META,
     parts: [
       {
+        title: "\u{1F513} unlisted レポートを API で取得 \u2014 xivanalysis と同じ経路",
+        body:
+          "調査により FFLogs の visibility の正確なセマンティクスが確定: **「一覧に出ない」ことと「読めない」ことは別**。unlisted (限定公開) レポートは一覧 API には出ないが、**レポートコードを直指定すれば v1 API で読める** (「リンクを知っている人は閲覧可」の API 版。xivanalysis が unlisted ログを解析できるのはこの経路)。\n\nportal は動画リンクや日付メモの登録で既にコードを知っているので、練習ログの同期に **v1 API (code 直指定) の fallback** を追加した。v2 が permission エラーを返したレポートは v1 → session cookie の順で再試行する。**Vercel に `FFLOGS_API_KEY` (v1 Public Key) が設定されていれば、URL 登録済みの unlisted レポートの pull が取り込める**。\n\n読めない組み合わせとして残るのは「private かつ本人以外の連携」のみ。失敗理由の文言も新しい優先順 (unlisted → API キー / private → 本人連携 or 公開設定変更) に更新した。",
+      },
+      {
         title: "\u{1F6A7} FFLogs の bot 対策強化への対応 \u2014 scrape 403 の緩和と案内の現実化",
         body:
           "実機で「Edge 経由でも fflogs HTML scrape 403」が確認された (2026-06 の実測では通っていた経路)。FFLogs 側の bot 対策が強化されたとみられる。\n\n- **UA の近代化**: scrape が名乗っていたブラウザが 2 年前の Chrome 124 のままで、古い UA + データセンター IP の組み合わせが bot 判定されやすくなっていた。現行版に更新\n- **fights 取得を XHR として自然な形に**: pull データの JSON エンドポイントを「ページとして直接開く」風のヘッダーで取りに行っていたが、実ブラウザにはない挙動でそれ自体が bot シグナルだった。実ブラウザと同じ XHR ヘッダー (Referer = レポートページ、Sec-Fetch-Dest: empty 等) に変更\n- **案内の現実化**: 「cookie を登録すれば取れます」と断言していた文面を改め、cookie は\u300c試みる\u300d手段、**確実なのはレポートの Public 化** (アップローダの既定公開設定を Public にすれば以後は全自動) であることを診断パネルと失敗理由の両方に明記\n\nヘッダー更新で 403 が解消するかは FFLogs 側の判定次第 (TLS 指紋で弾いている場合は効果なし)。解消しない場合の運用は Public 化が唯一確実な経路になる。",

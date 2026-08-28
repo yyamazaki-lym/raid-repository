@@ -204,10 +204,18 @@ export async function syncFflogsFights(opts?: {
     }
     let res = await fetchReportFights(token, ref.code);
     fetched += 1;
-    if (!res.ok && PERMISSION_ERROR_RE.test(res.reason) && sessionCookie) {
-      // private レポート: session cookie があれば内部 JSON で再試行する。
-      const viaCookie = await fetchReportFightsViaCookie(sessionCookie, ref.code);
-      if (viaCookie.ok) res = viaCookie;
+    if (!res.ok && PERMISSION_ERROR_RE.test(res.reason)) {
+      // unlisted: v1 API は code 直指定なら読める (xivanalysis と同じ経路)。
+      const viaV1 = await fetchReportFightsViaV1(ref.code);
+      if (viaV1.ok) res = viaV1;
+      // private: session cookie があれば内部 JSON で再試行する。
+      if (!res.ok && sessionCookie) {
+        const viaCookie = await fetchReportFightsViaCookie(
+          sessionCookie,
+          ref.code,
+        );
+        if (viaCookie.ok) res = viaCookie;
+      }
     }
     if (!res.ok) {
       failed += 1;
@@ -563,8 +571,61 @@ async function fetchReportFightsViaCookie(
 ): Promise<ReportFightsResult> {
   const raw = await fetchFightsJsonText(sessionCookie, code);
   if (!raw.ok) return raw;
+  return parseFightsPayload(raw.text);
+}
+
+/**
+ * v1 API (code 直指定) fallback — xivanalysis と同じ経路 (TODO #94 follow-up)。
+ *
+ * FFLogs の visibility セマンティクスは「一覧」と「個別取得」で異なる:
+ *   - 一覧 (reports/user): public のみ
+ *   - 個別 (report/fights/{code}): **unlisted は code を知っていれば読める**
+ *     (「リンクを知っている人は閲覧可」の API 版。xivanalysis が unlisted
+ *     ログを解析できるのはこの経路)。private は本人以外読めない。
+ *
+ * portal は動画リンク / 日付メモ経由で code を既に知っているので、v2 user
+ * token が permission エラーを返した report もここで拾える可能性がある。
+ * `/v1/` は API パスなので Cloudflare の bot 対策 (HTML scrape 403) の
+ * 対象外 — 既存の v1 一覧取得が本番で現役なことが傍証。
+ */
+async function fetchReportFightsViaV1(
+  code: string,
+): Promise<ReportFightsResult> {
+  const apiKey = process.env.FFLOGS_API_KEY?.trim();
+  if (!apiKey) return { ok: false, reason: "FFLOGS_API_KEY 未設定" };
   try {
-    const json = JSON.parse(raw.text) as {
+    const url = new URL(
+      `https://www.fflogs.com/v1/report/fights/${encodeURIComponent(code)}`,
+    );
+    url.searchParams.set("api_key", apiKey);
+    const res = await fetch(url.toString(), {
+      cache: "no-store",
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    });
+    if (!res.ok) {
+      // v1 は private に 400 系 + エラー JSON を返す。文言は呼び出し側で
+      // permission 判定に使うためそのまま返す。
+      const body = await res.text().catch(() => "");
+      return { ok: false, reason: `fflogs v1 ${res.status}: ${body.slice(0, 200)}` };
+    }
+    return parseFightsPayload(await res.text());
+  } catch (e) {
+    return {
+      ok: false,
+      reason: e instanceof Error ? e.message : "fetch failed",
+    };
+  }
+}
+
+/**
+ * fights ペイロードの防御的パース。v1 `/report/fights/{code}` と内部
+ * fights-and-participants はほぼ同じ形 (フィールド名のゆれのみ) なので共用。
+ * export はテストからの直接検証用 (ページ / action からは使わない)。
+ */
+export function parseFightsPayload(text: string): ReportFightsResult {
+  try {
+    const json = JSON.parse(text) as {
       fights?: Array<Record<string, unknown>> | null;
       start?: number | null;
       startTime?: number | null;
@@ -621,7 +682,7 @@ async function fetchReportFightsViaCookie(
   } catch (e) {
     return {
       ok: false,
-      reason: e instanceof Error ? e.message : "fetch failed",
+      reason: e instanceof Error ? e.message : "JSON parse failed",
     };
   }
 }
