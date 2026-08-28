@@ -4,9 +4,15 @@ import {
   createSupabaseServiceRoleClient,
 } from "@/lib/supabase/server";
 import { getValidFflogsOAuthToken } from "./fflogs-oauth";
+import { getSecretValue } from "./secret-store";
+import { buildFflogsScrapeHeaders } from "./fflogs-scrape-request";
 import { parseFflogsReportCode } from "@/lib/fflogs-url";
 import { jstYmdString } from "@/lib/jst-date";
 import { findContentGroups } from "@/lib/content-groups";
+import {
+  PERMISSION_ERROR_RE,
+  PRIVATE_REPORT_REASON,
+} from "@/lib/fflogs-sync-reason";
 
 /**
  * FFLogs の pull 単位データ (fights) を portal に materialize する
@@ -81,6 +87,12 @@ type FightPayload = {
 export async function syncFflogsFights(opts?: {
   useServiceRole?: boolean;
   limit?: number;
+  /**
+   * true で恒久失敗 (private レポート等) も再試行する。session cookie を
+   * 登録し直した後に admin が手動同期で使う想定。cron (毎日) では false —
+   * 結果の変わらない失敗が 40 件の取得枠を毎晩食い潰すのを防ぐ。
+   */
+  retryPermanentFailures?: boolean;
 }): Promise<FflogsFightsSyncResult> {
   const token = await getValidFflogsOAuthToken();
   if (!token) {
@@ -96,9 +108,11 @@ export async function syncFflogsFights(opts?: {
     : await createClient();
   const deadlineAtMs = Date.now() + TIME_BUDGET_MS;
 
-  const [refs, categories] = await Promise.all([
+  const [refs, categories, sessionCookie] = await Promise.all([
     collectReportRefs(db),
     loadCategories(db),
+    // private レポートの fallback 用 (fflogs.ts の scrape と同じ保管場所)。
+    getSecretValue("fflogs_session_cookie").catch(() => null),
   ]);
   if (refs.size === 0) {
     return {
@@ -115,7 +129,7 @@ export async function syncFflogsFights(opts?: {
   // 既存の同期台帳を読み、再取得が要るものだけに絞る。
   const { data: ledger } = await db
     .from("fflogs_report_syncs")
-    .select("report_code, ok, synced_at, session_date, category_id, zone_name");
+    .select("report_code, ok, synced_at, session_date, category_id, zone_name, reason");
   const ledgerMap = new Map<
     string,
     {
@@ -124,6 +138,7 @@ export async function syncFflogsFights(opts?: {
       sessionDate: string | null;
       categoryId: string | null;
       zoneName: string | null;
+      reason: string | null;
     }
   >();
   for (const row of ledger ?? []) {
@@ -133,6 +148,7 @@ export async function syncFflogsFights(opts?: {
       sessionDate: (row.session_date as string | null) ?? null,
       categoryId: (row.category_id as string | null) ?? null,
       zoneName: (row.zone_name as string | null) ?? null,
+      reason: (row.reason as string | null) ?? null,
     });
   }
 
@@ -142,8 +158,18 @@ export async function syncFflogsFights(opts?: {
     // 初回同期まで日付が分からない report もあるので、台帳の日付で補う。
     const effectiveDate = ref.sessionDate ?? prev?.sessionDate ?? null;
     const withDate = { ...ref, effectiveDate };
-    if (!prev || !prev.ok) {
+    if (!prev) {
       targets.push(withDate);
+      continue;
+    }
+    if (!prev.ok) {
+      // 恒久失敗 (private) は再試行しても結果が変わらないので、明示指定が
+      // 無い限りスキップして取得枠を新規レポートに回す。
+      const permanent =
+        prev.reason !== null &&
+        (PERMISSION_ERROR_RE.test(prev.reason) ||
+          prev.reason === PRIVATE_REPORT_REASON);
+      if (!permanent || opts?.retryPermanentFailures) targets.push(withDate);
       continue;
     }
     // カテゴリ未確定の report は取り直す。ただし zone 名が既に台帳にあれば
@@ -176,17 +202,27 @@ export async function syncFflogsFights(opts?: {
       truncated = true;
       break;
     }
-    const res = await fetchReportFights(token, ref.code);
+    let res = await fetchReportFights(token, ref.code);
     fetched += 1;
+    if (!res.ok && PERMISSION_ERROR_RE.test(res.reason) && sessionCookie) {
+      // private レポート: session cookie があれば内部 JSON で再試行する。
+      const viaCookie = await fetchReportFightsViaCookie(sessionCookie, ref.code);
+      if (viaCookie.ok) res = viaCookie;
+    }
     if (!res.ok) {
       failed += 1;
+      const isPermission = PERMISSION_ERROR_RE.test(res.reason);
       await db.from("fflogs_report_syncs").upsert(
         {
           report_code: ref.code,
           category_id: ref.categoryId,
           session_date: ref.sessionDate,
           ok: false,
-          reason: res.reason.slice(0, 300),
+          // permission エラーは原因と対処が分かる日本語に置き換えて保存する。
+          reason: (isPermission ? PRIVATE_REPORT_REASON : res.reason).slice(
+            0,
+            300,
+          ),
           synced_at: new Date().toISOString(),
         },
         { onConflict: "report_code" },
@@ -507,7 +543,108 @@ async function fetchReportFights(
     first.reason,
   );
   const second = await postGraphql(token, minimal, code);
-  return second.ok ? second : { ok: false, reason: second.reason };
+  if (second.ok) return second;
+  return { ok: false, reason: second.reason };
+}
+
+/**
+ * private レポートの fallback: FFLogs のレポートページ自身が使う内部 JSON
+ * (`/reports/fights-and-participants/<code>/0`) を session cookie 付きで叩く。
+ *
+ * 既存の「private レポートの一覧を cookie scrape で取る」方針 (fflogs.ts)
+ * の延長で、新しい認証面は増やしていない。非公式エンドポイントなので
+ * フィールド名のゆれ (boss/encounterID, start_time/startTime,
+ * bossPercentage/fightPercentage) を許容する防御的パースにし、形が想定と
+ * 違ったら黙って失敗に落とす (v2 の結果に上書きはしない)。
+ */
+async function fetchReportFightsViaCookie(
+  sessionCookie: string,
+  code: string,
+): Promise<ReportFightsResult> {
+  try {
+    const res = await fetch(
+      `https://www.fflogs.com/reports/fights-and-participants/${encodeURIComponent(code)}/0`,
+      {
+        cache: "no-store",
+        headers: {
+          ...buildFflogsScrapeHeaders(sessionCookie),
+          Accept: "application/json,*/*",
+        },
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      },
+    );
+    if (!res.ok) {
+      return { ok: false, reason: `fflogs internal ${res.status}` };
+    }
+    const ctype = res.headers.get("content-type") ?? "";
+    if (!/json/i.test(ctype)) {
+      // ログイン画面 HTML 等 = cookie が失効している。
+      return { ok: false, reason: "session cookie が無効の可能性" };
+    }
+    const json = (await res.json()) as {
+      fights?: Array<Record<string, unknown>> | null;
+      start?: number | null;
+      startTime?: number | null;
+      title?: string | null;
+      zone?: number | { id?: number; name?: string } | null;
+      zoneName?: string | null;
+    };
+    if (!Array.isArray(json.fights)) {
+      return { ok: false, reason: "fights が取得できません (形式不一致)" };
+    }
+    const startMs = num(json.start) ?? num(json.startTime);
+    if (startMs === null) {
+      return { ok: false, reason: "レポート開始時刻が取得できません" };
+    }
+    const fights: FightPayload[] = [];
+    for (const f of json.fights) {
+      const id = num(f.id);
+      const st = num(f.start_time) ?? num(f.startTime);
+      const et = num(f.end_time) ?? num(f.endTime);
+      const enc = num(f.boss) ?? num(f.encounterID);
+      if (id === null || st === null || et === null) continue;
+      if (enc === null || enc <= 0) continue; // trash は取り込まない
+      fights.push({
+        id,
+        name: typeof f.name === "string" ? f.name : null,
+        kill: f.kill === true,
+        difficulty: num(f.difficulty),
+        encounterID: enc,
+        // 内部 JSON の bossPercentage / fightPercentage は 100 倍値のことが
+        // ある。読み出し側の normalizePercentage が 0-100 に畳むので、
+        // ここではそのまま保存する。
+        fightPercentage: num(f.fightPercentage) ?? num(f.bossPercentage),
+        lastPhase:
+          num(f.lastPhase) ?? num(f.lastPhaseForPercentageDisplay),
+        startTime: st,
+        endTime: et,
+      });
+    }
+    const zoneObj = json.zone;
+    return {
+      ok: true,
+      title: typeof json.title === "string" ? json.title : null,
+      zoneId:
+        typeof zoneObj === "number" ? zoneObj : num(zoneObj?.id ?? null),
+      zoneName:
+        typeof json.zoneName === "string"
+          ? json.zoneName
+          : typeof zoneObj === "object" && zoneObj && typeof zoneObj.name === "string"
+            ? zoneObj.name
+            : null,
+      startMs,
+      fights,
+    };
+  } catch (e) {
+    return {
+      ok: false,
+      reason: e instanceof Error ? e.message : "fetch failed",
+    };
+  }
+}
+
+function num(v: unknown): number | null {
+  return typeof v === "number" && Number.isFinite(v) ? v : null;
 }
 
 async function postGraphql(
