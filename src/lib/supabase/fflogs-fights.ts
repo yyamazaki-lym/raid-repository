@@ -112,26 +112,54 @@ export async function fetchReportVideoLinks(
   }
 }
 
+export type FailedReportSync = {
+  reportCode: string;
+  reason: string | null;
+  /** true = どのコンテンツにも割り当てられていない失敗 (全カテゴリで表示)。 */
+  unassigned: boolean;
+};
+
 /**
  * 同期台帳のうち失敗しているものを返す (UI に「取り込めていない report」を
- * 出すため)。全件が正常なら空配列。
+ * 出すため)。**カテゴリ未割当の失敗も含める** — 2026-08-28 実機で、
+ * 取得に失敗して zone も分からないレポートが category_id NULL のまま
+ * どのページにも出ず、「同期したのにログが出ない」理由が見えなかったため。
  */
 export async function fetchFailedReportSyncs(
   categoryId: string,
-): Promise<Array<{ reportCode: string; reason: string | null }>> {
+): Promise<FailedReportSync[]> {
   try {
     const supabase = await createClient();
-    const { data, error } = await supabase
-      .from("fflogs_report_syncs")
-      .select("report_code, reason")
-      .eq("category_id", categoryId)
-      .eq("ok", false)
-      .limit(20);
-    if (error || !data) return [];
-    return data.map((r) => ({
-      reportCode: r.report_code as string,
-      reason: (r.reason as string | null) ?? null,
-    }));
+    const [mine, orphan] = await Promise.all([
+      supabase
+        .from("fflogs_report_syncs")
+        .select("report_code, reason")
+        .eq("category_id", categoryId)
+        .eq("ok", false)
+        .limit(20),
+      supabase
+        .from("fflogs_report_syncs")
+        .select("report_code, reason")
+        .is("category_id", null)
+        .eq("ok", false)
+        .limit(20),
+    ]);
+    const out: FailedReportSync[] = [];
+    for (const r of mine.data ?? []) {
+      out.push({
+        reportCode: r.report_code as string,
+        reason: (r.reason as string | null) ?? null,
+        unassigned: false,
+      });
+    }
+    for (const r of orphan.data ?? []) {
+      out.push({
+        reportCode: r.report_code as string,
+        reason: (r.reason as string | null) ?? null,
+        unassigned: true,
+      });
+    }
+    return out;
   } catch (err) {
     rethrowNextSentinel(err);
     return [];

@@ -30,7 +30,9 @@ export async function syncFflogsFightsAction(): Promise<
 > {
   const auth = await assertAdminResult();
   if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
-  const result = await syncFflogsFights();
+  // 手動同期は「cookie を登録し直した / 公開設定を変えた」直後に押される
+  // 想定なので、恒久失敗 (private) も含めて再試行する。cron は再試行しない。
+  const result = await syncFflogsFights({ retryPermanentFailures: true });
   if (result.ok) revalidateQuietly();
   return result;
 }

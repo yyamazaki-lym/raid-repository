@@ -42,6 +42,7 @@ import {
   formatClock,
 } from "@/lib/fflogs-url";
 import { isUltimateContent } from "@/lib/content-groups";
+import { humanizeFflogsSyncReason } from "@/lib/fflogs-sync-reason";
 import type { ReportVideoLink } from "@/lib/supabase/fflogs-fights";
 import {
   setReportVideoAction,
@@ -80,7 +81,11 @@ export function LogsView({
   totalKills: number;
   truncated: boolean;
   videoLinks: Record<string, ReportVideoLink>;
-  failedSyncs: Array<{ reportCode: string; reason: string | null }>;
+  failedSyncs: Array<{
+    reportCode: string;
+    reason: string | null;
+    unassigned: boolean;
+  }>;
   canEdit: boolean;
 }) {
   const router = useRouter();
@@ -146,7 +151,9 @@ export function LogsView({
             description={
               "FFLogs のレポートを取り込むと、pull 数・到達度・残 HP% がここに並びます。" +
               "レポートは「動画に FFLogs URL を紐づける」「コンテンツ編集の FFLogs zone ID / マッチワード」" +
-              "またはレポートの zone 名からこのコンテンツに割り当てられます。"
+              "またはレポートの zone 名からこのコンテンツに割り当てられます。" +
+              "非公開 (private) レポートは連携した本人のもの以外は取得できません" +
+              " (unlisted / public にするか、設定で session cookie を登録すると取得できます)。"
             }
           />
           <p className="text-center text-[11px] text-muted-foreground">
@@ -565,18 +572,38 @@ function PullRow({
 function FailedList({
   failedSyncs,
 }: {
-  failedSyncs: Array<{ reportCode: string; reason: string | null }>;
+  failedSyncs: Array<{
+    reportCode: string;
+    reason: string | null;
+    unassigned: boolean;
+  }>;
 }) {
   return (
     <section className="rounded-md border border-amber-400/30 bg-amber-400/5 px-3 py-2">
       <h3 className="font-mono text-[10px] tracking-[0.16em] text-amber-200 uppercase">
         取り込めていないレポート
       </h3>
-      <ul className="mt-1 flex flex-col gap-0.5">
+      <ul className="mt-1 flex flex-col gap-1">
         {failedSyncs.map((f) => (
-          <li key={f.reportCode} className="text-[11px] text-muted-foreground">
-            <span className="font-mono">{f.reportCode}</span>
-            {f.reason ? ` — ${f.reason}` : ""}
+          <li key={f.reportCode} className="text-[11px] leading-relaxed text-muted-foreground">
+            <a
+              href={`https://www.fflogs.com/reports/${encodeURIComponent(f.reportCode)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-mono text-amber-200/90 underline underline-offset-2 hover:text-amber-100"
+            >
+              {f.reportCode}
+            </a>
+            {f.unassigned && (
+              <span className="ml-1.5 rounded-sm border border-border/50 px-1 py-0.5 font-mono text-[9px] tracking-[0.1em] uppercase">
+                コンテンツ未割当
+              </span>
+            )}
+            {f.reason ? (
+              <span className="block pl-2">
+                {humanizeFflogsSyncReason(f.reason)}
+              </span>
+            ) : null}
           </li>
         ))}
       </ul>
