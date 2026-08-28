@@ -20,6 +20,7 @@ import {
   Hourglass,
   Star,
   X,
+  Microscope,
 } from "lucide-react";
 import { LinkSiteIcon } from "@/components/portal/link-site-icon";
 import { LINK_SITE_LABEL, detectLinkSite } from "@/lib/link-site";
@@ -54,6 +55,7 @@ import {
   formatFirstClear,
 } from "@/lib/duration-format";
 import { safeHref } from "@/lib/url-safe";
+import { toXivAnalysisUrl } from "@/lib/fflogs-url";
 import { extractDateFromTitle } from "@/lib/title-date";
 import { jstYmd, jstYmdString } from "@/lib/jst-date";
 import {
@@ -1151,6 +1153,10 @@ const VideoCard = memo(function VideoCard({
   // the form-level + server-action validators.
   const videoHref = safeHref(video.url);
   const logsHref = safeHref(video.logsUrl);
+  // TODO #94: FFLogs のレポート URL から XIVAnalysis の解析ページを組み立てる。
+  // スキル回し / バフ整合 / CD 落ちをジョブ別に自動指摘してくれるツールで、
+  // 「FFLogs までは飛べるがその先が手作業」だった導線を 1 クリックにする。
+  const analysisHref = safeHref(toXivAnalysisUrl(video.logsUrl) ?? undefined);
   // 1.9 (2026-04-28): カード余白 (タイトル / 説明 / バッジ周辺の隙間など、
   // 既存の interactive 要素以外) をクリックで動画 URL を新規タブで開く。
   // インタラクティブな要素 (a / button / [data-card-no-nav]) 上のクリックは
@@ -1344,6 +1350,19 @@ const VideoCard = memo(function VideoCard({
           >
             <BarChart3 className="h-3 w-3" aria-hidden />
             FFLogs
+            <ExternalLink className="h-2.5 w-2.5 opacity-70" aria-hidden />
+          </a>
+        )}
+        {analysisHref && (
+          <a
+            href={analysisHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 rounded-sm border border-sky-400/45 bg-sky-400/10 px-2 py-1 font-mono text-[10px] tracking-[0.18em] text-sky-200 uppercase transition-colors hover:bg-sky-400/15 hover:text-sky-100"
+            title="XIVAnalysis で解析する（スキル回し / バフ整合 / CD 落ち）"
+          >
+            <Microscope className="h-3 w-3" aria-hidden />
+            Analysis
             <ExternalLink className="h-2.5 w-2.5 opacity-70" aria-hidden />
           </a>
         )}

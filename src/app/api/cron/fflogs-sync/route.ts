@@ -1,6 +1,7 @@
 import "server-only";
 import { NextResponse, type NextRequest } from "next/server";
 import { linkFflogsReportsToVideos } from "@/lib/server/fflogs";
+import { syncFflogsFights } from "@/lib/server/fflogs-fights";
 import { assertCronAuth } from "@/lib/server/cron-auth";
 import { fetchAppSetting } from "@/lib/supabase/app-settings";
 
@@ -61,6 +62,16 @@ export async function GET(req: NextRequest) {
     });
   }
 
+  // TODO #94 (2026-08-28): リンク確定後に pull 単位の fights を materialize
+  // する (練習ログタブ A-1 / A-2 のデータ源)。report ↔ カテゴリ / 日付の対応は
+  // 直前の link 処理が更新した既存資産をそのまま読むので、この順序で走らせる。
+  // OAuth 未接続などで取れない場合も link 結果は返したいので、失敗は握って
+  // レスポンスに理由だけ載せる (cron の retry ループを避ける既存方針と同じ)。
+  const fights = await syncFflogsFights({ useServiceRole: true });
+  if (!fights.ok) {
+    console.warn("[cron/fflogs-sync] syncFflogsFights failed:", fights.reason);
+  }
+
   return NextResponse.json({
     ok: true,
     // D-3: 時間予算超過の部分同期 (wipe スキップ・追加リンクのみ)。
@@ -76,5 +87,15 @@ export async function GET(req: NextRequest) {
     // 第4ステップ (2026-07-12): 日付登録 Logs → 同日動画への橋渡し件数。
     manualLogsBridged: result.manualLogsBridged ?? 0,
     manualLogDaysScanned: result.manualLogDaysScanned ?? 0,
+    // TODO #94: pull 単位ログの取り込み結果。
+    fights: fights.ok
+      ? {
+          reportsKnown: fights.reportsKnown,
+          reportsFetched: fights.reportsFetched,
+          fightsUpserted: fights.fightsUpserted,
+          failed: fights.failed,
+          truncated: fights.truncated,
+        }
+      : { skipped: fights.reason },
   });
 }

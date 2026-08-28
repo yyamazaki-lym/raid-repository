@@ -57,6 +57,8 @@ import {
 } from "@/lib/use-sortable-reorder";
 import { useConfirm } from "@/components/portal/confirm-dialog";
 import { MirrorActionSlot } from "@/components/portal/action-slot";
+import { WaymarksSection } from "./waymarks-section";
+import type { CategoryWaymark } from "@/lib/category-waymarks-client";
 
 /**
  * Macro & template page for a single category. Two sections, both
@@ -82,6 +84,8 @@ type Props = {
   categoryName: string;
   initialMacros: CategoryMacro[];
   initialTemplates: RecruitmentTemplateLite[];
+  /** TODO #94 / A-5: 同タブに並べるウェイマーク (markercode) 一覧。 */
+  initialWaymarks: CategoryWaymark[];
 };
 
 function toHalfWidth(s: string): string {
@@ -107,6 +111,7 @@ export function MacrosList({
   categoryName,
   initialMacros,
   initialTemplates,
+  initialWaymarks,
 }: Props) {
   const macros = useRealtimeCategoryMacros(categoryId, initialMacros);
 
@@ -116,6 +121,11 @@ export function MacrosList({
         categoryId={categoryId}
         categoryName={categoryName}
         macros={macros}
+      />
+      <WaymarksSection
+        categoryId={categoryId}
+        categoryName={categoryName}
+        initialWaymarks={initialWaymarks}
       />
       <TemplatesSection
         categoryId={categoryId}

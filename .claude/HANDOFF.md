@@ -122,6 +122,17 @@
 
 直近版のみ列挙。詳細経緯は `src/lib/changelog.ts`、過去版アーカイブは `.claude/done.md`。
 
+- **2026-08-28: TODO #94 — FF14 ツール調査 (Tier A) の実装 5 件 + XIVAnalysis 連携 + BiS リンク** — 外部ツール調査 (`docs/ff14-tools-research-2026-08.md`) の Tier A 提案をユーザー指示で一括実装。ブランチ `claude/ff14-tools-features-research-kr8l44`。
+  - **schema**: 6b 章を新設 (`category_waymarks` / `category_bis_links` / `loot_weekly_checks` / `fflogs_fights` / `fflogs_report_syncs` / `fflogs_report_videos` + sort_order RPC 2 本)。**7 章 (RLS) より前に配置**する必要がある (ENABLE / policy ループが名指しするため)。realtime 購読は `category_waymarks` のみ追加 (7b FULL + 8 章 publication)、他 5 テーブルは DEFAULT のまま。`categories_default_tab_check` に `'logs'` を追加
+  - **A-5 ウェイマーク**: `category_macros` と同型 (client/actions/fetch + マクロタブ内セクション)。markercode をラベル + メモ付きで保存 → ワンタップコピー、DnD 並べ替え
+  - **A-3 シートのモバイルビュー**: `sheet-csv.ts` (URL → CSV 変換 + 自前 CSV パーサ + 列マッチ) / `server/sheet-table.ts` (isPublicHttpUrl + safeFetch + 2MB/15s 上限 + 5 分 revalidate) / `sheet-cards.tsx`。**mobile のみカード、PC は従来 iframe**、取得失敗時は iframe だけ描画する fallback。軽減表 / ロット両対応
+  - **A-4 週次消化 + BiS**: `loot_weekly_checks` は火 17:00 JST 起点の `week_start` (`week-jst.ts`)。**本人書き込みは Server Action + service role で自分の discord_id の行のみ** (member-writable な RLS 面を増やさない = 監査 M-1 と同種のリスクを作らない)。client に Discord ID は一切渡さず `isMe` を server 側で畳む。BiS は admin CRUD の URL 預かりのみ
+  - **A-1/A-2 練習ログタブ**: 新サブタブ `logs`。`server/fflogs-fights.ts` が v2 GraphQL `reportData.report.fights` を materialize (report ↔ カテゴリ/日付は **既存資産のみ** = video の `logs_url` / `expected_fflogs_zone_ids` / session logs。新規マッチングは足していない)。cron `/api/cron/fflogs-sync` の末尾に追加 + admin の手動同期ボタン。`lastPhase` が取れない場合に最小クエリで 1 度だけ再試行する degrade あり。UI は進捗サマリ + 日別バー + pull 一覧 (FFLogs fight / XIVAnalysis / 動画時刻)
+  - **XIVAnalysis 連携**: `fflogs-url.ts` に code 抽出と URL 組み立てを集約。動画カードに Analysis バッジ、pull 行にも同バッジ
+  - **方針**: 個人 DPS は集計も表示もしない (調査ノート §1-F)。Sheets を正とする過去判断は覆さない (読み取りビューの上乗せのみ)
+  - **検証**: `npx tsc --noEmit` / `npm run lint` (新規エラー 0、既存 warning 1 のみ) / `npx next build` pass。純関数 22 ケースを tsx で実測 pass (週境界 / CSV / URL 変換)。**ローカル PG16 に schema.sql を適用 → 新 6 テーブル各 4 policy + publication 反映 + 冪等再適用 + CHECK 実発火 (`javascript:` URL 拒否) + sort_order RPC 連番を実測**
+  - ⚠ **未検収**: 実データでの FFLogs fights 同期 (OAuth 接続済み本番でのみ確認可能) / Google Sheets 実 URL でのカードパース / 非 admin メンバーの消化チェック書き込み。本番デプロイ後にユーザー実機確認が必要
+
 - **2026-07-12 (2): 日付登録 Logs ↔ 同日動画の橋渡し** — ユーザー報告「日付から登録した Logs が同日の動画と紐づいていない」(観測面 = 動画ページのバッジ)。原因は **保存先 2 系統の構造ギャップ**: 手動の日付登録 (`addSessionLogsUrl` 系) は `schedule_past_session_logs` にのみ書き、動画カードのバッジが参照する `category_links.logs_url` を更新しない (auto 同期だけが両方に書く非対称。#259 のリグレッションではないと差分検証で確定)。修正:
   - **書込時橋渡し**: 日付登録時に同日 (JST) の `logs_url IS NULL` 動画へ `logs_url` + `source='manual'` を設定 (既存リンクは上書きしない)。**削除対称 (ユーザー決定)**: manual 行の削除時、同日動画の `logs_url == URL AND source='manual'` をクリア。sync/native 4 アクション対応、toast に件数表示
   - **同日判定の共有化**: `resolveVideoJstYmd` 等を新規 `src/lib/video-jst-date.ts` に抽出し、TOP の `buildSessionVideoLinkMap` と橋渡し (`src/lib/server/session-logs-video-bridge.ts`) で完全同一ロジックに (タイトル日付優先 → posted_at JST fallback)

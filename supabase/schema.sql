@@ -127,7 +127,7 @@ ALTER TABLE public.categories
   DROP CONSTRAINT IF EXISTS categories_default_tab_check;
 ALTER TABLE public.categories
   ADD CONSTRAINT categories_default_tab_check
-  CHECK (default_tab IN ('mitigation','loot','strategy','videos','macros'));
+  CHECK (default_tab IN ('mitigation','loot','strategy','videos','macros','logs'));
 
 -- NOTE: category_links / schedule_past_sessions の logs_url_source ALTER
 -- は、それぞれ該当 CREATE TABLE 直後に移動済 (新規 fork で table 未作成
@@ -882,6 +882,251 @@ CREATE TABLE IF NOT EXISTS public.tags (
 CREATE INDEX IF NOT EXISTS tags_target_idx
   ON public.tags(target_type, target_id);
 
+-- ============================================================================
+-- 6b. 練習ログ / ウェイマーク / BiS / 週次消化 (TODO #94, 2026-08-28)
+-- ============================================================================
+-- FF14 外部ツール調査 (`docs/ff14-tools-research-2026-08.md`) の Tier A
+-- 提案 A-1 〜 A-5 を実装するための追加テーブル群。既存の
+-- 「表は Google Sheets に任せる」判断は覆さず、Sheets では解けない
+--   - 配布物 (markercode) の置き場
+--   - FFLogs に溜まった pull 単位のデータ
+--   - 週制限のカウンタ
+-- だけを portal 側に持つ。
+--
+-- ⚠ 追加テーブルは下記 3 箇所への登録が必要 (7 章 ENABLE RLS / 7 章
+--   policy ループ / realtime 購読するなら 7b + 8 章)。本セクションは
+--   7 章 (RLS) より前に置く必要がある — 7 章の ENABLE / policy ループが
+--   ここで作るテーブルを名指しするため。登録は各章の配列に直接追記してある。
+
+-- ---- 6b-1. category_waymarks (A-5: ウェイマーク markercode 配布) -------
+-- category_macros と完全に同型。FF14 のフィールドマーカーはコンテンツ毎に
+-- 5 枠しか保存できず、固定内では Discord のログを遡って markercode を
+-- 探す運用になりがち。マクロと同じ「ラベル + 本文 + ワンタップコピー」で
+-- 配れるようにする。body には EchoPlan / Waymark Preset 系ツールが
+-- import/export する文字列 (JSON など) をそのまま入れる。
+CREATE TABLE IF NOT EXISTS public.category_waymarks (
+  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  category_id uuid NOT NULL REFERENCES public.categories(id) ON DELETE CASCADE,
+  label       text NOT NULL DEFAULT '',
+  body        text NOT NULL,
+  note        text,
+  sort_order  integer NOT NULL DEFAULT 0,
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  updated_at  timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS category_waymarks_category_idx
+  ON public.category_waymarks(category_id, sort_order);
+
+DROP TRIGGER IF EXISTS set_updated_at_category_waymarks
+  ON public.category_waymarks;
+CREATE TRIGGER set_updated_at_category_waymarks
+  BEFORE UPDATE ON public.category_waymarks
+  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+-- markercode は 8 マーカー分の座標 JSON で実測 1KB 前後。macros と同じ
+-- 8000 字上限で十分。制御文字は弾かない (整形済 JSON の改行を許容)。
+ALTER TABLE public.category_waymarks
+  DROP CONSTRAINT IF EXISTS category_waymarks_text_sane;
+ALTER TABLE public.category_waymarks
+  ADD CONSTRAINT category_waymarks_text_sane
+  CHECK (
+    char_length(body) <= 8000
+    AND char_length(label) <= 200
+    AND (note IS NULL OR char_length(note) <= 500)
+  ) NOT VALID;
+
+-- ---- 6b-2. category_bis_links (コンテンツごとの最適装備リンク) ---------
+-- 装備シミュレータ (XivGear 等) は URL 1 本で構成を共有できるので、
+-- portal 側はシミュレータを作らず **URL を預かるだけ** にする
+-- (調査ノート §4「装備シミュレータの自作」= 非推奨)。
+CREATE TABLE IF NOT EXISTS public.category_bis_links (
+  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  category_id uuid NOT NULL REFERENCES public.categories(id) ON DELETE CASCADE,
+  label       text NOT NULL,
+  url         text NOT NULL,
+  job         text,
+  owner_name  text,
+  note        text,
+  sort_order  integer NOT NULL DEFAULT 0,
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  updated_at  timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS category_bis_links_category_idx
+  ON public.category_bis_links(category_id, sort_order);
+
+DROP TRIGGER IF EXISTS set_updated_at_category_bis_links
+  ON public.category_bis_links;
+CREATE TRIGGER set_updated_at_category_bis_links
+  BEFORE UPDATE ON public.category_bis_links
+  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+-- url は UI 側 `safeHref` / server action で http(s) 検証済みだが、
+-- PostgREST 直叩き経路のために DB 層でも形を縛る (javascript: 等の遮断)。
+ALTER TABLE public.category_bis_links
+  DROP CONSTRAINT IF EXISTS category_bis_links_sane;
+ALTER TABLE public.category_bis_links
+  ADD CONSTRAINT category_bis_links_sane
+  CHECK (
+    char_length(label) <= 200
+    AND char_length(url) <= 2000
+    AND url ~* '^https?://'
+    AND (job IS NULL OR char_length(job) <= 40)
+    AND (owner_name IS NULL OR char_length(owner_name) <= 100)
+    AND (note IS NULL OR char_length(note) <= 500)
+  ) NOT VALID;
+
+-- ---- 6b-3. loot_weekly_checks (A-4: 週制限の消化チェック) --------------
+-- 零式のロット/断章は火曜 17:00 JST リセットの週制限。誰が今週分を消化
+-- したかだけを持つ最小テーブルで、部位別のロット表そのものは従来どおり
+-- Google Sheets が正 (調査ノート §2 の「過去判断を覆さない」方針)。
+--
+-- week_start は「その週のリセット時刻 (火 08:00 UTC) を含む JST 日付」=
+-- 常に火曜日の date。アプリ側 `src/lib/week-jst.ts` が算出する。
+--
+-- RLS は 7 章ループの admin-only のまま。本人書き込みは Server Action
+-- (`loot-weekly-actions.ts`) が service role で「自分の discord_id の行
+-- だけ」を書く形で通す (native_schedule_members.comment と同じ設計)。
+-- 新しい member-writable な RLS 面を増やさないための選択。
+CREATE TABLE IF NOT EXISTS public.loot_weekly_checks (
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  category_id     uuid NOT NULL REFERENCES public.categories(id) ON DELETE CASCADE,
+  week_start      date NOT NULL,
+  discord_user_id text NOT NULL,
+  display_name    text NOT NULL DEFAULT '',
+  status          text NOT NULL DEFAULT '未消化'
+                  CHECK (status IN ('未消化','消化済','辞退')),
+  note            text,
+  created_at      timestamptz NOT NULL DEFAULT now(),
+  updated_at      timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (category_id, week_start, discord_user_id)
+);
+CREATE INDEX IF NOT EXISTS loot_weekly_checks_week_idx
+  ON public.loot_weekly_checks(category_id, week_start);
+
+DROP TRIGGER IF EXISTS set_updated_at_loot_weekly_checks
+  ON public.loot_weekly_checks;
+CREATE TRIGGER set_updated_at_loot_weekly_checks
+  BEFORE UPDATE ON public.loot_weekly_checks
+  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+ALTER TABLE public.loot_weekly_checks
+  DROP CONSTRAINT IF EXISTS loot_weekly_checks_text_sane;
+ALTER TABLE public.loot_weekly_checks
+  ADD CONSTRAINT loot_weekly_checks_text_sane
+  CHECK (
+    char_length(discord_user_id) <= 64
+    AND char_length(display_name) <= 100
+    AND (note IS NULL OR (char_length(note) <= 200 AND note !~ '[[:cntrl:]]'))
+  ) NOT VALID;
+
+-- ---- 6b-4. fflogs_fights (A-1 / A-2: pull 単位の練習ログ) --------------
+-- FFLogs には pull 単位で全てが入っているのに、portal 側は report URL を
+-- 動画に紐づけて終わっていた (調査ノート §2 空白 01)。v2 GraphQL の
+-- `reportData.report.fights` を日次で materialize し、
+--   - 到達フェーズ / 残 HP % / pull 数の推移 (A-1)
+--   - 日付 → pull 一覧 → 該当 fight / 動画時刻へのジャンプ (A-2)
+-- を portal 内で完結させる。
+--
+-- report_code ↔ カテゴリ / 日付の対応は **既存のリンク資産を再利用** する:
+--   - category_links.logs_url (kind='video')      → category_id
+--   - schedule_past_session_logs.url              → session_date (raw_date)
+--   - native_schedule_session_logs.url + session  → session_date
+-- 新しいマッチングロジックは足さない。
+CREATE TABLE IF NOT EXISTS public.fflogs_fights (
+  id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  report_code      text NOT NULL,
+  fight_id         integer NOT NULL,
+  category_id      uuid REFERENCES public.categories(id) ON DELETE SET NULL,
+  session_date     text,
+  name             text,
+  kill             boolean NOT NULL DEFAULT false,
+  -- FFLogs の fightPercentage は「終了時点のボス残 HP (%)」。小さいほど
+  -- 到達点が深い。kill=true の pull では 0。
+  fight_percentage numeric,
+  last_phase       integer,
+  difficulty       integer,
+  encounter_id     integer,
+  start_ms         bigint NOT NULL,
+  end_ms           bigint NOT NULL,
+  report_start_ms  bigint,
+  created_at       timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (report_code, fight_id)
+);
+CREATE INDEX IF NOT EXISTS fflogs_fights_category_idx
+  ON public.fflogs_fights(category_id, start_ms);
+CREATE INDEX IF NOT EXISTS fflogs_fights_session_idx
+  ON public.fflogs_fights(session_date);
+
+-- ---- 6b-5. fflogs_report_syncs (fights 同期の台帳) ---------------------
+-- 同期済み report を記録し、再取得を「新規 code + 直近 N 日」に絞る。
+-- 失敗も理由付きで残し、UI 側で「取得できていない report」を可視化する。
+CREATE TABLE IF NOT EXISTS public.fflogs_report_syncs (
+  report_code     text PRIMARY KEY,
+  category_id     uuid REFERENCES public.categories(id) ON DELETE SET NULL,
+  session_date    text,
+  title           text,
+  zone_id         integer,
+  report_start_ms bigint,
+  fight_count     integer NOT NULL DEFAULT 0,
+  ok              boolean NOT NULL DEFAULT true,
+  reason          text,
+  synced_at       timestamptz NOT NULL DEFAULT now()
+);
+
+-- ---- 6b-6. fflogs_report_videos (A-2: 動画オフセット) ------------------
+-- 「レポート開始時刻が動画の何秒地点か」を report ごとに 1 回だけ入力すれば、
+-- 各 pull の動画内時刻は
+--   offset_seconds + (fight.start_ms - report_start_ms) / 1000
+-- で計算できる。sync はこのテーブルに触らない (人が入れた値を壊さない)。
+CREATE TABLE IF NOT EXISTS public.fflogs_report_videos (
+  report_code    text PRIMARY KEY,
+  video_url      text,
+  offset_seconds integer NOT NULL DEFAULT 0,
+  updated_at     timestamptz NOT NULL DEFAULT now()
+);
+
+DROP TRIGGER IF EXISTS set_updated_at_fflogs_report_videos
+  ON public.fflogs_report_videos;
+CREATE TRIGGER set_updated_at_fflogs_report_videos
+  BEFORE UPDATE ON public.fflogs_report_videos
+  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+ALTER TABLE public.fflogs_report_videos
+  DROP CONSTRAINT IF EXISTS fflogs_report_videos_sane;
+ALTER TABLE public.fflogs_report_videos
+  ADD CONSTRAINT fflogs_report_videos_sane
+  CHECK (
+    (video_url IS NULL OR (char_length(video_url) <= 2000 AND video_url ~* '^https?://'))
+    -- ±24h。動画とレポートのずれがこれを超えるのは入力ミス。
+    AND offset_seconds BETWEEN -86400 AND 86400
+  ) NOT VALID;
+
+-- ---- 6b-7. sort_order allocator RPCs (13c と同型) ----------------------
+CREATE OR REPLACE FUNCTION public.next_category_waymark_sort_order(
+  p_category_id uuid
+)
+RETURNS integer LANGUAGE sql SECURITY DEFINER SET search_path = public AS $$
+  SELECT COALESCE(MAX(sort_order), -1) + 1
+  FROM public.category_waymarks
+  WHERE category_id = p_category_id
+$$;
+
+CREATE OR REPLACE FUNCTION public.next_category_bis_link_sort_order(
+  p_category_id uuid
+)
+RETURNS integer LANGUAGE sql SECURITY DEFINER SET search_path = public AS $$
+  SELECT COALESCE(MAX(sort_order), -1) + 1
+  FROM public.category_bis_links
+  WHERE category_id = p_category_id
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.next_category_waymark_sort_order(uuid) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.next_category_bis_link_sort_order(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.next_category_waymark_sort_order(uuid)
+  TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.next_category_bis_link_sort_order(uuid)
+  TO anon, authenticated;
+
 -- ---- 7. RLS — SELECT 解放 / 書き込みは admin (is_admin claim) のみ ----
 -- TODO #36 phase 1 (2.1, 2026-04-29): 書き込みを `TO authenticated` に。
 -- TODO #36 phase 2 (2.1, 2026-04-29): さらに `auth.jwt()->>is_admin` を
@@ -930,6 +1175,13 @@ ALTER TABLE public.native_schedule_sessions      ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.native_schedule_members       ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.native_schedule_attendances   ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.native_schedule_session_logs  ENABLE ROW LEVEL SECURITY;
+-- TODO #94 (2026-08-28): 6b 章の追加テーブル。
+ALTER TABLE public.category_waymarks             ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.category_bis_links            ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.loot_weekly_checks            ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.fflogs_fights                 ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.fflogs_report_syncs           ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.fflogs_report_videos          ENABLE ROW LEVEL SECURITY;
 
 -- ---- 7-0. 公開デモ用トグル (2026-08-05 監査 H-2) --------------------------
 --
@@ -1002,7 +1254,12 @@ BEGIN
     'strategy_docs','tags',
     'native_schedule_sessions','native_schedule_members',
     'native_schedule_attendances',
-    'native_schedule_session_logs'
+    'native_schedule_session_logs',
+    -- TODO #94 (2026-08-28): 6b 章の追加テーブル。いずれも既定の
+    -- 「SELECT 開放 / 書き込みは admin」で足りる。loot_weekly_checks の
+    -- 本人書き込みは Server Action の service role 経路で通す (6b-3 参照)。
+    'category_waymarks','category_bis_links','loot_weekly_checks',
+    'fflogs_fights','fflogs_report_syncs','fflogs_report_videos'
   ]) LOOP
     FOREACH op IN ARRAY ops LOOP
       policy_name := t || '_anon_' || op;
@@ -1151,6 +1408,7 @@ ALTER TABLE public.category_links                REPLICA IDENTITY FULL;
 ALTER TABLE public.category_gphoto_albums        REPLICA IDENTITY FULL;
 ALTER TABLE public.recruitment_templates         REPLICA IDENTITY FULL;
 ALTER TABLE public.category_macros               REPLICA IDENTITY FULL;
+ALTER TABLE public.category_waymarks             REPLICA IDENTITY FULL;
 ALTER TABLE public.schedule_session_memos        REPLICA IDENTITY FULL;
 
 -- 非購読 13 テーブル: DEFAULT (PK) に戻す。過去デプロイで FULL が付いた
@@ -1168,6 +1426,11 @@ ALTER TABLE public.native_schedule_sessions      REPLICA IDENTITY DEFAULT;
 ALTER TABLE public.native_schedule_members       REPLICA IDENTITY DEFAULT;
 ALTER TABLE public.native_schedule_attendances   REPLICA IDENTITY DEFAULT;
 ALTER TABLE public.native_schedule_session_logs  REPLICA IDENTITY DEFAULT;
+ALTER TABLE public.category_bis_links            REPLICA IDENTITY DEFAULT;
+ALTER TABLE public.loot_weekly_checks            REPLICA IDENTITY DEFAULT;
+ALTER TABLE public.fflogs_fights                 REPLICA IDENTITY DEFAULT;
+ALTER TABLE public.fflogs_report_syncs           REPLICA IDENTITY DEFAULT;
+ALTER TABLE public.fflogs_report_videos          REPLICA IDENTITY DEFAULT;
 
 -- ---- 8. Realtime publication ------------------------------------------
 -- 2026-07-12 監査 B-2: publication も client 購読がある 6 テーブルに絞る。
@@ -1189,7 +1452,9 @@ BEGIN
   -- client 購読があるテーブルのみ publication へ。
   FOR t IN SELECT unnest(ARRAY[
     'categories','category_links','category_gphoto_albums',
-    'recruitment_templates','category_macros','schedule_session_memos'
+    'recruitment_templates','category_macros','schedule_session_memos',
+    -- TODO #94: ウェイマークはマクロタブ内で macros と同じ live 一覧。
+    'category_waymarks'
   ]) LOOP
     BEGIN
       EXECUTE format(
@@ -1211,7 +1476,9 @@ BEGIN
     'mitigation_phases','mitigation_entries',
     'strategy_docs','tags',
     'native_schedule_sessions','native_schedule_members',
-    'native_schedule_attendances','native_schedule_session_logs'
+    'native_schedule_attendances','native_schedule_session_logs',
+    'category_bis_links','loot_weekly_checks',
+    'fflogs_fights','fflogs_report_syncs','fflogs_report_videos'
   ]) LOOP
     BEGIN
       EXECUTE format(

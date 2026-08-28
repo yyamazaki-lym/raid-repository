@@ -1,5 +1,7 @@
 import { SheetIframe } from "@/components/portal/sheet-iframe";
+import { SheetCards } from "@/components/portal/sheet-cards";
 import { SheetUrlOnboarding } from "@/components/portal/sheet-url-onboarding";
+import { fetchSheetTable } from "@/lib/server/sheet-table";
 import { notFound } from "next/navigation";
 import { findCategoryBySlug } from "@/lib/supabase/categories";
 import { getCurrentUserCanEdit } from "@/lib/server/auth";
@@ -45,14 +47,32 @@ export default async function MitigationPage({
     );
   }
 
+  // TODO #94 / A-3: Sheets を編集の正としたまま、モバイルでは CSV 由来の
+  // 読み取り専用カードを出す。取得に失敗したら従来どおり iframe だけを描く
+  // (= 機能後退しない fallback)。
+  const table = await fetchSheetTable(category.mitigationSheetUrl);
+
   return (
-    <SheetIframe
-      url={category.mitigationSheetUrl}
-      title="軽減表"
-      emptyHint=""
-      categoryId={category.id}
-      kind="mitigation"
-      canEdit={canEdit}
-    />
+    <div className="flex flex-col gap-4">
+      {table.ok && (
+        <div className="px-3 md:hidden">
+          <SheetCards
+            table={table.table}
+            sheetUrl={category.mitigationSheetUrl}
+            title="軽減表"
+          />
+        </div>
+      )}
+      <div className={table.ok ? "hidden md:block" : undefined}>
+        <SheetIframe
+          url={category.mitigationSheetUrl}
+          title="軽減表"
+          emptyHint=""
+          categoryId={category.id}
+          kind="mitigation"
+          canEdit={canEdit}
+        />
+      </div>
+    </div>
   );
 }
