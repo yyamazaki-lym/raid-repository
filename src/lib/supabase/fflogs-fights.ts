@@ -1,5 +1,9 @@
 import { createClient } from "./server";
-import { normalizePercentage, type FightRow } from "@/lib/fflogs-progress";
+import {
+  buildFloorMap,
+  normalizePercentage,
+  type FightRow,
+} from "@/lib/fflogs-progress";
 
 /**
  * 練習ログ (fights) の読み取り (TODO #94 / A-1 + A-2)。
@@ -71,26 +75,18 @@ export async function fetchCategoryFights(
     }));
     const totalPulls = count ?? fights.length;
 
-    // クリア数: 複数層なら最終層 (最大 encounter_id) の kill のみ。明細から
-    // 最終層を導出して count クエリで正確に数える (明細打ち切りに影響されない
-    // — ティアの層構成は不変なので直近 1200 件に最終層は必ず現れる)。
-    const encounterIds = [
-      ...new Set(
-        fights
-          .map((f) => f.encounterId)
-          .filter((v): v is number => v !== null),
-      ),
-    ].sort((a, b) => a - b);
+    // クリア数: 複数層なら最終層の kill のみ。層はクラスタ判定
+    // (buildFloorMap — レポートに混ざった別コンテンツの encounter を除外)
+    // を明細から出し、count クエリで正確に数える (明細打ち切りに影響され
+    // ない — ティアの層構成は不変なので直近 1200 件に最終層は必ず現れる)。
+    const floors = buildFloorMap(fights);
     let clearQuery = supabase
       .from("fflogs_fights")
       .select("report_code", { count: "exact", head: true })
       .eq("category_id", categoryId)
       .eq("kill", true);
-    if (encounterIds.length > 1) {
-      clearQuery = clearQuery.eq(
-        "encounter_id",
-        encounterIds[encounterIds.length - 1]!,
-      );
+    if (floors) {
+      clearQuery = clearQuery.eq("encounter_id", floors.finalEncounterId);
     }
     const clearRes = await clearQuery;
 

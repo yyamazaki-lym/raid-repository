@@ -52,36 +52,67 @@ export type FightRow = {
  * しか無い (絶・討滅) 場合は層の概念が無いので null を返す。
  */
 export type FloorMap = {
-  /** encounterId → 層番号 (1 始まり)。 */
+  /** encounterId → 層番号 (1 始まり)。ティアのクラスタに属するもののみ。 */
   byEncounter: Map<number, number>;
   floorCount: number;
   /** 最終層の encounterId。「クリア」の判定対象。 */
   finalEncounterId: number;
 } | null;
 
+/**
+ * 実データのレポートには同日の別コンテンツ (エキスパートダンジョン・
+ * 討滅など) の戦闘が混ざる (2026-08-28 実機: これで ID の広がりが閾値を
+ * 超え、層表示が丸ごと無効化されていた)。そこで「pull 数が最も多い
+ * 幅 8 以内の連続 encounter クラスタ」をティアとみなし、クラスタ外の
+ * 戦闘は層判定 (と練習ログの集計) から除外する。
+ */
 export function buildFloorMap(fights: FightRow[]): FloorMap {
-  const ids = [
-    ...new Set(
-      fights
-        .map((f) => f.encounterId)
-        .filter((v): v is number => v !== null && Number.isFinite(v)),
-    ),
-  ].sort((a, b) => a - b);
+  const counts = new Map<number, number>();
+  for (const f of fights) {
+    if (f.encounterId === null || !Number.isFinite(f.encounterId)) continue;
+    counts.set(f.encounterId, (counts.get(f.encounterId) ?? 0) + 1);
+  }
+  const ids = [...counts.keys()].sort((a, b) => a - b);
   if (ids.length <= 1) return null;
-  const min = ids[0]!;
-  const max = ids[ids.length - 1]!;
-  // FFLogs のティア encounter は連番なので、層番号は「最小 ID からの
-  // オフセット」で出す (出現順だと、まだ挑んでいない層を飛ばして数えて
-  // しまう — 例: 3 層未挑戦のログでは 4 層が「3層」になる)。ID の広がりが
-  // ティアの層数としてあり得ない大きさなら、別種の encounter が混在して
-  // いる (ティアではない) とみなして層表示自体をやめる。
-  const span = max - min + 1;
-  if (span > 8) return null;
+
+  // 幅 8 のウィンドウで pull 数最大のクラスタを選ぶ。
+  let best: number[] = [];
+  let bestWeight = -1;
+  for (let i = 0; i < ids.length; i++) {
+    const start = ids[i]!;
+    const cluster = ids.filter((id) => id >= start && id <= start + 7);
+    const weight = cluster.reduce((acc, id) => acc + (counts.get(id) ?? 0), 0);
+    if (weight > bestWeight) {
+      bestWeight = weight;
+      best = cluster;
+    }
+  }
+  // クラスタ内の encounter が 1 種類なら層の概念なし (絶・討滅 + 混入ゴミ)。
+  if (best.length <= 1) return null;
+
+  const min = best[0]!;
+  const max = best[best.length - 1]!;
+  // FFLogs のティア encounter は連番なので、層番号は「クラスタ最小 ID
+  // からのオフセット」で出す (出現順だと未挑戦の層を飛ばして番号がずれる)。
   return {
-    byEncounter: new Map(ids.map((id) => [id, id - min + 1])),
-    floorCount: span,
+    byEncounter: new Map(best.map((id) => [id, id - min + 1])),
+    floorCount: max - min + 1,
     finalEncounterId: max,
   };
+}
+
+/**
+ * 層クラスタが決まっているとき、クラスタ外 (別コンテンツ) の戦闘を
+ * 練習ログの集計・表示から除外する。
+ */
+export function filterToFloorCluster(
+  fights: FightRow[],
+  floors: FloorMap,
+): FightRow[] {
+  if (!floors) return fights;
+  return fights.filter(
+    (f) => f.encounterId !== null && floors.byEncounter.has(f.encounterId),
+  );
 }
 
 /**

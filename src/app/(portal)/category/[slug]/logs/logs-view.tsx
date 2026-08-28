@@ -31,6 +31,7 @@ import { EmptyState } from "@/components/portal/empty-state";
 import { MirrorActionSlot } from "@/components/portal/action-slot";
 import {
   buildFloorMap,
+  filterToFloorCluster,
   formatFightDuration,
   formatPercentage,
   isClearFight,
@@ -140,16 +141,46 @@ export function LogsView({
     offset: string;
   } | null>(null);
 
-  const floors = useMemo(() => buildFloorMap(fights), [fights]);
-  const summary = useMemo(() => summarize(fights, floors), [fights, floors]);
+  // フェーズ (P1〜) 単位で管理するのは実質「絶」だけ (2026-08-28 指摘)。
+  const showPhase = useMemo(
+    () => isUltimateContent(categoryName),
+    [categoryName],
+  );
+  // 絶はフェーズ (P1〜) で管理するので層マップを作らない (別コンテンツの
+  // 混入で誤った「◯層」表示が付くのを防ぐ)。零式ティアのみ層モデル。
+  const floors = useMemo(
+    () => (showPhase ? null : buildFloorMap(fights)),
+    [showPhase, fights],
+  );
+  // クラスタ外 (同じレポートに混ざった別コンテンツの戦闘) は集計から除外。
+  const tierFights = useMemo(
+    () => filterToFloorCluster(fights, floors),
+    [fights, floors],
+  );
+  const summary = useMemo(
+    () => summarize(tierFights, floors),
+    [tierFights, floors],
+  );
+  // DB の総数にはクラスタ外の混入分も含まれるため、取得済み明細で判明した
+  // 混入数だけ差し引く (未打ち切りなら tierFights.length と一致する)。
+  const shownTotalPulls = Math.max(0, totalPulls - (fights.length - tierFights.length));
+  // 動画オフセットの基準: レポートごとの「最初の pull の戦闘開始時刻」。
+  // 旧基準は「レポート開始時刻」だったが、ユーザーが動画で見つけて合わせる
+  // のは pull #1 の開始なので、レポート開始〜初 pull の準備時間分 (実機で
+  // +40 秒) が必ずずれた (2026-08-28 報告)。基準を操作と一致させる。
+  const firstPullStartByReport = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const f of tierFights) {
+      const cur = m.get(f.reportCode);
+      if (cur === undefined || f.startMs < cur) m.set(f.reportCode, f.startMs);
+    }
+    return m;
+  }, [tierFights]);
   // 631 pull / 54 日のような蓄積で縦に伸びすぎる (2026-08-28 実機報告)。
   // 到達度・振り返りとも既定は直近 10 日、トグルで全件。
   const [showAllTimeline, setShowAllTimeline] = useState(false);
   const [showAllDays, setShowAllDays] = useState(false);
-  // フェーズ (P1〜) 単位で管理するのは実質「絶」だけ。零式で「P2 8.3%」の
-  // ような表記を出すとノイズになる (2026-08-28 ユーザー指摘) ので、
-  // 絶コンテンツと判定できたときだけフェーズを表示する。
-  const showPhase = useMemo(() => isUltimateContent(categoryName), [categoryName]);
+
   const timeline = useMemo(
     () => progressTimeline(summary.days, floors),
     [summary.days, floors],
@@ -420,7 +451,7 @@ export function LogsView({
       <ul className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         <StatCard
           label="総 pull"
-          value={String(totalPulls)}
+          value={String(shownTotalPulls)}
           sub={truncated ? `直近 ${summary.totalPulls} 件を表示` : undefined}
         />
         <StatCard
@@ -573,6 +604,7 @@ export function LogsView({
               canEdit={canEdit}
               showPhase={showPhase}
               floors={floors}
+              firstPullStartByReport={firstPullStartByReport}
               onEditOffset={(reportCode) => {
                 const existing = videoLinks[reportCode];
                 setOffsetTarget({
@@ -648,6 +680,7 @@ function DayRow({
   canEdit,
   showPhase,
   floors,
+  firstPullStartByReport,
   onEditOffset,
 }: {
   day: DaySummary;
@@ -655,6 +688,7 @@ function DayRow({
   canEdit: boolean;
   showPhase: boolean;
   floors: FloorMap;
+  firstPullStartByReport: Map<string, number>;
   onEditOffset: (reportCode: string) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -680,12 +714,26 @@ function DayRow({
           {day.pulls} pull / 戦闘 {formatFightDuration(day.fightSeconds)}
         </span>
         <span className="ml-auto flex items-center gap-1.5">
-          {/* 何層に挑んだ日かを常時表示 (2026-08-28 実機フィードバック)。 */}
-          {floors && day.bestFloor !== null && (
-            <span className="rounded-sm border border-border/50 px-1.5 py-0.5 font-mono text-[10px] tabular-nums text-foreground/85">
-              {day.bestFloor}層
-            </span>
-          )}
+          {/* 何層に挑んだ日かを常時表示 (2026-08-28 実機フィードバック)。
+              複数層に挑んだ日は範囲表記 (例: 1-4層)。 */}
+          {floors &&
+            day.bestFloor !== null &&
+            (() => {
+              const dayFloors = day.fights
+                .map((f) =>
+                  f.encounterId !== null
+                    ? (floors.byEncounter.get(f.encounterId) ?? null)
+                    : null,
+                )
+                .filter((v): v is number => v !== null);
+              const minF = Math.min(...dayFloors);
+              const maxF = Math.max(...dayFloors);
+              return (
+                <span className="rounded-sm border border-border/50 px-1.5 py-0.5 font-mono text-[10px] tabular-nums text-foreground/85">
+                  {minF === maxF ? `${maxF}層` : `${minF}-${maxF}層`}
+                </span>
+              );
+            })()}
           {day.clears > 0 ? (
             <span className="inline-flex items-center gap-1 rounded-sm border border-emerald-400/45 bg-emerald-400/10 px-1.5 py-0.5 font-mono text-[10px] text-emerald-200">
               <Trophy className="h-3 w-3" aria-hidden />
@@ -735,6 +783,7 @@ function DayRow({
                 video={videoLinks[f.reportCode] ?? null}
                 showPhase={showPhase}
                 floors={floors}
+                firstPullStartMs={firstPullStartByReport.get(f.reportCode) ?? null}
               />
             ))}
           </ul>
@@ -750,12 +799,14 @@ function PullRow({
   video,
   showPhase,
   floors,
+  firstPullStartMs,
 }: {
   index: number;
   fight: FightRow;
   video: ReportVideoLink | null;
   showPhase: boolean;
   floors: FloorMap;
+  firstPullStartMs: number | null;
 }) {
   const durationSec = Math.max(0, Math.round((fight.endMs - fight.startMs) / 1000));
   // 日付のグルーピングが JST 基準なので時刻も JST に固定する
@@ -766,17 +817,15 @@ function PullRow({
     timeZone: "Asia/Tokyo",
   });
 
-  // A-2 の肝: report 開始からの相対位置 + オフセットで動画内時刻を計算する。
-  const videoHref =
-    video?.videoUrl && fight.reportStartMs !== null
-      ? buildVideoTimestampUrl(
-          video.videoUrl,
-          video.offsetSeconds + (fight.startMs - fight.reportStartMs) / 1000,
-        )
-      : null;
+  // A-2 の肝: 「最初の pull の戦闘開始」からの相対位置 + オフセットで
+  // 動画内時刻を計算する (オフセット = 動画上で pull #1 が始まる秒数)。
   const videoSeconds =
-    video && fight.reportStartMs !== null
-      ? video.offsetSeconds + (fight.startMs - fight.reportStartMs) / 1000
+    video && firstPullStartMs !== null
+      ? video.offsetSeconds + (fight.startMs - firstPullStartMs) / 1000
+      : null;
+  const videoHref =
+    video?.videoUrl && videoSeconds !== null
+      ? buildVideoTimestampUrl(video.videoUrl, videoSeconds)
       : null;
 
   return (
@@ -796,12 +845,13 @@ function PullRow({
             ? (floors.byEncounter.get(fight.encounterId) ?? null)
             : null;
         const isClear = isClearFight(fight, floors);
-        // 最終層以外の kill は「◯層✓」(突破)。CLEAR はティア踏破のみ。
-        const label = isClear
-          ? "CLEAR"
-          : fight.kill
-            ? `${floor !== null ? `${floor}層` : ""}✓`
-            : `${floor !== null ? `${floor}層 ` : ""}${showPhase && fight.lastPhase !== null ? `P${fight.lastPhase} ` : ""}残${formatPercentage(fight.fightPercentage)}`;
+        // kill は層を問わず「◯層 CLEAR」表記 (2026-08-28 実機フィードバック
+        // 「4層以外もクリア表記を出したい」)。最終層は緑、他層は淡色で区別。
+        const label = fight.kill
+          ? floor !== null
+            ? `${floor}層 CLEAR`
+            : "CLEAR"
+          : `${floor !== null ? `${floor}層 ` : ""}${showPhase && fight.lastPhase !== null ? `P${fight.lastPhase} ` : ""}残${formatPercentage(fight.fightPercentage)}`;
         return (
           <span
             className={
@@ -959,12 +1009,10 @@ function OffsetDialog({
         <DialogHeader>
           <DialogTitle>動画オフセットの設定</DialogTitle>
           <DialogDescription>
-            「レポート開始時刻が動画の何秒地点か」を 1 回だけ入れておくと、
-            以降その日の全 pull の動画内時刻が自動計算されます (
-            <span className="font-mono">
-              オフセット + (pull 開始 − レポート開始)
-            </span>
-            )。
+            動画上で<strong>最初の pull (一覧の #1) の戦闘が始まる時刻 (秒)
+            </strong>を 1 回だけ入れておくと、以降その日の全 pull の動画内
+            時刻が自動計算されます。例: 動画の 0:56 で #1 が始まるなら
+            「56」。
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-3">
@@ -996,7 +1044,7 @@ function OffsetDialog({
               id="offset-seconds"
               inputMode="numeric"
               value={target?.offset ?? "0"}
-              placeholder="例: 92（動画の 1:32 でレポートが始まる）"
+              placeholder="例: 56（動画の 0:56 で #1 の戦闘が始まる）"
               onChange={(e) =>
                 onChange(target ? { ...target, offset: e.target.value } : null)
               }
