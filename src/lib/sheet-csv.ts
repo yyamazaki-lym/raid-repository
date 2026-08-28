@@ -168,45 +168,102 @@ export type SheetCardRow = {
 
 /**
  * カードに載せる価値の無いセル値の判定。
- *   - 空文字 / 記号 1 個だけ (「-」「ー」等はテンプレの埋め草)
+ *   - 空文字 / 記号だけ (「-」「ー」「...」等はテンプレの埋め草)
+ *   - 装飾記号の連続 (「◇◇◇」等。単独の「○」は担当マークの可能性が
+ *     あるので残す)
  *   - チェックボックスの内部値 (TRUE / FALSE)。条件付き書式やフラグ用の
  *     列で、テキストとしては意味を持たない
  */
 export function isNoiseValue(v: string): boolean {
   if (v === "") return true;
-  return /^(?:-|–|—|ー|―|・|\.|true|false)$/i.test(v);
+  if (/^[-–—ー―・.。\s]+$/.test(v)) return true;
+  if (/^[◇◆□■☆★▲△▼▽○●◎~〜*＊]{2,}$/.test(v)) return true;
+  return /^(?:true|false)$/i.test(v);
+}
+
+/**
+ * カードの見出しに合成する構造列 (タイムライン型軽減表の
+ * フェーズ / 時刻 / 技名)。見出し行の表記ゆれをある程度吸収する。
+ */
+const STRUCTURAL_HEADER_RE =
+  /^(?:phase|time|action|mechanic|ability|attack|skill|フェーズ|時間|タイム|時刻|技名?|攻撃名?|ギミック|アクション|スキル)$/i;
+
+/** 数値 (カンマ・小数点・% 込み) だけのセル値か。 */
+function isNumericValue(v: string): boolean {
+  return /^[-+]?[\d,.]+%?$/.test(v);
 }
 
 /**
  * 行 → カードデータ。タイムライン型の軽減表テンプレート (チェックボックス
- * 列や SPARKLINE 用の数値列を多数持つ) をそのままカード化すると
- * 「(無題) / FALSE ×10」のような意味不明の羅列になる (2026-08-28 実機報告)。
+ * 列・軽減率やバリア量の計算列・SPARKLINE 用の HP 数値列を多数持つ) を
+ * そのままカード化すると「(無題) / FALSE / 1.00 の羅列」になり意味を失う
+ * (2026-08-28 実機報告)。カードで伝えるべきは **時間軸・攻撃・誰が何の
+ * 軽減を出すか** なので:
  *   - ノイズセル (`isNoiseValue`) と見出しと同文のセル (見出し行の繰り返し)
  *     は落とす
- *   - 見出し列が空の行は、最初の有効セルをカード見出しに昇格させる
- *     (タイムライン型ならフェーズ / 時刻がタイトルになる)
+ *   - **計算列** (非空値が全て数値の列。HEAL BUFF 1.00 / TOTAL DAMAGE 等)
+ *     は列ごと落とす。ただし誤爆防止のため、そうした列が 3 本以上ある
+ *     計算機型シートでのみ発動 (ロット表の優先度列 1 本などは残す)
+ *   - **構造列** (PHASE / TIME / ACTION 系) の値はカード見出しに合成する
+ *     (「開幕 00:00 戦闘開始!」)。残るセルは「担当: 軽減」だけになる
+ *   - 見出しが決まらない行は最初の有効セルを見出しに昇格
  *   - それでも中身が残らない行はカード自体を出さない
  */
 export function buildSheetCardRows(
   table: SheetTable,
   visibleColumns: number[],
 ): SheetCardRow[] {
+  // 計算列の検出 (列単位・テーブル全体で判定)。
+  const numericCols = new Set<number>();
+  for (const ci of visibleColumns) {
+    if (STRUCTURAL_HEADER_RE.test(table.headers[ci]?.trim() ?? "")) continue;
+    const header = table.headers[ci]?.trim() ?? "";
+    let hasValue = false;
+    let allNumeric = true;
+    for (const row of table.rows) {
+      const v = (row[ci] ?? "").trim();
+      // 見出しと同文のセルはフェーズごとの見出し行の繰り返し。数値列の
+      // 判定を汚染する (列名は数値でない) のでスキップする。
+      if (v === "" || v === header || isNoiseValue(v)) continue;
+      hasValue = true;
+      if (!isNumericValue(v)) {
+        allNumeric = false;
+        break;
+      }
+    }
+    if (hasValue && allNumeric) numericCols.add(ci);
+  }
+  const dropNumericCols = numericCols.size >= 3;
+
   const out: SheetCardRow[] = [];
   for (const row of table.rows) {
-    let heading = row[0]?.trim() ?? "";
-    if (isNoiseValue(heading)) heading = "";
+    const headingParts: string[] = [];
+    const rowHeading = (row[0] ?? "").trim();
+    if (!isNoiseValue(rowHeading)) headingParts.push(rowHeading);
+
     let cells = visibleColumns
+      .filter((ci) => !(dropNumericCols && numericCols.has(ci)))
       .map((ci) => ({
         label: table.headers[ci]?.trim() ?? "",
         value: row[ci]?.trim() ?? "",
       }))
       .filter((c) => !isNoiseValue(c.value) && c.value !== c.label);
-    if (!heading && cells.length > 0) {
-      heading = cells[0]!.value;
+
+    // 構造列 (フェーズ / 時刻 / 技名) は見出しに合成。
+    const structural = cells.filter((c) => STRUCTURAL_HEADER_RE.test(c.label));
+    if (structural.length > 0) {
+      for (const c of structural) headingParts.push(c.value);
+      cells = cells.filter((c) => !STRUCTURAL_HEADER_RE.test(c.label));
+    }
+    // 見出しと同じ値の無名セル (TIME の重複列など) は落とす。
+    cells = cells.filter((c) => !headingParts.includes(c.value));
+
+    if (headingParts.length === 0 && cells.length > 0) {
+      headingParts.push(cells[0]!.value);
       cells = cells.slice(1);
     }
-    if (!heading && cells.length === 0) continue;
-    out.push({ heading, cells });
+    if (headingParts.length === 0 && cells.length === 0) continue;
+    out.push({ heading: headingParts.join(" "), cells });
   }
   return out;
 }
