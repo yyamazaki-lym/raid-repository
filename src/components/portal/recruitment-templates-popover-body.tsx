@@ -195,6 +195,10 @@ export function RecruitmentTemplatesPopoverBody({
         {" が次回開催日カードのコピー対象。ハンドルをドラッグでコンテンツブロックごと並び替え。"}
       </p>
       <DndContext
+        // dnd-kit の採番 (`DndDescribedBy-<n>`) は SSR とクライアントで
+        // ずれて hydration mismatch になるため id を明示する
+        // (category-list.tsx の詳しい注記を参照)。
+        id="dnd-recruitment-sections"
         sensors={sensors}
         collisionDetection={closestCenter}
         onDragEnd={onCategoryDragEnd}
@@ -359,6 +363,12 @@ function SortableCategorySection({
         // 独立 DndContext を立てれば inner の active / over は当該 row
         // 群のみ可視。
         <DndContext
+          // dnd-kit の採番 (`DndDescribedBy-<n>`) は SSR とクライアントで
+          // ずれて hydration mismatch になるため id を明示する
+          // (category-list.tsx の詳しい注記を参照)。
+          // section は同時に複数開けるので、id はセクションキーで一意化する
+          // (同一 id の要素が複数できると describedby の参照が壊れる)。
+          id={`dnd-recruitment-rows-${groupKey}`}
           sensors={sensors}
           collisionDetection={closestCenter}
           onDragEnd={onRowDragEnd}

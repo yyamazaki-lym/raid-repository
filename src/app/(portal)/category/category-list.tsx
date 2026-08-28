@@ -180,6 +180,12 @@ export function CategoryList({
         </p>
       )}
       <DndContext
+        // dnd-kit の `useUniqueId` はモジュールレベルのカウンタで
+        // `DndDescribedBy-<n>` を採番するため、サーバー (プロセス内で加算され
+        // 続ける) とクライアント (0 から) で値がずれ、`aria-describedby` の
+        // hydration mismatch を起こす。`id` を明示すると採番を経由せず
+        // その値がそのまま使われるので、両者が一致する。
+        id="dnd-category-list"
         sensors={sensors}
         collisionDetection={closestCenter}
         onDragEnd={canEdit ? (e) => handleDragEnd(e, sorted) : undefined}
