@@ -328,7 +328,11 @@ function SortableWaymarkRow({
             }
             aria-hidden
           />
-          <span className="min-w-0 flex-1">
+          {/* `min-w-0` だけでは不十分: `truncate` の `white-space: nowrap` は
+              min-content 幅を縮めないため、祖先 (root layout の flex 列) まで
+              min-content が伝播してページ全体が横に伸びる。`w-0` で幅を確定
+              させると伝播が止まり、`flex-1` で実際の描画幅まで広がる。 */}
+          <span className="w-0 min-w-0 flex-1">
             <p className="truncate font-display text-sm">
               {waymark.label || (
                 <span className="text-muted-foreground/80">

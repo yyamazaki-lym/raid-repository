@@ -309,7 +309,9 @@ export function BisLinksPanel({
                   href={href}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="min-w-0 flex-1"
+                  // `w-0` で幅を確定させ、nowrap な truncate ラベルの
+                  // min-content 幅が祖先へ伝播するのを止める (ウェイマーク行と同じ)。
+                  className="w-0 min-w-0 flex-1"
                   title={l.note ?? l.url}
                 >
                   <span className="flex min-w-0 items-center gap-1.5">
