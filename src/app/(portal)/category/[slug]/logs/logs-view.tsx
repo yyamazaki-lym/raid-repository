@@ -392,7 +392,17 @@ export function LogsView({
           {importButton}
           {syncButton}
         </span>
-        {syncButton && <MirrorActionSlot>{syncButton}</MirrorActionSlot>}
+        {/* スクロールで SubTabs が stuck 化したとき右端に複製されるボタン。
+            2026-08-28 実機報告「ログを同期しか追従しない」— 取り込みボタンも
+            同じ頻度で使うので両方を portal する。 */}
+        {canEdit && (
+          <MirrorActionSlot>
+            <span className="flex items-center gap-1">
+              {importButton}
+              {syncButton}
+            </span>
+          </MirrorActionSlot>
+        )}
       </header>
 
       {importDialog}
