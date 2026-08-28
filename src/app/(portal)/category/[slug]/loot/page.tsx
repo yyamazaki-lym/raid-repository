@@ -1,5 +1,6 @@
 import { SheetIframe } from "@/components/portal/sheet-iframe";
 import { SheetCards } from "@/components/portal/sheet-cards";
+import { SheetViewSwitch } from "@/components/portal/sheet-view-switch";
 import { SheetUrlOnboarding } from "@/components/portal/sheet-url-onboarding";
 import { fetchSheetTable } from "@/lib/server/sheet-table";
 import { notFound } from "next/navigation";
@@ -101,16 +102,29 @@ export default async function LootPage({
   return (
     <div className="flex flex-col gap-4">
       {extras}
-      {table.ok && (
-        <div className="px-3 md:hidden">
-          <SheetCards
-            table={table.table}
-            sheetUrl={category.lootSheetUrl}
-            title="ロット管理"
-          />
-        </div>
-      )}
-      <div className={table.ok ? "hidden md:block" : undefined}>
+      {/* TODO #94: モバイルはカード固定、PC はボタンでシート ⇄ カードを切替。 */}
+      {table.ok ? (
+        <SheetViewSwitch
+          storageKey="raid-repo:sheet-card-mode:loot"
+          cards={
+            <SheetCards
+              table={table.table}
+              sheetUrl={category.lootSheetUrl}
+              title="ロット管理"
+            />
+          }
+          iframe={
+            <SheetIframe
+              url={category.lootSheetUrl}
+              title="ロット管理"
+              emptyHint=""
+              categoryId={category.id}
+              kind="loot"
+              canEdit={canEdit}
+            />
+          }
+        />
+      ) : (
         <SheetIframe
           url={category.lootSheetUrl}
           title="ロット管理"
@@ -119,7 +133,7 @@ export default async function LootPage({
           kind="loot"
           canEdit={canEdit}
         />
-      </div>
+      )}
     </div>
   );
 }

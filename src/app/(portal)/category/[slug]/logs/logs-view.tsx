@@ -152,8 +152,8 @@ export function LogsView({
               "FFLogs のレポートを取り込むと、pull 数・到達度・残 HP% がここに並びます。" +
               "レポートは「動画に FFLogs URL を紐づける」「コンテンツ編集の FFLogs zone ID / マッチワード」" +
               "またはレポートの zone 名からこのコンテンツに割り当てられます。" +
-              "非公開 (private) レポートは連携した本人のもの以外は取得できません" +
-              " (unlisted / public にするか、設定で session cookie を登録すると取得できます)。"
+              "非公開 (private / unlisted) レポートは連携した本人のもの以外 API では取得できません" +
+              " (設定の FFLogs 連携で session cookie を登録すると取得できます)。"
             }
           />
           <p className="text-center text-[11px] text-muted-foreground">

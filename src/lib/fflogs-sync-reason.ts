@@ -16,11 +16,13 @@
 export const PERMISSION_ERROR_RE =
   /do(es)? not ha(ve|s) permission|did not grant|permission to view/i;
 
+// 2026-08-28 実機確認: unlisted (限定公開) も v2 API では返されない
+// (private と同じ permission エラー)。文言から「unlisted にすれば読める」
+// という誤った案内を撤去した。
 export const PRIVATE_REPORT_REASON =
-  "非公開 (private) レポートのため取得できません — アップロードした本人の " +
-  "FFLogs アカウントで連携するか、レポートの公開設定を unlisted / public に" +
-  "すると取り込めます (設定で FFLogs の session cookie を登録している場合は" +
-  "自動で再試行します)";
+  "非公開 (private / unlisted) レポートのため API では取得できません — " +
+  "設定の FFLogs 連携で session cookie を登録すると取り込めます " +
+  "(アップロードした本人が OAuth 連携している場合は登録不要)";
 
 /** 保存済みの英文エラーも表示前に日本語へ寄せる (既存行の後方互換)。 */
 export function humanizeFflogsSyncReason(

@@ -561,27 +561,10 @@ async function fetchReportFightsViaCookie(
   sessionCookie: string,
   code: string,
 ): Promise<ReportFightsResult> {
+  const raw = await fetchFightsJsonText(sessionCookie, code);
+  if (!raw.ok) return raw;
   try {
-    const res = await fetch(
-      `https://www.fflogs.com/reports/fights-and-participants/${encodeURIComponent(code)}/0`,
-      {
-        cache: "no-store",
-        headers: {
-          ...buildFflogsScrapeHeaders(sessionCookie),
-          Accept: "application/json,*/*",
-        },
-        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-      },
-    );
-    if (!res.ok) {
-      return { ok: false, reason: `fflogs internal ${res.status}` };
-    }
-    const ctype = res.headers.get("content-type") ?? "";
-    if (!/json/i.test(ctype)) {
-      // ログイン画面 HTML 等 = cookie が失効している。
-      return { ok: false, reason: "session cookie が無効の可能性" };
-    }
-    const json = (await res.json()) as {
+    const json = JSON.parse(raw.text) as {
       fights?: Array<Record<string, unknown>> | null;
       start?: number | null;
       startTime?: number | null;
@@ -635,6 +618,125 @@ async function fetchReportFightsViaCookie(
       startMs,
       fights,
     };
+  } catch (e) {
+    return {
+      ok: false,
+      reason: e instanceof Error ? e.message : "fetch failed",
+    };
+  }
+}
+
+type FightsJsonText = { ok: true; text: string } | { ok: false; reason: string };
+
+/**
+ * fights-and-participants の生テキスト取得。
+ *
+ * 2026-08-28 実機: Vercel の Node Lambda IP からの fflogs.com 直接 fetch は
+ * Cloudflare に恒常 403 で弾かれる (reports-list scrape が Edge proxy を
+ * 経由しているのと同じ理由)。初版の cookie fallback は直接 fetch だった
+ * ため本番で一度も成功していなかった。reports-list と同じく
+ * `/api/fflogs/scrape-proxy` (Edge IP) を優先し、ローカル dev / proxy
+ * 不達時のみ直接 fetch に fallback する。
+ */
+async function fetchFightsJsonText(
+  sessionCookie: string,
+  code: string,
+): Promise<FightsJsonText> {
+  if (process.env.VERCEL === "1" && process.env.NODE_ENV === "production") {
+    const viaProxy = await fetchFightsJsonViaEdgeProxy(sessionCookie, code);
+    if (viaProxy !== null) return viaProxy;
+  }
+  return fetchFightsJsonDirect(sessionCookie, code);
+}
+
+/** Edge proxy 経由。null = proxy 経路自体が使えない (直接 fetch へ)。 */
+async function fetchFightsJsonViaEdgeProxy(
+  sessionCookie: string,
+  code: string,
+): Promise<FightsJsonText | null> {
+  const secret = process.env.CRON_SECRET?.trim();
+  const host = process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim();
+  if (!secret || !host) {
+    console.warn(
+      "[fflogs-fights] scrape-proxy 経路に必要な env が無い (CRON_SECRET / VERCEL_PROJECT_PRODUCTION_URL) — 直接 fetch に fallback",
+    );
+    return null;
+  }
+  try {
+    const res = await fetch(`https://${host}/api/fflogs/scrape-proxy`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${secret}`,
+      },
+      body: JSON.stringify({ reportCode: code, sessionCookie }),
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS + 5_000),
+      cache: "no-store",
+    });
+    if (res.status === 429) {
+      return {
+        ok: false,
+        reason:
+          "scrape-proxy がレート制限中 (429) — 1 分ほど待って再実行してください",
+      };
+    }
+    if (!res.ok) {
+      console.warn(
+        `[fflogs-fights] scrape-proxy が ${res.status} を返却 — 直接 fetch に fallback`,
+      );
+      return null;
+    }
+    const data = (await res.json()) as {
+      status: number;
+      redirected: boolean;
+      contentType?: string;
+      body: string | null;
+    };
+    if (data.redirected) {
+      return { ok: false, reason: "session cookie が無効の可能性 (要再登録)" };
+    }
+    if (data.status !== 200 || typeof data.body !== "string") {
+      return { ok: false, reason: `fflogs internal ${data.status} (edge 経由)` };
+    }
+    if (data.contentType && !/json/i.test(data.contentType)) {
+      return { ok: false, reason: "session cookie が無効の可能性 (要再登録)" };
+    }
+    return { ok: true, text: data.body };
+  } catch (e) {
+    console.warn(
+      "[fflogs-fights] scrape-proxy fetch error — 直接 fetch に fallback:",
+      e,
+    );
+    return null;
+  }
+}
+
+/** 直接 fetch (ローカル dev / proxy 不達時の fallback)。 */
+async function fetchFightsJsonDirect(
+  sessionCookie: string,
+  code: string,
+): Promise<FightsJsonText> {
+  try {
+    const res = await fetch(
+      `https://www.fflogs.com/reports/fights-and-participants/${encodeURIComponent(code)}/0`,
+      {
+        cache: "no-store",
+        headers: {
+          ...buildFflogsScrapeHeaders(sessionCookie),
+          Accept: "application/json,*/*",
+        },
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      },
+    );
+    if (!res.ok) {
+      return { ok: false, reason: `fflogs internal ${res.status}` };
+    }
+    const ctype = res.headers.get("content-type") ?? "";
+    if (!/json/i.test(ctype)) {
+      // ログイン画面 HTML 等 = cookie が失効している。
+      return { ok: false, reason: "session cookie が無効の可能性 (要再登録)" };
+    }
+    return { ok: true, text: await res.text() };
   } catch (e) {
     return {
       ok: false,
