@@ -10,9 +10,11 @@ import { parseFflogsReportCode } from "@/lib/fflogs-url";
 import { jstYmdString } from "@/lib/jst-date";
 import { findContentGroups } from "@/lib/content-groups";
 import {
+  CONFIRMED_PRIVATE_REASON,
   isPermanentSyncFailure,
   PERMISSION_CHAIN_PREFIX,
   PERMISSION_ERROR_RE,
+  V1_PRIVATE_ERROR_RE,
 } from "@/lib/fflogs-sync-reason";
 
 /**
@@ -236,7 +238,13 @@ export async function syncFflogsFights(opts?: {
         }
       }
       if (!res.ok) {
-        failureReason = PERMISSION_CHAIN_PREFIX + attempts.join(" / ");
+        // v1 が「does not exist or is private」を返したら private 確定
+        // (unlisted なら v1 は 200 を返す)。原因不明時のみチェーンを羅列する。
+        const v1Attempt = attempts.find((a) => a.startsWith("v1: "));
+        failureReason =
+          v1Attempt && V1_PRIVATE_ERROR_RE.test(v1Attempt)
+            ? CONFIRMED_PRIVATE_REASON
+            : PERMISSION_CHAIN_PREFIX + attempts.join(" / ");
       }
     }
     if (!res.ok) {
