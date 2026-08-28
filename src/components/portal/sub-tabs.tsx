@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { motion, useReducedMotion } from "motion/react";
 import {
+  Activity,
   ChevronLeft,
   Dice5,
   ShieldHalf,
@@ -33,6 +34,9 @@ const SUB_TABS: SubTab[] = [
   { id: "strategy", label: "攻略情報", segment: "strategy", Icon: BookOpen },
   { id: "videos", label: "動画", segment: "videos", Icon: Film },
   { id: "macros", label: "マクロ", segment: "macros", Icon: Terminal },
+  // TODO #94: FFLogs の pull 単位ログ (進捗 + 振り返り)。使用頻度は練習期の
+  // 終わりに集中するので末尾に置く。不要な固定は tab_config で非表示にできる。
+  { id: "logs", label: "練習ログ", segment: "logs", Icon: Activity },
 ];
 
 // SUB_TABS の id をデフォルトラベルから引くため (form dialog でも参照)。

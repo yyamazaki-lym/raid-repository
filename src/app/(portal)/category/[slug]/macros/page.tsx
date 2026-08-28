@@ -4,13 +4,14 @@ import {
   fetchCategoryMacros,
   fetchRecruitmentTemplatesForCategory,
 } from "@/lib/supabase/category-macros";
+import { fetchCategoryWaymarks } from "@/lib/supabase/category-waymarks";
 import { MacrosList } from "./macros-list";
 
 // TODO #54 part3 横展開: FFLogs 非依存ページなので Node runtime に切替 (cold start 短縮)。
 export const runtime = "nodejs";
 
 export const metadata = {
-  title: "マクロ",
+  title: "マクロ / ウェイマーク",
 };
 
 export default async function MacrosPage({
@@ -33,9 +34,11 @@ export default async function MacrosPage({
   // ナビ非表示と到達性を一致させるため無効タブは 404 にする。
   if (category.tabConfig?.["macros"]?.enabled === false) notFound();
 
-  const [macros, templates] = await Promise.all([
+  const [macros, templates, waymarks] = await Promise.all([
     fetchCategoryMacros(category.id),
     fetchRecruitmentTemplatesForCategory(category.id),
+    // TODO #94 / A-5: ウェイマークはマクロと同じ「配布物」なので同じタブに置く。
+    fetchCategoryWaymarks(category.id),
   ]);
 
   return (
@@ -44,6 +47,7 @@ export default async function MacrosPage({
       categoryName={category.name}
       initialMacros={macros}
       initialTemplates={templates}
+      initialWaymarks={waymarks}
     />
   );
 }

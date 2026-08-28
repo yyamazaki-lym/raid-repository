@@ -162,6 +162,9 @@ export const CATEGORY_TAB_IDS = [
   "strategy",
   "videos",
   "macros",
+  // TODO #94 (2026-08-28): FFLogs の pull 単位ログを読む「練習ログ」タブ。
+  // schema.sql の categories_default_tab_check も同時に広げてある。
+  "logs",
 ] as const;
 export type CategoryTabId = (typeof CATEGORY_TAB_IDS)[number];
 

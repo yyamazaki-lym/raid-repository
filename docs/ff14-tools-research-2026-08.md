@@ -3,6 +3,9 @@
 > 調査日: 2026-08-28 / 対象: Raid Repository (FFXIV レイド固定向け single-tenant portal)
 > 目的: FF14 まわりの外部ツール・Web サービスを俯瞰し、本サイトに「あると便利」な機能を優先度付きで提案する。
 
+> **実装状況 (2026-08-28 追記)**: 本ノートの Tier A 提案 **A-1 〜 A-5** と、XIVAnalysis 連携 / コンテンツごとの BiS リンク登録を実装済み
+> (ブランチ `claude/ff14-tools-features-research-kr8l44`)。詳細は `src/lib/changelog.ts` の 2.10 エントリーと `.claude/HANDOFF.md` を参照。
+
 ---
 
 ## 0. 前提となる環境変化 (2026 年後半時点)
