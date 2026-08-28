@@ -102,6 +102,14 @@ export async function syncFflogsFights(opts?: {
    * 結果の変わらない失敗が 40 件の取得枠を毎晩食い潰すのを防ぐ。
    */
   retryPermanentFailures?: boolean;
+  /**
+   * 指定 code のみを取得する (URL 貼り付けインポート、2026-08-28)。
+   * 一覧 API に出ない unlisted レポートの「発見」を人間側で補う導線 —
+   * fflogs.com のレポート一覧を見ているユーザーが URL を貼れば、portal が
+   * 知らなかった code もここから入る。指定時は台帳の恒久失敗スキップも
+   * 適用しない (明示指定 = 再試行の意思とみなす)。
+   */
+  onlyCodes?: string[];
 }): Promise<FflogsFightsSyncResult> {
   const token = await getValidFflogsOAuthToken();
   if (!token) {
@@ -163,6 +171,22 @@ export async function syncFflogsFights(opts?: {
   }
 
   const targets: Array<ReportRef & { effectiveDate: string | null }> = [];
+  if (opts?.onlyCodes && opts.onlyCodes.length > 0) {
+    // code 指定インポート: 既知の ref (動画リンク等) があれば流用し、
+    // 未知の code は素の ref として追加する (カテゴリは zone 名で解決)。
+    for (const code of opts.onlyCodes) {
+      const ref = refs.get(code) ?? {
+        code,
+        categoryId: null,
+        sessionDate: null,
+      };
+      const prev = ledgerMap.get(code);
+      targets.push({
+        ...ref,
+        effectiveDate: ref.sessionDate ?? prev?.sessionDate ?? null,
+      });
+    }
+  } else {
   for (const ref of refs.values()) {
     const prev = ledgerMap.get(ref.code);
     // 初回同期まで日付が分からない report もあるので、台帳の日付で補う。
@@ -188,6 +212,7 @@ export async function syncFflogsFights(opts?: {
     }
     // 直近のセッションはまだ pull が増えるので取り直す。
     if (isRecent(effectiveDate)) targets.push(withDate);
+  }
   }
   // 新しい日付から処理する (見たいのは直近の練習)。日付不明は最優先で
   // 拾う — 一度同期すれば日付が確定し、以後この分岐には来ない。

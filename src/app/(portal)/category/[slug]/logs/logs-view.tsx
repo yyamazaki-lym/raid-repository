@@ -6,6 +6,7 @@ import {
   Activity,
   BarChart3,
   ChevronDown,
+  ClipboardPaste,
   Film,
   Flag,
   Microscope,
@@ -45,10 +46,13 @@ import { isUltimateContent } from "@/lib/content-groups";
 import { humanizeFflogsSyncReason } from "@/lib/fflogs-sync-reason";
 import type { ReportVideoLink } from "@/lib/supabase/fflogs-fights";
 import {
+  importFflogsReportsAction,
   setReportVideoAction,
   suggestVideoForReportAction,
   syncFflogsFightsAction,
 } from "@/lib/server/fflogs-fights-actions";
+import { extractFflogsReportCodes } from "@/lib/fflogs-url";
+import { Textarea } from "@/components/ui/textarea";
 
 /**
  * 練習ログの表示 (TODO #94 / A-1 + A-2)。
@@ -96,6 +100,32 @@ export function LogsView({
   const [lastSyncFailures, setLastSyncFailures] = useState<
     Array<{ reportCode: string; reason: string }>
   >([]);
+  // URL 貼り付けインポート (unlisted の「発見」を人間側で補う導線)。
+  const [importOpen, setImportOpen] = useState(false);
+  const [importText, setImportText] = useState("");
+  const [importing, setImporting] = useState(false);
+  const importCodes = useMemo(
+    () => extractFflogsReportCodes(importText),
+    [importText],
+  );
+
+  const runImport = async () => {
+    setImporting(true);
+    const result = await importFflogsReportsAction(importText);
+    setImporting(false);
+    if (!result.ok) {
+      toast.error(result.reason);
+      return;
+    }
+    setLastSyncFailures(result.failures ?? []);
+    toast.success(
+      `取り込み完了 — ${result.codesFound} レポート / ${result.fightsUpserted} pull` +
+        (result.failed > 0 ? ` (失敗 ${result.failed} — 理由は下に表示)` : ""),
+    );
+    setImportOpen(false);
+    setImportText("");
+    router.refresh();
+  };
   const [offsetTarget, setOffsetTarget] = useState<{
     reportCode: string;
     videoUrl: string;
@@ -129,6 +159,82 @@ export function LogsView({
       router.refresh();
     });
   };
+
+  const importButton = canEdit ? (
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      onClick={() => setImportOpen(true)}
+      className="gap-1.5 text-[11px] tracking-normal"
+    >
+      <ClipboardPaste className="h-3.5 w-3.5" aria-hidden />
+      URL から取り込む
+    </Button>
+  ) : null;
+
+  const importDialog = (
+    <Dialog
+      open={importOpen}
+      onOpenChange={(open) => {
+        if (!open) setImportOpen(false);
+      }}
+    >
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>レポート URL から取り込む</DialogTitle>
+          <DialogDescription>
+            unlisted (限定公開) レポートは一覧からの自動発見ができないため、
+            URL を直接貼り付けて取り込みます。
+            <a
+              href="https://www.fflogs.com/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mx-1 text-[var(--neon-cyan)] underline underline-offset-2 hover:text-foreground"
+            >
+              FFLogs
+            </a>
+            のレポート一覧ページを開いて<strong>ページ全体をコピー</strong>
+            して貼り付けても、URL だけを改行区切りで並べても構いません
+            (1 回につき最大 25 件)。
+          </DialogDescription>
+        </DialogHeader>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="import-text">貼り付け</Label>
+          <Textarea
+            id="import-text"
+            value={importText}
+            rows={6}
+            placeholder={"https://www.fflogs.com/reports/xxxxxxxxxxxxxxxx\nhttps://www.fflogs.com/reports/yyyyyyyyyyyyyyyy"}
+            className="font-mono text-[11px]"
+            onChange={(e) => setImportText(e.target.value)}
+          />
+          <p className="text-[11px] text-muted-foreground">
+            {importCodes.length > 0
+              ? `${importCodes.length} 件のレポートを検出しました`
+              : "レポート URL が未検出です"}
+          </p>
+        </div>
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={() => setImportOpen(false)}
+            disabled={importing}
+          >
+            キャンセル
+          </Button>
+          <Button
+            type="button"
+            onClick={runImport}
+            disabled={importing || importCodes.length === 0}
+          >
+            {importing ? "取り込み中..." : `${Math.min(importCodes.length, 25)} 件を取り込む`}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
 
   const syncButton = canEdit ? (
     <Button
@@ -179,7 +285,11 @@ export function LogsView({
   if (fights.length === 0) {
     return (
       <div className="flex flex-col gap-3 p-3">
-        <div className="flex justify-end">{syncButton}</div>
+        <div className="flex justify-end gap-2">
+          {importButton}
+          {syncButton}
+        </div>
+        {importDialog}
         {lastSyncFailuresBlock}
         <div className="flex flex-col gap-2">
           <EmptyState
@@ -231,9 +341,14 @@ export function LogsView({
             {categoryName}
           </span>
         </div>
-        {syncButton}
+        <span className="flex items-center gap-2">
+          {importButton}
+          {syncButton}
+        </span>
         {syncButton && <MirrorActionSlot>{syncButton}</MirrorActionSlot>}
       </header>
+
+      {importDialog}
 
       {lastSyncFailuresBlock}
 
