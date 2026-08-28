@@ -25,6 +25,7 @@ export async function syncFflogsFightsAction(): Promise<
       failed: number;
       truncated: boolean;
       reattributed: number;
+      failures: Array<{ reportCode: string; reason: string }>;
     }
   | { ok: false; reason: string }
 > {
