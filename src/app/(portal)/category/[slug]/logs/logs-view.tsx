@@ -30,12 +30,15 @@ import {
 import { EmptyState } from "@/components/portal/empty-state";
 import { MirrorActionSlot } from "@/components/portal/action-slot";
 import {
+  buildFloorMap,
   formatFightDuration,
   formatPercentage,
+  isClearFight,
   progressTimeline,
   summarize,
   type DaySummary,
   type FightRow,
+  type FloorMap,
 } from "@/lib/fflogs-progress";
 import {
   buildFflogsReportUrl,
@@ -75,7 +78,7 @@ export function LogsView({
   categoryName,
   fights,
   totalPulls,
-  totalKills,
+  totalClears,
   truncated,
   videoLinks,
   failedSyncs,
@@ -86,7 +89,7 @@ export function LogsView({
   fights: FightRow[];
   /** カテゴリ全体の pull 数 / クリア数 (明細が打ち切られていても正確)。 */
   totalPulls: number;
-  totalKills: number;
+  totalClears: number;
   truncated: boolean;
   videoLinks: Record<string, ReportVideoLink>;
   failedSyncs: Array<{
@@ -137,14 +140,19 @@ export function LogsView({
     offset: string;
   } | null>(null);
 
-  const summary = useMemo(() => summarize(fights), [fights]);
+  const floors = useMemo(() => buildFloorMap(fights), [fights]);
+  const summary = useMemo(() => summarize(fights, floors), [fights, floors]);
+  // 631 pull / 54 日のような蓄積で縦に伸びすぎる (2026-08-28 実機報告)。
+  // 到達度・振り返りとも既定は直近 10 日、トグルで全件。
+  const [showAllTimeline, setShowAllTimeline] = useState(false);
+  const [showAllDays, setShowAllDays] = useState(false);
   // フェーズ (P1〜) 単位で管理するのは実質「絶」だけ。零式で「P2 8.3%」の
   // ような表記を出すとノイズになる (2026-08-28 ユーザー指摘) ので、
   // 絶コンテンツと判定できたときだけフェーズを表示する。
   const showPhase = useMemo(() => isUltimateContent(categoryName), [categoryName]);
   const timeline = useMemo(
-    () => progressTimeline(summary.days),
-    [summary.days],
+    () => progressTimeline(summary.days, floors),
+    [summary.days, floors],
   );
 
   const runSync = () => {
@@ -423,33 +431,39 @@ export function LogsView({
           label="最深到達"
           value={
             // クリア済みなら「残 0%」ではなく「討伐」と言い切る。
-            totalKills > 0
+            totalClears > 0
               ? "討伐"
               : showPhase && summary.bestPhase !== null
                 ? `P${summary.bestPhase}`
-                : summary.bestPercentage !== null
-                  ? `残 ${formatPercentage(summary.bestPercentage)}`
-                  : "—"
+                : floors && summary.days.length > 0
+                  ? `${Math.max(...summary.days.map((d) => d.bestFloor ?? 0)) || "—"}層`
+                  : summary.bestPercentage !== null
+                    ? `残 ${formatPercentage(summary.bestPercentage)}`
+                    : "—"
           }
           sub={
-            totalKills > 0
+            totalClears > 0
               ? undefined
               : showPhase && summary.bestPhase !== null
                 ? `残 ${formatPercentage(summary.bestPercentage)}`
-                : undefined
+                : floors
+                  ? `残 ${formatPercentage(summary.bestPercentage)}`
+                  : undefined
           }
         />
         <StatCard
-          label="クリア"
-          value={totalKills > 0 ? `${totalKills} 回` : "—"}
+          label={floors ? `${floors.floorCount}層クリア` : "クリア"}
+          value={totalClears > 0 ? `${totalClears} 回` : "—"}
           sub={
             // 明細が打ち切られている場合の「初クリア」は表示範囲内の最古の
             // クリアでしかないので出さない (誤情報を作らない)。
-            !truncated && summary.firstKill
-              ? `初クリア ${new Date(summary.firstKill.startMs).toLocaleDateString("ja-JP", { timeZone: "Asia/Tokyo" })}`
-              : undefined
+            summary.fastestClearSeconds !== null
+              ? `最速 ${formatFightDuration(summary.fastestClearSeconds)}`
+              : !truncated && summary.firstKill
+                ? `初クリア ${new Date(summary.firstKill.startMs).toLocaleDateString("ja-JP", { timeZone: "Asia/Tokyo" })}`
+                : undefined
           }
-          highlight={totalKills > 0}
+          highlight={totalClears > 0}
         />
       </ul>
 
@@ -468,39 +482,55 @@ export function LogsView({
           </span>
         </div>
         <ul className="flex flex-col gap-1">
-          {[...timeline].reverse().map((t) => {
-            // 到達度 (%)。kill 日は 100、残 HP 不明の日は 0 扱いで薄く出す。
-            const progress = t.hasKill
-              ? 100
-              : t.bestPercentage !== null
-                ? Math.max(0, Math.min(100, 100 - t.bestPercentage))
-                : 0;
-            return (
+          {[...timeline]
+            .reverse()
+            .slice(0, showAllTimeline ? undefined : 10)
+            .map((t) => (
               <li key={t.date} className="flex items-center gap-2">
                 <span className="w-[4.5rem] shrink-0 font-mono text-[10px] text-muted-foreground tabular-nums">
                   {t.date.slice(5)}
                 </span>
                 <span className="relative flex h-4 min-w-0 flex-1 items-center rounded-sm bg-secondary/40">
+                  {/* 複数層のカテゴリでは層の区切り線を薄く引く。 */}
+                  {floors &&
+                    Array.from({ length: floors.floorCount - 1 }, (_, i) => (
+                      <span
+                        key={i}
+                        className="absolute top-0 h-full w-px bg-border/60"
+                        style={{
+                          left: `${((i + 1) / floors.floorCount) * 100}%`,
+                        }}
+                        aria-hidden
+                      />
+                    ))}
                   <span
                     className={
                       "h-full rounded-sm " +
-                      (t.hasKill
+                      (t.hasClear
                         ? "bg-emerald-400/75"
                         : t.isRecord
                           ? "bg-[var(--neon-cyan)]/70"
                           : "bg-[var(--neon-cyan)]/35")
                     }
-                    style={{ width: `${Math.max(2, progress)}%` }}
+                    style={{ width: `${Math.max(2, t.progress)}%` }}
                     aria-hidden
                   />
                 </span>
                 <span
-                  className="w-[4.5rem] shrink-0 text-right font-mono text-[10px] tabular-nums"
-                  title={t.hasKill ? "討伐" : "その日のベスト (ボス残 HP)"}
+                  className="w-[5.5rem] shrink-0 text-right font-mono text-[10px] tabular-nums"
+                  title={
+                    t.hasClear
+                      ? floors
+                        ? `${floors.floorCount}層クリア`
+                        : "討伐"
+                      : "その日のベスト到達"
+                  }
                 >
-                  {t.hasKill
+                  {t.hasClear
                     ? "討伐"
-                    : `${showPhase && t.bestPhase !== null ? `P${t.bestPhase} ` : ""}残${formatPercentage(t.bestPercentage)}`}
+                    : floors && t.bestFloor !== null
+                      ? `${t.bestFloor}層 残${formatPercentage(t.bestPercentage)}`
+                      : `${showPhase && t.bestPhase !== null ? `P${t.bestPhase} ` : ""}残${formatPercentage(t.bestPercentage)}`}
                 </span>
                 <span className="w-12 shrink-0 text-right font-mono text-[10px] text-muted-foreground tabular-nums">
                   {t.pulls} pull
@@ -514,9 +544,19 @@ export function LogsView({
                   )}
                 </span>
               </li>
-            );
-          })}
+            ))}
         </ul>
+        {timeline.length > 10 && (
+          <button
+            type="button"
+            onClick={() => setShowAllTimeline((v) => !v)}
+            className="self-start rounded px-1 font-mono text-[10px] tracking-[0.12em] text-muted-foreground underline underline-offset-2 hover:text-foreground"
+          >
+            {showAllTimeline
+              ? "直近 10 日だけ表示"
+              : `残り ${timeline.length - 10} 日を表示`}
+          </button>
+        )}
       </section>
 
       {/* A-2: 日 → pull 一覧 → FFLogs / XIVAnalysis / 動画時刻。 */}
@@ -525,13 +565,14 @@ export function LogsView({
           セッション振り返り
         </h3>
         <ul className="flex flex-col gap-2">
-          {summary.days.map((day) => (
+          {summary.days.slice(0, showAllDays ? undefined : 10).map((day) => (
             <DayRow
               key={day.date}
               day={day}
               videoLinks={videoLinks}
               canEdit={canEdit}
               showPhase={showPhase}
+              floors={floors}
               onEditOffset={(reportCode) => {
                 const existing = videoLinks[reportCode];
                 setOffsetTarget({
@@ -543,6 +584,17 @@ export function LogsView({
             />
           ))}
         </ul>
+        {summary.days.length > 10 && (
+          <button
+            type="button"
+            onClick={() => setShowAllDays((v) => !v)}
+            className="self-start rounded px-1 font-mono text-[10px] tracking-[0.12em] text-muted-foreground underline underline-offset-2 hover:text-foreground"
+          >
+            {showAllDays
+              ? "直近 10 日だけ表示"
+              : `残り ${summary.days.length - 10} 日を表示`}
+          </button>
+        )}
       </section>
 
       {failedSyncs.length > 0 && <FailedList failedSyncs={failedSyncs} />}
@@ -595,12 +647,14 @@ function DayRow({
   videoLinks,
   canEdit,
   showPhase,
+  floors,
   onEditOffset,
 }: {
   day: DaySummary;
   videoLinks: Record<string, ReportVideoLink>;
   canEdit: boolean;
   showPhase: boolean;
+  floors: FloorMap;
   onEditOffset: (reportCode: string) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -626,13 +680,18 @@ function DayRow({
           {day.pulls} pull / 戦闘 {formatFightDuration(day.fightSeconds)}
         </span>
         <span className="ml-auto flex items-center gap-1.5">
-          {day.kills > 0 && (
+          {/* 何層に挑んだ日かを常時表示 (2026-08-28 実機フィードバック)。 */}
+          {floors && day.bestFloor !== null && (
+            <span className="rounded-sm border border-border/50 px-1.5 py-0.5 font-mono text-[10px] tabular-nums text-foreground/85">
+              {day.bestFloor}層
+            </span>
+          )}
+          {day.clears > 0 ? (
             <span className="inline-flex items-center gap-1 rounded-sm border border-emerald-400/45 bg-emerald-400/10 px-1.5 py-0.5 font-mono text-[10px] text-emerald-200">
               <Trophy className="h-3 w-3" aria-hidden />
               CLEAR
             </span>
-          )}
-          {day.kills === 0 && (
+          ) : (
             <span className="font-mono text-[10px] tabular-nums text-muted-foreground">
               {showPhase && day.bestPhase !== null ? `P${day.bestPhase} / ` : ""}
               残{formatPercentage(day.bestPercentage)}
@@ -675,6 +734,7 @@ function DayRow({
                 fight={f}
                 video={videoLinks[f.reportCode] ?? null}
                 showPhase={showPhase}
+                floors={floors}
               />
             ))}
           </ul>
@@ -689,11 +749,13 @@ function PullRow({
   fight,
   video,
   showPhase,
+  floors,
 }: {
   index: number;
   fight: FightRow;
   video: ReportVideoLink | null;
   showPhase: boolean;
+  floors: FloorMap;
 }) {
   const durationSec = Math.max(0, Math.round((fight.endMs - fight.startMs) / 1000));
   // 日付のグルーピングが JST 基準なので時刻も JST に固定する
@@ -728,18 +790,33 @@ function PullRow({
       <span className="w-10 shrink-0 font-mono text-[10px] text-muted-foreground tabular-nums">
         {formatFightDuration(durationSec)}
       </span>
-      <span
-        className={
-          "shrink-0 rounded-sm px-1.5 py-0.5 font-mono text-[10px] tabular-nums " +
-          (fight.kill
-            ? "bg-emerald-400/15 text-emerald-200"
-            : "bg-secondary/50 text-foreground/80")
-        }
-      >
-        {fight.kill
+      {(() => {
+        const floor =
+          floors && fight.encounterId !== null
+            ? (floors.byEncounter.get(fight.encounterId) ?? null)
+            : null;
+        const isClear = isClearFight(fight, floors);
+        // 最終層以外の kill は「◯層✓」(突破)。CLEAR はティア踏破のみ。
+        const label = isClear
           ? "CLEAR"
-          : `${showPhase && fight.lastPhase !== null ? `P${fight.lastPhase} ` : ""}残${formatPercentage(fight.fightPercentage)}`}
-      </span>
+          : fight.kill
+            ? `${floor !== null ? `${floor}層` : ""}✓`
+            : `${floor !== null ? `${floor}層 ` : ""}${showPhase && fight.lastPhase !== null ? `P${fight.lastPhase} ` : ""}残${formatPercentage(fight.fightPercentage)}`;
+        return (
+          <span
+            className={
+              "shrink-0 rounded-sm px-1.5 py-0.5 font-mono text-[10px] tabular-nums " +
+              (isClear
+                ? "bg-emerald-400/15 text-emerald-200"
+                : fight.kill
+                  ? "bg-emerald-400/10 text-emerald-200/70"
+                  : "bg-secondary/50 text-foreground/80")
+            }
+          >
+            {label}
+          </span>
+        );
+      })()}
       <span className="ml-auto flex shrink-0 items-center gap-1">
         <a
           href={buildFflogsReportUrl(fight.reportCode, fight.fightId)}

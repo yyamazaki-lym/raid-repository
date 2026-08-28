@@ -23,7 +23,12 @@ export type CategoryFights = {
   fights: FightRow[];
   /** カテゴリ全体の pull 数 (明細が打ち切られていても正確)。 */
   totalPulls: number;
-  totalKills: number;
+  /**
+   * カテゴリ全体のクリア数 (明細が打ち切られていても正確)。
+   * 複数層のカテゴリでは最終層 (最大 encounter_id) の kill のみを数える
+   * (2026-08-28: 消化で全層に kill が付き「討伐」が情報にならないため)。
+   */
+  totalClears: number;
   /** 明細が MAX_FIGHTS で打ち切られたか。 */
   truncated: boolean;
 };
@@ -34,27 +39,20 @@ export async function fetchCategoryFights(
   const empty: CategoryFights = {
     fights: [],
     totalPulls: 0,
-    totalKills: 0,
+    totalClears: 0,
     truncated: false,
   };
   try {
     const supabase = await createClient();
-    const [listRes, killRes] = await Promise.all([
-      supabase
-        .from("fflogs_fights")
-        .select(
-          "report_code, fight_id, session_date, name, kill, fight_percentage, last_phase, start_ms, end_ms, report_start_ms",
-          { count: "exact" },
-        )
-        .eq("category_id", categoryId)
-        .order("start_ms", { ascending: false })
-        .limit(MAX_FIGHTS),
-      supabase
-        .from("fflogs_fights")
-        .select("report_code", { count: "exact", head: true })
-        .eq("category_id", categoryId)
-        .eq("kill", true),
-    ]);
+    const listRes = await supabase
+      .from("fflogs_fights")
+      .select(
+        "report_code, fight_id, session_date, name, kill, fight_percentage, last_phase, encounter_id, start_ms, end_ms, report_start_ms",
+        { count: "exact" },
+      )
+      .eq("category_id", categoryId)
+      .order("start_ms", { ascending: false })
+      .limit(MAX_FIGHTS);
     const { data, error, count } = listRes;
     if (error || !data) return empty;
     const fights = data.map((r) => ({
@@ -66,15 +64,40 @@ export async function fetchCategoryFights(
       // 100 倍値で入っている環境があるためここで 0-100 に正規化する。
       fightPercentage: normalizePercentage(numberOrNull(r.fight_percentage)),
       lastPhase: numberOrNull(r.last_phase),
+      encounterId: numberOrNull(r.encounter_id),
       startMs: Number(r.start_ms),
       endMs: Number(r.end_ms),
       reportStartMs: r.report_start_ms == null ? null : Number(r.report_start_ms),
     }));
     const totalPulls = count ?? fights.length;
+
+    // クリア数: 複数層なら最終層 (最大 encounter_id) の kill のみ。明細から
+    // 最終層を導出して count クエリで正確に数える (明細打ち切りに影響されない
+    // — ティアの層構成は不変なので直近 1200 件に最終層は必ず現れる)。
+    const encounterIds = [
+      ...new Set(
+        fights
+          .map((f) => f.encounterId)
+          .filter((v): v is number => v !== null),
+      ),
+    ].sort((a, b) => a - b);
+    let clearQuery = supabase
+      .from("fflogs_fights")
+      .select("report_code", { count: "exact", head: true })
+      .eq("category_id", categoryId)
+      .eq("kill", true);
+    if (encounterIds.length > 1) {
+      clearQuery = clearQuery.eq(
+        "encounter_id",
+        encounterIds[encounterIds.length - 1]!,
+      );
+    }
+    const clearRes = await clearQuery;
+
     return {
       fights,
       totalPulls,
-      totalKills: killRes.count ?? fights.filter((f) => f.kill).length,
+      totalClears: clearRes.count ?? 0,
       truncated: totalPulls > fights.length,
     };
   } catch (err) {
