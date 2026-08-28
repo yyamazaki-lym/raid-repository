@@ -291,7 +291,7 @@ Step 2 と Step 3 で取得した値を使い、Discord Developer Portal と Sup
 | `NEXT_PUBLIC_SPLASH_SW` | `true` | cold start 中の白画面を「起動中」スプラッシュに置き換える Service Worker (`public/sw.js`) を有効化。Production のみで可。未設定/false = 登録なし + 既登録 SW を自動解除 (キルスイッチ)。ビルド時インライン化のため切替には再デプロイが必要 |
 | `YOUTUBE_API_KEY` | YouTube Data API v3 キー | 限定公開動画の duration / uploadDate 取得 (未設定だと HTML scrape fallback、Vercel IP の bot 検出で失敗することあり) |
 | `SECRET_ENCRYPTION_KEY` | 64 文字 hex (`openssl rand -hex 32`) | FFLogs token 等の AES-256-GCM 暗号化保管 (未設定だと旧 `app_settings` 平文保存にフォールバック) |
-| `FFLOGS_API_KEY` | FFLogs API v1 キー | レポート ↔ 動画 自動マッチ (Public レポート対象) |
+| `FFLOGS_API_KEY` | FFLogs API v1 キー | レポート ↔ 動画 自動マッチ (Public レポート対象) + 練習ログの **unlisted レポート取得** (URL 登録済みの code 直指定。xivanalysis と同じ経路) |
 | `FFLOGS_OAUTH_CLIENT_ID` | FFLogs OAuth Client ID | **Private / Unlisted** レポートの自動マッチ用 (Authorization Code Flow)。v1 で十分なら未設定可 |
 | `FFLOGS_OAUTH_CLIENT_SECRET` | FFLogs OAuth Client Secret | 同上 (server-only)。詳細手順は `.env.local.example` |
 

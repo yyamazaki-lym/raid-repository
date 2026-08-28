@@ -152,8 +152,8 @@ export function LogsView({
               "FFLogs のレポートを取り込むと、pull 数・到達度・残 HP% がここに並びます。" +
               "レポートは「動画に FFLogs URL を紐づける」「コンテンツ編集の FFLogs zone ID / マッチワード」" +
               "またはレポートの zone 名からこのコンテンツに割り当てられます。" +
-              "非公開 (private / unlisted) レポートは連携した本人のもの以外 API では取得できません" +
-              " (確実な対処はレポートを Public にすること。アップローダの既定公開設定を Public にすると以後は自動で入ります)。"
+              "unlisted (限定公開) レポートは URL を portal に登録してあれば取得できます (要 FFLOGS_API_KEY)。" +
+              "private (非公開) は本人の OAuth 連携か、公開設定の変更が必要です。"
             }
           />
           <p className="text-center text-[11px] text-muted-foreground">
