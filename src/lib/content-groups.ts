@@ -174,6 +174,19 @@ export function isUltimateContent(text: string | null | undefined): boolean {
 }
 
 /**
+ * テキスト (カテゴリ名 / zone 名) が零式 (Savage) ティアを指すか。
+ *
+ * 用途: 練習ログの層モデル。零式ティアは必ず 4 層構成なので、FFLogs 上で
+ * 最終層が前半/後半の 2 encounter に分かれるティア (encounter が 5 個並ぶ)
+ * を「5 層」と誤表示せず「4層前半 / 4層後半」に割り当てるための期待層数の
+ * 判定に使う (2026-08-28 実機フィードバック)。
+ */
+export function isSavageContent(text: string | null | undefined): boolean {
+  if (!text) return false;
+  return /零式|savage/i.test(text);
+}
+
+/**
  * Returns true if the video looks like it belongs to the given
  * category. Uses cross-language group classification.
  *

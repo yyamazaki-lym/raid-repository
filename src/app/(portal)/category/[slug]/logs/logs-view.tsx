@@ -32,6 +32,7 @@ import { MirrorActionSlot } from "@/components/portal/action-slot";
 import {
   buildFloorMap,
   filterToFloorCluster,
+  floorLabel,
   formatFightDuration,
   formatPercentage,
   isClearFight,
@@ -47,7 +48,7 @@ import {
   buildXivAnalysisUrl,
   formatClock,
 } from "@/lib/fflogs-url";
-import { isUltimateContent } from "@/lib/content-groups";
+import { isSavageContent, isUltimateContent } from "@/lib/content-groups";
 import { humanizeFflogsSyncReason } from "@/lib/fflogs-sync-reason";
 import type { ReportVideoLink } from "@/lib/supabase/fflogs-fights";
 import {
@@ -148,9 +149,14 @@ export function LogsView({
   );
   // 絶はフェーズ (P1〜) で管理するので層マップを作らない (別コンテンツの
   // 混入で誤った「◯層」表示が付くのを防ぐ)。零式ティアのみ層モデル。
+  // 零式は必ず 4 層構成: 最終層が前半/後半に分かれるティア (encounter が
+  // 5 個) を「5層」と誤表示せず「4層前半/後半」に畳む (2026-08-28 指摘)。
   const floors = useMemo(
-    () => (showPhase ? null : buildFloorMap(fights)),
-    [showPhase, fights],
+    () =>
+      showPhase
+        ? null
+        : buildFloorMap(fights, isSavageContent(categoryName) ? 4 : null),
+    [showPhase, fights, categoryName],
   );
   // クラスタ外 (同じレポートに混ざった別コンテンツの戦闘) は集計から除外。
   const tierFights = useMemo(
@@ -467,7 +473,12 @@ export function LogsView({
               : showPhase && summary.bestPhase !== null
                 ? `P${summary.bestPhase}`
                 : floors && summary.days.length > 0
-                  ? `${Math.max(...summary.days.map((d) => d.bestFloor ?? 0)) || "—"}層`
+                  ? (() => {
+                      const maxIdx = Math.max(
+                        ...summary.days.map((d) => d.bestFloor ?? 0),
+                      );
+                      return maxIdx > 0 ? floorLabel(floors, maxIdx) : "—";
+                    })()
                   : summary.bestPercentage !== null
                     ? `残 ${formatPercentage(summary.bestPercentage)}`
                     : "—"
@@ -483,7 +494,7 @@ export function LogsView({
           }
         />
         <StatCard
-          label={floors ? `${floors.floorCount}層クリア` : "クリア"}
+          label={floors ? `${floors.finalFloorLabel}クリア` : "クリア"}
           value={totalClears > 0 ? `${totalClears} 回` : "—"}
           sub={
             // 明細が打ち切られている場合の「初クリア」は表示範囲内の最古の
@@ -552,7 +563,7 @@ export function LogsView({
                   title={
                     t.hasClear
                       ? floors
-                        ? `${floors.floorCount}層クリア`
+                        ? `${floors.finalFloorLabel}クリア`
                         : "討伐"
                       : "その日のベスト到達"
                   }
@@ -560,7 +571,7 @@ export function LogsView({
                   {t.hasClear
                     ? "討伐"
                     : floors && t.bestFloor !== null
-                      ? `${t.bestFloor}層 残${formatPercentage(t.bestPercentage)}`
+                      ? `${floorLabel(floors, t.bestFloor)} 残${formatPercentage(t.bestPercentage)}`
                       : `${showPhase && t.bestPhase !== null ? `P${t.bestPhase} ` : ""}残${formatPercentage(t.bestPercentage)}`}
                 </span>
                 <span className="w-12 shrink-0 text-right font-mono text-[10px] text-muted-foreground tabular-nums">
@@ -728,9 +739,17 @@ function DayRow({
                 .filter((v): v is number => v !== null);
               const minF = Math.min(...dayFloors);
               const maxF = Math.max(...dayFloors);
+              // 範囲は表示層番号 (前半/後半とも 4) で出す。単一 index の
+              // 日だけ「4層前半」のようなフルラベルで区別する。
+              const minD = floors.displayFloorByIndex.get(minF) ?? minF;
+              const maxD = floors.displayFloorByIndex.get(maxF) ?? maxF;
               return (
                 <span className="rounded-sm border border-border/50 px-1.5 py-0.5 font-mono text-[10px] tabular-nums text-foreground/85">
-                  {minF === maxF ? `${maxF}層` : `${minF}-${maxF}層`}
+                  {minF === maxF
+                    ? floorLabel(floors, maxF)
+                    : minD === maxD
+                      ? `${maxD}層`
+                      : `${minD}-${maxD}層`}
                 </span>
               );
             })()}
@@ -849,9 +868,9 @@ function PullRow({
         // 「4層以外もクリア表記を出したい」)。最終層は緑、他層は淡色で区別。
         const label = fight.kill
           ? floor !== null
-            ? `${floor}層 CLEAR`
+            ? `${floorLabel(floors, floor)} CLEAR`
             : "CLEAR"
-          : `${floor !== null ? `${floor}層 ` : ""}${showPhase && fight.lastPhase !== null ? `P${fight.lastPhase} ` : ""}残${formatPercentage(fight.fightPercentage)}`;
+          : `${floor !== null ? `${floorLabel(floors, floor)} ` : ""}${showPhase && fight.lastPhase !== null ? `P${fight.lastPhase} ` : ""}残${formatPercentage(fight.fightPercentage)}`;
         return (
           <span
             className={
