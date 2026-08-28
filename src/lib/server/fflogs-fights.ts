@@ -4,6 +4,12 @@ import {
   createSupabaseServiceRoleClient,
 } from "@/lib/supabase/server";
 import { getValidFflogsOAuthToken } from "./fflogs-oauth";
+import {
+  jstYmdKey,
+  resolveVideoJstYmd,
+  toJstYmd,
+} from "@/lib/video-jst-date";
+import { buildFflogsReportUrl } from "@/lib/fflogs-url";
 import { getSecretValue } from "./secret-store";
 import { buildFflogsXhrHeaders } from "./fflogs-scrape-request";
 import { parseFflogsReportCode } from "@/lib/fflogs-url";
@@ -72,6 +78,8 @@ export type FflogsFightsSyncResult =
        * 対応 (2026-08-28) — 同期を実行したその場で理由を見せる。
        */
       failures: Array<{ reportCode: string; reason: string }>;
+      /** 取り込んだレポートから同日動画へ橋渡しした logs_url の本数。 */
+      videosBridged: number;
     }
   | { ok: false; reason: string };
 
@@ -141,6 +149,7 @@ export async function syncFflogsFights(opts?: {
       truncated: false,
       reattributed: 0,
       failures: [],
+      videosBridged: 0,
     };
   }
 
@@ -392,6 +401,19 @@ export async function syncFflogsFights(opts?: {
     console.warn("[fflogs-fights] trash cleanup failed:", e);
   }
 
+  // (c) 取り込んだレポート → 同日動画への logs_url 橋渡し (2026-08-28)。
+  //     URL インポートで入れたレポートは既存の auto-linker (一覧ベース) を
+  //     通らないため、動画カードの FFLogs / Analysis バッジが付かなかった。
+  //     台帳の全 ok レポートを対象に、**同じ JST 日付 + 同じカテゴリ** の
+  //     logs_url 未設定動画へ URL を設定する (既存リンクは上書きしない、
+  //     source='manual' なので auto wipe にも消されない = 冪等)。
+  let videosBridged = 0;
+  try {
+    videosBridged = await bridgeSyncedReportsToVideos(db);
+  } catch (e) {
+    console.warn("[fflogs-fights] video bridge failed:", e);
+  }
+
   return {
     ok: true,
     reportsKnown: refs.size,
@@ -401,7 +423,80 @@ export async function syncFflogsFights(opts?: {
     truncated,
     reattributed,
     failures,
+    videosBridged,
   };
+}
+
+/**
+ * 台帳 (fflogs_report_syncs) の ok レポートを、同日 (JST) + 同カテゴリの
+ * logs_url 未設定動画へ橋渡しする。
+ *
+ * 同日判定は TOP / 手動橋渡し (session-logs-video-bridge.ts) と同じ
+ * `resolveVideoJstYmd` (タイトル日付優先 → posted_at fallback)。手動橋渡しと
+ * 違いカテゴリ一致も要求する — 台帳にはカテゴリが付いているので、同日に
+ * 別コンテンツの動画があっても誤リンクしない。
+ * export はテストからの直接検証用 (ページ / action からは使わない)。
+ */
+export async function bridgeSyncedReportsToVideos(db: Db): Promise<number> {
+  const [videosRes, reportsRes] = await Promise.all([
+    db
+      .from("category_links")
+      .select("id, title, posted_at, category_id")
+      .eq("kind", "video")
+      .is("logs_url", null),
+    db
+      .from("fflogs_report_syncs")
+      .select("report_code, category_id, report_start_ms")
+      .eq("ok", true)
+      .not("category_id", "is", null)
+      .not("report_start_ms", "is", null),
+  ]);
+
+  // 日付キー + カテゴリ → 動画 id[] の索引を作る (クエリは上の 2 本だけ)。
+  const videoIndex = new Map<string, string[]>();
+  for (const v of videosRes.data ?? []) {
+    const ymd = resolveVideoJstYmd(
+      (v.title as string) ?? "",
+      (v.posted_at as string | null) ?? null,
+    );
+    if (!ymd) continue;
+    const key = `${jstYmdKey(ymd)}:${v.category_id as string}`;
+    let list = videoIndex.get(key);
+    if (!list) {
+      list = [];
+      videoIndex.set(key, list);
+    }
+    list.push(v.id as string);
+  }
+  if (videoIndex.size === 0) return 0;
+
+  let updated = 0;
+  for (const r of reportsRes.data ?? []) {
+    const startMs = Number(r.report_start_ms);
+    if (!Number.isFinite(startMs)) continue;
+    const key = `${jstYmdKey(toJstYmd(startMs))}:${r.category_id as string}`;
+    const ids = videoIndex.get(key);
+    if (!ids || ids.length === 0) continue;
+    const { data: rows, error } = await db
+      .from("category_links")
+      .update({
+        logs_url: buildFflogsReportUrl(r.report_code as string),
+        logs_url_source: "manual",
+      })
+      .in("id", ids)
+      // 取得と更新の間に別リンクが入った場合の lost-update 防止再ガード。
+      .is("logs_url", null)
+      .select("id");
+    if (error) {
+      console.warn("[fflogs-fights] bridge update failed:", error.message);
+      continue;
+    }
+    updated += rows?.length ?? 0;
+    // 同キーの動画は設定済みになったので索引から除去 (同日同カテゴリに
+    // 複数レポートがある場合、最初のレポートが勝つ)。
+    videoIndex.delete(key);
+  }
+  return updated;
 }
 
 function isRecent(date: string | null): boolean {
