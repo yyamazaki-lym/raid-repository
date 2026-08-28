@@ -39,12 +39,27 @@ export const PRIVATE_REPORT_REASON =
  */
 export const PERMISSION_CHAIN_PREFIX = "非公開レポートの可能性 — ";
 
+/**
+ * v1 API が private レポートに返す確定エラー (2026-08-28 実機で観測:
+ * `{"status":400,"error":"This report does not exist or is private."}`)。
+ * これが出た場合は「private であること」が確定する (unlisted なら v1 は
+ * 200 を返す) ので、試行チェーンの羅列ではなく確定文言を出す。
+ */
+export const V1_PRIVATE_ERROR_RE = /does not exist or is private/i;
+
+export const CONFIRMED_PRIVATE_REASON =
+  "private (非公開) レポートのため取得できません — アップロードした人が " +
+  "公開設定を Unlisted (限定公開) 以上に変えるか、その人の FFLogs アカウントで " +
+  "OAuth 連携すると取り込めます。Unlisted ならランキングに載らず、" +
+  "リンクを知っている人しか閲覧できません";
+
 /** 恒久失敗 (再試行しても結果が変わらない) かどうかの共通判定。 */
 export function isPermanentSyncFailure(reason: string | null): boolean {
   if (!reason) return false;
   return (
     PERMISSION_ERROR_RE.test(reason) ||
     reason === PRIVATE_REPORT_REASON ||
+    reason === CONFIRMED_PRIVATE_REASON ||
     reason.startsWith(PERMISSION_CHAIN_PREFIX)
   );
 }
