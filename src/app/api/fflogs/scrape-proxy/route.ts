@@ -26,9 +26,15 @@ import {
  * (60 req / 60 sec) が前段で抑える。
  *
  * SSRF 安全性: fetch 先は `userId` (正整数) と `page` (1..MAX_PAGES) から
- * 組み立てる fflogs.com の reports-list URL に固定。任意 URL は渡せない。
- * sessionCookie は呼び出し元が secrets テーブルから取得した値の中継で、
- * レスポンス・ログには含めない。
+ * 組み立てる fflogs.com の reports-list URL、または `reportCode`
+ * (英数字 8-32 文字) から組み立てる fights-and-participants URL に固定。
+ * 任意 URL は渡せない。sessionCookie は呼び出し元が secrets テーブルから
+ * 取得した値の中継で、レスポンス・ログには含めない。
+ *
+ * 2026-08-28 (TODO #94 follow-up): `reportCode` モードを追加。private
+ * レポートの fights 取得 (fflogs-fights.ts) も Node IP では Cloudflare に
+ * 403 で弾かれることが実機で確認されたため、reports-list と同じく Edge IP
+ * で中継する。
  */
 export const runtime = "edge";
 
@@ -68,7 +74,65 @@ export async function POST(request: NextRequest) {
   } catch {
     return NextResponse.json({ error: "invalid JSON body" }, { status: 400 });
   }
-  const { userId, page, sessionCookie } = body;
+  const { userId, page, sessionCookie, reportCode } = body as {
+    userId?: unknown;
+    page?: unknown;
+    sessionCookie?: unknown;
+    reportCode?: unknown;
+  };
+  if (sessionCookie != null && typeof sessionCookie !== "string") {
+    return NextResponse.json({ error: "invalid params" }, { status: 400 });
+  }
+
+  // ---- fights-and-participants モード (reportCode 指定時) ----------------
+  if (reportCode !== undefined) {
+    if (
+      typeof reportCode !== "string" ||
+      !/^[A-Za-z0-9]{8,32}$/.test(reportCode)
+    ) {
+      return NextResponse.json({ error: "invalid params" }, { status: 400 });
+    }
+    try {
+      const res = await fetch(
+        `https://www.fflogs.com/reports/fights-and-participants/${reportCode}/0`,
+        {
+          headers: {
+            ...buildFflogsScrapeHeaders(
+              typeof sessionCookie === "string" ? sessionCookie : null,
+            ),
+            Accept: "application/json,*/*",
+          },
+          signal: AbortSignal.timeout(FFLOGS_SCRAPE_TIMEOUT_MS),
+          redirect: "manual",
+        },
+      );
+      if (res.status >= 300 && res.status < 400) {
+        return NextResponse.json({
+          status: res.status,
+          redirected: true,
+          body: null,
+        });
+      }
+      if (!res.ok) {
+        return NextResponse.json({
+          status: res.status,
+          redirected: false,
+          body: null,
+        });
+      }
+      const text = await res.text();
+      return NextResponse.json({
+        status: res.status,
+        redirected: false,
+        contentType: res.headers.get("content-type") ?? "",
+        body: text,
+      });
+    } catch (e) {
+      return NextResponse.json({ error: String(e) }, { status: 502 });
+    }
+  }
+
+  // ---- reports-list モード (従来) ----------------------------------------
   if (
     typeof userId !== "number" ||
     !Number.isInteger(userId) ||
@@ -76,8 +140,7 @@ export async function POST(request: NextRequest) {
     typeof page !== "number" ||
     !Number.isInteger(page) ||
     page < 1 ||
-    page > FFLOGS_SCRAPE_MAX_PAGES ||
-    (sessionCookie != null && typeof sessionCookie !== "string")
+    page > FFLOGS_SCRAPE_MAX_PAGES
   ) {
     return NextResponse.json({ error: "invalid params" }, { status: 400 });
   }
