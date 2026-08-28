@@ -6,7 +6,10 @@ import { assertAdminResult } from "./auth";
 import { dbError } from "./db-error";
 import { syncFflogsFights } from "./fflogs-fights";
 import { httpUrlError } from "@/lib/url-validation";
-import { parseFflogsReportCode } from "@/lib/fflogs-url";
+import {
+  extractFflogsReportCodes,
+  parseFflogsReportCode,
+} from "@/lib/fflogs-url";
 
 /**
  * 練習ログ (fights) タブの書き込み系 Server Action (TODO #94)。
@@ -36,6 +39,53 @@ export async function syncFflogsFightsAction(): Promise<
   const result = await syncFflogsFights({ retryPermanentFailures: true });
   if (result.ok) revalidateQuietly();
   return result;
+}
+
+/**
+ * URL 貼り付けインポート (2026-08-28)。
+ *
+ * unlisted レポートは一覧 API に出ない (発見できない) が、code さえ
+ * 分かれば取得できる。fflogs.com のレポート一覧を見られるのは本人だけ
+ * なので、そのページの URL (丸ごとコピペでも可) を貼ってもらい、portal 側で
+ * code を抽出して取得チェーン (v2 → v1 → cookie) に流す。
+ */
+export async function importFflogsReportsAction(text: string): Promise<
+  | {
+      ok: true;
+      codesFound: number;
+      fightsUpserted: number;
+      failed: number;
+      reattributed: number;
+      failures: Array<{ reportCode: string; reason: string }>;
+    }
+  | { ok: false; reason: string }
+> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
+
+  const codes = extractFflogsReportCodes(text ?? "").slice(0, 25);
+  if (codes.length === 0) {
+    return {
+      ok: false,
+      reason:
+        "レポート URL が見つかりませんでした — https://www.fflogs.com/reports/... を含むテキストを貼り付けてください",
+    };
+  }
+
+  const result = await syncFflogsFights({
+    onlyCodes: codes,
+    retryPermanentFailures: true,
+  });
+  if (!result.ok) return result;
+  revalidateQuietly();
+  return {
+    ok: true,
+    codesFound: codes.length,
+    fightsUpserted: result.fightsUpserted,
+    failed: result.failed,
+    reattributed: result.reattributed,
+    failures: result.failures,
+  };
 }
 
 /**

@@ -71,6 +71,11 @@ export const RELEASES: ReleaseEntry[] = [
     ...LATEST_RELEASE_META,
     parts: [
       {
+        title: "\u{1F4CB} レポート URL の貼り付け取り込み \u2014 unlisted の\u300c発見\u300dを人間側で補う",
+        body:
+          "unlisted (限定公開) レポートは code さえ分かれば取得できるようになった (v1 経路、実機確認済み) が、**一覧 API に出ないため自動発見ができない**という穴が残っていた。FFLogs のレポート一覧を見られるのはアップロードした本人だけなので、その一覧から portal へ渡す導線を追加した。\n\n練習ログの「URL から取り込む」ボタン → fflogs.com のレポート一覧ページを**丸ごとコピーして貼り付け** (URL を改行区切りで並べても可)。貼り付けたテキストからレポートコードを自動抽出し (検出件数をその場に表示)、1 回につき最大 25 件を取得チェーン (v2 → v1 → cookie) で取り込む。失敗した分は理由付きでその場に表示される。\n\nこれで unlisted 運用の流れは「アップロード設定を Unlisted に → 日次同期で既知レポートは自動更新、新しいレポートは URL 貼り付け or 動画リンク登録で発見」となる。",
+      },
+      {
         title: "\u{1F513} unlisted レポートを API で取得 \u2014 xivanalysis と同じ経路",
         body:
           "調査により FFLogs の visibility の正確なセマンティクスが確定: **「一覧に出ない」ことと「読めない」ことは別**。unlisted (限定公開) レポートは一覧 API には出ないが、**レポートコードを直指定すれば v1 API で読める** (「リンクを知っている人は閲覧可」の API 版。xivanalysis が unlisted ログを解析できるのはこの経路)。\n\nportal は動画リンクや日付メモの登録で既にコードを知っているので、練習ログの同期に **v1 API (code 直指定) の fallback** を追加した。v2 が permission エラーを返したレポートは v1 → session cookie の順で再試行する。**Vercel に `FFLOGS_API_KEY` (v1 Public Key) が設定されていれば、URL 登録済みの unlisted レポートの pull が取り込める**。\n\n読めない組み合わせとして残るのは「private かつ本人以外の連携」のみ。失敗理由の文言も新しい優先順 (unlisted → API キー / private → 本人連携 or 公開設定変更) に更新した。",

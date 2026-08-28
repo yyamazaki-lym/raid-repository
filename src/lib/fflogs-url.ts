@@ -60,6 +60,28 @@ const REPORT_ROUTE_WORDS = new Set([
   "recent",
 ]);
 
+/**
+ * 任意のテキストからレポートコードを一括抽出する (TODO #94 follow-up)。
+ *
+ * 想定入力: fflogs.com のレポート一覧ページを丸ごとコピペしたテキスト、
+ * URL を改行区切りで並べたもの、Discord のログ等。`/reports/<code>` 形式を
+ * 全て拾い、ルート語 (rankings 等) を除外して重複を畳む。
+ */
+export function extractFflogsReportCodes(text: string): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const re = /reports\/([A-Za-z0-9]{8,32})(?![A-Za-z0-9])/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    const code = m[1]!;
+    if (REPORT_ROUTE_WORDS.has(code.toLowerCase())) continue;
+    if (seen.has(code)) continue;
+    seen.add(code);
+    out.push(code);
+  }
+  return out;
+}
+
 /** report code から FFLogs のレポート URL を組み立てる。 */
 export function buildFflogsReportUrl(code: string, fightId?: number | null): string {
   const base = `https://www.fflogs.com/reports/${encodeURIComponent(code)}`;
