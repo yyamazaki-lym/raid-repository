@@ -124,6 +124,7 @@ export function LogsView({
     setLastSyncFailures(result.failures ?? []);
     toast.success(
       `取り込み完了 — ${result.codesFound} レポート / ${result.fightsUpserted} pull` +
+        (result.videosBridged > 0 ? ` / 動画に紐づけ ${result.videosBridged}` : "") +
         (result.failed > 0 ? ` (失敗 ${result.failed} — 理由は下に表示)` : ""),
     );
     setImportOpen(false);
@@ -157,6 +158,7 @@ export function LogsView({
       toast.success(
         `同期完了 — ${result.reportsFetched} レポート / ${result.fightsUpserted} pull` +
           (result.reattributed > 0 ? ` / 再分類 ${result.reattributed}` : "") +
+          (result.videosBridged > 0 ? ` / 動画に紐づけ ${result.videosBridged}` : "") +
           (result.failed > 0 ? ` (失敗 ${result.failed} — 理由は下に表示)` : "") +
           (result.truncated ? " ※途中まで" : ""),
       );
@@ -184,7 +186,9 @@ export function LogsView({
         if (!open) setImportOpen(false);
       }}
     >
-      <DialogContent className="max-w-lg">
+      {/* ブックマークレット手順で縦に長いので、画面高を超えたら
+          ダイアログ内でスクロールさせる (2026-08-28 実機報告「縦も見切れ」)。 */}
+      <DialogContent className="max-h-[85dvh] max-w-lg overflow-y-auto">
         <DialogHeader>
           <DialogTitle>レポート URL から取り込む</DialogTitle>
           <DialogDescription>

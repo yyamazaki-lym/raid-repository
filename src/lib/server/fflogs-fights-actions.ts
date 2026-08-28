@@ -29,6 +29,7 @@ export async function syncFflogsFightsAction(): Promise<
       truncated: boolean;
       reattributed: number;
       failures: Array<{ reportCode: string; reason: string }>;
+      videosBridged: number;
     }
   | { ok: false; reason: string }
 > {
@@ -57,6 +58,7 @@ export async function importFflogsReportsAction(text: string): Promise<
       failed: number;
       reattributed: number;
       failures: Array<{ reportCode: string; reason: string }>;
+      videosBridged: number;
     }
   | { ok: false; reason: string }
 > {
@@ -85,6 +87,7 @@ export async function importFflogsReportsAction(text: string): Promise<
     failed: result.failed,
     reattributed: result.reattributed,
     failures: result.failures,
+    videosBridged: result.videosBridged,
   };
 }
 
