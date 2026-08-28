@@ -10,8 +10,9 @@ import { parseFflogsReportCode } from "@/lib/fflogs-url";
 import { jstYmdString } from "@/lib/jst-date";
 import { findContentGroups } from "@/lib/content-groups";
 import {
+  isPermanentSyncFailure,
+  PERMISSION_CHAIN_PREFIX,
   PERMISSION_ERROR_RE,
-  PRIVATE_REPORT_REASON,
 } from "@/lib/fflogs-sync-reason";
 
 /**
@@ -165,11 +166,8 @@ export async function syncFflogsFights(opts?: {
     if (!prev.ok) {
       // 恒久失敗 (private) は再試行しても結果が変わらないので、明示指定が
       // 無い限りスキップして取得枠を新規レポートに回す。
-      const permanent =
-        prev.reason !== null &&
-        (PERMISSION_ERROR_RE.test(prev.reason) ||
-          prev.reason === PRIVATE_REPORT_REASON);
-      if (!permanent || opts?.retryPermanentFailures) targets.push(withDate);
+      if (!isPermanentSyncFailure(prev.reason) || opts?.retryPermanentFailures)
+        targets.push(withDate);
       continue;
     }
     // カテゴリ未確定の report は取り直す。ただし zone 名が既に台帳にあれば
@@ -204,33 +202,44 @@ export async function syncFflogsFights(opts?: {
     }
     let res = await fetchReportFights(token, ref.code);
     fetched += 1;
+    // permission エラー時は unlisted / private 向けの fallback チェーンを
+    // 試し、**全経路の結果を reason に刻む** (2026-08-28: 「取得不可」の
+    // 実機報告で、v1 が未設定スキップなのか試行失敗なのか切り分けられ
+    // なかったため。次の報告で原因が一意に定まるようにする)。
+    let failureReason = res.ok ? null : res.reason;
     if (!res.ok && PERMISSION_ERROR_RE.test(res.reason)) {
+      const attempts: string[] = ["v2: 権限なし"];
       // unlisted: v1 API は code 直指定なら読める (xivanalysis と同じ経路)。
       const viaV1 = await fetchReportFightsViaV1(ref.code);
-      if (viaV1.ok) res = viaV1;
-      // private: session cookie があれば内部 JSON で再試行する。
-      if (!res.ok && sessionCookie) {
-        const viaCookie = await fetchReportFightsViaCookie(
-          sessionCookie,
-          ref.code,
-        );
-        if (viaCookie.ok) res = viaCookie;
+      if (viaV1.ok) {
+        res = viaV1;
+      } else {
+        attempts.push(`v1: ${viaV1.reason}`);
+        // private: session cookie があれば内部 JSON で再試行する。
+        if (sessionCookie) {
+          const viaCookie = await fetchReportFightsViaCookie(
+            sessionCookie,
+            ref.code,
+          );
+          if (viaCookie.ok) res = viaCookie;
+          else attempts.push(`cookie: ${viaCookie.reason}`);
+        } else {
+          attempts.push("cookie: 未登録");
+        }
+      }
+      if (!res.ok) {
+        failureReason = PERMISSION_CHAIN_PREFIX + attempts.join(" / ");
       }
     }
     if (!res.ok) {
       failed += 1;
-      const isPermission = PERMISSION_ERROR_RE.test(res.reason);
       await db.from("fflogs_report_syncs").upsert(
         {
           report_code: ref.code,
           category_id: ref.categoryId,
           session_date: ref.sessionDate,
           ok: false,
-          // permission エラーは原因と対処が分かる日本語に置き換えて保存する。
-          reason: (isPermission ? PRIVATE_REPORT_REASON : res.reason).slice(
-            0,
-            300,
-          ),
+          reason: (failureReason ?? res.reason).slice(0, 300),
           synced_at: new Date().toISOString(),
         },
         { onConflict: "report_code" },

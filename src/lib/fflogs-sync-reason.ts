@@ -31,6 +31,24 @@ export const PRIVATE_REPORT_REASON =
   "FFLOGS_API_KEY 設定で取得できます。private (非公開) はアップロードした" +
   "本人の OAuth 連携か、レポートを Public / Unlisted に変更すると取り込めます";
 
+/**
+ * 試行チェーン付き失敗 reason のプレフィックス (2026-08-28)。
+ * 「取得不可」の実機報告で v1 が「未設定でスキップ」なのか「試して失敗」
+ * なのか切り分けられなかったため、各経路の結果を reason に全て刻む形に
+ * 変更した。恒久失敗判定 (リトライ抑制) はこのプレフィックスで行う。
+ */
+export const PERMISSION_CHAIN_PREFIX = "非公開レポートの可能性 — ";
+
+/** 恒久失敗 (再試行しても結果が変わらない) かどうかの共通判定。 */
+export function isPermanentSyncFailure(reason: string | null): boolean {
+  if (!reason) return false;
+  return (
+    PERMISSION_ERROR_RE.test(reason) ||
+    reason === PRIVATE_REPORT_REASON ||
+    reason.startsWith(PERMISSION_CHAIN_PREFIX)
+  );
+}
+
 /** 保存済みの英文エラーも表示前に日本語へ寄せる (既存行の後方互換)。 */
 export function humanizeFflogsSyncReason(
   reason: string | null,
