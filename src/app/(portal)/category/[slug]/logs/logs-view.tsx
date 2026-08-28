@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   Activity,
   BarChart3,
+  BookMarked,
   ChevronDown,
   ClipboardPaste,
   Film,
@@ -51,7 +52,10 @@ import {
   suggestVideoForReportAction,
   syncFflogsFightsAction,
 } from "@/lib/server/fflogs-fights-actions";
-import { extractFflogsReportCodes } from "@/lib/fflogs-url";
+import {
+  extractFflogsReportCodes,
+  FFLOGS_REPORT_LINKS_BOOKMARKLET,
+} from "@/lib/fflogs-url";
 import { Textarea } from "@/components/ui/textarea";
 
 /**
@@ -185,7 +189,7 @@ export function LogsView({
           <DialogTitle>レポート URL から取り込む</DialogTitle>
           <DialogDescription>
             unlisted (限定公開) レポートは一覧からの自動発見ができないため、
-            URL を直接貼り付けて取り込みます。
+            URL を貼り付けて取り込みます (1 回につき最大 25 件)。
             <a
               href="https://www.fflogs.com/"
               target="_blank"
@@ -194,19 +198,58 @@ export function LogsView({
             >
               FFLogs
             </a>
-            のレポート一覧ページを開いて<strong>ページ全体をコピー</strong>
-            して貼り付けても、URL だけを改行区切りで並べても構いません
-            (1 回につき最大 25 件)。
+            の一覧ページはリンク文字にしか名前が出ず、通常のコピーでは URL が
+            取れないため、下の<strong>抽出ブックマークレット</strong>を使うのが
+            最短です。
           </DialogDescription>
         </DialogHeader>
-        <div className="flex flex-col gap-1.5">
+        {/* ブックマークレット: FFLogs の一覧ページ上で実行すると、表示中の
+            全レポート URL がクリップボードに入る。fflogs.com 側 (本人の
+            ブラウザセッション) で動くので unlisted / private の一覧も拾える。 */}
+        <div className="flex flex-col gap-1.5 rounded-md border border-border/40 bg-secondary/15 px-3 py-2">
+          <p className="font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase">
+            一覧から URL を一括コピーする (初回のみ設定)
+          </p>
+          <ol className="ml-4 flex list-decimal flex-col gap-0.5 text-[11px] leading-relaxed text-muted-foreground">
+            <li>下のボタンで抽出コードをコピー</li>
+            <li>
+              ブラウザで新しいブックマークを作り、URL 欄に貼り付けて保存
+              (名前は「FFLogs URL 抽出」など)
+            </li>
+            <li>FFLogs のレポート一覧ページを開いた状態でそのブックマークをクリック</li>
+            <li>「N 件のレポート URL をコピーしました」と出たら、下の欄に貼り付け</li>
+          </ol>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="mt-1 w-fit gap-1.5 text-[11px] tracking-normal"
+            onClick={async () => {
+              try {
+                await navigator.clipboard.writeText(
+                  FFLOGS_REPORT_LINKS_BOOKMARKLET,
+                );
+                toast.success("抽出ブックマークレットをコピーしました");
+              } catch {
+                toast.error("コピー失敗（ブラウザの権限を確認してください）");
+              }
+            }}
+          >
+            <BookMarked className="h-3.5 w-3.5" aria-hidden />
+            抽出ブックマークレットをコピー
+          </Button>
+        </div>
+        <div className="flex min-w-0 flex-col gap-1.5">
           <Label htmlFor="import-text">貼り付け</Label>
+          {/* Textarea 基底の field-sizing-content は内容に合わせて幅まで
+              広がり、長い URL でダイアログを突き破る (2026-08-28 実機報告
+              「見切れている」)。fixed に戻して幅を親に固定する。 */}
           <Textarea
             id="import-text"
             value={importText}
             rows={6}
-            placeholder={"https://www.fflogs.com/reports/xxxxxxxxxxxxxxxx\nhttps://www.fflogs.com/reports/yyyyyyyyyyyyyyyy"}
-            className="font-mono text-[11px]"
+            placeholder="https://www.fflogs.com/reports/... (改行区切りで複数可)"
+            className="max-w-full font-mono text-[11px] break-all [field-sizing:fixed]"
             onChange={(e) => setImportText(e.target.value)}
           />
           <p className="text-[11px] text-muted-foreground">
