@@ -43,7 +43,7 @@ export default async function LogsPage({
   // 監査 P3-m: enabled=false のタブはナビから除外されるが直 URL では描画される。
   if (category.tabConfig?.["logs"]?.enabled === false) notFound();
 
-  const { fights, totalPulls, totalKills, truncated } =
+  const { fights, totalPulls, totalClears, truncated } =
     await fetchCategoryFights(category.id);
   const codes = Array.from(new Set(fights.map((f) => f.reportCode)));
   const [videoLinks, failedSyncs] = await Promise.all([
@@ -56,7 +56,7 @@ export default async function LogsPage({
       categoryName={category.name}
       fights={fights}
       totalPulls={totalPulls}
-      totalKills={totalKills}
+      totalClears={totalClears}
       truncated={truncated}
       videoLinks={videoLinks}
       failedSyncs={failedSyncs}

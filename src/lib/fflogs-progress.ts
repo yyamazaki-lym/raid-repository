@@ -36,20 +36,80 @@ export type FightRow = {
    */
   fightPercentage: number | null;
   lastPhase: number | null;
+  /** FFLogs の encounter ID。零式ティアでは層ごとに異なる。 */
+  encounterId: number | null;
   startMs: number;
   endMs: number;
   reportStartMs: number | null;
 };
 
+/**
+ * カテゴリ内の encounter ID → 層番号 (1 始まり) の対応。
+ *
+ * 零式ティアは 1 ティア = 複数 encounter (M5S〜M8S 等) で、FFLogs の
+ * encounter ID は層順の連番になっている。カテゴリに現れた distinct な
+ * encounter ID を昇順に並べて 1..N 層と割り当てる。encounter が 1 種類
+ * しか無い (絶・討滅) 場合は層の概念が無いので null を返す。
+ */
+export type FloorMap = {
+  /** encounterId → 層番号 (1 始まり)。 */
+  byEncounter: Map<number, number>;
+  floorCount: number;
+  /** 最終層の encounterId。「クリア」の判定対象。 */
+  finalEncounterId: number;
+} | null;
+
+export function buildFloorMap(fights: FightRow[]): FloorMap {
+  const ids = [
+    ...new Set(
+      fights
+        .map((f) => f.encounterId)
+        .filter((v): v is number => v !== null && Number.isFinite(v)),
+    ),
+  ].sort((a, b) => a - b);
+  if (ids.length <= 1) return null;
+  const min = ids[0]!;
+  const max = ids[ids.length - 1]!;
+  // FFLogs のティア encounter は連番なので、層番号は「最小 ID からの
+  // オフセット」で出す (出現順だと、まだ挑んでいない層を飛ばして数えて
+  // しまう — 例: 3 層未挑戦のログでは 4 層が「3層」になる)。ID の広がりが
+  // ティアの層数としてあり得ない大きさなら、別種の encounter が混在して
+  // いる (ティアではない) とみなして層表示自体をやめる。
+  const span = max - min + 1;
+  if (span > 8) return null;
+  return {
+    byEncounter: new Map(ids.map((id) => [id, id - min + 1])),
+    floorCount: span,
+    finalEncounterId: max,
+  };
+}
+
+/**
+ * 「クリア」の判定 (2026-08-28 実機フィードバック)。
+ * 零式ティアでは消化で全層の kill が付き「討伐」バッジが情報にならない。
+ * 複数層のカテゴリでは **最終層の kill のみ** をクリアとして扱う。
+ * 絶・討滅 (encounter 1 種) は従来どおり kill = クリア。
+ */
+export function isClearFight(f: FightRow, floors: FloorMap): boolean {
+  if (!f.kill) return false;
+  if (!floors) return true;
+  return f.encounterId === floors.finalEncounterId;
+}
+
 export type DaySummary = {
   /** JST 暦日 `YYYY-MM-DD`。 */
   date: string;
   pulls: number;
+  /** kill の総数 (層問わず)。 */
   kills: number;
+  /** 最終層クリア (絶なら kill) の数。 */
+  clears: number;
   /** その日の最良 (最小) 残 HP%。取得できない場合は null。 */
   bestPercentage: number | null;
   /** その日の最深到達フェーズ。 */
   bestPhase: number | null;
+  /** その日に挑んだ最高層 (層の概念が無いカテゴリでは null)。 */
+  bestFloor: number | null;
   /** 戦闘時間の合計 (秒)。休憩は含まない = 「実戦闘時間」。 */
   fightSeconds: number;
   fights: FightRow[];
@@ -57,11 +117,14 @@ export type DaySummary = {
 
 export type ProgressSummary = {
   totalPulls: number;
-  totalKills: number;
+  /** 最終層クリア (絶なら kill) の数。 */
+  totalClears: number;
   bestPercentage: number | null;
   bestPhase: number | null;
-  /** 初クリアの pull (時系列で最初の kill)。 */
+  /** 初クリアの pull (時系列で最初の最終層 kill)。 */
   firstKill: FightRow | null;
+  /** クリア pull の最短戦闘時間 (秒)。クリアが無ければ null。 */
+  fastestClearSeconds: number | null;
   days: DaySummary[];
 };
 
@@ -70,7 +133,10 @@ export function fightDate(f: FightRow): string {
   return f.sessionDate ?? jstYmdString(new Date(f.startMs));
 }
 
-export function summarize(fights: FightRow[]): ProgressSummary {
+export function summarize(
+  fights: FightRow[],
+  floors: FloorMap = buildFloorMap(fights),
+): ProgressSummary {
   const byDay = new Map<string, FightRow[]>();
   for (const f of fights) {
     const d = fightDate(f);
@@ -82,6 +148,11 @@ export function summarize(fights: FightRow[]): ProgressSummary {
     list.push(f);
   }
 
+  const floorOf = (f: FightRow): number | null =>
+    floors && f.encounterId !== null
+      ? (floors.byEncounter.get(f.encounterId) ?? null)
+      : null;
+
   const days: DaySummary[] = [];
   for (const [date, list] of byDay) {
     const sorted = [...list].sort((a, b) => a.startMs - b.startMs);
@@ -89,10 +160,12 @@ export function summarize(fights: FightRow[]): ProgressSummary {
       date,
       pulls: sorted.length,
       kills: sorted.filter((f) => f.kill).length,
+      clears: sorted.filter((f) => isClearFight(f, floors)).length,
       bestPercentage: minOrNull(
         sorted.map((f) => (f.kill ? 0 : f.fightPercentage)),
       ),
       bestPhase: maxOrNull(sorted.map((f) => f.lastPhase)),
+      bestFloor: maxOrNull(sorted.map(floorOf)),
       fightSeconds: Math.round(
         sorted.reduce((acc, f) => acc + Math.max(0, f.endMs - f.startMs), 0) /
           1000,
@@ -104,14 +177,22 @@ export function summarize(fights: FightRow[]): ProgressSummary {
   days.sort((a, b) => b.date.localeCompare(a.date));
 
   const chronological = [...fights].sort((a, b) => a.startMs - b.startMs);
+  const clears = fights.filter((f) => isClearFight(f, floors));
   return {
     totalPulls: fights.length,
-    totalKills: fights.filter((f) => f.kill).length,
+    totalClears: clears.length,
     bestPercentage: minOrNull(
       fights.map((f) => (f.kill ? 0 : f.fightPercentage)),
     ),
     bestPhase: maxOrNull(fights.map((f) => f.lastPhase)),
-    firstKill: chronological.find((f) => f.kill) ?? null,
+    firstKill: chronological.find((f) => isClearFight(f, floors)) ?? null,
+    fastestClearSeconds:
+      clears.length > 0
+        ? Math.round(
+            Math.min(...clears.map((f) => Math.max(0, f.endMs - f.startMs))) /
+              1000,
+          )
+        : null,
     days,
   };
 }
@@ -125,30 +206,73 @@ export type ProgressPoint = {
   pulls: number;
   bestPercentage: number | null;
   bestPhase: number | null;
+  /** その日に挑んだ最高層 (層の概念が無いカテゴリでは null)。 */
+  bestFloor: number | null;
+  /**
+   * バー用の到達度 (0-100)。層の概念があるカテゴリでは
+   * ティア全体に対する進捗 = (突破済み層数 + 現在層の削り) / 層数。
+   * 無ければ 100 − 残 HP%。クリア日は 100。
+   */
+  progress: number;
   isRecord: boolean;
-  hasKill: boolean;
+  /** 最終層クリア (絶なら kill) があった日。 */
+  hasClear: boolean;
 };
 
-export function progressTimeline(days: DaySummary[]): ProgressPoint[] {
+export function progressTimeline(
+  days: DaySummary[],
+  floors: FloorMap = null,
+): ProgressPoint[] {
   // 古い順に走査して記録更新を判定する。
   const asc = [...days].sort((a, b) => a.date.localeCompare(b.date));
-  let best: number | null = null;
+  let best: number | null = null; // その層内の残% (層が無い場合は全体)
+  let bestFloorSeen: number | null = null;
   let bestPhase: number | null = null;
   const out: ProgressPoint[] = [];
   for (const d of asc) {
+    const improvedFloor =
+      d.bestFloor !== null &&
+      (bestFloorSeen === null || d.bestFloor > bestFloorSeen);
+    // 層が上がったら残% の記録はリセット (新しい層の削りが始まる)。
+    if (improvedFloor) {
+      bestFloorSeen = d.bestFloor;
+      best = null;
+    }
+    const sameFloor = d.bestFloor === bestFloorSeen;
     const improvedPct =
-      d.bestPercentage !== null && (best === null || d.bestPercentage < best);
+      d.bestPercentage !== null &&
+      (floors === null || sameFloor) &&
+      (best === null || d.bestPercentage < best);
     const improvedPhase =
       d.bestPhase !== null && (bestPhase === null || d.bestPhase > bestPhase);
     if (improvedPct) best = d.bestPercentage;
     if (improvedPhase) bestPhase = d.bestPhase;
+
+    const hasClear = d.clears > 0;
+    let progress: number;
+    if (hasClear) {
+      progress = 100;
+    } else if (floors && d.bestFloor !== null) {
+      const inFloor =
+        d.bestPercentage !== null
+          ? Math.max(0, Math.min(1, 1 - d.bestPercentage / 100))
+          : 0;
+      progress = ((d.bestFloor - 1 + inFloor) / floors.floorCount) * 100;
+    } else if (d.bestPercentage !== null) {
+      progress = Math.max(0, Math.min(100, 100 - d.bestPercentage));
+    } else {
+      progress = 0;
+    }
+
     out.push({
       date: d.date,
       pulls: d.pulls,
       bestPercentage: d.bestPercentage,
       bestPhase: d.bestPhase,
-      isRecord: improvedPct || improvedPhase,
-      hasKill: d.kills > 0,
+      bestFloor: d.bestFloor,
+      progress,
+      isRecord: improvedPct || improvedPhase || improvedFloor,
+      hasClear,
     });
   }
   return out;
