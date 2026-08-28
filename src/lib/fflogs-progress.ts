@@ -52,12 +52,29 @@ export type FightRow = {
  * しか無い (絶・討滅) 場合は層の概念が無いので null を返す。
  */
 export type FloorMap = {
-  /** encounterId → 層番号 (1 始まり)。ティアのクラスタに属するもののみ。 */
+  /**
+   * encounterId → 層 index (1 始まり)。ティアのクラスタに属するもののみ。
+   * 最終層が前半/後半に分かれるティアでは前半・後半が別 index になる
+   * (進捗バーのセグメントとしてはそれぞれ 1 区間)。表示する層名は
+   * `labelByIndex` / `displayFloorByIndex` を参照する。
+   */
   byEncounter: Map<number, number>;
+  /** 進捗バーのセグメント数 (前半/後半分割時は表示層数 + 1)。 */
   floorCount: number;
-  /** 最終層の encounterId。「クリア」の判定対象。 */
+  /** 最終 encounter (分割時は後半)。「クリア」の判定対象。 */
   finalEncounterId: number;
+  /** 層 index → 表示ラベル (例: "3層" / "4層前半" / "4層後半")。 */
+  labelByIndex: Map<number, string>;
+  /** 層 index → 表示上の層番号 (前半/後半とも 4)。範囲チップ用。 */
+  displayFloorByIndex: Map<number, number>;
+  /** クリア判定対象の層の表示名 (例: "4層")。クリア回数タイル用。 */
+  finalFloorLabel: string;
 } | null;
+
+/** 層 index の表示ラベル。floors が無い/未知の index は "◯層" にフォールバック。 */
+export function floorLabel(floors: FloorMap, index: number): string {
+  return floors?.labelByIndex.get(index) ?? `${index}層`;
+}
 
 /**
  * 実データのレポートには同日の別コンテンツ (エキスパートダンジョン・
@@ -66,7 +83,17 @@ export type FloorMap = {
  * 幅 8 以内の連続 encounter クラスタ」をティアとみなし、クラスタ外の
  * 戦闘は層判定 (と練習ログの集計) から除外する。
  */
-export function buildFloorMap(fights: FightRow[]): FloorMap {
+export function buildFloorMap(
+  fights: FightRow[],
+  /**
+   * コンテンツ種別から分かる期待層数 (零式 = 4)。クラスタの encounter 数が
+   * 期待 + 1 のときは「最終層が前半/後半に分かれるティア」とみなし、
+   * 末尾 2 つを「◯層前半 / ◯層後半」として同じ表示層番号に割り当てる
+   * (2026-08-28 実機: M8S 型のティアが「5層」扱いになっていた)。
+   * null なら分割検出をしない。
+   */
+  expectedFloorCount: number | null = null,
+): FloorMap {
   const counts = new Map<number, number>();
   for (const f of fights) {
     if (f.encounterId === null || !Number.isFinite(f.encounterId)) continue;
@@ -92,12 +119,35 @@ export function buildFloorMap(fights: FightRow[]): FloorMap {
 
   const min = best[0]!;
   const max = best[best.length - 1]!;
-  // FFLogs のティア encounter は連番なので、層番号は「クラスタ最小 ID
+  // FFLogs のティア encounter は連番なので、層 index は「クラスタ最小 ID
   // からのオフセット」で出す (出現順だと未挑戦の層を飛ばして番号がずれる)。
+  const floorCount = max - min + 1;
+
+  // 最終層の前半/後半分割の検出: 期待層数 (零式 = 4) より encounter が
+  // ちょうど 1 つ多ければ、末尾 2 つ = 最終層の前半/後半 (FFLogs は前半に
+  // 若い ID を振る)。表示層番号は両方とも期待層数 (例: 4) に畳む。
+  const split =
+    expectedFloorCount !== null && floorCount === expectedFloorCount + 1;
+  const labelByIndex = new Map<number, string>();
+  const displayFloorByIndex = new Map<number, number>();
+  for (let idx = 1; idx <= floorCount; idx++) {
+    if (split && idx >= floorCount - 1) {
+      const half = idx === floorCount - 1 ? "前半" : "後半";
+      labelByIndex.set(idx, `${expectedFloorCount}層${half}`);
+      displayFloorByIndex.set(idx, expectedFloorCount);
+    } else {
+      labelByIndex.set(idx, `${idx}層`);
+      displayFloorByIndex.set(idx, idx);
+    }
+  }
+
   return {
     byEncounter: new Map(best.map((id) => [id, id - min + 1])),
-    floorCount: max - min + 1,
+    floorCount,
     finalEncounterId: max,
+    labelByIndex,
+    displayFloorByIndex,
+    finalFloorLabel: split ? `${expectedFloorCount}層` : `${floorCount}層`,
   };
 }
 
