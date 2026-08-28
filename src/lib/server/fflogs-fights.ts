@@ -5,7 +5,7 @@ import {
 } from "@/lib/supabase/server";
 import { getValidFflogsOAuthToken } from "./fflogs-oauth";
 import { getSecretValue } from "./secret-store";
-import { buildFflogsScrapeHeaders } from "./fflogs-scrape-request";
+import { buildFflogsXhrHeaders } from "./fflogs-scrape-request";
 import { parseFflogsReportCode } from "@/lib/fflogs-url";
 import { jstYmdString } from "@/lib/jst-date";
 import { findContentGroups } from "@/lib/content-groups";
@@ -721,10 +721,7 @@ async function fetchFightsJsonDirect(
       `https://www.fflogs.com/reports/fights-and-participants/${encodeURIComponent(code)}/0`,
       {
         cache: "no-store",
-        headers: {
-          ...buildFflogsScrapeHeaders(sessionCookie),
-          Accept: "application/json,*/*",
-        },
+        headers: buildFflogsXhrHeaders(code, sessionCookie),
         signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       },
     );

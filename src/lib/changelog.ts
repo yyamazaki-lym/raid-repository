@@ -71,6 +71,11 @@ export const RELEASES: ReleaseEntry[] = [
     ...LATEST_RELEASE_META,
     parts: [
       {
+        title: "\u{1F6A7} FFLogs の bot 対策強化への対応 \u2014 scrape 403 の緩和と案内の現実化",
+        body:
+          "実機で「Edge 経由でも fflogs HTML scrape 403」が確認された (2026-06 の実測では通っていた経路)。FFLogs 側の bot 対策が強化されたとみられる。\n\n- **UA の近代化**: scrape が名乗っていたブラウザが 2 年前の Chrome 124 のままで、古い UA + データセンター IP の組み合わせが bot 判定されやすくなっていた。現行版に更新\n- **fights 取得を XHR として自然な形に**: pull データの JSON エンドポイントを「ページとして直接開く」風のヘッダーで取りに行っていたが、実ブラウザにはない挙動でそれ自体が bot シグナルだった。実ブラウザと同じ XHR ヘッダー (Referer = レポートページ、Sec-Fetch-Dest: empty 等) に変更\n- **案内の現実化**: 「cookie を登録すれば取れます」と断言していた文面を改め、cookie は\u300c試みる\u300d手段、**確実なのはレポートの Public 化** (アップローダの既定公開設定を Public にすれば以後は全自動) であることを診断パネルと失敗理由の両方に明記\n\nヘッダー更新で 403 が解消するかは FFLogs 側の判定次第 (TLS 指紋で弾いている場合は効果なし)。解消しない場合の運用は Public 化が唯一確実な経路になる。",
+      },
+      {
         title: "\u{1F6E0} private 取得の経路修正 (Edge 経由) + PC でもカード表示",
         body:
           "実機の続報 3 件への対応。\n\n**cookie fallback が効かなかった問題**: 前回入れた「session cookie で private レポートの pull を取得する」fallback は、Vercel の Node サーバーから FFLogs へ直接アクセスしていたため、Cloudflare の bot 判定 (恒常 403) に弾かれて一度も成功していなかった。レポート一覧の取得が以前から使っている **Edge 中継 (scrape-proxy)** を fights 取得にも通すよう修正。cookie を登録して「ログを同期」を押せば private レポートの pull が入るようになる (ローカル開発では従来どおり直接アクセス)。\n\n**unlisted も API では読めない**: 実機確認により、限定公開 (unlisted) レポートも v2 API では取得できないことが判明。「unlisted にすれば取り込める」という誤った案内を撤去し、対処は「session cookie の登録」または「アップロード本人の OAuth 連携」の 2 つに整理した。\n\n**カード表示を PC でも確認できるように**: 軽減表 / ロットの読み取り専用カードはスマホ幅専用で、PC からは存在自体が分からなかった。PC にも「カード表示で見る ⇄ シート表示に戻す」の切替ボタンを追加 (選択は端末ごとに記憶)。スマホは従来どおり常にカード。",

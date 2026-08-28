@@ -16,13 +16,17 @@
 export const PERMISSION_ERROR_RE =
   /do(es)? not ha(ve|s) permission|did not grant|permission to view/i;
 
-// 2026-08-28 実機確認: unlisted (限定公開) も v2 API では返されない
-// (private と同じ permission エラー)。文言から「unlisted にすれば読める」
-// という誤った案内を撤去した。
+// 2026-08-28 実機確認:
+// - unlisted (限定公開) も v2 API では返されない (private と同じ permission
+//   エラー)。「unlisted にすれば読める」という案内は誤りだった。
+// - session cookie の scrape 経路も Edge IP ごと Cloudflare に 403 で
+//   弾かれるようになった (2026-06 実測では通っていた)。cookie は「試みる」
+//   手段であり、確実なのはレポートの Public 化のみ。
 export const PRIVATE_REPORT_REASON =
   "非公開 (private / unlisted) レポートのため API では取得できません — " +
-  "設定の FFLogs 連携で session cookie を登録すると取り込めます " +
-  "(アップロードした本人が OAuth 連携している場合は登録不要)";
+  "確実な対処はレポートを Public にすること (アップローダの既定公開設定を " +
+  "Public にすると以後は自動で取り込めます)。アップロードした本人が " +
+  "OAuth 連携している場合はそのままで取得可能です";
 
 /** 保存済みの英文エラーも表示前に日本語へ寄せる (既存行の後方互換)。 */
 export function humanizeFflogsSyncReason(
