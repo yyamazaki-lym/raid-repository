@@ -62,6 +62,13 @@ export function SheetCards({
 
   const href = safeHref(sheetUrl);
 
+  // 巨大なシート (数百行) をスマホで全部カード化すると描画が重くなるため
+  // 上限を切る。超えた分は Sheets 本体で見てもらう (読み取り専用ビューなので
+  // 情報が失われるわけではない)。
+  const MAX_CARDS = 200;
+  const shown = table.rows.slice(0, MAX_CARDS);
+  const hidden = table.rows.length - shown.length;
+
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -156,7 +163,7 @@ export function SheetCards({
       )}
 
       <ul className="flex flex-col gap-2">
-        {table.rows.map((row, ri) => {
+        {shown.map((row, ri) => {
           const heading = row[0]?.trim();
           const cells = visibleColumns
             .map((ci) => ({
@@ -201,6 +208,12 @@ export function SheetCards({
           );
         })}
       </ul>
+
+      {hidden > 0 && (
+        <p className="text-[11px] leading-relaxed text-muted-foreground">
+          残り {hidden} 行は表示していません。全体は「Sheets で編集」から確認してください。
+        </p>
+      )}
     </div>
   );
 }

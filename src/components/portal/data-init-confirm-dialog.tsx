@@ -91,7 +91,11 @@ export function DataInitConfirmDialog({
               削除対象
             </p>
             <ul className="ml-4 list-disc text-foreground/85 [&>li]:leading-snug">
-              <li>コンテンツ + 関連 (動画 / 攻略情報 / マクロ / 募集文 / ロット管理 / 軽減表)</li>
+              <li>
+                コンテンツ + 関連 (動画 / 攻略情報 / マクロ / ウェイマーク /
+                募集文 / ロット管理 / 軽減表 / BiS リンク / 週次消化)
+              </li>
+              <li>練習ログ (FFLogs の pull 記録 / 同期台帳 / 動画オフセット)</li>
               <li>過去スケジュール / 日付メモ / タグ</li>
               <li>
                 アプリ設定 (Schedule URL / FFLogs username / Discord channel ID 等)
