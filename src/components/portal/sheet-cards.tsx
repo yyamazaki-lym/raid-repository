@@ -170,19 +170,23 @@ export function SheetCards({
               key={ri}
               className="rounded-md border border-border/40 bg-secondary/20 px-3 py-2"
             >
-              <p className="font-display text-sm text-foreground">
+              <p className="font-display text-sm break-words text-foreground">
                 {heading || (
                   <span className="text-muted-foreground/70">（無題）</span>
                 )}
               </p>
               {cells.length > 0 ? (
-                <dl className="mt-1.5 grid grid-cols-[minmax(4rem,auto)_1fr] gap-x-3 gap-y-1">
+                // 見出し列は max-content で伸びると長い担当者名でグリッドが
+                // コンテナ幅を超えるため上限を切り、値列は最小 0 で必ず縮める。
+                <dl className="mt-1.5 grid grid-cols-[minmax(3.5rem,7rem)_minmax(0,1fr)] gap-x-3 gap-y-1">
                   {cells.map((c, i) => (
                     <div key={i} className="contents">
                       <dt className="truncate font-mono text-[10px] tracking-[0.12em] text-muted-foreground uppercase">
                         {c.label || "—"}
                       </dt>
-                      <dd className="text-[12px] leading-relaxed whitespace-pre-wrap text-foreground/90">
+                      {/* URL のような区切りの無い長い文字列でも折り返す
+                          (`break-words` = overflow-wrap: break-word)。 */}
+                      <dd className="min-w-0 text-[12px] leading-relaxed break-words whitespace-pre-wrap text-foreground/90">
                         {c.value}
                       </dd>
                     </div>

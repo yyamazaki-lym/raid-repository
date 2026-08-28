@@ -9,13 +9,31 @@
 
 import { jstYmdString } from "./jst-date";
 
+/**
+ * FFLogs の残 HP% を「0-100 のパーセント」に正規化する。
+ *
+ * v1 系の `boss_percentage` は 100 倍値 (3421 = 34.21%) で返っていた歴史が
+ * あり、v2 の `fightPercentage` も環境によって 100 倍値が観測される。
+ * パーセントが 100 を超えることは定義上あり得ないので、100 超なら 100 倍値
+ * とみなして戻す。取り違えても「表示が 100 倍ズレる」だけで済まないため
+ * (順位付けが逆転する) 、読み出し側の 1 箇所でまとめて吸収する。
+ */
+export function normalizePercentage(raw: number | null): number | null {
+  if (raw === null || !Number.isFinite(raw)) return null;
+  if (raw < 0) return null;
+  return raw > 100 ? raw / 100 : raw;
+}
+
 export type FightRow = {
   reportCode: string;
   fightId: number;
   sessionDate: string | null;
   name: string | null;
   kill: boolean;
-  /** 終了時点のボス残 HP (%)。小さいほど深く到達している。kill なら 0。 */
+  /**
+   * 終了時点のボス残 HP (%)。小さいほど深く到達している。kill なら 0。
+   * 読み出し時に `normalizePercentage` を通した 0-100 の値。
+   */
   fightPercentage: number | null;
   lastPhase: number | null;
   startMs: number;

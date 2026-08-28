@@ -64,12 +64,20 @@ import {
 export function LogsView({
   categoryName,
   fights,
+  totalPulls,
+  totalKills,
+  truncated,
   videoLinks,
   failedSyncs,
   canEdit,
 }: {
   categoryName: string;
+  /** 明細。件数が多いカテゴリでは直近分だけが渡る (`truncated`)。 */
   fights: FightRow[];
+  /** カテゴリ全体の pull 数 / クリア数 (明細が打ち切られていても正確)。 */
+  totalPulls: number;
+  totalKills: number;
+  truncated: boolean;
   videoLinks: Record<string, ReportVideoLink>;
   failedSyncs: Array<{ reportCode: string; reason: string | null }>;
   canEdit: boolean;
@@ -156,7 +164,11 @@ export function LogsView({
       </header>
 
       <ul className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <StatCard label="総 pull" value={String(summary.totalPulls)} />
+        <StatCard
+          label="総 pull"
+          value={String(totalPulls)}
+          sub={truncated ? `直近 ${summary.totalPulls} 件を表示` : undefined}
+        />
         <StatCard
           label="練習日数"
           value={`${summary.days.length} 日`}
@@ -176,13 +188,15 @@ export function LogsView({
         />
         <StatCard
           label="クリア"
-          value={summary.totalKills > 0 ? `${summary.totalKills} 回` : "—"}
+          value={totalKills > 0 ? `${totalKills} 回` : "—"}
           sub={
-            summary.firstKill
-              ? `初クリア ${new Date(summary.firstKill.startMs).toLocaleDateString("ja-JP")}`
+            // 明細が打ち切られている場合の「初クリア」は表示範囲内の最古の
+            // クリアでしかないので出さない (誤情報を作らない)。
+            !truncated && summary.firstKill
+              ? `初クリア ${new Date(summary.firstKill.startMs).toLocaleDateString("ja-JP", { timeZone: "Asia/Tokyo" })}`
               : undefined
           }
-          highlight={summary.totalKills > 0}
+          highlight={totalKills > 0}
         />
       </ul>
 
@@ -319,7 +333,7 @@ function DayRow({
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-secondary/25"
+        className="flex w-full flex-wrap items-center gap-x-2 gap-y-1 px-3 py-2 text-left hover:bg-secondary/25"
       >
         <ChevronDown
           className={
@@ -398,9 +412,12 @@ function PullRow({
   video: ReportVideoLink | null;
 }) {
   const durationSec = Math.max(0, Math.round((fight.endMs - fight.startMs) / 1000));
+  // 日付のグルーピングが JST 基準なので時刻も JST に固定する
+  // (閲覧者のタイムゾーンに依存すると日付と時刻がずれて見える)。
   const clock = new Date(fight.startMs).toLocaleTimeString("ja-JP", {
     hour: "2-digit",
     minute: "2-digit",
+    timeZone: "Asia/Tokyo",
   });
 
   // A-2 の肝: report 開始からの相対位置 + オフセットで動画内時刻を計算する。

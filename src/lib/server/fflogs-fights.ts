@@ -103,35 +103,52 @@ export async function syncFflogsFights(opts?: {
   // 既存の同期台帳を読み、再取得が要るものだけに絞る。
   const { data: ledger } = await db
     .from("fflogs_report_syncs")
-    .select("report_code, ok, synced_at, session_date");
+    .select("report_code, ok, synced_at, session_date, category_id");
   const ledgerMap = new Map<
     string,
-    { ok: boolean; syncedAt: string | null; sessionDate: string | null }
+    {
+      ok: boolean;
+      syncedAt: string | null;
+      sessionDate: string | null;
+      categoryId: string | null;
+    }
   >();
   for (const row of ledger ?? []) {
     ledgerMap.set(row.report_code as string, {
       ok: (row.ok as boolean) ?? false,
       syncedAt: (row.synced_at as string | null) ?? null,
       sessionDate: (row.session_date as string | null) ?? null,
+      categoryId: (row.category_id as string | null) ?? null,
     });
   }
 
-  const targets: ReportRef[] = [];
+  const targets: Array<ReportRef & { effectiveDate: string | null }> = [];
   for (const ref of refs.values()) {
     const prev = ledgerMap.get(ref.code);
-    if (!prev) {
-      targets.push(ref);
+    // 初回同期まで日付が分からない report もあるので、台帳の日付で補う。
+    const effectiveDate = ref.sessionDate ?? prev?.sessionDate ?? null;
+    const withDate = { ...ref, effectiveDate };
+    if (!prev || !prev.ok) {
+      targets.push(withDate);
       continue;
     }
-    if (!prev.ok) {
-      targets.push(ref);
+    // 初回同期時にはカテゴリが決まらず (動画リンクが後から付く等)、
+    // その後リンクが付いても 14 日を過ぎると再取得されないままになる。
+    // 今なら決められると分かっている場合は取り直して属性を埋める。
+    if (prev.categoryId === null && ref.categoryId !== null) {
+      targets.push(withDate);
       continue;
     }
     // 直近のセッションはまだ pull が増えるので取り直す。
-    if (isRecent(ref.sessionDate ?? prev.sessionDate)) targets.push(ref);
+    if (isRecent(effectiveDate)) targets.push(withDate);
   }
-  // 新しい日付から処理する (見たいのは直近の練習)。
-  targets.sort((a, b) => (b.sessionDate ?? "").localeCompare(a.sessionDate ?? ""));
+  // 新しい日付から処理する (見たいのは直近の練習)。日付不明は最優先で
+  // 拾う — 一度同期すれば日付が確定し、以後この分岐には来ない。
+  targets.sort((a, b) =>
+    (b.effectiveDate ?? "9999-99-99").localeCompare(
+      a.effectiveDate ?? "9999-99-99",
+    ),
+  );
   const limit = opts?.limit ?? DEFAULT_REPORT_LIMIT;
   const sliced = targets.slice(0, limit);
 

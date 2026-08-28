@@ -104,9 +104,11 @@ export function LootWeeklyPanel({
             className="h-4 w-4 text-[var(--neon-cyan)]"
             aria-hidden
           />
-          <h2 className="font-display text-base">今週の消化</h2>
-          <span className="font-mono text-[10px] tracking-[0.14em] text-muted-foreground">
-            {weekLabel} / {untilReset}
+          <h2 className="font-display text-base whitespace-nowrap">今週の消化</h2>
+          <span className="flex flex-wrap gap-x-1.5 font-mono text-[10px] tracking-[0.14em] text-muted-foreground">
+            {/* 個々の断片が語中で折れないように分割しておく。 */}
+            <span className="whitespace-nowrap">{weekLabel}</span>
+            <span className="whitespace-nowrap">{untilReset}</span>
           </span>
         </div>
         <span
@@ -287,7 +289,10 @@ export function BisLinksPanel({
           このコンテンツの BiS としてここに並びます。
         </p>
       ) : (
-        <ul className="grid gap-1.5 sm:grid-cols-2">
+        // `1fr` は `minmax(auto,1fr)` = 最小トラックが min-content なので、
+        // 長いラベル 1 件でグリッドがコンテナ幅を超える (モバイルで横スクロール
+        // が出る)。最小を 0 に固定して必ず縮むようにする。
+        <ul className="grid grid-cols-[minmax(0,1fr)] gap-1.5 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
           {links.map((l) => {
             const href = safeHref(l.url);
             return (
@@ -308,7 +313,9 @@ export function BisLinksPanel({
                   title={l.note ?? l.url}
                 >
                   <span className="flex min-w-0 items-center gap-1.5">
-                    <span className="truncate text-[12px] text-foreground/90">
+                    {/* flex item は min-width:auto が既定で縮まないため、
+                        truncate を効かせるには自身にも min-w-0 が要る。 */}
+                    <span className="min-w-0 truncate text-[12px] text-foreground/90">
                       {l.label}
                     </span>
                     {l.job && (

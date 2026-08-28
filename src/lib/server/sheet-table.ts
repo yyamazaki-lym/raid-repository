@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import { isPublicHttpUrl } from "@/lib/url-safe";
 import { safeFetch } from "./safe-fetch";
 import { parseCsv, toSheetCsvUrl, toSheetTable, type SheetTable } from "@/lib/sheet-csv";
@@ -17,13 +18,51 @@ import { parseCsv, toSheetCsvUrl, toSheetTable, type SheetTable } from "@/lib/sh
  */
 
 const MAX_BYTES = 2 * 1024 * 1024;
-const TIMEOUT_MS = 15_000;
+// ページ描画をブロックする経路なので短め。監査 D-1 の「外部 fetch は 8s」
+// より更に短くする (取れなければ iframe に落ちるだけで実害がない)。
+const TIMEOUT_MS = 6_000;
+/** プロセス内 TTL キャッシュの寿命。開催中の編集が最大この時間で追いつく。 */
+const TTL_MS = 5 * 60 * 1000;
 
 export type SheetTableResult =
   | { ok: true; table: SheetTable; csvUrl: string }
   | { ok: false; reason: string };
 
-export async function fetchSheetTable(
+/**
+ * プロセス内 TTL キャッシュ。
+ *
+ * ⚠ `safeFetch` は undici を直接使う (IP ピン留めのため) ので **Next の
+ * fetch キャッシュ (`next: { revalidate }`) は効かない**。素で書くと
+ * 軽減表/ロットを開くたびに Google へ取りに行くことになるため、ここで
+ * 明示的にキャッシュする。Lambda インスタンス単位なので厳密な共有では
+ * ないが、「編集の正は Sheets 側」という前提では十分。
+ */
+const memo = new Map<string, { at: number; result: SheetTableResult }>();
+
+/**
+ * 1 リクエスト内の重複呼び出しは React `cache()` で畳み、インスタンスを
+ * 跨いだ再取得は上の TTL で抑える。
+ */
+export const fetchSheetTable = cache(
+  async (sheetUrl: string | null | undefined): Promise<SheetTableResult> => {
+    const key = (sheetUrl ?? "").trim();
+    const hit = memo.get(key);
+    if (hit && Date.now() - hit.at < TTL_MS) return hit.result;
+    const result = await fetchSheetTableUncached(sheetUrl);
+    // 失敗も短時間キャッシュする (非公開シートに毎回取りに行かない)。
+    memo.set(key, { at: Date.now(), result });
+    // 際限なく増えないように上限を切る (カテゴリ数 × 2 程度しか入らない)。
+    if (memo.size > 64) {
+      for (const k of memo.keys()) {
+        memo.delete(k);
+        if (memo.size <= 32) break;
+      }
+    }
+    return result;
+  },
+);
+
+async function fetchSheetTableUncached(
   sheetUrl: string | null | undefined,
 ): Promise<SheetTableResult> {
   const csvUrl = toSheetCsvUrl(sheetUrl);
@@ -32,11 +71,9 @@ export async function fetchSheetTable(
 
   try {
     const res = await safeFetch(csvUrl, {
-      // ISR: 5 分キャッシュ。開催中に編集された軽減表が 5 分で追いつく。
-      next: { revalidate: 300 },
       headers: { Accept: "text/csv,*/*" },
       signal: AbortSignal.timeout(TIMEOUT_MS),
-    } as RequestInit);
+    });
     if (!res.ok) {
       return {
         ok: false,
