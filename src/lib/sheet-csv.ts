@@ -161,6 +161,56 @@ export function toSheetTable(raw: string[][]): SheetTable | null {
   return { headers: norm(head!), rows: rest.map(norm) };
 }
 
+export type SheetCardRow = {
+  heading: string;
+  cells: Array<{ label: string; value: string }>;
+};
+
+/**
+ * カードに載せる価値の無いセル値の判定。
+ *   - 空文字 / 記号 1 個だけ (「-」「ー」等はテンプレの埋め草)
+ *   - チェックボックスの内部値 (TRUE / FALSE)。条件付き書式やフラグ用の
+ *     列で、テキストとしては意味を持たない
+ */
+export function isNoiseValue(v: string): boolean {
+  if (v === "") return true;
+  return /^(?:-|–|—|ー|―|・|\.|true|false)$/i.test(v);
+}
+
+/**
+ * 行 → カードデータ。タイムライン型の軽減表テンプレート (チェックボックス
+ * 列や SPARKLINE 用の数値列を多数持つ) をそのままカード化すると
+ * 「(無題) / FALSE ×10」のような意味不明の羅列になる (2026-08-28 実機報告)。
+ *   - ノイズセル (`isNoiseValue`) と見出しと同文のセル (見出し行の繰り返し)
+ *     は落とす
+ *   - 見出し列が空の行は、最初の有効セルをカード見出しに昇格させる
+ *     (タイムライン型ならフェーズ / 時刻がタイトルになる)
+ *   - それでも中身が残らない行はカード自体を出さない
+ */
+export function buildSheetCardRows(
+  table: SheetTable,
+  visibleColumns: number[],
+): SheetCardRow[] {
+  const out: SheetCardRow[] = [];
+  for (const row of table.rows) {
+    let heading = row[0]?.trim() ?? "";
+    if (isNoiseValue(heading)) heading = "";
+    let cells = visibleColumns
+      .map((ci) => ({
+        label: table.headers[ci]?.trim() ?? "",
+        value: row[ci]?.trim() ?? "",
+      }))
+      .filter((c) => !isNoiseValue(c.value) && c.value !== c.label);
+    if (!heading && cells.length > 0) {
+      heading = cells[0]!.value;
+      cells = cells.slice(1);
+    }
+    if (!heading && cells.length === 0) continue;
+    out.push({ heading, cells });
+  }
+  return out;
+}
+
 /**
  * 表の中から「その人の担当」に当たる列を探す。
  *

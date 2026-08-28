@@ -533,12 +533,13 @@ export function LogsView({
                   {t.date.slice(5)}
                 </span>
                 <span className="relative flex h-4 min-w-0 flex-1 items-center rounded-sm bg-secondary/40">
-                  {/* 複数層のカテゴリでは層の区切り線を薄く引く。 */}
+                  {/* 複数層のカテゴリでは層の区切り線を引く (バーの上にも
+                      乗るよう明色。border/60 では薄すぎた — 2026-08-28 指摘)。 */}
                   {floors &&
                     Array.from({ length: floors.floorCount - 1 }, (_, i) => (
                       <span
                         key={i}
-                        className="absolute top-0 h-full w-px bg-border/60"
+                        className="absolute top-0 h-full w-px bg-foreground/50"
                         style={{
                           left: `${((i + 1) / floors.floorCount) * 100}%`,
                         }}
