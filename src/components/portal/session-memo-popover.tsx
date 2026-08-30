@@ -36,6 +36,7 @@ import {
 } from "@/lib/server/categories-actions";
 import type { SessionLogEntry } from "@/lib/schedule/session-logs";
 import { fflogsLogDedupeKey } from "@/lib/fflogs-url";
+import { useDismissablePopup } from "@/lib/use-dismissable-popup";
 import { safeHref } from "@/lib/url-safe";
 import { DeleteConfirmModal } from "./schedule/session-memo-delete-modal";
 import { formatRelativeTime } from "@/lib/schedule/time-formatters";
@@ -129,7 +130,6 @@ export function SessionMemoPopover({
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   // フォーカス管理用の遷移トラッキング (非モーダル dialog)。
   const focusedForOpenRef = useRef(false);
-  const wasOpenRef = useRef(false);
   // top / bottom はどちらか一方のみ設定される (下側配置 = top、上側
   // 配置 = bottom アンカーで上方向に伸びる)。maxHeight は配置側で
   // 使える実高さ (px)。
@@ -199,43 +199,21 @@ export function SessionMemoPopover({
     };
   }, [open]);
 
-  // Click-outside-to-dismiss + Esc.
-  useEffect(() => {
-    if (!open) return;
-    const onDoc = (e: MouseEvent) => {
-      const t = e.target as Node | null;
-      if (!t) return;
-      if (popupRef.current?.contains(t)) return;
-      if (wrapperRef.current?.contains(t)) return;
-      // The memo dot is rendered OUTSIDE the wrapperRef (parent places
-      // it as a sibling so chip/row reading order = date → icons → dot
-      // is preserved). Treat dot clicks as "inside" so the 2nd click
-      // on the dot can reach the React click handler without being
-      // pre-empted by this outside-click handler. Without this guard,
-      // mousedown on dot fires → setOpen(false), then click → toggle
-      // → setOpen(false → true), netting "popup stays open" (= dot
-      // click does nothing visually). Attribute-based check is used
-      // because React 19's synthetic e.stopPropagation() does NOT
-      // stop the underlying native DOM event from bubbling to this
-      // document-level listener, so per-button stopPropagation is
-      // unreliable.
-      if (t instanceof Element && t.closest("[data-memo-dot-trigger]"))
-        return;
-      setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    const handle = setTimeout(() => {
-      document.addEventListener("mousedown", onDoc);
-      document.addEventListener("keydown", onKey);
-    }, 0);
-    return () => {
-      clearTimeout(handle);
-      document.removeEventListener("mousedown", onDoc);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
+  // 開閉の共通処理 (2026-08-30 Tier3-10: use-dismissable-popup へ集約)。
+  // メモドットはこの wrapper の外に描かれる (行の読み上げ順を
+  // 日付 → アイコン → ドット に保つため) ので、`insideSelector` で
+  // 「内側」に含める。含めないとドット再クリックで閉じられない
+  // (mousedown で閉じ → click のトグルで開き直す) 既知パターンになる。
+  useDismissablePopup({
+    open,
+    onClose: () => setOpen(false),
+    popupRef,
+    // 「内側」判定はラッパー (トリガーボタンを内包)、フォーカス復帰先は
+    // ボタン本体 (span はフォーカスできない)。
+    triggerRef: wrapperRef,
+    focusRef: triggerRef,
+    insideSelector: "[data-memo-dot-trigger]",
+  });
 
   // フォーカス導入: 開いたらパネル本体 (role=dialog) へフォーカスを移す。
   // このパネルは document.body へ portal されるため、トリガーから Tab して
@@ -251,25 +229,6 @@ export function SessionMemoPopover({
     focusedForOpenRef.current = true;
     popupRef.current?.focus();
   }, [open, coords]);
-
-  // フォーカス復帰: Esc / 閉じる×でパネル内の要素ごと unmount され、フォーカス
-  // が <body> に落ちた場合のみトリガーへ戻す。外クリックで別コントロールへ
-  // 移った場合 (activeElement が body 以外) はユーザーの操作を尊重して奪わない。
-  useEffect(() => {
-    if (open) {
-      wasOpenRef.current = true;
-      return;
-    }
-    if (!wasOpenRef.current) return;
-    wasOpenRef.current = false;
-    if (
-      typeof document !== "undefined" &&
-      (document.activeElement === null ||
-        document.activeElement === document.body)
-    ) {
-      triggerRef.current?.focus();
-    }
-  }, [open]);
 
   return (
     <span ref={wrapperRef} className="inline-flex">

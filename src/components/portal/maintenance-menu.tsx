@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useConfirm } from "@/components/portal/confirm-dialog";
+import { useDismissablePopup } from "@/lib/use-dismissable-popup";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -113,33 +114,27 @@ export function MaintenanceMenu() {
   const [strategyThumbProgress, setStrategyThumbProgress] =
     useState<StrategyThumbProgress | null>(null);
   const popupRef = useRef<HTMLDivElement | null>(null);
+  // 結果パネルの「外側クリック」判定でトリガーを内側扱いするための ref。
+  const menuTriggerRef = useRef<HTMLButtonElement | null>(null);
 
-  // 結果ポップアップ: 外側クリック / Escape で閉じる。開いた時に結果領域へ
-  // フォーカスを移して SR に出現を知らせ (role="region" + aria-label を読み上げ)、
-  // 閉じたら元のトリガーへフォーカスを戻す。
+  // 結果ポップアップの開閉 (2026-08-30 Tier3-10: 共通フックへ集約)。
+  // 旧実装には 2 つの問題があった:
+  //   - トリガー (メニュー) を「外側」と扱っていたため、メニューを開き直す
+  //     操作が結果パネルを閉じてしまう
+  //   - cleanup で `prevActive?.focus?.()` を無条件に呼んでおり、result が
+  //     変わるたびユーザーの現在フォーカスを奪い得た
+  // フックは「フォーカスが body に落ちたときだけ戻す」ので後者は解消する。
+  useDismissablePopup({
+    open: result !== null,
+    onClose: () => setResult(null),
+    popupRef,
+    triggerRef: menuTriggerRef,
+  });
+
+  // 出現時に結果領域へフォーカスを移して SR に知らせる (role="region")。
   useEffect(() => {
-    if (!result) return;
-    const prevActive = document.activeElement as HTMLElement | null;
+    if (result === null) return;
     popupRef.current?.focus();
-    const onDocClick = (e: MouseEvent) => {
-      const target = e.target as Node | null;
-      if (!target) return;
-      if (popupRef.current && popupRef.current.contains(target)) return;
-      setResult(null);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setResult(null);
-    };
-    const handle = setTimeout(() => {
-      document.addEventListener("mousedown", onDocClick);
-    }, 0);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      clearTimeout(handle);
-      document.removeEventListener("mousedown", onDocClick);
-      document.removeEventListener("keydown", onKey);
-      prevActive?.focus?.();
-    };
   }, [result]);
 
   // ---- Phase helpers (called by individual + "all" handlers) ----
@@ -477,6 +472,7 @@ export function MaintenanceMenu() {
           トリガーは 1 ボタン、メニュー内に ① / ② / ③ を縦並び表示。 */}
       <DropdownMenu>
         <DropdownMenuTrigger
+          ref={menuTriggerRef}
           disabled={pending}
           aria-label="メンテナンスメニューを開く"
           title="Discord 取り込み / 動画メタ / クリア再計算"

@@ -211,7 +211,7 @@ export function NativeDiscordNotifySection({
       <div className="flex items-center justify-between gap-2 rounded-md border border-border/30 bg-secondary/20 px-3 py-2">
         <div className="flex flex-col gap-0.5">
           <span className="text-xs">当日の自動通知</span>
-          <span className="text-[9px] text-muted-foreground/60">
+          <span className="text-[10px] text-muted-foreground/80">
             {enabled ? `ON (${String(parseInt(hour, 10)).padStart(2, "0")}:00 JST cron が動作)` : "OFF (cron 停止)"}
           </span>
         </div>
@@ -232,7 +232,7 @@ export function NativeDiscordNotifySection({
       <div className="flex items-center justify-between gap-2 rounded-md border border-border/30 bg-secondary/20 px-3 py-2">
         <div className="flex flex-col gap-0.5">
           <span className="text-xs">通知時刻 (JST)</span>
-          <span className="text-[9px] text-muted-foreground/60">
+          <span className="text-[10px] text-muted-foreground/80">
             毎時 cron が発火し、選択時刻のみ Discord に投稿
           </span>
         </div>
@@ -320,7 +320,7 @@ export function NativeDiscordNotifySection({
       <div className="flex items-center justify-between gap-2 rounded-md border border-border/30 bg-secondary/20 px-3 py-2">
         <div className="flex flex-col gap-0.5">
           <span className="text-xs">確定時に自動通知</span>
-          <span className="text-[9px] text-muted-foreground/60">
+          <span className="text-[10px] text-muted-foreground/80">
             開催日を「確定」に切り替えた瞬間に 1 回だけ Discord 投稿 (同セッションの再送は last_notified_at で抑止)
           </span>
         </div>

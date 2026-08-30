@@ -92,7 +92,7 @@ export function NativeAutoConfirmSection({
       <div className="flex items-center justify-between gap-2 rounded-md border border-border/40 bg-secondary/15 px-3 py-2">
         <span className="text-xs">
           自動確定
-          <span className="ml-2 text-[9px] text-muted-foreground/60">
+          <span className="ml-2 text-[10px] text-muted-foreground/80">
             {!loaded ? "読み込み中…" : enabled ? "ON" : "OFF"}
           </span>
         </span>

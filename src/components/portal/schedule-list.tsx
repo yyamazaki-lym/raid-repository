@@ -432,6 +432,7 @@ export function ScheduleList({
              カスタマイズしてもそのまま残る。 */
           topTextOverride={topTextOverride}
           attendanceChoices={result.data.attendanceOptions.choices}
+          isAdmin={isAdmin}
         />
         <div className="overflow-x-auto">
           <table className="w-full min-w-[640px] border-collapse text-left text-sm">

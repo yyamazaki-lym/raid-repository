@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Check,
+  CopyMinus,
   Loader2,
   MessageSquare,
   Pencil,
@@ -17,6 +18,8 @@ import {
   setScheduleTopTextOverride,
 } from "@/lib/schedule-top-text-store";
 import { useConfirm } from "@/components/portal/confirm-dialog";
+import { useDismissablePopup } from "@/lib/use-dismissable-popup";
+import { dedupeSessionLogs } from "@/lib/server/categories-actions";
 import {
   ATT_TONE,
   ATT_TONE_FALLBACK,
@@ -30,8 +33,15 @@ export function Legend({
   topTextScraped = null,
   topTextOverride = null,
   attendanceChoices = [],
+  isAdmin = false,
 }: {
   hasUltimateClear?: boolean;
+  /**
+   * 2026-08-30 (Tier3-12): 管理操作の発見性。重複 Logs の整理は設定
+   * ダイアログの奥にあり、問題に気づく画面 (この予定表) から遠かった。
+   * admin にだけショートカットを 1 個出す。
+   */
+  isAdmin?: boolean;
   /** Called when the user clicks the refresh button at the right end. */
   onRefresh?: () => void;
   /** Show a spinning loader while the refresh transition is pending. */
@@ -56,7 +66,6 @@ export function Legend({
   const ruleTriggerRef = useRef<HTMLButtonElement | null>(null);
   // フォーカス管理用の遷移トラッキング (非モーダル dialog)。
   const focusedForOpenRef = useRef(false);
-  const wasOpenRef = useRef(false);
 
   // 楽観的 override 状態: save / clear 直後に prop が更新されるまでの
   // 間 UI を即時反映するためのローカル shadow state。
@@ -107,44 +116,48 @@ export function Legend({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
+  const [dedupingLogs, setDedupingLogs] = useState(false);
+
+  // 重複 Logs の整理 (設定ダイアログと同じ server action)。結果は toast
+  // だけに出し、詳細な競合一覧が要る場合は設定画面へ誘導する。
+  const runDedupeLogs = async () => {
+    setDedupingLogs(true);
+    const r = await dedupeSessionLogs();
+    setDedupingLogs(false);
+    if (!r.ok) {
+      toast.error("重複 Logs 整理失敗: " + r.reason);
+      return;
+    }
+    const removed = r.duplicateRowsRemoved + r.videoConflictRowsRemoved;
+    toast.success(
+      removed > 0
+        ? `重複 Logs を ${removed} 件削除しました` +
+            (r.remainingConflicts.length > 0
+              ? ` (自動判断できない競合が ${r.remainingConflicts.length} 日分 — 設定画面で確認できます)`
+              : "")
+        : r.remainingConflicts.length > 0
+          ? `削除対象はありませんでした (要確認の競合が ${r.remainingConflicts.length} 日分)`
+          : "重複 Logs はありませんでした",
+    );
+    router.refresh();
+  };
 
   // 表示する text と「rule アイコンを出すか」判定。
   // どちらか一方でも値があればアイコンは出す。
   const hasAny = topTextScraped !== null || effectiveOverride !== null;
   const displayed = view === "edited" ? effectiveOverride : topTextScraped;
 
-  // Click outside to close the popover. 編集中はクリック保護 (誤閉じ防止)
-  useEffect(() => {
-    if (!showTopText) return;
-    const onDocClick = (e: MouseEvent) => {
-      const t = e.target as Node | null;
-      if (!t) return;
-      if (topTextRef.current && topTextRef.current.contains(t)) return;
-      // 2026-08-30: トリガーボタン自体は「外側」扱いしない。従来は
-      // ボタン再クリックで mousedown がここで close → 直後の click の
-      // トグルで re-open となり「クリックで閉じられない」状態だった
-      // (session-memo-popover の memo-dot と同じ既知パターン)。close は
-      // ボタン onClick のトグルに任せる。
-      if (ruleTriggerRef.current && ruleTriggerRef.current.contains(t)) return;
-      if (editing) return; // 編集中は閉じない
-      setShowTopText(false);
-    };
-    // 監査 P3-l: Escape で閉じられるようにし、キーボードのみのユーザーが dismiss
-    // できるようにする (session-memo-popover と同じパターン)。click-outside と同様、
-    // 編集中は誤閉じ防止でスキップ (明示の保存/取消ボタンを使う)。
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !editing) setShowTopText(false);
-    };
-    const handle = setTimeout(() => {
-      document.addEventListener("mousedown", onDocClick);
-    }, 0);
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      clearTimeout(handle);
-      document.removeEventListener("mousedown", onDocClick);
-      document.removeEventListener("keydown", onKeyDown);
-    };
-  }, [showTopText, editing]);
+  // 開閉の共通処理 (2026-08-30 Tier3-10: use-dismissable-popup へ集約)。
+  // トリガー除外 (再クリックで閉じられない不具合の防止)・Escape・
+  // フォーカス復帰はフックが持つ。`locked` に editing を渡すことで、
+  // 編集中は外側クリック / Escape で閉じない従来の保護を維持する。
+  useDismissablePopup({
+    open: showTopText,
+    onClose: () => setShowTopText(false),
+    popupRef: topTextRef,
+    triggerRef: ruleTriggerRef,
+    locked: editing,
+  });
 
   // フォーカス導入: ルールパネルを開いたらパネル本体 (role=dialog) へフォーカスを
   // 移す。1 度だけ (再レンダーでは奪わない)。トラップは張らない (非モーダル)。
@@ -158,23 +171,6 @@ export function Legend({
     topTextRef.current?.focus();
   }, [showTopText]);
 
-  // フォーカス復帰: Esc / クリック外しで閉じてフォーカスが <body> に落ちた場合の
-  // みトリガー (ルールボタン) へ戻す。別コントロールへ移った場合は奪わない。
-  useEffect(() => {
-    if (showTopText) {
-      wasOpenRef.current = true;
-      return;
-    }
-    if (!wasOpenRef.current) return;
-    wasOpenRef.current = false;
-    if (
-      typeof document !== "undefined" &&
-      (document.activeElement === null ||
-        document.activeElement === document.body)
-    ) {
-      ruleTriggerRef.current?.focus();
-    }
-  }, [showTopText]);
   // 1.9.16: ラベル "MEMBERS" デフォルト、絶クリア達成済みの固定なら
   // "LEGENDS" 表記に昇格 (称号として)。
   const label = hasUltimateClear ? "Legends" : "Members";
@@ -220,6 +216,23 @@ export function Legend({
           ボタンの popover は right-0 で button right-edge 揃えに
           開くので、画面右端からの overflow を防げる。 */}
       <div className="ml-auto flex items-center gap-1.5">
+        {isAdmin && (
+          <button
+            type="button"
+            onClick={() => void runDedupeLogs()}
+            disabled={dedupingLogs}
+            aria-label="重複している Logs を整理"
+            title="同じ日に複数の Logs が並んでいるときに整理します"
+            className="inline-flex h-6 items-center gap-1 rounded-md border border-border/60 bg-background/30 px-2 text-[10px] tracking-normal whitespace-nowrap text-muted-foreground transition-colors hover:border-amber-300/60 hover:text-foreground disabled:opacity-50"
+          >
+            {dedupingLogs ? (
+              <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
+            ) : (
+              <CopyMinus className="h-3 w-3" aria-hidden />
+            )}
+            Logs 整理
+          </button>
+        )}
         {hasAny && (
           <span className="relative inline-flex">
             <button

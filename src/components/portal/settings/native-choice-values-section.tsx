@@ -141,7 +141,7 @@ export function NativeChoiceValuesSection({
             </span>
           ))}
           {usingFallback && (
-            <span className="text-[9px] text-muted-foreground/60">
+            <span className="text-[10px] text-muted-foreground/80">
               (既定値)
             </span>
           )}

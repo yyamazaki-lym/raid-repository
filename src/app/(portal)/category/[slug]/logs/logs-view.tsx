@@ -191,11 +191,44 @@ export function LogsView({
   // 到達度・振り返りとも既定は直近 10 日、トグルで全件。
   const [showAllTimeline, setShowAllTimeline] = useState(false);
   const [showAllDays, setShowAllDays] = useState(false);
+  // 2026-08-30 (Tier3-13): 層で pull を絞り込む。層チップに色が付いた
+  // ので「4層だけ見たい」を安価に足せる。null = 全層。
+  const [floorFilter, setFloorFilter] = useState<number | null>(null);
 
   const timeline = useMemo(
     () => progressTimeline(summary.days, floors),
     [summary.days, floors],
   );
+
+  // フィルタに出す表示層の一覧 (実データに存在する層のみ、昇順)。
+  const floorChoices = useMemo(() => {
+    if (!floors) return [];
+    const set = new Set<number>();
+    for (const f of tierFights) {
+      if (f.encounterId === null) continue;
+      const idx = floors.byEncounter.get(f.encounterId);
+      if (idx === undefined) continue;
+      set.add(floors.displayFloorByIndex.get(idx) ?? idx);
+    }
+    return [...set].sort((a, b) => a - b);
+  }, [floors, tierFights]);
+
+  // 層フィルタ適用後の日リスト。pull が 1 つも残らない日は表示しない
+  // (その層に挑んでいない日を空行で並べても意味が無い)。
+  const filteredDays = useMemo(() => {
+    if (floorFilter === null || !floors) return summary.days;
+    return summary.days
+      .map((day) => ({
+        ...day,
+        fights: day.fights.filter((f) => {
+          if (f.encounterId === null) return false;
+          const idx = floors.byEncounter.get(f.encounterId);
+          if (idx === undefined) return false;
+          return (floors.displayFloorByIndex.get(idx) ?? idx) === floorFilter;
+        }),
+      }))
+      .filter((day) => day.fights.length > 0);
+  }, [summary.days, floors, floorFilter]);
 
   const runSync = () => {
     startSync(async () => {
@@ -625,11 +658,51 @@ export function LogsView({
 
       {/* A-2: 日 → pull 一覧 → FFLogs / XIVAnalysis / 動画時刻。 */}
       <section className="flex flex-col gap-2">
-        <h3 className="font-mono text-[10px] tracking-[0.18em] text-muted-foreground uppercase">
-          セッション振り返り
-        </h3>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="font-mono text-[10px] tracking-[0.18em] text-muted-foreground uppercase">
+            セッション振り返り
+          </h3>
+          {/* 層フィルタ: 表示層 (1..4) 単位。層マップが無いコンテンツ
+              (絶など) では出さない。選択中を再クリックで解除。 */}
+          {floors && floorChoices.length > 1 && (
+            <div className="flex flex-wrap items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setFloorFilter(null)}
+                aria-pressed={floorFilter === null}
+                className={
+                  "rounded-sm border px-1.5 py-0.5 font-mono text-[10px] tracking-normal transition-colors " +
+                  (floorFilter === null
+                    ? "border-[var(--neon-cyan)]/60 bg-[var(--neon-cyan)]/12 text-[var(--neon-cyan)]"
+                    : "border-border/50 text-muted-foreground hover:text-foreground")
+                }
+              >
+                全層
+              </button>
+              {floorChoices.map((f) => (
+                <button
+                  key={f}
+                  type="button"
+                  onClick={() =>
+                    setFloorFilter((cur) => (cur === f ? null : f))
+                  }
+                  aria-pressed={floorFilter === f}
+                  title={`${f}層の pull だけ表示`}
+                  className={
+                    "rounded-sm border px-1.5 py-0.5 font-mono text-[10px] tabular-nums transition-colors " +
+                    (floorFilter === f
+                      ? floorToneClass(f)
+                      : "border-border/50 text-muted-foreground hover:text-foreground")
+                  }
+                >
+                  {f}層
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         <ul className="flex flex-col gap-2">
-          {summary.days.slice(0, showAllDays ? undefined : 10).map((day) => (
+          {filteredDays.slice(0, showAllDays ? undefined : 10).map((day) => (
             <DayRow
               key={day.date}
               day={day}
@@ -649,7 +722,7 @@ export function LogsView({
             />
           ))}
         </ul>
-        {summary.days.length > 10 && (
+        {filteredDays.length > 10 && (
           <button
             type="button"
             onClick={() => setShowAllDays((v) => !v)}
@@ -657,7 +730,7 @@ export function LogsView({
           >
             {showAllDays
               ? "直近 10 日だけ表示"
-              : `残り ${summary.days.length - 10} 日を表示`}
+              : `残り ${filteredDays.length - 10} 日を表示`}
           </button>
         )}
       </section>

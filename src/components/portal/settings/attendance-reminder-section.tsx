@@ -196,7 +196,7 @@ export function AttendanceReminderSection({
       <div className="flex items-center justify-between gap-2 rounded-md border border-border/40 bg-secondary/15 px-3 py-2">
         <div className="flex flex-col">
           <span className="text-xs">自動催促 (cron)</span>
-          <span className="text-[9px] text-muted-foreground/60">
+          <span className="text-[10px] text-muted-foreground/80">
             {!loaded
               ? "読み込み中…"
               : enabled

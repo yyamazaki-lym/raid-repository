@@ -563,7 +563,7 @@ export function FflogsSyncSection({
           <div className="flex items-center justify-between gap-2 rounded-md border border-border/30 bg-secondary/20 px-3 py-2">
             <div className="flex flex-col gap-0.5">
               <span className="text-xs">日次自動連動 (cron)</span>
-              <span className="text-[9px] text-muted-foreground/60">
+              <span className="text-[10px] text-muted-foreground/80">
                 {cronEnabled === null
                   ? "読み込み中…"
                   : cronEnabled
@@ -883,7 +883,7 @@ export function FflogsSyncSection({
                               {d.label.slice(0, 40)}
                               {d.label.length > 40 ? "…" : ""}
                               {d.reportStartJst && (
-                                <span className="ml-1 text-[9px] text-muted-foreground/70">
+                                <span className="ml-1 text-[10px] text-muted-foreground/80">
                                   {` · report=${d.reportStartJst} JST`}
                                 </span>
                               )}
