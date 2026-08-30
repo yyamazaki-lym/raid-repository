@@ -9,7 +9,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { fflogsLogDedupeKey } from "@/lib/fflogs-url";
+import { fflogsLogDedupeKey, toJapaneseFflogsUrl } from "@/lib/fflogs-url";
 import { safeHref } from "@/lib/url-safe";
 import { useScrollClosingMenu } from "@/lib/use-scroll-closing-menu";
 import type { SessionLogEntry } from "@/lib/schedule/session-logs";
@@ -159,7 +159,7 @@ export function SessionActionIcons({
     if (!safe || !key || seen.has(key)) continue;
     seen.add(key);
     logsCandidates.push({
-      url: safe,
+      url: toJapaneseFflogsUrl(safe),
       label: `${v.categoryName} / ${v.videoTitle}`,
     });
   }
@@ -169,7 +169,8 @@ export function SessionActionIcons({
     if (!safe || !key || seen.has(key)) continue;
     seen.add(key);
     logsCandidates.push({
-      url: safe,
+      // 開くときだけ日本語 UI に (2026-08-30)。保存値は書き換えない。
+      url: toJapaneseFflogsUrl(safe),
       label:
         entry.source === "auto"
           ? "セッション登録分 (auto)"

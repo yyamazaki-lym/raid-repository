@@ -309,6 +309,8 @@ export type ProgressPoint = {
    */
   progress: number;
   isRecord: boolean;
+  /** その日が「初めてクリアした日」か (フラグの説明文で区別する)。 */
+  isFirstClear: boolean;
   /** 最終層クリア (絶なら kill) があった日。 */
   hasClear: boolean;
 };
@@ -322,6 +324,7 @@ export function progressTimeline(
   let best: number | null = null; // その層内の残% (層が無い場合は全体)
   let bestFloorSeen: number | null = null;
   let bestPhase: number | null = null;
+  let seenClear = false;
   const out: ProgressPoint[] = [];
   for (const d of asc) {
     const improvedFloor =
@@ -358,6 +361,18 @@ export function progressTimeline(
       progress = 0;
     }
 
+    // 2026-08-30 実機報告「討伐済みなのにフラグが出ていないことがある」。
+    //
+    // 原因: 最終層が前半/後半に分かれるティアでは、**4層前半を討伐した日**
+    // も (その日の最深層スコープで) 残 0% になる。すると `best` が先に 0 に
+    // なり、後日の本当の初クリアで `improvedPct` が成立せず、到達層も既に
+    // 更新済みなら `improvedFloor` も false → 初討伐にフラグが立たなかった。
+    //
+    // 「初めてクリアした日」は定義上いちばん大きな記録更新なので、残% の
+    // 比較とは独立に記録として扱う。2 回目以降の討伐は記録ではない。
+    const isFirstClear = hasClear && !seenClear;
+    if (hasClear) seenClear = true;
+
     out.push({
       date: d.date,
       pulls: d.pulls,
@@ -365,7 +380,8 @@ export function progressTimeline(
       bestPhase: d.bestPhase,
       bestFloor: d.bestFloor,
       progress,
-      isRecord: improvedPct || improvedPhase || improvedFloor,
+      isRecord: improvedPct || improvedPhase || improvedFloor || isFirstClear,
+      isFirstClear,
       hasClear,
     });
   }
@@ -404,7 +420,15 @@ export function percentageToneClass(p: number | null): string {
  * cyan。4層前半/後半はどちらも表示層 4 なので同じ rose 系になる。
  * クリア表示は別途 emerald を使うため、ここは「どの層か」の識別色に徹する。
  */
-export function floorToneClass(displayFloor: number | null): string {
+export function floorToneClass(
+  displayFloor: number | null,
+  /**
+   * 最終層が前半/後半に分かれるティア用 (2026-08-30 実機要望
+   * 「4層前半と後半の色も分けてほしい」)。`labelByIndex` のラベルに
+   * 「前半」「後半」が含まれるかで渡す。
+   */
+  half?: "first" | "second" | null,
+): string {
   switch (displayFloor) {
     case 1:
       return "border-sky-400/45 bg-sky-400/10 text-sky-200";
@@ -413,10 +437,21 @@ export function floorToneClass(displayFloor: number | null): string {
     case 3:
       return "border-violet-400/45 bg-violet-400/10 text-violet-200";
     case 4:
-      return "border-rose-400/45 bg-rose-400/10 text-rose-200";
+      // 前半 = rose、後半 = fuchsia。同じ「4層」でも到達点として意味が
+      // 違うので、ひと目で区別できるよう色相を分ける。
+      return half === "second"
+        ? "border-fuchsia-400/45 bg-fuchsia-400/10 text-fuchsia-200"
+        : "border-rose-400/45 bg-rose-400/10 text-rose-200";
     default:
       return "border-[var(--neon-cyan)]/40 bg-[var(--neon-cyan)]/10 text-[var(--neon-cyan)]";
   }
+}
+
+/** 層ラベルから前半/後半を判定する (ラベルは buildFloorMap が組み立てる)。 */
+export function floorHalfOf(label: string): "first" | "second" | null {
+  if (label.includes("前半")) return "first";
+  if (label.includes("後半")) return "second";
+  return null;
 }
 
 /** 戦闘時間 (秒) を `3:21` 形式に。 */

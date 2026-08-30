@@ -122,6 +122,36 @@ export function toSheetTabListUrl(raw: string | null | undefined): string | null
 export type SheetTab = { gid: string; name: string };
 
 /**
+ * 手動登録された層タブ (categories.mitigation_sheet_tabs) の JSON を読む
+ * (2026-08-30)。
+ *
+ * 自動検出 (pubhtml / htmlview の parse) は Google 側のマークアップと
+ * 公開設定に依存して当てにならないため、**登録があればそちらを正**とする。
+ * 壊れた JSON や想定外の形は空配列 (= 自動検出にフォールバック)。
+ */
+export function parseSheetTabsSetting(raw: string | null | undefined): SheetTab[] {
+  if (!raw?.trim()) return [];
+  try {
+    const v = JSON.parse(raw) as unknown;
+    if (!Array.isArray(v)) return [];
+    const out: SheetTab[] = [];
+    const seen = new Set<string>();
+    for (const item of v) {
+      if (!item || typeof item !== "object") continue;
+      const o = item as Record<string, unknown>;
+      const gid = typeof o.gid === "string" ? o.gid.trim() : String(o.gid ?? "");
+      const name = typeof o.label === "string" ? o.label.trim() : "";
+      if (!/^\d+$/.test(gid) || seen.has(gid)) continue;
+      seen.add(gid);
+      out.push({ gid, name: name || `シート${out.length + 1}` });
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+/**
  * pubhtml / htmlview の HTML からワークシートのタブ一覧を抜き出す。
  * どちらのビューもフッターのタブバーを
  * `<li id="sheet-button-<gid>" ...><a ...>シート名</a></li>` で描画する。

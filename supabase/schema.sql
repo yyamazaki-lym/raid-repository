@@ -41,6 +41,12 @@ ALTER TABLE public.categories
 ALTER TABLE public.categories
   ADD COLUMN IF NOT EXISTS loot_sheet_url               text,
   ADD COLUMN IF NOT EXISTS mitigation_sheet_url         text,
+  -- 2026-08-30: 軽減表の「層タブ」手動登録 (JSON 配列 [{label,gid}])。
+  -- 公開設定によっては pubhtml / htmlview からワークシート一覧を取得
+  -- できない (取得できても Google のマークアップ変更で壊れる) ため、
+  -- admin が層ごとの gid を登録できる経路を正とし、自動検出は補助に
+  -- 落とす。空 / NULL なら従来どおり自動検出のみ。
+  ADD COLUMN IF NOT EXISTS mitigation_sheet_tabs        text,
   -- Phase 4: per-category Discord channels for the daily auto-import job.
   ADD COLUMN IF NOT EXISTS discord_strategy_channel_id  text,
   ADD COLUMN IF NOT EXISTS discord_video_channel_id     text,

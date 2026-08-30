@@ -44,8 +44,13 @@ export function parseXivgearSetUuid(
  * 一部環境でエンコードされるため、XivGear が受け付ける生の `|` のまま返す
  * (公式ドキュメントの例と同形)。
  */
-export function buildXivgearEmbedUrl(uuid: string): string {
-  return `https://xivgear.app/?page=embed|sl|${uuid}`;
+export function buildXivgearEmbedUrl(uuid: string, setIndex?: number): string {
+  const base = `https://xivgear.app/?page=embed|sl|${uuid}`;
+  // 埋め込みは **単一セットしか対応していない** (シート全体を渡すと
+  // "Embedding is only supported for a single set" と表示される、
+  // 2026-08-30 実機報告)。複数セットのシートは onlySetIndex で 1 つに
+  // 絞る (API_DOC.md の同名パラメータ、1 始まり)。
+  return setIndex && setIndex > 0 ? `${base}&onlySetIndex=${setIndex}` : base;
 }
 
 /**
@@ -62,7 +67,8 @@ export function buildXivgearFulldataUrl(uuid: string): string {
 /** BiS URL から直接 embed URL を作る (XivGear 以外は null)。 */
 export function toXivgearEmbedUrl(
   raw: string | null | undefined,
+  setIndex?: number,
 ): string | null {
   const uuid = parseXivgearSetUuid(raw);
-  return uuid ? buildXivgearEmbedUrl(uuid) : null;
+  return uuid ? buildXivgearEmbedUrl(uuid, setIndex) : null;
 }

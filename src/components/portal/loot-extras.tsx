@@ -292,7 +292,6 @@ export function BisLinksPanel({
   // 常に 1 件だけ・描画位置はリストの下、という形にする。
   const [previewId, setPreviewId] = useState<string | null>(null);
   const previewLink = links.find((l) => l.id === previewId) ?? null;
-  const previewSrc = previewLink ? toXivgearEmbedUrl(previewLink.url) : null;
   // 2026-08-30: 埋め込みと同時に XivGear API の要約も出す。埋め込みは
   // 見た目の確認、要約は「どの部位がまだ空か」の確認に効く。ボタンを
   // 増やさずに済むよう、プレビューを開いたときにまとめて取得する。
@@ -302,6 +301,22 @@ export function BisLinksPanel({
     summary: XivgearSheetSummary | null;
     reason: string | null;
   } | null>(null);
+
+  const previewSummary =
+    summaryState && previewLink && summaryState.linkId === previewLink.id
+      ? summaryState
+      : null;
+  // 埋め込みは単一セットのみ対応。複数セットのシートは 1 セット目に絞る
+  // (2026-08-30 実機報告「Embedding is only supported for a single set」)。
+  // 要約が返るまでセット数が分からないので、それまで iframe は出さない —
+  // 途中で URL が変わると再読み込みで画面が揺れるため。
+  const previewSrc =
+    previewLink && previewSummary && !previewSummary.loading
+      ? toXivgearEmbedUrl(
+          previewLink.url,
+          (previewSummary.summary?.sets.length ?? 1) > 1 ? 1 : undefined,
+        )
+      : null;
 
   const openPreview = (link: CategoryBisLink) => {
     if (previewId === link.id) {
@@ -473,7 +488,7 @@ export function BisLinksPanel({
 
       {/* 埋め込みプレビュー: リストの下に 1 枚だけ。高さを固定して
           セクションが伸び続けないようにし、閉じるボタンを必ず出す。 */}
-      {!collapsed && previewLink && previewSrc && (
+      {!collapsed && previewLink && (
         <div className="flex flex-col gap-1 rounded-md border border-[var(--neon-violet)]/35 bg-background/40 p-1.5">
           <div className="flex items-center justify-between gap-2 px-1">
             <span className="min-w-0 truncate text-[11px] text-foreground/85">
@@ -493,22 +508,32 @@ export function BisLinksPanel({
               <X className="h-3 w-3" aria-hidden />
             </button>
           </div>
-          {summaryState?.linkId === previewLink.id && (
+          {previewSummary && (
             <XivgearSummaryStrip
-              loading={summaryState.loading}
-              summary={summaryState.summary}
-              reason={summaryState.reason}
+              loading={previewSummary.loading}
+              summary={previewSummary.summary}
+              reason={previewSummary.reason}
             />
           )}
-          <iframe
-            key={previewSrc}
-            src={previewSrc}
-            title={`${previewLink.label} の装備 (XivGear)`}
-            loading="lazy"
-            referrerPolicy="no-referrer"
-            sandbox="allow-scripts allow-same-origin allow-popups"
-            className="h-[26rem] w-full rounded-sm border-0 bg-white/95"
-          />
+          {/* 高さを常に固定して、読み込み前後でページが揺れないようにする
+              (2026-08-30 実機報告「スクロールが中途半端な位置のためかブレる」)。 */}
+          <div className="h-[26rem] w-full overflow-hidden rounded-sm bg-white/95">
+            {previewSrc ? (
+              <iframe
+                key={previewSrc}
+                src={previewSrc}
+                title={`${previewLink.label} の装備 (XivGear)`}
+                loading="lazy"
+                referrerPolicy="no-referrer"
+                sandbox="allow-scripts allow-same-origin allow-popups"
+                className="h-full w-full border-0"
+              />
+            ) : (
+              <p className="flex h-full items-center justify-center text-[11px] text-muted-foreground">
+                読み込み中…
+              </p>
+            )}
+          </div>
         </div>
       )}
 
@@ -633,16 +658,17 @@ function XivgearSummaryStrip({
   summary: XivgearSheetSummary | null;
   reason: string | null;
 }) {
+  // 読み込み前後で高さが変わるとページが揺れるので min-h を確保する。
   if (loading) {
     return (
-      <p className="px-1 text-[10px] text-muted-foreground/80">
+      <p className="min-h-[1.5rem] px-1 text-[10px] text-muted-foreground/80">
         セット情報を取得中…
       </p>
     );
   }
   if (!summary) {
     return (
-      <p className="px-1 text-[10px] text-muted-foreground/80">
+      <p className="min-h-[1.5rem] px-1 text-[10px] text-muted-foreground/80">
         {reason ?? "セット情報を取得できませんでした"}
       </p>
     );
@@ -651,7 +677,7 @@ function XivgearSummaryStrip({
   // (それ以上は埋め込み側で見てもらう — 縦に伸ばさない)。
   const sets = summary.sets.slice(0, 2);
   return (
-    <div className="flex flex-col gap-1 px-1">
+    <div className="flex min-h-[1.5rem] flex-col gap-1 px-1">
       {sets.map((set, i) => {
         const complete = set.missingSlots.length === 0;
         return (

@@ -3710,3 +3710,50 @@ export async function deleteGphotoAlbumAction(
   }
   return { ok: true };
 }
+
+/**
+ * 軽減表の層タブ (シートの gid 一覧) を登録する (2026-08-30)。
+ *
+ * 自動検出はシートの公開設定と Google のマークアップに依存して当てに
+ * ならなかったため、admin が明示登録できる経路を正とする。空配列を渡すと
+ * 登録解除 (= 自動検出に戻る)。
+ */
+export async function setMitigationSheetTabsAction(
+  categoryId: string,
+  tabs: Array<{ label: string; gid: string }>,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
+
+  const cleaned: Array<{ label: string; gid: string }> = [];
+  const seen = new Set<string>();
+  for (const t of tabs) {
+    const gid = (t.gid ?? "").trim();
+    if (!/^\d+$/.test(gid)) {
+      return { ok: false, reason: `gid「${gid}」は数字で指定してください` };
+    }
+    if (seen.has(gid)) continue;
+    seen.add(gid);
+    const label = (t.label ?? "").trim().slice(0, 40);
+    cleaned.push({ label, gid });
+  }
+  if (cleaned.length > 20) {
+    return { ok: false, reason: "層タブは 20 件までです" };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("categories")
+    .update({
+      mitigation_sheet_tabs:
+        cleaned.length > 0 ? JSON.stringify(cleaned) : null,
+    })
+    .eq("id", categoryId);
+  if (error) return { ok: false, reason: dbError("層タブ保存", error) };
+  try {
+    revalidatePath("/category", "layout");
+  } catch {
+    // best-effort
+  }
+  return { ok: true };
+}

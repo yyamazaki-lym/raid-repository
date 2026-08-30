@@ -4,7 +4,8 @@ import { SheetCards } from "@/components/portal/sheet-cards";
 import { SheetViewSwitch } from "@/components/portal/sheet-view-switch";
 import { SheetUrlOnboarding } from "@/components/portal/sheet-url-onboarding";
 import { fetchSheetTable, fetchSheetTabs } from "@/lib/server/sheet-table";
-import { extractSheetGid } from "@/lib/sheet-csv";
+import { extractSheetGid, parseSheetTabsSetting } from "@/lib/sheet-csv";
+import { MitigationSheetTabsDialog } from "@/components/portal/mitigation-sheet-tabs-dialog";
 import { notFound } from "next/navigation";
 import { findCategoryBySlug } from "@/lib/supabase/categories";
 import { getCurrentUserCanEdit } from "@/lib/server/auth";
@@ -59,7 +60,15 @@ export default async function MitigationPage({
   // 2026-08-30: シート内のワークシート (層) 一覧を取得し、?gid= で切替
   // できるタブを出す (ユーザー要望「シートに存在する各層を切り替えたい」)。
   // タブ一覧が取れないシートは従来どおり単一表示。
-  const tabs = await fetchSheetTabs(category.mitigationSheetUrl);
+  // 2026-08-30 実機報告「シートが一番最初のものしか参照されていない」:
+  // pubhtml / htmlview からの自動検出は公開設定と Google のマークアップに
+  // 依存して当てにならなかった。**手動登録があればそれを正**とし、
+  // 無いときだけ自動検出にフォールバックする。
+  const manualTabs = parseSheetTabsSetting(category.mitigationSheetTabs);
+  const tabs =
+    manualTabs.length > 0
+      ? manualTabs
+      : await fetchSheetTabs(category.mitigationSheetUrl);
   const requestedGid =
     rawGid && /^\d+$/.test(rawGid) && tabs.some((t) => t.gid === rawGid)
       ? rawGid
@@ -69,9 +78,21 @@ export default async function MitigationPage({
   const activeGid = requestedGid ?? defaultGid;
   const table = await fetchSheetTable(category.mitigationSheetUrl, activeGid);
 
+  const tabsEditor = canEdit ? (
+    <MitigationSheetTabsDialog
+      categoryId={category.id}
+      sheetUrl={category.mitigationSheetUrl}
+      initialTabs={manualTabs}
+      autoDetectedCount={manualTabs.length === 0 ? tabs.length : 0}
+    />
+  ) : null;
+
   const floorTabs =
     tabs.length > 1 ? (
-      <nav aria-label="層の切り替え" className="flex flex-wrap gap-1">
+      <nav
+        aria-label="層の切り替え"
+        className="flex flex-wrap items-center gap-1"
+      >
         {tabs.map((t) => {
           const active = t.gid === activeGid;
           return (
@@ -92,8 +113,11 @@ export default async function MitigationPage({
             </Link>
           );
         })}
+        {tabsEditor}
       </nav>
-    ) : null;
+    ) : (
+      tabsEditor
+    );
 
   return (
     <div className="flex flex-col gap-4">

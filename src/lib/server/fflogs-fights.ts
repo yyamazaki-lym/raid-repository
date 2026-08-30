@@ -80,6 +80,11 @@ export type FflogsFightsSyncResult =
       failures: Array<{ reportCode: string; reason: string }>;
       /** 取り込んだレポートから同日動画へ橋渡しした logs_url の本数。 */
       videosBridged: number;
+      /**
+       * 動画が紐づいている report のうち、動画オフセット行を新規作成した数
+       * (2026-08-30)。秒数は 0 のままなので、あとは人が秒だけ直せばよい。
+       */
+      videoOffsetsSeeded: number;
     }
   | { ok: false; reason: string };
 
@@ -150,6 +155,7 @@ export async function syncFflogsFights(opts?: {
       reattributed: 0,
       failures: [],
       videosBridged: 0,
+      videoOffsetsSeeded: 0,
     };
   }
 
@@ -414,8 +420,20 @@ export async function syncFflogsFights(opts?: {
     console.warn("[fflogs-fights] video bridge failed:", e);
   }
 
+  // (d) Logs に紐づいた動画を、動画オフセット行として自動登録する
+  //     (2026-08-30 実機要望)。秒数は人が後から入れる前提なので
+  //     `offset_seconds` は 0 のまま、**video_url だけ**先に埋める。
+  //     既存行 (人が入力済み) は絶対に上書きしない。
+  let videoOffsetsSeeded = 0;
+  try {
+    videoOffsetsSeeded = await seedReportVideosFromLinks(db);
+  } catch (e) {
+    console.warn("[fflogs-fights] report video seed failed:", e);
+  }
+
   return {
     ok: true,
+    videoOffsetsSeeded,
     reportsKnown: refs.size,
     reportsFetched: fetched,
     fightsUpserted: upserted,
@@ -1048,4 +1066,63 @@ async function postGraphql(
       reason: e instanceof Error ? e.message : "fetch failed",
     };
   }
+}
+
+/**
+ * Logs URL が紐づいている動画から、動画オフセット行 (`fflogs_report_videos`)
+ * を自動作成する (2026-08-30 実機要望)。
+ *
+ * 「動画は紐づいているのに、オフセット設定を開いて毎回『自動入力』を押す」
+ * 手間を消すのが目的。**入れるのは video_url だけ**で、`offset_seconds` は
+ * 0 のまま — 動画のどこで pull #1 が始まるかは映像を見ないと分からず、
+ * 機械的に決めると誤った時刻へ飛ぶ導線を量産してしまう (ユーザーも
+ * 「秒数は後で手動編集」との認識)。
+ *
+ * 既存行は一切触らない (人が入れた秒数を壊さない)。同じ report に複数の
+ * 動画が紐づく場合は最初の 1 本を採用する。
+ */
+export async function seedReportVideosFromLinks(db: Db): Promise<number> {
+  const [videosRes, existingRes] = await Promise.all([
+    db
+      .from("category_links")
+      .select("url, logs_url")
+      .eq("kind", "video")
+      .not("logs_url", "is", null)
+      .not("url", "is", null),
+    db.from("fflogs_report_videos").select("report_code"),
+  ]);
+  const already = new Set(
+    ((existingRes.data ?? []) as Array<{ report_code: string }>).map(
+      (r) => r.report_code,
+    ),
+  );
+
+  // report code → 動画 URL。既に行がある report は候補から外す。
+  const byCode = new Map<string, string>();
+  for (const row of (videosRes.data ?? []) as Array<{
+    url: string | null;
+    logs_url: string | null;
+  }>) {
+    const code = parseFflogsReportCode(row.logs_url);
+    if (!code || !row.url) continue;
+    if (already.has(code) || byCode.has(code)) continue;
+    byCode.set(code, row.url);
+  }
+  if (byCode.size === 0) return 0;
+
+  const rows = [...byCode.entries()].map(([report_code, video_url]) => ({
+    report_code,
+    video_url,
+    offset_seconds: 0,
+  }));
+  // ignoreDuplicates: 取得と書き込みの間に人が登録した行を上書きしない。
+  const { data, error } = await db
+    .from("fflogs_report_videos")
+    .upsert(rows, { onConflict: "report_code", ignoreDuplicates: true })
+    .select("report_code");
+  if (error) {
+    console.warn("[fflogs-fights] report video seed upsert failed:", error.message);
+    return 0;
+  }
+  return data?.length ?? 0;
 }

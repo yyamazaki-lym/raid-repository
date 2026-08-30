@@ -257,7 +257,28 @@ export function SheetCards({
                   )}
                 </div>
               )}
-              {cells.length > 0 ? (
+              {/* 2026-08-30 実機要望「誰がどの軽減・バフを入れたか簡易的に
+                  確認したい」: 軽減表では「担当者: スキル」を 1 行に畳んだ
+                  チップで出す (縦に伸びる定義リストだと 1 画面に 2〜3 行しか
+                  入らず、攻撃ごとの分担がひと目で追えなかった)。 */}
+              {variant === "mitigation" && cells.length > 0 ? (
+                <ul className="mt-1 flex flex-wrap gap-1">
+                  {cells.map((c, i) => (
+                    <li
+                      key={i}
+                      className="inline-flex items-baseline gap-1 rounded-sm border border-border/40 bg-background/40 px-1.5 py-0.5"
+                      title={`${c.label || "担当"}: ${c.value}`}
+                    >
+                      <span className="font-mono text-[10px] tracking-[0.08em] text-[var(--neon-cyan)]/85">
+                        {c.label || "—"}
+                      </span>
+                      <span className="text-[12px] break-words text-foreground/90">
+                        {c.value}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              ) : cells.length > 0 ? (
                 // 見出し列は max-content で伸びると長い担当者名でグリッドが
                 // コンテナ幅を超えるため上限を切り、値列は最小 0 で必ず縮める。
                 <dl className="mt-1.5 grid grid-cols-[minmax(3.5rem,7rem)_minmax(0,1fr)] gap-x-3 gap-y-1">

@@ -32,6 +32,7 @@ export type CategoryRow = {
   sort_order: number;
   loot_sheet_url: string | null;
   mitigation_sheet_url: string | null;
+  mitigation_sheet_tabs?: string | null;
   discord_strategy_channel_id: string | null;
   discord_video_channel_id: string | null;
   discord_import_enabled: boolean;
@@ -102,6 +103,8 @@ export type Category = {
   sortOrder: number;
   lootSheetUrl: string | null;
   mitigationSheetUrl: string | null;
+  /** 軽減表の層タブ (手動登録)。JSON 文字列 `[{"label":"1層","gid":"0"}]`。 */
+  mitigationSheetTabs: string | null;
   discordStrategyChannelId: string | null;
   discordVideoChannelId: string | null;
   discordImportEnabled: boolean;
@@ -184,6 +187,7 @@ export function rowToCategory(row: CategoryRow): Category {
     sortOrder: row.sort_order,
     lootSheetUrl: row.loot_sheet_url ?? null,
     mitigationSheetUrl: row.mitigation_sheet_url ?? null,
+    mitigationSheetTabs: row.mitigation_sheet_tabs ?? null,
     discordStrategyChannelId: row.discord_strategy_channel_id ?? null,
     discordVideoChannelId: row.discord_video_channel_id ?? null,
     discordImportEnabled: row.discord_import_enabled ?? true,

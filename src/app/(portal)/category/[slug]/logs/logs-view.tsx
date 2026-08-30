@@ -34,6 +34,7 @@ import { MirrorActionSlot } from "@/components/portal/action-slot";
 import {
   buildFloorMap,
   filterToFloorCluster,
+  floorHalfOf,
   floorLabel,
   floorToneClass,
   formatFightDuration,
@@ -194,23 +195,41 @@ export function LogsView({
   // 2026-08-30 (Tier3-13): 層で pull を絞り込む。層チップに色が付いた
   // ので「4層だけ見たい」を安価に足せる。null = 全層。
   const [floorFilter, setFloorFilter] = useState<number | null>(null);
+  // 2026-08-30 実機要望「日時クリックで該当日のセッション振り返りに飛びたい」。
+  // 対象日と「何回目の要求か」を持ち、DayRow 側は nonce の変化を見て開く
+  // (同じ日を続けて押しても再度開ける)。
+  const [jump, setJump] = useState<{ date: string; nonce: number } | null>(
+    null,
+  );
+
 
   const timeline = useMemo(
     () => progressTimeline(summary.days, floors),
     [summary.days, floors],
   );
 
-  // フィルタに出す表示層の一覧 (実データに存在する層のみ、昇順)。
+  // フィルタに出す層の一覧 (実データに存在する層のみ、昇順)。
+  // 2026-08-30: 4層前半 / 4層後半 は別項目にする (色も分けたので、
+  // 「後半だけ見たい」に応えられるようにする)。キーは層 index。
   const floorChoices = useMemo(() => {
     if (!floors) return [];
     const set = new Set<number>();
     for (const f of tierFights) {
       if (f.encounterId === null) continue;
       const idx = floors.byEncounter.get(f.encounterId);
-      if (idx === undefined) continue;
-      set.add(floors.displayFloorByIndex.get(idx) ?? idx);
+      if (idx !== undefined) set.add(idx);
     }
-    return [...set].sort((a, b) => a - b);
+    return [...set]
+      .sort((a, b) => a - b)
+      .map((idx) => {
+        const label = floorLabel(floors, idx);
+        return {
+          index: idx,
+          label,
+          displayFloor: floors.displayFloorByIndex.get(idx) ?? idx,
+          half: floorHalfOf(label),
+        };
+      });
   }, [floors, tierFights]);
 
   // 層フィルタ適用後の日リスト。pull が 1 つも残らない日は表示しない
@@ -222,13 +241,29 @@ export function LogsView({
         ...day,
         fights: day.fights.filter((f) => {
           if (f.encounterId === null) return false;
-          const idx = floors.byEncounter.get(f.encounterId);
-          if (idx === undefined) return false;
-          return (floors.displayFloorByIndex.get(idx) ?? idx) === floorFilter;
+          return floors.byEncounter.get(f.encounterId) === floorFilter;
         }),
       }))
       .filter((day) => day.fights.length > 0);
   }, [summary.days, floors, floorFilter]);
+
+  const jumpToDay = (date: string) => {
+    // 折りたたみ中 / フィルタで隠れている日にも飛べるようにする。
+    setShowAllDays(true);
+    if (floorFilter !== null) {
+      const stillVisible = filteredDays.some((d) => d.date === date);
+      if (!stillVisible) setFloorFilter(null);
+    }
+    setJump((cur) => ({ date, nonce: (cur?.nonce ?? 0) + 1 }));
+    // 展開後にレイアウトが決まってからスクロールする。
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        document
+          .getElementById(`log-day-${date}`)
+          ?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    });
+  };
 
   const runSync = () => {
     startSync(async () => {
@@ -568,10 +603,16 @@ export function LogsView({
             .map((t) => (
               <li key={t.date} className="flex items-center gap-2">
                 {/* 2026-08-30: 10px の灰色一辺倒で読みにくい (実機報告) —
-                    データ行は 11px に上げ、日付は foreground 寄りに。 */}
-                <span className="w-[4.5rem] shrink-0 font-mono text-[11px] text-foreground/75 tabular-nums">
+                    データ行は 11px に上げ、日付は foreground 寄りに。
+                    日付クリックでその日のセッション振り返りへ飛ぶ。 */}
+                <button
+                  type="button"
+                  onClick={() => jumpToDay(t.date)}
+                  title={`${t.date} のセッション振り返りを開く`}
+                  className="w-[4.5rem] shrink-0 rounded text-left font-mono text-[11px] text-foreground/75 tabular-nums underline decoration-dotted underline-offset-2 transition-colors hover:text-[var(--neon-cyan)]"
+                >
                   {t.date.slice(5)}
-                </span>
+                </button>
                 <span className="relative flex h-4 min-w-0 flex-1 items-center rounded-sm bg-secondary/40">
                   {/* 複数層のカテゴリでは層の区切り線を引く (バーの上にも
                       乗るよう明色。border/60 では薄すぎた — 2026-08-28 指摘)。 */}
@@ -635,8 +676,13 @@ export function LogsView({
                 <span className="w-3 shrink-0">
                   {t.isRecord && (
                     <Flag
-                      className="h-3 w-3 text-[var(--neon-cyan)]"
-                      aria-label="自己ベスト更新"
+                      className={
+                        "h-3 w-3 " +
+                        (t.isFirstClear
+                          ? "text-emerald-300"
+                          : "text-[var(--neon-cyan)]")
+                      }
+                      aria-label={t.isFirstClear ? "初討伐" : "自己ベスト更新"}
                     />
                   )}
                 </span>
@@ -681,21 +727,21 @@ export function LogsView({
               </button>
               {floorChoices.map((f) => (
                 <button
-                  key={f}
+                  key={f.index}
                   type="button"
                   onClick={() =>
-                    setFloorFilter((cur) => (cur === f ? null : f))
+                    setFloorFilter((cur) => (cur === f.index ? null : f.index))
                   }
-                  aria-pressed={floorFilter === f}
-                  title={`${f}層の pull だけ表示`}
+                  aria-pressed={floorFilter === f.index}
+                  title={`${f.label}の pull だけ表示`}
                   className={
                     "rounded-sm border px-1.5 py-0.5 font-mono text-[10px] tabular-nums transition-colors " +
-                    (floorFilter === f
-                      ? floorToneClass(f)
+                    (floorFilter === f.index
+                      ? floorToneClass(f.displayFloor, f.half)
                       : "border-border/50 text-muted-foreground hover:text-foreground")
                   }
                 >
-                  {f}層
+                  {f.label}
                 </button>
               ))}
             </div>
@@ -706,6 +752,7 @@ export function LogsView({
             <DayRow
               key={day.date}
               day={day}
+              jumpNonce={jump?.date === day.date ? jump.nonce : null}
               videoLinks={videoLinks}
               canEdit={canEdit}
               showPhase={showPhase}
@@ -785,6 +832,7 @@ function StatCard({
 
 function DayRow({
   day,
+  jumpNonce,
   videoLinks,
   canEdit,
   showPhase,
@@ -793,6 +841,11 @@ function DayRow({
   onEditOffset,
 }: {
   day: DaySummary;
+  /**
+   * 「日ごとの到達度」の日付クリックで飛んできたときに増える値
+   * (自分の日でなければ null)。値が変わったら開く。
+   */
+  jumpNonce: number | null;
   videoLinks: Record<string, ReportVideoLink>;
   canEdit: boolean;
   showPhase: boolean;
@@ -801,10 +854,21 @@ function DayRow({
   onEditOffset: (reportCode: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  // jumpNonce の変化で開く。effect で setState するとカスケードレンダー
+  // (react-hooks/set-state-in-effect) になるため、React 公式の
+  // 「レンダー中に前回値と比較して調整する」形にする。
+  const [lastJump, setLastJump] = useState<number | null>(jumpNonce);
+  if (jumpNonce !== lastJump) {
+    setLastJump(jumpNonce);
+    if (jumpNonce !== null && !open) setOpen(true);
+  }
   const codes = Array.from(new Set(day.fights.map((f) => f.reportCode)));
 
   return (
-    <li className="rounded-md border border-border/40 bg-secondary/15">
+    <li
+      id={`log-day-${day.date}`}
+      className="scroll-mt-24 rounded-md border border-border/40 bg-secondary/15"
+    >
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
@@ -844,11 +908,15 @@ function DayRow({
               // 2026-08-30: 単一層はその層の識別色、複数層 (複合) は cyan
               // (floorToneClass(null))。どの層の日かが色で拾えるように。
               const singleFloor = minD === maxD ? maxD : null;
+              // その日が 1 つの層 index に収まるときだけ前半/後半色にする
+              // (「4層前半と後半の両方に挑んだ日」は複合扱いのまま)。
+              const singleHalf =
+                minF === maxF ? floorHalfOf(floorLabel(floors, maxF)) : null;
               return (
                 <span
                   className={
                     "rounded-sm border px-1.5 py-0.5 font-mono text-[11px] tabular-nums " +
-                    floorToneClass(singleFloor)
+                    floorToneClass(singleFloor, singleHalf)
                   }
                 >
                   {minF === maxF
@@ -980,13 +1048,15 @@ function PullRow({
           floors && floor !== null
             ? (floors.displayFloorByIndex.get(floor) ?? floor)
             : null;
+        const floorHalf =
+          floors && floor !== null ? floorHalfOf(floorLabel(floors, floor)) : null;
         const isClear = isClearFight(fight, floors);
         const floorChip =
           floor !== null ? (
             <span
               className={
                 "shrink-0 rounded-sm border px-1.5 py-0.5 font-mono text-[11px] tabular-nums " +
-                floorToneClass(displayFloor)
+                floorToneClass(displayFloor, floorHalf)
               }
             >
               {floorLabel(floors, floor)}

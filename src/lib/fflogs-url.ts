@@ -115,8 +115,29 @@ export const FFLOGS_REPORT_LINKS_BOOKMARKLET =
 
 /** report code から FFLogs のレポート URL を組み立てる。 */
 export function buildFflogsReportUrl(code: string, fightId?: number | null): string {
-  const base = `https://www.fflogs.com/reports/${encodeURIComponent(code)}`;
+  // 日本語 UI で開く (2026-08-30)。DB に保存する URL は www のままで、
+  // ここで作るのは「開くためのリンク」なので ja を既定にする。
+  const base = `https://ja.fflogs.com/reports/${encodeURIComponent(code)}`;
   return fightId == null ? base : `${base}#fight=${fightId}`;
+}
+
+/**
+ * FFLogs を日本語 UI で開く (2026-08-30 実機報告「英語表記になるのが気になる」)。
+ *
+ * FFLogs は言語別サブドメインを持ち、`ja.fflogs.com` で開くと UI が日本語に
+ * なる。保存済み URL (`www.fflogs.com`) はそのままに、**開くときだけ**
+ * ホストを差し替える (DB の値を書き換えると、外部で共有された URL との
+ * 見た目の一致が崩れるため)。fflogs.com 以外はそのまま返す。
+ */
+export function toJapaneseFflogsUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    if (!/(^|\.)fflogs\.com$/i.test(u.hostname)) return url;
+    u.hostname = "ja.fflogs.com";
+    return u.toString();
+  } catch {
+    return url;
+  }
 }
 
 /**
@@ -136,7 +157,7 @@ export function buildFflogsFightViewUrl(
   fightId: number | null | undefined,
   view: FflogsFightView,
 ): string {
-  const base = `https://www.fflogs.com/reports/${encodeURIComponent(code)}`;
+  const base = `https://ja.fflogs.com/reports/${encodeURIComponent(code)}`;
   const fight = fightId == null ? "last" : String(fightId);
   return `${base}#fight=${fight}&type=${view}`;
 }
