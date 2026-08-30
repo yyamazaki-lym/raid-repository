@@ -4,7 +4,13 @@ import { SheetCards } from "@/components/portal/sheet-cards";
 import { SheetViewSwitch } from "@/components/portal/sheet-view-switch";
 import { SheetUrlOnboarding } from "@/components/portal/sheet-url-onboarding";
 import { fetchSheetTable, fetchSheetTabs } from "@/lib/server/sheet-table";
-import { extractSheetGid, parseSheetTabsSetting } from "@/lib/sheet-csv";
+import {
+  diagnoseSheetColumns,
+  extractSheetGid,
+  parseColumnLabelsSetting,
+  parseSheetTabsSetting,
+} from "@/lib/sheet-csv";
+import { MitigationColumnsDialog } from "@/components/portal/mitigation-columns-dialog";
 import { MitigationSheetTabsDialog } from "@/components/portal/mitigation-sheet-tabs-dialog";
 import { notFound } from "next/navigation";
 import { findCategoryBySlug } from "@/lib/supabase/categories";
@@ -78,6 +84,22 @@ export default async function MitigationPage({
   const activeGid = requestedGid ?? defaultGid;
   const table = await fetchSheetTable(category.mitigationSheetUrl, activeGid);
 
+  // 2026-08-30: 列の判定結果 + チェック列の名前登録 (実機報告
+  // 「Type や軽減率は出ているがそれ以外は情報なし」の切り分け導線)。
+  const columnLabels = parseColumnLabelsSetting(
+    category.mitigationColumnLabels,
+    activeGid,
+  );
+  const columnsEditor =
+    canEdit && table.ok ? (
+      <MitigationColumnsDialog
+        categoryId={category.id}
+        gid={activeGid ?? ""}
+        columns={diagnoseSheetColumns(table.table)}
+        initialLabels={columnLabels}
+      />
+    ) : null;
+
   const tabsEditor = canEdit ? (
     <MitigationSheetTabsDialog
       categoryId={category.id}
@@ -114,9 +136,13 @@ export default async function MitigationPage({
           );
         })}
         {tabsEditor}
+        {columnsEditor}
       </nav>
     ) : (
-      tabsEditor
+      <div className="flex flex-wrap items-center gap-1">
+        {tabsEditor}
+        {columnsEditor}
+      </div>
     );
 
   return (
@@ -133,6 +159,7 @@ export default async function MitigationPage({
                 sheetUrl={category.mitigationSheetUrl}
                 title="軽減表"
                 variant="mitigation"
+                columnLabels={columnLabels}
               />
             </div>
           }

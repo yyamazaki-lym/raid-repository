@@ -34,10 +34,16 @@ export function SheetCards({
   sheetUrl,
   title,
   variant = "generic",
+  columnLabels,
 }: {
   table: SheetTable;
   sheetUrl: string;
   title: string;
+  /**
+   * 列番号 → 表示名の手動登録 (2026-08-30)。チェックボックス列の見出しが
+   * アイコン画像で CSV に文字が無い場合、ここで付けた名前で表示する。
+   */
+  columnLabels?: Record<number, string>;
   /**
    * 2026-08-30: `mitigation` は軽減表向けの簡素カード — AA 行を除外し、
    * 素ダメージ → 軽減率 → 最終ダメージを数値サマリ行で、対象 (誰に
@@ -78,8 +84,9 @@ export function SheetCards({
     () =>
       buildSheetCardRows(table, visibleColumns, {
         mitigation: variant === "mitigation",
+        columnLabels,
       }),
-    [table, visibleColumns, variant],
+    [table, visibleColumns, variant, columnLabels],
   );
 
   // 巨大なシート (数百行) をスマホで全部カード化すると描画が重くなるため
@@ -220,12 +227,10 @@ export function SheetCards({
                         }
                         title={s.label}
                       >
-                        <span className="font-mono text-[9px] tracking-[0.1em] text-muted-foreground uppercase">
-                          {s.kind === "damage"
-                            ? "ダメージ"
-                            : s.kind === "rate"
-                              ? "軽減率"
-                              : "最終"}
+                        {/* 2026-08-30: シートの実際の列名を出す (種別名だと
+                            「軽減率」が 2 つ並んで区別できなかった)。 */}
+                        <span className="max-w-[8rem] truncate font-mono text-[9px] tracking-[0.1em] text-muted-foreground">
+                          {s.label}
                         </span>
                         <span
                           className={

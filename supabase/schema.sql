@@ -47,6 +47,10 @@ ALTER TABLE public.categories
   -- admin が層ごとの gid を登録できる経路を正とし、自動検出は補助に
   -- 落とす。空 / NULL なら従来どおり自動検出のみ。
   ADD COLUMN IF NOT EXISTS mitigation_sheet_tabs        text,
+  -- 2026-08-30: 軽減表のチェックボックス列に付ける名前。見出しがアイコン
+  -- 画像だけの列は CSV に文字が出ないため自動では名前を付けられない。
+  -- 形は {"<gid>": {"<列番号>": "堅陣"}} (層ごとに列構成が違うため gid 別)。
+  ADD COLUMN IF NOT EXISTS mitigation_column_labels     text,
   -- 2026-08-30: 練習ログの取り込み難易度フィルタ。FFLogs の difficulty は
   -- コンテンツ種別で値が変わる (零式とノーマルで別値) が、公開された
   -- 対応表が無いため **観測値をそのまま使う**: 取り込み済みの difficulty を

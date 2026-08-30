@@ -3757,3 +3757,65 @@ export async function setMitigationSheetTabsAction(
   }
   return { ok: true };
 }
+
+/**
+ * 軽減表の列名 (チェックボックス列) を登録する (2026-08-30 実機報告)。
+ *
+ * 見出しがアイコン画像の列は CSV に文字が 1 つも出ないため、自動では
+ * 名前の付けようが無い。admin が付けた名前を gid ごとに保存する。
+ * 空文字を渡した列は登録解除。
+ */
+export async function setMitigationColumnLabelsAction(
+  categoryId: string,
+  gid: string,
+  labels: Record<string, string>,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
+  const supabase = await createClient();
+  const { data: current } = await supabase
+    .from("categories")
+    .select("mitigation_column_labels")
+    .eq("id", categoryId)
+    .maybeSingle();
+
+  let all: Record<string, Record<string, string>> = {};
+  const raw = (current as { mitigation_column_labels?: string | null } | null)
+    ?.mitigation_column_labels;
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        all = parsed as Record<string, Record<string, string>>;
+      }
+    } catch {
+      // 壊れていたら作り直す (表示側も壊れた JSON は無視する)。
+    }
+  }
+
+  const cleaned: Record<string, string> = {};
+  for (const [col, label] of Object.entries(labels)) {
+    const idx = Number.parseInt(col, 10);
+    const name = label.trim().slice(0, 40);
+    if (!Number.isInteger(idx) || idx < 0 || !name) continue;
+    cleaned[String(idx)] = name;
+  }
+  const key = /^\d+$/.test(gid) ? gid : "";
+  if (Object.keys(cleaned).length > 0) all[key] = cleaned;
+  else delete all[key];
+
+  const { error } = await supabase
+    .from("categories")
+    .update({
+      mitigation_column_labels:
+        Object.keys(all).length > 0 ? JSON.stringify(all) : null,
+    })
+    .eq("id", categoryId);
+  if (error) return { ok: false, reason: dbError("列名の保存", error) };
+  try {
+    revalidatePath("/category", "layout");
+  } catch {
+    // best-effort
+  }
+  return { ok: true };
+}

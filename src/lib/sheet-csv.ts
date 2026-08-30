@@ -268,6 +268,12 @@ export function toSheetTable(raw: string[][]): SheetTable | null {
 }
 
 export type SheetCardStat = {
+  /**
+   * 表示ラベル。**シートの実際の列見出し**をそのまま使う (2026-08-30 実機
+   * 報告「軽減率が 2 つ存在して分かりにくい」)。以前は種別名 (ダメージ /
+   * 軽減率 / 最終) を出していたため、別の列が同じ名前で並んで区別できな
+   * かった。種別は色分けだけに使う。
+   */
   label: string;
   value: string;
   kind: "damage" | "rate" | "final";
@@ -387,9 +393,18 @@ export function buildSheetCardRows(
      * 拾い上げる。それらの列は計算列 drop の対象から外れる。
      */
     mitigation?: boolean;
+    /**
+     * 列番号 → 表示名の手動登録 (2026-08-30 実機報告)。
+     *
+     * 軽減表のチェックボックス列は見出しがアイコン画像のことが多く、CSV に
+     * 文字が 1 文字も出ない = 名前の付けようが無い。自動では諦めるしかない
+     * ので、admin が列に名前を付けられるようにして、その名前で表示する。
+     */
+    columnLabels?: Record<number, string>;
   },
 ): SheetCardRow[] {
   const mitigation = opts?.mitigation === true;
+  const columnLabels = opts?.columnLabels ?? {};
   // mitigation モード: 列の役割を見出しで分類 (final/rate/damage/target)。
   const mitKindByCol = new Map<number, MitColumnKind>();
   if (mitigation) {
@@ -426,6 +441,13 @@ export function buildSheetCardRows(
       }
       // 1 つも ON が無い列は出しても意味が無い。
       if (checked === 0) continue;
+      // 手動で名前が付いている列は最優先で採用する (アイコン見出しの列を
+      // 救済するための経路。自動判定より人の指定を信じる)。
+      const manual = columnLabels[ci]?.trim();
+      if (manual) {
+        checkboxCols.set(ci, manual);
+        continue;
+      }
       if (header) {
         // 見出しがある列は「TRUE/FALSE だけ」を要求する。担当者名などが
         // 混ざる通常列を奪うと「担当: スキル」の表示が消えてしまう。
@@ -482,13 +504,17 @@ export function buildSheetCardRows(
         for (const ci of visibleColumns) {
           if (mitKindByCol.get(ci) !== kind) continue;
           const v = (row[ci] ?? "").trim();
-          if (isNoiseValue(v) || v === (table.headers[ci]?.trim() ?? ""))
-            continue;
-          stats.push({
-            label: table.headers[ci]?.trim() ?? "",
-            value: v,
-            kind,
-          });
+          const header = table.headers[ci]?.trim() ?? "";
+          if (isNoiseValue(v) || v === header) continue;
+          // ラベルはシートの列見出しをそのまま使う (種別名だと「軽減率」が
+          // 2 つ並ぶ、という実機報告への対応)。見出しが無い列だけ種別名で補う。
+          const label =
+            columnLabels[ci]?.trim() ||
+            header ||
+            (kind === "damage" ? "ダメージ" : kind === "rate" ? "軽減率" : "最終");
+          // 同じラベル + 同じ値が二重に出ないように畳む。
+          if (stats.some((x) => x.label === label && x.value === v)) continue;
+          stats.push({ label, value: v, kind });
         }
       }
       for (const ci of visibleColumns) {
@@ -592,4 +618,113 @@ function normalizeName(s: string): string {
     )
     .replace(/[\s　]+/g, "")
     .toLowerCase();
+}
+
+/** 列の役割 (診断表示・手動登録の UI 用)。 */
+export type SheetColumnDiagnostic = {
+  /** 0 始まりの列番号。 */
+  index: number;
+  /** スプレッドシートの列記号 (A, B, ..., AA)。 */
+  letter: string;
+  /** CSV から読めた見出し (アイコンだけの列は空)。 */
+  header: string;
+  /**
+   * 自動判定した役割:
+   *   damage/rate/final/target … 数値サマリに使う列
+   *   check … チェックボックス列 (TRUE/FALSE のみ)
+   *   text … 通常のデータ列 (担当者名など)
+   *   empty … 中身が無い
+   */
+  role: "damage" | "rate" | "final" | "target" | "check" | "text" | "empty";
+  /** ON になっている行数 (check のみ)。 */
+  checkedCount: number;
+  /** 中身のサンプル (最大 3 件)。 */
+  samples: string[];
+};
+
+/** 0 始まりの列番号 → スプレッドシートの列記号。 */
+export function columnLetter(index: number): string {
+  let n = index;
+  let out = "";
+  do {
+    out = String.fromCharCode(65 + (n % 26)) + out;
+    n = Math.floor(n / 26) - 1;
+  } while (n >= 0);
+  return out;
+}
+
+/**
+ * 各列が何と判定されているかを返す (2026-08-30 実機報告
+ * 「どのことを指しているのか / それ以外は情報なし」)。
+ *
+ * 軽減表の作りは固定ごとに違い、こちらから中身を見に行けないので、
+ * **アプリが何をどう解釈したかをそのまま見せる**。これが無いと
+ * 「出ない」原因が列見出しなのか値なのか切り分けられない。
+ */
+export function diagnoseSheetColumns(table: SheetTable): SheetColumnDiagnostic[] {
+  const out: SheetColumnDiagnostic[] = [];
+  for (let ci = 0; ci < table.headers.length; ci++) {
+    const header = (table.headers[ci] ?? "").trim();
+    const samples: string[] = [];
+    let checked = 0;
+    let nonBoolean = 0;
+    let filled = 0;
+    for (const row of table.rows) {
+      const v = (row[ci] ?? "").trim();
+      if (v === "") continue;
+      filled += 1;
+      if (isCheckedValue(v)) {
+        checked += 1;
+        continue;
+      }
+      if (isUncheckedValue(v)) continue;
+      nonBoolean += 1;
+      if (samples.length < 3 && !samples.includes(v)) samples.push(v);
+    }
+    const kind = classifyMitigationHeader(header);
+    const role: SheetColumnDiagnostic["role"] =
+      kind ??
+      (filled === 0
+        ? "empty"
+        : nonBoolean === 0 && checked > 0
+          ? "check"
+          : "text");
+    out.push({
+      index: ci,
+      letter: columnLetter(ci),
+      header,
+      role,
+      checkedCount: checked,
+      samples,
+    });
+  }
+  return out;
+}
+
+/**
+ * 列名の手動登録 (categories.mitigation_column_labels) の JSON を読む。
+ * 形は `{ "<gid>": { "<列番号>": "名前" } }`。gid ごとに列構成が違うため
+ * シート (層) 単位で保持する。
+ */
+export function parseColumnLabelsSetting(
+  raw: string | null | undefined,
+  gid: string | null,
+): Record<number, string> {
+  if (!raw?.trim()) return {};
+  try {
+    const v = JSON.parse(raw) as unknown;
+    if (!v || typeof v !== "object" || Array.isArray(v)) return {};
+    const byGid = (v as Record<string, unknown>)[gid ?? ""] ?? {};
+    if (!byGid || typeof byGid !== "object" || Array.isArray(byGid)) return {};
+    const out: Record<number, string> = {};
+    for (const [k, label] of Object.entries(byGid as Record<string, unknown>)) {
+      const idx = Number.parseInt(k, 10);
+      if (Number.isInteger(idx) && typeof label === "string" && label.trim()) {
+        out[idx] = label.trim();
+      }
+    }
+    return out;
+  } catch {
+    return {};
+  }
 }

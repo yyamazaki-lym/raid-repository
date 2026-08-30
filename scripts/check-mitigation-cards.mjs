@@ -60,6 +60,73 @@ try {
     true,
   );
 
+  console.log("\n[列名の手動登録]");
+  // アイコン見出し = CSV に文字が無く、値も TRUE/FALSE だけの列。
+  // 自動では名前が付かないので、手動登録があるときだけ拾う。
+  const iconTable = {
+    headers: ["Time", "Action", "Damage", "", ""],
+    rows: [
+      ["00:16", "フィクサー", "400,000", "TRUE", "FALSE"],
+      ["00:41", "リーサル", "800,000", "FALSE", "TRUE"],
+    ],
+  };
+  const iconCols = iconTable.headers.map((_, i) => i).slice(1);
+  const noLabels = mod.buildSheetCardRows(iconTable, iconCols, { mitigation: true });
+  check(
+    "名前が無ければアイコン列は出さない",
+    noLabels[0].checks ?? [],
+    [],
+  );
+  const withLabels = mod.buildSheetCardRows(iconTable, iconCols, {
+    mitigation: true,
+    columnLabels: { 3: "堅陣", 4: "士気" },
+  });
+  check(
+    "登録した名前で表示する",
+    withLabels[0].checks.map((c) => c.label),
+    ["堅陣"],
+  );
+  check(
+    "行ごとに ON の列が変わる",
+    withLabels[1].checks.map((c) => c.label),
+    ["士気"],
+  );
+
+  console.log("\n[列の診断]");
+  const diag = mod.diagnoseSheetColumns(iconTable);
+  check("列記号", diag.map((d) => d.letter), ["A", "B", "C", "D", "E"]);
+  check(
+    "アイコン列はチェックと判定",
+    diag.filter((d) => d.role === "check").map((d) => d.letter),
+    ["D", "E"],
+  );
+  check("ダメージ列を判定", diag[2].role, "damage");
+  check("ON 数を数える", diag[3].checkedCount, 1);
+  check("27 列目は AB", mod.columnLetter(27), "AB");
+
+  console.log("\n[数値サマリのラベル]");
+  // 実機報告「軽減率が 2 つ存在して分かりにくい」: ラベルはシートの
+  // 実際の列見出しを使う (種別名を出すと同名が並ぶ)。
+  const twoRates = {
+    headers: ["Time", "Damage", "軽減率", "被ダメージ", "最終ダメージ"],
+    rows: [["00:16", "400,000", "0.62", "249,318", "249,318"]],
+  };
+  const rateRows = mod.buildSheetCardRows(
+    twoRates,
+    twoRates.headers.map((_, i) => i).slice(1),
+    { mitigation: true },
+  );
+  check(
+    "ラベルはシートの列見出し",
+    rateRows[0].stats.map((s) => s.label),
+    ["Damage", "被ダメージ", "軽減率", "最終ダメージ"],
+  );
+  check(
+    "同じラベル+同じ値は畳む",
+    rateRows[0].stats.filter((s) => s.value === "249,318").length,
+    2,
+  );
+
   console.log("\n[AA と数値サマリ]");
   check("AA 行は出さない", rows.some((r) => r.heading.includes("AA")), false);
   check(

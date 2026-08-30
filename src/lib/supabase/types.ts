@@ -33,6 +33,7 @@ export type CategoryRow = {
   loot_sheet_url: string | null;
   mitigation_sheet_url: string | null;
   mitigation_sheet_tabs?: string | null;
+  mitigation_column_labels?: string | null;
   fflogs_min_difficulty?: number | null;
   discord_strategy_channel_id: string | null;
   discord_video_channel_id: string | null;
@@ -106,6 +107,8 @@ export type Category = {
   mitigationSheetUrl: string | null;
   /** 軽減表の層タブ (手動登録)。JSON 文字列 `[{"label":"1層","gid":"0"}]`。 */
   mitigationSheetTabs: string | null;
+  /** 軽減表の列名 (手動登録)。JSON `{"<gid>":{"<列番号>":"堅陣"}}`。 */
+  mitigationColumnLabels: string | null;
   /** 練習ログの取り込み難易度の下限 (null = 制限なし)。 */
   fflogsMinDifficulty: number | null;
   discordStrategyChannelId: string | null;
@@ -191,6 +194,7 @@ export function rowToCategory(row: CategoryRow): Category {
     lootSheetUrl: row.loot_sheet_url ?? null,
     mitigationSheetUrl: row.mitigation_sheet_url ?? null,
     mitigationSheetTabs: row.mitigation_sheet_tabs ?? null,
+    mitigationColumnLabels: row.mitigation_column_labels ?? null,
     fflogsMinDifficulty: row.fflogs_min_difficulty ?? null,
     discordStrategyChannelId: row.discord_strategy_channel_id ?? null,
     discordVideoChannelId: row.discord_video_channel_id ?? null,
