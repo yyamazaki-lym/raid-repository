@@ -47,6 +47,11 @@ ALTER TABLE public.categories
   -- admin が層ごとの gid を登録できる経路を正とし、自動検出は補助に
   -- 落とす。空 / NULL なら従来どおり自動検出のみ。
   ADD COLUMN IF NOT EXISTS mitigation_sheet_tabs        text,
+  -- 2026-08-30: 練習ログの取り込み難易度フィルタ。FFLogs の difficulty は
+  -- コンテンツ種別で値が変わる (零式とノーマルで別値) が、公開された
+  -- 対応表が無いため **観測値をそのまま使う**: 取り込み済みの difficulty を
+  -- 画面に出し、admin が「これ未満は入れない」を数値で決める。NULL = 無効。
+  ADD COLUMN IF NOT EXISTS fflogs_min_difficulty        integer,
   -- Phase 4: per-category Discord channels for the daily auto-import job.
   ADD COLUMN IF NOT EXISTS discord_strategy_channel_id  text,
   ADD COLUMN IF NOT EXISTS discord_video_channel_id     text,
@@ -1097,6 +1102,17 @@ CREATE TABLE IF NOT EXISTS public.fflogs_report_syncs (
 -- カテゴリが決まらず、ログが 1 件も表示されない状態になっていた。
 ALTER TABLE public.fflogs_report_syncs
   ADD COLUMN IF NOT EXISTS zone_name text;
+
+-- ---- 6b-5b. fflogs_report_blocklist (取り込み除外、2026-08-30) --------
+-- 誤って取り込んだレポート (別コンテンツ / ノーマル等) を練習ログから
+-- 消せるようにする。fights 行を消すだけだと、動画リンクや日付ログから
+-- 参照されている限り次の同期で再取得されるため、除外リストで恒久的に
+-- 弾く。解除したくなったら行を消せば次回同期で戻る。
+CREATE TABLE IF NOT EXISTS public.fflogs_report_blocklist (
+  report_code text PRIMARY KEY,
+  reason      text,
+  created_at  timestamptz NOT NULL DEFAULT now()
+);
 
 -- ---- 6b-6. fflogs_report_videos (A-2: 動画オフセット) ------------------
 -- 「レポート開始時刻が動画の何秒地点か」を report ごとに 1 回だけ入力すれば、

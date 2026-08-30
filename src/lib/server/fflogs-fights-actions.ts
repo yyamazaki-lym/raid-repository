@@ -170,3 +170,100 @@ function revalidateQuietly() {
     // best-effort
   }
 }
+
+/**
+ * 誤って取り込んだレポートを練習ログから削除する (2026-08-30 実機報告
+ * 「ノーマルのものを登録してしまった際に削除できない」)。
+ *
+ * pull (`fflogs_fights`) と同期台帳 (`fflogs_report_syncs`) を消したうえで
+ * **除外リストに登録する**。動画リンクや日付ログからそのレポートが参照され
+ * 続けている限り、消すだけでは次の同期で再取得されてしまうため。
+ * 除外を解いて取り込み直したくなったら、除外リストから外して再同期する。
+ */
+export async function deleteFflogsReportAction(
+  reportCode: string,
+  reason?: string,
+): Promise<{ ok: true; removedFights: number } | { ok: false; reason: string }> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
+  const code = reportCode.trim();
+  if (!/^[A-Za-z0-9]{8,64}$/.test(code)) {
+    return { ok: false, reason: "レポートコードが不正です" };
+  }
+
+  const supabase = await createClient();
+  const { data: removed, error: delErr } = await supabase
+    .from("fflogs_fights")
+    .delete()
+    .eq("report_code", code)
+    .select("id");
+  if (delErr) return { ok: false, reason: dbError("pull 削除", delErr) };
+
+  // 台帳を消してから除外登録 (順序が逆だと、間に同期が走って再取得しうる)。
+  const { error: ledgerErr } = await supabase
+    .from("fflogs_report_syncs")
+    .delete()
+    .eq("report_code", code);
+  if (ledgerErr) {
+    console.warn("[fflogs-fights] ledger delete failed:", ledgerErr.message);
+  }
+  const { error: blockErr } = await supabase
+    .from("fflogs_report_blocklist")
+    .upsert(
+      { report_code: code, reason: reason?.slice(0, 200) ?? null },
+      { onConflict: "report_code" },
+    );
+  if (blockErr) return { ok: false, reason: dbError("除外登録", blockErr) };
+
+  revalidateQuietly();
+  return { ok: true, removedFights: removed?.length ?? 0 };
+}
+
+/** 除外を解除する (次回同期で取り込み直される)。 */
+export async function unblockFflogsReportAction(
+  reportCode: string,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
+  const code = reportCode.trim();
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("fflogs_report_blocklist")
+    .delete()
+    .eq("report_code", code);
+  if (error) return { ok: false, reason: dbError("除外解除", error) };
+  revalidateQuietly();
+  return { ok: true };
+}
+
+/**
+ * 取り込み難易度の下限を設定する (2026-08-30)。
+ *
+ * FFLogs の `difficulty` はコンテンツ種別で値が変わるが公開された対応表が
+ * 無いため、**取り込み済みの実データを画面に出して admin に選んでもらう**
+ * 方式にしている (推測した固定値でノーマル判定をすると、絶などを巻き添えに
+ * 除外する恐れがある)。null で無効化。
+ */
+export async function setCategoryMinDifficultyAction(
+  categoryId: string,
+  minDifficulty: number | null,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
+  if (
+    minDifficulty !== null &&
+    (!Number.isInteger(minDifficulty) ||
+      minDifficulty < 0 ||
+      minDifficulty > 1000)
+  ) {
+    return { ok: false, reason: "難易度は 0〜1000 の整数で指定してください" };
+  }
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("categories")
+    .update({ fflogs_min_difficulty: minDifficulty })
+    .eq("id", categoryId);
+  if (error) return { ok: false, reason: dbError("難易度設定の保存", error) };
+  revalidateQuietly();
+  return { ok: true };
+}

@@ -38,6 +38,12 @@ export type FightRow = {
   lastPhase: number | null;
   /** FFLogs の encounter ID。零式ティアでは層ごとに異なる。 */
   encounterId: number | null;
+  /**
+   * FFLogs の難易度値 (2026-08-30)。コンテンツ種別で値が変わり公開された
+   * 対応表が無いため、portal 側は意味づけせず **観測値として表示するだけ**。
+   * 取り込みフィルタの下限もこの実測値を見て admin が決める。
+   */
+  difficulty: number | null;
   startMs: number;
   endMs: number;
   reportStartMs: number | null;

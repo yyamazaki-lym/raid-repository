@@ -53,6 +53,8 @@ export default async function LogsPage({
 
   return (
     <LogsView
+      categoryId={category.id}
+      minDifficulty={category.fflogsMinDifficulty}
       categoryName={category.name}
       fights={fights}
       totalPulls={totalPulls}

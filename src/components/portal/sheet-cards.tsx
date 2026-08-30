@@ -183,7 +183,7 @@ export function SheetCards({
       )}
 
       <ul className="flex flex-col gap-2">
-        {shown.map(({ heading, cells, stats, target }, ri) => {
+        {shown.map(({ heading, cells, checks, stats, target }, ri) => {
           return (
             <li
               key={ri}
@@ -257,16 +257,55 @@ export function SheetCards({
                   )}
                 </div>
               )}
+              {/* 2026-08-30 実機要望「行でチェックが入っているアビリティを
+                  抜き出して表示したい」: チェックボックス列で ON になって
+                  いる項目 (= その攻撃で入れる軽減/バフ) をチップで出す。
+                  担当が分かる場合はロール色のバッジを前に付ける。 */}
+              {checks && checks.length > 0 && (
+                <ul className="mt-1 flex flex-wrap gap-1">
+                  {checks.map((c, i) => {
+                    const role = roleOf(c.owner ?? c.label);
+                    return (
+                      <li
+                        key={i}
+                        className={
+                          "inline-flex items-baseline gap-1 rounded-sm border px-1.5 py-0.5 " +
+                          (role
+                            ? ROLE_TONE[role]
+                            : "border-[var(--neon-violet)]/35 bg-[var(--neon-violet)]/8")
+                        }
+                        title={
+                          c.owner ? `${c.owner}: ${c.label}` : c.label
+                        }
+                      >
+                        {c.owner && (
+                          <span className="font-mono text-[9px] tracking-[0.08em] opacity-80">
+                            {c.owner}
+                          </span>
+                        )}
+                        <span className="text-[12px] break-words text-foreground/90">
+                          {c.label}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
               {/* 2026-08-30 実機要望「誰がどの軽減・バフを入れたか簡易的に
                   確認したい」: 軽減表では「担当者: スキル」を 1 行に畳んだ
                   チップで出す (縦に伸びる定義リストだと 1 画面に 2〜3 行しか
                   入らず、攻撃ごとの分担がひと目で追えなかった)。 */}
               {variant === "mitigation" && cells.length > 0 ? (
                 <ul className="mt-1 flex flex-wrap gap-1">
-                  {cells.map((c, i) => (
+                  {cells.map((c, i) => {
+                    const role = roleOf(c.label);
+                    return (
                     <li
                       key={i}
-                      className="inline-flex items-baseline gap-1 rounded-sm border border-border/40 bg-background/40 px-1.5 py-0.5"
+                      className={
+                        "inline-flex items-baseline gap-1 rounded-sm border px-1.5 py-0.5 " +
+                        (role ? ROLE_TONE[role] : "border-border/40 bg-background/40")
+                      }
                       title={`${c.label || "担当"}: ${c.value}`}
                     >
                       <span className="font-mono text-[10px] tracking-[0.08em] text-[var(--neon-cyan)]/85">
@@ -276,7 +315,8 @@ export function SheetCards({
                         {c.value}
                       </span>
                     </li>
-                  ))}
+                    );
+                  })}
                 </ul>
               ) : cells.length > 0 ? (
                 // 見出し列は max-content で伸びると長い担当者名でグリッドが
@@ -313,6 +353,27 @@ export function SheetCards({
     </div>
   );
 }
+
+/**
+ * 担当名からロールを推定する (2026-08-30)。軽減表の列見出しは
+ * MT/ST/H1/H2/D1..D4 のようなロール略号が定番なので、それだけを拾って
+ * 色付けする。実際のジョブアイコン画像は配布できない (著作物) ため、
+ * ロール色のバッジで代替する。判定できなければ null。
+ */
+function roleOf(label: string): "tank" | "healer" | "dps" | null {
+  const t = label.trim().toUpperCase();
+  if (/^(MT|ST|T[12]?)\b/.test(t)) return "tank";
+  if (/^(H[12]?)\b/.test(t)) return "healer";
+  if (/^(D[1-4]?|DPS)\b/.test(t)) return "dps";
+  return null;
+}
+
+/** ロール色 (FF14 のロールカラーに寄せる: タンク=青 / ヒーラー=緑 / DPS=赤)。 */
+const ROLE_TONE: Record<"tank" | "healer" | "dps", string> = {
+  tank: "border-sky-400/40 bg-sky-400/10",
+  healer: "border-emerald-400/40 bg-emerald-400/10",
+  dps: "border-rose-400/40 bg-rose-400/10",
+};
 
 /**
  * localStorage の表示名変更を購読する。同一タブ内の `storage` イベントは

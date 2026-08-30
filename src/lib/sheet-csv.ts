@@ -273,9 +273,19 @@ export type SheetCardStat = {
   kind: "damage" | "rate" | "final";
 };
 
+/** チェックボックス列で ON になっていた項目 (2026-08-30)。 */
+export type SheetCardCheck = {
+  /** 列の見出し (アビリティ名など)。 */
+  label: string;
+  /** その列を「誰の列か」に紐づけられた場合の担当 (無ければ null)。 */
+  owner: string | null;
+};
+
 export type SheetCardRow = {
   heading: string;
   cells: Array<{ label: string; value: string }>;
+  /** mitigation モードのみ: チェックが入っていた列 (誰が何を入れるか)。 */
+  checks?: SheetCardCheck[];
   /** mitigation モードのみ: ダメージ → 軽減率 → 最終ダメージの数値サマリ。 */
   stats?: SheetCardStat[];
   /** mitigation モードのみ: 対象 (味方の誰に入れるか等)。 */
@@ -330,6 +340,16 @@ const MIT_TARGET_HEADER_RE = /対象|ターゲット|target|誰に/i;
 
 type MitColumnKind = "final" | "rate" | "damage" | "target" | null;
 
+/** チェックボックスの ON 値 (Google Sheets の CSV は TRUE/FALSE)。 */
+function isCheckedValue(v: string): boolean {
+  return /^(?:true|✓|✔|◯|○|●|1|yes)$/i.test(v.trim());
+}
+
+/** チェックボックスの OFF 値。 */
+function isUncheckedValue(v: string): boolean {
+  return /^(?:false|0|no|)$/i.test(v.trim());
+}
+
 function classifyMitigationHeader(header: string): MitColumnKind {
   const h = header.trim();
   if (h === "") return null;
@@ -375,6 +395,50 @@ export function buildSheetCardRows(
   if (mitigation) {
     for (const ci of visibleColumns) {
       mitKindByCol.set(ci, classifyMitigationHeader(table.headers[ci] ?? ""));
+    }
+  }
+
+  // 2026-08-30 実機要望「誰がどのデバフ・バフを入れるか見えない」:
+  // 軽減表は「行 = 攻撃」「列 = 軽減/バフ」でチェックボックスを立てる形式が
+  // 多い。CSV では TRUE/FALSE になり、従来は isNoiseValue で捨てていたため
+  // カードから完全に消えていた。**チェックボックス列** (非空値がすべて
+  // TRUE/FALSE の列) を検出し、ON の列の見出しを「入れるもの」として拾う。
+  //
+  // 見出しが空の列 (アイコン画像だけの列は CSV に文字が出ない) は、その列に
+  // 一度でも現れた「TRUE/FALSE 以外の値」をラベル候補として使う。それも
+  // 無ければラベル不明として捨てる (意味の無い印を並べても読めないため)。
+  const checkboxCols = new Map<number, string>();
+  if (mitigation) {
+    for (const ci of visibleColumns) {
+      if (mitKindByCol.get(ci)) continue;
+      const header = table.headers[ci]?.trim() ?? "";
+      let checked = 0;
+      const others = new Set<string>();
+      for (const row of table.rows) {
+        const v = (row[ci] ?? "").trim();
+        if (v === "" || v === header) continue;
+        if (isCheckedValue(v)) {
+          checked += 1;
+          continue;
+        }
+        if (isUncheckedValue(v)) continue;
+        others.add(v);
+      }
+      // 1 つも ON が無い列は出しても意味が無い。
+      if (checked === 0) continue;
+      if (header) {
+        // 見出しがある列は「TRUE/FALSE だけ」を要求する。担当者名などが
+        // 混ざる通常列を奪うと「担当: スキル」の表示が消えてしまう。
+        if (others.size > 0) continue;
+        checkboxCols.set(ci, header);
+        continue;
+      }
+      // 見出しが空の列 (アイコン画像だけの列は CSV に文字が出ない)。
+      // 別行にアビリティ名が 1 種類だけ書かれている作りが多いので、それを
+      // ラベルとして採用する。2 種類以上あるなら通常のデータ列とみなす。
+      if (others.size !== 1) continue;
+      const fallbackLabel = [...others][0]!;
+      checkboxCols.set(ci, fallbackLabel);
     }
   }
 
@@ -435,9 +499,19 @@ export function buildSheetCardRows(
       }
     }
 
+    const checks: SheetCardCheck[] = [];
+    if (mitigation) {
+      for (const [ci, label] of checkboxCols) {
+        if (isCheckedValue(row[ci] ?? "")) {
+          checks.push({ label, owner: null });
+        }
+      }
+    }
+
     let cells = visibleColumns
       .filter((ci) => !(dropNumericCols && numericCols.has(ci)))
       .filter((ci) => !(mitigation && mitKindByCol.get(ci)))
+      .filter((ci) => !checkboxCols.has(ci))
       .map((ci) => ({
         label: table.headers[ci]?.trim() ?? "",
         value: row[ci]?.trim() ?? "",
@@ -464,6 +538,7 @@ export function buildSheetCardRows(
     if (
       headingParts.length === 0 &&
       cells.length === 0 &&
+      checks.length === 0 &&
       stats.length === 0 &&
       target === undefined
     )
@@ -471,6 +546,7 @@ export function buildSheetCardRows(
     out.push({
       heading: headingParts.join(" "),
       cells,
+      ...(checks.length > 0 ? { checks } : {}),
       ...(stats.length > 0 ? { stats } : {}),
       ...(target !== undefined ? { target } : {}),
     });

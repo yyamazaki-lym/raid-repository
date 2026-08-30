@@ -159,6 +159,21 @@ export async function syncFflogsFights(opts?: {
     };
   }
 
+  // カテゴリごとの取り込み難易度の下限 (2026-08-30)。
+  const { data: catRows } = await db
+    .from("categories")
+    .select("id, fflogs_min_difficulty")
+    .not("fflogs_min_difficulty", "is", null);
+  const minDifficultyByCategory = new Map<string, number>();
+  for (const c of (catRows ?? []) as Array<{
+    id: string;
+    fflogs_min_difficulty: number | null;
+  }>) {
+    if (typeof c.fflogs_min_difficulty === "number") {
+      minDifficultyByCategory.set(c.id, c.fflogs_min_difficulty);
+    }
+  }
+
   // 既存の同期台帳を読み、再取得が要るものだけに絞る。
   const { data: ledger } = await db
     .from("fflogs_report_syncs")
@@ -314,8 +329,22 @@ export async function syncFflogsFights(opts?: {
     const sessionDate =
       ref.sessionDate ?? jstYmdString(new Date(res.startMs));
 
-    if (res.fights.length > 0) {
-      const rows = res.fights.map((f) => ({
+    // 2026-08-30: カテゴリごとの取り込み難易度フィルタ。FFLogs の
+    // difficulty はコンテンツ種別で値が変わり公開された対応表が無いため、
+    // **観測値ベース** (画面に出した実データから admin が下限を決める)。
+    // 未設定 (null) のカテゴリは従来どおり全て取り込む。
+    const minDifficulty =
+      categoryId !== null ? (minDifficultyByCategory.get(categoryId) ?? null) : null;
+    const acceptedFights =
+      minDifficulty === null
+        ? res.fights
+        : res.fights.filter(
+            (f) =>
+              typeof f.difficulty !== "number" || f.difficulty >= minDifficulty,
+          );
+
+    if (acceptedFights.length > 0) {
+      const rows = acceptedFights.map((f) => ({
         report_code: ref.code,
         fight_id: f.id,
         category_id: categoryId,
@@ -534,13 +563,23 @@ type Db =
  */
 async function collectReportRefs(db: Db): Promise<Map<string, ReportRef>> {
   const out = new Map<string, ReportRef>();
+  // 2026-08-30: 誤取り込みで除外したレポートは候補から外す。動画リンクや
+  // 日付ログから参照され続けるため、ここで弾かないと毎回復活する。
+  const { data: blocked } = await db
+    .from("fflogs_report_blocklist")
+    .select("report_code");
+  const blockedCodes = new Set(
+    ((blocked ?? []) as Array<{ report_code: string }>).map(
+      (r) => r.report_code,
+    ),
+  );
   const put = (
     url: string | null,
     categoryId: string | null,
     sessionDate: string | null,
   ) => {
     const code = parseFflogsReportCode(url);
-    if (!code) return;
+    if (!code || blockedCodes.has(code)) return;
     const prev = out.get(code);
     if (prev) {
       // 情報は足し算 (video リンクから category、セッションから日付)。

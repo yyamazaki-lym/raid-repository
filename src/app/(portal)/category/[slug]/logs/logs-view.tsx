@@ -14,6 +14,8 @@ import {
   RefreshCw,
   ShieldAlert,
   Skull,
+  SlidersHorizontal,
+  Trash2,
   Trophy,
   Video,
 } from "lucide-react";
@@ -58,11 +60,14 @@ import { isSavageContent, isUltimateContent } from "@/lib/content-groups";
 import { humanizeFflogsSyncReason } from "@/lib/fflogs-sync-reason";
 import type { ReportVideoLink } from "@/lib/supabase/fflogs-fights";
 import {
+  deleteFflogsReportAction,
   importFflogsReportsAction,
+  setCategoryMinDifficultyAction,
   setReportVideoAction,
   suggestVideoForReportAction,
   syncFflogsFightsAction,
 } from "@/lib/server/fflogs-fights-actions";
+import { useConfirm } from "@/components/portal/confirm-dialog";
 import {
   extractFflogsReportCodes,
   FFLOGS_REPORT_LINKS_BOOKMARKLET,
@@ -83,7 +88,9 @@ import { Textarea } from "@/components/ui/textarea";
  * 表示するのは PT としての到達度のみ。個人 DPS は集計も表示もしない。
  */
 export function LogsView({
+  categoryId,
   categoryName,
+  minDifficulty,
   fights,
   totalPulls,
   totalClears,
@@ -92,7 +99,10 @@ export function LogsView({
   failedSyncs,
   canEdit,
 }: {
+  categoryId: string;
   categoryName: string;
+  /** 取り込み難易度の下限 (null = 制限なし)。 */
+  minDifficulty: number | null;
   /** 明細。件数が多いカテゴリでは直近分だけが渡る (`truncated`)。 */
   fights: FightRow[];
   /** カテゴリ全体の pull 数 / クリア数 (明細が打ち切られていても正確)。 */
@@ -108,7 +118,15 @@ export function LogsView({
   canEdit: boolean;
 }) {
   const router = useRouter();
+  const confirm = useConfirm();
   const [syncing, startSync] = useTransition();
+  // 2026-08-30 実機報告「ノーマルのものを登録してしまった際に削除できない」。
+  const [deletingCode, setDeletingCode] = useState<string | null>(null);
+  const [difficultyOpen, setDifficultyOpen] = useState(false);
+  const [difficultyDraft, setDifficultyDraft] = useState(
+    minDifficulty === null ? "" : String(minDifficulty),
+  );
+  const [savingDifficulty, startSaveDifficulty] = useTransition();
   // 直近の手動同期で取得に失敗した report とその理由。失敗行はカテゴリ別の
   // ページにしか表示されず「どこで見ればいいか分からない」ため (2026-08-28
   // 実機報告)、同期を実行したその場にも表示する。
@@ -202,6 +220,42 @@ export function LogsView({
     null,
   );
 
+
+  // 取り込み済みの難易度の内訳 (2026-08-30)。FFLogs の difficulty は
+  // コンテンツ種別で値が変わり公開仕様が無いため、**実データを見せて**
+  // admin に下限を選んでもらう。混入したノーマルは値が違うので判別できる。
+  const difficultyStats = useMemo(() => {
+    const m = new Map<number, { count: number; sample: string | null }>();
+    for (const f of fights) {
+      if (f.difficulty === null) continue;
+      const cur = m.get(f.difficulty);
+      if (cur) cur.count += 1;
+      else m.set(f.difficulty, { count: 1, sample: f.name ?? null });
+    }
+    return [...m.entries()]
+      .map(([difficulty, v]) => ({ difficulty, ...v }))
+      .sort((a, b) => a.difficulty - b.difficulty);
+  }, [fights]);
+
+  const onDeleteReport = async (code: string) => {
+    const ok = await confirm({
+      title: `レポート ${code.slice(0, 8)} を練習ログから削除しますか？`,
+      description:
+        "このレポートの pull をすべて削除し、以後の同期でも取り込まないようにします (設定から解除できます)。",
+      confirmText: "削除",
+      destructive: true,
+    });
+    if (!ok) return;
+    setDeletingCode(code);
+    const r = await deleteFflogsReportAction(code, "誤取り込み");
+    setDeletingCode(null);
+    if (!r.ok) {
+      toast.error("削除失敗: " + r.reason);
+      return;
+    }
+    toast.success(`${r.removedFights} pull を削除し、今後は取り込みません`);
+    router.refresh();
+  };
 
   const timeline = useMemo(
     () => progressTimeline(summary.days, floors),
@@ -401,6 +455,130 @@ export function LogsView({
     </Dialog>
   );
 
+  const difficultyButton = canEdit ? (
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      onClick={() => setDifficultyOpen(true)}
+      className="gap-1.5 text-[11px] tracking-normal"
+      title="取り込む難易度の下限を設定 (ノーマル混入の防止)"
+    >
+      <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden />
+      取り込み設定
+    </Button>
+  ) : null;
+
+  const difficultyDialog = (
+    <Dialog
+      open={difficultyOpen}
+      onOpenChange={(open) => {
+        if (!open) setDifficultyOpen(false);
+      }}
+    >
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>取り込む難易度の下限</DialogTitle>
+          <DialogDescription>
+            ノーマルなど別難易度のレポートを取り込まないようにできます。
+            FFLogs の難易度は数値で、コンテンツ種別によって値が変わります
+            (公開された対応表がありません)。
+            <strong>下の実測値を見て</strong>、残したい難易度の最小値を
+            入れてください。空にすると制限なしに戻ります。
+          </DialogDescription>
+        </DialogHeader>
+        <div className="flex flex-col gap-3">
+          <div className="rounded-md border border-border/40 bg-secondary/15 px-3 py-2">
+            <p className="font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase">
+              取り込み済みの難易度
+            </p>
+            {difficultyStats.length === 0 ? (
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                難易度が記録された pull がまだありません
+              </p>
+            ) : (
+              <ul className="mt-1 flex flex-col gap-0.5">
+                {difficultyStats.map((d) => (
+                  <li
+                    key={d.difficulty}
+                    className="flex items-center gap-2 text-[11px]"
+                  >
+                    <span className="font-mono tabular-nums text-foreground/90">
+                      {d.difficulty}
+                    </span>
+                    <span className="text-muted-foreground">
+                      {d.count} pull
+                    </span>
+                    {d.sample && (
+                      <span className="min-w-0 truncate text-muted-foreground/80">
+                        {d.sample}
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="min-difficulty">下限 (空 = 制限なし)</Label>
+            <Input
+              id="min-difficulty"
+              value={difficultyDraft}
+              inputMode="numeric"
+              placeholder="例: 101"
+              onChange={(e) => setDifficultyDraft(e.target.value)}
+            />
+            <p className="text-[11px] text-muted-foreground">
+              既に取り込んだ pull はこの設定では消えません。個別のレポートは
+              日ごとの一覧にあるゴミ箱から削除してください。
+            </p>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={() => setDifficultyOpen(false)}
+            disabled={savingDifficulty}
+          >
+            キャンセル
+          </Button>
+          <Button
+            type="button"
+            disabled={savingDifficulty}
+            onClick={() => {
+              const trimmed = difficultyDraft.trim();
+              const value = trimmed === "" ? null : Number.parseInt(trimmed, 10);
+              if (value !== null && !Number.isInteger(value)) {
+                toast.error("数値で入力してください");
+                return;
+              }
+              startSaveDifficulty(async () => {
+                const r = await setCategoryMinDifficultyAction(
+                  categoryId,
+                  value,
+                );
+                if (!r.ok) {
+                  toast.error("保存失敗: " + r.reason);
+                  return;
+                }
+                toast.success(
+                  value === null
+                    ? "難易度の制限を解除しました"
+                    : `難易度 ${value} 未満を取り込まないようにしました`,
+                );
+                setDifficultyOpen(false);
+                router.refresh();
+              });
+            }}
+          >
+            {savingDifficulty ? "保存中..." : "保存"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+
   const syncButton = canEdit ? (
     <Button
       type="button"
@@ -507,6 +685,7 @@ export function LogsView({
           </span>
         </div>
         <span className="flex items-center gap-2">
+          {difficultyButton}
           {importButton}
           {syncButton}
         </span>
@@ -524,6 +703,7 @@ export function LogsView({
       </header>
 
       {importDialog}
+      {difficultyDialog}
 
       {lastSyncFailuresBlock}
 
@@ -657,7 +837,16 @@ export function LogsView({
                   ) : (
                     <>
                       {floors && t.bestFloor !== null && (
-                        <span className="text-foreground/70">
+                        // 2026-08-30 実機要望「右側の 1層 / 2層 なども層ごとに
+                        // 色分けしたい」。チップの識別色と同じ色相をテキストに
+                        // 当てる (背景まで付けると行が窮屈になるため文字色のみ)。
+                        <span
+                          className={
+                            FLOOR_TEXT_TONE[
+                              floors.displayFloorByIndex.get(t.bestFloor) ?? 0
+                            ] ?? "text-foreground/70"
+                          }
+                        >
                           {floorLabel(floors, t.bestFloor)}{" "}
                         </span>
                       )}
@@ -753,6 +942,8 @@ export function LogsView({
               key={day.date}
               day={day}
               jumpNonce={jump?.date === day.date ? jump.nonce : null}
+              onDeleteReport={canEdit ? onDeleteReport : undefined}
+              deletingCode={deletingCode}
               videoLinks={videoLinks}
               canEdit={canEdit}
               showPhase={showPhase}
@@ -796,6 +987,18 @@ export function LogsView({
   );
 }
 
+/**
+ * 層ラベルの文字色 (2026-08-30)。`floorToneClass` と同じ色相の text のみ版。
+ * 4層は前半/後半で分けたいが、ここは日ごとの最深層 (index) しか無いので
+ * 表示層番号ベース。前半/後半の区別は行内の層チップ側で付く。
+ */
+const FLOOR_TEXT_TONE: Record<number, string> = {
+  1: "text-sky-200",
+  2: "text-teal-200",
+  3: "text-violet-200",
+  4: "text-rose-200",
+};
+
 function StatCard({
   label,
   value,
@@ -833,6 +1036,8 @@ function StatCard({
 function DayRow({
   day,
   jumpNonce,
+  onDeleteReport,
+  deletingCode,
   videoLinks,
   canEdit,
   showPhase,
@@ -846,6 +1051,9 @@ function DayRow({
    * (自分の日でなければ null)。値が変わったら開く。
    */
   jumpNonce: number | null;
+  /** admin のみ: このレポートを練習ログから削除する。 */
+  onDeleteReport?: (reportCode: string) => void;
+  deletingCode: string | null;
   videoLinks: Record<string, ReportVideoLink>;
   canEdit: boolean;
   showPhase: boolean;
@@ -953,8 +1161,8 @@ function DayRow({
                 動画オフセット
               </span>
               {codes.map((code) => (
+                <span key={code} className="inline-flex items-center gap-0.5">
                 <button
-                  key={code}
                   type="button"
                   onClick={() => onEditOffset(code)}
                   className={
@@ -968,6 +1176,22 @@ function DayRow({
                   <Video className="h-3 w-3" aria-hidden />
                   {code.slice(0, 6)}
                 </button>
+                {/* 2026-08-30: 誤って取り込んだレポート (ノーマル等) を
+                    ここから消せるようにする。削除 = pull を消したうえで
+                    以後の同期でも取り込まない (除外リスト行き)。 */}
+                {onDeleteReport && (
+                  <button
+                    type="button"
+                    onClick={() => onDeleteReport(code)}
+                    disabled={deletingCode === code}
+                    aria-label={`レポート ${code} を練習ログから削除`}
+                    title="このレポートを練習ログから削除 (以後も取り込まない)"
+                    className="inline-flex h-5 w-5 items-center justify-center rounded text-rose-300/80 transition-colors hover:bg-rose-500/15 hover:text-rose-200 disabled:opacity-40"
+                  >
+                    <Trash2 className="h-3 w-3" aria-hidden />
+                  </button>
+                )}
+                </span>
               ))}
             </div>
           )}
