@@ -19,6 +19,7 @@ import {
   deleteNativeSessionLogsUrl,
 } from "@/lib/server/categories-actions";
 import type { SessionLogEntry } from "@/lib/schedule/session-logs";
+import { fflogsLogDedupeKey } from "@/lib/fflogs-url";
 import { safeHref } from "@/lib/url-safe";
 import { useConfirm } from "@/components/portal/confirm-dialog";
 
@@ -121,12 +122,15 @@ export function NativeFflogsLinkPopover({
       );
       return;
     }
-    // UNIQUE 衝突を up-front guard (server もガード、UX のため二重化)。
+    // 重複を up-front guard (server もガード、UX のため二重化)。
+    // 2026-08-30: 文字列一致ではなくレポートコード単位で比較 (#fight 等の
+    // 表記揺れも同一レポート扱い、server 側のガードと同基準)。
+    const valueKey = fflogsLogDedupeKey(value) ?? value;
     if (
-      sessionLogs.some((s) => s.url === value) ||
-      optimisticAdds.some((e) => e.url === value)
+      sessionLogs.some((s) => (fflogsLogDedupeKey(s.url) ?? s.url) === valueKey) ||
+      optimisticAdds.some((e) => (fflogsLogDedupeKey(e.url) ?? e.url) === valueKey)
     ) {
-      toast.error("同じ URL が既に紐付いています");
+      toast.error("同じレポートの URL が既に紐付いています");
       return;
     }
     const tempId = `__optimistic-${Date.now()}-${Math.random()}`;

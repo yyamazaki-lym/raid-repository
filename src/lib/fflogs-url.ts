@@ -44,6 +44,23 @@ export function parseFflogsReportCode(
   return REPORT_ROUTE_WORDS.has(code.toLowerCase()) ? null : code;
 }
 
+/**
+ * Logs URL の「同一レポート判定」キー (2026-08-30、08/29 二重取り込み対策)。
+ *
+ * 同じレポートでも URL 文字列は `#fight=3` / `?fight=last` / `ja.` サブ
+ * ドメインなどで揺れる。素の文字列比較で dedup / UNIQUE(raw_date, url)
+ * すると同一レポートが 2 件として取り込まれるため、比較はこのキーで行う:
+ *   - レポート URL として解釈できれば `report:<code>` (揺れを吸収)
+ *   - できなければ trim した URL そのまま (非 fflogs URL の従来挙動を維持)
+ */
+export function fflogsLogDedupeKey(url: string | null | undefined): string | null {
+  if (!url) return null;
+  const trimmed = url.trim();
+  if (!trimmed) return null;
+  const code = parseFflogsReportCode(trimmed);
+  return code ? `report:${code}` : trimmed;
+}
+
 /** `/reports/` 直下に現れる、レポートコードではないルート語。 */
 const REPORT_ROUTE_WORDS = new Set([
   "compare",

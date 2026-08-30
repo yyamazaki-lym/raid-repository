@@ -9,6 +9,8 @@ import { extractDateFromTitle } from "@/lib/title-date";
 import type { SessionLogEntry } from "@/lib/schedule/session-logs";
 import { bridgeAllManualSessionLogsToVideos } from "./session-logs-video-bridge";
 import { getValidFflogsOAuthToken } from "./fflogs-oauth";
+import { parseFflogsReportCode } from "@/lib/fflogs-url";
+import { jstYmdKey, resolveVideoJstYmd } from "@/lib/video-jst-date";
 import {
   buildFflogsReportsListUrl,
   buildFflogsScrapeHeaders,
@@ -1289,10 +1291,20 @@ export async function linkFflogsReportsToVideos(opts?: {
   // session AND a native session for the same raid night). TODO #73
   // (2.5, 2026-06-10): native session linker added in parallel.
   const supabase = await newWriteClient();
+  // 2026-08-30 (08/29 二重取り込み対策): auto wipe 後に残った既存リンク
+  // (= manual 由来: 動画編集 dialog / 練習ログ URL インポートの橋渡し /
+  // 日付 popover 登録) のレポートコードを日毎に集計し、リンカーへ渡す。
+  //   - session linker: 同日動画が既に別コードのレポートを持つ日には
+  //     auto 行を追加しない (同じコードなら追加可 — 表示は dedup される)。
+  //     動画とスケジュール行で別レポートが並ぶ「Logs 2 個」を防ぐ。
+  //   - video linker: 同日の登録済み session log と同じコードのレポートを
+  //     同点候補の中で優先し、両者が同じレポートに収束するようにする。
+  const { videoCodesByDay, sessionCodesByDay } =
+    await fetchExistingLogCodesByDay(supabase);
   const [videoResult, sessionResult, nativeSessionResult] = await Promise.all([
-    linkReportsToVideos(supabase, reports),
-    linkReportsToSessions(supabase, reports),
-    linkReportsToNativeSessions(supabase, reports),
+    linkReportsToVideos(supabase, reports, sessionCodesByDay),
+    linkReportsToSessions(supabase, reports, videoCodesByDay),
+    linkReportsToNativeSessions(supabase, reports, videoCodesByDay),
   ]);
 
   // 第4ステップ (2026-07-12): 日付登録された manual session logs → 同日の
@@ -1389,6 +1401,118 @@ export async function linkFflogsReportsToVideos(opts?: {
 }
 
 type SupabaseLike = Awaited<ReturnType<typeof createClient>>;
+
+/** dayKey → codes マップへ 1 件追加する内部ヘルパー。 */
+function addLogCodeForDay(
+  map: Map<string, Set<string>>,
+  dayKey: string | null,
+  url: string | null,
+) {
+  if (!dayKey || !url) return;
+  const code = parseFflogsReportCode(url);
+  if (!code) return;
+  const set = map.get(dayKey);
+  if (set) set.add(code);
+  else map.set(dayKey, new Set([code]));
+}
+
+/**
+ * 動画 (`category_links.logs_url`) に紐づくレポートコードを JST 暦日毎に
+ * 集計する。auto リンカーの競合防止と、dedupeSessionLogs (重複 Logs 整理)
+ * の両方から使うため export。SELECT 失敗は空 Map で graceful degrade。
+ */
+export async function fetchVideoLogCodesByDay(
+  supabase: SupabaseLike,
+): Promise<Map<string, Set<string>>> {
+  const videoCodesByDay = new Map<string, Set<string>>();
+  try {
+    const { data } = await supabase
+      .from("category_links")
+      .select("title, posted_at, logs_url")
+      .eq("kind", "video")
+      .not("logs_url", "is", null);
+    for (const v of (data ?? []) as {
+      title: string | null;
+      posted_at: string | null;
+      logs_url: string | null;
+    }[]) {
+      const ymd = resolveVideoJstYmd(v.title, v.posted_at);
+      addLogCodeForDay(videoCodesByDay, ymd ? jstYmdKey(ymd) : null, v.logs_url);
+    }
+  } catch (e) {
+    console.warn("[fflogs] fetchVideoLogCodesByDay failed:", e);
+  }
+  return videoCodesByDay;
+}
+
+/**
+ * 2026-08-30 (08/29 二重取り込み対策): 既存 Logs リンクのレポートコードを
+ * JST 暦日毎に集計する。auto wipe 直後に呼ぶ想定なので、残っているのは
+ * manual 由来のリンクのみ (truncated run では auto も残るが、その場合も
+ * 「既存リンクと矛盾する auto を足さない」方向にしか働かないので安全)。
+ *
+ *   - videoCodesByDay:   `category_links.logs_url` (kind='video')。
+ *     暦日は表示系と同じ resolveVideoJstYmd (タイトル日付優先 →
+ *     posted_at fallback)。
+ *   - sessionCodesByDay: `schedule_past_session_logs` +
+ *     `native_schedule_session_logs` を親の parsed_date で暦日化。
+ *
+ * SELECT 失敗は空 Map で graceful degrade (従来挙動のまま進む)。
+ */
+async function fetchExistingLogCodesByDay(supabase: SupabaseLike): Promise<{
+  videoCodesByDay: Map<string, Set<string>>;
+  sessionCodesByDay: Map<string, Set<string>>;
+}> {
+  const sessionCodesByDay = new Map<string, Set<string>>();
+  const add = addLogCodeForDay;
+  let videoCodesByDay = new Map<string, Set<string>>();
+  try {
+    const [videoMap, logs, parents, nlogs, nparents] = await Promise.all([
+      fetchVideoLogCodesByDay(supabase),
+      supabase.from("schedule_past_session_logs").select("raw_date, url"),
+      supabase.from("schedule_past_sessions").select("raw_date, parsed_date"),
+      supabase
+        .from("native_schedule_session_logs")
+        .select("native_session_id, url"),
+      supabase.from("native_schedule_sessions").select("id, parsed_date"),
+    ]);
+    videoCodesByDay = videoMap;
+    const parsedByRawDate = new Map(
+      ((parents.data ?? []) as { raw_date: string; parsed_date: string }[]).map(
+        (p) => [p.raw_date, p.parsed_date],
+      ),
+    );
+    for (const l of (logs.data ?? []) as { raw_date: string; url: string }[]) {
+      const parsed = parsedByRawDate.get(l.raw_date);
+      const ms = parsed ? new Date(parsed).getTime() : NaN;
+      add(
+        sessionCodesByDay,
+        Number.isFinite(ms) ? jstYmdKey(jstCalendarDate(ms)) : null,
+        l.url,
+      );
+    }
+    const parsedByNativeId = new Map(
+      ((nparents.data ?? []) as { id: string; parsed_date: string }[]).map(
+        (p) => [p.id, p.parsed_date],
+      ),
+    );
+    for (const l of (nlogs.data ?? []) as {
+      native_session_id: string;
+      url: string;
+    }[]) {
+      const parsed = parsedByNativeId.get(l.native_session_id);
+      const ms = parsed ? new Date(parsed).getTime() : NaN;
+      add(
+        sessionCodesByDay,
+        Number.isFinite(ms) ? jstYmdKey(jstCalendarDate(ms)) : null,
+        l.url,
+      );
+    }
+  } catch (e) {
+    console.warn("[fflogs] fetchExistingLogCodesByDay failed:", e);
+  }
+  return { videoCodesByDay, sessionCodesByDay };
+}
 
 // 1.9.17: extractDateFromTitle moved to `@/lib/title-date.ts`. The
 // import at the top of this file replaces the previous local copy so
@@ -1513,6 +1637,10 @@ function contentMismatchPenalty(
 async function linkReportsToVideos(
   supabase: SupabaseLike,
   reports: FflogsReport[],
+  // 2026-08-30: 日付側に登録済みの Logs コード (JST 暦日キー → codes)。
+  // 同点候補の中で「日付と同じレポート」を優先し、動画とスケジュール行が
+  // 別レポートに割れて Logs アイコンが 2 個並ぶのを防ぐ。
+  sessionCodesByDay?: Map<string, Set<string>>,
 ): Promise<{
   scanned: number;
   matched: number;
@@ -1649,6 +1777,14 @@ async function linkReportsToVideos(
   ): { score: number } => {
     const reportDate = jstCalendarDate(report.startMs);
     if (!sameJstDay(video.titleDate, reportDate)) return { score: Infinity };
+    // 2026-08-30: 同日の日付登録 Logs と同じレポートなら小ボーナス。
+    // 信頼度ティア (確信 0 / 曖昧 1) は跨がない大きさ (-0.25) で、
+    // 同ティア内の同日複数レポートから日付側と同じものを選ばせる。
+    const agreeBonus = sessionCodesByDay
+      ?.get(jstYmdKey(video.titleDate))
+      ?.has(report.id)
+      ? -0.25
+      : 0;
     // 2.1 (2026-04-29) TODO #45: カスタムマッチワード override。
     // カテゴリ編集で設定したキーワードが report の zoneName / title に
     // 部分一致 (大小文字無視) すれば cross-group reject を override
@@ -1660,7 +1796,7 @@ async function linkReportsToVideos(
         .join(" ")
         .toLowerCase();
       if (video.matchKeywords.some((kw) => reportText.includes(kw))) {
-        return { score: 0 };
+        return { score: 0 + agreeBonus };
       }
     }
     const mismatch = contentMismatchPenalty(
@@ -1673,7 +1809,7 @@ async function linkReportsToVideos(
     // Same JST day. Confident-match (mismatch=0) beats ambiguous (0.5).
     // Within same tier: rely on greedy global pair sort + ordering by
     // report.startMs for stability.
-    return { score: mismatch === 0.5 ? 1 : 0 };
+    return { score: (mismatch === 0.5 ? 1 : 0) + agreeBonus };
   };
 
   // Build all candidate (video, report) tuples and assign greedily.
@@ -1795,6 +1931,13 @@ type MatchingSession<T extends string> = {
 function matchReportsToSessions<T extends string>(
   reports: FflogsReport[],
   sessions: MatchingSession<T>[],
+  // 2026-08-30 (08/29 二重取り込み対策): 同日動画に既に紐づいている
+  // レポートコード (JST 暦日キー → codes)。その日に動画側リンクが存在する
+  // 場合、**同じコードのレポートだけ** を候補にする — 別レポートを auto で
+  // 足すと、日付行の Logs 候補 (動画 logsUrl + session logs の和集合) に
+  // 2 個並ぶため。動画と同コードなら追加しても表示は dedup されるので許容
+  // (練習ログの session_date 属性付けには引き続き有用)。
+  videoCodesByDay?: Map<string, Set<string>>,
 ): Array<{ session: MatchingSession<T>; report: FflogsReport }> {
   const sameJstDay = (
     a: { y: number; m: number; d: number },
@@ -1808,9 +1951,12 @@ function matchReportsToSessions<T extends string>(
   const pairs: SPair[] = [];
   for (const s of sessions) {
     const sJst = jstCalendarDate(s.tMs);
+    const dayVideoCodes = videoCodesByDay?.get(jstYmdKey(sJst));
     for (const r of reports) {
       const rJst = jstCalendarDate(r.startMs);
       if (!sameJstDay(sJst, rJst)) continue;
+      if (dayVideoCodes && dayVideoCodes.size > 0 && !dayVideoCodes.has(r.id))
+        continue;
       pairs.push({
         session: s,
         report: r,
@@ -1870,6 +2016,7 @@ function buildSessionLinkDetail<T extends string>(
 async function linkReportsToSessions(
   supabase: SupabaseLike,
   reports: FflogsReport[],
+  videoCodesByDay?: Map<string, Set<string>>,
 ): Promise<{
   scanned: number;
   matched: number;
@@ -1916,7 +2063,7 @@ async function linkReportsToSessions(
     .filter((s): s is MatchingSession<string> => s !== null)
     .sort((a, b) => a.tMs - b.tMs);
 
-  const pairs = matchReportsToSessions(reports, sortedSessions);
+  const pairs = matchReportsToSessions(reports, sortedSessions, videoCodesByDay);
 
   const details: FflogsLinkDetail[] = [];
   let matched = 0;
@@ -1980,6 +2127,7 @@ async function linkReportsToSessions(
 async function linkReportsToNativeSessions(
   supabase: SupabaseLike,
   reports: FflogsReport[],
+  videoCodesByDay?: Map<string, Set<string>>,
 ): Promise<{
   scanned: number;
   matched: number;
@@ -2017,7 +2165,7 @@ async function linkReportsToNativeSessions(
     .filter((s): s is MatchingSession<string> => s !== null)
     .sort((a, b) => a.tMs - b.tMs);
 
-  const pairs = matchReportsToSessions(reports, sortedSessions);
+  const pairs = matchReportsToSessions(reports, sortedSessions, videoCodesByDay);
 
   const details: FflogsLinkDetail[] = [];
   let matched = 0;

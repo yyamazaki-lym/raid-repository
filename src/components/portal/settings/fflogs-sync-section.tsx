@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import {
   BarChart3,
+  CopyMinus,
   Save,
   Link2,
   Loader2,
@@ -15,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import {
+  dedupeSessionLogs,
   disconnectFflogsOAuthAction,
   fetchFflogsOAuthStatus,
   getFflogsCronEnabled,
@@ -116,6 +118,12 @@ export function FflogsSyncSection({
   const [logsResult, setLogsResult] = useState<FflogsLinkResultLite | null>(
     null,
   );
+  // 2026-08-30: 重複 Logs 整理 (dedupeSessionLogs)。自動判断できず残った
+  // 競合 (同一日付に別レポートの manual 行など) はボタン下に列挙する。
+  const [dedupingLogs, startDedupeLogs] = useTransition();
+  const [dedupeConflicts, setDedupeConflicts] = useState<
+    Array<{ label: string; urls: string[] }> | null
+  >(null);
   // FFLogs OAuth state — fetched from server when dialog opens. Lets
   // us show "Connected as XYZ" vs "Connect" in the OAuth section.
   const [oauthStatus, setOauthStatus] = useState<{
@@ -206,6 +214,27 @@ export function FflogsSyncSection({
       // 連動完了直後 — session cookie は使われていれば server 側で
       // 自動削除されているはず。UI のステータスを再フェッチ。
       void getFflogsSessionCookieStatus().then((s) => setCookieStatus(s));
+      router.refresh();
+    });
+  };
+
+  const onDedupeLogs = () => {
+    setDedupeConflicts(null);
+    startDedupeLogs(async () => {
+      const r = await dedupeSessionLogs();
+      if (!r.ok) {
+        toast.error("重複 Logs 整理失敗: " + r.reason);
+        return;
+      }
+      const removed = r.duplicateRowsRemoved + r.videoConflictRowsRemoved;
+      toast.success(
+        removed > 0
+          ? `重複 Logs を ${removed} 件削除しました (同一レポートの重複 ${r.duplicateRowsRemoved} / 同日動画と競合する auto ${r.videoConflictRowsRemoved})`
+          : "削除対象の重複 Logs はありませんでした",
+      );
+      setDedupeConflicts(
+        r.remainingConflicts.length > 0 ? r.remainingConflicts : null,
+      );
       router.refresh();
     });
   };
@@ -581,7 +610,41 @@ export function FflogsSyncSection({
                 )}
                 {linkingLogs ? "連動中…" : "FFLogs と動画を連動"}
               </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={onDedupeLogs}
+                disabled={dedupingLogs}
+                className="gap-1.5 text-[11px] tracking-normal"
+                title="同じ日に複数の Logs が取り込まれている場合に整理します (同一レポートの表記揺れ重複と、同日動画と食い違う auto 行を削除)"
+              >
+                {dedupingLogs ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                ) : (
+                  <CopyMinus className="h-3.5 w-3.5" aria-hidden />
+                )}
+                {dedupingLogs ? "整理中…" : "重複 Logs を整理"}
+              </Button>
             </div>
+            {dedupeConflicts && dedupeConflicts.length > 0 && (
+              <div className="flex flex-col gap-1 rounded-sm border border-amber-400/30 bg-amber-400/5 px-2.5 py-1.5 text-[11px] leading-relaxed">
+                <p className="text-amber-200/90">
+                  ⚠ 自動では判断できない競合が {dedupeConflicts.length} 日分
+                  残っています — 日付のメモから不要な URL を個別に削除してください
+                </p>
+                <ul className="ml-2 flex flex-col gap-0.5 text-[10px] text-muted-foreground">
+                  {dedupeConflicts.slice(0, 5).map((c) => (
+                    <li key={c.label} className="truncate" title={c.urls.join("\n")}>
+                      {c.label} — {c.urls.length} 件の Logs
+                    </li>
+                  ))}
+                  {dedupeConflicts.length > 5 && (
+                    <li>ほか {dedupeConflicts.length - 5} 日分</li>
+                  )}
+                </ul>
+              </div>
+            )}
             {logsResult && (
               <div className="relative flex flex-col gap-0.5 rounded-sm border border-border/40 bg-secondary/20 px-2.5 py-1.5 pr-7 text-[11px] leading-relaxed">
                 <button

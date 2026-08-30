@@ -35,6 +35,7 @@ import {
   deleteSessionLogsUrl,
 } from "@/lib/server/categories-actions";
 import type { SessionLogEntry } from "@/lib/schedule/session-logs";
+import { fflogsLogDedupeKey } from "@/lib/fflogs-url";
 import { safeHref } from "@/lib/url-safe";
 import { DeleteConfirmModal } from "./schedule/session-memo-delete-modal";
 import { formatRelativeTime } from "@/lib/schedule/time-formatters";
@@ -431,12 +432,15 @@ function MemoList({
     const value = newLogsInput.trim();
     if (!value) return;
     // Duplicate guard up-front so we don't show an optimistic row that
-    // we know the server will reject (UNIQUE constraint).
+    // we know the server will reject. 2026-08-30: 文字列一致ではなく
+    // レポートコード単位で比較 (#fight 等の表記揺れも同一レポート扱い、
+    // server 側 addSessionLogsUrl のガードと同基準)。
+    const valueKey = fflogsLogDedupeKey(value) ?? value;
     if (
-      sessionLogs.some((s) => s.url === value) ||
-      optimisticAdds.some((e) => e.url === value)
+      sessionLogs.some((s) => (fflogsLogDedupeKey(s.url) ?? s.url) === valueKey) ||
+      optimisticAdds.some((e) => (fflogsLogDedupeKey(e.url) ?? e.url) === valueKey)
     ) {
-      toast.error("同じ URL が既に紐付いています");
+      toast.error("同じレポートの URL が既に紐付いています");
       return;
     }
     const tempId = `__optimistic-${Date.now()}-${Math.random()}`;

@@ -9,6 +9,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { fflogsLogDedupeKey } from "@/lib/fflogs-url";
 import { safeHref } from "@/lib/url-safe";
 import { useScrollClosingMenu } from "@/lib/use-scroll-closing-menu";
 import type { SessionLogEntry } from "@/lib/schedule/session-logs";
@@ -146,13 +147,17 @@ export function SessionActionIcons({
   }
 
   // -- Logs slot: Logs URL 候補 (動画の logsUrl 集約 + sessionLogs[])
-  // を URL で dedup し、出現順を維持 --
+  // をレポートコード単位で dedup し、出現順を維持 --
+  // 2026-08-30: 素の URL 文字列 dedup だと同一レポートの表記揺れ
+  // (#fight アンカー / ja. サブドメイン等) が別候補として 2 個並ぶため、
+  // fflogsLogDedupeKey (report code 抽出) で同一視する。
   const logsCandidates: { url: string; label: string }[] = [];
   const seen = new Set<string>();
   for (const v of videoLinks) {
     const safe = safeHref(v.logsUrl);
-    if (!safe || seen.has(safe)) continue;
-    seen.add(safe);
+    const key = fflogsLogDedupeKey(safe) ?? safe;
+    if (!safe || !key || seen.has(key)) continue;
+    seen.add(key);
     logsCandidates.push({
       url: safe,
       label: `${v.categoryName} / ${v.videoTitle}`,
@@ -160,8 +165,9 @@ export function SessionActionIcons({
   }
   for (const entry of sessionLogs) {
     const safe = safeHref(entry.url);
-    if (!safe || seen.has(safe)) continue;
-    seen.add(safe);
+    const key = fflogsLogDedupeKey(safe) ?? safe;
+    if (!safe || !key || seen.has(key)) continue;
+    seen.add(key);
     logsCandidates.push({
       url: safe,
       label:

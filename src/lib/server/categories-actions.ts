@@ -18,6 +18,7 @@ import {
 import { getScheduleSourceMode } from "@/lib/schedule/source-mode";
 import { runScheduleSnapshot } from "./schedule-snapshot";
 import {
+  fetchVideoLogCodesByDay,
   linkFflogsReportsToVideos,
   type FflogsLinkResult,
 } from "./fflogs";
@@ -82,6 +83,8 @@ import {
 } from "./discord-roles";
 import { assertAdminResult } from "./auth";
 import { dbError } from "./db-error";
+import { fflogsLogDedupeKey, parseFflogsReportCode } from "@/lib/fflogs-url";
+import { jstYmdKey, toJstYmd } from "@/lib/video-jst-date";
 import {
   rowToCategory,
   type Category,
@@ -1145,6 +1148,30 @@ export async function addSessionLogsUrl(
     insertedParent = true;
   }
 
+  // 2026-08-30 (08/29 二重取り込み対策): UNIQUE(raw_date, url) は文字列
+  // 完全一致しか弾けず、同一レポートの表記揺れ (#fight アンカー等) が
+  // 別行として通ってしまう。挿入前にレポートコード単位で既存行と照合する
+  // (check→insert 間の並行挿入は残るが best-effort で許容。取りこぼしは
+  // dedupeSessionLogs の一括整理で回収できる)。
+  const newLogKey = fflogsLogDedupeKey(t);
+  const { data: sameDateRows } = await supabase
+    .from("schedule_past_session_logs")
+    .select("url")
+    .eq("raw_date", trimmedDate);
+  if (
+    (sameDateRows ?? []).some(
+      (r) => fflogsLogDedupeKey(r.url as string) === newLogKey,
+    )
+  ) {
+    // insertedParent の巻き戻しは不要: child 行が存在する = 親は既存
+    // だったはずなので、このガードに到達するとき insertedParent は false。
+    return {
+      ok: false,
+      reason:
+        "同じレポートの URL が既に紐付いています (#fight 等の表記違いは同一レポート扱いです)",
+    };
+  }
+
   const { data: inserted, error: logErr } = await supabase
     .from("schedule_past_session_logs")
     .insert({ raw_date: trimmedDate, url: t, source: "manual" })
@@ -1308,6 +1335,24 @@ export async function addNativeSessionLogsUrl(
   }
 
   const supabase = await createClient();
+  // 2026-08-30: sync 版 addSessionLogsUrl と同じレポートコード単位の
+  // 重複ガード (UNIQUE は文字列一致のみで表記揺れを弾けない)。
+  const newLogKey = fflogsLogDedupeKey(t);
+  const { data: sameSessionRows } = await supabase
+    .from("native_schedule_session_logs")
+    .select("url")
+    .eq("native_session_id", trimmedId);
+  if (
+    (sameSessionRows ?? []).some(
+      (r) => fflogsLogDedupeKey(r.url as string) === newLogKey,
+    )
+  ) {
+    return {
+      ok: false,
+      reason:
+        "同じレポートの URL が既に紐付いています (#fight 等の表記違いは同一レポート扱いです)",
+    };
+  }
   const { data, error } = await supabase
     .from("native_schedule_session_logs")
     .insert({
@@ -1412,6 +1457,240 @@ export async function deleteNativeSessionLogsUrl(
     // best-effort
   }
   return { ok: true, unbridgedVideos };
+}
+
+export type DedupeSessionLogsResult =
+  | {
+      ok: true;
+      /** 同一日付/セッション内で同一レポートの重複行を削除した数。 */
+      duplicateRowsRemoved: number;
+      /** 同日動画と別レポートだった auto 行を削除した数。 */
+      videoConflictRowsRemoved: number;
+      /**
+       * 自動では判断できず残した競合 (同一日付に別レポートの manual 行が
+       * 複数ある / manual 行が同日動画と別レポート)。日付 popover から
+       * 個別削除で解消してもらう。
+       */
+      remainingConflicts: Array<{ label: string; urls: string[] }>;
+    }
+  | { ok: false; reason: string };
+
+/**
+ * Server Action: 重複 Logs の一括整理 (2026-08-30、08/29 二重取り込み対策)。
+ *
+ * `schedule_past_session_logs` / `native_schedule_session_logs` を走査して
+ * 2 種類の重複を削除する:
+ *   (a) 同一日付 (sync) / 同一セッション (native) 内でレポートコードが
+ *       同じ行 — UNIQUE(…, url) は文字列一致しか弾けないため、#fight
+ *       アンカー等の表記揺れで同一レポートが複数行になったもの。
+ *       manual > auto、次いで created_at 最古を 1 行だけ残す。
+ *   (b) 同日の動画 (`category_links.logs_url`) と**別**レポートを指す
+ *       auto 行 — 日付行の Logs 候補は動画分と session logs の和集合の
+ *       ため、放置すると Logs アイコンが 2 個並ぶ。auto 行は再生成可能
+ *       (かつ auto リンカーにも同じ競合ガードを入れた) ので削除する。
+ * manual 行が絡む別コード競合はどちらが正か機械判断できないため削除せず
+ * `remainingConflicts` で返し、ユーザーに個別削除を促す。
+ */
+export async function dedupeSessionLogs(): Promise<DedupeSessionLogsResult> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
+  const supabase = await createClient();
+
+  const [videoCodesByDay, logsRes, parentsRes, nlogsRes, nparentsRes] =
+    await Promise.all([
+      fetchVideoLogCodesByDay(supabase),
+      supabase
+        .from("schedule_past_session_logs")
+        .select("id, raw_date, url, source, created_at"),
+      supabase.from("schedule_past_sessions").select("raw_date, parsed_date"),
+      supabase
+        .from("native_schedule_session_logs")
+        .select("id, native_session_id, url, source, created_at"),
+      supabase
+        .from("native_schedule_sessions")
+        .select("id, raw_date, parsed_date"),
+    ]);
+  if (logsRes.error)
+    return { ok: false, reason: dbError("logs 取得", logsRes.error) };
+  if (nlogsRes.error)
+    return { ok: false, reason: dbError("native logs 取得", nlogsRes.error) };
+
+  type LogRow = {
+    id: string;
+    url: string;
+    source: string;
+    createdAt: string;
+  };
+  type Group = {
+    /** 表示ラベル (raw_date)。 */
+    label: string;
+    /** 同日動画コード照合用の JST 暦日キー (parsed_date 不明なら null)。 */
+    dayKey: string | null;
+    rows: LogRow[];
+  };
+
+  const parsedByRawDate = new Map(
+    ((parentsRes.data ?? []) as { raw_date: string; parsed_date: string }[]).map(
+      (p) => [p.raw_date, p.parsed_date],
+    ),
+  );
+  const nativeParents = new Map(
+    (
+      (nparentsRes.data ?? []) as {
+        id: string;
+        raw_date: string;
+        parsed_date: string;
+      }[]
+    ).map((p) => [p.id, p]),
+  );
+  const toDayKey = (parsedDate: string | undefined): string | null => {
+    const ms = parsedDate ? new Date(parsedDate).getTime() : NaN;
+    return Number.isFinite(ms) ? jstYmdKey(toJstYmd(ms)) : null;
+  };
+
+  // sync は raw_date、native は native_session_id 単位でグループ化。
+  const syncGroups = new Map<string, Group>();
+  for (const r of (logsRes.data ?? []) as {
+    id: string;
+    raw_date: string;
+    url: string;
+    source: string;
+    created_at: string;
+  }[]) {
+    const g = syncGroups.get(r.raw_date) ?? {
+      label: r.raw_date,
+      dayKey: toDayKey(parsedByRawDate.get(r.raw_date)),
+      rows: [],
+    };
+    g.rows.push({
+      id: r.id,
+      url: r.url,
+      source: r.source,
+      createdAt: r.created_at,
+    });
+    syncGroups.set(r.raw_date, g);
+  }
+  const nativeGroups = new Map<string, Group>();
+  for (const r of (nlogsRes.data ?? []) as {
+    id: string;
+    native_session_id: string;
+    url: string;
+    source: string;
+    created_at: string;
+  }[]) {
+    const parent = nativeParents.get(r.native_session_id);
+    const g = nativeGroups.get(r.native_session_id) ?? {
+      label: parent?.raw_date ?? r.native_session_id,
+      dayKey: toDayKey(parent?.parsed_date),
+      rows: [],
+    };
+    g.rows.push({
+      id: r.id,
+      url: r.url,
+      source: r.source,
+      createdAt: r.created_at,
+    });
+    nativeGroups.set(r.native_session_id, g);
+  }
+
+  let duplicateRowsRemoved = 0;
+  let videoConflictRowsRemoved = 0;
+  const remainingConflicts: Array<{ label: string; urls: string[] }> = [];
+  const deleteIdsSync: string[] = [];
+  const deleteIdsNative: string[] = [];
+
+  const processGroups = (groups: Map<string, Group>, deleteIds: string[]) => {
+    for (const g of groups.values()) {
+      // (a) レポートコード単位で bucket 化し、各 bucket は 1 行だけ残す。
+      const buckets = new Map<string, LogRow[]>();
+      for (const row of g.rows) {
+        const key = fflogsLogDedupeKey(row.url) ?? row.url;
+        const b = buckets.get(key);
+        if (b) b.push(row);
+        else buckets.set(key, [row]);
+      }
+      const survivors: LogRow[] = [];
+      for (const rows of buckets.values()) {
+        const sorted = [...rows].sort((a, b) => {
+          // manual を優先して残す (auto は次回 sync で再生成できる)。
+          if (a.source !== b.source) return a.source === "manual" ? -1 : 1;
+          return a.createdAt < b.createdAt ? -1 : 1;
+        });
+        survivors.push(sorted[0]!);
+        for (const extra of sorted.slice(1)) {
+          deleteIds.push(extra.id);
+          duplicateRowsRemoved += 1;
+        }
+      }
+      // (b) 同日動画と別コードの auto 行は削除。manual 行は残して報告。
+      const dayVideoCodes = g.dayKey ? videoCodesByDay.get(g.dayKey) : undefined;
+      const kept: LogRow[] = [];
+      for (const row of survivors) {
+        const code = parseFflogsReportCode(row.url);
+        const conflictsVideo =
+          dayVideoCodes !== undefined &&
+          dayVideoCodes.size > 0 &&
+          (code === null || !dayVideoCodes.has(code));
+        if (conflictsVideo && row.source === "auto") {
+          deleteIds.push(row.id);
+          videoConflictRowsRemoved += 1;
+          continue;
+        }
+        kept.push(row);
+      }
+      // 残存競合の報告: 同一グループに別コードが複数、または manual 行が
+      // 同日動画と別コード。
+      const keptKeys = new Set(
+        kept.map((row) => fflogsLogDedupeKey(row.url) ?? row.url),
+      );
+      const manualVideoConflict = kept.some((row) => {
+        const code = parseFflogsReportCode(row.url);
+        return (
+          dayVideoCodes !== undefined &&
+          dayVideoCodes.size > 0 &&
+          (code === null || !dayVideoCodes.has(code))
+        );
+      });
+      if (keptKeys.size > 1 || manualVideoConflict) {
+        remainingConflicts.push({
+          label: g.label,
+          urls: kept.map((row) => row.url),
+        });
+      }
+    }
+  };
+  processGroups(syncGroups, deleteIdsSync);
+  processGroups(nativeGroups, deleteIdsNative);
+
+  if (deleteIdsSync.length > 0) {
+    const { error } = await supabase
+      .from("schedule_past_session_logs")
+      .delete()
+      .in("id", deleteIdsSync);
+    if (error) return { ok: false, reason: dbError("重複 logs 削除", error) };
+  }
+  if (deleteIdsNative.length > 0) {
+    const { error } = await supabase
+      .from("native_schedule_session_logs")
+      .delete()
+      .in("id", deleteIdsNative);
+    if (error)
+      return { ok: false, reason: dbError("native 重複 logs 削除", error) };
+  }
+
+  if (deleteIdsSync.length > 0 || deleteIdsNative.length > 0) {
+    try {
+      revalidatePath("/");
+    } catch {
+      // best-effort
+    }
+  }
+  return {
+    ok: true,
+    duplicateRowsRemoved,
+    videoConflictRowsRemoved,
+    remainingConflicts,
+  };
 }
 
 /**
