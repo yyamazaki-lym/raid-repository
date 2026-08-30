@@ -37,6 +37,9 @@ const FALLBACK_DEFAULT_END_TIME = "23:00";
 // 2.1 (2026-05-12) PR3-A/B: 通知 template / 確定時自動通知 ON/OFF。
 const NATIVE_DISCORD_NOTIFY_TEMPLATE_KEY =
   "native_schedule_discord_notify_template";
+const AUTO_CONFIRM_ENABLED_KEY = "native_schedule_auto_confirm_enabled";
+const AUTO_CONFIRM_MIN_AVAILABLE_KEY =
+  "native_schedule_auto_confirm_min_available";
 const NATIVE_DISCORD_NOTIFY_ON_DECISION_KEY =
   "native_schedule_discord_notify_on_decision";
 
@@ -77,6 +80,10 @@ export type NativeAdminAux = {
   discordNotifyTemplate: string | null;
   /** PR3-B: status DECISION 切替時の auto-notify ON/OFF (default OFF)。 */
   discordNotifyOnDecision: boolean;
+  /** Tier2-8 (2026-08-30): 全員入力で開催を自動確定する (default OFF)。 */
+  autoConfirmEnabled: boolean;
+  /** Tier2-8: 自動確定に必要な参加可能人数 (default 8)。 */
+  autoConfirmMinAvailable: string;
 };
 
 export async function fetchNativeScheduleAdminAux(): Promise<NativeAdminAux> {
@@ -107,6 +114,8 @@ export async function fetchNativeScheduleAdminAux(): Promise<NativeAdminAux> {
         NATIVE_DEFAULT_END_TIME_KEY,
         NATIVE_DISCORD_NOTIFY_TEMPLATE_KEY,
         NATIVE_DISCORD_NOTIFY_ON_DECISION_KEY,
+        AUTO_CONFIRM_ENABLED_KEY,
+        AUTO_CONFIRM_MIN_AVAILABLE_KEY,
       ]),
   ]);
 
@@ -135,5 +144,8 @@ export async function fetchNativeScheduleAdminAux(): Promise<NativeAdminAux> {
       settingsMap[NATIVE_DISCORD_NOTIFY_TEMPLATE_KEY] ?? null,
     discordNotifyOnDecision:
       settingsMap[NATIVE_DISCORD_NOTIFY_ON_DECISION_KEY] === "true",
+    autoConfirmEnabled: settingsMap[AUTO_CONFIRM_ENABLED_KEY] === "true",
+    autoConfirmMinAvailable:
+      settingsMap[AUTO_CONFIRM_MIN_AVAILABLE_KEY] ?? "8",
   };
 }

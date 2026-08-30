@@ -2,8 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
+  AlertTriangle,
+  BadgeCheck,
   ChevronDown,
   ClipboardCopy,
+  ExternalLink,
   GripVertical,
   LayoutDashboard,
   MapPin,
@@ -33,6 +36,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useConfirm } from "@/components/portal/confirm-dialog";
+import {
+  checkWaymarkPreset,
+  isWaymarkStudioUrl,
+} from "@/lib/waymark-preset";
+import { safeHref } from "@/lib/url-safe";
 import {
   applyOptimisticOrder,
   useSortableReorder,
@@ -279,6 +287,7 @@ export function WaymarksSection({
                   waymark={w}
                   bodyLabel={copy.bodyLabel}
                   fallbackName={copy.title}
+                  showPresetCheck={kind === "waymark"}
                   onEdit={() => startEdit(w)}
                   onDelete={() => onDelete(w)}
                   onCopy={() => onCopy(w)}
@@ -327,6 +336,11 @@ export function WaymarksSection({
                 }
               />
             </div>
+            {/* 2026-08-30: 入力中に形式を検品して、保存前に気づけるようにする
+                (取り込めない文字列を配ってから現地で気づく事故を防ぐ)。 */}
+            {kind === "waymark" && (editing?.body ?? "").trim() !== "" && (
+              <EditorPresetHint body={editing?.body ?? ""} />
+            )}
             <div className="flex flex-col gap-1.5">
               <Label htmlFor={`${kind}-note`}>メモ（任意）</Label>
               <Input
@@ -362,6 +376,7 @@ function SortableWaymarkRow({
   waymark,
   bodyLabel,
   fallbackName,
+  showPresetCheck,
   onEdit,
   onDelete,
   onCopy,
@@ -370,6 +385,8 @@ function SortableWaymarkRow({
   /** "markercode" / "共有コード" — aria-label と tooltip に使う。 */
   bodyLabel: string;
   fallbackName: string;
+  /** ウェイマークのみ: JSON 形式の検品バッジ / 警告を出す。 */
+  showPresetCheck: boolean;
   onEdit: () => void;
   onDelete: () => void;
   onCopy: () => void;
@@ -390,6 +407,17 @@ function SortableWaymarkRow({
   };
   const [expanded, setExpanded] = useState(false);
   const name = waymark.label || fallbackName;
+  // 2026-08-30 (Tier2-7): 貼り付けた文字列の検品。取り込める形式かを
+  // 配布前に確認でき、場外/空中座標 (いわゆる脱法マーカー) の混入も
+  // 粗く弾ける。判定できない形式には何も出さない (誤警告を避ける)。
+  const presetCheck = useMemo(
+    () => (showPresetCheck ? checkWaymarkPreset(waymark.body) : null),
+    [showPresetCheck, waymark.body],
+  );
+  const studioHref =
+    showPresetCheck && isWaymarkStudioUrl(waymark.body)
+      ? safeHref(waymark.body.trim())
+      : null;
   return (
     <li
       ref={setNodeRef}
@@ -444,9 +472,44 @@ function SortableWaymarkRow({
                 {waymark.note}
               </p>
             )}
+            {presetCheck?.kind === "valid" && (
+              <p className="mt-0.5 flex flex-wrap items-center gap-1">
+                <span
+                  className="inline-flex items-center gap-1 rounded-sm border border-emerald-400/40 bg-emerald-400/10 px-1 py-px font-mono text-[9px] tracking-[0.1em] text-emerald-200"
+                  title="ツールに取り込める形式として認識できました"
+                >
+                  <BadgeCheck className="h-2.5 w-2.5" aria-hidden />
+                  取込可 {presetCheck.info.activeCount}点
+                </span>
+                {presetCheck.info.warnings.map((w) => (
+                  <span
+                    key={w}
+                    className="inline-flex items-center gap-1 rounded-sm border border-amber-400/40 bg-amber-400/10 px-1 py-px font-mono text-[9px] tracking-[0.1em] text-amber-200"
+                    title={w}
+                  >
+                    <AlertTriangle className="h-2.5 w-2.5" aria-hidden />
+                    要確認
+                  </span>
+                ))}
+              </p>
+            )}
           </span>
         </button>
         <div className="flex items-center gap-1">
+          {studioHref && (
+            // Waymark Studio の共有 URL は、プラグイン無しでもブラウザで
+            // 配置を見られる (調査 第3回 B-3)。閲覧導線として開けるように。
+            <a
+              href={studioHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label={`${name} の配置をブラウザで見る`}
+              title="ブラウザで配置を見る (Waymark Studio)"
+              className="inline-flex h-7 w-7 items-center justify-center rounded text-[var(--neon-violet)] hover:bg-[var(--neon-violet)]/15"
+            >
+              <ExternalLink className="h-3.5 w-3.5" aria-hidden />
+            </a>
+          )}
           <button
             type="button"
             onClick={onCopy}
@@ -482,5 +545,37 @@ function SortableWaymarkRow({
         </pre>
       )}
     </li>
+  );
+}
+
+/**
+ * 編集ダイアログ内の形式ヒント (2026-08-30)。判定できないときは
+ * 何も言わない — 「Waymark Studio の共有 URL を貼る」「メモを書く」等の
+ * 正当な使い方を否定しないため。
+ */
+function EditorPresetHint({ body }: { body: string }) {
+  const check = useMemo(() => checkWaymarkPreset(body), [body]);
+  const studio = useMemo(() => isWaymarkStudioUrl(body), [body]);
+  if (studio) {
+    return (
+      <p className="rounded-md border border-[var(--neon-violet)]/35 bg-[var(--neon-violet)]/8 px-2.5 py-1.5 text-[11px] leading-relaxed text-[var(--neon-violet)]">
+        Waymark Studio の共有 URL として認識しました。プラグインが無い人も
+        ブラウザで配置を見られます。
+      </p>
+    );
+  }
+  if (check.kind !== "valid") return null;
+  return (
+    <div className="flex flex-col gap-1 rounded-md border border-emerald-400/30 bg-emerald-400/5 px-2.5 py-1.5 text-[11px] leading-relaxed">
+      <p className="text-emerald-200">
+        取り込める形式として認識しました (マーカー {check.info.activeCount} 点
+        {check.info.name ? ` / ${check.info.name}` : ""})
+      </p>
+      {check.info.warnings.map((w) => (
+        <p key={w} className="text-amber-200">
+          ⚠ {w}
+        </p>
+      ))}
+    </div>
   );
 }

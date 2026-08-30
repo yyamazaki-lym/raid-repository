@@ -8,6 +8,11 @@ import {
 } from "@/lib/supabase/server";
 
 import { assertAdminResult, requireDiscordMember } from "./auth";
+import {
+  maybeAutoConfirmSession,
+  AUTO_CONFIRM_ENABLED_KEY,
+  AUTO_CONFIRM_MIN_AVAILABLE_KEY,
+} from "./native-schedule-auto-confirm";
 import { dbError } from "./db-error";
 import {
   computeJstTodayUtcRange,
@@ -884,6 +889,59 @@ export async function upsertNativeScheduleAttendanceAction(
       { onConflict: "session_id,discord_user_id" },
     );
   if (error) return { ok: false, reason: dbError("出欠保存", error) };
+  // 2026-08-30 (Tier2-8): 全員入力で開催を自動確定するオプション。
+  // 既定 OFF で、ON のときだけ条件 (全員回答 + 参加可能人数) を見て
+  // CANDIDATE → DECISION に上げる。失敗しても出欠保存は成功済みなので
+  // 結果は無視する (モジュール側で warn 済み)。
+  await maybeAutoConfirmSession(sessionId);
+  try {
+    revalidatePath("/");
+  } catch {
+    // best-effort
+  }
+  return { ok: true };
+}
+
+// ---- 全員入力で自動確定 (Tier2-8, 2026-08-30) ----------------------------
+// 既定 OFF。詳細な確定条件は native-schedule-auto-confirm.ts を参照。
+
+export async function setNativeScheduleAutoConfirmEnabledAction(
+  enabled: boolean,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("app_settings")
+    .upsert(
+      { key: AUTO_CONFIRM_ENABLED_KEY, value: enabled ? "true" : "false" },
+      { onConflict: "key" },
+    );
+  if (error) return { ok: false, reason: dbError("自動確定 ON/OFF 保存", error) };
+  try {
+    revalidatePath("/");
+  } catch {
+    // best-effort
+  }
+  return { ok: true };
+}
+
+export async function setNativeScheduleAutoConfirmMinAvailableAction(
+  minAvailable: number,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
+  if (!Number.isInteger(minAvailable) || minAvailable < 1 || minAvailable > 24) {
+    return { ok: false, reason: "必要人数は 1〜24 で指定してください" };
+  }
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("app_settings")
+    .upsert(
+      { key: AUTO_CONFIRM_MIN_AVAILABLE_KEY, value: String(minAvailable) },
+      { onConflict: "key" },
+    );
+  if (error) return { ok: false, reason: dbError("必要人数の保存", error) };
   try {
     revalidatePath("/");
   } catch {

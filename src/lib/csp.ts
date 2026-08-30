@@ -66,7 +66,9 @@ export function buildCspHeader(nonce: string): string {
     "connect-src 'self' https://*.supabase.co wss://*.supabase.co",
     // 軽減表 / ロット管理 (docs.google.com) + character-sheets +
     // YouTube embed (動画タブで使う場合に備えて)
-    "frame-src 'self' https://docs.google.com https://character-sheets.appspot.com https://www.youtube-nocookie.com https://www.youtube.com",
+    // 2026-08-30: XivGear の埋め込みビュー (BiS プレビュー) を追加。
+    // 公式の `?page=embed|sl|<uuid>` を iframe で読むため。
+    "frame-src 'self' https://docs.google.com https://character-sheets.appspot.com https://www.youtube-nocookie.com https://www.youtube.com https://xivgear.app",
     "worker-src 'self' blob:",
     "object-src 'none'",
     "base-uri 'self'",

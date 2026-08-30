@@ -8,6 +8,7 @@ import {
   ChevronDown,
   CircleDashed,
   ExternalLink,
+  Eye,
   Pencil,
   Plus,
   Shirt,
@@ -29,6 +30,7 @@ import {
 import { useConfirm } from "@/components/portal/confirm-dialog";
 import { useCollapsible } from "@/lib/use-collapsible";
 import { LinkSiteIcon } from "@/components/portal/link-site-icon";
+import { toXivgearEmbedUrl } from "@/lib/xivgear-url";
 import { safeHref } from "@/lib/url-safe";
 import { getStoredAuthorName } from "@/lib/schedule-memos-client";
 import {
@@ -283,6 +285,12 @@ export function BisLinksPanel({
   const [collapsed, setCollapsed] = useCollapsible(
     "raid-repo:loot-bis-collapsed",
   );
+  // 2026-08-30: XivGear の埋め込みビューでの装備プレビュー。
+  // グリッド内で展開すると 2 列レイアウトが崩れるので、開けるのは
+  // 常に 1 件だけ・描画位置はリストの下、という形にする。
+  const [previewId, setPreviewId] = useState<string | null>(null);
+  const previewLink = links.find((l) => l.id === previewId) ?? null;
+  const previewSrc = previewLink ? toXivgearEmbedUrl(previewLink.url) : null;
 
   return (
     <section className="flex flex-col gap-3 rounded-md border border-border/40 bg-secondary/10 p-3">
@@ -381,6 +389,25 @@ export function BisLinksPanel({
                     </span>
                   )}
                 </a>
+                {toXivgearEmbedUrl(l.url) && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setPreviewId((cur) => (cur === l.id ? null : l.id))
+                    }
+                    aria-pressed={previewId === l.id}
+                    aria-label={`${l.label} の装備を表示`}
+                    title="装備をこの画面で見る"
+                    className={
+                      "inline-flex h-6 w-6 shrink-0 items-center justify-center rounded transition-colors " +
+                      (previewId === l.id
+                        ? "bg-[var(--neon-violet)]/20 text-[var(--neon-violet)]"
+                        : "text-muted-foreground hover:bg-secondary/60 hover:text-foreground")
+                    }
+                  >
+                    <Eye className="h-3 w-3" aria-hidden />
+                  </button>
+                )}
                 {canEdit && (
                   <span className="flex shrink-0 items-center gap-0.5">
                     <button
@@ -407,6 +434,37 @@ export function BisLinksPanel({
             );
           })}
         </ul>
+      )}
+
+      {/* 埋め込みプレビュー: リストの下に 1 枚だけ。高さを固定して
+          セクションが伸び続けないようにし、閉じるボタンを必ず出す。 */}
+      {!collapsed && previewLink && previewSrc && (
+        <div className="flex flex-col gap-1 rounded-md border border-[var(--neon-violet)]/35 bg-background/40 p-1.5">
+          <div className="flex items-center justify-between gap-2 px-1">
+            <span className="min-w-0 truncate text-[11px] text-foreground/85">
+              {previewLink.label}
+              {previewLink.job ? ` (${previewLink.job})` : ""}
+            </span>
+            <button
+              type="button"
+              onClick={() => setPreviewId(null)}
+              aria-label="プレビューを閉じる"
+              title="閉じる"
+              className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
+            >
+              <X className="h-3 w-3" aria-hidden />
+            </button>
+          </div>
+          <iframe
+            key={previewSrc}
+            src={previewSrc}
+            title={`${previewLink.label} の装備 (XivGear)`}
+            loading="lazy"
+            referrerPolicy="no-referrer"
+            sandbox="allow-scripts allow-same-origin allow-popups"
+            className="h-[26rem] w-full rounded-sm border-0 bg-white/95"
+          />
+        </div>
       )}
 
       <Dialog

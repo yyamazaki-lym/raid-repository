@@ -37,6 +37,7 @@ import { NativeCancelledSessionsSection } from "./settings/native-cancelled-sess
 import { NativeDefaultRaidTimeSection } from "./settings/native-default-raid-time-section";
 import { NativeDiscordNotifySection } from "./settings/native-discord-notify-section";
 import { AttendanceReminderSection } from "./settings/attendance-reminder-section";
+import { NativeAutoConfirmSection } from "./settings/native-auto-confirm-section";
 import { FflogsSyncSection } from "./settings/fflogs-sync-section";
 import { ChangelogFooter } from "./settings/changelog-footer";
 import { DangerZoneSection } from "./settings/danger-zone-section";
@@ -267,6 +268,15 @@ export function SettingsDialog({
               hour={adminAux?.discordNotifyHour ?? "12"}
               template={adminAux?.discordNotifyTemplate ?? null}
               onDecision={adminAux?.discordNotifyOnDecision ?? false}
+              onChanged={() => setAdminAuxTick((t) => t + 1)}
+            />
+          )}
+          {mode === "native" && (
+            <NativeAutoConfirmSection
+              canEdit={canEdit}
+              loaded={adminAux !== null}
+              enabled={adminAux?.autoConfirmEnabled ?? false}
+              minAvailable={adminAux?.autoConfirmMinAvailable ?? "8"}
               onChanged={() => setAdminAuxTick((t) => t + 1)}
             />
           )}

@@ -1,6 +1,7 @@
-import { CalendarCheck2, AlertTriangle } from "lucide-react";
+import { CalendarCheck2, AlertTriangle, CalendarPlus } from "lucide-react";
 import type { NextSessionResult } from "@/lib/schedule/next-session";
 import { DECISION_BADGE_CLASS } from "@/lib/schedule/status-ui";
+import { buildGoogleCalendarUrl } from "@/lib/calendar-link";
 
 export function NextSessionCard({
   result,
@@ -113,6 +114,25 @@ export function NextSessionCard({
             {endTime}
           </span>
         )}
+        {/* 2026-08-30 (Tier2-9): スマホのカレンダーにも置きたい人向けの
+            導線。1 クリックで Google カレンダーの追加画面へ飛ぶだけで、
+            portal 側は何も持たない。アイコン 1 個なので行は増えない。 */}
+        <a
+          href={buildGoogleCalendarUrl({
+            title: `固定活動 ${rawDate}`,
+            startMs: date.getTime(),
+            startTime,
+            endTime,
+            details: process.env.NEXT_PUBLIC_SITE_URL ?? "",
+          })}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label="この予定を Google カレンダーに追加"
+          title="Google カレンダーに追加"
+          className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground"
+        >
+          <CalendarPlus className="h-3.5 w-3.5" aria-hidden />
+        </a>
         {relative && (
           <span
             className={
