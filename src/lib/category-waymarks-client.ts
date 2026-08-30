@@ -18,9 +18,17 @@ import {
  * (調査ノート §4「作図エディタの自作」= 非推奨 と同じ線引き)。
  */
 
+/**
+ * 種別 (2026-08-30 調査 C-6)。`waymark` = ウェイマーク markercode、
+ * `board` = 7.4 のストラテジーボード共有コード (`[stgy:...]`)。
+ * 保管 + ワンタップコピーという要件が同一なので同じテーブルで扱う。
+ */
+export type CategoryWaymarkKind = "waymark" | "board";
+
 export type CategoryWaymark = {
   id: string;
   categoryId: string;
+  kind: CategoryWaymarkKind;
   label: string;
   body: string;
   note: string | null;
@@ -30,6 +38,7 @@ export type CategoryWaymark = {
 type CategoryWaymarkRow = {
   id: string;
   category_id: string;
+  kind: string | null;
   label: string;
   body: string;
   note: string | null;
@@ -40,6 +49,8 @@ function rowToWaymark(row: CategoryWaymarkRow): CategoryWaymark {
   return {
     id: row.id,
     categoryId: row.category_id,
+    // 旧行 (kind 追加前) は NULL を返しうるので waymark に倒す。
+    kind: row.kind === "board" ? "board" : "waymark",
     label: row.label ?? "",
     body: row.body,
     note: row.note ?? null,
@@ -68,6 +79,7 @@ function validateWaymarkText(
 
 export async function createCategoryWaymark(input: {
   categoryId: string;
+  kind: CategoryWaymarkKind;
   label: string;
   body: string;
   note: string | null;

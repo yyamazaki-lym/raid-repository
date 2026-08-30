@@ -120,6 +120,28 @@ export function buildFflogsReportUrl(code: string, fightId?: number | null): str
 }
 
 /**
+ * FFLogs のビュー種別 (2026-08-30 調査 §2)。レポート URL のハッシュに
+ * `type=` を足すと該当ビューで開く。
+ *   - deaths       … 死亡一覧 (死亡直前の被ダメ / 回復まで辿れる)
+ *   - damage-taken … 被ダメージ (どのギミックで削られたか)
+ *
+ * ⚠ ハッシュパラメータは公式ドキュメントが無い慣行仕様。将来 FFLogs 側が
+ * 変えても、未知の type は無視されてレポート先頭が開くだけ (fail-soft)。
+ */
+export type FflogsFightView = "deaths" | "damage-taken";
+
+/** fight 単位で特定ビュー (死亡 / 被ダメ) を開く URL。 */
+export function buildFflogsFightViewUrl(
+  code: string,
+  fightId: number | null | undefined,
+  view: FflogsFightView,
+): string {
+  const base = `https://www.fflogs.com/reports/${encodeURIComponent(code)}`;
+  const fight = fightId == null ? "last" : String(fightId);
+  return `${base}#fight=${fight}&type=${view}`;
+}
+
+/**
  * XIVAnalysis の解析ページ URL。
  *
  * XIVAnalysis は FFLogs のレポートを読んで「スキル回し / バフ整合 / CD 落ち」を

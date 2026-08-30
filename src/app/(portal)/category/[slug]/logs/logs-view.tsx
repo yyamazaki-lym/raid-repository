@@ -12,6 +12,8 @@ import {
   Flag,
   Microscope,
   RefreshCw,
+  ShieldAlert,
+  Skull,
   Trophy,
   Video,
 } from "lucide-react";
@@ -45,6 +47,7 @@ import {
   type FloorMap,
 } from "@/lib/fflogs-progress";
 import {
+  buildFflogsFightViewUrl,
   buildFflogsReportUrl,
   buildVideoTimestampUrl,
   buildXivAnalysisUrl,
@@ -946,16 +949,50 @@ function PullRow({
         );
       })()}
       <span className="ml-auto flex shrink-0 items-center gap-1">
-        <a
-          href={buildFflogsReportUrl(fight.reportCode, fight.fightId)}
-          target="_blank"
-          rel="noopener noreferrer"
-          title="FFLogs でこの pull を開く"
-          className="inline-flex items-center gap-1 rounded-sm border border-amber-400/45 bg-amber-400/10 px-1.5 py-0.5 font-mono text-[10px] tracking-[0.14em] text-amber-200 uppercase transition-colors hover:bg-amber-400/15"
-        >
-          <BarChart3 className="h-2.5 w-2.5" aria-hidden />
-          Logs
-        </a>
+        {/* FFLogs 群: 概要 (Logs) + 死亡 + 被ダメの 3 ビュー。2026-08-30
+            調査 §2 の deep link。行が伸びないよう、追加の 2 つは
+            アイコンのみ (ラベルは title / aria-label) にして左右に
+            border でつないだ 1 グループとして見せる。 */}
+        <span className="inline-flex items-center overflow-hidden rounded-sm border border-amber-400/45 bg-amber-400/10">
+          <a
+            href={buildFflogsReportUrl(fight.reportCode, fight.fightId)}
+            target="_blank"
+            rel="noopener noreferrer"
+            title="FFLogs でこの pull を開く"
+            className="inline-flex items-center gap-1 px-1.5 py-0.5 font-mono text-[10px] tracking-[0.14em] text-amber-200 uppercase transition-colors hover:bg-amber-400/20"
+          >
+            <BarChart3 className="h-2.5 w-2.5" aria-hidden />
+            Logs
+          </a>
+          <a
+            href={buildFflogsFightViewUrl(
+              fight.reportCode,
+              fight.fightId,
+              "deaths",
+            )}
+            target="_blank"
+            rel="noopener noreferrer"
+            title="この pull の死亡一覧 (死亡直前の被ダメ / 回復) を開く"
+            aria-label="死亡一覧を開く"
+            className="inline-flex items-center border-l border-amber-400/35 px-1.5 py-0.5 text-amber-200/85 transition-colors hover:bg-amber-400/20 hover:text-amber-100"
+          >
+            <Skull className="h-2.5 w-2.5" aria-hidden />
+          </a>
+          <a
+            href={buildFflogsFightViewUrl(
+              fight.reportCode,
+              fight.fightId,
+              "damage-taken",
+            )}
+            target="_blank"
+            rel="noopener noreferrer"
+            title="この pull の被ダメージ (何で削られたか) を開く"
+            aria-label="被ダメージを開く"
+            className="inline-flex items-center border-l border-amber-400/35 px-1.5 py-0.5 text-amber-200/85 transition-colors hover:bg-amber-400/20 hover:text-amber-100"
+          >
+            <ShieldAlert className="h-2.5 w-2.5" aria-hidden />
+          </a>
+        </span>
         {/* XIVAnalysis: この pull のスキル回し / CD 落ちを自動で指摘してくれる。
             開くのは自分たちの pull を自分たちで見るための導線 (§1-F)。 */}
         <a

@@ -5,6 +5,7 @@ import {
   ChevronDown,
   ClipboardCopy,
   GripVertical,
+  LayoutDashboard,
   MapPin,
   Pencil,
   Plus,
@@ -43,6 +44,7 @@ import {
   updateCategoryWaymark,
   useRealtimeCategoryWaymarks,
   type CategoryWaymark,
+  type CategoryWaymarkKind,
 } from "@/lib/category-waymarks-client";
 
 /**
@@ -54,7 +56,87 @@ import {
  *
  * body には EchoPlan / Waymark Preset などが吐く markercode をそのまま貼る。
  * portal は中身を解釈しない。
+ *
+ * 2026-08-30 (調査 第3回 C-6): `kind='board'` で **ストラテジーボード共有
+ * コード** (7.4 のゲーム内機能、`[stgy:...]`) も同じ UI で扱う。ウェイマーク
+ * JSON と違いプラグイン不要でコンソール勢も取り込めるため、ウェイマークの
+ * 1 つ上に配置する。デコード / プレビューは作らない (周辺 OSS が極小で、
+ * 機能自体の定着も不透明 — 調査 C-6 の判断)。
  */
+
+/** 種別ごとの文言・アイコン。UI 構造は共通なのでコピペせず表で持つ。 */
+const KIND_COPY: Record<
+  CategoryWaymarkKind,
+  {
+    icon: typeof MapPin;
+    title: string;
+    unit: string;
+    addLabel: string;
+    bodyLabel: string;
+    bodyPlaceholder: string;
+    labelPlaceholder: string;
+    notePlaceholder: string;
+    emptyTitle: string;
+    emptyDescription: string;
+    dialogTitleNew: string;
+    dialogTitleEdit: string;
+    dialogDescription: React.ReactNode;
+    dndId: string;
+    emptyFooter?: React.ReactNode;
+  }
+> = {
+  waymark: {
+    icon: MapPin,
+    title: "ウェイマーク",
+    unit: "マーカー",
+    addLabel: "マーカー追加",
+    bodyLabel: "markercode",
+    bodyPlaceholder:
+      '{"Name":"P3","MarkerA":{...}} など、ツールが出力した文字列をそのまま',
+    labelPlaceholder: "例: P3 塔 / 基本散開",
+    notePlaceholder: "例: 北を D1 側に合わせる",
+    emptyTitle: "ウェイマーク未登録",
+    emptyDescription:
+      "作図ツールが出力する markercode を貼り付けて保存すると、ワンタップでコピーして配れます。",
+    dialogTitleNew: "ウェイマークを追加",
+    dialogTitleEdit: "ウェイマークを編集",
+    // ゲーム内に公式の入出力機能は無く (調査 第3回 B-1)、取り込みには
+    // PC + プラグインが要る。ただし設置後のマーカーは PT 全員に見えるので
+    // 「PC の 1 人が取り込んで設置」で足りる、という前提を UI にも書く。
+    dialogDescription: (
+      <>
+        ゲーム内にウェイマークの共有機能は無いため、配置データはツールが出力する
+        markercode で受け渡します。取り込めるのは PC + プラグイン環境の人だけですが、
+        <strong>設置後のマーカーはパーティ全員に見える</strong>ので、1 人が取り込んで
+        設置すれば足ります。
+      </>
+    ),
+    dndId: "dnd-waymarks",
+  },
+  board: {
+    icon: LayoutDashboard,
+    title: "ストラテジーボード",
+    unit: "ボード",
+    addLabel: "ボード追加",
+    bodyLabel: "共有コード",
+    bodyPlaceholder: "[stgy:...] 形式の共有コードをそのまま貼り付け",
+    labelPlaceholder: "例: M12S P2 / 頭割り散開",
+    notePlaceholder: "例: ゲーム8 式ベース、塔だけ変更",
+    emptyTitle: "ストラテジーボード未登録",
+    emptyDescription:
+      "ゲーム内のストラテジーボードで発行した共有コードを貼り付けて保存すると、ワンタップでコピーして配れます。",
+    dialogTitleNew: "ストラテジーボードを追加",
+    dialogTitleEdit: "ストラテジーボードを編集",
+    dialogDescription: (
+      <>
+        パッチ 7.4 のストラテジーボードで発行できる共有コードを保管します。
+        <strong>プラグイン不要でコンソールからも取り込める</strong>ため、
+        図面の共有手段としては最も確実です。
+      </>
+    ),
+    dndId: "dnd-strategy-boards",
+  },
+};
 
 type EditState = {
   id?: string;
@@ -67,12 +149,22 @@ export function WaymarksSection({
   categoryId,
   categoryName,
   initialWaymarks,
+  kind = "waymark",
 }: {
   categoryId: string;
   categoryName: string;
   initialWaymarks: CategoryWaymark[];
+  /** 2026-08-30: 表示する種別。既定はウェイマーク (従来挙動)。 */
+  kind?: CategoryWaymarkKind;
 }) {
-  const waymarks = useRealtimeCategoryWaymarks(categoryId, initialWaymarks);
+  const copy = KIND_COPY[kind];
+  const HeaderIcon = copy.icon;
+  const allWaymarks = useRealtimeCategoryWaymarks(categoryId, initialWaymarks);
+  // 1 テーブルを種別で分けて 2 セクションに描くため、ここで絞り込む。
+  const waymarks = useMemo(
+    () => allWaymarks.filter((w) => w.kind === kind),
+    [allWaymarks, kind],
+  );
   const [editing, setEditing] = useState<EditState>(null);
   const [busy, setBusy] = useState(false);
   const { optimisticOrder, sensors, handleDragEnd, syncOnSettle } =
@@ -99,13 +191,13 @@ export function WaymarksSection({
     const body = editing.body.trim();
     const note = editing.note.trim() || null;
     if (!body) {
-      toast.error("markercode を入力してください");
+      toast.error(`${copy.bodyLabel} を入力してください`);
       return;
     }
     setBusy(true);
     const result = editing.id
       ? await updateCategoryWaymark(editing.id, { label, body, note })
-      : await createCategoryWaymark({ categoryId, label, body, note });
+      : await createCategoryWaymark({ categoryId, kind, label, body, note });
     setBusy(false);
     if (!result.ok) {
       toast.error("保存失敗: " + result.reason);
@@ -131,7 +223,7 @@ export function WaymarksSection({
   };
 
   const onCopy = async (w: CategoryWaymark) => {
-    const label = w.label || `${categoryName} ウェイマーク`;
+    const label = w.label || `${categoryName} ${copy.title}`;
     try {
       await navigator.clipboard.writeText(w.body);
       toast.success(`「${label}」をコピーしました`);
@@ -145,8 +237,8 @@ export function WaymarksSection({
     <section className="flex flex-col gap-3">
       <header className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <MapPin className="h-4 w-4 text-[var(--neon-cyan)]" aria-hidden />
-          <h2 className="font-display text-base">ウェイマーク</h2>
+          <HeaderIcon className="h-4 w-4 text-[var(--neon-cyan)]" aria-hidden />
+          <h2 className="font-display text-base">{copy.title}</h2>
           <span className="font-mono text-[10px] tracking-[0.18em] text-muted-foreground">
             {ordered.length} 件
           </span>
@@ -159,44 +251,22 @@ export function WaymarksSection({
           className="gap-1.5 text-[11px] tracking-normal"
         >
           <Plus className="h-3.5 w-3.5" aria-hidden />
-          マーカー追加
+          {copy.addLabel}
         </Button>
       </header>
 
       {ordered.length === 0 ? (
-        <div className="flex flex-col gap-2">
-          <EmptyState
-            icon={MapPin}
-            title="ウェイマーク未登録"
-            description="作図ツールが出力する markercode を貼り付けて保存すると、ワンタップでコピーして配れます。"
-          />
-          <p className="text-center text-[11px] text-muted-foreground">
-            markercode を出力できるツール:{" "}
-            <a
-              href="https://echoplan.xivhub.net/"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-[var(--neon-cyan)] underline underline-offset-2 hover:text-foreground"
-            >
-              EchoPlan
-            </a>
-            {" / "}
-            <a
-              href="https://github.com/PunishedPineapple/WaymarkPresetPlugin"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-[var(--neon-cyan)] underline underline-offset-2 hover:text-foreground"
-            >
-              Waymark Preset Plugin
-            </a>
-          </p>
-        </div>
+        <EmptyState
+          icon={copy.icon}
+          title={copy.emptyTitle}
+          description={copy.emptyDescription}
+        />
       ) : (
         <DndContext
           // dnd-kit の採番 (`DndDescribedBy-<n>`) は SSR とクライアントで
           // ずれて hydration mismatch になるため id を明示する
           // (category-list.tsx の詳しい注記を参照)。
-          id="dnd-waymarks"
+          id={copy.dndId}
           sensors={sensors}
           collisionDetection={closestCenter}
           onDragEnd={(e) => handleDragEnd(e, ordered)}
@@ -207,6 +277,8 @@ export function WaymarksSection({
                 <SortableWaymarkRow
                   key={w.id}
                   waymark={w}
+                  bodyLabel={copy.bodyLabel}
+                  fallbackName={copy.title}
                   onEdit={() => startEdit(w)}
                   onDelete={() => onDelete(w)}
                   onCopy={() => onCopy(w)}
@@ -226,42 +298,29 @@ export function WaymarksSection({
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>
-              {editing?.id ? "ウェイマークを編集" : "ウェイマークを追加"}
+              {editing?.id ? copy.dialogTitleEdit : copy.dialogTitleNew}
             </DialogTitle>
-            <DialogDescription>
-              ゲーム内のフィールドマーカーはコンテンツごとに 5
-              枠までしか保存できません。
-              <a
-                href="https://echoplan.xivhub.net/"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-[var(--neon-cyan)] underline underline-offset-2 hover:text-foreground"
-              >
-                EchoPlan
-              </a>{" "}
-              などが出力する markercode
-              をここに置いておくと、必要な人が必要なときにコピーできます。
-            </DialogDescription>
+            <DialogDescription>{copy.dialogDescription}</DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-3">
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="waymark-label">ラベル</Label>
+              <Label htmlFor={`${kind}-label`}>ラベル</Label>
               <Input
-                id="waymark-label"
+                id={`${kind}-label`}
                 value={editing?.label ?? ""}
-                placeholder="例: P3 塔 / 基本散開"
+                placeholder={copy.labelPlaceholder}
                 onChange={(e) =>
                   setEditing((v) => (v ? { ...v, label: e.target.value } : v))
                 }
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="waymark-body">markercode</Label>
+              <Label htmlFor={`${kind}-body`}>{copy.bodyLabel}</Label>
               <Textarea
-                id="waymark-body"
+                id={`${kind}-body`}
                 value={editing?.body ?? ""}
                 rows={6}
-                placeholder='{"Name":"P3","MarkerA":{...}} など、ツールが出力した文字列をそのまま'
+                placeholder={copy.bodyPlaceholder}
                 className="font-mono text-[11px]"
                 onChange={(e) =>
                   setEditing((v) => (v ? { ...v, body: e.target.value } : v))
@@ -269,11 +328,11 @@ export function WaymarksSection({
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="waymark-note">メモ（任意）</Label>
+              <Label htmlFor={`${kind}-note`}>メモ（任意）</Label>
               <Input
-                id="waymark-note"
+                id={`${kind}-note`}
                 value={editing?.note ?? ""}
-                placeholder="例: 北を D1 側に合わせる"
+                placeholder={copy.notePlaceholder}
                 onChange={(e) =>
                   setEditing((v) => (v ? { ...v, note: e.target.value } : v))
                 }
@@ -301,11 +360,16 @@ export function WaymarksSection({
 
 function SortableWaymarkRow({
   waymark,
+  bodyLabel,
+  fallbackName,
   onEdit,
   onDelete,
   onCopy,
 }: {
   waymark: CategoryWaymark;
+  /** "markercode" / "共有コード" — aria-label と tooltip に使う。 */
+  bodyLabel: string;
+  fallbackName: string;
   onEdit: () => void;
   onDelete: () => void;
   onCopy: () => void;
@@ -325,7 +389,7 @@ function SortableWaymarkRow({
     zIndex: isDragging ? 10 : "auto",
   };
   const [expanded, setExpanded] = useState(false);
-  const name = waymark.label || "ウェイマーク";
+  const name = waymark.label || fallbackName;
   return (
     <li
       ref={setNodeRef}
@@ -343,7 +407,7 @@ function SortableWaymarkRow({
           type="button"
           onClick={() => setExpanded((v) => !v)}
           aria-expanded={expanded}
-          aria-label={`${name} の markercode を${expanded ? "閉じる" : "開く"}`}
+          aria-label={`${name} の${bodyLabel}を${expanded ? "閉じる" : "開く"}`}
           className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded px-1 text-left hover:bg-secondary/40"
         >
           <span
@@ -386,8 +450,8 @@ function SortableWaymarkRow({
           <button
             type="button"
             onClick={onCopy}
-            aria-label={`${name} の markercode をコピー`}
-            title="markercode をコピー"
+            aria-label={`${name} の${bodyLabel}をコピー`}
+            title={`${bodyLabel}をコピー`}
             className="inline-flex h-7 w-7 items-center justify-center rounded text-[var(--neon-cyan)] hover:bg-[var(--neon-cyan)]/15"
           >
             <ClipboardCopy className="h-3.5 w-3.5" aria-hidden />

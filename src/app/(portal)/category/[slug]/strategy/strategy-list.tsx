@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { LinkSiteIcon } from "@/components/portal/link-site-icon";
+import { detectFf14Resource, FF14_RESOURCE_LABEL } from "@/lib/link-site";
 import { DndContext, closestCenter } from "@dnd-kit/core";
 import {
   SortableContext,
@@ -227,6 +228,19 @@ export function StrategyList({
   );
 }
 
+/** FF14 リソース種別バッジの配色 (link-site.ts の Ff14ResourceKind と対応)。 */
+const FF14_RESOURCE_TONE: Record<
+  NonNullable<ReturnType<typeof detectFf14Resource>>,
+  string
+> = {
+  guide: "border-sky-400/40 bg-sky-400/10 text-sky-200",
+  meta: "border-amber-400/40 bg-amber-400/10 text-amber-200",
+  logs: "border-emerald-400/40 bg-emerald-400/10 text-emerald-200",
+  gear: "border-violet-400/40 bg-violet-400/10 text-violet-200",
+  sim: "border-teal-400/40 bg-teal-400/10 text-teal-200",
+  plan: "border-rose-400/40 bg-rose-400/10 text-rose-200",
+};
+
 function SortableStrategyCard({
   link,
   showThumbnail,
@@ -311,6 +325,23 @@ function SortableStrategyCard({
               />
               <span className="flex-1 break-words font-display text-sm text-foreground group-hover:text-[var(--neon-cyan)]">
                 {link.title}
+                {/* 2026-08-30: 既知の FF14 リソースは種別バッジを 1 個だけ
+                    出す (攻略 / 野良主流 / ログ / 装備 / シム / 作図)。
+                    タイトル末尾の inline 表示なので行は増えない。 */}
+                {(() => {
+                  const kind = detectFf14Resource(link.url);
+                  if (!kind) return null;
+                  return (
+                    <span
+                      className={
+                        "ml-1.5 inline-block shrink-0 rounded-sm border px-1 py-px align-middle font-mono text-[9px] tracking-[0.1em] whitespace-nowrap " +
+                        FF14_RESOURCE_TONE[kind]
+                      }
+                    >
+                      {FF14_RESOURCE_LABEL[kind]}
+                    </span>
+                  );
+                })()}
               </span>
             </a>
             {link.source === "discord" && (

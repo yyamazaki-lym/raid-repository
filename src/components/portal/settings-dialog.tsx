@@ -36,6 +36,7 @@ import { NativeChoiceValuesSection } from "./settings/native-choice-values-secti
 import { NativeCancelledSessionsSection } from "./settings/native-cancelled-sessions-section";
 import { NativeDefaultRaidTimeSection } from "./settings/native-default-raid-time-section";
 import { NativeDiscordNotifySection } from "./settings/native-discord-notify-section";
+import { AttendanceReminderSection } from "./settings/attendance-reminder-section";
 import { FflogsSyncSection } from "./settings/fflogs-sync-section";
 import { ChangelogFooter } from "./settings/changelog-footer";
 import { DangerZoneSection } from "./settings/danger-zone-section";
@@ -268,6 +269,11 @@ export function SettingsDialog({
               onDecision={adminAux?.discordNotifyOnDecision ?? false}
               onChanged={() => setAdminAuxTick((t) => t + 1)}
             />
+          )}
+          {/* 2026-08-30: 出欠催促は sync / native どちらのモードでも使える
+              (未入力判定はソースを問わず同じ)。disabled のときだけ隠す。 */}
+          {mode !== "disabled" && (
+            <AttendanceReminderSection open={open} canEdit={canEdit} />
           )}
           <FflogsSyncSection open={open} canEdit={canEdit} />
           <ChangelogFooter showSignIn={showSignIn} />

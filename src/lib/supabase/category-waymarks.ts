@@ -20,6 +20,7 @@ export async function fetchCategoryWaymarks(
     return data.map((r) => ({
       id: r.id as string,
       categoryId: r.category_id as string,
+      kind: (r as { kind?: string }).kind === "board" ? "board" : "waymark",
       label: (r.label as string) ?? "",
       body: r.body as string,
       note: (r.note as string | null) ?? null,

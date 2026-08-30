@@ -923,6 +923,20 @@ CREATE TRIGGER set_updated_at_category_waymarks
   BEFORE UPDATE ON public.category_waymarks
   FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
+-- 2026-08-30 (調査 第3回 C-6): ストラテジーボード共有コード (`[stgy:...]`)
+-- を同じテーブルの「種別」として持つ。7.4 で実装されたゲーム内機能で、
+-- ウェイマーク JSON と違い **プラグイン不要 = コンソール勢も取り込める**
+-- 唯一の図面共有手段。保管 + ワンタップコピーの要件がウェイマークと
+-- 完全同一なので、専用テーブルは作らず kind 列で分ける (調査の
+-- 「マクロタブ内の 1 種別として最小実装」判断)。既存行は 'waymark'。
+ALTER TABLE public.category_waymarks
+  ADD COLUMN IF NOT EXISTS kind text NOT NULL DEFAULT 'waymark';
+ALTER TABLE public.category_waymarks
+  DROP CONSTRAINT IF EXISTS category_waymarks_kind_check;
+ALTER TABLE public.category_waymarks
+  ADD CONSTRAINT category_waymarks_kind_check
+  CHECK (kind IN ('waymark', 'board'));
+
 -- markercode は 8 マーカー分の座標 JSON で実測 1KB 前後。macros と同じ
 -- 8000 字上限で十分。制御文字は弾かない (整形済 JSON の改行を許容)。
 ALTER TABLE public.category_waymarks
@@ -1755,6 +1769,56 @@ BEGIN
   IF existing_jobid IS NULL THEN
     PERFORM cron.schedule(
       'notify-native-schedule-hourly',
+      c_schedule,
+      c_command
+    );
+  ELSE
+    PERFORM cron.alter_job(
+      job_id := existing_jobid,
+      schedule := c_schedule,
+      command := c_command
+    );
+  END IF;
+END $$;
+
+-- ---- 13a-2. Hourly cron for attendance reminder (2026-08-30) -----------
+-- 出欠未入力者への催促メンション。13 と同じ pg_cron + pg_net + vault の
+-- 構成で、叩く route と vault secret 名だけが違う。route 側で
+--   * `attendance_reminder_enabled` が 'true' か (既定 OFF)
+--   * `attendance_reminder_hour` (JST) 以降か
+--   * その開催日に送信済みでないか (dedup)
+-- を判定するため、毎時叩いても実送信は 1 開催日につき 1 回。
+--
+-- 運用前提: 13 と同じ CRON_SECRET を使うので vault secret は使い回す
+-- (`cron_notify_native_schedule_bearer`)。別 secret に分けたい場合は
+-- 下の name を変更して `vault.create_secret` を追加登録する。
+DO $$
+DECLARE
+  existing_jobid bigint;
+  c_schedule constant text := '0 * * * *';
+  c_command constant text := $cmd$
+    SELECT net.http_get(
+      url := 'https://yurutto-raid-repository.vercel.app/api/cron/attendance-reminder',
+      headers := jsonb_build_object(
+        'Authorization',
+        'Bearer ' || (
+          SELECT decrypted_secret
+          FROM vault.decrypted_secrets
+          WHERE name = 'cron_notify_native_schedule_bearer'
+          LIMIT 1
+        )
+      ),
+      timeout_milliseconds := 60000
+    );
+  $cmd$;
+BEGIN
+  SELECT jobid INTO existing_jobid
+  FROM cron.job
+  WHERE jobname = 'attendance-reminder-hourly';
+
+  IF existing_jobid IS NULL THEN
+    PERFORM cron.schedule(
+      'attendance-reminder-hourly',
       c_schedule,
       c_command
     );

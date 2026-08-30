@@ -16,6 +16,8 @@ type WaymarkWriteResult = { ok: true } | { ok: false; reason: string };
 
 export async function createCategoryWaymarkAction(input: {
   categoryId: string;
+  /** 2026-08-30: 'waymark' (markercode) / 'board' (ストラテジーボード共有コード)。 */
+  kind?: "waymark" | "board";
   label: string;
   body: string;
   note: string | null;
@@ -34,6 +36,7 @@ export async function createCategoryWaymarkAction(input: {
 
   const { error } = await supabase.from("category_waymarks").insert({
     category_id: input.categoryId,
+    kind: input.kind === "board" ? "board" : "waymark",
     label: input.label,
     body: input.body,
     note: input.note,

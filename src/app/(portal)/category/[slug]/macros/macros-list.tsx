@@ -128,11 +128,21 @@ export function MacrosList({
         initialTemplates={initialTemplates}
       />
       {/* 2026-08-28 ユーザー指摘: ウェイマークは募集文テンプレより使用頻度が
-          低いので末尾に置く。 */}
+          低いので末尾に置く。
+          2026-08-30 (調査 第3回 C-6): ストラテジーボード共有コードは
+          プラグイン不要でコンソール勢も取り込めるため、ウェイマークの
+          1 つ上に置く。 */}
       <WaymarksSection
         categoryId={categoryId}
         categoryName={categoryName}
         initialWaymarks={initialWaymarks}
+        kind="board"
+      />
+      <WaymarksSection
+        categoryId={categoryId}
+        categoryName={categoryName}
+        initialWaymarks={initialWaymarks}
+        kind="waymark"
       />
     </div>
   );
