@@ -2,6 +2,9 @@ import { notFound } from "next/navigation";
 import { findCategoryBySlug } from "@/lib/supabase/categories";
 import { fetchCategoryLinks } from "@/lib/supabase/category-links";
 import { fetchCategoryGphotoAlbums } from "@/lib/supabase/category-gphoto-albums";
+import { fetchCategoryBisLinks } from "@/lib/supabase/loot-extras";
+import { BisLinksPanel } from "@/components/portal/loot-extras";
+import { getCurrentUserCanEdit } from "@/lib/server/auth";
 import { StrategyList } from "./strategy-list";
 import { StrategyImagesList } from "./strategy-images-list";
 
@@ -35,14 +38,23 @@ export default async function StrategyPage({
   // Phase 15 / 16 (2026-05-13): リンク / 画像 / Google フォト系を並行プリフェッチ。
   // fetchCategoryLinks は React.cache 済だが kind 違いは別キー扱いで
   // SELECT が分かれる。Promise.all で直列化を避ける。
-  const [links, images, gphotos, albums] = await Promise.all([
+  // 2026-08-30: BiS はロット管理から攻略情報 (LINKS の上) へ移動
+  // (ユーザー要望「BiS は攻略情報に移したい。LINKS の上で良い」)。
+  const [links, images, gphotos, albums, bisLinks, canEdit] = await Promise.all([
     fetchCategoryLinks(category.id, "strategy"),
     fetchCategoryLinks(category.id, "image"),
     fetchCategoryLinks(category.id, "gphoto"),
     fetchCategoryGphotoAlbums(category.id),
+    fetchCategoryBisLinks(category.id),
+    getCurrentUserCanEdit(),
   ]);
   return (
     <div className="flex flex-col gap-6">
+      <BisLinksPanel
+        categoryId={category.id}
+        links={bisLinks}
+        canEdit={canEdit}
+      />
       <StrategyList
         categoryId={category.id}
         initial={links}

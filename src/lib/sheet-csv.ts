@@ -33,7 +33,12 @@ export type SheetTable = {
  * 「通常の共有URL」ケースと同条件)。取得できない場合は呼び出し側が
  * iframe fallback に落ちるので、ここでは判定せず URL だけ返す。
  */
-export function toSheetCsvUrl(raw: string | null | undefined): string | null {
+export function toSheetCsvUrl(
+  raw: string | null | undefined,
+  // 2026-08-30 (層タブ切替): シート内の別ワークシート (層) を取得する
+  // ための gid 上書き。未指定なら URL 自身の gid (従来挙動)。
+  overrideGid?: string | null,
+): string | null {
   if (!raw) return null;
   let u: URL;
   try {
@@ -45,6 +50,7 @@ export function toSheetCsvUrl(raw: string | null | undefined): string | null {
 
   // gid は query か hash のどちらかに入る。
   const gid =
+    overrideGid ??
     u.searchParams.get("gid") ??
     /(?:^|[#&])gid=(\d+)/.exec(u.hash)?.[1] ??
     null;
@@ -76,6 +82,76 @@ export function toSheetCsvUrl(raw: string | null | undefined): string | null {
   }
 
   return null;
+}
+
+/** シート URL 自身に埋まっている gid (query / hash) を取り出す。 */
+export function extractSheetGid(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  let u: URL;
+  try {
+    u = new URL(raw.trim());
+  } catch {
+    return null;
+  }
+  return (
+    u.searchParams.get("gid") ?? /(?:^|[#&])gid=(\d+)/.exec(u.hash)?.[1] ?? null
+  );
+}
+
+/**
+ * シートのワークシート一覧 (層タブ) の HTML を取得するための URL。
+ * published 形は pubhtml、通常共有形は htmlview がタブ一覧
+ * (`<li id="sheet-button-<gid>"><a>名前</a></li>`) を含む。
+ */
+export function toSheetTabListUrl(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  let u: URL;
+  try {
+    u = new URL(raw.trim());
+  } catch {
+    return null;
+  }
+  if (u.hostname !== "docs.google.com") return null;
+  const pub = /^\/spreadsheets\/d\/e\/([^/]+)\//.exec(u.pathname);
+  if (pub) return `https://docs.google.com/spreadsheets/d/e/${pub[1]}/pubhtml`;
+  const doc = /^\/spreadsheets\/d\/([a-zA-Z0-9-_]{10,})/.exec(u.pathname);
+  if (doc) return `https://docs.google.com/spreadsheets/d/${doc[1]}/htmlview`;
+  return null;
+}
+
+export type SheetTab = { gid: string; name: string };
+
+/**
+ * pubhtml / htmlview の HTML からワークシートのタブ一覧を抜き出す。
+ * どちらのビューもフッターのタブバーを
+ * `<li id="sheet-button-<gid>" ...><a ...>シート名</a></li>` で描画する。
+ * レイアウト変更に弱い regex 抽出だが、失敗しても [] を返すだけで
+ * 呼び出し側 (層タブ UI) が非表示になるだけの fail-soft。
+ */
+export function parseSheetTabs(html: string): SheetTab[] {
+  const out: SheetTab[] = [];
+  const seen = new Set<string>();
+  const re = /id="sheet-button-(\d+)"[^>]*>\s*<a[^>]*>([^<]*)</g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html)) !== null) {
+    const gid = m[1]!;
+    if (seen.has(gid)) continue;
+    seen.add(gid);
+    const name = decodeBasicEntities(m[2]!.trim());
+    out.push({ gid, name: name || `シート${out.length + 1}` });
+  }
+  return out;
+}
+
+/** タブ名に出うる範囲の最小限の HTML エンティティ復号。 */
+function decodeBasicEntities(s: string): string {
+  return s
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, " ");
 }
 
 /**
@@ -161,9 +237,19 @@ export function toSheetTable(raw: string[][]): SheetTable | null {
   return { headers: norm(head!), rows: rest.map(norm) };
 }
 
+export type SheetCardStat = {
+  label: string;
+  value: string;
+  kind: "damage" | "rate" | "final";
+};
+
 export type SheetCardRow = {
   heading: string;
   cells: Array<{ label: string; value: string }>;
+  /** mitigation モードのみ: ダメージ → 軽減率 → 最終ダメージの数値サマリ。 */
+  stats?: SheetCardStat[];
+  /** mitigation モードのみ: 対象 (味方の誰に入れるか等)。 */
+  target?: string;
 };
 
 /**
@@ -193,6 +279,38 @@ function isNumericValue(v: string): boolean {
   return /^[-+]?[\d,.]+%?$/.test(v);
 }
 
+// ---- mitigation モード (2026-08-30) --------------------------------------
+// ユーザー要望「AA を除く攻撃とダメージ値、入れる軽減・デバフ・対象、
+// 軽減率と最終ダメージ値で簡素に」。汎用モードは計算列を丸ごと落とすが、
+// mitigation モードでは見出しキーワードで「素ダメージ / 軽減率 / 最終
+// ダメージ / 対象」の列だけ拾い上げてサマリ表示に回す。
+
+/** AA (オートアタック) 行の判定。見出し / 技名セルに対して使う。 */
+const AA_ATTACK_RE =
+  /(?:^|[^A-Za-z])(?:AA|ＡＡ)(?:[^A-Za-z]|$)|オート\s*[・･]?\s*アタック|auto[\s-]*attack/i;
+
+// 判定順が重要: 「最終ダメージ」は DAMAGE にもマッチするため FINAL を先に。
+const MIT_FINAL_HEADER_RE =
+  /最終|軽減後|実効?ダメ|残り?ダメ|着弾|after|final/i;
+const MIT_RATE_HEADER_RE =
+  /軽減率|軽減\s*[%％]|カット率?|総軽減|mitigat|reduction/i;
+const MIT_DAMAGE_HEADER_RE =
+  /ダメージ|被ダメ|素ダメ|無軽減|damage|^dmg$/i;
+const MIT_TARGET_HEADER_RE = /対象|ターゲット|target|誰に/i;
+
+type MitColumnKind = "final" | "rate" | "damage" | "target" | null;
+
+function classifyMitigationHeader(header: string): MitColumnKind {
+  const h = header.trim();
+  if (h === "") return null;
+  if (STRUCTURAL_HEADER_RE.test(h)) return null;
+  if (MIT_FINAL_HEADER_RE.test(h)) return "final";
+  if (MIT_RATE_HEADER_RE.test(h)) return "rate";
+  if (MIT_TARGET_HEADER_RE.test(h)) return "target";
+  if (MIT_DAMAGE_HEADER_RE.test(h)) return "damage";
+  return null;
+}
+
 /**
  * 行 → カードデータ。タイムライン型の軽減表テンプレート (チェックボックス
  * 列・軽減率やバリア量の計算列・SPARKLINE 用の HP 数値列を多数持つ) を
@@ -212,11 +330,31 @@ function isNumericValue(v: string): boolean {
 export function buildSheetCardRows(
   table: SheetTable,
   visibleColumns: number[],
+  opts?: {
+    /**
+     * 軽減表モード (2026-08-30): AA 行を除外し、素ダメージ / 軽減率 /
+     * 最終ダメージ / 対象の列を数値サマリ (`stats` / `target`) として
+     * 拾い上げる。それらの列は計算列 drop の対象から外れる。
+     */
+    mitigation?: boolean;
+  },
 ): SheetCardRow[] {
+  const mitigation = opts?.mitigation === true;
+  // mitigation モード: 列の役割を見出しで分類 (final/rate/damage/target)。
+  const mitKindByCol = new Map<number, MitColumnKind>();
+  if (mitigation) {
+    for (const ci of visibleColumns) {
+      mitKindByCol.set(ci, classifyMitigationHeader(table.headers[ci] ?? ""));
+    }
+  }
+
   // 計算列の検出 (列単位・テーブル全体で判定)。
   const numericCols = new Set<number>();
   for (const ci of visibleColumns) {
     if (STRUCTURAL_HEADER_RE.test(table.headers[ci]?.trim() ?? "")) continue;
+    // mitigation モードでサマリに回す列は drop 判定から除外 (ダメージ値
+    // こそ見たい、というのが今回の要望)。
+    if (mitigation && mitKindByCol.get(ci)) continue;
     const header = table.headers[ci]?.trim() ?? "";
     let hasValue = false;
     let allNumeric = true;
@@ -241,8 +379,35 @@ export function buildSheetCardRows(
     const rowHeading = (row[0] ?? "").trim();
     if (!isNoiseValue(rowHeading)) headingParts.push(rowHeading);
 
+    // mitigation サマリ列は cells から分離して stats / target へ。
+    const stats: SheetCardStat[] = [];
+    let target: string | undefined;
+    if (mitigation) {
+      // 表示順はユーザー指定の「ダメージ → 軽減率 → 最終」に固定。
+      for (const kind of ["damage", "rate", "final"] as const) {
+        for (const ci of visibleColumns) {
+          if (mitKindByCol.get(ci) !== kind) continue;
+          const v = (row[ci] ?? "").trim();
+          if (isNoiseValue(v) || v === (table.headers[ci]?.trim() ?? ""))
+            continue;
+          stats.push({
+            label: table.headers[ci]?.trim() ?? "",
+            value: v,
+            kind,
+          });
+        }
+      }
+      for (const ci of visibleColumns) {
+        if (mitKindByCol.get(ci) !== "target") continue;
+        const v = (row[ci] ?? "").trim();
+        if (isNoiseValue(v) || v === (table.headers[ci]?.trim() ?? "")) continue;
+        target = target === undefined ? v : `${target} / ${v}`;
+      }
+    }
+
     let cells = visibleColumns
       .filter((ci) => !(dropNumericCols && numericCols.has(ci)))
+      .filter((ci) => !(mitigation && mitKindByCol.get(ci)))
       .map((ci) => ({
         label: table.headers[ci]?.trim() ?? "",
         value: row[ci]?.trim() ?? "",
@@ -262,8 +427,23 @@ export function buildSheetCardRows(
       headingParts.push(cells[0]!.value);
       cells = cells.slice(1);
     }
-    if (headingParts.length === 0 && cells.length === 0) continue;
-    out.push({ heading: headingParts.join(" "), cells });
+
+    // mitigation: AA (オートアタック) 行は要らない (ユーザー指定)。
+    if (mitigation && headingParts.some((p) => AA_ATTACK_RE.test(p))) continue;
+
+    if (
+      headingParts.length === 0 &&
+      cells.length === 0 &&
+      stats.length === 0 &&
+      target === undefined
+    )
+      continue;
+    out.push({
+      heading: headingParts.join(" "),
+      cells,
+      ...(stats.length > 0 ? { stats } : {}),
+      ...(target !== undefined ? { target } : {}),
+    });
   }
   return out;
 }

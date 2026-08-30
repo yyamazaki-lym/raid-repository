@@ -2,7 +2,15 @@ import "server-only";
 import { cache } from "react";
 import { isPublicHttpUrl } from "@/lib/url-safe";
 import { safeFetch } from "./safe-fetch";
-import { parseCsv, toSheetCsvUrl, toSheetTable, type SheetTable } from "@/lib/sheet-csv";
+import {
+  parseCsv,
+  parseSheetTabs,
+  toSheetCsvUrl,
+  toSheetTabListUrl,
+  toSheetTable,
+  type SheetTab,
+  type SheetTable,
+} from "@/lib/sheet-csv";
 
 /**
  * Google Sheets を CSV で取得してテーブル化する (TODO #94 / A-3)。
@@ -44,11 +52,16 @@ const memo = new Map<string, { at: number; result: SheetTableResult }>();
  * 跨いだ再取得は上の TTL で抑える。
  */
 export const fetchSheetTable = cache(
-  async (sheetUrl: string | null | undefined): Promise<SheetTableResult> => {
-    const key = (sheetUrl ?? "").trim();
+  async (
+    sheetUrl: string | null | undefined,
+    // 2026-08-30 (層タブ切替): 取得するワークシートの gid 上書き。
+    // 未指定なら URL 自身の gid (従来挙動)。
+    gid?: string | null,
+  ): Promise<SheetTableResult> => {
+    const key = `${(sheetUrl ?? "").trim()}#gid=${gid ?? ""}`;
     const hit = memo.get(key);
     if (hit && Date.now() - hit.at < TTL_MS) return hit.result;
-    const result = await fetchSheetTableUncached(sheetUrl);
+    const result = await fetchSheetTableUncached(sheetUrl, gid);
     // 失敗も短時間キャッシュする (非公開シートに毎回取りに行かない)。
     memo.set(key, { at: Date.now(), result });
     // 際限なく増えないように上限を切る (カテゴリ数 × 2 程度しか入らない)。
@@ -62,10 +75,52 @@ export const fetchSheetTable = cache(
   },
 );
 
+/** タブ一覧のプロセス内 TTL キャッシュ (fetchSheetTable の memo と同方式)。 */
+const tabsMemo = new Map<string, { at: number; tabs: SheetTab[] }>();
+
+/**
+ * シートのワークシート (層タブ) 一覧を pubhtml / htmlview から取得する
+ * (2026-08-30、軽減表の層切り替え)。CSV export はタブを列挙できないため
+ * HTML のフッタータブバーを parse する。失敗は [] — 呼び出し側は
+ * タブ UI を出さないだけで、従来の単一シート表示にフォールバックする。
+ */
+export const fetchSheetTabs = cache(
+  async (sheetUrl: string | null | undefined): Promise<SheetTab[]> => {
+    const listUrl = toSheetTabListUrl(sheetUrl);
+    if (!listUrl || !isPublicHttpUrl(listUrl)) return [];
+    const hit = tabsMemo.get(listUrl);
+    if (hit && Date.now() - hit.at < TTL_MS) return hit.tabs;
+    let tabs: SheetTab[] = [];
+    try {
+      const res = await safeFetch(listUrl, {
+        headers: { Accept: "text/html,*/*" },
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+      });
+      if (res.ok) {
+        // htmlview はシート全体の HTML を含むため CSV よりだいぶ大きい。
+        // タブバーは文書末尾にあるので全体を読むが、上限は CSV の 2 倍。
+        const text = await readCapped(res, MAX_BYTES * 2);
+        if (text !== null) tabs = parseSheetTabs(text);
+      }
+    } catch (e) {
+      console.warn("[sheet-table] tabs fetch error:", e);
+    }
+    tabsMemo.set(listUrl, { at: Date.now(), tabs });
+    if (tabsMemo.size > 64) {
+      for (const k of tabsMemo.keys()) {
+        tabsMemo.delete(k);
+        if (tabsMemo.size <= 32) break;
+      }
+    }
+    return tabs;
+  },
+);
+
 async function fetchSheetTableUncached(
   sheetUrl: string | null | undefined,
+  gid?: string | null,
 ): Promise<SheetTableResult> {
-  const csvUrl = toSheetCsvUrl(sheetUrl);
+  const csvUrl = toSheetCsvUrl(sheetUrl, gid);
   if (!csvUrl) return { ok: false, reason: "CSV 取得に対応しない URL 形式" };
   if (!isPublicHttpUrl(csvUrl)) return { ok: false, reason: "URL が不正" };
 
@@ -104,11 +159,14 @@ async function fetchSheetTableUncached(
   }
 }
 
-/** 応答本文を MAX_BYTES で打ち切って読む。 */
-async function readCapped(res: Response): Promise<string | null> {
+/** 応答本文を maxBytes で打ち切って読む。 */
+async function readCapped(
+  res: Response,
+  maxBytes: number = MAX_BYTES,
+): Promise<string | null> {
   const len = Number(res.headers.get("content-length") ?? "0");
-  if (Number.isFinite(len) && len > MAX_BYTES) return null;
+  if (Number.isFinite(len) && len > maxBytes) return null;
   const buf = await res.arrayBuffer();
-  if (buf.byteLength > MAX_BYTES) return null;
+  if (buf.byteLength > maxBytes) return null;
   return new TextDecoder("utf-8").decode(buf);
 }

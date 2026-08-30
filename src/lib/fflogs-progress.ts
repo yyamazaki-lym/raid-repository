@@ -382,6 +382,43 @@ export function formatPercentage(p: number | null): string {
   return `${p.toFixed(1)}%`;
 }
 
+/**
+ * 残 HP% を「討伐までの熱量」で色分けする Tailwind テキストクラス
+ * (2026-08-30 実機報告「灰色だらけで見にくい」への対応)。
+ * ゲーム内の低 HP ほど赤く見える感覚に合わせ、残りが少ないほど暖色:
+ * 討伐(0) = emerald / <2% = rose / ≤10% = orange / ≤30% = amber /
+ * ≤60% = sky / それ以上 = 従来の muted。
+ */
+export function percentageToneClass(p: number | null): string {
+  if (p === null) return "text-muted-foreground";
+  if (p <= 0) return "text-emerald-300";
+  if (p < 2) return "text-rose-300";
+  if (p <= 10) return "text-orange-300";
+  if (p <= 30) return "text-amber-300";
+  if (p <= 60) return "text-sky-300";
+  return "text-muted-foreground";
+}
+
+/**
+ * 表示層番号 (1..4) ごとのチップ配色。null / 範囲 (複合、例「1-4層」) は
+ * cyan。4層前半/後半はどちらも表示層 4 なので同じ rose 系になる。
+ * クリア表示は別途 emerald を使うため、ここは「どの層か」の識別色に徹する。
+ */
+export function floorToneClass(displayFloor: number | null): string {
+  switch (displayFloor) {
+    case 1:
+      return "border-sky-400/45 bg-sky-400/10 text-sky-200";
+    case 2:
+      return "border-teal-400/45 bg-teal-400/10 text-teal-200";
+    case 3:
+      return "border-violet-400/45 bg-violet-400/10 text-violet-200";
+    case 4:
+      return "border-rose-400/45 bg-rose-400/10 text-rose-200";
+    default:
+      return "border-[var(--neon-cyan)]/40 bg-[var(--neon-cyan)]/10 text-[var(--neon-cyan)]";
+  }
+}
+
 /** 戦闘時間 (秒) を `3:21` 形式に。 */
 export function formatFightDuration(seconds: number): string {
   const s = Math.max(0, Math.round(seconds));

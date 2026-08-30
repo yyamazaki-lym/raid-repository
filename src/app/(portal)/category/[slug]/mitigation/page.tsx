@@ -1,8 +1,10 @@
+import Link from "next/link";
 import { SheetIframe } from "@/components/portal/sheet-iframe";
 import { SheetCards } from "@/components/portal/sheet-cards";
 import { SheetViewSwitch } from "@/components/portal/sheet-view-switch";
 import { SheetUrlOnboarding } from "@/components/portal/sheet-url-onboarding";
-import { fetchSheetTable } from "@/lib/server/sheet-table";
+import { fetchSheetTable, fetchSheetTabs } from "@/lib/server/sheet-table";
+import { extractSheetGid } from "@/lib/sheet-csv";
 import { notFound } from "next/navigation";
 import { findCategoryBySlug } from "@/lib/supabase/categories";
 import { getCurrentUserCanEdit } from "@/lib/server/auth";
@@ -16,10 +18,13 @@ export const metadata = {
 
 export default async function MitigationPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string }>;
+  // 2026-08-30: 層タブ切替 (?gid=<ワークシート gid>)。
+  searchParams: Promise<{ gid?: string }>;
 }) {
-  const { slug } = await params;
+  const [{ slug }, { gid: rawGid }] = await Promise.all([params, searchParams]);
   const [category, canEdit] = await Promise.all([
     findCategoryBySlug(slug),
     getCurrentUserCanEdit(),
@@ -51,7 +56,44 @@ export default async function MitigationPage({
   // TODO #94 / A-3: Sheets を編集の正としたまま、モバイルでは CSV 由来の
   // 読み取り専用カードを出す。取得に失敗したら従来どおり iframe だけを描く
   // (= 機能後退しない fallback)。
-  const table = await fetchSheetTable(category.mitigationSheetUrl);
+  // 2026-08-30: シート内のワークシート (層) 一覧を取得し、?gid= で切替
+  // できるタブを出す (ユーザー要望「シートに存在する各層を切り替えたい」)。
+  // タブ一覧が取れないシートは従来どおり単一表示。
+  const tabs = await fetchSheetTabs(category.mitigationSheetUrl);
+  const requestedGid =
+    rawGid && /^\d+$/.test(rawGid) && tabs.some((t) => t.gid === rawGid)
+      ? rawGid
+      : null;
+  const defaultGid =
+    extractSheetGid(category.mitigationSheetUrl) ?? tabs[0]?.gid ?? null;
+  const activeGid = requestedGid ?? defaultGid;
+  const table = await fetchSheetTable(category.mitigationSheetUrl, activeGid);
+
+  const floorTabs =
+    tabs.length > 1 ? (
+      <nav aria-label="層の切り替え" className="flex flex-wrap gap-1">
+        {tabs.map((t) => {
+          const active = t.gid === activeGid;
+          return (
+            <Link
+              key={t.gid}
+              href={t.gid === defaultGid ? "?" : `?gid=${t.gid}`}
+              prefetch={false}
+              scroll={false}
+              aria-current={active ? "page" : undefined}
+              className={
+                "rounded-md border px-2.5 py-1 font-mono text-[11px] tracking-normal transition-colors " +
+                (active
+                  ? "border-[var(--neon-cyan)]/60 bg-[var(--neon-cyan)]/12 text-[var(--neon-cyan)]"
+                  : "border-border/50 text-muted-foreground hover:border-border hover:text-foreground")
+              }
+            >
+              {t.name}
+            </Link>
+          );
+        })}
+      </nav>
+    ) : null;
 
   return (
     <div className="flex flex-col gap-4">
@@ -60,11 +102,15 @@ export default async function MitigationPage({
         <SheetViewSwitch
           storageKey="raid-repo:sheet-card-mode:mitigation"
           cards={
-            <SheetCards
-              table={table.table}
-              sheetUrl={category.mitigationSheetUrl}
-              title="軽減表"
-            />
+            <div className="flex flex-col gap-3">
+              {floorTabs}
+              <SheetCards
+                table={table.table}
+                sheetUrl={category.mitigationSheetUrl}
+                title="軽減表"
+                variant="mitigation"
+              />
+            </div>
           }
           iframe={
             <SheetIframe

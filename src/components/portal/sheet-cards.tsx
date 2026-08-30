@@ -33,10 +33,17 @@ export function SheetCards({
   table,
   sheetUrl,
   title,
+  variant = "generic",
 }: {
   table: SheetTable;
   sheetUrl: string;
   title: string;
+  /**
+   * 2026-08-30: `mitigation` は軽減表向けの簡素カード — AA 行を除外し、
+   * 素ダメージ → 軽減率 → 最終ダメージを数値サマリ行で、対象 (誰に
+   * 入れるか) をチップで出す (ユーザー要望)。`generic` は従来どおり。
+   */
+  variant?: "generic" | "mitigation";
 }) {
   // 表示名は localStorage 由来 (日付メモと同じキー)。SSR では空文字を返し、
   // hydration 後に実値へ差し替わるよう useSyncExternalStore を使う
@@ -68,8 +75,11 @@ export function SheetCards({
 
   // 行 → カードデータ (ノイズセル除去・見出し昇格は buildSheetCardRows 参照)。
   const cardRows = useMemo(
-    () => buildSheetCardRows(table, visibleColumns),
-    [table, visibleColumns],
+    () =>
+      buildSheetCardRows(table, visibleColumns, {
+        mitigation: variant === "mitigation",
+      }),
+    [table, visibleColumns, variant],
   );
 
   // 巨大なシート (数百行) をスマホで全部カード化すると描画が重くなるため
@@ -173,7 +183,7 @@ export function SheetCards({
       )}
 
       <ul className="flex flex-col gap-2">
-        {shown.map(({ heading, cells }, ri) => {
+        {shown.map(({ heading, cells, stats, target }, ri) => {
           return (
             <li
               key={ri}
@@ -184,6 +194,69 @@ export function SheetCards({
                   <span className="text-muted-foreground/70">（無題）</span>
                 )}
               </p>
+              {/* mitigation モード: ダメージ → 軽減率 → 最終の数値サマリと
+                  対象チップ。値の意味が色で拾えるように kind ごとに配色
+                  (素ダメ = rose / 軽減率 = sky / 最終 = emerald)。 */}
+              {((stats && stats.length > 0) || target) && (
+                <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+                  {stats?.map((s, i) => (
+                    <span key={i} className="inline-flex items-center gap-1">
+                      {i > 0 && (
+                        <span
+                          aria-hidden
+                          className="text-[10px] text-muted-foreground/60"
+                        >
+                          →
+                        </span>
+                      )}
+                      <span
+                        className={
+                          "inline-flex items-baseline gap-1 rounded-sm border px-1.5 py-0.5 " +
+                          (s.kind === "damage"
+                            ? "border-rose-400/35 bg-rose-400/8"
+                            : s.kind === "rate"
+                              ? "border-sky-400/35 bg-sky-400/8"
+                              : "border-emerald-400/35 bg-emerald-400/8")
+                        }
+                        title={s.label}
+                      >
+                        <span className="font-mono text-[9px] tracking-[0.1em] text-muted-foreground uppercase">
+                          {s.kind === "damage"
+                            ? "ダメージ"
+                            : s.kind === "rate"
+                              ? "軽減率"
+                              : "最終"}
+                        </span>
+                        <span
+                          className={
+                            "font-mono text-[12px] tabular-nums " +
+                            (s.kind === "damage"
+                              ? "text-rose-200"
+                              : s.kind === "rate"
+                                ? "text-sky-200"
+                                : "text-emerald-200")
+                          }
+                        >
+                          {s.value}
+                        </span>
+                      </span>
+                    </span>
+                  ))}
+                  {target && (
+                    <span
+                      className="inline-flex items-baseline gap-1 rounded-sm border border-violet-400/35 bg-violet-400/8 px-1.5 py-0.5"
+                      title="対象"
+                    >
+                      <span className="font-mono text-[9px] tracking-[0.1em] text-muted-foreground uppercase">
+                        対象
+                      </span>
+                      <span className="text-[12px] break-words text-violet-200">
+                        {target}
+                      </span>
+                    </span>
+                  )}
+                </div>
+              )}
               {cells.length > 0 ? (
                 // 見出し列は max-content で伸びると長い担当者名でグリッドが
                 // コンテナ幅を超えるため上限を切り、値列は最小 0 で必ず縮める。
@@ -201,7 +274,7 @@ export function SheetCards({
                     </div>
                   ))}
                 </dl>
-              ) : (
+              ) : (stats && stats.length > 0) || target ? null : (
                 <p className="mt-1 text-[11px] text-muted-foreground">
                   この行に担当の記載はありません
                 </p>

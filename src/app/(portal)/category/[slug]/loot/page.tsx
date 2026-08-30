@@ -9,14 +9,8 @@ import {
   getCurrentUserCanEdit,
   requireDiscordMember,
 } from "@/lib/server/auth";
-import {
-  fetchCategoryBisLinks,
-  fetchLootWeekly,
-} from "@/lib/supabase/loot-extras";
-import {
-  BisLinksPanel,
-  LootWeeklyPanel,
-} from "@/components/portal/loot-extras";
+import { fetchLootWeekly } from "@/lib/supabase/loot-extras";
+import { LootWeeklyPanel } from "@/components/portal/loot-extras";
 import {
   currentWeekStart,
   formatUntilNextReset,
@@ -56,13 +50,15 @@ export default async function LootPage({
   // ナビ非表示と到達性を一致させるため無効タブは 404 にする。
   if (category.tabConfig?.["loot"]?.enabled === false) notFound();
 
-  // TODO #94 / A-4: 週制限の消化チェックと BiS リンクは Sheets URL の有無に
-  // かかわらず使えるので、シート未設定 (onboarding) の画面でも上に出す。
+  // TODO #94 / A-4: 週制限の消化チェックは Sheets URL の有無にかかわらず
+  // 使えるので、シート未設定 (onboarding) の画面でも上に出す。
+  // 2026-08-30: BiS リンクは攻略情報タブ (LINKS の上) へ移動 (ユーザー要望)。
   const weekStart = currentWeekStart();
-  const [bisLinks, weeklyRows] = await Promise.all([
-    fetchCategoryBisLinks(category.id),
-    fetchLootWeekly(category.id, weekStart, viewer.discordId),
-  ]);
+  const weeklyRows = await fetchLootWeekly(
+    category.id,
+    weekStart,
+    viewer.discordId,
+  );
 
   const extras = (
     <div className="flex flex-col gap-3 px-3 md:px-0">
@@ -72,11 +68,6 @@ export default async function LootPage({
         weekLabel={formatWeekLabel(weekStart)}
         untilReset={formatUntilNextReset()}
         rows={weeklyRows}
-      />
-      <BisLinksPanel
-        categoryId={category.id}
-        links={bisLinks}
-        canEdit={canEdit}
       />
     </div>
   );

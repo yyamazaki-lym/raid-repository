@@ -120,6 +120,12 @@ export function Legend({
       const t = e.target as Node | null;
       if (!t) return;
       if (topTextRef.current && topTextRef.current.contains(t)) return;
+      // 2026-08-30: トリガーボタン自体は「外側」扱いしない。従来は
+      // ボタン再クリックで mousedown がここで close → 直後の click の
+      // トグルで re-open となり「クリックで閉じられない」状態だった
+      // (session-memo-popover の memo-dot と同じ既知パターン)。close は
+      // ボタン onClick のトグルに任せる。
+      if (ruleTriggerRef.current && ruleTriggerRef.current.contains(t)) return;
       if (editing) return; // 編集中は閉じない
       setShowTopText(false);
     };

@@ -33,9 +33,11 @@ import {
   buildFloorMap,
   filterToFloorCluster,
   floorLabel,
+  floorToneClass,
   formatFightDuration,
   formatPercentage,
   isClearFight,
+  percentageToneClass,
   progressTimeline,
   summarize,
   type DaySummary,
@@ -529,7 +531,9 @@ export function LogsView({
             .slice(0, showAllTimeline ? undefined : 10)
             .map((t) => (
               <li key={t.date} className="flex items-center gap-2">
-                <span className="w-[4.5rem] shrink-0 font-mono text-[10px] text-muted-foreground tabular-nums">
+                {/* 2026-08-30: 10px の灰色一辺倒で読みにくい (実機報告) —
+                    データ行は 11px に上げ、日付は foreground 寄りに。 */}
+                <span className="w-[4.5rem] shrink-0 font-mono text-[11px] text-foreground/75 tabular-nums">
                   {t.date.slice(5)}
                 </span>
                 <span className="relative flex h-4 min-w-0 flex-1 items-center rounded-sm bg-secondary/40">
@@ -560,7 +564,7 @@ export function LogsView({
                   />
                 </span>
                 <span
-                  className="w-[5.5rem] shrink-0 text-right font-mono text-[10px] tabular-nums"
+                  className="w-[6.5rem] shrink-0 text-right font-mono text-[11px] tabular-nums"
                   title={
                     t.hasClear
                       ? floors
@@ -569,13 +573,27 @@ export function LogsView({
                       : "その日のベスト到達"
                   }
                 >
-                  {t.hasClear
-                    ? "討伐"
-                    : floors && t.bestFloor !== null
-                      ? `${floorLabel(floors, t.bestFloor)} 残${formatPercentage(t.bestPercentage)}`
-                      : `${showPhase && t.bestPhase !== null ? `P${t.bestPhase} ` : ""}残${formatPercentage(t.bestPercentage)}`}
+                  {/* 残% は値に応じた熱量色 (討伐 = emerald)。層ラベルは
+                      層の識別色 (floorToneClass のテキスト色相当)。 */}
+                  {t.hasClear ? (
+                    <span className="font-medium text-emerald-300">討伐</span>
+                  ) : (
+                    <>
+                      {floors && t.bestFloor !== null && (
+                        <span className="text-foreground/70">
+                          {floorLabel(floors, t.bestFloor)}{" "}
+                        </span>
+                      )}
+                      {!floors && showPhase && t.bestPhase !== null && (
+                        <span className="text-foreground/70">P{t.bestPhase} </span>
+                      )}
+                      <span className={percentageToneClass(t.bestPercentage)}>
+                        残{formatPercentage(t.bestPercentage)}
+                      </span>
+                    </>
+                  )}
                 </span>
-                <span className="w-12 shrink-0 text-right font-mono text-[10px] text-muted-foreground tabular-nums">
+                <span className="w-14 shrink-0 text-right font-mono text-[11px] text-muted-foreground tabular-nums">
                   {t.pulls} pull
                 </span>
                 <span className="w-3 shrink-0">
@@ -678,9 +696,12 @@ function StatCard({
       <span className="font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase">
         {label}
       </span>
-      <span className="font-display text-lg tabular-nums">{value}</span>
+      {/* 2026-08-30: PC では一回り大きく (実機報告「PC から見ると小さい」)。 */}
+      <span className="font-display text-lg tabular-nums sm:text-xl">{value}</span>
       {sub && (
-        <span className="truncate text-[10px] text-muted-foreground">{sub}</span>
+        <span className="truncate text-[10px] text-muted-foreground sm:text-[11px]">
+          {sub}
+        </span>
       )}
     </li>
   );
@@ -722,7 +743,7 @@ function DayRow({
           aria-hidden
         />
         <span className="font-display text-sm tabular-nums">{day.date}</span>
-        <span className="font-mono text-[10px] text-muted-foreground tabular-nums">
+        <span className="font-mono text-[11px] text-muted-foreground tabular-nums">
           {day.pulls} pull / 戦闘 {formatFightDuration(day.fightSeconds)}
         </span>
         <span className="ml-auto flex items-center gap-1.5">
@@ -744,8 +765,16 @@ function DayRow({
               // 日だけ「4層前半」のようなフルラベルで区別する。
               const minD = floors.displayFloorByIndex.get(minF) ?? minF;
               const maxD = floors.displayFloorByIndex.get(maxF) ?? maxF;
+              // 2026-08-30: 単一層はその層の識別色、複数層 (複合) は cyan
+              // (floorToneClass(null))。どの層の日かが色で拾えるように。
+              const singleFloor = minD === maxD ? maxD : null;
               return (
-                <span className="rounded-sm border border-border/50 px-1.5 py-0.5 font-mono text-[10px] tabular-nums text-foreground/85">
+                <span
+                  className={
+                    "rounded-sm border px-1.5 py-0.5 font-mono text-[11px] tabular-nums " +
+                    floorToneClass(singleFloor)
+                  }
+                >
                   {minF === maxF
                     ? floorLabel(floors, maxF)
                     : minD === maxD
@@ -755,14 +784,18 @@ function DayRow({
               );
             })()}
           {day.clears > 0 ? (
-            <span className="inline-flex items-center gap-1 rounded-sm border border-emerald-400/45 bg-emerald-400/10 px-1.5 py-0.5 font-mono text-[10px] text-emerald-200">
+            <span className="inline-flex items-center gap-1 rounded-sm border border-emerald-400/45 bg-emerald-400/10 px-1.5 py-0.5 font-mono text-[11px] text-emerald-200">
               <Trophy className="h-3 w-3" aria-hidden />
               CLEAR
             </span>
           ) : (
-            <span className="font-mono text-[10px] tabular-nums text-muted-foreground">
-              {showPhase && day.bestPhase !== null ? `P${day.bestPhase} / ` : ""}
-              残{formatPercentage(day.bestPercentage)}
+            <span className="font-mono text-[11px] tabular-nums">
+              {showPhase && day.bestPhase !== null && (
+                <span className="text-muted-foreground">P{day.bestPhase} / </span>
+              )}
+              <span className={percentageToneClass(day.bestPercentage)}>
+                残{formatPercentage(day.bestPercentage)}
+              </span>
             </span>
           )}
         </span>
@@ -850,13 +883,16 @@ function PullRow({
 
   return (
     <li className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-sm border border-border/30 bg-background/30 px-2 py-1">
-      <span className="w-8 shrink-0 font-mono text-[10px] text-muted-foreground tabular-nums">
+      {/* 2026-08-30: 10px 灰色一色の行を再配色 (実機報告「灰色だらけで
+          見にくい」)。番号/時刻/時間は 11px に上げ、層は識別色チップ、
+          結果 (CLEAR / 残%) は熱量色の別チップに分離した。 */}
+      <span className="w-8 shrink-0 font-mono text-[11px] text-foreground/70 tabular-nums">
         #{index}
       </span>
-      <span className="w-11 shrink-0 font-mono text-[10px] text-muted-foreground tabular-nums">
+      <span className="w-12 shrink-0 font-mono text-[11px] text-muted-foreground tabular-nums">
         {clock}
       </span>
-      <span className="w-10 shrink-0 font-mono text-[10px] text-muted-foreground tabular-nums">
+      <span className="w-11 shrink-0 font-mono text-[11px] text-foreground/75 tabular-nums">
         {formatFightDuration(durationSec)}
       </span>
       {(() => {
@@ -864,27 +900,49 @@ function PullRow({
           floors && fight.encounterId !== null
             ? (floors.byEncounter.get(fight.encounterId) ?? null)
             : null;
+        const displayFloor =
+          floors && floor !== null
+            ? (floors.displayFloorByIndex.get(floor) ?? floor)
+            : null;
         const isClear = isClearFight(fight, floors);
-        // kill は層を問わず「◯層 CLEAR」表記 (2026-08-28 実機フィードバック
-        // 「4層以外もクリア表記を出したい」)。最終層は緑、他層は淡色で区別。
-        const label = fight.kill
-          ? floor !== null
-            ? `${floorLabel(floors, floor)} CLEAR`
-            : "CLEAR"
-          : `${floor !== null ? `${floorLabel(floors, floor)} ` : ""}${showPhase && fight.lastPhase !== null ? `P${fight.lastPhase} ` : ""}残${formatPercentage(fight.fightPercentage)}`;
-        return (
+        const floorChip =
+          floor !== null ? (
+            <span
+              className={
+                "shrink-0 rounded-sm border px-1.5 py-0.5 font-mono text-[11px] tabular-nums " +
+                floorToneClass(displayFloor)
+              }
+            >
+              {floorLabel(floors, floor)}
+            </span>
+          ) : null;
+        // kill は層を問わず CLEAR 表記 (最終層 = 濃い緑 / 他層 = 淡い緑)。
+        const resultChip = fight.kill ? (
           <span
             className={
-              "shrink-0 rounded-sm px-1.5 py-0.5 font-mono text-[10px] tabular-nums " +
+              "shrink-0 rounded-sm px-1.5 py-0.5 font-mono text-[11px] tabular-nums " +
               (isClear
-                ? "bg-emerald-400/15 text-emerald-200"
-                : fight.kill
-                  ? "bg-emerald-400/10 text-emerald-200/70"
-                  : "bg-secondary/50 text-foreground/80")
+                ? "bg-emerald-400/20 font-medium text-emerald-200"
+                : "bg-emerald-400/10 text-emerald-200/80")
             }
           >
-            {label}
+            CLEAR
           </span>
+        ) : (
+          <span className="shrink-0 rounded-sm bg-secondary/50 px-1.5 py-0.5 font-mono text-[11px] tabular-nums">
+            {showPhase && fight.lastPhase !== null && (
+              <span className="text-foreground/70">P{fight.lastPhase} </span>
+            )}
+            <span className={percentageToneClass(fight.fightPercentage)}>
+              残{formatPercentage(fight.fightPercentage)}
+            </span>
+          </span>
+        );
+        return (
+          <>
+            {floorChip}
+            {resultChip}
+          </>
         );
       })()}
       <span className="ml-auto flex shrink-0 items-center gap-1">
@@ -893,7 +951,7 @@ function PullRow({
           target="_blank"
           rel="noopener noreferrer"
           title="FFLogs でこの pull を開く"
-          className="inline-flex items-center gap-1 rounded-sm border border-amber-400/45 bg-amber-400/10 px-1.5 py-0.5 font-mono text-[9px] tracking-[0.14em] text-amber-200 uppercase transition-colors hover:bg-amber-400/15"
+          className="inline-flex items-center gap-1 rounded-sm border border-amber-400/45 bg-amber-400/10 px-1.5 py-0.5 font-mono text-[10px] tracking-[0.14em] text-amber-200 uppercase transition-colors hover:bg-amber-400/15"
         >
           <BarChart3 className="h-2.5 w-2.5" aria-hidden />
           Logs
@@ -905,7 +963,7 @@ function PullRow({
           target="_blank"
           rel="noopener noreferrer"
           title="XIVAnalysis でこの pull を解析する"
-          className="inline-flex items-center gap-1 rounded-sm border border-sky-400/45 bg-sky-400/10 px-1.5 py-0.5 font-mono text-[9px] tracking-[0.14em] text-sky-200 uppercase transition-colors hover:bg-sky-400/15"
+          className="inline-flex items-center gap-1 rounded-sm border border-sky-400/45 bg-sky-400/10 px-1.5 py-0.5 font-mono text-[10px] tracking-[0.14em] text-sky-200 uppercase transition-colors hover:bg-sky-400/15"
         >
           <Microscope className="h-2.5 w-2.5" aria-hidden />
           Analysis
@@ -916,7 +974,7 @@ function PullRow({
             target="_blank"
             rel="noopener noreferrer"
             title="動画のこの瞬間から再生"
-            className="inline-flex items-center gap-1 rounded-sm border border-violet-400/45 bg-violet-400/10 px-1.5 py-0.5 font-mono text-[9px] tracking-[0.14em] text-violet-200 uppercase transition-colors hover:bg-violet-400/15"
+            className="inline-flex items-center gap-1 rounded-sm border border-violet-400/45 bg-violet-400/10 px-1.5 py-0.5 font-mono text-[10px] tracking-[0.14em] text-violet-200 uppercase transition-colors hover:bg-violet-400/15"
           >
             <Film className="h-2.5 w-2.5" aria-hidden />
             {videoSeconds !== null ? formatClock(videoSeconds) : "動画"}
