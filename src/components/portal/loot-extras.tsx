@@ -31,6 +31,8 @@ import { useConfirm } from "@/components/portal/confirm-dialog";
 import { useCollapsible } from "@/lib/use-collapsible";
 import { LinkSiteIcon } from "@/components/portal/link-site-icon";
 import { toXivgearEmbedUrl } from "@/lib/xivgear-url";
+import { fetchXivgearSummaryAction } from "@/lib/server/xivgear-actions";
+import type { XivgearSheetSummary } from "@/lib/xivgear-set";
 import { safeHref } from "@/lib/url-safe";
 import { getStoredAuthorName } from "@/lib/schedule-memos-client";
 import {
@@ -291,6 +293,41 @@ export function BisLinksPanel({
   const [previewId, setPreviewId] = useState<string | null>(null);
   const previewLink = links.find((l) => l.id === previewId) ?? null;
   const previewSrc = previewLink ? toXivgearEmbedUrl(previewLink.url) : null;
+  // 2026-08-30: 埋め込みと同時に XivGear API の要約も出す。埋め込みは
+  // 見た目の確認、要約は「どの部位がまだ空か」の確認に効く。ボタンを
+  // 増やさずに済むよう、プレビューを開いたときにまとめて取得する。
+  const [summaryState, setSummaryState] = useState<{
+    linkId: string;
+    loading: boolean;
+    summary: XivgearSheetSummary | null;
+    reason: string | null;
+  } | null>(null);
+
+  const openPreview = (link: CategoryBisLink) => {
+    if (previewId === link.id) {
+      setPreviewId(null);
+      return;
+    }
+    setPreviewId(link.id);
+    setSummaryState({
+      linkId: link.id,
+      loading: true,
+      summary: null,
+      reason: null,
+    });
+    void fetchXivgearSummaryAction(link.url).then((r) => {
+      setSummaryState((cur) =>
+        cur && cur.linkId === link.id
+          ? {
+              linkId: link.id,
+              loading: false,
+              summary: r.ok ? r.summary : null,
+              reason: r.ok ? null : r.reason,
+            }
+          : cur,
+      );
+    });
+  };
 
   return (
     <section className="flex flex-col gap-3 rounded-md border border-border/40 bg-secondary/10 p-3">
@@ -392,9 +429,7 @@ export function BisLinksPanel({
                 {toXivgearEmbedUrl(l.url) && (
                   <button
                     type="button"
-                    onClick={() =>
-                      setPreviewId((cur) => (cur === l.id ? null : l.id))
-                    }
+                    onClick={() => openPreview(l)}
                     aria-pressed={previewId === l.id}
                     aria-label={`${l.label} の装備を表示`}
                     title="装備をこの画面で見る"
@@ -447,7 +482,10 @@ export function BisLinksPanel({
             </span>
             <button
               type="button"
-              onClick={() => setPreviewId(null)}
+              onClick={() => {
+                setPreviewId(null);
+                setSummaryState(null);
+              }}
               aria-label="プレビューを閉じる"
               title="閉じる"
               className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
@@ -455,6 +493,13 @@ export function BisLinksPanel({
               <X className="h-3 w-3" aria-hidden />
             </button>
           </div>
+          {summaryState?.linkId === previewLink.id && (
+            <XivgearSummaryStrip
+              loading={summaryState.loading}
+              summary={summaryState.summary}
+              reason={summaryState.reason}
+            />
+          )}
           <iframe
             key={previewSrc}
             src={previewSrc}
@@ -568,5 +613,105 @@ export function BisLinksPanel({
         </DialogContent>
       </Dialog>
     </section>
+  );
+}
+
+/**
+ * BiS 埋め込みの上に出す要約 (2026-08-30)。
+ *
+ * XivGear の `/fulldata` は item ID しか返さない (装備名も IL も含まない)
+ * ため、名前の一覧は出せない。代わりに「組み終わっているか」を判断できる
+ * 情報 — 埋まっている部位数・未設定スロット・マテリア数・食事・主要サブステ
+ * — に絞る。取得失敗時は 1 行の注記だけで、埋め込み自体は従来どおり出る。
+ */
+function XivgearSummaryStrip({
+  loading,
+  summary,
+  reason,
+}: {
+  loading: boolean;
+  summary: XivgearSheetSummary | null;
+  reason: string | null;
+}) {
+  if (loading) {
+    return (
+      <p className="px-1 text-[10px] text-muted-foreground/80">
+        セット情報を取得中…
+      </p>
+    );
+  }
+  if (!summary) {
+    return (
+      <p className="px-1 text-[10px] text-muted-foreground/80">
+        {reason ?? "セット情報を取得できませんでした"}
+      </p>
+    );
+  }
+  // シートに複数セットが入っている場合があるので先頭 2 件まで出す
+  // (それ以上は埋め込み側で見てもらう — 縦に伸ばさない)。
+  const sets = summary.sets.slice(0, 2);
+  return (
+    <div className="flex flex-col gap-1 px-1">
+      {sets.map((set, i) => {
+        const complete = set.missingSlots.length === 0;
+        return (
+          <div key={i} className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            {set.name && (
+              <span className="text-[11px] text-foreground/85">{set.name}</span>
+            )}
+            {set.job && (
+              <span className="rounded-sm border border-border/50 px-1 font-mono text-[9px] tracking-[0.12em] text-muted-foreground uppercase">
+                {set.job}
+                {set.level ? ` Lv${set.level}` : ""}
+              </span>
+            )}
+            <span
+              className={
+                "rounded-sm border px-1 py-px font-mono text-[10px] tabular-nums " +
+                (complete
+                  ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-200"
+                  : "border-amber-400/40 bg-amber-400/10 text-amber-200")
+              }
+              title={
+                complete
+                  ? "全部位が設定されています"
+                  : `未設定: ${set.missingSlots.join(", ")}`
+              }
+            >
+              部位 {set.filledSlots}/{set.expectedSlots}
+            </span>
+            {!complete && (
+              <span className="text-[10px] text-amber-200/90">
+                未設定: {set.missingSlots.join(", ")}
+              </span>
+            )}
+            <span className="font-mono text-[10px] tabular-nums text-muted-foreground">
+              マテリア {set.materiaCount}
+            </span>
+            <span
+              className={
+                "font-mono text-[10px] " +
+                (set.hasFood ? "text-muted-foreground" : "text-amber-200/90")
+              }
+            >
+              {set.hasFood ? "食事あり" : "食事なし"}
+            </span>
+            {set.stats.slice(0, 4).map((st) => (
+              <span
+                key={st.label}
+                className="font-mono text-[10px] tabular-nums text-muted-foreground/85"
+              >
+                {st.label} {st.value}
+              </span>
+            ))}
+          </div>
+        );
+      })}
+      {summary.sets.length > sets.length && (
+        <p className="text-[10px] text-muted-foreground/70">
+          ほか {summary.sets.length - sets.length} セット
+        </p>
+      )}
+    </div>
   );
 }

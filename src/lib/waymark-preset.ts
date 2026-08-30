@@ -171,3 +171,71 @@ export function isWaymarkStudioUrl(body: string): boolean {
     return false;
   }
 }
+
+/**
+ * 簡易プレビュー用のレイアウト計算 (2026-08-30、Tier2-7 follow-up)。
+ *
+ * FF14 のフィールド座標は X (東西) / Z (南北) が地面、Y が高さ。真上から
+ * 見た図にするので **X を横・Z を縦** に取り、Z が増える方向を下 (= 北が上)
+ * にする。これは Waymark 系ツールの慣例と同じ。
+ *
+ * アリーナの形状データ (MapID → 地形) は持っていないので、**描けるのは
+ * 「8 点の相対配置」だけ** — 円形/方形の縁は描かない (それらしく描くと
+ * 実際の地形と食い違って誤解を生む)。
+ *
+ * 返す座標は 0..1 の正規化値。呼び出し側が SVG のサイズに掛ける。
+ * 点が 1 個以下 / 全点が同一座標なら中央に寄せる (0 除算回避)。
+ */
+export type WaymarkLayoutPoint = {
+  key: string;
+  /** 表示ラベル (A-D / 1-4)。 */
+  label: string;
+  /** 0..1 (左→右)。 */
+  nx: number;
+  /** 0..1 (上→下 = 北→南)。 */
+  ny: number;
+};
+
+export function buildWaymarkLayout(
+  points: Record<string, WaymarkPoint>,
+): WaymarkLayoutPoint[] {
+  const active = Object.entries(points).filter(([, p]) => p.active);
+  if (active.length === 0) return [];
+
+  const xs = active.map(([, p]) => p.x);
+  const zs = active.map(([, p]) => p.z);
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minZ = Math.min(...zs);
+  const maxZ = Math.max(...zs);
+  // 縦横比を保つため、広い方の辺を基準にした正方形へ収める
+  // (アスペクトが崩れると散開の形が別物に見える)。
+  const span = Math.max(maxX - minX, maxZ - minZ);
+  const centerX = (minX + maxX) / 2;
+  const centerZ = (minZ + maxZ) / 2;
+
+  return active.map(([key, p]) => {
+    if (span <= 0) {
+      // 全点が同一座標。潰れて重なるだけなので中央に置く。
+      return { key, label: MARKER_LABEL[key] ?? key, nx: 0.5, ny: 0.5 };
+    }
+    return {
+      key,
+      label: MARKER_LABEL[key] ?? key,
+      nx: (p.x - centerX) / span + 0.5,
+      ny: (p.z - centerZ) / span + 0.5,
+    };
+  });
+}
+
+/** マーカーの配色 (ゲーム内の色に合わせる: A/1=赤 B/2=黄 C/3=青 D/4=紫)。 */
+export const MARKER_COLOR: Record<string, string> = {
+  A: "#f87171",
+  One: "#f87171",
+  B: "#facc15",
+  Two: "#facc15",
+  C: "#60a5fa",
+  Three: "#60a5fa",
+  D: "#c084fc",
+  Four: "#c084fc",
+};

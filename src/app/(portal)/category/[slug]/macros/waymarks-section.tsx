@@ -37,8 +37,10 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useConfirm } from "@/components/portal/confirm-dialog";
 import {
+  buildWaymarkLayout,
   checkWaymarkPreset,
   isWaymarkStudioUrl,
+  MARKER_COLOR,
 } from "@/lib/waymark-preset";
 import { safeHref } from "@/lib/url-safe";
 import {
@@ -540,9 +542,21 @@ function SortableWaymarkRow({
         </div>
       </div>
       {expanded && (
-        <pre className="max-h-[12rem] overflow-y-auto px-3 py-2 font-mono text-[11px] leading-relaxed whitespace-pre-wrap break-all text-foreground/85">
-          {waymark.body}
-        </pre>
+        <div className="flex flex-col gap-2 px-3 py-2 sm:flex-row sm:items-start">
+          {/* 2026-08-30: 取り込める形式なら 8 点の相対配置を簡易プレビュー。
+              アリーナの地形データは持っていないので縁は描かず、点の位置
+              関係だけを出す (それらしく描いて実際とずれると誤解を生む)。 */}
+          {presetCheck?.kind === "valid" &&
+            presetCheck.info.activeCount > 0 && (
+              <WaymarkLayoutPreview
+                points={presetCheck.info.points}
+                label={name}
+              />
+            )}
+          <pre className="max-h-[12rem] min-w-0 flex-1 overflow-y-auto font-mono text-[11px] leading-relaxed whitespace-pre-wrap break-all text-foreground/85">
+            {waymark.body}
+          </pre>
+        </div>
       )}
     </li>
   );
@@ -577,5 +591,81 @@ function EditorPresetHint({ body }: { body: string }) {
         </p>
       ))}
     </div>
+  );
+}
+
+/**
+ * ウェイマークの簡易トップダウン表示 (2026-08-30、Tier2-7 follow-up)。
+ *
+ * 描くのは **8 点の相対配置だけ**。MapID からアリーナ形状を引くデータを
+ * 持っていないため、円や床のフチは描かない (実際の地形と食い違う絵は
+ * 「合っている」と誤解させるので出さない)。北が上 (Z が増える向きが下)。
+ */
+function WaymarkLayoutPreview({
+  points,
+  label,
+}: {
+  points: Parameters<typeof buildWaymarkLayout>[0];
+  label: string;
+}) {
+  const layout = useMemo(() => buildWaymarkLayout(points), [points]);
+  if (layout.length === 0) return null;
+  // viewBox 100x100 に 12 のパディングを取り、マーカー半径 7 で描く。
+  const PAD = 12;
+  const R = 7;
+  const scale = 100 - PAD * 2;
+  return (
+    <figure className="flex shrink-0 flex-col items-center gap-1">
+      <svg
+        viewBox="0 0 100 100"
+        role="img"
+        aria-label={`${label} のマーカー配置 (相対位置)`}
+        className="h-32 w-32 rounded-md border border-border/40 bg-background/40"
+      >
+        {/* 中心の十字 (方角の目安。地形ではない) */}
+        <line x1="50" y1={PAD} x2="50" y2={100 - PAD} stroke="currentColor" strokeWidth="0.5" className="text-border" />
+        <line x1={PAD} y1="50" x2={100 - PAD} y2="50" stroke="currentColor" strokeWidth="0.5" className="text-border" />
+        <text x="50" y="8" textAnchor="middle" className="fill-muted-foreground" style={{ fontSize: 7 }}>
+          N
+        </text>
+        {layout.map((p) => {
+          const cx = PAD + p.nx * scale;
+          const cy = PAD + p.ny * scale;
+          const color = MARKER_COLOR[p.key] ?? "#9ca3af";
+          const isNumber = /^[1-4]$/.test(p.label);
+          return (
+            <g key={p.key}>
+              {isNumber ? (
+                <circle cx={cx} cy={cy} r={R} fill={color} fillOpacity={0.22} stroke={color} strokeWidth="1.2" />
+              ) : (
+                <rect
+                  x={cx - R}
+                  y={cy - R}
+                  width={R * 2}
+                  height={R * 2}
+                  rx="2"
+                  fill={color}
+                  fillOpacity={0.22}
+                  stroke={color}
+                  strokeWidth="1.2"
+                />
+              )}
+              <text
+                x={cx}
+                y={cy + 2.6}
+                textAnchor="middle"
+                fill={color}
+                style={{ fontSize: 7, fontWeight: 700 }}
+              >
+                {p.label}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+      <figcaption className="text-[9px] text-muted-foreground/70">
+        相対配置のみ (地形は非表示)
+      </figcaption>
+    </figure>
   );
 }

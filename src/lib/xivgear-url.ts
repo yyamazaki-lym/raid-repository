@@ -48,6 +48,17 @@ export function buildXivgearEmbedUrl(uuid: string): string {
   return `https://xivgear.app/?page=embed|sl|${uuid}`;
 }
 
+/**
+ * `/fulldata` エンドポイントの URL (2026-08-30)。
+ *
+ * 上流ドキュメント (API_DOC.md) いわく「set UUID か bis リンクを指定」で、
+ * 返るのは常に `SheetStatsExport`。**significantly slower** と明記されて
+ * いるので、呼び出し側でキャッシュ + タイムアウトを必ず持つこと。
+ */
+export function buildXivgearFulldataUrl(uuid: string): string {
+  return `https://api.xivgear.app/fulldata/${encodeURIComponent(uuid)}`;
+}
+
 /** BiS URL から直接 embed URL を作る (XivGear 以外は null)。 */
 export function toXivgearEmbedUrl(
   raw: string | null | undefined,

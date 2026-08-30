@@ -128,6 +128,63 @@ try {
     0,
   );
 
+  console.log("\n[簡易プレビューのレイアウト]");
+  // 正方形に 4 点 (A 北西 / B 北東 / C 南東 / D 南西)。X 横・Z 縦、北が上。
+  const square = mod.checkWaymarkPreset(
+    JSON.stringify({
+      A: { X: 90, Y: 0, Z: 90, Active: true },
+      B: { X: 110, Y: 0, Z: 90, Active: true },
+      C: { X: 110, Y: 0, Z: 110, Active: true },
+      D: { X: 90, Y: 0, Z: 110, Active: true },
+    }),
+  );
+  const layout = mod.buildWaymarkLayout(square.info.points);
+  const at = (k) => layout.find((p) => p.key === k);
+  check("Active な点だけ返す", layout.length, 4);
+  check("A は左上", [at("A").nx, at("A").ny], [0, 0]);
+  check("B は右上", [at("B").nx, at("B").ny], [1, 0]);
+  check("C は右下", [at("C").nx, at("C").ny], [1, 1]);
+  check("D は左下", [at("D").nx, at("D").ny], [0, 1]);
+  check("ラベルは 1-4 に変換", at("A").label, "A");
+
+  // 数字マーカーのラベル変換 (One → 1)。
+  const numbered = mod.checkWaymarkPreset(
+    JSON.stringify({
+      One: { X: 0, Y: 0, Z: 0, Active: true },
+      Four: { X: 10, Y: 0, Z: 0, Active: true },
+    }),
+  );
+  const nlayout = mod.buildWaymarkLayout(numbered.info.points);
+  check(
+    "One / Four は 1 / 4 と表示",
+    nlayout.map((p) => p.label),
+    ["1", "4"],
+  );
+
+  // 縦横比を保つ: 横長の配置で縦が潰れきらないこと。
+  const wide = mod.buildWaymarkLayout({
+    A: { x: 0, y: 0, z: 0, active: true },
+    B: { x: 100, y: 0, z: 10, active: true },
+  });
+  check("広い辺を基準に正規化 (横は 0→1)", [wide[0].nx, wide[1].nx], [0, 1]);
+  check(
+    "縦は潰さず縮尺を共有 (0.45 / 0.55)",
+    [Number(wide[0].ny.toFixed(2)), Number(wide[1].ny.toFixed(2))],
+    [0.45, 0.55],
+  );
+
+  // 退化ケース: 全点同一座標でも 0 除算しない。
+  const same = mod.buildWaymarkLayout({
+    A: { x: 5, y: 0, z: 5, active: true },
+    B: { x: 5, y: 0, z: 5, active: true },
+  });
+  check("同一座標は中央に寄せる", [same[0].nx, same[0].ny], [0.5, 0.5]);
+  check(
+    "非アクティブは描画対象外",
+    mod.buildWaymarkLayout({ A: { x: 0, y: 0, z: 0, active: false } }).length,
+    0,
+  );
+
   console.log("\n[Waymark Studio URL の判定]");
   check(
     "共有 URL を認識",
