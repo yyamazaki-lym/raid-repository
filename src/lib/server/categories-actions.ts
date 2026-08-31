@@ -3836,6 +3836,8 @@ export async function detectMitigationIconsAction(
   categoryId: string,
   gid: string,
   checkColumns: number[],
+  /** 人が選び直したアイコン行 (`シート名\u0000行`)。null なら自動選択。 */
+  pick: string | null,
 ): Promise<MitigationIconResult> {
   const auth = await assertAdminResult();
   if (!auth.ok) {
@@ -3853,5 +3855,6 @@ export async function detectMitigationIconsAction(
     sheetUrl,
     /^\d+$/.test(gid) ? gid : null,
     checkColumns.filter((n) => Number.isInteger(n) && n >= 0).slice(0, 400),
+    typeof pick === "string" && pick.length <= 200 ? pick : null,
   );
 }

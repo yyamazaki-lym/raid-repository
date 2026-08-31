@@ -94,6 +94,16 @@ export function MitigationColumnsDialog({
   const [detectNote, setDetectNote] = useState<string | null>(null);
   /** アイコンが取れた列だけに絞る (取れていないうちは効かない)。 */
   const [onlyIcons, setOnlyIcons] = useState(true);
+  /** 選び直せるアイコン行の候補と、いま選ばれているもの。 */
+  const [candidates, setCandidates] = useState<
+    Array<{ key: string; sheet: string; row: number; count: number; overlap: number }>
+  >([]);
+  const [selected, setSelected] = useState<string>("");
+  /**
+   * 自動判定で入れた列。選び直したときはこれだけ差し替える —
+   * 手で書いた名前を消さず、かつ誤ったシートの名前を残さないため。
+   */
+  const [autoFilled, setAutoFilled] = useState<string[]>([]);
   /** 取得経路ごとの結果。失敗の切り分けに要るので成功時も残す。 */
   const [detectLog, setDetectLog] = useState<string[]>([]);
   const [pending, startTransition] = useTransition();
@@ -123,27 +133,39 @@ export function MitigationColumnsDialog({
    * 突き合わせて名前を埋める。名前が引けなかった列もアイコンだけは出す。
    * 既に入力済みの名前は上書きしない (人の入力を機械が壊さない)。
    */
-  const onDetect = () => {
+  const onDetect = (pick: string | null = null) => {
     startDetect(async () => {
-      const r = await detectMitigationIconsAction(categoryId, gid, checkColumns);
+      const r = await detectMitigationIconsAction(
+        categoryId,
+        gid,
+        checkColumns,
+        pick,
+      );
       setDetectLog(r.diagnostics);
       if (!r.ok) {
         setDetectNote(r.reason);
+        setCandidates([]);
         toast.error("アイコンを取得できませんでした");
         return;
       }
+      setCandidates(r.candidates);
+      setSelected(r.selected);
       const nextIcons: Record<string, string> = {};
       const filled: Record<string, string> = {};
+      // 前回の自動判定ぶんは一旦外す (選び直し = 前回が誤りだったということ)。
+      const base: Record<string, string> = { ...labels };
+      for (const k of autoFilled) delete base[k];
       for (const icon of r.icons) {
         const key = String(icon.column);
         nextIcons[key] = icon.iconUrl;
-        if (icon.guessedName && !labels[key]?.trim()) {
+        if (icon.guessedName && !base[key]?.trim()) {
           filled[key] = icon.guessedName;
         }
       }
       setIcons(nextIcons);
       const added = Object.keys(filled).length;
-      if (added > 0) setLabels((prev) => ({ ...prev, ...filled }));
+      setAutoFilled(Object.keys(filled));
+      setLabels({ ...base, ...filled });
       setDetectNote(
         r.namedCount === 0
           ? `${r.source} からアイコン ${r.icons.length} 件を取得しましたが、名前は判定できませんでした。アイコンを見て入力してください。`
@@ -232,7 +254,7 @@ export function MitigationColumnsDialog({
               type="button"
               variant="outline"
               size="sm"
-              onClick={onDetect}
+              onClick={() => onDetect(null)}
               disabled={detecting}
               className="text-[11px] tracking-normal"
             >
@@ -255,6 +277,29 @@ export function MitigationColumnsDialog({
               アクションアイコンと突き合わせて名前を埋めます。
             </span>
           </div>
+          {candidates.length > 1 && (
+            // gid (層) と xlsx のシートは機械的に結び付けられないため、
+            // 自動選択が外れたら人が選び直せるようにする。
+            <label className="flex flex-wrap items-center gap-2 rounded-md border border-border/40 bg-secondary/10 px-3 py-2 text-[11px] text-muted-foreground">
+              <span>アイコン行</span>
+              <select
+                value={selected}
+                onChange={(e) => onDetect(e.target.value)}
+                disabled={detecting}
+                className="min-w-0 flex-1 rounded-md border border-input/70 bg-background/60 px-2 py-1 text-[11px] text-foreground"
+              >
+                {candidates.map((c) => (
+                  <option key={c.key} value={c.key}>
+                    {c.sheet} / {c.row + 1}行目 / アイコン{c.count} / 一致
+                    {c.overlap}
+                  </option>
+                ))}
+              </select>
+              <span className="text-[10px] text-muted-foreground/70">
+                違うシートが選ばれていたらここで変更
+              </span>
+            </label>
+          )}
           {detectNote && (
             <div className="rounded-md border border-border/40 bg-secondary/15 px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
               <p>{detectNote}</p>

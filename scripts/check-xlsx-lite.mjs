@@ -223,6 +223,49 @@ try {
   // drawing が無いシートで落ちない。
   check("drawing の無いシートは空", anchored.get("P2_\u30c8\u30fc\u30eb\u30c0\u30f3"), []);
 
+
+  console.log("\n[シート名 → XML の対応 (rels 経由)]");
+  // 2026-08-31 実機: sheet1.xml の番号順 = タブ順 と思い込んでいたため、
+  // アイコンが隣のシートのものとして扱われ、列がズレた。
+  const wbOrdered =
+    '<workbook><sheets>' +
+    '<sheet name="M12S-2" sheetId="7" r:id="rId9"/>' +
+    '<sheet name="裏M12S-1" sheetId="6" r:id="rId4"/>' +
+    "</sheets></workbook>";
+  const wbRels =
+    "<Relationships>" +
+    '<Relationship Id="rId9" Target="worksheets/sheet3.xml"/>' +
+    '<Relationship Id="rId4" Target="worksheets/sheet1.xml"/>' +
+    "</Relationships>";
+  const zip3 = makeZip([
+    ["xl/workbook.xml", wbOrdered],
+    ["xl/_rels/workbook.xml.rels", wbRels],
+    [
+      "xl/worksheets/sheet1.xml",
+      '<worksheet><c r="B26"><f>IMAGE("https://x/ura.png")</f></c></worksheet>',
+    ],
+    [
+      "xl/worksheets/sheet3.xml",
+      '<worksheet><c r="DO26"><f>IMAGE("https://x/m12s2.png")</f></c></worksheet>',
+    ],
+  ]);
+  const files3 = mod.unzip(zip3);
+  check("番号順ではなく rels で対応づける", mod.resolveWorkbookSheets(files3), [
+    { name: "M12S-2", path: "xl/worksheets/sheet3.xml" },
+    { name: "裏M12S-1", path: "xl/worksheets/sheet1.xml" },
+  ]);
+  const bySheet3 = mod.extractImageCellsBySheet(files3);
+  check(
+    "アイコンが正しいシートに付く",
+    bySheet3.get("M12S-2").map((c) => c.url),
+    ["https://x/m12s2.png"],
+  );
+  check(
+    "隣のシートに混ざらない",
+    bySheet3.get("裏M12S-1").map((c) => c.url),
+    ["https://x/ura.png"],
+  );
+
   console.log("\n[壊れた入力]");
   check("zip でなければ空", mod.unzip(new Uint8Array([1, 2, 3])).size, 0);
   check("空でも落ちない", mod.unzip(new Uint8Array(0)).size, 0);

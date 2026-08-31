@@ -218,82 +218,91 @@ export function parseDrawingAnchors(
 }
 
 /**
- * xlsx 全体から「シート名 → IMAGE セル」を作る。
+ * ワークブックの「タブ順のシート名 → ワークシート XML のパス」。
  *
- * gid は xlsx に残らないので、シート名で引けるようにする。ワークシートの
- * ファイル名 (`sheet1.xml`…) は workbook.xml のタブ順と一致するため、
- * 番号順に並べて名前を対応させる。
+ * ⚠ `sheet1.xml` の**番号順がタブ順と一致するとは限らない**
+ * (2026-08-31: 一致する前提で組んでいたため、アイコンが隣のシートの
+ * ものとして扱われ、列がズレた)。対応は `xl/_rels/workbook.xml.rels`
+ * の r:id を辿って初めて分かる。
  */
-export function extractImageCellsBySheet(
+export function resolveWorkbookSheets(
   files: Map<string, Uint8Array>,
-): Map<string, XlsxImageCell[]> {
+): Array<{ name: string; path: string }> {
   const dec = new TextDecoder("utf-8");
   const wb = files.get("xl/workbook.xml");
-  const names = wb ? parseWorkbookSheetNames(dec.decode(wb)) : [];
-  const sheetPaths = [...files.keys()]
+  if (!wb) return [];
+  const wbXml = dec.decode(wb);
+  const relsBytes = files.get("xl/_rels/workbook.xml.rels");
+  const rels = relsBytes
+    ? parseRels(dec.decode(relsBytes))
+    : new Map<string, string>();
+
+  const out: Array<{ name: string; path: string }> = [];
+  const tags = wbXml.match(/<sheet\b[^>]*\/?>/g) ?? [];
+  // rels が無い/壊れている場合の保険。番号順は当てにならないが、
+  // 何も返さないよりはよい。
+  const numbered = [...files.keys()]
     .filter((k) => /^xl\/worksheets\/sheet\d+\.xml$/.test(k))
     .sort(
       (a, b) =>
         Number(/(\d+)\.xml$/.exec(a)![1]) - Number(/(\d+)\.xml$/.exec(b)![1]),
     );
-  const out = new Map<string, XlsxImageCell[]>();
-  sheetPaths.forEach((path, i) => {
-    const cells = extractImageFormulaCells(dec.decode(files.get(path)!));
-    out.set(names[i] ?? path, cells);
+  tags.forEach((tag, i) => {
+    const name = /\bname="([^"]*)"/.exec(tag)?.[1];
+    if (name === undefined) return;
+    const rid = /\br:id="([^"]+)"/.exec(tag)?.[1];
+    const target = rid ? rels.get(rid) : undefined;
+    const path = target
+      ? resolveZipPath("xl/workbook.xml", target)
+      : (numbered[i] ?? "");
+    if (path) out.push({ name: decodeXmlText(name), path });
   });
   return out;
 }
 
-/** 上と同じ並びで「シート名 → セルに埋め込まれた画像」を作る。 */
+/** xlsx 全体から「シート名 → IMAGE セル」を作る。 */
+export function extractImageCellsBySheet(
+  files: Map<string, Uint8Array>,
+): Map<string, XlsxImageCell[]> {
+  const dec = new TextDecoder("utf-8");
+  const out = new Map<string, XlsxImageCell[]>();
+  for (const { name, path } of resolveWorkbookSheets(files)) {
+    const xml = files.get(path);
+    if (!xml) continue;
+    out.set(name, extractImageFormulaCells(dec.decode(xml)));
+  }
+  return out;
+}
+
+/** 同じ対応表で「シート名 → セルに埋め込まれた画像」を作る。 */
 export function extractAnchoredImagesBySheet(
   files: Map<string, Uint8Array>,
 ): Map<string, XlsxAnchoredImage[]> {
   const dec = new TextDecoder("utf-8");
-  const wb = files.get("xl/workbook.xml");
-  const names = wb ? parseWorkbookSheetNames(dec.decode(wb)) : [];
-  const sheetPaths = [...files.keys()]
-    .filter((k) => /^xl\/worksheets\/sheet\d+\.xml$/.test(k))
-    .sort(
-      (a, b) =>
-        Number(/(\d+)\.xml$/.exec(a)![1]) - Number(/(\d+)\.xml$/.exec(b)![1]),
-    );
   const out = new Map<string, XlsxAnchoredImage[]>();
-  sheetPaths.forEach((path, i) => {
-    const name = names[i] ?? path;
-    const sheetXml = dec.decode(files.get(path)!);
+  for (const { name, path } of resolveWorkbookSheets(files)) {
+    const sheetBytes = files.get(path);
+    if (!sheetBytes) continue;
+    out.set(name, []);
+    const sheetXml = dec.decode(sheetBytes);
     const drawingRef = /<drawing\b[^>]*\br:id="([^"]+)"/.exec(sheetXml);
-    if (!drawingRef) {
-      out.set(name, []);
-      return;
-    }
+    if (!drawingRef) continue;
     const sheetRels = files.get(
       `${path.replace(/\/([^/]+)$/, "/_rels/$1")}.rels`,
     );
-    if (!sheetRels) {
-      out.set(name, []);
-      return;
-    }
+    if (!sheetRels) continue;
     const target = parseRels(dec.decode(sheetRels)).get(drawingRef[1]!);
-    if (!target) {
-      out.set(name, []);
-      return;
-    }
+    if (!target) continue;
     const drawingPath = resolveZipPath(path, target);
     const drawingXml = files.get(drawingPath);
-    if (!drawingXml) {
-      out.set(name, []);
-      return;
-    }
+    if (!drawingXml) continue;
     const drawingRels = files.get(
       `${drawingPath.replace(/\/([^/]+)$/, "/_rels/$1")}.rels`,
     );
     const rels = drawingRels
       ? parseRels(dec.decode(drawingRels))
       : new Map<string, string>();
-    out.set(
-      name,
-      parseDrawingAnchors(dec.decode(drawingXml), rels, drawingPath),
-    );
-  });
+    out.set(name, parseDrawingAnchors(dec.decode(drawingXml), rels, drawingPath));
+  }
   return out;
 }
