@@ -86,8 +86,9 @@ import { dbError } from "./db-error";
 import { fflogsLogDedupeKey, parseFflogsReportCode } from "@/lib/fflogs-url";
 import {
   detectMitigationIcons,
-  type MitigationIconGuess,
+  type MitigationIconResult,
 } from "./mitigation-icons";
+import { parseSheetTabsSetting } from "@/lib/sheet-csv";
 import { jstYmdKey, toJstYmd } from "@/lib/video-jst-date";
 import {
   rowToCategory,
@@ -3835,19 +3836,28 @@ export async function setMitigationColumnLabelsAction(
 export async function detectMitigationIconsAction(
   categoryId: string,
   gid: string,
-): Promise<
-  | { ok: true; icons: MitigationIconGuess[]; namedCount: number }
-  | { ok: false; reason: string }
-> {
+): Promise<MitigationIconResult> {
   const auth = await assertAdminResult();
-  if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
+  if (!auth.ok) {
+    return { ok: false, reason: "ADMIN ロールが必要です", diagnostics: [] };
+  }
   const supabase = await createClient();
   const { data } = await supabase
     .from("categories")
-    .select("mitigation_sheet_url")
+    .select("mitigation_sheet_url, mitigation_sheet_tabs")
     .eq("id", categoryId)
     .maybeSingle();
-  const sheetUrl = (data as { mitigation_sheet_url?: string | null } | null)
-    ?.mitigation_sheet_url;
-  return detectMitigationIcons(sheetUrl, /^\d+$/.test(gid) ? gid : null);
+  const row = data as {
+    mitigation_sheet_url?: string | null;
+    mitigation_sheet_tabs?: string | null;
+  } | null;
+  // xlsx には gid が残らないので、登録済みタブから**シート名**を引いて渡す。
+  const sheetName =
+    parseSheetTabsSetting(row?.mitigation_sheet_tabs).find((t) => t.gid === gid)
+      ?.name ?? null;
+  return detectMitigationIcons(
+    row?.mitigation_sheet_url,
+    /^\d+$/.test(gid) ? gid : null,
+    sheetName,
+  );
 }

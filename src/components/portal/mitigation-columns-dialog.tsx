@@ -92,6 +92,8 @@ export function MitigationColumnsDialog({
   /** 列番号 → アイコン URL (「アイコンから判定」実行後に埋まる)。 */
   const [icons, setIcons] = useState<Record<string, string>>({});
   const [detectNote, setDetectNote] = useState<string | null>(null);
+  /** 取得経路ごとの結果。失敗の切り分けに要るので成功時も残す。 */
+  const [detectLog, setDetectLog] = useState<string[]>([]);
   const [pending, startTransition] = useTransition();
   const [detecting, startDetect] = useTransition();
 
@@ -114,6 +116,7 @@ export function MitigationColumnsDialog({
   const onDetect = () => {
     startDetect(async () => {
       const r = await detectMitigationIconsAction(categoryId, gid);
+      setDetectLog(r.diagnostics);
       if (!r.ok) {
         setDetectNote(r.reason);
         toast.error("アイコンを取得できませんでした");
@@ -133,8 +136,8 @@ export function MitigationColumnsDialog({
       if (added > 0) setLabels((prev) => ({ ...prev, ...filled }));
       setDetectNote(
         r.namedCount === 0
-          ? `アイコン ${r.icons.length} 件を取得しましたが、名前は判定できませんでした。アイコンを見て入力してください。`
-          : `アイコン ${r.icons.length} 件を取得し、${added} 列に名前を入れました (保存はまだです)。`,
+          ? `${r.source} からアイコン ${r.icons.length} 件を取得しましたが、名前は判定できませんでした。アイコンを見て入力してください。`
+          : `${r.source} からアイコン ${r.icons.length} 件を取得し、${added} 列に名前を入れました (保存はまだです)。`,
       );
       toast.success(`アイコン ${r.icons.length} 件を取得しました`);
     });
@@ -232,9 +235,26 @@ export function MitigationColumnsDialog({
             </span>
           </div>
           {detectNote && (
-            <p className="rounded-md border border-border/40 bg-secondary/15 px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
-              {detectNote}
-            </p>
+            <div className="rounded-md border border-border/40 bg-secondary/15 px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
+              <p>{detectNote}</p>
+              {detectLog.length > 0 && (
+                // どの経路で何が返ったかをそのまま出す。「取得できません
+                // でした」だけでは共有設定・URL・シートの作りのどれが原因か
+                // 切り分けられないため。
+                <details className="mt-1.5">
+                  <summary className="cursor-pointer text-[10px] text-muted-foreground/70">
+                    取得の詳細 ({detectLog.length} 件)
+                  </summary>
+                  <ul className="mt-1 flex flex-col gap-0.5 font-mono text-[10px] text-muted-foreground/80">
+                    {detectLog.map((line, i) => (
+                      <li key={i} className="break-all">
+                        {line}
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              )}
+            </div>
           )}
 
           {targets.length === 0 ? (
