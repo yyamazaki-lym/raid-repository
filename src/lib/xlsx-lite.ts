@@ -306,3 +306,109 @@ export function extractAnchoredImagesBySheet(
   }
   return out;
 }
+
+/**
+ * `xl/sharedStrings.xml` の文字列表。
+ * xlsx はセルの文字列を共有テーブルに逃がすので、これが無いとシート本文を
+ * 読めない。`<si>` は `<t>` 1 個か、書式ごとに分かれた `<r><t>` の連なり。
+ */
+export function parseSharedStrings(xml: string): string[] {
+  const out: string[] = [];
+  const siRe = /<si\b[^>]*>([\s\S]*?)<\/si>/g;
+  let m: RegExpExecArray | null;
+  while ((m = siRe.exec(xml)) !== null) {
+    let text = "";
+    const tRe = /<t\b[^>]*>([\s\S]*?)<\/t>/g;
+    let t: RegExpExecArray | null;
+    while ((t = tRe.exec(m[1]!)) !== null) text += t[1]!;
+    out.push(decodeXmlText(text));
+  }
+  return out;
+}
+
+/**
+ * ワークシートの文字列セルを列挙する (照合用の指紋)。
+ *
+ * gid は xlsx に残らないため、**CSV 側の本文と突き合わせて**どのシートが
+ * その層かを決めるのに使う。名前や列の重なりで当てるより確実
+ * (2026-08-31: 隣のシートを掴む事故が続いたため)。
+ */
+export function extractSheetTexts(
+  xml: string,
+  shared: string[],
+  limit = 4000,
+): string[] {
+  const out: string[] = [];
+  const cellRe = /<c\b([^>]*)>([\s\S]*?)<\/c>/g;
+  let m: RegExpExecArray | null;
+  while ((m = cellRe.exec(xml)) !== null && out.length < limit) {
+    const attrs = m[1]!;
+    const body = m[2]!;
+    const type = /\bt="([^"]+)"/.exec(attrs)?.[1];
+    let text: string | null = null;
+    if (type === "s") {
+      const v = /<v>([\s\S]*?)<\/v>/.exec(body);
+      if (v) text = shared[Number(v[1])] ?? null;
+    } else if (type === "inlineStr") {
+      const t = /<t\b[^>]*>([\s\S]*?)<\/t>/.exec(body);
+      if (t) text = decodeXmlText(t[1]!);
+    } else if (type === "str") {
+      const v = /<v>([\s\S]*?)<\/v>/.exec(body);
+      if (v) text = decodeXmlText(v[1]!);
+    }
+    if (text) {
+      const trimmed = text.trim();
+      // 1 文字の記号や真偽値は、どのシートにもあるので指紋にならない。
+      if (trimmed.length >= 2 && !/^(TRUE|FALSE)$/i.test(trimmed)) {
+        out.push(trimmed);
+      }
+    }
+  }
+  return out;
+}
+
+/** シート名 → 本文の文字列 (照合用)。 */
+export function extractTextsBySheet(
+  files: Map<string, Uint8Array>,
+): Map<string, string[]> {
+  const dec = new TextDecoder("utf-8");
+  const ss = files.get("xl/sharedStrings.xml");
+  const shared = ss ? parseSharedStrings(dec.decode(ss)) : [];
+  const out = new Map<string, string[]>();
+  for (const { name, path } of resolveWorkbookSheets(files)) {
+    const xml = files.get(path);
+    if (!xml) continue;
+    out.set(name, extractSheetTexts(dec.decode(xml), shared));
+  }
+  return out;
+}
+
+/**
+ * CSV 本文と最も一致するシート名を返す。
+ *
+ * 一致率 = |共通する語| / |CSV の語|。隣接する層 (M12S-1 と M12S-2 など) は
+ * 技名を多く共有するので、**閾値を置いて、二番手と十分に差がある場合だけ**
+ * 採用する。曖昧なときに決め打ちすると、これまでと同じ「隣のシートを掴む」
+ * 事故になる。
+ */
+export function matchSheetByContent(
+  textsBySheet: Map<string, string[]>,
+  csvTexts: string[],
+  { minScore = 0.5, minLead = 0.08 }: { minScore?: number; minLead?: number } = {},
+): { sheet: string; score: number; runnerUp: number } | null {
+  const target = new Set(csvTexts.filter((t) => t.trim().length >= 2));
+  if (target.size === 0) return null;
+  const scored = [...textsBySheet.entries()]
+    .map(([sheet, texts]) => {
+      const seen = new Set(texts);
+      let hit = 0;
+      for (const t of target) if (seen.has(t)) hit += 1;
+      return { sheet, score: hit / target.size };
+    })
+    .sort((a, b) => b.score - a.score);
+  const best = scored[0];
+  if (!best || best.score < minScore) return null;
+  const runnerUp = scored[1]?.score ?? 0;
+  if (best.score - runnerUp < minLead) return null;
+  return { sheet: best.sheet, score: best.score, runnerUp };
+}

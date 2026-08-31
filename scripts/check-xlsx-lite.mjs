@@ -266,6 +266,67 @@ try {
     ["https://x/ura.png"],
   );
 
+
+  console.log("\n[CSV 本文との照合で層を確定させる]");
+  const ssXml =
+    "<sst>" +
+    "<si><t>トップティアスラム</t></si>" +
+    "<si><r><t>マイティ</t></r><r><t>マジック</t></r></si>" +
+    "<si><t>ウィングドスカージ</t></si>" +
+    "<si><t>AA</t></si>" +
+    "<si><t>スネークキック</t></si>" +
+    "</sst>";
+  check("共有文字列を読む", mod.parseSharedStrings(ssXml), [
+    "トップティアスラム",
+    "マイティマジック",
+    "ウィングドスカージ",
+    "AA",
+    "スネークキック",
+  ]);
+
+  const shared = mod.parseSharedStrings(ssXml);
+  const sheetTextXml =
+    '<worksheet>' +
+    '<c r="E1" t="s"><v>0</v></c>' +
+    '<c r="E2" t="s"><v>1</v></c>' +
+    '<c r="F2" t="b"><v>1</v></c>' +
+    '<c r="G2" t="inlineStr"><is><t>レプリケーション</t></is></c>' +
+    '<c r="H2" t="str"><v>TRUE</v></c>' +
+    "</worksheet>";
+  // 数値・真偽値は指紋にならないので除く。
+  check("文字列セルだけを拾う", mod.extractSheetTexts(sheetTextXml, shared), [
+    "トップティアスラム",
+    "マイティマジック",
+    "レプリケーション",
+  ]);
+
+  const texts = new Map([
+    ["M12S-1", ["トップティアスラム", "スネークキック", "ダブルソバット"]],
+    ["M12S-2", ["トップティアスラム", "マイティマジック", "ウィングドスカージ", "レプリケーション"]],
+  ]);
+  const csv = ["トップティアスラム", "マイティマジック", "ウィングドスカージ", "レプリケーション"];
+  const matched = mod.matchSheetByContent(texts, csv);
+  check("本文が一致するシートを選ぶ", matched.sheet, "M12S-2");
+  check("一致率を返す", matched.score, 1);
+
+  // 隣接する層は技名を多く共有する。差が小さいときに決め打ちしない。
+  const ambiguous = new Map([
+    ["M12S-1", ["A", "B", "C", "D"]],
+    ["M12S-2", ["A", "B", "C", "E"]],
+  ]);
+  check(
+    "二番手と差が無ければ確定しない",
+    mod.matchSheetByContent(ambiguous, ["A", "B", "C", "D"]),
+    null,
+  );
+  // どのシートとも一致しないなら確定しない。
+  check(
+    "一致率が低ければ確定しない",
+    mod.matchSheetByContent(texts, ["X", "Y", "Z", "W"]),
+    null,
+  );
+  check("CSV が空なら null", mod.matchSheetByContent(texts, []), null);
+
   console.log("\n[壊れた入力]");
   check("zip でなければ空", mod.unzip(new Uint8Array([1, 2, 3])).size, 0);
   check("空でも落ちない", mod.unzip(new Uint8Array(0)).size, 0);
