@@ -134,6 +134,37 @@ try {
   check("ON 数を数える", diag[3].checkedCount, 1);
   check("27 列目は AB", mod.columnLetter(27), "AB");
 
+  console.log("\n[列の正体を特定する手がかり]");
+  // アイコン列は CSV に文字が無く自動では正体が分からない。代わりに
+  // 「どの攻撃でチェックされているか」を出して人が特定できるようにする。
+  const iconOnly = {
+    headers: ["Time", "Action", "Type", "", ""],
+    rows: [
+      ["00:16", "キング・オブ・アルカディア", "Magic", "TRUE", "TRUE"],
+      ["00:41", "ウェポンアサルト", "Physical", "TRUE", "FALSE"],
+      ["01:01", "コメットレイン", "Magic", "FALSE", "TRUE"],
+    ],
+  };
+  const iconDiag = mod.diagnoseSheetColumns(iconOnly);
+  const colD = iconDiag.find((d) => d.letter === "D");
+  check("チェック列と判定", colD.role, "check");
+  check(
+    "チェックされている攻撃名を添える",
+    colD.checkedOn,
+    ["キング・オブ・アルカディア", "ウェポンアサルト"],
+  );
+  const colE = iconDiag.find((d) => d.letter === "E");
+  check(
+    "列ごとに違う攻撃が並ぶ",
+    colE.checkedOn,
+    ["キング・オブ・アルカディア", "コメットレイン"],
+  );
+  check(
+    "攻撃名の列自体はチェック扱いしない",
+    iconDiag.find((d) => d.letter === "B").role,
+    "text",
+  );
+
   console.log("\n[数値サマリのラベル]");
   // 実機報告「軽減率が 2 つ存在して分かりにくい」: ラベルはシートの
   // 実際の列見出しを使う (種別名を出すと同名が並ぶ)。

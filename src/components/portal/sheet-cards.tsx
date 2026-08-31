@@ -268,6 +268,26 @@ export function SheetCards({
                   入らず、攻撃ごとの分担がひと目で追えなかった)。 */}
               {variant === "mitigation" && (cells.length > 0 || (checks && checks.length > 0)) ? (
                 <ul className="mt-1 flex flex-wrap gap-1">
+                  {cells.map((c, i) => {
+                    const role = roleOf(c.label);
+                    return (
+                    <li
+                      key={i}
+                      className={
+                        "inline-flex items-baseline gap-1 rounded-sm border px-1.5 py-0.5 " +
+                        (role ? ROLE_TONE[role] : "border-border/40 bg-background/40")
+                      }
+                      title={`${c.label || "担当"}: ${c.value}`}
+                    >
+                      <span className="font-mono text-[10px] tracking-[0.08em] text-[var(--neon-cyan)]/85">
+                        {c.label || "—"}
+                      </span>
+                      <span className="text-[12px] break-words text-foreground/90">
+                        {c.value}
+                      </span>
+                    </li>
+                    );
+                  })}
                   {/* 2026-08-30 実機要望「チェックが付いたアビリティを Type の
                       横に出せないか」: 担当チップと同じ行に続けて並べる。
                       別ブロックにすると 1 攻撃が縦に伸びて追いにくかった。 */}
@@ -290,26 +310,6 @@ export function SheetCards({
                       </span>
                     </li>
                   ))}
-                  {cells.map((c, i) => {
-                    const role = roleOf(c.label);
-                    return (
-                    <li
-                      key={i}
-                      className={
-                        "inline-flex items-baseline gap-1 rounded-sm border px-1.5 py-0.5 " +
-                        (role ? ROLE_TONE[role] : "border-border/40 bg-background/40")
-                      }
-                      title={`${c.label || "担当"}: ${c.value}`}
-                    >
-                      <span className="font-mono text-[10px] tracking-[0.08em] text-[var(--neon-cyan)]/85">
-                        {c.label || "—"}
-                      </span>
-                      <span className="text-[12px] break-words text-foreground/90">
-                        {c.value}
-                      </span>
-                    </li>
-                    );
-                  })}
                 </ul>
               ) : cells.length > 0 ? (
                 // 見出し列は max-content で伸びると長い担当者名でグリッドが

@@ -674,6 +674,15 @@ export type SheetColumnDiagnostic = {
   checkedCount: number;
   /** 中身のサンプル (最大 3 件)。 */
   samples: string[];
+  /**
+   * その列がチェックされている行の「攻撃名」(最大 4 件)。
+   *
+   * 2026-08-30 実機情報: アビリティ名はシート上アイコン画像で、CSV には
+   * 文字が出ない = 自動では列の正体が分からない。代わりに **どの攻撃で
+   * 使われているか** を見せれば、人間は列の正体を特定できる
+   * (例: キング・オブ・アルカディア等で ON → 牽制だな、と判断できる)。
+   */
+  checkedOn: string[];
 };
 
 /** 0 始まりの列番号 → スプレッドシートの列記号。 */
@@ -697,6 +706,8 @@ export function columnLetter(index: number): string {
  */
 export function diagnoseSheetColumns(table: SheetTable): SheetColumnDiagnostic[] {
   const out: SheetColumnDiagnostic[] = [];
+  // 「どの攻撃で使われているか」を出すための攻撃名の列を選ぶ。
+  const actionCol = findActionColumn(table);
   for (let ci = 0; ci < table.headers.length; ci++) {
     const header = (table.headers[ci] ?? "").trim();
     const samples: string[] = [];
@@ -723,6 +734,18 @@ export function diagnoseSheetColumns(table: SheetTable): SheetColumnDiagnostic[]
         : nonBoolean === 0 && checked > 0
           ? "check"
           : "text");
+    // チェックが入っている行の攻撃名 (列の正体を人が特定するための手がかり)。
+    const checkedOn: string[] = [];
+    if (role === "check" && actionCol !== null) {
+      for (const row of table.rows) {
+        if (!isCheckedValue((row[ci] ?? "").trim())) continue;
+        const action = (row[actionCol] ?? "").trim();
+        if (!action || checkedOn.includes(action)) continue;
+        checkedOn.push(action);
+        if (checkedOn.length >= 4) break;
+      }
+    }
+
     out.push({
       index: ci,
       letter: columnLetter(ci),
@@ -730,6 +753,7 @@ export function diagnoseSheetColumns(table: SheetTable): SheetColumnDiagnostic[]
       role,
       checkedCount: checked,
       samples,
+      checkedOn,
     });
   }
   return out;
@@ -804,4 +828,34 @@ function detectCheckLabelRow(
     }
   }
   return best;
+}
+
+/**
+ * 「攻撃名」の列を推定する (2026-08-30)。見出しが Action / 攻撃 / 技名 の
+ * いずれかならその列、無ければ **文字列が最も多く入っている列** を使う
+ * (軽減表は左側に時刻と技名が並ぶ作りが定番)。
+ */
+function findActionColumn(table: SheetTable): number | null {
+  for (let ci = 0; ci < table.headers.length; ci++) {
+    if (/^(action|ability|攻撃名?|技名?|ギミック)$/i.test(
+      (table.headers[ci] ?? "").trim(),
+    )) {
+      return ci;
+    }
+  }
+  let best: { index: number; count: number } | null = null;
+  for (let ci = 0; ci < table.headers.length; ci++) {
+    let count = 0;
+    for (const row of table.rows) {
+      const v = (row[ci] ?? "").trim();
+      if (!v || isCheckedValue(v) || isUncheckedValue(v)) continue;
+      // 数値だけのセルは技名ではない。
+      if (/^[-+]?[\d,.]+%?$/.test(v)) continue;
+      count += 1;
+    }
+    if (count > 0 && (best === null || count > best.count)) {
+      best = { index: ci, count };
+    }
+  }
+  return best ? best.index : null;
 }
