@@ -168,7 +168,11 @@ export function MitigationColumnsDialog({
         const key = String(icon.column);
         nextIcons[key] = icon.iconUrl;
         if (icon.guessedName && !base[key]?.trim()) {
-          filled[key] = icon.guessedName;
+          // ジョブも分かるなら添える (同名のアビリティを持つジョブが複数
+          // あるため、どのジョブが入れるのかが分かる方が実用的)。
+          filled[key] = icon.job
+            ? `${icon.guessedName} (${icon.job})`
+            : icon.guessedName;
         }
       }
       setIcons(nextIcons);
@@ -177,8 +181,8 @@ export function MitigationColumnsDialog({
       setLabels({ ...base, ...filled });
       setDetectNote(
         r.namedCount === 0
-          ? `${r.source} からアイコン ${r.icons.length} 件を取得しましたが、名前は判定できませんでした。アイコンを見て入力してください。`
-          : `${r.source} からアイコン ${r.icons.length} 件を取得し、${added} 列に名前を入れました (保存はまだです)。`,
+          ? `${r.source} から ${r.icons.length} 列を読み取りましたが、名前は分かりませんでした。アイコンを見て入力してください。`
+          : `${r.source} から ${r.icons.length} 列を読み取り、${added} 列に名前を入れました。保存すると以降は自動で表示されます。`,
       );
       toast.success(`アイコン ${r.icons.length} 件を取得しました`);
     });
@@ -240,11 +244,12 @@ export function MitigationColumnsDialog({
           <DialogHeader>
             <DialogTitle>アビリティ名の設定 (このシート)</DialogTitle>
             <DialogDescription>
-              シートのアビリティ欄は<strong>アイコン画像</strong>で作られており、
-              名前の文字が読み取れません。各列が
+              軽減表は列ごとに<strong>ジョブ名 / アビリティ名 / 対象種別</strong>
+              の見出しを持っています。「シートから読み取る」でそこから名前を
+              取り込めます。読めなかった列だけ、
               <strong>どの攻撃でチェックされているか</strong>
-              を手がかりに名前を付けてください。付けた名前はカードの
-              種別の横に ✓ 付きで並びます。
+              を手がかりに入力してください。名前はカードの種別の横に ✓ 付きで
+              並びます。
             </DialogDescription>
           </DialogHeader>
 
@@ -268,7 +273,7 @@ export function MitigationColumnsDialog({
               className="text-[11px] tracking-normal"
             >
               <Wand2 className="h-3.5 w-3.5" aria-hidden />
-              {detecting ? "判定中..." : "アイコンから判定"}
+              {detecting ? "読み取り中..." : "シートから読み取る"}
             </Button>
             {iconColumns.size > 0 && (
               <label className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
@@ -282,8 +287,8 @@ export function MitigationColumnsDialog({
               </label>
             )}
             <span className="text-[10px] leading-relaxed text-muted-foreground/70">
-              シートのアイコン画像を読み取り、公式ジョブガイドの
-              アクションアイコンと突き合わせて名前を埋めます。
+              シートの見出し行からアビリティ名とジョブを読み取り、アイコンと
+              一緒に埋めます。<strong>保存すると以降は自動で表示されます</strong>。
             </span>
           </div>
           {candidates.length > 1 && (

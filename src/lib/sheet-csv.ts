@@ -311,6 +311,9 @@ export type SheetCardRow = {
 export function isNoiseValue(v: string): boolean {
   if (v === "") return true;
   if (/^[-–—ー―・.。\s]+$/.test(v)) return true;
+  // 「担当なし」を意味する値。カードに並べても情報が無く、実機では
+  // 「無し」だけのチップが 1 行に何個も並んでいた (2026-08-31)。
+  if (/^(無し|なし|ナシ|不要|none|n\/?a)$/i.test(v.trim())) return true;
   if (/^[◇◆□■☆★▲△▼▽○●◎~〜*＊]{2,}$/.test(v)) return true;
   return /^(?:true|false)$/i.test(v);
 }

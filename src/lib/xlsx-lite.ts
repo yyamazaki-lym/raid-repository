@@ -412,3 +412,121 @@ export function matchSheetByContent(
   if (best.score - runnerUp < minLead) return null;
   return { sheet: best.sheet, score: best.score, runnerUp };
 }
+
+/** ワークシートの先頭 N 行をグリッド (行 × 列) にして返す。 */
+export function extractSheetGrid(
+  xml: string,
+  shared: string[],
+  maxRows = 30,
+): string[][] {
+  const grid: string[][] = [];
+  const cellRe = /<c\b[^>]*\br="([A-Z]+)(\d+)"([^>]*)>([\s\S]*?)<\/c>/g;
+  let m: RegExpExecArray | null;
+  while ((m = cellRe.exec(xml)) !== null) {
+    const row = Number(m[2]) - 1;
+    if (row >= maxRows) continue;
+    const col = columnLettersToIndex(m[1]!);
+    const attrs = m[3]!;
+    const body = m[4]!;
+    const type = /\bt="([^"]+)"/.exec(attrs)?.[1];
+    let text = "";
+    if (type === "s") {
+      const v = /<v>([\s\S]*?)<\/v>/.exec(body);
+      if (v) text = shared[Number(v[1])] ?? "";
+    } else if (type === "inlineStr") {
+      const t = /<t\b[^>]*>([\s\S]*?)<\/t>/.exec(body);
+      if (t) text = decodeXmlText(t[1]!);
+    } else if (type === "b") {
+      const v = /<v>([\s\S]*?)<\/v>/.exec(body);
+      if (v) text = v[1] === "1" ? "TRUE" : "FALSE";
+    } else {
+      const v = /<v>([\s\S]*?)<\/v>/.exec(body);
+      if (v) text = decodeXmlText(v[1]!);
+    }
+    while (grid.length <= row) grid.push([]);
+    const line = grid[row]!;
+    while (line.length <= col) line.push("");
+    line[col] = text;
+  }
+  // 行が 1 つも無い場合でも呼び出し側が添字で触れるよう埋めておく。
+  while (grid.length < Math.min(maxRows, 8)) grid.push([]);
+  return grid;
+}
+
+/** シート名で先頭 N 行のグリッドを引く。 */
+export function sheetGridByName(
+  files: Map<string, Uint8Array>,
+  sheetName: string,
+  maxRows = 30,
+): string[][] | null {
+  const dec = new TextDecoder("utf-8");
+  const target = resolveWorkbookSheets(files).find((s) => s.name === sheetName);
+  if (!target) return null;
+  const xml = files.get(target.path);
+  if (!xml) return null;
+  const ssBytes = files.get("xl/sharedStrings.xml");
+  const shared = ssBytes ? parseSharedStrings(dec.decode(ssBytes)) : [];
+  return extractSheetGrid(dec.decode(xml), shared, maxRows);
+}
+
+/**
+ * CSV 本文と最も一致するシートを、**珍しい語を重く見て**選ぶ (2026-08-31)。
+ *
+ * 単純な一致率では、隣接する層 (M9S / M10S / M12S-1 / M12S-2 …) が技名や
+ * ジョブ名を大量に共有するため差が付かず、取り違えが起きていた。
+ * 「そのシートにしか出てこない語」ほど層を言い当てる力が強いので、
+ * 出現シート数の逆数で重み付けする (TF-IDF と同じ考え方)。
+ *
+ * さらに、**CSV の中に xlsx のシート名そのものが出てくる**ことがある
+ * (このテンプレートは D3 にシート名を書いている)。それが見つかれば
+ * 内容照合より確実なので優先する。
+ */
+export function matchSheetByContentWeighted(
+  textsBySheet: Map<string, string[]>,
+  csvTexts: string[],
+  { minLead = 1.4, minScore = 0.15 }: { minLead?: number; minScore?: number } = {},
+): { sheet: string; score: number; runnerUp: number; decisive: boolean } | null {
+  const sheets = [...textsBySheet.keys()];
+  if (sheets.length === 0) return null;
+  const csvSet = new Set(csvTexts.map((t) => t.trim()).filter((t) => t.length >= 2));
+  if (csvSet.size === 0) return null;
+
+  // 1) CSV にシート名そのものが入っていれば、それが答え。
+  const named = sheets.filter((s) => s.trim().length >= 2 && csvSet.has(s.trim()));
+  if (named.length === 1) {
+    return { sheet: named[0]!, score: 1, runnerUp: 0, decisive: true };
+  }
+
+  // 2) 出現シート数で重み付けした一致度。
+  const sets = new Map(
+    [...textsBySheet].map(([s, ts]) => [s, new Set(ts.map((t) => t.trim()))]),
+  );
+  const docFreq = new Map<string, number>();
+  for (const t of csvSet) {
+    let n = 0;
+    for (const set of sets.values()) if (set.has(t)) n += 1;
+    if (n > 0) docFreq.set(t, n);
+  }
+  let total = 0;
+  const weight = new Map<string, number>();
+  for (const [t, n] of docFreq) {
+    const w = 1 / n;
+    weight.set(t, w);
+    total += w;
+  }
+  if (total === 0) return null;
+  const scored = sheets
+    .map((sheet) => {
+      let sum = 0;
+      const set = sets.get(sheet)!;
+      for (const [t, w] of weight) if (set.has(t)) sum += w;
+      return { sheet, score: sum / total };
+    })
+    .sort((a, b) => b.score - a.score);
+  const best = scored[0]!;
+  const runnerUp = scored[1]?.score ?? 0;
+  if (best.score < minScore) return null;
+  // 二番手の minLead 倍は無いと確定しない (似た層を掴む事故を防ぐ)。
+  if (runnerUp > 0 && best.score < runnerUp * minLead) return null;
+  return { sheet: best.sheet, score: best.score, runnerUp, decisive: false };
+}

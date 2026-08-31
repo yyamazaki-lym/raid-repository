@@ -327,6 +327,66 @@ try {
   );
   check("CSV が空なら null", mod.matchSheetByContent(texts, []), null);
 
+
+  console.log("\n[珍しい語を重く見る照合 (層が多いシート)]");
+  // 実機の失敗: M9S〜M12S-2 の 9 シートは技名やジョブ名を大量に共有する。
+  // 単純な一致率では差が付かず、隣の層を掴んでいた。
+  const many = new Map([
+    ["M9S", ["AA", "リプライザル", "牽制", "ネビュラ", "エムニアの咎"]],
+    ["M12S-1", ["AA", "リプライザル", "牽制", "ネビュラ", "アルカディアン・フレイム"]],
+    ["M12S-2", ["AA", "リプライザル", "牽制", "ネビュラ", "ウィングドスカージ", "スネークキック"]],
+  ]);
+  const csvM12S2 = ["AA", "リプライザル", "牽制", "ネビュラ", "ウィングドスカージ", "スネークキック"];
+  const w = mod.matchSheetByContentWeighted(many, csvM12S2);
+  check("固有の技名で層を当てる", w.sheet, "M12S-2");
+  check("シート名一致ではない", w.decisive, false);
+
+  // このテンプレートは D3 にシート名を書いている。CSV に出ていれば確実。
+  const decisive = mod.matchSheetByContentWeighted(many, [
+    "AA",
+    "リプライザル",
+    "M12S-1",
+  ]);
+  check("CSV にシート名があればそれを採る", decisive.sheet, "M12S-1");
+  check("決め手ありと分かる", decisive.decisive, true);
+
+  // 共有する語しか無ければ確定しない (黙って隣の層を掴まない)。
+  check(
+    "共通語だけなら確定しない",
+    mod.matchSheetByContentWeighted(many, ["AA", "リプライザル", "牽制", "ネビュラ"]),
+    null,
+  );
+
+  console.log("\n[先頭 N 行のグリッド]");
+  const wb2 =
+    '<workbook><sheets><sheet name="M12S-2" sheetId="1" r:id="rA"/></sheets></workbook>';
+  const rels2 =
+    '<Relationships><Relationship Id="rA" Target="worksheets/sheet1.xml"/></Relationships>';
+  const ss2 =
+    "<sst><si><t>忍者</t></si><si><t>牽制</t></si><si><t>SINGLE_ENEMY</t></si></sst>";
+  const sheetA =
+    "<worksheet>" +
+    '<c r="DO3" t="s"><v>0</v></c>' +
+    '<c r="DO4" t="s"><v>1</v></c>' +
+    '<c r="DO5" t="s"><v>2</v></c>' +
+    '<c r="DO40" t="b"><v>1</v></c>' +
+    "</worksheet>";
+  const zip4 = mod.unzip(
+    makeZip([
+      ["xl/workbook.xml", wb2],
+      ["xl/_rels/workbook.xml.rels", rels2],
+      ["xl/sharedStrings.xml", ss2],
+      ["xl/worksheets/sheet1.xml", sheetA],
+    ]),
+  );
+  const g = mod.sheetGridByName(zip4, "M12S-2", 30);
+  check("行3 はジョブ名", g[2][118], "忍者");
+  check("行4 はアビリティ名", g[3][118], "牽制");
+  check("行5 は対象種別", g[4][118], "SINGLE_ENEMY");
+  // maxRows を超える行は読まない (本体は数千行あるため)。
+  check("範囲外の行は読まない", g.length <= 30, true);
+  check("知らないシート名は null", mod.sheetGridByName(zip4, "M9S", 30), null);
+
   console.log("\n[壊れた入力]");
   check("zip でなければ空", mod.unzip(new Uint8Array([1, 2, 3])).size, 0);
   check("空でも落ちない", mod.unzip(new Uint8Array(0)).size, 0);

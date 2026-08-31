@@ -136,6 +136,17 @@ try {
   check("除かないと check にならない", kept[6].role, "text");
   check("除けば check になる", dropped[6].role, "check");
   check("ON 数も正しく数える", dropped[6].checkedCount, 2);
+
+  console.log("\n[担当なしの値をカードに出さない]");
+  // 実機で「無し」だけのチップが 1 行に何個も並んでいた。
+  for (const v of ["無し", "なし", "ナシ", "None", "N/A", "-"]) {
+    check(`${v} はノイズ`, mod.isNoiseValue(v), true);
+  }
+  // 実在する担当者名や技名を巻き添えに消さない。
+  for (const v of ["牽制", "マクロコスモス", "MT", "無敵"]) {
+    check(`${v} は残す`, mod.isNoiseValue(v), false);
+  }
+
 } finally {
   rmSync(outDir, { recursive: true, force: true });
 }
