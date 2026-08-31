@@ -262,46 +262,34 @@ export function SheetCards({
                   )}
                 </div>
               )}
-              {/* 2026-08-30 実機要望「行でチェックが入っているアビリティを
-                  抜き出して表示したい」: チェックボックス列で ON になって
-                  いる項目 (= その攻撃で入れる軽減/バフ) をチップで出す。
-                  担当が分かる場合はロール色のバッジを前に付ける。 */}
-              {checks && checks.length > 0 && (
-                <ul className="mt-1 flex flex-wrap gap-1">
-                  {checks.map((c, i) => {
-                    const role = roleOf(c.owner ?? c.label);
-                    return (
-                      <li
-                        key={i}
-                        className={
-                          "inline-flex items-baseline gap-1 rounded-sm border px-1.5 py-0.5 " +
-                          (role
-                            ? ROLE_TONE[role]
-                            : "border-[var(--neon-violet)]/35 bg-[var(--neon-violet)]/8")
-                        }
-                        title={
-                          c.owner ? `${c.owner}: ${c.label}` : c.label
-                        }
-                      >
-                        {c.owner && (
-                          <span className="font-mono text-[9px] tracking-[0.08em] opacity-80">
-                            {c.owner}
-                          </span>
-                        )}
-                        <span className="text-[12px] break-words text-foreground/90">
-                          {c.label}
-                        </span>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
               {/* 2026-08-30 実機要望「誰がどの軽減・バフを入れたか簡易的に
                   確認したい」: 軽減表では「担当者: スキル」を 1 行に畳んだ
                   チップで出す (縦に伸びる定義リストだと 1 画面に 2〜3 行しか
                   入らず、攻撃ごとの分担がひと目で追えなかった)。 */}
-              {variant === "mitigation" && cells.length > 0 ? (
+              {variant === "mitigation" && (cells.length > 0 || (checks && checks.length > 0)) ? (
                 <ul className="mt-1 flex flex-wrap gap-1">
+                  {/* 2026-08-30 実機要望「チェックが付いたアビリティを Type の
+                      横に出せないか」: 担当チップと同じ行に続けて並べる。
+                      別ブロックにすると 1 攻撃が縦に伸びて追いにくかった。 */}
+                  {checks?.map((c, i) => (
+                    <li
+                      key={`chk-${i}`}
+                      className="inline-flex items-baseline gap-1 rounded-sm border border-[var(--neon-violet)]/45 bg-[var(--neon-violet)]/10 px-1.5 py-0.5"
+                      title={c.owner ? `${c.owner}: ${c.label}` : c.label}
+                    >
+                      <span aria-hidden className="text-[10px] text-[var(--neon-violet)]">
+                        ✓
+                      </span>
+                      {c.owner && (
+                        <span className="font-mono text-[9px] tracking-[0.08em] text-[var(--neon-violet)]/85">
+                          {c.owner}
+                        </span>
+                      )}
+                      <span className="text-[12px] break-words text-foreground/90">
+                        {c.label}
+                      </span>
+                    </li>
+                  ))}
                   {cells.map((c, i) => {
                     const role = roleOf(c.label);
                     return (

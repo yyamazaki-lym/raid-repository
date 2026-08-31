@@ -6,7 +6,7 @@
  * 「MT: 堅陣」の表示が消える) なので、そこを重点的に検証する。
  */
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -19,7 +19,37 @@ function check(name, actual, expected) {
 }
 const outDir = mkdtempSync(join(tmpdir(), "mit-"));
 try {
-  execFileSync("npx", ["tsc","src/lib/sheet-csv.ts","--outDir",outDir,"--target","es2022","--module","es2022","--moduleResolution","bundler","--strict"], { stdio: "inherit" });
+  // sheet-csv は mitigation-terms を import するので両方コンパイルする。
+  // tsc は相対 import に拡張子を付けない (bundler 前提) が、Node の ESM は
+  // 拡張子必須なので出力後に補う。
+  execFileSync(
+    "npx",
+    [
+      "tsc",
+      "src/lib/sheet-csv.ts",
+      "src/lib/mitigation-terms.ts",
+      "--outDir",
+      outDir,
+      "--target",
+      "es2022",
+      "--module",
+      "es2022",
+      "--moduleResolution",
+      "bundler",
+      "--strict",
+    ],
+    { stdio: "inherit" },
+  );
+  for (const f of ["sheet-csv.js", "mitigation-terms.js"]) {
+    const path = join(outDir, f);
+    writeFileSync(
+      path,
+      readFileSync(path, "utf8").replace(
+        /from "(\.\/[^"]+?)"/g,
+        (m, spec) => (spec.endsWith(".js") ? m : `from "${spec}.js"`),
+      ),
+    );
+  }
   const mod = await import(pathToFileURL(join(outDir, "sheet-csv.js")).href);
 
   const table = {
@@ -117,14 +147,69 @@ try {
     { mitigation: true },
   );
   check(
-    "ラベルはシートの列見出し",
+    // 定型語 (Damage) は日本語化されるが、区別できる名前であることが要点。
+    "ラベルはシートの列見出し (定型語は日本語化)",
     rateRows[0].stats.map((s) => s.label),
-    ["Damage", "被ダメージ", "軽減率", "最終ダメージ"],
+    ["ダメージ", "被ダメージ", "軽減率", "最終ダメージ"],
   );
   check(
     "同じラベル+同じ値は畳む",
     rateRows[0].stats.filter((s) => s.value === "249,318").length,
     2,
+  );
+
+  console.log("\n[アビリティ名の行 (26 行目相当) を見出しに使う]");
+  // 実シートは「見出し行 = アイコン (CSV では空)」「次の行 = アビリティ名」
+  // という 2 段組み。名前の段を検出して見出しの代わりに使う。
+  const twoTier = {
+    headers: ["Time", "Action", "Type", "", "", ""],
+    rows: [
+      ["", "", "", "堅陣", "士気", "牽制"],
+      ["00:16", "フィクサー", "Magic", "TRUE", "FALSE", "TRUE"],
+      ["00:41", "リーサル", "Physical", "FALSE", "TRUE", "FALSE"],
+    ],
+  };
+  const twoTierRows = mod.buildSheetCardRows(
+    twoTier,
+    twoTier.headers.map((_, i) => i).slice(1),
+    { mitigation: true },
+  );
+  check("名前の行はカードにしない", twoTierRows.length, 2);
+  check(
+    "名前の行から見出しを取る",
+    twoTierRows[0].checks.map((c) => c.label),
+    ["堅陣", "牽制"],
+  );
+  check(
+    "行ごとに ON が変わる",
+    twoTierRows[1].checks.map((c) => c.label),
+    ["士気"],
+  );
+
+  console.log("\n[英語の日本語化]");
+  const en = {
+    headers: ["Time", "Action", "Type", "Damage", "Calculate Mitigation"],
+    rows: [["00:16", "Fixer", "Magic", "400,000", "0.62"]],
+  };
+  const enRows = mod.buildSheetCardRows(
+    en,
+    en.headers.map((_, i) => i).slice(1),
+    { mitigation: true },
+  );
+  check(
+    "定型語の見出しは日本語に",
+    enRows[0].stats.map((s) => s.label),
+    ["ダメージ", "軽減計算"],
+  );
+  check(
+    "種別の値も日本語に (Type: Magic → 種別: 魔法)",
+    enRows[0].cells.map((c) => `${c.label}:${c.value}`),
+    ["種別:魔法"],
+  );
+  check(
+    "技名は英語のままにする (勝手に訳さない)",
+    enRows[0].heading.includes("Fixer"),
+    true,
   );
 
   console.log("\n[AA と数値サマリ]");

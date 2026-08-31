@@ -14,6 +14,8 @@
  * iframe にフォールバックすれば済む。
  */
 
+import { translateMitigationTerm } from "./mitigation-terms";
+
 export type SheetTable = {
   /** 1 行目 (見出し行)。空セルは "" のまま残す。 */
   headers: string[];
@@ -422,6 +424,17 @@ export function buildSheetCardRows(
   // 見出しが空の列 (アイコン画像だけの列は CSV に文字が出ない) は、その列に
   // 一度でも現れた「TRUE/FALSE 以外の値」をラベル候補として使う。それも
   // 無ければラベル不明として捨てる (意味の無い印を並べても読めないため)。
+  // 2026-08-30 実機情報「26 行目の各アビリティの列に名前が書かれている」:
+  // 軽減表テンプレートは「見出し行 = アイコン」「その次の行 = アビリティ名」
+  // という 2 段組みが多い。CSV では 2 行目以降がデータ扱いになるため、
+  // **チェック列に名前を供給している行**を探して見出しの代わりに使う。
+  //
+  // 探し方: チェック列 (TRUE/FALSE が入る列) に文字列が入っている行を数え、
+  // 最も多くの列に名前を与えている行を「名前の行」とみなす。2 列以上を
+  // 満たす行が無ければ諦める (たまたま 1 セルだけ文字が入っている行を
+  // 名前の行と誤認しないため)。
+  const labelRow = mitigation ? detectCheckLabelRow(table, visibleColumns) : null;
+
   const checkboxCols = new Map<number, string>();
   if (mitigation) {
     for (const ci of visibleColumns) {
@@ -441,11 +454,21 @@ export function buildSheetCardRows(
       }
       // 1 つも ON が無い列は出しても意味が無い。
       if (checked === 0) continue;
-      // 手動で名前が付いている列は最優先で採用する (アイコン見出しの列を
-      // 救済するための経路。自動判定より人の指定を信じる)。
+      // ラベルの優先順:
+      //   1. 手動登録 (人の指定を最優先)
+      //   2. 名前の行 (26 行目のようなアビリティ名の段)
+      //   3. 見出し行
+      //   4. その列に 1 種類だけ現れる文字列
       const manual = columnLabels[ci]?.trim();
+      const fromLabelRow = labelRow
+        ? (table.rows[labelRow.rowIndex]?.[ci] ?? "").trim()
+        : "";
       if (manual) {
         checkboxCols.set(ci, manual);
+        continue;
+      }
+      if (fromLabelRow) {
+        checkboxCols.set(ci, fromLabelRow);
         continue;
       }
       if (header) {
@@ -490,7 +513,10 @@ export function buildSheetCardRows(
   const dropNumericCols = numericCols.size >= 3;
 
   const out: SheetCardRow[] = [];
-  for (const row of table.rows) {
+  for (let rowIndex = 0; rowIndex < table.rows.length; rowIndex++) {
+    // 名前の行は見出しの一部なのでカードにしない。
+    if (labelRow && rowIndex === labelRow.rowIndex) continue;
+    const row = table.rows[rowIndex]!;
     const headingParts: string[] = [];
     const rowHeading = (row[0] ?? "").trim();
     if (!isNoiseValue(rowHeading)) headingParts.push(rowHeading);
@@ -508,10 +534,11 @@ export function buildSheetCardRows(
           if (isNoiseValue(v) || v === header) continue;
           // ラベルはシートの列見出しをそのまま使う (種別名だと「軽減率」が
           // 2 つ並ぶ、という実機報告への対応)。見出しが無い列だけ種別名で補う。
-          const label =
+          const label = translateMitigationTerm(
             columnLabels[ci]?.trim() ||
-            header ||
-            (kind === "damage" ? "ダメージ" : kind === "rate" ? "軽減率" : "最終");
+              header ||
+              (kind === "damage" ? "ダメージ" : kind === "rate" ? "軽減率" : "最終"),
+          );
           // 同じラベル + 同じ値が二重に出ないように畳む。
           if (stats.some((x) => x.label === label && x.value === v)) continue;
           stats.push({ label, value: v, kind });
@@ -538,10 +565,17 @@ export function buildSheetCardRows(
       .filter((ci) => !(dropNumericCols && numericCols.has(ci)))
       .filter((ci) => !(mitigation && mitKindByCol.get(ci)))
       .filter((ci) => !checkboxCols.has(ci))
-      .map((ci) => ({
-        label: table.headers[ci]?.trim() ?? "",
-        value: row[ci]?.trim() ?? "",
-      }))
+      .map((ci) => {
+        const rawLabel = table.headers[ci]?.trim() ?? "";
+        const rawValue = row[ci]?.trim() ?? "";
+        // 定型語だけ日本語にする (技名・担当者名は触らない)。
+        return mitigation
+          ? {
+              label: translateMitigationTerm(rawLabel),
+              value: translateMitigationTerm(rawValue),
+            }
+          : { label: rawLabel, value: rawValue };
+      })
       .filter((c) => !isNoiseValue(c.value) && c.value !== c.label);
 
     // 構造列 (フェーズ / 時刻 / 技名) は見出しに合成。
@@ -727,4 +761,47 @@ export function parseColumnLabelsSetting(
   } catch {
     return {};
   }
+}
+
+/**
+ * チェック列に名前を供給している行を探す (2026-08-30)。
+ *
+ * 軽減表テンプレートは「見出し行にアイコン → 次の行にアビリティ名」という
+ * 2 段組みが多く、CSV に落とすとアイコン行は空になる。名前の段を見つけて
+ * 見出しの代わりに使えるようにする。
+ *
+ * 判定: チェック列 (TRUE/FALSE が入る列) に文字列が入っている行のうち、
+ * 最も多くの列に名前を与えている行。2 列以上に名前を与える行が無ければ
+ * null (誤認を避ける)。
+ */
+function detectCheckLabelRow(
+  table: SheetTable,
+  visibleColumns: number[],
+): { rowIndex: number; count: number } | null {
+  // まず「チェック列らしい列」を粗く拾う (名前の行の文字列は無視して数える)。
+  const candidates: number[] = [];
+  for (const ci of visibleColumns) {
+    let checked = 0;
+    for (const row of table.rows) {
+      const v = (row[ci] ?? "").trim();
+      if (isCheckedValue(v)) checked += 1;
+    }
+    if (checked > 0) candidates.push(ci);
+  }
+  if (candidates.length < 2) return null;
+
+  let best: { rowIndex: number; count: number } | null = null;
+  for (let r = 0; r < table.rows.length; r++) {
+    const row = table.rows[r]!;
+    let count = 0;
+    for (const ci of candidates) {
+      const v = (row[ci] ?? "").trim();
+      if (v === "" || isCheckedValue(v) || isUncheckedValue(v)) continue;
+      count += 1;
+    }
+    if (count >= 2 && (best === null || count > best.count)) {
+      best = { rowIndex: r, count };
+    }
+  }
+  return best;
 }

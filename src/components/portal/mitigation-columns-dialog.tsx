@@ -104,7 +104,10 @@ export function MitigationColumnsDialog({
           if (!next) setOpen(false);
         }}
       >
-        <DialogContent className="max-h-[85dvh] max-w-2xl overflow-y-auto">
+        {/* 2026-08-30 実機報告「若干見切れる」: 幅を広げ、横方向は
+            テーブル側だけをスクロールさせる (ダイアログ自体は横に
+            はみ出さない)。 */}
+        <DialogContent className="flex max-h-[85dvh] w-[min(46rem,calc(100vw-2rem))] max-w-none flex-col overflow-y-auto overflow-x-hidden">
           <DialogHeader>
             <DialogTitle>列の設定 (このシート)</DialogTitle>
             <DialogDescription>
@@ -122,7 +125,7 @@ export function MitigationColumnsDialog({
                 チェック列に名前を付ける
               </p>
               {nameable.map((c) => (
-                <div key={c.index} className="flex items-center gap-2">
+                <div key={c.index} className="flex min-w-0 items-center gap-2">
                   <span className="w-10 shrink-0 font-mono text-[11px] text-muted-foreground">
                     {c.letter}
                   </span>
@@ -150,8 +153,8 @@ export function MitigationColumnsDialog({
             <p className="font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase">
               全列の判定結果
             </p>
-            <div className="max-h-[18rem] overflow-y-auto rounded-md border border-border/40">
-              <table className="w-full text-left text-[11px]">
+            <div className="max-h-[18rem] overflow-auto rounded-md border border-border/40">
+              <table className="w-full min-w-[28rem] text-left text-[11px]">
                 <thead className="sticky top-0 bg-secondary/60">
                   <tr className="text-muted-foreground">
                     <th className="px-2 py-1 font-medium">列</th>
