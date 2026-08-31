@@ -387,6 +387,57 @@ try {
   check("範囲外の行は読まない", g.length <= 30, true);
   check("知らないシート名は null", mod.sheetGridByName(zip4, "M9S", 30), null);
 
+
+  console.log("\n[空セル (自己終了タグ) の直後を飲み込まない]");
+  // 2026-08-31 実機: 空セルは <c r="CU4" s="53"/> と自己終了で書かれる。
+  // これを開始タグと誤認すると**次のセルの中身まで飲み込み**、
+  // CV=ホーリズム / DL=牽制 のように直後の列だけ名前が取れなくなる。
+  const ss3 =
+    "<sst>" +
+    "<si><t>賢者</t></si>" +      // 0
+    "<si/>" +                      // 1 空文字列 (自己終了)
+    "<si><t>ホーリズム</t></si>" + // 2
+    "<si><t>モンク</t></si>" +     // 3
+    "<si><t>牽制</t></si>" +       // 4
+    "</sst>";
+  const shared3 = mod.parseSharedStrings(ss3);
+  check("空の <si/> も 1 件として数える", shared3, [
+    "賢者",
+    "",
+    "ホーリズム",
+    "モンク",
+    "牽制",
+  ]);
+
+  const withEmpty =
+    "<worksheet>" +
+    '<c r="CU3" s="53"/><c r="CV3" t="s"><v>0</v></c>' +
+    '<c r="CU4" s="53"/><c r="CV4" t="s"><v>2</v></c>' +
+    '<c r="DK4" s="56"/><c r="DL4" t="s"><v>4</v></c>' +
+    '<c r="DK3" s="56"/><c r="DL3" t="s"><v>3</v></c>' +
+    "</worksheet>";
+  const g2 = mod.extractSheetGrid(withEmpty, shared3, 10);
+  check("空セルの直後も読める (CV4)", g2[3][99], "ホーリズム");
+  check("空セルの直後も読める (DL4)", g2[3][115], "牽制");
+  check("ジョブ行も同様 (CV3)", g2[2][99], "賢者");
+  check("ジョブ行も同様 (DL3)", g2[2][115], "モンク");
+
+  // 数式セルでも同じ問題が起きる。
+  const formulaAfterEmpty =
+    '<worksheet><c r="CU26" s="1"/>' +
+    '<c r="CV26"><f>IMAGE("https://x/a.png")</f></c></worksheet>';
+  check(
+    "空セルの直後の IMAGE も拾う",
+    mod.extractImageFormulaCells(formulaAfterEmpty),
+    [{ row: 25, column: 99, url: "https://x/a.png" }],
+  );
+  // 本文照合でも取りこぼさない。
+  check(
+    "本文抽出でも取りこぼさない",
+    mod.extractSheetTexts(withEmpty, shared3),
+    ["賢者", "ホーリズム", "牽制", "モンク"],
+  );
+
   console.log("\n[壊れた入力]");
   check("zip でなければ空", mod.unzip(new Uint8Array([1, 2, 3])).size, 0);
   check("空でも落ちない", mod.unzip(new Uint8Array(0)).size, 0);

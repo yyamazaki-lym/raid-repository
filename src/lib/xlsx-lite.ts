@@ -97,23 +97,42 @@ export function parseWorkbookSheetNames(xml: string): string[] {
   return out;
 }
 
+/**
+ * ワークシート XML のセルを 1 つずつ返す。
+ *
+ * ⚠ **空セルは `<c r="CU4" s="53"/>` と自己終了で書かれる**。
+ * `<c ...>(中身)</c>` だけを想定した正規表現だと、自己終了タグを開始タグと
+ * 誤認して**次のセルの中身まで飲み込む**。2026-08-31 実機では、空セルの
+ * 直後にある列 (CV=ホーリズム、DL=牽制) だけ名前が取れないという形で出た。
+ */
+function* iterCells(
+  xml: string,
+): Generator<{ attrs: string; body: string }> {
+  const re = /<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(xml)) !== null) {
+    yield { attrs: m[1] ?? "", body: m[2] ?? "" };
+  }
+}
+
+/** セルの `r="AB26"` から行・列を取り出す (0 始まり)。 */
+function cellRef(attrs: string): { row: number; column: number } | null {
+  const m = /\br="([A-Z]+)(\d+)"/.exec(attrs);
+  if (!m) return null;
+  return { row: Number(m[2]) - 1, column: columnLettersToIndex(m[1]!) };
+}
+
 /** ワークシート XML から `=IMAGE("url")` のセルを拾う。 */
 export function extractImageFormulaCells(xml: string): XlsxImageCell[] {
   const out: XlsxImageCell[] = [];
-  // <c r="AB26" ...> … <f>IMAGE("https://…")</f>
-  const cellRe = /<c\b[^>]*\br="([A-Z]+)(\d+)"[^>]*>([\s\S]*?)<\/c>/g;
-  let m: RegExpExecArray | null;
-  while ((m = cellRe.exec(xml)) !== null) {
-    const body = m[3]!;
+  for (const { attrs, body } of iterCells(xml)) {
     const f = /<f\b[^>]*>([\s\S]*?)<\/f>/.exec(body);
     if (!f) continue;
     const url = imageUrlFromFormula(decodeXmlText(f[1]!));
     if (!url) continue;
-    out.push({
-      row: Number(m[2]) - 1,
-      column: columnLettersToIndex(m[1]!),
-      url,
-    });
+    const ref = cellRef(attrs);
+    if (!ref) continue;
+    out.push({ row: ref.row, column: ref.column, url });
   }
   return out;
 }
@@ -314,13 +333,16 @@ export function extractAnchoredImagesBySheet(
  */
 export function parseSharedStrings(xml: string): string[] {
   const out: string[] = [];
-  const siRe = /<si\b[^>]*>([\s\S]*?)<\/si>/g;
+  // 空文字列は `<si/>` と自己終了で書かれる。読み飛ばすと**以降の索引が
+  // 全部ずれる**ので、必ず 1 件として数える (セル側と同じ落とし穴)。
+  const siRe = /<si\b[^>]*?(?:\/>|>([\s\S]*?)<\/si>)/g;
   let m: RegExpExecArray | null;
   while ((m = siRe.exec(xml)) !== null) {
+    const inner = m[1] ?? "";
     let text = "";
     const tRe = /<t\b[^>]*>([\s\S]*?)<\/t>/g;
     let t: RegExpExecArray | null;
-    while ((t = tRe.exec(m[1]!)) !== null) text += t[1]!;
+    while ((t = tRe.exec(inner)) !== null) text += t[1]!;
     out.push(decodeXmlText(text));
   }
   return out;
@@ -339,11 +361,8 @@ export function extractSheetTexts(
   limit = 4000,
 ): string[] {
   const out: string[] = [];
-  const cellRe = /<c\b([^>]*)>([\s\S]*?)<\/c>/g;
-  let m: RegExpExecArray | null;
-  while ((m = cellRe.exec(xml)) !== null && out.length < limit) {
-    const attrs = m[1]!;
-    const body = m[2]!;
+  for (const { attrs, body } of iterCells(xml)) {
+    if (out.length >= limit) break;
     const type = /\bt="([^"]+)"/.exec(attrs)?.[1];
     let text: string | null = null;
     if (type === "s") {
@@ -420,14 +439,11 @@ export function extractSheetGrid(
   maxRows = 30,
 ): string[][] {
   const grid: string[][] = [];
-  const cellRe = /<c\b[^>]*\br="([A-Z]+)(\d+)"([^>]*)>([\s\S]*?)<\/c>/g;
-  let m: RegExpExecArray | null;
-  while ((m = cellRe.exec(xml)) !== null) {
-    const row = Number(m[2]) - 1;
-    if (row >= maxRows) continue;
-    const col = columnLettersToIndex(m[1]!);
-    const attrs = m[3]!;
-    const body = m[4]!;
+  for (const { attrs, body } of iterCells(xml)) {
+    const ref = cellRef(attrs);
+    if (!ref || ref.row >= maxRows) continue;
+    const row = ref.row;
+    const col = ref.column;
     const type = /\bt="([^"]+)"/.exec(attrs)?.[1];
     let text = "";
     if (type === "s") {
