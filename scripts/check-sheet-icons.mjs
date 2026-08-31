@@ -182,6 +182,35 @@ try {
   );
   check("\u5019\u88dc\u304c\u7121\u3051\u308c\u3070 null", mod.pickBestCandidate([], checkCols), null);
 
+  console.log("\n[内容照合の確定を列の重なりで裏取りする]");
+  // 2026-08-31 実機: 真M12S-1 を開いているのに M10S の見出しが使われ、
+  // EC に「アドル (ピクトマンサー)」が入った。真M12S-1 の EC は
+  // 「バマジク (赤魔道士)」で、この層は BH 以降が 1 列ずれている。
+  // 列がずれれば重なりが激減するので、そこで気付ける。
+  const M10S = cand("M10S", 24, [10, 19, 28, 37, 46, 58, 78, 99, 115, 117, 118]);
+  const SHIN = cand("真M12S-1", 24, [10, 19, 28, 37, 46, 59, 79, 100, 116, 118, 119]);
+  const shinCheck = [10, 19, 28, 37, 46, 59, 79, 100, 116, 118, 119];
+
+  const wrong = mod.chooseCandidate([M10S, SHIN], shinCheck, "M10S");
+  check("食い違えば確定を採らない", wrong.best.sheet, "真M12S-1");
+  check("採らなかったことが分かる", wrong.usedIdentified, false);
+  check("理由が出る", typeof wrong.rejectedIdentified, "string");
+
+  const right = mod.chooseCandidate([M10S, SHIN], shinCheck, "真M12S-1");
+  check("一致していれば確定を採る", right.best.sheet, "真M12S-1");
+  check("確定を採ったと分かる", right.usedIdentified, true);
+  check("理由は出さない", right.rejectedIdentified, null);
+
+  const none = mod.chooseCandidate([SHIN], shinCheck, "M9S");
+  check("確定先に無ければ選び直す", none.best.sheet, "真M12S-1");
+  check("選び直した理由が出る", typeof none.rejectedIdentified, "string");
+
+  check(
+    "どこも重ならなければ null",
+    mod.chooseCandidate([M10S], [900, 901, 902], "M10S"),
+    null,
+  );
+
   console.log("\n[\u5217\u756a\u53f7 \u2192 \u5217\u8a18\u53f7]");
   check("0 \u306f A", mod.letterOf(0), "A");
   check("25 \u306f Z", mod.letterOf(25), "Z");

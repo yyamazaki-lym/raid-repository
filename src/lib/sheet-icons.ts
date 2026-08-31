@@ -226,3 +226,71 @@ export function pickBestCandidate(
   }
   return best ? { best, overlap: bestOverlap } : null;
 }
+
+/**
+ * 採用する候補を決める (2026-08-31、実機の誤ラベル事故を受けて)。
+ *
+ * ## なぜ内容照合だけでは足りないか
+ *
+ * 内容照合で層を確定できても、**確定先が間違っていたときに気付けない**。
+ * 実機では 真M12S-1 を開いているのに M10S の見出しが使われ、
+ * `EC` に「アドル (ピクトマンサー)」が入った。真M12S-1 の `EC` は
+ * 「バマジク (赤魔道士)」で、この層は `BH` 以降が 1 列ずれている。
+ *
+ * 列がずれていれば **チェック列との重なりが激減する**。これは CSV 側の
+ * 事実なので、照合結果の裏取りに使える。確定したシートの重なりが、
+ * 全シートを見たときの最良より明らかに悪ければ、確定を信用しない。
+ */
+export type CandidateChoice = {
+  best: IconCandidate;
+  overlap: number;
+  /** 内容照合の確定をそのまま採ったか。 */
+  usedIdentified: boolean;
+  /** 確定を退けた場合の理由 (診断表示用)。 */
+  rejectedIdentified: string | null;
+};
+
+/** 確定シートを信用する下限 (全体最良に対する比)。 */
+const IDENTIFIED_MIN_RATIO = 0.8;
+
+export function chooseCandidate(
+  candidates: IconCandidate[],
+  checkColumns: number[],
+  identified: string | null,
+): CandidateChoice | null {
+  const globalBest = pickBestCandidate(candidates, checkColumns);
+  if (!identified) {
+    return globalBest
+      ? { ...globalBest, usedIdentified: false, rejectedIdentified: null }
+      : null;
+  }
+
+  const onSheet = candidates.filter((c) => c.sheet === identified);
+  const identBest = pickBestCandidate(onSheet, checkColumns);
+
+  // 確定したシートにアイコンが無い / 重なりゼロ。
+  if (!identBest) {
+    if (!globalBest) return null;
+    return {
+      ...globalBest,
+      usedIdentified: false,
+      rejectedIdentified: `「${identified}」にチェック列と重なるアイコン行が無いため、重なりで選び直しました`,
+    };
+  }
+
+  // 全体最良と比べて明らかに悪ければ、確定が誤っている可能性が高い。
+  if (
+    globalBest &&
+    globalBest.best.sheet !== identified &&
+    identBest.overlap < globalBest.overlap * IDENTIFIED_MIN_RATIO
+  ) {
+    return {
+      ...globalBest,
+      usedIdentified: false,
+      rejectedIdentified:
+        `「${identified}」は列の重なりが ${identBest.overlap} 件しかなく、` +
+        `「${globalBest.best.sheet}」の ${globalBest.overlap} 件と食い違うため、確定を採用しませんでした`,
+    };
+  }
+  return { ...identBest, usedIdentified: true, rejectedIdentified: null };
+}

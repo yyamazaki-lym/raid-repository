@@ -2,7 +2,14 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Check, ChevronDown, Columns3, Save, Wand2 } from "lucide-react";
+import {
+  Check,
+  ChevronDown,
+  Columns3,
+  Save,
+  Trash2,
+  Wand2,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -208,6 +215,31 @@ export function MitigationColumnsDialog({
     setLabels(next);
     setBulk("");
     toast.success(`${applied} 列に名前を入れました (保存はまだです)`);
+  };
+
+  /**
+   * この層の登録を全部消す。
+   *
+   * 別の層の見出しを読み込んでしまうと、列がずれたまま名前が保存され、
+   * 以後ずっと誤った軽減名が出る (2026-08-31 実機)。登録は自動判定より
+   * 優先されるので、**消せる導線が無いと直せない**。
+   */
+  const onClear = () => {
+    startTransition(async () => {
+      const r = await setMitigationColumnLabelsAction(categoryId, gid, {});
+      if (!r.ok) {
+        toast.error("削除失敗: " + r.reason);
+        return;
+      }
+      setLabels({});
+      setAutoFilled([]);
+      setIcons({});
+      setDetectNote(null);
+      setDetectLog([]);
+      setCandidates([]);
+      toast.success("この層の登録を消しました");
+      router.refresh();
+    });
   };
 
   const onSave = () => {
@@ -509,6 +541,17 @@ export function MitigationColumnsDialog({
           </div>
 
           <DialogFooter>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={onClear}
+              disabled={pending}
+              className="text-[11px] tracking-normal text-muted-foreground hover:text-rose-300"
+              title="この層の登録を消して自動判定に戻す"
+            >
+              <Trash2 className="h-3.5 w-3.5" aria-hidden />
+              登録を消す
+            </Button>
             <Button
               type="button"
               variant="ghost"
