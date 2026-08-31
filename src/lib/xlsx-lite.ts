@@ -150,6 +150,73 @@ function decodeXmlText(s: string): string {
     .replace(/&amp;/g, "&");
 }
 
+/** zip 内の相対パス解決 (`xl/worksheets/_rels/..` から `../drawings/d.xml`)。 */
+export function resolveZipPath(baseFile: string, rel: string): string {
+  const parts = baseFile.split("/").slice(0, -1);
+  for (const seg of rel.split("/")) {
+    if (seg === "..") parts.pop();
+    else if (seg !== "." && seg !== "") parts.push(seg);
+  }
+  return parts.join("/");
+}
+
+/** `.rels` から `Id → Target` を読む。 */
+export function parseRels(xml: string): Map<string, string> {
+  const out = new Map<string, string>();
+  const re = /<Relationship\b[^>]*\bId="([^"]+)"[^>]*\bTarget="([^"]+)"/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(xml)) !== null) out.set(m[1]!, decodeXmlText(m[2]!));
+  // 属性順が逆のものも受ける (書き出し側で順序は保証されない)。
+  const re2 = /<Relationship\b[^>]*\bTarget="([^"]+)"[^>]*\bId="([^"]+)"/g;
+  while ((m = re2.exec(xml)) !== null) {
+    if (!out.has(m[2]!)) out.set(m[2]!, decodeXmlText(m[1]!));
+  }
+  return out;
+}
+
+export type XlsxAnchoredImage = {
+  row: number;
+  column: number;
+  /** zip 内の画像パス (`xl/media/image1.png`)。 */
+  mediaPath: string;
+};
+
+/**
+ * drawing XML からセルに紐づいた画像を拾う。
+ *
+ * Google Sheets の「画像をセル内に挿入」は数式ではなく**埋め込み画像**に
+ * なるため、`=IMAGE()` の抽出だけでは取りこぼす。こちらは URL が残らない
+ * (画像バイトのみ) が、位置 (行・列) は正確に分かるので、**アイコンを
+ * そのまま表示して人が名前を付ける**用途には十分。
+ */
+export function parseDrawingAnchors(
+  xml: string,
+  rels: Map<string, string>,
+  drawingPath: string,
+): XlsxAnchoredImage[] {
+  const out: XlsxAnchoredImage[] = [];
+  const blockRe =
+    /<(?:xdr:)?(?:two|one)CellAnchor\b[\s\S]*?<\/(?:xdr:)?(?:two|one)CellAnchor>/g;
+  let m: RegExpExecArray | null;
+  while ((m = blockRe.exec(xml)) !== null) {
+    const block = m[0];
+    const from = /<(?:xdr:)?from>([\s\S]*?)<\/(?:xdr:)?from>/.exec(block);
+    if (!from) continue;
+    const col = /<(?:xdr:)?col>(\d+)<\/(?:xdr:)?col>/.exec(from[1]!);
+    const row = /<(?:xdr:)?row>(\d+)<\/(?:xdr:)?row>/.exec(from[1]!);
+    const embed = /<(?:a:)?blip\b[^>]*\br:embed="([^"]+)"/.exec(block);
+    if (!col || !row || !embed) continue;
+    const target = rels.get(embed[1]!);
+    if (!target) continue;
+    out.push({
+      row: Number(row[1]),
+      column: Number(col[1]),
+      mediaPath: resolveZipPath(drawingPath, target),
+    });
+  }
+  return out;
+}
+
 /**
  * xlsx 全体から「シート名 → IMAGE セル」を作る。
  *
@@ -173,6 +240,60 @@ export function extractImageCellsBySheet(
   sheetPaths.forEach((path, i) => {
     const cells = extractImageFormulaCells(dec.decode(files.get(path)!));
     out.set(names[i] ?? path, cells);
+  });
+  return out;
+}
+
+/** 上と同じ並びで「シート名 → セルに埋め込まれた画像」を作る。 */
+export function extractAnchoredImagesBySheet(
+  files: Map<string, Uint8Array>,
+): Map<string, XlsxAnchoredImage[]> {
+  const dec = new TextDecoder("utf-8");
+  const wb = files.get("xl/workbook.xml");
+  const names = wb ? parseWorkbookSheetNames(dec.decode(wb)) : [];
+  const sheetPaths = [...files.keys()]
+    .filter((k) => /^xl\/worksheets\/sheet\d+\.xml$/.test(k))
+    .sort(
+      (a, b) =>
+        Number(/(\d+)\.xml$/.exec(a)![1]) - Number(/(\d+)\.xml$/.exec(b)![1]),
+    );
+  const out = new Map<string, XlsxAnchoredImage[]>();
+  sheetPaths.forEach((path, i) => {
+    const name = names[i] ?? path;
+    const sheetXml = dec.decode(files.get(path)!);
+    const drawingRef = /<drawing\b[^>]*\br:id="([^"]+)"/.exec(sheetXml);
+    if (!drawingRef) {
+      out.set(name, []);
+      return;
+    }
+    const sheetRels = files.get(
+      `${path.replace(/\/([^/]+)$/, "/_rels/$1")}.rels`,
+    );
+    if (!sheetRels) {
+      out.set(name, []);
+      return;
+    }
+    const target = parseRels(dec.decode(sheetRels)).get(drawingRef[1]!);
+    if (!target) {
+      out.set(name, []);
+      return;
+    }
+    const drawingPath = resolveZipPath(path, target);
+    const drawingXml = files.get(drawingPath);
+    if (!drawingXml) {
+      out.set(name, []);
+      return;
+    }
+    const drawingRels = files.get(
+      `${drawingPath.replace(/\/([^/]+)$/, "/_rels/$1")}.rels`,
+    );
+    const rels = drawingRels
+      ? parseRels(dec.decode(drawingRels))
+      : new Map<string, string>();
+    out.set(
+      name,
+      parseDrawingAnchors(dec.decode(drawingXml), rels, drawingPath),
+    );
   });
   return out;
 }

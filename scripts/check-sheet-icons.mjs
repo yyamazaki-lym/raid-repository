@@ -152,6 +152,41 @@ try {
     ),
     [["w", "アドル"]],
   );
+
+  console.log("\n[\u5019\u88dc\u306e\u9078\u3073\u65b9 (\u30c1\u30a7\u30c3\u30af\u5217\u3068\u306e\u91cd\u306a\u308a)]");
+  // 2026-08-31 \u5b9f\u6a5f: \u767b\u9332\u30bf\u30d6\u540d\u3067\u30b7\u30fc\u30c8\u3092\u5f53\u3066\u306b\u3044\u304d\u5916\u3057\u3001
+  // \u5225\u30b7\u30fc\u30c8\u306e 11 \u884c\u76ee\u3092\u63b4\u3093\u3067\u5217\u304c\u307e\u308b\u3054\u3068\u30ba\u30ec\u305f\u3002\u540d\u524d\u3067\u306f\u306a\u304f
+  // \u91cd\u306a\u308a\u3067\u9078\u3076\u3053\u3068\u3067\u3053\u308c\u3092\u9632\u3050\u3002
+  const cand = (sheet, row, cols) => ({
+    sheet,
+    row,
+    cells: cols.map((c) => ({ column: c, src: `i${c}` })),
+  });
+  const checkCols = [118, 119, 120, 130, 131];
+  const picked = mod.pickBestCandidate(
+    [
+      // \u5225\u30b7\u30fc\u30c8\u306e\u30a2\u30a4\u30b3\u30f3\u884c (\u6570\u306f\u591a\u3044\u304c\u5217\u304c\u9055\u3046)
+      cand("Settings", 10, [1, 2, 3, 4, 5, 6, 7]),
+      // \u672c\u547d
+      cand("M12S-2", 25, [118, 119, 130]),
+    ],
+    checkCols,
+  );
+  check("\u91cd\u306a\u308a\u306e\u591a\u3044\u5019\u88dc\u3092\u9078\u3076", picked.best.sheet, "M12S-2");
+  check("\u91cd\u306a\u308a\u6570\u3092\u8fd4\u3059", picked.overlap, 3);
+  // \u4ef6\u6570\u304c\u591a\u3044\u3060\u3051\u306e\u5019\u88dc\u306b\u5f15\u3063\u5f35\u3089\u308c\u306a\u3044\u3053\u3068\u3002
+  check(
+    "\u91cd\u306a\u308a\u304c\u7121\u3051\u308c\u3070\u63a1\u7528\u3057\u306a\u3044",
+    mod.pickBestCandidate([cand("Settings", 10, [1, 2, 3, 4, 5, 6, 7])], checkCols),
+    null,
+  );
+  check("\u5019\u88dc\u304c\u7121\u3051\u308c\u3070 null", mod.pickBestCandidate([], checkCols), null);
+
+  console.log("\n[\u5217\u756a\u53f7 \u2192 \u5217\u8a18\u53f7]");
+  check("0 \u306f A", mod.letterOf(0), "A");
+  check("25 \u306f Z", mod.letterOf(25), "Z");
+  check("26 \u306f AA", mod.letterOf(26), "AA");
+  check("118 \u306f DO", mod.letterOf(118), "DO");
 } finally {
   rmSync(outDir, { recursive: true, force: true });
 }

@@ -163,6 +163,66 @@ try {
   // 数式の無いセル (E26 の見出し等) を拾わない。
   check("数式の無いセルは無視", bySheet.get("P1_鉄天騎士").length, 2);
 
+
+  console.log("\n[埋め込み画像 (画像をセル内に挿入)]");
+  // Google の「画像をセル内に挿入」は数式ではなく drawing になる。
+  // URL は残らないが、行・列は正確に取れる必要がある。
+  const drawing =
+    '<xdr:wsDr>' +
+    '<xdr:twoCellAnchor editAs="oneCell">' +
+    '<xdr:from><xdr:col>118</xdr:col><xdr:colOff>0</xdr:colOff>' +
+    '<xdr:row>25</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from>' +
+    '<xdr:pic><xdr:blipFill><a:blip r:embed="rId1"/></xdr:blipFill></xdr:pic>' +
+    "</xdr:twoCellAnchor>" +
+    '<xdr:oneCellAnchor>' +
+    '<xdr:from><xdr:col>130</xdr:col><xdr:row>25</xdr:row></xdr:from>' +
+    '<xdr:pic><xdr:blipFill><a:blip r:embed="rId2"/></xdr:blipFill></xdr:pic>' +
+    "</xdr:oneCellAnchor>" +
+    "</xdr:wsDr>";
+  const drawingRels =
+    '<Relationships>' +
+    '<Relationship Id="rId1" Type="x" Target="../media/image1.png"/>' +
+    '<Relationship Id="rId2" Type="x" Target="../media/image2.png"/>' +
+    "</Relationships>";
+
+  check("rels を Id → Target で読む", [...mod.parseRels(drawingRels).entries()], [
+    ["rId1", "../media/image1.png"],
+    ["rId2", "../media/image2.png"],
+  ]);
+  check(
+    "相対パスを解決する",
+    mod.resolveZipPath("xl/drawings/drawing1.xml", "../media/image1.png"),
+    "xl/media/image1.png",
+  );
+  check(
+    "twoCell/oneCell 両方から行・列を取る",
+    mod.parseDrawingAnchors(drawing, mod.parseRels(drawingRels), "xl/drawings/drawing1.xml"),
+    [
+      { row: 25, column: 118, mediaPath: "xl/media/image1.png" },
+      { row: 25, column: 130, mediaPath: "xl/media/image2.png" },
+    ],
+  );
+
+  const zip2 = makeZip([
+    ["xl/workbook.xml", workbook],
+    ["xl/worksheets/sheet1.xml", '<worksheet><drawing r:id="rIdD"/></worksheet>'],
+    [
+      "xl/worksheets/_rels/sheet1.xml.rels",
+      '<Relationships><Relationship Id="rIdD" Type="x" Target="../drawings/drawing1.xml"/></Relationships>',
+    ],
+    ["xl/drawings/drawing1.xml", drawing],
+    ["xl/drawings/_rels/drawing1.xml.rels", drawingRels],
+    ["xl/worksheets/sheet2.xml", "<worksheet/>"],
+  ]);
+  const anchored = mod.extractAnchoredImagesBySheet(mod.unzip(zip2));
+  check(
+    "シートを辿って埋め込み画像に届く",
+    anchored.get("P1_\u9244\u5929\u9a0e\u58eb").map((a) => a.column),
+    [118, 130],
+  );
+  // drawing が無いシートで落ちない。
+  check("drawing の無いシートは空", anchored.get("P2_\u30c8\u30fc\u30eb\u30c0\u30f3"), []);
+
   console.log("\n[壊れた入力]");
   check("zip でなければ空", mod.unzip(new Uint8Array([1, 2, 3])).size, 0);
   check("空でも落ちない", mod.unzip(new Uint8Array(0)).size, 0);

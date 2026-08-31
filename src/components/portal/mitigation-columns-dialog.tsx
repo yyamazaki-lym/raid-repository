@@ -92,6 +92,8 @@ export function MitigationColumnsDialog({
   /** 列番号 → アイコン URL (「アイコンから判定」実行後に埋まる)。 */
   const [icons, setIcons] = useState<Record<string, string>>({});
   const [detectNote, setDetectNote] = useState<string | null>(null);
+  /** アイコンが取れた列だけに絞る (取れていないうちは効かない)。 */
+  const [onlyIcons, setOnlyIcons] = useState(true);
   /** 取得経路ごとの結果。失敗の切り分けに要るので成功時も残す。 */
   const [detectLog, setDetectLog] = useState<string[]>([]);
   const [pending, startTransition] = useTransition();
@@ -99,13 +101,21 @@ export function MitigationColumnsDialog({
 
   // 名前を付ける対象 = チェック列 (と、既に名前を付けた列)。
   // ON が多い順に並べる — よく使う軽減ほど先に決められる。
-  const targets = useMemo(
-    () =>
-      columns
-        .filter((c) => c.role === "check" || labels[String(c.index)])
-        .sort((a, b) => b.checkedCount - a.checkedCount),
-    [columns, labels],
+  const checkColumns = useMemo(
+    () => columns.filter((c) => c.role === "check").map((c) => c.index),
+    [columns],
   );
+  // アイコンが取れたら、それが「本当のアビリティ列」の定義。軽減表には
+  // TRUE/FALSE を持つ非表示の計算列も多く、チェック列すべてを並べると
+  // 無関係な列が混ざる (2026-08-31 実機で 172 列中の大半がノイズだった)。
+  const iconColumns = useMemo(() => new Set(Object.keys(icons)), [icons]);
+  const targets = useMemo(() => {
+    const named = (c: SheetColumnDiagnostic) => Boolean(labels[String(c.index)]);
+    const pool = columns.filter((c) => c.role === "check" || named(c));
+    const withIcon = pool.filter((c) => iconColumns.has(String(c.index)));
+    const list = onlyIcons && withIcon.length > 0 ? withIcon : pool;
+    return [...list].sort((a, b) => b.checkedCount - a.checkedCount);
+  }, [columns, labels, iconColumns, onlyIcons]);
   const namedCount = targets.filter((c) => labels[String(c.index)]?.trim()).length;
 
   /**
@@ -115,7 +125,7 @@ export function MitigationColumnsDialog({
    */
   const onDetect = () => {
     startDetect(async () => {
-      const r = await detectMitigationIconsAction(categoryId, gid);
+      const r = await detectMitigationIconsAction(categoryId, gid, checkColumns);
       setDetectLog(r.diagnostics);
       if (!r.ok) {
         setDetectNote(r.reason);
@@ -209,7 +219,7 @@ export function MitigationColumnsDialog({
 
           <div className="flex items-center justify-between gap-2 rounded-md border border-border/40 bg-secondary/15 px-3 py-1.5 text-[11px]">
             <span className="text-muted-foreground">
-              チェック列 {targets.length} 件 / 名前あり{" "}
+              対象 {targets.length} 列 / 名前あり{" "}
               <strong className="text-foreground">{namedCount}</strong> 件
             </span>
             <span className="font-mono text-[10px] text-muted-foreground/70">
@@ -229,6 +239,17 @@ export function MitigationColumnsDialog({
               <Wand2 className="h-3.5 w-3.5" aria-hidden />
               {detecting ? "判定中..." : "アイコンから判定"}
             </Button>
+            {iconColumns.size > 0 && (
+              <label className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                <input
+                  type="checkbox"
+                  checked={onlyIcons}
+                  onChange={(e) => setOnlyIcons(e.target.checked)}
+                  className="h-3.5 w-3.5 accent-[var(--neon-cyan)]"
+                />
+                アイコンのある列だけ ({iconColumns.size})
+              </label>
+            )}
             <span className="text-[10px] leading-relaxed text-muted-foreground/70">
               シートのアイコン画像を読み取り、公式ジョブガイドの
               アクションアイコンと突き合わせて名前を埋めます。

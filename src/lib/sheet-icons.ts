@@ -186,3 +186,43 @@ function firstActionName(fragment: string): string | null {
   }
   return null;
 }
+
+/** 列番号 → `A` / `AA` (診断表示用)。 */
+export function letterOf(index: number): string {
+  let n = index + 1;
+  let s = "";
+  while (n > 0) {
+    const r = (n - 1) % 26;
+    s = String.fromCharCode(65 + r) + s;
+    n = Math.floor((n - 1) / 26);
+  }
+  return s;
+}
+
+/** (シート, 行) 単位のアイコン候補。 */
+export type IconCandidate = {
+  sheet: string;
+  row: number;
+  cells: Array<{ column: number; src: string }>;
+};
+
+/**
+ * チェック列との重なりが最大の候補を選ぶ。
+ * 重なりが無い候補は**採用しない** (別シートの無関係なアイコンを掴むため)。
+ */
+export function pickBestCandidate(
+  candidates: IconCandidate[],
+  checkColumns: number[],
+): { best: IconCandidate; overlap: number } | null {
+  const set = new Set(checkColumns);
+  let best: IconCandidate | null = null;
+  let bestOverlap = 0;
+  for (const c of candidates) {
+    const overlap = c.cells.filter((x) => set.has(x.column)).length;
+    if (overlap > bestOverlap) {
+      best = c;
+      bestOverlap = overlap;
+    }
+  }
+  return best ? { best, overlap: bestOverlap } : null;
+}
