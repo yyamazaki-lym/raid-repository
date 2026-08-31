@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Check, ChevronDown, Columns3, Save } from "lucide-react";
+import { Check, ChevronDown, Columns3, Save, Wand2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,22 +14,28 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { setMitigationColumnLabelsAction } from "@/lib/server/categories-actions";
+import {
+  detectMitigationIconsAction,
+  setMitigationColumnLabelsAction,
+} from "@/lib/server/categories-actions";
 import type { SheetColumnDiagnostic } from "@/lib/sheet-csv";
 
 /**
  * 軽減表の「アビリティ列に名前を付ける」設定 (2026-08-30 実機報告)。
  *
  * **なぜ手動なのか**: シート 26 行目のアビリティは *アイコン画像* で置かれて
- * おり、Google Sheets の CSV には画像が一切出力されない。つまり列の正体を
- * 機械的に知る方法が無い。そこで、
+ * おり、Google Sheets の CSV には画像が一切出力されない。ただし HTML ビュー
+ * には `<img>` として出るので、
  *
- *   - 「どの攻撃でチェックが入っているか」を各列に添えて **人が正体を
- *     特定できる**ようにする (例: キング・オブ・アルカディアで ON → 牽制)
- *   - よく使う軽減名をワンタップで入れられるようにする
- *   - まとめて貼り付け (`DO=牽制`) でも入れられるようにする
+ *   - 「アイコンから判定」で各列のアイコン画像を取り、公式ジョブガイドの
+ *     アクションアイコンと突き合わせて **名前まで自動で埋める**
+ *   - 名前が引けなくてもアイコン自体は列の横に表示する (見れば分かる)
+ *   - 「どの攻撃でチェックが入っているか」も添える
+ *     (例: キング・オブ・アルカディアで ON → 牽制)
+ *   - よく使う軽減名のワンタップ / まとめて貼り付け (`DO=牽制`)
  *
- * という 3 経路を用意して、入力の手間を最小にする。
+ * という経路を用意して、入力の手間を最小にする。自動判定はあくまで補助で、
+ * 失敗しても手入力で完結できる。
  */
 
 /** ワンタップ用のよく使う軽減 / バフ (足りなければ自由入力)。 */
@@ -83,7 +89,11 @@ export function MitigationColumnsDialog({
   );
   const [bulk, setBulk] = useState("");
   const [showDiag, setShowDiag] = useState(false);
+  /** 列番号 → アイコン URL (「アイコンから判定」実行後に埋まる)。 */
+  const [icons, setIcons] = useState<Record<string, string>>({});
+  const [detectNote, setDetectNote] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const [detecting, startDetect] = useTransition();
 
   // 名前を付ける対象 = チェック列 (と、既に名前を付けた列)。
   // ON が多い順に並べる — よく使う軽減ほど先に決められる。
@@ -95,6 +105,40 @@ export function MitigationColumnsDialog({
     [columns, labels],
   );
   const namedCount = targets.filter((c) => labels[String(c.index)]?.trim()).length;
+
+  /**
+   * シートの HTML ビューからアイコン画像を取り、公式ジョブガイドと
+   * 突き合わせて名前を埋める。名前が引けなかった列もアイコンだけは出す。
+   * 既に入力済みの名前は上書きしない (人の入力を機械が壊さない)。
+   */
+  const onDetect = () => {
+    startDetect(async () => {
+      const r = await detectMitigationIconsAction(categoryId, gid);
+      if (!r.ok) {
+        setDetectNote(r.reason);
+        toast.error("アイコンを取得できませんでした");
+        return;
+      }
+      const nextIcons: Record<string, string> = {};
+      const filled: Record<string, string> = {};
+      for (const icon of r.icons) {
+        const key = String(icon.column);
+        nextIcons[key] = icon.iconUrl;
+        if (icon.guessedName && !labels[key]?.trim()) {
+          filled[key] = icon.guessedName;
+        }
+      }
+      setIcons(nextIcons);
+      const added = Object.keys(filled).length;
+      if (added > 0) setLabels((prev) => ({ ...prev, ...filled }));
+      setDetectNote(
+        r.namedCount === 0
+          ? `アイコン ${r.icons.length} 件を取得しましたが、名前は判定できませんでした。アイコンを見て入力してください。`
+          : `アイコン ${r.icons.length} 件を取得し、${added} 列に名前を入れました (保存はまだです)。`,
+      );
+      toast.success(`アイコン ${r.icons.length} 件を取得しました`);
+    });
+  };
 
   const applyBulk = () => {
     // `DO=牽制` / `DO 牽制` / `DO:牽制` のいずれも受ける。
@@ -170,6 +214,29 @@ export function MitigationColumnsDialog({
             </span>
           </div>
 
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={onDetect}
+              disabled={detecting}
+              className="text-[11px] tracking-normal"
+            >
+              <Wand2 className="h-3.5 w-3.5" aria-hidden />
+              {detecting ? "判定中..." : "アイコンから判定"}
+            </Button>
+            <span className="text-[10px] leading-relaxed text-muted-foreground/70">
+              シートのアイコン画像を読み取り、公式ジョブガイドの
+              アクションアイコンと突き合わせて名前を埋めます。
+            </span>
+          </div>
+          {detectNote && (
+            <p className="rounded-md border border-border/40 bg-secondary/15 px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
+              {detectNote}
+            </p>
+          )}
+
           {targets.length === 0 ? (
             <p className="rounded-md border border-amber-400/30 bg-amber-400/5 px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
               チェックボックスの列が見つかりませんでした。下の「全列の判定
@@ -194,6 +261,17 @@ export function MitigationColumnsDialog({
                       <span className="inline-flex h-6 min-w-10 items-center justify-center rounded-sm border border-[var(--neon-cyan)]/45 bg-[var(--neon-cyan)]/10 px-1.5 font-mono text-[12px] text-[var(--neon-cyan)]">
                         {c.letter}
                       </span>
+                      {icons[key] && (
+                        // シート上の実アイコン。名前が引けなくても、これが
+                        // 出ていれば何の軽減か人が判断できる。
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={icons[key]}
+                          alt=""
+                          className="h-6 w-6 shrink-0 rounded-sm border border-border/40 bg-background/40 object-contain"
+                          loading="lazy"
+                        />
+                      )}
                       <span className="font-mono text-[10px] tabular-nums text-muted-foreground">
                         ON {c.checkedCount}
                       </span>

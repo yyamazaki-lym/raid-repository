@@ -33,6 +33,6 @@
  * 存在するため、ヘッダーの fallback としてはもう参照しない。
  */
 export const LATEST_RELEASE_META: { version: string; date: string } = {
-  version: "2.12",
-  date: "2026-08-30",
+  version: "2.13",
+  date: "2026-08-31",
 };

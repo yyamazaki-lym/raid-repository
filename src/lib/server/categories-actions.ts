@@ -84,6 +84,10 @@ import {
 import { assertAdminResult } from "./auth";
 import { dbError } from "./db-error";
 import { fflogsLogDedupeKey, parseFflogsReportCode } from "@/lib/fflogs-url";
+import {
+  detectMitigationIcons,
+  type MitigationIconGuess,
+} from "./mitigation-icons";
 import { jstYmdKey, toJstYmd } from "@/lib/video-jst-date";
 import {
   rowToCategory,
@@ -3818,4 +3822,32 @@ export async function setMitigationColumnLabelsAction(
     // best-effort
   }
   return { ok: true };
+}
+
+/**
+ * 軽減表のアビリティ列をアイコン画像から割り出す (2026-08-30)。
+ *
+ * CSV には画像が出ないため、シートの HTML ビューから列 → アイコン URL を
+ * 取り、公式ジョブガイドのアクションアイコンと突き合わせて名前を推測する。
+ * 名前が引けなくてもアイコン自体は返すので、設定画面で目視して名前を
+ * 付けられる (この機能は入力補助であって、依存先ではない)。
+ */
+export async function detectMitigationIconsAction(
+  categoryId: string,
+  gid: string,
+): Promise<
+  | { ok: true; icons: MitigationIconGuess[]; namedCount: number }
+  | { ok: false; reason: string }
+> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("categories")
+    .select("mitigation_sheet_url")
+    .eq("id", categoryId)
+    .maybeSingle();
+  const sheetUrl = (data as { mitigation_sheet_url?: string | null } | null)
+    ?.mitigation_sheet_url;
+  return detectMitigationIcons(sheetUrl, /^\d+$/.test(gid) ? gid : null);
 }
