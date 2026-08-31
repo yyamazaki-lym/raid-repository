@@ -403,10 +403,17 @@ export function buildSheetCardRows(
      * ので、admin が列に名前を付けられるようにして、その名前で表示する。
      */
     columnLabels?: Record<number, string>;
+    /**
+     * カードにしない行 (table.rows のインデックス)。
+     * ジョブ名 / アビリティ名 / 対象種別の見出し 3 行は攻撃ではないので、
+     * カードとして並べると意味の無い行が混ざる (2026-08-31)。
+     */
+    ignoreRows?: ReadonlySet<number>;
   },
 ): SheetCardRow[] {
   const mitigation = opts?.mitigation === true;
   const columnLabels = opts?.columnLabels ?? {};
+  const ignoreRows = opts?.ignoreRows;
   // mitigation モード: 列の役割を見出しで分類 (final/rate/damage/target)。
   const mitKindByCol = new Map<number, MitColumnKind>();
   if (mitigation) {
@@ -516,6 +523,8 @@ export function buildSheetCardRows(
   for (let rowIndex = 0; rowIndex < table.rows.length; rowIndex++) {
     // 名前の行は見出しの一部なのでカードにしない。
     if (labelRow && rowIndex === labelRow.rowIndex) continue;
+    // ジョブ名 / アビリティ名 / 対象種別の 3 行も見出しなので除く。
+    if (ignoreRows?.has(rowIndex)) continue;
     const row = table.rows[rowIndex]!;
     const headingParts: string[] = [];
     const rowHeading = (row[0] ?? "").trim();
@@ -704,8 +713,19 @@ export function columnLetter(index: number): string {
  * **アプリが何をどう解釈したかをそのまま見せる**。これが無いと
  * 「出ない」原因が列見出しなのか値なのか切り分けられない。
  */
-export function diagnoseSheetColumns(table: SheetTable): SheetColumnDiagnostic[] {
+export function diagnoseSheetColumns(
+  table: SheetTable,
+  /**
+   * 判定から除く行 (table.rows のインデックス)。
+   * ジョブ名 / アビリティ名 / 対象種別の見出し 3 行を数えてしまうと、
+   * チェックボックス列が「文字列の列」に化けて拾えなくなる (2026-08-31)。
+   */
+  ignoreRows?: ReadonlySet<number>,
+): SheetColumnDiagnostic[] {
   const out: SheetColumnDiagnostic[] = [];
+  const body = ignoreRows
+    ? table.rows.filter((_, i) => !ignoreRows.has(i))
+    : table.rows;
   // 「どの攻撃で使われているか」を出すための攻撃名の列を選ぶ。
   const actionCol = findActionColumn(table);
   for (let ci = 0; ci < table.headers.length; ci++) {
@@ -714,7 +734,7 @@ export function diagnoseSheetColumns(table: SheetTable): SheetColumnDiagnostic[]
     let checked = 0;
     let nonBoolean = 0;
     let filled = 0;
-    for (const row of table.rows) {
+    for (const row of body) {
       const v = (row[ci] ?? "").trim();
       if (v === "") continue;
       filled += 1;
@@ -737,7 +757,7 @@ export function diagnoseSheetColumns(table: SheetTable): SheetColumnDiagnostic[]
     // チェックが入っている行の攻撃名 (列の正体を人が特定するための手がかり)。
     const checkedOn: string[] = [];
     if (role === "check" && actionCol !== null) {
-      for (const row of table.rows) {
+      for (const row of body) {
         if (!isCheckedValue((row[ci] ?? "").trim())) continue;
         const action = (row[actionCol] ?? "").trim();
         if (!action || checkedOn.includes(action)) continue;
@@ -858,4 +878,122 @@ function findActionColumn(table: SheetTable): number | null {
     }
   }
   return best ? best.index : null;
+}
+
+/**
+ * 軽減表の「アビリティ名の見出し行」を探す (2026-08-31、実データ解析)。
+ *
+ * ## 経緯
+ *
+ * アビリティ欄はアイコン画像なので CSV には出ない、と考えて画像から名前を
+ * 逆算しようとしていた。実物の xlsx を解析したところ、アイコンのセルは
+ *
+ *   =INDEX(Skill!$D:$D, MATCH(<その列>$4, Skill!$C:$C, 0))
+ *
+ * すなわち **「その列の 4 行目に書かれたアビリティ名」でアイコンを引いて
+ * いる**だけだった。名前はプレーンテキストで存在し、CSV にも出る。
+ * 画像解析は不要 (かつ不正確) で、この行を読むのが正しい。
+ *
+ * ## 見つけ方
+ *
+ * この手のテンプレートは「ジョブ名 / アビリティ名 / 対象種別」が 3 行
+ * 並ぶ。対象種別は `SELF` `RANGE_PARTY` のような固定語なので**最も
+ * 見分けやすい**。それを見つけて 1 つ上をアビリティ行、2 つ上をジョブ行と
+ * する。固定語が無いシート向けに、チェック列に短い文字列が最も多く並ぶ行を
+ * 選ぶ経路も残す。
+ */
+export type AbilityHeaderRows = {
+  /** grid (headers を 0 行目とする) におけるアビリティ名の行。 */
+  abilityRow: number;
+  /** その 1 つ上のジョブ名の行 (無ければ null)。 */
+  jobRow: number | null;
+  /** 対象種別の行 (無ければ null)。 */
+  targetRow: number | null;
+};
+
+/** 軽減表テンプレートの対象種別に使われる固定語。 */
+const TARGET_TOKEN =
+  /^(SELF|PARTY|ENEMY|NONE|AREA_PARTY|RANGE_PARTY|SINGLE_PARTY|RANGE_ENEMY|SINGLE_ENEMY)$/;
+
+/** 見出し行を探す走査範囲。表の本体まで踏み込まない。 */
+const HEADER_SCAN_ROWS = 24;
+
+function looksLikeAbilityName(v: string): boolean {
+  const t = v.trim();
+  if (t.length < 2 || t.length > 24) return false;
+  if (/^(TRUE|FALSE)$/i.test(t)) return false;
+  if (TARGET_TOKEN.test(t)) return false;
+  // 数値・割合・時刻は名前ではない。
+  if (/^[-+]?[\d.,]+%?$/.test(t)) return false;
+  if (/^\d{1,2}:\d{2}/.test(t)) return false;
+  return true;
+}
+
+export function findAbilityHeaderRows(
+  grid: string[][],
+  checkColumns: number[],
+): AbilityHeaderRows | null {
+  const limit = Math.min(grid.length, HEADER_SCAN_ROWS);
+
+  // 1) 対象種別の行を探す (最も特徴的)。
+  for (let r = 1; r < limit; r++) {
+    const row = grid[r]!;
+    let hits = 0;
+    for (const v of row) if (TARGET_TOKEN.test(v.trim())) hits += 1;
+    if (hits < 4) continue;
+    const abilityRow = r - 1;
+    const names = grid[abilityRow]?.filter(looksLikeAbilityName).length ?? 0;
+    if (names < 3) continue;
+    return {
+      abilityRow,
+      jobRow: abilityRow - 1 >= 0 ? abilityRow - 1 : null,
+      targetRow: r,
+    };
+  }
+
+  // 2) 固定語が無いシート: チェック列に短い文字列が最も多い行。
+  if (checkColumns.length === 0) return null;
+  let best = -1;
+  let bestHits = 0;
+  for (let r = 0; r < limit; r++) {
+    const row = grid[r]!;
+    let hits = 0;
+    for (const c of checkColumns) {
+      if (looksLikeAbilityName(row[c] ?? "")) hits += 1;
+    }
+    if (hits > bestHits) {
+      bestHits = hits;
+      best = r;
+    }
+  }
+  if (best < 0 || bestHits < 3) return null;
+  return { abilityRow: best, jobRow: null, targetRow: null };
+}
+
+export type AutoColumnLabel = {
+  /** アビリティ名 (例: 牽制)。 */
+  name: string;
+  /** ジョブ名 (例: 忍者)。取れなければ null。 */
+  job: string | null;
+};
+
+/** 見出し行から「列番号 → アビリティ名 + ジョブ」を作る。 */
+export function buildAutoColumnLabels(
+  grid: string[][],
+  rows: AbilityHeaderRows,
+): Record<number, AutoColumnLabel> {
+  const names = grid[rows.abilityRow] ?? [];
+  const jobs = rows.jobRow !== null ? (grid[rows.jobRow] ?? []) : [];
+  const out: Record<number, AutoColumnLabel> = {};
+  for (let c = 0; c < names.length; c++) {
+    const name = (names[c] ?? "").trim();
+    if (!looksLikeAbilityName(name)) continue;
+    const job = (jobs[c] ?? "").trim();
+    // 「hide」等の制御用の値をジョブ名として出さない。
+    out[c] = {
+      name,
+      job: job && job !== "hide" && looksLikeAbilityName(job) ? job : null,
+    };
+  }
+  return out;
 }

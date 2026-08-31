@@ -35,6 +35,7 @@ export function SheetCards({
   title,
   variant = "generic",
   columnLabels,
+  ignoreRows,
 }: {
   table: SheetTable;
   sheetUrl: string;
@@ -44,6 +45,8 @@ export function SheetCards({
    * アイコン画像で CSV に文字が無い場合、ここで付けた名前で表示する。
    */
   columnLabels?: Record<number, string>;
+  /** カードにしない行 (見出しの 3 行)。 */
+  ignoreRows?: ReadonlySet<number>;
   /**
    * 2026-08-30: `mitigation` は軽減表向けの簡素カード — AA 行を除外し、
    * 素ダメージ → 軽減率 → 最終ダメージを数値サマリ行で、対象 (誰に
@@ -85,8 +88,9 @@ export function SheetCards({
       buildSheetCardRows(table, visibleColumns, {
         mitigation: variant === "mitigation",
         columnLabels,
+        ignoreRows,
       }),
-    [table, visibleColumns, variant, columnLabels],
+    [table, visibleColumns, variant, columnLabels, ignoreRows],
   );
 
   // 巨大なシート (数百行) をスマホで全部カード化すると描画が重くなるため

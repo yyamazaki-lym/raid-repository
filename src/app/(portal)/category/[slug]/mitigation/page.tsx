@@ -8,6 +8,8 @@ import {
   diagnoseSheetColumns,
   extractSheetGid,
   parseColumnLabelsSetting,
+  findAbilityHeaderRows,
+  buildAutoColumnLabels,
   parseSheetTabsSetting,
 } from "@/lib/sheet-csv";
 import { MitigationColumnsDialog } from "@/components/portal/mitigation-columns-dialog";
@@ -86,17 +88,56 @@ export default async function MitigationPage({
 
   // 2026-08-30: 列の判定結果 + チェック列の名前登録 (実機報告
   // 「Type や軽減率は出ているがそれ以外は情報なし」の切り分け導線)。
-  const columnLabels = parseColumnLabelsSetting(
+  const manualLabels = parseColumnLabelsSetting(
     category.mitigationColumnLabels,
     activeGid,
   );
+
+  // 2026-08-31 (実物の xlsx を解析): 軽減表テンプレートは列ごとに
+  // 「ジョブ名 / アビリティ名 / 対象種別」の 3 行を持ち、アイコンはその
+  // アビリティ名で引かれているだけだった。つまり**名前は CSV に出ている**。
+  // 画像から逆算する必要はなく、この行を読めば手入力なしで名前が付く。
+  const grid = table.ok
+    ? [table.table.headers, ...table.table.rows]
+    : ([] as string[][]);
+  const firstPass = table.ok ? diagnoseSheetColumns(table.table) : [];
+  const headerRows = table.ok
+    ? findAbilityHeaderRows(
+        grid,
+        firstPass.filter((c) => c.role === "check").map((c) => c.index),
+      )
+    : null;
+  // 見出し 3 行はデータではない。判定にもカードにも混ぜない。
+  const ignoreRows = new Set<number>();
+  if (headerRows) {
+    for (const r of [
+      headerRows.jobRow,
+      headerRows.abilityRow,
+      headerRows.targetRow,
+    ]) {
+      // grid は headers を 0 行目とするので table.rows へは -1 で写す。
+      if (r !== null && r >= 1) ignoreRows.add(r - 1);
+    }
+  }
+  const autoLabels =
+    headerRows && table.ok ? buildAutoColumnLabels(grid, headerRows) : {};
+  // 手動登録は自動判定より優先する (シート側の名前が実態と違うこともある)。
+  const columnLabels: Record<number, string> = {};
+  for (const [k, v] of Object.entries(autoLabels)) {
+    columnLabels[Number(k)] = v.job ? `${v.name} (${v.job})` : v.name;
+  }
+  for (const [k, v] of Object.entries(manualLabels)) {
+    columnLabels[Number(k)] = v;
+  }
+
   const columnsEditor =
     canEdit && table.ok ? (
       <MitigationColumnsDialog
         categoryId={category.id}
         gid={activeGid ?? ""}
-        columns={diagnoseSheetColumns(table.table)}
-        initialLabels={columnLabels}
+        columns={diagnoseSheetColumns(table.table, ignoreRows)}
+        initialLabels={manualLabels}
+        autoLabels={autoLabels}
       />
     ) : null;
 
@@ -160,6 +201,7 @@ export default async function MitigationPage({
                 title="軽減表"
                 variant="mitigation"
                 columnLabels={columnLabels}
+                ignoreRows={ignoreRows}
               />
             </div>
           }

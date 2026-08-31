@@ -23,19 +23,16 @@ import type { SheetColumnDiagnostic } from "@/lib/sheet-csv";
 /**
  * 軽減表の「アビリティ列に名前を付ける」設定 (2026-08-30 実機報告)。
  *
- * **なぜ手動なのか**: シート 26 行目のアビリティは *アイコン画像* で置かれて
- * おり、Google Sheets の CSV には画像が一切出力されない。ただし HTML ビュー
- * には `<img>` として出るので、
+ * **ほとんどの列は自動で埋まる** (2026-08-31、実物の xlsx を解析): 軽減表
+ * テンプレートは列ごとに「ジョブ名 / アビリティ名 / 対象種別」の 3 行を
+ * 持ち、アイコンはそのアビリティ名で `Skill` シートから引かれているだけ
+ * だった。名前はプレーンテキストで CSV にも出るので、画像を解析しなくても
+ * 読める。この画面はその**上書き**と、シート側が空の列の補完に使う。
  *
- *   - 「アイコンから判定」で各列のアイコン画像を取り、公式ジョブガイドの
- *     アクションアイコンと突き合わせて **名前まで自動で埋める**
- *   - 名前が引けなくてもアイコン自体は列の横に表示する (見れば分かる)
+ *   - 自動で読めた名前は入力欄の placeholder に出す (そのままでよい)
  *   - 「どの攻撃でチェックが入っているか」も添える
- *     (例: キング・オブ・アルカディアで ON → 牽制)
  *   - よく使う軽減名のワンタップ / まとめて貼り付け (`DO=牽制`)
- *
- * という経路を用意して、入力の手間を最小にする。自動判定はあくまで補助で、
- * 失敗しても手入力で完結できる。
+ *   - アイコン画像の取得も残す (シート側が空の列を目で判断するため)
  */
 
 /** ワンタップ用のよく使う軽減 / バフ (足りなければ自由入力)。 */
@@ -73,12 +70,20 @@ export function MitigationColumnsDialog({
   gid,
   columns,
   initialLabels,
+  autoLabels,
 }: {
   categoryId: string;
   /** 現在表示中のシート (層) の gid。列構成が層ごとに違うため必須。 */
   gid: string;
   columns: SheetColumnDiagnostic[];
   initialLabels: Record<number, string>;
+  /**
+   * シートの見出し行から自動で読めた名前 (2026-08-31)。
+   * ほとんどの列はこれで埋まるので、手入力は「シート側が空/誤りの列」
+   * だけで済む。入力欄の placeholder に出して、上書きしたい人だけが
+   * 書けばよい形にする。
+   */
+  autoLabels: Record<number, { name: string; job: string | null }>;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -121,7 +126,11 @@ export function MitigationColumnsDialog({
   const iconColumns = useMemo(() => new Set(Object.keys(icons)), [icons]);
   const targets = useMemo(() => {
     const named = (c: SheetColumnDiagnostic) => Boolean(labels[String(c.index)]);
-    const pool = columns.filter((c) => c.role === "check" || named(c));
+    // 使っていないジョブの列も TRUE/FALSE を持つため、チェックが 1 つも
+    // 無い列を並べるとノイズになる (実機で 172 列中の大半)。
+    const pool = columns.filter(
+      (c) => (c.role === "check" && c.checkedCount > 0) || named(c),
+    );
     const withIcon = pool.filter((c) => iconColumns.has(String(c.index)));
     const list = onlyIcons && withIcon.length > 0 ? withIcon : pool;
     return [...list].sort((a, b) => b.checkedCount - a.checkedCount);
@@ -333,12 +342,13 @@ export function MitigationColumnsDialog({
               {targets.map((c) => {
                 const key = String(c.index);
                 const value = labels[key] ?? "";
+                const auto = autoLabels[c.index];
                 return (
                   <li
                     key={c.index}
                     className={
                       "flex flex-col gap-1.5 rounded-md border px-3 py-2 " +
-                      (value.trim()
+                      (value.trim() || autoLabels[c.index]
                         ? "border-emerald-400/35 bg-emerald-400/5"
                         : "border-border/40 bg-background/30")
                     }
@@ -361,6 +371,12 @@ export function MitigationColumnsDialog({
                       <span className="font-mono text-[10px] tabular-nums text-muted-foreground">
                         ON {c.checkedCount}
                       </span>
+                      {auto && (
+                        <span className="inline-flex items-center gap-1 rounded-sm border border-emerald-400/30 bg-emerald-400/5 px-1.5 py-0.5 text-[10px] text-emerald-200/90">
+                          {auto.name}
+                          {auto.job ? ` / ${auto.job}` : ""}
+                        </span>
+                      )}
                       <Input
                         value={value}
                         onChange={(e) =>
@@ -369,7 +385,9 @@ export function MitigationColumnsDialog({
                             [key]: e.target.value,
                           }))
                         }
-                        placeholder="アビリティ名 (例: 牽制)"
+                        placeholder={
+                          auto ? `${auto.name} (シートの名前を使用)` : "アビリティ名 (例: 牽制)"
+                        }
                         className="h-8 min-w-0 flex-1 text-[12px]"
                         aria-label={`${c.letter} 列のアビリティ名`}
                         list="mitigation-name-suggestions"
