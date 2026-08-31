@@ -473,15 +473,17 @@ export function buildSheetCardRows(
       const fromLabelRow = labelRow
         ? (table.rows[labelRow.rowIndex]?.[ci] ?? "").trim()
         : "";
-      if (manual) {
+      if (manual && isUsableCheckLabel(manual)) {
         checkboxCols.set(ci, manual);
         continue;
       }
-      if (fromLabelRow) {
+      // 名前の行に TRUE/FALSE が残っている列がある。そのまま採ると
+      // `✓ FALSE` というチップになるので弾く。
+      if (isUsableCheckLabel(fromLabelRow)) {
         checkboxCols.set(ci, fromLabelRow);
         continue;
       }
-      if (header) {
+      if (header && isUsableCheckLabel(header)) {
         // 見出しがある列は「TRUE/FALSE だけ」を要求する。担当者名などが
         // 混ざる通常列を奪うと「担当: スキル」の表示が消えてしまう。
         if (others.size > 0) continue;
@@ -493,6 +495,7 @@ export function buildSheetCardRows(
       // ラベルとして採用する。2 種類以上あるなら通常のデータ列とみなす。
       if (others.size !== 1) continue;
       const fallbackLabel = [...others][0]!;
+      if (!isUsableCheckLabel(fallbackLabel)) continue;
       checkboxCols.set(ci, fallbackLabel);
     }
   }
@@ -821,6 +824,21 @@ export function parseColumnLabelsSetting(
  * 最も多くの列に名前を与えている行。2 列以上に名前を与える行が無ければ
  * null (誤認を避ける)。
  */
+/**
+ * チェック列のラベルとして使える文字列か (2026-08-31 実機「✓FALSE が並ぶ」)。
+ *
+ * 「名前の行」から値をそのまま取っていたため、その行に TRUE/FALSE が
+ * 残っている列で `✓ FALSE` というチップが出ていた。ラベルは人が読むもの
+ * なので、真偽値・数値・極端に長い文字列は採用しない。
+ */
+function isUsableCheckLabel(v: string): boolean {
+  const t = v.trim();
+  if (t.length === 0 || t.length > 30) return false;
+  if (isCheckedValue(t) || isUncheckedValue(t)) return false;
+  if (isNumericValue(t)) return false;
+  return true;
+}
+
 function detectCheckLabelRow(
   table: SheetTable,
   visibleColumns: number[],

@@ -217,6 +217,41 @@ try {
     ["士気"],
   );
 
+  console.log("\n[真偽値をラベルにしない]");
+  // 2026-08-31 実機: 「名前の行」に TRUE/FALSE が残っている列があり、
+  // その値をそのままラベルにして `✓ FALSE` というチップが並んでいた。
+  const boolLabel = {
+    headers: ["Time", "Action", "Type", "", "", "", ""],
+    rows: [
+      // 名前の行。4 列目は名前が無く FALSE が残っている。
+      ["", "", "", "堅陣", "FALSE", "牽制", "0.85"],
+      ["00:16", "フィクサー", "Magic", "TRUE", "TRUE", "TRUE", "TRUE"],
+    ],
+  };
+  const boolRows = mod.buildSheetCardRows(
+    boolLabel,
+    boolLabel.headers.map((_, i) => i).slice(1),
+    { mitigation: true },
+  );
+  check(
+    "FALSE や数値はラベルにしない",
+    boolRows[0].checks.map((c) => c.label),
+    ["堅陣", "牽制"],
+  );
+
+  // 手動登録に誤って FALSE が入っていても出さない
+  // (誤った自動判定を保存してしまった層の救済)。
+  const manualBad = mod.buildSheetCardRows(
+    boolLabel,
+    boolLabel.headers.map((_, i) => i).slice(1),
+    { mitigation: true, columnLabels: { 4: "FALSE", 5: "アドル" } },
+  );
+  check(
+    "手動登録の FALSE も弾く",
+    manualBad[0].checks.map((c) => c.label),
+    ["堅陣", "アドル"],
+  );
+
   console.log("\n[英語の日本語化]");
   const en = {
     headers: ["Time", "Action", "Type", "Damage", "Calculate Mitigation"],
