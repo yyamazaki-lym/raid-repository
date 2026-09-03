@@ -31,6 +31,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   ALL_STATUSES,
   CATEGORY_TAB_IDS,
+  clampPercent,
   isCategoryTabId,
   type Category,
   type CategoryStatus,
@@ -135,6 +136,13 @@ export function CategoryFormDialog({
   const [backgroundImageUrl, setBackgroundImageUrl] = useState(
     category?.backgroundImageUrl ?? "",
   );
+  // 2026-09-03 実機要望「カードに映す位置を指定できないか」。カードは横長で
+  // 画像は object-cover で切り取られるため、中央固定だと出したい部分が
+  // 切れる。焦点 (object-position の %) を持たせる。50/50 = 中央 = 従来。
+  const [bgPos, setBgPos] = useState({
+    x: category?.backgroundPosX ?? 50,
+    y: category?.backgroundPosY ?? 50,
+  });
   const [uploadingBg, setUploadingBg] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [busy, setBusy] = useState(false);
@@ -305,6 +313,10 @@ export function CategoryFormDialog({
       setDiscordEnabled(category?.discordImportEnabled ?? true);
       setFirstClearDate(isoToDateInput(category?.firstClearAt ?? null));
       setBackgroundImageUrl(category?.backgroundImageUrl ?? "");
+      setBgPos({
+        x: category?.backgroundPosX ?? 50,
+        y: category?.backgroundPosY ?? 50,
+      });
       setSelectedRoleIds(category?.requiredRoleIds ?? []);
       setDescription(category?.description ?? "");
       const ih = category?.manualTimeToClearSeconds
@@ -459,6 +471,12 @@ export function CategoryFormDialog({
     const effectiveDefaultTab: CategoryTabId =
       defaultTabValid ?? firstEnabled;
 
+    // 背景画像の焦点。0-100 の整数にクランプし、中央は NULL に落とす。
+    const bgPosPatch = {
+      x: clampPercent(bgPos.x) === 50 ? null : clampPercent(bgPos.x),
+      y: clampPercent(bgPos.y) === 50 ? null : clampPercent(bgPos.y),
+    };
+
     const patch = {
       name: trimmedName,
       slug: trimmedSlug,
@@ -470,6 +488,9 @@ export function CategoryFormDialog({
       discord_import_enabled: discordEnabled,
       first_clear_at: firstClearIso,
       background_image_url: trimmedBackgroundImage || null,
+      // 中央 (50/50) は「未設定」と同義なので NULL で保存して行を汚さない。
+      background_pos_x: bgPosPatch.x,
+      background_pos_y: bgPosPatch.y,
       required_role_ids: selectedRoleIds.length > 0 ? selectedRoleIds : null,
       description: trimmedDescription || null,
       manual_time_to_clear_seconds: manualSeconds > 0 ? manualSeconds : null,
@@ -499,6 +520,8 @@ export function CategoryFormDialog({
           if (firstClearIso) followUp.first_clear_at = firstClearIso;
           if (trimmedBackgroundImage)
             followUp.background_image_url = trimmedBackgroundImage;
+          if (bgPosPatch.x !== null) followUp.background_pos_x = bgPosPatch.x;
+          if (bgPosPatch.y !== null) followUp.background_pos_y = bgPosPatch.y;
           if (selectedRoleIds.length > 0)
             followUp.required_role_ids = selectedRoleIds;
           if (trimmedDescription) followUp.description = trimmedDescription;
@@ -1007,21 +1030,11 @@ export function CategoryFormDialog({
             </p>
             {backgroundImageUrl.trim() &&
               /^https?:\/\//i.test(backgroundImageUrl.trim()) && (
-                <div
-                  aria-hidden
-                  className="relative mt-1 h-20 w-full overflow-hidden rounded-md border border-border/40"
-                >
-                  <Image
-                    src={backgroundImageUrl.trim()}
-                    alt=""
-                    fill
-                    sizes="100vw"
-                    unoptimized={
-                      !isOptimizableImageHost(backgroundImageUrl.trim())
-                    }
-                    className="object-cover object-center"
-                  />
-                </div>
+                <BackgroundFocalPicker
+                  url={backgroundImageUrl.trim()}
+                  pos={bgPos}
+                  onChange={setBgPos}
+                />
               )}
           </div>
 
@@ -1267,5 +1280,125 @@ export function CategoryFormDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * 背景画像の焦点ピッカー (2026-09-03 実機要望「カードに映す位置を
+ * 指定できないか」)。
+ *
+ * カードは横長 (おおよそ 5:2) で、背景画像は `object-cover` で切り取られる。
+ * 既定は中央固定なので、縦長の画像だと出したい部分 (顔など) が切れていた。
+ *
+ * 操作は **カードと同じ比率のプレビューを直接クリック / ドラッグ** して
+ * 表示を寄せる方式にした。「どこが映るか」を見ながら決められるのが要点。
+ * 値は CSS の `object-position` そのままなので、意味は「画像の X%/Y% の点を
+ * カードの X%/Y% の位置に合わせる」= 上をクリックすれば画像の上の方が出る
+ * (クリックした点が中心に来るわけではない)。
+ * キーボード操作と微調整のために横/縦のスライダーも併置する
+ * (プレビューの div 自体はポインタ専用なので、スライダー側が
+ * アクセシブルな入口になる)。
+ */
+function BackgroundFocalPicker({
+  url,
+  pos,
+  onChange,
+}: {
+  url: string;
+  pos: { x: number; y: number };
+  onChange: (pos: { x: number; y: number }) => void;
+}) {
+  const isCenter = pos.x === 50 && pos.y === 50;
+
+  const setFromPointer = (e: React.PointerEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return;
+    onChange({
+      x: clampPercent(((e.clientX - rect.left) / rect.width) * 100),
+      y: clampPercent(((e.clientY - rect.top) / rect.height) * 100),
+    });
+  };
+
+  return (
+    <div className="mt-1 flex flex-col gap-1.5">
+      {/* aspect-[5/2] = コンテンツ一覧のカードのおおよその形。完全一致では
+          ないので「目安」と明記する (カードの高さは中身で伸縮する)。 */}
+      <div
+        className="relative aspect-[5/2] w-full cursor-crosshair touch-none overflow-hidden rounded-md border border-border/40"
+        title="クリック / ドラッグで表示を寄せます (上をクリック = 画像の上の方を表示)"
+        onPointerDown={(e) => {
+          e.currentTarget.setPointerCapture(e.pointerId);
+          setFromPointer(e);
+        }}
+        onPointerMove={(e) => {
+          if (e.currentTarget.hasPointerCapture(e.pointerId)) setFromPointer(e);
+        }}
+      >
+        <Image
+          src={url}
+          alt=""
+          aria-hidden
+          fill
+          sizes="100vw"
+          unoptimized={!isOptimizableImageHost(url)}
+          className="pointer-events-none object-cover"
+          style={{ objectPosition: `${pos.x}% ${pos.y}%` }}
+        />
+        {/* 焦点マーカー。画像の明暗どちらでも見えるよう白リング + 影。 */}
+        <span
+          aria-hidden
+          className="pointer-events-none absolute h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white/90 shadow-[0_0_0_1px_rgba(0,0,0,0.6)]"
+          style={{ left: `${pos.x}%`, top: `${pos.y}%` }}
+        />
+      </div>
+      <div className="flex flex-col gap-1">
+        {(
+          [
+            { axis: "x" as const, label: "横位置" },
+            { axis: "y" as const, label: "縦位置" },
+          ]
+        ).map(({ axis, label }) => (
+          <div key={axis} className="flex items-center gap-2">
+            <Label
+              htmlFor={`bg-pos-${axis}`}
+              className="w-12 shrink-0 text-[11px] text-muted-foreground"
+            >
+              {label}
+            </Label>
+            <input
+              id={`bg-pos-${axis}`}
+              type="range"
+              min={0}
+              max={100}
+              step={1}
+              value={pos[axis]}
+              onChange={(e) =>
+                onChange({ ...pos, [axis]: clampPercent(e.target.value) })
+              }
+              className="h-1.5 min-w-0 flex-1 accent-[var(--neon-cyan)]"
+            />
+            <span className="w-9 shrink-0 text-right font-mono text-[11px] text-foreground/75 tabular-nums">
+              {pos[axis]}%
+            </span>
+          </div>
+        ))}
+      </div>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-muted-foreground text-[11px] leading-relaxed">
+          プレビュー上のクリック / ドラッグで表示を寄せられます（上をクリック
+          = 画像の上の方を表示。カードの形は目安です）。
+        </p>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          disabled={isCenter}
+          onClick={() => onChange({ x: 50, y: 50 })}
+          className="shrink-0 text-[10px] tracking-normal"
+        >
+          中央に戻す
+        </Button>
+      </div>
+    </div>
   );
 }

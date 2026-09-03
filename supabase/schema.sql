@@ -77,6 +77,13 @@ ALTER TABLE public.categories
   -- shown behind each card on /category. Free-form `text` URL — http(s)
   -- only at the UI layer (`safeHref`). NULL = no background image (default).
   ADD COLUMN IF NOT EXISTS background_image_url          text,
+  -- 2026-09-03: 背景画像を **カードのどの位置で見せるか** (焦点)。カードは
+  -- 横長で画像は object-cover で切り取られるため、既定の中央固定では
+  -- 「出したい部分が切れる」(実機要望)。CSS の object-position に渡す
+  -- 0-100 の % で保持する。NULL = 50 (中央) なので既存行の見た目は不変。
+  -- style に入る値なので値域は下の CHECK でも縛る (整数 0-100 のみ)。
+  ADD COLUMN IF NOT EXISTS background_pos_x              smallint,
+  ADD COLUMN IF NOT EXISTS background_pos_y              smallint,
   -- Phase 10 (TODO #19, 2.0 (2026-04-28)): per-category Discord role gating.
   -- When NULL or empty array, the category is visible to all guild members.
   -- When non-empty, only users whose `auth.users.app_metadata.discord_roles`
@@ -143,6 +150,16 @@ ALTER TABLE public.categories
 ALTER TABLE public.categories
   ADD CONSTRAINT categories_default_tab_check
   CHECK (default_tab IN ('mitigation','loot','strategy','videos','macros','logs'));
+
+-- 背景画像の焦点 (2026-09-03) は 0-100 の整数のみ。NULL は「未設定 = 中央」。
+ALTER TABLE public.categories
+  DROP CONSTRAINT IF EXISTS categories_background_pos_check;
+ALTER TABLE public.categories
+  ADD CONSTRAINT categories_background_pos_check
+  CHECK (
+    (background_pos_x IS NULL OR background_pos_x BETWEEN 0 AND 100)
+    AND (background_pos_y IS NULL OR background_pos_y BETWEEN 0 AND 100)
+  ) NOT VALID;
 
 -- NOTE: category_links / schedule_past_sessions の logs_url_source ALTER
 -- は、それぞれ該当 CREATE TABLE 直後に移動済 (新規 fork で table 未作成
