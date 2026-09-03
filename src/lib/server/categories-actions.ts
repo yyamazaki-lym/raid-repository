@@ -142,6 +142,12 @@ export type CategoryUpdatePatch = Partial<{
   discord_import_enabled: boolean;
   first_clear_at: string | null;
   background_image_url: string | null;
+  /**
+   * 2026-09-03: 背景画像の焦点 (`object-position` の 0-100 %)。
+   * NULL = 中央 (50)。範囲外は保存側でクランプする。
+   */
+  background_pos_x: number | null;
+  background_pos_y: number | null;
   required_role_ids: string[] | null;
   /** TODO #26 (2.1): 自由記述の説明文。空文字 → null として保存。 */
   description: string | null;

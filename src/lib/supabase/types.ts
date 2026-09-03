@@ -47,6 +47,12 @@ export type CategoryRow = {
   /** Optional background image URL shown behind each card on /category. */
   background_image_url: string | null;
   /**
+   * 背景画像の焦点 (2026-09-03)。`object-position` に渡す 0-100 の %。
+   * NULL = 中央 (50)。
+   */
+  background_pos_x: number | null;
+  background_pos_y: number | null;
+  /**
    * Discord role IDs allowed to view this category. NULL or empty array =
    * visible to every guild member. Non-empty = only users whose
    * `app_metadata.discord_roles` intersects this list can see it.
@@ -121,6 +127,12 @@ export type Category = {
   /** Optional background image URL shown behind the card on /category. */
   backgroundImageUrl: string | null;
   /**
+   * 背景画像をカードのどの位置で見せるか (2026-09-03)。`object-position`
+   * の 0-100 の % で、未設定は 50 (中央) に丸めて返す。
+   */
+  backgroundPosX: number;
+  backgroundPosY: number;
+  /**
    * Discord role IDs allowed to view this category. Empty array = visible
    * to every guild member (default). Non-empty = role-gated.
    */
@@ -184,6 +196,16 @@ export function isCategoryTabId(v: unknown): v is CategoryTabId {
   );
 }
 
+/**
+ * 背景画像の焦点 (%) を 0-100 の整数に丸める (2026-09-03)。
+ * NULL / 不正値は 50 (中央) — 既存行と「未設定」を同じ見た目に落とす。
+ */
+export function clampPercent(v: unknown, fallback = 50): number {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(0, Math.min(100, Math.round(n)));
+}
+
 export function rowToCategory(row: CategoryRow): Category {
   return {
     id: row.id,
@@ -202,6 +224,8 @@ export function rowToCategory(row: CategoryRow): Category {
     firstClearAt: row.first_clear_at ?? null,
     expectedFflogsZoneIds: row.expected_fflogs_zone_ids ?? [],
     backgroundImageUrl: row.background_image_url ?? null,
+    backgroundPosX: clampPercent(row.background_pos_x),
+    backgroundPosY: clampPercent(row.background_pos_y),
     requiredRoleIds: row.required_role_ids ?? [],
     description: row.description ?? null,
     manualTimeToClearSeconds: row.manual_time_to_clear_seconds ?? null,

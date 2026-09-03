@@ -316,7 +316,14 @@ function SortableCategoryCard({
               sizes="(min-width: 1024px) 50vw, 100vw"
               loading="lazy"
               unoptimized={!isOptimizableImageHost(bgImageUrl)}
-              className="pointer-events-none rounded-xl object-cover object-center opacity-40"
+              className="pointer-events-none rounded-xl object-cover opacity-40"
+              // 2026-09-03 実機要望「カードに映す位置を指定できないか」。
+              // カードは横長で画像は cover で切り取られるため、中央固定では
+              // 出したい部分が切れる。編集ダイアログで指定した焦点を使う
+              // (値は DB の CHECK + rowToCategory の clamp で 0-100 の整数)。
+              style={{
+                objectPosition: `${category.backgroundPosX}% ${category.backgroundPosY}%`,
+              }}
             />
             {/* Dark gradient overlay so foreground text/badges remain
                 readable regardless of image brightness. */}
