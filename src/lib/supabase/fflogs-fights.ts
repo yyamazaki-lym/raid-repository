@@ -51,7 +51,7 @@ export async function fetchCategoryFights(
     const listRes = await supabase
       .from("fflogs_fights")
       .select(
-        "report_code, fight_id, session_date, name, kill, fight_percentage, last_phase, difficulty, encounter_id, start_ms, end_ms, report_start_ms",
+        "report_code, fight_id, session_date, name, kill, fight_percentage, last_phase, difficulty, encounter_id, party_dps, deaths, start_ms, end_ms, report_start_ms",
         { count: "exact" },
       )
       .eq("category_id", categoryId)
@@ -70,6 +70,8 @@ export async function fetchCategoryFights(
       lastPhase: numberOrNull(r.last_phase),
       encounterId: numberOrNull(r.encounter_id),
       difficulty: numberOrNull(r.difficulty),
+      partyDps: numberOrNull(r.party_dps),
+      deaths: numberOrNull(r.deaths),
       startMs: Number(r.start_ms),
       endMs: Number(r.end_ms),
       reportStartMs: r.report_start_ms == null ? null : Number(r.report_start_ms),

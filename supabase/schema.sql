@@ -1085,6 +1085,16 @@ CREATE INDEX IF NOT EXISTS fflogs_fights_category_idx
   ON public.fflogs_fights(category_id, start_ms);
 CREATE INDEX IF NOT EXISTS fflogs_fights_session_idx
   ON public.fflogs_fights(session_date);
+-- 2026-09-03: pull ごとの PT 合計 DPS と死亡数 (セッション振り返りの
+-- 残 HP% の横に出す)。FFLogs の Summary table から **PT の合計値だけ** を
+-- 計算して保存する。個人ごとの値は保存も表示もしない (調査ノート §1-F:
+-- 個人の火力を序列化して表示しない、という設計原則は維持する)。
+-- 取得は fights 本体とは別クエリで best-effort — 取れなかった pull は
+-- NULL のまま (UI は非表示)。
+ALTER TABLE public.fflogs_fights
+  ADD COLUMN IF NOT EXISTS party_dps integer;
+ALTER TABLE public.fflogs_fights
+  ADD COLUMN IF NOT EXISTS deaths integer;
 
 -- ---- 6b-5. fflogs_report_syncs (fights 同期の台帳) ---------------------
 -- 同期済み report を記録し、再取得を「新規 code + 直近 N 日」に絞る。
