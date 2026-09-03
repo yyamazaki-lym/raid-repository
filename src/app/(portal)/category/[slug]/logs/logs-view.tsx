@@ -1145,6 +1145,15 @@ function DayRow({
   const dayDeaths = day.fights.some((f) => f.deaths !== null)
     ? day.fights.reduce((acc, f) => acc + (f.deaths ?? 0), 0)
     : null;
+  // 2026-09-03 実機要望「もう少し綺麗に揃えられないか」。pull 行は列幅を
+  // 固定して縦に揃えるが、**その日に 1 つも無い列は幅を取らない** (PT 指標が
+  // 未取得の古い日や、動画が紐づいていない日で無駄な空白を作らないため)。
+  const reserveMetrics = day.fights.some(
+    (f) => f.partyDps !== null || f.deaths !== null,
+  );
+  const reserveVideo = day.fights.some(
+    (f) => videoLinks[f.reportCode]?.videoUrl,
+  );
 
   return (
     <li
@@ -1286,6 +1295,8 @@ function DayRow({
                 showPhase={showPhase}
                 floors={floors}
                 firstPullStartMs={firstPullStartByReport.get(f.reportCode) ?? null}
+                reserveMetrics={reserveMetrics}
+                reserveVideo={reserveVideo}
               />
             ))}
           </ul>
@@ -1302,6 +1313,8 @@ function PullRow({
   showPhase,
   floors,
   firstPullStartMs,
+  reserveMetrics,
+  reserveVideo,
 }: {
   index: number;
   fight: FightRow;
@@ -1309,6 +1322,10 @@ function PullRow({
   showPhase: boolean;
   floors: FloorMap;
   firstPullStartMs: number | null;
+  /** その日のどれかの pull に PT 指標がある = 列幅を確保する (2026-09-03)。 */
+  reserveMetrics: boolean;
+  /** その日のどれかの report に動画がある = 動画チップの幅を確保する。 */
+  reserveVideo: boolean;
 }) {
   const durationSec = Math.max(0, Math.round((fight.endMs - fight.startMs) / 1000));
   // 日付のグルーピングが JST 基準なので時刻も JST に固定する
@@ -1334,14 +1351,34 @@ function PullRow({
     <li className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-sm border border-border/30 bg-background/30 px-2 py-1">
       {/* 2026-08-30: 10px 灰色一色の行を再配色 (実機報告「灰色だらけで
           見にくい」)。番号/時刻/時間は 11px に上げ、層は識別色チップ、
-          結果 (CLEAR / 残%) は熱量色の別チップに分離した。 */}
-      <span className="w-8 shrink-0 font-mono text-[11px] text-foreground/70 tabular-nums">
+          結果 (CLEAR / 残%) は熱量色の別チップに分離した。
+          2026-09-03: 3 つのメタ列 (#回数 / 時刻 / 戦闘時間) が同系の灰色で
+          区別しづらかったので色相を分けた (実機要望)。層・結果・リンクが
+          既に色で意味を持っているため、ここは主張しすぎない彩度に留める:
+          #回数 = cyan / 時刻 = 寒色グレー / 戦闘時間 = indigo。
+          戦闘時間に暖色 (amber) を当てると残 HP% の熱量色 (orange/amber) や
+          Logs チップと同系になって「警告的な値」に見えるため避けた。
+          3 色ともテーマ var を経由しない固定色にする — `--neon-cyan` は
+          テーマで色相が動き (azure テーマでは indigo と、verdant では
+          CLEAR の emerald と近づく)、列の区別がテーマ依存になるため。
+          層 / 熱量色を全テーマ共通の固定色にしているのと同じ理由。
+          桁数で列がずれないよう数値列は右寄せ + tabular-nums。 */}
+      <span
+        className="w-8 shrink-0 text-right font-mono text-[11px] text-cyan-300/80 tabular-nums"
+        title={`この日の ${index} 番目の pull`}
+      >
         #{index}
       </span>
-      <span className="w-12 shrink-0 font-mono text-[11px] text-muted-foreground tabular-nums">
+      <span
+        className="w-9 shrink-0 font-mono text-[11px] text-slate-400 tabular-nums"
+        title="戦闘開始時刻 (JST)"
+      >
         {clock}
       </span>
-      <span className="w-11 shrink-0 font-mono text-[11px] text-foreground/75 tabular-nums">
+      <span
+        className="w-10 shrink-0 text-right font-mono text-[11px] text-indigo-300/90 tabular-nums"
+        title="戦闘時間"
+      >
         {formatFightDuration(durationSec)}
       </span>
       {(() => {
@@ -1356,22 +1393,27 @@ function PullRow({
         const floorHalf =
           floors && floor !== null ? floorHalfOf(floorLabel(floors, floor)) : null;
         const isClear = isClearFight(fight, floors);
+        // 層ラベルは「1層」〜「4層後半」で文字数が変わる。幅を固定して
+        // 中央寄せにし、後続の列 (結果 / PT 指標) が行ごとにずれないようにする。
         const floorChip =
           floor !== null ? (
             <span
               className={
-                "shrink-0 rounded-sm border px-1.5 py-0.5 font-mono text-[11px] tabular-nums " +
+                "w-[3.75rem] shrink-0 rounded-sm border px-1 py-0.5 text-center font-mono text-[11px] whitespace-nowrap tabular-nums " +
                 floorToneClass(displayFloor, floorHalf)
               }
             >
               {floorLabel(floors, floor)}
             </span>
           ) : null;
+        // 結果チップも幅を固定する。フェーズ表示のあるコンテンツ (絶) は
+        // 「P3 残0.35%」まで入るので 1 段広く取る。
+        const resultWidth = showPhase ? "w-[5.5rem]" : "w-[4.25rem]";
         // kill は層を問わず CLEAR 表記 (最終層 = 濃い緑 / 他層 = 淡い緑)。
         const resultChip = fight.kill ? (
           <span
             className={
-              "shrink-0 rounded-sm px-1.5 py-0.5 font-mono text-[11px] tabular-nums " +
+              `${resultWidth} shrink-0 rounded-sm px-1 py-0.5 text-center font-mono text-[11px] whitespace-nowrap tabular-nums ` +
               (isClear
                 ? "bg-emerald-400/20 font-medium text-emerald-200"
                 : "bg-emerald-400/10 text-emerald-200/80")
@@ -1380,7 +1422,9 @@ function PullRow({
             CLEAR
           </span>
         ) : (
-          <span className="shrink-0 rounded-sm bg-secondary/50 px-1.5 py-0.5 font-mono text-[11px] tabular-nums">
+          <span
+            className={`${resultWidth} shrink-0 rounded-sm bg-secondary/50 px-1 py-0.5 text-center font-mono text-[11px] whitespace-nowrap tabular-nums`}
+          >
             {showPhase && fight.lastPhase !== null && (
               <span className="text-foreground/70">P{fight.lastPhase} </span>
             )}
@@ -1391,34 +1435,46 @@ function PullRow({
         );
         // 2026-09-03: 残 HP% の横に PT 合計 DPS と死亡数 (取得済みの pull のみ)。
         // 個人の内訳は無い — PT として削れているか / 何人落ちたかだけ。
-        const metrics =
-          fight.partyDps !== null || fight.deaths !== null ? (
-            <span className="inline-flex shrink-0 items-center gap-2 font-mono text-[11px] tabular-nums">
+        // 値の無い pull もスロットの幅は残す (その日に 1 つでも値があるとき)
+        // ので、数字が縦に揃う。
+        const metrics = reserveMetrics ? (
+          <span className="inline-flex shrink-0 items-center gap-2 font-mono text-[11px] whitespace-nowrap tabular-nums">
+            <span
+              className="inline-flex w-14 items-center justify-end gap-0.5 text-foreground/80"
+              title={
+                fight.partyDps !== null
+                  ? "PT 合計 DPS (個人の内訳は保存していません)"
+                  : "PT 合計 DPS は未取得です"
+              }
+            >
               {fight.partyDps !== null && (
-                <span
-                  className="inline-flex items-center gap-0.5 text-foreground/75"
-                  title="PT 合計 DPS (個人の内訳は保存していません)"
-                >
-                  <Swords className="h-2.5 w-2.5 text-muted-foreground" aria-hidden />
+                <>
+                  <Swords
+                    className="h-2.5 w-2.5 shrink-0 text-muted-foreground"
+                    aria-hidden
+                  />
                   {formatPartyDps(fight.partyDps)}
-                </span>
-              )}
-              {fight.deaths !== null && (
-                <span
-                  className={
-                    "inline-flex items-center gap-0.5 " +
-                    (fight.deaths === 0
-                      ? "text-muted-foreground"
-                      : "text-rose-300/90")
-                  }
-                  title="死亡数"
-                >
-                  <Skull className="h-2.5 w-2.5" aria-hidden />
-                  {fight.deaths}
-                </span>
+                </>
               )}
             </span>
-          ) : null;
+            <span
+              className={
+                "inline-flex w-8 items-center justify-end gap-0.5 " +
+                (fight.deaths === 0
+                  ? "text-muted-foreground"
+                  : "text-rose-300/90")
+              }
+              title={fight.deaths !== null ? "死亡数" : "死亡数は未取得です"}
+            >
+              {fight.deaths !== null && (
+                <>
+                  <Skull className="h-2.5 w-2.5 shrink-0" aria-hidden />
+                  {fight.deaths}
+                </>
+              )}
+            </span>
+          </span>
+        ) : null;
         return (
           <>
             {floorChip}
@@ -1484,17 +1540,22 @@ function PullRow({
           <Microscope className="h-2.5 w-2.5" aria-hidden />
           Analysis
         </a>
-        {videoHref && (
+        {/* 動画チップは「1:13:08」まで入る幅で固定し、動画が無い pull には
+            同じ幅の空きを置く (その日に動画がある場合のみ)。これで LOGS /
+            ANALYSIS の位置が行ごとにずれない。 */}
+        {videoHref ? (
           <a
             href={videoHref}
             target="_blank"
             rel="noopener noreferrer"
             title="動画のこの瞬間から再生"
-            className="inline-flex items-center gap-1 rounded-sm border border-violet-400/45 bg-violet-400/10 px-1.5 py-0.5 font-mono text-[10px] tracking-[0.14em] text-violet-200 uppercase transition-colors hover:bg-violet-400/15"
+            className="inline-flex w-[4.75rem] items-center justify-center gap-1 rounded-sm border border-violet-400/45 bg-violet-400/10 px-1 py-0.5 font-mono text-[10px] tracking-[0.1em] whitespace-nowrap text-violet-200 uppercase transition-colors hover:bg-violet-400/15"
           >
-            <Film className="h-2.5 w-2.5" aria-hidden />
+            <Film className="h-2.5 w-2.5 shrink-0" aria-hidden />
             {videoSeconds !== null ? formatClock(videoSeconds) : "動画"}
           </a>
+        ) : (
+          reserveVideo && <span className="w-[4.75rem] shrink-0" aria-hidden />
         )}
       </span>
     </li>
