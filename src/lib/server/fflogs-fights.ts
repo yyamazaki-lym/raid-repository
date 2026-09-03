@@ -45,9 +45,11 @@ import {
  *      新しいマッチングロジックではない
  *   4. `schedule_past_session_logs` / `native_schedule_session_logs` → session_date
  *
- * **個人 DPS は取得しない**。クエリは fight のメタ情報だけで、
+ * **個人 DPS は保存しない**。fights 本体のクエリは fight のメタ情報だけで、
  * ランキングや個人成績は 1 度も触らない (調査ノート §1-F の設計原則:
- * 個人の火力を序列化して表示しない)。
+ * 個人の火力を序列化して表示しない)。2026-09-03 に追加した Summary table
+ * の取得 (`fetchFightDetails`) も、PT 全員分を **合計した DPS と死亡数**
+ * だけを計算して保存し、個人ごとの値はメモリ上で捨てる。
  */
 
 // v2 の user エンドポイント。OAuth トークンで自分の Private / Unlisted
@@ -105,6 +107,24 @@ type FightPayload = {
   startTime: number;
   endTime: number;
 };
+
+/**
+ * pull ごとの PT 指標 (2026-09-03)。Summary table から **PT 合計** だけを
+ * 取り出したもの。個人の内訳は持たない。
+ */
+export type FightDetail = {
+  /** PT 合計 DPS (damageDone 合計 ÷ 戦闘時間)。算出できなければ null。 */
+  partyDps: number | null;
+  /** PT の死亡数 (deathEvents の件数)。取得できなければ null。 */
+  deaths: number | null;
+};
+
+/**
+ * Summary table を 1 リクエストにまとめる fight 数。table クエリは fights
+ * 本体より重い (レスポンスも数十 KB/fight) ので、GraphQL alias で束ねつつ
+ * 1 回のレスポンスが大きすぎないところで区切る。
+ */
+const DETAIL_BATCH_SIZE = 8;
 
 export async function syncFflogsFights(opts?: {
   useServiceRole?: boolean;
@@ -267,6 +287,10 @@ export async function syncFflogsFights(opts?: {
     }
     let res = await fetchReportFights(token, ref.code);
     fetched += 1;
+    // PT 指標 (Summary table) は v2 token で読めたレポートだけ取りに行く。
+    // v1 / cookie fallback で取れたレポート (権限なし) は table も読めない
+    // ので、無駄な 1 往復と権限エラーの warn を出さないためのフラグ。
+    const fromV2 = res.ok;
     // permission エラー時は unlisted / private 向けの fallback チェーンを
     // 試し、**全経路の結果を reason に刻む** (2026-08-28: 「取得不可」の
     // 実機報告で、v1 が未設定スキップなのか試行失敗なのか切り分けられ
@@ -344,7 +368,14 @@ export async function syncFflogsFights(opts?: {
           );
 
     if (acceptedFights.length > 0) {
-      const rows = acceptedFights.map((f) => ({
+      // 2026-09-03: pull ごとの PT 合計 DPS / 死亡数。best-effort で、
+      // 取れなかった pull は列を **payload に含めない** (upsert は payload
+      // にある列しか更新しないので、前回の同期で入った値を null で潰さない)。
+      const details = fromV2
+        ? await fetchFightDetails(token, ref.code, acceptedFights, deadlineAtMs)
+        : new Map<number, FightDetail>();
+      const reportStartMs = res.startMs;
+      const baseRow = (f: FightPayload) => ({
         report_code: ref.code,
         fight_id: f.id,
         category_id: categoryId,
@@ -357,18 +388,30 @@ export async function syncFflogsFights(opts?: {
         difficulty: typeof f.difficulty === "number" ? f.difficulty : null,
         encounter_id: typeof f.encounterID === "number" ? f.encounterID : null,
         // FFLogs の fight.startTime は report 開始からの相対 ms。絶対時刻に直す。
-        start_ms: res.startMs + f.startTime,
-        end_ms: res.startMs + f.endTime,
-        report_start_ms: res.startMs,
-      }));
-      const { error } = await db
-        .from("fflogs_fights")
-        .upsert(rows, { onConflict: "report_code,fight_id" });
-      if (error) {
-        failed += 1;
-        console.warn("[fflogs-fights] upsert failed:", error.message);
-      } else {
-        upserted += rows.length;
+        start_ms: reportStartMs + f.startTime,
+        end_ms: reportStartMs + f.endTime,
+        report_start_ms: reportStartMs,
+      });
+      const detailedRows = acceptedFights
+        .filter((f) => details.has(f.id))
+        .map((f) => {
+          const d = details.get(f.id)!;
+          return { ...baseRow(f), party_dps: d.partyDps, deaths: d.deaths };
+        });
+      const plainRows = acceptedFights
+        .filter((f) => !details.has(f.id))
+        .map(baseRow);
+      for (const rows of [detailedRows, plainRows]) {
+        if (rows.length === 0) continue;
+        const { error } = await db
+          .from("fflogs_fights")
+          .upsert(rows, { onConflict: "report_code,fight_id" });
+        if (error) {
+          failed += 1;
+          console.warn("[fflogs-fights] upsert failed:", error.message);
+        } else {
+          upserted += rows.length;
+        }
       }
     }
 
@@ -1023,6 +1066,139 @@ function num(v: unknown): number | null {
 function pct100x(v: number | null): number | null {
   if (v === null) return null;
   return Math.max(0, Math.min(100, v / 100));
+}
+
+/**
+ * pull ごとの PT 合計 DPS / 死亡数を Summary table から取る (2026-09-03)。
+ *
+ * FFLogs v2 の `report.fights` には DPS も死亡数も無く、`report.table`
+ * (dataType: Summary) を fight 単位で引く必要がある。1 fight = 1 table 呼び出し
+ * になるので GraphQL alias (`f12: table(fightIDs: [12])`) で束ね、
+ * `DETAIL_BATCH_SIZE` 件ずつリクエストする。
+ *
+ * **best-effort**: 同期の時間予算を超えたら残りを諦める (次回の再取得で
+ * 埋まる — 直近 14 日のレポートは毎回取り直される)。HTTP / GraphQL エラーは
+ * そのレポートの残りバッチを打ち切る (権限エラーを batch 数ぶん繰り返さない)。
+ * 取れなかった fight は Map に入れない = 呼び出し側は列を更新しない。
+ *
+ * 取り出すのは **合計値のみ**。Summary には個人ごとの damageDone が並ぶが、
+ * ここで足し合わせて捨てる (個人 DPS は DB にもログにも残さない)。
+ */
+async function fetchFightDetails(
+  token: string,
+  code: string,
+  fights: FightPayload[],
+  deadlineAtMs: number,
+): Promise<Map<number, FightDetail>> {
+  const out = new Map<number, FightDetail>();
+  for (let i = 0; i < fights.length; i += DETAIL_BATCH_SIZE) {
+    if (Date.now() > deadlineAtMs) break;
+    const batch = fights.slice(i, i + DETAIL_BATCH_SIZE);
+    // alias 名は英字始まりが必要なので `f<id>`。fight id は整数のみ。
+    const fields = batch
+      .map(
+        (f) =>
+          `f${Math.trunc(f.id)}: table(dataType: Summary, fightIDs: [${Math.trunc(f.id)}])`,
+      )
+      .join("\n");
+    const query = `query ($code: String!) {
+      reportData {
+        report(code: $code) {
+          ${fields}
+        }
+      }
+    }`;
+    try {
+      const res = await fetch(FFLOGS_GRAPHQL_URL, {
+        method: "POST",
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({ query, variables: { code } }),
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      });
+      if (!res.ok) {
+        console.warn(
+          `[fflogs-fights] summary table ${res.status} for ${code} — PT 指標は次回に持ち越し`,
+        );
+        break;
+      }
+      const json = (await res.json()) as {
+        errors?: Array<{ message?: string }>;
+        data?: {
+          reportData?: {
+            report?: Record<string, unknown> | null;
+          } | null;
+        };
+      };
+      if (json.errors?.length) {
+        console.warn(
+          `[fflogs-fights] summary table rejected for ${code}:`,
+          json.errors[0]?.message,
+        );
+        break;
+      }
+      const report = json.data?.reportData?.report ?? {};
+      for (const f of batch) {
+        const detail = parseSummaryTable(
+          report[`f${Math.trunc(f.id)}`],
+          Math.max(0, f.endTime - f.startTime),
+        );
+        if (detail) out.set(f.id, detail);
+      }
+    } catch (e) {
+      console.warn(`[fflogs-fights] summary table fetch failed for ${code}:`, e);
+      break;
+    }
+  }
+  return out;
+}
+
+/**
+ * Summary table の JSON から PT 合計 DPS と死亡数を取り出す。
+ * export はテストからの直接検証用 (ページ / action からは使わない)。
+ *
+ * 形 (WCL 系共通): `{ data: { totalTime, damageDone: [{ total, ... }],
+ * deathEvents: [{ deathTime, ... }], ... } }`。`data` 直下でも root 直下
+ * でも受ける。damageDone も deathEvents も無ければ null (= 未取得扱い)。
+ *
+ * @param fallbackDurationMs `totalTime` が無いときに使う戦闘時間 (ms)。
+ */
+export function parseSummaryTable(
+  raw: unknown,
+  fallbackDurationMs: number | null = null,
+): FightDetail | null {
+  if (!raw || typeof raw !== "object") return null;
+  const root = raw as Record<string, unknown>;
+  const inner = root["data"];
+  const data =
+    inner && typeof inner === "object"
+      ? (inner as Record<string, unknown>)
+      : root;
+  const damageDone = Array.isArray(data["damageDone"])
+    ? (data["damageDone"] as unknown[])
+    : null;
+  const deathEvents = Array.isArray(data["deathEvents"])
+    ? (data["deathEvents"] as unknown[])
+    : null;
+  if (!damageDone && !deathEvents) return null;
+
+  let partyDps: number | null = null;
+  if (damageDone) {
+    let total = 0;
+    for (const entry of damageDone) {
+      if (!entry || typeof entry !== "object") continue;
+      total += num((entry as Record<string, unknown>)["total"]) ?? 0;
+    }
+    const durationMs = num(data["totalTime"]) ?? fallbackDurationMs;
+    if (durationMs !== null && durationMs > 0) {
+      partyDps = Math.round(total / (durationMs / 1000));
+    }
+  }
+  return { partyDps, deaths: deathEvents ? deathEvents.length : null };
 }
 
 async function postGraphql(

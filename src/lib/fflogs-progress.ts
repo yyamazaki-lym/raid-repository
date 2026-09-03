@@ -2,9 +2,10 @@
  * 練習ログの集計 (TODO #94 / A-1)。純関数のみ。
  *
  * 集計するのは **PT としての到達度** だけ — pull 数 / クリア数 /
- * 到達フェーズ / ボス残 HP%。個人の火力は集計対象に入れない
- * (調査ノート §1-F: 公式が DPS メーターを実装しない方針で、晒し行為は
- * ハラスメント。固定内の空気を壊す実害の方が大きい)。
+ * 到達フェーズ / ボス残 HP% / PT 合計 DPS / 死亡数。個人の火力は集計対象に
+ * 入れない (調査ノート §1-F: 公式が DPS メーターを実装しない方針で、晒し
+ * 行為はハラスメント。固定内の空気を壊す実害の方が大きい)。PT 合計 DPS は
+ * 「PT として削れているか」の指標であり個人を序列化しないので扱う。
  */
 
 import { jstYmdString } from "./jst-date";
@@ -44,6 +45,14 @@ export type FightRow = {
    * 取り込みフィルタの下限もこの実測値を見て admin が決める。
    */
   difficulty: number | null;
+  /**
+   * PT 合計 DPS (2026-09-03)。FFLogs の Summary table の damageDone を
+   * **PT 全員分合計** して戦闘時間で割った値。個人の内訳は持たない。
+   * 同期時に取得できなかった pull は null (UI は非表示)。
+   */
+  partyDps: number | null;
+  /** その pull での PT の死亡数。未取得なら null。 */
+  deaths: number | null;
   startMs: number;
   endMs: number;
   reportStartMs: number | null;
@@ -392,6 +401,106 @@ export function progressTimeline(
     });
   }
   return out;
+}
+
+/**
+ * 総 pull の内訳 (2026-09-03 実機要望「総 Pull に各層やフェイズの内訳を
+ * UI が崩れない程度に入れてほしい」)。
+ *
+ * - 層モデル (零式): 層 index ごとの pull 数 (消化の kill も その層の pull)。
+ * - フェーズ管理 (絶): wipe を到達フェーズ (P1〜) ごとに数え、討伐は
+ *   別バケットにする (討伐は「最終フェーズの wipe」ではないので)。
+ * - どちらも無い (討滅など) → 内訳は出さない (空配列)。
+ * 表示側は 1 バケットしか無いときも出さない (総数と同じ数字を並べるだけ)。
+ */
+export type PullBreakdownItem = {
+  /** 表示ラベル (例: "3層" / "4層後半" / "P3" / "討伐")。 */
+  label: string;
+  count: number;
+  kind: "floor" | "phase" | "clear" | "unknown";
+  /** 層モデルのときの表示層番号 (色分け用)。層以外は null。 */
+  displayFloor: number | null;
+  /** 最終層の前半/後半 (色分け用)。 */
+  half: "first" | "second" | null;
+};
+
+export function pullBreakdown(
+  fights: FightRow[],
+  floors: FloorMap,
+  showPhase: boolean,
+): PullBreakdownItem[] {
+  if (floors) {
+    const counts = new Map<number, number>();
+    for (const f of fights) {
+      if (f.encounterId === null) continue;
+      const idx = floors.byEncounter.get(f.encounterId);
+      if (idx === undefined) continue;
+      counts.set(idx, (counts.get(idx) ?? 0) + 1);
+    }
+    return [...counts.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .map(([idx, count]) => {
+        const label = floorLabel(floors, idx);
+        return {
+          label,
+          count,
+          kind: "floor" as const,
+          displayFloor: floors.displayFloorByIndex.get(idx) ?? idx,
+          half: floorHalfOf(label),
+        };
+      });
+  }
+  if (!showPhase) return [];
+  const byPhase = new Map<number, number>();
+  let clears = 0;
+  let unknown = 0;
+  for (const f of fights) {
+    if (f.kill) {
+      clears += 1;
+    } else if (f.lastPhase !== null && Number.isFinite(f.lastPhase)) {
+      byPhase.set(f.lastPhase, (byPhase.get(f.lastPhase) ?? 0) + 1);
+    } else {
+      unknown += 1;
+    }
+  }
+  const out: PullBreakdownItem[] = [...byPhase.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([phase, count]) => ({
+      label: `P${phase}`,
+      count,
+      kind: "phase" as const,
+      displayFloor: null,
+      half: null,
+    }));
+  if (clears > 0) {
+    out.push({
+      label: "討伐",
+      count: clears,
+      kind: "clear",
+      displayFloor: null,
+      half: null,
+    });
+  }
+  if (unknown > 0) {
+    out.push({
+      label: "不明",
+      count: unknown,
+      kind: "unknown",
+      displayFloor: null,
+      half: null,
+    });
+  }
+  return out;
+}
+
+/**
+ * PT 合計 DPS の表示 (`84.2k` / `9,800`)。零式・絶の PT DPS は数万の桁なので
+ * 1 桁小数の k 表記に畳み、行の幅を固定する。null は "—"。
+ */
+export function formatPartyDps(dps: number | null): string {
+  if (dps === null || !Number.isFinite(dps)) return "—";
+  if (dps >= 10_000) return `${(dps / 1000).toFixed(1)}k`;
+  return Math.round(dps).toLocaleString("en-US");
 }
 
 /** 残 HP% の表示 (`12.3%`)。null は "—"。 */

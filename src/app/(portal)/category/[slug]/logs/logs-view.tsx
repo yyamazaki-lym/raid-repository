@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import {
   Activity,
@@ -15,6 +15,7 @@ import {
   ShieldAlert,
   Skull,
   SlidersHorizontal,
+  Swords,
   Trash2,
   Trophy,
   Video,
@@ -40,14 +41,17 @@ import {
   floorLabel,
   floorToneClass,
   formatFightDuration,
+  formatPartyDps,
   formatPercentage,
   isClearFight,
   percentageToneClass,
   progressTimeline,
+  pullBreakdown,
   summarize,
   type DaySummary,
   type FightRow,
   type FloorMap,
+  type PullBreakdownItem,
 } from "@/lib/fflogs-progress";
 import {
   buildFflogsFightViewUrl,
@@ -85,7 +89,9 @@ import { Textarea } from "@/components/ui/textarea";
  *   - 動画のその瞬間 (オフセット登録済みの report のみ)
  *   に 1 クリックで飛べる。
  *
- * 表示するのは PT としての到達度のみ。個人 DPS は集計も表示もしない。
+ * 表示するのは PT としての到達度のみ。個人 DPS は集計も表示もしない
+ * (2026-09-03 に加えた PT 合計 DPS / 死亡数も PT 単位の値で、個人の内訳は
+ * DB にも無い)。
  */
 export function LogsView({
   categoryId,
@@ -190,6 +196,12 @@ export function LogsView({
   const summary = useMemo(
     () => summarize(tierFights, floors),
     [tierFights, floors],
+  );
+  // 総 pull の層 / フェーズ内訳 (2026-09-03 実機要望)。明細が打ち切られて
+  // いる場合は表示中の分だけの内訳になる (タイルの sub に明記)。
+  const breakdown = useMemo(
+    () => pullBreakdown(tierFights, floors, showPhase),
+    [tierFights, floors, showPhase],
   );
   // DB の総数にはクラスタ外の混入分も含まれるため、取得済み明細で判明した
   // 混入数だけ差し引く (未打ち切りなら tierFights.length と一致する)。
@@ -712,6 +724,11 @@ export function LogsView({
           label="総 pull"
           value={String(shownTotalPulls)}
           sub={truncated ? `直近 ${summary.totalPulls} 件を表示` : undefined}
+          detail={
+            breakdown.length > 1 ? (
+              <PullBreakdownChips items={breakdown} truncated={truncated} />
+            ) : undefined
+          }
         />
         <StatCard
           label="練習日数"
@@ -1003,11 +1020,14 @@ function StatCard({
   label,
   value,
   sub,
+  detail,
   highlight,
 }: {
   label: string;
   value: string;
   sub?: string;
+  /** value / sub の下に出す補足 (内訳チップなど)。 */
+  detail?: ReactNode;
   highlight?: boolean;
 }) {
   return (
@@ -1029,7 +1049,57 @@ function StatCard({
           {sub}
         </span>
       )}
+      {detail}
     </li>
+  );
+}
+
+/**
+ * 総 pull タイルの内訳チップ (2026-09-03)。層は識別色 (FLOOR_TEXT_TONE /
+ * 後半は fuchsia)、フェーズは foreground、討伐は emerald。枝葉が増えても
+ * タイルの幅を壊さないよう、枠線なしの 10px mono を折り返して並べる。
+ */
+function PullBreakdownChips({
+  items,
+  truncated,
+}: {
+  items: PullBreakdownItem[];
+  truncated: boolean;
+}) {
+  const tone = (b: PullBreakdownItem): string => {
+    switch (b.kind) {
+      case "floor":
+        return b.half === "second"
+          ? "text-fuchsia-200"
+          : (FLOOR_TEXT_TONE[b.displayFloor ?? 0] ?? "text-foreground/70");
+      case "phase":
+        return "text-foreground/75";
+      case "clear":
+        return "text-emerald-300";
+      default:
+        return "text-muted-foreground";
+    }
+  };
+  return (
+    <ul
+      className="mt-0.5 flex flex-wrap gap-x-2 gap-y-0.5"
+      aria-label="pull 数の内訳"
+      title={
+        truncated
+          ? "表示中の明細の内訳 (古い pull は含まれません)"
+          : "層 / フェーズごとの pull 数"
+      }
+    >
+      {items.map((b) => (
+        <li
+          key={b.label}
+          className="inline-flex items-baseline gap-1 whitespace-nowrap font-mono text-[10px] tabular-nums"
+        >
+          <span className={tone(b)}>{b.label}</span>
+          <span className="text-muted-foreground">{b.count}</span>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -1071,6 +1141,10 @@ function DayRow({
     if (jumpNonce !== null && !open) setOpen(true);
   }
   const codes = Array.from(new Set(day.fights.map((f) => f.reportCode)));
+  // その日の死亡数の合計 (2026-09-03)。1 pull も取得できていない日は出さない。
+  const dayDeaths = day.fights.some((f) => f.deaths !== null)
+    ? day.fights.reduce((acc, f) => acc + (f.deaths ?? 0), 0)
+    : null;
 
   return (
     <li
@@ -1093,6 +1167,13 @@ function DayRow({
         <span className="font-display text-sm tabular-nums">{day.date}</span>
         <span className="font-mono text-[11px] text-muted-foreground tabular-nums">
           {day.pulls} pull / 戦闘 {formatFightDuration(day.fightSeconds)}
+          {dayDeaths !== null && (
+            <span title="この日の死亡数 (取得済みの pull の合計)">
+              {" / "}
+              <Skull className="inline h-2.5 w-2.5 align-[-1px]" aria-hidden />{" "}
+              {dayDeaths}
+            </span>
+          )}
         </span>
         <span className="ml-auto flex items-center gap-1.5">
           {/* 何層に挑んだ日かを常時表示 (2026-08-28 実機フィードバック)。
@@ -1308,10 +1389,41 @@ function PullRow({
             </span>
           </span>
         );
+        // 2026-09-03: 残 HP% の横に PT 合計 DPS と死亡数 (取得済みの pull のみ)。
+        // 個人の内訳は無い — PT として削れているか / 何人落ちたかだけ。
+        const metrics =
+          fight.partyDps !== null || fight.deaths !== null ? (
+            <span className="inline-flex shrink-0 items-center gap-2 font-mono text-[11px] tabular-nums">
+              {fight.partyDps !== null && (
+                <span
+                  className="inline-flex items-center gap-0.5 text-foreground/75"
+                  title="PT 合計 DPS (個人の内訳は保存していません)"
+                >
+                  <Swords className="h-2.5 w-2.5 text-muted-foreground" aria-hidden />
+                  {formatPartyDps(fight.partyDps)}
+                </span>
+              )}
+              {fight.deaths !== null && (
+                <span
+                  className={
+                    "inline-flex items-center gap-0.5 " +
+                    (fight.deaths === 0
+                      ? "text-muted-foreground"
+                      : "text-rose-300/90")
+                  }
+                  title="死亡数"
+                >
+                  <Skull className="h-2.5 w-2.5" aria-hidden />
+                  {fight.deaths}
+                </span>
+              )}
+            </span>
+          ) : null;
         return (
           <>
             {floorChip}
             {resultChip}
+            {metrics}
           </>
         );
       })()}
