@@ -232,6 +232,15 @@ export function fightDate(f: FightRow): string {
 export function summarize(
   fights: FightRow[],
   floors: FloorMap = buildFloorMap(fights),
+  /**
+   * フェーズ管理コンテンツ (絶) か (2026-09-03)。true のとき残 HP% を
+   * **最深フェーズ内** に限定して集計する。FFLogs の `fightPercentage` は
+   * 到達フェーズのボス残 HP なので (WCL がこの値を
+   * `lastPhaseForPercentageDisplay` と対で返すのがその根拠)、フェーズを
+   * 跨いで最小値を採ると「P1 で 0.5% まで削った」が「P7 で 30%」に
+   * 勝ってしまう。層モデルで最深層に絞っているのと同じ理由。
+   */
+  phaseModel = false,
 ): ProgressSummary {
   const byDay = new Map<string, FightRow[]>();
   for (const f of fights) {
@@ -248,19 +257,23 @@ export function summarize(
     floors && f.encounterId !== null
       ? (floors.byEncounter.get(f.encounterId) ?? null)
       : null;
+  // 残% のスコープとなる「区間」= 零式なら層、絶ならフェーズ。
+  const segmentOf = (f: FightRow): number | null =>
+    floors ? floorOf(f) : phaseModel ? f.lastPhase : null;
 
-  // 「最深層でのベスト残%」。層モデルがあるとき、下層の kill (消化) を
+  // 「最深区間でのベスト残%」。層モデルがあるとき、下層の kill (消化) を
   // 0% として混ぜると消化日が常に「残0%」になり数字が意味を失う
   // (2026-08-28 実機報告)。最高到達層の戦闘だけで残% を出す。
+  // フェーズ管理 (絶) も同様に最深フェーズ内で見る (2026-09-03)。
   const bestPercentageOf = (list: FightRow[]): number | null => {
     let scope = list;
-    if (floors) {
+    if (floors || phaseModel) {
       const idxs = list
-        .map(floorOf)
+        .map(segmentOf)
         .filter((v): v is number => v !== null);
       if (idxs.length > 0) {
         const top = Math.max(...idxs);
-        scope = list.filter((f) => floorOf(f) === top);
+        scope = list.filter((f) => segmentOf(f) === top);
       }
     }
     return minOrNull(scope.map((f) => (f.kill ? 0 : f.fightPercentage)));
@@ -318,8 +331,8 @@ export type ProgressPoint = {
   /** その日に挑んだ最高層 (層の概念が無いカテゴリでは null)。 */
   bestFloor: number | null;
   /**
-   * バー用の到達度 (0-100)。層の概念があるカテゴリでは
-   * ティア全体に対する進捗 = (突破済み層数 + 現在層の削り) / 層数。
+   * バー用の到達度 (0-100)。層 (零式) / フェーズ (絶) の概念があるカテゴリ
+   * では全体に対する進捗 = (突破済み区間数 + 現在区間の削り) / 区間数。
    * 無ければ 100 − 残 HP%。クリア日は 100。
    */
   progress: number;
@@ -333,27 +346,39 @@ export type ProgressPoint = {
 export function progressTimeline(
   days: DaySummary[],
   floors: FloorMap = null,
+  /**
+   * フェーズ管理コンテンツ (絶) の区間数 (`observedPhaseCount`)。
+   * 2026-09-03 実機要望「絶の方も P 毎に線を引いて見やすくできるか
+   * (零式でいう層毎のようなもの)」。層と同じ「区間」として扱い、バーを
+   * P1..PN に等分する。null なら従来どおり区間分割なし。
+   */
+  phaseCount: number | null = null,
 ): ProgressPoint[] {
   // 古い順に走査して記録更新を判定する。
   const asc = [...days].sort((a, b) => a.date.localeCompare(b.date));
-  let best: number | null = null; // その層内の残% (層が無い場合は全体)
-  let bestFloorSeen: number | null = null;
+  // 零式の層と絶のフェーズを同じ「区間」として扱う (以降 segment)。
+  const segmentCount = floors ? floors.floorCount : phaseCount;
+  const segmentOf = (d: DaySummary): number | null =>
+    floors ? d.bestFloor : phaseCount !== null ? d.bestPhase : null;
+  let best: number | null = null; // その区間内の残% (区間が無い場合は全体)
+  let bestSegmentSeen: number | null = null;
   let bestPhase: number | null = null;
   let seenClear = false;
   const out: ProgressPoint[] = [];
   for (const d of asc) {
-    const improvedFloor =
-      d.bestFloor !== null &&
-      (bestFloorSeen === null || d.bestFloor > bestFloorSeen);
-    // 層が上がったら残% の記録はリセット (新しい層の削りが始まる)。
-    if (improvedFloor) {
-      bestFloorSeen = d.bestFloor;
+    const segment = segmentOf(d);
+    const improvedSegment =
+      segment !== null &&
+      (bestSegmentSeen === null || segment > bestSegmentSeen);
+    // 区間が上がったら残% の記録はリセット (新しい層 / フェーズの削りが始まる)。
+    if (improvedSegment) {
+      bestSegmentSeen = segment;
       best = null;
     }
-    const sameFloor = d.bestFloor === bestFloorSeen;
+    const sameSegment = segment === bestSegmentSeen;
     const improvedPct =
       d.bestPercentage !== null &&
-      (floors === null || sameFloor) &&
+      (segmentCount === null || sameSegment) &&
       (best === null || d.bestPercentage < best);
     const improvedPhase =
       d.bestPhase !== null && (bestPhase === null || d.bestPhase > bestPhase);
@@ -364,12 +389,20 @@ export function progressTimeline(
     let progress: number;
     if (hasClear) {
       progress = 100;
-    } else if (floors && d.bestFloor !== null) {
-      const inFloor =
+    } else if (segmentCount !== null) {
+      const inSegment =
         d.bestPercentage !== null
           ? Math.max(0, Math.min(1, 1 - d.bestPercentage / 100))
           : 0;
-      progress = ((d.bestFloor - 1 + inFloor) / floors.floorCount) * 100;
+      // 区間が分かっているコンテンツで、その日だけ区間が取れない
+      // (FFLogs が lastPhase を返していない) 場合は **最も浅い区間** に
+      // 置く。バー全体に対する 100 − 残% として描くと、P1 で死んだ日が
+      // 「ほぼ討伐」に見えてしまうため (過大より過小に倒す)。
+      const seg = segment ?? 1;
+      progress = Math.max(
+        0,
+        Math.min(100, ((seg - 1 + inSegment) / segmentCount) * 100),
+      );
     } else if (d.bestPercentage !== null) {
       progress = Math.max(0, Math.min(100, 100 - d.bestPercentage));
     } else {
@@ -395,7 +428,7 @@ export function progressTimeline(
       bestPhase: d.bestPhase,
       bestFloor: d.bestFloor,
       progress,
-      isRecord: improvedPct || improvedPhase || improvedFloor || isFirstClear,
+      isRecord: improvedPct || improvedPhase || improvedSegment || isFirstClear,
       isFirstClear,
       hasClear,
     });
@@ -420,6 +453,8 @@ export type PullBreakdownItem = {
   kind: "floor" | "phase" | "clear" | "unknown";
   /** 層モデルのときの表示層番号 (色分け用)。層以外は null。 */
   displayFloor: number | null;
+  /** フェーズモデルのときのフェーズ番号 (色分け用)。それ以外は null。 */
+  phase: number | null;
   /** 最終層の前半/後半 (色分け用)。 */
   half: "first" | "second" | null;
 };
@@ -446,6 +481,7 @@ export function pullBreakdown(
           count,
           kind: "floor" as const,
           displayFloor: floors.displayFloorByIndex.get(idx) ?? idx,
+          phase: null,
           half: floorHalfOf(label),
         };
       });
@@ -470,6 +506,7 @@ export function pullBreakdown(
       count,
       kind: "phase" as const,
       displayFloor: null,
+      phase,
       half: null,
     }));
   if (clears > 0) {
@@ -478,6 +515,7 @@ export function pullBreakdown(
       count: clears,
       kind: "clear",
       displayFloor: null,
+      phase: null,
       half: null,
     });
   }
@@ -487,6 +525,7 @@ export function pullBreakdown(
       count: unknown,
       kind: "unknown",
       displayFloor: null,
+      phase: null,
       half: null,
     });
   }
@@ -557,6 +596,51 @@ export function floorToneClass(
       return half === "second"
         ? "border-fuchsia-400/45 bg-fuchsia-400/10 text-fuchsia-200"
         : "border-rose-400/45 bg-rose-400/10 text-rose-200";
+    default:
+      return "border-[var(--neon-cyan)]/40 bg-[var(--neon-cyan)]/10 text-[var(--neon-cyan)]";
+  }
+}
+
+/**
+ * フェーズ管理コンテンツ (絶) の区間数 = 観測できた最深フェーズ (2026-09-03)。
+ *
+ * 零式の層数を「実データに現れた encounter の連番の幅」から出しているのと
+ * 同じ考え方で、フェーズ数も **観測値** から決める (コンテンツごとの正しい
+ * 総フェーズ数を portal は知らないし、持つと FF14 側の知識を抱えることに
+ * なる)。したがって新しいフェーズに初到達した日にバーの分母が増え、
+ * 過去の日のバーは相対的に短くなる — 層モデルと同じ挙動。
+ *
+ * 1 フェーズしか観測できていないうちは区間分割しない (null)。
+ */
+export function observedPhaseCount(fights: FightRow[]): number | null {
+  const max = maxOrNull(fights.map((f) => f.lastPhase));
+  return max !== null && max >= 2 ? max : null;
+}
+
+/**
+ * フェーズ (P1〜) のチップ配色 (2026-09-03)。
+ *
+ * 層と違って数がコンテンツ次第 (絶は 5〜7) なので、`floorToneClass` の並び
+ * (sky → teal → violet → rose/fuchsia) を踏襲しつつ「深いほど暖色」に
+ * 伸ばした 7 段のランプにする。emerald はクリア表示の専用色なので使わない。
+ * 範囲 (複数フェーズに挑んだ日) と 8 以降は cyan。
+ */
+export function phaseToneClass(phase: number | null): string {
+  switch (phase) {
+    case 1:
+      return "border-sky-400/45 bg-sky-400/10 text-sky-200";
+    case 2:
+      return "border-teal-400/45 bg-teal-400/10 text-teal-200";
+    case 3:
+      return "border-indigo-400/45 bg-indigo-400/10 text-indigo-200";
+    case 4:
+      return "border-violet-400/45 bg-violet-400/10 text-violet-200";
+    case 5:
+      return "border-fuchsia-400/45 bg-fuchsia-400/10 text-fuchsia-200";
+    case 6:
+      return "border-rose-400/45 bg-rose-400/10 text-rose-200";
+    case 7:
+      return "border-amber-400/45 bg-amber-400/10 text-amber-200";
     default:
       return "border-[var(--neon-cyan)]/40 bg-[var(--neon-cyan)]/10 text-[var(--neon-cyan)]";
   }

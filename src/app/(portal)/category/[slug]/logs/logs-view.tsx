@@ -44,7 +44,9 @@ import {
   formatPartyDps,
   formatPercentage,
   isClearFight,
+  observedPhaseCount,
   percentageToneClass,
+  phaseToneClass,
   progressTimeline,
   pullBreakdown,
   summarize,
@@ -193,9 +195,21 @@ export function LogsView({
     () => filterToFloorCluster(fights, floors),
     [fights, floors],
   );
+  // 絶のフェーズ数 (観測値)。層モデルと同じ「区間」として扱う (2026-09-03)。
+  const phaseCount = useMemo(
+    () => (showPhase ? observedPhaseCount(tierFights) : null),
+    [showPhase, tierFights],
+  );
   const summary = useMemo(
-    () => summarize(tierFights, floors),
-    [tierFights, floors],
+    () => summarize(tierFights, floors, showPhase),
+    [tierFights, floors, showPhase],
+  );
+  // バーを区切る区間数 = 層数 (零式) / フェーズ数 (絶)。
+  const segmentCount = floors ? floors.floorCount : phaseCount;
+  // 死亡数の列を確保するか (1 pull も取得できていないカテゴリでは幅を取らない)。
+  const anyDeaths = useMemo(
+    () => tierFights.some((f) => f.deaths !== null),
+    [tierFights],
   );
   // 総 pull の層 / フェーズ内訳 (2026-09-03 実機要望)。明細が打ち切られて
   // いる場合は表示中の分だけの内訳になる (タイルの sub に明記)。
@@ -270,8 +284,8 @@ export function LogsView({
   };
 
   const timeline = useMemo(
-    () => progressTimeline(summary.days, floors),
-    [summary.days, floors],
+    () => progressTimeline(summary.days, floors, phaseCount),
+    [summary.days, floors, phaseCount],
   );
 
   // フィルタに出す層の一覧 (実データに存在する層のみ、昇順)。
@@ -791,6 +805,8 @@ export function LogsView({
           </h3>
           <span className="font-mono text-[9px] tracking-[0.12em] text-muted-foreground/70">
             バー = ベスト到達度 / 右端 = 討伐
+            {segmentCount !== null &&
+              (floors ? " / 縦線 = 層の境目" : " / 縦線 = フェーズの境目")}
           </span>
         </div>
         <ul className="flex flex-col gap-1">
@@ -811,16 +827,16 @@ export function LogsView({
                   {t.date.slice(5)}
                 </button>
                 <span className="relative flex h-4 min-w-0 flex-1 items-center rounded-sm bg-secondary/40">
-                  {/* 複数層のカテゴリでは層の区切り線を引く (バーの上にも
-                      乗るよう明色。border/60 では薄すぎた — 2026-08-28 指摘)。 */}
-                  {floors &&
-                    Array.from({ length: floors.floorCount - 1 }, (_, i) => (
+                  {/* 区間の区切り線 — 零式は層、絶はフェーズ (2026-09-03
+                      実機要望「絶も P 毎に線を引いて見やすくできるか」)。
+                      バーの上にも乗るよう明色 (border/60 では薄すぎた —
+                      2026-08-28 指摘)。 */}
+                  {segmentCount !== null &&
+                    Array.from({ length: segmentCount - 1 }, (_, i) => (
                       <span
                         key={i}
                         className="absolute top-0 h-full w-px bg-foreground/50"
-                        style={{
-                          left: `${((i + 1) / floors.floorCount) * 100}%`,
-                        }}
+                        style={{ left: `${((i + 1) / segmentCount) * 100}%` }}
                         aria-hidden
                       />
                     ))}
@@ -868,7 +884,14 @@ export function LogsView({
                         </span>
                       )}
                       {!floors && showPhase && t.bestPhase !== null && (
-                        <span className="text-foreground/70">P{t.bestPhase} </span>
+                        // 2026-09-03: 層ラベルと同じ扱いで、フェーズも識別色に。
+                        <span
+                          className={
+                            PHASE_TEXT_TONE[t.bestPhase] ?? "text-foreground/70"
+                          }
+                        >
+                          P{t.bestPhase}{" "}
+                        </span>
                       )}
                       <span className={percentageToneClass(t.bestPercentage)}>
                         残{formatPercentage(t.bestPercentage)}
@@ -964,6 +987,7 @@ export function LogsView({
               videoLinks={videoLinks}
               canEdit={canEdit}
               showPhase={showPhase}
+              reserveDeaths={anyDeaths}
               floors={floors}
               firstPullStartByReport={firstPullStartByReport}
               onEditOffset={(reportCode) => {
@@ -1014,6 +1038,20 @@ const FLOOR_TEXT_TONE: Record<number, string> = {
   2: "text-teal-200",
   3: "text-violet-200",
   4: "text-rose-200",
+};
+
+/**
+ * フェーズ (P1〜) の文字色 (2026-09-03)。`phaseToneClass` と同じ色相の
+ * text のみ版 (層の FLOOR_TEXT_TONE と対になる)。
+ */
+const PHASE_TEXT_TONE: Record<number, string> = {
+  1: "text-sky-200",
+  2: "text-teal-200",
+  3: "text-indigo-200",
+  4: "text-violet-200",
+  5: "text-fuchsia-200",
+  6: "text-rose-200",
+  7: "text-amber-200",
 };
 
 function StatCard({
@@ -1073,7 +1111,9 @@ function PullBreakdownChips({
           ? "text-fuchsia-200"
           : (FLOOR_TEXT_TONE[b.displayFloor ?? 0] ?? "text-foreground/70");
       case "phase":
-        return "text-foreground/75";
+        // 2026-09-03: フェーズも識別色を持たせたので内訳チップも揃える
+        // (総 pull の内訳 / 日の見出し / pull 行 / 到達度の右ラベルで同色)。
+        return PHASE_TEXT_TONE[b.phase ?? 0] ?? "text-foreground/75";
       case "clear":
         return "text-emerald-300";
       default:
@@ -1111,6 +1151,7 @@ function DayRow({
   videoLinks,
   canEdit,
   showPhase,
+  reserveDeaths,
   floors,
   firstPullStartByReport,
   onEditOffset,
@@ -1127,6 +1168,8 @@ function DayRow({
   videoLinks: Record<string, ReportVideoLink>;
   canEdit: boolean;
   showPhase: boolean;
+  /** カテゴリ全体で死亡数が 1 つでも取得済みか (見出しの列幅の確保用)。 */
+  reserveDeaths: boolean;
   floors: FloorMap;
   firstPullStartByReport: Map<string, number>;
   onEditOffset: (reportCode: string) => void;
@@ -1148,12 +1191,12 @@ function DayRow({
   // 2026-09-03 実機要望「もう少し綺麗に揃えられないか」。pull 行は列幅を
   // 固定して縦に揃えるが、**その日に 1 つも無い列は幅を取らない** (PT 指標が
   // 未取得の古い日や、動画が紐づいていない日で無駄な空白を作らないため)。
-  const reserveMetrics = day.fights.some(
-    (f) => f.partyDps !== null || f.deaths !== null,
-  );
-  const reserveVideo = day.fights.some(
-    (f) => videoLinks[f.reportCode]?.videoUrl,
-  );
+  const reserve = {
+    metrics: day.fights.some((f) => f.partyDps !== null || f.deaths !== null),
+    video: day.fights.some((f) => videoLinks[f.reportCode]?.videoUrl),
+    // 絶はフェーズを層と同じ位置のチップで出すので、その列を確保する。
+    phase: showPhase && day.fights.some((f) => f.lastPhase !== null),
+  };
 
   return (
     <li
@@ -1173,23 +1216,45 @@ function DayRow({
           }
           aria-hidden
         />
-        <span className="font-display text-sm tabular-nums">{day.date}</span>
-        <span className="font-mono text-[11px] text-muted-foreground tabular-nums">
-          {day.pulls} pull / 戦闘 {formatFightDuration(day.fightSeconds)}
-          {dayDeaths !== null && (
-            <span title="この日の死亡数 (取得済みの pull の合計)">
-              {" / "}
-              <Skull className="inline h-2.5 w-2.5 align-[-1px]" aria-hidden />{" "}
-              {dayDeaths}
+        {/* 2026-09-03 実機要望「見出しの層・残 HP・CLEAR も揃えられるか」。
+            日付は表記がデータ由来で長さが揃わない (「2026-09-01」のことも
+            「2026/09/01(火) 22:00-2:00」のこともある) ため、日付列に余りを
+            吸わせ (flex-1)、以降の列は固定幅にして行ごとに同じ位置で始める。 */}
+        <span className="min-w-0 flex-1 truncate font-display text-sm tabular-nums">
+          {day.date}
+        </span>
+        <span className="flex shrink-0 items-center gap-2 font-mono text-[11px] whitespace-nowrap text-muted-foreground tabular-nums">
+          {/* 「12 pull」を右寄せで固定幅に入れると、数字の右端も単位も揃う。 */}
+          <span className="w-14 text-right">{day.pulls} pull</span>
+          <span className="w-20 text-right">
+            戦闘 {formatFightDuration(day.fightSeconds)}
+          </span>
+          {reserveDeaths && (
+            <span
+              className="inline-flex w-11 items-center justify-end gap-0.5"
+              title={
+                dayDeaths !== null
+                  ? "この日の死亡数 (取得済みの pull の合計)"
+                  : "この日の死亡数は未取得です"
+              }
+            >
+              {dayDeaths !== null && (
+                <>
+                  <Skull className="h-2.5 w-2.5 shrink-0" aria-hidden />
+                  {dayDeaths}
+                </>
+              )}
             </span>
           )}
         </span>
-        <span className="ml-auto flex items-center gap-1.5">
-          {/* 何層に挑んだ日かを常時表示 (2026-08-28 実機フィードバック)。
-              複数層に挑んだ日は範囲表記 (例: 1-4層)。 */}
-          {floors &&
-            day.bestFloor !== null &&
-            (() => {
+        <span className="flex shrink-0 items-center gap-1.5">
+          {/* 何層 / どのフェーズに挑んだ日かを常時表示 (2026-08-28 実機
+              フィードバック / 絶は 2026-09-03 追加)。複数に跨る日は範囲表記
+              (例: 1-4層 / P1-P3)。幅は固定して右の結果チップを揃える。 */}
+          {(() => {
+            const chipClass =
+              "w-[3.75rem] shrink-0 rounded-sm border px-1 py-0.5 text-center font-mono text-[11px] whitespace-nowrap tabular-nums ";
+            if (floors && day.bestFloor !== null) {
               const dayFloors = day.fights
                 .map((f) =>
                   f.encounterId !== null
@@ -1211,12 +1276,7 @@ function DayRow({
               const singleHalf =
                 minF === maxF ? floorHalfOf(floorLabel(floors, maxF)) : null;
               return (
-                <span
-                  className={
-                    "rounded-sm border px-1.5 py-0.5 font-mono text-[11px] tabular-nums " +
-                    floorToneClass(singleFloor, singleHalf)
-                  }
-                >
+                <span className={chipClass + floorToneClass(singleFloor, singleHalf)}>
                   {minF === maxF
                     ? floorLabel(floors, maxF)
                     : minD === maxD
@@ -1224,20 +1284,35 @@ function DayRow({
                       : `${minD}-${maxD}層`}
                 </span>
               );
-            })()}
+            }
+            if (!showPhase) return null;
+            const dayPhases = day.fights
+              .map((f) => f.lastPhase)
+              .filter((v): v is number => v !== null);
+            if (dayPhases.length === 0) return null;
+            const minP = Math.min(...dayPhases);
+            const maxP = Math.max(...dayPhases);
+            return (
+              <span className={chipClass + phaseToneClass(minP === maxP ? maxP : null)}>
+                {minP === maxP ? `P${maxP}` : `P${minP}-${maxP}`}
+              </span>
+            );
+          })()}
+          {/* 結果 (CLEAR / 残%) も固定幅・中央寄せ。フェーズは上のチップが
+              担うので、ここでは残% だけを出す (層と同じ組み立て)。 */}
           {day.clears > 0 ? (
-            <span className="inline-flex items-center gap-1 rounded-sm border border-emerald-400/45 bg-emerald-400/10 px-1.5 py-0.5 font-mono text-[11px] text-emerald-200">
-              <Trophy className="h-3 w-3" aria-hidden />
+            <span className="inline-flex w-[4.5rem] shrink-0 items-center justify-center gap-1 rounded-sm border border-emerald-400/45 bg-emerald-400/10 px-1 py-0.5 font-mono text-[11px] whitespace-nowrap text-emerald-200">
+              <Trophy className="h-3 w-3 shrink-0" aria-hidden />
               CLEAR
             </span>
           ) : (
-            <span className="font-mono text-[11px] tabular-nums">
-              {showPhase && day.bestPhase !== null && (
-                <span className="text-muted-foreground">P{day.bestPhase} / </span>
-              )}
-              <span className={percentageToneClass(day.bestPercentage)}>
-                残{formatPercentage(day.bestPercentage)}
-              </span>
+            <span
+              className={
+                "w-[4.5rem] shrink-0 text-center font-mono text-[11px] whitespace-nowrap tabular-nums " +
+                percentageToneClass(day.bestPercentage)
+              }
+            >
+              残{formatPercentage(day.bestPercentage)}
             </span>
           )}
         </span>
@@ -1295,8 +1370,7 @@ function DayRow({
                 showPhase={showPhase}
                 floors={floors}
                 firstPullStartMs={firstPullStartByReport.get(f.reportCode) ?? null}
-                reserveMetrics={reserveMetrics}
-                reserveVideo={reserveVideo}
+                reserve={reserve}
               />
             ))}
           </ul>
@@ -1313,8 +1387,7 @@ function PullRow({
   showPhase,
   floors,
   firstPullStartMs,
-  reserveMetrics,
-  reserveVideo,
+  reserve,
 }: {
   index: number;
   fight: FightRow;
@@ -1322,10 +1395,11 @@ function PullRow({
   showPhase: boolean;
   floors: FloorMap;
   firstPullStartMs: number | null;
-  /** その日のどれかの pull に PT 指標がある = 列幅を確保する (2026-09-03)。 */
-  reserveMetrics: boolean;
-  /** その日のどれかの report に動画がある = 動画チップの幅を確保する。 */
-  reserveVideo: boolean;
+  /**
+   * 列幅を確保するか (2026-09-03)。その日のどれかの pull に値があれば、
+   * 値の無い pull も幅だけ残して縦揃えを保つ。1 つも無い列は幅を取らない。
+   */
+  reserve: { metrics: boolean; video: boolean; phase: boolean };
 }) {
   const durationSec = Math.max(0, Math.round((fight.endMs - fight.startMs) / 1000));
   // 日付のグルーピングが JST 基準なので時刻も JST に固定する
@@ -1395,20 +1469,25 @@ function PullRow({
         const isClear = isClearFight(fight, floors);
         // 層ラベルは「1層」〜「4層後半」で文字数が変わる。幅を固定して
         // 中央寄せにし、後続の列 (結果 / PT 指標) が行ごとにずれないようにする。
-        const floorChip =
+        // 2026-09-03: 絶はフェーズを同じ列のチップにする (結果チップから
+        // 「P3 」の前置きが消え、零式と同じ「区間チップ + 残%」の並びになる)。
+        const chipClass =
+          "w-[3.75rem] shrink-0 rounded-sm border px-1 py-0.5 text-center font-mono text-[11px] whitespace-nowrap tabular-nums ";
+        const segmentChip =
           floor !== null ? (
-            <span
-              className={
-                "w-[3.75rem] shrink-0 rounded-sm border px-1 py-0.5 text-center font-mono text-[11px] whitespace-nowrap tabular-nums " +
-                floorToneClass(displayFloor, floorHalf)
-              }
-            >
+            <span className={chipClass + floorToneClass(displayFloor, floorHalf)}>
               {floorLabel(floors, floor)}
             </span>
+          ) : showPhase && fight.lastPhase !== null ? (
+            <span className={chipClass + phaseToneClass(fight.lastPhase)}>
+              P{fight.lastPhase}
+            </span>
+          ) : reserve.phase ? (
+            <span className="w-[3.75rem] shrink-0" aria-hidden />
           ) : null;
-        // 結果チップも幅を固定する。フェーズ表示のあるコンテンツ (絶) は
-        // 「P3 残0.35%」まで入るので 1 段広く取る。
-        const resultWidth = showPhase ? "w-[5.5rem]" : "w-[4.25rem]";
+        // 結果チップも幅を固定する (フェーズは上の区間チップに移したので
+        // 零式・絶で同じ幅)。
+        const resultWidth = "w-[4.25rem]";
         // kill は層を問わず CLEAR 表記 (最終層 = 濃い緑 / 他層 = 淡い緑)。
         const resultChip = fight.kill ? (
           <span
@@ -1425,9 +1504,6 @@ function PullRow({
           <span
             className={`${resultWidth} shrink-0 rounded-sm bg-secondary/50 px-1 py-0.5 text-center font-mono text-[11px] whitespace-nowrap tabular-nums`}
           >
-            {showPhase && fight.lastPhase !== null && (
-              <span className="text-foreground/70">P{fight.lastPhase} </span>
-            )}
             <span className={percentageToneClass(fight.fightPercentage)}>
               残{formatPercentage(fight.fightPercentage)}
             </span>
@@ -1437,7 +1513,7 @@ function PullRow({
         // 個人の内訳は無い — PT として削れているか / 何人落ちたかだけ。
         // 値の無い pull もスロットの幅は残す (その日に 1 つでも値があるとき)
         // ので、数字が縦に揃う。
-        const metrics = reserveMetrics ? (
+        const metrics = reserve.metrics ? (
           <span className="inline-flex shrink-0 items-center gap-2 font-mono text-[11px] whitespace-nowrap tabular-nums">
             <span
               className="inline-flex w-14 items-center justify-end gap-0.5 text-foreground/80"
@@ -1477,7 +1553,7 @@ function PullRow({
         ) : null;
         return (
           <>
-            {floorChip}
+            {segmentChip}
             {resultChip}
             {metrics}
           </>
@@ -1555,7 +1631,7 @@ function PullRow({
             {videoSeconds !== null ? formatClock(videoSeconds) : "動画"}
           </a>
         ) : (
-          reserveVideo && <span className="w-[4.75rem] shrink-0" aria-hidden />
+          reserve.video && <span className="w-[4.75rem] shrink-0" aria-hidden />
         )}
       </span>
     </li>
