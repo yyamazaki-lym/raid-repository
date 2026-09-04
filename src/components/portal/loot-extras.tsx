@@ -1,7 +1,14 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import {
+  DndContext,
+  closestCenter,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import { SortableContext, useSortable, rectSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import {
   CalendarClock,
   Check,
@@ -9,6 +16,7 @@ import {
   CircleDashed,
   ExternalLink,
   Eye,
+  GripVertical,
   Pencil,
   Plus,
   Shirt,
@@ -45,8 +53,13 @@ import { setMyLootWeeklyStatusAction } from "@/lib/server/loot-weekly-actions";
 import {
   createCategoryBisLinkAction,
   deleteCategoryBisLinkAction,
+  setCategoryBisLinkOrderAction,
   updateCategoryBisLinkAction,
 } from "@/lib/server/category-bis-actions";
+import {
+  applyOptimisticOrder,
+  useSortableReorder,
+} from "@/lib/use-sortable-reorder";
 
 /**
  * ロットタブの上に置く 2 パネル (TODO #94)。
@@ -287,6 +300,21 @@ export function BisLinksPanel({
   const [collapsed, setCollapsed] = useCollapsible(
     "raid-repo:loot-bis-collapsed",
   );
+  // 2026-09-04 実機要望「BiS を並び替え出来るようにしてほしい」。
+  // sort_order は追加時に採番されるだけで、後から入れ替える手段が無かった。
+  // ウェイマーク / マクロ / 動画と同じ共通フックに乗せる (楽観反映 → 永続化
+  // → 失敗時ロールバック)。
+  const { optimisticOrder, sensors, handleDragEnd, syncOnSettle } =
+    useSortableReorder({ persist: setCategoryBisLinkOrderAction });
+  const ordered = useMemo(
+    () => applyOptimisticOrder(links, optimisticOrder),
+    [links, optimisticOrder],
+  );
+  useEffect(() => {
+    // サーバー由来の確定順が楽観順に追いついたら楽観 state を畳む。
+    // このリストは Realtime 購読が無く router.refresh() 経由で更新される。
+    syncOnSettle(links.map((l) => l.id));
+  }, [links, syncOnSettle]);
   // 2026-08-30: XivGear の埋め込みビューでの装備プレビュー。
   // グリッド内で展開すると 2 列レイアウトが崩れるので、開けるのは
   // 常に 1 件だけ・描画位置はリストの下、という形にする。
@@ -397,93 +425,21 @@ export function BisLinksPanel({
         // `1fr` は `minmax(auto,1fr)` = 最小トラックが min-content なので、
         // 長いラベル 1 件でグリッドがコンテナ幅を超える (モバイルで横スクロール
         // が出る)。最小を 0 に固定して必ず縮むようにする。
-        <ul className="grid grid-cols-[minmax(0,1fr)] gap-1.5 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-          {links.map((l) => {
-            const href = safeHref(l.url);
-            return (
-              <li
-                key={l.id}
-                className="flex items-center gap-2 rounded-md border border-border/40 bg-background/30 px-2 py-1.5"
-              >
-                <LinkSiteIcon
-                  url={l.url}
-                  variant="fine"
-                  className="h-3.5 w-3.5 shrink-0"
-                />
-                <a
-                  href={href}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  // `w-0` で幅を確定させ、nowrap な truncate ラベルの
-                  // min-content 幅が祖先へ伝播するのを止める (ウェイマーク行と同じ)。
-                  className="w-0 min-w-0 flex-1"
-                  title={l.note ?? l.url}
-                >
-                  <span className="flex min-w-0 items-center gap-1.5">
-                    {/* flex item は min-width:auto が既定で縮まないため、
-                        truncate を効かせるには自身にも min-w-0 が要る。 */}
-                    <span className="min-w-0 truncate text-[12px] text-foreground/90">
-                      {l.label}
-                    </span>
-                    {l.job && (
-                      <span className="shrink-0 rounded-sm border border-border/50 px-1 font-mono text-[9px] tracking-[0.12em] text-muted-foreground uppercase">
-                        {l.job}
-                      </span>
-                    )}
-                    <ExternalLink
-                      className="h-2.5 w-2.5 shrink-0 opacity-60"
-                      aria-hidden
-                    />
-                  </span>
-                  {l.ownerName && (
-                    <span className="block truncate text-[10px] text-muted-foreground">
-                      {l.ownerName}
-                    </span>
-                  )}
-                </a>
-                {toXivgearEmbedUrl(l.url) && (
-                  <button
-                    type="button"
-                    onClick={() => openPreview(l)}
-                    aria-pressed={previewId === l.id}
-                    aria-label={`${l.label} の装備を表示`}
-                    title="装備をこの画面で見る"
-                    className={
-                      "inline-flex h-6 w-6 shrink-0 items-center justify-center rounded transition-colors " +
-                      (previewId === l.id
-                        ? "bg-[var(--neon-violet)]/20 text-[var(--neon-violet)]"
-                        : "text-muted-foreground hover:bg-secondary/60 hover:text-foreground")
-                    }
-                  >
-                    <Eye className="h-3 w-3" aria-hidden />
-                  </button>
-                )}
-                {canEdit && (
-                  <span className="flex shrink-0 items-center gap-0.5">
-                    <button
-                      type="button"
-                      onClick={() => startEdit(l)}
-                      aria-label={`${l.label} を編集`}
-                      title="編集"
-                      className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
-                    >
-                      <Pencil className="h-3 w-3" aria-hidden />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => onDelete(l)}
-                      aria-label={`${l.label} を削除`}
-                      title="削除"
-                      className="inline-flex h-6 w-6 items-center justify-center rounded text-rose-300 hover:bg-rose-500/15 hover:text-rose-200"
-                    >
-                      <Trash2 className="h-3 w-3" aria-hidden />
-                    </button>
-                  </span>
-                )}
-              </li>
-            );
-          })}
-        </ul>
+        //
+        // 2026-09-04: admin のときだけ DnD で並び替えられるようにする。
+        // 2 列グリッドなので strategy は rectSortingStrategy (縦一列用の
+        // verticalListSortingStrategy では横移動が拾えない)。閲覧者には
+        // DndContext を被せず、素の <ul> のまま描く。
+        <BisList
+          links={ordered}
+          canEdit={canEdit}
+          sensors={sensors}
+          onDragEnd={(e) => handleDragEnd(e, ordered)}
+          previewId={previewId}
+          onPreview={openPreview}
+          onEdit={startEdit}
+          onDelete={onDelete}
+        />
       )}
 
       {/* 埋め込みプレビュー: リストの下に 1 枚だけ。高さを固定して
@@ -739,5 +695,224 @@ function XivgearSummaryStrip({
         </p>
       )}
     </div>
+  );
+}
+
+/**
+ * BiS リストの本体 (2026-09-04)。admin のときだけ DnD を被せる。
+ *
+ * 閲覧者に DndContext を張らない理由は 2 つ: 並び替えを保存できないので
+ * 掴めても意味が無いこと、そしてタッチ操作 (長押し 200ms) がリンクの
+ * タップと競合すること。
+ */
+function BisList({
+  links,
+  canEdit,
+  sensors,
+  onDragEnd,
+  previewId,
+  onPreview,
+  onEdit,
+  onDelete,
+}: {
+  links: CategoryBisLink[];
+  canEdit: boolean;
+  sensors: ReturnType<typeof useSortableReorder>["sensors"];
+  onDragEnd: (event: DragEndEvent) => void;
+  previewId: string | null;
+  onPreview: (link: CategoryBisLink) => void;
+  onEdit: (link: CategoryBisLink) => void;
+  onDelete: (link: CategoryBisLink) => void;
+}) {
+  const rows = links.map((l) => {
+    const rowProps = {
+      link: l,
+      canEdit,
+      previewActive: previewId === l.id,
+      onPreview: () => onPreview(l),
+      onEdit: () => onEdit(l),
+      onDelete: () => onDelete(l),
+    };
+    // 閲覧者は `useSortable` を **通らない**。dnd-kit のフックは
+    // DndContext / SortableContext の内側にあることが前提なので、
+    // 被せない側で呼ぶと余計な警告の元になる。
+    return canEdit ? (
+      <SortableBisRow key={l.id} {...rowProps} />
+    ) : (
+      <BisRow key={l.id} {...rowProps} />
+    );
+  });
+  const list = (
+    <ul className="grid grid-cols-[minmax(0,1fr)] gap-1.5 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+      {rows}
+    </ul>
+  );
+  if (!canEdit) return list;
+  return (
+    <DndContext
+      // dnd-kit の採番 (`DndDescribedBy-<n>`) は SSR とクライアントでずれて
+      // hydration mismatch になるため id を明示する (category-list.tsx の注記参照)。
+      id="bis-links-dnd"
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragEnd={onDragEnd}
+    >
+      <SortableContext items={links.map((l) => l.id)} strategy={rectSortingStrategy}>
+        {list}
+      </SortableContext>
+    </DndContext>
+  );
+}
+
+type BisRowProps = {
+  link: CategoryBisLink;
+  canEdit: boolean;
+  previewActive: boolean;
+  onPreview: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+};
+
+/** admin 用: 行に useSortable を足すだけのラッパ (SortableContext の内側)。 */
+function SortableBisRow(props: BisRowProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: props.link.id });
+  return (
+    <BisRow
+      {...props}
+      setNodeRef={setNodeRef}
+      attributes={attributes}
+      listeners={listeners}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.5 : 1,
+        zIndex: isDragging ? 10 : "auto",
+      }}
+    />
+  );
+}
+
+function BisRow({
+  link,
+  canEdit,
+  previewActive,
+  onPreview,
+  onEdit,
+  onDelete,
+  setNodeRef,
+  attributes,
+  listeners,
+  style,
+}: BisRowProps & {
+  setNodeRef?: (node: HTMLElement | null) => void;
+  attributes?: React.HTMLAttributes<HTMLElement>;
+  listeners?: Record<string, unknown>;
+  style?: React.CSSProperties;
+}) {
+  const href = safeHref(link.url);
+  return (
+          <li
+            ref={setNodeRef}
+            style={style}
+            {...attributes}
+            className="flex items-center gap-2 rounded-md border border-border/40 bg-background/30 px-2 py-1.5"
+          >
+            {/* ドラッグハンドル。行全体を掴めるようにすると、
+                ラベルのリンクをタップしたいだけの操作を奪ってしまう
+                (ウェイマーク行と同じ理由でハンドルだけに listeners)。 */}
+            {listeners && (
+              <span
+                {...listeners}
+                role="presentation"
+                aria-label={`${link.label} のドラッグハンドル`}
+                title="ドラッグで並び替え"
+                className="-ml-1 inline-flex h-6 w-4 shrink-0 cursor-grab items-center justify-center rounded text-muted-foreground/70 hover:bg-secondary/60 hover:text-foreground active:cursor-grabbing"
+              >
+                <GripVertical className="h-3.5 w-3.5" aria-hidden />
+              </span>
+            )}
+            <LinkSiteIcon
+              url={link.url}
+              variant="fine"
+              className="h-3.5 w-3.5 shrink-0"
+            />
+            <a
+              href={href}
+              target="_blank"
+              rel="noopener noreferrer"
+              // `w-0` で幅を確定させ、nowrap な truncate ラベルの
+              // min-content 幅が祖先へ伝播するのを止める (ウェイマーク行と同じ)。
+              className="w-0 min-w-0 flex-1"
+              title={link.note ?? link.url}
+            >
+              <span className="flex min-w-0 items-center gap-1.5">
+                {/* flex item は min-width:auto が既定で縮まないため、
+                    truncate を効かせるには自身にも min-w-0 が要る。 */}
+                <span className="min-w-0 truncate text-[12px] text-foreground/90">
+                  {link.label}
+                </span>
+                {link.job && (
+                  <span className="shrink-0 rounded-sm border border-border/50 px-1 font-mono text-[9px] tracking-[0.12em] text-muted-foreground uppercase">
+                    {link.job}
+                  </span>
+                )}
+                <ExternalLink
+                  className="h-2.5 w-2.5 shrink-0 opacity-60"
+                  aria-hidden
+                />
+              </span>
+              {link.ownerName && (
+                <span className="block truncate text-[10px] text-muted-foreground">
+                  {link.ownerName}
+                </span>
+              )}
+            </a>
+            {toXivgearEmbedUrl(link.url) && (
+              <button
+                type="button"
+                onClick={onPreview}
+                aria-pressed={previewActive}
+                aria-label={`${link.label} の装備を表示`}
+                title="装備をこの画面で見る"
+                className={
+                  "inline-flex h-6 w-6 shrink-0 items-center justify-center rounded transition-colors " +
+                  (previewActive
+                    ? "bg-[var(--neon-violet)]/20 text-[var(--neon-violet)]"
+                    : "text-muted-foreground hover:bg-secondary/60 hover:text-foreground")
+                }
+              >
+                <Eye className="h-3 w-3" aria-hidden />
+              </button>
+            )}
+            {canEdit && (
+              <span className="flex shrink-0 items-center gap-0.5">
+                <button
+                  type="button"
+                  onClick={onEdit}
+                  aria-label={`${link.label} を編集`}
+                  title="編集"
+                  className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
+                >
+                  <Pencil className="h-3 w-3" aria-hidden />
+                </button>
+                <button
+                  type="button"
+                  onClick={onDelete}
+                  aria-label={`${link.label} を削除`}
+                  title="削除"
+                  className="inline-flex h-6 w-6 items-center justify-center rounded text-rose-300 hover:bg-rose-500/15 hover:text-rose-200"
+                >
+                  <Trash2 className="h-3 w-3" aria-hidden />
+                </button>
+              </span>
+            )}
+          </li>
   );
 }
