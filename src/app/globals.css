@@ -457,6 +457,35 @@
       "rlig" 1,
       "calt" 1,
       "ss01" 1;
+
+    /* 日本語の改行位置 (2026-09-04 実機要望「改行位置の適正化」)。
+     *
+     * ブラウザ既定の日本語は **どの文字の間でも改行できる** ため、
+     * 「軽減表を/開いてください」のように語の途中で折り返る。
+     * `auto-phrase` は文節 (自立語 + 付属語) の切れ目を優先して改行する
+     * ので、同じ幅のまま読みの区切りが自然になる。
+     *
+     * 対応外のブラウザは宣言ごと無視され、従来の改行に戻るだけ
+     * (機能後退しない)。英数字には影響しない。 */
+    word-break: auto-phrase;
+  }
+
+  /* 見出しは行を均す (最終行に 1 語だけ落ちるのを防ぐ)。balance は
+   * 数行までの短いテキスト向けで、長文には効かない仕様なので見出し限定。 */
+  h1,
+  h2,
+  h3,
+  h4 {
+    text-wrap: balance;
+  }
+
+  /* 本文は最終行の孤立語 (ぶら下がり) を避ける。balance と違い長文でも
+   * コストが低い。 */
+  p,
+  li,
+  dd,
+  figcaption {
+    text-wrap: pretty;
   }
 }
 
@@ -647,7 +676,13 @@
    - **font-mono + uppercase + tracking は Latin 専用**: `uppercase` は日本語に
      無効で `tracking` がかな漢字を不自然に間延びさせるため、日本語ラベルは
      `font-sans` + `tracking-normal` を使う (mono/uppercase/wide-tracking は
-     "ONLINE" "Contents" "current" 等の Latin 文字列に限定する)。 */
+     "ONLINE" "Contents" "current" 等の Latin 文字列に限定する)。
+   - **改行は base layer に任せる** (2026-09-04): `body` に
+     `word-break: auto-phrase` (日本語を文節で折り返す)、見出しに
+     `text-wrap: balance`、本文に `text-wrap: pretty` を当ててある。
+     個別に `<br>` や `whitespace-nowrap` で改行位置を作らない — 幅は
+     端末で変わるので、固定した改行はどこかの幅で必ず崩れる。折り返して
+     ほしくない短い単位 (時刻・層ラベル等) にだけ nowrap を使う。 */
 
 /* Frosted edge — silver-blue glow on hover/active. */
 .neon-edge {

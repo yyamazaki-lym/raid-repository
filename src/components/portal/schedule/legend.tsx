@@ -265,7 +265,12 @@ export function Legend({
                 role="dialog"
                 aria-label="運用ルール / 注意事項"
                 tabIndex={-1}
-                className="glass-popup absolute top-full right-0 z-40 mt-1 w-[min(36rem,calc(100vw-2rem))] rounded-lg border border-[var(--neon-violet)]/35 px-3.5 py-3 text-[12px] leading-relaxed text-foreground/85 shadow-[0_12px_40px_-16px_rgba(167,139,250,0.45),0_2px_8px_-2px_rgba(0,0,0,0.4)]"
+                /* 2026-09-04 実機報告「ルールを開くと見切れる」。横幅は
+                   viewport に収めていたが縦は青天井で、ルール本文が長いと
+                   画面下に突き抜けて読めなかった。画面高に収めて内側で
+                   スクロールさせる (overscroll-contain で背面の予定表を
+                   巻き込まない)。 */
+                className="glass-popup absolute top-full right-0 z-40 mt-1 max-h-[min(70dvh,34rem)] w-[min(36rem,calc(100vw-2rem))] overflow-y-auto overscroll-contain rounded-lg border border-[var(--neon-violet)]/35 px-3.5 py-3 text-[12px] leading-relaxed text-foreground/85 shadow-[0_12px_40px_-16px_rgba(167,139,250,0.45),0_2px_8px_-2px_rgba(0,0,0,0.4)]"
               >
                 <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                   <p className="text-[10px] font-medium tracking-normal text-[var(--neon-violet)]/85">

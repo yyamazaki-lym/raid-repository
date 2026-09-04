@@ -661,15 +661,41 @@ export function LogsView({
         {importDialog}
         {lastSyncFailuresBlock}
         <div className="flex flex-col gap-2">
+          {/* 2026-09-04 実機要望「分かりにくい文章の修正」。旧文は 1 段落に
+              5 文を詰め込み、しかも「割り当てられる条件」という **仕組みの説明**
+              から始まっていた。ここで読む人が知りたいのは「どうすれば出るか」
+              なので、押すボタンを先に書き、仕組みは括弧に落とす。 */}
           <EmptyState
             icon={Activity}
             title="練習ログがまだありません"
             description={
-              "FFLogs のレポートを取り込むと、pull 数・到達度・残 HP% がここに並びます。" +
-              "レポートは「動画に FFLogs URL を紐づける」「コンテンツ編集の FFLogs zone ID / マッチワード」" +
-              "またはレポートの zone 名からこのコンテンツに割り当てられます。" +
-              "unlisted (限定公開) レポートは URL を portal に登録してあれば取得できます (要 FFLOGS_API_KEY)。" +
-              "private (非公開) は本人の OAuth 連携か、公開設定の変更が必要です。"
+              <span className="flex flex-col gap-2 text-left">
+                <span>
+                  FFLogs のレポートを取り込むと、pull 数・到達度・残 HP%
+                  がここに並びます。取り込み方は 2 つです。
+                </span>
+                <span className="flex flex-col gap-1.5">
+                  <span>
+                    <strong className="font-medium text-foreground/85">
+                      「ログを同期」を押す
+                    </strong>
+                    — 動画に FFLogs の URL が紐づいているか、コンテンツ編集で
+                    zone ID / マッチワードを設定してあるか、レポートの zone 名が
+                    一致すれば、このコンテンツのログとして取り込まれます。
+                  </span>
+                  <span>
+                    <strong className="font-medium text-foreground/85">
+                      「URL から取り込む」に貼る
+                    </strong>
+                    — 一覧に出てこない unlisted (限定公開) のレポートは、URL
+                    を直接貼れば取り込めます。
+                  </span>
+                </span>
+                <span className="text-muted-foreground/80">
+                  private (非公開) のレポートだけは、FFLogs の公開設定を
+                  unlisted 以上に変えるか、本人の FFLogs 連携が必要です。
+                </span>
+              </span>
             }
           />
           <p className="text-center text-[11px] text-muted-foreground">

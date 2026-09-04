@@ -48,12 +48,19 @@ export function EmptyState({
         </span>
       )}
       {title && (
-        <p className="font-display text-foreground text-sm">{title}</p>
+        <p className="font-display text-sm text-balance text-foreground">{title}</p>
       )}
+      {/* 2026-09-04 実機要望「改行をもう少し綺麗にして揃えてほしい」。
+          中央寄せの 2〜3 行は行の長さがばらつくと特に目立つので `text-balance`
+          で行を均す (長文では効かない仕様なので、説明が長い呼び出し元では
+          自動的に通常の折り返しに戻る)。日本語の文節単位の改行は globals.css
+          の `word-break: auto-phrase` が全体に効いている。
+          要素が `<p>` だと箇条書き (`<ul>`) を渡せない (phrasing content しか
+          置けず parser に閉じられる) ため `<div>` にしてある。 */}
       {description && (
-        <p className="text-muted-foreground max-w-md text-xs leading-relaxed">
+        <div className="max-w-md text-xs leading-relaxed text-balance text-muted-foreground">
           {description}
-        </p>
+        </div>
       )}
     </Card>
   );

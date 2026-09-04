@@ -178,13 +178,37 @@ export function AttendanceReminderSection({
   };
 
   return (
-    <section className="flex flex-col gap-3">
-      <header className="flex items-center gap-2 border-b border-border/30 pb-2">
-        <AlarmClock className="h-3.5 w-3.5 text-[var(--neon-violet)]" aria-hidden />
-        <span className="font-mono text-[10px] tracking-[0.22em] text-muted-foreground uppercase">
-          出欠の催促
-        </span>
-      </header>
+    <section>
+      {/* 2026-09-04 実機要望「出欠の催促が長いので折り畳めるように」。
+          設定ダイアログの中でこの節だけ縦に長く、下の節までスクロールする
+          のが手間だった。Danger Zone / FFLogs 節と同じ native <details> に
+          揃える (既定は畳む)。畳んだままでも運用状態が分かるよう、見出しに
+          ON/OFF を出しておく — 「送っているのか」は開かずに知りたい情報。 */}
+      <details className="group/reminder flex flex-col gap-3">
+        <summary className="cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+          <h3 className="flex items-center gap-2 border-b border-border/30 pb-2 font-mono text-[10px] tracking-[0.22em] text-muted-foreground uppercase transition-colors hover:text-foreground">
+            <span className="text-muted-foreground/80 transition-transform group-open/reminder:rotate-90">
+              ▸
+            </span>
+            <AlarmClock
+              className="h-3.5 w-3.5 text-[var(--neon-violet)]"
+              aria-hidden
+            />
+            出欠の催促
+            <span
+              className={
+                "ml-auto rounded-sm border px-1.5 py-px text-[9px] tracking-normal " +
+                (!loaded
+                  ? "border-border/50 text-muted-foreground/70"
+                  : enabled
+                    ? "border-[var(--neon-violet)]/50 bg-[var(--neon-violet)]/10 text-[var(--neon-violet)]"
+                    : "border-border/50 text-muted-foreground/70")
+              }
+            >
+              {!loaded ? "…" : enabled ? "ON" : "OFF"}
+            </span>
+          </h3>
+        </summary>
 
       <p className="text-[11px] leading-relaxed text-muted-foreground">
         開催予定日の指定日数前になっても出欠が未入力の人だけを、まとめて
@@ -430,6 +454,7 @@ export function AttendanceReminderSection({
           )}
         </div>
       )}
+      </details>
     </section>
   );
 }
