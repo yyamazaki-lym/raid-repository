@@ -73,18 +73,35 @@ export default async function MitigationPage({
   // 依存して当てにならなかった。**手動登録があればそれを正**とし、
   // 無いときだけ自動検出にフォールバックする。
   const manualTabs = parseSheetTabsSetting(category.mitigationSheetTabs);
-  const tabs =
+  // 2026-09-04: タブ一覧 → シート本体の **直列待ち** を解消する (実機報告
+  // 「外部サービスの読み込みにラグを感じる」)。旧実装はタブを取ってから
+  // gid を決めて本体を取っていたので、外部への往復が 2 回直列に並んでいた。
+  //
+  // 実際にはタブ一覧が要るのは「?gid も URL の gid も無い」ときだけなので、
+  // 先に決まる gid (?gid → URL の gid) で本体の取得を **同時に** 走らせる。
+  // 通常のシートは URL に gid を持つので、これで往復は 1 回分の時間になる。
+  const urlGid = extractSheetGid(category.mitigationSheetUrl);
+  const provisionalGid =
+    (rawGid && /^\d+$/.test(rawGid) ? rawGid : null) ?? urlGid;
+  const [tabs, provisionalTable] = await Promise.all([
     manualTabs.length > 0
-      ? manualTabs
-      : await fetchSheetTabs(category.mitigationSheetUrl);
+      ? Promise.resolve(manualTabs)
+      : fetchSheetTabs(category.mitigationSheetUrl),
+    fetchSheetTable(category.mitigationSheetUrl, provisionalGid),
+  ]);
   const requestedGid =
     rawGid && /^\d+$/.test(rawGid) && tabs.some((t) => t.gid === rawGid)
       ? rawGid
       : null;
-  const defaultGid =
-    extractSheetGid(category.mitigationSheetUrl) ?? tabs[0]?.gid ?? null;
+  const defaultGid = urlGid ?? tabs[0]?.gid ?? null;
   const activeGid = requestedGid ?? defaultGid;
-  const table = await fetchSheetTable(category.mitigationSheetUrl, activeGid);
+  // 先読みした gid と最終的な gid が食い違うのは「URL に gid が無く、タブ
+  // 一覧の先頭に落ちた」場合だけ。そのときだけ取り直す (同一 gid なら
+  // React cache が効くので二重取得にはならない)。
+  const table =
+    activeGid === provisionalGid
+      ? provisionalTable
+      : await fetchSheetTable(category.mitigationSheetUrl, activeGid);
 
   // 2026-08-30: 列の判定結果 + チェック列の名前登録 (実機報告
   // 「Type や軽減率は出ているがそれ以外は情報なし」の切り分け導線)。

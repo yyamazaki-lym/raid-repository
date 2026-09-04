@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { SheetIframe } from "@/components/portal/sheet-iframe";
 import { SheetCards } from "@/components/portal/sheet-cards";
 import { SheetViewSwitch } from "@/components/portal/sheet-view-switch";
@@ -85,46 +86,78 @@ export default async function LootPage({
     );
   }
 
-  // TODO #94 / A-3: Sheets を編集の正としたまま、モバイルでは CSV 由来の
-  // 読み取り専用カードを出す。取得に失敗したら従来どおり iframe だけを描く
-  // (= 機能後退しない fallback)。
-  const table = await fetchSheetTable(category.lootSheetUrl);
-
+  // 2026-09-04: シート取得 (外部 = 遅い) を Suspense の内側に閉じ込め、
+  // 週制限チェック (DB = 速い) を先に描画する。開催直前にスマホで一番見たい
+  // のは消化チェックの方なので、Google の応答を待たせない。
   return (
     <div className="flex flex-col gap-4">
       {extras}
-      {/* TODO #94: モバイルはカード固定、PC はボタンでシート ⇄ カードを切替。 */}
-      {table.ok ? (
-        <SheetViewSwitch
-          storageKey="raid-repo:sheet-card-mode:loot"
-          cards={
-            <SheetCards
-              table={table.table}
-              sheetUrl={category.lootSheetUrl}
-              title="ロット管理"
-            />
-          }
-          iframe={
-            <SheetIframe
-              url={category.lootSheetUrl}
-              title="ロット管理"
-              emptyHint=""
-              categoryId={category.id}
-              kind="loot"
-              canEdit={canEdit}
-            />
-          }
-        />
-      ) : (
-        <SheetIframe
-          url={category.lootSheetUrl}
-          title="ロット管理"
-          emptyHint=""
+      <Suspense fallback={<SheetSectionSkeleton />}>
+        <LootSheetSection
+          sheetUrl={category.lootSheetUrl}
           categoryId={category.id}
-          kind="loot"
           canEdit={canEdit}
         />
-      )}
+      </Suspense>
+    </div>
+  );
+}
+
+/**
+ * シート由来の表示 (カード / iframe)。外部 fetch を含むので Suspense の
+ * 内側に置く。
+ *
+ * TODO #94 / A-3: Sheets を編集の正としたまま、モバイルでは CSV 由来の
+ * 読み取り専用カードを出す。取得に失敗したら従来どおり iframe だけを描く
+ * (= 機能後退しない fallback)。
+ */
+async function LootSheetSection({
+  sheetUrl,
+  categoryId,
+  canEdit,
+}: {
+  sheetUrl: string;
+  categoryId: string;
+  canEdit: boolean;
+}) {
+  const table = await fetchSheetTable(sheetUrl);
+  const iframe = (
+    <SheetIframe
+      url={sheetUrl}
+      title="ロット管理"
+      emptyHint=""
+      categoryId={categoryId}
+      kind="loot"
+      canEdit={canEdit}
+    />
+  );
+  if (!table.ok) return iframe;
+  // TODO #94: モバイルはカード固定、PC はボタンでシート ⇄ カードを切替。
+  return (
+    <SheetViewSwitch
+      storageKey="raid-repo:sheet-card-mode:loot"
+      cards={
+        <SheetCards table={table.table} sheetUrl={sheetUrl} title="ロット管理" />
+      }
+      iframe={iframe}
+    />
+  );
+}
+
+/** シート読み込み中のプレースホルダ (CSS のみ / client bundle に影響なし)。 */
+function SheetSectionSkeleton() {
+  return (
+    <div
+      role="status"
+      aria-label="シートを読み込み中"
+      className="flex flex-col gap-2 px-3 md:px-0"
+    >
+      {[0, 1, 2].map((i) => (
+        <div
+          key={i}
+          className="h-16 animate-pulse rounded-md border border-border/30 bg-secondary/20"
+        />
+      ))}
     </div>
   );
 }

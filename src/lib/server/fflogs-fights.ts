@@ -58,6 +58,12 @@ const FFLOGS_GRAPHQL_URL = "https://www.fflogs.com/api/v2/user";
 
 /** 1 回の同期で取りに行く report 数の上限 (実行時間を bound するため)。 */
 const DEFAULT_REPORT_LIMIT = 40;
+/**
+ * レポート取得の並列度 (2026-09-04)。取得はほぼネットワーク待ちなので
+ * 直列だと 1 件ごとのタイムアウトが素直に積み上がる。FFLogs への
+ * バーストを避けるため小さめに固定する。
+ */
+const REPORT_CONCURRENCY = 3;
 /** これより新しいセッションの report は「まだ増える」とみなして再取得する。 */
 const REFRESH_WINDOW_DAYS = 14;
 const FETCH_TIMEOUT_MS = 20_000;
@@ -280,11 +286,16 @@ export async function syncFflogsFights(opts?: {
   const failures: Array<{ reportCode: string; reason: string }> = [];
   let truncated = targets.length > sliced.length;
 
-  for (const ref of sliced) {
-    if (Date.now() > deadlineAtMs) {
-      truncated = true;
-      break;
-    }
+  /**
+   * 1 レポート分の取得と保存。並列ワーカーから呼ばれる。
+   *
+   * カウンタ (fetched / upserted / failed / failures) は複数ワーカーから
+   * 触るが、JS は単一スレッドで `await` の境界でしか切り替わらないため
+   * インクリメントの取りこぼしは起きない。
+   */
+  const processReport = async (
+    ref: ReportRef & { effectiveDate: string | null },
+  ): Promise<void> => {
     let res = await fetchReportFights(token, ref.code);
     fetched += 1;
     // PT 指標 (Summary table) は v2 token で読めたレポートだけ取りに行く。
@@ -343,7 +354,7 @@ export async function syncFflogsFights(opts?: {
         },
         { onConflict: "report_code" },
       );
-      continue;
+      return;
     }
 
     // 動画リンクで決まらなかった場合は zone ID / 内容分類で解決する。
@@ -431,7 +442,36 @@ export async function syncFflogsFights(opts?: {
       },
       { onConflict: "report_code" },
     );
-  }
+  };
+
+  // 2026-09-04: レポート取得を有限並列にする (実機報告「同期時にラグを
+  // 感じる」)。旧実装は完全直列で、1 レポートあたり最大 20 秒のタイムアウトが
+  // そのまま積み上がり、40 件の枠を使い切る前に時間予算 (120 秒) で
+  // 打ち切られていた。取得はほぼネットワーク待ちなので、並列度を上げた分だけ
+  // 実時間が縮む。
+  //
+  // 並列度を 3 に留めるのは FFLogs 側への配慮。v2 API はポイント制の
+  // 時間あたり上限なので同時実行数を上げても消費ポイントの総量は変わらないが、
+  // 瞬間的なバーストは避ける。時間予算の判定は各ワーカーが次のレポートを
+  // 取り出す前に行うので、打ち切りの挙動は直列版と同じ。
+  let cursor = 0;
+  const runWorker = async (): Promise<void> => {
+    for (;;) {
+      if (Date.now() > deadlineAtMs) {
+        truncated = true;
+        return;
+      }
+      const index = cursor;
+      cursor += 1;
+      if (index >= sliced.length) return;
+      await processReport(sliced[index]!);
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(REPORT_CONCURRENCY, sliced.length) }, () =>
+      runWorker(),
+    ),
+  );
 
   // ---- オフライン再解決 + 掃除 (FFLogs を叩かない後処理) ----------------
   //

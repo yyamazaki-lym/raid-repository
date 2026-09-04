@@ -1,5 +1,6 @@
 import "server-only";
 import { cache } from "react";
+import { unstable_cache } from "next/cache";
 import { isPublicHttpUrl } from "@/lib/url-safe";
 import { safeFetch } from "./safe-fetch";
 import {
@@ -29,27 +30,69 @@ const MAX_BYTES = 2 * 1024 * 1024;
 // ページ描画をブロックする経路なので短め。監査 D-1 の「外部 fetch は 8s」
 // より更に短くする (取れなければ iframe に落ちるだけで実害がない)。
 const TIMEOUT_MS = 6_000;
-/** プロセス内 TTL キャッシュの寿命。開催中の編集が最大この時間で追いつく。 */
-const TTL_MS = 5 * 60 * 1000;
+/**
+ * Data Cache の TTL (秒)。開催中の編集が最大この時間で追いつく。
+ *
+ * 2026-09-04: 5 分のプロセス内キャッシュから 60 秒の Data Cache に変更した。
+ * 単一固定向けの低トラフィック portal では Lambda インスタンスがすぐ冷える
+ * ため、プロセス内 Map は **ほぼ毎回ミス** し、軽減表 / ロットを開くたびに
+ * Google への往復 (最大 6 秒) がページ描画をブロックしていた (実機報告
+ * 「外部サービスの読み込みにラグを感じる」)。Data Cache はインスタンスを
+ * 跨いで共有され、TTL 超過後も **stale を返しつつ裏で更新** するので、
+ * 通常の閲覧が外部 fetch を待つことはほぼ無くなる。
+ *
+ * TTL を 5 分から 60 秒に縮めたのは、共有キャッシュでは「冷えたインスタンスに
+ * 当たれば即座に最新が見える」という逃げ道が無くなるため。シート編集 →
+ * カード反映の最大待ちは 5 分から 1 分に縮まる。
+ */
+const CACHE_TTL_SECONDS = 60;
+/**
+ * 失敗のプロセス内 TTL (ms)。失敗は Data Cache に載せない — 共有キャッシュに
+ * 焼き付くと「共有設定を直したのに 1 分間直らない」ことになるため。代わりに
+ * ここで短時間だけ抑え、非公開シートへの連打を防ぐ。
+ */
+const FAIL_TTL_MS = 30 * 1000;
 
 export type SheetTableResult =
   | { ok: true; table: SheetTable; csvUrl: string }
   | { ok: false; reason: string };
 
 /**
- * プロセス内 TTL キャッシュ。
+ * シート取得の Data Cache タグ。無効化が要るときはこのタグを叩く。
  *
  * ⚠ `safeFetch` は undici を直接使う (IP ピン留めのため) ので **Next の
- * fetch キャッシュ (`next: { revalidate }`) は効かない**。素で書くと
- * 軽減表/ロットを開くたびに Google へ取りに行くことになるため、ここで
- * 明示的にキャッシュする。Lambda インスタンス単位なので厳密な共有では
- * ないが、「編集の正は Sheets 側」という前提では十分。
+ * fetch キャッシュ (`next: { revalidate }`) は効かない**。そこで
+ * `unstable_cache` で関数単位にキャッシュする (Next.js 16 では `use cache`
+ * が後継だが、それには `cacheComponents` の全体切替が要るのでここでは使わない)。
  */
-const memo = new Map<string, { at: number; result: SheetTableResult }>();
+export const SHEET_CACHE_TAG = "sheet";
+
+/** 失敗した取得のプロセス内メモ (Data Cache には載せない)。 */
+const failMemo = new Map<string, { at: number; result: SheetTableResult }>();
+
+/**
+ * 取得失敗を表す例外。`unstable_cache` の中から投げることで **失敗を
+ * キャッシュさせない** (rejection は Data Cache に書かれない)。
+ */
+class SheetFetchError extends Error {}
+
+/**
+ * Data Cache 本体。引数 (URL と gid) がそのままキーになる。
+ * 成功時のみ値を返し、失敗は投げる。
+ */
+const cachedSheetTable = unstable_cache(
+  async (sheetUrl: string, gid: string): Promise<SheetTableResult> => {
+    const result = await fetchSheetTableUncached(sheetUrl, gid || null);
+    if (!result.ok) throw new SheetFetchError(result.reason);
+    return result;
+  },
+  ["sheet-table"],
+  { revalidate: CACHE_TTL_SECONDS, tags: [SHEET_CACHE_TAG] },
+);
 
 /**
  * 1 リクエスト内の重複呼び出しは React `cache()` で畳み、インスタンスを
- * 跨いだ再取得は上の TTL で抑える。
+ * 跨いだ再取得は Data Cache (上の TTL) で抑える。
  */
 export const fetchSheetTable = cache(
   async (
@@ -58,25 +101,51 @@ export const fetchSheetTable = cache(
     // 未指定なら URL 自身の gid (従来挙動)。
     gid?: string | null,
   ): Promise<SheetTableResult> => {
-    const key = `${(sheetUrl ?? "").trim()}#gid=${gid ?? ""}`;
-    const hit = memo.get(key);
-    if (hit && Date.now() - hit.at < TTL_MS) return hit.result;
-    const result = await fetchSheetTableUncached(sheetUrl, gid);
-    // 失敗も短時間キャッシュする (非公開シートに毎回取りに行かない)。
-    memo.set(key, { at: Date.now(), result });
-    // 際限なく増えないように上限を切る (カテゴリ数 × 2 程度しか入らない)。
-    if (memo.size > 64) {
-      for (const k of memo.keys()) {
-        memo.delete(k);
-        if (memo.size <= 32) break;
+    const url = (sheetUrl ?? "").trim();
+    if (!url) return { ok: false, reason: "CSV 取得に対応しない URL 形式" };
+    const key = `${url}#gid=${gid ?? ""}`;
+    const failed = failMemo.get(key);
+    if (failed && Date.now() - failed.at < FAIL_TTL_MS) return failed.result;
+    try {
+      return await cachedSheetTable(url, gid ?? "");
+    } catch (e) {
+      const result: SheetTableResult = {
+        ok: false,
+        reason:
+          e instanceof SheetFetchError
+            ? e.message
+            : "シート取得に失敗しました",
+      };
+      failMemo.set(key, { at: Date.now(), result });
+      // 際限なく増えないように上限を切る (カテゴリ数 × 2 程度しか入らない)。
+      if (failMemo.size > 64) {
+        for (const k of failMemo.keys()) {
+          failMemo.delete(k);
+          if (failMemo.size <= 32) break;
+        }
       }
+      return result;
     }
-    return result;
   },
 );
 
-/** タブ一覧のプロセス内 TTL キャッシュ (fetchSheetTable の memo と同方式)。 */
-const tabsMemo = new Map<string, { at: number; tabs: SheetTab[] }>();
+/** タブ一覧の Data Cache (fetchSheetTable と同方式)。 */
+const cachedSheetTabs = unstable_cache(
+  async (listUrl: string): Promise<SheetTab[]> => {
+    const res = await safeFetch(listUrl, {
+      headers: { Accept: "text/html,*/*" },
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+    if (!res.ok) throw new SheetFetchError(`tabs ${res.status}`);
+    // htmlview はシート全体の HTML を含むため CSV よりだいぶ大きい。
+    // タブバーは文書末尾にあるので全体を読むが、上限は CSV の 2 倍。
+    const text = await readCapped(res, MAX_BYTES * 2);
+    if (text === null) throw new SheetFetchError("tabs too large");
+    return parseSheetTabs(text);
+  },
+  ["sheet-tabs"],
+  { revalidate: CACHE_TTL_SECONDS, tags: [SHEET_CACHE_TAG] },
+);
 
 /**
  * シートのワークシート (層タブ) 一覧を pubhtml / htmlview から取得する
@@ -88,31 +157,12 @@ export const fetchSheetTabs = cache(
   async (sheetUrl: string | null | undefined): Promise<SheetTab[]> => {
     const listUrl = toSheetTabListUrl(sheetUrl);
     if (!listUrl || !isPublicHttpUrl(listUrl)) return [];
-    const hit = tabsMemo.get(listUrl);
-    if (hit && Date.now() - hit.at < TTL_MS) return hit.tabs;
-    let tabs: SheetTab[] = [];
     try {
-      const res = await safeFetch(listUrl, {
-        headers: { Accept: "text/html,*/*" },
-        signal: AbortSignal.timeout(TIMEOUT_MS),
-      });
-      if (res.ok) {
-        // htmlview はシート全体の HTML を含むため CSV よりだいぶ大きい。
-        // タブバーは文書末尾にあるので全体を読むが、上限は CSV の 2 倍。
-        const text = await readCapped(res, MAX_BYTES * 2);
-        if (text !== null) tabs = parseSheetTabs(text);
-      }
+      return await cachedSheetTabs(listUrl);
     } catch (e) {
       console.warn("[sheet-table] tabs fetch error:", e);
+      return [];
     }
-    tabsMemo.set(listUrl, { at: Date.now(), tabs });
-    if (tabsMemo.size > 64) {
-      for (const k of tabsMemo.keys()) {
-        tabsMemo.delete(k);
-        if (tabsMemo.size <= 32) break;
-      }
-    }
-    return tabs;
   },
 );
 

@@ -661,15 +661,41 @@ export function LogsView({
         {importDialog}
         {lastSyncFailuresBlock}
         <div className="flex flex-col gap-2">
+          {/* 2026-09-04: 1 段落に 5 文を詰めた説明を、結論 → 箇条書きに
+              分けた。読む側が知りたいのは「何が出るか」と「出ないときに
+              どこを直すか」の 2 点なので、その順に並べる。 */}
           <EmptyState
             icon={Activity}
             title="練習ログがまだありません"
             description={
-              "FFLogs のレポートを取り込むと、pull 数・到達度・残 HP% がここに並びます。" +
-              "レポートは「動画に FFLogs URL を紐づける」「コンテンツ編集の FFLogs zone ID / マッチワード」" +
-              "またはレポートの zone 名からこのコンテンツに割り当てられます。" +
-              "unlisted (限定公開) レポートは URL を portal に登録してあれば取得できます (要 FFLOGS_API_KEY)。" +
-              "private (非公開) は本人の OAuth 連携か、公開設定の変更が必要です。"
+              <span className="flex flex-col gap-2 text-left">
+                <span>
+                  FFLogs のレポートを取り込むと、pull 数・到達度・残 HP%
+                  がここに並びます。
+                </span>
+                <span className="flex flex-col gap-1">
+                  <span className="font-medium text-foreground/80">
+                    レポートがこのコンテンツに割り当てられる条件
+                  </span>
+                  <span>動画に FFLogs の URL が紐づいている</span>
+                  <span>
+                    コンテンツ編集で FFLogs zone ID かマッチワードを設定してある
+                  </span>
+                  <span>レポートの zone 名がこのコンテンツと一致する</span>
+                </span>
+                <span className="flex flex-col gap-1">
+                  <span className="font-medium text-foreground/80">
+                    公開設定による違い
+                  </span>
+                  <span>
+                    unlisted (限定公開) — URL を portal に登録してあれば取得できます
+                    (要 FFLOGS_API_KEY)
+                  </span>
+                  <span>
+                    private (非公開) — 本人の OAuth 連携か、公開設定の変更が必要です
+                  </span>
+                </span>
+              </span>
             }
           />
           <p className="text-center text-[11px] text-muted-foreground">
