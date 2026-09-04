@@ -80,9 +80,18 @@ export default async function MitigationPage({
   // 実際にはタブ一覧が要るのは「?gid も URL の gid も無い」ときだけなので、
   // 先に決まる gid (?gid → URL の gid) で本体の取得を **同時に** 走らせる。
   // 通常のシートは URL に gid を持つので、これで往復は 1 回分の時間になる。
+  //
+  // ⚠ 先読みに使う gid は **登録済みの層に限る**。`?gid=` は閲覧者が自由に
+  // 付けられるクエリなので、数字でありさえすれば取りに行く形にすると
+  // 「未知の gid で外向き fetch を誘発できる」経路になる (旧実装はタブ一覧と
+  // 突き合わせてから取得していたので、その性質を落とさない)。手動登録が
+  // あればタブ一覧を待たずに突き合わせられるので、先読みはそのときだけ。
   const urlGid = extractSheetGid(category.mitigationSheetUrl);
-  const provisionalGid =
-    (rawGid && /^\d+$/.test(rawGid) ? rawGid : null) ?? urlGid;
+  const preValidatedGid =
+    rawGid && /^\d+$/.test(rawGid) && manualTabs.some((t) => t.gid === rawGid)
+      ? rawGid
+      : null;
+  const provisionalGid = preValidatedGid ?? urlGid;
   const [tabs, provisionalTable] = await Promise.all([
     manualTabs.length > 0
       ? Promise.resolve(manualTabs)

@@ -67,8 +67,24 @@ export type SheetTableResult =
  */
 export const SHEET_CACHE_TAG = "sheet";
 
-/** 失敗した取得のプロセス内メモ (Data Cache には載せない)。 */
+/**
+ * 失敗した取得のプロセス内メモ (Data Cache には載せない)。
+ *
+ * 失敗を Data Cache に載せないぶん、ここが無いと **失敗するたびに毎回
+ * 取りに行く** ことになる。タブ一覧は「ウェブに公開」していないシートで
+ * 常に失敗する経路 (2026-08-30 の実機報告) なので、表と同じく必ず抑える。
+ */
 const failMemo = new Map<string, { at: number; result: SheetTableResult }>();
+const tabsFailMemo = new Map<string, number>();
+
+/** 失敗メモの上限を切る (カテゴリ数 × 2 程度しか入らない想定)。 */
+function trimMemo(m: Map<string, unknown>): void {
+  if (m.size <= 64) return;
+  for (const k of m.keys()) {
+    m.delete(k);
+    if (m.size <= 32) break;
+  }
+}
 
 /**
  * 取得失敗を表す例外。`unstable_cache` の中から投げることで **失敗を
@@ -117,13 +133,7 @@ export const fetchSheetTable = cache(
             : "シート取得に失敗しました",
       };
       failMemo.set(key, { at: Date.now(), result });
-      // 際限なく増えないように上限を切る (カテゴリ数 × 2 程度しか入らない)。
-      if (failMemo.size > 64) {
-        for (const k of failMemo.keys()) {
-          failMemo.delete(k);
-          if (failMemo.size <= 32) break;
-        }
-      }
+      trimMemo(failMemo);
       return result;
     }
   },
@@ -157,10 +167,14 @@ export const fetchSheetTabs = cache(
   async (sheetUrl: string | null | undefined): Promise<SheetTab[]> => {
     const listUrl = toSheetTabListUrl(sheetUrl);
     if (!listUrl || !isPublicHttpUrl(listUrl)) return [];
+    const failedAt = tabsFailMemo.get(listUrl);
+    if (failedAt !== undefined && Date.now() - failedAt < FAIL_TTL_MS) return [];
     try {
       return await cachedSheetTabs(listUrl);
     } catch (e) {
       console.warn("[sheet-table] tabs fetch error:", e);
+      tabsFailMemo.set(listUrl, Date.now());
+      trimMemo(tabsFailMemo);
       return [];
     }
   },
