@@ -19,4 +19,7 @@
  * (schedule-list.tsx の `decided`) は濃いままなので、行の識別性は保たれる。
  */
 export const DECISION_BADGE_CLASS =
-  "inline-flex h-6 items-center justify-center rounded-md border border-emerald-400/70 bg-emerald-400/18 px-2 text-[10px] font-bold tracking-normal text-emerald-300 shadow-[0_0_12px_-3px_rgba(52,211,153,0.55)]";
+  // 2026-09-04 実機報告「スマホでトップの確定が縦になる」。flex の子は既定で
+  // 縮み、日本語は文字間で改行できるため、幅が詰まると「確」「定」が 1 行ずつに
+  // 割れて縦組みになっていた。バッジは 2 文字固定なので縮ませず折り返させない。
+  "inline-flex h-6 shrink-0 items-center justify-center rounded-md border border-emerald-400/70 bg-emerald-400/18 px-2 text-[10px] font-bold tracking-normal whitespace-nowrap text-emerald-300 shadow-[0_0_12px_-3px_rgba(52,211,153,0.55)]";
