@@ -118,6 +118,40 @@ export async function deleteCategoryBisLinkAction(
   return { ok: true };
 }
 
+/**
+ * 並び替えの永続化 (2026-09-04 実機要望「BIS を並び替え出来るように」)。
+ *
+ * `category_bis_links.sort_order` は追加時に採番されるだけで、後から
+ * 並べ替える手段が無かった (読み取り側は既に sort_order 昇順)。
+ * ウェイマーク / マクロ / 動画と同じ「渡された順に index を振り直す」方式で
+ * 揃える。Postgres に複数行の並び替え文が無いので UPDATE を並列に投げる。
+ *
+ * 認可は他の BiS 操作と同じ admin-only。id は UUID なのでカテゴリを跨いだ
+ * 混在は起こり得るが、admin しか呼べず、`sort_order` はカテゴリ内でのみ
+ * 意味を持つ値なので実害は無い (ウェイマーク側と同じ扱い)。
+ */
+export async function setCategoryBisLinkOrderAction(
+  orderedIds: string[],
+): Promise<WriteResult> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
+
+  const supabase = await createClient();
+  const results = await Promise.all(
+    orderedIds.map((id, index) =>
+      supabase
+        .from("category_bis_links")
+        .update({ sort_order: index })
+        .eq("id", id),
+    ),
+  );
+  const failed = results.find((r) => r.error);
+  if (failed?.error)
+    return { ok: false, reason: dbError("並び替え", failed.error) };
+  revalidateQuietly();
+  return { ok: true };
+}
+
 function revalidateQuietly() {
   try {
     revalidatePath("/category", "layout");
