@@ -27,6 +27,7 @@ export async function syncFflogsFightsAction(): Promise<
       fightsUpserted: number;
       failed: number;
       truncated: boolean;
+      remaining: number;
       reattributed: number;
       failures: Array<{ reportCode: string; reason: string }>;
       videosBridged: number;

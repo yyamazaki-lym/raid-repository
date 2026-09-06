@@ -416,7 +416,14 @@ export function LogsView({
           (result.reattributed > 0 ? ` / 再分類 ${result.reattributed}` : "") +
           (result.videosBridged > 0 ? ` / 動画に紐づけ ${result.videosBridged}` : "") +
           (result.failed > 0 ? ` (失敗 ${result.failed} — 理由は下に表示)` : "") +
-          (result.truncated ? " ※途中まで" : ""),
+          // 2026-09-07: 取り直し (フェーズ遷移 / 死亡イベントの後追い) が溜まって
+          // いると 1 回の枠 (40 件 / 120 秒) に入らない。残件数と「もう一度押す」
+          // を明示する (従来は「※途中まで」だけで、何をすればいいか分からなかった)。
+          (result.remaining > 0
+            ? ` ※残り ${result.remaining} レポートは次回 — もう一度「ログを同期」を押すと続きを取得します`
+            : result.truncated
+              ? " ※途中まで"
+              : ""),
       );
       router.refresh();
     });
@@ -899,6 +906,7 @@ export function LogsView({
               totals={phaseTotals}
               truncated={truncated}
               allPulls={phaseTotalsAll?.pulls ?? null}
+              totalPulls={shownTotalPulls}
             />
           )}
         </section>
@@ -1269,13 +1277,20 @@ function PhaseTimeCard({
   totals,
   truncated,
   allPulls,
+  totalPulls,
 }: {
   totals: Array<{ id: number; ms: number; share: number }>;
   truncated: boolean;
   /** 全件集計のときの母数 (pull 数)。null なら表示中の明細からの集計。 */
   allPulls: number | null;
+  /** カテゴリの全 pull 数。母数がこれより少ないときに「情報あり N / 全 M」と出す。 */
+  totalPulls: number;
 }) {
   const totalMs = totals.reduce((acc, t) => acc + t.ms, 0);
+  // 2026-09-07: フェーズ遷移は 2026-09-06 以降に取得した pull にしか無く、
+  // 古い pull は同期の取り直し (1 回 40 レポート) で順に埋まる。母数が全 pull
+  // より少ない間は、それが分かる表記にする (実機: 「P7 が 12 分は短すぎる」)。
+  const partial = allPulls !== null && allPulls < totalPulls;
   return (
     <div className="flex flex-col gap-1 rounded-md border border-border/40 bg-secondary/15 px-3 py-2">
       <div className="flex items-baseline justify-between gap-2">
@@ -1285,7 +1300,9 @@ function PhaseTimeCard({
         <span className="font-mono text-[9px] tracking-[0.12em] text-muted-foreground/70">
           合計 {formatMs(totalMs)}
           {allPulls !== null
-            ? ` (登録ログ全 ${allPulls} pull)`
+            ? partial
+              ? ` (フェーズ情報のある ${allPulls} / 全 ${totalPulls} pull — 残りは同期で取り直し中)`
+              : ` (登録ログ全 ${allPulls} pull)`
             : truncated
               ? " (表示中の分)"
               : ""}
