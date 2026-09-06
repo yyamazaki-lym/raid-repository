@@ -713,7 +713,10 @@ export function LogsView({
             icon={Activity}
             title="練習ログがまだありません"
             description={
-              <span className="flex flex-col gap-2 text-left">
+              // 2026-09-06 実機指摘「若干左寄りに見える」: 中央寄せの箱の中で
+              // 本文だけ text-left にしていたため、行末の余白ぶん左に寄って
+              // 見えていた。見出しと同じく中央寄せに揃える。
+              <span className="flex flex-col gap-2 text-center">
                 <span>
                   FFLogs のレポートを取り込むと、pull 数・到達度・残 HP%
                   がここに並びます。取り込み方は 2 つです。

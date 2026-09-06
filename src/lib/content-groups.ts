@@ -19,9 +19,32 @@ export const CONTENT_GROUPS: Array<string[]> = [
   // 1: Ultimate Bahamut (UCOB)
   ["絶バハムート", "unending coil of bahamut", "ucob"],
   // 2: Ultimate Ultima Weapon (UWU)
-  ["絶アルテマウェポン", "ultima weapon ultimate", "uwu"],
+  // 2026-09-06: FFLogs の zone 名は "The Weapon's Refrain (Ultimate)"。
+  // 従来のキーワードには入っておらず、絶竜詩と同じ理由で紐づかなかった。
+  [
+    "絶アルテマウェポン破壊作戦",
+    "絶アルテマウェポン",
+    "絶アルテマ",
+    "weapon's refrain",
+    "weapons refrain",
+    "ultima weapon ultimate",
+    "uwu",
+  ],
   // 3: Ultimate Dragonsong (DSR)
-  ["絶ニーズヘッグ", "dragonsong's reprise", "dragonsong reprise", "dsr"],
+  // 2026-09-06: 公式名「絶竜詩戦争」とその略称が入っておらず (「絶ニーズヘッグ」
+  // は誤り)、カテゴリ名「絶竜詩戦争」が分類不能 → FFLogs の zone 名
+  // "Dragonsong's Reprise (Ultimate)" のレポートがカテゴリに紐づかなかった
+  // (実機: 絶竜詩の練習ログが動画リンク経由の 3 件しか出ない)。
+  [
+    "絶竜詩戦争",
+    "絶竜詩",
+    "竜詩戦争",
+    "絶ニーズヘッグ",
+    "dragonsong's reprise",
+    "dragonsong reprise",
+    "dragonsong",
+    "dsr",
+  ],
   // 4: Ultimate Omega Protocol (TOP)
   ["絶オメガ検証戦", "絶オメガ検証", "the omega protocol", "top "],
   // 5: Ultimate Futures Rewritten (FRU)
