@@ -8,16 +8,23 @@
  * 「未入力」として null を返す — 必須チェックは呼び出し側の責務 (任意
  * 入力の FFLogs URL 等で「空 = エラーなし」をそのまま使えるように)。
  */
-export function httpUrlError(value: string): string | null {
+export function httpUrlError(
+  value: string,
+  locale: "ja" | "en" = "ja",
+): string | null {
   const trimmed = value.trim();
   if (!trimmed) return null;
   if (!/^https?:\/\//i.test(trimmed)) {
-    return "http:// または https:// で始めてください";
+    return locale === "en"
+      ? "Must start with http:// or https://"
+      : "http:// または https:// で始めてください";
   }
   try {
     new URL(trimmed);
   } catch {
-    return "URL の形式が正しくありません";
+    return locale === "en"
+      ? "Invalid URL format"
+      : "URL の形式が正しくありません";
   }
   return null;
 }

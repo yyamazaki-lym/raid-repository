@@ -25,6 +25,7 @@ import type {
   CategoryLink,
   CategoryLinkKind,
 } from "@/lib/supabase/types";
+import { useLocale, useMessages } from "@/lib/i18n/client";
 
 // Phase 15: kind=image は ImageFormDialog 担当。LinkFormDialog は
 // 従来通り strategy / video のみを扱う (Props 型で image / gphoto を除外)。
@@ -46,13 +47,7 @@ type Props = {
 // Phase 17 (2026-05-13): 攻略タブの「攻略リンク追加」ボタンを「リンク追加」に
 // 短縮 (Images / Google フォトと並ぶ Action ボタン群で表記を統一)。動画タブ側は
 // そのまま「動画」のままで OK (動画ボタンの所在からも自明)。
-const KIND_LABEL: Record<
-  Exclude<CategoryLinkKind, "image" | "gphoto">,
-  string
-> = {
-  strategy: "リンク",
-  video: "動画",
-};
+// ラベルの実体は辞書 `linkForm.kindLabel` (表示言語で切り替わる)。
 
 export function LinkFormDialog({
   categoryId,
@@ -62,6 +57,9 @@ export function LinkFormDialog({
   open: controlledOpen,
   onOpenChange: controlledOnOpenChange,
 }: Props) {
+  const m = useMessages();
+  const locale = useLocale();
+  const kindLabel = m.linkForm.kindLabel[kind];
   const isEdit = !!link;
   const isControlled = controlledOpen !== undefined;
   const [internalOpen, setInternalOpen] = useState(false);
@@ -100,11 +98,11 @@ export function LinkFormDialog({
   const onFetchTitle = async () => {
     const u = url.trim();
     if (!u) {
-      setError("URLを入力してから取得してください");
+      setError(m.linkForm.enterUrlFirst);
       return;
     }
     if (!/^https?:\/\//i.test(u)) {
-      setError("URLは http:// または https:// で始めてください");
+      setError(m.crud.urlScheme);
       return;
     }
     setError(null);
@@ -115,13 +113,13 @@ export function LinkFormDialog({
       );
       const data = (await res.json()) as { title?: string; error?: string };
       if (!res.ok || !data.title) {
-        toast.error("タイトル取得失敗: " + (data.error ?? "no title"));
+        toast.error(m.linkForm.titleFetchFailed(data.error ?? "no title"));
         return;
       }
       setTitle(data.title);
-      toast.success("タイトルを取得しました");
+      toast.success(m.linkForm.titleFetched);
     } catch (e) {
-      toast.error("タイトル取得失敗: " + String(e));
+      toast.error(m.linkForm.titleFetchFailed(String(e)));
     } finally {
       setFetchingTitle(false);
     }
@@ -132,19 +130,19 @@ export function LinkFormDialog({
     let t = title.trim();
     const u = url.trim();
     // URL バリデーションを先に通す: タイトル空時の自動取得は URL が valid な前提
-    if (!u) return setError("URL を入力してください");
-    const uErr = httpUrlError(u);
+    if (!u) return setError(m.linkForm.enterUrl);
+    const uErr = httpUrlError(u, locale);
     if (uErr) {
       setUrlFieldError(uErr);
-      return setError("URL: " + uErr);
+      return setError(m.linkForm.urlPrefix + uErr);
     }
 
     // Validate optional logs URL.
     const trimmedLogs = logsUrl.trim();
-    const logsErr = httpUrlError(trimmedLogs);
+    const logsErr = httpUrlError(trimmedLogs, locale);
     if (logsErr) {
       setLogsFieldError(logsErr);
-      return setError("Logs URL: " + logsErr);
+      return setError(m.linkForm.logsUrlPrefix + logsErr);
     }
 
     // 2.x: 新規追加でタイトル空なら /api/page-title で自動補完 (kind 不問)。
@@ -159,19 +157,17 @@ export function LinkFormDialog({
         const data = (await res.json()) as { title?: string; error?: string };
         if (!res.ok || !data.title) {
           setFetchingTitle(false);
-          return setError(
-            "タイトルを取得できませんでした。手動で入力してください",
-          );
+          return setError(m.linkForm.titleFetchFailedManual);
         }
         setTitle(data.title);
         t = data.title.trim();
       } catch (e) {
         setFetchingTitle(false);
-        return setError("タイトル取得失敗: " + String(e));
+        return setError(m.linkForm.titleFetchFailed(String(e)));
       }
       setFetchingTitle(false);
     } else if (!t) {
-      return setError("タイトルを入力してください");
+      return setError(m.linkForm.enterTitle);
     }
 
     setBusy(true);
@@ -195,20 +191,18 @@ export function LinkFormDialog({
     setBusy(false);
 
     if (!result.ok) {
-      setError(`保存失敗: ${result.reason}`);
+      setError(m.crud.saveFailed(result.reason));
       return;
     }
 
-    toast.success(
-      isEdit ? "更新しました" : `${KIND_LABEL[kind]}を追加しました`,
-    );
+    toast.success(isEdit ? m.crud.updated : m.linkForm.added(kindLabel));
     setOpen(false);
   };
 
   const defaultTrigger = (
     <DialogTrigger className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-border/60 bg-background/30 px-3 py-1.5 text-[11px] tracking-normal whitespace-nowrap text-muted-foreground transition-colors hover:border-[var(--neon-cyan)]/60 hover:text-foreground">
       <Plus className="h-3.5 w-3.5" aria-hidden />
-      {KIND_LABEL[kind]}追加
+      {m.linkForm.addTrigger(kindLabel)}
     </DialogTrigger>
   );
 
@@ -235,9 +229,7 @@ export function LinkFormDialog({
               {isEdit ? "Edit" : "Add"} {kind === "video" ? "Video" : "Link"}
             </DialogTitle>
             <DialogDescription className="text-xs">
-              {kind === "video"
-                ? "動画URL（YouTube可・他サイトはリンクとして表示）"
-                : "ウェブサイト・記事・wiki などのリンク"}
+              {kind === "video" ? m.linkForm.descVideo : m.linkForm.descLink}
             </DialogDescription>
           </div>
         </DialogHeader>
@@ -257,7 +249,7 @@ export function LinkFormDialog({
                 setUrl(e.target.value);
                 if (urlFieldError) setUrlFieldError(null);
               }}
-              onBlur={() => setUrlFieldError(httpUrlError(url))}
+              onBlur={() => setUrlFieldError(httpUrlError(url, locale))}
               aria-invalid={urlFieldError ? true : undefined}
               aria-describedby={urlFieldError ? "link-url-error" : undefined}
               placeholder={
@@ -284,17 +276,17 @@ export function LinkFormDialog({
           <div className="flex flex-col gap-1.5">
             <div className="flex items-center justify-between gap-2">
               <Label htmlFor="link-title" className="text-xs text-foreground/80">
-                タイトル
+                {m.linkForm.titleLabel}
               </Label>
               <button
                 type="button"
                 onClick={onFetchTitle}
                 disabled={fetchingTitle || !url.trim()}
                 className="inline-flex items-center gap-1 rounded-sm border border-[var(--neon-cyan)]/40 bg-[var(--neon-cyan)]/8 px-2 py-0.5 text-[10px] tracking-normal text-[var(--neon-cyan)] transition-colors hover:bg-[var(--neon-cyan)]/15 disabled:opacity-40"
-                aria-label="URLからタイトルを取得"
+                aria-label={m.linkForm.fetchTitleAria}
               >
                 <Wand2 className="h-3 w-3" aria-hidden />
-                {fetchingTitle ? "取得中…" : "URLから取得"}
+                {fetchingTitle ? m.linkForm.fetching : m.linkForm.fetchFromUrl}
               </button>
             </div>
             <Input
@@ -303,8 +295,8 @@ export function LinkFormDialog({
               onChange={(e) => setTitle(e.target.value)}
               placeholder={
                 kind === "video"
-                  ? "例: P1 黒魔目線 (固定〇〇)"
-                  : "例: 攻略記事 by ○○"
+                  ? m.linkForm.titlePlaceholderVideo
+                  : m.linkForm.titlePlaceholderLink
               }
               spellCheck={false}
             />
@@ -315,7 +307,7 @@ export function LinkFormDialog({
               htmlFor="link-desc"
               className="text-xs text-foreground/80"
             >
-              メモ（任意）
+              {m.linkForm.memoLabel}
             </Label>
             <Textarea
               id="link-desc"
@@ -323,8 +315,8 @@ export function LinkFormDialog({
               onChange={(e) => setDescription(e.target.value)}
               placeholder={
                 kind === "video"
-                  ? "例: 開幕〜P2途中まで / ○○分頃の散開図あり"
-                  : "例: P3 散開法の図解あり"
+                  ? m.linkForm.memoPlaceholderVideo
+                  : m.linkForm.memoPlaceholderLink
               }
               rows={3}
               className="text-[13px] leading-relaxed"
@@ -334,7 +326,7 @@ export function LinkFormDialog({
           {kind === "video" && (
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="link-logs" className="text-xs text-foreground/80">
-                FFLogs URL（任意）
+                {m.linkForm.logsLabel}
               </Label>
               <Input
                 id="link-logs"
@@ -345,7 +337,7 @@ export function LinkFormDialog({
                   setLogsUrl(e.target.value);
                   if (logsFieldError) setLogsFieldError(null);
                 }}
-                onBlur={() => setLogsFieldError(httpUrlError(logsUrl))}
+                onBlur={() => setLogsFieldError(httpUrlError(logsUrl, locale))}
                 aria-invalid={logsFieldError ? true : undefined}
                 aria-describedby={
                   (logsFieldError ? "link-logs-error " : "") + "link-logs-help"
@@ -368,7 +360,7 @@ export function LinkFormDialog({
                 id="link-logs-help"
                 className="text-muted-foreground text-[11px] leading-relaxed"
               >
-                登録するとカードに「FFLogs」リンクが追加され、ワンタップでレポートページに飛べます。
+                {m.linkForm.logsHelp}
               </p>
             </div>
           )}
@@ -396,7 +388,7 @@ export function LinkFormDialog({
             disabled={busy}
             className="text-[11px] tracking-normal"
           >
-            キャンセル
+            {m.common.cancel}
           </Button>
           <Button
             type="button"
@@ -410,7 +402,7 @@ export function LinkFormDialog({
             ) : (
               <Save className="h-3.5 w-3.5" aria-hidden />
             )}
-            {busy ? "保存中…" : isEdit ? "更新" : "追加"}
+            {busy ? m.common.saving : isEdit ? m.crud.update : m.common.add}
           </Button>
         </DialogFooter>
       </DialogContent>

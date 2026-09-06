@@ -61,6 +61,7 @@ import {
   applyOptimisticOrder,
   useSortableReorder,
 } from "@/lib/use-sortable-reorder";
+import { useMessages } from "@/lib/i18n/client";
 
 /**
  * ロットタブの上に置く 2 パネル (TODO #94)。
@@ -96,6 +97,7 @@ export function LootWeeklyPanel({
   rows: LootWeeklyRow[];
 }) {
   const router = useRouter();
+  const m = useMessages();
   const [pending, startTransition] = useTransition();
   const me = rows.find((r) => r.isMe) ?? null;
   const unresolved = rows.filter((r) => r.status === "未消化").length;
@@ -113,7 +115,7 @@ export function LootWeeklyPanel({
         toast.error(result.reason);
         return;
       }
-      toast.success(`今週を「${status}」にしました`);
+      toast.success(m.lootWeekly.setDone(m.lootWeekly.statusLabel(status)));
       router.refresh();
     });
   };
@@ -143,7 +145,9 @@ export function LootWeeklyPanel({
             className="h-4 w-4 text-[var(--neon-cyan)]"
             aria-hidden
           />
-          <h2 className="font-display text-base whitespace-nowrap">今週の消化</h2>
+          <h2 className="font-display text-base whitespace-nowrap">
+            {m.lootWeekly.title}
+          </h2>
           <span className="flex flex-wrap gap-x-1.5 font-mono text-[10px] tracking-[0.14em] text-muted-foreground">
             {/* 個々の断片が語中で折れないように分割しておく。 */}
             <span className="whitespace-nowrap">{weekLabel}</span>
@@ -157,14 +161,13 @@ export function LootWeeklyPanel({
             (unresolved === 0 ? PERF_CHIP.best : PERF_CHIP.warn)
           }
         >
-          未消化 {unresolved} 名
+          {m.lootWeekly.unresolved(unresolved)}
         </span>
       </header>
 
       {collapsed ? null : rows.length === 0 ? (
         <p className="text-[12px] leading-relaxed text-muted-foreground">
-          メンバー一覧が未登録です。下のボタンで自分の状態を記録すると、この
-          コンテンツの今週分としてカウントされます。
+          {m.lootWeekly.noMembers}
         </p>
       ) : (
         <ul className="flex flex-wrap gap-1.5">
@@ -186,7 +189,7 @@ export function LootWeeklyPanel({
                 <CircleDashed className="h-3 w-3" aria-hidden />
               )}
               <span className="max-w-[9rem] truncate">
-                {r.displayName || "(名前未設定)"}
+                {r.displayName || m.lootWeekly.noName}
               </span>
               {r.isMe && (
                 <span className="font-mono text-[9px] tracking-[0.14em] opacity-70">
@@ -201,7 +204,7 @@ export function LootWeeklyPanel({
       {!collapsed && (
       <div className="flex flex-wrap items-center gap-1.5">
         <span className="font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase">
-          自分の状態
+          {m.lootWeekly.myStatus}
         </span>
         {LOOT_WEEKLY_STATUSES.map((s) => (
           <Button
@@ -214,7 +217,7 @@ export function LootWeeklyPanel({
             className="h-7 text-[11px] tracking-normal"
             aria-pressed={me?.status === s}
           >
-            {s}
+            {m.lootWeekly.statusLabel(s)}
           </Button>
         ))}
       </div>
@@ -245,6 +248,7 @@ export function BisLinksPanel({
 }) {
   const router = useRouter();
   const confirm = useConfirm();
+  const m = useMessages();
   const [editing, setEditing] = useState<BisEditState>(null);
   const [busy, setBusy] = useState(false);
 
@@ -275,27 +279,27 @@ export function BisLinksPanel({
       : await createCategoryBisLinkAction({ categoryId, ...payload });
     setBusy(false);
     if (!result.ok) {
-      toast.error("保存失敗: " + result.reason);
+      toast.error(m.crud.saveFailed(result.reason));
       return;
     }
-    toast.success(editing.id ? "更新しました" : "追加しました");
+    toast.success(editing.id ? m.crud.updated : m.crud.added);
     setEditing(null);
     router.refresh();
   };
 
   const onDelete = async (l: CategoryBisLink) => {
     const ok = await confirm({
-      title: `「${l.label}」を削除しますか？`,
-      confirmText: "削除",
+      title: m.crud.deleteConfirmTitle(l.label),
+      confirmText: m.common.delete,
       destructive: true,
     });
     if (!ok) return;
     const result = await deleteCategoryBisLinkAction(l.id);
     if (!result.ok) {
-      toast.error("削除失敗: " + result.reason);
+      toast.error(m.crud.deleteFailed(result.reason));
       return;
     }
-    toast.success("削除しました");
+    toast.success(m.crud.deleted);
     router.refresh();
   };
 
@@ -391,9 +395,9 @@ export function BisLinksPanel({
             aria-hidden
           />
           <Shirt className="h-4 w-4 text-[var(--neon-violet)]" aria-hidden />
-          <h2 className="font-display text-base">最適装備 (BiS)</h2>
+          <h2 className="font-display text-base">{m.bis.title}</h2>
           <span className="font-mono text-[10px] tracking-[0.18em] text-muted-foreground">
-            {links.length} 件
+            {m.crud.count(links.length)}
           </span>
         </button>
         {canEdit && (
@@ -405,7 +409,7 @@ export function BisLinksPanel({
             className="gap-1.5 text-[11px] tracking-normal"
           >
             <Plus className="h-3.5 w-3.5" aria-hidden />
-            BiS 追加
+            {m.bis.add}
           </Button>
         )}
       </header>
@@ -420,8 +424,7 @@ export function BisLinksPanel({
           >
             XivGear
           </a>{" "}
-          などの装備シミュレータで組んだ構成の URL を登録すると、
-          このコンテンツの BiS としてここに並びます。
+          {m.bis.emptyBody}
         </p>
       ) : (
         // `1fr` は `minmax(auto,1fr)` = 最小トラックが min-content なので、
@@ -459,8 +462,8 @@ export function BisLinksPanel({
                 setPreviewId(null);
                 setSummaryState(null);
               }}
-              aria-label="プレビューを閉じる"
-              title="閉じる"
+              aria-label={m.bis.closePreviewAria}
+              title={m.common.close}
               className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
             >
               <X className="h-3 w-3" aria-hidden />
@@ -480,7 +483,7 @@ export function BisLinksPanel({
               <iframe
                 key={previewSrc}
                 src={previewSrc}
-                title={`${previewLink.label} の装備 (XivGear)`}
+                title={m.bis.iframeTitle(previewLink.label)}
                 loading="lazy"
                 referrerPolicy="no-referrer"
                 sandbox="allow-scripts allow-same-origin allow-popups"
@@ -488,7 +491,7 @@ export function BisLinksPanel({
               />
             ) : (
               <p className="flex h-full items-center justify-center text-[11px] text-muted-foreground">
-                読み込み中…
+                {m.common.loading}
               </p>
             )}
           </div>
@@ -504,7 +507,7 @@ export function BisLinksPanel({
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>
-              {editing?.id ? "BiS リンクを編集" : "BiS リンクを追加"}
+              {editing?.id ? m.bis.dialogEdit : m.bis.dialogNew}
             </DialogTitle>
             <DialogDescription>
               <a
@@ -515,17 +518,16 @@ export function BisLinksPanel({
               >
                 XivGear
               </a>{" "}
-              などで作った構成の共有 URL
-              を登録します。シミュレータ自体は portal では持ちません。
+              {m.bis.dialogDesc}
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-3">
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="bis-label">ラベル</Label>
+              <Label htmlFor="bis-label">{m.bis.labelLabel}</Label>
               <Input
                 id="bis-label"
                 value={editing?.label ?? ""}
-                placeholder="例: 7.5 零式4層 BiS"
+                placeholder={m.bis.labelPlaceholder}
                 onChange={(e) =>
                   setEditing((v) => (v ? { ...v, label: e.target.value } : v))
                 }
@@ -544,22 +546,22 @@ export function BisLinksPanel({
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="bis-job">ジョブ（任意）</Label>
+                <Label htmlFor="bis-job">{m.bis.jobLabel}</Label>
                 <Input
                   id="bis-job"
                   value={editing?.job ?? ""}
-                  placeholder="例: WAR"
+                  placeholder={m.bis.jobPlaceholder}
                   onChange={(e) =>
                     setEditing((v) => (v ? { ...v, job: e.target.value } : v))
                   }
                 />
               </div>
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="bis-owner">担当者（任意）</Label>
+                <Label htmlFor="bis-owner">{m.bis.ownerLabel}</Label>
                 <Input
                   id="bis-owner"
                   value={editing?.ownerName ?? ""}
-                  placeholder="例: たろう"
+                  placeholder={m.bis.ownerPlaceholder}
                   onChange={(e) =>
                     setEditing((v) =>
                       v ? { ...v, ownerName: e.target.value } : v,
@@ -569,11 +571,11 @@ export function BisLinksPanel({
               </div>
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="bis-note">メモ（任意）</Label>
+              <Label htmlFor="bis-note">{m.bis.noteLabel}</Label>
               <Input
                 id="bis-note"
                 value={editing?.note ?? ""}
-                placeholder="例: 断章は武器優先"
+                placeholder={m.bis.notePlaceholder}
                 onChange={(e) =>
                   setEditing((v) => (v ? { ...v, note: e.target.value } : v))
                 }
@@ -587,10 +589,10 @@ export function BisLinksPanel({
               onClick={() => setEditing(null)}
               disabled={busy}
             >
-              キャンセル
+              {m.common.cancel}
             </Button>
             <Button type="button" onClick={onSave} disabled={busy}>
-              {busy ? "保存中..." : "保存"}
+              {busy ? m.crud.savingDots : m.common.save}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -616,18 +618,19 @@ function XivgearSummaryStrip({
   summary: XivgearSheetSummary | null;
   reason: string | null;
 }) {
+  const m = useMessages();
   // 読み込み前後で高さが変わるとページが揺れるので min-h を確保する。
   if (loading) {
     return (
       <p className="min-h-[1.5rem] px-1 text-[10px] text-muted-foreground/80">
-        セット情報を取得中…
+        {m.bis.summaryLoading}
       </p>
     );
   }
   if (!summary) {
     return (
       <p className="min-h-[1.5rem] px-1 text-[10px] text-muted-foreground/80">
-        {reason ?? "セット情報を取得できませんでした"}
+        {reason ?? m.bis.summaryFailed}
       </p>
     );
   }
@@ -663,19 +666,19 @@ function XivgearSummaryStrip({
               }
               title={
                 complete
-                  ? "全部位が設定されています"
-                  : `未設定: ${set.missingSlots.join(", ")}`
+                  ? m.bis.allSlotsSet
+                  : m.bis.missingSlots(set.missingSlots.join(", "))
               }
             >
-              部位 {set.filledSlots}/{set.expectedSlots}
+              {m.bis.slots} {set.filledSlots}/{set.expectedSlots}
             </span>
             {!complete && (
               <span className="text-[10px] text-amber-200/90">
-                未設定: {set.missingSlots.join(", ")}
+                {m.bis.missingSlots(set.missingSlots.join(", "))}
               </span>
             )}
             <span className="font-mono text-[10px] tabular-nums text-muted-foreground">
-              マテリア {set.materiaCount}
+              {m.bis.materia} {set.materiaCount}
             </span>
             <span
               className={
@@ -683,7 +686,7 @@ function XivgearSummaryStrip({
                 (set.hasFood ? "text-muted-foreground" : "text-amber-200/90")
               }
             >
-              {set.hasFood ? "食事あり" : "食事なし"}
+              {set.hasFood ? m.bis.hasFood : m.bis.noFood}
             </span>
             {set.stats.slice(0, 4).map((st) => (
               <span
@@ -698,7 +701,7 @@ function XivgearSummaryStrip({
       })}
       {summary.sets.length > sets.length && (
         <p className="text-[10px] text-muted-foreground/70">
-          ほか {summary.sets.length - sets.length} セット
+          {m.bis.moreSets(summary.sets.length - sets.length)}
         </p>
       )}
     </div>
@@ -823,6 +826,7 @@ function BisRow({
   listeners?: Record<string, unknown>;
   style?: React.CSSProperties;
 }) {
+  const m = useMessages();
   const href = safeHref(link.url);
   return (
           <li
@@ -838,8 +842,8 @@ function BisRow({
               <span
                 {...listeners}
                 role="presentation"
-                aria-label={`${link.label} のドラッグハンドル`}
-                title="ドラッグで並び替え"
+                aria-label={m.crud.dragHandleAria(link.label)}
+                title={m.crud.dragToReorder}
                 className="-ml-1 inline-flex h-6 w-4 shrink-0 cursor-grab items-center justify-center rounded text-muted-foreground/70 hover:bg-secondary/60 hover:text-foreground active:cursor-grabbing"
               >
                 <GripVertical className="h-3.5 w-3.5" aria-hidden />
@@ -886,8 +890,8 @@ function BisRow({
                 type="button"
                 onClick={onPreview}
                 aria-pressed={previewActive}
-                aria-label={`${link.label} の装備を表示`}
-                title="装備をこの画面で見る"
+                aria-label={m.bis.previewAria(link.label)}
+                title={m.bis.previewTitle}
                 className={
                   "inline-flex h-6 w-6 shrink-0 items-center justify-center rounded transition-colors " +
                   (previewActive
@@ -903,8 +907,8 @@ function BisRow({
                 <button
                   type="button"
                   onClick={onEdit}
-                  aria-label={`${link.label} を編集`}
-                  title="編集"
+                  aria-label={m.crud.editAria(link.label)}
+                  title={m.common.edit}
                   className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
                 >
                   <Pencil className="h-3 w-3" aria-hidden />
@@ -912,8 +916,8 @@ function BisRow({
                 <button
                   type="button"
                   onClick={onDelete}
-                  aria-label={`${link.label} を削除`}
-                  title="削除"
+                  aria-label={m.crud.deleteAria(link.label)}
+                  title={m.common.delete}
                   className="inline-flex h-6 w-6 items-center justify-center rounded text-rose-300 hover:bg-rose-500/15 hover:text-rose-200"
                 >
                   <Trash2 className="h-3 w-3" aria-hidden />

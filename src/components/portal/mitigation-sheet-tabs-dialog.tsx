@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import { setMitigationSheetTabsAction } from "@/lib/server/categories-actions";
 import type { SheetTab } from "@/lib/sheet-csv";
+import { useMessages } from "@/lib/i18n/client";
 
 /**
  * 軽減表の層タブ登録 (2026-08-30 実機報告
@@ -39,6 +40,7 @@ export function MitigationSheetTabsDialog({
   autoDetectedCount: number;
 }) {
   const router = useRouter();
+  const m = useMessages();
   const [open, setOpen] = useState(false);
   const [rows, setRows] = useState<Array<{ label: string; gid: string }>>(
     initialTabs.length > 0
@@ -59,13 +61,13 @@ export function MitigationSheetTabsDialog({
     startTransition(async () => {
       const result = await setMitigationSheetTabsAction(categoryId, cleaned);
       if (!result.ok) {
-        toast.error("保存失敗: " + result.reason);
+        toast.error(m.crud.saveFailed(result.reason));
         return;
       }
       toast.success(
         cleaned.length > 0
-          ? `層タブを ${cleaned.length} 件保存しました`
-          : "層タブの登録を解除しました (自動検出に戻ります)",
+          ? m.mitigationTabs.savedN(cleaned.length)
+          : m.mitigationTabs.cleared,
       );
       setOpen(false);
       router.refresh();
@@ -77,15 +79,15 @@ export function MitigationSheetTabsDialog({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        title="層ごとのシートを登録する"
+        title={m.mitigationTabs.triggerTitle}
         className="inline-flex items-center gap-1 rounded-md border border-border/50 px-2 py-1 font-mono text-[11px] tracking-normal text-muted-foreground transition-colors hover:border-border hover:text-foreground"
       >
         <Layers className="h-3 w-3" aria-hidden />
         {initialTabs.length > 0
-          ? "層タブを編集"
+          ? m.mitigationTabs.triggerEdit
           : autoDetectedCount > 1
-            ? "層タブを固定する"
-            : "層タブを設定"}
+            ? m.mitigationTabs.triggerPin
+            : m.mitigationTabs.triggerSet}
       </button>
       <Dialog
         open={open}
@@ -95,14 +97,13 @@ export function MitigationSheetTabsDialog({
       >
         <DialogContent className="max-h-[85dvh] max-w-lg overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>層タブの設定</DialogTitle>
+            <DialogTitle>{m.mitigationTabs.dialogTitle}</DialogTitle>
             <DialogDescription>
-              層ごとにシート (ワークシート) を分けている場合、ここに登録すると
-              カード表示の上でタブ切り替えできます。
-              <strong>gid</strong> は Google Sheets
-              で該当シートのタブを開いたときの URL 末尾
-              <code className="mx-1 font-mono">#gid=123456</code>
-              の数字です (URL を丸ごと貼っても構いません)。
+              {m.mitigationTabs.descA}
+              <strong>{m.mitigationTabs.descStrong}</strong>
+              {m.mitigationTabs.descB}
+              <code className="mx-1 font-mono">{m.mitigationTabs.descCode}</code>
+              {m.mitigationTabs.descC}
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-2">
@@ -117,9 +118,9 @@ export function MitigationSheetTabsDialog({
                       ),
                     )
                   }
-                  placeholder="表示名 (例: 4層)"
+                  placeholder={m.mitigationTabs.labelPlaceholder}
                   className="h-8 w-32 text-[12px]"
-                  aria-label={`${i + 1} 番目のタブ名`}
+                  aria-label={m.mitigationTabs.labelAria(i + 1)}
                 />
                 <Input
                   value={row.gid}
@@ -130,18 +131,18 @@ export function MitigationSheetTabsDialog({
                       ),
                     )
                   }
-                  placeholder="gid または シート URL"
+                  placeholder={m.mitigationTabs.gidPlaceholder}
                   spellCheck={false}
                   className="h-8 min-w-0 flex-1 font-mono text-[11px]"
-                  aria-label={`${i + 1} 番目の gid`}
+                  aria-label={m.mitigationTabs.gidAria(i + 1)}
                 />
                 <button
                   type="button"
                   onClick={() =>
                     setRows((prev) => prev.filter((_, j) => j !== i))
                   }
-                  aria-label="この行を削除"
-                  title="削除"
+                  aria-label={m.mitigationTabs.removeRowAria}
+                  title={m.common.delete}
                   className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded text-rose-300 hover:bg-rose-500/15"
                 >
                   <Trash2 className="h-3.5 w-3.5" aria-hidden />
@@ -158,12 +159,12 @@ export function MitigationSheetTabsDialog({
               className="w-fit gap-1.5 text-[11px] tracking-normal"
             >
               <Plus className="h-3.5 w-3.5" aria-hidden />
-              行を追加
+              {m.mitigationTabs.addRow}
             </Button>
             <p className="text-[11px] leading-relaxed text-muted-foreground">
-              空にして保存すると登録を解除し、自動検出に戻します。
+              {m.mitigationTabs.clearHint}
               {autoDetectedCount > 1 &&
-                ` (現在は自動検出で ${autoDetectedCount} 件のシートを認識しています)`}
+                m.mitigationTabs.autoDetectedNote(autoDetectedCount)}
             </p>
             <a
               href={sheetUrl}
@@ -171,7 +172,7 @@ export function MitigationSheetTabsDialog({
               rel="noopener noreferrer"
               className="w-fit text-[11px] text-[var(--neon-cyan)] underline underline-offset-2 hover:text-foreground"
             >
-              シートを開いて gid を確認する
+              {m.mitigationTabs.openSheet}
             </a>
           </div>
           <DialogFooter>
@@ -181,11 +182,11 @@ export function MitigationSheetTabsDialog({
               onClick={() => setOpen(false)}
               disabled={pending}
             >
-              キャンセル
+              {m.common.cancel}
             </Button>
             <Button type="button" onClick={onSave} disabled={pending}>
               <Save className="h-3.5 w-3.5" aria-hidden />
-              {pending ? "保存中..." : "保存"}
+              {pending ? m.crud.savingDots : m.common.save}
             </Button>
           </DialogFooter>
         </DialogContent>

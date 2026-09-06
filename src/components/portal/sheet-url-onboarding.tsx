@@ -19,13 +19,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { updateCategory } from "@/lib/categories-client";
 import { httpUrlError } from "@/lib/url-validation";
+import { useLocale, useMessages } from "@/lib/i18n/client";
 
 type Kind = "mitigation" | "loot";
-
-const KIND_LABEL: Record<Kind, string> = {
-  mitigation: "軽減表",
-  loot: "ロット管理",
-};
 
 const KIND_ICON: Record<Kind, LucideIcon> = {
   mitigation: ShieldHalf,
@@ -42,13 +38,13 @@ const KIND_COLUMN: Record<Kind, "mitigation_sheet_url" | "loot_sheet_url"> = {
 // loot 用は今のところ無い (none = guidance なし)。
 const KIND_TEMPLATE: Record<
   Kind,
-  { sourceUrl: string; guideUrl: string; authorLabel: string } | null
+  { sourceUrl: string; guideUrl: string; author: string } | null
 > = {
   mitigation: {
     sourceUrl:
       "https://docs.google.com/spreadsheets/d/1XyqgesLFTW8cPerwZWUgfdqQlhD9Pogyr2XG7Hs5IYU/edit",
     guideUrl: "https://note.com/lastagous/n/nbf3054a2be78",
-    authorLabel: "lastagous 氏",
+    author: "lastagous",
   },
   loot: null,
 };
@@ -68,6 +64,8 @@ export function SheetUrlOnboarding({
   kind: Kind;
 }) {
   const router = useRouter();
+  const m = useMessages();
+  const locale = useLocale();
   const [url, setUrl] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -75,14 +73,14 @@ export function SheetUrlOnboarding({
   const [fieldError, setFieldError] = useState<string | null>(null);
 
   const Icon = KIND_ICON[kind];
-  const label = KIND_LABEL[kind];
+  const label = m.sheet.kindLabel[kind];
   const template = KIND_TEMPLATE[kind];
 
   const onSave = async () => {
     setError(null);
     const trimmed = url.trim();
-    if (!trimmed) return setError("URL を入力してください");
-    const err = httpUrlError(trimmed);
+    if (!trimmed) return setError(m.sheetOnboarding.enterUrl);
+    const err = httpUrlError(trimmed, locale);
     if (err) {
       setFieldError(err);
       return setError(err);
@@ -94,10 +92,10 @@ export function SheetUrlOnboarding({
     });
     setBusy(false);
     if (!result.ok) {
-      setError("保存失敗: " + result.reason);
+      setError(m.crud.saveFailed(result.reason));
       return;
     }
-    toast.success(`${label}URLを登録しました`);
+    toast.success(m.sheetOnboarding.registered(label));
     router.refresh();
   };
 
@@ -109,11 +107,10 @@ export function SheetUrlOnboarding({
         </span>
         <div className="flex flex-col gap-0.5">
           <h2 className="font-display text-base tracking-[0.16em] uppercase">
-            {label} 未設定
+            {m.sheetOnboarding.notConfigured(label)}
           </h2>
           <p className="text-muted-foreground text-xs leading-relaxed">
-            「{categoryName}」の{label}スプレッドシートURLを登録すると、
-            このページに埋め込み表示されます。
+            {m.sheetOnboarding.intro(categoryName, label)}
           </p>
         </div>
       </div>
@@ -124,7 +121,7 @@ export function SheetUrlOnboarding({
             htmlFor={`sheet-url-${kind}`}
             className="text-[10px] tracking-normal text-muted-foreground"
           >
-            {label} URL
+            {m.sheetOnboarding.urlLabel(label)}
           </Label>
           <Input
             id={`sheet-url-${kind}`}
@@ -135,7 +132,7 @@ export function SheetUrlOnboarding({
               setUrl(e.target.value);
               if (fieldError) setFieldError(null);
             }}
-            onBlur={() => setFieldError(httpUrlError(url))}
+            onBlur={() => setFieldError(httpUrlError(url, locale))}
             aria-invalid={fieldError ? true : undefined}
             aria-describedby={
               (fieldError ? `sheet-url-${kind}-error ` : "") +
@@ -160,17 +157,17 @@ export function SheetUrlOnboarding({
             id={`sheet-url-${kind}-help`}
             className="text-muted-foreground text-[11px] leading-relaxed"
           >
-            Google Sheets の「ウェブに公開」/「埋め込み」URLか、共有URLを指定してください。
+            {m.sheetOnboarding.urlHelp}
           </p>
         </div>
 
         {template && (
           <div className="flex flex-col gap-2 rounded-md border border-[var(--neon-cyan)]/30 bg-[var(--neon-cyan)]/5 px-3 py-2.5">
             <p className="text-[10px] tracking-normal text-[var(--neon-cyan)]/85">
-              テンプレート ({template.authorLabel} 提供)
+              {m.sheetOnboarding.templateHeading(template.author)}
             </p>
             <p className="text-foreground/85 text-[11px] leading-relaxed">
-              下記のスプレッドシートを自分の Google Drive にコピーして編集 → 共有 URL をここに貼り付けてください。テンプレ作成者の使い方解説も併せて参考に。
+              {m.sheetOnboarding.templateBody}
             </p>
             <div className="flex flex-wrap gap-1.5">
               <a
@@ -180,7 +177,7 @@ export function SheetUrlOnboarding({
                 className="inline-flex items-center gap-1.5 rounded-md border border-[var(--neon-cyan)]/40 bg-background/40 px-2.5 py-1 text-[10px] tracking-normal text-[var(--neon-cyan)] transition-colors hover:border-[var(--neon-cyan)]/80 hover:bg-[var(--neon-cyan)]/10"
               >
                 <Copy className="h-3 w-3" aria-hidden />
-                コピー元シート
+                {m.sheetOnboarding.templateSource}
               </a>
               <a
                 href={template.guideUrl}
@@ -189,7 +186,7 @@ export function SheetUrlOnboarding({
                 className="inline-flex items-center gap-1.5 rounded-md border border-amber-400/40 bg-background/40 px-2.5 py-1 text-[10px] tracking-normal text-amber-300 transition-colors hover:border-amber-300/80 hover:bg-amber-400/10"
               >
                 <ExternalLink className="h-3 w-3" aria-hidden />
-                使い方 (note)
+                {m.sheetOnboarding.templateGuide}
               </a>
             </div>
           </div>
@@ -218,7 +215,7 @@ export function SheetUrlOnboarding({
             ) : (
               <Save className="h-3.5 w-3.5" aria-hidden />
             )}
-            {busy ? "保存中…" : "URL を登録"}
+            {busy ? m.common.saving : m.sheetOnboarding.register}
           </Button>
         </div>
       </div>

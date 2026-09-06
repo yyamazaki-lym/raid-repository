@@ -61,25 +61,43 @@ export function nextWeeklyResetMs(at: Date = new Date()): number {
 }
 
 /** 次のリセットまでの残り時間を「あと N日 M時間」形式で返す。 */
-export function formatUntilNextReset(at: Date = new Date()): string {
+export function formatUntilNextReset(
+  at: Date = new Date(),
+  locale: "ja" | "en" = "ja",
+): string {
   const remain = nextWeeklyResetMs(at) - at.getTime();
-  if (remain <= 0) return "まもなくリセット";
+  if (remain <= 0) return locale === "en" ? "Reset soon" : "まもなくリセット";
   const days = Math.floor(remain / DAY_MS);
   const hours = Math.floor((remain % DAY_MS) / (60 * 60 * 1000));
-  if (days > 0) return `あと ${days}日 ${hours}時間`;
+  if (days > 0) {
+    return locale === "en"
+      ? `${days}d ${hours}h left`
+      : `あと ${days}日 ${hours}時間`;
+  }
   const minutes = Math.floor((remain % (60 * 60 * 1000)) / 60000);
-  return `あと ${hours}時間 ${minutes}分`;
+  return locale === "en"
+    ? `${hours}h ${minutes}m left`
+    : `あと ${hours}時間 ${minutes}分`;
 }
 
+const WEEKDAY_JA = ["日", "月", "火", "水", "木", "金", "土"];
+const WEEKDAY_EN = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
 /** 週の表示ラベル (例: `8/25(火) 17:00 〜`)。 */
-export function formatWeekLabel(weekStart: string): string {
+export function formatWeekLabel(
+  weekStart: string,
+  locale: "ja" | "en" = "ja",
+): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(weekStart);
   if (!m) return weekStart;
   const [, y, mo, d] = m;
-  const wd = ["日", "月", "火", "水", "木", "金", "土"][
-    new Date(Date.UTC(Number(y), Number(mo) - 1, Number(d))).getUTCDay()
-  ];
-  return `${Number(mo)}/${Number(d)}(${wd}) 17:00 〜`;
+  const dow = new Date(
+    Date.UTC(Number(y), Number(mo) - 1, Number(d)),
+  ).getUTCDay();
+  if (locale === "en") {
+    return `${Number(mo)}/${Number(d)} (${WEEKDAY_EN[dow]}) 17:00 –`;
+  }
+  return `${Number(mo)}/${Number(d)}(${WEEKDAY_JA[dow]}) 17:00 〜`;
 }
 
 /** `week_start` として妥当な `YYYY-MM-DD` かどうか (Server Action 入口検証用)。 */

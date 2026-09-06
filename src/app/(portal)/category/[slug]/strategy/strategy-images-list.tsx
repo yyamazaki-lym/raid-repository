@@ -57,6 +57,7 @@ import type {
   CategoryGphotoAlbum,
   CategoryLink,
 } from "@/lib/supabase/types";
+import { useMessages } from "@/lib/i18n/client";
 
 type Props = {
   categoryId: string;
@@ -71,6 +72,7 @@ export function StrategyImagesList({
   initialGphotos,
   initialAlbums,
 }: Props) {
+  const m = useMessages();
   const liveImages = useRealtimeCategoryLinks(
     categoryId,
     "image",
@@ -187,7 +189,7 @@ export function StrategyImagesList({
           </span>
           {!collapsed && looseLinks.length > 1 && (
             <span className="ml-2 hidden text-muted-foreground/60 sm:inline">
-              · ドラッグで並び替え
+              {m.crud.dragToReorderBullet}
             </span>
           )}
         </button>
@@ -207,10 +209,11 @@ export function StrategyImagesList({
           <span className="grid h-10 w-10 place-items-center rounded-md border border-[var(--neon-magenta)]/40 bg-background/40 text-[var(--neon-magenta)]">
             <ImagePlus className="h-4 w-4" aria-hidden />
           </span>
-          <p className="font-display text-foreground text-sm">画像未登録</p>
+          <p className="font-display text-foreground text-sm">
+            {m.images.emptyTitle}
+          </p>
           <p className="text-muted-foreground max-w-md text-xs leading-relaxed">
-            散開図 / スクリーンショット / 図解画像をアップロード・URL 指定、または
-            Google フォト共有 URL で一括登録できます。
+            {m.images.emptyBody}
           </p>
         </Card>
       ) : (
@@ -285,6 +288,7 @@ function SortableImageCard({
   onOpen: () => void;
   onEdit: () => void;
 }) {
+  const m = useMessages();
   const {
     attributes,
     listeners,
@@ -309,7 +313,7 @@ function SortableImageCard({
         <button
           type="button"
           {...listeners}
-          aria-label={`${link.title} の並び替えハンドル`}
+          aria-label={m.crud.sortHandleAria(link.title)}
           className="flex shrink-0 cursor-grab items-center justify-center border-r border-border/40 bg-secondary/30 px-2 text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground active:cursor-grabbing"
         >
           <GripVertical className="h-4 w-4" aria-hidden />
@@ -320,7 +324,7 @@ function SortableImageCard({
             <button
               type="button"
               onClick={onOpen}
-              aria-label={`${link.title} を拡大表示`}
+              aria-label={m.images.zoomAria(link.title)}
               className="relative block aspect-video overflow-hidden bg-secondary/30 cursor-zoom-in"
             >
               <Image
@@ -335,7 +339,7 @@ function SortableImageCard({
             </button>
           ) : (
             <div className="flex aspect-video items-center justify-center bg-secondary/30 text-xs text-muted-foreground">
-              画像URL不正
+              {m.images.invalidUrl}
             </div>
           )}
           <div className="flex items-start gap-2 px-3 pt-2 pb-1">
@@ -383,6 +387,7 @@ function ImageLightbox({
   currentId: string | null;
   onCurrentIdChange: (nextId: string | null) => void;
 }) {
+  const m = useMessages();
   const idx = currentId
     ? links.findIndex((l) => l.id === currentId)
     : -1;
@@ -462,7 +467,7 @@ function ImageLightbox({
       >
         {/* sr-only タイトル — Dialog の a11y 警告対策 */}
         <DialogTitle className="sr-only">
-          {link?.title ?? "画像"}
+          {link?.title ?? m.images.fallbackTitle}
         </DialogTitle>
         {src ? (
           <div
@@ -472,7 +477,7 @@ function ImageLightbox({
             onTouchEnd={onTouchEnd}
             role="button"
             tabIndex={-1}
-            aria-label="画像を閉じる"
+            aria-label={m.images.closeImageAria}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
@@ -502,7 +507,7 @@ function ImageLightbox({
               <>
                 <button
                   type="button"
-                  aria-label="前の画像"
+                  aria-label={m.images.prev}
                   onClick={(e) => {
                     e.stopPropagation();
                     goPrev();
@@ -513,7 +518,7 @@ function ImageLightbox({
                 </button>
                 <button
                   type="button"
-                  aria-label="次の画像"
+                  aria-label={m.images.next}
                   onClick={(e) => {
                     e.stopPropagation();
                     goNext();
@@ -536,7 +541,7 @@ function ImageLightbox({
             className="flex items-center justify-center text-sm text-white/70"
             onClick={close}
           >
-            画像を読み込めませんでした
+            {m.images.loadFailed}
           </div>
         )}
         {(link?.title || link?.description) && (
@@ -573,6 +578,7 @@ function AlbumSection({
   onOpenImage: (id: string) => void;
   onEditImage: (link: CategoryLink) => void;
 }) {
+  const m = useMessages();
   const [syncing, setSyncing] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const confirm = useConfirm();
@@ -589,25 +595,23 @@ function AlbumSection({
     const result = await syncGphotoAlbum(album.id);
     setSyncing(false);
     if (!result.ok) {
-      toast.error("同期に失敗: " + result.reason);
+      toast.error(m.images.syncFailed(result.reason));
       return;
     }
     if (result.added === 0 && result.removed === 0) {
-      toast.success(`変更なし (${result.total} 枚)`);
+      toast.success(m.images.noChange(result.total));
     } else {
-      toast.success(
-        `同期完了: +${result.added} / -${result.removed} (合計 ${result.total} 枚)`,
-      );
+      toast.success(m.images.synced(result.added, result.removed, result.total));
     }
   };
 
   const onDelete = async () => {
     if (deleting) return;
-    const label = album.title ?? "Google フォト";
+    const label = album.title ?? m.images.gphotoFallback;
     const ok = await confirm({
-      title: `「${label}」のアルバムを削除しますか？`,
-      description: `含まれる画像 ${links.length} 枚も削除されます。`,
-      confirmText: "削除",
+      title: m.images.deleteAlbumTitle(label),
+      description: m.images.deleteAlbumDesc(links.length),
+      confirmText: m.common.delete,
       destructive: true,
     });
     if (!ok) return;
@@ -615,10 +619,10 @@ function AlbumSection({
     const result = await deleteGphotoAlbum(album.id);
     setDeleting(false);
     if (!result.ok) {
-      toast.error("削除に失敗: " + result.reason);
+      toast.error(m.images.deleteFailed(result.reason));
       return;
     }
-    toast.success("アルバムを削除しました");
+    toast.success(m.images.albumDeleted);
   };
 
   const lastSyncedLabel = formatLastSynced(album.lastSyncedAt);
@@ -643,7 +647,7 @@ function AlbumSection({
           </span>
           <span className="flex min-w-0 flex-col gap-0.5">
             <span className="truncate font-display text-sm text-foreground">
-              {album.title ?? "Google フォト"}
+              {album.title ?? m.images.gphotoFallback}
             </span>
             <span className="font-mono text-[10px] tracking-[0.18em] text-muted-foreground uppercase">
               {links.length} image{links.length === 1 ? "" : "s"}
@@ -664,7 +668,7 @@ function AlbumSection({
               className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[10px] tracking-normal text-muted-foreground transition-colors hover:bg-secondary/50 hover:text-foreground"
             >
               <ExternalLink className="h-3.5 w-3.5" aria-hidden />
-              共有元
+              {m.images.shareSource}
             </a>
           )}
           <Button
@@ -680,7 +684,7 @@ function AlbumSection({
             ) : (
               <RefreshCw className="h-3.5 w-3.5" aria-hidden />
             )}
-            同期
+            {m.images.sync}
           </Button>
           <Button
             type="button"
@@ -691,7 +695,7 @@ function AlbumSection({
             className="gap-1 text-[10px] tracking-normal text-destructive hover:text-destructive"
           >
             <Trash2 className="h-3.5 w-3.5" aria-hidden />
-            削除
+            {m.common.delete}
           </Button>
         </div>
       </div>
@@ -700,7 +704,7 @@ function AlbumSection({
         <div id={`gphoto-album-body-${album.id}`}>
           {links.length === 0 ? (
             <p className="px-1 py-3 text-xs text-muted-foreground">
-              画像がありません。共有設定 / 同期を確認してください。
+              {m.images.albumEmpty}
             </p>
           ) : (
             <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -729,6 +733,7 @@ function AlbumImageCard({
   onOpen: () => void;
   onEdit: () => void;
 }) {
+  const m = useMessages();
   const src = safeHref(link.url);
   return (
     <li>
@@ -737,7 +742,7 @@ function AlbumImageCard({
           <button
             type="button"
             onClick={onOpen}
-            aria-label={`${link.title} を拡大表示`}
+            aria-label={m.images.zoomAria(link.title)}
             className="relative block aspect-video overflow-hidden bg-secondary/30 cursor-zoom-in"
           >
             <Image
@@ -752,7 +757,7 @@ function AlbumImageCard({
           </button>
         ) : (
           <div className="flex aspect-video items-center justify-center bg-secondary/30 text-xs text-muted-foreground">
-            画像URL不正
+            {m.images.invalidUrl}
           </div>
         )}
         <div className="flex items-start gap-2 px-3 pt-2 pb-1">

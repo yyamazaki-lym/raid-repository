@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { findCategoryBySlug } from "@/lib/supabase/categories";
 import { fetchCategoryLinks } from "@/lib/supabase/category-links";
 import { VideosList } from "./videos-list";
+import { getMessages } from "@/lib/i18n/server";
 
 // TODO #54 part3: Edge → Node runtime 個別 override で cold start 短縮を試験。
 // 親 layout は edge (settings-dialog 経由の FFLogs Server Action のため維持必須) だが、
@@ -9,9 +10,10 @@ import { VideosList } from "./videos-list";
 // preferredRegion は Node では Vercel project 設定 (vercel.json regions: ["hnd1"]) に従う。
 export const runtime = "nodejs";
 
-export const metadata = {
-  title: "動画",
-};
+export async function generateMetadata() {
+  const m = await getMessages();
+  return { title: m.categoryTab.titles.videos };
+}
 
 export default async function VideosPage({
   params,
@@ -19,12 +21,15 @@ export default async function VideosPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const category = await findCategoryBySlug(slug);
+  const [category, m] = await Promise.all([
+    findCategoryBySlug(slug),
+    getMessages(),
+  ]);
 
   if (!category) {
     return (
       <p className="text-muted-foreground p-6 text-center text-sm">
-        コンテンツが見つかりませんでした。
+        {m.categoryTab.notFound}
       </p>
     );
   }

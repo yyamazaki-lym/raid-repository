@@ -7,13 +7,15 @@ import { BisLinksPanel } from "@/components/portal/loot-extras";
 import { getCurrentUserCanEdit } from "@/lib/server/auth";
 import { StrategyList } from "./strategy-list";
 import { StrategyImagesList } from "./strategy-images-list";
+import { getMessages } from "@/lib/i18n/server";
 
 // TODO #54 part3 横展開: FFLogs 非依存ページなので Node runtime に切替 (cold start 短縮)。
 export const runtime = "nodejs";
 
-export const metadata = {
-  title: "攻略情報",
-};
+export async function generateMetadata() {
+  const m = await getMessages();
+  return { title: m.categoryTab.titles.strategy };
+}
 
 export default async function StrategyPage({
   params,
@@ -21,12 +23,15 @@ export default async function StrategyPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const category = await findCategoryBySlug(slug);
+  const [category, m] = await Promise.all([
+    findCategoryBySlug(slug),
+    getMessages(),
+  ]);
 
   if (!category) {
     return (
       <p className="text-muted-foreground p-6 text-center text-sm">
-        コンテンツが見つかりませんでした。
+        {m.categoryTab.notFound}
       </p>
     );
   }

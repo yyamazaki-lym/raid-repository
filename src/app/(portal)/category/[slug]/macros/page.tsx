@@ -6,13 +6,15 @@ import {
 } from "@/lib/supabase/category-macros";
 import { fetchCategoryWaymarks } from "@/lib/supabase/category-waymarks";
 import { MacrosList } from "./macros-list";
+import { getMessages } from "@/lib/i18n/server";
 
 // TODO #54 part3 横展開: FFLogs 非依存ページなので Node runtime に切替 (cold start 短縮)。
 export const runtime = "nodejs";
 
-export const metadata = {
-  title: "マクロ / ウェイマーク",
-};
+export async function generateMetadata() {
+  const m = await getMessages();
+  return { title: m.categoryTab.titles.macros };
+}
 
 export default async function MacrosPage({
   params,
@@ -20,12 +22,15 @@ export default async function MacrosPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const category = await findCategoryBySlug(slug);
+  const [category, m] = await Promise.all([
+    findCategoryBySlug(slug),
+    getMessages(),
+  ]);
 
   if (!category) {
     return (
       <p className="text-muted-foreground p-6 text-center text-sm">
-        コンテンツが見つかりませんでした。
+        {m.categoryTab.notFound}
       </p>
     );
   }

@@ -94,7 +94,10 @@ function num(v: unknown): number | null {
  * body 文字列を検査する。UI はこの結果に応じて
  * 「✓ 取り込める形式」バッジ or 警告を出す。
  */
-export function checkWaymarkPreset(body: string): WaymarkPresetCheck {
+export function checkWaymarkPreset(
+  body: string,
+  locale: "ja" | "en" = "ja",
+): WaymarkPresetCheck {
   const trimmed = body.trim();
   if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) {
     return { kind: "not-json" };
@@ -129,13 +132,17 @@ export function checkWaymarkPreset(body: string): WaymarkPresetCheck {
     );
     if (spread > MAX_SPREAD) {
       warnings.push(
-        `マーカーが ${Math.round(spread)} 以上に広がっています (アリーナ外の座標かもしれません)`,
+        locale === "en"
+          ? `Markers spread over ${Math.round(spread)} or more (may be outside the arena)`
+          : `マーカーが ${Math.round(spread)} 以上に広がっています (アリーナ外の座標かもしれません)`,
       );
     }
     const heightDiff = Math.max(...ys) - Math.min(...ys);
     if (heightDiff > MAX_HEIGHT_DIFF) {
       warnings.push(
-        `高さの差が ${Math.round(heightDiff)} あります (空中に置かれたマーカーかもしれません)`,
+        locale === "en"
+          ? `Height differs by ${Math.round(heightDiff)} (a marker may be placed in mid-air)`
+          : `高さの差が ${Math.round(heightDiff)} あります (空中に置かれたマーカーかもしれません)`,
       );
     }
   }

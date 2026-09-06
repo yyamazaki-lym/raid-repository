@@ -23,7 +23,8 @@ import {
   Microscope,
 } from "lucide-react";
 import { LinkSiteIcon } from "@/components/portal/link-site-icon";
-import { LINK_SITE_LABEL, detectLinkSite } from "@/lib/link-site";
+import { linkSiteLabel, detectLinkSite } from "@/lib/link-site";
+import { useLocale, useMessages } from "@/lib/i18n/client";
 import { toast } from "sonner";
 import { DndContext, closestCenter } from "@dnd-kit/core";
 import {
@@ -99,6 +100,8 @@ export function VideosList({
   status,
   manualTimeToClearSeconds = null,
 }: Props) {
+  const m = useMessages();
+  const locale = useLocale();
   const live = useRealtimeCategoryLinks(categoryId, "video", initial);
   const [editTarget, setEditTarget] = useState<CategoryLink | null>(null);
   // DnD 並び替えの共通フック (C-1/C-4)。動画は表示が sort_order DESC なので
@@ -324,12 +327,12 @@ export function VideosList({
     const iso = jstYmdString(new Date(firstClearAt));
     const matched = findVideoIdByDate(iso);
     if (!matched) {
-      toast.error(`${iso} のクリア動画が見つかりませんでした`);
+      toast.error(m.videos.clearVideoNotFound(iso));
       return;
     }
     setManualFocusId(matched);
     setFocusKey((k) => k + 1);
-  }, [firstClearAt, findVideoIdByDate]);
+  }, [firstClearAt, findVideoIdByDate, m]);
   const persistSort = (mode: SortMode) => {
     setSortMode(mode);
     try {
@@ -469,10 +472,10 @@ export function VideosList({
           m.delete(video.id);
           return m;
         });
-        toast.error("お気に入り更新失敗: " + result.reason);
+        toast.error(m.videos.favoriteUpdateFailed(result.reason));
       }
     },
-    [],
+    [m],
   );
 
   // `videos` は表示順 (newest-at-top)。arrayMove 後も表示順なので、永続化時は
@@ -487,9 +490,9 @@ export function VideosList({
     const count = selectedIds.size;
     if (count === 0) return;
     const ok = await confirm({
-      title: `選択した ${count} 件の動画を削除します`,
-      description: "元に戻せません。よろしいですか？",
-      confirmText: "削除",
+      title: m.videos.bulkDeleteTitle(count),
+      description: m.videos.bulkDeleteDesc,
+      confirmText: m.common.delete,
       destructive: true,
     });
     if (!ok) return;
@@ -503,17 +506,21 @@ export function VideosList({
       .filter((x) => !x.r.ok);
     setBulkDeleting(false);
     if (failed.length === 0) {
-      toast.success(`${count} 件削除しました`);
+      toast.success(m.videos.deletedN(count));
       setSelectedIds(new Set());
       setSelectMode(false);
     } else {
       const okCount = count - failed.length;
       toast.error(
-        `${okCount} 件削除、${failed.length} 件失敗: ${failed[0]?.r.ok === false ? failed[0].r.reason : ""}`,
+        m.videos.deletePartial(
+          okCount,
+          failed.length,
+          failed[0]?.r.ok === false ? failed[0].r.reason : "",
+        ),
       );
       setSelectedIds(new Set(failed.map((x) => x.id)));
     }
-  }, [selectedIds, confirm]);
+  }, [selectedIds, confirm, m]);
 
   const onBulkSaveClearTime = useCallback(async () => {
     let total = 0;
@@ -524,23 +531,19 @@ export function VideosList({
       else total += v.durationSeconds;
     }
     if (total <= 0) {
-      toast.error(
-        "選択中の動画はすべて再生時間未取得です。先に YouTube duration を取得してください",
-      );
+      toast.error(m.videos.noDurations);
       return;
     }
-    const summary = formatDurationLong(total);
-    const missingNote =
-      missing > 0
-        ? `\n(${missing} 件は再生時間未取得 — 0 として扱います)`
-        : "";
+    const summary = formatDurationLong(total, locale);
+    const missingNote = missing > 0 ? m.videos.missingNote(missing) : "";
     const ok = await confirm({
-      title: "クリアまでの累計時間として保存しますか？",
-      description:
-        `選択した ${selectedIds.size} 件の合計再生時間 ${summary} を` +
-        `「クリアまでの累計時間」として保存します。${missingNote}\n` +
-        `既存の手動入力は上書きされます。`,
-      confirmText: "保存",
+      title: m.videos.saveClearTimeTitle,
+      description: m.videos.saveClearTimeDesc(
+        selectedIds.size,
+        summary,
+        missingNote,
+      ),
+      confirmText: m.common.save,
     });
     if (!ok) return;
     setSavingClearTime(true);
@@ -549,13 +552,13 @@ export function VideosList({
     });
     setSavingClearTime(false);
     if (!result.ok) {
-      toast.error("保存失敗: " + result.reason);
+      toast.error(m.crud.saveFailed(result.reason));
       return;
     }
-    toast.success(`クリア時間 ${summary} を保存しました`);
+    toast.success(m.videos.clearTimeSaved(summary));
     setSelectedIds(new Set());
     setSelectMode(false);
-  }, [categoryId, liveWithFav, selectedIds, confirm]);
+  }, [categoryId, liveWithFav, selectedIds, confirm, m, locale]);
 
   // 選択中の全動画が既にお気に入りなら「外す」、そうでなければ「追加」。
   // ユーザーが手元の選択集合を 1 ボタンで揃えられる方が UX がシンプル。
@@ -591,8 +594,8 @@ export function VideosList({
     if (failed.length === 0) {
       toast.success(
         target
-          ? `${targets.length} 件をお気に入りに追加しました`
-          : `${targets.length} 件をお気に入りから外しました`,
+          ? m.videos.favAddedN(targets.length)
+          : m.videos.favRemovedN(targets.length),
       );
     } else {
       // 失敗した分の optimistic を取り下げ。realtime で来る成功分は
@@ -604,10 +607,14 @@ export function VideosList({
       });
       const okCount = targets.length - failed.length;
       toast.error(
-        `${okCount} 件成功、${failed.length} 件失敗: ${failed[0]?.r.ok === false ? failed[0].r.reason : ""}`,
+        m.videos.partialResult(
+          okCount,
+          failed.length,
+          failed[0]?.r.ok === false ? failed[0].r.reason : "",
+        ),
       );
     }
-  }, [bulkFavoriteAction, liveWithFav, selectedIds]);
+  }, [bulkFavoriteAction, liveWithFav, selectedIds, m]);
 
   // Cumulative duration across all videos in this category. NULL durations
   // (not yet backfilled) are treated as 0. timeToClear sums only videos
@@ -661,8 +668,8 @@ export function VideosList({
               ? (manualTimeToClearSeconds ?? timeToClearSeconds)
               : (manualTimeToClearSeconds ?? totalSeconds);
             const challengeLabel = isCleared
-              ? "クリアまでの累計時間"
-              : "コンテンツ挑戦時間";
+              ? m.videos.timeToClear
+              : m.videos.challengeTime;
             const showChallengeBadge =
               challengeValue > 0 && (isCleared ? !!firstClearAt : true);
             return (
@@ -670,9 +677,9 @@ export function VideosList({
                 {showTotalBadge && (
                   <span
                     className="inline-flex items-center gap-1 rounded-sm border border-violet-400/40 bg-violet-400/10 px-1.5 py-px text-[9px] text-violet-200 normal-case"
-                    title={`累計練習時間: ${formatDurationLong(totalSeconds)}${
+                    title={`${m.videos.totalPractice}: ${formatDurationLong(totalSeconds, locale)}${
                       missingDurationCount > 0
-                        ? ` (${missingDurationCount} 件は再生時間未取得)`
+                        ? m.videos.missingDurations(missingDurationCount)
                         : ""
                     }`}
                   >
@@ -695,7 +702,7 @@ export function VideosList({
                         ? "border-emerald-400/45 bg-emerald-400/10 text-emerald-200"
                         : "border-violet-400/45 bg-violet-400/10 text-violet-200")
                     }
-                    title={`${challengeLabel}: ${formatDurationLong(challengeValue)}${manualTimeToClearSeconds !== null ? " (手動入力)" : missingDurationCount > 0 && !isCleared ? ` (${missingDurationCount} 件は再生時間未取得)` : ""}`}
+                    title={`${challengeLabel}: ${formatDurationLong(challengeValue, locale)}${manualTimeToClearSeconds !== null ? m.videos.manualInput : missingDurationCount > 0 && !isCleared ? m.videos.missingDurations(missingDurationCount) : ""}`}
                   >
                     {isCleared ? (
                       <>→{formatDurationShort(challengeValue)}</>
@@ -715,8 +722,12 @@ export function VideosList({
               type="button"
               onClick={onJumpToFirstClear}
               className="inline-flex items-center gap-1 rounded-sm border border-amber-400/45 bg-amber-400/10 px-1.5 py-px text-[9px] text-amber-200 normal-case transition-colors hover:border-amber-400/70 hover:bg-amber-400/20 hover:text-amber-100 focus-visible:ring-2 focus-visible:ring-amber-400/50 focus-visible:outline-none"
-              title={`初クリア: ${formatFirstClear(firstClearAt, "long")} (クリックで動画へジャンプ)`}
-              aria-label={`${formatFirstClear(firstClearAt, "long")} のクリア動画へスクロール`}
+              title={m.videos.firstClearTitle(
+                formatFirstClear(firstClearAt, "long", locale),
+              )}
+              aria-label={m.videos.firstClearAria(
+                formatFirstClear(firstClearAt, "long", locale),
+              )}
             >
               <Trophy className="h-2.5 w-2.5" aria-hidden />
               {formatFirstClear(firstClearAt, "short")}
@@ -731,7 +742,7 @@ export function VideosList({
                 aria-hidden
                 className="inline-block h-1 w-1 rounded-full bg-current"
               />
-              ドラッグで並び替え
+              {m.crud.dragToReorder}
             </span>
           )}
         </div>
@@ -761,9 +772,7 @@ export function VideosList({
                 : "border-border/40 bg-background/30 text-muted-foreground hover:text-foreground")
             }
             title={
-              selectMode
-                ? "選択モードを解除 (選択もリセット)"
-                : "複数選択モードに入る"
+              selectMode ? m.videos.selectModeOff : m.videos.selectModeOn
             }
             aria-pressed={selectMode}
           >
@@ -772,7 +781,7 @@ export function VideosList({
             ) : (
               <Square className="h-3 w-3" aria-hidden />
             )}
-            選択
+            {m.videos.select}
           </button>
           {/* TODO #47 follow-up (2.1, 2026-04-30): bulk 系操作 (削除 / クリア
               時間 / お気に入り一括) は画面下部の floating bar に集約。
@@ -792,9 +801,7 @@ export function VideosList({
             }
             aria-pressed={favoritesOnly}
             title={
-              favoritesOnly
-                ? "お気に入りフィルタを解除"
-                : "お気に入りのみ表示"
+              favoritesOnly ? m.videos.favFilterOff : m.videos.favFilterOn
             }
           >
             <Star
@@ -809,7 +816,7 @@ export function VideosList({
           <div
             className="inline-flex items-center rounded-md border border-border/40 bg-background/30 p-0.5 text-[10px] tracking-normal"
             role="radiogroup"
-            aria-label="並び順"
+            aria-label={m.videos.sortAria}
           >
             <button
               type="button"
@@ -824,7 +831,7 @@ export function VideosList({
               }
             >
               <Calendar className="h-3 w-3" aria-hidden />
-              日付順
+              {m.videos.sortDate}
             </button>
             <button
               type="button"
@@ -839,7 +846,7 @@ export function VideosList({
               }
             >
               <ListOrdered className="h-3 w-3" aria-hidden />
-              カスタム
+              {m.videos.sortCustom}
             </button>
           </div>
           <LinkFormDialog categoryId={categoryId} kind="video" />
@@ -859,19 +866,21 @@ export function VideosList({
           {favoritesOnly && live.length > 0 ? (
             <>
               <p className="font-display text-foreground text-sm">
-                お気に入りに登録された動画はまだありません
+                {m.videos.emptyFavTitle}
               </p>
               <p className="text-muted-foreground max-w-md text-xs leading-relaxed">
-                各カードの星アイコンをクリックすると、お気に入りに追加されます。
+                {m.videos.emptyFavBody}
               </p>
             </>
           ) : (
             <>
-              <p className="font-display text-foreground text-sm">動画未登録</p>
+              <p className="font-display text-foreground text-sm">
+                {m.videos.emptyTitle}
+              </p>
               <p className="text-muted-foreground max-w-md text-xs leading-relaxed">
-                YouTube の URL を登録するとサムネイル付きで表示されます。
+                {m.videos.emptyBody1}
                 <br />
-                その他の動画サイト URL もリンク表示できます。
+                {m.videos.emptyBody2}
               </p>
             </>
           )}
@@ -960,7 +969,7 @@ export function VideosList({
         >
           <div className="glass pointer-events-auto flex max-w-[calc(100vw-1.5rem)] flex-wrap items-center gap-1.5 rounded-xl border border-border/50 bg-background/85 px-2.5 py-2 shadow-[0_18px_48px_-18px_rgba(0,0,0,0.8)] backdrop-blur-md">
             <span className="px-1 text-[10px] tracking-normal text-[var(--neon-cyan)]">
-              {selectedIds.size} 件選択中
+              {m.videos.selectedCount(selectedIds.size)}
             </span>
             <span
               aria-hidden
@@ -973,8 +982,8 @@ export function VideosList({
               className="inline-flex h-7 items-center whitespace-nowrap gap-1 rounded-md border border-amber-400/55 bg-amber-400/10 px-2 text-[10px] tracking-normal text-amber-200 transition-colors hover:border-amber-400/80 hover:bg-amber-400/20 disabled:opacity-50"
               title={
                 bulkFavoriteAction === "add"
-                  ? "選択した動画をすべてお気に入りに追加"
-                  : "選択した動画をすべてお気に入りから外す"
+                  ? m.videos.bulkFavAddTitle
+                  : m.videos.bulkFavRemoveTitle
               }
             >
               <Star
@@ -985,32 +994,34 @@ export function VideosList({
                 aria-hidden
               />
               {bulkFavoriting
-                ? "更新中…"
+                ? m.videos.updating
                 : bulkFavoriteAction === "add"
-                  ? `${selectedIds.size} 件 ★`
-                  : `${selectedIds.size} 件 ★ 解除`}
+                  ? m.videos.bulkFavAdd(selectedIds.size)
+                  : m.videos.bulkFavRemove(selectedIds.size)}
             </button>
             <button
               type="button"
               disabled={savingClearTime}
               onClick={onBulkSaveClearTime}
               className="inline-flex h-7 items-center whitespace-nowrap gap-1 rounded-md border border-emerald-400/55 bg-emerald-400/10 px-2 text-[10px] tracking-normal text-emerald-200 transition-colors hover:border-emerald-400/80 hover:bg-emerald-400/20 disabled:opacity-50"
-              title="選択した動画の合計再生時間をクリアまでの累計時間として保存"
+              title={m.videos.bulkClearTimeTitle}
             >
               <Hourglass className="h-3 w-3" aria-hidden />
               {savingClearTime
-                ? "保存中…"
-                : `${selectedIds.size} 件をクリア時間に`}
+                ? m.common.saving
+                : m.videos.bulkClearTime(selectedIds.size)}
             </button>
             <button
               type="button"
               disabled={bulkDeleting}
               onClick={onBulkDelete}
               className="inline-flex h-7 items-center whitespace-nowrap gap-1 rounded-md border border-rose-400/60 bg-rose-400/10 px-2 text-[10px] tracking-normal text-rose-200 transition-colors hover:border-rose-400/80 hover:bg-rose-400/20 disabled:opacity-50"
-              title="選択した動画を削除"
+              title={m.videos.bulkDeleteBtnTitle}
             >
               <Trash2 className="h-3 w-3" aria-hidden />
-              {bulkDeleting ? "削除中…" : `${selectedIds.size} 件削除`}
+              {bulkDeleting
+                ? m.videos.deleting
+                : m.videos.bulkDelete(selectedIds.size)}
             </button>
             <span
               aria-hidden
@@ -1023,8 +1034,8 @@ export function VideosList({
                 setSelectMode(false);
               }}
               className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border/40 bg-background/30 text-muted-foreground transition-colors hover:text-foreground"
-              title="選択モードを解除"
-              aria-label="選択モードを解除"
+              title={m.videos.exitSelectMode}
+              aria-label={m.videos.exitSelectMode}
             >
               <X className="h-3.5 w-3.5" aria-hidden />
             </button>
@@ -1136,6 +1147,8 @@ const VideoCard = memo(function VideoCard({
   onActivate?: (id: string) => void;
   onClose?: () => void;
 }) {
+  const m = useMessages();
+  const locale = useLocale();
   const ytId = parseYouTubeId(video.url);
   // memo の props を安定させるため、親から受けた引数付きコールバックを
   // このカードの video/id に束ねた安定関数へ変換して子孫へ渡す。
@@ -1212,7 +1225,7 @@ const VideoCard = memo(function VideoCard({
                 className="h-8 w-8"
               />
               <span className="font-mono text-[10px] tracking-[0.18em] uppercase">
-                {LINK_SITE_LABEL[detectLinkSite(video.url)]}
+                {linkSiteLabel(detectLinkSite(video.url), locale)}
               </span>
             </div>
           </a>
@@ -1231,8 +1244,8 @@ const VideoCard = memo(function VideoCard({
             aria-pressed={selected}
             aria-label={
               selected
-                ? `${video.title} の選択を解除`
-                : `${video.title} を選択`
+                ? m.videos.deselectAria(video.title)
+                : m.videos.selectAria(video.title)
             }
             className={
               "absolute inset-0 z-20 flex items-start justify-end p-3 transition-colors " +
@@ -1263,7 +1276,7 @@ const VideoCard = memo(function VideoCard({
           <button
             type="button"
             {...dragListeners}
-            aria-label={`${video.title} の並び替えハンドル`}
+            aria-label={m.crud.sortHandleAria(video.title)}
             className="absolute top-2 left-2 inline-flex h-7 w-7 cursor-grab items-center justify-center rounded-md bg-black/60 text-white/80 backdrop-blur-sm transition-colors hover:bg-black/80 hover:text-white active:cursor-grabbing"
             onClick={(e) => e.stopPropagation()}
           >
@@ -1284,8 +1297,8 @@ const VideoCard = memo(function VideoCard({
         </a>
         {video.source === "discord" && (
           <span
-            title="Discord から自動取り込み"
-            aria-label="Discord 由来"
+            title={m.linkCard.discordTitle}
+            aria-label={m.linkCard.discordAria}
             className="grid h-5 w-5 shrink-0 place-items-center rounded-sm border border-indigo-400/40 bg-indigo-400/10 text-indigo-300"
           >
             <MessageCircle className="h-2.5 w-2.5" aria-hidden />
@@ -1305,14 +1318,10 @@ const VideoCard = memo(function VideoCard({
           aria-pressed={video.isFavorite}
           aria-label={
             video.isFavorite
-              ? `${video.title} のお気に入りを解除`
-              : `${video.title} をお気に入りに追加`
+              ? m.videos.unfavAria(video.title)
+              : m.videos.favAria(video.title)
           }
-          title={
-            video.isFavorite
-              ? "お気に入りから外す"
-              : "お気に入りに追加"
-          }
+          title={video.isFavorite ? m.videos.unfavTitle : m.videos.favTitle}
           className={
             "flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-colors " +
             (video.isFavorite
@@ -1350,7 +1359,7 @@ const VideoCard = memo(function VideoCard({
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-1.5 rounded-sm border border-amber-400/45 bg-amber-400/10 px-2 py-1 font-mono text-[10px] tracking-[0.18em] text-amber-200 uppercase transition-colors hover:bg-amber-400/15 hover:text-amber-100"
-            title="FFLogs レポートを開く"
+            title={m.videos.fflogsTitle}
           >
             <BarChart3 className="h-3 w-3" aria-hidden />
             FFLogs
@@ -1363,7 +1372,7 @@ const VideoCard = memo(function VideoCard({
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-1.5 rounded-sm border border-sky-400/45 bg-sky-400/10 px-2 py-1 font-mono text-[10px] tracking-[0.18em] text-sky-200 uppercase transition-colors hover:bg-sky-400/15 hover:text-sky-100"
-            title="XIVAnalysis で解析する（スキル回し / バフ整合 / CD 落ち）"
+            title={m.videos.analysisTitle}
           >
             <Microscope className="h-3 w-3" aria-hidden />
             Analysis
@@ -1373,7 +1382,9 @@ const VideoCard = memo(function VideoCard({
         {video.durationSeconds !== null && (
           <span
             className="inline-flex items-center gap-1 rounded-sm border border-violet-400/40 bg-violet-400/10 px-1.5 py-1 font-mono text-[10px] tracking-[0.18em] text-violet-200"
-            title={`再生時間: ${formatDurationLong(video.durationSeconds)}`}
+            title={m.videos.durationTitle(
+              formatDurationLong(video.durationSeconds, locale),
+            )}
           >
             <Timer className="h-2.5 w-2.5" aria-hidden />
             {formatDurationShort(video.durationSeconds)}
@@ -1423,6 +1434,7 @@ function YouTubePreview({
   onActivate?: () => void;
   onClose?: () => void;
 }) {
+  const m = useMessages();
   // 「再生中」状態は親 (VideosList) で 1 つだけ保持する設計。別カードで
   // 再生開始 → 親が activeVideoId を更新 → 旧カードの isActive が false に
   // なって iframe が unmount → 旧動画停止。
@@ -1485,8 +1497,8 @@ function YouTubePreview({
           rel="noopener noreferrer"
           onClick={(e) => e.stopPropagation()}
           className="absolute top-2 right-2 inline-flex items-center gap-1 rounded-md bg-black/70 px-1.5 py-1 font-mono text-[9px] tracking-[0.18em] text-white/85 uppercase backdrop-blur-sm transition-colors hover:bg-black/90 hover:text-white"
-          aria-label="YouTube で開く"
-          title="埋め込み再生できない場合はこちらから外部タブで再生"
+          aria-label={m.videos.openYoutubeAria}
+          title={m.videos.embedFallbackTitle}
         >
           <ExternalLink className="h-3 w-3" aria-hidden />
           YouTube
@@ -1501,7 +1513,7 @@ function YouTubePreview({
       type="button"
       onClick={() => setActive(true)}
       className="group/play relative aspect-video w-full overflow-hidden bg-black"
-      aria-label={`${title} を再生`}
+      aria-label={m.videos.playAria(title)}
     >
       {thumbVisible ? (
         <Image
@@ -1533,7 +1545,7 @@ function YouTubePreview({
         rel="noopener noreferrer"
         onClick={(e) => e.stopPropagation()}
         className="absolute top-2 right-2 inline-flex items-center gap-1 rounded-md bg-black/60 px-1.5 py-1 font-mono text-[9px] tracking-[0.18em] text-white/80 uppercase transition-colors hover:text-white"
-        aria-label="YouTube で開く"
+        aria-label={m.videos.openYoutubeAria}
       >
         <ExternalLink className="h-3 w-3" aria-hidden />
         YouTube

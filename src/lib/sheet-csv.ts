@@ -412,11 +412,18 @@ export function buildSheetCardRows(
      * カードとして並べると意味の無い行が混ざる (2026-08-31)。
      */
     ignoreRows?: ReadonlySet<number>;
+    /**
+     * 表示言語 (2026-09-07)。`en` のときは定型語の日本語化
+     * (`translateMitigationTerm`) を行わず、見出し無し列の補完名も英語にする。
+     */
+    locale?: "ja" | "en";
   },
 ): SheetCardRow[] {
   const mitigation = opts?.mitigation === true;
   const columnLabels = opts?.columnLabels ?? {};
   const ignoreRows = opts?.ignoreRows;
+  const en = opts?.locale === "en";
+  const term = (s: string) => (en ? s : translateMitigationTerm(s));
   // mitigation モード: 列の役割を見出しで分類 (final/rate/damage/target)。
   const mitKindByCol = new Map<number, MitColumnKind>();
   if (mitigation) {
@@ -549,10 +556,20 @@ export function buildSheetCardRows(
           if (isNoiseValue(v) || v === header) continue;
           // ラベルはシートの列見出しをそのまま使う (種別名だと「軽減率」が
           // 2 つ並ぶ、という実機報告への対応)。見出しが無い列だけ種別名で補う。
-          const label = translateMitigationTerm(
+          const label = term(
             columnLabels[ci]?.trim() ||
               header ||
-              (kind === "damage" ? "ダメージ" : kind === "rate" ? "軽減率" : "最終"),
+              (en
+                ? kind === "damage"
+                  ? "Damage"
+                  : kind === "rate"
+                    ? "Mitigation"
+                    : "Final"
+                : kind === "damage"
+                  ? "ダメージ"
+                  : kind === "rate"
+                    ? "軽減率"
+                    : "最終"),
           );
           // 同じラベル + 同じ値が二重に出ないように畳む。
           if (stats.some((x) => x.label === label && x.value === v)) continue;
@@ -586,8 +603,8 @@ export function buildSheetCardRows(
         // 定型語だけ日本語にする (技名・担当者名は触らない)。
         return mitigation
           ? {
-              label: translateMitigationTerm(rawLabel),
-              value: translateMitigationTerm(rawValue),
+              label: term(rawLabel),
+              value: term(rawValue),
             }
           : { label: rawLabel, value: rawValue };
       })

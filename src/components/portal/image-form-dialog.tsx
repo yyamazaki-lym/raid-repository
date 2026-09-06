@@ -32,6 +32,7 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import { classifyGphotoInput } from "@/lib/google-photos-classify";
 import type { CategoryLink } from "@/lib/supabase/types";
+import { useMessages } from "@/lib/i18n/client";
 
 /**
  * Phase 15 (2.x, 2026-05-13): 攻略タブの「画像」エントリ追加/編集ダイアログ。
@@ -61,8 +62,6 @@ type Props = {
   onOpenChange?: (open: boolean) => void;
 };
 
-const DEFAULT_TITLE = "画像";
-
 export function ImageFormDialog({
   categoryId,
   link,
@@ -70,6 +69,8 @@ export function ImageFormDialog({
   open: controlledOpen,
   onOpenChange: controlledOnOpenChange,
 }: Props) {
+  const m = useMessages();
+  const DEFAULT_TITLE = m.imageForm.defaultTitle;
   const isEdit = !!link;
   const isControlled = controlledOpen !== undefined;
   const [internalOpen, setInternalOpen] = useState(false);
@@ -127,12 +128,12 @@ export function ImageFormDialog({
     if (!file) return;
 
     if (!file.type.startsWith("image/")) {
-      setError("画像ファイルを選択してください");
+      setError(m.upload.selectImageFile);
       return;
     }
     const MAX_BYTES = 5 * 1024 * 1024;
     if (file.size > MAX_BYTES) {
-      setError("画像サイズは 5MB 以内にしてください");
+      setError(m.upload.maxSize);
       return;
     }
 
@@ -156,7 +157,7 @@ export function ImageFormDialog({
           contentType: file.type,
         });
       if (upErr) {
-        setError(`アップロード失敗: ${upErr.message}`);
+        setError(m.upload.failed(upErr.message));
         return;
       }
       const { data } = supabase.storage
@@ -169,7 +170,7 @@ export function ImageFormDialog({
       }
       uploadedRef.current = { path, publicUrl: data.publicUrl };
       setUrl(data.publicUrl);
-      toast.success("画像をアップロードしました");
+      toast.success(m.upload.done);
     } finally {
       setUploading(false);
     }
@@ -178,13 +179,12 @@ export function ImageFormDialog({
   const onSubmit = async () => {
     setError(null);
     const u = url.trim();
-    if (!u) return setError("画像 URL を入力するか、画像をアップロードしてください");
-    if (!/^https?:\/\//i.test(u))
-      return setError("URLは http:// または https:// で始めてください");
+    if (!u) return setError(m.imageForm.enterUrlOrUpload);
+    if (!/^https?:\/\//i.test(u)) return setError(m.crud.urlScheme);
     try {
       new URL(u);
     } catch {
-      return setError("URL の形式が正しくありません");
+      return setError(m.crud.invalidUrl);
     }
 
     const t = title.trim() || DEFAULT_TITLE;
@@ -204,7 +204,7 @@ export function ImageFormDialog({
         });
         setBusy(false);
         if (!gphotoResult.ok) {
-          setError(`保存失敗: ${gphotoResult.reason}`);
+          setError(m.crud.saveFailed(gphotoResult.reason));
           return;
         }
         if (gphotoResult.kind === "album") {
@@ -212,10 +212,10 @@ export function ImageFormDialog({
             ? ` (${gphotoResult.title})`
             : "";
           toast.success(
-            `${gphotoResult.imageCount} 枚展開しました${titleSuffix}`,
+            m.imageForm.expanded(gphotoResult.imageCount, titleSuffix),
           );
         } else {
-          toast.success("画像を追加しました");
+          toast.success(m.imageForm.imageAdded);
         }
         setOpen(false);
         return;
@@ -239,7 +239,7 @@ export function ImageFormDialog({
     setBusy(false);
 
     if (!result.ok) {
-      setError(`保存失敗: ${result.reason}`);
+      setError(m.crud.saveFailed(result.reason));
       return;
     }
 
@@ -248,14 +248,14 @@ export function ImageFormDialog({
     if (uploadedRef.current && uploadedRef.current.publicUrl === u) {
       uploadedRef.current = null;
     }
-    toast.success(isEdit ? "更新しました" : "画像を追加しました");
+    toast.success(isEdit ? m.crud.updated : m.imageForm.imageAdded);
     setOpen(false);
   };
 
   const defaultTrigger = (
     <DialogTrigger className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-border/60 bg-background/30 px-3 py-1.5 text-[11px] tracking-normal whitespace-nowrap text-muted-foreground transition-colors hover:border-[var(--neon-cyan)]/60 hover:text-foreground">
       <ImagePlus className="h-3.5 w-3.5" aria-hidden />
-      画像追加
+      {m.imageForm.addTrigger}
     </DialogTrigger>
   );
 
@@ -282,8 +282,7 @@ export function ImageFormDialog({
               {isEdit ? "Edit" : "Add"} Image
             </DialogTitle>
             <DialogDescription className="text-xs">
-              スクリーンショットや散開図などの画像
-              （ローカルアップロードまたは URL 直接指定）
+              {m.imageForm.desc}
             </DialogDescription>
           </div>
         </DialogHeader>
@@ -291,7 +290,7 @@ export function ImageFormDialog({
         <div className="flex flex-col gap-4 p-5">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="image-url" className="text-xs text-foreground/80">
-              画像 URL
+              {m.imageForm.urlLabel}
             </Label>
             <div className="flex gap-1.5">
               <Input
@@ -300,7 +299,7 @@ export function ImageFormDialog({
                 inputMode="url"
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
-                placeholder="https://... / Google フォト共有 URL も可"
+                placeholder={m.imageForm.urlPlaceholder}
                 className="font-mono text-[12px]"
                 autoComplete="off"
                 spellCheck={false}
@@ -327,14 +326,11 @@ export function ImageFormDialog({
                 ) : (
                   <Upload className="h-3.5 w-3.5" aria-hidden />
                 )}
-                {uploading ? "送信中" : "アップロード"}
+                {uploading ? m.upload.sending : m.upload.button}
               </Button>
             </div>
             <p className="text-muted-foreground text-[11px] leading-relaxed">
-              ローカル画像 (最大 5MB / PNG·JPG·WebP·GIF) をアップロード、画像 URL
-              直接貼付、または Google フォト共有 URL を貼ると含まれる画像を
-              自動展開します。Discord 添付 URL は 24h で失効するため自動的に
-              Storage に取り込みます。
+              {m.imageForm.help}
             </p>
             {url.trim() &&
               /^https?:\/\//i.test(url.trim()) &&
@@ -357,26 +353,26 @@ export function ImageFormDialog({
 
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="image-title" className="text-xs text-foreground/80">
-              タイトル（任意）
+              {m.imageForm.titleLabel}
             </Label>
             <Input
               id="image-title"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder={`例: P3 散開図 / 未記入の場合は「${DEFAULT_TITLE}」`}
+              placeholder={m.imageForm.titlePlaceholder(DEFAULT_TITLE)}
               spellCheck={false}
             />
           </div>
 
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="image-desc" className="text-xs text-foreground/80">
-              メモ（任意）
+              {m.imageForm.memoLabel}
             </Label>
             <Textarea
               id="image-desc"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="例: 散開位置の解説 / 出典元など"
+              placeholder={m.imageForm.memoPlaceholder}
               rows={3}
               className="text-[13px] leading-relaxed"
             />
@@ -405,7 +401,7 @@ export function ImageFormDialog({
             disabled={busy}
             className="text-[11px] tracking-normal"
           >
-            キャンセル
+            {m.common.cancel}
           </Button>
           <Button
             type="button"
@@ -419,7 +415,7 @@ export function ImageFormDialog({
             ) : (
               <Save className="h-3.5 w-3.5" aria-hidden />
             )}
-            {busy ? "保存中…" : isEdit ? "更新" : "追加"}
+            {busy ? m.common.saving : isEdit ? m.crud.update : m.common.add}
           </Button>
         </DialogFooter>
       </DialogContent>
