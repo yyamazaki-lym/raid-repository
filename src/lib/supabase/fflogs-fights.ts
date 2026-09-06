@@ -52,6 +52,13 @@ export async function fetchCategoryFights(
      * RSC payload を増やさない。既定 false。
      */
     includePhases?: boolean;
+    /**
+     * 絶 (単一 encounter のコンテンツ) か (2026-09-06)。true なら層クラスタ
+     * (`buildFloorMap`) を作らない。拡張をまたいだ絶は旧 zone と Legacy zone で
+     * encounter ID が別になり得るため、クラスタ判定に掛けると片方の kill が
+     * 「最終層以外」として数から落ちる。
+     */
+    ultimate?: boolean;
   },
 ): Promise<CategoryFights> {
   const empty: CategoryFights = {
@@ -110,7 +117,7 @@ export async function fetchCategoryFights(
     // (buildFloorMap — レポートに混ざった別コンテンツの encounter を除外)
     // を明細から出し、count クエリで正確に数える (明細打ち切りに影響され
     // ない — ティアの層構成は不変なので直近 1200 件に最終層は必ず現れる)。
-    const floors = buildFloorMap(fights);
+    const floors = opts?.ultimate ? null : buildFloorMap(fights);
     let clearQuery = supabase
       .from("fflogs_fights")
       .select("report_code", { count: "exact", head: true })
