@@ -105,6 +105,10 @@ export type FflogsFightsSyncResult =
        * 画面で示すため。
        */
       remaining: number;
+      /** v2 (OAuth) で読めたレポート数 = フェーズ遷移 / 死亡イベントが取れた分。 */
+      fetchedViaV2: number;
+      /** v1 / cookie の代替経路で読めたレポート数 (fights の骨格のみ)。 */
+      fetchedViaFallback: number;
       /** 保存済み zone 名から後追いでカテゴリが決まった report 数。 */
       reattributed: number;
       /**
@@ -217,6 +221,8 @@ export async function syncFflogsFights(opts?: {
       failed: 0,
       truncated: false,
       remaining: 0,
+      fetchedViaV2: 0,
+      fetchedViaFallback: 0,
       reattributed: 0,
       failures: [],
       videosBridged: 0,
@@ -265,7 +271,13 @@ export async function syncFflogsFights(opts?: {
     });
   }
 
-  const targets: Array<ReportRef & { effectiveDate: string | null }> = [];
+  // 2026-09-07: 取得順の優先度。1 回の枠 (40 件 / 120 秒) を何に使うか。
+  //   0 = 通常 (未同期 / 直近 / カテゴリ未確定の取り直し / URL 指定)
+  //   1 = 保存形更新の後追い (フェーズ遷移・死亡イベントを持たない旧レポート)
+  //   2 = 恒久失敗 (private) の再試行 — 手動同期のときだけ対象。ほぼ同じ結果に
+  //       なるので最後に回す (実機: これが枠を食って後追いが進まなかった)。
+  type Target = ReportRef & { effectiveDate: string | null; priority: 0 | 1 | 2 };
+  const targets: Target[] = [];
   if (opts?.onlyCodes && opts.onlyCodes.length > 0) {
     // code 指定インポート: 既知の ref (動画リンク等) があれば流用し、
     // 未知の code は素の ref として追加する (カテゴリは zone 名で解決)。
@@ -279,6 +291,7 @@ export async function syncFflogsFights(opts?: {
       targets.push({
         ...ref,
         effectiveDate: ref.sessionDate ?? prev?.sessionDate ?? null,
+        priority: 0,
       });
     }
   } else {
@@ -286,16 +299,18 @@ export async function syncFflogsFights(opts?: {
     const prev = ledgerMap.get(ref.code);
     // 初回同期まで日付が分からない report もあるので、台帳の日付で補う。
     const effectiveDate = ref.sessionDate ?? prev?.sessionDate ?? null;
-    const withDate = { ...ref, effectiveDate };
+    const withDate = { ...ref, effectiveDate, priority: 0 as const };
     if (!prev) {
       targets.push(withDate);
       continue;
     }
     if (!prev.ok) {
       // 恒久失敗 (private) は再試行しても結果が変わらないので、明示指定が
-      // 無い限りスキップして取得枠を新規レポートに回す。
-      if (!isPermanentSyncFailure(prev.reason) || opts?.retryPermanentFailures)
-        targets.push(withDate);
+      // 無い限りスキップして取得枠を新規レポートに回す。明示指定のときも
+      // 優先度は最後 (他の取り直しを塞がない)。
+      if (!isPermanentSyncFailure(prev.reason)) targets.push(withDate);
+      else if (opts?.retryPermanentFailures)
+        targets.push({ ...withDate, priority: 2 });
       continue;
     }
     // カテゴリ未確定の report は取り直す。ただし zone 名が既に台帳にあれば
@@ -310,7 +325,7 @@ export async function syncFflogsFights(opts?: {
       prev.syncedAt !== null &&
       Date.parse(prev.syncedAt) < DEATH_DETAIL_FORMAT_SINCE_MS
     ) {
-      targets.push(withDate);
+      targets.push({ ...withDate, priority: 1 });
       continue;
     }
     // 直近のセッションはまだ pull が増えるので取り直す。
@@ -319,15 +334,22 @@ export async function syncFflogsFights(opts?: {
   }
   // 新しい日付から処理する (見たいのは直近の練習)。日付不明は最優先で
   // 拾う — 一度同期すれば日付が確定し、以後この分岐には来ない。
-  targets.sort((a, b) =>
-    (b.effectiveDate ?? "9999-99-99").localeCompare(
-      a.effectiveDate ?? "9999-99-99",
-    ),
+  targets.sort(
+    (a, b) =>
+      a.priority - b.priority ||
+      (b.effectiveDate ?? "9999-99-99").localeCompare(
+        a.effectiveDate ?? "9999-99-99",
+      ),
   );
   const limit = opts?.limit ?? DEFAULT_REPORT_LIMIT;
   const sliced = targets.slice(0, limit);
 
   let fetched = 0;
+  // 2026-09-07: 取得経路の内訳。v2 (OAuth) で読めたレポートだけがフェーズ遷移 /
+  // 死亡イベント (Summary table) を持てる。v1 / cookie の代替経路は fights の
+  // 骨格だけなので、「フェーズ情報のある pull が増えない」理由をここで示す。
+  let fetchedViaV2 = 0;
+  let fetchedViaFallback = 0;
   let upserted = 0;
   let failed = 0;
   const failures: Array<{ reportCode: string; reason: string }> = [];
@@ -349,6 +371,7 @@ export async function syncFflogsFights(opts?: {
     // v1 / cookie fallback で取れたレポート (権限なし) は table も読めない
     // ので、無駄な 1 往復と権限エラーの warn を出さないためのフラグ。
     const fromV2 = res.ok;
+    if (fromV2) fetchedViaV2 += 1;
     // permission エラー時は unlisted / private 向けの fallback チェーンを
     // 試し、**全経路の結果を reason に刻む** (2026-08-28: 「取得不可」の
     // 実機報告で、v1 が未設定スキップなのか試行失敗なのか切り分けられ
@@ -384,6 +407,7 @@ export async function syncFflogsFights(opts?: {
             : PERMISSION_CHAIN_PREFIX + attempts.join(" / ");
       }
     }
+    if (res.ok && !fromV2) fetchedViaFallback += 1;
     if (!res.ok) {
       failed += 1;
       const savedReason = (failureReason ?? res.reason).slice(0, 300);
@@ -665,6 +689,8 @@ export async function syncFflogsFights(opts?: {
     truncated,
     // 取りに行った件数 (fetched) を全候補から引く = 枠に入らなかった件数。
     remaining: Math.max(0, targets.length - fetched),
+    fetchedViaV2,
+    fetchedViaFallback,
     reattributed,
     failures,
     videosBridged,

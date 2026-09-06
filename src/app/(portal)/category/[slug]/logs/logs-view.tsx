@@ -416,6 +416,12 @@ export function LogsView({
           (result.reattributed > 0 ? ` / 再分類 ${result.reattributed}` : "") +
           (result.videosBridged > 0 ? ` / 動画に紐づけ ${result.videosBridged}` : "") +
           (result.failed > 0 ? ` (失敗 ${result.failed} — 理由は下に表示)` : "") +
+          // 2026-09-07: 代替経路 (v1 / cookie) で取れたレポートにはフェーズ遷移 /
+          // 死亡イベントが入らない。「フェーズ情報のある pull が増えない」の
+          // 理由が見えるように内訳を出す。
+          (result.fetchedViaFallback > 0
+            ? ` / 経路: v2 ${result.fetchedViaV2} 件・代替 ${result.fetchedViaFallback} 件 (代替経路はフェーズ・死亡情報なし)`
+            : "") +
           // 2026-09-07: 取り直し (フェーズ遷移 / 死亡イベントの後追い) が溜まって
           // いると 1 回の枠 (40 件 / 120 秒) に入らない。残件数と「もう一度押す」
           // を明示する (従来は「※途中まで」だけで、何をすればいいか分からなかった)。
@@ -1297,11 +1303,18 @@ function PhaseTimeCard({
         <span className="font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase">
           フェーズ滞在時間
         </span>
-        <span className="font-mono text-[9px] tracking-[0.12em] text-muted-foreground/70">
+        <span
+          className="font-mono text-[9px] tracking-[0.12em] text-muted-foreground/70"
+          title={
+            partial
+              ? "フェーズ遷移は 2026-09-06 以降に FFLogs v2 (OAuth) 経路で取得した pull にだけ入ります。古い pull は同期の取り直し (1 回 40 レポート) で順に埋まりますが、unlisted / private で v1 経路になったレポートには入りません (同期結果の「経路」を参照)"
+              : undefined
+          }
+        >
           合計 {formatMs(totalMs)}
           {allPulls !== null
             ? partial
-              ? ` (フェーズ情報のある ${allPulls} / 全 ${totalPulls} pull — 残りは同期で取り直し中)`
+              ? ` (フェーズ情報のある ${allPulls} / 全 ${totalPulls} pull)`
               : ` (登録ログ全 ${allPulls} pull)`
             : truncated
               ? " (表示中の分)"
