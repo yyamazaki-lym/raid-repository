@@ -42,6 +42,7 @@ import { toXivgearEmbedUrl } from "@/lib/xivgear-url";
 import { fetchXivgearSummaryAction } from "@/lib/server/xivgear-actions";
 import type { XivgearSheetSummary } from "@/lib/xivgear-set";
 import { safeHref } from "@/lib/url-safe";
+import { PERF_CHIP, perfForRatio } from "@/lib/perf-tone";
 import { getStoredAuthorName } from "@/lib/schedule-memos-client";
 import {
   LOOT_WEEKLY_STATUSES,
@@ -73,10 +74,12 @@ import {
  * の判定は server 側で `isMe` に畳んである)。
  */
 
+// 2026-09-06 (UI-12): 共通の 5 段階スケール (perf-tone.ts) に乗せる。
+// 消化済 = 良い / 辞退 = ふつう (消化はしていないが意思表示済) / 未消化 = neutral。
 const STATUS_STYLE: Record<LootWeeklyStatus, string> = {
-  未消化: "border-border/50 bg-secondary/30 text-muted-foreground",
-  消化済: "border-emerald-400/45 bg-emerald-400/10 text-emerald-200",
-  辞退: "border-amber-400/45 bg-amber-400/10 text-amber-200",
+  未消化: PERF_CHIP.neutral,
+  消化済: PERF_CHIP.best,
+  辞退: PERF_CHIP.mid,
 };
 
 export function LootWeeklyPanel({
@@ -150,9 +153,8 @@ export function LootWeeklyPanel({
         <span
           className={
             "rounded-sm border px-2 py-1 font-mono text-[10px] tracking-[0.14em] " +
-            (unresolved === 0
-              ? "border-emerald-400/45 bg-emerald-400/10 text-emerald-200"
-              : "border-amber-400/45 bg-amber-400/10 text-amber-200")
+            // 未消化 0 名 = 良い、残っていれば「注意」(perf-tone.ts)。
+            (unresolved === 0 ? PERF_CHIP.best : PERF_CHIP.warn)
           }
         >
           未消化 {unresolved} 名
@@ -650,9 +652,14 @@ function XivgearSummaryStrip({
             <span
               className={
                 "rounded-sm border px-1 py-px font-mono text-[10px] tabular-nums " +
-                (complete
-                  ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-200"
-                  : "border-amber-400/40 bg-amber-400/10 text-amber-200")
+                // 部位の充足率を 5 段階スケールで (全部位 = 良い)。
+                PERF_CHIP[
+                  perfForRatio(
+                    set.expectedSlots > 0
+                      ? set.filledSlots / set.expectedSlots
+                      : null,
+                  )
+                ]
               }
               title={
                 complete

@@ -1,4 +1,5 @@
 import type { Attendance } from "@/lib/schedule/next-session";
+import { PERF_CHIP } from "@/lib/perf-tone";
 
 /**
  * 出欠記号の UI 表現 (色 tone / 日本語ラベル / 凡例構築)。schedule-list.tsx
@@ -13,16 +14,21 @@ export const ATT_TONE_FALLBACK =
   "text-amber-200 bg-amber-200/10 border-amber-200/30";
 
 export const ATT_TONE: Record<string, string> = {
-  "◯": "text-[var(--neon-cyan)] bg-[var(--neon-cyan)]/10 border-[var(--neon-cyan)]/30",
+  // 2026-09-06 (UI-12): 出欠の記号は「参加できるか」の良し悪しなので、
+  // 共通の 5 段階スケール (perf-tone.ts) に乗せる: ○ = 良い (emerald) /
+  // ⏰ 遅刻 = やや良い (lime) / △ 未定 = ふつう (amber) / × = 悪い (rose) /
+  // － 未回答 = neutral。旧配色は ○ がテーマ色 (cyan)、△ が violet で、
+  // 練習ログの残 HP% や消化チェックと色の意味が揃っていなかった。
+  "◯": PERF_CHIP.best,
   // sync (character-sheets) は ◯ (U+25EF)、native の既定値 (native-fetch.ts)
   // は ○ (U+25CB) と、経路で文字が異なる。既存 DB に両方が保存されうるため
   // どちらのキーも同じ表現に解決する (片方だけだと native 既定構成で凡例
   // ラベルが消え、tone も amber fallback に落ちる)。
-  "○": "text-[var(--neon-cyan)] bg-[var(--neon-cyan)]/10 border-[var(--neon-cyan)]/30",
-  "⏰": "text-amber-300 bg-amber-300/10 border-amber-300/30",
-  "△": "text-[var(--neon-violet)] bg-[var(--neon-violet)]/10 border-[var(--neon-violet)]/30",
-  "×": "text-rose-400 bg-rose-400/10 border-rose-400/30",
-  "－": "text-muted-foreground bg-secondary/30 border-border/50",
+  "○": PERF_CHIP.best,
+  "⏰": PERF_CHIP.good,
+  "△": PERF_CHIP.mid,
+  "×": PERF_CHIP.bad,
+  "－": PERF_CHIP.neutral,
   // character-sheets 側のカスタムラベル (TODO #62) — 既知のものは
   // amber fallback と同色で固定マッピング、辞書外は ?? で同 fallback
   // に落ちる。色を分けないのは「× / 標準 5 種に対する派生」という

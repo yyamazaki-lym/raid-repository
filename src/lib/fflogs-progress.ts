@@ -10,6 +10,7 @@
 
 import { jstYmdString } from "./jst-date";
 import type { PhaseSpan, WipeSummary } from "./fflogs-fight-detail";
+import { PERF_TEXT, perfForRemainingPercent } from "./perf-tone";
 
 /**
  * FFLogs の残 HP% を「0-100 のパーセント」に正規化する。
@@ -565,20 +566,14 @@ export function formatPercentage(p: number | null): string {
 }
 
 /**
- * 残 HP% を「討伐までの熱量」で色分けする Tailwind テキストクラス
- * (2026-08-30 実機報告「灰色だらけで見にくい」への対応)。
- * ゲーム内の低 HP ほど赤く見える感覚に合わせ、残りが少ないほど暖色:
- * 討伐(0) = emerald / <2% = rose / ≤10% = orange / ≤30% = amber /
- * ≤60% = sky / それ以上 = 従来の muted。
+ * 残 HP% の文字色。2026-09-06 (UI-12) から共通の 5 段階スケール
+ * (`perf-tone.ts`: 良い = emerald → lime → amber → orange → rose = 悪い) に
+ * 乗せる。旧実装 (2026-08-30) は「残りが少ないほど暖色」の熱量色で、
+ * rose が「討伐寸前」と「死亡」の両方を意味していた。数値は必ず併記する
+ * (色だけで意味を伝えない)。
  */
 export function percentageToneClass(p: number | null): string {
-  if (p === null) return "text-muted-foreground";
-  if (p <= 0) return "text-emerald-300";
-  if (p < 2) return "text-rose-300";
-  if (p <= 10) return "text-orange-300";
-  if (p <= 30) return "text-amber-300";
-  if (p <= 60) return "text-sky-300";
-  return "text-muted-foreground";
+  return PERF_TEXT[perfForRemainingPercent(p)];
 }
 
 /**

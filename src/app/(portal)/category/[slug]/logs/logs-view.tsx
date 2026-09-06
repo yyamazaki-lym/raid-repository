@@ -63,6 +63,14 @@ import {
   formatClock,
 } from "@/lib/fflogs-url";
 import {
+  PERF_BAR,
+  PERF_BAR_SOFT,
+  PERF_CHIP,
+  PERF_TEXT,
+  perfForDeaths,
+  perfForProgress,
+} from "@/lib/perf-tone";
+import {
   formatMs,
   formatWipeLabel,
   jobAbbr,
@@ -922,14 +930,17 @@ export function LogsView({
                         aria-hidden
                       />
                     ))}
+                  {/* 2026-09-06 (UI-12): バーの色は到達度を 5 段階スケール
+                      (perf-tone.ts) に乗せる。記録更新の日は濃く、それ以外は
+                      薄く (旧実装の cyan 濃淡の役割を引き継ぐ)。討伐 = best。 */}
                   <span
                     className={
                       "h-full rounded-sm " +
                       (t.hasClear
-                        ? "bg-emerald-400/75"
+                        ? PERF_BAR.best
                         : t.isRecord
-                          ? "bg-[var(--neon-cyan)]/70"
-                          : "bg-[var(--neon-cyan)]/35")
+                          ? PERF_BAR[perfForProgress(t.progress)]
+                          : PERF_BAR_SOFT[perfForProgress(t.progress)])
                     }
                     style={{ width: `${Math.max(2, t.progress)}%` }}
                     aria-hidden
@@ -1187,12 +1198,12 @@ function WipeCausesCard({
             key={c.ability}
             className="flex items-center gap-2 font-mono text-[11px] tabular-nums"
           >
-            <span className="min-w-0 flex-1 truncate text-rose-200/90" title={c.ability}>
+            <span className={"min-w-0 flex-1 truncate " + PERF_TEXT.bad} title={c.ability}>
               {c.ability}
             </span>
             <span className="relative h-1.5 w-20 shrink-0 overflow-hidden rounded-sm bg-secondary/50">
               <span
-                className="absolute inset-y-0 left-0 rounded-sm bg-rose-400/60"
+                className={"absolute inset-y-0 left-0 rounded-sm " + PERF_BAR.bad}
                 style={{
                   width: `${Math.max(4, Math.round((c.count / Math.max(1, wipeCount)) * 100))}%`,
                 }}
@@ -1633,7 +1644,7 @@ function DayRow({
               </span>
               {dayWipeCauses.map((c) => (
                 <span key={c.ability} className="inline-flex items-baseline gap-1">
-                  <span className="text-rose-200/90">{c.ability}</span>
+                  <span className={PERF_TEXT.bad}>{c.ability}</span>
                   <span className="text-muted-foreground">×{c.count}</span>
                 </span>
               ))}
@@ -1815,9 +1826,10 @@ function PullRow({
             <span
               className={
                 "inline-flex w-8 items-center justify-end gap-0.5 " +
+                // 2026-09-06 (UI-12): 死亡数は 0 = 良い … 5+ = 悪い の 5 段階。
                 (fight.deaths === 0
                   ? "text-muted-foreground"
-                  : "text-rose-300/90")
+                  : PERF_TEXT[perfForDeaths(fight.deaths)])
               }
               title={fight.deaths !== null ? "死亡数" : "死亡数は未取得です"}
             >
@@ -1842,7 +1854,10 @@ function PullRow({
         // 個人名は持っていない。可変幅なので左グループの末尾に置く。
         const wipeChip = fight.wipe ? (
           <span
-            className="inline-flex max-w-[15rem] min-w-0 items-center gap-1 rounded-sm border border-rose-400/35 bg-rose-400/10 px-1.5 py-0.5 font-mono text-[11px] text-rose-200/90 tabular-nums"
+            className={
+              "inline-flex max-w-[15rem] min-w-0 items-center gap-1 rounded-sm border px-1.5 py-0.5 font-mono text-[11px] tabular-nums " +
+              PERF_CHIP.bad
+            }
             title={
               `最初の死亡: ${formatMs(fight.wipe.t)}` +
               (fight.wipe.phase !== null ? ` (P${fight.wipe.phase})` : "") +
@@ -1854,7 +1869,7 @@ function PullRow({
               ` / 死亡 ${fight.wipe.total}`
             }
           >
-            <Skull className="h-2.5 w-2.5 shrink-0 text-rose-300/80" aria-hidden />
+            <Skull className="h-2.5 w-2.5 shrink-0 opacity-80" aria-hidden />
             <span className="truncate">{formatWipeLabel(fight.wipe)}</span>
           </span>
         ) : null;
