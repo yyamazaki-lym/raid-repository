@@ -10,16 +10,18 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { THEMES, findTheme, type ThemeDef } from "@/lib/themes";
 import { setThemeId, useThemeId } from "@/lib/theme-store";
+import { useMessages } from "@/lib/i18n/client";
 
 export function ThemeSwitcher() {
   const current = useThemeId();
   const currentTheme = findTheme(current);
+  const m = useMessages();
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
         className="group flex items-center gap-2 rounded-md border border-border/40 bg-background/30 px-2.5 py-1.5 text-[10px] tracking-normal text-muted-foreground transition-colors hover:border-[var(--neon-cyan)]/40 hover:text-foreground"
-        aria-label="テーマを切り替え"
+        aria-label={m.header.themeAria}
       >
         <Palette className="h-3.5 w-3.5 text-[var(--neon-cyan)]" aria-hidden />
         <Swatch theme={currentTheme} size="sm" />

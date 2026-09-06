@@ -10,6 +10,7 @@ import { LinkPendingIndicator } from "./link-pending-indicator";
 import { MainActionSlotTarget } from "./action-slot";
 import type { Category } from "@/lib/supabase/types";
 import type { ScheduleSourceMode } from "@/lib/schedule/source-mode";
+import { useMessages } from "@/lib/i18n/client";
 
 export function MainTabs({
   initialCategories,
@@ -34,6 +35,7 @@ export function MainTabs({
   scheduleSourceMode: ScheduleSourceMode;
 }) {
   const pathname = usePathname();
+  const m = useMessages();
   const scheduleActive = pathname === "/";
   const showScheduleTab = scheduleSourceMode !== "disabled";
   // F-2: prefers-reduced-motion 時は underline の spring を即時化する。
@@ -44,7 +46,7 @@ export function MainTabs({
 
   return (
     <nav
-      aria-label="メインナビゲーション"
+      aria-label={m.nav.mainAria}
       className="glass-bar sticky top-[var(--header-h)] z-20"
     >
       <div className="mx-auto max-w-5xl px-2 sm:px-6">
@@ -72,7 +74,7 @@ export function MainTabs({
                     )}
                     aria-hidden
                   />
-                  <span>スケジュール</span>
+                  <span>{m.nav.schedule}</span>
                   {/* 2.9 (2026-06-11): cold start 等で RSC 応答が遅い時の
                       「無音 stuck」対策。prefetch 済みなら出ない。
                       absolute で右 padding 域に重ね、flow に置かない

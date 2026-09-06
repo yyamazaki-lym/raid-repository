@@ -52,6 +52,7 @@ import type {
 import type { ScheduleSourceMode } from "@/lib/schedule/source-mode";
 import type { SessionLogEntry } from "@/lib/schedule/session-logs";
 import type { SessionVideoLink } from "@/lib/server/session-video-link";
+import { useLocale, useMessages } from "@/lib/i18n/client";
 // C-2 (2026-07-12): native 系は lazy re-export 経由。全 render 箇所が
 // mode==="native" ガード下なので sync モードでは chunk ごとロードされない。
 import {
@@ -168,6 +169,7 @@ export function ScheduleList({
   currentDiscordId = null,
   isAdmin = false,
 }: Props) {
+  const m = useMessages();
   // TODO #11 phase 7: 全 memo を 1 channel で監視し、各 SessionRow には
   // 該当 rawDate の slice + refetchAll を props で配る (旧: 各行が個別
   // subscribe → N リスナー × N refetch の問題)。
@@ -283,13 +285,13 @@ export function ScheduleList({
         <span className="grid h-10 w-10 place-items-center rounded-md border border-destructive/40 bg-background/40 text-destructive">
           <AlertTriangle className="h-4 w-4" aria-hidden />
         </span>
-        <p className="font-display text-foreground text-sm">スケジュール取得失敗</p>
+        <p className="font-display text-foreground text-sm">{m.schedule.listFetchFailed}</p>
         <p className="text-xs text-muted-foreground">
           {result.reason === "no-url"
-            ? "NEXT_PUBLIC_SCHEDULE_URL が設定されていません。"
+            ? m.schedule.listReasonNoUrl
             : result.reason === "fetch-failed"
-              ? "スケジュールサイトに接続できませんでした。"
-              : "ページ構造の解析に失敗しました。"}
+              ? m.schedule.listReasonFetchFailed
+              : m.schedule.listReasonParseFailed}
         </p>
       </Card>
     );
@@ -368,8 +370,8 @@ export function ScheduleList({
       <EmptyState
         tone="neutral"
         icon={CalendarX2}
-        title="予定なし"
-        description="表示できる予定が見つかりませんでした。"
+        title={m.schedule.emptyTitle}
+        description={m.schedule.emptyDescription}
       />
     );
   }
@@ -394,11 +396,11 @@ export function ScheduleList({
             (`.sticky-col`, globals.css — sm 以上でのみ固定)。thead は行 tint が
             ないので疑似要素のオーバーレイは不要。 */}
         <th scope="col" className="sticky-col pl-3 pr-1 py-2">
-          日程
+          {m.schedule.colDate}
         </th>
         {showDecided && (
           <th scope="col" className="px-1 py-2 text-center">
-            確定
+            {m.schedule.decided}
           </th>
         )}
         {users.map((u) => (
@@ -474,7 +476,7 @@ export function ScheduleList({
                     colSpan={2 + users.length}
                     className="px-3 py-6 text-center text-xs text-muted-foreground"
                   >
-                    今後の予定はありません
+                    {m.schedule.noUpcoming}
                   </td>
                 </tr>
               )}
@@ -506,13 +508,13 @@ export function ScheduleList({
               <span className="inline-flex h-1.5 w-1.5 rounded-full bg-muted-foreground/60" />
               Past
               <span className="font-sans text-[11px] tracking-normal normal-case text-muted-foreground/85">
-                · 詳細ログ (出欠表)
+                {m.schedule.pastDetailSub}
               </span>
             </div>
             <span className="text-[11px] tabular-nums text-muted-foreground">
               {showOlderPast || olderPast.length === 0
-                ? `${renderedPast.length} 件`
-                : `直近 ${recentPast.length} 件 / 全 ${renderedPast.length} 件`}
+                ? m.schedule.countAll(renderedPast.length)
+                : m.schedule.countRecent(recentPast.length, renderedPast.length)}
             </span>
           </header>
           <div className="overflow-x-auto">
@@ -590,12 +592,12 @@ export function ScheduleList({
                         {showOlderPast ? (
                           <>
                             <ChevronUp className="h-3 w-3" aria-hidden />
-                            2 ヶ月以上前を畳む
+                            {m.schedule.foldOlder}
                           </>
                         ) : (
                           <>
                             <ChevronDown className="h-3 w-3" aria-hidden />
-                            2 ヶ月以上前を表示 ({olderPast.length} 件)
+                            {m.schedule.unfoldOlder(olderPast.length)}
                           </>
                         )}
                       </button>
@@ -647,6 +649,7 @@ function UserHeaderCell({
    */
   isOwnUser?: boolean;
 }) {
+  const m = useMessages();
   const hasComments = comments.length > 0;
   const nativeComment =
     mode === "native" && user.comment && user.comment.trim()
@@ -686,8 +689,8 @@ function UserHeaderCell({
       }
       title={
         isOwnUser
-          ? `${user.name} のコメントを編集`
-          : `${user.name} のコメントを表示`
+          ? m.schedule.commentEdit(user.name)
+          : m.schedule.commentView(user.name)
       }
     >
       {user.name}
@@ -695,9 +698,11 @@ function UserHeaderCell({
   ) : clickable && editUrl ? (
     <button
       type="button"
-      onClick={() => onOpenEditFrame(editUrl, `${user.name} の出欠を編集`)}
+      onClick={() =>
+        onOpenEditFrame(editUrl, m.schedule.editAttendanceDialog(user.name))
+      }
       className={nameClass}
-      title={`${user.name} の出欠をその場で編集`}
+      title={m.schedule.editAttendanceTitle(user.name)}
     >
       {user.name}
     </button>
@@ -860,6 +865,8 @@ function SessionRow({
    */
   slots?: { video: boolean; logs: boolean; memo: boolean };
 }) {
+  const m = useMessages();
+  const locale = useLocale();
   const decided = session.status === "DECISION";
   // Ref so the (separately-rendered) memo dot can open the popover.
   const popoverRef = useRef<SessionMemoPopoverHandle>(null);
@@ -1088,7 +1095,7 @@ function SessionRow({
               if (!safeScheduleUrl) return;
               onOpenEditFrame(
                 safeScheduleUrl,
-                `スケジュール (${dateLabel} の行へ移動)`,
+                m.schedule.scheduleRowDialogTitle(dateLabel),
                 targetRowIndex,
               );
             };
@@ -1098,15 +1105,15 @@ function SessionRow({
             if (decided) {
               const badge = (
                 <span
-                  aria-label="日程確定"
+                  aria-label={m.schedule.decidedAria}
                   title={
                     safeScheduleUrl
-                      ? `日程確定 — クリックで ${dateLabel} の行までスクロール`
-                      : "日程確定"
+                      ? m.schedule.decidedTitleScroll(dateLabel)
+                      : m.schedule.decidedAria
                   }
                   className={DECISION_BADGE_CLASS}
                 >
-                  確定
+                  {m.schedule.decided}
                 </span>
               );
               return safeScheduleUrl ? (
@@ -1114,7 +1121,7 @@ function SessionRow({
                   type="button"
                   onClick={openTarget}
                   className={`${sharedClass} hover:scale-105`}
-                  aria-label={`スケジュール元サイトの ${dateLabel} の行を開く`}
+                  aria-label={m.schedule.openSourceRowAria(dateLabel)}
                 >
                   {badge}
                 </button>
@@ -1127,8 +1134,8 @@ function SessionRow({
               <button
                 type="button"
                 onClick={openTarget}
-                title={`未確定 — クリックで ${dateLabel} の行までスクロール`}
-                aria-label={`スケジュール元サイトの ${dateLabel} の行を開く`}
+                title={m.schedule.undecidedTitleScroll(dateLabel)}
+                aria-label={m.schedule.openSourceRowAria(dateLabel)}
                 className={`${sharedClass} px-2 text-muted-foreground/40 hover:bg-secondary/40 hover:text-foreground/80`}
               >
                 ·
@@ -1136,7 +1143,7 @@ function SessionRow({
             ) : (
               <span
                 aria-hidden
-                title="未確定"
+                title={m.schedule.undecided}
                 className="inline-flex h-6 items-center justify-center text-muted-foreground/40"
               >
                 ·
@@ -1154,7 +1161,7 @@ function SessionRow({
         // 横に `21:30〜` を 9px で添える。無い人のセルは従来どおり。
         const times = session.attendanceTimes?.[u.userId] ?? null;
         const timesHint = formatAttendanceTimesHint(times);
-        const timesTitle = describeAttendanceTimes(times);
+        const timesTitle = describeAttendanceTimes(times, locale);
         // TODO #2 phase 2-B: native mode + 本人行 + nativeSessionId 解決済 +
         // 出欠選択肢取得済 + 過去日でない、の 5 条件 AND で popover trigger 化。
         // 過去日 (`isPast`) は sync 経路と揃えて編集不可 (記録閲覧のみ)。
@@ -1228,11 +1235,11 @@ function SessionRow({
                 onClick={() =>
                   onOpenEditFrame(
                     editUrl,
-                    `${u.name} の出欠を編集 (${dateLabel} を含む)`,
+                    m.schedule.editAttendanceDialogIncluding(u.name, dateLabel),
                     session.rowIndex,
                   )
                 }
-                title={`${u.name} の出欠をその場で編集 (${dateLabel} を含む全日程)`}
+                title={m.schedule.editAttendanceTitleIncluding(u.name, dateLabel)}
                 className="group/cell inline-flex rounded-sm transition-transform hover:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--neon-cyan)]/60 active:scale-95"
               >
                 {symbol}

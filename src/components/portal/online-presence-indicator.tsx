@@ -1,6 +1,7 @@
 "use client";
 
 import { useOnlinePresence } from "@/lib/use-online-presence";
+import { useMessages } from "@/lib/i18n/client";
 
 /**
  * ヘッダー右上の「● ONLINE」表示。常時点灯の装飾だったものを、Supabase
@@ -23,6 +24,7 @@ export function OnlinePresenceIndicator({
   // demo ゲストは全員が固定 presence key に畳まれ「ONLINE 1」固定の誤カウントに
   // なるため、集計をオフにして装飾の "ONLINE" のみ表示する。
   const count = useOnlinePresence(selfKey, !isDemoGuest);
+  const m = useMessages();
   return (
     <>
       <span
@@ -31,8 +33,8 @@ export function OnlinePresenceIndicator({
       />
       <span
         className="hidden font-mono text-[11px] tracking-[0.22em] text-muted-foreground sm:inline"
-        aria-label={count > 0 ? `オンライン ${count} 人` : undefined}
-        title={count > 0 ? `現在 ${count} 人がオンライン` : undefined}
+        aria-label={count > 0 ? m.header.onlineAria(count) : undefined}
+        title={count > 0 ? m.header.onlineTitle(count) : undefined}
       >
         {count > 0 ? `ONLINE ${count}` : "ONLINE"}
       </span>

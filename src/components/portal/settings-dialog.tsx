@@ -42,6 +42,8 @@ import { NativeAutoConfirmSection } from "./settings/native-auto-confirm-section
 import { FflogsSyncSection } from "./settings/fflogs-sync-section";
 import { ChangelogFooter } from "./settings/changelog-footer";
 import { DangerZoneSection } from "./settings/danger-zone-section";
+import { LocaleSection } from "./settings/locale-section";
+import { useMessages } from "@/lib/i18n/client";
 
 /**
  * Settings dialog: shared global configuration that all members see
@@ -75,6 +77,7 @@ export function SettingsDialog({
   defaultOpen?: boolean;
 }) {
   const router = useRouter();
+  const m = useMessages();
   const [open, setOpen] = useState(defaultOpen);
   const [url, setUrl] = useState("");
   const [channelId, setChannelId] = useState("");
@@ -202,7 +205,7 @@ export function SettingsDialog({
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger
         className="flex h-8 w-8 items-center justify-center rounded-md border border-border/40 bg-background/30 text-muted-foreground transition-colors hover:border-[var(--neon-cyan)]/40 hover:text-foreground"
-        aria-label="設定"
+        aria-label={m.settings.aria}
       >
         <Settings className="h-3.5 w-3.5" aria-hidden />
       </DialogTrigger>
@@ -217,7 +220,7 @@ export function SettingsDialog({
               Settings
             </DialogTitle>
             <DialogDescription className="text-xs">
-              この設定は固定の全員に共有されます
+              {m.settings.description}
             </DialogDescription>
           </div>
         </DialogHeader>
@@ -228,9 +231,12 @@ export function SettingsDialog({
         <div className="flex max-h-[80svh] flex-col gap-5 overflow-y-auto p-5 sm:max-h-[70svh]">
           {!canEdit && (
             <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] leading-relaxed text-amber-200">
-              スケジュール / FFLogs / DB 編集系の設定は ADMIN ロールを持つユーザーのみ操作できます。閲覧専用モードで表示中です。
+              {m.settings.readOnlyNotice}
             </div>
           )}
+          {/* 2026-09-06: 表示言語 (ブラウザごと)。共有設定ではないので最上段に
+              置き、説明文でその旨を明示する。 */}
+          <LocaleSection />
           <ScheduleSourceModeSection
             open={open}
             canEdit={canEdit}

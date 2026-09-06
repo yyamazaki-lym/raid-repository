@@ -7,6 +7,7 @@ import { motion, useReducedMotion } from "motion/react";
 import { ChevronLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DEFAULT_SUB_TAB_LABELS, SUB_TAB_DEFS } from "@/lib/sub-tab-defs";
+import { useMessages } from "@/lib/i18n/client";
 import {
   ActionSlotTarget,
   useActionSlotContext,
@@ -128,11 +129,12 @@ export function SubTabs({
     }
   }, [pathname]);
 
+  const m = useMessages();
   return (
     <>
       <div ref={sentinelRef} aria-hidden className="h-px" />
       <nav
-        aria-label="コンテンツ内ナビゲーション"
+        aria-label={m.nav.subAria}
         data-stuck={stuck}
         className="glass-bar border-border/40 sticky top-[calc(var(--header-h)_+_var(--nav-h))] z-15 border-b transition-[top]"
       >
