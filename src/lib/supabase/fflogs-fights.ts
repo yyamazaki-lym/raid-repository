@@ -4,6 +4,12 @@ import {
   normalizePercentage,
   type FightRow,
 } from "@/lib/fflogs-progress";
+import {
+  phaseSpans,
+  summarizeWipe,
+  type StoredDeathEvent,
+  type StoredPhaseTransition,
+} from "@/lib/fflogs-fight-detail";
 
 /**
  * 練習ログ (fights) の読み取り (TODO #94 / A-1 + A-2)。
@@ -39,6 +45,14 @@ export type CategoryFights = {
 
 export async function fetchCategoryFights(
   categoryId: string,
+  opts?: {
+    /**
+     * フェーズ滞在区間 (`phases`) を明細に含めるか (2026-09-06 W-2)。
+     * フェーズ表示は絶に限る (2026-08-28 の判断) ので、零式では false にして
+     * RSC payload を増やさない。既定 false。
+     */
+    includePhases?: boolean;
+  },
 ): Promise<CategoryFights> {
   const empty: CategoryFights = {
     fights: [],
@@ -51,7 +65,7 @@ export async function fetchCategoryFights(
     const listRes = await supabase
       .from("fflogs_fights")
       .select(
-        "report_code, fight_id, session_date, name, kill, fight_percentage, last_phase, difficulty, encounter_id, party_dps, deaths, start_ms, end_ms, report_start_ms",
+        "report_code, fight_id, session_date, name, kill, fight_percentage, last_phase, difficulty, encounter_id, party_dps, deaths, death_events, phase_transitions, start_ms, end_ms, report_start_ms",
         { count: "exact" },
       )
       .eq("category_id", categoryId)
@@ -59,7 +73,16 @@ export async function fetchCategoryFights(
       .limit(MAX_FIGHTS);
     const { data, error, count } = listRes;
     if (error || !data) return empty;
-    const fights = data.map((r) => ({
+    const includePhases = opts?.includePhases === true;
+    const fights = data.map((r) => {
+      const startMs = Number(r.start_ms);
+      const endMs = Number(r.end_ms);
+      const kill = (r.kill as boolean) === true;
+      // jsonb 列は保存形 (fflogs-fight-detail.ts) のまま来る。形が違う
+      // (旧データ / 手で触った) 場合は null 扱いにして表示側を壊さない。
+      const deathEvents = asDeathEvents(r.death_events);
+      const transitions = asPhaseTransitions(r.phase_transitions);
+      return {
       reportCode: r.report_code as string,
       fightId: r.fight_id as number,
       sessionDate: (r.session_date as string | null) ?? null,
@@ -72,10 +95,15 @@ export async function fetchCategoryFights(
       difficulty: numberOrNull(r.difficulty),
       partyDps: numberOrNull(r.party_dps),
       deaths: numberOrNull(r.deaths),
-      startMs: Number(r.start_ms),
-      endMs: Number(r.end_ms),
+      wipe: summarizeWipe(deathEvents, transitions, kill),
+      phases: includePhases
+        ? phaseSpans(transitions, Math.max(0, endMs - startMs))
+        : null,
+      startMs,
+      endMs,
       reportStartMs: r.report_start_ms == null ? null : Number(r.report_start_ms),
-    }));
+      };
+    });
     const totalPulls = count ?? fights.length;
 
     // クリア数: 複数層なら最終層の kill のみ。層はクラスタ判定
@@ -186,6 +214,39 @@ export async function fetchFailedReportSyncs(
     rethrowNextSentinel(err);
     return [];
   }
+}
+
+/** jsonb `death_events` の防御的パース (要素の形が違えば捨てる)。 */
+function asDeathEvents(v: unknown): StoredDeathEvent[] | null {
+  if (!Array.isArray(v)) return null;
+  const out: StoredDeathEvent[] = [];
+  for (const e of v) {
+    if (!e || typeof e !== "object") continue;
+    const o = e as Record<string, unknown>;
+    const t = numberOrNull(o.t);
+    if (t === null) continue;
+    out.push({
+      t,
+      job: typeof o.job === "string" ? o.job : null,
+      ability: typeof o.ability === "string" ? o.ability : null,
+    });
+  }
+  return out;
+}
+
+/** jsonb `phase_transitions` の防御的パース。 */
+function asPhaseTransitions(v: unknown): StoredPhaseTransition[] | null {
+  if (!Array.isArray(v)) return null;
+  const out: StoredPhaseTransition[] = [];
+  for (const e of v) {
+    if (!e || typeof e !== "object") continue;
+    const o = e as Record<string, unknown>;
+    const id = numberOrNull(o.id);
+    const t = numberOrNull(o.t);
+    if (id === null || t === null) continue;
+    out.push({ id, t });
+  }
+  return out.length > 0 ? out : null;
 }
 
 function numberOrNull(v: unknown): number | null {

@@ -22,6 +22,12 @@ import {
   PERMISSION_ERROR_RE,
   V1_PRIVATE_ERROR_RE,
 } from "@/lib/fflogs-sync-reason";
+import {
+  extractDeathEvents,
+  normalizePhaseTransitions,
+  type StoredDeathEvent,
+  type StoredPhaseTransition,
+} from "@/lib/fflogs-fight-detail";
 
 /**
  * FFLogs の pull 単位データ (fights) を portal に materialize する
@@ -112,6 +118,12 @@ type FightPayload = {
   lastPhase?: number | null;
   startTime: number;
   endTime: number;
+  /**
+   * フェーズ遷移 (2026-09-06 W-2)。`undefined` = クエリに含めなかった
+   * (fallback クエリで取得した) ので保存列を触らない。`null` = 含めたが
+   * FFLogs がこのエンカウンタにフェーズ定義を持たない。
+   */
+  phaseTransitions?: Array<{ id: number; startTime: number }> | null;
 };
 
 /**
@@ -123,6 +135,11 @@ export type FightDetail = {
   partyDps: number | null;
   /** PT の死亡数 (deathEvents の件数)。取得できなければ null。 */
   deaths: number | null;
+  /**
+   * 死亡イベント (2026-09-06 W-1)。pull 開始からの相対 ms + ジョブ + 致命技。
+   * プレイヤー名は含めない。deathEvents が無ければ null。
+   */
+  deathEvents: StoredDeathEvent[] | null;
 };
 
 /**
@@ -386,6 +403,10 @@ export async function syncFflogsFights(opts?: {
         ? await fetchFightDetails(token, ref.code, acceptedFights, deadlineAtMs)
         : new Map<number, FightDetail>();
       const reportStartMs = res.startMs;
+      // 2026-09-06 W-2: フェーズ遷移はクエリに含められた時だけ列を送る。
+      // PostgREST の一括 upsert は全行で同じキー集合を要求するので、
+      // 「含めるか」はレポート単位で決める (同じクエリで取れた fights)。
+      const hasPhases = acceptedFights.some((f) => f.phaseTransitions !== undefined);
       const baseRow = (f: FightPayload) => ({
         report_code: ref.code,
         fight_id: f.id,
@@ -402,12 +423,26 @@ export async function syncFflogsFights(opts?: {
         start_ms: reportStartMs + f.startTime,
         end_ms: reportStartMs + f.endTime,
         report_start_ms: reportStartMs,
+        ...(hasPhases
+          ? {
+              phase_transitions: normalizePhaseTransitions(
+                f.phaseTransitions ?? null,
+                f.startTime,
+                f.endTime,
+              ) as StoredPhaseTransition[] | null,
+            }
+          : {}),
       });
       const detailedRows = acceptedFights
         .filter((f) => details.has(f.id))
         .map((f) => {
           const d = details.get(f.id)!;
-          return { ...baseRow(f), party_dps: d.partyDps, deaths: d.deaths };
+          return {
+            ...baseRow(f),
+            party_dps: d.partyDps,
+            deaths: d.deaths,
+            death_events: d.deathEvents,
+          };
         });
       const plainRows = acceptedFights
         .filter((f) => !details.has(f.id))
@@ -792,6 +827,30 @@ async function fetchReportFights(
   token: string,
   code: string,
 ): Promise<ReportFightsResult> {
+  // 2026-09-06 W-2: フェーズ遷移 (`phaseTransitions { id startTime }`) 付き。
+  // FFLogs 側でフィールドが消えても機能全体が死なないよう、拒否されたら
+  // 従来の full → minimal の順に落とす (3 段の fallback)。
+  const withPhases = `query ($code: String!) {
+    reportData {
+      report(code: $code) {
+        title
+        startTime
+        zone { id name }
+        fights {
+          id
+          name
+          kill
+          difficulty
+          encounterID
+          fightPercentage
+          lastPhase
+          startTime
+          endTime
+          phaseTransitions { id startTime }
+        }
+      }
+    }
+  }`;
   const full = `query ($code: String!) {
     reportData {
       report(code: $code) {
@@ -831,10 +890,19 @@ async function fetchReportFights(
     }
   }`;
 
+  const withPhasesRes = await postGraphql(token, withPhases, code);
+  if (withPhasesRes.ok) return withPhasesRes;
+  // GraphQL エラーのときだけ「フィールド名の不一致かもしれない」と解釈して
+  // 段階的に項目を落として再試行する。HTTP エラー (401 / 5xx) は再試行しない。
+  if (withPhasesRes.kind !== "graphql") {
+    return { ok: false, reason: withPhasesRes.reason };
+  }
+  console.warn(
+    "[fflogs-fights] phase query rejected, retrying without phases:",
+    withPhasesRes.reason,
+  );
   const first = await postGraphql(token, full, code);
   if (first.ok) return first;
-  // GraphQL エラーのときだけ「フィールド名の不一致かもしれない」と解釈して
-  // 最小クエリで 1 度だけ再試行する。HTTP エラー (401 / 5xx) は再試行しない。
   if (first.kind !== "graphql") return { ok: false, reason: first.reason };
   console.warn(
     "[fflogs-fights] full query rejected, retrying minimal:",
@@ -1186,6 +1254,8 @@ async function fetchFightDetails(
         const detail = parseSummaryTable(
           report[`f${Math.trunc(f.id)}`],
           Math.max(0, f.endTime - f.startTime),
+          f.startTime,
+          f.endTime,
         );
         if (detail) out.set(f.id, detail);
       }
@@ -1210,6 +1280,13 @@ async function fetchFightDetails(
 export function parseSummaryTable(
   raw: unknown,
   fallbackDurationMs: number | null = null,
+  /**
+   * fight のレポート相対 start / end (ms)。死亡イベントの `deathTime` を
+   * pull 相対に直すために使う (2026-09-06 W-1)。渡されなければ死亡イベント
+   * は保存しない (件数だけ)。
+   */
+  fightStartMs: number | null = null,
+  fightEndMs: number | null = null,
 ): FightDetail | null {
   if (!raw || typeof raw !== "object") return null;
   const root = raw as Record<string, unknown>;
@@ -1238,7 +1315,15 @@ export function parseSummaryTable(
       partyDps = Math.round(total / (durationMs / 1000));
     }
   }
-  return { partyDps, deaths: deathEvents ? deathEvents.length : null };
+  const storedDeaths =
+    deathEvents && fightStartMs !== null && fightEndMs !== null
+      ? extractDeathEvents(deathEvents, fightStartMs, fightEndMs)
+      : null;
+  return {
+    partyDps,
+    deaths: deathEvents ? deathEvents.length : null,
+    deathEvents: storedDeaths,
+  };
 }
 
 async function postGraphql(
