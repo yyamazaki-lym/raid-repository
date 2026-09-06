@@ -86,6 +86,12 @@ const REFRESH_WINDOW_DAYS = 14;
  * (件数が枠を超える場合も数回の同期で自然に消化される)。
  */
 const DEATH_DETAIL_FORMAT_SINCE_MS = Date.parse("2026-09-06T03:00:00Z");
+/**
+ * 2026-09-07: v1 経路でもフェーズ遷移を読むようになった。それより前に同期
+ * したレポート (v1 経路で取ってフェーズ無しのまま synced_at が更新されたもの)
+ * をもう 1 回だけ取り直す。上と同じく synced_at 基準なので自然に消化される。
+ */
+const DETAIL_REFETCH_SINCE_MS = Date.parse("2026-09-07T00:00:00Z");
 const FETCH_TIMEOUT_MS = 20_000;
 /** 同期全体の時間予算 (cron の maxDuration=300s に対する余裕込み)。 */
 const TIME_BUDGET_MS = 120_000;
@@ -323,7 +329,8 @@ export async function syncFflogsFights(opts?: {
     // 保存形の更新前に同期したレポートは 1 回だけ取り直す (上の定数を参照)。
     if (
       prev.syncedAt !== null &&
-      Date.parse(prev.syncedAt) < DEATH_DETAIL_FORMAT_SINCE_MS
+      Date.parse(prev.syncedAt) <
+        Math.max(DEATH_DETAIL_FORMAT_SINCE_MS, DETAIL_REFETCH_SINCE_MS)
     ) {
       targets.push({ ...withDate, priority: 1 });
       continue;
@@ -1087,6 +1094,22 @@ export function parseFightsPayload(text: string): ReportFightsResult {
         fightPercentage: pct100x(
           num(f.fightPercentage) ?? num(f.bossPercentage),
         ),
+        // 2026-09-07: v1 / 内部 JSON にもフェーズ遷移 (`phases: [{ id, startTime }]`)
+        // が付くことがある。あれば v2 と同じ形で渡す (無ければ undefined = 列を
+        // 触らない)。unlisted で v1 経路になったレポートでもフェーズ滞在時間が
+        // 埋まる余地を残すため。
+        ...(Array.isArray(f.phases)
+          ? {
+              phaseTransitions: (f.phases as unknown[])
+                .map((p) => {
+                  const o = (p ?? {}) as Record<string, unknown>;
+                  const pid = num(o.id);
+                  const pst = num(o.startTime) ?? num(o.start_time);
+                  return pid === null || pst === null ? null : { id: pid, startTime: pst };
+                })
+                .filter((p): p is { id: number; startTime: number } => p !== null),
+            }
+          : {}),
         lastPhase:
           num(f.lastPhase) ?? num(f.lastPhaseForPercentageDisplay),
         startTime: st,
