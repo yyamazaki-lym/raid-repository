@@ -6,6 +6,7 @@ import {
   fetchFailedReportSyncs,
   fetchReportVideoLinks,
 } from "@/lib/supabase/fflogs-fights";
+import { isUltimateContent } from "@/lib/content-groups";
 import { LogsView } from "./logs-view";
 
 /**
@@ -44,7 +45,10 @@ export default async function LogsPage({
   if (category.tabConfig?.["logs"]?.enabled === false) notFound();
 
   const { fights, totalPulls, totalClears, truncated } =
-    await fetchCategoryFights(category.id);
+    await fetchCategoryFights(category.id, {
+      // フェーズ滞在区間は絶 (フェーズ管理コンテンツ) だけ表示に使う。
+      includePhases: isUltimateContent(category.name),
+    });
   const codes = Array.from(new Set(fights.map((f) => f.reportCode)));
   const [videoLinks, failedSyncs] = await Promise.all([
     fetchReportVideoLinks(codes),

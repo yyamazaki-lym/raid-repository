@@ -9,6 +9,7 @@
  */
 
 import { jstYmdString } from "./jst-date";
+import type { PhaseSpan, WipeSummary } from "./fflogs-fight-detail";
 
 /**
  * FFLogs の残 HP% を「0-100 のパーセント」に正規化する。
@@ -53,6 +54,17 @@ export type FightRow = {
   partyDps: number | null;
   /** その pull での PT の死亡数。未取得なら null。 */
   deaths: number | null;
+  /**
+   * ワイプ原因の要約 (2026-09-06 W-1)。wipe で死亡イベントが取れた pull
+   * のみ。kill / 死亡 0 / 未取得は null。個人名は含まない (ジョブ + 技名)。
+   */
+  wipe: WipeSummary | null;
+  /**
+   * フェーズ滞在区間 (2026-09-06 W-2)。フェーズ遷移が取れた pull のみ。
+   * 読み出し側でフェーズ管理コンテンツ (絶) に限って埋める (それ以外は
+   * 表示に使わないので payload を増やさない)。
+   */
+  phases: PhaseSpan[] | null;
   startMs: number;
   endMs: number;
   reportStartMs: number | null;

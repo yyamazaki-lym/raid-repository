@@ -26,6 +26,27 @@ import type { ReleaseEntry } from "./changelog";
 export const RELEASES_ARCHIVE: ReleaseEntry[] = [
   {
     version: "2.14",
+    date: "2026-09-06",
+    parts: [
+      {
+        title: "⚡ 初回表示を軽く: 設定ダイアログと更新履歴を「開いた時」に読む",
+      },
+      {
+        title: "🔔 FFLogs 連携から戻った時の通知が出ないことがあったのを修正",
+      },
+      {
+        title: "🗂 更新履歴: 過去分をアーカイブに移し、開いた時の読み込みを軽く",
+      },
+      {
+        title: "🖱 読み込み直後に「ルール」などのボタンへ白い枠が付くのを修正",
+      },
+      {
+        title: "📝 更新履歴の本文を docs/release-notes に移動 (画面表示は変わりません)",
+      },
+    ],
+  },
+  {
+    version: "2.14",
     date: "2026-09-04",
     parts: [
       {

@@ -62,6 +62,15 @@ import {
   buildXivAnalysisUrl,
   formatClock,
 } from "@/lib/fflogs-url";
+import {
+  formatMs,
+  formatWipeLabel,
+  jobAbbr,
+  phaseTimeTotals,
+  wipeCauseCounts,
+  type PhaseSpan,
+  type WipeCauseCount,
+} from "@/lib/fflogs-fight-detail";
 import { isSavageContent, isUltimateContent } from "@/lib/content-groups";
 import { humanizeFflogsSyncReason } from "@/lib/fflogs-sync-reason";
 import type { ReportVideoLink } from "@/lib/supabase/fflogs-fights";
@@ -216,6 +225,33 @@ export function LogsView({
   const breakdown = useMemo(
     () => pullBreakdown(tierFights, floors, showPhase),
     [tierFights, floors, showPhase],
+  );
+  // 2026-09-06 W-1: ワイプ原因 (初死亡の技) の集計。個人名は持たない。
+  // 明細が打ち切られている場合は表示中の分だけの集計 (sub に明記)。
+  const wipeCauses = useMemo(
+    () => wipeCauseCounts(tierFights.map((f) => f.wipe), 5),
+    [tierFights],
+  );
+  const wipeCount = useMemo(
+    () => tierFights.filter((f) => f.wipe !== null).length,
+    [tierFights],
+  );
+  // 絶: 初死亡が起きたフェーズの回数 (どのフェーズで崩れているか)。
+  const wipePhaseCounts = useMemo(() => {
+    if (!showPhase) return [] as Array<{ phase: number; count: number }>;
+    const m = new Map<number, number>();
+    for (const f of tierFights) {
+      if (f.wipe?.phase == null) continue;
+      m.set(f.wipe.phase, (m.get(f.wipe.phase) ?? 0) + 1);
+    }
+    return [...m.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .map(([phase, count]) => ({ phase, count }));
+  }, [tierFights, showPhase]);
+  // 2026-09-06 W-2: フェーズ滞在時間の合計 (絶のみ。零式は phases が null)。
+  const phaseTotals = useMemo(
+    () => (showPhase ? phaseTimeTotals(tierFights.map((f) => f.phases)) : []),
+    [tierFights, showPhase],
   );
   // DB の総数にはクラスタ外の混入分も含まれるため、取得済み明細で判明した
   // 混入数だけ差し引く (未打ち切りなら tierFights.length と一致する)。
@@ -819,6 +855,26 @@ export function LogsView({
         />
       </ul>
 
+      {/* 2026-09-06 W-1 / W-2: ワイプ原因の内訳とフェーズ滞在時間。
+          どちらも「PT として何で止まっているか」の指標で、個人の値は無い。
+          データが 1 つも無いコンテンツでは丸ごと出さない (旧データのみの
+          カテゴリで空セクションを並べない)。 */}
+      {(wipeCauses.length > 0 || phaseTotals.length > 1) && (
+        <section className="grid gap-2 sm:grid-cols-2">
+          {wipeCauses.length > 0 && (
+            <WipeCausesCard
+              causes={wipeCauses}
+              wipeCount={wipeCount}
+              phaseCounts={wipePhaseCounts}
+              truncated={truncated}
+            />
+          )}
+          {phaseTotals.length > 1 && (
+            <PhaseTimeCard totals={phaseTotals} truncated={truncated} />
+          )}
+        </section>
+      )}
+
       {/* A-1: 日ごとの到達度の推移。
           バーの長さ = その日のベスト到達度 (100 − 残 HP%)。バーが右端に
           届いたらクリア、伸びていく様子がそのまま「進んでいる実感」になる。
@@ -1080,6 +1136,182 @@ const PHASE_TEXT_TONE: Record<number, string> = {
   7: "text-amber-200",
 };
 
+/**
+ * フェーズの帯 (滞在時間バー) の背景色 (2026-09-06)。`phaseToneClass` と
+ * 同じ色相の bg のみ版。8 以降 / 不明は cyan。
+ */
+const PHASE_BAR_TONE: Record<number, string> = {
+  1: "bg-sky-400/70",
+  2: "bg-teal-400/70",
+  3: "bg-indigo-400/70",
+  4: "bg-violet-400/70",
+  5: "bg-fuchsia-400/70",
+  6: "bg-rose-400/70",
+  7: "bg-amber-400/70",
+};
+const PHASE_BAR_FALLBACK = "bg-[var(--neon-cyan)]/60";
+
+/**
+ * ワイプ原因の内訳カード (2026-09-06 W-1)。「初死亡の致命技」を技名で数え、
+ * 多い順に並べる。絶ではどのフェーズで崩れたかも添える。
+ * 誰が落ちたかは出さない (pull 行のジョブ略称までが粒度の上限)。
+ */
+function WipeCausesCard({
+  causes,
+  wipeCount,
+  phaseCounts,
+  truncated,
+}: {
+  causes: WipeCauseCount[];
+  wipeCount: number;
+  phaseCounts: Array<{ phase: number; count: number }>;
+  truncated: boolean;
+}) {
+  return (
+    <div className="flex flex-col gap-1 rounded-md border border-border/40 bg-secondary/15 px-3 py-2">
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase">
+          ワイプ原因
+        </span>
+        <span
+          className="font-mono text-[9px] tracking-[0.12em] text-muted-foreground/70"
+          title="各 wipe で最初に落ちた人の致命の一撃 (killing blow) を技名で数えています。DoT や遅れて倒れた場合は真因と一致しないことがあります"
+        >
+          初死亡の技 / {wipeCount} wipe
+          {truncated ? " (表示中の分)" : ""}
+        </span>
+      </div>
+      <ul className="flex flex-col gap-0.5" aria-label="ワイプ原因の内訳">
+        {causes.map((c) => (
+          <li
+            key={c.ability}
+            className="flex items-center gap-2 font-mono text-[11px] tabular-nums"
+          >
+            <span className="min-w-0 flex-1 truncate text-rose-200/90" title={c.ability}>
+              {c.ability}
+            </span>
+            <span className="relative h-1.5 w-20 shrink-0 overflow-hidden rounded-sm bg-secondary/50">
+              <span
+                className="absolute inset-y-0 left-0 rounded-sm bg-rose-400/60"
+                style={{
+                  width: `${Math.max(4, Math.round((c.count / Math.max(1, wipeCount)) * 100))}%`,
+                }}
+                aria-hidden
+              />
+            </span>
+            <span className="w-8 shrink-0 text-right text-muted-foreground">
+              ×{c.count}
+            </span>
+          </li>
+        ))}
+      </ul>
+      {phaseCounts.length > 0 && (
+        <ul
+          className="mt-0.5 flex flex-wrap gap-x-2 gap-y-0.5"
+          aria-label="初死亡が起きたフェーズ"
+          title="最初の死亡が起きたフェーズごとの wipe 数"
+        >
+          {phaseCounts.map((p) => (
+            <li
+              key={p.phase}
+              className="inline-flex items-baseline gap-1 whitespace-nowrap font-mono text-[10px] tabular-nums"
+            >
+              <span className={PHASE_TEXT_TONE[p.phase] ?? "text-foreground/75"}>
+                P{p.phase}
+              </span>
+              <span className="text-muted-foreground">{p.count}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/**
+ * フェーズ滞在時間カード (2026-09-06 W-2、絶のみ)。取得済み pull の各
+ * フェーズ滞在時間を合計し、積み上げバー + 凡例で出す。「P3 に時間の
+ * 何割を使っているか」がそのまま練習の重心になる。
+ */
+function PhaseTimeCard({
+  totals,
+  truncated,
+}: {
+  totals: Array<{ id: number; ms: number; share: number }>;
+  truncated: boolean;
+}) {
+  const totalMs = totals.reduce((acc, t) => acc + t.ms, 0);
+  return (
+    <div className="flex flex-col gap-1 rounded-md border border-border/40 bg-secondary/15 px-3 py-2">
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase">
+          フェーズ滞在時間
+        </span>
+        <span className="font-mono text-[9px] tracking-[0.12em] text-muted-foreground/70">
+          合計 {formatMs(totalMs)}
+          {truncated ? " (表示中の分)" : ""}
+        </span>
+      </div>
+      <div
+        className="flex h-2 w-full overflow-hidden rounded-sm bg-secondary/50"
+        role="img"
+        aria-label={totals
+          .map((t) => `P${t.id} ${Math.round(t.share * 100)}%`)
+          .join(" / ")}
+      >
+        {totals.map((t) => (
+          <span
+            key={t.id}
+            className={PHASE_BAR_TONE[t.id] ?? PHASE_BAR_FALLBACK}
+            style={{ width: `${t.share * 100}%` }}
+            title={`P${t.id}: ${formatMs(t.ms)} (${Math.round(t.share * 100)}%)`}
+          />
+        ))}
+      </div>
+      <ul className="flex flex-wrap gap-x-2 gap-y-0.5" aria-label="フェーズごとの滞在時間">
+        {totals.map((t) => (
+          <li
+            key={t.id}
+            className="inline-flex items-baseline gap-1 whitespace-nowrap font-mono text-[10px] tabular-nums"
+          >
+            <span className={PHASE_TEXT_TONE[t.id] ?? "text-foreground/75"}>
+              P{t.id}
+            </span>
+            <span className="text-foreground/80">{Math.round(t.share * 100)}%</span>
+            <span className="text-muted-foreground">{formatMs(t.ms)}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/**
+ * 1 pull のフェーズ滞在バー (2026-09-06 W-2)。区間チップの隣に置く小さな
+ * 帯で、幅 = 戦闘時間に対する各フェーズの割合。hover で各フェーズの秒数。
+ */
+function PhaseSpanBar({ spans }: { spans: PhaseSpan[] }) {
+  const total = spans.reduce((acc, s) => acc + s.dur, 0);
+  if (total <= 0) return null;
+  const label = spans.map((s) => `P${s.id} ${formatMs(s.dur)}`).join(" / ");
+  return (
+    <span
+      className="flex h-1.5 w-16 shrink-0 overflow-hidden rounded-sm bg-secondary/50"
+      role="img"
+      aria-label={`フェーズ滞在: ${label}`}
+      title={label}
+    >
+      {spans.map((s, i) => (
+        <span
+          key={`${s.id}:${i}`}
+          className={PHASE_BAR_TONE[s.id] ?? PHASE_BAR_FALLBACK}
+          style={{ width: `${(s.dur / total) * 100}%` }}
+        />
+      ))}
+    </span>
+  );
+}
+
 function StatCard({
   label,
   value,
@@ -1222,7 +1454,12 @@ function DayRow({
     video: day.fights.some((f) => videoLinks[f.reportCode]?.videoUrl),
     // 絶はフェーズを層と同じ位置のチップで出すので、その列を確保する。
     phase: showPhase && day.fights.some((f) => f.lastPhase !== null),
+    // 2026-09-06 W-2: フェーズ滞在バー (絶で遷移が取れた日のみ)。
+    phaseBar:
+      showPhase && day.fights.some((f) => f.phases !== null && f.phases.length > 1),
   };
+  // 2026-09-06 W-1: この日のワイプ原因 (初死亡の技) 上位 3 つ。
+  const dayWipeCauses = wipeCauseCounts(day.fights.map((f) => f.wipe), 3);
 
   return (
     <li
@@ -1386,6 +1623,22 @@ function DayRow({
               ))}
             </div>
           )}
+          {dayWipeCauses.length > 0 && (
+            <p
+              className="flex flex-wrap items-center gap-x-2 gap-y-0.5 font-mono text-[10px] tabular-nums"
+              title="この日の wipe で最初に落ちた人の致命の一撃 (技名) を数えたもの"
+            >
+              <span className="tracking-[0.14em] text-muted-foreground uppercase">
+                ワイプ原因
+              </span>
+              {dayWipeCauses.map((c) => (
+                <span key={c.ability} className="inline-flex items-baseline gap-1">
+                  <span className="text-rose-200/90">{c.ability}</span>
+                  <span className="text-muted-foreground">×{c.count}</span>
+                </span>
+              ))}
+            </p>
+          )}
           <ul className="flex flex-col gap-1">
             {day.fights.map((f, i) => (
               <PullRow
@@ -1425,7 +1678,7 @@ function PullRow({
    * 列幅を確保するか (2026-09-03)。その日のどれかの pull に値があれば、
    * 値の無い pull も幅だけ残して縦揃えを保つ。1 つも無い列は幅を取らない。
    */
-  reserve: { metrics: boolean; video: boolean; phase: boolean };
+  reserve: { metrics: boolean; video: boolean; phase: boolean; phaseBar: boolean };
 }) {
   const durationSec = Math.max(0, Math.round((fight.endMs - fight.startMs) / 1000));
   // 日付のグルーピングが JST 基準なので時刻も JST に固定する
@@ -1577,11 +1830,41 @@ function PullRow({
             </span>
           </span>
         ) : null;
+        // 2026-09-06 W-2: フェーズ滞在バー (絶のみ)。遷移が取れていない
+        // pull はその日に 1 つでもあれば幅だけ残す。
+        const phaseBar =
+          showPhase && fight.phases && fight.phases.length > 1 ? (
+            <PhaseSpanBar spans={fight.phases} />
+          ) : reserve.phaseBar ? (
+            <span className="w-16 shrink-0" aria-hidden />
+          ) : null;
+        // 2026-09-06 W-1: ワイプ原因 (最初に落ちたジョブ ← 致命技 +同時死亡数)。
+        // 個人名は持っていない。可変幅なので左グループの末尾に置く。
+        const wipeChip = fight.wipe ? (
+          <span
+            className="inline-flex max-w-[15rem] min-w-0 items-center gap-1 rounded-sm border border-rose-400/35 bg-rose-400/10 px-1.5 py-0.5 font-mono text-[11px] text-rose-200/90 tabular-nums"
+            title={
+              `最初の死亡: ${formatMs(fight.wipe.t)}` +
+              (fight.wipe.phase !== null ? ` (P${fight.wipe.phase})` : "") +
+              ` / ${jobAbbr(fight.wipe.job)}` +
+              (fight.wipe.ability ? ` ← ${fight.wipe.ability}` : "") +
+              (fight.wipe.cluster > 1
+                ? ` / 10 秒以内に ${fight.wipe.cluster} 人`
+                : "") +
+              ` / 死亡 ${fight.wipe.total}`
+            }
+          >
+            <Skull className="h-2.5 w-2.5 shrink-0 text-rose-300/80" aria-hidden />
+            <span className="truncate">{formatWipeLabel(fight.wipe)}</span>
+          </span>
+        ) : null;
         return (
           <>
             {segmentChip}
+            {phaseBar}
             {resultChip}
             {metrics}
+            {wipeChip}
           </>
         );
       })()}

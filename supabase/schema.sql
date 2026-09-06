@@ -1112,6 +1112,27 @@ ALTER TABLE public.fflogs_fights
   ADD COLUMN IF NOT EXISTS party_dps integer;
 ALTER TABLE public.fflogs_fights
   ADD COLUMN IF NOT EXISTS deaths integer;
+-- 2026-09-06 (調査ノート第 4 回 W-1 / W-2): pull ごとの死亡イベントと
+-- フェーズ遷移。
+--   death_events      jsonb 配列 [{ "t": <pull開始からのms>, "job": "WhiteMage",
+--                     "ability": "致命の一撃の技名" }, ...]。Summary table の
+--                     deathEvents 由来。**プレイヤー名は保存しない** (誰が
+--                     落ちたかではなく「どのジョブが何で落ちたか」だけ)。
+--   phase_transitions jsonb 配列 [{ "id": <FFLogs フェーズ ID>, "t": <ms> }, ...]。
+--                     fights.phaseTransitions 由来。フェーズ滞在時間の算出用。
+-- どちらも best-effort で、取れなかった pull は NULL のまま (UI は非表示)。
+ALTER TABLE public.fflogs_fights
+  ADD COLUMN IF NOT EXISTS death_events jsonb;
+ALTER TABLE public.fflogs_fights
+  ADD COLUMN IF NOT EXISTS phase_transitions jsonb;
+ALTER TABLE public.fflogs_fights
+  DROP CONSTRAINT IF EXISTS fflogs_fights_detail_json_sane;
+ALTER TABLE public.fflogs_fights
+  ADD CONSTRAINT fflogs_fights_detail_json_sane
+  CHECK (
+    (death_events IS NULL OR jsonb_typeof(death_events) = 'array')
+    AND (phase_transitions IS NULL OR jsonb_typeof(phase_transitions) = 'array')
+  ) NOT VALID;
 
 -- ---- 6b-5. fflogs_report_syncs (fights 同期の台帳) ---------------------
 -- 同期済み report を記録し、再取得を「新規 code + 直近 N 日」に絞る。
