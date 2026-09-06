@@ -8,6 +8,7 @@ import {
   fetchCategoryPhaseTotals,
 } from "@/lib/supabase/fflogs-fights";
 import { isUltimateContent } from "@/lib/content-groups";
+import { getMessages } from "@/lib/i18n/server";
 import { LogsView } from "./logs-view";
 
 /**
@@ -19,9 +20,10 @@ import { LogsView } from "./logs-view";
  */
 export const runtime = "nodejs";
 
-export const metadata = {
-  title: "練習ログ",
-};
+export async function generateMetadata() {
+  const m = await getMessages();
+  return { title: m.logs.title };
+}
 
 export default async function LogsPage({
   params,
@@ -29,15 +31,16 @@ export default async function LogsPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const [category, canEdit] = await Promise.all([
+  const [category, canEdit, m] = await Promise.all([
     findCategoryBySlug(slug),
     getCurrentUserCanEdit(),
+    getMessages(),
   ]);
 
   if (!category) {
     return (
       <p className="text-muted-foreground p-6 text-center text-sm">
-        コンテンツが見つかりませんでした。
+        {m.logs.notFound}
       </p>
     );
   }

@@ -37,7 +37,7 @@ import { MirrorActionSlot } from "@/components/portal/action-slot";
 import {
   buildFloorMap,
   filterToFloorCluster,
-  floorHalfOf,
+  floorHalf,
   floorLabel,
   floorToneClass,
   formatFightDuration,
@@ -97,6 +97,7 @@ import {
   FFLOGS_REPORT_LINKS_BOOKMARKLET,
 } from "@/lib/fflogs-url";
 import { Textarea } from "@/components/ui/textarea";
+import { useLocale, useMessages } from "@/lib/i18n/client";
 
 /**
  * 練習ログの表示 (TODO #94 / A-1 + A-2)。
@@ -151,6 +152,8 @@ export function LogsView({
 }) {
   const router = useRouter();
   const confirm = useConfirm();
+  const m = useMessages();
+  const locale = useLocale();
   const [syncing, startSync] = useTransition();
   // 2026-08-30 実機報告「ノーマルのものを登録してしまった際に削除できない」。
   const [deletingCode, setDeletingCode] = useState<string | null>(null);
@@ -184,9 +187,9 @@ export function LogsView({
     }
     setLastSyncFailures(result.failures ?? []);
     toast.success(
-      `取り込み完了 — ${result.codesFound} レポート / ${result.fightsUpserted} pull` +
-        (result.videosBridged > 0 ? ` / 動画に紐づけ ${result.videosBridged}` : "") +
-        (result.failed > 0 ? ` (失敗 ${result.failed} — 理由は下に表示)` : ""),
+      m.logsImport.toastDone(result.codesFound, result.fightsUpserted) +
+        (result.videosBridged > 0 ? m.logsSync.videosBridged(result.videosBridged) : "") +
+        (result.failed > 0 ? m.logsSync.failedSuffix(result.failed) : ""),
     );
     setImportOpen(false);
     setImportText("");
@@ -211,8 +214,8 @@ export function LogsView({
     () =>
       showPhase
         ? null
-        : buildFloorMap(fights, isSavageContent(categoryName) ? 4 : null),
-    [showPhase, fights, categoryName],
+        : buildFloorMap(fights, isSavageContent(categoryName) ? 4 : null, locale),
+    [showPhase, fights, categoryName, locale],
   );
   // クラスタ外 (同じレポートに混ざった別コンテンツの戦闘) は集計から除外。
   const tierFights = useMemo(
@@ -238,14 +241,14 @@ export function LogsView({
   // 総 pull の層 / フェーズ内訳 (2026-09-03 実機要望)。明細が打ち切られて
   // いる場合は表示中の分だけの内訳になる (タイルの sub に明記)。
   const breakdown = useMemo(
-    () => pullBreakdown(tierFights, floors, showPhase),
-    [tierFights, floors, showPhase],
+    () => pullBreakdown(tierFights, floors, showPhase, locale),
+    [tierFights, floors, showPhase, locale],
   );
   // 2026-09-06 W-1: ワイプ原因 (初死亡の技) の集計。個人名は持たない。
   // 明細が打ち切られている場合は表示中の分だけの集計 (sub に明記)。
   const wipeCauses = useMemo(
-    () => wipeCauseCounts(tierFights.map((f) => f.wipe), 5),
-    [tierFights],
+    () => wipeCauseCounts(tierFights.map((f) => f.wipe), 5, locale),
+    [tierFights, locale],
   );
   const wipeCount = useMemo(
     () => tierFights.filter((f) => f.wipe !== null).length,
@@ -323,21 +326,21 @@ export function LogsView({
 
   const onDeleteReport = async (code: string) => {
     const ok = await confirm({
-      title: `レポート ${code.slice(0, 8)} を練習ログから削除しますか？`,
-      description:
-        "このレポートの pull をすべて削除し、以後の同期でも取り込まないようにします (設定から解除できます)。",
-      confirmText: "削除",
+      title: m.logsSync.deleteConfirmTitle(code.slice(0, 8)),
+      description: m.logsSync.deleteConfirmDescription,
+      confirmText: m.common.delete,
       destructive: true,
     });
     if (!ok) return;
     setDeletingCode(code);
+    // 第 2 引数は DB に保存される除外理由 (表示言語に依らず固定)。
     const r = await deleteFflogsReportAction(code, "誤取り込み");
     setDeletingCode(null);
     if (!r.ok) {
-      toast.error("削除失敗: " + r.reason);
+      toast.error(m.logsSync.deleteFailed(r.reason));
       return;
     }
-    toast.success(`${r.removedFights} pull を削除し、今後は取り込みません`);
+    toast.success(m.logsSync.deleted(r.removedFights));
     router.refresh();
   };
 
@@ -359,16 +362,13 @@ export function LogsView({
     }
     return [...set]
       .sort((a, b) => a - b)
-      .map((idx) => {
-        const label = floorLabel(floors, idx);
-        return {
-          index: idx,
-          label,
-          displayFloor: floors.displayFloorByIndex.get(idx) ?? idx,
-          half: floorHalfOf(label),
-        };
-      });
-  }, [floors, tierFights]);
+      .map((idx) => ({
+        index: idx,
+        label: floorLabel(floors, idx, locale),
+        displayFloor: floors.displayFloorByIndex.get(idx) ?? idx,
+        half: floorHalf(floors, idx),
+      }));
+  }, [floors, tierFights, locale]);
 
   // 層フィルタ適用後の日リスト。pull が 1 つも残らない日は表示しない
   // (その層に挑んでいない日を空行で並べても意味が無い)。
@@ -412,23 +412,21 @@ export function LogsView({
       }
       setLastSyncFailures(result.failures ?? []);
       toast.success(
-        `同期完了 — ${result.reportsFetched} レポート / ${result.fightsUpserted} pull` +
-          (result.reattributed > 0 ? ` / 再分類 ${result.reattributed}` : "") +
-          (result.videosBridged > 0 ? ` / 動画に紐づけ ${result.videosBridged}` : "") +
-          (result.failed > 0 ? ` (失敗 ${result.failed} — 理由は下に表示)` : "") +
+        m.logsSync.toastDone(result.reportsFetched, result.fightsUpserted) +
+          (result.reattributed > 0 ? m.logsSync.reattributed(result.reattributed) : "") +
+          (result.videosBridged > 0 ? m.logsSync.videosBridged(result.videosBridged) : "") +
+          (result.failed > 0 ? m.logsSync.failedSuffix(result.failed) : "") +
           // 2026-09-07: 代替経路 (v1 / cookie) で取れたレポートにはフェーズ遷移 /
-          // 死亡イベントが入らない。「フェーズ情報のある pull が増えない」の
-          // 理由が見えるように内訳を出す。
+          // 死亡イベントが入らない。理由が見えるように内訳を出す。
           (result.fetchedViaFallback > 0
-            ? ` / 経路: v2 ${result.fetchedViaV2} 件・代替 ${result.fetchedViaFallback} 件 (代替経路はフェーズ・死亡情報なし)`
+            ? m.logsSync.routeSuffix(result.fetchedViaV2, result.fetchedViaFallback)
             : "") +
-          // 2026-09-07: 取り直し (フェーズ遷移 / 死亡イベントの後追い) が溜まって
-          // いると 1 回の枠 (40 件 / 120 秒) に入らない。残件数と「もう一度押す」
-          // を明示する (従来は「※途中まで」だけで、何をすればいいか分からなかった)。
+          // 2026-09-07: 取り直しが溜まって 1 回の枠に入らないときは残件数と
+          // 「もう一度押す」を明示する。
           (result.remaining > 0
-            ? ` ※残り ${result.remaining} レポートは次回 — もう一度「ログを同期」を押すと続きを取得します`
+            ? m.logsSync.remainingSuffix(result.remaining)
             : result.truncated
-              ? " ※途中まで"
+              ? m.logsSync.truncatedSuffix
               : ""),
       );
       router.refresh();
@@ -444,7 +442,7 @@ export function LogsView({
       className="gap-1.5 text-[11px] tracking-normal"
     >
       <ClipboardPaste className="h-3.5 w-3.5" aria-hidden />
-      URL から取り込む
+      {m.logsImport.button}
     </Button>
   ) : null;
 
@@ -459,21 +457,20 @@ export function LogsView({
           ダイアログ内でスクロールさせる (2026-08-28 実機報告「縦も見切れ」)。 */}
       <DialogContent className="max-h-[85dvh] max-w-lg overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>レポート URL から取り込む</DialogTitle>
+          <DialogTitle>{m.logsImport.title}</DialogTitle>
           <DialogDescription>
-            unlisted (限定公開) レポートは一覧からの自動発見ができないため、
-            URL を貼り付けて取り込みます (1 回につき最大 25 件)。
+            {m.logsImport.descA}
             <a
               href="https://www.fflogs.com/"
               target="_blank"
               rel="noopener noreferrer"
               className="mx-1 text-[var(--neon-cyan)] underline underline-offset-2 hover:text-foreground"
             >
-              FFLogs
+              {m.logsImport.descLink}
             </a>
-            の一覧ページはリンク文字にしか名前が出ず、通常のコピーでは URL が
-            取れないため、下の<strong>抽出ブックマークレット</strong>を使うのが
-            最短です。
+            {m.logsImport.descB}
+            <strong>{m.logsImport.descStrong}</strong>
+            {m.logsImport.descC}
           </DialogDescription>
         </DialogHeader>
         {/* ブックマークレット: FFLogs の一覧ページ上で実行すると、表示中の
@@ -481,16 +478,13 @@ export function LogsView({
             ブラウザセッション) で動くので unlisted / private の一覧も拾える。 */}
         <div className="flex flex-col gap-1.5 rounded-md border border-border/40 bg-secondary/15 px-3 py-2">
           <p className="font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase">
-            一覧から URL を一括コピーする (初回のみ設定)
+            {m.logsImport.bookmarkletTitle}
           </p>
           <ol className="ml-4 flex list-decimal flex-col gap-0.5 text-[11px] leading-relaxed text-muted-foreground">
-            <li>下のボタンで抽出コードをコピー</li>
-            <li>
-              ブラウザで新しいブックマークを作り、URL 欄に貼り付けて保存
-              (名前は「FFLogs URL 抽出」など)
-            </li>
-            <li>FFLogs のレポート一覧ページを開いた状態でそのブックマークをクリック</li>
-            <li>「N 件のレポート URL をコピーしました」と出たら、下の欄に貼り付け</li>
+            <li>{m.logsImport.step1}</li>
+            <li>{m.logsImport.step2}</li>
+            <li>{m.logsImport.step3}</li>
+            <li>{m.logsImport.step4}</li>
           </ol>
           <Button
             type="button"
@@ -502,18 +496,18 @@ export function LogsView({
                 await navigator.clipboard.writeText(
                   FFLOGS_REPORT_LINKS_BOOKMARKLET,
                 );
-                toast.success("抽出ブックマークレットをコピーしました");
+                toast.success(m.logsImport.toastCopied);
               } catch {
-                toast.error("コピー失敗（ブラウザの権限を確認してください）");
+                toast.error(m.logsImport.toastCopyFailed);
               }
             }}
           >
             <BookMarked className="h-3.5 w-3.5" aria-hidden />
-            抽出ブックマークレットをコピー
+            {m.logsImport.copyBookmarklet}
           </Button>
         </div>
         <div className="flex min-w-0 flex-col gap-1.5">
-          <Label htmlFor="import-text">貼り付け</Label>
+          <Label htmlFor="import-text">{m.logsImport.pasteLabel}</Label>
           {/* Textarea 基底の field-sizing-content は内容に合わせて幅まで
               広がり、長い URL でダイアログを突き破る (2026-08-28 実機報告
               「見切れている」)。fixed に戻して幅を親に固定する。 */}
@@ -521,14 +515,14 @@ export function LogsView({
             id="import-text"
             value={importText}
             rows={6}
-            placeholder="https://www.fflogs.com/reports/... (改行区切りで複数可)"
+            placeholder={m.logsImport.pastePlaceholder}
             className="max-w-full font-mono text-[11px] break-all [field-sizing:fixed]"
             onChange={(e) => setImportText(e.target.value)}
           />
           <p className="text-[11px] text-muted-foreground">
             {importCodes.length > 0
-              ? `${importCodes.length} 件のレポートを検出しました`
-              : "レポート URL が未検出です"}
+              ? m.logsImport.detected(importCodes.length)
+              : m.logsImport.notDetected}
           </p>
         </div>
         <DialogFooter>
@@ -538,14 +532,16 @@ export function LogsView({
             onClick={() => setImportOpen(false)}
             disabled={importing}
           >
-            キャンセル
+            {m.common.cancel}
           </Button>
           <Button
             type="button"
             onClick={runImport}
             disabled={importing || importCodes.length === 0}
           >
-            {importing ? "取り込み中..." : `${Math.min(importCodes.length, 25)} 件を取り込む`}
+            {importing
+              ? m.logsImport.submitBusy
+              : m.logsImport.submit(Math.min(importCodes.length, 25))}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -559,10 +555,10 @@ export function LogsView({
       size="sm"
       onClick={() => setDifficultyOpen(true)}
       className="gap-1.5 text-[11px] tracking-normal"
-      title="取り込む難易度の下限を設定 (ノーマル混入の防止)"
+      title={m.logsDifficulty.buttonTitle}
     >
       <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden />
-      取り込み設定
+      {m.logsDifficulty.button}
     </Button>
   ) : null;
 
@@ -575,23 +571,21 @@ export function LogsView({
     >
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>取り込む難易度の下限</DialogTitle>
+          <DialogTitle>{m.logsDifficulty.title}</DialogTitle>
           <DialogDescription>
-            ノーマルなど別難易度のレポートを取り込まないようにできます。
-            FFLogs の難易度は数値で、コンテンツ種別によって値が変わります
-            (公開された対応表がありません)。
-            <strong>下の実測値を見て</strong>、残したい難易度の最小値を
-            入れてください。空にすると制限なしに戻ります。
+            {m.logsDifficulty.descA}
+            <strong>{m.logsDifficulty.descStrong}</strong>
+            {m.logsDifficulty.descB}
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-3">
           <div className="rounded-md border border-border/40 bg-secondary/15 px-3 py-2">
             <p className="font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase">
-              取り込み済みの難易度
+              {m.logsDifficulty.observedTitle}
             </p>
             {difficultyStats.length === 0 ? (
               <p className="mt-1 text-[11px] text-muted-foreground">
-                難易度が記録された pull がまだありません
+                {m.logsDifficulty.observedEmpty}
               </p>
             ) : (
               <ul className="mt-1 flex flex-col gap-0.5">
@@ -604,7 +598,7 @@ export function LogsView({
                       {d.difficulty}
                     </span>
                     <span className="text-muted-foreground">
-                      {d.count} pull
+                      {m.logs.pulls(d.count)}
                     </span>
                     {d.sample && (
                       <span className="min-w-0 truncate text-muted-foreground/80">
@@ -617,17 +611,16 @@ export function LogsView({
             )}
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="min-difficulty">下限 (空 = 制限なし)</Label>
+            <Label htmlFor="min-difficulty">{m.logsDifficulty.minLabel}</Label>
             <Input
               id="min-difficulty"
               value={difficultyDraft}
               inputMode="numeric"
-              placeholder="例: 101"
+              placeholder={m.logsDifficulty.minPlaceholder}
               onChange={(e) => setDifficultyDraft(e.target.value)}
             />
             <p className="text-[11px] text-muted-foreground">
-              既に取り込んだ pull はこの設定では消えません。個別のレポートは
-              日ごとの一覧にあるゴミ箱から削除してください。
+              {m.logsDifficulty.hint}
             </p>
           </div>
         </div>
@@ -638,7 +631,7 @@ export function LogsView({
             onClick={() => setDifficultyOpen(false)}
             disabled={savingDifficulty}
           >
-            キャンセル
+            {m.common.cancel}
           </Button>
           <Button
             type="button"
@@ -647,7 +640,7 @@ export function LogsView({
               const trimmed = difficultyDraft.trim();
               const value = trimmed === "" ? null : Number.parseInt(trimmed, 10);
               if (value !== null && !Number.isInteger(value)) {
-                toast.error("数値で入力してください");
+                toast.error(m.logsDifficulty.errNotNumber);
                 return;
               }
               startSaveDifficulty(async () => {
@@ -656,20 +649,20 @@ export function LogsView({
                   value,
                 );
                 if (!r.ok) {
-                  toast.error("保存失敗: " + r.reason);
+                  toast.error(m.logs.saveFailed(r.reason));
                   return;
                 }
                 toast.success(
                   value === null
-                    ? "難易度の制限を解除しました"
-                    : `難易度 ${value} 未満を取り込まないようにしました`,
+                    ? m.logsDifficulty.toastCleared
+                    : m.logsDifficulty.toastSet(value),
                 );
                 setDifficultyOpen(false);
                 router.refresh();
               });
             }}
           >
-            {savingDifficulty ? "保存中..." : "保存"}
+            {savingDifficulty ? m.logs.savingDots : m.common.save}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -689,7 +682,7 @@ export function LogsView({
         className={"h-3.5 w-3.5 " + (syncing ? "animate-spin" : "")}
         aria-hidden
       />
-      {syncing ? "同期中..." : "ログを同期"}
+      {syncing ? m.logsSync.buttonBusy : m.logsSync.button}
     </Button>
   ) : null;
 
@@ -697,7 +690,7 @@ export function LogsView({
     lastSyncFailures.length > 0 ? (
       <section className="rounded-md border border-rose-400/35 bg-rose-400/5 px-3 py-2">
         <h3 className="font-mono text-[10px] tracking-[0.16em] text-rose-200 uppercase">
-          今回の同期で取得できなかったレポート ({lastSyncFailures.length} 件)
+          {m.logsSync.failuresTitle(lastSyncFailures.length)}
         </h3>
         <ul className="mt-1 flex flex-col gap-1">
           {lastSyncFailures.map((f) => (
@@ -738,42 +731,35 @@ export function LogsView({
               なので、押すボタンを先に書き、仕組みは括弧に落とす。 */}
           <EmptyState
             icon={Activity}
-            title="練習ログがまだありません"
+            title={m.logsEmpty.title}
             description={
               // 2026-09-06 実機指摘「若干左寄りに見える」: 中央寄せの箱の中で
               // 本文だけ text-left にしていたため、行末の余白ぶん左に寄って
               // 見えていた。見出しと同じく中央寄せに揃える。
               <span className="flex flex-col gap-2 text-center">
-                <span>
-                  FFLogs のレポートを取り込むと、pull 数・到達度・残 HP%
-                  がここに並びます。取り込み方は 2 つです。
-                </span>
+                <span>{m.logsEmpty.intro}</span>
                 <span className="flex flex-col gap-1.5">
                   <span>
                     <strong className="font-medium text-foreground/85">
-                      「ログを同期」を押す
+                      {m.logsEmpty.syncStrong}
                     </strong>
-                    — 動画に FFLogs の URL が紐づいているか、コンテンツ編集で
-                    zone ID / マッチワードを設定してあるか、レポートの zone 名が
-                    一致すれば、このコンテンツのログとして取り込まれます。
+                    {m.logsEmpty.syncText}
                   </span>
                   <span>
                     <strong className="font-medium text-foreground/85">
-                      「URL から取り込む」に貼る
+                      {m.logsEmpty.importStrong}
                     </strong>
-                    — 一覧に出てこない unlisted (限定公開) のレポートは、URL
-                    を直接貼れば取り込めます。
+                    {m.logsEmpty.importText}
                   </span>
                 </span>
                 <span className="text-muted-foreground/80">
-                  private (非公開) のレポートだけは、FFLogs の公開設定を
-                  unlisted 以上に変えるか、本人の FFLogs 連携が必要です。
+                  {m.logsEmpty.privateNote}
                 </span>
               </span>
             }
           />
           <p className="text-center text-[11px] text-muted-foreground">
-            データ元:{" "}
+            {m.logsEmpty.dataSource}{" "}
             <a
               href="https://www.fflogs.com/"
               target="_blank"
@@ -782,7 +768,7 @@ export function LogsView({
             >
               FFLogs
             </a>
-            {" / 解析: "}
+            {m.logsEmpty.analysis}
             <a
               href="https://xivanalysis.com/"
               target="_blank"
@@ -805,7 +791,7 @@ export function LogsView({
       <header className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <Activity className="h-4 w-4 text-[var(--neon-cyan)]" aria-hidden />
-          <h2 className="font-display text-base">練習ログ</h2>
+          <h2 className="font-display text-base">{m.logs.title}</h2>
           <span className="font-mono text-[10px] tracking-[0.18em] text-muted-foreground">
             {categoryName}
           </span>
@@ -835,9 +821,9 @@ export function LogsView({
 
       <ul className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         <StatCard
-          label="総 pull"
+          label={m.logs.statTotalPulls}
           value={String(shownTotalPulls)}
-          sub={truncated ? `直近 ${summary.totalPulls} 件を表示` : undefined}
+          sub={truncated ? m.logs.statRecentShown(summary.totalPulls) : undefined}
           detail={
             breakdown.length > 1 ? (
               <PullBreakdownChips items={breakdown} truncated={truncated} />
@@ -845,15 +831,15 @@ export function LogsView({
           }
         />
         <StatCard
-          label="練習日数"
-          value={`${summary.days.length} 日`}
+          label={m.logs.statPracticeDays}
+          value={m.logs.daysValue(summary.days.length)}
         />
         <StatCard
-          label="最深到達"
+          label={m.logs.statBest}
           value={
             // クリア済みなら「残 0%」ではなく「討伐」と言い切る。
             totalClears > 0
-              ? "討伐"
+              ? m.logs.kill
               : showPhase && summary.bestPhase !== null
                 ? `P${summary.bestPhase}`
                 : floors && summary.days.length > 0
@@ -861,32 +847,37 @@ export function LogsView({
                       const maxIdx = Math.max(
                         ...summary.days.map((d) => d.bestFloor ?? 0),
                       );
-                      return maxIdx > 0 ? floorLabel(floors, maxIdx) : "—";
+                      return maxIdx > 0 ? floorLabel(floors, maxIdx, locale) : "—";
                     })()
                   : summary.bestPercentage !== null
-                    ? `残 ${formatPercentage(summary.bestPercentage)}`
+                    ? m.logs.hpLeft(formatPercentage(summary.bestPercentage))
                     : "—"
           }
           sub={
             totalClears > 0
               ? undefined
               : showPhase && summary.bestPhase !== null
-                ? `残 ${formatPercentage(summary.bestPercentage)}`
+                ? m.logs.hpLeft(formatPercentage(summary.bestPercentage))
                 : floors
-                  ? `残 ${formatPercentage(summary.bestPercentage)}`
+                  ? m.logs.hpLeft(formatPercentage(summary.bestPercentage))
                   : undefined
           }
         />
         <StatCard
-          label={floors ? `${floors.finalFloorLabel}クリア` : "クリア"}
-          value={totalClears > 0 ? `${totalClears} 回` : "—"}
+          label={floors ? m.logs.statFloorClear(floors.finalFloorLabel) : m.logs.statClear}
+          value={totalClears > 0 ? m.logs.clearCount(totalClears) : "—"}
           sub={
             // 明細が打ち切られている場合の「初クリア」は表示範囲内の最古の
             // クリアでしかないので出さない (誤情報を作らない)。
             summary.fastestClearSeconds !== null
-              ? `最速 ${formatFightDuration(summary.fastestClearSeconds)}`
+              ? m.logs.fastestClear(formatFightDuration(summary.fastestClearSeconds))
               : !truncated && summary.firstKill
-                ? `初クリア ${new Date(summary.firstKill.startMs).toLocaleDateString("ja-JP", { timeZone: "Asia/Tokyo" })}`
+                ? m.logs.firstClear(
+                    new Date(summary.firstKill.startMs).toLocaleDateString(
+                      locale === "en" ? "en-US" : "ja-JP",
+                      { timeZone: "Asia/Tokyo" },
+                    ),
+                  )
                 : undefined
           }
           highlight={totalClears > 0}
@@ -926,12 +917,12 @@ export function LogsView({
       <section className="flex flex-col gap-1.5">
         <div className="flex items-baseline justify-between gap-2">
           <h3 className="font-mono text-[10px] tracking-[0.18em] text-muted-foreground uppercase">
-            日ごとの到達度
+            {m.logs.timelineTitle}
           </h3>
           <span className="font-mono text-[9px] tracking-[0.12em] text-muted-foreground/70">
-            バー = ベスト到達度 / 右端 = 討伐
+            {m.logs.timelineLegend}
             {segmentCount !== null &&
-              (floors ? " / 縦線 = 層の境目" : " / 縦線 = フェーズの境目")}
+              (floors ? m.logs.timelineLegendFloors : m.logs.timelineLegendPhases)}
           </span>
         </div>
         <ul className="flex flex-col gap-1">
@@ -946,7 +937,7 @@ export function LogsView({
                 <button
                   type="button"
                   onClick={() => jumpToDay(t.date)}
-                  title={`${t.date} のセッション振り返りを開く`}
+                  title={m.logs.openDayTitle(t.date)}
                   className="w-[4.5rem] shrink-0 rounded text-left font-mono text-[11px] text-foreground/75 tabular-nums underline decoration-dotted underline-offset-2 transition-colors hover:text-[var(--neon-cyan)]"
                 >
                   {t.date.slice(5)}
@@ -986,15 +977,15 @@ export function LogsView({
                   title={
                     t.hasClear
                       ? floors
-                        ? `${floors.finalFloorLabel}クリア`
-                        : "討伐"
-                      : "その日のベスト到達"
+                        ? m.logs.statFloorClear(floors.finalFloorLabel)
+                        : m.logs.kill
+                      : m.logs.dayBestTitle
                   }
                 >
                   {/* 残% は値に応じた熱量色 (討伐 = emerald)。層ラベルは
                       層の識別色 (floorToneClass のテキスト色相当)。 */}
                   {t.hasClear ? (
-                    <span className="font-medium text-emerald-300">討伐</span>
+                    <span className="font-medium text-emerald-300">{m.logs.kill}</span>
                   ) : (
                     <>
                       {floors && t.bestFloor !== null && (
@@ -1008,7 +999,7 @@ export function LogsView({
                             ] ?? "text-foreground/70"
                           }
                         >
-                          {floorLabel(floors, t.bestFloor)}{" "}
+                          {floorLabel(floors, t.bestFloor, locale)}{" "}
                         </span>
                       )}
                       {!floors && showPhase && t.bestPhase !== null && (
@@ -1022,13 +1013,13 @@ export function LogsView({
                         </span>
                       )}
                       <span className={percentageToneClass(t.bestPercentage)}>
-                        残{formatPercentage(t.bestPercentage)}
+                        {m.logs.hpLeftCompact(formatPercentage(t.bestPercentage))}
                       </span>
                     </>
                   )}
                 </span>
                 <span className="w-14 shrink-0 text-right font-mono text-[11px] text-muted-foreground tabular-nums">
-                  {t.pulls} pull
+                  {m.logs.pulls(t.pulls)}
                 </span>
                 <span className="w-3 shrink-0">
                   {t.isRecord && (
@@ -1039,7 +1030,7 @@ export function LogsView({
                           ? "text-emerald-300"
                           : "text-[var(--neon-cyan)]")
                       }
-                      aria-label={t.isFirstClear ? "初討伐" : "自己ベスト更新"}
+                      aria-label={t.isFirstClear ? m.logs.firstKillAria : m.logs.recordAria}
                     />
                   )}
                 </span>
@@ -1053,8 +1044,8 @@ export function LogsView({
             className="self-start rounded px-1 font-mono text-[10px] tracking-[0.12em] text-muted-foreground underline underline-offset-2 hover:text-foreground"
           >
             {showAllTimeline
-              ? "直近 10 日だけ表示"
-              : `残り ${timeline.length - 10} 日を表示`}
+              ? m.logs.showRecentOnly
+              : m.logs.showRemainingDays(timeline.length - 10)}
           </button>
         )}
       </section>
@@ -1063,7 +1054,7 @@ export function LogsView({
       <section className="flex flex-col gap-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h3 className="font-mono text-[10px] tracking-[0.18em] text-muted-foreground uppercase">
-            セッション振り返り
+            {m.logs.sessionsTitle}
           </h3>
           {/* 層フィルタ: 表示層 (1..4) 単位。層マップが無いコンテンツ
               (絶など) では出さない。選択中を再クリックで解除。 */}
@@ -1080,7 +1071,7 @@ export function LogsView({
                     : "border-border/50 text-muted-foreground hover:text-foreground")
                 }
               >
-                全層
+                {m.logs.allFloors}
               </button>
               {floorChoices.map((f) => (
                 <button
@@ -1090,7 +1081,7 @@ export function LogsView({
                     setFloorFilter((cur) => (cur === f.index ? null : f.index))
                   }
                   aria-pressed={floorFilter === f.index}
-                  title={`${f.label}の pull だけ表示`}
+                  title={m.logs.floorFilterTitle(f.label)}
                   className={
                     "rounded-sm border px-1.5 py-0.5 font-mono text-[10px] tabular-nums transition-colors " +
                     (floorFilter === f.index
@@ -1136,8 +1127,8 @@ export function LogsView({
             className="self-start rounded px-1 font-mono text-[10px] tracking-[0.12em] text-muted-foreground underline underline-offset-2 hover:text-foreground"
           >
             {showAllDays
-              ? "直近 10 日だけ表示"
-              : `残り ${filteredDays.length - 10} 日を表示`}
+              ? m.logs.showRecentOnly
+              : m.logs.showRemainingDays(filteredDays.length - 10)}
           </button>
         )}
       </section>
@@ -1213,21 +1204,22 @@ function WipeCausesCard({
   phaseCounts: Array<{ phase: number; count: number }>;
   truncated: boolean;
 }) {
+  const m = useMessages();
   return (
     <div className="flex flex-col gap-1 rounded-md border border-border/40 bg-secondary/15 px-3 py-2">
       <div className="flex items-baseline justify-between gap-2">
         <span className="font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase">
-          ワイプ原因
+          {m.logs.wipeCauses}
         </span>
         <span
           className="font-mono text-[9px] tracking-[0.12em] text-muted-foreground/70"
-          title="各 wipe で最初に落ちた人の致命の一撃 (killing blow) を技名で数えています。DoT や遅れて倒れた場合は真因と一致しないことがあります"
+          title={m.logs.wipeCausesHint}
         >
-          初死亡の技 / {wipeCount} wipe
-          {truncated ? " (表示中の分)" : ""}
+          {m.logs.wipeCausesSub(wipeCount)}
+          {truncated ? m.logs.shownOnly : ""}
         </span>
       </div>
-      <ul className="flex flex-col gap-0.5" aria-label="ワイプ原因の内訳">
+      <ul className="flex flex-col gap-0.5" aria-label={m.logs.wipeCausesAria}>
         {causes.map((c) => (
           <li
             key={c.ability}
@@ -1254,8 +1246,8 @@ function WipeCausesCard({
       {phaseCounts.length > 0 && (
         <ul
           className="mt-0.5 flex flex-wrap gap-x-2 gap-y-0.5"
-          aria-label="初死亡が起きたフェーズ"
-          title="最初の死亡が起きたフェーズごとの wipe 数"
+          aria-label={m.logs.wipePhaseAria}
+          title={m.logs.wipePhaseTitle}
         >
           {phaseCounts.map((p) => (
             <li
@@ -1292,6 +1284,7 @@ function PhaseTimeCard({
   /** カテゴリの全 pull 数。母数がこれより少ないときに「情報あり N / 全 M」と出す。 */
   totalPulls: number;
 }) {
+  const m = useMessages();
   const totalMs = totals.reduce((acc, t) => acc + t.ms, 0);
   // 2026-09-07: フェーズ遷移は 2026-09-06 以降に取得した pull にしか無く、
   // 古い pull は同期の取り直し (1 回 40 レポート) で順に埋まる。母数が全 pull
@@ -1301,23 +1294,19 @@ function PhaseTimeCard({
     <div className="flex flex-col gap-1 rounded-md border border-border/40 bg-secondary/15 px-3 py-2">
       <div className="flex items-baseline justify-between gap-2">
         <span className="font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase">
-          フェーズ滞在時間
+          {m.logs.phaseTimeTitle}
         </span>
         <span
           className="font-mono text-[9px] tracking-[0.12em] text-muted-foreground/70"
-          title={
-            partial
-              ? "フェーズ遷移は 2026-09-06 以降に FFLogs v2 (OAuth) 経路で取得した pull にだけ入ります。古い pull は同期の取り直し (1 回 40 レポート) で順に埋まりますが、unlisted / private で v1 経路になったレポートには入りません (同期結果の「経路」を参照)"
-              : undefined
-          }
+          title={partial ? m.logs.phaseTimePartialTitle : undefined}
         >
-          合計 {formatMs(totalMs)}
+          {m.logs.phaseTimeTotal(formatMs(totalMs))}
           {allPulls !== null
             ? partial
-              ? ` (フェーズ情報のある ${allPulls} / 全 ${totalPulls} pull)`
-              : ` (登録ログ全 ${allPulls} pull)`
+              ? m.logs.phaseTimePartial(allPulls, totalPulls)
+              : m.logs.phaseTimeAll(allPulls)
             : truncated
-              ? " (表示中の分)"
+              ? m.logs.shownOnly
               : ""}
         </span>
       </div>
@@ -1337,7 +1326,7 @@ function PhaseTimeCard({
           />
         ))}
       </div>
-      <ul className="flex flex-wrap gap-x-2 gap-y-0.5" aria-label="フェーズごとの滞在時間">
+      <ul className="flex flex-wrap gap-x-2 gap-y-0.5" aria-label={m.logs.phaseTimeAria}>
         {totals.map((t) => (
           <li
             key={t.id}
@@ -1360,6 +1349,7 @@ function PhaseTimeCard({
  * 帯で、幅 = 戦闘時間に対する各フェーズの割合。hover で各フェーズの秒数。
  */
 function PhaseSpanBar({ spans }: { spans: PhaseSpan[] }) {
+  const m = useMessages();
   const total = spans.reduce((acc, s) => acc + s.dur, 0);
   if (total <= 0) return null;
   const label = spans.map((s) => `P${s.id} ${formatMs(s.dur)}`).join(" / ");
@@ -1367,7 +1357,7 @@ function PhaseSpanBar({ spans }: { spans: PhaseSpan[] }) {
     <span
       className="flex h-1.5 w-16 shrink-0 overflow-hidden rounded-sm bg-secondary/50"
       role="img"
-      aria-label={`フェーズ滞在: ${label}`}
+      aria-label={m.logs.phaseSpanAria(label)}
       title={label}
     >
       {spans.map((s, i) => (
@@ -1431,6 +1421,7 @@ function PullBreakdownChips({
   items: PullBreakdownItem[];
   truncated: boolean;
 }) {
+  const m = useMessages();
   const tone = (b: PullBreakdownItem): string => {
     switch (b.kind) {
       case "floor":
@@ -1450,12 +1441,8 @@ function PullBreakdownChips({
   return (
     <ul
       className="mt-0.5 flex flex-wrap gap-x-2 gap-y-0.5"
-      aria-label="pull 数の内訳"
-      title={
-        truncated
-          ? "表示中の明細の内訳 (古い pull は含まれません)"
-          : "層 / フェーズごとの pull 数"
-      }
+      aria-label={m.logs.breakdownAria}
+      title={truncated ? m.logs.breakdownTitleTruncated : m.logs.breakdownTitle}
     >
       {items.map((b) => (
         <li
@@ -1501,6 +1488,8 @@ function DayRow({
   firstPullStartByReport: Map<string, number>;
   onEditOffset: (reportCode: string) => void;
 }) {
+  const m = useMessages();
+  const locale = useLocale();
   const [open, setOpen] = useState(false);
   // jumpNonce の変化で開く。effect で setState するとカスケードレンダー
   // (react-hooks/set-state-in-effect) になるため、React 公式の
@@ -1528,7 +1517,7 @@ function DayRow({
       showPhase && day.fights.some((f) => f.phases !== null && f.phases.length > 1),
   };
   // 2026-09-06 W-1: この日のワイプ原因 (初死亡の技) 上位 3 つ。
-  const dayWipeCauses = wipeCauseCounts(day.fights.map((f) => f.wipe), 3);
+  const dayWipeCauses = wipeCauseCounts(day.fights.map((f) => f.wipe), 3, locale);
 
   return (
     <li
@@ -1557,18 +1546,14 @@ function DayRow({
         </span>
         <span className="flex shrink-0 items-center gap-2 font-mono text-[11px] whitespace-nowrap text-muted-foreground tabular-nums">
           {/* 「12 pull」を右寄せで固定幅に入れると、数字の右端も単位も揃う。 */}
-          <span className="w-14 text-right">{day.pulls} pull</span>
+          <span className="w-14 text-right">{m.logs.pulls(day.pulls)}</span>
           <span className="w-20 text-right">
-            戦闘 {formatFightDuration(day.fightSeconds)}
+            {m.logs.combatTime(formatFightDuration(day.fightSeconds))}
           </span>
           {reserveDeaths && (
             <span
               className="inline-flex w-11 items-center justify-end gap-0.5"
-              title={
-                dayDeaths !== null
-                  ? "この日の死亡数 (取得済みの pull の合計)"
-                  : "この日の死亡数は未取得です"
-              }
+              title={dayDeaths !== null ? m.logs.dayDeathsTitle : m.logs.dayDeathsMissing}
             >
               {dayDeaths !== null && (
                 <>
@@ -1605,15 +1590,14 @@ function DayRow({
               const singleFloor = minD === maxD ? maxD : null;
               // その日が 1 つの層 index に収まるときだけ前半/後半色にする
               // (「4層前半と後半の両方に挑んだ日」は複合扱いのまま)。
-              const singleHalf =
-                minF === maxF ? floorHalfOf(floorLabel(floors, maxF)) : null;
+              const singleHalf = minF === maxF ? floorHalf(floors, maxF) : null;
               return (
                 <span className={chipClass + floorToneClass(singleFloor, singleHalf)}>
                   {minF === maxF
-                    ? floorLabel(floors, maxF)
+                    ? floorLabel(floors, maxF, locale)
                     : minD === maxD
-                      ? `${maxD}層`
-                      : `${minD}-${maxD}層`}
+                      ? m.logs.floorShort(maxD)
+                      : m.logs.floorRange(minD, maxD)}
                 </span>
               );
             }
@@ -1644,7 +1628,7 @@ function DayRow({
                 percentageToneClass(day.bestPercentage)
               }
             >
-              残{formatPercentage(day.bestPercentage)}
+              {m.logs.hpLeftCompact(formatPercentage(day.bestPercentage))}
             </span>
           )}
         </span>
@@ -1655,7 +1639,7 @@ function DayRow({
           {canEdit && (
             <div className="flex flex-wrap items-center gap-1.5">
               <span className="font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase">
-                動画オフセット
+                {m.logs.videoOffset}
               </span>
               {codes.map((code) => (
                 <span key={code} className="inline-flex items-center gap-0.5">
@@ -1668,7 +1652,7 @@ function DayRow({
                       ? "border-violet-400/45 bg-violet-400/10 text-violet-200 hover:bg-violet-400/20"
                       : "border-border/50 text-muted-foreground hover:text-foreground")
                   }
-                  title="この report の動画とオフセットを設定"
+                  title={m.logs.setVideoOffsetTitle}
                 >
                   <Video className="h-3 w-3" aria-hidden />
                   {code.slice(0, 6)}
@@ -1681,8 +1665,8 @@ function DayRow({
                     type="button"
                     onClick={() => onDeleteReport(code)}
                     disabled={deletingCode === code}
-                    aria-label={`レポート ${code} を練習ログから削除`}
-                    title="このレポートを練習ログから削除 (以後も取り込まない)"
+                    aria-label={m.logs.deleteReportAria(code)}
+                    title={m.logs.deleteReportTitle}
                     className="inline-flex h-5 w-5 items-center justify-center rounded text-rose-300/80 transition-colors hover:bg-rose-500/15 hover:text-rose-200 disabled:opacity-40"
                   >
                     <Trash2 className="h-3 w-3" aria-hidden />
@@ -1695,10 +1679,10 @@ function DayRow({
           {dayWipeCauses.length > 0 && (
             <p
               className="flex flex-wrap items-center gap-x-2 gap-y-0.5 font-mono text-[10px] tabular-nums"
-              title="この日の wipe で最初に落ちた人の致命の一撃 (技名) を数えたもの"
+              title={m.logs.dayWipeCausesTitle}
             >
               <span className="tracking-[0.14em] text-muted-foreground uppercase">
-                ワイプ原因
+                {m.logs.wipeCauses}
               </span>
               {dayWipeCauses.map((c) => (
                 <span key={c.ability} className="inline-flex items-baseline gap-1">
@@ -1749,6 +1733,8 @@ function PullRow({
    */
   reserve: { metrics: boolean; video: boolean; phase: boolean; phaseBar: boolean };
 }) {
+  const m = useMessages();
+  const locale = useLocale();
   const durationSec = Math.max(0, Math.round((fight.endMs - fight.startMs) / 1000));
   // 日付のグルーピングが JST 基準なので時刻も JST に固定する
   // (閲覧者のタイムゾーンに依存すると日付と時刻がずれて見える)。
@@ -1787,19 +1773,19 @@ function PullRow({
           桁数で列がずれないよう数値列は右寄せ + tabular-nums。 */}
       <span
         className="w-8 shrink-0 text-right font-mono text-[11px] text-cyan-300/80 tabular-nums"
-        title={`この日の ${index} 番目の pull`}
+        title={m.logs.pullIndexTitle(index)}
       >
         #{index}
       </span>
       <span
         className="w-9 shrink-0 font-mono text-[11px] text-slate-400 tabular-nums"
-        title="戦闘開始時刻 (JST)"
+        title={m.logs.startTimeTitle}
       >
         {clock}
       </span>
       <span
         className="w-10 shrink-0 text-right font-mono text-[11px] text-indigo-300/90 tabular-nums"
-        title="戦闘時間"
+        title={m.logs.durationTitle}
       >
         {formatFightDuration(durationSec)}
       </span>
@@ -1812,8 +1798,7 @@ function PullRow({
           floors && floor !== null
             ? (floors.displayFloorByIndex.get(floor) ?? floor)
             : null;
-        const floorHalf =
-          floors && floor !== null ? floorHalfOf(floorLabel(floors, floor)) : null;
+        const half = floor !== null ? floorHalf(floors, floor) : null;
         const isClear = isClearFight(fight, floors);
         // 層ラベルは「1層」〜「4層後半」で文字数が変わる。幅を固定して
         // 中央寄せにし、後続の列 (結果 / PT 指標) が行ごとにずれないようにする。
@@ -1823,8 +1808,8 @@ function PullRow({
           "w-[3.75rem] shrink-0 rounded-sm border px-1 py-0.5 text-center font-mono text-[11px] whitespace-nowrap tabular-nums ";
         const segmentChip =
           floor !== null ? (
-            <span className={chipClass + floorToneClass(displayFloor, floorHalf)}>
-              {floorLabel(floors, floor)}
+            <span className={chipClass + floorToneClass(displayFloor, half)}>
+              {floorLabel(floors, floor, locale)}
             </span>
           ) : showPhase && fight.lastPhase !== null ? (
             <span className={chipClass + phaseToneClass(fight.lastPhase)}>
@@ -1853,7 +1838,7 @@ function PullRow({
             className={`${resultWidth} shrink-0 rounded-sm bg-secondary/50 px-1 py-0.5 text-center font-mono text-[11px] whitespace-nowrap tabular-nums`}
           >
             <span className={percentageToneClass(fight.fightPercentage)}>
-              残{formatPercentage(fight.fightPercentage)}
+              {m.logs.hpLeftCompact(formatPercentage(fight.fightPercentage))}
             </span>
           </span>
         );
@@ -1865,11 +1850,7 @@ function PullRow({
           <span className="inline-flex shrink-0 items-center gap-2 font-mono text-[11px] whitespace-nowrap tabular-nums">
             <span
               className="inline-flex w-14 items-center justify-end gap-0.5 text-foreground/80"
-              title={
-                fight.partyDps !== null
-                  ? "PT 合計 DPS (個人の内訳は保存していません)"
-                  : "PT 合計 DPS は未取得です"
-              }
+              title={fight.partyDps !== null ? m.logs.partyDpsTitle : m.logs.partyDpsMissing}
             >
               {fight.partyDps !== null && (
                 <>
@@ -1889,7 +1870,7 @@ function PullRow({
                   ? "text-muted-foreground"
                   : PERF_TEXT[perfForDeaths(fight.deaths)])
               }
-              title={fight.deaths !== null ? "死亡数" : "死亡数は未取得です"}
+              title={fight.deaths !== null ? m.logs.deathsTitle : m.logs.deathsMissing}
             >
               {fight.deaths !== null && (
                 <>
@@ -1917,18 +1898,16 @@ function PullRow({
               PERF_CHIP.bad
             }
             title={
-              `最初の死亡: ${formatMs(fight.wipe.t)}` +
+              m.logs.wipeFirstDeath(formatMs(fight.wipe.t)) +
               (fight.wipe.phase !== null ? ` (P${fight.wipe.phase})` : "") +
               ` / ${jobAbbr(fight.wipe.job)}` +
               (fight.wipe.ability ? ` ← ${fight.wipe.ability}` : "") +
-              (fight.wipe.cluster > 1
-                ? ` / 10 秒以内に ${fight.wipe.cluster} 人`
-                : "") +
-              ` / 死亡 ${fight.wipe.total}`
+              (fight.wipe.cluster > 1 ? m.logs.wipeCluster(fight.wipe.cluster) : "") +
+              m.logs.wipeDeaths(fight.wipe.total)
             }
           >
             <Skull className="h-2.5 w-2.5 shrink-0 opacity-80" aria-hidden />
-            <span className="truncate">{formatWipeLabel(fight.wipe)}</span>
+            <span className="truncate">{formatWipeLabel(fight.wipe, locale)}</span>
           </span>
         ) : null;
         return (
@@ -1951,7 +1930,7 @@ function PullRow({
             href={buildFflogsReportUrl(fight.reportCode, fight.fightId)}
             target="_blank"
             rel="noopener noreferrer"
-            title="FFLogs でこの pull を開く"
+            title={m.logs.openFflogsTitle}
             className="inline-flex items-center gap-1 px-1.5 py-0.5 font-mono text-[10px] tracking-[0.14em] text-amber-200 uppercase transition-colors hover:bg-amber-400/20"
           >
             <BarChart3 className="h-2.5 w-2.5" aria-hidden />
@@ -1965,8 +1944,8 @@ function PullRow({
             )}
             target="_blank"
             rel="noopener noreferrer"
-            title="この pull の死亡一覧 (死亡直前の被ダメ / 回復) を開く"
-            aria-label="死亡一覧を開く"
+            title={m.logs.deathsViewTitle}
+            aria-label={m.logs.deathsViewAria}
             className="inline-flex items-center border-l border-amber-400/35 px-1.5 py-0.5 text-amber-200/85 transition-colors hover:bg-amber-400/20 hover:text-amber-100"
           >
             <Skull className="h-2.5 w-2.5" aria-hidden />
@@ -1979,8 +1958,8 @@ function PullRow({
             )}
             target="_blank"
             rel="noopener noreferrer"
-            title="この pull の被ダメージ (何で削られたか) を開く"
-            aria-label="被ダメージを開く"
+            title={m.logs.damageTakenTitle}
+            aria-label={m.logs.damageTakenAria}
             className="inline-flex items-center border-l border-amber-400/35 px-1.5 py-0.5 text-amber-200/85 transition-colors hover:bg-amber-400/20 hover:text-amber-100"
           >
             <ShieldAlert className="h-2.5 w-2.5" aria-hidden />
@@ -1992,7 +1971,7 @@ function PullRow({
           href={buildXivAnalysisUrl(fight.reportCode, fight.fightId)}
           target="_blank"
           rel="noopener noreferrer"
-          title="XIVAnalysis でこの pull を解析する"
+          title={m.logs.xivAnalysisTitle}
           className="inline-flex items-center gap-1 rounded-sm border border-sky-400/45 bg-sky-400/10 px-1.5 py-0.5 font-mono text-[10px] tracking-[0.14em] text-sky-200 uppercase transition-colors hover:bg-sky-400/15"
         >
           <Microscope className="h-2.5 w-2.5" aria-hidden />
@@ -2006,11 +1985,11 @@ function PullRow({
             href={videoHref}
             target="_blank"
             rel="noopener noreferrer"
-            title="動画のこの瞬間から再生"
+            title={m.logs.videoMomentTitle}
             className="inline-flex w-[4.75rem] items-center justify-center gap-1 rounded-sm border border-violet-400/45 bg-violet-400/10 px-1 py-0.5 font-mono text-[10px] tracking-[0.1em] whitespace-nowrap text-violet-200 uppercase transition-colors hover:bg-violet-400/15"
           >
             <Film className="h-2.5 w-2.5 shrink-0" aria-hidden />
-            {videoSeconds !== null ? formatClock(videoSeconds) : "動画"}
+            {videoSeconds !== null ? formatClock(videoSeconds) : m.logs.video}
           </a>
         ) : (
           reserve.video && <span className="w-[4.75rem] shrink-0" aria-hidden />
@@ -2029,10 +2008,11 @@ function FailedList({
     unassigned: boolean;
   }>;
 }) {
+  const m = useMessages();
   return (
     <section className="rounded-md border border-amber-400/30 bg-amber-400/5 px-3 py-2">
       <h3 className="font-mono text-[10px] tracking-[0.16em] text-amber-200 uppercase">
-        取り込めていないレポート
+        {m.logs.failedTitle}
       </h3>
       <ul className="mt-1 flex flex-col gap-1">
         {failedSyncs.map((f) => (
@@ -2047,7 +2027,7 @@ function FailedList({
             </a>
             {f.unassigned && (
               <span className="ml-1.5 rounded-sm border border-border/50 px-1 py-0.5 font-mono text-[9px] tracking-[0.1em] uppercase">
-                コンテンツ未割当
+                {m.logs.unassigned}
               </span>
             )}
             {f.reason ? (
@@ -2073,13 +2053,14 @@ function OffsetDialog({
   ) => void;
   onSaved: () => void;
 }) {
+  const m = useMessages();
   const [busy, setBusy] = useState(false);
 
   const save = async () => {
     if (!target) return;
     const offset = Number(target.offset);
     if (!Number.isFinite(offset)) {
-      toast.error("オフセットは秒数で入力してください");
+      toast.error(m.logsOffset.errOffset);
       return;
     }
     setBusy(true);
@@ -2090,10 +2071,10 @@ function OffsetDialog({
     });
     setBusy(false);
     if (!result.ok) {
-      toast.error("保存失敗: " + result.reason);
+      toast.error(m.logs.saveFailed(result.reason));
       return;
     }
-    toast.success("保存しました");
+    toast.success(m.logsOffset.toastSaved);
     onSaved();
   };
 
@@ -2105,7 +2086,7 @@ function OffsetDialog({
       return;
     }
     if (!result.videoUrl) {
-      toast.error("この report に紐づいた動画が見つかりませんでした");
+      toast.error(m.logsOffset.errNoVideo);
       return;
     }
     onChange({ ...target, videoUrl: result.videoUrl });
@@ -2120,17 +2101,16 @@ function OffsetDialog({
     >
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>動画オフセットの設定</DialogTitle>
+          <DialogTitle>{m.logsOffset.title}</DialogTitle>
           <DialogDescription>
-            動画上で<strong>最初の pull (一覧の #1) の戦闘が始まる時刻 (秒)
-            </strong>を 1 回だけ入れておくと、以降その日の全 pull の動画内
-            時刻が自動計算されます。例: 動画の 0:56 で #1 が始まるなら
-            「56」。
+            {m.logsOffset.descA}
+            <strong>{m.logsOffset.descStrong}</strong>
+            {m.logsOffset.descB}
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-3">
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="offset-video">動画 URL</Label>
+            <Label htmlFor="offset-video">{m.logsOffset.videoUrlLabel}</Label>
             <div className="flex gap-1.5">
               <Input
                 id="offset-video"
@@ -2147,17 +2127,17 @@ function OffsetDialog({
                 onClick={autofill}
                 className="shrink-0 text-[11px]"
               >
-                自動入力
+                {m.logsOffset.autofill}
               </Button>
             </div>
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="offset-seconds">オフセット（秒）</Label>
+            <Label htmlFor="offset-seconds">{m.logsOffset.offsetLabel}</Label>
             <Input
               id="offset-seconds"
               inputMode="numeric"
               value={target?.offset ?? "0"}
-              placeholder="例: 56（動画の 0:56 で #1 の戦闘が始まる）"
+              placeholder={m.logsOffset.offsetPlaceholder}
               onChange={(e) =>
                 onChange(target ? { ...target, offset: e.target.value } : null)
               }
@@ -2171,10 +2151,10 @@ function OffsetDialog({
             onClick={() => onChange(null)}
             disabled={busy}
           >
-            キャンセル
+            {m.common.cancel}
           </Button>
           <Button type="button" onClick={save} disabled={busy}>
-            {busy ? "保存中..." : "保存"}
+            {busy ? m.logs.savingDots : m.common.save}
           </Button>
         </DialogFooter>
       </DialogContent>

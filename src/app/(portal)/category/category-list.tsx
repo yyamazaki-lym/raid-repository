@@ -14,7 +14,7 @@ import {
   Trophy,
   Hourglass,
 } from "lucide-react";
-import { SUB_TAB_DEFS } from "@/lib/sub-tab-defs";
+import { getSubTabDefs } from "@/lib/sub-tab-defs";
 import { toast } from "sonner";
 import { DndContext, closestCenter } from "@dnd-kit/core";
 import {
@@ -55,6 +55,7 @@ import { isCategoryVisibleToRoles } from "@/lib/category-visibility";
 import type { Category, CategoryStatus } from "@/lib/supabase/types";
 import { isOptimizableImageHost, isSafeUrl } from "@/lib/url-safe";
 import { cn } from "@/lib/utils";
+import { useLocale, useMessages } from "@/lib/i18n/client";
 
 type Props = {
   initialCategories: Category[];
@@ -91,6 +92,7 @@ export function CategoryList({
   timeToClearByCategory = {},
 }: Props) {
   const router = useRouter();
+  const m = useMessages();
   // Realtime hook keeps the list in sync with DB changes from any client.
   // 2.0 (2026-04-29): /category index は管理ビューとして全件を出すので
   // ここでは role フィルタしない (= 自分が見えないカードも表示)。代わり
@@ -126,8 +128,8 @@ export function CategoryList({
     return (
       <EmptyState
         icon={Layers}
-        title="コンテンツがありません"
-        description="右上の「コンテンツ追加」ボタンから登録できます。"
+        title={m.categoryList.emptyTitle}
+        description={m.categoryList.emptyDescription}
       />
     );
   }
@@ -135,7 +137,7 @@ export function CategoryList({
   const onChangeStatus = async (id: string, status: CategoryStatus) => {
     const result = await updateCategoryStatus(id, status);
     if (!result.ok) {
-      toast.error("ステータス更新失敗: " + result.reason);
+      toast.error(m.categoryList.statusUpdateFailed(result.reason));
       return;
     }
     // 2.1 (2026-04-29) hot-fix: server-rendered RSC を再実行して UI を確実に同期。
@@ -144,18 +146,18 @@ export function CategoryList({
 
   const onDelete = async (cat: Category) => {
     const ok = await confirm({
-      title: `「${cat.name}」を削除しますか？`,
-      description: "ロット管理・軽減表・攻略情報もすべて削除されます。",
-      confirmText: "削除",
+      title: m.categoryList.deleteConfirmTitle(cat.name),
+      description: m.categoryList.deleteConfirmDescription,
+      confirmText: m.common.delete,
       destructive: true,
     });
     if (!ok) return;
     const result = await deleteCategory(cat.id);
     if (!result.ok) {
-      toast.error("削除失敗: " + result.reason);
+      toast.error(m.categoryList.deleteFailed(result.reason));
       return;
     }
-    toast.success(`「${cat.name}」を削除しました`);
+    toast.success(m.categoryList.deleted(cat.name));
     // Force a server-side refetch so the row disappears immediately
     // even if Realtime DELETE event filtering hasn't picked it up
     // (REPLICA IDENTITY FULL needed; schema may not have been
@@ -170,7 +172,7 @@ export function CategoryList({
           <span className="inline-flex h-1.5 w-1.5 rounded-full bg-muted-foreground/60" />
           Drag to reorder
           <span className="font-sans text-[11px] tracking-normal normal-case text-muted-foreground/85">
-            · ドラッグで並び替え
+            {m.categoryList.dragHint}
           </span>
         </p>
       )}
@@ -251,6 +253,8 @@ function SortableCategoryCard({
   // Used by the Trophy badge to navigate to the videos page focused
   // on the clear-day card without firing the parent row Link.
   const router = useRouter();
+  const m = useMessages();
+  const locale = useLocale();
   const {
     attributes,
     listeners,
@@ -279,8 +283,8 @@ function SortableCategoryCard({
     ? (category.manualTimeToClearSeconds ?? timeToClearSeconds)
     : (category.manualTimeToClearSeconds ?? practiceSeconds);
   const challengeTimeLabel = isCleared
-    ? "クリアまでの累計時間"
-    : "コンテンツ挑戦時間";
+    ? m.categoryList.timeToClear
+    : m.categoryList.timeSpent;
 
   // Background image (TODO #17): paint behind the card's glass surface so
   // text and chips remain readable. Validated via `isSafeUrl` to prevent
@@ -337,7 +341,7 @@ function SortableCategoryCard({
           <button
             type="button"
             {...listeners}
-            aria-label={`${category.name} の並び替えハンドル`}
+            aria-label={m.categoryList.dragHandleAria(category.name)}
             className="relative z-10 flex shrink-0 cursor-grab items-center justify-center rounded-l-lg border-r border-border/40 bg-secondary/30 px-2 text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground active:cursor-grabbing"
           >
             <GripVertical className="h-4 w-4" aria-hidden />
@@ -366,7 +370,7 @@ function SortableCategoryCard({
               {!viewerCanSee && (
                 <span
                   className="inline-flex shrink-0 items-center gap-1 rounded-sm border border-badge-accent/40 bg-badge-accent/10 px-1.5 py-px font-mono text-[9px] tracking-[0.18em] text-badge-accent-fg uppercase"
-                  title={`このコンテンツは ${category.requiredRoleIds.length} 個のロールに制限されています (あなたは閲覧不可)`}
+                  title={m.categoryList.lockedTitle(category.requiredRoleIds.length)}
                 >
                   <Lock className="h-2.5 w-2.5" aria-hidden />
                   {category.requiredRoleIds.length}
@@ -429,10 +433,12 @@ function SortableCategoryCard({
                   );
                 }}
                 className="inline-flex items-center gap-1 rounded-sm border border-badge-accent/45 bg-badge-accent/10 px-1.5 py-px font-mono text-[9px] tracking-[0.18em] text-badge-accent-fg uppercase transition-colors hover:border-badge-accent/80 hover:bg-badge-accent/20"
-                title={`初クリア: ${formatFirstClear(category.firstClearAt, "long")} (クリックでクリア日の動画へジャンプ)`}
+                title={m.categoryList.firstClearTitle(
+                  formatFirstClear(category.firstClearAt, "long", locale),
+                )}
               >
                 <Trophy className="h-2.5 w-2.5" aria-hidden />
-                {formatFirstClear(category.firstClearAt, "short")}
+                {formatFirstClear(category.firstClearAt, "short", locale)}
               </button>
             ) : (
               // Trophy が無いカードでもサイズを揃える placeholder。
@@ -460,7 +466,7 @@ function SortableCategoryCard({
                     ? "border-badge-clear/45 bg-badge-clear/10 text-badge-clear-fg"
                     : "border-badge-progress/45 bg-badge-progress/10 text-badge-progress-fg")
                 }
-                title={`${challengeTimeLabel}: ${formatDurationLong(challengeTimeSeconds)}${category.manualTimeToClearSeconds !== null ? " (手動入力)" : ""}`}
+                title={`${challengeTimeLabel}: ${formatDurationLong(challengeTimeSeconds, locale)}${category.manualTimeToClearSeconds !== null ? m.categoryList.manualSuffix : ""}`}
               >
                 <Hourglass className="h-2.5 w-2.5" aria-hidden />
                 {isCleared ? "→" : ""}
@@ -480,7 +486,7 @@ function SortableCategoryCard({
               {recentImports > 0 ? (
                 <span
                   className="inline-flex items-center gap-1 rounded-sm border border-badge-recent/40 bg-badge-recent/10 px-1.5 py-px font-mono text-[9px] tracking-[0.18em] text-badge-recent-fg uppercase"
-                  title={`過去7日で Discord から ${recentImports} 件取り込み`}
+                  title={m.categoryList.recentImportsTitle(recentImports)}
                 >
                   +{recentImports}/wk
                 </span>
@@ -516,7 +522,7 @@ function SortableCategoryCard({
  */
 // タブ定義は `@/lib/sub-tab-defs` に集約 (旧: この 3 ファイルに同じ配列を
 // コピーしていたため、タブ追加時にここだけ更新漏れが起きていた)。
-const SUB_PAGES = SUB_TAB_DEFS;
+// ラベルは表示言語に追従するので描画時に `getSubTabDefs(locale)` で引く。
 
 function SubPageShortcuts({
   slug,
@@ -533,15 +539,17 @@ function SubPageShortcuts({
   /** 2.1 (2026-04-29): 行の右端に StatusBadge を配置するためのスロット。 */
   statusSlot?: React.ReactNode;
 }) {
+  const m = useMessages();
+  const subPages = getSubTabDefs(useLocale());
   return (
     <nav
-      aria-label="サブページへのショートカット"
+      aria-label={m.categoryList.shortcutsAria}
       // 2.1 (2026-04-29): 右パディングを `pr-2` (右カラム `p-2` と同値) に
       // 揃え、Status の右端を Trophy/Hourglass の右端と一致させる
       // (= レイアウト変更なし、padding のみ調整)。
       className="flex items-center gap-1 pt-1 pr-2 pb-3 pl-3"
     >
-      {SUB_PAGES.map((p) => {
+      {subPages.map((p) => {
         const cfg = tabConfig?.[p.segment];
         if (cfg?.enabled === false) return null;
         const labelOverride = cfg?.label?.trim();
@@ -571,6 +579,7 @@ function CategoryMenu({
   onEdit: () => void;
   onDelete: () => void;
 }) {
+  const m = useMessages();
   return (
     <span
       onClick={(e) => e.stopPropagation()}
@@ -579,7 +588,7 @@ function CategoryMenu({
       <DropdownMenu>
         <DropdownMenuTrigger
           className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-all hover:bg-secondary/60 hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 active:scale-95"
-          aria-label="コンテンツメニュー"
+          aria-label={m.categoryList.menuAria}
         >
           <MoreVertical className="h-3.5 w-3.5" aria-hidden />
         </DropdownMenuTrigger>
@@ -589,7 +598,7 @@ function CategoryMenu({
             className="flex cursor-pointer items-center gap-2"
           >
             <Pencil className="h-3.5 w-3.5" aria-hidden />
-            <span className="text-sm">編集</span>
+            <span className="text-sm">{m.common.edit}</span>
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem
@@ -597,7 +606,7 @@ function CategoryMenu({
             className="flex cursor-pointer items-center gap-2 text-rose-300 focus:text-rose-200"
           >
             <Trash2 className="h-3.5 w-3.5" aria-hidden />
-            <span className="text-sm">削除</span>
+            <span className="text-sm">{m.common.delete}</span>
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

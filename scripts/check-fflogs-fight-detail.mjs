@@ -184,6 +184,15 @@ try {
     m.formatWipeLabel({ t: 0, job: "Unknown Job", ability: null, cluster: 1, total: 1, phase: null }),
     "UNK ← 不明",
   );
+  check(
+    "技名不明のラベル (en)",
+    m.formatWipeLabel(
+      { t: 0, job: "Unknown Job", ability: null, cluster: 2, total: 3, phase: null },
+      "en",
+    ),
+    "UNK ← Unknown +1",
+  );
+  check("locale 省略時は日本語", m.formatWipeLabel(wipe, "ja"), "PLD ← アク・モーン +1");
 
   console.log("\n[ジョブ略称]");
   check("既知", m.jobAbbr("Pictomancer"), "PCT");
@@ -202,6 +211,14 @@ try {
     ],
   );
   check("上限", m.wipeCauseCounts([w("A"), w("B"), w("C")], 2).length, 2);
+  check(
+    "技名不明は locale で「Unknown」",
+    m.wipeCauseCounts([w(null), w(null), w("A")], 5, "en"),
+    [
+      { ability: "Unknown", count: 2 },
+      { ability: "A", count: 1 },
+    ],
+  );
   const totals = m.phaseTimeTotals([
     [{ id: 1, start: 0, dur: 100 }, { id: 2, start: 100, dur: 300 }],
     null,

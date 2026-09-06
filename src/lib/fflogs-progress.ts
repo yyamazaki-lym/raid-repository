@@ -91,17 +91,35 @@ export type FloorMap = {
   floorCount: number;
   /** 最終 encounter (分割時は後半)。「クリア」の判定対象。 */
   finalEncounterId: number;
-  /** 層 index → 表示ラベル (例: "3層" / "4層前半" / "4層後半")。 */
+  /** 層 index → 表示ラベル (例: "3層" / "4層前半" / "4層後半"、en は "F3" / "F4a" / "F4b")。 */
   labelByIndex: Map<number, string>;
+  /** 層 index → 最終層の前半 / 後半 (分割の無い層は載せない)。色分け用。 */
+  halfByIndex: Map<number, "first" | "second">;
   /** 層 index → 表示上の層番号 (前半/後半とも 4)。範囲チップ用。 */
   displayFloorByIndex: Map<number, number>;
   /** クリア判定対象の層の表示名 (例: "4層")。クリア回数タイル用。 */
   finalFloorLabel: string;
 } | null;
 
+/**
+ * 表示言語。辞書 (`@/lib/i18n`) はこのファイルから import しない (純粋関数の
+ * まま check スクリプトや server 側からも使えるようにする) — 層ラベルと
+ * 「討伐 / 不明」の語だけ locale 引数で選ぶ。既定は日本語。
+ */
+export type ProgressLocale = "ja" | "en";
+
+/** 層番号だけの短いラベル ("3層" / en "F3")。 */
+export function floorNumberLabel(n: number, locale: ProgressLocale = "ja"): string {
+  return locale === "en" ? `F${n}` : `${n}層`;
+}
+
 /** 層 index の表示ラベル。floors が無い/未知の index は "◯層" にフォールバック。 */
-export function floorLabel(floors: FloorMap, index: number): string {
-  return floors?.labelByIndex.get(index) ?? `${index}層`;
+export function floorLabel(
+  floors: FloorMap,
+  index: number,
+  locale: ProgressLocale = "ja",
+): string {
+  return floors?.labelByIndex.get(index) ?? floorNumberLabel(index, locale);
 }
 
 /**
@@ -121,6 +139,8 @@ export function buildFloorMap(
    * null なら分割検出をしない。
    */
   expectedFloorCount: number | null = null,
+  /** ラベルの言語 (既定 ja)。server 側の呼び出しは省略 = 日本語。 */
+  locale: ProgressLocale = "ja",
 ): FloorMap {
   const counts = new Map<number, number>();
   for (const f of fights) {
@@ -158,13 +178,23 @@ export function buildFloorMap(
     expectedFloorCount !== null && floorCount === expectedFloorCount + 1;
   const labelByIndex = new Map<number, string>();
   const displayFloorByIndex = new Map<number, number>();
+  const halfByIndex = new Map<number, "first" | "second">();
   for (let idx = 1; idx <= floorCount; idx++) {
     if (split && idx >= floorCount - 1) {
-      const half = idx === floorCount - 1 ? "前半" : "後半";
-      labelByIndex.set(idx, `${expectedFloorCount}層${half}`);
+      const half = idx === floorCount - 1 ? "first" : "second";
+      const halfLabel =
+        locale === "en"
+          ? half === "first"
+            ? "a"
+            : "b"
+          : half === "first"
+            ? "前半"
+            : "後半";
+      labelByIndex.set(idx, `${floorNumberLabel(expectedFloorCount, locale)}${halfLabel}`);
       displayFloorByIndex.set(idx, expectedFloorCount);
+      halfByIndex.set(idx, half);
     } else {
-      labelByIndex.set(idx, `${idx}層`);
+      labelByIndex.set(idx, floorNumberLabel(idx, locale));
       displayFloorByIndex.set(idx, idx);
     }
   }
@@ -175,7 +205,8 @@ export function buildFloorMap(
     finalEncounterId: max,
     labelByIndex,
     displayFloorByIndex,
-    finalFloorLabel: split ? `${expectedFloorCount}層` : `${floorCount}層`,
+    halfByIndex,
+    finalFloorLabel: floorNumberLabel(split ? expectedFloorCount : floorCount, locale),
   };
 }
 
@@ -476,6 +507,7 @@ export function pullBreakdown(
   fights: FightRow[],
   floors: FloorMap,
   showPhase: boolean,
+  locale: ProgressLocale = "ja",
 ): PullBreakdownItem[] {
   if (floors) {
     const counts = new Map<number, number>();
@@ -487,17 +519,14 @@ export function pullBreakdown(
     }
     return [...counts.entries()]
       .sort((a, b) => a[0] - b[0])
-      .map(([idx, count]) => {
-        const label = floorLabel(floors, idx);
-        return {
-          label,
-          count,
-          kind: "floor" as const,
-          displayFloor: floors.displayFloorByIndex.get(idx) ?? idx,
-          phase: null,
-          half: floorHalfOf(label),
-        };
-      });
+      .map(([idx, count]) => ({
+        label: floorLabel(floors, idx, locale),
+        count,
+        kind: "floor" as const,
+        displayFloor: floors.displayFloorByIndex.get(idx) ?? idx,
+        phase: null,
+        half: floorHalf(floors, idx),
+      }));
   }
   if (!showPhase) return [];
   const byPhase = new Map<number, number>();
@@ -524,7 +553,7 @@ export function pullBreakdown(
     }));
   if (clears > 0) {
     out.push({
-      label: "討伐",
+      label: locale === "en" ? "Kill" : "討伐",
       count: clears,
       kind: "clear",
       displayFloor: null,
@@ -534,7 +563,7 @@ export function pullBreakdown(
   }
   if (unknown > 0) {
     out.push({
-      label: "不明",
+      label: locale === "en" ? "Unknown" : "不明",
       count: unknown,
       kind: "unknown",
       displayFloor: null,
@@ -653,11 +682,16 @@ export function phaseToneClass(phase: number | null): string {
   }
 }
 
-/** 層ラベルから前半/後半を判定する (ラベルは buildFloorMap が組み立てる)。 */
-export function floorHalfOf(label: string): "first" | "second" | null {
-  if (label.includes("前半")) return "first";
-  if (label.includes("後半")) return "second";
-  return null;
+/**
+ * 層 index が最終層の前半 / 後半か (分割の無い層・floors 無しは null)。
+ * 旧 `floorHalfOf(label)` はラベル文字列に「前半 / 後半」が含まれるかで
+ * 判定していたが、ラベルが言語で変わるので index から直接引く。
+ */
+export function floorHalf(
+  floors: FloorMap,
+  index: number,
+): "first" | "second" | null {
+  return floors?.halfByIndex.get(index) ?? null;
 }
 
 /** 戦闘時間 (秒) を `3:21` 形式に。 */
