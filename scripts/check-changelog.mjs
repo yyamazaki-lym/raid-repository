@@ -5,7 +5,7 @@
  * `src/lib/changelog.ts` は「最新 1 エントリだけ」を持ち、それより古い
  * エントリは `src/lib/changelog-archive.ts` に graduate する運用
  * (changelog.ts ヘッダー / changelog-meta.ts の手順を参照)。2026-05 以降
- * この運用が守られず本体が 31 エントリ / 420 KB まで育ち、設定ダイアログ
+ * この運用が守られず本体が 32 エントリ / 420 KB まで育ち、設定ダイアログ
  * を開くたびに全文を取得する状態になっていた。同じ逆戻りを CI で止める。
  *
  * 検査項目:
@@ -18,6 +18,11 @@
  *   4. 同じ並びで date が非増加 (新しい → 古い)。graduate 時に archive の
  *      末尾へ append してしまった、などの並び崩れを拾う
  *   5. 各エントリに parts (title 必須) か notes のどちらかがある
+ *   6. parts を持つ各エントリに `docs/release-notes/v<version>-<date>.md`
+ *      があり、その `## ` 見出しが parts の title と順序込みで一致する
+ *      (本文は 2026-09-06 に TS の `body` から md へ移した。見出しが
+ *      ずれると「どの本文がどの変更のものか」が追えなくなる)
+ *   7. 対応するエントリの無い md が docs/release-notes/ に残っていない
  *
  * `--dump <path>` を付けると結合済みの配列を JSON で書き出す。graduate
  * 前後で内容が 1 バイトも変わっていないことの比較に使う。
@@ -26,7 +31,14 @@
  * JS を吐き、そこから import する (依存追加なし、Node 22+ で動く)。
  */
 
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -34,6 +46,17 @@ import ts from "typescript";
 
 const FILES = ["changelog-meta", "changelog", "changelog-archive"];
 const SRC_DIR = "src/lib";
+const NOTES_DIR = "docs/release-notes";
+
+const mdNameOf = (r) => `v${r.version}-${r.date}.md`;
+
+/** md の `## ` 見出しを出現順に返す (先頭の `# ` タイトルは含めない)。 */
+function mdHeadings(text) {
+  return text
+    .split("\n")
+    .filter((line) => line.startsWith("## "))
+    .map((line) => line.slice(3).trim());
+}
 
 function transpileToDir(dir) {
   for (const name of FILES) {
@@ -134,6 +157,49 @@ try {
     "every entry has parts (with titles) or notes",
     empty.length === 0,
     `empty: ${empty.map((r) => `${r.version}|${r.date}`).join(", ")}`,
+  );
+
+  const withParts = combined.filter(
+    (r) => Array.isArray(r.parts) && r.parts.length > 0,
+  );
+  const missingMd = [];
+  const headingMismatch = [];
+  for (const r of withParts) {
+    const file = join(NOTES_DIR, mdNameOf(r));
+    if (!existsSync(file)) {
+      missingMd.push(mdNameOf(r));
+      continue;
+    }
+    const got = mdHeadings(readFileSync(file, "utf8"));
+    const want = r.parts.map((p) => p.title.trim());
+    if (JSON.stringify(got) !== JSON.stringify(want)) {
+      const firstDiff = want.findIndex((t, i) => got[i] !== t);
+      headingMismatch.push(
+        `${mdNameOf(r)} (md ${got.length} / ts ${want.length} headings; first diff at #${firstDiff + 1}: ts="${want[firstDiff] ?? ""}" md="${got[firstDiff] ?? ""}")`,
+      );
+    }
+  }
+  check(
+    `every entry with parts has ${NOTES_DIR}/v<version>-<date>.md`,
+    missingMd.length === 0,
+    `missing: ${missingMd.join(", ")}`,
+  );
+  check(
+    "md '## ' headings match part titles in order",
+    headingMismatch.length === 0,
+    headingMismatch.join("\n       "),
+  );
+
+  const known = new Set(withParts.map(mdNameOf));
+  const orphans = existsSync(NOTES_DIR)
+    ? readdirSync(NOTES_DIR).filter(
+        (f) => f.endsWith(".md") && f !== "README.md" && !known.has(f),
+      )
+    : [];
+  check(
+    `no orphan md in ${NOTES_DIR} (every v*.md has a matching entry)`,
+    orphans.length === 0,
+    `orphans: ${orphans.join(", ")}`,
   );
 } finally {
   rmSync(dir, { recursive: true, force: true });

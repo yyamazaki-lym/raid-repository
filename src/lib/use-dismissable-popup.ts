@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, type RefObject } from "react";
+import { useEffect, useRef, type RefObject } from "react";
 
 /**
  * 手書きポップアップの「閉じる」挙動を 1 箇所に集約するフック
@@ -21,6 +21,7 @@ import { useEffect, type RefObject } from "react";
  *   1. ポップアップ外の mousedown で閉じる (トリガー自身は「内側」扱い)
  *   2. Escape で閉じる
  *   3. 閉じた後、フォーカスが body に落ちていたときだけトリガーへ戻す
+ *      (open が true → false に変わった瞬間だけ。mount 時には動かない)
  *
  * 位置決め (getBoundingClientRect / portal) は各コンポーネントの都合が
  * 大きく違うので統合しない。
@@ -109,9 +110,20 @@ export function useDismissablePopup(opts: {
 
   // 2) 閉じた直後のフォーカス復帰。open が true → false に落ちた遷移で、
   //    フォーカスが body に落ちている (= 閉じた要素と一緒に消えた) 場合のみ。
+  //
+  //    2026-09-06 実機報告「スケジュールページを更新 (再読み込み) すると
+  //    ルールボタンに白い枠が出る。他を押すと消える」の原因がここ。旧実装は
+  //    `open === false` なら無条件に走っていたため **初回 mount** (open=false、
+  //    activeElement=body) でもトリガーへ focus() を呼び、読み込み直後で
+  //    ユーザー操作が無い状態での script focus はブラウザが :focus-visible
+  //    (白い枠) を付ける。直前の open を ref で覚え、true → false の遷移
+  //    以外では何もしない。
+  const wasOpenRef = useRef(false);
   useEffect(() => {
+    const wasOpen = wasOpenRef.current;
+    wasOpenRef.current = open;
     if (!restoreFocus) return;
-    if (open) return;
+    if (open || !wasOpen) return;
     if (typeof document === "undefined") return;
     const active = document.activeElement;
     if (active === null || active === document.body) {
