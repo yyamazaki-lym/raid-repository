@@ -8,7 +8,7 @@ import { SplashSwRegistrar } from "@/components/splash-sw-registrar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { CSP_NONCE_HEADER } from "@/lib/csp";
 import { PRE_HYDRATION_THEME_SCRIPT } from "@/lib/theme-store";
-import { getLocale } from "@/lib/i18n/server";
+import { getLocale, getMessages } from "@/lib/i18n/server";
 import { LocaleProvider } from "@/lib/i18n/client";
 import "./globals.css";
 
@@ -31,15 +31,17 @@ const orbitron = Orbitron({
   weight: ["500", "600", "700", "800"],
 });
 
-export const metadata: Metadata = {
-  title: {
-    default: "Raid Repository",
-    template: "%s · Raid Repository",
-  },
-  description:
-    "FF14レイド固定向けポータル — スケジュール、ロット管理、軽減表、攻略情報を一箇所に。",
-  applicationName: "Raid Repository",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const m = await getMessages();
+  return {
+    title: {
+      default: "Raid Repository",
+      template: "%s · Raid Repository",
+    },
+    description: m.app.description,
+    applicationName: "Raid Repository",
+  };
+}
 
 export const viewport: Viewport = {
   themeColor: "#0a0e18",

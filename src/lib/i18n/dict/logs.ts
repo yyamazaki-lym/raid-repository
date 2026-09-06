@@ -222,6 +222,10 @@ export const ja = {
     changeAria: (label: string) => `ステータス: ${label} (クリックして変更)`,
   },
   categoryList: {
+    pageTitle: "コンテンツ",
+    pageDescription: "レイドコンテンツ単位で、軽減・ロット・攻略情報・動画などを切り替えます。",
+    dbErrorTitle: "Supabase に接続できませんでした",
+    dbErrorHint: "を Supabase Dashboard の SQL Editor で実行してください。詳細:",
     emptyTitle: "コンテンツがありません",
     emptyDescription: "右上の「コンテンツ追加」ボタンから登録できます。",
     statusUpdateFailed: (reason: string) => `ステータス更新失敗: ${reason}`,
@@ -440,6 +444,10 @@ export const en: LogsMessages = {
     changeAria: (label) => `Status: ${label} (click to change)`,
   },
   categoryList: {
+    pageTitle: "Contents",
+    pageDescription: "Switch between raid contents — mitigation, loot, guides, videos and more.",
+    dbErrorTitle: "Could not connect to Supabase",
+    dbErrorHint: "in the Supabase Dashboard SQL Editor. Details:",
     emptyTitle: "No contents yet",
     emptyDescription: "Add one with the “Add content” button at the top right.",
     statusUpdateFailed: (reason) => `Status update failed: ${reason}`,

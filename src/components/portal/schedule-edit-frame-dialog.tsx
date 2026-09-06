@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { ExternalLink } from "lucide-react";
+import { useMessages } from "@/lib/i18n/client";
 import {
   Dialog,
   DialogContent,
@@ -56,6 +57,7 @@ export function ScheduleEditFrameDialog({
   /** Called when the user closes the dialog. */
   onClose: () => void;
 }) {
+  const m = useMessages();
   const router = useRouter();
   const safeUrl = safeHref(url);
 
@@ -107,7 +109,7 @@ export function ScheduleEditFrameDialog({
           <div className="flex flex-col gap-0.5">
             <DialogTitle className="text-sm">{title}</DialogTitle>
             <DialogDescription className="text-[11px]">
-              編集後はそのままダイアログを閉じればスケジュールに戻れます
+              {m.app.editFrameDescription}
             </DialogDescription>
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
@@ -117,10 +119,10 @@ export function ScheduleEditFrameDialog({
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1.5 rounded-md border border-border/60 bg-background/40 px-2.5 py-1.5 text-[10px] tracking-normal text-muted-foreground transition-colors hover:border-[var(--neon-cyan)]/60 hover:text-foreground"
-                title="埋め込みが表示されない場合は新しいタブで開いてください"
+                title={m.app.editFrameNewTabTitle}
               >
                 <ExternalLink className="h-3 w-3" aria-hidden />
-                新しいタブ
+                {m.app.editFrameNewTab}
               </a>
             )}
           </div>
@@ -138,7 +140,7 @@ export function ScheduleEditFrameDialog({
           </div>
         ) : (
           <div className="grid flex-1 place-items-center text-xs text-muted-foreground">
-            URL が設定されていません
+            {m.app.editFrameNoUrl}
           </div>
         )}
       </DialogContent>

@@ -33,10 +33,12 @@ import {
   userIsAdmin,
 } from "@/lib/server/auth";
 import { filterVisibleCategories } from "@/lib/category-visibility";
+import { getMessages } from "@/lib/i18n/server";
 
-export const metadata = {
-  title: "スケジュール",
-};
+export async function generateMetadata() {
+  const m = await getMessages();
+  return { title: m.nav.schedule };
+}
 
 /**
  * 2.9 (2026-06-11): Edge → Node runtime 化。経緯と判断根拠は

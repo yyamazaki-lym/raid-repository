@@ -42,7 +42,6 @@ import { NativeAutoConfirmSection } from "./settings/native-auto-confirm-section
 import { FflogsSyncSection } from "./settings/fflogs-sync-section";
 import { ChangelogFooter } from "./settings/changelog-footer";
 import { DangerZoneSection } from "./settings/danger-zone-section";
-import { LocaleSection } from "./settings/locale-section";
 import { useMessages } from "@/lib/i18n/client";
 
 /**
@@ -234,9 +233,6 @@ export function SettingsDialog({
               {m.settings.readOnlyNotice}
             </div>
           )}
-          {/* 2026-09-06: 表示言語 (ブラウザごと)。共有設定ではないので最上段に
-              置き、説明文でその旨を明示する。 */}
-          <LocaleSection />
           <ScheduleSourceModeSection
             open={open}
             canEdit={canEdit}

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { ThemeSwitcher } from "./theme-switcher";
+import { LocaleSwitcher } from "./locale-switcher";
 // 1.9 (2026-04-28) TODO #11: SettingsDialog (~1601 行 + MaintenanceMenu
 // ~880 行) は開いた時だけ必要なので、`next/dynamic` 経由で別 chunk 化
 // した lazy ラッパー (`settings-dialog-lazy.tsx`) を使う。初期ページ
@@ -169,6 +170,8 @@ export async function SiteHeader() {
         </Link>
 
         <div className="ml-auto flex items-center gap-2">
+          {/* 2026-09-07: 表示言語 (国旗)。設定ダイアログから移動。 */}
+          <LocaleSwitcher />
           <ThemeSwitcher />
           {/* サインアウトは設定ダイアログ内に移設 (2.1 2026-04-29)。 */}
           <SettingsDialog canEdit={canEdit} showSignIn={isDemoGuest} />

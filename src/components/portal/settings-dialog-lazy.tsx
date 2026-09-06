@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import { useMessages } from "@/lib/i18n/client";
 import { useState, useSyncExternalStore } from "react";
 import { Settings } from "lucide-react";
 
@@ -65,11 +66,12 @@ function TriggerPlaceholder({
   busy?: boolean;
   onActivate?: () => void;
 }) {
+  const m = useMessages();
   return (
     <button
       type="button"
       className="flex h-8 w-8 items-center justify-center rounded-md border border-border/40 bg-background/30 text-muted-foreground transition-colors hover:border-[var(--neon-cyan)]/40 hover:text-foreground"
-      aria-label="設定"
+      aria-label={m.common.settings}
       aria-haspopup="dialog"
       aria-expanded={false}
       aria-busy={busy || undefined}

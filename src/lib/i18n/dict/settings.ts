@@ -613,6 +613,56 @@ export const ja = {
     title: "確認",
     ok: "OK",
   },
+  // ---- maintenance/*-panel.tsx (メンテナンス結果パネル) ----
+  maintenancePanels: {
+    firstClearTitle: "クリア日時 / クリア時間 — 取得結果",
+    firstClearNoUpdate: (noMatch: number, alreadySet: number) =>
+      `更新なし（該当 ${noMatch} / 設定済み ${alreadySet}）`,
+    sourceTitle: "動画タイトルから抽出した日付",
+    sourcePosted: "投稿日時を使用 (タイトルに日付なし)",
+    noDurationTitle: (n: number) =>
+      `動画時間が未取得の動画が ${n} 件あります — 「動画時間 + 投稿日時を取得」で取り込んでからクリア時間を再計算してください`,
+    noDurationBadge: (n: number) => `⚠ ${n} 件未取得`,
+    foreignTitle: (n: number) => `他コンテンツの動画を ${n} 件除外`,
+    foreignBadge: (n: number) => `他 -${n} 件`,
+    noMatchHeading: "該当なし — 詳細",
+    countOf: (a: number, b: number) => `(${a}/${b} 件)`,
+    summaryAlreadySet: (n: number) => `設定済み ${n} /`,
+    summaryNoMatch: (n: number) => `該当なし ${n} /`,
+    summaryFilled: (n: number) => `更新 ${n}`,
+    reasonNoVideos: "動画が登録されていません",
+    reasonAllForeign: "他コンテンツの動画のみ (フィルタ除外)",
+    reasonNoClearKeyword: "「クリア」/「clear」を含む動画がありません",
+    reasonNoFinalFloor:
+      "「4 層 / 4 層クリア / M4S」等の最終層クリアと判定できる動画がありません",
+    reasonMissingName: "コンテンツ名未設定",
+    reasonUnknown: "未分類",
+    discordTitle: "Discord 取り込み結果",
+    discordNoChannels: "対象チャンネルなし",
+    discordError: (reason: string) => `エラー: ${reason}`,
+    discordUnknownReason: "原因不明",
+    discordPaused: "一時停止中",
+    discordTitleFetched: (n: number) => ` (タイトル取得 ${n})`,
+    discordAllFiltered: (n: number, tail: string) =>
+      `フィルタ条件に一致する URL なし (${n} 件中 0 件)${tail} — フィルタワード設定を見直し`,
+    discordNoUrls: "URL 検出できず（チャンネル空 or Bot 不可）",
+    discordFailed: (scanned: number, failed: number, reason: string) =>
+      `scanned ${scanned}, 失敗 ${failed}${reason}`,
+    discordInserted: (inserted: number, dup: number) => `+${inserted} 件 (重複 ${dup})`,
+    discordAllDup: (dup: number) => `すべて重複 (${dup})`,
+    videoMetaTitle: "動画メタデータ — 取得結果",
+    fetched: "取得",
+    count: "件",
+    nonYoutube: "YouTube 以外 / 取得不可",
+    failed: "失敗",
+    target: (n: number) => `対象: ${n} 件`,
+    updated: "更新",
+    urlMatched: "URL 一致",
+    scanned: (msgs: number, urls: number) => `スキャン: ${msgs} メッセージ / ${urls} URL`,
+    thumbTitle: (force: boolean) =>
+      `攻略サムネ — ${force ? "全件再取得" : "NULL のみ"} 結果`,
+    noOgImage: "og:image なし",
+  },
 } as const;
 
 type SettingsMessages = DeepWiden<typeof ja>;
@@ -1194,5 +1244,54 @@ export const en: SettingsMessages = {
   confirm: {
     title: "Confirm",
     ok: "OK",
+  },
+  maintenancePanels: {
+    firstClearTitle: "First clear / time to clear — results",
+    firstClearNoUpdate: (noMatch, alreadySet) =>
+      `No updates (no match ${noMatch} / already set ${alreadySet})`,
+    sourceTitle: "Date extracted from the video title",
+    sourcePosted: "Posted date used (no date in title)",
+    noDurationTitle: (n) =>
+      `${n} video(s) have no duration yet — run "Fetch durations + posted dates" first, then recalculate time to clear`,
+    noDurationBadge: (n) => `⚠ ${n} missing`,
+    foreignTitle: (n) => `${n} video(s) from other contents excluded`,
+    foreignBadge: (n) => `other -${n}`,
+    noMatchHeading: "No match — details",
+    countOf: (a, b) => `(${a}/${b})`,
+    summaryAlreadySet: (n) => `already set ${n} /`,
+    summaryNoMatch: (n) => `no match ${n} /`,
+    summaryFilled: (n) => `updated ${n}`,
+    reasonNoVideos: "No videos registered",
+    reasonAllForeign: "Only videos from other contents (filtered out)",
+    reasonNoClearKeyword: 'No video contains 「クリア」 / "clear"',
+    reasonNoFinalFloor:
+      'No video could be identified as a final-floor clear (e.g. "4 層 / 4 層クリア / M4S")',
+    reasonMissingName: "Content name not set",
+    reasonUnknown: "Unclassified",
+    discordTitle: "Discord import results",
+    discordNoChannels: "No target channels",
+    discordError: (reason) => `Error: ${reason}`,
+    discordUnknownReason: "unknown",
+    discordPaused: "Paused",
+    discordTitleFetched: (n) => ` (titles fetched ${n})`,
+    discordAllFiltered: (n, tail) =>
+      `No URL matched the filter (0 of ${n})${tail} — review the filter words`,
+    discordNoUrls: "No URLs found (empty channel or bot cannot read it)",
+    discordFailed: (scanned, failed, reason) =>
+      `scanned ${scanned}, failed ${failed}${reason}`,
+    discordInserted: (inserted, dup) => `+${inserted} (duplicates ${dup})`,
+    discordAllDup: (dup) => `All duplicates (${dup})`,
+    videoMetaTitle: "Video metadata — results",
+    fetched: "Fetched",
+    count: "",
+    nonYoutube: "Non-YouTube / unavailable",
+    failed: "Failed",
+    target: (n) => `Target: ${n}`,
+    updated: "Updated",
+    urlMatched: "URL matched",
+    scanned: (msgs, urls) => `Scanned: ${msgs} messages / ${urls} URLs`,
+    thumbTitle: (force) =>
+      `Guide thumbnails — ${force ? "refetch all" : "NULL only"} results`,
+    noOgImage: "No og:image",
   },
 };

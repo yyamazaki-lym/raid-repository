@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { useMessages } from "@/lib/i18n/client";
 import { AlertTriangle, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -24,6 +25,7 @@ export default function PortalError({
     // any other client logs.
     console.error("[portal-error]", error);
   }, [error]);
+  const m = useMessages();
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col items-center gap-4 px-4 py-12 text-center">
@@ -35,7 +37,7 @@ export default function PortalError({
           Page Error
         </h1>
         <p className="text-sm text-muted-foreground">
-          ページの描画でエラーが発生しました。リトライしてください。
+          {m.app.pageErrorText}
         </p>
       </div>
 

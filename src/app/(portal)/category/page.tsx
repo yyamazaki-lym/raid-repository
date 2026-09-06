@@ -17,6 +17,7 @@ import {
   userIsAdmin,
 } from "@/lib/server/auth";
 import { CategoryList } from "./category-list";
+import { getMessages } from "@/lib/i18n/server";
 
 // TODO #54 part3 横展開: FFLogs 非依存ページなので Node runtime に切替 (cold start 短縮)。
 // MaintenanceMenu の Server Action 群 (Discord 取込 / YouTube duration / posted_at backfill /
@@ -24,11 +25,13 @@ import { CategoryList } from "./category-list";
 // Node Lambda IP でも 403 リスク無し。
 export const runtime = "nodejs";
 
-export const metadata = {
-  title: "コンテンツ",
-};
+export async function generateMetadata() {
+  const m = await getMessages();
+  return { title: m.categoryList.pageTitle };
+}
 
 export default async function CategoryIndexPage() {
+  const m = await getMessages();
   // 2.1 (2026-04-29) v6 revert: 一時的に lazy fetch (v5) 化していたが、
   // 累計時間バッジが遅れて表示される UX 劣化が気になるとユーザー指摘 →
   // SSR Promise.all に戻す。Server Action timeout 問題は import 並列化
@@ -61,7 +64,7 @@ export default async function CategoryIndexPage() {
             Contents
           </h1>
           <p className="text-muted-foreground mt-1 text-sm">
-            レイドコンテンツ単位で、軽減・ロット・攻略情報・動画などを切り替えます。
+            {m.categoryList.pageDescription}
           </p>
         </div>
         {/* TODO #58 part2 (2026-05-01): admin 限定の Maintenance + 追加ボタン
@@ -86,11 +89,11 @@ export default async function CategoryIndexPage() {
           </span>
           <div className="flex flex-col gap-1">
             <p className="font-display text-sm text-foreground">
-              Supabase に接続できませんでした
+              {m.categoryList.dbErrorTitle}
             </p>
             <p className="text-xs text-muted-foreground">
               <code className="font-mono">supabase/schema.sql</code>{" "}
-              を Supabase Dashboard の SQL Editor で実行してください。詳細:{" "}
+              {m.categoryList.dbErrorHint}{" "}
               <span className="font-mono">{result.reason}</span>
             </p>
           </div>
