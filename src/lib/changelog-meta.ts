@@ -21,7 +21,11 @@
  *   2. 新エントリーを先頭に追加し、version / date の代わりに
  *      `...LATEST_RELEASE_META` を書く
  *   3. 本ファイルの値を新しい version / date に更新する
- *   (エントリーの archive への graduate 手順は `changelog.ts` ヘッダー参照)
+ *   4. 1. で freeze した旧先頭エントリーを `changelog-archive.ts` の
+ *      `RELEASES_ARCHIVE` 先頭へそのまま移す (graduate)。`changelog.ts`
+ *      は常に最新 1 件だけを持つ。`node scripts/check-changelog.mjs`
+ *      (CI でも実行) が 2 件以上になっていると失敗する
+ *   (経緯と検査項目は `changelog.ts` ヘッダー / scripts/check-changelog.mjs 参照)
  *
  * 型注釈は意図的にローカル完結 (`Pick<ReleaseEntry, ...>` にすると
  * changelog.ts への import が要り意味的な循環を作る)。フィールドを打ち
@@ -34,5 +38,5 @@
  */
 export const LATEST_RELEASE_META: { version: string; date: string } = {
   version: "2.14",
-  date: "2026-09-04",
+  date: "2026-09-06",
 };

@@ -1,9 +1,17 @@
 "use client"
 
+import { useEffect } from "react"
 import { Toaster as Sonner, type ToasterProps } from "sonner"
 import { CircleCheckIcon, InfoIcon, TriangleAlertIcon, OctagonXIcon, Loader2Icon } from "lucide-react"
+import { markToasterReady } from "@/lib/toaster-ready"
 
 const Toaster = ({ ...props }: ToasterProps) => {
+  // 2.14 (2026-09-06): mount 完了を通知。子 <Sonner> の subscribe effect
+  // は親のこの effect より先に走るので、ここで ready にすれば以降の
+  // toast() は取りこぼさない。詳細は src/lib/toaster-ready.ts。
+  useEffect(() => {
+    markToasterReady()
+  }, [])
   return (
     <Sonner
       // 既定値。実際の描画は layout.tsx の <DynamicToaster theme="dark"

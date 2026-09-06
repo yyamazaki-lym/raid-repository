@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Settings, Save, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { whenToasterReady } from "@/lib/toaster-ready";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -62,12 +63,19 @@ import { DangerZoneSection } from "./settings/danger-zone-section";
 export function SettingsDialog({
   canEdit,
   showSignIn = false,
+  defaultOpen = false,
 }: {
   canEdit: boolean;
   showSignIn?: boolean;
+  /**
+   * 2.14 (2026-09-06): `settings-dialog-lazy` がトリガーボタンのクリックを
+   * 受けてから本体 chunk を読み込む構成になったため、読み込み完了直後に
+   * そのまま開いた状態で mount する経路が必要。初期値にのみ使う。
+   */
+  defaultOpen?: boolean;
 }) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
   const [url, setUrl] = useState("");
   const [channelId, setChannelId] = useState("");
   const [busy, setBusy] = useState(false);
@@ -86,6 +94,15 @@ export function SettingsDialog({
   // ?fflogs_oauth_connected=1 or ?fflogs_oauth_error=<reason>. Toast
   // the result, auto-open the settings dialog so the user sees the
   // connected state, and clean the query params from the URL.
+  //
+  // 2.14 (2026-09-06): トーストは `whenToasterReady()` を待ってから発火する。
+  // Toaster (`toaster-dynamic.tsx`, `ssr: false` の遅延 chunk) が mount する
+  // 前に `toast()` を呼ぶと sonner は再送せず黙って捨てるため、OAuth 復帰
+  // 直後のトーストが表示されないことがあった (Playwright 計測 3 回中 0〜1
+  // 回)。自動オープンと query 除去は従来どおり同期で行う。cleanup での
+  // キャンセルは意図的にしない: dev の StrictMode は effect を mount →
+  // unmount → mount と二重実行し、2 回目は query が既に剥がれていて早期
+  // return するため、1 回目の pending をキャンセルすると通知が出なくなる。
   useEffect(() => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
@@ -93,10 +110,14 @@ export function SettingsDialog({
     const errParam = params.get("fflogs_oauth_error");
     if (!connected && !errParam) return;
     if (connected) {
-      toast.success("FFLogs OAuth 認証に成功しました");
+      void whenToasterReady().then(() => {
+        toast.success("FFLogs OAuth 認証に成功しました");
+      });
       setOpen(true);
     } else if (errParam) {
-      toast.error("FFLogs OAuth: " + errParam);
+      void whenToasterReady().then(() => {
+        toast.error("FFLogs OAuth: " + errParam);
+      });
       setOpen(true);
     }
     // Strip the params so reload doesn't re-fire the toast.
