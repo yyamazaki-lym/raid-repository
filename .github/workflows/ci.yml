@@ -39,3 +39,9 @@ jobs:
 
       - name: TypeScript typecheck
         run: npx tsc --noEmit
+
+      # 更新履歴の構造検査 (2026-09-06)。changelog.ts が最新 1 件だけを
+      # 持つこと (古い分は changelog-archive.ts へ graduate) / version|date
+      # の重複なし / 新→古の並び を検査する。詳細は scripts/check-changelog.mjs。
+      - name: Changelog structure
+        run: node scripts/check-changelog.mjs

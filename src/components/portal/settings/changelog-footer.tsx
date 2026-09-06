@@ -33,17 +33,19 @@ function GithubMark({ className }: { className?: string }) {
  * archive lazy load を担当。
  *
  * archive lazy load (TODO #67 で導入したパターン): ボタン押下時に
- * `import("@/lib/changelog-archive")` で過去分 (~210 KB) を初めて fetch
- * して結合表示する。
+ * `import("@/lib/changelog-archive")` で過去分 (2026-09-06 時点 40 件 /
+ * ~630 KB source, gzip ~200 KB) を初めて fetch して結合表示する。
  *
  * 2.14 (2026-09-06) 軽量化: `RELEASES` (`@/lib/changelog`) も static import
  * をやめ、「更新履歴」ボタンを初めて押した時に `import("@/lib/changelog")`
- * で取り込む。changelog.ts は graduate 運用が追い付かず ~420 KB (source)
- * に育っており、static import のままだと settings-dialog chunk に同梱
- * されて **全ページの初回ロードで毎回ダウンロード** されていた
+ * で取り込む。当時 changelog.ts は graduate 運用が追い付かず ~420 KB
+ * (source) に育っており、static import のままだと settings-dialog chunk に
+ * 同梱されて **全ページの初回ロードで毎回ダウンロード** されていた
  * (settings-dialog-lazy は mount 直後に chunk を fetch するため)。更新履歴
  * を開く操作は稀なので、開いた時に 1 回だけ取りに行く。表示内容・並び
- * 順は従来と同一 (最新 → archive の結合)。
+ * 順は従来と同一 (最新 → archive の結合)。同日に graduate 運用も復旧し
+ * (本体は最新 1 件 ~5 KB、CI の scripts/check-changelog.mjs で維持)、
+ * 「更新履歴」押下時の取得は最新 1 件分だけになった。
  *
  * TODO #91 follow-up: `showSignIn` (= demo モードのゲスト閲覧時) は
  * セッションが無く Sign out が意味を成さないため、代わりに owner 向けの
@@ -267,9 +269,9 @@ export function ChangelogFooter({
               </ul>
             );
           })()}
-          {/* TODO #67 (2026-05-02): archive (~210 KB) は dynamic
-              import で lazy load。最初の表示は最新リリース 1 件
-              のみで初期 bundle を抑える */}
+          {/* TODO #67 (2026-05-02): archive は dynamic import で lazy
+              load。最初の表示は最新リリース 1 件のみ (graduate 運用は
+              2026-09-06 に復旧、CI で維持) */}
           {archiveReleases === null && releases !== null ? (
             <button
               type="button"
