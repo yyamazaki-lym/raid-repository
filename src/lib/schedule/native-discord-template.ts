@@ -22,12 +22,15 @@
  *                        タイムゾーンで「9月8日(火) 21:00」と描画。2026-09-06 W-14)
  *   {discord_relative} : 同 `<t:unix:R>` (「3 時間後」などの相対表記)。
  *                        日付が解釈できないときはどちらも空文字
+ *   {discord_relative_block} : ` ({discord_relative})` — 相対表記を括弧付きで、
+ *                        解釈できないときは行ごと空 (括弧だけ残らない。
+ *                        {note_block} と同じ「有無で出現/省略」型)
  */
 export const NATIVE_DISCORD_DEFAULT_TEMPLATE = [
   "{mention}本日の固定活動予定日です",
   "",
   "📅 {date} ({day})",
-  "🕘 {time_start} 〜 {time_end} ({discord_relative})",
+  "🕘 {time_start} 〜 {time_end}{discord_relative_block}",
   "{note_block}",
   "{attendance}",
   "",

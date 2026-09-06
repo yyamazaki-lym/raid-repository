@@ -26,11 +26,13 @@
    キルスイッチ: 登録/解除は SplashSwRegistrar (NEXT_PUBLIC_SPLASH_SW) が
    管理。フラグ off でデプロイすると次回ページロードで unregister される。 */
 
-const VERSION = "v2"; // splash.html / splash.js / 本ファイル変更時にインクリメント
+const VERSION = "v3"; // splash.html / splash.js / 本ファイル変更時にインクリメント (v3: 2026-09-06 ロゴ追加)
 const CACHE_NAME = `splash-${VERSION}`;
 const GUARD_CACHE = "splash-guard"; // ループガード (SW kill を跨いで永続)
 const SPLASH_PATH = "/splash.html";
-const SPLASH_ASSETS = ["/splash.html", "/splash.js"];
+// ロゴは splash.html が <img> で参照する。SW は navigate 要求しか横取り
+// しないので、precache に入れておかないと cold start 中は取れない。
+const SPLASH_ASSETS = ["/splash.html", "/splash.js", "/brand/logo-mark.svg"];
 
 // v1 は 600ms (warmup ping 先 /login の warm TTFB 0.16〜0.23s 基準) だったが、
 // 認証済みユーザーの TOP は 1 バイト目より前に「proxy の Supabase Auth 往復

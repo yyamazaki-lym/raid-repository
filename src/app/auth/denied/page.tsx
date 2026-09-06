@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 
 export const metadata = {
@@ -18,6 +19,16 @@ export default async function DeniedPage({
 
   return (
     <main className="mx-auto flex min-h-[80vh] w-full max-w-md flex-col items-center justify-center gap-6 px-4 py-12 text-center">
+      {/* 2026-09-06: ログイン画面と同じマークを置き、同じサイトの画面だと
+          分かるようにする (彩度は落として「拒否」の文脈に合わせる)。 */}
+      <Image
+        src="/brand/logo-mark.svg"
+        alt=""
+        width={64}
+        height={64}
+        unoptimized
+        className="h-16 w-16 opacity-70 saturate-50"
+      />
       <h1 className="font-display text-xl tracking-[0.18em] text-foreground">
         ACCESS DENIED
       </h1>
