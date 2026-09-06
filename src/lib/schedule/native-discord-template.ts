@@ -18,12 +18,16 @@
  *   {note_block} : note ありなら `📝 {note}\n`、なしなら空文字 (行ごと省略用)
  *   {attendance} : 出欠一覧 (改行を含む複数行ブロック)
  *   {site_url}   : `NEXT_PUBLIC_SITE_URL` (未設定なら空文字)
+ *   {discord_time}     : Discord のタイムスタンプ `<t:unix:F>` (閲覧者の
+ *                        タイムゾーンで「9月8日(火) 21:00」と描画。2026-09-06 W-14)
+ *   {discord_relative} : 同 `<t:unix:R>` (「3 時間後」などの相対表記)。
+ *                        日付が解釈できないときはどちらも空文字
  */
 export const NATIVE_DISCORD_DEFAULT_TEMPLATE = [
   "{mention}本日の固定活動予定日です",
   "",
   "📅 {date} ({day})",
-  "🕘 {time_start} 〜 {time_end}",
+  "🕘 {time_start} 〜 {time_end} ({discord_relative})",
   "{note_block}",
   "{attendance}",
   "",

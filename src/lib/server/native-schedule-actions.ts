@@ -19,6 +19,10 @@ import {
   notifyNativeScheduleSession,
 } from "./native-schedule-discord";
 import { NATIVE_CHOICE_VALUES_KEY } from "@/lib/schedule/settings-keys";
+import {
+  normalizeAttendanceTime,
+  symbolAllowsTimes,
+} from "@/lib/schedule/attendance-times";
 
 /**
  * TODO #2 phase 2-A (2026-05-07): native スケジュール用 Server Actions。
@@ -825,6 +829,12 @@ export type UpsertNativeScheduleAttendanceInput = {
   sessionId: string;
   symbol: string;
   comment?: string;
+  /**
+   * 2026-09-06 (W-13): 遅刻の到着予定 / 早退の予定時刻 (HH:MM)。null / 空 =
+   * なし。× (不参加) や未回答のときは保存しない (常に null に落とす)。
+   */
+  arriveAt?: string | null;
+  leaveAt?: string | null;
 };
 
 /**
@@ -861,6 +871,16 @@ export async function upsertNativeScheduleAttendanceAction(
     ? input.comment.replace(/\p{Cc}/gu, " ").replace(/\s+/g, " ").trim().slice(0, 200)
     : "";
   const comment = commentRaw ? commentRaw : null;
+  // W-13: 予定時刻は HH:MM に正規化。形式外は保存せずエラーにする (UI は
+  // <input type="time"> なので通常到達しない — 直接 API を叩いた場合の防御)。
+  const arriveRaw = input.arriveAt?.trim() ?? "";
+  const leaveRaw = input.leaveAt?.trim() ?? "";
+  const arriveAt = arriveRaw ? normalizeAttendanceTime(arriveRaw) : null;
+  const leaveAt = leaveRaw ? normalizeAttendanceTime(leaveRaw) : null;
+  if ((arriveRaw && !arriveAt) || (leaveRaw && !leaveAt)) {
+    return { ok: false, reason: "予定時刻は HH:MM で入力してください" };
+  }
+  const timesAllowed = symbolAllowsTimes(symbol);
 
   if (!symbol) {
     const { error } = await supabase
@@ -885,6 +905,8 @@ export async function upsertNativeScheduleAttendanceAction(
         discord_user_id: member.discordId,
         symbol,
         comment,
+        arrive_at: timesAllowed ? arriveAt : null,
+        leave_at: timesAllowed ? leaveAt : null,
       },
       { onConflict: "session_id,discord_user_id" },
     );

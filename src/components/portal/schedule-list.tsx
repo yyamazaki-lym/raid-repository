@@ -27,6 +27,10 @@ import {
 import { Legend } from "@/components/portal/schedule/legend";
 import { SessionActionIcons } from "@/components/portal/schedule/session-action-icons";
 import {
+  describeAttendanceTimes,
+  formatAttendanceTimesHint,
+} from "@/lib/schedule/attendance-times";
+import {
   ATT_TONE,
   ATT_TONE_FALLBACK,
 } from "@/lib/schedule/attendance-ui";
@@ -1146,6 +1150,11 @@ function SessionRow({
         const editUrl = buildEditUrl(scheduleUrl, u.userId);
         const dateLabel = session.rawDate.split(" ")[0] ?? session.rawDate;
         const tone = ATT_TONE[att] ?? ATT_TONE_FALLBACK;
+        // 2026-09-06 (W-13): 遅刻 / 早退の予定時刻 (native のみ)。記号の
+        // 横に `21:30〜` を 9px で添える。無い人のセルは従来どおり。
+        const times = session.attendanceTimes?.[u.userId] ?? null;
+        const timesHint = formatAttendanceTimesHint(times);
+        const timesTitle = describeAttendanceTimes(times);
         // TODO #2 phase 2-B: native mode + 本人行 + nativeSessionId 解決済 +
         // 出欠選択肢取得済 + 過去日でない、の 5 条件 AND で popover trigger 化。
         // 過去日 (`isPast`) は sync 経路と揃えて編集不可 (記録閲覧のみ)。
@@ -1165,6 +1174,7 @@ function SessionRow({
                 triggerClass={tone}
                 userName={u.name}
                 displayDate={dateLabel}
+                currentTimes={times}
               />
             </td>
           );
@@ -1181,13 +1191,20 @@ function SessionRow({
             // baseline within a fixed h-5 box.
             className={
               // max-w + truncate: 記号は設定画面で自由編集できるため、長い値で
-              // h-5 のセル高が壊れないよう抑える。
-              "inline-flex h-5 max-w-[5rem] min-w-[1.75rem] items-center justify-center truncate rounded-sm border px-1 text-[12px] whitespace-nowrap leading-none transition-transform " +
+              // h-5 のセル高が壊れないよう抑える。予定時刻付きは少し広げる。
+              "inline-flex h-5 min-w-[1.75rem] items-center justify-center truncate rounded-sm border px-1 text-[12px] whitespace-nowrap leading-none transition-transform " +
+              (timesHint ? "max-w-[7rem] " : "max-w-[5rem] ") +
               tone
             }
-            aria-label={`${u.name}: ${att}`}
+            aria-label={`${u.name}: ${att}` + (timesTitle ? ` (${timesTitle})` : "")}
+            title={timesTitle ?? undefined}
           >
             {att}
+            {timesHint && (
+              <span className="ml-1 font-mono text-[9px] leading-none opacity-80 tabular-nums">
+                {timesHint}
+              </span>
+            )}
           </span>
         );
         // 過去日程の出欠セルは button にしない (ユーザー要望 2026-04-29 v2):

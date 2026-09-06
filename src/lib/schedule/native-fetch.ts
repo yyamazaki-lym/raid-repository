@@ -1,4 +1,8 @@
 import "server-only";
+import {
+  normalizeAttendanceTime,
+  type AttendanceTimes,
+} from "./attendance-times";
 
 import { getPortalSetting } from "@/lib/supabase/app-settings";
 import { createClient } from "@/lib/supabase/server";
@@ -64,6 +68,9 @@ type NativeAttendanceRow = {
   session_id: string;
   discord_user_id: string;
   symbol: string;
+  // 2026-09-06 (W-13): 遅刻 / 早退の予定時刻 (HH:MM or NULL)。
+  arrive_at: string | null;
+  leave_at: string | null;
 };
 
 export type FetchNativeScheduleDefaults = {
@@ -131,11 +138,16 @@ export async function fetchNativeSchedule(
 
   // attendances を session_id IN(...) で一括 fetch → session_id ごとに matrix 構築。
   const attendancesBySession = new Map<string, Record<string, Attendance>>();
+  // 2026-09-06 (W-13): 遅刻 / 早退の予定時刻。片方でも入っている人だけ載せる。
+  const attendanceTimesBySession = new Map<
+    string,
+    Record<string, AttendanceTimes>
+  >();
   if (sessionRows.length > 0) {
     const sessionIds = sessionRows.map((s) => s.id);
     const { data: attData, error: attErr } = await supabase
       .from("native_schedule_attendances")
-      .select("session_id, discord_user_id, symbol")
+      .select("session_id, discord_user_id, symbol, arrive_at, leave_at")
       .in("session_id", sessionIds);
     if (attErr) {
       console.warn("[native-schedule] attendances fetch error:", attErr);
@@ -145,6 +157,13 @@ export async function fetchNativeSchedule(
       const map = attendancesBySession.get(row.session_id) ?? {};
       map[row.discord_user_id] = row.symbol;
       attendancesBySession.set(row.session_id, map);
+      const arriveAt = normalizeAttendanceTime(row.arrive_at);
+      const leaveAt = normalizeAttendanceTime(row.leave_at);
+      if (arriveAt || leaveAt) {
+        const tmap = attendanceTimesBySession.get(row.session_id) ?? {};
+        tmap[row.discord_user_id] = { arriveAt, leaveAt };
+        attendanceTimesBySession.set(row.session_id, tmap);
+      }
     }
   }
 
@@ -161,6 +180,7 @@ export async function fetchNativeSchedule(
     // のみが残る。SessionStatus 型に narrow するため as でキャスト。
     status: s.status as SessionStatus,
     attendances: attendancesBySession.get(s.id) ?? {},
+    attendanceTimes: attendanceTimesBySession.get(s.id) ?? {},
     // native では character-sheets `<tr id="row_N">` 概念がないため null。
     // schedule-list の iframe edit jump 経路は sync 専用なので影響なし。
     rowIndex: null,

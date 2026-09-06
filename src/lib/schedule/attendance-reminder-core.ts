@@ -1,3 +1,4 @@
+import { discordTimestamp } from "./attendance-times";
 /**
  * 出欠催促の純粋ロジック (2026-08-30)。
  *
@@ -172,6 +173,8 @@ export function renderReminderTemplate(
     answered: number;
     total: number;
     siteUrl: string;
+    /** 開始時刻の UNIX 秒 (W-14)。null なら Discord 時刻の placeholder は空。 */
+    startUnix?: number | null;
   },
 ): string {
   const mentions = values.targets
@@ -191,9 +194,11 @@ export function renderReminderTemplate(
     "{answered}": String(values.answered),
     "{total}": String(values.total),
     "{site_url}": values.siteUrl,
+    "{discord_time}": discordTimestamp(values.startUnix ?? null, "F"),
+    "{discord_relative}": discordTimestamp(values.startUnix ?? null, "R"),
   };
   return template.replace(
-    /\{(mentions|names|date|day|time_start|time_end|count|answered|total|site_url)\}/g,
+    /\{(mentions|names|date|day|time_start|time_end|count|answered|total|site_url|discord_time|discord_relative)\}/g,
     (m) => replacements[m] ?? m,
   );
 }

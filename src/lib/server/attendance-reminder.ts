@@ -1,4 +1,5 @@
 import "server-only";
+import { sessionStartUnixSeconds } from "@/lib/schedule/attendance-times";
 
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { fetchAppSetting } from "@/lib/supabase/app-settings";
@@ -302,6 +303,7 @@ export async function buildReminderMessage(
     answered: preview.answered,
     total: preview.total,
     siteUrl: process.env.NEXT_PUBLIC_SITE_URL?.trim() ?? "",
+    startUnix: sessionStartUnixSeconds(preview.rawDate, preview.startTime),
   });
 }
 

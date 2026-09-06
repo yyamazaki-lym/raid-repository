@@ -869,6 +869,25 @@ ALTER TABLE public.native_schedule_attendances
   ADD CONSTRAINT native_schedule_attendances_comment_sane
   CHECK (comment IS NULL OR (char_length(comment) <= 200 AND comment !~ '[[:cntrl:]]')) NOT VALID;
 
+-- 2026-09-06 (調査ノート第 4 回 W-13): 遅刻 / 早退の予定時刻。○×△ の記号は
+-- そのまま (凡例マスターは admin が自由編集) で、本人が「到着予定 21:30」
+-- 「早退 23:00」を HH:MM で添える。symbol と同じ脅威モデル (本人が PostgREST
+-- 直叩きで書ける) なので DB 層でも HH:MM 形式に限定する。NOT VALID で既存行は
+-- 検証しない。Discord 通知本文 (buildMessage) にも流れるが形式が固定なので
+-- 注入面にはならない。
+ALTER TABLE public.native_schedule_attendances
+  ADD COLUMN IF NOT EXISTS arrive_at text;
+ALTER TABLE public.native_schedule_attendances
+  ADD COLUMN IF NOT EXISTS leave_at text;
+ALTER TABLE public.native_schedule_attendances
+  DROP CONSTRAINT IF EXISTS native_schedule_attendances_times_sane;
+ALTER TABLE public.native_schedule_attendances
+  ADD CONSTRAINT native_schedule_attendances_times_sane
+  CHECK (
+    (arrive_at IS NULL OR arrive_at ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$')
+    AND (leave_at IS NULL OR leave_at ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$')
+  ) NOT VALID;
+
 DROP TRIGGER IF EXISTS set_updated_at_native_schedule_attendances
   ON public.native_schedule_attendances;
 CREATE TRIGGER set_updated_at_native_schedule_attendances

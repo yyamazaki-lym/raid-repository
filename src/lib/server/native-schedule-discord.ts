@@ -1,4 +1,10 @@
 import "server-only";
+import {
+  discordTimestamp,
+  formatAttendanceTimesHint,
+  normalizeAttendanceTime,
+  sessionStartUnixSeconds,
+} from "@/lib/schedule/attendance-times";
 
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { fetchAppSetting } from "@/lib/supabase/app-settings";
@@ -89,6 +95,9 @@ type AttendanceRow = {
   session_id: string;
   discord_user_id: string;
   symbol: string;
+  // W-13 (2026-09-06)
+  arrive_at?: string | null;
+  leave_at?: string | null;
 };
 
 /** 単一セッション通知。cron loop と manual button の共通処理。 */
@@ -365,7 +374,7 @@ async function buildMessage(
         .order("display_name", { ascending: true }),
       supabase
         .from("native_schedule_attendances")
-        .select("session_id, discord_user_id, symbol")
+        .select("session_id, discord_user_id, symbol, arrive_at, leave_at")
         .eq("session_id", session.id),
       fetchTimeDefaults(),
       fetchAppSetting(NOTIFY_TEMPLATE_KEY),
@@ -375,12 +384,20 @@ async function buildMessage(
   const attendances = (attendancesRes.data ?? []) as AttendanceRow[];
 
   const symbolBy: Record<string, string> = {};
+  // W-13 (2026-09-06): 遅刻 / 早退の予定時刻。HH:MM に正規化できたものだけ
+  // 名前の横に `(21:30〜)` として添える (形式が固定なので注入面にならない)。
+  const timesHintBy: Record<string, string> = {};
   for (const a of attendances) {
     if (a.symbol && a.symbol.trim()) {
       const sym = sanitizeSymbol(a.symbol);
       // sanitize 後に空になる行 (制御文字のみ等) は未回答扱いに落とす
       if (sym) symbolBy[a.discord_user_id] = sym;
     }
+    const hint = formatAttendanceTimesHint({
+      arriveAt: normalizeAttendanceTime(a.arrive_at),
+      leaveAt: normalizeAttendanceTime(a.leave_at),
+    });
+    if (hint) timesHintBy[a.discord_user_id] = hint;
   }
 
   const buckets = new Map<string, string[]>();
@@ -390,7 +407,8 @@ async function buildMessage(
     const sym = symbolBy[m.discord_user_id];
     if (sym) {
       const list = buckets.get(sym) ?? [];
-      list.push(displayName);
+      const hint = timesHintBy[m.discord_user_id];
+      list.push(hint ? `${displayName} (${hint})` : displayName);
       buckets.set(sym, list);
     } else {
       unanswered.push(displayName);
@@ -407,6 +425,12 @@ async function buildMessage(
       ? neutralizeMentions(session.note.trim())
       : "";
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim() ?? "";
+  // W-14 (2026-09-06): Discord のタイムスタンプ表記。閲覧者のタイムゾーンと
+  // ロケールで「9月8日(火) 21:00」「3 時間後」に描画される。日付が解釈
+  // できない raw_date では空文字 (行末の空白は下で trim)。
+  const startUnix = sessionStartUnixSeconds(session.raw_date, startTime);
+  const discordTime = discordTimestamp(startUnix, "F");
+  const discordRelative = discordTimestamp(startUnix, "R");
 
   // 出欠ブロック (template / hardcode 共通)。
   const attendanceLines: string[] = [];
@@ -434,11 +458,16 @@ async function buildMessage(
       "{note_block}": noteBlock,
       "{attendance}": attendance,
       "{site_url}": siteUrl,
+      "{discord_time}": discordTime,
+      "{discord_relative}": discordRelative,
     };
-    return template.replace(
-      /\{(mention|date|day|time_start|time_end|note|note_block|attendance|site_url)\}/g,
-      (m) => replacements[m] ?? "",
-    );
+    return template
+      .replace(
+        /\{(mention|date|day|time_start|time_end|note|note_block|attendance|site_url|discord_time|discord_relative)\}/g,
+        (m) => replacements[m] ?? "",
+      )
+      // placeholder が空になった行末の空白を落とす (見た目の揺れ防止)。
+      .replace(/[ \t]+$/gm, "");
   }
 
   // 既定 (現行) hardcode フォーマット。
@@ -446,7 +475,11 @@ async function buildMessage(
   lines.push(`${mentionPrefix}本日の固定活動予定日です`);
   lines.push("");
   lines.push(`📅 ${session.raw_date} (${session.day_of_week})`);
-  lines.push(`🕘 ${startTime} 〜 ${endTime}`);
+  lines.push(
+    discordRelative
+      ? `🕘 ${startTime} 〜 ${endTime} (${discordRelative})`
+      : `🕘 ${startTime} 〜 ${endTime}`,
+  );
   if (note) {
     lines.push(`📝 ${note}`);
   }
