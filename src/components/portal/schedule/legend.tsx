@@ -25,6 +25,7 @@ import {
   ATT_TONE_FALLBACK,
   buildAttendanceLegend,
 } from "@/lib/schedule/attendance-ui";
+import { useLocale, useMessages } from "@/lib/i18n/client";
 
 export function Legend({
   hasUltimateClear = false,
@@ -57,7 +58,9 @@ export function Legend({
    * `buildAttendanceLegend`。 */
   attendanceChoices?: readonly string[];
 }) {
-  const legend = buildAttendanceLegend(attendanceChoices);
+  const m = useMessages();
+  const locale = useLocale();
+  const legend = buildAttendanceLegend(attendanceChoices, locale);
   const router = useRouter();
   const confirm = useConfirm();
   // Local controlled-popover state for the top-text comment icon.
@@ -125,19 +128,19 @@ export function Legend({
     const r = await dedupeSessionLogs();
     setDedupingLogs(false);
     if (!r.ok) {
-      toast.error("重複 Logs 整理失敗: " + r.reason);
+      toast.error(m.legend.dedupeFailed(r.reason));
       return;
     }
     const removed = r.duplicateRowsRemoved + r.videoConflictRowsRemoved;
     toast.success(
       removed > 0
-        ? `重複 Logs を ${removed} 件削除しました` +
+        ? m.legend.dedupeRemoved(removed) +
             (r.remainingConflicts.length > 0
-              ? ` (自動判断できない競合が ${r.remainingConflicts.length} 日分 — 設定画面で確認できます)`
+              ? m.legend.dedupeRemainingSuffix(r.remainingConflicts.length)
               : "")
         : r.remainingConflicts.length > 0
-          ? `削除対象はありませんでした (要確認の競合が ${r.remainingConflicts.length} 日分)`
-          : "重複 Logs はありませんでした",
+          ? m.legend.dedupeNoneRemaining(r.remainingConflicts.length)
+          : m.legend.dedupeNone,
     );
     router.refresh();
   };
@@ -183,11 +186,7 @@ export function Legend({
             ? "text-amber-300"
             : "text-muted-foreground")
         }
-        title={
-          hasUltimateClear
-            ? "絶コンテンツをクリアした「Legends」称号で表示中"
-            : "通常のメンバー表示 (絶クリアでLegends称号に切替)"
-        }
+        title={hasUltimateClear ? m.legend.legendsTitle : m.legend.membersTitle}
       >
         {label}
       </span>
@@ -221,8 +220,8 @@ export function Legend({
             type="button"
             onClick={() => void runDedupeLogs()}
             disabled={dedupingLogs}
-            aria-label="重複している Logs を整理"
-            title="同じ日に複数の Logs が並んでいるときに整理します"
+            aria-label={m.legend.dedupeAria}
+            title={m.legend.dedupeTitle}
             className="inline-flex h-6 items-center gap-1 rounded-md border border-border/60 bg-background/30 px-2 text-[10px] tracking-normal whitespace-nowrap text-muted-foreground transition-colors hover:border-amber-300/60 hover:text-foreground disabled:opacity-50"
           >
             {dedupingLogs ? (
@@ -230,7 +229,7 @@ export function Legend({
             ) : (
               <CopyMinus className="h-3 w-3" aria-hidden />
             )}
-            Logs 整理
+            {m.legend.dedupeButton}
           </button>
         )}
         {hasAny && (
@@ -242,18 +241,18 @@ export function Legend({
                 e.stopPropagation();
                 setShowTopText((v) => !v);
               }}
-              aria-label="運用ルール / 注意事項を表示"
-              title="運用ルール / 注意事項"
+              aria-label={m.legend.rulesAria}
+              title={m.legend.rulesTitle}
               aria-expanded={showTopText}
               aria-controls="legend-rules-panel"
               className="inline-flex h-6 items-center whitespace-nowrap gap-1 rounded-md border border-[var(--neon-violet)]/40 bg-[var(--neon-violet)]/8 px-2 text-[10px] tracking-normal text-[var(--neon-violet)]/90 transition-all hover:border-[var(--neon-violet)]/70 hover:bg-[var(--neon-violet)]/15 hover:shadow-[0_0_8px_-2px_rgba(167,139,250,0.55)]"
             >
               <MessageSquare className="h-3 w-3" aria-hidden />
-              ルール
+              {m.legend.rulesButton}
               {effectiveOverride !== null && (
                 <span
                   className="ml-0.5 inline-block h-1.5 w-1.5 rounded-full bg-[var(--neon-cyan)]"
-                  title="編集済み (override 設定中)"
+                  title={m.legend.overrideDotTitle}
                   aria-hidden
                 />
               )}
@@ -263,7 +262,7 @@ export function Legend({
                 ref={topTextRef}
                 id="legend-rules-panel"
                 role="dialog"
-                aria-label="運用ルール / 注意事項"
+                aria-label={m.legend.rulesTitle}
                 tabIndex={-1}
                 /* 2026-09-04 実機報告「ルールを開くと見切れる」。横幅は
                    viewport に収めていたが縦は青天井で、ルール本文が長いと
@@ -274,7 +273,7 @@ export function Legend({
               >
                 <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                   <p className="text-[10px] font-medium tracking-normal text-[var(--neon-violet)]/85">
-                    運用ルール / 注意事項
+                    {m.legend.rulesTitle}
                   </p>
                   {!editing && (
                     <div className="flex items-center gap-1">
@@ -282,7 +281,7 @@ export function Legend({
                       {topTextScraped !== null && effectiveOverride !== null && (
                         <div
                           role="tablist"
-                          aria-label="表示するテキストを切替"
+                          aria-label={m.legend.viewSwitchAria}
                           className="inline-flex overflow-hidden rounded-md border border-border/50"
                         >
                           <button
@@ -290,7 +289,7 @@ export function Legend({
                             role="tab"
                             aria-selected={view === "scraped"}
                             onClick={() => setView("scraped")}
-                            title="元サイトから取り込んだ最新のテキスト"
+                            title={m.legend.originalTitle}
                             className={
                               "px-1.5 py-0.5 text-[9px] tracking-normal transition-colors " +
                               (view === "scraped"
@@ -298,14 +297,14 @@ export function Legend({
                                 : "text-muted-foreground hover:bg-secondary/50")
                             }
                           >
-                            オリジナル
+                            {m.legend.original}
                           </button>
                           <button
                             type="button"
                             role="tab"
                             aria-selected={view === "edited"}
                             onClick={() => setView("edited")}
-                            title="ポータル側で編集したカスタム版 (同期で上書きされない)"
+                            title={m.legend.editedTitle}
                             className={
                               "inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[9px] tracking-normal transition-colors " +
                               (view === "edited"
@@ -314,7 +313,7 @@ export function Legend({
                             }
                           >
                             <span className="text-[var(--neon-cyan)]">★</span>
-                            編集後
+                            {m.legend.edited}
                           </button>
                         </div>
                       )}
@@ -325,12 +324,12 @@ export function Legend({
                           setDraft(displayed ?? "");
                           setEditing(true);
                         }}
-                        aria-label="運用ルール / 注意事項を編集 (override に保存)"
-                        title="override として編集 (元サイトには影響しない、同期でも上書きされない)"
+                        aria-label={m.legend.editAria}
+                        title={m.legend.editTitle}
                         className="inline-flex h-6 items-center whitespace-nowrap gap-1 rounded-md border border-[var(--neon-violet)]/40 bg-[var(--neon-violet)]/10 px-2 text-[10px] tracking-normal text-[var(--neon-violet)]/90 transition-colors hover:border-[var(--neon-violet)]/70 hover:bg-[var(--neon-violet)]/20"
                       >
                         <Pencil className="h-3 w-3" aria-hidden />
-                        編集
+                        {m.common.edit}
                       </button>
                       {/* override クリア (scraped 表示に戻す) */}
                       {effectiveOverride !== null && (
@@ -338,10 +337,10 @@ export function Legend({
                           type="button"
                           onClick={async () => {
                             const ok = await confirm({
-                              title: "編集後テキストを削除しますか？",
-                              description:
-                                "元サイトのテキスト表示に戻ります。",
-                              confirmText: "削除",
+                              title: m.legend.clearConfirmTitle,
+                              description: m.legend.clearConfirmDescription,
+                              confirmText: m.common.delete,
+                              cancelText: m.common.cancel,
                               destructive: true,
                             });
                             if (!ok) return;
@@ -351,16 +350,14 @@ export function Legend({
                             const r = await clearScheduleTopTextOverride();
                             if (!r.ok) {
                               setOptimisticOverride(undefined);
-                              toast.error("削除失敗: " + r.reason);
+                              toast.error(m.legend.clearFailed(r.reason));
                               return;
                             }
-                            toast.success(
-                              "override を削除し、元サイトの表示に戻しました",
-                            );
+                            toast.success(m.legend.clearSuccess);
                             router.refresh();
                           }}
-                          aria-label="override を削除して元サイトの表示に戻す"
-                          title="override を削除"
+                          aria-label={m.legend.clearAria}
+                          title={m.legend.clearTitle}
                           className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-rose-300/40 text-rose-300 transition-colors hover:bg-rose-500/15 hover:text-rose-200"
                         >
                           <RotateCcw className="h-3 w-3" aria-hidden />
@@ -393,7 +390,7 @@ export function Legend({
                         className="inline-flex h-6 items-center whitespace-nowrap gap-1 rounded-md border border-border/60 px-2 text-[10px] tracking-normal text-muted-foreground transition-colors hover:bg-secondary/40 disabled:opacity-50"
                       >
                         <X className="h-3 w-3" aria-hidden />
-                        キャンセル
+                        {m.common.cancel}
                       </button>
                       <button
                         type="button"
@@ -414,10 +411,10 @@ export function Legend({
                           if (!r.ok) {
                             // 失敗 → optimistic を破棄して prop 表示に戻す
                             setOptimisticOverride(undefined);
-                            toast.error("保存失敗: " + r.reason);
+                            toast.error(m.legend.saveFailed(r.reason));
                             return;
                           }
-                          toast.success("override を保存しました");
+                          toast.success(m.legend.saveSuccess);
                           router.refresh();
                         }}
                         className="inline-flex h-6 items-center whitespace-nowrap gap-1 rounded-md border border-[var(--neon-cyan)]/50 bg-[var(--neon-cyan)]/15 px-2 text-[10px] tracking-normal text-[var(--neon-cyan)] transition-colors hover:bg-[var(--neon-cyan)]/25 disabled:opacity-50"
@@ -427,13 +424,13 @@ export function Legend({
                         ) : (
                           <Check className="h-3 w-3" aria-hidden />
                         )}
-                        保存
+                        {m.common.save}
                       </button>
                     </div>
                   </div>
                 ) : (
                   <pre className="whitespace-pre-wrap break-words font-sans text-[12px] leading-relaxed">
-                    {displayed ?? "（テキストなし）"}
+                    {displayed ?? m.legend.noText}
                   </pre>
                 )}
               </div>
@@ -445,8 +442,8 @@ export function Legend({
             type="button"
             onClick={onRefresh}
             disabled={refreshing}
-            aria-label="スケジュールを最新の状態に更新"
-            title="スケジュールを最新の状態に更新"
+            aria-label={m.legend.refreshLabel}
+            title={m.legend.refreshLabel}
             className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-border/50 bg-background/30 text-muted-foreground transition-all hover:border-[var(--neon-cyan)]/60 hover:bg-[var(--neon-cyan)]/8 hover:text-[var(--neon-cyan)] disabled:cursor-not-allowed disabled:opacity-60"
           >
             {refreshing ? (

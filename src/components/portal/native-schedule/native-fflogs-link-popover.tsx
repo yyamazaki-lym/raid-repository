@@ -22,6 +22,7 @@ import type { SessionLogEntry } from "@/lib/schedule/session-logs";
 import { fflogsLogDedupeKey } from "@/lib/fflogs-url";
 import { safeHref } from "@/lib/url-safe";
 import { useConfirm } from "@/components/portal/confirm-dialog";
+import { useMessages } from "@/lib/i18n/client";
 
 /**
  * 2.9 (2026-06-10) TODO #73 follow-up: native スケジュール版の FFLogs URL
@@ -74,6 +75,7 @@ export function NativeFflogsLinkPopover({
   displayDate,
   sessionLogs,
 }: Props) {
+  const m = useMessages();
   const [open, setOpen] = useState(false);
   const [newLogsInput, setNewLogsInput] = useState("");
   const [logsBusy, setLogsBusy] = useState(false);
@@ -113,13 +115,11 @@ export function NativeFflogsLinkPopover({
     if (!value) return;
     // Client-side validate (server side でも同じガード、UX のため二重化)。
     if (!HTTP_RE.test(value)) {
-      toast.error("FFLogs URL は http:// か https:// で始めてください");
+      toast.error(m.fflogsLink.errHttp);
       return;
     }
     if (!FFLOGS_REPORT_RE.test(value)) {
-      toast.error(
-        "FFLogs レポート URL を入力してください (例: https://www.fflogs.com/reports/abc123)",
-      );
+      toast.error(m.fflogsLink.errNotReport);
       return;
     }
     // 重複を up-front guard (server もガード、UX のため二重化)。
@@ -130,7 +130,7 @@ export function NativeFflogsLinkPopover({
       sessionLogs.some((s) => (fflogsLogDedupeKey(s.url) ?? s.url) === valueKey) ||
       optimisticAdds.some((e) => (fflogsLogDedupeKey(e.url) ?? e.url) === valueKey)
     ) {
-      toast.error("同じレポートの URL が既に紐付いています");
+      toast.error(m.fflogsLink.errDuplicate);
       return;
     }
     const tempId = `__optimistic-${Date.now()}-${Math.random()}`;
@@ -147,14 +147,14 @@ export function NativeFflogsLinkPopover({
     if (!r.ok) {
       setOptimisticAdds((prev) => prev.filter((e) => e.id !== tempId));
       setNewLogsInput(value);
-      toast.error("Logs URL 追加失敗: " + r.reason);
+      toast.error(m.fflogsLink.errAddFailed(r.reason));
       return;
     }
     // 2026-07-12: sync 側 (session-memo-popover) と同じく橋渡し件数を表示。
     toast.success(
       r.bridgedVideos
-        ? `Logs URL を追加しました (同日の動画 ${r.bridgedVideos} 件にバッジ表示)`
-        : "Logs URL を追加しました",
+        ? m.fflogsLink.toastAddedBridged(r.bridgedVideos)
+        : m.fflogsLink.toastAdded,
     );
   };
 
@@ -165,8 +165,9 @@ export function NativeFflogsLinkPopover({
       return;
     }
     const ok = await confirm({
-      title: "この URL を削除しますか？",
-      confirmText: "削除",
+      title: m.fflogsLink.confirmDeleteTitle,
+      confirmText: m.common.delete,
+      cancelText: m.common.cancel,
       destructive: true,
     });
     if (!ok) return;
@@ -184,13 +185,13 @@ export function NativeFflogsLinkPopover({
         next.delete(id);
         return next;
       });
-      toast.error("Logs URL 削除失敗: " + r.reason);
+      toast.error(m.fflogsLink.errDeleteFailed(r.reason));
       return;
     }
     toast.success(
       r.unbridgedVideos
-        ? `Logs URL を削除しました (同日の動画 ${r.unbridgedVideos} 件のバッジも解除)`
-        : "Logs URL を削除しました",
+        ? m.fflogsLink.toastDeletedUnbridged(r.unbridgedVideos)
+        : m.fflogsLink.toastDeleted,
     );
   };
 
@@ -198,8 +199,8 @@ export function NativeFflogsLinkPopover({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
         className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-amber-300/70 transition-all hover:bg-amber-400/15 hover:text-amber-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/60 active:scale-95"
-        aria-label={`${displayDate} に FFLogs URL を追加 / 編集`}
-        title="FFLogs URL を追加 / 編集 (admin)"
+        aria-label={m.fflogsLink.triggerAria(displayDate)}
+        title={m.fflogsLink.triggerTitle}
       >
         <Plus className="h-3 w-3" aria-hidden />
       </PopoverTrigger>
@@ -218,14 +219,14 @@ export function NativeFflogsLinkPopover({
                 aria-hidden
               />
               <span className="min-w-0 truncate text-[9px] font-medium tracking-normal text-muted-foreground">
-                {displayDate} の FFLogs URL
+                {m.fflogsLink.header(displayDate)}
               </span>
               {displayedLogs.length > 0 && (
                 <span
                   aria-hidden
                   className="font-mono text-[9px] tracking-[0.18em] text-amber-300/70"
                 >
-                  · {displayedLogs.length} 件
+                  {m.fflogsLink.count(displayedLogs.length)}
                 </span>
               )}
             </div>
@@ -257,18 +258,18 @@ export function NativeFflogsLinkPopover({
                           target="_blank"
                           rel="noopener noreferrer"
                           className="inline-flex h-5 items-center gap-1 rounded px-1.5 text-[10px] text-amber-300/85 transition-colors hover:bg-amber-400/15 hover:text-amber-200"
-                          title="新タブで開く"
+                          title={m.common.openInNewTab}
                         >
                           <ExternalLink className="h-2.5 w-2.5" aria-hidden />
-                          開く
+                          {m.common.open}
                         </a>
                       )}
                       <button
                         type="button"
                         onClick={() => void handleDeleteLogs(entry.id)}
                         disabled={logsBusy}
-                        aria-label="この URL を削除"
-                        title="削除"
+                        aria-label={m.fflogsLink.deleteAria}
+                        title={m.common.delete}
                         className="inline-flex h-5 w-5 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-rose-400/15 hover:text-rose-200 disabled:opacity-50"
                       >
                         <X className="h-3 w-3" aria-hidden />
@@ -297,7 +298,7 @@ export function NativeFflogsLinkPopover({
                 className="inline-flex h-7 items-center whitespace-nowrap gap-1 rounded-md border border-amber-400/45 bg-amber-400/10 px-2.5 text-[10px] tracking-normal text-amber-200 transition-colors hover:border-amber-400/70 hover:bg-amber-400/18 disabled:opacity-50"
               >
                 <Save className="h-3 w-3" aria-hidden />
-                追加
+                {m.common.add}
               </button>
             </div>
           </div>

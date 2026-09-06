@@ -19,6 +19,7 @@ import {
   normalizeAttendanceTime,
   symbolAllowsTimes,
 } from "@/lib/schedule/attendance-times";
+import { useMessages } from "@/lib/i18n/client";
 
 /**
  * TODO #2 phase 2-B: native スケジュールの本人専用出欠入力 popover。
@@ -79,6 +80,7 @@ export function NativeAttendancePopover({
   displayDate,
   currentTimes = null,
 }: Props) {
+  const m = useMessages();
   const router = useRouter();
   const [open, setOpen] = useState(false);
   // PR3-C: click 即保存に変わり、draft state は busy 中の視覚 hint のみで活用。
@@ -127,8 +129,8 @@ export function NativeAttendancePopover({
       }
       toast.success(
         nextSymbol === SYMBOL_UNANSWERED
-          ? `${displayDate} の出欠を未回答に戻しました`
-          : `${displayDate} の出欠を「${nextSymbol}」に保存しました`,
+          ? m.attendance.toastReset(displayDate)
+          : m.attendance.toastSaved(displayDate, nextSymbol),
       );
       setOpen(false);
       router.refresh();
@@ -144,11 +146,11 @@ export function NativeAttendancePopover({
     const nextArrive = normalizeAttendanceTime(next.arriveAt);
     const nextLeave = normalizeAttendanceTime(next.leaveAt);
     if (next.arriveAt && !nextArrive) {
-      setError("到着予定は HH:MM で入力してください");
+      setError(m.attendance.errArriveFormat);
       return;
     }
     if (next.leaveAt && !nextLeave) {
-      setError("早退予定は HH:MM で入力してください");
+      setError(m.attendance.errLeaveFormat);
       return;
     }
     if (
@@ -175,8 +177,8 @@ export function NativeAttendancePopover({
       });
       toast.success(
         hint
-          ? `${displayDate} の予定時刻を「${hint}」に保存しました`
-          : `${displayDate} の予定時刻を消しました`,
+          ? m.attendance.toastTimesSaved(displayDate, hint)
+          : m.attendance.toastTimesCleared(displayDate),
       );
       router.refresh();
     });
@@ -189,11 +191,8 @@ export function NativeAttendancePopover({
           "inline-flex h-5 min-w-[1.75rem] items-center justify-center rounded-sm border px-1 text-[12px] leading-none transition-transform hover:scale-105 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--neon-cyan)]/60 active:scale-95 " +
           triggerClass
         }
-        aria-label={
-          `${userName} ${displayDate} の出欠を編集` +
-          (timesHint ? ` (予定 ${timesHint})` : "")
-        }
-        title={`出欠を編集 (${userName})` + (timesHint ? ` — ${timesHint}` : "")}
+        aria-label={m.attendance.editAria(userName, displayDate, timesHint)}
+        title={m.attendance.editTitle(userName, timesHint)}
       >
         {currentSymbol}
         {timesHint && (
@@ -235,7 +234,7 @@ export function NativeAttendancePopover({
 
             <div className="flex flex-col gap-1.5">
               <span className="text-[10px] tracking-normal text-muted-foreground">
-                参加状況 (クリックで即保存)
+                {m.attendance.statusLabel}
               </span>
               <div className="flex flex-wrap gap-1">
                 {attendanceOptions.choices.map((sym) => (
@@ -257,7 +256,7 @@ export function NativeAttendancePopover({
                 <SymbolRadio
                   key="__unanswered"
                   value={SYMBOL_UNANSWERED}
-                  label="未回答"
+                  label={m.attendance.unanswered}
                   selected={
                     pendingSymbol !== null
                       ? pendingSymbol === SYMBOL_UNANSWERED
@@ -276,11 +275,11 @@ export function NativeAttendancePopover({
                 保存が走らないように)。 */}
             <div className="flex flex-col gap-1.5 border-t border-border/40 pt-2">
               <span className="text-[10px] tracking-normal text-muted-foreground">
-                遅刻 / 早退の予定 (任意)
+                {m.attendance.timesLabel}
               </span>
               <div className="flex flex-wrap items-center gap-2">
                 <label className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
-                  到着
+                  {m.attendance.arrive}
                   <input
                     type="time"
                     value={arriveDraft}
@@ -289,12 +288,12 @@ export function NativeAttendancePopover({
                     onBlur={() =>
                       applyTimes({ arriveAt: arriveDraft, leaveAt: leaveDraft })
                     }
-                    aria-label="到着予定 (遅刻する場合)"
+                    aria-label={m.attendance.arriveAria}
                     className="h-6 rounded-sm border border-border/60 bg-background/40 px-1 font-mono text-[11px] text-foreground tabular-nums [color-scheme:dark] disabled:cursor-not-allowed disabled:opacity-50"
                   />
                 </label>
                 <label className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
-                  早退
+                  {m.attendance.leave}
                   <input
                     type="time"
                     value={leaveDraft}
@@ -303,7 +302,7 @@ export function NativeAttendancePopover({
                     onBlur={() =>
                       applyTimes({ arriveAt: arriveDraft, leaveAt: leaveDraft })
                     }
-                    aria-label="早退予定"
+                    aria-label={m.attendance.leaveAria}
                     className="h-6 rounded-sm border border-border/60 bg-background/40 px-1 font-mono text-[11px] text-foreground tabular-nums [color-scheme:dark] disabled:cursor-not-allowed disabled:opacity-50"
                   />
                 </label>
@@ -318,14 +317,14 @@ export function NativeAttendancePopover({
                     }}
                     className="rounded-sm border border-border/60 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
                   >
-                    消す
+                    {m.attendance.clearTimes}
                   </button>
                 )}
               </div>
               <p className="text-[10px] leading-relaxed text-muted-foreground/80">
                 {timesAllowed
-                  ? "入力後に欄の外を押すと保存されます。確定通知の名前の横に出ます。"
-                  : "先に参加状況 (○ / △ / ⏰ など) を選ぶと入力できます。"}
+                  ? m.attendance.timesHintEnabled
+                  : m.attendance.timesHintDisabled}
               </p>
             </div>
 
@@ -340,7 +339,7 @@ export function NativeAttendancePopover({
             )}
 
             <p className="text-[10px] leading-relaxed text-muted-foreground/80">
-              コメントは表ヘッダーの自分の名前をクリックして編集できます。
+              {m.attendance.commentHint}
             </p>
           </div>
         </PopoverContent>

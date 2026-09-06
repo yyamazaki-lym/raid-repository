@@ -40,6 +40,7 @@ import { useDismissablePopup } from "@/lib/use-dismissable-popup";
 import { safeHref } from "@/lib/url-safe";
 import { DeleteConfirmModal } from "./schedule/session-memo-delete-modal";
 import { formatRelativeTime } from "@/lib/schedule/time-formatters";
+import { useLocale, useMessages } from "@/lib/i18n/client";
 
 const EMPTY_SESSION_LOGS: SessionLogEntry[] = [];
 
@@ -115,6 +116,7 @@ export function SessionMemoPopover({
   children,
   ref,
 }: Props) {
+  const msg = useMessages();
   const [open, setOpen] = useState(false);
   useImperativeHandle(
     ref,
@@ -241,7 +243,7 @@ export function SessionMemoPopover({
         }}
         className="inline-flex cursor-pointer items-center"
         aria-expanded={open}
-        aria-label={`${displayDate} のメモを開く`}
+        aria-label={msg.memo.openAria(displayDate)}
       >
         {children}
       </button>
@@ -252,7 +254,7 @@ export function SessionMemoPopover({
           <div
             ref={popupRef}
             role="dialog"
-            aria-label={`${displayDate} のメモ`}
+            aria-label={msg.memo.dialogAria(displayDate)}
             tabIndex={-1}
             style={{
               position: "fixed",
@@ -293,7 +295,7 @@ export function SessionMemoPopover({
               <button
                 type="button"
                 onClick={() => setOpen(false)}
-                aria-label="閉じる"
+                aria-label={msg.common.close}
                 className="inline-flex h-5 w-5 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-[var(--neon-violet)]/15 hover:text-foreground"
               >
                 <X className="h-3 w-3" aria-hidden />
@@ -335,6 +337,8 @@ function MemoList({
     dayOfWeek: string;
   };
 }) {
+  const msg = useMessages();
+  const locale = useLocale();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingBody, setEditingBody] = useState("");
   const [editingAuthor, setEditingAuthor] = useState("");
@@ -399,7 +403,7 @@ function MemoList({
       sessionLogs.some((s) => (fflogsLogDedupeKey(s.url) ?? s.url) === valueKey) ||
       optimisticAdds.some((e) => (fflogsLogDedupeKey(e.url) ?? e.url) === valueKey)
     ) {
-      toast.error("同じレポートの URL が既に紐付いています");
+      toast.error(msg.fflogsLink.errDuplicate);
       return;
     }
     const tempId = `__optimistic-${Date.now()}-${Math.random()}`;
@@ -418,15 +422,15 @@ function MemoList({
       // the user can edit and retry.
       setOptimisticAdds((prev) => prev.filter((e) => e.id !== tempId));
       setNewLogsInput(value);
-      toast.error("Logs URL 追加失敗: " + r.reason);
+      toast.error(msg.fflogsLink.errAddFailed(r.reason));
       return;
     }
     // 2026-07-12: 同日の動画へ橋渡しされた件数を toast に出す (動画カード
     // の FFLogs バッジに即反映されることを実機で確認しやすくする)。
     toast.success(
       r.bridgedVideos
-        ? `Logs URL を追加しました (同日の動画 ${r.bridgedVideos} 件にバッジ表示)`
-        : "Logs URL を追加しました",
+        ? msg.fflogsLink.toastAddedBridged(r.bridgedVideos)
+        : msg.fflogsLink.toastAdded,
     );
     // Reconciliation happens when `sessionLogs` prop updates from the
     // server's `revalidatePath('/')` re-render — the useEffect above
@@ -453,13 +457,13 @@ function MemoList({
         next.delete(id);
         return next;
       });
-      toast.error("Logs URL 削除失敗: " + r.reason);
+      toast.error(msg.fflogsLink.errDeleteFailed(r.reason));
       return;
     }
     toast.success(
       r.unbridgedVideos
-        ? `Logs URL を削除しました (同日の動画 ${r.unbridgedVideos} 件のバッジも解除)`
-        : "Logs URL を削除しました",
+        ? msg.fflogsLink.toastDeletedUnbridged(r.unbridgedVideos)
+        : msg.fflogsLink.toastDeleted,
     );
   };
 
@@ -475,19 +479,19 @@ function MemoList({
     const body = draftBody.trim();
     const authorName = draftAuthor.trim();
     if (!body) {
-      toast.error("メモ本文を入力してください");
+      toast.error(msg.memo.errBodyRequired);
       return;
     }
     setBusy(true);
     const result = await createScheduleMemo({ rawDate, body, authorName });
     setBusy(false);
     if (!result.ok) {
-      toast.error("追加失敗: " + result.reason);
+      toast.error(msg.memo.errAddFailed(result.reason));
       return;
     }
     persistAuthorName(authorName);
     setDraftBody("");
-    toast.success("メモを追加しました");
+    toast.success(msg.memo.toastAdded);
     // Defense-in-depth: realtime should also fire, but force-refresh
     // immediately so the UI is correct even when realtime delivery
     // fails / is delayed.
@@ -508,18 +512,18 @@ function MemoList({
     const body = editingBody.trim();
     const authorName = editingAuthor.trim();
     if (!body) {
-      toast.error("本文を入力してください");
+      toast.error(msg.memo.errBodyRequiredEdit);
       return;
     }
     setBusy(true);
     const result = await updateScheduleMemo(id, { body, authorName });
     setBusy(false);
     if (!result.ok) {
-      toast.error("更新失敗: " + result.reason);
+      toast.error(msg.memo.errUpdateFailed(result.reason));
       return;
     }
     cancelEdit();
-    toast.success("更新しました");
+    toast.success(msg.memo.toastUpdated);
     if (onRefresh) void onRefresh();
   };
   const requestDelete = (m: ScheduleSessionMemo) => setPendingDelete(m);
@@ -532,10 +536,10 @@ function MemoList({
     setBusy(false);
     setPendingDelete(null);
     if (!result.ok) {
-      toast.error("削除失敗: " + result.reason);
+      toast.error(msg.memo.errDeleteFailed(result.reason));
       return;
     }
-    toast.success("削除しました");
+    toast.success(msg.memo.toastDeleted);
     // Critical for DELETE — realtime DELETE events may be missing
     // `old.raw_date` if the table lacks REPLICA IDENTITY FULL, which
     // means the realtime handler can't tell the deletion was for our
@@ -553,7 +557,7 @@ function MemoList({
       {memos.length === 0 ? (
         <p className="flex items-center justify-center gap-1.5 rounded-md border border-dashed border-border/40 bg-secondary/10 px-3 py-3 text-center text-[11px] text-muted-foreground">
           <MessageSquare className="h-3 w-3 opacity-60" aria-hidden />
-          まだメモはありません
+          {msg.memo.empty}
         </p>
       ) : (
         <ul className="flex flex-col gap-1.5 pr-0.5">
@@ -567,8 +571,8 @@ function MemoList({
                   <input
                     value={editingAuthor}
                     onChange={(e) => setEditingAuthor(e.target.value)}
-                    placeholder="名前（任意）"
-                    aria-label="投稿者名"
+                    placeholder={msg.memo.authorPlaceholder}
+                    aria-label={msg.memo.authorAria}
                     spellCheck={false}
                     maxLength={MEMO_AUTHOR_NAME_MAX}
                     className={inputClass}
@@ -577,7 +581,7 @@ function MemoList({
                     value={editingBody}
                     onChange={(e) => setEditingBody(e.target.value)}
                     rows={3}
-                    aria-label="メモ本文"
+                    aria-label={msg.memo.bodyAria}
                     spellCheck={false}
                     maxLength={MEMO_BODY_MAX}
                     className={inputClass}
@@ -590,7 +594,7 @@ function MemoList({
                       className="inline-flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[10px] whitespace-nowrap tracking-normal text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground disabled:opacity-50"
                     >
                       <X className="h-3 w-3" aria-hidden />
-                      キャンセル
+                      {msg.common.cancel}
                     </button>
                     <button
                       type="button"
@@ -599,7 +603,7 @@ function MemoList({
                       className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-[var(--neon-cyan)]/45 bg-[var(--neon-cyan)]/10 px-2.5 py-1.5 text-[10px] whitespace-nowrap tracking-normal text-[var(--neon-cyan)] transition-colors hover:border-[var(--neon-cyan)]/70 hover:bg-[var(--neon-cyan)]/18 disabled:opacity-50"
                     >
                       <Save className="h-3 w-3" aria-hidden />
-                      保存
+                      {msg.common.save}
                     </button>
                   </div>
                 </div>
@@ -610,20 +614,20 @@ function MemoList({
                       <span className="truncate text-[11px] font-medium text-foreground/85">
                         {m.authorName || (
                           <span className="text-muted-foreground/70">
-                            匿名
+                            {msg.memo.anonymous}
                           </span>
                         )}
                       </span>
                       <span className="font-mono text-[9px] tracking-wide text-muted-foreground/65">
-                        {formatRelativeTime(m.createdAt)}
+                        {formatRelativeTime(m.createdAt, locale)}
                       </span>
                     </div>
                     <span className="flex shrink-0 items-center gap-0.5 opacity-60 transition-opacity group-hover:opacity-100">
                       <button
                         type="button"
                         onClick={() => startEdit(m)}
-                        aria-label="編集"
-                        title="編集"
+                        aria-label={msg.common.edit}
+                        title={msg.common.edit}
                         className="inline-flex h-5 w-5 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-secondary/70 hover:text-foreground"
                       >
                         <Pencil className="h-3 w-3" aria-hidden />
@@ -631,8 +635,8 @@ function MemoList({
                       <button
                         type="button"
                         onClick={() => requestDelete(m)}
-                        aria-label="削除"
-                        title="削除"
+                        aria-label={msg.common.delete}
+                        title={msg.common.delete}
                         className="inline-flex h-5 w-5 items-center justify-center rounded text-rose-300/80 transition-colors hover:bg-rose-500/15 hover:text-rose-200"
                       >
                         <Trash2 className="h-3 w-3" aria-hidden />
@@ -655,13 +659,13 @@ function MemoList({
             className="h-3 w-3 text-[var(--neon-violet)]/80"
             aria-hidden
           />
-          新規メモ
+          {msg.memo.newMemo}
         </div>
         <input
           value={draftAuthor}
           onChange={(e) => setDraftAuthor(e.target.value)}
-          placeholder="名前（任意・次回も使用）"
-          aria-label="投稿者名"
+          placeholder={msg.memo.authorPlaceholderNew}
+          aria-label={msg.memo.authorAria}
           spellCheck={false}
           maxLength={MEMO_AUTHOR_NAME_MAX}
           className={inputClass}
@@ -670,8 +674,8 @@ function MemoList({
           value={draftBody}
           onChange={(e) => setDraftBody(e.target.value)}
           rows={3}
-          placeholder="メモ内容…"
-          aria-label="メモ本文"
+          placeholder={msg.memo.bodyPlaceholder}
+          aria-label={msg.memo.bodyAria}
           spellCheck={false}
           maxLength={MEMO_BODY_MAX}
           className={inputClass}
@@ -684,7 +688,7 @@ function MemoList({
             className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-[var(--neon-violet)]/50 bg-[var(--neon-violet)]/10 px-3 py-1.5 text-[10px] whitespace-nowrap tracking-normal text-[var(--neon-violet)] transition-colors hover:border-[var(--neon-violet)]/70 hover:bg-[var(--neon-violet)]/18 disabled:opacity-50"
           >
             <Send className="h-3 w-3" aria-hidden />
-            投稿
+            {msg.memo.post}
           </button>
         </div>
       </div>
@@ -707,7 +711,7 @@ function MemoList({
               aria-hidden
               className="font-mono text-[10px] tracking-[0.18em] text-amber-300/70"
             >
-              · {displayedLogs.length} 件
+              {msg.fflogsLink.count(displayedLogs.length)}
             </span>
           )}
         </div>
@@ -738,18 +742,18 @@ function MemoList({
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex h-5 items-center gap-1 rounded px-1.5 text-[10px] text-amber-300/85 transition-colors hover:bg-amber-400/15 hover:text-amber-200"
-                      title="新タブで開く"
+                      title={msg.common.openInNewTab}
                     >
                       <ExternalLink className="h-2.5 w-2.5" aria-hidden />
-                      開く
+                      {msg.common.open}
                     </a>
                   )}
                   <button
                     type="button"
                     onClick={() => void handleDeleteLogs(entry.id)}
                     disabled={logsBusy}
-                    aria-label="この URL を削除"
-                    title="削除"
+                    aria-label={msg.fflogsLink.deleteAria}
+                    title={msg.common.delete}
                     className="inline-flex h-5 w-5 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-rose-400/15 hover:text-rose-200 disabled:opacity-50"
                   >
                     <X className="h-3 w-3" aria-hidden />
@@ -778,7 +782,7 @@ function MemoList({
             className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-amber-400/45 bg-amber-400/10 px-3 py-1.5 text-[10px] whitespace-nowrap tracking-normal text-amber-200 transition-colors hover:border-amber-400/70 hover:bg-amber-400/18 disabled:opacity-50"
           >
             <Save className="h-3 w-3" aria-hidden />
-            追加
+            {msg.common.add}
           </button>
         </div>
       </div>

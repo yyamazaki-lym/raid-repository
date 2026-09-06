@@ -16,6 +16,7 @@ import {
   updateNativeScheduleSessionNoteAction,
   updateNativeScheduleSessionTimeAction,
 } from "@/lib/server/native-schedule-actions";
+import { useMessages } from "@/lib/i18n/client";
 
 /**
  * 2.1 (2026-05-12): native スケジュールの日個別 raid time を admin が編集する popover。
@@ -70,6 +71,7 @@ export function SessionTimeEditPopover({
   note = null,
   triggerClass = "",
 }: Props) {
+  const m = useMessages();
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [draftStart, setDraftStart] = useState<string>(
@@ -106,22 +108,22 @@ export function SessionTimeEditPopover({
 
     // time validate
     if (!HHMM_RE.test(draftStart)) {
-      setError("開始時刻は HH:MM 形式で入力してください");
+      setError(m.sessionTime.errStartFormat);
       return;
     }
     if (!HHMM_RE.test(draftEnd)) {
-      setError("終了時刻は HH:MM 形式で入力してください");
+      setError(m.sessionTime.errEndFormat);
       return;
     }
     if (draftStart === draftEnd) {
-      setError("開始時刻と終了時刻が同じです");
+      setError(m.sessionTime.errSameTime);
       return;
     }
 
     // note validate (長さは Textarea maxLength でも縛っているが二重 guard)
     const normalizedNote = draftNote.trim();
     if (normalizedNote.length > NOTE_MAX_LENGTH) {
-      setError(`備考は ${NOTE_MAX_LENGTH} 文字以内で入力してください`);
+      setError(m.sessionTime.errNoteLength(NOTE_MAX_LENGTH));
       return;
     }
     const nextNote = normalizedNote || null;
@@ -162,11 +164,15 @@ export function SessionTimeEditPopover({
         }
       }
       const msgs: string[] = [];
-      if (timeChanged) msgs.push(`時刻を ${draftStart}〜${draftEnd}`);
+      if (timeChanged) msgs.push(m.sessionTime.changedTime(draftStart, draftEnd));
       if (noteChanged) {
-        msgs.push(nextNote === null ? "備考をクリア" : "備考を更新");
+        msgs.push(
+          nextNote === null
+            ? m.sessionTime.changedNoteCleared
+            : m.sessionTime.changedNoteUpdated,
+        );
       }
-      toast.success(`${displayDate} の ${msgs.join(" / ")} に変更しました`);
+      toast.success(m.sessionTime.toastChanged(displayDate, msgs.join(" / ")));
       setOpen(false);
       router.refresh();
     });
@@ -187,7 +193,7 @@ export function SessionTimeEditPopover({
         setError(r.reason);
         return;
       }
-      toast.success(`${displayDate} の時刻を既定に戻しました`);
+      toast.success(m.sessionTime.toastReset(displayDate));
       setOpen(false);
       router.refresh();
     });
@@ -206,13 +212,17 @@ export function SessionTimeEditPopover({
           " " +
           triggerClass
         }
-        aria-label={`${displayDate} の時刻を編集 (現在: ${
+        aria-label={m.sessionTime.ariaLabel(
+          displayDate,
           isOverridden
-            ? `${overrideStart ?? defaultStartTime}〜${overrideEnd ?? defaultEndTime} (override)`
-            : `${defaultStartTime}〜${defaultEndTime} (既定)`
-        })`}
+            ? m.sessionTime.currentOverride(
+                overrideStart ?? defaultStartTime,
+                overrideEnd ?? defaultEndTime,
+              )
+            : m.sessionTime.currentDefault(defaultStartTime, defaultEndTime),
+        )}
         title={
-          isOverridden ? "個別時刻 (クリックで編集)" : "既定時刻 (クリックで個別変更)"
+          isOverridden ? m.sessionTime.titleOverride : m.sessionTime.titleDefault
         }
       >
         <ClockIcon />
@@ -228,13 +238,13 @@ export function SessionTimeEditPopover({
           <div className="flex flex-col gap-3 p-3">
             <div className="flex items-center gap-1.5 border-b border-border/50 pb-1.5">
               <span className="text-[9px] font-medium tracking-normal text-muted-foreground">
-                {displayDate} の時刻
+                {m.sessionTime.header(displayDate)}
               </span>
             </div>
 
             <div className="flex flex-col gap-1.5">
               <span className="text-[10px] tracking-normal text-muted-foreground">
-                開始 / 終了
+                {m.sessionTime.rangeLabel}
               </span>
               <div className="flex items-center gap-1.5">
                 <Input
@@ -254,14 +264,14 @@ export function SessionTimeEditPopover({
                 />
               </div>
               <span className="text-[10px] text-muted-foreground/80">
-                既定 (admin で変更):{" "}
+                {m.sessionTime.defaultPrefix}{" "}
                 {/* nowrap: 「21:00 / 〜24:00」の分断を防ぐ (〜 は改行可能文字)。 */}
                 <span className="whitespace-nowrap">
                   {defaultStartTime}〜{defaultEndTime}
                 </span>
                 {isOverridden ? (
                   <span className="ml-1 text-[var(--neon-cyan)]">
-                    (現在この日は個別 override)
+                    {m.sessionTime.overrideNote}
                   </span>
                 ) : null}
               </span>
@@ -271,7 +281,7 @@ export function SessionTimeEditPopover({
                 NULL 化 (= 備考削除)。CandidateDateDialog と同じ maxLength=200。 */}
             <div className="flex flex-col gap-1.5">
               <span className="text-[10px] tracking-normal text-muted-foreground">
-                備考
+                {m.sessionTime.noteLabel}
               </span>
               <Textarea
                 value={draftNote}
@@ -279,7 +289,7 @@ export function SessionTimeEditPopover({
                 disabled={busy}
                 rows={2}
                 maxLength={NOTE_MAX_LENGTH}
-                placeholder="例: アルカディア LH4 練習"
+                placeholder={m.sessionTime.notePlaceholder}
                 spellCheck={false}
                 className="text-sm"
               />
@@ -303,10 +313,10 @@ export function SessionTimeEditPopover({
                 onClick={onResetToDefault}
                 disabled={busy || !isOverridden}
                 className="gap-1 text-[10px] tracking-normal"
-                title="この日の時刻を既定に戻す"
+                title={m.sessionTime.resetTitle}
               >
                 <RotateCcw className="h-3 w-3" aria-hidden />
-                既定に戻す
+                {m.sessionTime.reset}
               </Button>
               <div className="flex-1" />
               <Button
@@ -317,7 +327,7 @@ export function SessionTimeEditPopover({
                 disabled={busy}
                 className="text-[10px] tracking-normal"
               >
-                キャンセル
+                {m.common.cancel}
               </Button>
               <Button
                 type="button"
@@ -327,7 +337,7 @@ export function SessionTimeEditPopover({
                 className="gap-1 text-[10px] tracking-normal"
               >
                 <Save className="h-3 w-3" aria-hidden />
-                {busy ? "保存中…" : "保存"}
+                {busy ? m.common.saving : m.common.save}
               </Button>
             </div>
           </div>

@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { useConfirm } from "@/components/portal/confirm-dialog";
 import { excludePastSessionAction } from "@/lib/server/categories-actions";
 import type { ScheduleSourceMode } from "@/lib/schedule/source-mode";
+import { useMessages } from "@/lib/i18n/client";
 
 /**
  * 2.9 (2026-08-24): 過去ログ (詳細表) の admin 専用ゴミ箱アイコン。
@@ -49,6 +50,7 @@ export function PastSessionRemoveButton({
     dayOfWeek: string;
   };
 }) {
+  const m = useMessages();
   const router = useRouter();
   const confirm = useConfirm();
   const [busy, startTransition] = useTransition();
@@ -56,13 +58,14 @@ export function PastSessionRemoveButton({
   const onClick = async () => {
     const description =
       mode === "native"
-        ? `「${displayDate}」を未実施 (中止) として過去ログから外します。\n\n出欠の記録は残るので、設定ダイアログの「中止した日程」から元に戻せます。`
-        : `「${displayDate}」を未実施として過去ログから外します。\n\n出欠のスナップショットと FFLogs URL は残したまま非表示にするので、設定ダイアログの「過去ログから除外中の日程」から元に戻せます。自動取り込み / スナップショットで復活することもありません。`;
+        ? m.pastRemove.descriptionNative(displayDate)
+        : m.pastRemove.descriptionSync(displayDate);
     if (
       !(await confirm({
-        title: "この日を過去ログから消す",
+        title: m.pastRemove.confirmTitle,
         description,
-        confirmText: "過去ログから消す",
+        confirmText: m.pastRemove.confirmButton,
+        cancelText: m.common.cancel,
         destructive: true,
       }))
     ) {
@@ -71,13 +74,13 @@ export function PastSessionRemoveButton({
     startTransition(async () => {
       const r = await excludePastSessionAction({ rawDate, sessionDetails });
       if (!r.ok) {
-        toast.error("削除できませんでした: " + r.reason);
+        toast.error(m.pastRemove.errFailed(r.reason));
         return;
       }
       toast.success(
         r.method === "native-cancelled"
-          ? `「${displayDate}」を中止にしました (過去ログから消えます)`
-          : `「${displayDate}」を過去ログから外しました`,
+          ? m.pastRemove.toastCancelled(displayDate)
+          : m.pastRemove.toastExcluded(displayDate),
       );
       router.refresh();
     });
@@ -88,8 +91,8 @@ export function PastSessionRemoveButton({
       type="button"
       onClick={onClick}
       disabled={busy}
-      aria-label={`${displayDate} を過去ログから消す`}
-      title="実施しなかった日を過去ログから消す (admin)"
+      aria-label={m.pastRemove.ariaLabel(displayDate)}
+      title={m.pastRemove.title}
       className={
         "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded " +
         "text-muted-foreground/70 transition-all hover:bg-rose-500/15 hover:text-rose-300 " +

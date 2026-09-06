@@ -22,6 +22,7 @@ import { StatusBadge } from "./status-badge";
 import { useRealtimeCategories } from "@/lib/categories-client";
 import { filterVisibleCategories } from "@/lib/category-visibility";
 import { isCategoryTabId, type Category } from "@/lib/supabase/types";
+import { useMessages } from "@/lib/i18n/client";
 
 // タブ定義は `@/lib/sub-tab-defs` に集約 (旧: この 3 ファイルに同じ配列を
 // コピーしていたため、タブ追加時にここだけ更新漏れが起きていた)。
@@ -39,6 +40,9 @@ type Props = {
 };
 
 export function CategorySwitcher({ initialCategories, userRoleIds }: Props) {
+  const m = useMessages();
+  // サブタブの既定ラベルは表示言語に追従 (id 不明時は SUB_TAB_DEFS の日本語)。
+  const tabLabels: Record<string, string | undefined> = m.categories.tabs;
   const liveAll = useRealtimeCategories(initialCategories);
   const categories = filterVisibleCategories(liveAll, userRoleIds);
   const pathname = usePathname();
@@ -107,7 +111,7 @@ export function CategorySwitcher({ initialCategories, userRoleIds }: Props) {
       ? currentSubFromPath
       : null;
 
-  const triggerLabel = activeCategory ? activeCategory.name : "コンテンツ";
+  const triggerLabel = activeCategory ? activeCategory.name : m.categories.trigger;
 
   return (
     <DropdownMenu open={open} onOpenChange={handleOpenChange}>
@@ -174,7 +178,7 @@ export function CategorySwitcher({ initialCategories, userRoleIds }: Props) {
 
         {categories.length === 0 ? (
           <div className="px-2 py-3 text-center text-xs text-muted-foreground">
-            コンテンツがまだ登録されていません
+            {m.categories.empty}
           </div>
         ) : (
           categories.map((cat) => {
@@ -240,7 +244,7 @@ export function CategorySwitcher({ initialCategories, userRoleIds }: Props) {
                     so they get the same menuitem behavior. Compact
                     h-6 w-6 with icon-only rendering. */}
                 <nav
-                  aria-label={`${cat.name} のサブページ`}
+                  aria-label={m.categories.subPagesAria(cat.name)}
                   className="flex shrink-0 items-center gap-0.5 pr-1.5"
                 >
                   {SUB_PAGES.map((p) => {
@@ -250,7 +254,9 @@ export function CategorySwitcher({ initialCategories, userRoleIds }: Props) {
                     const cfg = cat.tabConfig?.[p.segment];
                     if (cfg?.enabled === false) return null;
                     const labelOverride = cfg?.label?.trim();
-                    const label = labelOverride ? labelOverride : p.label;
+                    const label = labelOverride
+                      ? labelOverride
+                      : (tabLabels[p.id] ?? p.label);
                     return (
                       <DropdownMenuItem
                         key={p.segment}
@@ -290,7 +296,7 @@ export function CategorySwitcher({ initialCategories, userRoleIds }: Props) {
           className="flex cursor-pointer items-center gap-2"
         >
           <ListChecks className="h-4 w-4 text-muted-foreground" aria-hidden />
-          <span className="text-sm">全コンテンツ一覧</span>
+          <span className="text-sm">{m.categories.all}</span>
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

@@ -11,6 +11,7 @@ import type {
   ScheduleComment,
   ScheduleUser,
 } from "@/lib/schedule/next-session";
+import { useMessages } from "@/lib/i18n/client";
 
 /**
  * 各ユーザーの「コメント変化検知」用 fingerprint。timestamp + body を
@@ -53,6 +54,7 @@ export function CommentPopover({
   user: ScheduleUser;
   comments: ScheduleComment[];
 }) {
+  const m = useMessages();
   const [open, setOpen] = useState(false);
   const [hoverEnabled, setHoverEnabled] = useState(false);
   const [updated, setUpdated] = useState(false);
@@ -157,14 +159,10 @@ export function CommentPopover({
         className={triggerClass}
         aria-label={
           updated
-            ? `${user.name} のコメントに更新があります (クリックで確認)`
-            : `${user.name} のコメントを表示`
+            ? m.comment.updatedAria(user.name)
+            : m.schedule.commentView(user.name)
         }
-        title={
-          updated
-            ? `${user.name} のコメントが更新されました`
-            : undefined
-        }
+        title={updated ? m.comment.updatedTitle(user.name) : undefined}
       >
         <MessageSquareText className="h-2.5 w-2.5" aria-hidden />
         {updated && (
@@ -206,7 +204,7 @@ export function CommentPopover({
                 className="min-w-0 truncate text-[9px] tracking-normal text-muted-foreground"
                 title={user.name}
               >
-                {user.name} の一言
+                {m.comment.quip(user.name)}
               </span>
             </div>
             <ul className="flex flex-col gap-1.5 pt-1">
