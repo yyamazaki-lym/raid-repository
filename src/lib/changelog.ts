@@ -93,6 +93,9 @@ export const RELEASES: ReleaseEntry[] = [
       {
         title: "🐛 練習ログ: 拡張をまたいだ絶 (Ultimates (Legacy)) のレポートが取り込めなかったのを修正 — pull の encounter 名で振り分け",
       },
+      {
+        title: "⏱ 練習ログ: フェーズ滞在時間を「表示中の pull」ではなく登録ログ全件で集計",
+      },
     ],
   },
 ];

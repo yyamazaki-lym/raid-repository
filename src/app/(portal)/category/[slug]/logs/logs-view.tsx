@@ -78,6 +78,7 @@ import {
   wipeCauseCounts,
   type PhaseSpan,
   type WipeCauseCount,
+  type PhaseTimeTotal,
 } from "@/lib/fflogs-fight-detail";
 import { isSavageContent, isUltimateContent } from "@/lib/content-groups";
 import { humanizeFflogsSyncReason } from "@/lib/fflogs-sync-reason";
@@ -120,6 +121,7 @@ export function LogsView({
   totalPulls,
   totalClears,
   truncated,
+  phaseTotalsAll = null,
   videoLinks,
   failedSyncs,
   canEdit,
@@ -128,6 +130,11 @@ export function LogsView({
   categoryName: string;
   /** 取り込み難易度の下限 (null = 制限なし)。 */
   minDifficulty: number | null;
+  /**
+   * カテゴリ全 pull のフェーズ滞在時間 (2026-09-07)。絶のページで server が
+   * 全件から集計して渡す。null なら表示中の明細から計算する (従来)。
+   */
+  phaseTotalsAll?: { totals: PhaseTimeTotal[]; pulls: number } | null;
   /** 明細。件数が多いカテゴリでは直近分だけが渡る (`truncated`)。 */
   fights: FightRow[];
   /** カテゴリ全体の pull 数 / クリア数 (明細が打ち切られていても正確)。 */
@@ -257,9 +264,16 @@ export function LogsView({
       .map(([phase, count]) => ({ phase, count }));
   }, [tierFights, showPhase]);
   // 2026-09-06 W-2: フェーズ滞在時間の合計 (絶のみ。零式は phases が null)。
+  // 全件集計が server から来ていればそれを優先する (2026-09-07: 打ち切り
+  // カテゴリで「表示中の分」だけになっていた)。
   const phaseTotals = useMemo(
-    () => (showPhase ? phaseTimeTotals(tierFights.map((f) => f.phases)) : []),
-    [tierFights, showPhase],
+    () =>
+      !showPhase
+        ? []
+        : phaseTotalsAll
+          ? phaseTotalsAll.totals
+          : phaseTimeTotals(tierFights.map((f) => f.phases)),
+    [tierFights, showPhase, phaseTotalsAll],
   );
   // DB の総数にはクラスタ外の混入分も含まれるため、取得済み明細で判明した
   // 混入数だけ差し引く (未打ち切りなら tierFights.length と一致する)。
@@ -881,7 +895,11 @@ export function LogsView({
             />
           )}
           {phaseTotals.length > 1 && (
-            <PhaseTimeCard totals={phaseTotals} truncated={truncated} />
+            <PhaseTimeCard
+              totals={phaseTotals}
+              truncated={truncated}
+              allPulls={phaseTotalsAll?.pulls ?? null}
+            />
           )}
         </section>
       )}
@@ -1250,9 +1268,12 @@ function WipeCausesCard({
 function PhaseTimeCard({
   totals,
   truncated,
+  allPulls,
 }: {
   totals: Array<{ id: number; ms: number; share: number }>;
   truncated: boolean;
+  /** 全件集計のときの母数 (pull 数)。null なら表示中の明細からの集計。 */
+  allPulls: number | null;
 }) {
   const totalMs = totals.reduce((acc, t) => acc + t.ms, 0);
   return (
@@ -1263,7 +1284,11 @@ function PhaseTimeCard({
         </span>
         <span className="font-mono text-[9px] tracking-[0.12em] text-muted-foreground/70">
           合計 {formatMs(totalMs)}
-          {truncated ? " (表示中の分)" : ""}
+          {allPulls !== null
+            ? ` (登録ログ全 ${allPulls} pull)`
+            : truncated
+              ? " (表示中の分)"
+              : ""}
         </span>
       </div>
       <div
