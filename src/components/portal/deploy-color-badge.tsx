@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useMessages } from "@/lib/i18n/client";
 
 /**
  * ヘッダーの「v1.9 (date) · BETA」バッジ。色は 2 ルート:
@@ -66,10 +67,11 @@ export function DeployColorBadge({
     return () => window.clearInterval(id);
   }, [hashColor, defaultColor, releaseDate]);
 
+  const m = useMessages();
   return (
     <span
       className={`flex items-center gap-1.5 font-mono text-[10px] tabular-nums tracking-[0.16em] sm:text-[11px] ${color}`}
-      title="デプロイ識別色: 当日の最新コミットから派生 (7 色サイクル)。日付が変わったら default の cyan にリセット"
+      title={m.header.deployTitle}
     >
       {children}
     </span>

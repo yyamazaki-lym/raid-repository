@@ -49,11 +49,18 @@ export function formatAttendanceTimesHint(
 /** 読み上げ / title 用の説明: `到着予定 21:30 / 早退 23:00`。 */
 export function describeAttendanceTimes(
   times: AttendanceTimes | null | undefined,
+  locale: "ja" | "en" = "ja",
 ): string | null {
   if (!times) return null;
   const parts: string[] = [];
-  if (times.arriveAt) parts.push(`到着予定 ${times.arriveAt}`);
-  if (times.leaveAt) parts.push(`早退 ${times.leaveAt}`);
+  if (times.arriveAt)
+    parts.push(
+      locale === "en" ? `arrives ${times.arriveAt}` : `到着予定 ${times.arriveAt}`,
+    );
+  if (times.leaveAt)
+    parts.push(
+      locale === "en" ? `leaves ${times.leaveAt}` : `早退 ${times.leaveAt}`,
+    );
   return parts.length > 0 ? parts.join(" / ") : null;
 }
 
@@ -113,6 +120,7 @@ export function discordTimestamp(
 export function formatCountdown(
   startMs: number,
   nowMs: number,
+  locale: "ja" | "en" = "ja",
 ): string | null {
   const diff = startMs - nowMs;
   if (diff <= 0) return null;
@@ -120,6 +128,11 @@ export function formatCountdown(
   const totalMin = Math.ceil(diff / 60_000);
   const h = Math.floor(totalMin / 60);
   const m = totalMin % 60;
+  if (locale === "en") {
+    if (h === 0) return `starts in ${m} min`;
+    if (m === 0) return `starts in ${h} h`;
+    return `starts in ${h} h ${m} min`;
+  }
   if (h === 0) return `開始まで ${m} 分`;
   if (m === 0) return `開始まで ${h} 時間`;
   return `開始まで ${h} 時間 ${m} 分`;

@@ -8,6 +8,8 @@ import { SplashSwRegistrar } from "@/components/splash-sw-registrar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { CSP_NONCE_HEADER } from "@/lib/csp";
 import { PRE_HYDRATION_THEME_SCRIPT } from "@/lib/theme-store";
+import { getLocale } from "@/lib/i18n/server";
+import { LocaleProvider } from "@/lib/i18n/client";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -56,10 +58,12 @@ export default async function RootLayout({
   // `?? undefined` で安全側に倒す (nonce 無し = production では script が
   // 通らないが、それは proxy 適用範囲外の異常系)。
   const nonce = (await headers()).get(CSP_NONCE_HEADER) ?? undefined;
+  // 2026-09-06: 表示言語 (cookie)。<html lang> と client 側の辞書選択に使う。
+  const locale = await getLocale();
 
   return (
     <html
-      lang="ja"
+      lang={locale}
       // Force dark mode + default theme. The pre-hydration script below may
       // swap `theme-evercold` for whichever theme the user previously picked,
       // so suppressHydrationWarning is required.
@@ -97,11 +101,13 @@ export default async function RootLayout({
         />
 
         {/* Base UI Tooltip uses `delay` (formerly Radix's `delayDuration`). */}
-        <TooltipProvider delay={150}>
-          <div className="relative z-0 flex min-h-screen flex-col">
-            {children}
-          </div>
-        </TooltipProvider>
+        <LocaleProvider locale={locale}>
+          <TooltipProvider delay={150}>
+            <div className="relative z-0 flex min-h-screen flex-col">
+              {children}
+            </div>
+          </TooltipProvider>
+        </LocaleProvider>
         <DynamicToaster richColors position="top-center" theme="dark" />
         {/*
           Vercel Speed Insights — Core Web Vitals (TTFB / LCP / FCP / CLS / INP) の RUM。

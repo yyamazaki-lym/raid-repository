@@ -3,6 +3,7 @@ import type { NextSessionResult } from "@/lib/schedule/next-session";
 import { DECISION_BADGE_CLASS } from "@/lib/schedule/status-ui";
 import { buildGoogleCalendarUrl } from "@/lib/calendar-link";
 import { SessionCountdown } from "./session-countdown";
+import { useMessages } from "@/lib/i18n/client";
 
 export function NextSessionCard({
   result,
@@ -17,17 +18,18 @@ export function NextSessionCard({
    */
   recruitmentTopButton?: React.ReactNode;
 }) {
+  const m = useMessages();
   if (!result.ok) {
     return (
       <Frame tone="warn" icon={<AlertTriangle className="h-4 w-4" aria-hidden />}>
-        <Label>次回開催日</Label>
-        <Value>取得失敗</Value>
+        <Label>{m.schedule.nextLabel}</Label>
+        <Value>{m.schedule.fetchFailed}</Value>
         <Sub>
           {result.reason === "no-url"
-            ? "NEXT_PUBLIC_SCHEDULE_URL が未設定です"
+            ? m.schedule.reasonNoUrl
             : result.reason === "fetch-failed"
-              ? "スケジュールサイトに接続できませんでした"
-              : "ページ構造の解析に失敗しました"}
+              ? m.schedule.reasonFetchFailed
+              : m.schedule.reasonParseFailed}
         </Sub>
       </Frame>
     );
@@ -36,9 +38,9 @@ export function NextSessionCard({
   if (!result.session) {
     return (
       <Frame icon={<CalendarCheck2 className="h-4 w-4" aria-hidden />}>
-        <Label>次回開催日</Label>
-        <Value>未確定</Value>
-        <Sub>「日程確定」マークが付いた予定が見つかりませんでした</Sub>
+        <Label>{m.schedule.nextLabel}</Label>
+        <Value>{m.schedule.undecided}</Value>
+        <Sub>{m.schedule.undecidedSub}</Sub>
       </Frame>
     );
   }
@@ -80,13 +82,13 @@ export function NextSessionCard({
   })();
 
   const relative = inSession
-    ? "挑戦中"
+    ? m.schedule.inSession
     : isToday
-      ? "本日"
+      ? m.schedule.today
       : dayDiff === 1
-        ? "明日"
+        ? m.schedule.tomorrow
         : dayDiff > 0
-          ? `あと ${dayDiff} 日`
+          ? m.schedule.inDays(dayDiff)
           : null;
 
   return (
@@ -97,11 +99,11 @@ export function NextSessionCard({
     >
       {/* Header line: label + 確定 badge inline. */}
       <div className="flex flex-wrap items-center gap-2">
-        <Label>次回開催日</Label>
+        <Label>{m.schedule.nextLabel}</Label>
         {/* 予定表の status 列の「確定」バッジ (schedule-list.tsx) と同一様式。
             同じ意味のバッジが画面内で 2 形態にならないよう揃えている。 */}
         <span className={DECISION_BADGE_CLASS}>
-          確定
+          {m.schedule.decided}
         </span>
       </div>
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
@@ -120,7 +122,7 @@ export function NextSessionCard({
             portal 側は何も持たない。アイコン 1 個なので行は増えない。 */}
         <a
           href={buildGoogleCalendarUrl({
-            title: `固定活動 ${rawDate}`,
+            title: m.schedule.calendarEventTitle(rawDate),
             startMs: date.getTime(),
             startTime,
             endTime,
@@ -128,8 +130,8 @@ export function NextSessionCard({
           })}
           target="_blank"
           rel="noopener noreferrer"
-          aria-label="この予定を Google カレンダーに追加"
-          title="Google カレンダーに追加"
+          aria-label={m.schedule.calendarAria}
+          title={m.schedule.calendarTitle}
           className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground"
         >
           <CalendarPlus className="h-3.5 w-3.5" aria-hidden />

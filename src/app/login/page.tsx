@@ -8,11 +8,15 @@ import {
   CalendarCheck2,
 } from "lucide-react";
 import { LoginButton } from "./login-button";
+import { LocaleSwitcher } from "@/components/portal/locale-switcher";
 import { LATEST_RELEASE_META } from "@/lib/changelog-meta";
+import { getMessages } from "@/lib/i18n/server";
+import type { Messages } from "@/lib/i18n/messages";
 
-export const metadata = {
-  title: "ログイン",
-};
+export async function generateMetadata() {
+  const m = await getMessages();
+  return { title: m.login.title };
+}
 
 // Discord OAuth はセッション cookie を扱うので edge / SSG で固めると
 // 不整合になる。動的レンダリングを明示する。
@@ -28,13 +32,16 @@ export const dynamic = "force-dynamic";
  * 後光のアニメは prefers-reduced-motion で止める。
  */
 const FEATURES = [
-  { label: "スケジュール", Icon: CalendarCheck2 },
-  { label: "軽減表", Icon: ShieldHalf },
-  { label: "ロット", Icon: Dice5 },
-  { label: "攻略", Icon: BookOpen },
-  { label: "動画", Icon: Film },
-  { label: "練習ログ", Icon: Activity },
-] as const;
+  { key: "schedule", Icon: CalendarCheck2 },
+  { key: "mitigation", Icon: ShieldHalf },
+  { key: "loot", Icon: Dice5 },
+  { key: "guide", Icon: BookOpen },
+  { key: "video", Icon: Film },
+  { key: "logs", Icon: Activity },
+] as const satisfies ReadonlyArray<{
+  key: keyof Messages["login"]["features"];
+  Icon: unknown;
+}>;
 
 export default async function LoginPage({
   searchParams,
@@ -47,7 +54,8 @@ export default async function LoginPage({
   searchParams: Promise<{ next?: string; error?: string }>;
 }) {
   const { next, error } = await searchParams;
-  const errorMessage = describeError(error);
+  const m = await getMessages();
+  const errorMessage = describeError(error, m);
 
   return (
     <main className="relative flex min-h-screen w-full flex-col items-center justify-center px-4 py-12">
@@ -81,28 +89,28 @@ export default async function LoginPage({
 
         <div className="flex flex-col items-center gap-2 text-center">
           <p className="font-mono text-[11px] tracking-[0.34em] text-[var(--neon-cyan)]">
-            FFXIV STATIC PORTAL
+            {m.login.kicker}
           </p>
           <h1
             id="login-title"
             className="font-display text-[1.55rem] leading-tight tracking-[0.2em] text-foreground sm:text-[1.75rem]"
           >
-            RAID REPOSITORY
+            {m.common.appName}
           </h1>
           {/* 改行位置は固定 (1 行目を短く、2 行目に「〜を、固定の 8 人で 1 か所に。」を
               まとめる)。各行を inline-block にして、行の途中で折れないようにする。 */}
           <p className="max-w-[20rem] text-[13px] leading-relaxed text-muted-foreground">
-            <span className="inline-block">スケジュール・軽減表・ロット・攻略・</span>
-            <span className="inline-block">動画・練習ログを、固定の 8 人で 1 か所に。</span>
+            <span className="inline-block">{m.login.taglineLine1}</span>
+            <span className="inline-block">{m.login.taglineLine2}</span>
           </p>
         </div>
 
         <LoginButton next={next ?? "/"} />
 
         <p className="text-center text-[11px] leading-relaxed text-muted-foreground/85">
-          このポータルは Discord サーバーのメンバー限定です。
+          {m.login.memberOnlyLine1}
           <br />
-          参加済みの Discord アカウントでログインしてください。
+          {m.login.memberOnlyLine2}
         </p>
 
         {errorMessage && (
@@ -115,38 +123,42 @@ export default async function LoginPage({
         )}
 
         <ul
-          aria-label="ポータルに含まれる機能"
+          aria-label={m.login.featuresAria}
           className="flex flex-wrap justify-center gap-1.5 border-t border-border/40 pt-5"
         >
-          {FEATURES.map(({ label, Icon }) => (
+          {FEATURES.map(({ key, Icon }) => (
             <li
-              key={label}
+              key={key}
               className="inline-flex items-center gap-1 rounded-sm border border-border/50 bg-background/30 px-2 py-1 text-[11px] text-muted-foreground"
             >
               <Icon className="h-3 w-3 text-[var(--neon-cyan)]/80" aria-hidden />
-              {label}
+              {m.login.features[key]}
             </li>
           ))}
         </ul>
       </section>
 
-      <p className="mt-6 font-mono text-[10px] tracking-[0.22em] text-muted-foreground/60 uppercase">
-        v{LATEST_RELEASE_META.version} · {LATEST_RELEASE_META.date}
-      </p>
+      <div className="mt-6 flex flex-col items-center gap-3">
+        {/* 2026-09-06: 表示言語。未ログインでも切り替えられるようここに置く。 */}
+        <LocaleSwitcher size="sm" />
+        <p className="font-mono text-[10px] tracking-[0.22em] text-muted-foreground/60 uppercase">
+          v{LATEST_RELEASE_META.version} · {LATEST_RELEASE_META.date}
+        </p>
+      </div>
     </main>
   );
 }
 
-function describeError(code: string | undefined): string | null {
+function describeError(code: string | undefined, m: Messages): string | null {
   switch (code) {
     case undefined:
     case "":
       return null;
     case "missing_code":
-      return "認可コードが届きませんでした。もう一度お試しください。";
+      return m.login.errorMissingCode;
     case "exchange_failed":
-      return "Supabase とのセッション交換に失敗しました。";
+      return m.login.errorExchangeFailed;
     default:
-      return `エラー: ${code}`;
+      return m.login.errorGeneric(code);
   }
 }

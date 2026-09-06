@@ -2,6 +2,7 @@
 
 import { useSyncExternalStore } from "react";
 import { formatCountdown } from "@/lib/schedule/attendance-times";
+import { useLocale, useMessages } from "@/lib/i18n/client";
 
 /**
  * 次回開催カードの「開始まで N 時間 M 分」(2026-09-06、調査ノート第 4 回 W-14)。
@@ -53,8 +54,10 @@ export function SessionCountdown({
   className?: string;
 }) {
   const now = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+  const locale = useLocale();
+  const m = useMessages();
   if (now === 0) return null;
-  const label = formatCountdown(startMs, now);
+  const label = formatCountdown(startMs, now, locale);
   if (!label) return null;
   return (
     <span
@@ -62,7 +65,7 @@ export function SessionCountdown({
         "font-mono text-[11px] tracking-normal whitespace-nowrap text-muted-foreground tabular-nums " +
         className
       }
-      title="開始までの残り時間 (30 秒ごとに更新)"
+      title={m.schedule.countdownTitle}
     >
       {label}
     </span>

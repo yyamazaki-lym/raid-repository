@@ -22,6 +22,7 @@ import type { NextSessionResult, ScheduleFetchResult } from "@/lib/schedule/next
 import type { SessionLogEntry } from "@/lib/schedule/session-logs";
 import type { ScheduleSourceMode } from "@/lib/schedule/source-mode";
 import type { SessionVideoLink } from "@/lib/server/session-video-link";
+import { useMessages } from "@/lib/i18n/client";
 
 /**
  * Client wrapper that owns the past-sessions visibility state and
@@ -141,6 +142,7 @@ export function SchedulePageBody({
   nativeDefaultStartTime = null,
   nativeDefaultEndTime = null,
 }: Props) {
+  const m = useMessages();
   // 2026-07-12 監査 C-3: recruitment_templates の realtime 購読はここで
   // 1 本だけ張り、live 値を RecruitmentTemplatesButton /
   // RecruitmentTopCopyButton の両方へ props で配る。従来は両ボタンが
@@ -205,12 +207,12 @@ export function SchedulePageBody({
             onPin={() => setPinnedSimple((v) => !v)}
             onHover={() => {}}
             ariaLabel={
-              pinnedSimple ? "過去の活動 (簡易) を隠す" : "過去の活動 (簡易)"
+              pinnedSimple ? m.schedule.pastSimpleHide : m.schedule.pastSimpleShow
             }
             title={
               pinnedSimple
-                ? "過去の活動 (簡易) — 表示中"
-                : "過去の活動 (簡易) — 直近の日付チップ"
+                ? m.schedule.pastSimpleTitleOn
+                : m.schedule.pastSimpleTitleOff
             }
             Icon={History}
           />
@@ -224,14 +226,12 @@ export function SchedulePageBody({
             onPin={() => setPinnedDetail((v) => !v)}
             onHover={setHoveredDetail}
             ariaLabel={
-              pinnedDetail
-                ? "過去の活動 (詳細) を隠す"
-                : "過去の活動 (詳細)"
+              pinnedDetail ? m.schedule.pastDetailHide : m.schedule.pastDetailShow
             }
             title={
               pinnedDetail
-                ? "過去の活動 (詳細) — 表示中"
-                : "過去の活動 (詳細) — 出席者付きの全件表"
+                ? m.schedule.pastDetailTitleOn
+                : m.schedule.pastDetailTitleOff
             }
             Icon={Table}
           />
@@ -255,8 +255,8 @@ export function SchedulePageBody({
               href={scheduleUrl}
               target="_blank"
               rel="noopener noreferrer"
-              aria-label="元サイトを開く"
-              title="元サイトを開く"
+              aria-label={m.schedule.openSource}
+              title={m.schedule.openSource}
               className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border/60 text-muted-foreground transition-colors hover:border-[var(--neon-cyan)]/60 hover:text-foreground"
             >
               <ExternalLink className="h-4 w-4" aria-hidden />

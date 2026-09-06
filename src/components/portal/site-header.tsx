@@ -9,6 +9,7 @@ import { SettingsDialog } from "./settings-dialog-lazy";
 import { DeployColorBadge } from "./deploy-color-badge";
 import { OnlinePresenceIndicator } from "./online-presence-indicator";
 import { LATEST_RELEASE_META } from "@/lib/changelog-meta";
+import { getMessages } from "@/lib/i18n/server";
 import {
   getCurrentUserCanEdit,
   getCurrentUserPresenceKey,
@@ -125,13 +126,14 @@ export async function SiteHeader() {
   // なく不可逆ハッシュ — presence チャンネルは anon でも join でき presenceState()
   // でキーが列挙されるため、生 ID を client に渡さない (auth.ts の docstring 参照)。
   const presenceKey = await getCurrentUserPresenceKey();
+  const m = await getMessages();
   return (
     <header className="glass-bar sticky top-0 z-30">
       <div className="mx-auto flex h-[var(--header-h)] max-w-5xl items-center gap-3 px-4 sm:px-6">
         <Link
           href="/"
           className="group flex items-center gap-2.5"
-          aria-label="Raid Repository home"
+          aria-label={m.header.homeAria}
         >
           {/* 2026-09-06: ロゴマーク (public/brand/logo-mark.svg)。マーク自体が
               角丸のタイルなので枠は付けず、後光だけ残す。 */}
@@ -148,7 +150,7 @@ export async function SiteHeader() {
           </span>
           <div className="flex flex-col gap-0.5 leading-none">
             <span className="font-display text-[13px] font-semibold tracking-[0.2em] text-foreground sm:text-sm">
-              RAID REPOSITORY
+              {m.common.appName}
             </span>
             <DeployColorBadge
               hashColor={HASH_COLOR}

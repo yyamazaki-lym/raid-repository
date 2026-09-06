@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Loader2, LogIn } from "lucide-react";
+import { useMessages } from "@/lib/i18n/client";
 
 /**
  * Discord OAuth でサインインするだけのボタン。
@@ -16,6 +17,7 @@ import { Loader2, LogIn } from "lucide-react";
  *   `guilds` / `guilds.members.read` は要らない (= 同意画面が短くなる)。
  */
 export function LoginButton({ next }: { next: string }) {
+  const m = useMessages();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -63,7 +65,7 @@ export function LoginButton({ next }: { next: string }) {
         ) : (
           <LogIn className="h-4 w-4" aria-hidden />
         )}
-        {loading ? "Discord へ移動中…" : "Discord でログイン"}
+        {loading ? m.login.buttonBusy : m.login.button}
       </button>
       {error && (
         <div

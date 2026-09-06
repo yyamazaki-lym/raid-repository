@@ -1,9 +1,11 @@
 import Image from "next/image";
 import Link from "next/link";
+import { getMessages } from "@/lib/i18n/server";
 
-export const metadata = {
-  title: "アクセス権がありません",
-};
+export async function generateMetadata() {
+  const m = await getMessages();
+  return { title: m.denied.title };
+}
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +15,7 @@ export default async function DeniedPage({
   searchParams: Promise<{ reason?: string }>;
 }) {
   const { reason } = await searchParams;
+  const m = await getMessages();
   const isMissingRole = reason === "missing_role";
   const isNotAdmin = reason === "not_admin";
   const isAuthenticated = isMissingRole || isNotAdmin;
@@ -36,9 +39,9 @@ export default async function DeniedPage({
         // TODO #21 (2.1): admin role-gated edit. The user is authenticated
         // and a guild member but lacks any of the DISCORD_ADMIN_ROLE_IDS.
         <p className="text-sm text-muted-foreground">
-          この操作は管理者ロールを持つメンバー限定。
+          {m.denied.notAdminLine1}
           <br />
-          サーバー管理者に管理者ロール付与を依頼してください。
+          {m.denied.notAdminLine2}
         </p>
       ) : isMissingRole ? (
         // TODO #19: role-gated category. The user is authenticated and a
@@ -46,15 +49,15 @@ export default async function DeniedPage({
         // 1 行目は「です」を省いて言い切り型に — max-w-md の幅で 2 行折り
         // 返しになると「です。」だけが孤立して見苦しくなるため。
         <p className="text-sm text-muted-foreground">
-          このコンテンツは特定の Discord ロールを持つメンバー限定。
+          {m.denied.missingRoleLine1}
           <br />
-          サーバー管理者にロール付与を依頼してください。
+          {m.denied.missingRoleLine2}
         </p>
       ) : (
         <p className="text-sm text-muted-foreground">
-          このポータルは指定 Discord サーバーのメンバー限定です。
+          {m.denied.notMemberLine1}
           <br />
-          対象サーバーに参加してから、もう一度ログインしてください。
+          {m.denied.notMemberLine2}
         </p>
       )}
       {reason && (
@@ -68,14 +71,14 @@ export default async function DeniedPage({
             href="/"
             className="inline-flex h-10 items-center justify-center rounded-md border border-border/40 bg-background/40 px-4 text-sm text-foreground transition hover:bg-background/60"
           >
-            スケジュールへ戻る
+            {m.denied.backToSchedule}
           </Link>
         )}
         <Link
           href="/login"
           className="inline-flex h-10 items-center justify-center rounded-md border border-primary/40 bg-background/40 px-4 text-sm text-foreground transition hover:bg-background/60"
         >
-          {isAuthenticated ? "別アカでログイン" : "ログインに戻る"}
+          {isAuthenticated ? m.denied.loginAsOther : m.denied.backToLogin}
         </Link>
       </div>
     </main>
