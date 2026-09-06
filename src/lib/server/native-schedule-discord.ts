@@ -460,10 +460,12 @@ async function buildMessage(
       "{site_url}": siteUrl,
       "{discord_time}": discordTime,
       "{discord_relative}": discordRelative,
+      // 括弧付きの相対表記。解釈できないときは括弧ごと消える。
+      "{discord_relative_block}": discordRelative ? ` (${discordRelative})` : "",
     };
     return template
       .replace(
-        /\{(mention|date|day|time_start|time_end|note|note_block|attendance|site_url|discord_time|discord_relative)\}/g,
+        /\{(mention|date|day|time_start|time_end|note|note_block|attendance|site_url|discord_time|discord_relative|discord_relative_block)\}/g,
         (m) => replacements[m] ?? "",
       )
       // placeholder が空になった行末の空白を落とす (見た目の揺れ防止)。

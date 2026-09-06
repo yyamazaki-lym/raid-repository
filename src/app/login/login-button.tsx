@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Loader2, LogIn } from "lucide-react";
 
 /**
  * Discord OAuth でサインインするだけのボタン。
@@ -48,13 +49,21 @@ export function LoginButton({ next }: { next: string }) {
 
   return (
     <div className="flex w-full flex-col gap-2">
+      {/* 2026-09-06 再設計: Discord のブランド色 (blurple) はそのまま、
+          高さ 12、角丸、hover で 1px 浮く。押下中は spinner。 */}
       <button
         type="button"
         onClick={onClick}
         disabled={loading}
-        className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-md border border-primary/40 bg-[#5865F2] px-4 text-sm font-medium text-white shadow-[0_0_18px_-4px_rgba(88,101,242,0.6)] transition hover:bg-[#4752C4] disabled:cursor-not-allowed disabled:opacity-60"
+        aria-busy={loading}
+        className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#5865F2] px-4 text-[14px] font-medium tracking-wide text-white shadow-[0_8px_24px_-10px_rgba(88,101,242,0.9),inset_0_1px_0_rgba(255,255,255,0.18)] transition hover:-translate-y-px hover:bg-[#4f5be6] focus-visible:ring-2 focus-visible:ring-[#5865F2]/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
       >
-        {loading ? "…" : "Discord でログイン"}
+        {loading ? (
+          <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+        ) : (
+          <LogIn className="h-4 w-4" aria-hidden />
+        )}
+        {loading ? "Discord へ移動中…" : "Discord でログイン"}
       </button>
       {error && (
         <div

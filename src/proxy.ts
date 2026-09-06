@@ -59,6 +59,11 @@ const PUBLIC_PATHS = new Set<string>([
 // 前方一致で公開するパス
 const PUBLIC_PREFIXES = [
   "/api/cron/", // Vercel Cron — CRON_SECRET で別途認証
+  // 2026-09-06: ロゴ (public/brand/*.svg)。/login・/auth/denied・splash.html
+  // が未ログイン状態で参照するため、認証前に配信できる必要がある。matcher の
+  // 静的ファイル除外はルート直下 (`[^/]+\.svg`) にしか効かない。中身は
+  // ユーザーデータを含まない完全静的な画像で、公開度は favicon と同等。
+  "/brand/",
 ];
 
 function isPublicPath(pathname: string): boolean {

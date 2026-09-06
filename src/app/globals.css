@@ -724,6 +724,32 @@
   text-transform: uppercase;
 }
 
+/* ログイン画面のロゴ後光 (2026-09-06)。テーマの accent (--neon-cyan) を
+ * 中心に置いた放射グラデーションを 8 秒周期で呼吸させる。色はテーマ変数
+ * 経由なので 7 テーマそれぞれの accent 色で光る。reduced-motion では
+ * motion-reduce:animate-none (Tailwind) で静止させ、下の media でも保険。 */
+.login-glow {
+  background: radial-gradient(
+    closest-side,
+    color-mix(in oklch, var(--neon-cyan) 22%, transparent),
+    color-mix(in oklch, var(--neon-cyan) 6%, transparent) 55%,
+    transparent 100%
+  );
+  filter: blur(24px);
+  animation: login-glow 8s ease-in-out infinite;
+}
+@keyframes login-glow {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(0.92);
+  }
+  50% {
+    opacity: 0.9;
+    transform: scale(1.04);
+  }
+}
+
 /* Animate the grid drift gently. */
 @keyframes drift {
   0% {
@@ -804,7 +830,8 @@
  * ============================================================ */
 @media (prefers-reduced-motion: reduce) {
   .bg-grid-animate,
-  .bg-scanlines {
+  .bg-scanlines,
+  .login-glow {
     animation: none !important;
   }
   .link-pending-dot.is-pending {

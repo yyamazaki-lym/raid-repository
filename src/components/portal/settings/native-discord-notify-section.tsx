@@ -366,12 +366,15 @@ export function NativeDiscordNotifySection({
           <code className="ml-1 font-mono">{`{attendance}`}</code>,
           <code className="ml-1 font-mono">{`{site_url}`}</code>,
           <code className="ml-1 font-mono">{`{discord_time}`}</code>,
-          <code className="ml-1 font-mono">{`{discord_relative}`}</code>
+          <code className="ml-1 font-mono">{`{discord_relative}`}</code>,
+          <code className="ml-1 font-mono">{`{discord_relative_block}`}</code>
           <br />
           <code className="font-mono">{`{discord_time}`}</code> /
           <code className="ml-1 font-mono">{`{discord_relative}`}</code> は
           Discord が読む側のタイムゾーンで「9月8日(火) 21:00」「3 時間後」に
           置き換える表記です。
+          <code className="ml-1 font-mono">{`{discord_relative_block}`}</code> は
+          括弧付きの相対表記で、日付が読めないときは括弧ごと省略されます。
           <br />
           空欄で保存すると既定 (現行の hardcode フォーマット) に戻ります。
           <code className="font-mono">{`{note_block}`}</code> は note 有無で
