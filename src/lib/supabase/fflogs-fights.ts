@@ -9,6 +9,9 @@ import {
   summarizeWipe,
   type StoredDeathEvent,
   type StoredPhaseTransition,
+  phaseTimeTotals,
+  type PhaseSpan,
+  type PhaseTimeTotal,
 } from "@/lib/fflogs-fight-detail";
 
 /**
@@ -277,4 +280,56 @@ function rethrowNextSentinel(err: unknown): void {
       throw err;
     }
   }
+}
+
+/**
+ * カテゴリの **全 pull** のフェーズ滞在時間 (2026-09-07)。
+ *
+ * 練習ログの「フェーズ滞在時間」カードは、明細が MAX_FIGHTS で打ち切られる
+ * カテゴリでは表示中の pull だけの合計になっていた (実機: 絶竜詩 1047 pull
+ * で「表示中の分」)。ここでは軽い列 (開始 / 終了 / フェーズ遷移 jsonb) だけを
+ * 1000 件ずつ全件読み、`phaseSpans` → `phaseTimeTotals` で合計する。
+ * 絶 (フェーズ管理コンテンツ) のページからだけ呼ぶ。
+ *
+ * 戻り値の `pulls` は区間が取れた pull 数 (= 合計の母数)。フェーズ遷移が
+ * 保存されていない pull (古い同期分) は数えない。
+ */
+export async function fetchCategoryPhaseTotals(
+  categoryId: string,
+): Promise<{ totals: PhaseTimeTotal[]; pulls: number } | null> {
+  const supabase = await createClient();
+  const PAGE = 1000;
+  const MAX_PAGES = 20;
+  const spansList: Array<PhaseSpan[] | null> = [];
+  try {
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const { data, error } = await supabase
+        .from("fflogs_fights")
+        .select("start_ms, end_ms, phase_transitions")
+        .eq("category_id", categoryId)
+        .not("phase_transitions", "is", null)
+        .order("start_ms", { ascending: false })
+        .range(page * PAGE, page * PAGE + PAGE - 1);
+      if (error) {
+        console.warn("[fflogs-fights] phase totals fetch failed:", error.message);
+        return null;
+      }
+      const rows = (data ?? []) as Array<Record<string, unknown>>;
+      for (const r of rows) {
+        const startMs = Number(r.start_ms);
+        const endMs = Number(r.end_ms);
+        if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) continue;
+        spansList.push(
+          phaseSpans(asPhaseTransitions(r.phase_transitions), Math.max(0, endMs - startMs)),
+        );
+      }
+      if (rows.length < PAGE) break;
+    }
+  } catch (e) {
+    console.warn("[fflogs-fights] phase totals fetch threw:", e);
+    return null;
+  }
+  const totals = phaseTimeTotals(spansList);
+  if (totals.length === 0) return null;
+  return { totals, pulls: spansList.filter((s) => s !== null).length };
 }

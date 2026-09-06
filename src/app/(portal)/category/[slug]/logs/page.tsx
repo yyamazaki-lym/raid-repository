@@ -5,6 +5,7 @@ import {
   fetchCategoryFights,
   fetchFailedReportSyncs,
   fetchReportVideoLinks,
+  fetchCategoryPhaseTotals,
 } from "@/lib/supabase/fflogs-fights";
 import { isUltimateContent } from "@/lib/content-groups";
 import { LogsView } from "./logs-view";
@@ -44,12 +45,17 @@ export default async function LogsPage({
   // 監査 P3-m: enabled=false のタブはナビから除外されるが直 URL では描画される。
   if (category.tabConfig?.["logs"]?.enabled === false) notFound();
 
-  const { fights, totalPulls, totalClears, truncated } =
-    await fetchCategoryFights(category.id, {
-      // フェーズ滞在区間は絶 (フェーズ管理コンテンツ) だけ表示に使う。
-      includePhases: isUltimateContent(category.name),
-      ultimate: isUltimateContent(category.name),
-    });
+  const ultimate = isUltimateContent(category.name);
+  // フェーズ滞在時間の全件集計 (2026-09-07) は明細と独立なので並列に取る。
+  const [{ fights, totalPulls, totalClears, truncated }, phaseTotalsAll] =
+    await Promise.all([
+      fetchCategoryFights(category.id, {
+        // フェーズ滞在区間は絶 (フェーズ管理コンテンツ) だけ表示に使う。
+        includePhases: ultimate,
+        ultimate,
+      }),
+      ultimate ? fetchCategoryPhaseTotals(category.id) : Promise.resolve(null),
+    ]);
   const codes = Array.from(new Set(fights.map((f) => f.reportCode)));
   const [videoLinks, failedSyncs] = await Promise.all([
     fetchReportVideoLinks(codes),
@@ -65,6 +71,7 @@ export default async function LogsPage({
       totalPulls={totalPulls}
       totalClears={totalClears}
       truncated={truncated}
+      phaseTotalsAll={phaseTotalsAll}
       videoLinks={videoLinks}
       failedSyncs={failedSyncs}
       canEdit={canEdit}
