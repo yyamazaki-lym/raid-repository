@@ -169,9 +169,17 @@ function decodeXmlText(s: string): string {
     .replace(/&amp;/g, "&");
 }
 
-/** zip 内の相対パス解決 (`xl/worksheets/_rels/..` から `../drawings/d.xml`)。 */
+/**
+ * zip 内の相対パス解決 (`xl/worksheets/_rels/..` から `../drawings/d.xml`)。
+ *
+ * OPC の `Target` は `/xl/media/image1.png` のようにパッケージ root 起点の
+ * 絶対形も許されている (ECMA-376 Part 2 §9.3.1)。Google スプレッドシートの
+ * 書き出しは相対形だが、他ツールで保存し直した xlsx は絶対形になることが
+ * あり、旧実装はこれを base の下に連結して `xl/worksheets/xl/media/...` を
+ * 探していた (画像が 1 枚も拾えない)。先頭 `/` は root 起点として扱う。
+ */
 export function resolveZipPath(baseFile: string, rel: string): string {
-  const parts = baseFile.split("/").slice(0, -1);
+  const parts = rel.startsWith("/") ? [] : baseFile.split("/").slice(0, -1);
   for (const seg of rel.split("/")) {
     if (seg === "..") parts.pop();
     else if (seg !== "." && seg !== "") parts.push(seg);

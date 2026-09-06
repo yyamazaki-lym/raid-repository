@@ -492,13 +492,17 @@ export async function syncFflogsFights(opts?: {
   let cursor = 0;
   const runWorker = async (): Promise<void> => {
     for (;;) {
+      const index = cursor;
+      cursor += 1;
+      if (index >= sliced.length) return;
+      // 時間予算の判定は「まだ処理していないレポートが残っている」ときだけ
+      // truncated を立てる。全件を処理し終えた直後に予算を超えていても、
+      // 取り残しは無いので打ち切り扱いにしない (旧実装は最後の 1 件の
+      // 直後で常に truncated=true になり得て、設定画面に「時間切れ」と出ていた)。
       if (Date.now() > deadlineAtMs) {
         truncated = true;
         return;
       }
-      const index = cursor;
-      cursor += 1;
-      if (index >= sliced.length) return;
       await processReport(sliced[index]!);
     }
   };

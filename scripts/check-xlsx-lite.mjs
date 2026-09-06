@@ -195,6 +195,16 @@ try {
     "xl/media/image1.png",
   );
   check(
+    "絶対 Target (パッケージ root 起点) を解決する",
+    mod.resolveZipPath("xl/drawings/drawing1.xml", "/xl/media/image1.png"),
+    "xl/media/image1.png",
+  );
+  check(
+    "絶対 Target の `..` は root で止まる",
+    mod.resolveZipPath("xl/worksheets/_rels/sheet1.xml.rels", "/../xl/drawings/d.xml"),
+    "xl/drawings/d.xml",
+  );
+  check(
     "twoCell/oneCell 両方から行・列を取る",
     mod.parseDrawingAnchors(drawing, mod.parseRels(drawingRels), "xl/drawings/drawing1.xml"),
     [
