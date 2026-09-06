@@ -29,6 +29,13 @@ const MAX_BYTES = 3 * 1024 * 1024;
 const TTL_MS = 24 * 60 * 60 * 1000;
 /** 1 回の実行で取りに行くジョブページ数の上限 (時間予算の保険)。 */
 const MAX_JOB_PAGES = 24;
+/**
+ * ジョブページの同時取得数。旧実装は完全直列で、公式サイトが遅いと
+ * 24 ページ × 8 秒 = 最大 192 秒まで Server Action が伸びていた
+ * (Vercel の関数上限を超えてタイムアウトし、結果も残らない)。
+ * 4 並列なら最悪でも 48 秒で、公式サイトへの負荷としても控えめ。
+ */
+const CONCURRENCY = 4;
 
 let cache: { at: number; map: Map<string, string> } | null = null;
 
@@ -40,8 +47,22 @@ export async function fetchJobguideIconNames(): Promise<Map<string, string>> {
     const indexHtml = await fetchText(JOBGUIDE_INDEX);
     if (indexHtml) {
       const jobPaths = extractJobPaths(indexHtml).slice(0, MAX_JOB_PAGES);
-      for (const path of jobPaths) {
-        const html = await fetchText(`${JOBGUIDE_BASE}${path}`);
+      // 取得だけ並列にし、map への書き込みはページ順に行う (先勝ちの
+      // 決定性を直列版と揃えるため)。
+      const pages = new Array<string | null>(jobPaths.length).fill(null);
+      let cursor = 0;
+      const worker = async (): Promise<void> => {
+        for (;;) {
+          const i = cursor;
+          cursor += 1;
+          if (i >= jobPaths.length) return;
+          pages[i] = await fetchText(`${JOBGUIDE_BASE}${jobPaths[i]}`);
+        }
+      };
+      await Promise.all(
+        Array.from({ length: Math.min(CONCURRENCY, jobPaths.length) }, worker),
+      );
+      for (const html of pages) {
         if (!html) continue;
         for (const [key, name] of extractIconNamePairs(html)) {
           if (!map.has(key)) map.set(key, name);

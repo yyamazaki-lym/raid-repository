@@ -161,7 +161,13 @@ export default async function MitigationPage({
       <MitigationColumnsDialog
         categoryId={category.id}
         gid={activeGid ?? ""}
-        columns={diagnoseSheetColumns(table.table, ignoreRows)}
+        // 見出し行が無ければ firstPass と同じ結果になるので再スキャンしない
+        // (表は数百行 × 数十列になることがある)。
+        columns={
+          ignoreRows.size > 0
+            ? diagnoseSheetColumns(table.table, ignoreRows)
+            : firstPass
+        }
         initialLabels={manualLabels}
         autoLabels={autoLabels}
       />
