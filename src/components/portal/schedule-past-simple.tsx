@@ -21,6 +21,7 @@ import {
   SessionMemoPopover,
   type SessionMemoPopoverHandle,
 } from "./session-memo-popover-lazy";
+import { useMessages } from "@/lib/i18n/client";
 
 // Stable reference for the realtime hook's initial param. Passing `[]`
 // inline creates a fresh array on every render, which trips the hook's
@@ -67,6 +68,7 @@ export function SchedulePastSimple({
   /** TODO #11: server prefetched memos (rawDate → memos[]) */
   initialMemosByDate?: Record<string, ScheduleSessionMemo[]>;
 }) {
+  const m = useMessages();
   // TODO #11 phase 7: 親で 1 channel だけ subscribe (旧: 各 DateChip が個別)。
   const { memosByDate, refetchAll: refetchMemos } =
     useRealtimeAllScheduleMemos(initialMemosByDate);
@@ -100,11 +102,11 @@ export function SchedulePastSimple({
           <span className="inline-flex h-1.5 w-1.5 rounded-full bg-muted-foreground/60" />
           Past
           <span className="font-sans text-[11px] tracking-normal normal-case text-muted-foreground/85">
-            · 簡易ログ (日付チップ)
+            {m.pastSimple.subtitle}
           </span>
         </div>
         <span className="text-[10px] tabular-nums text-muted-foreground/80">
-          直近 {recent.length} 件
+          {m.pastSimple.recentCount(recent.length)}
         </span>
       </header>
       <ul className="flex flex-wrap gap-1.5 px-3 py-2.5">
@@ -151,6 +153,7 @@ function DateChip({
   /** Server-action 後の保険 refetch (旧 useRealtimeScheduleMemos の refetch 互換)。 */
   onRefreshMemos: () => Promise<void>;
 }) {
+  const msg = useMessages();
   // Ref to the popover so the (separately-rendered) memo dot can
   // open it. Keeping the dot outside the popover wrapper preserves
   // the chip's left-to-right reading order: date → icons → dot.
@@ -167,9 +170,17 @@ function DateChip({
   // session.date object if the rawDate string doesn't match — that
   // way client-rendered timezone differences don't surface as bugs.
   const m = session.rawDate.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})/);
-  const monthDay = m
-    ? `${parseInt(m[2]!, 10)}月${parseInt(m[3]!, 10)}日`
-    : `${session.date.getMonth() + 1}月${session.date.getDate()}日`;
+  const chipDate = m
+    ? msg.pastSimple.chipDate(
+        parseInt(m[2]!, 10),
+        parseInt(m[3]!, 10),
+        session.dayOfWeek,
+      )
+    : msg.pastSimple.chipDate(
+        session.date.getMonth() + 1,
+        session.date.getDate(),
+        session.dayOfWeek,
+      );
 
   // 祝日は文字色のみ rose にし、border / bg は他の日付チップと揃える
   // (祝日かどうかの違いを枠まで主張すると、確定済 (cyan) との視覚的
@@ -185,9 +196,9 @@ function DateChip({
   const hasVideos = videoLinks.length > 0;
   const hasFallbackLogs = sessionLogs.length > 0;
   const hasVideoLogs = videoLinks.some((v) => Boolean(v.logsUrl));
-  const tooltip = `${session.rawDate}${decided ? " · 確定" : ""}${
-    holidayName ? " · " + holidayName : holiday ? " · 祝日" : ""
-  }${hasVideos ? ` · 動画 ${videoLinks.length} 件` : ""}${
+  const tooltip = `${session.rawDate}${decided ? msg.pastSimple.tipDecided : ""}${
+    holidayName ? " · " + holidayName : holiday ? msg.pastSimple.tipHoliday : ""
+  }${hasVideos ? msg.pastSimple.tipVideos(videoLinks.length) : ""}${
     !hasVideoLogs && hasFallbackLogs ? " · FFLogs" : ""
   }`;
 
@@ -222,7 +233,7 @@ function DateChip({
       <SessionMemoPopover
         ref={popoverRef}
         rawDate={session.rawDate}
-        displayDate={`${monthDay}（${session.dayOfWeek}）`}
+        displayDate={chipDate}
         memos={memos}
         onRefresh={onRefreshMemos}
         sessionLogs={sessionLogs}
@@ -233,9 +244,7 @@ function DateChip({
           dayOfWeek: session.dayOfWeek,
         }}
       >
-        <span className="tabular-nums">
-          {monthDay}（{session.dayOfWeek}）
-        </span>
+        <span className="tabular-nums">{chipDate}</span>
       </SessionMemoPopover>
       {/* TODO #65: chip と詳細テーブルで同じ 0/1/2+ 分岐を共有。
           chip 用に `size="compact"` (h-4/h-2.5) + `placeholder={false}`
@@ -244,7 +253,7 @@ function DateChip({
         videoLinks={videoLinks}
         sessionLogs={sessionLogs}
         isPast
-        displayDate={`${monthDay}（${session.dayOfWeek}）`}
+        displayDate={chipDate}
         size="compact"
         placeholder={false}
       />

@@ -58,18 +58,45 @@ export const ATT_LABEL_DICT: Record<string, string> = {
 };
 
 /**
+ * 英語表示用の凡例ラベル (2026-09-06、表示言語 第 2 段)。純関数モジュール
+ * なので辞書 (`@/lib/i18n/messages`) は import せず、locale 引数で選ぶ。
+ */
+export const ATT_LABEL_DICT_EN: Record<string, string> = {
+  "◯": "Available",
+  "○": "Available",
+  "⏰": "Late",
+  "△": "Undecided",
+  "×": "Unavailable",
+  "－": "No answer",
+  "全": "All day",
+  "昼": "Daytime",
+  "夜": "Night",
+  "早": "Early morning",
+};
+
+/** 記号 → 表示言語に応じた説明ラベル。マッピング外は null。 */
+export function getAttendanceLabel(
+  symbol: string,
+  locale: "ja" | "en" = "ja",
+): string | null {
+  const dict = locale === "en" ? ATT_LABEL_DICT_EN : ATT_LABEL_DICT;
+  return dict[symbol] ?? null;
+}
+
+/**
  * 凡例エントリを構築。`/schedule/edit` の `choiceValues` 由来の選択肢
  * を先頭に並べ、末尾に固定で `×` `－` を追加。choices が空 (取得失敗)
  * のときは標準 5 種 (◯⏰△×－) にフォールバック。
  */
 export function buildAttendanceLegend(
   choices: readonly string[],
+  locale: "ja" | "en" = "ja",
 ): { symbol: Attendance; label: string | null }[] {
   const filtered = choices.filter((c) => c !== "×" && c !== "－" && c !== "");
   const ordered =
     filtered.length > 0 ? [...filtered, "×", "－"] : ["◯", "⏰", "△", "×", "－"];
   return ordered.map((symbol) => ({
     symbol,
-    label: ATT_LABEL_DICT[symbol] ?? null,
+    label: getAttendanceLabel(symbol, locale),
   }));
 }

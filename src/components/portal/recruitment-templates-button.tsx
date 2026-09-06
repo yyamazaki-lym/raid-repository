@@ -12,6 +12,7 @@ import {
 import { type RecruitmentTemplate } from "@/lib/recruitment-templates-client";
 import { cn } from "@/lib/utils";
 import type { CategoryOption } from "./recruitment-templates-popover-body";
+import { useMessages } from "@/lib/i18n/client";
 
 /**
  * Header button on the schedule page that exposes saved PT-募集 text
@@ -33,6 +34,16 @@ import type { CategoryOption } from "./recruitment-templates-popover-body";
  * 走っていた)。
  */
 
+/** dynamic import 中の placeholder (表示言語に追従させるため component 化)。 */
+function PopoverBodyLoading() {
+  const m = useMessages();
+  return (
+    <div className="px-2 py-3 text-center text-[11px] text-muted-foreground">
+      {m.common.loading}
+    </div>
+  );
+}
+
 const RecruitmentTemplatesPopoverBody = dynamic(
   () =>
     import("./recruitment-templates-popover-body").then((m) => ({
@@ -40,11 +51,7 @@ const RecruitmentTemplatesPopoverBody = dynamic(
     })),
   {
     ssr: false,
-    loading: () => (
-      <div className="px-2 py-3 text-center text-[11px] text-muted-foreground">
-        読み込み中…
-      </div>
-    ),
+    loading: PopoverBodyLoading,
   },
 );
 
@@ -60,11 +67,12 @@ type Props = {
 };
 
 export function RecruitmentTemplatesButton({ templates, categories }: Props) {
+  const m = useMessages();
   return (
     <Popover>
       <PopoverTrigger
-        aria-label={`PT募集文を選択してコピー (${templates.length} 件)`}
-        title={`PT募集文 ${templates.length} 件 — クリックで一覧`}
+        aria-label={m.recruitment.pickAria(templates.length)}
+        title={m.recruitment.pickTitle(templates.length)}
         onMouseEnter={preloadPopoverBody}
         onFocus={preloadPopoverBody}
         className={cn(
@@ -107,6 +115,7 @@ export function RecruitmentTopCopyButton({
 }: {
   templates: RecruitmentTemplate[];
 }) {
+  const m = useMessages();
   const [hovered, setHovered] = useState(false);
   // Brief "just copied" state — flips the button to emerald + Check
   // icon for ~1.5s as visual confirmation. Toast is also fired but
@@ -120,16 +129,16 @@ export function RecruitmentTopCopyButton({
   // shows the recruitment button in context of "this is the next
   // session's recruitment text", so the category name is implicit
   // and adding it makes the tooltip / toast feel redundant.
-  const subLabel = top.label || "通常募集";
+  const subLabel = top.label || m.recruitment.defaultLabel;
 
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(top.body);
-      toast.success(`「${subLabel}」をコピーしました`);
+      toast.success(m.recruitment.copied(subLabel));
       setJustCopied(true);
       window.setTimeout(() => setJustCopied(false), 1500);
     } catch {
-      toast.error("コピー失敗");
+      toast.error(m.recruitment.copyFailed);
     }
   };
 
@@ -142,8 +151,8 @@ export function RecruitmentTopCopyButton({
       <button
         type="button"
         onClick={copy}
-        aria-label={`「${subLabel}」を募集文としてコピー`}
-        title={`${subLabel} をコピー`}
+        aria-label={m.recruitment.copyAria(subLabel)}
+        title={m.recruitment.copyTitle(subLabel)}
         className={
           "inline-flex h-7 items-center gap-1.5 rounded-md border px-2.5 text-[11px] tracking-normal transition-colors " +
           (justCopied
@@ -156,7 +165,7 @@ export function RecruitmentTopCopyButton({
         ) : (
           <ClipboardCopy className="h-3.5 w-3.5" aria-hidden />
         )}
-        {justCopied ? "コピー済み" : "募集"}
+        {justCopied ? m.recruitment.copiedButton : m.recruitment.button}
       </button>
       {hovered && (
         <div
@@ -166,7 +175,7 @@ export function RecruitmentTopCopyButton({
           {/* Sub-label only — category name is implicit (this is the
               top template; the user picked it as default). */}
           <p className="mb-1 text-[10px] tracking-normal text-[var(--neon-cyan)]">
-            ★ {top.label || "通常募集"}
+            ★ {subLabel}
           </p>
           <pre className="max-h-[14rem] overflow-y-auto font-mono text-[11px] leading-relaxed whitespace-pre-wrap text-foreground/90">
             {top.body}

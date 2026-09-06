@@ -1,5 +1,7 @@
 "use client";
 
+import { useMessages } from "@/lib/i18n/client";
+
 /**
  * Tiny purple dot indicator. Parent renders this wherever it wants
  * (e.g. trailing the time text rather than the date), so the visual
@@ -29,6 +31,7 @@ export function SessionMemoDot({
    */
   reserveSpace?: boolean;
 }) {
+  const m = useMessages();
   const dotClass =
     "inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--neon-violet)] shadow-[0_0_6px_var(--neon-violet)] transition-shadow";
   if (count <= 0) {
@@ -43,8 +46,8 @@ export function SessionMemoDot({
   if (!onClick) {
     return (
       <span
-        aria-label={`メモ ${count} 件`}
-        title={`メモ ${count} 件`}
+        aria-label={m.memo.countAria(count)}
+        title={m.memo.countAria(count)}
         className={`inline-flex h-4 w-4 shrink-0 items-center justify-center ${className}`}
       >
         <span aria-hidden className={dotClass} />
@@ -59,8 +62,8 @@ export function SessionMemoDot({
         e.stopPropagation();
         onClick();
       }}
-      aria-label={`メモ ${count} 件を開く`}
-      title={`メモ ${count} 件（クリックで開く）`}
+      aria-label={m.memo.countOpenAria(count)}
+      title={m.memo.countOpenTitle(count)}
       className={
         "group/memodot inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-[var(--neon-violet)]/18 " +
         className

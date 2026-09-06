@@ -11,7 +11,13 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import {
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -49,6 +55,21 @@ try {
     ],
     { stdio: "inherit" },
   );
+  // 2026-09-06: core が `./attendance-times` を import するようになった (W-14 の
+  // Discord 相対時刻)。tsc は拡張子なしのまま出力し Node の ESM は解決できない
+  // ため、出力された相対 import に `.js` を付ける (tsc は依存も同じ outDir に
+  // 一緒に出力している)。
+  for (const f of readdirSync(outDir)) {
+    if (!f.endsWith(".js")) continue;
+    const fp = join(outDir, f);
+    writeFileSync(
+      fp,
+      readFileSync(fp, "utf8").replace(
+        /(from\s+["'])(\.\.?\/[^"']+?)(?<!\.js)(["'])/g,
+        "$1$2.js$3",
+      ),
+    );
+  }
   const mod = await import(
     pathToFileURL(join(outDir, "attendance-reminder-core.js")).href
   );

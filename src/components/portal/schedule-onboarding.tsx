@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { setScheduleUrlAction } from "@/lib/server/categories-actions";
 import { httpUrlError } from "@/lib/url-validation";
+import { useMessages } from "@/lib/i18n/client";
 
 /**
  * Onboarding card shown on the schedule page when no source URL is configured.
@@ -17,6 +18,7 @@ import { httpUrlError } from "@/lib/url-validation";
  * resolve the missing config without opening the gear menu.
  */
 export function ScheduleOnboarding() {
+  const m = useMessages();
   const router = useRouter();
   const [url, setUrl] = useState("");
   const [busy, setBusy] = useState(false);
@@ -37,10 +39,10 @@ export function ScheduleOnboarding() {
     const result = await setScheduleUrlAction(url);
     setBusy(false);
     if (!result.ok) {
-      setError(result.reason ?? "保存に失敗しました");
+      setError(result.reason ?? m.onboarding.saveFailed);
       return;
     }
-    toast.success("スケジュールURLを保存しました（全員共有）");
+    toast.success(m.onboarding.toastSaved);
     router.refresh();
   };
 
@@ -52,12 +54,12 @@ export function ScheduleOnboarding() {
         </span>
         <div className="flex flex-col gap-0.5">
           <h2 className="font-display text-base tracking-[0.16em] uppercase">
-            Schedule Source 未設定
+            {m.onboarding.title}
           </h2>
           <p className="text-muted-foreground text-xs leading-relaxed">
-            外部スケジュールサイトのURLを登録すると、ここに日程一覧と次回開催日が表示されます。
+            {m.onboarding.descLine1}
             <br />
-            登録した URL は<strong>固定の全員に共有</strong>されます。
+            {m.onboarding.descLine2Prefix}<strong>{m.onboarding.descLine2Strong}</strong>{m.onboarding.descLine2Suffix}
           </p>
         </div>
       </div>
@@ -68,7 +70,7 @@ export function ScheduleOnboarding() {
             htmlFor="onboard-url"
             className="text-[10px] font-medium tracking-normal text-muted-foreground"
           >
-            スケジュールページの URL
+            {m.onboarding.urlLabel}
           </Label>
           <Input
             id="onboard-url"
@@ -103,9 +105,9 @@ export function ScheduleOnboarding() {
             id="onboard-url-help"
             className="text-muted-foreground text-[11px] leading-relaxed"
           >
-            character-sheets.appspot.com の{" "}
+            {m.onboarding.helpPrefix}{" "}
             <code className="font-mono">schedule/list?key=…</code>{" "}
-            形式のURLを指定してください。
+            {m.onboarding.helpSuffix}
           </p>
         </div>
 
@@ -115,7 +117,7 @@ export function ScheduleOnboarding() {
             aria-hidden
           />
           <p className="text-[11px] leading-relaxed text-muted-foreground">
-            character-sheets でスケジュールを未作成の場合は{" "}
+            {m.onboarding.createHintPrefix}{" "}
             <a
               href="https://character-sheets.appspot.com/schedule/"
               target="_blank"
@@ -124,7 +126,7 @@ export function ScheduleOnboarding() {
             >
               character-sheets.appspot.com/schedule/
             </a>{" "}
-            から作成 → 払い出された URL をここに登録してください。
+            {m.onboarding.createHintSuffix}
           </p>
         </div>
 
@@ -151,7 +153,7 @@ export function ScheduleOnboarding() {
             ) : (
               <Save className="h-3.5 w-3.5" aria-hidden />
             )}
-            {busy ? "保存中…" : "URL を登録"}
+            {busy ? m.common.saving : m.onboarding.submit}
           </Button>
         </div>
       </div>

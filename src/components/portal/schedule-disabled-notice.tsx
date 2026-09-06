@@ -1,5 +1,6 @@
 import { CalendarOff } from "lucide-react";
 import { Card } from "@/components/ui/card";
+import { getMessages } from "@/lib/i18n/server";
 
 /**
  * `schedule_source_mode='disabled'` のときに schedule top で表示する
@@ -9,7 +10,8 @@ import { Card } from "@/components/ui/card";
  * onboarding のような入力 UI は持たず、「停止中」+ 設定 dialog への
  * 案内のみのシンプル表示にとどめる。
  */
-export function ScheduleDisabledNotice() {
+export async function ScheduleDisabledNotice() {
+  const m = await getMessages();
   return (
     <Card className="glass flex flex-col gap-3 p-5 sm:p-6">
       <div className="flex items-start gap-3">
@@ -18,13 +20,18 @@ export function ScheduleDisabledNotice() {
         </span>
         <div className="flex flex-col gap-0.5">
           <h2 className="font-display text-base tracking-[0.16em] uppercase">
-            Schedule 機能停止中
+            {m.disabledNotice.title}
           </h2>
           <p className="text-muted-foreground text-xs leading-relaxed">
-            スケジュール機能は現在無効化されています。
+            {m.disabledNotice.line1}
             <br />
-            再開するには、ヘッダー右上の <strong>設定</strong> ダイアログからソースモードを <code>同期式</code> または <code>自前作成式</code>
-            に切り替えてください (ADMIN ロール必須)。
+            {m.disabledNotice.line2Prefix}
+            <strong>{m.disabledNotice.line2Settings}</strong>
+            {m.disabledNotice.line2Middle}
+            <code>{m.disabledNotice.line2Sync}</code>
+            {m.disabledNotice.line2Or}
+            <code>{m.disabledNotice.line2Native}</code>
+            {m.disabledNotice.line2Suffix}
           </p>
         </div>
       </div>

@@ -14,6 +14,8 @@ import { safeHref } from "@/lib/url-safe";
 import { useScrollClosingMenu } from "@/lib/use-scroll-closing-menu";
 import type { SessionLogEntry } from "@/lib/schedule/session-logs";
 import type { SessionVideoLink } from "@/lib/server/session-video-link";
+import { useMessages } from "@/lib/i18n/client";
+import type { Messages } from "@/lib/i18n/messages";
 
 /**
  * Action icons (Film + BarChart3) for a session row's date cell.
@@ -63,6 +65,7 @@ export function SessionActionIcons({
    */
   reserve?: { video?: boolean; logs?: boolean };
 }) {
+  const m = useMessages();
   const reserveVideo = reserve?.video ?? placeholder;
   const reserveLogs = reserve?.logs ?? placeholder;
   // TODO #65 (2.1, 2026-05-02 part6): non-modal dropdowns that close
@@ -79,13 +82,13 @@ export function SessionActionIcons({
       <span aria-hidden className={`inline-block ${triggerSizeClass} shrink-0`} />
     ) : null;
   } else if (videoLinks.length === 1) {
-    filmSlot = renderSingleVideoLink(videoLinks[0]!, isPast, size);
+    filmSlot = renderSingleVideoLink(videoLinks[0]!, isPast, size, m);
   } else {
     filmSlot = (
       <DropdownMenu {...filmMenu}>
         <DropdownMenuTrigger
-          aria-label={`${displayDate} の動画 ${videoLinks.length} 件から選択`}
-          title={`動画 ${videoLinks.length} 件 — クリックで選択`}
+          aria-label={m.actionIcons.videosPickAria(displayDate, videoLinks.length)}
+          title={m.actionIcons.videosPickTitle(videoLinks.length)}
           className={`relative inline-flex ${triggerSizeClass} shrink-0 items-center justify-center rounded text-[var(--neon-cyan)]/85 transition-all hover:bg-[var(--neon-cyan)]/15 hover:text-[var(--neon-cyan)] hover:shadow-[0_0_10px_-2px_var(--neon-cyan)] data-popup-open:bg-[var(--neon-cyan)]/15 data-popup-open:text-[var(--neon-cyan)]`}
         >
           <Film className={iconSizeClass} aria-hidden />
@@ -102,7 +105,7 @@ export function SessionActionIcons({
             // on each row so hovering reveals the full label even when
             // the visible text is `truncate`-ellipsized. Mirrors the
             // 1-link case which already gets tooltip via `<a title>`.
-            const itemTitle = `${v.categoryName}/動画 → 「${v.videoTitle}」${isPast ? " (外部リンク)" : ""}`;
+            const itemTitle = m.actionIcons.videoTitle(v.categoryName, v.videoTitle, isPast);
             return (
             <DropdownMenuItem
               key={v.url}
@@ -173,8 +176,8 @@ export function SessionActionIcons({
       url: toJapaneseFflogsUrl(safe),
       label:
         entry.source === "auto"
-          ? "セッション登録分 (auto)"
-          : "セッション登録分",
+          ? m.actionIcons.sessionLogsAuto
+          : m.actionIcons.sessionLogs,
     });
   }
 
@@ -189,7 +192,7 @@ export function SessionActionIcons({
         href={logsCandidates[0]!.url}
         target="_blank"
         rel="noopener noreferrer"
-        aria-label={`${displayDate} の FFLogs を開く`}
+        aria-label={m.actionIcons.fflogsOpenAria(displayDate)}
         title="FFLogs"
         className={`inline-flex ${triggerSizeClass} shrink-0 items-center justify-center rounded text-amber-300/85 transition-all hover:bg-amber-400/15 hover:text-amber-200 hover:shadow-[0_0_10px_-2px_rgba(251,191,36,0.6)]`}
       >
@@ -200,8 +203,8 @@ export function SessionActionIcons({
     logsSlot = (
       <DropdownMenu {...logsMenu}>
         <DropdownMenuTrigger
-          aria-label={`${displayDate} の FFLogs ${logsCandidates.length} 件から選択`}
-          title={`FFLogs ${logsCandidates.length} 件 — クリックで選択`}
+          aria-label={m.actionIcons.fflogsPickAria(displayDate, logsCandidates.length)}
+          title={m.actionIcons.fflogsPickTitle(logsCandidates.length)}
           className={`relative inline-flex ${triggerSizeClass} shrink-0 items-center justify-center rounded text-amber-300/85 transition-all hover:bg-amber-400/15 hover:text-amber-200 hover:shadow-[0_0_10px_-2px_rgba(251,191,36,0.6)] data-popup-open:bg-amber-400/15 data-popup-open:text-amber-200`}
         >
           <BarChart3 className={iconSizeClass} aria-hidden />
@@ -262,6 +265,7 @@ function renderSingleVideoLink(
   v: SessionVideoLink,
   isPast: boolean,
   size: "default" | "compact" = "default",
+  m: Messages,
 ) {
   const triggerSizeClass = size === "compact" ? "h-4 w-4" : "h-5 w-5";
   const iconSizeClass = size === "compact" ? "h-2.5 w-2.5" : "h-3 w-3";
@@ -272,8 +276,8 @@ function renderSingleVideoLink(
         href={externalVideoUrl}
         target="_blank"
         rel="noopener noreferrer"
-        aria-label={`${v.categoryName}/動画「${v.videoTitle}」を新規タブで開く`}
-        title={`${v.categoryName}/動画 → 「${v.videoTitle}」 (外部リンク)`}
+        aria-label={m.actionIcons.videoOpenExternalAria(v.categoryName, v.videoTitle)}
+        title={m.actionIcons.videoTitle(v.categoryName, v.videoTitle, true)}
         className={`inline-flex ${triggerSizeClass} shrink-0 items-center justify-center rounded text-[var(--neon-cyan)]/85 transition-all hover:bg-[var(--neon-cyan)]/15 hover:text-[var(--neon-cyan)] hover:shadow-[0_0_10px_-2px_var(--neon-cyan)]`}
       >
         <Film className={iconSizeClass} aria-hidden />
@@ -286,8 +290,8 @@ function renderSingleVideoLink(
     <Link
       href={v.href}
       prefetch={false}
-      aria-label={`${v.categoryName}/動画「${v.videoTitle}」を開く`}
-      title={`${v.categoryName}/動画 → 「${v.videoTitle}」`}
+      aria-label={m.actionIcons.videoOpenAria(v.categoryName, v.videoTitle)}
+      title={m.actionIcons.videoTitle(v.categoryName, v.videoTitle, false)}
       className={`inline-flex ${triggerSizeClass} shrink-0 items-center justify-center rounded text-[var(--neon-cyan)]/85 transition-all hover:bg-[var(--neon-cyan)]/15 hover:text-[var(--neon-cyan)] hover:shadow-[0_0_10px_-2px_var(--neon-cyan)]`}
     >
       <Film className={iconSizeClass} aria-hidden />

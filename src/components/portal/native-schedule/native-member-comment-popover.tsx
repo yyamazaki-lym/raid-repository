@@ -17,6 +17,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { updateNativeScheduleMemberCommentAction } from "@/lib/server/native-schedule-actions";
+import { useMessages } from "@/lib/i18n/client";
 
 /**
  * 2.1 (2026-05-12) PR3-D + follow-ups: native スケジュールのメンバー全体コメント
@@ -63,6 +64,7 @@ export function NativeMemberCommentPopover({
   open: openProp,
   onOpenChange,
 }: Props) {
+  const m = useMessages();
   const router = useRouter();
   const [openInner, setOpenInner] = useState(false);
   const open = openProp ?? openInner;
@@ -128,7 +130,7 @@ export function NativeMemberCommentPopover({
     setError(null);
     const trimmed = draft.trim();
     if (trimmed.length > 500) {
-      setError("コメントは 500 文字以内で入力してください");
+      setError(m.comment.errLength);
       return;
     }
     startTransition(async () => {
@@ -139,11 +141,7 @@ export function NativeMemberCommentPopover({
         setError(result.reason);
         return;
       }
-      toast.success(
-        trimmed
-          ? "コメントを保存しました"
-          : "コメントを削除しました",
-      );
+      toast.success(trimmed ? m.comment.toastSaved : m.comment.toastDeleted);
       setOpen(false);
       router.refresh();
     });
@@ -168,14 +166,14 @@ export function NativeMemberCommentPopover({
         className={triggerClass}
         aria-label={
           isOwn
-            ? `${userName} のコメントを編集`
-            : `${userName} のコメントを表示`
+            ? m.schedule.commentEdit(userName)
+            : m.schedule.commentView(userName)
         }
         title={
           hasComment
-            ? `${userName} のコメント`
+            ? m.comment.ofUser(userName)
             : isOwn
-              ? "コメントを追加"
+              ? m.comment.add
               : undefined
         }
       >
@@ -201,7 +199,7 @@ export function NativeMemberCommentPopover({
                 className="min-w-0 truncate text-[9px] font-medium tracking-normal text-muted-foreground"
                 title={userName}
               >
-                {userName} のコメント
+                {m.comment.ofUser(userName)}
               </span>
             </div>
 
@@ -212,7 +210,7 @@ export function NativeMemberCommentPopover({
                   onChange={(e) => setDraft(e.target.value)}
                   onFocus={() => setIsFocused(true)}
                   onBlur={() => setIsFocused(false)}
-                  placeholder="例: 仕事次第、開始時刻 1h 遅れる可能性"
+                  placeholder={m.comment.placeholder}
                   rows={3}
                   className="mt-1 text-xs"
                   spellCheck={false}
@@ -239,10 +237,10 @@ export function NativeMemberCommentPopover({
                       onClick={onClear}
                       disabled={busy || !draft}
                       className="gap-1 text-[10px] tracking-normal"
-                      title="textarea をクリア (保存すると DB から削除)"
+                      title={m.comment.clearTitle}
                     >
                       <Trash2 className="h-3 w-3" aria-hidden />
-                      クリア
+                      {m.common.clear}
                     </Button>
                   )}
                   <div className="flex-1" />
@@ -254,7 +252,7 @@ export function NativeMemberCommentPopover({
                     className="gap-1 text-[10px] tracking-normal"
                   >
                     <Save className="h-3 w-3" aria-hidden />
-                    {busy ? "保存中…" : "保存"}
+                    {busy ? m.common.saving : m.common.save}
                   </Button>
                 </div>
               </>

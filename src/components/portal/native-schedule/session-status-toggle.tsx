@@ -13,6 +13,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { setNativeScheduleSessionStatusAction } from "@/lib/server/native-schedule-actions";
 import { DECISION_BADGE_CLASS } from "@/lib/schedule/status-ui";
+import { useMessages } from "@/lib/i18n/client";
+import type { Messages } from "@/lib/i18n/messages";
 
 /**
  * TODO #2 phase 2-B: native スケジュールの session status を admin が切替えるための
@@ -26,11 +28,14 @@ import { DECISION_BADGE_CLASS } from "@/lib/schedule/status-ui";
 
 type Status = "CANDIDATE" | "DECISION" | "CANCELLED";
 
-const STATUS_LABEL: Record<Status, string> = {
-  CANDIDATE: "候補",
-  DECISION: "確定",
-  CANCELLED: "中止 (一覧から除外)",
-};
+/** 表示言語に応じた status ラベル (辞書 `sessionStatus` から組む)。 */
+function statusLabels(m: Messages): Record<Status, string> {
+  return {
+    CANDIDATE: m.sessionStatus.candidate,
+    DECISION: m.sessionStatus.decision,
+    CANCELLED: m.sessionStatus.cancelled,
+  };
+}
 
 type Props = {
   sessionId: string;
@@ -48,6 +53,8 @@ export function SessionStatusToggle({
   currentStatus,
   displayDate,
 }: Props) {
+  const m = useMessages();
+  const STATUS_LABEL = statusLabels(m);
   const router = useRouter();
   const [busy, startTransition] = useTransition();
 
@@ -64,16 +71,14 @@ export function SessionStatusToggle({
         nextStatus,
       );
       if (!result.ok) {
-        toast.error(`status 更新に失敗しました: ${result.reason}`);
+        toast.error(m.sessionStatus.errUpdate(result.reason));
         return;
       }
       if (nextStatus === "CANCELLED") {
-        toast.success(
-          `${displayDate} を中止しました (一覧からは非表示になります)`,
-        );
+        toast.success(m.sessionStatus.toastCancelled(displayDate));
       } else {
         toast.success(
-          `${displayDate} のステータスを「${STATUS_LABEL[nextStatus]}」に変更しました`,
+          m.sessionStatus.toastChanged(displayDate, STATUS_LABEL[nextStatus]),
         );
       }
       router.refresh();
@@ -84,7 +89,7 @@ export function SessionStatusToggle({
   const triggerLabel =
     currentStatus === "DECISION" ? (
       <span className={DECISION_BADGE_CLASS}>
-        確定
+        {m.sessionStatus.decision}
       </span>
     ) : (
       <span className="inline-flex h-6 items-center justify-center px-2 font-mono text-muted-foreground/60">
@@ -96,8 +101,8 @@ export function SessionStatusToggle({
     <DropdownMenu>
       <DropdownMenuTrigger
         disabled={busy}
-        aria-label={`${displayDate} のステータスを変更 (現在: ${STATUS_LABEL[currentStatus]})`}
-        title={`ステータス: ${STATUS_LABEL[currentStatus]} (クリックで変更)`}
+        aria-label={m.sessionStatus.ariaLabel(displayDate, STATUS_LABEL[currentStatus])}
+        title={m.sessionStatus.title(STATUS_LABEL[currentStatus])}
         className="inline-flex items-center justify-center rounded-md transition-transform hover:scale-105 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--neon-cyan)]/60 active:scale-95 disabled:opacity-50"
       >
         {triggerLabel}
@@ -106,16 +111,16 @@ export function SessionStatusToggle({
         <DropdownMenuRadioGroup value={currentStatus} onValueChange={handleChange}>
           <DropdownMenuRadioItem value="CANDIDATE" className="text-xs">
             <span className="font-mono text-muted-foreground">·</span>
-            <span>候補</span>
+            <span>{m.sessionStatus.candidate}</span>
           </DropdownMenuRadioItem>
           <DropdownMenuRadioItem value="DECISION" className="text-xs">
             <span className="font-mono text-emerald-300">●</span>
-            <span>確定</span>
+            <span>{m.sessionStatus.decision}</span>
           </DropdownMenuRadioItem>
           <DropdownMenuSeparator />
           <DropdownMenuRadioItem value="CANCELLED" className="text-xs text-rose-300">
             <span className="font-mono">×</span>
-            <span>中止 (一覧から除外)</span>
+            <span>{m.sessionStatus.cancelled}</span>
           </DropdownMenuRadioItem>
         </DropdownMenuRadioGroup>
       </DropdownMenuContent>

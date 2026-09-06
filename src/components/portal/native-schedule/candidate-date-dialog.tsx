@@ -22,6 +22,7 @@ import {
   FALLBACK_DEFAULT_END_TIME,
   FALLBACK_DEFAULT_START_TIME,
 } from "@/lib/schedule/native-defaults";
+import { useMessages } from "@/lib/i18n/client";
 
 /**
  * TODO #2 phase 2-B: admin が native スケジュールに候補日を追加する dialog。
@@ -77,6 +78,7 @@ export function CandidateDateDialog({
   const initialStart = normalizeTime(defaultStartTime, FALLBACK_DEFAULT_START_TIME);
   const initialEnd = normalizeTime(defaultEndTime, FALLBACK_DEFAULT_END_TIME);
 
+  const m = useMessages();
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [date, setDate] = useState("");
@@ -103,17 +105,17 @@ export function CandidateDateDialog({
 
     const trimmedDate = date.trim();
     if (!trimmedDate) {
-      setError("日付を入力してください");
+      setError(m.candidateDate.errDateRequired);
       return;
     }
-    const [y, m, d] = trimmedDate.split("-").map(Number);
-    if (!y || !m || !d) {
-      setError("日付の形式が正しくありません");
+    const [y, mo, d] = trimmedDate.split("-").map(Number);
+    if (!y || !mo || !d) {
+      setError(m.candidateDate.errDateFormat);
       return;
     }
 
     if (!TIME_RE.test(startTime) || !TIME_RE.test(endTime)) {
-      setError("時刻は HH:MM 形式で入力してください");
+      setError(m.candidateDate.errTimeFormat);
       return;
     }
     const [sh, sm] = startTime.split(":").map(Number);
@@ -123,24 +125,24 @@ export function CandidateDateDialog({
     // 終了時刻が開始時刻と同じ or 翌日 (eh < sh) は許容。
     // (例: 22:00~0:00 のような深夜またぎ運用がある)
     if (startMinutes === endMinutes) {
-      setError("開始時刻と終了時刻が同じです");
+      setError(m.candidateDate.errSameTime);
       return;
     }
 
     // 曜日 auto 算出。`<input type="date">` の y/m/d は user 視点のカレンダー日付なので
     // local-TZ Date でその日付の getDay() を取ればユーザーが期待する曜日になる。
-    const dayOfWeek = DOW_LABELS[new Date(y, m - 1, d).getDay()] ?? "日";
+    const dayOfWeek = DOW_LABELS[new Date(y, mo - 1, d).getDay()] ?? "日";
 
     // rawDate: sync 互換 format。`yyyy/MM/dd(曜) HH:MM~HH:MM`。
     // sync 側 RAW_DATE_RE は `\d{1,2}` で 1〜2 桁許容なので、ゼロパディングは
     // 統一感のために常時付ける (character-sheets demo は month/day を 2 桁で出すため)。
     const padded = (n: number) => String(n).padStart(2, "0");
-    const rawDate = `${y}/${padded(m)}/${padded(d)}(${dayOfWeek}) ${startTime}~${endTime}`;
+    const rawDate = `${y}/${padded(mo)}/${padded(d)}(${dayOfWeek}) ${startTime}~${endTime}`;
 
     // parsedDate: 開始時刻を JST で表した瞬間の UTC ISO string。
     // sync 側 parse.ts:434-444 と同じ式で組立てる。
     const parsedDate = new Date(
-      Date.UTC(y, m - 1, d, sh, sm, 0, 0) - JST_OFFSET_MS,
+      Date.UTC(y, mo - 1, d, sh, sm, 0, 0) - JST_OFFSET_MS,
     ).toISOString();
 
     startTransition(async () => {
@@ -156,7 +158,7 @@ export function CandidateDateDialog({
         setError(result.reason);
         return;
       }
-      toast.success(`候補日「${rawDate}」を追加しました`);
+      toast.success(m.candidateDate.toastAdded(rawDate));
       setOpen(false);
       router.refresh();
     });
@@ -166,8 +168,8 @@ export function CandidateDateDialog({
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger
         className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border/60 text-muted-foreground transition-colors hover:border-[var(--neon-cyan)]/60 hover:text-foreground"
-        aria-label="候補日を追加"
-        title="候補日を追加"
+        aria-label={m.candidateDate.trigger}
+        title={m.candidateDate.trigger}
       >
         <Plus className="h-4 w-4" aria-hidden />
       </DialogTrigger>
@@ -179,10 +181,10 @@ export function CandidateDateDialog({
           </span>
           <div className="flex flex-col gap-0.5">
             <DialogTitle className="font-display text-base tracking-[0.16em] uppercase">
-              候補日を追加
+              {m.candidateDate.title}
             </DialogTitle>
             <DialogDescription className="text-xs">
-              スケジュールに新しい候補日を登録します
+              {m.candidateDate.description}
             </DialogDescription>
           </div>
         </DialogHeader>
@@ -190,7 +192,7 @@ export function CandidateDateDialog({
         <div className="flex max-h-[70svh] flex-col gap-4 overflow-y-auto p-5">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="candidate-date" className="text-xs text-foreground/80">
-              日付
+              {m.candidateDate.dateLabel}
             </Label>
             <Input
               id="candidate-date"
@@ -203,7 +205,7 @@ export function CandidateDateDialog({
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <Label className="text-xs text-foreground/80">時刻</Label>
+            <Label className="text-xs text-foreground/80">{m.candidateDate.timeLabel}</Label>
             <div className="flex items-center gap-2">
               <Input
                 id="candidate-start"
@@ -211,7 +213,7 @@ export function CandidateDateDialog({
                 value={startTime}
                 onChange={(e) => setStartTime(e.target.value)}
                 className="w-32 font-mono text-[12px]"
-                aria-label="開始時刻"
+                aria-label={m.candidateDate.startAria}
               />
               <span className="text-xs text-muted-foreground">〜</span>
               <Input
@@ -220,23 +222,23 @@ export function CandidateDateDialog({
                 value={endTime}
                 onChange={(e) => setEndTime(e.target.value)}
                 className="w-32 font-mono text-[12px]"
-                aria-label="終了時刻"
+                aria-label={m.candidateDate.endAria}
               />
             </div>
             <p className="text-muted-foreground text-[11px] leading-relaxed">
-              JST 基準。深夜またぎ (例: <span className="whitespace-nowrap">22:00〜00:00</span>) も登録できます。
+              {m.candidateDate.timeHelpPrefix}<span className="whitespace-nowrap">22:00〜00:00</span>{m.candidateDate.timeHelpSuffix}
             </p>
           </div>
 
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="candidate-note" className="text-xs text-foreground/80">
-              備考（任意）
+              {m.candidateDate.noteLabel}
             </Label>
             <Textarea
               id="candidate-note"
               value={note}
               onChange={(e) => setNote(e.target.value)}
-              placeholder="例: アルカディア LH4 練習"
+              placeholder={m.candidateDate.notePlaceholder}
               rows={2}
               className="text-sm"
               spellCheck={false}
@@ -264,7 +266,7 @@ export function CandidateDateDialog({
             disabled={busy}
             className="text-[11px] tracking-normal"
           >
-            キャンセル
+            {m.common.cancel}
           </Button>
           <Button
             type="button"
@@ -278,7 +280,7 @@ export function CandidateDateDialog({
             ) : (
               <Save className="h-3.5 w-3.5" aria-hidden />
             )}
-            {busy ? "保存中…" : "追加"}
+            {busy ? m.common.saving : m.candidateDate.submit}
           </Button>
         </DialogFooter>
       </DialogContent>
