@@ -48,6 +48,7 @@ export default async function LogsPage({
     await fetchCategoryFights(category.id, {
       // フェーズ滞在区間は絶 (フェーズ管理コンテンツ) だけ表示に使う。
       includePhases: isUltimateContent(category.name),
+      ultimate: isUltimateContent(category.name),
     });
   const codes = Array.from(new Set(fights.map((f) => f.reportCode)));
   const [videoLinks, failedSyncs] = await Promise.all([

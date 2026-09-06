@@ -14,7 +14,12 @@ import { getSecretValue } from "./secret-store";
 import { buildFflogsXhrHeaders } from "./fflogs-scrape-request";
 import { parseFflogsReportCode } from "@/lib/fflogs-url";
 import { jstYmdString } from "@/lib/jst-date";
-import { findContentGroups } from "@/lib/content-groups";
+import {
+  type CategoryRef,
+  consensusCategory,
+  resolveCategory,
+  resolveFightCategory,
+} from "@/lib/fflogs-category";
 import {
   CONFIRMED_PRIVATE_REASON,
   isPermanentSyncFailure,
@@ -392,25 +397,40 @@ export async function syncFflogsFights(opts?: {
     }
 
     // 動画リンクで決まらなかった場合は zone ID / 内容分類で解決する。
-    const categoryId =
+    const reportCategoryId =
       ref.categoryId ??
       resolveCategory(categories, res.zoneId, res.zoneName, res.title);
+    // 2026-09-06: fight ごとのカテゴリ。拡張をまたいだ絶は "Ultimates (Legacy)"
+    // という 1 つの zone にまとめられ、レポート単位では何の絶か決められない
+    // (実機: 絶オメガの 2024-07 以降が出ない)。fight の encounter 名
+    // ("The Omega Protocol" 等) で決め、決まらなければレポート単位に戻す。
+    const categoryOf = new Map<number, string | null>(
+      res.fights.map((f) => [
+        f.id,
+        resolveFightCategory(categories, f.name, reportCategoryId),
+      ]),
+    );
+    // 台帳の代表カテゴリ (動画への橋渡し / 未確定判定に使う) は fight の最多。
+    const categoryId =
+      consensusCategory([...categoryOf.values()]) ?? reportCategoryId;
     const sessionDate =
       ref.sessionDate ?? jstYmdString(new Date(res.startMs));
 
     // 2026-08-30: カテゴリごとの取り込み難易度フィルタ。FFLogs の
     // difficulty はコンテンツ種別で値が変わり公開された対応表が無いため、
     // **観測値ベース** (画面に出した実データから admin が下限を決める)。
-    // 未設定 (null) のカテゴリは従来どおり全て取り込む。
-    const minDifficulty =
-      categoryId !== null ? (minDifficultyByCategory.get(categoryId) ?? null) : null;
-    const acceptedFights =
-      minDifficulty === null
-        ? res.fights
-        : res.fights.filter(
-            (f) =>
-              typeof f.difficulty !== "number" || f.difficulty >= minDifficulty,
-          );
+    // 未設定 (null) のカテゴリは従来どおり全て取り込む。fight ごとの
+    // カテゴリで判定する (2026-09-06)。
+    const acceptedFights = res.fights.filter((f) => {
+      const cid = categoryOf.get(f.id) ?? null;
+      const minDifficulty =
+        cid !== null ? (minDifficultyByCategory.get(cid) ?? null) : null;
+      return (
+        minDifficulty === null ||
+        typeof f.difficulty !== "number" ||
+        f.difficulty >= minDifficulty
+      );
+    });
 
     if (acceptedFights.length > 0) {
       // 2026-09-03: pull ごとの PT 合計 DPS / 死亡数。best-effort で、
@@ -427,7 +447,7 @@ export async function syncFflogsFights(opts?: {
       const baseRow = (f: FightPayload) => ({
         report_code: ref.code,
         fight_id: f.id,
-        category_id: categoryId,
+        category_id: categoryOf.get(f.id) ?? null,
         session_date: sessionDate,
         name: f.name ?? null,
         kill: f.kill === true,
@@ -546,22 +566,50 @@ export async function syncFflogsFights(opts?: {
       .eq("ok", true);
     for (const row of orphans ?? []) {
       const code = row.report_code as string;
-      const cid = resolveCategory(
-        categories,
-        null,
-        (row.zone_name as string | null) ?? null,
-        (row.title as string | null) ?? null,
-      ) ?? refs.get(code)?.categoryId ?? null;
-      if (!cid) continue;
-      await db
-        .from("fflogs_report_syncs")
-        .update({ category_id: cid })
-        .eq("report_code", code);
-      await db
+      const reportCid =
+        resolveCategory(
+          categories,
+          null,
+          (row.zone_name as string | null) ?? null,
+          (row.title as string | null) ?? null,
+        ) ?? refs.get(code)?.categoryId ?? null;
+      // 2026-09-06: レポート単位で決まらなくても、保存済みの fight 名
+      // (encounter 名) から fight ごとに決める (Ultimates (Legacy) 対応)。
+      // 取得し直さずに済むので、既に台帳にある未確定レポートがこの経路で
+      // 練習ログに出るようになる。
+      const { data: fightRows } = await db
         .from("fflogs_fights")
-        .update({ category_id: cid })
+        .select("fight_id, name")
         .eq("report_code", code)
         .is("category_id", null);
+      const byCategory = new Map<string, number[]>();
+      for (const fr of fightRows ?? []) {
+        const cid = resolveFightCategory(
+          categories,
+          (fr.name as string | null) ?? null,
+          reportCid,
+        );
+        if (!cid) continue;
+        const list = byCategory.get(cid) ?? [];
+        list.push(fr.fight_id as number);
+        byCategory.set(cid, list);
+      }
+      const ledgerCid =
+        consensusCategory(
+          [...byCategory.entries()].flatMap(([cid, ids]) => ids.map(() => cid)),
+        ) ?? reportCid;
+      if (!ledgerCid) continue;
+      await db
+        .from("fflogs_report_syncs")
+        .update({ category_id: ledgerCid })
+        .eq("report_code", code);
+      for (const [cid, ids] of byCategory) {
+        await db
+          .from("fflogs_fights")
+          .update({ category_id: cid })
+          .eq("report_code", code)
+          .in("fight_id", ids);
+      }
       reattributed += 1;
     }
   } catch (e) {
@@ -772,12 +820,6 @@ async function collectReportRefs(db: Db): Promise<Map<string, ReportRef>> {
   return out;
 }
 
-type CategoryRef = {
-  id: string;
-  name: string;
-  zoneIds: number[];
-  keywords: string[];
-};
 
 /** カテゴリ一覧 (紐づけ用の最小フィールド)。同期 1 回につき 1 度だけ読む。 */
 async function loadCategories(db: Db): Promise<CategoryRef[]> {
@@ -792,40 +834,7 @@ async function loadCategories(db: Db): Promise<CategoryRef[]> {
   }));
 }
 
-/**
- * レポート → カテゴリの解決。
- *
- * (a) `expected_fflogs_zone_ids` の一致を最優先 (運用者が明示した対応)
- * (b) 次に zone 名 / タイトルの内容分類 (`CONTENT_GROUPS`) がカテゴリ名または
- *     `fflogs_match_keywords` と同じグループに落ちるもの
- *
- * どちらも「候補が 1 件に定まるときだけ」返す。2 件以上該当したら曖昧なので
- * null にして誤配属を作らない。
- */
-function resolveCategory(
-  categories: CategoryRef[],
-  zoneId: number | null,
-  zoneName: string | null,
-  title: string | null,
-): string | null {
-  if (zoneId != null) {
-    const byZone = categories.filter((c) => c.zoneIds.includes(zoneId));
-    if (byZone.length === 1) return byZone[0]!.id;
-    if (byZone.length > 1) return null;
-  }
-
-  const reportText = [zoneName, title].filter(Boolean).join(" ");
-  if (!reportText) return null;
-  const reportGroups = findContentGroups(reportText);
-  if (reportGroups.size === 0) return null;
-
-  const byContent = categories.filter((c) => {
-    const catGroups = findContentGroups([c.name, ...c.keywords].join(" "));
-    for (const g of catGroups) if (reportGroups.has(g)) return true;
-    return false;
-  });
-  return byContent.length === 1 ? byContent[0]!.id : null;
-}
+// resolveCategory / fight 単位の解決は `@/lib/fflogs-category` (純関数) に移した (2026-09-06)。
 
 type ReportFightsResult =
   | {
