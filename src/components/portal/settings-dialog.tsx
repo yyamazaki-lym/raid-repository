@@ -62,12 +62,19 @@ import { DangerZoneSection } from "./settings/danger-zone-section";
 export function SettingsDialog({
   canEdit,
   showSignIn = false,
+  defaultOpen = false,
 }: {
   canEdit: boolean;
   showSignIn?: boolean;
+  /**
+   * 2.14 (2026-09-06): `settings-dialog-lazy` がトリガーボタンのクリックを
+   * 受けてから本体 chunk を読み込む構成になったため、読み込み完了直後に
+   * そのまま開いた状態で mount する経路が必要。初期値にのみ使う。
+   */
+  defaultOpen?: boolean;
 }) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
   const [url, setUrl] = useState("");
   const [channelId, setChannelId] = useState("");
   const [busy, setBusy] = useState(false);

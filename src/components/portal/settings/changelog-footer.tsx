@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { FileClock, Link2, LogIn, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { RELEASES, type ReleaseEntry } from "@/lib/changelog";
+import type { ReleaseEntry } from "@/lib/changelog";
 import { useConfirm } from "@/components/portal/confirm-dialog";
 
 /**
@@ -32,9 +32,18 @@ function GithubMark({ className }: { className?: string }) {
  * 外部リンク + Sign out フォーム + dynamic import による changelog
  * archive lazy load を担当。
  *
- * archive lazy load (TODO #67 で導入したパターン): 最新リリース 1 件は
- * `RELEASES` で即時表示し、ボタン押下時に `import("@/lib/changelog-archive")`
- * で過去 9 件 (~210 KB) を初めて fetch して結合表示する。
+ * archive lazy load (TODO #67 で導入したパターン): ボタン押下時に
+ * `import("@/lib/changelog-archive")` で過去分 (~210 KB) を初めて fetch
+ * して結合表示する。
+ *
+ * 2.14 (2026-09-06) 軽量化: `RELEASES` (`@/lib/changelog`) も static import
+ * をやめ、「更新履歴」ボタンを初めて押した時に `import("@/lib/changelog")`
+ * で取り込む。changelog.ts は graduate 運用が追い付かず ~420 KB (source)
+ * に育っており、static import のままだと settings-dialog chunk に同梱
+ * されて **全ページの初回ロードで毎回ダウンロード** されていた
+ * (settings-dialog-lazy は mount 直後に chunk を fetch するため)。更新履歴
+ * を開く操作は稀なので、開いた時に 1 回だけ取りに行く。表示内容・並び
+ * 順は従来と同一 (最新 → archive の結合)。
  *
  * TODO #91 follow-up: `showSignIn` (= demo モードのゲスト閲覧時) は
  * セッションが無く Sign out が意味を成さないため、代わりに owner 向けの
@@ -48,6 +57,10 @@ export function ChangelogFooter({
   const pathname = usePathname();
   const confirm = useConfirm();
   const [showChangelog, setShowChangelog] = useState(false);
+  // 最新分 (`RELEASES`)。初回表示時に dynamic import で取り込む。
+  const [releases, setReleases] = useState<ReleaseEntry[] | null>(null);
+  const [loadingReleases, setLoadingReleases] = useState(false);
+  const [releasesError, setReleasesError] = useState<string | null>(null);
   const [archiveReleases, setArchiveReleases] = useState<ReleaseEntry[] | null>(
     null,
   );
@@ -64,10 +77,31 @@ export function ChangelogFooter({
           type="button"
           variant="outline"
           size="sm"
-          onClick={() => setShowChangelog((v) => !v)}
+          onClick={() => {
+            const next = !showChangelog;
+            setShowChangelog(next);
+            // 初めて開く時だけ本文 chunk を取りに行く。失敗時は再度
+            // ボタンを押せば retry される (loading 中の二重発火は抑止)。
+            if (next && releases === null && !loadingReleases) {
+              setLoadingReleases(true);
+              setReleasesError(null);
+              import("@/lib/changelog")
+                .then((mod) => {
+                  setReleases(mod.RELEASES);
+                })
+                .catch((err: unknown) => {
+                  console.warn("[changelog] load failed:", err);
+                  setReleasesError("読み込みに失敗しました");
+                })
+                .finally(() => {
+                  setLoadingReleases(false);
+                });
+            }
+          }}
           className="h-8 gap-1.5 rounded-md px-3 text-[10px] tracking-normal"
           title="更新履歴を表示 / 非表示"
           aria-expanded={showChangelog}
+          aria-busy={loadingReleases}
         >
           <FileClock className="h-3 w-3" aria-hidden />
           {showChangelog ? "更新履歴を隠す" : "更新履歴"}
@@ -149,9 +183,23 @@ export function ChangelogFooter({
             更新履歴 — Release Notes
           </p>
           {(() => {
+            if (releases === null) {
+              return (
+                <p
+                  className={
+                    releasesError
+                      ? "text-[10px] text-rose-400/80"
+                      : "text-muted-foreground"
+                  }
+                  role="status"
+                >
+                  {releasesError ?? "読み込み中…"}
+                </p>
+              );
+            }
             const displayReleases = archiveReleases
-              ? [...RELEASES, ...archiveReleases]
-              : RELEASES;
+              ? [...releases, ...archiveReleases]
+              : releases;
             return displayReleases.length === 0 ? (
               <p className="text-muted-foreground">記録なし</p>
             ) : (
@@ -222,7 +270,7 @@ export function ChangelogFooter({
           {/* TODO #67 (2026-05-02): archive (~210 KB) は dynamic
               import で lazy load。最初の表示は最新リリース 1 件
               のみで初期 bundle を抑える */}
-          {archiveReleases === null ? (
+          {archiveReleases === null && releases !== null ? (
             <button
               type="button"
               onClick={() => {
