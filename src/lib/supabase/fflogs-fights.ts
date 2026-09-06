@@ -225,10 +225,13 @@ function asDeathEvents(v: unknown): StoredDeathEvent[] | null {
     const o = e as Record<string, unknown>;
     const t = numberOrNull(o.t);
     if (t === null) continue;
+    const id = numberOrNull(o.id);
     out.push({
       t,
       job: typeof o.job === "string" ? o.job : null,
       ability: typeof o.ability === "string" ? o.ability : null,
+      ...(id !== null ? { id } : {}),
+      ...(typeof o.ja === "string" && o.ja !== "" ? { ja: o.ja } : {}),
     });
   }
   return out;

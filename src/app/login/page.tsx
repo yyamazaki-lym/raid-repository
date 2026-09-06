@@ -89,9 +89,11 @@ export default async function LoginPage({
           >
             RAID REPOSITORY
           </h1>
+          {/* 改行位置は固定 (1 行目を短く、2 行目に「〜を、固定の 8 人で 1 か所に。」を
+              まとめる)。各行を inline-block にして、行の途中で折れないようにする。 */}
           <p className="max-w-[20rem] text-[13px] leading-relaxed text-muted-foreground">
-            スケジュール・軽減表・ロット・攻略・動画・練習ログを、
-            固定の 8 人で 1 か所に。
+            <span className="inline-block">スケジュール・軽減表・ロット・攻略・</span>
+            <span className="inline-block">動画・練習ログを、固定の 8 人で 1 か所に。</span>
           </p>
         </div>
 

@@ -28,6 +28,7 @@ import {
   type StoredDeathEvent,
   type StoredPhaseTransition,
 } from "@/lib/fflogs-fight-detail";
+import { attachJapaneseAbilityNames } from "./xivapi-action-names";
 
 /**
  * FFLogs の pull 単位データ (fights) を portal に materialize する
@@ -72,6 +73,14 @@ const DEFAULT_REPORT_LIMIT = 40;
 const REPORT_CONCURRENCY = 3;
 /** これより新しいセッションの report は「まだ増える」とみなして再取得する。 */
 const REFRESH_WINDOW_DAYS = 14;
+/**
+ * 死亡イベントの保存形が変わった時刻 (2026-09-06: 致命技の action ID と
+ * 日本語名を持つようになった)。これより前に同期したレポートは 1 回だけ
+ * 取り直して、練習ログの「ワイプ原因」を英語から日本語へ置き換える。
+ * synced_at は同期ごとに更新されるので、取り直した後は対象から外れる
+ * (件数が枠を超える場合も数回の同期で自然に消化される)。
+ */
+const DEATH_DETAIL_FORMAT_SINCE_MS = Date.parse("2026-09-06T03:00:00Z");
 const FETCH_TIMEOUT_MS = 20_000;
 /** 同期全体の時間予算 (cron の maxDuration=300s に対する余裕込み)。 */
 const TIME_BUDGET_MS = 120_000;
@@ -280,6 +289,14 @@ export async function syncFflogsFights(opts?: {
     // 下の「オフライン再解決」で API を叩かずに埋められるので対象外にする
     // (再取得が毎回同じ report で埋まって新しい report に届かなくなるのを防ぐ)。
     if (prev.categoryId === null && (ref.categoryId !== null || !prev.zoneName)) {
+      targets.push(withDate);
+      continue;
+    }
+    // 保存形の更新前に同期したレポートは 1 回だけ取り直す (上の定数を参照)。
+    if (
+      prev.syncedAt !== null &&
+      Date.parse(prev.syncedAt) < DEATH_DETAIL_FORMAT_SINCE_MS
+    ) {
       targets.push(withDate);
       continue;
     }
@@ -1267,6 +1284,14 @@ async function fetchFightDetails(
       console.warn(`[fflogs-fights] summary table fetch failed for ${code}:`, e);
       break;
     }
+  }
+  // 2026-09-06: 致命技の名前を XIVAPI で日本語にする (ワイプ原因の表示 /
+  // 集計は日本語名で行う)。失敗しても英語名のまま保存されるだけ。
+  if (out.size > 0 && Date.now() <= deadlineAtMs) {
+    await attachJapaneseAbilityNames(
+      [...out.values()].flatMap((d) => d.deathEvents ?? []),
+      deadlineAtMs,
+    );
   }
   return out;
 }

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Activity } from "lucide-react";
+import Image from "next/image";
 import { ThemeSwitcher } from "./theme-switcher";
 // 1.9 (2026-04-28) TODO #11: SettingsDialog (~1601 行 + MaintenanceMenu
 // ~880 行) は開いた時だけ必要なので、`next/dynamic` 経由で別 chunk 化
@@ -133,8 +133,18 @@ export async function SiteHeader() {
           className="group flex items-center gap-2.5"
           aria-label="Raid Repository home"
         >
-          <span className="relative grid h-8 w-8 place-items-center rounded-md border border-primary/40 bg-background/40 text-primary shadow-[0_0_18px_-4px_var(--neon-cyan)] transition-shadow group-hover:shadow-[0_0_22px_-2px_var(--neon-cyan)]">
-            <Activity className="h-4 w-4" aria-hidden />
+          {/* 2026-09-06: ロゴマーク (public/brand/logo-mark.svg)。マーク自体が
+              角丸のタイルなので枠は付けず、後光だけ残す。 */}
+          <span className="relative h-8 w-8 shrink-0 overflow-hidden rounded-md shadow-[0_0_18px_-4px_var(--neon-cyan)] transition-shadow group-hover:shadow-[0_0_22px_-2px_var(--neon-cyan)]">
+            <Image
+              src="/brand/logo-mark.svg"
+              alt=""
+              width={32}
+              height={32}
+              priority
+              unoptimized
+              className="h-8 w-8"
+            />
           </span>
           <div className="flex flex-col gap-0.5 leading-none">
             <span className="font-display text-[13px] font-semibold tracking-[0.2em] text-foreground sm:text-sm">

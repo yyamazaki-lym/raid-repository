@@ -16,9 +16,29 @@ export type StoredDeathEvent = {
   t: number;
   /** FFLogs のジョブ名 (例 "WhiteMage")。取れなければ null。 */
   job: string | null;
-  /** 致命の一撃 (killing blow) の技名。取れなければ null。 */
+  /**
+   * 致命の一撃 (killing blow) の技名。FFLogs が返した名前 (通常は英語) を
+   * そのまま持つ。取れなければ null。
+   */
   ability: string | null;
+  /**
+   * 致命技のゲーム内 action ID (FFLogs の `ability.guid`)。技名の日本語化
+   * (XIVAPI) のキー (2026-09-06)。取れなければ省略。
+   */
+  id?: number | null;
+  /**
+   * 致命技の日本語名。同期時に XIVAPI の Action シートから解決して入れる
+   * (2026-09-06)。解決できなかった / 元から日本語なら省略。
+   */
+  ja?: string | null;
 };
+
+/** 表示に使う技名 (日本語名があればそれ、無ければ FFLogs の名前)。 */
+export function deathAbilityLabel(
+  d: Pick<StoredDeathEvent, "ability" | "ja">,
+): string | null {
+  return d.ja ?? d.ability;
+}
 
 /** フェーズ遷移 1 件の保存形 (jsonb `phase_transitions` の要素)。 */
 export type StoredPhaseTransition = {
@@ -43,7 +63,7 @@ export type WipeSummary = {
   t: number;
   /** 最初に落ちたジョブ (FFLogs 名)。 */
   job: string | null;
-  /** 最初の死亡の致命技。 */
+  /** 最初の死亡の致命技 (表示用: 日本語名があればそれ)。 */
   ability: string | null;
   /** 最初の死亡から CLUSTER_WINDOW_MS 以内の死亡数 (最初の 1 人を含む)。 */
   cluster: number;
@@ -155,11 +175,16 @@ export function extractDeathEvents(
     const job =
       stringOrNull(e["icon"]) ?? stringOrNull(e["type"]) ?? null;
     const abilityRaw = e["ability"];
-    const ability =
+    const abilityObj =
       abilityRaw && typeof abilityRaw === "object"
-        ? stringOrNull((abilityRaw as Record<string, unknown>)["name"])
+        ? (abilityRaw as Record<string, unknown>)
         : null;
-    out.push({ t, job, ability });
+    const ability = abilityObj ? stringOrNull(abilityObj["name"]) : null;
+    // guid = ゲーム内 action ID。0 / 負値は「無し」扱い (FFLogs は不明技を 0 で返す)。
+    const id = abilityObj ? numberOrNull(abilityObj["guid"]) : null;
+    out.push(
+      id !== null && id > 0 ? { t, job, ability, id } : { t, job, ability },
+    );
     if (out.length >= MAX_DEATH_EVENTS) break;
   }
   out.sort((a, b) => a.t - b.t);
@@ -263,7 +288,7 @@ export function summarizeWipe(
   return {
     t: first.t,
     job: first.job,
-    ability: first.ability,
+    ability: deathAbilityLabel(first),
     cluster,
     total: sorted.length,
     phase: phaseAt(transitions, first.t),
