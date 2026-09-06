@@ -9,6 +9,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ALL_STATUSES, type CategoryStatus } from "@/lib/supabase/types";
+import { useMessages } from "@/lib/i18n/client";
 
 // Semantic task-progress palette — globals.css の `--color-status-*` トークン
 // 経由 (総合レビュー F-1)。gray → amber → emerald → slate =
@@ -49,6 +50,9 @@ export function StatusBadge({
   ariaLabel,
 }: Props) {
   const isEditable = !readOnly && typeof onChange === "function";
+  // DB の値 (未着手 / 練習中 / …) は日本語のまま。表示だけ辞書で言語に合わせる。
+  const m = useMessages();
+  const label = m.categoryStatus.labels[status];
 
   // Fixed min-width + centered content so different status labels
   // (未着手/練習中/クリア済/休止中) all occupy the same horizontal space.
@@ -68,7 +72,7 @@ export function StatusBadge({
     return (
       <span className={baseBadge}>
         <span className={cn("h-1 w-1 rounded-full", STATUS_DOT[status])} aria-hidden />
-        {status}
+        {label}
       </span>
     );
   }
@@ -80,10 +84,10 @@ export function StatusBadge({
           baseBadge,
           "cursor-pointer transition-shadow hover:shadow-[0_0_12px_-4px_currentColor]",
         )}
-        aria-label={ariaLabel ?? `ステータス: ${status} (クリックして変更)`}
+        aria-label={ariaLabel ?? m.categoryStatus.changeAria(label)}
       >
         <span className={cn("h-1 w-1 rounded-full", STATUS_DOT[status])} aria-hidden />
-        {status}
+        {label}
         <ChevronDown className="h-2.5 w-2.5 opacity-60" aria-hidden />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" sideOffset={6} className="glass-popup min-w-44">
@@ -99,7 +103,7 @@ export function StatusBadge({
               )}
             >
               <span className={cn("h-1.5 w-1.5 rounded-full", STATUS_DOT[s])} aria-hidden />
-              <span className="flex-1 text-sm">{s}</span>
+              <span className="flex-1 text-sm">{m.categoryStatus.labels[s]}</span>
               {isCurrent && (
                 <span className="text-muted-foreground font-mono text-[9px] tracking-[0.22em] uppercase">
                   current

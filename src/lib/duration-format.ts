@@ -25,11 +25,25 @@ export function formatDurationShort(seconds: number): string {
   return `${hours}h${minutes}m`;
 }
 
-/** Verbose duration for hover tooltips — Japanese readable form. */
-export function formatDurationLong(seconds: number): string {
+/**
+ * 表示言語。辞書 (`@/lib/i18n`) はここでは import せず、locale 引数で選ぶ
+ * (純粋関数のまま保つ)。既定は日本語で、省略した既存の呼び出しは従来通り。
+ */
+export type DurationLocale = "ja" | "en";
+
+/** Verbose duration for hover tooltips — Japanese readable form (en: `12 h 30 min`). */
+export function formatDurationLong(
+  seconds: number,
+  locale: DurationLocale = "ja",
+): string {
   const totalMinutes = Math.floor(seconds / 60);
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
+  if (locale === "en") {
+    if (hours === 0) return `${minutes} min`;
+    if (minutes === 0) return `${hours} h`;
+    return `${hours} h ${minutes} min`;
+  }
   if (hours === 0) return `${minutes}分`;
   if (minutes === 0) return `${hours}時間`;
   return `${hours}時間${minutes}分`;
@@ -46,7 +60,11 @@ export function formatDurationLong(seconds: number): string {
  * クリア日はタイトル抽出の JST 日付と突き合わせるため、非 JST 環境でも
  * 表示・ジャンプが同じ JST 暦日で揃う。
  */
-export function formatFirstClear(iso: string, mode: "short" | "long"): string {
+export function formatFirstClear(
+  iso: string,
+  mode: "short" | "long",
+  locale: DurationLocale = "ja",
+): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
   const { y, m, d: day } = jstYmd(d);
@@ -56,6 +74,10 @@ export function formatFirstClear(iso: string, mode: "short" | "long"): string {
   }
   const mm = String(m).padStart(2, "0");
   const dd = String(day).padStart(2, "0");
-  const wd = ["日", "月", "火", "水", "木", "金", "土"][jstWeekday(d)];
+  const wd = (
+    locale === "en"
+      ? ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+      : ["日", "月", "火", "水", "木", "金", "土"]
+  )[jstWeekday(d)];
   return `${y}-${mm}-${dd} (${wd})`;
 }

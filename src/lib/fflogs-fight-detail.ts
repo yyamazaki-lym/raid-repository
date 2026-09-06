@@ -295,10 +295,24 @@ export function summarizeWipe(
   };
 }
 
+/**
+ * 表示言語。辞書 (`@/lib/i18n`) はこのファイルから import しない
+ * (check スクリプトが単体で tsc するため) — 技名不明の代替語だけ locale で選ぶ。
+ */
+export type FightDetailLocale = "ja" | "en";
+
+/** 技名が取れなかったときの代替語 (「不明」)。 */
+export function unknownAbilityLabel(locale: FightDetailLocale = "ja"): string {
+  return locale === "en" ? "Unknown" : "不明";
+}
+
 /** ワイプ原因の表示ラベル (`WHM ← 技名 +2` の形)。 */
-export function formatWipeLabel(w: WipeSummary): string {
+export function formatWipeLabel(
+  w: WipeSummary,
+  locale: FightDetailLocale = "ja",
+): string {
   const extra = w.cluster > 1 ? ` +${w.cluster - 1}` : "";
-  const ability = w.ability ?? "不明";
+  const ability = w.ability ?? unknownAbilityLabel(locale);
   return `${jobAbbr(w.job)} ← ${ability}${extra}`;
 }
 
@@ -311,11 +325,12 @@ export type WipeCauseCount = { ability: string; count: number };
 export function wipeCauseCounts(
   wipes: Array<WipeSummary | null | undefined>,
   limit = 5,
+  locale: FightDetailLocale = "ja",
 ): WipeCauseCount[] {
   const counts = new Map<string, number>();
   for (const w of wipes) {
     if (!w) continue;
-    const key = w.ability ?? "不明";
+    const key = w.ability ?? unknownAbilityLabel(locale);
     counts.set(key, (counts.get(key) ?? 0) + 1);
   }
   return [...counts.entries()]

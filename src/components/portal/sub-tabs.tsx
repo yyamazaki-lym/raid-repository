@@ -6,15 +6,15 @@ import { useEffect, useRef, useState } from "react";
 import { motion, useReducedMotion } from "motion/react";
 import { ChevronLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { DEFAULT_SUB_TAB_LABELS, SUB_TAB_DEFS } from "@/lib/sub-tab-defs";
-import { useMessages } from "@/lib/i18n/client";
+import { DEFAULT_SUB_TAB_LABELS, getSubTabDefs } from "@/lib/sub-tab-defs";
+import { useLocale, useMessages } from "@/lib/i18n/client";
 import {
   ActionSlotTarget,
   useActionSlotContext,
 } from "@/components/portal/action-slot";
 
 // 定義は `@/lib/sub-tab-defs` に集約 (3 箇所コピーによる取りこぼし防止)。
-const SUB_TABS = SUB_TAB_DEFS;
+// ラベルは表示言語に追従するので、描画時に `getSubTabDefs(locale)` で引く。
 
 // 既存の import 互換のため re-export (category-form-dialog が参照)。
 export { DEFAULT_SUB_TAB_LABELS };
@@ -130,6 +130,7 @@ export function SubTabs({
   }, [pathname]);
 
   const m = useMessages();
+  const subTabs = getSubTabDefs(useLocale());
   return (
     <>
       <div ref={sentinelRef} aria-hidden className="h-px" />
@@ -162,7 +163,7 @@ export function SubTabs({
               </Link>
               <span className="border-border/40 mx-1 h-3 border-r" aria-hidden />
             </li>
-            {SUB_TABS.map((tab) => {
+            {subTabs.map((tab) => {
               const cfg = tabConfig?.[tab.id];
               if (cfg?.enabled === false) return null;
               const labelOverride = cfg?.label?.trim();

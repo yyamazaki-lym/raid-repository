@@ -8,7 +8,7 @@ import {
   Layers,
   ListChecks,
 } from "lucide-react";
-import { SUB_TAB_DEFS } from "@/lib/sub-tab-defs";
+import { getSubTabDefs } from "@/lib/sub-tab-defs";
 import { motion, useReducedMotion } from "motion/react";
 import { cn } from "@/lib/utils";
 import {
@@ -22,11 +22,11 @@ import { StatusBadge } from "./status-badge";
 import { useRealtimeCategories } from "@/lib/categories-client";
 import { filterVisibleCategories } from "@/lib/category-visibility";
 import { isCategoryTabId, type Category } from "@/lib/supabase/types";
-import { useMessages } from "@/lib/i18n/client";
+import { useLocale, useMessages } from "@/lib/i18n/client";
 
 // タブ定義は `@/lib/sub-tab-defs` に集約 (旧: この 3 ファイルに同じ配列を
 // コピーしていたため、タブ追加時にここだけ更新漏れが起きていた)。
-const SUB_PAGES = SUB_TAB_DEFS;
+// ラベルは表示言語に追従するので描画時に `getSubTabDefs(locale)` で引く。
 
 type Props = {
   initialCategories: Category[];
@@ -41,8 +41,8 @@ type Props = {
 
 export function CategorySwitcher({ initialCategories, userRoleIds }: Props) {
   const m = useMessages();
-  // サブタブの既定ラベルは表示言語に追従 (id 不明時は SUB_TAB_DEFS の日本語)。
-  const tabLabels: Record<string, string | undefined> = m.categories.tabs;
+  // サブタブの既定ラベルは表示言語に追従 (定義は sub-tab-defs に一元化)。
+  const subPages = getSubTabDefs(useLocale());
   const liveAll = useRealtimeCategories(initialCategories);
   const categories = filterVisibleCategories(liveAll, userRoleIds);
   const pathname = usePathname();
@@ -247,16 +247,14 @@ export function CategorySwitcher({ initialCategories, userRoleIds }: Props) {
                   aria-label={m.categories.subPagesAria(cat.name)}
                   className="flex shrink-0 items-center gap-0.5 pr-1.5"
                 >
-                  {SUB_PAGES.map((p) => {
+                  {subPages.map((p) => {
                     // 2.9 (2026-06-12): tab_config.{tab}.enabled === false の
                     // タブはアイコン行からも除外、label 上書きは tooltip に
                     // 反映 (sub-tabs.tsx / category-list.tsx と同一判定)。
                     const cfg = cat.tabConfig?.[p.segment];
                     if (cfg?.enabled === false) return null;
                     const labelOverride = cfg?.label?.trim();
-                    const label = labelOverride
-                      ? labelOverride
-                      : (tabLabels[p.id] ?? p.label);
+                    const label = labelOverride ? labelOverride : p.label;
                     return (
                       <DropdownMenuItem
                         key={p.segment}
