@@ -48,3 +48,6 @@ next-env.d.ts
 # Claude Code local settings (per-developer permissions/overrides)
 .claude/settings.local.json
 .claude/auto-push.log
+
+# Claude Code subagent worktrees (session-local)
+.claude/worktrees/
