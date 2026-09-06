@@ -22,6 +22,10 @@ import { decodeHtmlEntities } from "@/lib/html-entities";
  * parser はここで union を絞らず「空文字以外」を全て通す方針 (TODO #60)。
  */
 export type Attendance = string;
+
+/** 遅刻 / 早退の予定時刻 (2026-09-06 W-13)。定義は attendance-times.ts。 */
+export type { AttendanceTimes } from "./attendance-times";
+import type { AttendanceTimes } from "./attendance-times";
 export type SessionStatus = "CANDIDATE" | "DECISION";
 
 export type ScheduleUser = {
@@ -48,6 +52,11 @@ export type ScheduleSession = {
   status: SessionStatus;
   /** Map of userId → attendance symbol. Missing entries = no answer recorded. */
   attendances: Record<string, Attendance>;
+  /**
+   * 2026-09-06 (W-13): userId → 遅刻 / 早退の予定時刻 (native mode のみ)。
+   * sync 経路 (character-sheets) には無い概念なので undefined。
+   */
+  attendanceTimes?: Record<string, AttendanceTimes>;
   /**
    * N from `<tr id="row_N">` on character-sheets. Used by the in-portal
    * iframe edit dialog to jump directly to this row via `#row_N` URL

@@ -2,6 +2,7 @@ import { CalendarCheck2, AlertTriangle, CalendarPlus } from "lucide-react";
 import type { NextSessionResult } from "@/lib/schedule/next-session";
 import { DECISION_BADGE_CLASS } from "@/lib/schedule/status-ui";
 import { buildGoogleCalendarUrl } from "@/lib/calendar-link";
+import { SessionCountdown } from "./session-countdown";
 
 export function NextSessionCard({
   result,
@@ -150,6 +151,9 @@ export function NextSessionCard({
             {relative}
           </span>
         )}
+        {/* W-14 (2026-09-06): 本日で開始前なら「開始まで N 時間 M 分」を
+            client 側で刻む。開始後は inSession の「挑戦中」が担う。 */}
+        {isToday && !inSession && <SessionCountdown startMs={date.getTime()} />}
       </div>
     </Frame>
   );

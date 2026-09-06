@@ -10,7 +10,15 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { upsertNativeScheduleAttendanceAction } from "@/lib/server/native-schedule-actions";
-import type { ScheduleAttendanceOptions } from "@/lib/schedule/parse";
+import type {
+  AttendanceTimes,
+  ScheduleAttendanceOptions,
+} from "@/lib/schedule/parse";
+import {
+  formatAttendanceTimesHint,
+  normalizeAttendanceTime,
+  symbolAllowsTimes,
+} from "@/lib/schedule/attendance-times";
 
 /**
  * TODO #2 phase 2-B: native スケジュールの本人専用出欠入力 popover。
@@ -55,6 +63,11 @@ type Props = {
   userName: string;
   /** 表示日 (rawDate の date 部分)。aria-label / toast 文言で使用。 */
   displayDate: string;
+  /**
+   * 2026-09-06 (W-13): 現在の遅刻 / 早退の予定時刻。トリガーに `21:30〜` の
+   * ヒントを添え、popover 内の time input の初期値にする。
+   */
+  currentTimes?: AttendanceTimes | null;
 };
 
 export function NativeAttendancePopover({
@@ -64,6 +77,7 @@ export function NativeAttendancePopover({
   triggerClass,
   userName,
   displayDate,
+  currentTimes = null,
 }: Props) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -72,6 +86,14 @@ export function NativeAttendancePopover({
   const [pendingSymbol, setPendingSymbol] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, startTransition] = useTransition();
+  // W-13: 予定時刻の下書き。time input はフォーカスが外れた時に保存する
+  // (時→分と入力する途中で何度も保存しないため)。
+  const [arriveDraft, setArriveDraft] = useState(currentTimes?.arriveAt ?? "");
+  const [leaveDraft, setLeaveDraft] = useState(currentTimes?.leaveAt ?? "");
+  const effectiveSymbol =
+    pendingSymbol ?? (currentSymbol === "－" ? SYMBOL_UNANSWERED : currentSymbol);
+  const timesAllowed = symbolAllowsTimes(effectiveSymbol);
+  const timesHint = formatAttendanceTimesHint(currentTimes);
 
   // open=false 化時に error / pending 表示をリセット (controlled unmount で
   // popover の内部 state は破棄されるが、念のため明示クリア)。
@@ -79,16 +101,24 @@ export function NativeAttendancePopover({
     if (!open) {
       setError(null);
       setPendingSymbol(null);
+      // 再 open 時に props の最新値で time input を初期化し直す。
+      setArriveDraft(currentTimes?.arriveAt ?? "");
+      setLeaveDraft(currentTimes?.leaveAt ?? "");
     }
-  }, [open]);
+  }, [open, currentTimes?.arriveAt, currentTimes?.leaveAt]);
 
   const applySymbol = (nextSymbol: string) => {
     setError(null);
     setPendingSymbol(nextSymbol);
+    // 記号を変えても入力済みの予定時刻は保持する (× / 未回答は server 側で
+    // 落ちる)。
+    const keepTimes = symbolAllowsTimes(nextSymbol);
     startTransition(async () => {
       const result = await upsertNativeScheduleAttendanceAction({
         sessionId,
         symbol: nextSymbol,
+        arriveAt: keepTimes ? arriveDraft || null : null,
+        leaveAt: keepTimes ? leaveDraft || null : null,
       });
       if (!result.ok) {
         setError(result.reason);
@@ -105,6 +135,53 @@ export function NativeAttendancePopover({
     });
   };
 
+  /**
+   * W-13: 予定時刻の保存 (フォーカスが外れた時)。記号はそのまま、時刻だけ
+   * 上書きする。値が変わっていなければ何もしない。
+   */
+  const applyTimes = (next: { arriveAt: string; leaveAt: string }) => {
+    if (!timesAllowed || !effectiveSymbol) return;
+    const nextArrive = normalizeAttendanceTime(next.arriveAt);
+    const nextLeave = normalizeAttendanceTime(next.leaveAt);
+    if (next.arriveAt && !nextArrive) {
+      setError("到着予定は HH:MM で入力してください");
+      return;
+    }
+    if (next.leaveAt && !nextLeave) {
+      setError("早退予定は HH:MM で入力してください");
+      return;
+    }
+    if (
+      nextArrive === (currentTimes?.arriveAt ?? null) &&
+      nextLeave === (currentTimes?.leaveAt ?? null)
+    ) {
+      return;
+    }
+    setError(null);
+    startTransition(async () => {
+      const result = await upsertNativeScheduleAttendanceAction({
+        sessionId,
+        symbol: effectiveSymbol,
+        arriveAt: nextArrive,
+        leaveAt: nextLeave,
+      });
+      if (!result.ok) {
+        setError(result.reason);
+        return;
+      }
+      const hint = formatAttendanceTimesHint({
+        arriveAt: nextArrive,
+        leaveAt: nextLeave,
+      });
+      toast.success(
+        hint
+          ? `${displayDate} の予定時刻を「${hint}」に保存しました`
+          : `${displayDate} の予定時刻を消しました`,
+      );
+      router.refresh();
+    });
+  };
+
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
@@ -112,10 +189,18 @@ export function NativeAttendancePopover({
           "inline-flex h-5 min-w-[1.75rem] items-center justify-center rounded-sm border px-1 text-[12px] leading-none transition-transform hover:scale-105 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--neon-cyan)]/60 active:scale-95 " +
           triggerClass
         }
-        aria-label={`${userName} ${displayDate} の出欠を編集`}
-        title={`出欠を編集 (${userName})`}
+        aria-label={
+          `${userName} ${displayDate} の出欠を編集` +
+          (timesHint ? ` (予定 ${timesHint})` : "")
+        }
+        title={`出欠を編集 (${userName})` + (timesHint ? ` — ${timesHint}` : "")}
       >
         {currentSymbol}
+        {timesHint && (
+          <span className="ml-1 font-mono text-[9px] leading-none opacity-80 tabular-nums">
+            {timesHint}
+          </span>
+        )}
       </PopoverTrigger>
       {/* TODO #72 案 J: open=false 時に <PopoverContent> を React tree から完全除外。
           rapid 連続 close 時の React 19 batch race で data-open 属性が外れない問題を
@@ -184,6 +269,64 @@ export function NativeAttendancePopover({
                   onSelect={() => applySymbol(SYMBOL_UNANSWERED)}
                 />
               </div>
+            </div>
+
+            {/* W-13 (2026-09-06): 遅刻 / 早退の予定時刻。○△⏰ など「出る」記号の
+                ときだけ入力できる。フォーカスが外れた時に保存 (時→分の途中で
+                保存が走らないように)。 */}
+            <div className="flex flex-col gap-1.5 border-t border-border/40 pt-2">
+              <span className="text-[10px] tracking-normal text-muted-foreground">
+                遅刻 / 早退の予定 (任意)
+              </span>
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
+                  到着
+                  <input
+                    type="time"
+                    value={arriveDraft}
+                    disabled={busy || !timesAllowed}
+                    onChange={(e) => setArriveDraft(e.target.value)}
+                    onBlur={() =>
+                      applyTimes({ arriveAt: arriveDraft, leaveAt: leaveDraft })
+                    }
+                    aria-label="到着予定 (遅刻する場合)"
+                    className="h-6 rounded-sm border border-border/60 bg-background/40 px-1 font-mono text-[11px] text-foreground tabular-nums [color-scheme:dark] disabled:cursor-not-allowed disabled:opacity-50"
+                  />
+                </label>
+                <label className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
+                  早退
+                  <input
+                    type="time"
+                    value={leaveDraft}
+                    disabled={busy || !timesAllowed}
+                    onChange={(e) => setLeaveDraft(e.target.value)}
+                    onBlur={() =>
+                      applyTimes({ arriveAt: arriveDraft, leaveAt: leaveDraft })
+                    }
+                    aria-label="早退予定"
+                    className="h-6 rounded-sm border border-border/60 bg-background/40 px-1 font-mono text-[11px] text-foreground tabular-nums [color-scheme:dark] disabled:cursor-not-allowed disabled:opacity-50"
+                  />
+                </label>
+                {(arriveDraft || leaveDraft) && timesAllowed && (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => {
+                      setArriveDraft("");
+                      setLeaveDraft("");
+                      applyTimes({ arriveAt: "", leaveAt: "" });
+                    }}
+                    className="rounded-sm border border-border/60 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
+                  >
+                    消す
+                  </button>
+                )}
+              </div>
+              <p className="text-[10px] leading-relaxed text-muted-foreground/80">
+                {timesAllowed
+                  ? "入力後に欄の外を押すと保存されます。確定通知の名前の横に出ます。"
+                  : "先に参加状況 (○ / △ / ⏰ など) を選ぶと入力できます。"}
+              </p>
             </div>
 
             {error && (
