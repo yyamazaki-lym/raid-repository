@@ -98,6 +98,13 @@ export type FflogsFightsSyncResult =
       fightsUpserted: number;
       failed: number;
       truncated: boolean;
+      /**
+       * 今回の枠 (件数上限 / 時間予算) に入らず次回に持ち越した report 数
+       * (2026-09-07)。保存形の更新に伴う取り直し (フェーズ遷移 / 死亡イベント
+       * の後追い) が溜まっているときに「あと何回同期を押せば追いつくか」を
+       * 画面で示すため。
+       */
+      remaining: number;
       /** 保存済み zone 名から後追いでカテゴリが決まった report 数。 */
       reattributed: number;
       /**
@@ -209,6 +216,7 @@ export async function syncFflogsFights(opts?: {
       fightsUpserted: 0,
       failed: 0,
       truncated: false,
+      remaining: 0,
       reattributed: 0,
       failures: [],
       videosBridged: 0,
@@ -655,6 +663,8 @@ export async function syncFflogsFights(opts?: {
     fightsUpserted: upserted,
     failed,
     truncated,
+    // 取りに行った件数 (fetched) を全候補から引く = 枠に入らなかった件数。
+    remaining: Math.max(0, targets.length - fetched),
     reattributed,
     failures,
     videosBridged,
