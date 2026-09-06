@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { setNativeScheduleSessionStatusAction } from "@/lib/server/native-schedule-actions";
 import type { NativeCancelledSessionRow } from "@/lib/schedule/native-admin-client";
 import { useConfirm } from "@/components/portal/confirm-dialog";
+import { useMessages } from "@/lib/i18n/client";
 
 /**
  * TODO #2 phase 2-C (2026-05-07): native スケジュールの CANCELLED 行を一覧
@@ -48,6 +49,7 @@ export function NativeCancelledSessionsSection({
 }) {
   const router = useRouter();
   const confirm = useConfirm();
+  const m = useMessages();
   const [pending, startTransition] = useTransition();
   // spinner を「押したボタン」にだけ出すための識別子 (`${id}:${next}`)。
   // pending boolean だけだと隣のボタンの icon まで spinner に変わる。
@@ -58,12 +60,15 @@ export function NativeCancelledSessionsSection({
     next: "CANDIDATE" | "DECISION",
   ) => {
     const label = formatDateLabel(s.parsed_date, s.day_of_week, s.raw_date);
-    const nextLabel = next === "DECISION" ? "確定 (DECISION)" : "候補 (CANDIDATE)";
+    const nextLabel =
+      next === "DECISION"
+        ? m.nativeCancelled.decisionLabel
+        : m.nativeCancelled.candidateLabel;
     if (
       !(await confirm({
-        title: "ステータスを戻す",
-        description: `「${label}」を ${nextLabel} に戻します。よろしいですか？`,
-        confirmText: "戻す",
+        title: m.nativeCancelled.confirmTitle,
+        description: m.nativeCancelled.confirmDescription(label, nextLabel),
+        confirmText: m.nativeCancelled.confirmButton,
       }))
     )
       return;
@@ -75,7 +80,7 @@ export function NativeCancelledSessionsSection({
           toast.error(r.reason);
           return;
         }
-        toast.success(`「${label}」を ${nextLabel} に戻しました`);
+        toast.success(m.nativeCancelled.toastRestored(label, nextLabel));
         onChanged();
         router.refresh();
       } finally {
@@ -94,16 +99,16 @@ export function NativeCancelledSessionsSection({
       </header>
 
       <p className="text-[10px] leading-relaxed text-muted-foreground">
-        キャンセル済みの候補日。スケジュール表からは非表示ですが、ここから候補または確定に戻すと再びスケジュール表に出現します。
+        {m.nativeCancelled.description}
       </p>
 
       {!loaded ? (
         <div className="text-[11px] text-muted-foreground italic">
-          読み込み中…
+          {m.common.loading}
         </div>
       ) : cancelledSessions.length === 0 ? (
         <div className="rounded-md border border-border/30 px-3 py-2 text-[11px] text-muted-foreground">
-          キャンセル済みの候補日はありません。
+          {m.nativeCancelled.empty}
         </div>
       ) : (
         <ul className="flex flex-col gap-1.5">
@@ -139,7 +144,7 @@ export function NativeCancelledSessionsSection({
                     ) : (
                       <RotateCcw className="h-3 w-3" aria-hidden />
                     )}
-                    候補に戻す
+                    {m.nativeCancelled.restoreCandidate}
                   </Button>
                   <Button
                     type="button"
@@ -153,7 +158,7 @@ export function NativeCancelledSessionsSection({
                     ) : (
                       <CheckCircle2 className="h-3 w-3" aria-hidden />
                     )}
-                    確定に戻す
+                    {m.nativeCancelled.restoreDecision}
                   </Button>
                 </div>
               </li>

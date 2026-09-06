@@ -7,6 +7,7 @@ import { FileClock, Link2, LogIn, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { ReleaseEntry } from "@/lib/changelog";
 import { useConfirm } from "@/components/portal/confirm-dialog";
+import { useMessages } from "@/lib/i18n/client";
 
 /**
  * Inline GitHub mark — `lucide-react` v1.x removed brand icons (Github
@@ -59,6 +60,7 @@ export function ChangelogFooter({
 }) {
   const pathname = usePathname();
   const confirm = useConfirm();
+  const m = useMessages();
   const [showChangelog, setShowChangelog] = useState(false);
   // 最新分 (`RELEASES`)。初回表示時に dynamic import で取り込む。
   const [releases, setReleases] = useState<ReleaseEntry[] | null>(null);
@@ -94,7 +96,7 @@ export function ChangelogFooter({
                 })
                 .catch((err: unknown) => {
                   console.warn("[changelog] load failed:", err);
-                  setReleasesError("読み込みに失敗しました");
+                  setReleasesError(m.changelogFooter.loadFailed);
                 })
                 .finally(() => {
                   setLoadingReleases(false);
@@ -102,18 +104,20 @@ export function ChangelogFooter({
             }
           }}
           className="h-8 gap-1.5 rounded-md px-3 text-[10px] tracking-normal"
-          title="更新履歴を表示 / 非表示"
+          title={m.changelogFooter.toggleTitle}
           aria-expanded={showChangelog}
           aria-busy={loadingReleases}
         >
           <FileClock className="h-3 w-3" aria-hidden />
-          {showChangelog ? "更新履歴を隠す" : "更新履歴"}
+          {showChangelog
+            ? m.changelogFooter.hideChangelog
+            : m.changelogFooter.showChangelog}
         </Button>
         <a
           href="https://github.com/yyamazaki-lym/raid-repository"
           target="_blank"
           rel="noopener noreferrer"
-          title="GitHub リポジトリを新しいタブで開く"
+          title={m.changelogFooter.githubTitle}
           className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border/60 bg-background/40 px-3 font-mono text-[10px] tracking-[0.18em] text-muted-foreground uppercase transition-colors hover:border-[var(--neon-cyan)]/60 hover:bg-secondary/40 hover:text-foreground"
         >
           <GithubMark className="h-3 w-3" />
@@ -127,7 +131,7 @@ export function ChangelogFooter({
           href="https://jp.finalfantasyxiv.com/lodestone/"
           target="_blank"
           rel="noopener noreferrer"
-          title="FF14 Lodestone (公式) を新しいタブで開く"
+          title={m.changelogFooter.lodestoneTitle}
           className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border/60 bg-background/40 px-3 font-mono text-[10px] tracking-[0.18em] text-muted-foreground uppercase transition-colors hover:border-[var(--neon-cyan)]/60 hover:bg-secondary/40 hover:text-foreground"
         >
           <Link2 className="h-3 w-3" aria-hidden />
@@ -143,7 +147,7 @@ export function ChangelogFooter({
         {showSignIn ? (
           <Link
             href={`/login?next=${encodeURIComponent(pathname)}`}
-            title="Discord アカウントでログイン"
+            title={m.changelogFooter.signInTitle}
             className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[var(--neon-cyan)]/30 bg-[var(--neon-cyan)]/5 px-3 font-mono text-[10px] tracking-[0.18em] text-[var(--neon-cyan)]/85 uppercase transition-colors hover:border-[var(--neon-cyan)]/60 hover:bg-[var(--neon-cyan)]/10 hover:text-[var(--neon-cyan)]"
           >
             <LogIn className="h-3 w-3" aria-hidden />
@@ -161,8 +165,8 @@ export function ChangelogFooter({
               const form = e.currentTarget;
               void (async () => {
                 const ok = await confirm({
-                  title: "サインアウトしますか？",
-                  confirmText: "サインアウト",
+                  title: m.changelogFooter.confirmSignOutTitle,
+                  confirmText: m.changelogFooter.signOut,
                   destructive: true,
                 });
                 if (ok) form.submit();
@@ -171,7 +175,7 @@ export function ChangelogFooter({
           >
             <button
               type="submit"
-              title="サインアウト"
+              title={m.changelogFooter.signOut}
               className="inline-flex h-8 items-center gap-1.5 rounded-md border border-rose-400/30 bg-rose-400/5 px-3 font-mono text-[10px] tracking-[0.18em] text-rose-300 uppercase transition-colors hover:border-rose-400/60 hover:bg-rose-400/10 hover:text-rose-200"
             >
               <LogOut className="h-3 w-3" aria-hidden />
@@ -183,7 +187,7 @@ export function ChangelogFooter({
       {showChangelog && (
         <div className="flex flex-col gap-3 rounded-sm border border-border/40 bg-secondary/20 px-3 py-2.5 text-[11px] leading-relaxed">
           <p className="text-[10px] tracking-normal text-muted-foreground">
-            更新履歴 — Release Notes
+            {m.changelogFooter.heading}
           </p>
           {(() => {
             if (releases === null) {
@@ -196,7 +200,7 @@ export function ChangelogFooter({
                   }
                   role="status"
                 >
-                  {releasesError ?? "読み込み中…"}
+                  {releasesError ?? m.common.loading}
                 </p>
               );
             }
@@ -204,7 +208,9 @@ export function ChangelogFooter({
               ? [...releases, ...archiveReleases]
               : releases;
             return displayReleases.length === 0 ? (
-              <p className="text-muted-foreground">記録なし</p>
+              <p className="text-muted-foreground">
+                {m.changelogFooter.noRecords}
+              </p>
             ) : (
               <ul className="flex flex-col gap-2">
                 {displayReleases.map((r, idx) => (
@@ -286,7 +292,7 @@ export function ChangelogFooter({
                   })
                   .catch((err: unknown) => {
                     console.warn("[changelog-archive] load failed:", err);
-                    setArchiveError("読み込みに失敗しました");
+                    setArchiveError(m.changelogFooter.loadFailed);
                   })
                   .finally(() => {
                     setLoadingArchive(false);
@@ -296,7 +302,9 @@ export function ChangelogFooter({
               className="self-start cursor-pointer rounded-sm border border-[var(--neon-cyan)]/30 bg-secondary/30 px-2.5 py-1 text-[10px] tracking-normal text-[var(--neon-cyan)]/85 transition-colors hover:border-[var(--neon-cyan)]/60 hover:bg-secondary/50 hover:text-[var(--neon-cyan)] disabled:cursor-wait disabled:opacity-60"
               aria-busy={loadingArchive}
             >
-              {loadingArchive ? "読み込み中…" : "↓ 過去の更新履歴を見る"}
+              {loadingArchive
+                ? m.common.loading
+                : m.changelogFooter.loadArchive}
             </button>
           ) : null}
           {archiveError && (
@@ -309,9 +317,9 @@ export function ChangelogFooter({
             target="_blank"
             rel="noopener noreferrer"
             className="self-start text-[10px] tracking-normal text-[var(--neon-cyan)]/85 transition-colors hover:text-[var(--neon-cyan)]"
-            title="これ以前の commit log は GitHub で確認"
+            title={m.changelogFooter.commitLogTitle}
           >
-            ↗ commit log を GitHub で見る
+            {m.changelogFooter.commitLog}
           </a>
         </div>
       )}

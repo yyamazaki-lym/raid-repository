@@ -114,12 +114,12 @@ export function SettingsDialog({
     if (!connected && !errParam) return;
     if (connected) {
       void whenToasterReady().then(() => {
-        toast.success("FFLogs OAuth 認証に成功しました");
+        toast.success(m.settingsDialog.toastOauthConnected);
       });
       setOpen(true);
     } else if (errParam) {
       void whenToasterReady().then(() => {
-        toast.error("FFLogs OAuth: " + errParam);
+        toast.error(m.settingsDialog.toastOauthError(errParam));
       });
       setOpen(true);
     }
@@ -130,7 +130,7 @@ export function SettingsDialog({
     const cleanUrl =
       window.location.pathname + (cleanQuery ? `?${cleanQuery}` : "");
     window.history.replaceState({}, "", cleanUrl);
-  }, []);
+  }, [m]);
 
   // Initial fetch of url + channelId + mode on open. URL / channelId は
   // sync mode の Save ボタン経由で永続化、mode は ScheduleSourceModeSection
@@ -187,16 +187,16 @@ export function SettingsDialog({
     const urlResult = await setScheduleUrlAction(url);
     if (!urlResult.ok) {
       setBusy(false);
-      toast.error("URL: " + urlResult.reason);
+      toast.error(m.settingsDialog.toastUrlError(urlResult.reason));
       return;
     }
     const channelResult = await setDiscordScheduleChannelIdAction(channelId);
     setBusy(false);
     if (!channelResult.ok) {
-      toast.error("チャンネルID: " + channelResult.reason);
+      toast.error(m.settingsDialog.toastChannelError(channelResult.reason));
       return;
     }
-    toast.success("設定を保存しました（全員共有）");
+    toast.success(m.settingsDialog.toastSaved);
     setOpen(false);
     router.refresh();
   };
@@ -338,7 +338,7 @@ export function SettingsDialog({
             disabled={busy}
             className="text-[11px] tracking-normal"
           >
-            キャンセル
+            {m.common.cancel}
           </Button>
           {/* Save ボタンは sync mode の URL / channel ID 保存専用。native /
               disabled mode では URL / channelId 入力欄が非表示なので保存
@@ -356,7 +356,7 @@ export function SettingsDialog({
               ) : (
                 <Save className="h-3.5 w-3.5" aria-hidden />
               )}
-              {busy ? "保存中…" : "保存"}
+              {busy ? m.common.saving : m.common.save}
             </Button>
           )}
         </DialogFooter>

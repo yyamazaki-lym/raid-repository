@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { setNativeScheduleDefaultRaidTimeAction } from "@/lib/server/categories-actions";
+import { useMessages } from "@/lib/i18n/client";
 
 /**
  * TODO #81 (2.1, 2026-05-12) / TODO #85 (2.6, 2026-06-10): native 経路で
@@ -36,6 +37,7 @@ export function NativeDefaultRaidTimeSection({
   onChanged: () => void;
 }) {
   const router = useRouter();
+  const m = useMessages();
   const [pending, startTransition] = useTransition();
   const [draftStart, setDraftStart] = useState(defaultStartTime);
   const [draftEnd, setDraftEnd] = useState(defaultEndTime);
@@ -62,8 +64,8 @@ export function NativeDefaultRaidTimeSection({
     if (!validRange) {
       toast.error(
         draftStart === draftEnd
-          ? "開始時刻と終了時刻が同じです"
-          : "時刻は HH:MM 形式で入力してください",
+          ? m.nativeRaidTime.errSameTime
+          : m.nativeRaidTime.errFormat,
       );
       return;
     }
@@ -83,14 +85,13 @@ export function NativeDefaultRaidTimeSection({
       const detail =
         total === 0
           ? ""
-          : ` (候補日 ${r.updatedCount} 件を更新${
+          : m.nativeRaidTime.toastDetail(
+              r.updatedCount,
               r.deletedCount > 0
-                ? ` / ${r.deletedCount} 件を削除 (手動行と衝突)`
-                : ""
-            })`;
-      toast.success(
-        `既定時刻を ${draftStart}〜${draftEnd} に変更しました${detail}`,
-      );
+                ? m.nativeRaidTime.toastDeleted(r.deletedCount)
+                : "",
+            );
+      toast.success(m.nativeRaidTime.toastSaved(draftStart, draftEnd, detail));
       onChanged();
       router.refresh();
     });
@@ -109,9 +110,7 @@ export function NativeDefaultRaidTimeSection({
       </header>
 
       <p className="text-[10px] leading-relaxed text-muted-foreground">
-        当月日付の自動補完で使うレイド開始 / 終了時刻の既定値。
-        保存時に未来日付 (今日以降) の候補日も新しい時刻に自動更新されます。
-        手動で同じ日時の候補日を追加済みの場合は、衝突した自動生成行を削除して手動行を温存します。
+        {m.nativeRaidTime.description}
       </p>
 
       <div className="flex flex-col gap-2">
@@ -122,7 +121,7 @@ export function NativeDefaultRaidTimeSection({
             onChange={(e) => setDraftStart(e.target.value)}
             disabled={!canEdit || !loaded || pending}
             className="h-7 w-32 font-mono text-[12px]"
-            aria-label="開始時刻"
+            aria-label={m.nativeRaidTime.startAria}
           />
           <span className="text-xs text-muted-foreground">〜</span>
           <Input
@@ -131,11 +130,13 @@ export function NativeDefaultRaidTimeSection({
             onChange={(e) => setDraftEnd(e.target.value)}
             disabled={!canEdit || !loaded || pending}
             className="h-7 w-32 font-mono text-[12px]"
-            aria-label="終了時刻"
+            aria-label={m.nativeRaidTime.endAria}
           />
         </div>
         <p className="text-muted-foreground text-[10px] leading-relaxed">
-          JST 基準。深夜またぎ (例: <span className="whitespace-nowrap">22:00〜00:00</span>) も登録できます。
+          {m.nativeRaidTime.jstNoteBefore}{" "}
+          <span className="whitespace-nowrap">22:00〜00:00</span>
+          {m.nativeRaidTime.jstNoteAfter}
         </p>
 
         {canEdit && (
@@ -152,7 +153,7 @@ export function NativeDefaultRaidTimeSection({
               ) : (
                 <Save className="h-3 w-3" aria-hidden />
               )}
-              保存
+              {m.common.save}
             </Button>
           </div>
         )}

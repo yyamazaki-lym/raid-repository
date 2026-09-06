@@ -35,6 +35,7 @@ import { VideoMetaPanel } from "@/components/portal/maintenance/video-meta-panel
 import { FirstClearPanel } from "@/components/portal/maintenance/first-clear-panel";
 import { StrategyThumbPanel } from "@/components/portal/maintenance/strategy-thumb-panel";
 import { type PostedAtBackfillResult } from "@/components/portal/maintenance/types";
+import { useMessages } from "@/lib/i18n/client";
 
 /**
  * Maintenance dropdown — gives the user one-click access to the
@@ -104,6 +105,7 @@ type StrategyThumbProgress = {
 export function MaintenanceMenu() {
   const router = useRouter();
   const confirm = useConfirm();
+  const m = useMessages();
   const [pending, startTransition] = useTransition();
   const [pendingKind, setPendingKind] = useState<ActionKind | null>(null);
   const [result, setResult] = useState<Result | null>(null);
@@ -163,7 +165,7 @@ export function MaintenanceMenu() {
         forceRefresh: force,
       });
       if (!r.ok) {
-        durFatal = r.reason ?? "原因不明";
+        durFatal = r.reason ?? m.maintenance.unknownReason;
         break;
       }
       if (iter === 0 && typeof r.totalPending === "number") {
@@ -245,7 +247,7 @@ export function MaintenanceMenu() {
         forceRefresh: force,
       });
       if (!r.ok) {
-        fatal = r.reason ?? "原因不明";
+        fatal = r.reason ?? m.maintenance.unknownReason;
         break;
       }
       if (iter === 0 && typeof r.totalPending === "number") {
@@ -292,19 +294,17 @@ export function MaintenanceMenu() {
     // pending スピナーが先行点灯しないように)。
     if (kind === "videoMetaForceRefresh") {
       const ok = await confirm({
-        title: "全動画の posted_at を再取得しますか？",
-        description:
-          "古い動画を Discord に貼って posted_at が誤って取り込み日になっている場合の修復用 (TODO #22)。\n動画件数 × 1 リクエスト発行されるため数十秒〜数分かかります。",
-        confirmText: "実行",
+        title: m.maintenance.confirmPostedAtTitle,
+        description: m.maintenance.confirmPostedAtDescription,
+        confirmText: m.maintenance.run,
       });
       if (!ok) return;
     }
     if (kind === "strategyThumbForceRefresh") {
       const ok = await confirm({
-        title: "攻略リンク全件の og:image を再取得しますか？",
-        description:
-          "既に取得済みのサムネイルも上書きされます。\n登録件数 × 1 リクエスト発行されるため数十秒〜数分かかります。",
-        confirmText: "実行",
+        title: m.maintenance.confirmThumbTitle,
+        description: m.maintenance.confirmThumbDescription,
+        confirmText: m.maintenance.run,
       });
       if (!ok) return;
     }
@@ -315,17 +315,21 @@ export function MaintenanceMenu() {
         if (kind === "discord") {
           const r = await importDiscordNow();
           if (!r.ok) {
-            toast.error("Discord 取り込み失敗: " + (r.reason ?? "原因不明"));
+            toast.error(
+              m.maintenance.toastDiscordFailed(
+                r.reason ?? m.maintenance.unknownReason,
+              ),
+            );
             return;
           }
           const summary =
             r.totalInserted > 0
-              ? `+${r.totalInserted} 件取り込み`
+              ? m.maintenance.discordInserted(r.totalInserted)
               : r.totalFailed > 0
-                ? `0 件挿入 (失敗 ${r.totalFailed})`
+                ? m.maintenance.discordFailedCount(r.totalFailed)
                 : r.totalScanned > 0
-                  ? `0 件挿入 (重複スキップ)`
-                  : `0 件 (URL 検出できず)`;
+                  ? m.maintenance.discordDuplicates
+                  : m.maintenance.discordNoUrls;
           toast.success(summary);
           setResult({ kind: "discord", data: { items: r.items } });
           router.refresh();
@@ -336,11 +340,19 @@ export function MaintenanceMenu() {
           const { durations: dur, postedAt: posted } =
             await runVideoMetaPhase(force);
           if (!dur.ok) {
-            toast.error("動画時間取得失敗: " + (dur.reason ?? "原因不明"));
+            toast.error(
+              m.maintenance.toastDurationFailed(
+                dur.reason ?? m.maintenance.unknownReason,
+              ),
+            );
             return;
           }
           if (!posted.ok) {
-            toast.error("投稿日時取得失敗: " + (posted.reason ?? "原因不明"));
+            toast.error(
+              m.maintenance.toastPostedAtFailed(
+                posted.reason ?? m.maintenance.unknownReason,
+              ),
+            );
             setResult({
               kind: "videoMeta",
               data: { durations: dur, postedAt: posted },
@@ -348,13 +360,14 @@ export function MaintenanceMenu() {
             return;
           }
           const summaryParts: string[] = [];
-          if (dur.filled > 0) summaryParts.push(`動画時間 ${dur.filled} 件`);
+          if (dur.filled > 0)
+            summaryParts.push(m.maintenance.durationCount(dur.filled));
           if (posted.updated > 0)
-            summaryParts.push(`投稿日時 ${posted.updated} 件`);
+            summaryParts.push(m.maintenance.postedAtCount(posted.updated));
           toast.success(
             summaryParts.length > 0
-              ? summaryParts.join(" / ") + " を取得"
-              : "更新なし",
+              ? summaryParts.join(" / ") + m.maintenance.fetchedSuffix
+              : m.maintenance.noUpdates,
           );
           setResult({
             kind: "videoMeta",
@@ -368,13 +381,17 @@ export function MaintenanceMenu() {
             overwrite: true,
           });
           if (!r.ok) {
-            toast.error("スキャン失敗: " + (r.reason ?? "原因不明"));
+            toast.error(
+              m.maintenance.toastScanFailed(
+                r.reason ?? m.maintenance.unknownReason,
+              ),
+            );
             return;
           }
           toast.success(
             r.filled > 0
-              ? `${r.filled} コンテンツのクリア日時を再計算`
-              : `更新なし (該当 ${r.noMatch} / 設定済み ${r.alreadySet})`,
+              ? m.maintenance.firstClearRecomputed(r.filled)
+              : m.maintenance.firstClearNoUpdate(r.noMatch, r.alreadySet),
           );
           setResult({ kind: "firstClear", data: r, force: true });
           router.refresh();
@@ -387,16 +404,20 @@ export function MaintenanceMenu() {
           const force = kind === "strategyThumbForceRefresh";
           const r = await runStrategyThumbPhase(force);
           if (!r.ok) {
-            toast.error("サムネ取得失敗: " + (r.reason ?? "原因不明"));
+            toast.error(
+              m.maintenance.toastThumbFailed(
+                r.reason ?? m.maintenance.unknownReason,
+              ),
+            );
             return;
           }
           const scanned = r.filled + r.failed + r.skippedNoImage;
           const summary =
             r.filled > 0
-              ? `サムネ ${r.filled} 件取得`
+              ? m.maintenance.thumbFetched(r.filled)
               : scanned > 0
-                ? `更新なし (取得不可 ${r.skippedNoImage} / 失敗 ${r.failed})`
-                : "対象なし";
+                ? m.maintenance.thumbNoUpdate(r.skippedNoImage, r.failed)
+                : m.maintenance.thumbNoTargets;
           toast.success(summary);
           setResult({
             kind: "strategyThumb",
@@ -421,36 +442,44 @@ export function MaintenanceMenu() {
   // ローダーを出し、それ以外はラベル維持 (ボタン disabled で同時実行防止)。
   const isThisPending = (k: ActionKind) => pending && pendingKind === k;
   const videoMetaProgressLabel = (() => {
-    if (!videoMetaProgress) return "② メタ取り込み中…";
+    if (!videoMetaProgress) return m.maintenance.metaImporting;
     if (videoMetaProgress.phase === "duration") {
       if (videoMetaProgress.total > 0) {
         const pct = Math.floor(
           (videoMetaProgress.processed / videoMetaProgress.total) * 100,
         );
-        return `② 動画情報 ${videoMetaProgress.processed}/${videoMetaProgress.total} (${pct}%)`;
+        return m.maintenance.metaProgress(
+          videoMetaProgress.processed,
+          videoMetaProgress.total,
+          pct,
+        );
       }
-      return `② 動画情報 ${videoMetaProgress.processed} 件`;
+      return m.maintenance.metaCount(videoMetaProgress.processed);
     }
-    return "② 投稿日時取得中…";
+    return m.maintenance.postedAtFetching;
   })();
 
   const strategyThumbProgressLabel = (() => {
-    if (!strategyThumbProgress) return "④ サムネ取得中…";
+    if (!strategyThumbProgress) return m.maintenance.thumbFetching;
     if (strategyThumbProgress.total > 0) {
       const pct = Math.floor(
         (strategyThumbProgress.processed / strategyThumbProgress.total) * 100,
       );
-      return `④ サムネ ${strategyThumbProgress.processed}/${strategyThumbProgress.total} (${pct}%)`;
+      return m.maintenance.thumbProgress(
+        strategyThumbProgress.processed,
+        strategyThumbProgress.total,
+        pct,
+      );
     }
-    return `④ サムネ ${strategyThumbProgress.processed} 件`;
+    return m.maintenance.thumbCount(strategyThumbProgress.processed);
   })();
 
   // pending 中はトリガーボタン側に該当ラベルを出す。実行中の phase が
   // 何かは見える方がユーザーの安心になるため、ラベル切替で表現。
   const triggerLabel = (() => {
-    if (!pending) return "メンテナンス";
-    if (pendingKind === "discord") return "① Discord 取り込み中…";
-    if (pendingKind === "firstClearForce") return "③ クリア再計算中…";
+    if (!pending) return m.maintenance.trigger;
+    if (pendingKind === "discord") return m.maintenance.discordImporting;
+    if (pendingKind === "firstClearForce") return m.maintenance.firstClearRunning;
     if (
       pendingKind === "videoMeta" ||
       pendingKind === "videoMetaForceRefresh"
@@ -461,7 +490,7 @@ export function MaintenanceMenu() {
       pendingKind === "strategyThumbForceRefresh"
     )
       return strategyThumbProgressLabel;
-    return "実行中…";
+    return m.maintenance.running;
   })();
 
   return (
@@ -474,8 +503,8 @@ export function MaintenanceMenu() {
         <DropdownMenuTrigger
           ref={menuTriggerRef}
           disabled={pending}
-          aria-label="メンテナンスメニューを開く"
-          title="Discord 取り込み / 動画メタ / クリア再計算"
+          aria-label={m.maintenance.triggerAria}
+          title={m.maintenance.triggerTitle}
           className="inline-flex items-center gap-1.5 rounded-md border border-border/60 bg-background/30 px-3 py-1.5 text-[11px] tracking-normal text-muted-foreground transition-colors hover:border-[var(--neon-cyan)]/60 hover:text-foreground disabled:opacity-60"
         >
           {pending ? (
@@ -500,10 +529,10 @@ export function MaintenanceMenu() {
               ) : (
                 <Settings2 className="h-3.5 w-3.5" aria-hidden />
               )}
-              ① Discord 取り込み
+              {m.maintenance.discordItem}
             </span>
             <span className="pl-5 text-[10px] text-muted-foreground whitespace-nowrap">
-              攻略情報 / 動画チャンネルから新着 URL を取り込み
+              {m.maintenance.discordItemDesc}
             </span>
           </DropdownMenuItem>
           <DropdownMenuItem
@@ -517,10 +546,10 @@ export function MaintenanceMenu() {
               ) : (
                 <Settings2 className="h-3.5 w-3.5" aria-hidden />
               )}
-              ② 動画メタ取得
+              {m.maintenance.videoMetaItem}
             </span>
             <span className="pl-5 text-[10px] text-muted-foreground whitespace-nowrap">
-              YouTube 再生時間 + Discord 投稿日時
+              {m.maintenance.videoMetaItemDesc}
             </span>
           </DropdownMenuItem>
           <DropdownMenuItem
@@ -534,10 +563,10 @@ export function MaintenanceMenu() {
               ) : (
                 <Trophy className="h-3.5 w-3.5 text-amber-300" aria-hidden />
               )}
-              ③ クリア再計算
+              {m.maintenance.firstClearItem}
             </span>
             <span className="pl-5 text-[10px] text-muted-foreground whitespace-nowrap">
-              クリア日時 + 累計時間を上書き再計算
+              {m.maintenance.firstClearItemDesc}
             </span>
           </DropdownMenuItem>
           {/* Phase 14 (2.x, 2026-05-13): 攻略リンクの og:image を一括取得。
@@ -555,10 +584,10 @@ export function MaintenanceMenu() {
               ) : (
                 <ImageIcon className="h-3.5 w-3.5 text-cyan-300" aria-hidden />
               )}
-              ④ サムネ取得
+              {m.maintenance.thumbItem}
             </span>
             <span className="pl-5 text-[10px] text-muted-foreground whitespace-nowrap">
-              攻略リンクの og:image を取得 (NULL のみ)
+              {m.maintenance.thumbItemDesc}
             </span>
           </DropdownMenuItem>
           <DropdownMenuItem
@@ -572,10 +601,10 @@ export function MaintenanceMenu() {
               ) : (
                 <ImageIcon className="h-3.5 w-3.5 text-rose-300" aria-hidden />
               )}
-              ④ サムネ全件再取得
+              {m.maintenance.thumbForceItem}
             </span>
             <span className="pl-5 text-[10px] text-muted-foreground whitespace-nowrap">
-              全攻略リンク (取得済みも上書き)
+              {m.maintenance.thumbForceItemDesc}
             </span>
           </DropdownMenuItem>
         </DropdownMenuContent>
@@ -585,14 +614,14 @@ export function MaintenanceMenu() {
         <div
           ref={popupRef}
           role="region"
-          aria-label="実行結果"
+          aria-label={m.maintenance.resultAria}
           tabIndex={-1}
           className="glass-popup relative z-30 max-h-[70vh] w-full overflow-y-auto rounded-md p-3 focus:outline-none sm:absolute sm:top-full sm:right-0 sm:mt-2 sm:w-[36rem] sm:max-w-[calc(100vw-2rem)]"
         >
           <button
             type="button"
             onClick={() => setResult(null)}
-            aria-label="結果を閉じる"
+            aria-label={m.maintenance.closeResultAria}
             className="absolute top-1.5 right-1.5 inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground"
           >
             <X className="h-3.5 w-3.5" aria-hidden />

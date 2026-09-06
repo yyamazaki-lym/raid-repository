@@ -27,6 +27,7 @@ import {
   setFflogsUsernameAction,
 } from "@/lib/server/categories-actions";
 import { getFflogsUsername } from "@/lib/schedule-url-store";
+import { useMessages } from "@/lib/i18n/client";
 
 /**
  * TODO #68 (2026-05-02): 詳細診断パネル (~190 行) を別 chunk に分離。
@@ -112,6 +113,7 @@ export function FflogsSyncSection({
   canEdit: boolean;
 }) {
   const router = useRouter();
+  const m = useMessages();
   const [fflogsUsername, setFflogsUsernameState] = useState("");
   const [savingUsername, startSaveUsername] = useTransition();
   const [linkingLogs, startLinkLogs] = useTransition();
@@ -184,9 +186,7 @@ export function FflogsSyncSection({
         return;
       }
       setCronEnabled(next);
-      toast.success(
-        next ? "日次自動連動を ON にしました" : "日次自動連動を OFF にしました",
-      );
+      toast.success(next ? m.fflogsSync.toastCronOn : m.fflogsSync.toastCronOff);
     });
   };
 
@@ -196,20 +196,24 @@ export function FflogsSyncSection({
       const r = await linkFflogsReports();
       setLogsResult(r);
       if (!r.ok) {
-        toast.error("FFLogs 連動失敗: " + (r.reason ?? "原因不明"));
+        toast.error(
+          m.fflogsSync.toastLinkFailed(r.reason ?? m.fflogsSync.unknownReason),
+        );
         return;
       }
       const bridged = r.manualLogsBridged ?? 0;
       const totalMatched = r.matched + r.sessionsMatched + bridged;
       toast.success(
         totalMatched > 0
-          ? `動画 ${r.matched} 件 / 過去予定 ${r.sessionsMatched} 件に Logs URL を紐づけ` +
-              (bridged > 0
-                ? ` · 日付登録 Logs から動画 ${bridged} 件に補完`
-                : "")
+          ? m.fflogsSync.toastLinked(r.matched, r.sessionsMatched) +
+              (bridged > 0 ? m.fflogsSync.toastBridged(bridged) : "")
           : r.videosScanned === 0 && r.sessionsScanned === 0
-            ? "logs_url 未設定の動画 / 過去予定なし"
-            : `合うレポートなし (レポート ${r.reportsScanned} / 動画 ${r.videosScanned} / 予定 ${r.sessionsScanned})`,
+            ? m.fflogsSync.toastNothingToLink
+            : m.fflogsSync.toastNoMatch(
+                r.reportsScanned,
+                r.videosScanned,
+                r.sessionsScanned,
+              ),
       );
       // 連動完了直後 — session cookie は使われていれば server 側で
       // 自動削除されているはず。UI のステータスを再フェッチ。
@@ -223,14 +227,18 @@ export function FflogsSyncSection({
     startDedupeLogs(async () => {
       const r = await dedupeSessionLogs();
       if (!r.ok) {
-        toast.error("重複 Logs 整理失敗: " + r.reason);
+        toast.error(m.fflogsSync.toastDedupeFailed(r.reason));
         return;
       }
       const removed = r.duplicateRowsRemoved + r.videoConflictRowsRemoved;
       toast.success(
         removed > 0
-          ? `重複 Logs を ${removed} 件削除しました (同一レポートの重複 ${r.duplicateRowsRemoved} / 同日動画と競合する auto ${r.videoConflictRowsRemoved})`
-          : "削除対象の重複 Logs はありませんでした",
+          ? m.fflogsSync.toastDeduped(
+              removed,
+              r.duplicateRowsRemoved,
+              r.videoConflictRowsRemoved,
+            )
+          : m.fflogsSync.toastNoDupes,
       );
       setDedupeConflicts(
         r.remainingConflicts.length > 0 ? r.remainingConflicts : null,
@@ -259,14 +267,14 @@ export function FflogsSyncSection({
                 htmlFor="fflogs-username"
                 className="text-xs text-foreground/80"
               >
-                FFLogs 表示名 (基本)
+                {m.fflogsSync.usernameLabel}
               </Label>
               <a
                 href="https://www.fflogs.com/profile"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1 text-[10px] text-amber-300/85 underline decoration-dotted underline-offset-2 transition-colors hover:text-amber-300"
-                title="自分のプロフィールページを開く"
+                title={m.fflogsSync.profileTitle}
               >
                 <BarChart3 className="h-2.5 w-2.5" aria-hidden />
                 fflogs.com/profile
@@ -277,7 +285,7 @@ export function FflogsSyncSection({
                 id="fflogs-username"
                 value={fflogsUsername}
                 onChange={(e) => setFflogsUsernameState(e.target.value)}
-                placeholder="例: Ascian_Emet-Selch"
+                placeholder={m.fflogsSync.usernamePlaceholder}
                 // min-w only on sm+ so narrow phones (<640px) don't get
                 // a 12rem-wide input forced into a tighter row layout.
                 className="h-7 font-mono text-[12px] flex-1 sm:min-w-[12rem]"
@@ -292,26 +300,28 @@ export function FflogsSyncSection({
                   startSaveUsername(async () => {
                     const r = await setFflogsUsernameAction(fflogsUsername);
                     if (!r.ok) {
-                      toast.error("表示名保存失敗: " + r.reason);
+                      toast.error(m.fflogsSync.toastUsernameFailed(r.reason));
                       return;
                     }
-                    toast.success("表示名を保存しました");
+                    toast.success(m.fflogsSync.toastUsernameSaved);
                   });
                 }}
                 disabled={savingUsername}
                 className="gap-1.5 text-[10px] tracking-normal"
               >
                 <Save className="h-3 w-3" aria-hidden />
-                保存
+                {m.common.save}
               </Button>
             </div>
             <p className="text-muted-foreground text-[11px] leading-relaxed">
-              <strong>基本構成</strong>: 表示名 + サーバーの{" "}
+              <strong>{m.fflogsSync.basicStrong}</strong>
+              {m.fflogsSync.basicPart1}{" "}
               <code className="font-mono">FFLOGS_API_KEY</code>
-              {" "}env var (v1 Public Key) で
-              <strong>Public レポート</strong> を取得します。
-              Private/Unlisted も自動取得したい場合は、下のオプションを開いて{" "}
-              <strong>Session Cookie</strong> を設定してください。
+              {" "}{m.fflogsSync.basicPart2}
+              <strong>{m.fflogsSync.basicStrong2}</strong>
+              {m.fflogsSync.basicPart3}{" "}
+              <strong>{m.fflogsSync.basicStrong3}</strong>
+              {m.fflogsSync.basicPart4}
             </p>
           </div>
 
@@ -327,12 +337,12 @@ export function FflogsSyncSection({
                     ▸
                   </span>
                   <Link2 className="h-3 w-3" aria-hidden />
-                  OAuth 認証 (v2 API・オプション)
+                  {m.fflogsSync.oauthSummary}
                 </span>
                 {oauthStatus?.connected && (
                   <span className="inline-flex items-center gap-1 rounded-sm border border-emerald-400/45 bg-emerald-400/10 px-1.5 py-px text-[9px] tracking-normal text-emerald-200">
                     <span className="inline-block h-1 w-1 rounded-full bg-emerald-400 shadow-[0_0_6px_rgb(52_211_153)]" />
-                    接続済み
+                    {m.fflogsSync.connected}
                   </span>
                 )}
               </div>
@@ -341,12 +351,12 @@ export function FflogsSyncSection({
               <div className="flex items-center justify-between gap-2">
                 <span className="flex items-center gap-1.5 text-[10px] tracking-normal text-amber-200/95">
                   <Link2 className="h-3 w-3" aria-hidden />
-                  OAuth 認証 (v2 API)
+                  {m.fflogsSync.oauthTitle}
                 </span>
                 {oauthStatus?.connected && (
                   <span className="inline-flex items-center gap-1 rounded-sm border border-emerald-400/45 bg-emerald-400/10 px-1.5 py-px text-[9px] tracking-normal text-emerald-200">
                     <span className="inline-block h-1 w-1 rounded-full bg-emerald-400 shadow-[0_0_6px_rgb(52_211_153)]" />
-                    接続済み
+                    {m.fflogsSync.connected}
                   </span>
                 )}
               </div>
@@ -355,17 +365,18 @@ export function FflogsSyncSection({
                   <p className="text-[11px] text-foreground/85">
                     {oauthStatus.userName ? (
                       <>
-                        <strong>{oauthStatus.userName}</strong> として接続中
+                        <strong>{oauthStatus.userName}</strong>{" "}
+                        {m.fflogsSync.connectedAsSuffix}
                       </>
                     ) : (
-                      "FFLogs と接続済み"
+                      m.fflogsSync.connectedGeneric
                     )}
                   </p>
                   {oauthStatus.expiresAt && (
                     <p className="text-[10px] text-muted-foreground/70">
-                      access_token 有効期限:{" "}
-                      {new Date(oauthStatus.expiresAt).toLocaleString("ja-JP")}
-                      （期限切れ時は refresh_token で自動更新）
+                      {m.fflogsSync.tokenExpiry(
+                        new Date(oauthStatus.expiresAt).toLocaleString("ja-JP"),
+                      )}
                     </p>
                   )}
                   <button
@@ -374,7 +385,7 @@ export function FflogsSyncSection({
                       startDisconnect(async () => {
                         const r = await disconnectFflogsOAuthAction();
                         if (!r.ok) {
-                          toast.error("切断失敗: " + r.reason);
+                          toast.error(m.fflogsSync.toastDisconnectFailed(r.reason));
                           return;
                         }
                         setOauthStatus({
@@ -382,35 +393,36 @@ export function FflogsSyncSection({
                           userName: null,
                           expiresAt: null,
                         });
-                        toast.success("FFLogs OAuth を切断しました");
+                        toast.success(m.fflogsSync.toastDisconnected);
                       });
                     }}
                     disabled={disconnecting}
                     className="self-start inline-flex items-center gap-1.5 rounded-md border border-border/50 px-2.5 py-1.5 text-[10px] tracking-normal text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-rose-200 disabled:opacity-50"
                   >
                     <X className="h-3 w-3" aria-hidden />
-                    {disconnecting ? "切断中…" : "切断"}
+                    {disconnecting
+                      ? m.fflogsSync.disconnecting
+                      : m.fflogsSync.disconnect}
                   </button>
                 </div>
               ) : (
                 <div className="flex flex-col gap-1.5">
                   <p className="text-[11px] leading-relaxed text-foreground/85">
-                    FFLogs にログインして認可すると、Public / Unlisted /
-                    Private を含む自分のレポートを動画 / 過去予定に自動紐づけできます。
+                    {m.fflogsSync.oauthDescription}
                   </p>
                   <a
                     href="/api/auth/fflogs/start"
                     className="self-start inline-flex items-center gap-1.5 rounded-md border border-amber-400/55 bg-amber-400/15 px-2.5 py-1.5 text-[10px] tracking-normal text-amber-100 transition-colors hover:border-amber-400/80 hover:bg-amber-400/25"
                   >
                     <Link2 className="h-3 w-3" aria-hidden />
-                    FFLogs と OAuth 接続
+                    {m.fflogsSync.oauthConnect}
                   </a>
                   <p className="text-[10px] leading-relaxed text-muted-foreground/80">
-                    ※ サーバー側で{" "}
+                    {m.fflogsSync.oauthEnvBefore}{" "}
                     <code className="font-mono">FFLOGS_OAUTH_CLIENT_ID</code>{" "}
-                    と{" "}
+                    {m.fflogsSync.oauthEnvAnd}{" "}
                     <code className="font-mono">FFLOGS_OAUTH_CLIENT_SECRET</code>{" "}
-                    の設定が必要（{" "}
+                    {m.fflogsSync.oauthEnvRequired}{" "}
                     <a
                       href="https://www.fflogs.com/api/clients/"
                       target="_blank"
@@ -419,9 +431,9 @@ export function FflogsSyncSection({
                     >
                       fflogs.com/api/clients/
                     </a>
-                    {" "}で OAuth クライアントを作成）。リダイレクト URI には現在のドメイン{" "}
+                    {" "}{m.fflogsSync.oauthEnvCreate}{" "}
                     <code className="font-mono">/api/auth/fflogs/callback</code>{" "}
-                    を登録。
+                    {m.fflogsSync.oauthEnvRegister}
                   </p>
                 </div>
               )}
@@ -438,68 +450,76 @@ export function FflogsSyncSection({
                     ▸
                   </span>
                   <BarChart3 className="h-3 w-3" aria-hidden />
-                  Session Cookie (Private/Unlisted 用・オプション)
+                  {m.fflogsSync.cookieSummary}
                 </span>
                 {cookieStatus?.set && (
                   <span className="inline-flex items-center gap-1 rounded-sm border border-amber-400/45 bg-amber-400/10 px-1.5 py-px text-[9px] tracking-normal text-amber-200">
                     <span className="inline-block h-1 w-1 rounded-full bg-amber-400 shadow-[0_0_6px_rgb(251_191_36)]" />
-                    セット済み (次回連動で消費)
+                    {m.fflogsSync.cookieSet}
                   </span>
                 )}
               </div>
             </summary>
             <div className="ml-2 flex flex-col gap-2 rounded-md border border-rose-400/30 bg-rose-500/5 px-3 py-2.5">
               <p className="text-[11px] leading-relaxed text-foreground/85">
-                <strong>Private / Unlisted のレポートも取得したい場合のみ</strong>
-                {" "}使う opt-in 機能。fflogs.com にログインしたブラウザの
-                cookie を一時的にここに保存し、次回「FFLogs と動画を連動」
-                時に使われます。
+                <strong>{m.fflogsSync.cookieDescStrong}</strong>
+                {m.fflogsSync.cookieDescAfter}
               </p>
               <p className="text-[10px] leading-relaxed text-rose-200/85">
-                <strong>⚠ セキュリティ注意</strong>: cookie は FFLogs
-                アカウントの全権限を持ちます。漏れると当該アカウントに自由にアクセスできてしまいます。リスクを最小化するため、
-                <strong>連動実行直後に自動削除</strong>される設計です
-                （ワンタイムユース）。次回紐づけ時に都度再貼り付けが必要。
+                <strong>{m.fflogsSync.cookieWarnStrong}</strong>
+                {m.fflogsSync.cookieWarnPart1}
+                <strong>{m.fflogsSync.cookieWarnStrong2}</strong>
+                {m.fflogsSync.cookieWarnPart2}
               </p>
               <details className="text-[10px]">
                 <summary className="cursor-pointer text-muted-foreground/85 hover:text-foreground/90">
-                  ▸ Cookie の取り方（Network タブから一括コピー — 推奨）
+                  {m.fflogsSync.cookieHowSummary}
                 </summary>
                 <ol className="mt-1 ml-3.5 flex list-decimal flex-col gap-0.5 text-muted-foreground leading-relaxed">
-                  <li>fflogs.com を開いて<strong>ログイン</strong></li>
                   <li>
-                    自分のプロフィール{" "}
+                    {m.fflogsSync.cookieStep1Before}
+                    <strong>{m.fflogsSync.cookieStep1Strong}</strong>
+                  </li>
+                  <li>
+                    {m.fflogsSync.cookieStep2Before}{" "}
                     <code className="font-mono">/user/reports-list/...</code>{" "}
-                    に移動
+                    {m.fflogsSync.cookieStep2After}
                   </li>
                   <li>
-                    F12 で DevTools → <strong>Network</strong> タブを開く
+                    {m.fflogsSync.cookieStep3Before}{" "}
+                    <strong>Network</strong>{" "}
+                    {m.fflogsSync.cookieStep3After}
                   </li>
                   <li>
-                    ページを <strong>F5 でリロード</strong>{" "}
-                    → リクエスト一覧の一番上（HTML ドキュメント）をクリック
+                    {m.fflogsSync.cookieStep4Before}{" "}
+                    <strong>{m.fflogsSync.cookieStep4Strong}</strong>{" "}
+                    {m.fflogsSync.cookieStep4After}
                   </li>
                   <li>
-                    右側 <strong>Headers</strong> タブ →{" "}
-                    <strong>Request Headers</strong> セクション →{" "}
+                    {m.fflogsSync.cookieStep5Before}{" "}
+                    <strong>Headers</strong>{" "}
+                    {m.fflogsSync.cookieStep5Mid1}{" "}
+                    <strong>Request Headers</strong>{" "}
+                    {m.fflogsSync.cookieStep5Mid2}{" "}
                     <code className="font-mono">Cookie:</code>{" "}
-                    の右側の値（長い文字列）を全て選択してコピー
+                    {m.fflogsSync.cookieStep5After}
                   </li>
-                  <li>下の入力欄に貼り付け → 保存 → すぐ「連動」を実行</li>
+                  <li>{m.fflogsSync.cookieStep6}</li>
                 </ol>
                 <p className="mt-1 ml-3.5 text-muted-foreground/75 leading-relaxed">
-                  ※ Cookie の名前は FFLogs 側の実装で変わる可能性があるため、
-                  特定の cookie 名を探すのではなく <strong>Cookie ヘッダー全体</strong> をそのまま使うのが確実です。
+                  {m.fflogsSync.cookieNote1Before}{" "}
+                  <strong>{m.fflogsSync.cookieNote1Strong}</strong>{" "}
+                  {m.fflogsSync.cookieNote1After}
                   <br />
-                  ※ 値は{" "}
+                  {m.fflogsSync.cookieNote2Before}{" "}
                   <code className="font-mono">name1=value1; name2=value2; ...</code>
-                  {" "}の形式で 1 行のテキスト。改行が含まれる場合は削除。
+                  {m.fflogsSync.cookieNote2After}
                 </p>
               </details>
               <Input
                 value={sessionCookieInput}
                 onChange={(e) => setSessionCookieInput(e.target.value)}
-                placeholder="name1=value1; name2=value2; ... (Cookie ヘッダー全体)"
+                placeholder={m.fflogsSync.cookiePlaceholder}
                 type="password"
                 className="font-mono text-[11px]"
                 spellCheck={false}
@@ -514,12 +534,10 @@ export function FflogsSyncSection({
                     startSaveCookie(async () => {
                       const r = await setFflogsSessionCookie(sessionCookieInput);
                       if (!r.ok) {
-                        toast.error("Cookie 保存失敗: " + r.reason);
+                        toast.error(m.fflogsSync.toastCookieSaveFailed(r.reason));
                         return;
                       }
-                      toast.success(
-                        "Cookie を保存しました — 次回連動時に使われ、その後自動削除されます",
-                      );
+                      toast.success(m.fflogsSync.toastCookieSaved);
                       setCookieStatus({ set: true, preview: null });
                       setSessionCookieInput("");
                     });
@@ -528,7 +546,7 @@ export function FflogsSyncSection({
                   className="gap-1.5 text-[10px] tracking-normal"
                 >
                   <Save className="h-3 w-3" aria-hidden />
-                  Cookie 保存
+                  {m.fflogsSync.cookieSave}
                 </Button>
                 {cookieStatus?.set && (
                   <Button
@@ -539,10 +557,12 @@ export function FflogsSyncSection({
                       startSaveCookie(async () => {
                         const r = await setFflogsSessionCookie("");
                         if (!r.ok) {
-                          toast.error("Cookie 削除失敗: " + r.reason);
+                          toast.error(
+                            m.fflogsSync.toastCookieDeleteFailed(r.reason),
+                          );
                           return;
                         }
-                        toast.success("Cookie を削除しました");
+                        toast.success(m.fflogsSync.toastCookieDeleted);
                         setCookieStatus({ set: false, preview: null });
                       });
                     }}
@@ -550,7 +570,7 @@ export function FflogsSyncSection({
                     className="gap-1.5 text-[10px] tracking-normal text-muted-foreground"
                   >
                     <X className="h-3 w-3" aria-hidden />
-                    今すぐ削除
+                    {m.fflogsSync.cookieDeleteNow}
                   </Button>
                 )}
               </div>
@@ -562,13 +582,13 @@ export function FflogsSyncSection({
               下の手動「FFLogs と動画を連動」button は常時動作する。 */}
           <div className="flex items-center justify-between gap-2 rounded-md border border-border/30 bg-secondary/20 px-3 py-2">
             <div className="flex flex-col gap-0.5">
-              <span className="text-xs">日次自動連動 (cron)</span>
+              <span className="text-xs">{m.fflogsSync.cronLabel}</span>
               <span className="text-[10px] text-muted-foreground/80">
                 {cronEnabled === null
-                  ? "読み込み中…"
+                  ? m.common.loading
                   : cronEnabled
-                    ? "ON (毎日 04:00 JST に自動で連動を実行)"
-                    : "OFF (cron は何もせず skip)"}
+                    ? m.fflogsSync.cronOn
+                    : m.fflogsSync.cronOff}
               </span>
             </div>
             <label className="inline-flex cursor-pointer items-center gap-2">
@@ -599,8 +619,8 @@ export function FflogsSyncSection({
                 className="gap-1.5 text-[11px] tracking-normal"
                 title={
                   !oauthStatus?.connected && !fflogsUsername.trim()
-                    ? "先に「FFLogs 表示名」を保存するか「OAuth 接続」を実行してください"
-                    : "FFLogs レポートを動画 / 過去予定に自動紐づけ"
+                    ? m.fflogsSync.linkTitleNeedSource
+                    : m.fflogsSync.linkTitle
                 }
               >
                 {linkingLogs ? (
@@ -608,7 +628,7 @@ export function FflogsSyncSection({
                 ) : (
                   <Link2 className="h-3.5 w-3.5" aria-hidden />
                 )}
-                {linkingLogs ? "連動中…" : "FFLogs と動画を連動"}
+                {linkingLogs ? m.fflogsSync.linking : m.fflogsSync.linkButton}
               </Button>
               <Button
                 type="button"
@@ -617,30 +637,29 @@ export function FflogsSyncSection({
                 onClick={onDedupeLogs}
                 disabled={dedupingLogs}
                 className="gap-1.5 text-[11px] tracking-normal"
-                title="同じ日に複数の Logs が取り込まれている場合に整理します (同一レポートの表記揺れ重複と、同日動画と食い違う auto 行を削除)"
+                title={m.fflogsSync.dedupeTitle}
               >
                 {dedupingLogs ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
                 ) : (
                   <CopyMinus className="h-3.5 w-3.5" aria-hidden />
                 )}
-                {dedupingLogs ? "整理中…" : "重複 Logs を整理"}
+                {dedupingLogs ? m.fflogsSync.deduping : m.fflogsSync.dedupeButton}
               </Button>
             </div>
             {dedupeConflicts && dedupeConflicts.length > 0 && (
               <div className="flex flex-col gap-1 rounded-sm border border-amber-400/30 bg-amber-400/5 px-2.5 py-1.5 text-[11px] leading-relaxed">
                 <p className="text-amber-200/90">
-                  ⚠ 自動では判断できない競合が {dedupeConflicts.length} 日分
-                  残っています — 日付のメモから不要な URL を個別に削除してください
+                  {m.fflogsSync.conflictsRemaining(dedupeConflicts.length)}
                 </p>
                 <ul className="ml-2 flex flex-col gap-0.5 text-[10px] text-muted-foreground">
                   {dedupeConflicts.slice(0, 5).map((c) => (
                     <li key={c.label} className="truncate" title={c.urls.join("\n")}>
-                      {c.label} — {c.urls.length} 件の Logs
+                      {m.fflogsSync.conflictItem(c.label, c.urls.length)}
                     </li>
                   ))}
                   {dedupeConflicts.length > 5 && (
-                    <li>ほか {dedupeConflicts.length - 5} 日分</li>
+                    <li>{m.fflogsSync.conflictsMore(dedupeConflicts.length - 5)}</li>
                   )}
                 </ul>
               </div>
@@ -650,7 +669,7 @@ export function FflogsSyncSection({
                 <button
                   type="button"
                   onClick={() => setLogsResult(null)}
-                  aria-label="結果を閉じる"
+                  aria-label={m.fflogsSync.closeResultAria}
                   className="absolute right-1 top-1 inline-flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
                 >
                   <X className="h-3 w-3" aria-hidden />
@@ -658,28 +677,33 @@ export function FflogsSyncSection({
                 {logsResult.ok ? (
                   <>
                     <p>
-                      動画 <strong>{logsResult.matched}</strong> /{" "}
-                      過去予定 <strong>{logsResult.sessionsMatched}</strong>
-                      {" "}件を紐づけ · レポート {logsResult.reportsScanned}
+                      {m.fflogsSync.resultVideos}{" "}
+                      <strong>{logsResult.matched}</strong> /{" "}
+                      {m.fflogsSync.resultSessions}{" "}
+                      <strong>{logsResult.sessionsMatched}</strong>
+                      {" "}
+                      {m.fflogsSync.resultLinkedSuffix(logsResult.reportsScanned)}
                       {logsResult.reportsScanned >= 625 && (
                         <span
                           className="ml-1 inline-flex items-center gap-1 rounded-sm border border-amber-400/40 bg-amber-400/10 px-1 py-px text-[9px] tracking-[0.16em] text-amber-200/85 uppercase"
-                          title="FFLogs v2 API のページネーション上限 (25 ページ × 25 件) に達しました。それ以前の古いレポートは取得できていない可能性があります"
+                          title={m.fflogsSync.limitReachedTitle}
                         >
-                          上限到達
+                          {m.fflogsSync.limitReached}
                         </span>
                       )}
                     </p>
                     {(logsResult.manualLogsBridged ?? 0) > 0 && (
                       <p>
-                        日付登録 Logs から動画{" "}
+                        {m.fflogsSync.bridgedBefore}{" "}
                         <strong>{logsResult.manualLogsBridged}</strong>{" "}
-                        件に補完
+                        {m.fflogsSync.bridgedAfter}
                       </p>
                     )}
                     <p className="text-[10px] text-muted-foreground/70">
-                      候補: 動画 {logsResult.videosScanned} / 過去予定{" "}
-                      {logsResult.sessionsScanned}
+                      {m.fflogsSync.candidates(
+                        logsResult.videosScanned,
+                        logsResult.sessionsScanned,
+                      )}
                     </p>
                     {/* Diagnostics: when nothing matched, show the
                         date ranges so the user can spot a "different
@@ -692,12 +716,12 @@ export function FflogsSyncSection({
                       logsResult.reportsScanned > 0 && (
                         <div className="mt-2 flex flex-col gap-1 rounded-sm border border-amber-400/30 bg-amber-400/5 px-2 py-1.5">
                           <p className="text-[10px] text-amber-200/90">
-                            ⚠ どれもマッチしませんでした — 期間の不一致が原因の可能性
+                            {m.fflogsSync.noMatchTitle}
                           </p>
                           <ul className="ml-2 flex flex-col gap-0.5 text-[10px] text-muted-foreground">
                             {logsResult.queriedUsername && (
                               <li>
-                                クエリしたユーザー名:{" "}
+                                {m.fflogsSync.queriedUsername}{" "}
                                 <strong className="text-foreground/90">
                                   {logsResult.queriedUsername}
                                 </strong>
@@ -705,7 +729,7 @@ export function FflogsSyncSection({
                             )}
                             {logsResult.reportsDateRange && (
                               <li>
-                                レポート期間:{" "}
+                                {m.fflogsSync.reportsRange}{" "}
                                 {/* nowrap: 行頭「〜 2025-12-31」への分断防止。 */}
                                 <strong className="whitespace-nowrap text-amber-200/80">
                                   {logsResult.reportsDateRange.earliest}
@@ -716,7 +740,7 @@ export function FflogsSyncSection({
                             )}
                             {logsResult.videosDateRange && (
                               <li>
-                                未紐づけ動画期間:{" "}
+                                {m.fflogsSync.videosRange}{" "}
                                 <span className="whitespace-nowrap text-foreground/85">
                                   {logsResult.videosDateRange.earliest}
                                   {" 〜 "}
@@ -726,7 +750,7 @@ export function FflogsSyncSection({
                             )}
                             {logsResult.sessionsDateRange && (
                               <li>
-                                未紐づけ過去予定期間:{" "}
+                                {m.fflogsSync.sessionsRange}{" "}
                                 <span className="whitespace-nowrap text-foreground/85">
                                   {logsResult.sessionsDateRange.earliest}
                                   {" 〜 "}
@@ -737,36 +761,37 @@ export function FflogsSyncSection({
                           </ul>
                           <div className="mt-1.5 flex flex-col gap-1 rounded-sm bg-secondary/30 px-2 py-1.5 text-[10px] leading-relaxed">
                             <p className="text-[10px] text-amber-200/90">
-                              想定される原因 — FFLogs API の制約:
+                              {m.fflogsSync.causeTitle}
                             </p>
                             <p className="text-muted-foreground leading-relaxed">
-                              FFLogs v2 API は <strong>Public</strong> 設定のレポートしか自動取得できません（OAuth で本人認証していても <strong>Private (非公開)</strong> /{" "}
-                              <strong>Unlisted (限定公開)</strong> は API
-                              では露出されない仕様）。レポート期間が
-                              <strong> 古い日付に偏っている</strong>場合、
-                              最近のレポートは Public 以外の visibility になっている可能性が高いです。
-                              また session cookie による補完取得 (scrape) も、
-                              FFLogs 側の bot 対策強化により現在はブロックされる
-                              (403) ことがあります — <strong>確実に自動取得したい場合は
-                              アップローダの既定公開設定を Public にしてください</strong>。
+                              {m.fflogsSync.causePart1}{" "}
+                              <strong>{m.fflogsSync.causeStrongPublic}</strong>{" "}
+                              {m.fflogsSync.causePart2}{" "}
+                              <strong>{m.fflogsSync.causeStrongPrivate}</strong> /{" "}
+                              <strong>{m.fflogsSync.causeStrongUnlisted}</strong>{" "}
+                              {m.fflogsSync.causePart3}
+                              <strong>{m.fflogsSync.causeStrongOld}</strong>
+                              {m.fflogsSync.causePart4}{" "}
+                              <strong>{m.fflogsSync.causeStrongFix}</strong>
+                              {m.fflogsSync.causePart5}
                             </p>
                             <p className="text-muted-foreground leading-relaxed mt-1">
-                              対処:
+                              {m.fflogsSync.remedyTitle}
                             </p>
                             <ol className="ml-3.5 flex list-decimal flex-col gap-1 text-muted-foreground">
                               <li>
-                                <strong>fflogs.com で当該レポートを Public に変更</strong>
-                                {" "}→ 再度「FFLogs と動画を連動」で取得可能
+                                <strong>{m.fflogsSync.remedy1Strong}</strong>
+                                {" "}{m.fflogsSync.remedy1After}
                               </li>
                               <li>
-                                <strong>個別に手動紐づけ</strong>
-                                {" "}— スケジュール上の日付をクリックしてメモポップオーバー最下部の{" "}
-                                <strong>FFLogs URL 欄</strong>にレポート URL を貼り付け
+                                <strong>{m.fflogsSync.remedy2Strong}</strong>
+                                {" "}{m.fflogsSync.remedy2Mid}{" "}
+                                <strong>{m.fflogsSync.remedy2Strong2}</strong>
+                                {m.fflogsSync.remedy2After}
                               </li>
                               <li>
-                                <strong>表示名 / API キーが別人の可能性</strong>
-                                {" "}— 下の「詳細診断」を開いて「v2
-                                currentUser」が想定通りのユーザーになっているか確認
+                                <strong>{m.fflogsSync.remedy3Strong}</strong>
+                                {" "}{m.fflogsSync.remedy3After}
                               </li>
                             </ol>
                           </div>
@@ -784,8 +809,9 @@ export function FflogsSyncSection({
                               <span className="text-[var(--neon-cyan)]/70 transition-transform group-open/reports:rotate-90">
                                 ▸
                               </span>
-                              取得済みレポート (新しい順・上位
-                              {logsResult.reportSamples.length} 件)
+                              {m.fflogsSync.reportSamplesSummary(
+                                logsResult.reportSamples.length,
+                              )}
                             </span>
                           </summary>
                           <ul className="mt-1.5 ml-3.5 flex flex-col gap-0.5 font-mono text-[10px] text-muted-foreground">
@@ -830,7 +856,7 @@ export function FflogsSyncSection({
                             <span className="text-amber-300/70 transition-transform group-open/diag:rotate-90">
                               ▸
                             </span>
-                            詳細診断（v2 / HTML スクレイプの取得状況）
+                            {m.fflogsSync.diagSummary}
                           </span>
                         </summary>
                         {diagOpen && (
@@ -869,8 +895,8 @@ export function FflogsSyncSection({
                                   }
                                   title={
                                     dateMismatch
-                                      ? "video 日付とレポート日付がズレている"
-                                      : "video 日付と一致"
+                                      ? m.fflogsSync.dateMismatchTitle
+                                      : m.fflogsSync.dateMatchTitle
                                   }
                                 >
                                   [{d.videoDate}
@@ -892,7 +918,7 @@ export function FflogsSyncSection({
                         })}
                         {logsResult.details.length > 8 && (
                           <li className="text-muted-foreground/60">
-                            …他 {logsResult.details.length - 8} 件
+                            {m.fflogsSync.detailsMore(logsResult.details.length - 8)}
                           </li>
                         )}
                       </ul>
@@ -900,7 +926,9 @@ export function FflogsSyncSection({
                   </>
                 ) : (
                   <p className="text-rose-300">
-                    エラー: {logsResult.reason ?? "原因不明"}
+                    {m.fflogsSync.errorPrefix(
+                      logsResult.reason ?? m.fflogsSync.unknownReason,
+                    )}
                   </p>
                 )}
               </div>

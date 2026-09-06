@@ -9,6 +9,7 @@ import { useConfirm } from "@/components/portal/confirm-dialog";
 import type { DataInitResult } from "@/lib/server/admin-actions";
 import { clearAllFflogsLinks } from "@/lib/server/categories-actions";
 import { DataInitConfirmDialog } from "../data-init-confirm-dialog";
+import { useMessages } from "@/lib/i18n/client";
 
 /**
  * TODO #66 (2026-05-02): settings-dialog.tsx 分割の一部。
@@ -32,6 +33,7 @@ export function DangerZoneSection({
 }) {
   const router = useRouter();
   const confirm = useConfirm();
+  const m = useMessages();
   const [showDataInitDialog, setShowDataInitDialog] = useState(false);
   const [clearingLogs, startClearLogs] = useTransition();
 
@@ -53,8 +55,7 @@ export function DangerZoneSection({
               全データ初期化ほど破壊的ではないので outline ボタンで軽めに。 */}
           <div className="flex flex-col gap-2.5 rounded-md border border-rose-400/30 bg-rose-400/5 p-3">
             <p className="text-[12px] leading-relaxed text-rose-100/90">
-              動画 / 過去予定に紐づいた FFLogs レポート URL をすべて削除します
-              （自動紐づけ + 手動紐づけの両方が対象）。過去の誤紐づけをリセットしたいときに使います。
+              {m.dangerZone.clearLogsDescription}
             </p>
             <div>
               <Button
@@ -63,44 +64,47 @@ export function DangerZoneSection({
                 variant="outline"
                 onClick={async () => {
                   const ok = await confirm({
-                    title: "全ての logs URL をクリアしますか？",
-                    description:
-                      "動画 / 過去予定の自動紐づけ + 手動紐づけの両方が対象です。",
-                    confirmText: "クリア",
+                    title: m.dangerZone.confirmClearTitle,
+                    description: m.dangerZone.confirmClearDescription,
+                    confirmText: m.common.clear,
                     destructive: true,
                   });
                   if (!ok) return;
                   startClearLogs(async () => {
                     const r = await clearAllFflogsLinks();
                     if (!r.ok) {
-                      toast.error("クリア失敗: " + (r.reason ?? "原因不明"));
+                      toast.error(
+                        m.dangerZone.toastClearFailed(
+                          r.reason ?? m.dangerZone.unknownReason,
+                        ),
+                      );
                       return;
                     }
                     toast.success(
-                      `動画 ${r.videosCleared} 件 / 過去予定 ${r.sessionsCleared} 件の logs URL をクリア`,
+                      m.dangerZone.toastCleared(r.videosCleared, r.sessionsCleared),
                     );
                     router.refresh();
                   });
                 }}
                 disabled={clearingLogs}
                 className="gap-1.5 text-[11px] tracking-normal text-rose-200"
-                title="全 logs URL を一括削除（過去の v1 fallback で誤って紐づいたものをリセット）"
+                title={m.dangerZone.clearLogsTitle}
               >
                 {clearingLogs ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
                 ) : (
                   <X className="h-3.5 w-3.5" aria-hidden />
                 )}
-                {clearingLogs ? "クリア中…" : "全 logs URL クリア"}
+                {clearingLogs
+                  ? m.dangerZone.clearing
+                  : m.dangerZone.clearLogsButton}
               </Button>
             </div>
           </div>
 
           <div className="flex flex-col gap-2.5 rounded-md border border-rose-400/30 bg-rose-400/5 p-3">
             <p className="text-[12px] leading-relaxed text-rose-100/90">
-              サイト全体のデータを削除して初期化します。すべてのコンテンツ
-              / 動画 / 攻略情報 / 過去スケジュール / アプリ設定が消去されます。
-              この操作は取り消せません。
+              {m.dangerZone.initDescription}
             </p>
             <div>
               <Button
@@ -110,7 +114,7 @@ export function DangerZoneSection({
                 className="gap-1.5 border border-rose-400/50 bg-rose-500/20 text-[11px] tracking-normal text-rose-100 hover:bg-rose-500/30"
               >
                 <AlertTriangle className="h-3.5 w-3.5" aria-hidden />
-                全データ初期化
+                {m.dangerZone.initButton}
               </Button>
             </div>
           </div>

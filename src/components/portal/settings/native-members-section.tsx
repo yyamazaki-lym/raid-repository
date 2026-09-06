@@ -13,6 +13,7 @@ import {
 } from "@/lib/server/native-schedule-actions";
 import type { NativeMemberRowFull } from "@/lib/schedule/native-admin-client";
 import { useConfirm } from "@/components/portal/confirm-dialog";
+import { useMessages } from "@/lib/i18n/client";
 
 /**
  * TODO #2 phase 2-C (2026-05-07): native スケジュール member CRUD section。
@@ -34,8 +35,6 @@ import { useConfirm } from "@/components/portal/confirm-dialog";
  */
 
 const MEMBER_KEY_RE = /^(?:\d{17,20}|local_[A-Za-z0-9_-]{3,32})$/;
-const MEMBER_KEY_REASON =
-  "Discord ID (17〜20 桁の数字) またはローカルキー (local_<英数字>, 3〜32 文字) を入力してください";
 
 const generateLocalKey = () =>
   // 衝突しにくく短めの suffix。Date.now base36 (約 8 文字) + random base36 4 文字。
@@ -58,16 +57,17 @@ export function NativeMembersSection({
 }) {
   const router = useRouter();
   const confirm = useConfirm();
+  const m = useMessages();
   const [pending, startTransition] = useTransition();
   const [newDiscordId, setNewDiscordId] = useState("");
   const [newDisplayName, setNewDisplayName] = useState("");
   const [newSortOrder, setNewSortOrder] = useState("0");
   const [drafts, setDrafts] = useState<DraftMap>({});
 
-  const draftFor = (m: NativeMemberRowFull) =>
-    drafts[m.discord_user_id] ?? {
-      displayName: m.display_name,
-      sortOrder: String(m.sort_order),
+  const draftFor = (mem: NativeMemberRowFull) =>
+    drafts[mem.discord_user_id] ?? {
+      displayName: mem.display_name,
+      sortOrder: String(mem.sort_order),
     };
 
   const setDraft = (
@@ -75,11 +75,14 @@ export function NativeMembersSection({
     patch: Partial<{ displayName: string; sortOrder: string }>,
   ) => {
     setDrafts((prev) => {
-      const m = members.find((x) => x.discord_user_id === id);
+      const mem = members.find((x) => x.discord_user_id === id);
       const cur =
         prev[id] ??
-        (m
-          ? { displayName: m.display_name, sortOrder: String(m.sort_order) }
+        (mem
+          ? {
+              displayName: mem.display_name,
+              sortOrder: String(mem.sort_order),
+            }
           : { displayName: "", sortOrder: "0" });
       return { ...prev, [id]: { ...cur, ...patch } };
     });
@@ -98,15 +101,15 @@ export function NativeMembersSection({
     const displayName = newDisplayName.trim();
     const sortOrder = Number(newSortOrder);
     if (!MEMBER_KEY_RE.test(discordUserId)) {
-      toast.error(MEMBER_KEY_REASON);
+      toast.error(m.nativeMembers.keyReason);
       return;
     }
     if (!displayName) {
-      toast.error("表示名を入力してください");
+      toast.error(m.nativeMembers.errDisplayName);
       return;
     }
     if (!Number.isFinite(sortOrder)) {
-      toast.error("並び順は数値で入力してください");
+      toast.error(m.nativeMembers.errSortOrder);
       return;
     }
     startTransition(async () => {
@@ -119,7 +122,7 @@ export function NativeMembersSection({
         toast.error(r.reason);
         return;
       }
-      toast.success(`メンバー「${displayName}」を追加しました`);
+      toast.success(m.nativeMembers.toastAdded(displayName));
       setNewDiscordId("");
       setNewDisplayName("");
       setNewSortOrder("0");
@@ -128,51 +131,51 @@ export function NativeMembersSection({
     });
   };
 
-  const onSaveRow = (m: NativeMemberRowFull) => {
-    const draft = draftFor(m);
+  const onSaveRow = (mem: NativeMemberRowFull) => {
+    const draft = draftFor(mem);
     const patch: {
       displayName?: string;
       sortOrder?: number;
     } = {};
-    if (draft.displayName.trim() !== m.display_name) {
+    if (draft.displayName.trim() !== mem.display_name) {
       const v = draft.displayName.trim();
       if (!v) {
-        toast.error("表示名を入力してください");
+        toast.error(m.nativeMembers.errDisplayName);
         return;
       }
       patch.displayName = v;
     }
-    if (draft.sortOrder !== String(m.sort_order)) {
+    if (draft.sortOrder !== String(mem.sort_order)) {
       const n = Number(draft.sortOrder);
       if (!Number.isFinite(n)) {
-        toast.error("並び順は数値で入力してください");
+        toast.error(m.nativeMembers.errSortOrder);
         return;
       }
       patch.sortOrder = n;
     }
     if (Object.keys(patch).length === 0) {
-      clearDraft(m.discord_user_id);
+      clearDraft(mem.discord_user_id);
       return;
     }
     startTransition(async () => {
       const r = await updateNativeScheduleMemberAction(
-        m.discord_user_id,
+        mem.discord_user_id,
         patch,
       );
       if (!r.ok) {
         toast.error(r.reason);
         return;
       }
-      toast.success(`「${m.display_name}」を更新しました`);
-      clearDraft(m.discord_user_id);
+      toast.success(m.nativeMembers.toastUpdated(mem.display_name));
+      clearDraft(mem.discord_user_id);
       onChanged();
       router.refresh();
     });
   };
 
-  const onToggleActive = (m: NativeMemberRowFull, next: boolean) => {
+  const onToggleActive = (mem: NativeMemberRowFull, next: boolean) => {
     startTransition(async () => {
-      const r = await updateNativeScheduleMemberAction(m.discord_user_id, {
+      const r = await updateNativeScheduleMemberAction(mem.discord_user_id, {
         isActive: next,
       });
       if (!r.ok) {
@@ -180,34 +183,36 @@ export function NativeMembersSection({
         return;
       }
       toast.success(
-        `「${m.display_name}」を ${next ? "有効化" : "無効化"} しました`,
+        next
+          ? m.nativeMembers.toastActivated(mem.display_name)
+          : m.nativeMembers.toastDeactivated(mem.display_name),
       );
       onChanged();
       router.refresh();
     });
   };
 
-  const onDelete = async (m: NativeMemberRowFull) => {
+  const onDelete = async (mem: NativeMemberRowFull) => {
     if (
       !(await confirm({
-        title: "メンバーを削除",
-        description:
-          `「${m.display_name}」(${m.discord_user_id}) を削除します。\n` +
-          `関連する出欠データも一緒に削除されます (元に戻せません)。\n` +
-          `よろしいですか？`,
-        confirmText: "削除",
+        title: m.nativeMembers.confirmDeleteTitle,
+        description: m.nativeMembers.confirmDeleteDescription(
+          mem.display_name,
+          mem.discord_user_id,
+        ),
+        confirmText: m.common.delete,
         destructive: true,
       }))
     )
       return;
     startTransition(async () => {
-      const r = await deleteNativeScheduleMemberAction(m.discord_user_id);
+      const r = await deleteNativeScheduleMemberAction(mem.discord_user_id);
       if (!r.ok) {
         toast.error(r.reason);
         return;
       }
-      toast.success(`「${m.display_name}」を削除しました`);
-      clearDraft(m.discord_user_id);
+      toast.success(m.nativeMembers.toastDeleted(mem.display_name));
+      clearDraft(mem.discord_user_id);
       onChanged();
       router.refresh();
     });
@@ -223,37 +228,36 @@ export function NativeMembersSection({
       </header>
 
       <p className="text-[10px] leading-relaxed text-muted-foreground">
-        スケジュール表に出欠列として表示するメンバー。Discord ID
-        またはローカルキーで識別し、並び順 (昇順) で左から並びます。無効化されたメンバーはスケジュール表に出ませんが、過去の出欠履歴は DB に残ります。
+        {m.nativeMembers.description}
         <br />
         <span className="text-muted-foreground/80">
-          ※ ローカルキー (
+          {m.nativeMembers.localKeyNoteBefore}
           <code className="font-mono">local_*</code>
-          ) で登録したメンバーは本人として出欠入力できません (admin が代理運用)。
+          {m.nativeMembers.localKeyNoteAfter}
         </span>
       </p>
 
       {!loaded ? (
         <div className="text-[11px] text-muted-foreground italic">
-          読み込み中…
+          {m.common.loading}
         </div>
       ) : members.length === 0 ? (
         <div className="rounded-md border border-border/30 px-3 py-2 text-[11px] text-muted-foreground">
-          メンバーがまだ登録されていません。下のフォームから追加してください。
+          {m.nativeMembers.empty}
         </div>
       ) : (
         <ul className="flex flex-col gap-1.5">
-          {members.map((m) => {
-            const draft = draftFor(m);
+          {members.map((mem) => {
+            const draft = draftFor(mem);
             const dirty =
-              draft.displayName !== m.display_name ||
-              draft.sortOrder !== String(m.sort_order);
+              draft.displayName !== mem.display_name ||
+              draft.sortOrder !== String(mem.sort_order);
             return (
               <li
-                key={m.discord_user_id}
+                key={mem.discord_user_id}
                 className={
                   "flex flex-col gap-2 rounded-md border px-3 py-2 transition-colors sm:flex-row sm:items-center " +
-                  (m.is_active
+                  (mem.is_active
                     ? "border-border/40"
                     : "border-border/20 bg-secondary/30 opacity-70")
                 }
@@ -263,32 +267,32 @@ export function NativeMembersSection({
                       折り返せないため truncate (full 値は title で参照可)。 */}
                   <span
                     className="truncate font-mono text-[10px] text-muted-foreground/70"
-                    title={m.discord_user_id}
+                    title={mem.discord_user_id}
                   >
-                    {m.discord_user_id}
+                    {mem.discord_user_id}
                   </span>
                   <Input
                     type="text"
                     value={draft.displayName}
                     onChange={(e) =>
-                      setDraft(m.discord_user_id, {
+                      setDraft(mem.discord_user_id, {
                         displayName: e.target.value,
                       })
                     }
                     disabled={!canEdit || pending}
-                    placeholder="表示名"
+                    placeholder={m.nativeMembers.displayNamePlaceholder}
                     className="h-7 text-xs"
                   />
                 </div>
                 <div className="flex shrink-0 items-center gap-1.5 sm:w-28">
                   <span className="text-[10px] whitespace-nowrap text-muted-foreground">
-                    並び
+                    {m.nativeMembers.sortLabel}
                   </span>
                   <Input
                     type="number"
                     value={draft.sortOrder}
                     onChange={(e) =>
-                      setDraft(m.discord_user_id, {
+                      setDraft(mem.discord_user_id, {
                         sortOrder: e.target.value,
                       })
                     }
@@ -299,12 +303,12 @@ export function NativeMembersSection({
                 <label className="flex cursor-pointer items-center gap-1.5 text-[11px]">
                   <input
                     type="checkbox"
-                    checked={m.is_active}
-                    onChange={(e) => onToggleActive(m, e.target.checked)}
+                    checked={mem.is_active}
+                    onChange={(e) => onToggleActive(mem, e.target.checked)}
                     disabled={!canEdit || pending}
                     className="accent-[var(--neon-cyan)]"
                   />
-                  有効
+                  {m.nativeMembers.active}
                 </label>
                 <div className="ml-auto flex shrink-0 gap-1.5">
                   {dirty && (
@@ -313,11 +317,11 @@ export function NativeMembersSection({
                       variant="outline"
                       size="sm"
                       disabled={!canEdit || pending}
-                      onClick={() => onSaveRow(m)}
+                      onClick={() => onSaveRow(mem)}
                       className="h-7 gap-1 px-2 text-[10px] tracking-normal"
                     >
                       <Save className="h-3 w-3" aria-hidden />
-                      保存
+                      {m.common.save}
                     </Button>
                   )}
                   <Button
@@ -325,8 +329,8 @@ export function NativeMembersSection({
                     variant="ghost"
                     size="sm"
                     disabled={!canEdit || pending}
-                    onClick={() => onDelete(m)}
-                    aria-label={`「${m.display_name}」を削除`}
+                    onClick={() => onDelete(mem)}
+                    aria-label={m.nativeMembers.deleteAria(mem.display_name)}
                     className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
                   >
                     <Trash2 className="h-3.5 w-3.5" aria-hidden />
@@ -350,7 +354,7 @@ export function NativeMembersSection({
                 value={newDiscordId}
                 onChange={(e) => setNewDiscordId(e.target.value)}
                 disabled={pending}
-                placeholder="Discord ID または local_xxx"
+                placeholder={m.nativeMembers.keyPlaceholder}
                 className="h-7 text-xs"
               />
               <Button
@@ -359,8 +363,8 @@ export function NativeMembersSection({
                 size="sm"
                 disabled={pending}
                 onClick={() => setNewDiscordId(generateLocalKey())}
-                aria-label="ローカルキーを自動生成"
-                title="Discord アカウント未取得メンバー用のローカルキーを自動生成"
+                aria-label={m.nativeMembers.generateKeyAria}
+                title={m.nativeMembers.generateKeyTitle}
                 className="h-7 w-7 shrink-0 p-0 text-muted-foreground hover:text-foreground"
               >
                 <Wand2 className="h-3.5 w-3.5" aria-hidden />
@@ -371,7 +375,7 @@ export function NativeMembersSection({
               value={newDisplayName}
               onChange={(e) => setNewDisplayName(e.target.value)}
               disabled={pending}
-              placeholder="表示名"
+              placeholder={m.nativeMembers.displayNamePlaceholder}
               className="h-7 text-xs sm:flex-1"
             />
             <Input
@@ -379,7 +383,7 @@ export function NativeMembersSection({
               value={newSortOrder}
               onChange={(e) => setNewSortOrder(e.target.value)}
               disabled={pending}
-              placeholder="並び"
+              placeholder={m.nativeMembers.sortPlaceholder}
               className="h-7 text-xs sm:w-20"
             />
             <Button
@@ -394,7 +398,7 @@ export function NativeMembersSection({
               ) : (
                 <Plus className="h-3 w-3" aria-hidden />
               )}
-              追加
+              {m.common.add}
             </Button>
           </div>
         </div>
