@@ -1,6 +1,6 @@
 # 完了済み TODO アーカイブ
 
-> 各項目の詳細・経緯は `src/lib/changelog.ts` の該当バージョン項目に記載。ここでは番号と版だけ。
+> 各項目の詳細・経緯は `docs/release-notes/v<version>-<date>.md` の該当バージョン項目に記載 (2026-09-06 に `src/lib/changelog.ts` の body から移動。画面に出る見出しは `changelog.ts` / `changelog-archive.ts` の `title`)。ここでは番号と版だけ。
 
 ## 2.1 (2026-05-08)
 

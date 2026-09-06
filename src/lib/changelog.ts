@@ -21,6 +21,15 @@
  * CI and fails when `RELEASES.length !== 1`, so a new entry must graduate
  * the previous head in the same commit (step 4 in `changelog-meta.ts`).
  *
+ * **Body split** (2026-09-06): the per-part `body` text (developer-facing
+ * background / implementation / verification notes) was never rendered by
+ * the UI, which shows `title` only, yet made up >90% of the archive
+ * (~630 KB). Bodies now live in `docs/release-notes/v<version>-<date>.md`,
+ * one file per entry, one `## <title>` section per part (see
+ * `docs/release-notes/README.md`). `scripts/check-changelog.mjs` verifies
+ * that every entry with `parts` has its md file and that the `##`
+ * headings match the part titles in order.
+ *
  * **Meta split** (2026-07-22): the latest entry's `version` / `date` live
  * in `./changelog-meta.ts` (`LATEST_RELEASE_META`) and are spread into
  * `RELEASES[0]`, so `site-header.tsx` can show the header badge without
@@ -58,40 +67,43 @@ export type ReleaseEntry = {
   /**
    * 1 日内に多数のコミットがある日 (新スキーム運用後の典型) で、
    * notes を「コミットごとの part」に分割して表示するためのフィールド。
-   * 各 part は折りたたみ可能 (`<details>`) で、title だけ常時表示し、
-   * 詳細 body はクリックで開閉する。
+   * UI はリリース単位で折りたたみ、開くと各 part の title を箇条書きで
+   * 出す (2026-05-02 以降、本文は画面に出さない)。
    */
   parts?: ReleasePart[];
 };
 
 export type ReleasePart = {
-  /** 折りたたみ時に常時表示される 1 行サマリー (絵文字 + 短い見出し) */
+  /**
+   * 画面に出る 1 行サマリー (絵文字 + 短い見出し)。
+   * 本文 (狙い / 実装 / 検証) は `docs/release-notes/v<version>-<date>.md`
+   * の同名 `##` 見出しの下に書く (2026-09-06 に body フィールドを廃止)。
+   */
   title: string;
-  /** 展開時に表示される本文 (1〜数文程度の詳細) */
-  body: string;
 };
 
 export const RELEASES: ReleaseEntry[] = [
   {
     // 最新エントリーの version / date は changelog-meta.ts が single source
     // of truth (site-header がヘッダーバッジ用に参照)。新エントリー追加時の
-    // 3 点セット手順は changelog-meta.ts の docstring を参照。
+    // 手順 (5 点セット: freeze / 追加 / meta 更新 / graduate / md) は
+    // changelog-meta.ts の docstring を参照。
     ...LATEST_RELEASE_META,
     parts: [
       {
         title: "⚡ 初回表示を軽く: 設定ダイアログと更新履歴を「開いた時」に読む",
-        body:
-          "「動作に問題を起こさず、高速化・軽量化できるか」への対応です。\n\nこれまで、どのページを開いても**設定ダイアログ本体と更新履歴の全文** (合わせて約 470 KB、圧縮後でも約 150 KB) を毎回ダウンロードしていました。ヘッダー右上の歯車ボタンを表示するために、押されるかどうかに関係なく中身まで先に取りに行っていたためです。更新履歴の本文は文章量が増え続けていて、この大半を占めていました。\n\n**歯車ボタンは見た目だけを先に出し、押した時 (またはマウスを載せた時) に中身を取り寄せる**ようにしました。ボタンはサーバー側の描画に含まれるので、以前あった「ボタンが一瞬遅れて現れる」も無くなります。更新履歴の本文は、ダイアログの中で「更新履歴」を押した時に初めて読み込みます。\n\n見た目・操作・表示内容は変わりません。FFLogs 連携から戻ってきた時に設定が自動で開く挙動もそのままです。初めて押した時だけ、回線状況によっては開くまでにわずかな待ちが出ることがあります。",
       },
       {
         title: "🔔 FFLogs 連携から戻った時の通知が出ないことがあったのを修正",
-        body:
-          "FFLogs の認証を終えてポータルに戻った直後、「認証に成功しました」「FFLogs OAuth: …」の通知が**表示されないことがありました**。設定ダイアログは開くのに、結果だけが分からない状態です。\n\n通知の表示部品は初回表示を軽くするために少し遅れて読み込まれるのですが、その到着より先に通知を出そうとすると**そのまま捨てられていた**のが原因です (以前からの不具合で、条件次第で 3 回に 0〜1 回しか出ていませんでした)。\n\n表示部品の準備ができてから通知を出すようにしました。ダイアログが自動で開くことと、URL から認証用の文字列が消えることは変わりません。",
       },
       {
         title: "🗂 更新履歴: 過去分をアーカイブに移し、開いた時の読み込みを軽く",
-        body:
-          "設定の「更新履歴」を押した時に読み込む本文が、2.1 (5 月) 以降の全リリース分 (約 370 KB) になっていました。本来は**最新 1 件だけ**を先に読み、それより前は「過去の更新履歴を見る」を押した時に読む設計です。\n\n最新 1 件を除く 31 件をそのままアーカイブ側へ移しました (内容・並び順は 1 文字も変えていません)。「更新履歴」を押した直後は最新 1 件だけが出て、過去分はボタンを押した時にまとめて読み込みます。\n\nあわせて、この運用が再び崩れないよう CI で検査するようにしました (本体が 2 件以上になっていたら失敗します)。",
+      },
+      {
+        title: "🖱 読み込み直後に「ルール」などのボタンへ白い枠が付くのを修正",
+      },
+      {
+        title: "📝 更新履歴の本文を docs/release-notes に移動 (画面表示は変わりません)",
       },
     ],
   },

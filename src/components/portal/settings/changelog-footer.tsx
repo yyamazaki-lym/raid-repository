@@ -34,7 +34,8 @@ function GithubMark({ className }: { className?: string }) {
  *
  * archive lazy load (TODO #67 で導入したパターン): ボタン押下時に
  * `import("@/lib/changelog-archive")` で過去分 (2026-09-06 時点 40 件 /
- * ~630 KB source, gzip ~200 KB) を初めて fetch して結合表示する。
+ * title のみ ~37 KB source) を初めて fetch して結合表示する。本文は
+ * `docs/release-notes/*.md` に移したので client には載らない。
  *
  * 2.14 (2026-09-06) 軽量化: `RELEASES` (`@/lib/changelog`) も static import
  * をやめ、「更新履歴」ボタンを初めて押した時に `import("@/lib/changelog")`

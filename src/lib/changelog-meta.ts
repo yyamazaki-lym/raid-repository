@@ -15,7 +15,7 @@
  * literal で書くと、更新履歴に同一 version/date が 2 行並び React の
  * duplicate-key warning が出るので気付ける)。
  *
- * 新リリースエントリー追加時の手順 (3 点セット):
+ * 新リリースエントリー追加時の手順 (5 点セット):
  *   1. `changelog.ts` の現先頭エントリーの `...LATEST_RELEASE_META` を
  *      現行の version / date のリテラルに書き戻す (freeze)
  *   2. 新エントリーを先頭に追加し、version / date の代わりに
@@ -23,9 +23,15 @@
  *   3. 本ファイルの値を新しい version / date に更新する
  *   4. 1. で freeze した旧先頭エントリーを `changelog-archive.ts` の
  *      `RELEASES_ARCHIVE` 先頭へそのまま移す (graduate)。`changelog.ts`
- *      は常に最新 1 件だけを持つ。`node scripts/check-changelog.mjs`
- *      (CI でも実行) が 2 件以上になっていると失敗する
- *   (経緯と検査項目は `changelog.ts` ヘッダー / scripts/check-changelog.mjs 参照)
+ *      は常に最新 1 件だけを持つ
+ *   5. 本文 (狙い / 実装 / 検証) を `docs/release-notes/v<version>-<date>.md`
+ *      に書く。`# v<version> (<date>)` の下に、part ごとの `## <title>`
+ *      (TS の title と同一文字列) + 本文。既存の日付に part を足す時は
+ *      その md に `##` を追記する
+ *   `node scripts/check-changelog.mjs` (CI でも実行) が 1.〜5. の崩れ
+ *   (本体 2 件以上 / meta 不一致 / md 欠落 / 見出しと title の不一致) で
+ *   失敗する。経緯は `changelog.ts` ヘッダー、書き方は
+ *   `docs/release-notes/README.md` を参照。
  *
  * 型注釈は意図的にローカル完結 (`Pick<ReleaseEntry, ...>` にすると
  * changelog.ts への import が要り意味的な循環を作る)。フィールドを打ち
