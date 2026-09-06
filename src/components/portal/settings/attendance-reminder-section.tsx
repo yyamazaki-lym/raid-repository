@@ -20,6 +20,7 @@ import {
   type AttendanceReminderSettings,
 } from "@/lib/server/attendance-reminder-actions";
 import type { ReminderPreview } from "@/lib/server/attendance-reminder";
+import { useMessages } from "@/lib/i18n/client";
 
 /**
  * 出欠催促の設定 (2026-08-30、調査 第3回 D-3)。
@@ -43,6 +44,7 @@ export function AttendanceReminderSection({
   canEdit: boolean;
 }) {
   const router = useRouter();
+  const m = useMessages();
   const [pending, startTransition] = useTransition();
   const [loaded, setLoaded] = useState(false);
   const [settings, setSettings] = useState<AttendanceReminderSettings | null>(
@@ -99,7 +101,9 @@ export function AttendanceReminderSection({
         return;
       }
       setSettings((s) => (s ? { ...s, enabled: next } : s));
-      toast.success(next ? "催促を ON にしました" : "催促を OFF にしました");
+      toast.success(
+        next ? m.attendanceReminder.toastOn : m.attendanceReminder.toastOff,
+      );
       router.refresh();
     });
   };
@@ -121,7 +125,7 @@ export function AttendanceReminderSection({
       setSettings((s) =>
         s ? { ...s, channelId: channelDraft, hour, leadDays: lead } : s,
       );
-      toast.success("送信設定を保存しました");
+      toast.success(m.attendanceReminder.toastBasicsSaved);
       router.refresh();
     });
   };
@@ -144,7 +148,7 @@ export function AttendanceReminderSection({
         toast.error(excludedResult.reason);
         return;
       }
-      toast.success("メンション先 / 除外を保存しました");
+      toast.success(m.attendanceReminder.toastMembersSaved);
       router.refresh();
     });
   };
@@ -166,13 +170,15 @@ export function AttendanceReminderSection({
     startSend(async () => {
       const r = await sendAttendanceReminderNowAction();
       if (!r.ok) {
-        toast.error("送信失敗: " + r.reason);
+        toast.error(m.attendanceReminder.toastSendFailed(r.reason));
         return;
       }
       toast.success(
         r.posted > 0
-          ? "催促を送信しました"
-          : `送信しませんでした (${r.reason ?? "対象なし"})`,
+          ? m.attendanceReminder.toastSent
+          : m.attendanceReminder.toastNotSent(
+              r.reason ?? m.attendanceReminder.noTargets,
+            ),
       );
     });
   };
@@ -194,7 +200,7 @@ export function AttendanceReminderSection({
               className="h-3.5 w-3.5 text-[var(--neon-violet)]"
               aria-hidden
             />
-            出欠の催促
+            {m.attendanceReminder.title}
             <span
               className={
                 "ml-auto rounded-sm border px-1.5 py-px text-[9px] tracking-normal " +
@@ -211,21 +217,24 @@ export function AttendanceReminderSection({
         </summary>
 
       <p className="text-[11px] leading-relaxed text-muted-foreground">
-        開催予定日の指定日数前になっても出欠が未入力の人だけを、まとめて
-        Discord でメンションします。<strong>既定は OFF</strong> で、ON に
-        するまで 1 通も送りません。
+        {m.attendanceReminder.descriptionBefore}
+        <strong>{m.attendanceReminder.descriptionStrong}</strong>
+        {m.attendanceReminder.descriptionAfter}
       </p>
 
       {/* ON/OFF */}
       <div className="flex items-center justify-between gap-2 rounded-md border border-border/40 bg-secondary/15 px-3 py-2">
         <div className="flex flex-col">
-          <span className="text-xs">自動催促 (cron)</span>
+          <span className="text-xs">{m.attendanceReminder.cronLabel}</span>
           <span className="text-[10px] text-muted-foreground/80">
             {!loaded
-              ? "読み込み中…"
+              ? m.common.loading
               : enabled
-                ? `ON (${settings?.leadDays ?? 1} 日前 ${settings?.hour ?? 21}:00 JST 以降に送信)`
-                : "OFF (何も送りません)"}
+                ? m.attendanceReminder.cronOn(
+                    settings?.leadDays ?? 1,
+                    settings?.hour ?? 21,
+                  )
+                : m.attendanceReminder.cronOff}
           </span>
         </div>
         <label className="inline-flex cursor-pointer items-center gap-2">
@@ -235,7 +244,7 @@ export function AttendanceReminderSection({
             checked={enabled}
             disabled={pending || !loaded}
             onChange={(e) => onToggle(e.target.checked)}
-            aria-label="自動催促の ON/OFF"
+            aria-label={m.attendanceReminder.toggleAria}
           />
         </label>
       </div>
@@ -245,7 +254,7 @@ export function AttendanceReminderSection({
         <div className="grid gap-2 sm:grid-cols-3">
           <div className="flex flex-col gap-1">
             <Label htmlFor="reminder-lead" className="text-[11px]">
-              何日前
+              {m.attendanceReminder.leadLabel}
             </Label>
             <Input
               id="reminder-lead"
@@ -258,7 +267,7 @@ export function AttendanceReminderSection({
           </div>
           <div className="flex flex-col gap-1">
             <Label htmlFor="reminder-hour" className="text-[11px]">
-              時刻 (JST)
+              {m.attendanceReminder.hourLabel}
             </Label>
             <Input
               id="reminder-hour"
@@ -271,14 +280,14 @@ export function AttendanceReminderSection({
           </div>
           <div className="flex flex-col gap-1">
             <Label htmlFor="reminder-channel" className="text-[11px]">
-              チャンネル ID
+              {m.attendanceReminder.channelLabel}
             </Label>
             <Input
               id="reminder-channel"
               value={channelDraft}
               onChange={(e) => setChannelDraft(e.target.value)}
               className="h-7 font-mono text-[12px]"
-              placeholder="空 = 通常通知と同じ"
+              placeholder={m.attendanceReminder.channelPlaceholder}
               spellCheck={false}
             />
           </div>
@@ -293,7 +302,7 @@ export function AttendanceReminderSection({
             className="gap-1.5 text-[10px] tracking-normal"
           >
             <Save className="h-3 w-3" aria-hidden />
-            送信設定を保存
+            {m.attendanceReminder.saveBasics}
           </Button>
         </div>
       </div>
@@ -301,15 +310,13 @@ export function AttendanceReminderSection({
       {/* メンバー: メンション先 ID + 除外 */}
       <div className="flex flex-col gap-2 rounded-md border border-border/40 bg-secondary/10 px-3 py-2.5">
         <p className="text-[11px] text-muted-foreground">
-          メンション先の Discord ユーザー ID (17〜20 桁)。未設定の人は名前
-          だけ本文に出ます。<strong>除外</strong>にチェックした人は催促にも
-          集計にも出しません。
+          {m.attendanceReminder.membersDescriptionBefore}
+          <strong>{m.attendanceReminder.membersDescriptionStrong}</strong>
+          {m.attendanceReminder.membersDescriptionAfter}
         </p>
         {names.length === 0 ? (
           <p className="text-[11px] text-muted-foreground/70">
-            {loaded
-              ? "メンバーを取得できませんでした (スケジュールの設定を確認してください)"
-              : "読み込み中…"}
+            {loaded ? m.attendanceReminder.noMembers : m.common.loading}
           </p>
         ) : (
           <ul className="flex flex-col gap-1">
@@ -328,11 +335,11 @@ export function AttendanceReminderSection({
                     onChange={(e) =>
                       setMapDraft((m) => ({ ...m, [name]: e.target.value }))
                     }
-                    placeholder="Discord ユーザー ID"
+                    placeholder={m.attendanceReminder.userIdPlaceholder}
                     disabled={isExcluded}
                     spellCheck={false}
                     className="h-7 min-w-0 flex-1 font-mono text-[11px] disabled:opacity-40"
-                    aria-label={`${name} の Discord ユーザー ID`}
+                    aria-label={m.attendanceReminder.userIdAria(name)}
                   />
                   <label className="inline-flex shrink-0 cursor-pointer items-center gap-1 text-[10px] text-muted-foreground">
                     <input
@@ -346,9 +353,9 @@ export function AttendanceReminderSection({
                             : prev.filter((n) => n !== name),
                         )
                       }
-                      aria-label={`${name} を催促から除外`}
+                      aria-label={m.attendanceReminder.excludeAria(name)}
                     />
-                    除外
+                    {m.attendanceReminder.exclude}
                   </label>
                 </li>
               );
@@ -365,7 +372,7 @@ export function AttendanceReminderSection({
             className="gap-1.5 text-[10px] tracking-normal"
           >
             <Save className="h-3 w-3" aria-hidden />
-            メンション先 / 除外を保存
+            {m.attendanceReminder.saveMembers}
           </Button>
         </div>
       </div>
@@ -379,14 +386,14 @@ export function AttendanceReminderSection({
           onClick={onPreview}
           disabled={previewing}
           className="gap-1.5 text-[10px] tracking-normal"
-          title="今の設定で誰に飛ぶかを確認 (送信はしません)"
+          title={m.attendanceReminder.previewTitle}
         >
           {previewing ? (
             <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
           ) : (
             <Eye className="h-3 w-3" aria-hidden />
           )}
-          誰に飛ぶか確認
+          {m.attendanceReminder.previewButton}
         </Button>
         <Button
           type="button"
@@ -395,14 +402,14 @@ export function AttendanceReminderSection({
           onClick={onSendNow}
           disabled={sending}
           className="gap-1.5 text-[10px] tracking-normal"
-          title="ON/OFF・時刻・送信済み判定を無視して今すぐ送ります"
+          title={m.attendanceReminder.sendNowTitle}
         >
           {sending ? (
             <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
           ) : (
             <Send className="h-3 w-3" aria-hidden />
           )}
-          今すぐ送信 (テスト)
+          {m.attendanceReminder.sendNowButton}
         </Button>
       </div>
 
@@ -410,19 +417,25 @@ export function AttendanceReminderSection({
         <div className="rounded-sm border border-border/40 bg-secondary/20 px-2.5 py-1.5 text-[11px] leading-relaxed">
           {!preview ? (
             <p className="text-muted-foreground">
-              対象の開催予定がありません ({leadDraft} 日後に予定が無い、または
-              スケジュールを取得できませんでした)
+              {m.attendanceReminder.previewEmpty(leadDraft)}
             </p>
           ) : (
             <>
               <p>
-                <strong>{preview.rawDate}</strong> ({preview.dayOfWeek}) —
-                回答済み {preview.answered}/{preview.total}
+                <strong>{preview.rawDate}</strong> ({preview.dayOfWeek}){" "}
+                {m.attendanceReminder.previewAnswered(
+                  preview.answered,
+                  preview.total,
+                )}
               </p>
               <p className="mt-0.5">
-                催促対象 <strong>{preview.targets.length}</strong> 人:{" "}
+                {m.attendanceReminder.previewTargetsBefore}{" "}
+                <strong>{preview.targets.length}</strong>{" "}
+                {m.attendanceReminder.previewTargetsAfter}{" "}
                 {preview.targets.length === 0 ? (
-                  <span className="text-emerald-300">なし (全員入力済み)</span>
+                  <span className="text-emerald-300">
+                    {m.attendanceReminder.previewNone}
+                  </span>
                 ) : (
                   preview.targets.map((t, i) => (
                     <span key={t.name}>
@@ -435,8 +448,8 @@ export function AttendanceReminderSection({
                         }
                         title={
                           t.discordUserId
-                            ? "メンションされます"
-                            : "ID 未設定 — 名前のみ表示されます"
+                            ? m.attendanceReminder.willMention
+                            : m.attendanceReminder.noIdNameOnly
                         }
                       >
                         {t.name}
@@ -447,7 +460,9 @@ export function AttendanceReminderSection({
               </p>
               {preview.excluded.length > 0 && (
                 <p className="mt-0.5 text-[10px] text-muted-foreground">
-                  除外中: {preview.excluded.join(", ")}
+                  {m.attendanceReminder.previewExcluded(
+                    preview.excluded.join(", "),
+                  )}
                 </p>
               )}
             </>

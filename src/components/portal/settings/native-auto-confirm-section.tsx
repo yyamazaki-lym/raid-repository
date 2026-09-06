@@ -10,6 +10,7 @@ import {
   setNativeScheduleAutoConfirmEnabledAction,
   setNativeScheduleAutoConfirmMinAvailableAction,
 } from "@/lib/server/native-schedule-actions";
+import { useMessages } from "@/lib/i18n/client";
 
 /**
  * 全員入力で開催を自動確定する設定 (Tier2-8, 2026-08-30)。
@@ -33,6 +34,7 @@ export function NativeAutoConfirmSection({
   onChanged: () => void;
 }) {
   const router = useRouter();
+  const m = useMessages();
   const [pending, startTransition] = useTransition();
   const [minDraft, setMinDraft] = useState(minAvailable);
   // prop が更新されたら draft を追従させる。effect で setState すると
@@ -55,7 +57,7 @@ export function NativeAutoConfirmSection({
         return;
       }
       toast.success(
-        next ? "自動確定を ON にしました" : "自動確定を OFF にしました",
+        next ? m.nativeAutoConfirm.toastOn : m.nativeAutoConfirm.toastOff,
       );
       onChanged();
       router.refresh();
@@ -70,7 +72,7 @@ export function NativeAutoConfirmSection({
         toast.error(r.reason);
         return;
       }
-      toast.success("必要人数を保存しました");
+      toast.success(m.nativeAutoConfirm.toastMinSaved);
       onChanged();
       router.refresh();
     });
@@ -81,19 +83,19 @@ export function NativeAutoConfirmSection({
       <header className="flex items-center gap-2 border-b border-border/30 pb-2">
         <CheckCheck className="h-3.5 w-3.5 text-emerald-300" aria-hidden />
         <span className="font-mono text-[10px] tracking-[0.22em] text-muted-foreground uppercase">
-          全員入力で自動確定
+          {m.nativeAutoConfirm.title}
         </span>
       </header>
       <p className="text-[11px] leading-relaxed text-muted-foreground">
-        候補日にアクティブメンバー全員が出欠を入れ、参加可能な人数が下の
-        人数以上になったとき、その候補日を自動で<strong>確定</strong>に
-        切り替えます。既定は OFF です。
+        {m.nativeAutoConfirm.descriptionBefore}
+        <strong>{m.nativeAutoConfirm.descriptionStrong}</strong>
+        {m.nativeAutoConfirm.descriptionAfter}
       </p>
       <div className="flex items-center justify-between gap-2 rounded-md border border-border/40 bg-secondary/15 px-3 py-2">
         <span className="text-xs">
-          自動確定
+          {m.nativeAutoConfirm.toggleLabel}
           <span className="ml-2 text-[10px] text-muted-foreground/80">
-            {!loaded ? "読み込み中…" : enabled ? "ON" : "OFF"}
+            {!loaded ? m.common.loading : enabled ? "ON" : "OFF"}
           </span>
         </span>
         <input
@@ -102,7 +104,7 @@ export function NativeAutoConfirmSection({
           checked={enabled}
           disabled={pending || !loaded}
           onChange={(e) => onToggle(e.target.checked)}
-          aria-label="全員入力での自動確定 ON/OFF"
+          aria-label={m.nativeAutoConfirm.toggleAria}
         />
       </div>
       <div className="flex items-end gap-2">
@@ -111,7 +113,7 @@ export function NativeAutoConfirmSection({
             htmlFor="auto-confirm-min"
             className="text-[11px] text-foreground/80"
           >
-            必要な参加可能人数
+            {m.nativeAutoConfirm.minLabel}
           </label>
           <Input
             id="auto-confirm-min"
@@ -130,7 +132,7 @@ export function NativeAutoConfirmSection({
           className="gap-1.5 text-[10px] tracking-normal"
         >
           <Save className="h-3 w-3" aria-hidden />
-          保存
+          {m.common.save}
         </Button>
       </div>
     </section>

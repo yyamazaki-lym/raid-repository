@@ -23,6 +23,8 @@
  * 開かない場合は fetch されない)。
  */
 
+import { useMessages } from "@/lib/i18n/client";
+
 export type FflogsDiagInfo = {
   v2RawCount?: number;
   v2OwnedCount?: number;
@@ -53,6 +55,7 @@ export function FflogsDiagnosticsPanel({
   diag: FflogsDiagInfo;
   userTypeFields?: string[];
 }) {
+  const m = useMessages();
   return (
     <div className="mt-1.5 ml-3.5 flex flex-col gap-0.5 font-mono text-[10px] text-muted-foreground">
         {diag.v2Me && (
@@ -61,23 +64,23 @@ export function FflogsDiagnosticsPanel({
             <strong className="text-foreground/85">{diag.v2Me.id}</strong>
             {" / name="}
             <strong className="text-foreground/85">
-              {diag.v2Me.name || "(空)"}
+              {diag.v2Me.name || m.fflogsDiagnostics.empty}
             </strong>
           </p>
         )}
         <p>
           v2 raw fetched:{" "}
           <strong className="text-foreground/85">
-            {diag.v2RawCount ?? "(なし)"}
+            {diag.v2RawCount ?? m.fflogsDiagnostics.none}
           </strong>
-          {" / owner-filter 通過: "}
+          {m.fflogsDiagnostics.ownerFilterPassed}
           <strong className="text-foreground/85">
-            {diag.v2OwnedCount ?? "(なし)"}
+            {diag.v2OwnedCount ?? m.fflogsDiagnostics.none}
           </strong>
         </p>
         {diag.v2OwnersSample && diag.v2OwnersSample.length > 0 && (
           <>
-            <p className="mt-0.5">v2 取得時の owner 上位:</p>
+            <p className="mt-0.5">{m.fflogsDiagnostics.ownersSample}</p>
             <ul className="ml-3 flex flex-col gap-0.5">
               {diag.v2OwnersSample.map((o, i) => (
                 <li key={i}>
@@ -90,26 +93,26 @@ export function FflogsDiagnosticsPanel({
         )}
         {diag.htmlPageSize !== undefined && (
           <p className="mt-0.5">
-            HTML スクレイプ: page1 size=
+            {m.fflogsDiagnostics.htmlScrape}
             <strong className="text-foreground/85">{diag.htmlPageSize}</strong>
-            {" bytes / 検出 codes="}
+            {m.fflogsDiagnostics.codesFound}
             <strong className="text-foreground/85">
               {diag.htmlCodesFound ?? 0}
             </strong>
-            {" / 取得 reports="}
+            {m.fflogsDiagnostics.reportsFetched}
             <strong className="text-foreground/85">
               {diag.htmlReportCount ?? 0}
             </strong>
           </p>
         )}
         <p className="mt-0.5">
-          Session Cookie 設定:{" "}
+          {m.fflogsDiagnostics.cookieLabel}{" "}
           <strong
             className={
               diag.cookieUsed ? "text-emerald-300" : "text-rose-300/80"
             }
           >
-            {diag.cookieUsed ? "あり" : "なし"}
+            {diag.cookieUsed ? m.fflogsDiagnostics.yes : m.fflogsDiagnostics.no}
           </strong>
           {/* 2.8 follow-up: 従来は scrape 失敗・未実行でも「自動削除済」
               と表示していた (嘘表示)。実際に削除された時のみそう表示し、
@@ -123,40 +126,40 @@ export function FflogsDiagnosticsPanel({
               }
             >
               {diag.cookieDeleted
-                ? "(scrape 成功 → 自動削除済み)"
-                : "(scrape 失敗/未実行のため温存 — 次回連動でも使われます)"}
+                ? m.fflogsDiagnostics.cookieDeleted
+                : m.fflogsDiagnostics.cookieKept}
             </span>
           )}
         </p>
         {diag.htmlScrapeError && (
           <p className="mt-0.5 text-rose-300/85">
-            HTML スクレイプエラー: {diag.htmlScrapeError}
+            {m.fflogsDiagnostics.scrapeError(diag.htmlScrapeError)}
           </p>
         )}
         {(diag.videosSkippedNoPostedAt ?? 0) > 0 && (
           <p className="mt-0.5 text-amber-200/85">
-            ⚠ タイトル日付なしでスキップ:{" "}
+            {m.fflogsDiagnostics.skippedNoDate}{" "}
             <strong>{diag.videosSkippedNoPostedAt}</strong>
-            {" 件"}
+            {m.fflogsDiagnostics.countSuffix}
             <span className="ml-1 text-muted-foreground/85">
-              ※ 1.9.9 から、タイトルに raid 日が無い動画は自動マッチ対象から除外（誤マッチ防止）。動画編集ダイアログから FFLogs URL を手動指定してください。
+              {m.fflogsDiagnostics.skippedNoDateNote}
             </span>
           </p>
         )}
         {diag.titleDateHitCount !== undefined && (
           <p className="mt-0.5">
-            タイトル日付抽出:
-            {" 成功 "}
+            {m.fflogsDiagnostics.titleDateLabel}
+            {m.fflogsDiagnostics.success}
             <strong className="text-emerald-300">
               {diag.titleDateHitCount}
             </strong>
-            {" / 失敗 "}
+            {m.fflogsDiagnostics.failure}
             <strong className="text-rose-300">
               {diag.titleDateMissCount ?? 0}
             </strong>
-            {" 件"}
+            {m.fflogsDiagnostics.countSuffix}
             <span className="ml-1 text-muted-foreground/70">
-              (失敗 = 自動マッチ対象外)
+              {m.fflogsDiagnostics.failureNote}
             </span>
           </p>
         )}
@@ -167,9 +170,9 @@ export function FflogsDiagnosticsPanel({
                 <span className="text-rose-300/70 transition-transform group-open/missdates:rotate-90">
                   ▸
                 </span>
-                日付抽出に失敗したタイトル (上位
-                {diag.titleDateMissSample.length}
-                件)
+                {m.fflogsDiagnostics.missSampleSummary(
+                  diag.titleDateMissSample.length,
+                )}
               </span>
             </summary>
             <ul className="mt-1 ml-3 flex flex-col gap-0.5 font-mono text-[9px] leading-tight text-muted-foreground">
@@ -191,7 +194,7 @@ export function FflogsDiagnosticsPanel({
                 <span className="text-amber-300/70 transition-transform group-open/htmlsample:rotate-90">
                   ▸
                 </span>
-                HTML サンプル (最初のレポートコード周辺)
+                {m.fflogsDiagnostics.htmlSampleSummary}
               </span>
             </summary>
             <pre className="mt-1 ml-3 rounded bg-secondary/30 px-1.5 py-1 font-mono text-[9px] leading-tight whitespace-pre-wrap break-all text-muted-foreground/85 max-h-[16rem] overflow-y-auto">
@@ -206,7 +209,7 @@ export function FflogsDiagnosticsPanel({
                 <span className="text-amber-300/70 transition-transform group-open/userfields:rotate-90">
                   ▸
                 </span>
-                User 型のフィールド一覧 (introspect、{userTypeFields.length} 個)
+                {m.fflogsDiagnostics.userFieldsSummary(userTypeFields.length)}
               </span>
             </summary>
             <pre className="mt-1 ml-3 rounded bg-secondary/30 px-1.5 py-1 font-mono text-[9px] leading-tight whitespace-pre-wrap break-words text-muted-foreground/85 max-h-[12rem] overflow-y-auto">

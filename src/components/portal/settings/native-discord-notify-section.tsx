@@ -16,6 +16,7 @@ import {
   setNativeScheduleDiscordNotifyOnDecisionAction,
 } from "@/lib/server/native-schedule-actions";
 import { NATIVE_DISCORD_DEFAULT_TEMPLATE } from "@/lib/schedule/native-discord-template";
+import { useMessages } from "@/lib/i18n/client";
 
 /**
  * TODO #2 phase 3 + phase 4 (2026-05-08): native スケジュール Discord 通知設定。
@@ -55,6 +56,7 @@ export function NativeDiscordNotifySection({
   onChanged: () => void;
 }) {
   const router = useRouter();
+  const m = useMessages();
   const [pending, startTransition] = useTransition();
   const [channelDraft, setChannelDraft] = useState("");
   const [roleDraft, setRoleDraft] = useState("");
@@ -82,8 +84,8 @@ export function NativeDiscordNotifySection({
       }
       toast.success(
         next
-          ? "確定時の自動通知を ON にしました"
-          : "確定時の自動通知を OFF にしました",
+          ? m.nativeDiscordNotify.toastOnDecisionOn
+          : m.nativeDiscordNotify.toastOnDecisionOff,
       );
       onChanged();
       router.refresh();
@@ -93,7 +95,7 @@ export function NativeDiscordNotifySection({
   const onSaveTemplate = () => {
     const trimmed = templateDraft;
     if (trimmed.length > 4000) {
-      toast.error("テンプレートは 4000 文字以内で入力してください");
+      toast.error(m.nativeDiscordNotify.errTemplateTooLong);
       return;
     }
     startTransition(async () => {
@@ -104,8 +106,8 @@ export function NativeDiscordNotifySection({
       }
       toast.success(
         trimmed.trim()
-          ? "通知テンプレートを保存しました"
-          : "通知テンプレートを削除しました (既定に戻りました)",
+          ? m.nativeDiscordNotify.toastTemplateSaved
+          : m.nativeDiscordNotify.toastTemplateCleared,
       );
       onChanged();
       router.refresh();
@@ -128,7 +130,7 @@ export function NativeDiscordNotifySection({
         toast.error(r.reason);
         return;
       }
-      toast.success(`通知時刻を ${next}:00 JST に変更しました`);
+      toast.success(m.nativeDiscordNotify.toastHourChanged(next));
       onChanged();
       router.refresh();
     });
@@ -144,8 +146,8 @@ export function NativeDiscordNotifySection({
       }
       toast.success(
         next
-          ? "当日昼の自動通知を ON にしました"
-          : "当日昼の自動通知を OFF にしました",
+          ? m.nativeDiscordNotify.toastDailyOn
+          : m.nativeDiscordNotify.toastDailyOff,
       );
       onChanged();
       router.refresh();
@@ -155,7 +157,7 @@ export function NativeDiscordNotifySection({
   const onSaveChannel = () => {
     const trimmed = channelDraft.trim();
     if (trimmed && !DISCORD_ID_RE.test(trimmed)) {
-      toast.error("Channel ID は 17〜20 桁の数字です");
+      toast.error(m.nativeDiscordNotify.errChannelId);
       return;
     }
     startTransition(async () => {
@@ -165,7 +167,9 @@ export function NativeDiscordNotifySection({
         return;
       }
       toast.success(
-        trimmed ? "通知先 channel ID を保存しました" : "通知先 channel ID を削除しました",
+        trimmed
+          ? m.nativeDiscordNotify.toastChannelSaved
+          : m.nativeDiscordNotify.toastChannelCleared,
       );
       onChanged();
       router.refresh();
@@ -175,7 +179,7 @@ export function NativeDiscordNotifySection({
   const onSaveRole = () => {
     const trimmed = roleDraft.trim();
     if (trimmed && !DISCORD_ID_RE.test(trimmed)) {
-      toast.error("Role ID は 17〜20 桁の数字です");
+      toast.error(m.nativeDiscordNotify.errRoleId);
       return;
     }
     startTransition(async () => {
@@ -186,8 +190,8 @@ export function NativeDiscordNotifySection({
       }
       toast.success(
         trimmed
-          ? "mention 対象 role ID を保存しました"
-          : "mention 対象 role ID を削除しました (mention なし平文に切替)",
+          ? m.nativeDiscordNotify.toastRoleSaved
+          : m.nativeDiscordNotify.toastRoleCleared,
       );
       onChanged();
       router.refresh();
@@ -204,15 +208,18 @@ export function NativeDiscordNotifySection({
       </header>
 
       <p className="text-[10px] leading-relaxed text-muted-foreground">
-        当日の指定時刻 (JST) に自動で「本日の固定活動予定日です」を Discord に投稿します。
-        手動 button (確定列の Bell icon) は ON/OFF と無関係に常時動作します。
+        {m.nativeDiscordNotify.description}
       </p>
 
       <div className="flex items-center justify-between gap-2 rounded-md border border-border/30 bg-secondary/20 px-3 py-2">
         <div className="flex flex-col gap-0.5">
-          <span className="text-xs">当日の自動通知</span>
+          <span className="text-xs">{m.nativeDiscordNotify.dailyLabel}</span>
           <span className="text-[10px] text-muted-foreground/80">
-            {enabled ? `ON (${String(parseInt(hour, 10)).padStart(2, "0")}:00 JST cron が動作)` : "OFF (cron 停止)"}
+            {enabled
+              ? m.nativeDiscordNotify.dailyOn(
+                  String(parseInt(hour, 10)).padStart(2, "0"),
+                )
+              : m.nativeDiscordNotify.dailyOff}
           </span>
         </div>
         <label className="inline-flex cursor-pointer items-center gap-2">
@@ -231,9 +238,9 @@ export function NativeDiscordNotifySection({
 
       <div className="flex items-center justify-between gap-2 rounded-md border border-border/30 bg-secondary/20 px-3 py-2">
         <div className="flex flex-col gap-0.5">
-          <span className="text-xs">通知時刻 (JST)</span>
+          <span className="text-xs">{m.nativeDiscordNotify.hourLabel}</span>
           <span className="text-[10px] text-muted-foreground/80">
-            毎時 cron が発火し、選択時刻のみ Discord に投稿
+            {m.nativeDiscordNotify.hourDescription}
           </span>
         </div>
         <select
@@ -252,7 +259,7 @@ export function NativeDiscordNotifySection({
 
       <div className="flex flex-col gap-1.5">
         <label className="text-[10px] tracking-normal text-muted-foreground">
-          通知先 Channel ID
+          {m.nativeDiscordNotify.channelLabel}
         </label>
         <div className="flex items-center gap-1.5">
           <Input
@@ -277,7 +284,7 @@ export function NativeDiscordNotifySection({
               ) : (
                 <Save className="h-3 w-3" aria-hidden />
               )}
-              保存
+              {m.common.save}
             </Button>
           )}
         </div>
@@ -285,7 +292,7 @@ export function NativeDiscordNotifySection({
 
       <div className="flex flex-col gap-1.5">
         <label className="text-[10px] tracking-normal text-muted-foreground">
-          mention 対象 Role ID（任意）
+          {m.nativeDiscordNotify.roleLabel}
         </label>
         <div className="flex items-center gap-1.5">
           <Input
@@ -293,7 +300,7 @@ export function NativeDiscordNotifySection({
             value={roleDraft}
             onChange={(e) => setRoleDraft(e.target.value)}
             disabled={!canEdit || !loaded || pending}
-            placeholder="123456789012345678 (空なら mention なし)"
+            placeholder={m.nativeDiscordNotify.rolePlaceholder}
             className="h-7 text-xs font-mono"
             inputMode="numeric"
           />
@@ -310,7 +317,7 @@ export function NativeDiscordNotifySection({
               ) : (
                 <Save className="h-3 w-3" aria-hidden />
               )}
-              保存
+              {m.common.save}
             </Button>
           )}
         </div>
@@ -319,9 +326,9 @@ export function NativeDiscordNotifySection({
       {/* 2.1 (2026-05-12) PR3-B: 確定 (DECISION) 切替時の自動通知 ON/OFF。 */}
       <div className="flex items-center justify-between gap-2 rounded-md border border-border/30 bg-secondary/20 px-3 py-2">
         <div className="flex flex-col gap-0.5">
-          <span className="text-xs">確定時に自動通知</span>
+          <span className="text-xs">{m.nativeDiscordNotify.onDecisionLabel}</span>
           <span className="text-[10px] text-muted-foreground/80">
-            開催日を「確定」に切り替えた瞬間に 1 回だけ Discord 投稿 (同セッションの再送は last_notified_at で抑止)
+            {m.nativeDiscordNotify.onDecisionDescription}
           </span>
         </div>
         <label className="inline-flex cursor-pointer items-center gap-2">
@@ -342,7 +349,7 @@ export function NativeDiscordNotifySection({
           DB から DELETE され、buildMessage は hardcode default に戻る。 */}
       <div className="flex flex-col gap-1.5">
         <label className="text-[10px] tracking-normal text-muted-foreground">
-          通知メッセージテンプレート（任意）
+          {m.nativeDiscordNotify.templateLabel}
         </label>
         <Textarea
           value={templateDraft}
@@ -355,7 +362,7 @@ export function NativeDiscordNotifySection({
           maxLength={4000}
         />
         <p className="text-[10px] leading-relaxed text-muted-foreground/80">
-          利用可能な placeholder:
+          {m.nativeDiscordNotify.placeholdersLabel}
           <code className="ml-1 font-mono">{`{mention}`}</code>,
           <code className="ml-1 font-mono">{`{date}`}</code>,
           <code className="ml-1 font-mono">{`{day}`}</code>,
@@ -370,15 +377,15 @@ export function NativeDiscordNotifySection({
           <code className="ml-1 font-mono">{`{discord_relative_block}`}</code>
           <br />
           <code className="font-mono">{`{discord_time}`}</code> /
-          <code className="ml-1 font-mono">{`{discord_relative}`}</code> は
-          Discord が読む側のタイムゾーンで「9月8日(火) 21:00」「3 時間後」に
-          置き換える表記です。
-          <code className="ml-1 font-mono">{`{discord_relative_block}`}</code> は
-          括弧付きの相対表記で、日付が読めないときは括弧ごと省略されます。
+          <code className="ml-1 font-mono">{`{discord_relative}`}</code>{" "}
+          {m.nativeDiscordNotify.placeholderNote1Before}{" "}
+          {m.nativeDiscordNotify.placeholderNote1After}
+          <code className="ml-1 font-mono">{`{discord_relative_block}`}</code>{" "}
+          {m.nativeDiscordNotify.placeholderNote2}
           <br />
-          空欄で保存すると既定 (現行の hardcode フォーマット) に戻ります。
-          <code className="font-mono">{`{note_block}`}</code> は note 有無で
-          自動的に行ごと出現/省略します。
+          {m.nativeDiscordNotify.placeholderNote3}
+          <code className="font-mono">{`{note_block}`}</code>{" "}
+          {m.nativeDiscordNotify.placeholderNote4}
         </p>
         <div className="flex flex-wrap items-center gap-1.5">
           {canEdit && (
@@ -390,10 +397,10 @@ export function NativeDiscordNotifySection({
                 disabled={!loaded || pending}
                 onClick={onResetTemplateToDefault}
                 className="h-7 gap-1 px-2 text-[10px] tracking-normal"
-                title="既定テンプレートを textarea に流し込む (保存はまだしない)"
+                title={m.nativeDiscordNotify.fillDefaultTitle}
               >
                 <RotateCcw className="h-3 w-3" aria-hidden />
-                既定を流し込む
+                {m.nativeDiscordNotify.fillDefault}
               </Button>
               <Button
                 type="button"
@@ -402,9 +409,9 @@ export function NativeDiscordNotifySection({
                 disabled={!loaded || pending || !templateDraft}
                 onClick={onClearTemplate}
                 className="h-7 px-2 text-[10px] tracking-normal"
-                title="textarea をクリア (保存すると DB から削除、既定に戻る)"
+                title={m.nativeDiscordNotify.clearTitle}
               >
-                クリア
+                {m.common.clear}
               </Button>
               <div className="flex-1" />
               <Button
@@ -419,7 +426,7 @@ export function NativeDiscordNotifySection({
                 ) : (
                   <Save className="h-3 w-3" aria-hidden />
                 )}
-                保存
+                {m.common.save}
               </Button>
             </>
           )}

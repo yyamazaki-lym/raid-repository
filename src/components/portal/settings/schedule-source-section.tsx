@@ -3,6 +3,7 @@
 import { Calendar } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useMessages } from "@/lib/i18n/client";
 
 /**
  * TODO #66 (2026-05-02): settings-dialog.tsx を機能別 sub-component に
@@ -19,6 +20,7 @@ export function ScheduleSourceSection({
   url: string;
   onUrlChange: (value: string) => void;
 }) {
+  const m = useMessages();
   return (
     <section className="flex flex-col gap-3">
       <header className="flex items-center gap-2 border-b border-border/30 pb-2">
@@ -34,17 +36,17 @@ export function ScheduleSourceSection({
             htmlFor="schedule-url"
             className="text-xs text-foreground/80"
           >
-            スケジュールページの URL
+            {m.scheduleSource.urlLabel}
           </Label>
           <a
             href="https://character-sheets.appspot.com/schedule/"
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-1 text-[10px] text-[var(--neon-cyan)]/85 underline decoration-dotted underline-offset-2 transition-colors hover:text-[var(--neon-cyan)]"
-            title="character-sheets.appspot.com を開く"
+            title={m.scheduleSource.openSiteTitle}
           >
             <Calendar className="h-2.5 w-2.5" aria-hidden />
-            character-sheets を開く
+            {m.scheduleSource.openSite}
           </a>
         </div>
         <Input
@@ -59,9 +61,9 @@ export function ScheduleSourceSection({
           autoComplete="off"
         />
         <p className="text-muted-foreground text-[11px] leading-relaxed">
-          character-sheets.appspot.com の{" "}
+          {m.scheduleSource.formatBefore}{" "}
           <code className="font-mono">schedule/list?key=…</code>{" "}
-          形式を指定してください。
+          {m.scheduleSource.formatAfter}
         </p>
         <details className="group/help">
           <summary className="cursor-pointer text-[10px] text-muted-foreground/80 transition-colors hover:text-foreground/90 list-none [&::-webkit-details-marker]:hidden">
@@ -69,7 +71,7 @@ export function ScheduleSourceSection({
               <span className="text-[var(--neon-cyan)]/70 transition-transform group-open/help:rotate-90">
                 ▸
               </span>
-              URL の取得手順
+              {m.scheduleSource.helpSummary}
             </span>
           </summary>
           <ol className="mt-1.5 ml-3.5 flex list-decimal flex-col gap-0.5 text-[10px] text-muted-foreground/80 leading-relaxed">
@@ -82,20 +84,21 @@ export function ScheduleSourceSection({
               >
                 character-sheets.appspot.com/schedule/
               </a>
-              {" "}を開く
+              {" "}{m.scheduleSource.step1Suffix}
             </li>
-            <li>固定で使っているスケジュールページに移動</li>
+            <li>{m.scheduleSource.step2}</li>
             <li>
-              ブラウザのアドレスバーから URL をコピー（
+              {m.scheduleSource.step3Before}
               <code className="font-mono">/schedule/list?key=…</code>
-              {" "}で終わるもの）
+              {" "}{m.scheduleSource.step3After}
             </li>
-            <li>上の入力欄に貼り付けて「保存」</li>
+            <li>{m.scheduleSource.step4}</li>
           </ol>
         </details>
         <p className="text-muted-foreground/80 text-[10px] leading-relaxed">
-          ※ 元サイトの変更は最大{" "}
-          <strong>10 分</strong> 遅れて反映されます。
+          {m.scheduleSource.delayBefore}{" "}
+          <strong>{m.scheduleSource.delayStrong}</strong>{" "}
+          {m.scheduleSource.delayAfter}
         </p>
       </div>
     </section>

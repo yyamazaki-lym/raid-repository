@@ -7,6 +7,8 @@ import { toast } from "sonner";
 import { getScheduleSourceModeFromDb } from "@/lib/schedule-url-store";
 import { setScheduleSourceModeAction } from "@/lib/server/categories-actions";
 import type { ScheduleSourceMode } from "@/lib/schedule/source-mode";
+import { useMessages } from "@/lib/i18n/client";
+import type { Messages } from "@/lib/i18n/messages";
 
 /**
  * TODO #2 phase 1 (2026-05-07): スケジュールソースモード選択 section。
@@ -20,29 +22,24 @@ import type { ScheduleSourceMode } from "@/lib/schedule/source-mode";
  * mode の永続化は他項目 (URL / channel ID 等) と独立に section 内で完結
  * させる方が UX が単純なので、settings-dialog の Save ボタンとは別経路。
  */
-const MODES: ReadonlyArray<{
+function buildModes(
+  m: Messages,
+): ReadonlyArray<{
   value: ScheduleSourceMode;
   label: string;
   description: string;
-}> = [
-  {
-    value: "sync",
-    label: "同期式 (既存)",
-    description:
-      "外部サイト character-sheets.appspot.com の URL を登録して同期。これまで通りの挙動。",
-  },
-  {
-    value: "native",
-    label: "自前作成式",
-    description:
-      "portal 内で候補日の追加・出欠入力・開催確定まで完結。FFLogs 連携と Discord 通知にも対応。",
-  },
-  {
-    value: "disabled",
-    label: "使わない",
-    description: "スケジュール機能を停止。トップは案内表示のみ。設定を戻せば復活。",
-  },
-];
+}> {
+  const t = m.scheduleSourceMode;
+  return [
+    { value: "sync", label: t.syncLabel, description: t.syncDescription },
+    { value: "native", label: t.nativeLabel, description: t.nativeDescription },
+    {
+      value: "disabled",
+      label: t.disabledLabel,
+      description: t.disabledDescription,
+    },
+  ];
+}
 
 export function ScheduleSourceModeSection({
   open,
@@ -54,6 +51,7 @@ export function ScheduleSourceModeSection({
   onModeChange?: (mode: ScheduleSourceMode) => void;
 }) {
   const router = useRouter();
+  const m = useMessages();
   const [mode, setMode] = useState<ScheduleSourceMode>("sync");
   const [loaded, setLoaded] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -88,10 +86,10 @@ export function ScheduleSourceModeSection({
       if (!result.ok) {
         setMode(prev);
         onModeChange?.(prev);
-        toast.error("モード保存: " + result.reason);
+        toast.error(m.scheduleSourceMode.toastSaveError(result.reason));
         return;
       }
-      toast.success("ソースモードを保存しました");
+      toast.success(m.scheduleSourceMode.toastSaved);
       router.refresh();
     });
   };
@@ -112,12 +110,12 @@ export function ScheduleSourceModeSection({
         className="flex flex-col gap-1.5"
         disabled={!canEdit || !loaded || isPending}
       >
-        <legend className="sr-only">スケジュールソースモード</legend>
-        {MODES.map((m) => {
-          const checked = mode === m.value;
+        <legend className="sr-only">{m.scheduleSourceMode.legend}</legend>
+        {buildModes(m).map((opt) => {
+          const checked = mode === opt.value;
           return (
             <label
-              key={m.value}
+              key={opt.value}
               className={
                 "flex cursor-pointer items-start gap-2.5 rounded-md border px-3 py-2 transition-colors " +
                 (checked
@@ -128,15 +126,15 @@ export function ScheduleSourceModeSection({
               <input
                 type="radio"
                 name="schedule-source-mode"
-                value={m.value}
+                value={opt.value}
                 checked={checked}
-                onChange={() => onChange(m.value)}
+                onChange={() => onChange(opt.value)}
                 className="mt-1 accent-[var(--neon-cyan)]"
               />
               <div className="flex flex-col gap-0.5">
-                <span className="text-xs text-foreground">{m.label}</span>
+                <span className="text-xs text-foreground">{opt.label}</span>
                 <span className="text-[10px] leading-relaxed text-muted-foreground">
-                  {m.description}
+                  {opt.description}
                 </span>
               </div>
             </label>
@@ -145,7 +143,7 @@ export function ScheduleSourceModeSection({
       </fieldset>
       {!canEdit && (
         <p className="text-[10px] text-muted-foreground/80">
-          モード変更には ADMIN ロールが必要です。
+          {m.scheduleSourceMode.adminRequired}
         </p>
       )}
     </section>

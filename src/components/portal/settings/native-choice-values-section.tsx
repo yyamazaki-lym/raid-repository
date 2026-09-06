@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { setNativeScheduleChoiceValuesAction } from "@/lib/server/native-schedule-actions";
 import { useConfirm } from "@/components/portal/confirm-dialog";
+import { useMessages } from "@/lib/i18n/client";
 
 /**
  * TODO #2 phase 2-C (2026-05-07): native スケジュール凡例 (choice values)
@@ -45,6 +46,7 @@ export function NativeChoiceValuesSection({
 }) {
   const router = useRouter();
   const confirm = useConfirm();
+  const m = useMessages();
   const [pending, startTransition] = useTransition();
   const [draft, setDraft] = useState("");
 
@@ -67,8 +69,8 @@ export function NativeChoiceValuesSection({
       }
       toast.success(
         draft.trim()
-          ? `凡例を保存しました (${previewItems.length} 項目)`
-          : "凡例を既定値に戻しました",
+          ? m.nativeChoices.toastSaved(previewItems.length)
+          : m.nativeChoices.toastReset,
       );
       onChanged();
       router.refresh();
@@ -78,9 +80,9 @@ export function NativeChoiceValuesSection({
   const onReset = async () => {
     if (
       !(await confirm({
-        title: "凡例を既定値に戻す",
-        description: "凡例を既定値 (○,×,△,⏰,－) に戻します。よろしいですか？",
-        confirmText: "戻す",
+        title: m.nativeChoices.confirmResetTitle,
+        description: m.nativeChoices.confirmResetDescription,
+        confirmText: m.nativeChoices.confirmResetButton,
       }))
     )
       return;
@@ -91,7 +93,7 @@ export function NativeChoiceValuesSection({
         toast.error(r.reason);
         return;
       }
-      toast.success("凡例を既定値に戻しました");
+      toast.success(m.nativeChoices.toastReset);
       onChanged();
       router.refresh();
     });
@@ -110,7 +112,7 @@ export function NativeChoiceValuesSection({
       </header>
 
       <p className="text-[10px] leading-relaxed text-muted-foreground">
-        スケジュール表の出欠列で選べる凡例。CSV 形式 (カンマ区切り) で記号を並べます。空のまま保存すると既定値 (○, ×, △, ⏰, －) に戻ります。
+        {m.nativeChoices.description}
       </p>
 
       <div className="flex flex-col gap-2">
@@ -142,7 +144,7 @@ export function NativeChoiceValuesSection({
           ))}
           {usingFallback && (
             <span className="text-[10px] text-muted-foreground/80">
-              (既定値)
+              {m.nativeChoices.defaultBadge}
             </span>
           )}
         </div>
@@ -159,7 +161,7 @@ export function NativeChoiceValuesSection({
                 className="h-7 gap-1 px-2 text-[10px] tracking-normal"
               >
                 <RotateCcw className="h-3 w-3" aria-hidden />
-                既定値に戻す
+                {m.nativeChoices.resetButton}
               </Button>
             )}
             <Button
@@ -174,7 +176,7 @@ export function NativeChoiceValuesSection({
               ) : (
                 <Save className="h-3 w-3" aria-hidden />
               )}
-              保存
+              {m.common.save}
             </Button>
           </div>
         )}

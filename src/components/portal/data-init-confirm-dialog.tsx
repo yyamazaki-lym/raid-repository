@@ -18,6 +18,7 @@ import {
   initializeAllDataAction,
   type DataInitResult,
 } from "@/lib/server/admin-actions";
+import { useMessages } from "@/lib/i18n/client";
 
 const CONFIRM_KEYWORD = "INITIALIZE";
 
@@ -40,6 +41,7 @@ export function DataInitConfirmDialog({
   onOpenChange,
   onComplete,
 }: Props) {
+  const m = useMessages();
   const [step, setStep] = useState<"warn" | "type">("warn");
   const [typed, setTyped] = useState("");
   const [running, startRun] = useTransition();
@@ -62,9 +64,9 @@ export function DataInitConfirmDialog({
       const result = await initializeAllDataAction();
       if (result.ok) {
         const total = Object.values(result.counts).reduce((a, b) => a + b, 0);
-        toast.success(`データ初期化完了 — 合計 ${total} 行削除`);
+        toast.success(m.dataInit.toastDone(total));
       } else {
-        toast.error(`初期化失敗: ${result.reason}`);
+        toast.error(m.dataInit.toastFailed(result.reason));
       }
       onComplete?.(result);
       reset();
@@ -78,51 +80,46 @@ export function DataInitConfirmDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-rose-300">
             <AlertTriangle className="h-5 w-5" aria-hidden />
-            全データ初期化
+            {m.dataInit.title}
           </DialogTitle>
           <DialogDescription className="text-[12px]">
-            この操作は取り消せません。サイト全体のコンテンツが削除されます。
+            {m.dataInit.description}
           </DialogDescription>
         </DialogHeader>
 
         {step === "warn" ? (
           <div className="flex flex-col gap-3 px-1 text-[12px] leading-relaxed">
             <p className="text-[10px] tracking-normal text-rose-300/90">
-              削除対象
+              {m.dataInit.targetsLabel}
             </p>
             <ul className="ml-4 list-disc text-foreground/85 [&>li]:leading-snug">
-              <li>
-                コンテンツ + 関連 (動画 / 攻略情報 / マクロ / ウェイマーク /
-                募集文 / ロット管理 / 軽減表 / BiS リンク / 週次消化)
-              </li>
-              <li>練習ログ (FFLogs の pull 記録 / 同期台帳 / 動画オフセット)</li>
-              <li>過去スケジュール / 日付メモ / タグ</li>
-              <li>
-                アプリ設定 (Schedule URL / FFLogs username / Discord channel ID 等)
-              </li>
+              <li>{m.dataInit.target1}</li>
+              <li>{m.dataInit.target2}</li>
+              <li>{m.dataInit.target3}</li>
+              <li>{m.dataInit.target4}</li>
             </ul>
             <p className="text-muted-foreground">
-              認証情報 / FFLogs OAuth トークンは保持されます。
+              {m.dataInit.keepNote}
             </p>
             <p className="font-bold text-rose-200">
-              本当にすべてのデータを初期化しますか？
+              {m.dataInit.finalQuestion}
             </p>
           </div>
         ) : (
           <div className="flex flex-col gap-3 px-1 text-[12px]">
             <p className="leading-relaxed">
-              実行するには、下のフィールドに{" "}
+              {m.dataInit.typeBefore}{" "}
               <code className="rounded-sm border border-rose-400/30 bg-rose-400/10 px-1 py-0.5 font-mono font-bold text-rose-200">
                 {CONFIRM_KEYWORD}
               </code>{" "}
-              と入力してください。
+              {m.dataInit.typeAfter}
             </p>
             <div className="flex flex-col gap-1.5">
               <Label
                 htmlFor="data-init-confirm-input"
                 className="text-[10px] tracking-normal text-muted-foreground"
               >
-                確認入力
+                {m.dataInit.inputLabel}
               </Label>
               <Input
                 id="data-init-confirm-input"
@@ -149,7 +146,7 @@ export function DataInitConfirmDialog({
                 onClick={() => handleOpenChange(false)}
                 className="text-[11px] tracking-normal"
               >
-                キャンセル
+                {m.common.cancel}
               </Button>
               <Button
                 type="button"
@@ -158,7 +155,7 @@ export function DataInitConfirmDialog({
                 className="gap-1.5 border border-rose-400/40 bg-rose-500/15 text-[11px] tracking-normal text-rose-100 hover:bg-rose-500/25"
               >
                 <AlertTriangle className="h-3.5 w-3.5" aria-hidden />
-                次へ
+                {m.dataInit.next}
               </Button>
             </>
           ) : (
@@ -171,7 +168,7 @@ export function DataInitConfirmDialog({
                 disabled={running}
                 className="text-[11px] tracking-normal"
               >
-                キャンセル
+                {m.common.cancel}
               </Button>
               <Button
                 type="button"
@@ -183,12 +180,12 @@ export function DataInitConfirmDialog({
                 {running ? (
                   <>
                     <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
-                    実行中…
+                    {m.dataInit.running}
                   </>
                 ) : (
                   <>
                     <AlertTriangle className="h-3.5 w-3.5" aria-hidden />
-                    初期化を実行
+                    {m.dataInit.execute}
                   </>
                 )}
               </Button>

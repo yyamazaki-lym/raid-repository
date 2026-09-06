@@ -26,6 +26,7 @@ import {
   snapshotScheduleNow,
   type ScheduleSnapshotResult,
 } from "@/lib/server/categories-actions";
+import { useMessages } from "@/lib/i18n/client";
 
 // Inline copy of the Server Action result type — we can't re-export the
 // type from a "use server" module on the client side, and the shape is
@@ -63,6 +64,7 @@ export function PastSessionsSection({
 }) {
   const router = useRouter();
   const confirm = useConfirm();
+  const m = useMessages();
   const [importing, startImport] = useTransition();
   const [importResult, setImportResult] =
     useState<ScheduleHistoryImportResult | null>(null);
@@ -110,15 +112,19 @@ export function PastSessionsSection({
       const r = await importPastScheduleFromDiscord();
       setImportResult(r);
       if (!r.ok) {
-        toast.error("取り込み失敗: " + (r.reason ?? "原因不明"));
+        toast.error(
+          m.pastSessions.toastImportFailed(
+            r.reason ?? m.pastSessions.unknownReason,
+          ),
+        );
         return;
       }
       toast.success(
         r.inserted > 0
-          ? `${r.inserted} 件の過去日程を追加`
+          ? m.pastSessions.toastImported(r.inserted)
           : r.parsed > 0
-            ? "新規分なし（すべて取り込み済み）"
-            : "通知メッセージ未検出",
+            ? m.pastSessions.toastNoNew
+            : m.pastSessions.toastNoMessages,
       );
       router.refresh();
     });
@@ -129,16 +135,21 @@ export function PastSessionsSection({
     startCount(async () => {
       const r = await countStoredPastSessions();
       setStoredInfo(r);
-      if (!r.ok) toast.error("件数取得失敗: " + (r.reason ?? "原因不明"));
+      if (!r.ok)
+        toast.error(
+          m.pastSessions.toastCountFailed(
+            r.reason ?? m.pastSessions.unknownReason,
+          ),
+        );
     });
   };
 
   const onDeleteStoredRow = async (rawDate: string) => {
     if (
       !(await confirm({
-        title: "過去日程を削除",
-        description: `削除しますか？\n${rawDate}\n\n過去日程からこの日が消えます。Discord 取り込みを再実行しても、この raw_date のメッセージが Discord 100 件に残っていれば再度 insert されます。`,
-        confirmText: "削除",
+        title: m.pastSessions.confirmDeleteTitle,
+        description: m.pastSessions.confirmDeleteDescription(rawDate),
+        confirmText: m.common.delete,
         destructive: true,
       }))
     ) {
@@ -147,10 +158,14 @@ export function PastSessionsSection({
     startDeleteRow(async () => {
       const r = await deleteStoredPastSession(rawDate);
       if (!r.ok) {
-        toast.error("削除失敗: " + (r.reason ?? "原因不明"));
+        toast.error(
+          m.pastSessions.toastDeleteFailed(
+            r.reason ?? m.pastSessions.unknownReason,
+          ),
+        );
         return;
       }
-      toast.success(`削除しました: ${rawDate}`);
+      toast.success(m.pastSessions.toastDeleted(rawDate));
       const refreshed = await countStoredPastSessions();
       setStoredInfo(refreshed);
       router.refresh();
@@ -162,17 +177,23 @@ export function PastSessionsSection({
     startLoadExcluded(async () => {
       const r = await listExcludedPastSessions();
       setExcludedInfo(r);
-      if (!r.ok) toast.error("取得失敗: " + (r.reason ?? "原因不明"));
-      else if (r.rows.length === 0) toast.success("除外中の日程はありません");
+      if (!r.ok)
+        toast.error(
+          m.pastSessions.toastExcludedFailed(
+            r.reason ?? m.pastSessions.unknownReason,
+          ),
+        );
+      else if (r.rows.length === 0)
+        toast.success(m.pastSessions.toastNoExcluded);
     });
   };
 
   const onRestoreExcluded = async (rawDate: string) => {
     if (
       !(await confirm({
-        title: "除外を解除",
-        description: `「${rawDate}」を過去ログに戻します。\n\n出欠のスナップショットと FFLogs URL は行に残っているので、そのまま復活します。`,
-        confirmText: "戻す",
+        title: m.pastSessions.confirmRestoreTitle,
+        description: m.pastSessions.confirmRestoreDescription(rawDate),
+        confirmText: m.pastSessions.confirmRestoreButton,
       }))
     ) {
       return;
@@ -180,10 +201,14 @@ export function PastSessionsSection({
     startRestore(async () => {
       const r = await restoreExcludedPastSession(rawDate);
       if (!r.ok) {
-        toast.error("解除失敗: " + (r.reason ?? "原因不明"));
+        toast.error(
+          m.pastSessions.toastRestoreFailed(
+            r.reason ?? m.pastSessions.unknownReason,
+          ),
+        );
         return;
       }
-      toast.success(`過去ログに戻しました: ${rawDate}`);
+      toast.success(m.pastSessions.toastRestored(rawDate));
       const refreshed = await listExcludedPastSessions();
       setExcludedInfo(refreshed);
       router.refresh();
@@ -196,16 +221,20 @@ export function PastSessionsSection({
       const r = await snapshotScheduleNow();
       setSnapshotResult(r);
       if (!r.ok) {
-        toast.error("スナップショット失敗: " + (r.reason ?? "原因不明"));
+        toast.error(
+          m.pastSessions.toastSnapshotFailed(
+            r.reason ?? m.pastSessions.unknownReason,
+          ),
+        );
         return;
       }
       const baseMsg =
         r.scanned > 0
-          ? `${r.scanned} 件保存（新規 ${r.inserted} / 更新 ${r.updated}）`
-          : "保存対象のセッションなし";
+          ? m.pastSessions.toastSnapshotSaved(r.scanned, r.inserted, r.updated)
+          : m.pastSessions.toastSnapshotNone;
       toast.success(
         r.cleanedCandidates > 0
-          ? `${baseMsg} / 候補日 cleanup ${r.cleanedCandidates}`
+          ? m.pastSessions.toastSnapshotCleanup(baseMsg, r.cleanedCandidates)
           : baseMsg,
       );
       router.refresh();
@@ -226,25 +255,25 @@ export function PastSessionsSection({
           htmlFor="discord-schedule-channel"
           className="text-xs text-foreground/80"
         >
-          スケジュール通知チャンネル ID（任意）
+          {m.pastSessions.channelLabel}
         </Label>
         <Input
           id="discord-schedule-channel"
           inputMode="numeric"
           value={channelId}
           onChange={(e) => onChannelIdChange(e.target.value)}
-          placeholder="例: 1234567890123456789"
+          placeholder={m.pastSessions.channelPlaceholder}
           className="font-mono text-[12px]"
           spellCheck={false}
           autoComplete="off"
         />
         <p className="text-muted-foreground text-[11px] leading-relaxed">
-          日次の活動予定通知が投稿されているチャンネル ID。設定すると
-          「<strong>本日YYYY/MM/DD(曜) HH:MM~HH:MM</strong>」形式のメッセージから過去の開催日を取得できます。
+          {m.pastSessions.channelHelpBefore}
+          <strong>{m.pastSessions.channelHelpStrong}</strong>
+          {m.pastSessions.channelHelpAfter}
         </p>
         <p className="text-muted-foreground/80 text-[10px] leading-relaxed">
-          Bot がこのチャンネルにアクセスできる必要があります（View
-          Channels + Read Message History）。
+          {m.pastSessions.botAccessNote}
         </p>
       </div>
 
@@ -259,8 +288,8 @@ export function PastSessionsSection({
             className="gap-1.5 text-[11px] tracking-normal"
             title={
               !channelId.trim()
-                ? "チャンネル ID を入力してください（先に保存）"
-                : "Discord 履歴から過去日程を取り込み"
+                ? m.pastSessions.importTitleNeedChannel
+                : m.pastSessions.importTitle
             }
           >
             {importing ? (
@@ -268,7 +297,7 @@ export function PastSessionsSection({
             ) : (
               <Cloud className="h-3.5 w-3.5" aria-hidden />
             )}
-            {importing ? "取り込み中…" : "Discord 履歴から取り込み"}
+            {importing ? m.pastSessions.importing : m.pastSessions.importButton}
           </Button>
           <Button
             type="button"
@@ -277,14 +306,16 @@ export function PastSessionsSection({
             onClick={onSnapshot}
             disabled={snapshotting}
             className="gap-1.5 text-[11px] tracking-normal"
-            title="現在の出席状況を即時スナップショット（自動: 毎日21:50 JST）"
+            title={m.pastSessions.snapshotTitle}
           >
             {snapshotting ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
             ) : (
               <Camera className="h-3.5 w-3.5" aria-hidden />
             )}
-            {snapshotting ? "保存中…" : "出席状況を即時保存"}
+            {snapshotting
+              ? m.pastSessions.snapshotting
+              : m.pastSessions.snapshotButton}
           </Button>
           <Button
             type="button"
@@ -293,14 +324,14 @@ export function PastSessionsSection({
             onClick={onCount}
             disabled={counting}
             className="gap-1.5 text-[11px] tracking-normal"
-            title="schedule_past_sessions の現在の保存件数を確認（デバッグ用）"
+            title={m.pastSessions.countTitle}
           >
             {counting ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
             ) : (
               <Database className="h-3.5 w-3.5" aria-hidden />
             )}
-            DB の保存件数
+            {m.pastSessions.countButton}
           </Button>
           {/* 2.9 (2026-08-24): 過去ログのゴミ箱アイコンで「実施しなかった日」
               として外した日付の確認 / 解除。除外は行削除ではなくマーカーなので
@@ -312,14 +343,14 @@ export function PastSessionsSection({
             onClick={onLoadExcluded}
             disabled={loadingExcluded}
             className="gap-1.5 text-[11px] tracking-normal"
-            title="過去ログから外した日付を一覧表示 / 解除"
+            title={m.pastSessions.excludedTitle}
           >
             {loadingExcluded ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
             ) : (
               <EyeOff className="h-3.5 w-3.5" aria-hidden />
             )}
-            過去ログから除外中の日程
+            {m.pastSessions.excludedButton}
           </Button>
         </div>
         {importResult && (
@@ -327,7 +358,7 @@ export function PastSessionsSection({
             <button
               type="button"
               onClick={() => setImportResult(null)}
-              aria-label="取り込み結果を閉じる"
+              aria-label={m.pastSessions.closeImportResultAria}
               className="absolute right-1 top-1 inline-flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
             >
               <X className="h-3 w-3" aria-hidden />
@@ -335,21 +366,25 @@ export function PastSessionsSection({
             {importResult.ok ? (
               <>
                 <p>
-                  scanned {importResult.scanned} / 検出{" "}
-                  {importResult.parsed} / 新規 {importResult.inserted} /
-                  重複 {importResult.duplicates}
+                  {m.pastSessions.importSummary(importResult)}
                   {(importResult.skippedFuture ?? 0) > 0 &&
-                    ` / 未来日時 skip ${importResult.skippedFuture}`}
+                    m.pastSessions.importSkippedFuture(
+                      importResult.skippedFuture ?? 0,
+                    )}
                   {(importResult.cleanedFuture ?? 0) > 0 &&
-                    ` / 未来日時 cleanup ${importResult.cleanedFuture}`}
+                    m.pastSessions.importCleanedFuture(
+                      importResult.cleanedFuture ?? 0,
+                    )}
                 </p>
                 <p className="text-muted-foreground text-[10px]">
-                  Discord は最新 100 件まで取得します（必要なら時間をおいて再実行）。未来日時の通知メッセージは過去日程に混ざらないよう自動で除外・クリーンアップされます。
+                  {m.pastSessions.importNote}
                 </p>
               </>
             ) : (
               <p className="text-rose-300">
-                エラー: {importResult.reason ?? "原因不明"}
+                {m.pastSessions.errorPrefix(
+                  importResult.reason ?? m.pastSessions.unknownReason,
+                )}
               </p>
             )}
           </div>
@@ -361,7 +396,7 @@ export function PastSessionsSection({
           <button
             type="button"
             onClick={() => setSnapshotResult(null)}
-            aria-label="スナップショット結果を閉じる"
+            aria-label={m.pastSessions.closeSnapshotResultAria}
             className="absolute right-1 top-1 inline-flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
           >
             <X className="h-3 w-3" aria-hidden />
@@ -369,25 +404,27 @@ export function PastSessionsSection({
           {snapshotResult.ok ? (
             <>
               <p>
-                対象 {snapshotResult.scanned} 件 / 新規{" "}
-                <strong>{snapshotResult.inserted}</strong> / 更新{" "}
+                {m.pastSessions.snapshotTarget(snapshotResult.scanned)}{" "}
+                <strong>{snapshotResult.inserted}</strong>{" "}
+                {m.pastSessions.snapshotUpdated}{" "}
                 <strong>{snapshotResult.updated}</strong>
                 {snapshotResult.cleanedCandidates > 0 && (
                   <>
                     {" "}
-                    / 候補日 cleanup{" "}
+                    {m.pastSessions.snapshotCleanup}{" "}
                     <strong>{snapshotResult.cleanedCandidates}</strong>
                   </>
                 )}
               </p>
               <p className="text-muted-foreground text-[10px]">
-                character-sheets の DECISION (確定) 行のみを出席情報込みで保存します。
-                CANDIDATE 行は対象外、過去 snapshot に混入していた CANDIDATE 行は自動 cleanup されます。
+                {m.pastSessions.snapshotNote}
               </p>
             </>
           ) : (
             <p className="text-rose-300">
-              エラー: {snapshotResult.reason ?? "原因不明"}
+              {m.pastSessions.errorPrefix(
+                snapshotResult.reason ?? m.pastSessions.unknownReason,
+              )}
             </p>
           )}
         </div>
@@ -397,7 +434,7 @@ export function PastSessionsSection({
           <button
             type="button"
             onClick={() => setExcludedInfo(null)}
-            aria-label="除外中の日程表示を閉じる"
+            aria-label={m.pastSessions.closeExcludedAria}
             className="absolute right-1 top-1 inline-flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
           >
             <X className="h-3 w-3" aria-hidden />
@@ -405,7 +442,9 @@ export function PastSessionsSection({
           {excludedInfo.ok ? (
             <>
               <p>
-                除外中: <strong>{excludedInfo.rows.length}</strong> 件
+                {m.pastSessions.excludedCountBefore}{" "}
+                <strong>{excludedInfo.rows.length}</strong>{" "}
+                {m.pastSessions.excludedCountAfter}
               </p>
               {excludedInfo.rows.length > 0 && (
                 <ul className="font-mono text-[10px] text-muted-foreground">
@@ -418,8 +457,8 @@ export function PastSessionsSection({
                         type="button"
                         onClick={() => onRestoreExcluded(row.rawDate)}
                         disabled={restoring}
-                        aria-label={`${row.rawDate} の除外を解除`}
-                        title="過去ログに戻す"
+                        aria-label={m.pastSessions.restoreAria(row.rawDate)}
+                        title={m.pastSessions.restoreTitle}
                         className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-[var(--neon-cyan)]/20 hover:text-[var(--neon-cyan)] disabled:opacity-40"
                       >
                         <RotateCcw className="h-3 w-3" aria-hidden />
@@ -433,12 +472,14 @@ export function PastSessionsSection({
                 </ul>
               )}
               <p className="mt-1 text-muted-foreground text-[10px]">
-                スケジュールページの過去ログでゴミ箱アイコンから外した「実施しなかった日」です。出欠のスナップショットと FFLogs URL は残っているので、↺ で過去ログに戻せます。自前作成式 (native) で中止にした日程は「中止した日程」セクションから戻してください。
+                {m.pastSessions.excludedNote}
               </p>
             </>
           ) : (
             <p className="text-rose-300">
-              エラー: {excludedInfo.reason ?? "原因不明"}
+              {m.pastSessions.errorPrefix(
+                excludedInfo.reason ?? m.pastSessions.unknownReason,
+              )}
             </p>
           )}
         </div>
@@ -448,7 +489,7 @@ export function PastSessionsSection({
           <button
             type="button"
             onClick={() => setStoredInfo(null)}
-            aria-label="保存件数表示を閉じる"
+            aria-label={m.pastSessions.closeCountAria}
             className="absolute right-1 top-1 inline-flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
           >
             <X className="h-3 w-3" aria-hidden />
@@ -456,13 +497,12 @@ export function PastSessionsSection({
           {storedInfo.ok ? (
             <>
               <p>
-                DB 保存件数: <strong>{storedInfo.count}</strong>
+                {m.pastSessions.storedCount} <strong>{storedInfo.count}</strong>
               </p>
               {storedInfo.recentRows.length > 0 && (
                 <ul className="font-mono text-[10px] text-muted-foreground">
                   <li className="mb-0.5">
-                    直近 {storedInfo.recentRows.length} 件（新しい順
-                    / 削除可）:
+                    {m.pastSessions.recentRows(storedInfo.recentRows.length)}
                   </li>
                   {storedInfo.recentRows.map((row, i) => (
                     <li
@@ -473,8 +513,8 @@ export function PastSessionsSection({
                         type="button"
                         onClick={() => onDeleteStoredRow(row.rawDate)}
                         disabled={deletingRow}
-                        aria-label={`${row.rawDate} を削除`}
-                        title={`この行を schedule_past_sessions から削除`}
+                        aria-label={m.pastSessions.deleteRowAria(row.rawDate)}
+                        title={m.pastSessions.deleteRowTitle}
                         className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-rose-500/20 hover:text-rose-300 disabled:opacity-40"
                       >
                         <X className="h-3 w-3" aria-hidden />
@@ -484,19 +524,23 @@ export function PastSessionsSection({
                       </span>
                       <span>{row.rawDate}</span>
                       {row.excludedAt && (
-                        <span className="text-amber-300/80">除外中</span>
+                        <span className="text-amber-300/80">
+                          {m.pastSessions.excludedBadge}
+                        </span>
                       )}
                     </li>
                   ))}
                 </ul>
               )}
               <p className="mt-1 text-muted-foreground text-[10px]">
-                この件数はスケジュールページの「過去」にマージされる候補数です (「除外中」の行はマージ対象外)。実際は開催されていない日が混ざっていれば × ボタンで個別削除できます。0 なら保存されていない or SELECT が RLS で拒否されています。
+                {m.pastSessions.storedNote}
               </p>
             </>
           ) : (
             <p className="text-rose-300">
-              エラー: {storedInfo.reason ?? "原因不明"}
+              {m.pastSessions.errorPrefix(
+                storedInfo.reason ?? m.pastSessions.unknownReason,
+              )}
             </p>
           )}
         </div>

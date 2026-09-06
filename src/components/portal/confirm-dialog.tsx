@@ -17,6 +17,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { useMessages } from "@/lib/i18n/client";
 
 export type ConfirmOptions = {
   /** ダイアログ見出し (既定 "確認")。 */
@@ -55,6 +56,7 @@ type PendingState = {
  * 解決値: 実行ボタン=true / キャンセル・Esc・×・外側クリック=false。
  */
 export function ConfirmProvider({ children }: { children: ReactNode }) {
+  const m = useMessages();
   const [pending, setPending] = useState<PendingState | null>(null);
 
   const confirm = useCallback<ConfirmFn>((options = {}) => {
@@ -101,7 +103,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
               }
             >
               {destructive && <AlertTriangle className="h-5 w-5" aria-hidden />}
-              {options?.title ?? "確認"}
+              {options?.title ?? m.confirm.title}
             </DialogTitle>
             {options?.description != null && (
               <DialogDescription className="whitespace-pre-line text-[12px] leading-relaxed">
@@ -117,7 +119,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
               autoFocus={destructive}
               onClick={() => settle(false)}
             >
-              {options?.cancelText ?? "キャンセル"}
+              {options?.cancelText ?? m.common.cancel}
             </Button>
             <Button
               type="button"
@@ -126,7 +128,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
               autoFocus={!destructive}
               onClick={() => settle(true)}
             >
-              {options?.confirmText ?? "OK"}
+              {options?.confirmText ?? m.confirm.ok}
             </Button>
           </DialogFooter>
         </DialogContent>
