@@ -140,7 +140,7 @@ export default async function LoginPage({
 
       <div className="mt-6 flex flex-col items-center gap-3">
         {/* 2026-09-06: 表示言語。未ログインでも切り替えられるようここに置く。 */}
-        <LocaleSwitcher size="sm" />
+        <LocaleSwitcher variant="segmented" />
         <p className="font-mono text-[10px] tracking-[0.22em] text-muted-foreground/60 uppercase">
           v{LATEST_RELEASE_META.version} · {LATEST_RELEASE_META.date}
         </p>

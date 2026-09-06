@@ -24,6 +24,7 @@ export const ja = {
     saving: "保存中…",
     settings: "設定",
     language: "表示言語",
+    reorderFailed: "並び替えの保存に失敗しました",
     // 第 2 段 (スケジュール画面の popover / dialog 群)
     add: "追加",
     delete: "削除",
@@ -33,6 +34,16 @@ export const ja = {
     open: "開く",
     openInNewTab: "新タブで開く",
     loading: "読み込み中…",
+  },
+  app: {
+    description:
+      "FF14レイド固定向けポータル — スケジュール、ロット管理、軽減表、攻略情報を一箇所に。",
+    pageErrorText: "ページの描画でエラーが発生しました。リトライしてください。",
+    categoriesLoadingAria: "コンテンツ一覧を読み込み中",
+    editFrameDescription: "編集後はそのままダイアログを閉じればスケジュールに戻れます",
+    editFrameNewTabTitle: "埋め込みが表示されない場合は新しいタブで開いてください",
+    editFrameNewTab: "新しいタブ",
+    editFrameNoUrl: "URL が設定されていません",
   },
   login: {
     title: "ログイン",
@@ -460,6 +471,7 @@ export const en: CoreMessages = {
     saving: "Saving…",
     settings: "Settings",
     language: "Language",
+    reorderFailed: "Failed to save the new order",
     add: "Add",
     delete: "Delete",
     close: "Close",
@@ -468,6 +480,16 @@ export const en: CoreMessages = {
     open: "Open",
     openInNewTab: "Open in new tab",
     loading: "Loading…",
+  },
+  app: {
+    description:
+      "A portal for FFXIV raid statics — schedule, loot, mitigation sheets and guides in one place.",
+    pageErrorText: "Something went wrong while rendering this page. Please retry.",
+    categoriesLoadingAria: "Loading contents",
+    editFrameDescription: "Close this dialog when you are done editing to return to the schedule",
+    editFrameNewTabTitle: "If the embed does not show, open it in a new tab",
+    editFrameNewTab: "New tab",
+    editFrameNoUrl: "No URL is set",
   },
   login: {
     title: "Sign in",

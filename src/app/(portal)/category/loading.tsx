@@ -1,4 +1,7 @@
+"use client";
+
 import { Card } from "@/components/ui/card";
+import { useMessages } from "@/lib/i18n/client";
 
 /**
  * /category (コンテンツ一覧) の instant loading skeleton (TODO #51 P2-5)。
@@ -9,10 +12,13 @@ import { Card } from "@/components/ui/card";
  * bundle への影響はゼロ (TODO #11/#67 の初期 bundle 維持方針と整合)。
  */
 export default function CategoryIndexLoading() {
+  // 2026-09-07: aria-label を辞書化するため client component に (async の
+  // loading fallback は suspend するので Server Component では辞書を待てない)。
+  const m = useMessages();
   return (
     <div
       role="status"
-      aria-label="コンテンツ一覧を読み込み中"
+      aria-label={m.app.categoriesLoadingAria}
       className="flex flex-col gap-6"
     >
       {/* page header (h1 "Contents" + 説明文) の placeholder */}

@@ -2,6 +2,7 @@
 
 import { type DurationBackfillResult } from "@/lib/server/categories-actions";
 import { type PostedAtBackfillResult } from "./types";
+import { useMessages } from "@/lib/i18n/client";
 
 /**
  * 1.9.16: durations + postedAt の旧 2 ボタンを統合した結果パネル。
@@ -15,10 +16,11 @@ export function VideoMetaPanel({
   durations: DurationBackfillResult;
   postedAt: PostedAtBackfillResult;
 }) {
+  const t = useMessages().maintenancePanels;
   return (
     <>
       <p className="mb-2 pr-6 text-[10px] font-medium tracking-normal text-muted-foreground">
-        動画メタデータ — 取得結果
+        {t.videoMetaTitle}
       </p>
       <div className="flex flex-col gap-2 text-[11px] leading-relaxed">
         <section>
@@ -27,30 +29,28 @@ export function VideoMetaPanel({
           </p>
           <ul className="mt-0.5 flex flex-col gap-0.5">
             <li className="flex items-baseline gap-2">
-              <span className="text-emerald-300">取得</span>
+              <span className="text-emerald-300">{t.fetched}</span>
               <span className="font-mono text-foreground">
                 {durations.filled}
               </span>
-              <span className="text-muted-foreground">件</span>
+              <span className="text-muted-foreground">{t.count}</span>
             </li>
             <li className="flex items-baseline gap-2">
-              <span className="text-zinc-400">
-                YouTube 以外 / 取得不可
-              </span>
+              <span className="text-zinc-400">{t.nonYoutube}</span>
               <span className="font-mono text-foreground">
                 {durations.skippedNonYoutube}
               </span>
             </li>
             {durations.failed > 0 && (
               <li className="flex items-baseline gap-2">
-                <span className="text-rose-300">失敗</span>
+                <span className="text-rose-300">{t.failed}</span>
                 <span className="font-mono text-foreground">
                   {durations.failed}
                 </span>
               </li>
             )}
             <li className="text-[10px] text-muted-foreground">
-              対象: {durations.scanned} 件
+              {t.target(durations.scanned)}
             </li>
           </ul>
         </section>
@@ -60,22 +60,21 @@ export function VideoMetaPanel({
           </p>
           <ul className="mt-0.5 flex flex-col gap-0.5">
             <li className="flex items-baseline gap-2">
-              <span className="text-emerald-300">更新</span>
+              <span className="text-emerald-300">{t.updated}</span>
               <span className="font-mono text-foreground">
                 {postedAt.updated}
               </span>
-              <span className="text-muted-foreground">件</span>
+              <span className="text-muted-foreground">{t.count}</span>
             </li>
             <li className="flex items-baseline gap-2">
-              <span className="text-zinc-400">URL 一致</span>
+              <span className="text-zinc-400">{t.urlMatched}</span>
               <span className="font-mono text-foreground">
                 {postedAt.matched}
               </span>
-              <span className="text-muted-foreground">件</span>
+              <span className="text-muted-foreground">{t.count}</span>
             </li>
             <li className="text-[10px] text-muted-foreground">
-              スキャン: {postedAt.scannedMessages} メッセージ /{" "}
-              {postedAt.scannedUrls} URL
+              {t.scanned(postedAt.scannedMessages, postedAt.scannedUrls)}
             </li>
           </ul>
           {postedAt.channels.length > 0 && (

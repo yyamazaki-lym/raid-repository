@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
+import { useMessages } from "@/lib/i18n/client";
 import {
   KeyboardSensor,
   MouseSensor,
@@ -54,7 +55,8 @@ export function useSortableReorder(opts: {
   /** 失敗 toast の接頭辞。 */
   errorMessage?: string;
 }) {
-  const { persist, errorMessage = "並び替えの保存に失敗しました" } = opts;
+  const m = useMessages();
+  const { persist, errorMessage = m.common.reorderFailed } = opts;
   const [optimisticOrder, setOptimisticOrder] = useState<string[] | null>(null);
 
   const sensors = useSensors(
