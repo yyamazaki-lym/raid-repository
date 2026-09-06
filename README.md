@@ -1,6 +1,15 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="public/brand/logo-wordmark-dark.svg">
+    <img src="public/brand/logo-wordmark-light.svg" alt="Raid Repository" width="480">
+  </picture>
+</p>
+
 # Raid Repository
 
-FF14 レイド固定向けポータル — スケジュール / 軽減表 / ロット管理 / 攻略情報 / 動画 を一箇所に。
+Read in: **日本語** | [English](README.en.md) | [Deutsch](README.de.md) | [Français](README.fr.md) | [简体中文](README.zh-CN.md) | [한국어](README.ko.md)
+
+FF14 レイド固定向けポータル — スケジュール / 軽減表 / ロット管理 / 攻略情報 / 動画 / 練習ログ を一箇所に。
 
 「1グループ = 1デプロイ」前提で作られた、自分の固定で fork して使うシングルテナントアプリです。
 
@@ -537,6 +546,10 @@ Open http://localhost:3000
 ## Schema migration
 
 `supabase/schema.sql` は冪等です。スキーマ変更があったら同じ SQL を再実行すれば反映されます。
+
+## Brand assets
+
+ロゴは `public/brand/` にあります: `logo-mark.svg` (正方形マーク。クリスタル = 蓄積した知識の器、周囲の 8 点 = 8 人 PT で、上 2 点がタンク (青)、下 2 点がヒーラー (緑)、左右 4 点が DPS (赤))、`logo-wordmark-dark.svg` / `logo-wordmark-light.svg` (マーク + ワードマーク、背景の明暗別)。README の先頭ではダークテーマ / ライトテーマで自動的に切り替わります。
 
 ## License
 
