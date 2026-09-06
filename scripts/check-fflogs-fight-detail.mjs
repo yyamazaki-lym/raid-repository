@@ -78,11 +78,44 @@ try {
     deaths,
     [
       { t: 195_000, job: "Paladin", ability: "アク・モーン" },
-      { t: 200_000, job: "WhiteMage", ability: "アク・モーン" },
+      { t: 200_000, job: "WhiteMage", ability: "アク・モーン", id: 1 },
       { t: 260_000, job: "Dragoon", ability: "エクサフレア" },
     ],
   );
   check("配列以外は空", m.extractDeathEvents(null, START, END), []);
+  check(
+    "guid 0 / 文字列の guid",
+    m.extractDeathEvents(
+      [
+        { deathTime: START + 1_000, icon: "Bard", ability: { name: "Unknown", guid: 0 } },
+        { deathTime: START + 2_000, icon: "Bard", ability: { name: "Akh Morn", guid: "26814" } },
+      ],
+      START,
+      END,
+    ),
+    [
+      { t: 1_000, job: "Bard", ability: "Unknown" },
+      { t: 2_000, job: "Bard", ability: "Akh Morn", id: 26814 },
+    ],
+  );
+  check(
+    "表示名は日本語優先",
+    [
+      m.deathAbilityLabel({ ability: "Akh Morn", ja: "アク・モーン" }),
+      m.deathAbilityLabel({ ability: "Akh Morn" }),
+      m.deathAbilityLabel({ ability: null }),
+    ],
+    ["アク・モーン", "Akh Morn", null],
+  );
+  check(
+    "ワイプ要約の技名も日本語優先",
+    m.summarizeWipe(
+      [{ t: 5_000, job: "Paladin", ability: "Akh Morn", id: 26814, ja: "アク・モーン" }],
+      null,
+      false,
+    ).ability,
+    "アク・モーン",
+  );
 
   console.log("\n[フェーズ遷移の正規化]");
   const transitions = m.normalizePhaseTransitions(
