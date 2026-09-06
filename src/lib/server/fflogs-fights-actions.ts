@@ -28,6 +28,8 @@ export async function syncFflogsFightsAction(): Promise<
       failed: number;
       truncated: boolean;
       remaining: number;
+      fetchedViaV2: number;
+      fetchedViaFallback: number;
       reattributed: number;
       failures: Array<{ reportCode: string; reason: string }>;
       videosBridged: number;
