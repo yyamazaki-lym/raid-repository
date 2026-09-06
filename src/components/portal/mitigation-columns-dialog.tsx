@@ -26,6 +26,7 @@ import {
   setMitigationColumnLabelsAction,
 } from "@/lib/server/categories-actions";
 import type { SheetColumnDiagnostic } from "@/lib/sheet-csv";
+import { useMessages } from "@/lib/i18n/client";
 
 /**
  * 軽減表の「アビリティ列に名前を付ける」設定 (2026-08-30 実機報告)。
@@ -62,16 +63,6 @@ const QUICK_NAMES = [
   "ネビュラ",
 ];
 
-const ROLE_LABEL: Record<SheetColumnDiagnostic["role"], string> = {
-  damage: "ダメージ",
-  rate: "軽減率",
-  final: "最終ダメージ",
-  target: "対象",
-  check: "チェック",
-  text: "データ",
-  empty: "空",
-};
-
 export function MitigationColumnsDialog({
   categoryId,
   gid,
@@ -93,6 +84,7 @@ export function MitigationColumnsDialog({
   autoLabels: Record<number, { name: string; job: string | null }>;
 }) {
   const router = useRouter();
+  const m = useMessages();
   const [open, setOpen] = useState(false);
   const [labels, setLabels] = useState<Record<string, string>>(() =>
     Object.fromEntries(
@@ -161,7 +153,7 @@ export function MitigationColumnsDialog({
       if (!r.ok) {
         setDetectNote(r.reason);
         setCandidates([]);
-        toast.error("アイコンを取得できませんでした");
+        toast.error(m.mitigationColumns.detectFailed);
         return;
       }
       setCandidates(r.candidates);
@@ -188,10 +180,14 @@ export function MitigationColumnsDialog({
       setLabels({ ...base, ...filled });
       setDetectNote(
         r.namedCount === 0
-          ? `${r.source} から ${r.icons.length} 列を読み取りましたが、名前は分かりませんでした。アイコンを見て入力してください。`
-          : `${r.source} から ${r.icons.length} 列を読み取り、${added} 列に名前を入れました。保存すると以降は自動で表示されます。`,
+          ? m.mitigationColumns.detectNoteNoNames(r.source, r.icons.length)
+          : m.mitigationColumns.detectNoteFilled(
+              r.source,
+              r.icons.length,
+              added,
+            ),
       );
-      toast.success(`アイコン ${r.icons.length} 件を取得しました`);
+      toast.success(m.mitigationColumns.detected(r.icons.length));
     });
   };
 
@@ -209,12 +205,12 @@ export function MitigationColumnsDialog({
       applied += 1;
     }
     if (applied === 0) {
-      toast.error("読み取れる行がありませんでした (例: DO=牽制)");
+      toast.error(m.mitigationColumns.bulkNoLines);
       return;
     }
     setLabels(next);
     setBulk("");
-    toast.success(`${applied} 列に名前を入れました (保存はまだです)`);
+    toast.success(m.mitigationColumns.bulkApplied(applied));
   };
 
   /**
@@ -228,7 +224,7 @@ export function MitigationColumnsDialog({
     startTransition(async () => {
       const r = await setMitigationColumnLabelsAction(categoryId, gid, {});
       if (!r.ok) {
-        toast.error("削除失敗: " + r.reason);
+        toast.error(m.crud.deleteFailed(r.reason));
         return;
       }
       setLabels({});
@@ -237,7 +233,7 @@ export function MitigationColumnsDialog({
       setDetectNote(null);
       setDetectLog([]);
       setCandidates([]);
-      toast.success("この層の登録を消しました");
+      toast.success(m.mitigationColumns.cleared);
       router.refresh();
     });
   };
@@ -246,10 +242,10 @@ export function MitigationColumnsDialog({
     startTransition(async () => {
       const r = await setMitigationColumnLabelsAction(categoryId, gid, labels);
       if (!r.ok) {
-        toast.error("保存失敗: " + r.reason);
+        toast.error(m.crud.saveFailed(r.reason));
         return;
       }
-      toast.success("アビリティ名を保存しました");
+      toast.success(m.mitigationColumns.saved);
       setOpen(false);
       router.refresh();
     });
@@ -260,11 +256,11 @@ export function MitigationColumnsDialog({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        title="チェック列にアビリティ名を付ける"
+        title={m.mitigationColumns.triggerTitle}
         className="inline-flex items-center gap-1 rounded-md border border-border/50 px-2 py-1 font-mono text-[11px] tracking-normal text-muted-foreground transition-colors hover:border-border hover:text-foreground"
       >
         <Columns3 className="h-3 w-3" aria-hidden />
-        アビリティ名
+        {m.mitigationColumns.trigger}
       </button>
       <Dialog
         open={open}
@@ -274,24 +270,24 @@ export function MitigationColumnsDialog({
       >
         <DialogContent className="flex max-h-[85dvh] w-[min(48rem,calc(100vw-2rem))] max-w-none flex-col overflow-y-auto overflow-x-hidden">
           <DialogHeader>
-            <DialogTitle>アビリティ名の設定 (このシート)</DialogTitle>
+            <DialogTitle>{m.mitigationColumns.dialogTitle}</DialogTitle>
             <DialogDescription>
-              軽減表は列ごとに<strong>ジョブ名 / アビリティ名 / 対象種別</strong>
-              の見出しを持っています。「シートから読み取る」でそこから名前を
-              取り込めます。読めなかった列だけ、
-              <strong>どの攻撃でチェックされているか</strong>
-              を手がかりに入力してください。名前はカードの種別の横に ✓ 付きで
-              並びます。
+              {m.mitigationColumns.descA}
+              <strong>{m.mitigationColumns.descStrong1}</strong>
+              {m.mitigationColumns.descB}
+              <strong>{m.mitigationColumns.descStrong2}</strong>
+              {m.mitigationColumns.descC}
             </DialogDescription>
           </DialogHeader>
 
           <div className="flex items-center justify-between gap-2 rounded-md border border-border/40 bg-secondary/15 px-3 py-1.5 text-[11px]">
             <span className="text-muted-foreground">
-              対象 {targets.length} 列 / 名前あり{" "}
-              <strong className="text-foreground">{namedCount}</strong> 件
+              {m.mitigationColumns.summaryTargets(targets.length)}
+              <strong className="text-foreground">{namedCount}</strong>
+              {m.mitigationColumns.summaryNamedSuffix}
             </span>
             <span className="font-mono text-[10px] text-muted-foreground/70">
-              gid {gid || "(既定)"}
+              gid {gid || m.mitigationColumns.gidDefault}
             </span>
           </div>
 
@@ -305,7 +301,9 @@ export function MitigationColumnsDialog({
               className="text-[11px] tracking-normal"
             >
               <Wand2 className="h-3.5 w-3.5" aria-hidden />
-              {detecting ? "読み取り中..." : "シートから読み取る"}
+              {detecting
+                ? m.mitigationColumns.detecting
+                : m.mitigationColumns.detect}
             </Button>
             {iconColumns.size > 0 && (
               <label className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
@@ -315,19 +313,20 @@ export function MitigationColumnsDialog({
                   onChange={(e) => setOnlyIcons(e.target.checked)}
                   className="h-3.5 w-3.5 accent-[var(--neon-cyan)]"
                 />
-                アイコンのある列だけ ({iconColumns.size})
+                {m.mitigationColumns.onlyIcons(iconColumns.size)}
               </label>
             )}
             <span className="text-[10px] leading-relaxed text-muted-foreground/70">
-              シートの見出し行からアビリティ名とジョブを読み取り、アイコンと
-              一緒に埋めます。<strong>保存すると以降は自動で表示されます</strong>。
+              {m.mitigationColumns.detectHelpA}
+              <strong>{m.mitigationColumns.detectHelpStrong}</strong>
+              {m.mitigationColumns.detectHelpB}
             </span>
           </div>
           {candidates.length > 1 && (
             // gid (層) と xlsx のシートは機械的に結び付けられないため、
             // 自動選択が外れたら人が選び直せるようにする。
             <label className="flex flex-wrap items-center gap-2 rounded-md border border-border/40 bg-secondary/10 px-3 py-2 text-[11px] text-muted-foreground">
-              <span>アイコン行</span>
+              <span>{m.mitigationColumns.iconRow}</span>
               <select
                 value={selected}
                 onChange={(e) => onDetect(e.target.value)}
@@ -336,13 +335,17 @@ export function MitigationColumnsDialog({
               >
                 {candidates.map((c) => (
                   <option key={c.key} value={c.key}>
-                    {c.sheet} / {c.row + 1}行目 / アイコン{c.count} / 一致
-                    {c.overlap}
+                    {m.mitigationColumns.candidateOption(
+                      c.sheet,
+                      c.row + 1,
+                      c.count,
+                      c.overlap,
+                    )}
                   </option>
                 ))}
               </select>
               <span className="text-[10px] text-muted-foreground/70">
-                違うシートが選ばれていたらここで変更
+                {m.mitigationColumns.candidateHint}
               </span>
             </label>
           )}
@@ -355,7 +358,7 @@ export function MitigationColumnsDialog({
                 // 切り分けられないため。
                 <details className="mt-1.5">
                   <summary className="cursor-pointer text-[10px] text-muted-foreground/70">
-                    取得の詳細 ({detectLog.length} 件)
+                    {m.mitigationColumns.detectLogSummary(detectLog.length)}
                   </summary>
                   <ul className="mt-1 flex flex-col gap-0.5 font-mono text-[10px] text-muted-foreground/80">
                     {detectLog.map((line, i) => (
@@ -371,8 +374,7 @@ export function MitigationColumnsDialog({
 
           {targets.length === 0 ? (
             <p className="rounded-md border border-amber-400/30 bg-amber-400/5 px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
-              チェックボックスの列が見つかりませんでした。下の「全列の判定
-              結果」で、想定した列がどう判定されているか確認してください。
+              {m.mitigationColumns.noCheckColumns}
             </p>
           ) : (
             <ul className="flex flex-col gap-2">
@@ -423,10 +425,12 @@ export function MitigationColumnsDialog({
                           }))
                         }
                         placeholder={
-                          auto ? `${auto.name} (シートの名前を使用)` : "アビリティ名 (例: 牽制)"
+                          auto
+                            ? m.mitigationColumns.placeholderAuto(auto.name)
+                            : m.mitigationColumns.placeholderManual
                         }
                         className="h-8 min-w-0 flex-1 text-[12px]"
-                        aria-label={`${c.letter} 列のアビリティ名`}
+                        aria-label={m.mitigationColumns.columnAria(c.letter)}
                         list="mitigation-name-suggestions"
                       />
                       {value.trim() && (
@@ -439,7 +443,7 @@ export function MitigationColumnsDialog({
                     {c.checkedOn.length > 0 && (
                       <p className="text-[11px] leading-relaxed text-muted-foreground">
                         <span className="text-muted-foreground/70">
-                          チェックされている攻撃:{" "}
+                          {m.mitigationColumns.checkedOn}
                         </span>
                         {c.checkedOn.join(" / ")}
                         {c.checkedCount > c.checkedOn.length && " …"}
@@ -461,7 +465,7 @@ export function MitigationColumnsDialog({
           {/* まとめて入力 */}
           <details className="rounded-md border border-border/40 bg-secondary/10 px-3 py-2">
             <summary className="cursor-pointer text-[11px] text-muted-foreground">
-              まとめて入力 (列記号 = 名前)
+              {m.mitigationColumns.bulkSummary}
             </summary>
             <div className="mt-2 flex flex-col gap-1.5">
               <textarea
@@ -469,7 +473,7 @@ export function MitigationColumnsDialog({
                 onChange={(e) => setBulk(e.target.value)}
                 rows={4}
                 spellCheck={false}
-                placeholder={"DO=牽制\nEA=アドル\nCQ=リプライザル"}
+                placeholder={m.mitigationColumns.bulkPlaceholder}
                 className="w-full rounded-md border border-input/70 bg-background/40 px-2 py-1.5 font-mono text-[11px] focus:border-[var(--neon-cyan)]/60 focus:outline-none"
               />
               <Button
@@ -479,7 +483,7 @@ export function MitigationColumnsDialog({
                 onClick={applyBulk}
                 className="w-fit text-[11px] tracking-normal"
               >
-                反映する
+                {m.mitigationColumns.apply}
               </Button>
             </div>
           </details>
@@ -499,17 +503,25 @@ export function MitigationColumnsDialog({
                 }
                 aria-hidden
               />
-              全列の判定結果を見る ({columns.length} 列)
+              {m.mitigationColumns.showDiag(columns.length)}
             </button>
             {showDiag && (
               <div className="max-h-[16rem] overflow-auto border-t border-border/30">
                 <table className="w-full min-w-[28rem] text-left text-[11px]">
                   <thead className="sticky top-0 bg-secondary/60">
                     <tr className="text-muted-foreground">
-                      <th className="px-2 py-1 font-medium">列</th>
-                      <th className="px-2 py-1 font-medium">見出し</th>
-                      <th className="px-2 py-1 font-medium">判定</th>
-                      <th className="px-2 py-1 font-medium">中身の例</th>
+                      <th className="px-2 py-1 font-medium">
+                        {m.mitigationColumns.thColumn}
+                      </th>
+                      <th className="px-2 py-1 font-medium">
+                        {m.mitigationColumns.thHeader}
+                      </th>
+                      <th className="px-2 py-1 font-medium">
+                        {m.mitigationColumns.thRole}
+                      </th>
+                      <th className="px-2 py-1 font-medium">
+                        {m.mitigationColumns.thSamples}
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
@@ -521,12 +533,12 @@ export function MitigationColumnsDialog({
                         <td className="max-w-[9rem] truncate px-2 py-1">
                           {c.header || (
                             <span className="text-muted-foreground/60">
-                              (アイコン等)
+                              {m.mitigationColumns.iconEtc}
                             </span>
                           )}
                         </td>
                         <td className="px-2 py-1 whitespace-nowrap">
-                          {ROLE_LABEL[c.role]}
+                          {m.mitigationColumns.roleLabel[c.role]}
                           {c.role === "check" ? ` ${c.checkedCount}` : ""}
                         </td>
                         <td className="max-w-[12rem] truncate px-2 py-1 text-muted-foreground">
@@ -547,10 +559,10 @@ export function MitigationColumnsDialog({
               onClick={onClear}
               disabled={pending}
               className="text-[11px] tracking-normal text-muted-foreground hover:text-rose-300"
-              title="この層の登録を消して自動判定に戻す"
+              title={m.mitigationColumns.clearTitle}
             >
               <Trash2 className="h-3.5 w-3.5" aria-hidden />
-              登録を消す
+              {m.mitigationColumns.clear}
             </Button>
             <Button
               type="button"
@@ -558,11 +570,11 @@ export function MitigationColumnsDialog({
               onClick={() => setOpen(false)}
               disabled={pending}
             >
-              閉じる
+              {m.common.close}
             </Button>
             <Button type="button" onClick={onSave} disabled={pending}>
               <Save className="h-3.5 w-3.5" aria-hidden />
-              {pending ? "保存中..." : "保存"}
+              {pending ? m.crud.savingDots : m.common.save}
             </Button>
           </DialogFooter>
         </DialogContent>

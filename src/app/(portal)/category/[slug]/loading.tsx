@@ -1,4 +1,7 @@
+"use client";
+
 import { Card } from "@/components/ui/card";
+import { useMessages } from "@/lib/i18n/client";
 
 /**
  * /category/[slug]/* 各タブ共通の instant loading skeleton (TODO #51 P2-5)。
@@ -7,8 +10,9 @@ import { Card } from "@/components/ui/card";
  * この skeleton がタブのコンテンツ領域だけを置き換える (SubTabs は操作
  * 可能なまま)。strategy / videos / macros / mitigation / loot の 5 タブで
  * 共用するため、形はジェネリックなカードリストに留める。
- * CSS-only (Tailwind `animate-pulse`) の Server Component なので client
- * bundle への影響はゼロ。
+ * CSS-only (Tailwind `animate-pulse`)。aria-label を表示言語に合わせるため
+ * client component にしてあるが、Suspense の fallback として同期に描ける
+ * (async にすると fallback 自体が suspend して親境界へ抜けるため避ける)。
  *
  * 注意 (loading.md): [slug]/layout.tsx 自体の uncached fetch
  * (findCategoryBySlug + role gate) は本 boundary の外なので、別カテゴリへ
@@ -16,10 +20,11 @@ import { Card } from "@/components/ui/card";
  * 即時表示。
  */
 export default function CategoryTabLoading() {
+  const m = useMessages();
   return (
     <div
       role="status"
-      aria-label="コンテンツを読み込み中"
+      aria-label={m.categoryTab.loadingAria}
       className="flex flex-col gap-4 pt-2"
     >
       {/* タブ右上のアクション (追加 button 等) の placeholder */}

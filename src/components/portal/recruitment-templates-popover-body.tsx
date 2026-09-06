@@ -30,6 +30,8 @@ import {
   useSortableReorder,
 } from "@/lib/use-sortable-reorder";
 import { cn } from "@/lib/utils";
+import { useMessages } from "@/lib/i18n/client";
+import type { Messages } from "@/lib/i18n/messages";
 
 /**
  * 募集テンプレ popover の中身 (2026-07-12 監査 C-1)。
@@ -59,6 +61,7 @@ export function RecruitmentTemplatesPopoverBody({
   templates: RecruitmentTemplate[];
   categories: CategoryOption[];
 }) {
+  const m = useMessages();
   // category id → slug lookup for the per-category ↗ link icons.
   const slugById = useMemo(
     () => new Map(categories.map((c) => [c.id, c.slug] as const)),
@@ -144,12 +147,14 @@ export function RecruitmentTemplatesPopoverBody({
 
     const reorderedGroups = arrayMove(grouped, oldIndex, newIndex);
     const next = reorderedGroups.flatMap((g) => g.items.map((t) => t.id));
-    const srcName = grouped[oldIndex]?.categoryName ?? "未分類";
-    const dstName = grouped[newIndex]?.categoryName ?? "未分類";
+    const srcName =
+      grouped[oldIndex]?.categoryName ?? m.recruitmentBody.uncategorized;
+    const dstName =
+      grouped[newIndex]?.categoryName ?? m.recruitmentBody.uncategorized;
 
     const result = await commit(next);
     if (result.ok) {
-      toast.success(`「${srcName}」を「${dstName}」の位置に移動しました`);
+      toast.success(m.recruitmentBody.moved(srcName, dstName));
     }
   };
 
@@ -164,24 +169,24 @@ export function RecruitmentTemplatesPopoverBody({
   const onRowDragEnd = async (event: DragEndEvent) => {
     const result = await handleDragEnd(event, ordered);
     if (result?.ok) {
-      toast.success("並び順を保存しました");
+      toast.success(m.recruitmentBody.orderSaved);
     }
   };
 
   const copyToClipboard = async (template: RecruitmentTemplate) => {
     try {
       await navigator.clipboard.writeText(template.body);
-      toast.success(`「${displayLabel(template)}」をコピーしました`);
+      toast.success(m.crud.copied(displayLabel(template, m)));
     } catch (e) {
       console.warn("[recruitment-templates] clipboard error:", e);
-      toast.error("コピー失敗（ブラウザの権限を確認してください）");
+      toast.error(m.crud.copyFailed);
     }
   };
 
   if (templates.length === 0) {
     return (
       <div className="px-2 py-3 text-center text-[11px] text-muted-foreground">
-        テンプレート未登録 — マクロページから登録できます
+        {m.recruitmentBody.empty}
       </div>
     );
   }
@@ -192,7 +197,7 @@ export function RecruitmentTemplatesPopoverBody({
         <span className="font-mono tracking-[0.18em] text-[var(--neon-cyan)]/80 uppercase">
           ★ Top
         </span>
-        {" が次回開催日カードのコピー対象。ハンドルをドラッグでコンテンツブロックごと並び替え。"}
+        {m.recruitmentBody.topHint}
       </p>
       <DndContext
         // dnd-kit の採番 (`DndDescribedBy-<n>`) は SSR とクライアントで
@@ -270,6 +275,7 @@ function SortableCategorySection({
   /** 行並び替えの onDragEnd。section ごとに独立した inner DndContext で発火 */
   onRowDragEnd: (event: DragEndEvent) => void;
 }) {
+  const m = useMessages();
   const {
     attributes,
     listeners,
@@ -286,6 +292,7 @@ function SortableCategorySection({
   };
   const containsTop = group.items.some((t) => t.id === topId);
   const categoryName = group.categoryName;
+  const displayName = categoryName ?? m.recruitmentBody.noCategory;
   const rowIds = useMemo(
     () => group.items.map((t) => t.id),
     [group.items],
@@ -305,10 +312,8 @@ function SortableCategorySection({
         <button
           type="button"
           {...listeners}
-          aria-label={`${
-            categoryName ?? "（コンテンツ未設定）"
-          } のコンテンツブロックをドラッグ`}
-          title="ドラッグでこのコンテンツ全体 (中の募集文も全部) を並び替え"
+          aria-label={m.recruitmentBody.blockDragAria(displayName)}
+          title={m.recruitmentBody.blockDragTitle}
           className="inline-flex h-7 w-5 shrink-0 cursor-grab items-center justify-center rounded text-muted-foreground hover:text-foreground active:cursor-grabbing"
         >
           <GripVertical className="h-3 w-3" aria-hidden />
@@ -317,9 +322,7 @@ function SortableCategorySection({
           type="button"
           onClick={onToggle}
           aria-expanded={isOpen}
-          aria-label={`${
-            categoryName ?? "（コンテンツ未設定）"
-          } のテンプレートを${isOpen ? "閉じる" : "開く"}`}
+          aria-label={m.recruitmentBody.toggleAria(displayName, isOpen)}
           className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded px-1 text-left hover:bg-secondary/40"
         >
           <ChevronDown
@@ -330,7 +333,7 @@ function SortableCategorySection({
             aria-hidden
           />
           <span className="truncate text-[10px] tracking-normal text-muted-foreground">
-            {categoryName ?? "（コンテンツ未設定）"}
+            {displayName}
           </span>
           <span className="font-mono text-[9px] text-muted-foreground/60">
             {group.items.length}
@@ -338,7 +341,7 @@ function SortableCategorySection({
           {containsTop && (
             <span
               className="font-mono text-[9px] tracking-[0.18em] text-[var(--neon-cyan)]/85 uppercase"
-              title="このコンテンツに ★ Top のテンプレが含まれる"
+              title={m.recruitmentBody.containsTopTitle}
             >
               ★
             </span>
@@ -347,8 +350,8 @@ function SortableCategorySection({
         {slug && (
           <a
             href={`/category/${slug}/macros`}
-            title={`「${categoryName}」のマクロページを開く (新規 / 編集 / 削除)`}
-            aria-label={`「${categoryName}」のマクロページを開く`}
+            title={m.recruitmentBody.openMacrosTitle(displayName)}
+            aria-label={m.recruitmentBody.openMacrosAria(displayName)}
             className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-secondary/60 hover:text-[var(--neon-cyan)]"
             onClick={(e) => e.stopPropagation()}
           >
@@ -409,6 +412,8 @@ function SortableTemplateRow({
   isTop: boolean;
   onCopy: () => void;
 }) {
+  const m = useMessages();
+  const label = template.label || m.recruitment.defaultLabel;
   const {
     attributes,
     listeners,
@@ -438,10 +443,8 @@ function SortableTemplateRow({
       <button
         type="button"
         {...listeners}
-        aria-label={`「${
-          template.label || "通常募集"
-        }」を行単位でドラッグ並び替え`}
-        title="ドラッグでこの行を並び替え"
+        aria-label={m.recruitmentBody.rowDragAria(label)}
+        title={m.recruitmentBody.rowDragTitle}
         className="inline-flex h-7 w-5 shrink-0 cursor-grab items-center justify-center rounded text-muted-foreground hover:text-foreground active:cursor-grabbing"
       >
         <GripVertical className="h-3 w-3" aria-hidden />
@@ -449,8 +452,8 @@ function SortableTemplateRow({
       <button
         type="button"
         onClick={onCopy}
-        aria-label={`${template.label || "通常募集"} の本文をコピー`}
-        title="クリックで本文をコピー"
+        aria-label={m.recruitmentBody.copyBodyAria(label)}
+        title={m.recruitmentBody.copyBodyTitle}
         className="flex min-w-0 flex-1 cursor-pointer items-start gap-2 rounded px-1 py-1 text-left hover:bg-secondary/40"
       >
         {isTop ? (
@@ -466,7 +469,7 @@ function SortableTemplateRow({
         )}
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm">
-            {template.label || "通常募集"}
+            {label}
             {isTop && (
               <span className="ml-1.5 font-mono text-[9px] tracking-[0.18em] text-[var(--neon-cyan)] uppercase">
                 Top
@@ -483,8 +486,8 @@ function SortableTemplateRow({
   );
 }
 
-function displayLabel(t: RecruitmentTemplate): string {
-  const cat = t.categoryName ?? "未分類";
+function displayLabel(t: RecruitmentTemplate, m: Messages): string {
+  const cat = t.categoryName ?? m.recruitmentBody.uncategorized;
   return t.label ? `${cat} / ${t.label}` : cat;
 }
 

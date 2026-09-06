@@ -1,3 +1,5 @@
+"use client";
+
 /**
  * リンクのサイト種別を視覚化するアイコンコンポーネント。
  *
@@ -10,13 +12,14 @@
 
 import { Globe, Video } from "lucide-react";
 import {
-  COARSE_SITE_LABEL,
-  LINK_SITE_LABEL,
   coarseSite,
+  coarseSiteLabel,
   detectLinkSite,
+  linkSiteLabel,
   type CoarseLinkSite,
   type LinkSite,
 } from "@/lib/link-site";
+import { useLocale } from "@/lib/i18n/client";
 
 type Props = {
   /** 判定対象 URL。`safeHref` で前段フィルタ済みでも、ここでも parse error はセーフに倒す */
@@ -56,11 +59,12 @@ const COARSE_COLOR: Record<CoarseLinkSite, string> = {
 };
 
 export function LinkSiteIcon({ url, variant = "coarse", className }: Props) {
+  const locale = useLocale();
   const fine = detectLinkSite(url);
 
   if (variant === "fine") {
     const color = FINE_COLOR[fine];
-    const label = LINK_SITE_LABEL[fine];
+    const label = linkSiteLabel(fine, locale);
     if (fine === "x") {
       return (
         <span aria-label={label} title={label} className={className}>
@@ -88,7 +92,7 @@ export function LinkSiteIcon({ url, variant = "coarse", className }: Props) {
   // coarse: web / video / x
   const coarse = coarseSite(fine);
   const color = COARSE_COLOR[coarse];
-  const label = COARSE_SITE_LABEL[coarse];
+  const label = coarseSiteLabel(coarse, locale);
   if (coarse === "x") {
     return (
       <span aria-label={label} title={label} className={className}>

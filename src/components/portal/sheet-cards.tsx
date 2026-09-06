@@ -14,6 +14,7 @@ import {
   getStoredAuthorName,
   persistAuthorName,
 } from "@/lib/schedule-memos-client";
+import { useLocale, useMessages } from "@/lib/i18n/client";
 
 /**
  * 軽減表 / ロット表の **読み取り専用カードビュー** (TODO #94 / A-3)。
@@ -54,6 +55,8 @@ export function SheetCards({
    */
   variant?: "generic" | "mitigation";
 }) {
+  const m = useMessages();
+  const locale = useLocale();
   // 表示名は localStorage 由来 (日付メモと同じキー)。SSR では空文字を返し、
   // hydration 後に実値へ差し替わるよう useSyncExternalStore を使う
   // (effect 内 setState を避ける = react-hooks/set-state-in-effect)。
@@ -89,8 +92,9 @@ export function SheetCards({
         mitigation: variant === "mitigation",
         columnLabels,
         ignoreRows,
+        locale,
       }),
-    [table, visibleColumns, variant, columnLabels, ignoreRows],
+    [table, visibleColumns, variant, columnLabels, ignoreRows, locale],
   );
 
   // 巨大なシート (数百行) をスマホで全部カード化すると描画が重くなるため
@@ -107,7 +111,7 @@ export function SheetCards({
           <Table2 className="h-4 w-4 text-[var(--neon-cyan)]" aria-hidden />
           <h2 className="font-display text-base">{title}</h2>
           <span className="font-mono text-[10px] tracking-[0.18em] text-muted-foreground">
-            {table.rows.length} 行
+            {m.sheetCards.rows(table.rows.length)}
           </span>
         </div>
         {href && (
@@ -117,7 +121,7 @@ export function SheetCards({
             rel="noopener noreferrer"
             className="inline-flex items-center gap-1 rounded-sm border border-border/50 px-2 py-1 font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase transition-colors hover:text-foreground"
           >
-            Sheets で編集
+            {m.sheetCards.editInSheets}
             <ExternalLink className="h-2.5 w-2.5 opacity-70" aria-hidden />
           </a>
         )}
@@ -134,7 +138,7 @@ export function SheetCards({
             aria-pressed={onlyMine}
           >
             <Filter className="h-3.5 w-3.5" aria-hidden />
-            {onlyMine ? `${name} の担当のみ` : "自分の担当だけ"}
+            {onlyMine ? m.sheetCards.onlyMineOf(name) : m.sheetCards.onlyMine}
           </Button>
         ) : null}
         {editingName ? (
@@ -152,12 +156,12 @@ export function SheetCards({
               autoFocus
               value={name}
               onChange={(e) => setDraftName(e.target.value)}
-              placeholder="シートの見出しと同じ表示名"
+              placeholder={m.sheetCards.namePlaceholder}
               className="h-8 w-52 text-[12px]"
-              aria-label="表示名"
+              aria-label={m.sheetCards.nameAria}
             />
             <Button type="submit" size="sm" className="text-[11px]">
-              保存
+              {m.common.save}
             </Button>
           </form>
         ) : (
@@ -169,7 +173,7 @@ export function SheetCards({
             className="gap-1.5 text-[11px] tracking-normal text-muted-foreground"
           >
             <UserRound className="h-3.5 w-3.5" aria-hidden />
-            {name ? `表示名: ${name}` : "表示名を設定"}
+            {name ? m.sheetCards.displayName(name) : m.sheetCards.setDisplayName}
           </Button>
         )}
         {onlyMine && (
@@ -181,15 +185,14 @@ export function SheetCards({
             className="gap-1.5 text-[11px] tracking-normal text-muted-foreground"
           >
             <RotateCcw className="h-3.5 w-3.5" aria-hidden />
-            全部表示
+            {m.sheetCards.showAll}
           </Button>
         )}
       </div>
 
       {name.trim() && myColumn === null && (
         <p className="rounded-md border border-amber-400/30 bg-amber-400/5 px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
-          見出し行に「{name}」に一致する列が見つかりませんでした。シートの
-          見出しと同じ表記に直すと「自分の担当だけ」が使えます。
+          {m.sheetCards.noMatchingColumn(name)}
         </p>
       )}
 
@@ -202,7 +205,9 @@ export function SheetCards({
             >
               <p className="font-display text-sm break-words text-foreground">
                 {heading || (
-                  <span className="text-muted-foreground/70">（無題）</span>
+                  <span className="text-muted-foreground/70">
+                    {m.sheetCards.untitled}
+                  </span>
                 )}
               </p>
               {/* mitigation モード: ダメージ → 軽減率 → 最終の数値サマリと
@@ -254,10 +259,10 @@ export function SheetCards({
                   {target && (
                     <span
                       className="inline-flex items-baseline gap-1 rounded-sm border border-violet-400/35 bg-violet-400/8 px-1.5 py-0.5"
-                      title="対象"
+                      title={m.sheetCards.target}
                     >
                       <span className="font-mono text-[9px] tracking-[0.1em] text-muted-foreground uppercase">
-                        対象
+                        {m.sheetCards.target}
                       </span>
                       <span className="text-[12px] break-words text-violet-200">
                         {target}
@@ -281,7 +286,7 @@ export function SheetCards({
                         "inline-flex items-baseline gap-1 rounded-sm border px-1.5 py-0.5 " +
                         (role ? ROLE_TONE[role] : "border-border/40 bg-background/40")
                       }
-                      title={`${c.label || "担当"}: ${c.value}`}
+                      title={`${c.label || m.sheetCards.ownerFallback}: ${c.value}`}
                     >
                       <span className="font-mono text-[10px] tracking-[0.08em] text-[var(--neon-cyan)]/85">
                         {c.label || "—"}
@@ -334,7 +339,7 @@ export function SheetCards({
                 </dl>
               ) : (stats && stats.length > 0) || target ? null : (
                 <p className="mt-1 text-[11px] text-muted-foreground">
-                  この行に担当の記載はありません
+                  {m.sheetCards.noAssignment}
                 </p>
               )}
             </li>
@@ -344,7 +349,7 @@ export function SheetCards({
 
       {hidden > 0 && (
         <p className="text-[11px] leading-relaxed text-muted-foreground">
-          残り {hidden} 行は表示していません。全体は「Sheets で編集」から確認してください。
+          {m.sheetCards.hiddenRows(hidden)}
         </p>
       )}
     </div>

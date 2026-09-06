@@ -6,13 +6,9 @@ import { Link2Off } from "lucide-react";
 import { toast } from "sonner";
 import { updateCategory } from "@/lib/categories-client";
 import { useConfirm } from "@/components/portal/confirm-dialog";
+import { useMessages } from "@/lib/i18n/client";
 
 type Kind = "mitigation" | "loot";
-
-const KIND_LABEL: Record<Kind, string> = {
-  mitigation: "軽減表",
-  loot: "ロット管理",
-};
 
 const KIND_COLUMN: Record<Kind, "mitigation_sheet_url" | "loot_sheet_url"> = {
   mitigation: "mitigation_sheet_url",
@@ -38,14 +34,15 @@ export function SheetUrlUnlinkButton({
 }) {
   const router = useRouter();
   const confirm = useConfirm();
+  const m = useMessages();
   const [busy, setBusy] = useState(false);
-  const label = KIND_LABEL[kind];
+  const label = m.sheet.kindLabel[kind];
 
   const onClick = async () => {
     const confirmed = await confirm({
-      title: `${label}のスプレッドシート紐付けを解除しますか？`,
-      description: `表示中の URL は ${label}カードから消え、再登録するまで未設定状態に戻ります。スプレッドシート自体は削除されません。`,
-      confirmText: "解除",
+      title: m.sheet.unlinkConfirmTitle(label),
+      description: m.sheet.unlinkConfirmDescription(label),
+      confirmText: m.sheet.unlinkConfirm,
       destructive: true,
     });
     if (!confirmed) return;
@@ -55,10 +52,10 @@ export function SheetUrlUnlinkButton({
     });
     setBusy(false);
     if (!result.ok) {
-      toast.error("解除失敗: " + result.reason);
+      toast.error(m.sheet.unlinkFailed(result.reason));
       return;
     }
-    toast.success(`${label}の紐付けを解除しました`);
+    toast.success(m.sheet.unlinkDone(label));
     router.refresh();
   };
 
@@ -67,12 +64,12 @@ export function SheetUrlUnlinkButton({
       type="button"
       onClick={onClick}
       disabled={busy}
-      title={`${label}のスプレッドシート紐付けを解除 (URL を消去)`}
-      aria-label={`${label}のスプレッドシート紐付けを解除`}
+      title={m.sheet.unlinkTitle(label)}
+      aria-label={m.sheet.unlinkAria(label)}
       className="inline-flex items-center gap-1.5 rounded-md border border-rose-400/40 bg-rose-500/5 px-3 py-1.5 text-[11px] tracking-normal text-rose-300 transition-colors hover:border-rose-300/60 hover:bg-rose-500/15 hover:text-rose-200 disabled:opacity-40"
     >
       <Link2Off className="h-3.5 w-3.5" aria-hidden />
-      {busy ? "解除中…" : "紐付け解除"}
+      {busy ? m.sheet.unlinking : m.sheet.unlink}
     </button>
   );
 }

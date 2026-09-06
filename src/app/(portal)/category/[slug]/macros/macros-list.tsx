@@ -59,6 +59,8 @@ import { useConfirm } from "@/components/portal/confirm-dialog";
 import { MirrorActionSlot } from "@/components/portal/action-slot";
 import { WaymarksSection } from "./waymarks-section";
 import type { CategoryWaymark } from "@/lib/category-waymarks-client";
+import { useMessages } from "@/lib/i18n/client";
+import type { Messages } from "@/lib/i18n/messages";
 
 /**
  * Macro & template page for a single category. Two sections, both
@@ -96,13 +98,13 @@ function toHalfWidth(s: string): string {
     .replace(/　/g, " ");
 }
 
-async function copyText(text: string, label: string) {
+async function copyText(text: string, label: string, m: Messages) {
   try {
     await navigator.clipboard.writeText(text);
-    toast.success(`「${label}」をコピーしました`);
+    toast.success(m.crud.copied(label));
   } catch (e) {
     console.warn("[macros] clipboard error:", e);
-    toast.error("コピー失敗（ブラウザの権限を確認してください）");
+    toast.error(m.crud.copyFailed);
   }
 }
 
@@ -159,6 +161,7 @@ function MacrosSection({
   categoryName: string;
   macros: CategoryMacro[];
 }) {
+  const m = useMessages();
   const [editing, setEditing] = useState<{
     id?: string;
     label: string;
@@ -188,7 +191,7 @@ function MacrosSection({
     const label = editing.label.trim();
     const body = editing.body.trim();
     if (!body) {
-      toast.error("本文を入力してください");
+      toast.error(m.macros.enterBody);
       return;
     }
     setBusy(true);
@@ -197,38 +200,38 @@ function MacrosSection({
       : await createCategoryMacro({ categoryId, label, body });
     setBusy(false);
     if (!result.ok) {
-      toast.error("保存失敗: " + result.reason);
+      toast.error(m.crud.saveFailed(result.reason));
       return;
     }
-    toast.success(editing.id ? "更新しました" : "追加しました");
+    toast.success(editing.id ? m.crud.updated : m.crud.added);
     setEditing(null);
   };
 
-  const onDelete = async (m: CategoryMacro) => {
+  const onDelete = async (macro: CategoryMacro) => {
     const ok = await confirm({
-      title: `「${m.label || "（未命名）"}」を削除しますか？`,
-      confirmText: "削除",
+      title: m.crud.deleteConfirmTitle(macro.label || m.crud.unnamed),
+      confirmText: m.common.delete,
       destructive: true,
     });
     if (!ok) return;
-    const result = await deleteCategoryMacro(m.id);
+    const result = await deleteCategoryMacro(macro.id);
     if (!result.ok) {
-      toast.error("削除失敗: " + result.reason);
+      toast.error(m.crud.deleteFailed(result.reason));
       return;
     }
-    toast.success("削除しました");
+    toast.success(m.crud.deleted);
   };
 
-  const ids = useMemo(() => ordered.map((m) => m.id), [ordered]);
+  const ids = useMemo(() => ordered.map((x) => x.id), [ordered]);
 
   return (
     <section className="flex flex-col gap-3">
       <header className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <Terminal className="h-4 w-4 text-[var(--neon-violet)]" aria-hidden />
-          <h2 className="font-display text-base">マクロ</h2>
+          <h2 className="font-display text-base">{m.macros.title}</h2>
           <span className="font-mono text-[10px] tracking-[0.18em] text-muted-foreground">
-            {ordered.length} 件
+            {m.crud.count(ordered.length)}
           </span>
         </div>
         {/* TODO #58 part2 (2026-05-01): macros は量が少なく中途半端なスクロール
@@ -244,7 +247,7 @@ function MacrosSection({
           className="gap-1.5 text-[11px] tracking-normal"
         >
           <Plus className="h-3.5 w-3.5" aria-hidden />
-          マクロ追加
+          {m.macros.addMacro}
         </Button>
         <MirrorActionSlot>
           <Button
@@ -255,7 +258,7 @@ function MacrosSection({
             className="gap-1.5 text-[11px] tracking-normal"
           >
             <Plus className="h-3.5 w-3.5" aria-hidden />
-            マクロ追加
+            {m.macros.addMacro}
           </Button>
         </MirrorActionSlot>
       </header>
@@ -263,8 +266,8 @@ function MacrosSection({
       {ordered.length === 0 ? (
         <EmptyState
           icon={Terminal}
-          title="マクロ未登録"
-          description="攻略に用いる戦術のテンプレ等をここに保存できます。"
+          title={m.macros.emptyTitle}
+          description={m.macros.emptyBody}
         />
       ) : (
         <DndContext
@@ -278,14 +281,18 @@ function MacrosSection({
         >
           <SortableContext items={ids} strategy={verticalListSortingStrategy}>
             <ul className="flex flex-col gap-2">
-              {ordered.map((m) => (
+              {ordered.map((macro) => (
                 <SortableMacroRow
-                  key={m.id}
-                  macro={m}
-                  onEdit={() => startEdit(m)}
-                  onDelete={() => onDelete(m)}
+                  key={macro.id}
+                  macro={macro}
+                  onEdit={() => startEdit(macro)}
+                  onDelete={() => onDelete(macro)}
                   onCopy={() =>
-                    copyText(m.body, m.label || `${categoryName} マクロ`)
+                    copyText(
+                      macro.body,
+                      macro.label || m.macros.categoryMacro(categoryName),
+                      m,
+                    )
                   }
                 />
               ))}
@@ -316,6 +323,7 @@ function SortableMacroRow({
   onDelete: () => void;
   onCopy: () => void;
 }) {
+  const m = useMessages();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: macro.id });
   const style: React.CSSProperties = {
@@ -328,6 +336,7 @@ function SortableMacroRow({
   // explicitly opens the row. Reduces vertical scroll when many
   // macros are registered.
   const [expanded, setExpanded] = useState(false);
+  const name = macro.label || m.macros.macroFallback;
   return (
     <li
       ref={setNodeRef}
@@ -345,16 +354,16 @@ function SortableMacroRow({
           type="button"
           onClick={() => setExpanded((v) => !v)}
           aria-expanded={expanded}
-          aria-label={`${macro.label || "マクロ"} の本文を${expanded ? "閉じる" : "開く"}`}
+          aria-label={m.macros.toggleBodyAria(name, expanded)}
           className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded px-1 text-left hover:bg-secondary/40"
         >
           <span
             {...listeners}
             role="presentation"
-            aria-label={`${macro.label || "マクロ"} のドラッグハンドル`}
+            aria-label={m.crud.dragHandleAria(name)}
             onClick={(e) => e.stopPropagation()}
             className="inline-flex h-6 w-6 shrink-0 cursor-grab items-center justify-center rounded text-muted-foreground hover:bg-secondary/60 hover:text-foreground active:cursor-grabbing"
-            title="ドラッグで並び替え"
+            title={m.crud.dragToReorder}
           >
             <GripVertical className="h-3.5 w-3.5" aria-hidden />
           </span>
@@ -367,7 +376,7 @@ function SortableMacroRow({
           />
           <p className="truncate font-display text-sm">
             {macro.label || (
-              <span className="text-muted-foreground/80">（ラベル未設定）</span>
+              <span className="text-muted-foreground/80">{m.crud.noLabel}</span>
             )}
           </p>
         </button>
@@ -375,8 +384,8 @@ function SortableMacroRow({
           <button
             type="button"
             onClick={onCopy}
-            aria-label={`${macro.label || "マクロ"} の本文をコピー`}
-            title="本文をコピー"
+            aria-label={m.macros.copyBodyAria(name)}
+            title={m.macros.copyBodyTitle}
             className="inline-flex h-7 w-7 items-center justify-center rounded text-[var(--neon-cyan)] hover:bg-[var(--neon-cyan)]/15"
           >
             <ClipboardCopy className="h-3.5 w-3.5" aria-hidden />
@@ -384,8 +393,8 @@ function SortableMacroRow({
           <button
             type="button"
             onClick={onEdit}
-            aria-label={`${macro.label || "マクロ"} を編集`}
-            title="編集"
+            aria-label={m.crud.editAria(name)}
+            title={m.common.edit}
             className="inline-flex h-7 w-7 items-center justify-center rounded text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
           >
             <Pencil className="h-3.5 w-3.5" aria-hidden />
@@ -393,8 +402,8 @@ function SortableMacroRow({
           <button
             type="button"
             onClick={onDelete}
-            aria-label={`${macro.label || "マクロ"} を削除`}
-            title="削除"
+            aria-label={m.crud.deleteAria(name)}
+            title={m.common.delete}
             className="inline-flex h-7 w-7 items-center justify-center rounded text-rose-300 hover:bg-rose-500/15 hover:text-rose-200"
           >
             <Trash2 className="h-3.5 w-3.5" aria-hidden />
@@ -421,6 +430,7 @@ function TemplatesSection({
   categoryName: string;
   initialTemplates: RecruitmentTemplateLite[];
 }) {
+  const m = useMessages();
   // Hydrate from initial server-fetched data, then live-track via the
   // realtime hook (which gets ALL templates) and filter back down to
   // this category. Keeps the per-page list in sync with edits made
@@ -505,7 +515,7 @@ function TemplatesSection({
     const label = editing.label.trim();
     const body = editing.body.trim();
     if (!body) {
-      toast.error("本文を入力してください");
+      toast.error(m.macros.enterBody);
       return;
     }
     setBusy(true);
@@ -514,26 +524,26 @@ function TemplatesSection({
       : await createRecruitmentTemplate({ categoryId, label, body });
     setBusy(false);
     if (!result.ok) {
-      toast.error("保存失敗: " + result.reason);
+      toast.error(m.crud.saveFailed(result.reason));
       return;
     }
-    toast.success(editing.id ? "更新しました" : "追加しました");
+    toast.success(editing.id ? m.crud.updated : m.crud.added);
     setEditing(null);
   };
 
   const onDelete = async (t: RecruitmentTemplate) => {
     const ok = await confirm({
-      title: `「${t.label || "通常募集"}」を削除しますか？`,
-      confirmText: "削除",
+      title: m.crud.deleteConfirmTitle(t.label || m.recruitment.defaultLabel),
+      confirmText: m.common.delete,
       destructive: true,
     });
     if (!ok) return;
     const result = await deleteRecruitmentTemplate(t.id);
     if (!result.ok) {
-      toast.error("削除失敗: " + result.reason);
+      toast.error(m.crud.deleteFailed(result.reason));
       return;
     }
-    toast.success("削除しました");
+    toast.success(m.crud.deleted);
   };
 
   return (
@@ -541,9 +551,9 @@ function TemplatesSection({
       <header className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <ClipboardList className="h-4 w-4 text-[var(--neon-cyan)]" aria-hidden />
-          <h2 className="font-display text-base">募集文テンプレート</h2>
+          <h2 className="font-display text-base">{m.macros.templatesTitle}</h2>
           <span className="font-mono text-[10px] tracking-[0.18em] text-muted-foreground">
-            {templates.length} 件
+            {m.crud.count(templates.length)}
           </span>
         </div>
         {/* TODO #58 part2: 元位置 in-flow + stuck 時 SubTabs 右端に複製ボタン。
@@ -556,7 +566,7 @@ function TemplatesSection({
           className="gap-1.5 text-[11px] tracking-normal"
         >
           <Plus className="h-3.5 w-3.5" aria-hidden />
-          募集文追加
+          {m.macros.addTemplate}
         </Button>
         <MirrorActionSlot>
           <Button
@@ -567,7 +577,7 @@ function TemplatesSection({
             className="gap-1.5 text-[11px] tracking-normal"
           >
             <Plus className="h-3.5 w-3.5" aria-hidden />
-            募集文追加
+            {m.macros.addTemplate}
           </Button>
         </MirrorActionSlot>
       </header>
@@ -576,9 +586,9 @@ function TemplatesSection({
         <EmptyState
           description={
             <>
-              このコンテンツに紐づく募集文テンプレートはまだ登録されていません。
+              {m.macros.templatesEmpty1}
               <br />
-              上の「募集文追加」ボタンから登録できます。
+              {m.macros.templatesEmpty2}
             </>
           }
         />
@@ -603,7 +613,7 @@ function TemplatesSection({
                   template={t}
                   fallbackLabel={categoryName}
                   isGlobalTop={t.id === globalTopId}
-                  onCopy={() => copyText(t.body, t.label || categoryName)}
+                  onCopy={() => copyText(t.body, t.label || categoryName, m)}
                   onEdit={() => startEdit(t)}
                   onDelete={() => onDelete(t)}
                 />
@@ -641,11 +651,12 @@ function SortableTemplateRow({
   onEdit: () => void;
   onDelete: () => void;
 }) {
+  const m = useMessages();
   // Templates default to expanded — bodies are typically one-line PT
   // 募集 text, short enough that hiding them costs more than it saves.
   // Macros stay collapsed-by-default (multi-line `/p` payloads).
   const [expanded, setExpanded] = useState(true);
-  const heading = template.label || "通常募集";
+  const heading = template.label || m.recruitment.defaultLabel;
 
   const {
     attributes,
@@ -684,8 +695,8 @@ function SortableTemplateRow({
         <button
           type="button"
           {...listeners}
-          aria-label={`${heading} のドラッグハンドル`}
-          title="ドラッグで並び替え (グローバル順序に反映)"
+          aria-label={m.crud.dragHandleAria(heading)}
+          title={m.macros.templateHandleTitle}
           className="inline-flex h-6 w-6 shrink-0 cursor-grab items-center justify-center rounded text-muted-foreground hover:bg-secondary/60 hover:text-foreground active:cursor-grabbing"
         >
           <GripVertical className="h-3.5 w-3.5" aria-hidden />
@@ -694,7 +705,7 @@ function SortableTemplateRow({
           type="button"
           onClick={() => setExpanded((v) => !v)}
           aria-expanded={expanded}
-          aria-label={`${heading} の本文を${expanded ? "閉じる" : "開く"}`}
+          aria-label={m.macros.toggleBodyAria(heading, expanded)}
           className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded px-1 text-left hover:bg-secondary/40"
         >
           <ChevronDown
@@ -709,12 +720,14 @@ function SortableTemplateRow({
               read as uppercase. Body font preserves user-typed casing. */}
           <p className="truncate text-sm">
             {template.label || (
-              <span className="text-muted-foreground/80">通常募集</span>
+              <span className="text-muted-foreground/80">
+                {m.recruitment.defaultLabel}
+              </span>
             )}
             {isGlobalTop && (
               <span
                 className="ml-1.5 font-mono text-[9px] tracking-[0.18em] text-[var(--neon-cyan)] uppercase"
-                title="トップページ「募集」ボタンのコピー対象"
+                title={m.macros.topTitle}
               >
                 ★ Top
               </span>
@@ -725,8 +738,8 @@ function SortableTemplateRow({
           <button
             type="button"
             onClick={onCopy}
-            aria-label={`${template.label || fallbackLabel} の本文をコピー`}
-            title="本文をコピー"
+            aria-label={m.macros.copyBodyAria(template.label || fallbackLabel)}
+            title={m.macros.copyBodyTitle}
             className="inline-flex h-7 w-7 items-center justify-center rounded text-[var(--neon-cyan)] hover:bg-[var(--neon-cyan)]/15"
           >
             <ClipboardCopy className="h-3.5 w-3.5" aria-hidden />
@@ -734,8 +747,8 @@ function SortableTemplateRow({
           <button
             type="button"
             onClick={onEdit}
-            aria-label={`${heading} を編集`}
-            title="編集"
+            aria-label={m.crud.editAria(heading)}
+            title={m.common.edit}
             className="inline-flex h-7 w-7 items-center justify-center rounded text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
           >
             <Pencil className="h-3.5 w-3.5" aria-hidden />
@@ -743,8 +756,8 @@ function SortableTemplateRow({
           <button
             type="button"
             onClick={onDelete}
-            aria-label={`${heading} を削除`}
-            title="削除"
+            aria-label={m.crud.deleteAria(heading)}
+            title={m.common.delete}
             className="inline-flex h-7 w-7 items-center justify-center rounded text-rose-300 hover:bg-rose-500/15 hover:text-rose-200"
           >
             <Trash2 className="h-3.5 w-3.5" aria-hidden />
@@ -782,6 +795,7 @@ function EditDialog({
   onSave: () => void;
   busy: boolean;
 }) {
+  const m = useMessages();
   const open = value !== null;
   const setOpen = (next: boolean) => {
     if (!next) onChange(null);
@@ -790,11 +804,11 @@ function EditDialog({
   const titleText =
     kind === "macro"
       ? isEdit
-        ? "マクロを編集"
-        : "マクロを追加"
+        ? m.macros.dialogMacroEdit
+        : m.macros.dialogMacroNew
       : isEdit
-        ? "募集文を編集"
-        : "募集文を追加";
+        ? m.macros.dialogTemplateEdit
+        : m.macros.dialogTemplateNew;
   const accentClass =
     kind === "macro"
       ? "border-[var(--neon-violet)]/40 text-[var(--neon-violet)] shadow-[0_0_18px_-6px_var(--neon-violet)]"
@@ -821,9 +835,7 @@ function EditDialog({
               {titleText}
             </DialogTitle>
             <DialogDescription className="text-xs">
-              {kind === "macro"
-                ? "戦闘中の `/p` 系コール / 戦術メモなど"
-                : "PT募集サイト・Discord 用の募集テキスト"}
+              {kind === "macro" ? m.macros.descMacro : m.macros.descTemplate}
             </DialogDescription>
           </div>
         </DialogHeader>
@@ -833,7 +845,9 @@ function EditDialog({
             <>
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="edit-label" className="text-xs text-foreground/80">
-                  {kind === "macro" ? "ラベル（任意）" : "サブラベル（任意）"}
+                  {kind === "macro"
+                    ? m.macros.labelOptional
+                    : m.macros.subLabelOptional}
                 </Label>
                 <Input
                   id="edit-label"
@@ -844,14 +858,14 @@ function EditDialog({
                 />
                 {kind === "template" && (
                   <p className="text-[10px] text-muted-foreground leading-relaxed">
-                    コンテンツ内で複数テンプレを使い分ける時の小見出し。1つだけなら空でOK。
+                    {m.macros.subLabelHelp}
                   </p>
                 )}
               </div>
               <div className="flex flex-col gap-1.5">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <Label htmlFor="edit-body" className="text-xs text-foreground/80">
-                    本文
+                    {m.macros.body}
                   </Label>
                   {/* 全角→半角 button only useful for PT-募集 text where
                       Japanese-IME 全角 chars sneak in. Macros are
@@ -863,17 +877,17 @@ function EditDialog({
                       onClick={() => {
                         const next = toHalfWidth(value.body);
                         if (next === value.body) {
-                          toast.info("変換対象の全角文字なし");
+                          toast.info(m.macros.noFullWidth);
                           return;
                         }
                         onChange({ ...value, body: next });
-                        toast.success("全角を半角に変換しました");
+                        toast.success(m.macros.convertedHalfWidth);
                       }}
                       className="inline-flex items-center gap-1 rounded-sm border border-[var(--neon-cyan)]/40 bg-[var(--neon-cyan)]/8 px-2 py-0.5 text-[10px] tracking-normal text-[var(--neon-cyan)] transition-colors hover:bg-[var(--neon-cyan)]/15"
-                      title="全角→半角"
+                      title={m.macros.toHalfWidth}
                     >
                       <CaseSensitive className="h-3 w-3" aria-hidden />
-                      全角→半角
+                      {m.macros.toHalfWidth}
                     </button>
                   )}
                 </div>
@@ -900,7 +914,7 @@ function EditDialog({
             className="text-[11px] tracking-normal"
           >
             <X className="h-3.5 w-3.5 mr-1" aria-hidden />
-            キャンセル
+            {m.common.cancel}
           </Button>
           <Button
             type="button"
@@ -910,7 +924,7 @@ function EditDialog({
             className="gap-1.5 text-[11px] tracking-normal"
           >
             <Save className="h-3.5 w-3.5" aria-hidden />
-            {busy ? "保存中…" : isEdit ? "更新" : "追加"}
+            {busy ? m.common.saving : isEdit ? m.crud.update : m.common.add}
           </Button>
         </DialogFooter>
       </DialogContent>

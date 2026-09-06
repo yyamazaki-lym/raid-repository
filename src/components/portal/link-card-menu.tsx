@@ -15,6 +15,7 @@ import {
 } from "@/lib/category-links-client";
 import { useConfirm } from "@/components/portal/confirm-dialog";
 import type { CategoryLink } from "@/lib/supabase/types";
+import { useMessages } from "@/lib/i18n/client";
 
 /**
  * Three-dot menu for a single CategoryLink. Stateless w.r.t. the edit
@@ -30,19 +31,20 @@ export function LinkCardMenu({
   onEdit: () => void;
 }) {
   const confirm = useConfirm();
+  const m = useMessages();
   const onDelete = async () => {
     const ok = await confirm({
-      title: `「${link.title}」を削除しますか？`,
-      confirmText: "削除",
+      title: m.crud.deleteConfirmTitle(link.title),
+      confirmText: m.common.delete,
       destructive: true,
     });
     if (!ok) return;
     const result = await deleteCategoryLink(link.id);
     if (!result.ok) {
-      toast.error("削除失敗: " + result.reason);
+      toast.error(m.crud.deleteFailed(result.reason));
       return;
     }
-    toast.success(`「${link.title}」を削除しました`);
+    toast.success(m.linkMenu.deleted(link.title));
     // 行の消失は `useRealtimeCategoryLinks` の DELETE handler が拾うので
     // `router.refresh()` は不要。むしろ refresh は RSC 再描画でスクロール
     // 位置が頭に戻る挙動を引き起こすため意図的に呼ばない (TODO #49)。
@@ -53,19 +55,18 @@ export function LinkCardMenu({
   // (discord-import の dedup は URL の在不在しか見ない)、除外登録で恒久化する。
   const onExclude = async () => {
     const ok = await confirm({
-      title: `「${link.title}」を今後取り込まないようにしますか？`,
-      description:
-        "このリンクを削除し、Discord 自動取り込みでも今後この URL を取り込みません。コンテンツ編集ダイアログの「除外 URL」から解除できます。",
-      confirmText: "除外",
+      title: m.linkMenu.excludeTitle(link.title),
+      description: m.linkMenu.excludeDesc,
+      confirmText: m.linkMenu.excludeConfirm,
       destructive: true,
     });
     if (!ok) return;
     const result = await addDiscordLinkBlocklist(link.categoryId, link.url);
     if (!result.ok) {
-      toast.error("除外失敗: " + result.reason);
+      toast.error(m.linkMenu.excludeFailed(result.reason));
       return;
     }
-    toast.success(`「${link.title}」を除外しました（今後取り込まれません）`);
+    toast.success(m.linkMenu.excluded(link.title));
   };
 
   return (
@@ -76,7 +77,7 @@ export function LinkCardMenu({
       <DropdownMenu>
         <DropdownMenuTrigger
           className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-all hover:bg-secondary/60 hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 active:scale-95"
-          aria-label="リンクメニュー"
+          aria-label={m.linkMenu.menuAria}
         >
           <MoreVertical className="h-3.5 w-3.5" aria-hidden />
         </DropdownMenuTrigger>
@@ -86,7 +87,7 @@ export function LinkCardMenu({
             className="flex cursor-pointer items-center gap-2"
           >
             <Pencil className="h-3.5 w-3.5" aria-hidden />
-            <span className="text-sm">編集</span>
+            <span className="text-sm">{m.common.edit}</span>
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           {link.source === "discord" && (
@@ -95,7 +96,7 @@ export function LinkCardMenu({
               className="flex cursor-pointer items-center gap-2 text-amber-300 focus:text-amber-200"
             >
               <Ban className="h-3.5 w-3.5" aria-hidden />
-              <span className="text-sm">今後取り込まない</span>
+              <span className="text-sm">{m.linkMenu.exclude}</span>
             </DropdownMenuItem>
           )}
           <DropdownMenuItem
@@ -103,7 +104,7 @@ export function LinkCardMenu({
             className="flex cursor-pointer items-center gap-2 text-rose-300 focus:text-rose-200"
           >
             <Trash2 className="h-3.5 w-3.5" aria-hidden />
-            <span className="text-sm">削除</span>
+            <span className="text-sm">{m.common.delete}</span>
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

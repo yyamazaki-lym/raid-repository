@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { ExternalLink, ZoomIn } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { SheetUrlUnlinkButton } from "./sheet-url-unlink-button";
+import { useMessages } from "@/lib/i18n/client";
 
 /**
  * Client iframe wrapper for SheetIframe (TODO #43).
@@ -46,6 +47,7 @@ export function SheetIframeFrame({
   kind?: SheetKind;
   canEdit?: boolean;
 }) {
+  const m = useMessages();
   // Fall back to "loot" preset family when kind is missing — its preset
   // list is a strict superset, so behavior degrades gracefully.
   const effectiveKind: SheetKind = kind ?? "loot";
@@ -114,8 +116,8 @@ export function SheetIframeFrame({
         <button
           type="button"
           onClick={cycleScale}
-          title={`表示倍率 (${Math.round(scale * 100)}%) — クリックで切替`}
-          aria-label={`表示倍率を切替 (現在 ${Math.round(scale * 100)}%)`}
+          title={m.sheet.zoomTitle(Math.round(scale * 100))}
+          aria-label={m.sheet.zoomAria(Math.round(scale * 100))}
           className="inline-flex items-center gap-1.5 rounded-md border border-border/60 px-3 py-1.5 font-mono text-[11px] tracking-[0.18em] text-muted-foreground uppercase transition-colors hover:border-[var(--neon-cyan)]/60 hover:text-foreground"
         >
           <ZoomIn className="h-3.5 w-3.5" aria-hidden />
@@ -131,7 +133,7 @@ export function SheetIframeFrame({
           className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 rounded-md border border-border/60 px-3 py-1.5 text-[11px] tracking-normal transition-colors hover:border-[var(--neon-cyan)]/60"
         >
           <ExternalLink className="h-3.5 w-3.5" aria-hidden />
-          元サイトを開く
+          {m.sheet.openSource}
         </a>
       </div>
       <div className="px-4 sm:px-6">

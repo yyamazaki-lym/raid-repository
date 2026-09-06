@@ -17,13 +17,15 @@ import { MitigationSheetTabsDialog } from "@/components/portal/mitigation-sheet-
 import { notFound } from "next/navigation";
 import { findCategoryBySlug } from "@/lib/supabase/categories";
 import { getCurrentUserCanEdit } from "@/lib/server/auth";
+import { getMessages } from "@/lib/i18n/server";
 
 // TODO #54 part3 横展開: FFLogs 非依存ページなので Node runtime に切替 (cold start 短縮)。
 export const runtime = "nodejs";
 
-export const metadata = {
-  title: "軽減表",
-};
+export async function generateMetadata() {
+  const m = await getMessages();
+  return { title: m.categoryTab.titles.mitigation };
+}
 
 export default async function MitigationPage({
   params,
@@ -34,15 +36,17 @@ export default async function MitigationPage({
   searchParams: Promise<{ gid?: string }>;
 }) {
   const [{ slug }, { gid: rawGid }] = await Promise.all([params, searchParams]);
-  const [category, canEdit] = await Promise.all([
+  const [category, canEdit, m] = await Promise.all([
     findCategoryBySlug(slug),
     getCurrentUserCanEdit(),
+    getMessages(),
   ]);
+  const title = m.categoryTab.titles.mitigation;
 
   if (!category) {
     return (
       <p className="text-muted-foreground p-6 text-center text-sm">
-        コンテンツが見つかりませんでした。
+        {m.categoryTab.notFound}
       </p>
     );
   }
@@ -185,7 +189,7 @@ export default async function MitigationPage({
   const floorTabs =
     tabs.length > 1 ? (
       <nav
-        aria-label="層の切り替え"
+        aria-label={m.categoryTab.floorTabsAria}
         className="flex flex-wrap items-center gap-1"
       >
         {tabs.map((t) => {
@@ -230,7 +234,7 @@ export default async function MitigationPage({
               <SheetCards
                 table={table.table}
                 sheetUrl={category.mitigationSheetUrl}
-                title="軽減表"
+                title={title}
                 variant="mitigation"
                 columnLabels={columnLabels}
                 ignoreRows={ignoreRows}
@@ -240,7 +244,7 @@ export default async function MitigationPage({
           iframe={
             <SheetIframe
               url={category.mitigationSheetUrl}
-              title="軽減表"
+              title={title}
               emptyHint=""
               categoryId={category.id}
               kind="mitigation"
@@ -251,7 +255,7 @@ export default async function MitigationPage({
       ) : (
         <SheetIframe
           url={category.mitigationSheetUrl}
-          title="軽減表"
+          title={title}
           emptyHint=""
           categoryId={category.id}
           kind="mitigation"

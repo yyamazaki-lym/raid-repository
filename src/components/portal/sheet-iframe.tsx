@@ -2,6 +2,7 @@ import { Settings, AlertTriangle } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { safeHref } from "@/lib/url-safe";
 import { SheetIframeFrame } from "./sheet-iframe-frame";
+import { getMessages } from "@/lib/i18n/server";
 
 /**
  * Shared iframe view for the mitigation / loot sub-tabs.
@@ -14,7 +15,7 @@ import { SheetIframeFrame } from "./sheet-iframe-frame";
  * ボタンを表示する (TODO #31)。これらが渡されない場合は従来どおり
  * 解除 UI 無しで描画する (= 後方互換)。
  */
-export function SheetIframe({
+export async function SheetIframe({
   url,
   title,
   emptyHint,
@@ -31,13 +32,16 @@ export function SheetIframe({
   kind?: "mitigation" | "loot";
   canEdit?: boolean;
 }) {
+  const m = await getMessages();
   if (!url) {
     return (
       <Card className="glass flex flex-col items-center gap-3 p-10 text-center">
         <span className="grid h-10 w-10 place-items-center rounded-md border border-border/60 bg-background/40 text-muted-foreground">
           <Settings className="h-4 w-4" aria-hidden />
         </span>
-        <p className="font-display text-foreground text-sm">{title} 未設定</p>
+        <p className="font-display text-foreground text-sm">
+          {m.sheet.notConfigured(title)}
+        </p>
         <p className="text-muted-foreground max-w-md text-xs leading-relaxed">
           {emptyHint}
         </p>
@@ -56,10 +60,10 @@ export function SheetIframe({
           <AlertTriangle className="h-4 w-4" aria-hidden />
         </span>
         <p className="font-display text-foreground text-sm">
-          {title}: 安全でない URL のため表示できません
+          {m.sheet.unsafeUrl(title)}
         </p>
         <p className="text-muted-foreground max-w-md text-xs leading-relaxed">
-          http:// または https:// で始まる URL をコンテンツ編集ダイアログから設定してください。
+          {m.sheet.unsafeUrlHint}
         </p>
       </Card>
     );

@@ -52,6 +52,7 @@ import type { DiscordGuildRole } from "@/lib/server/discord-roles";
 import { isOptimizableImageHost } from "@/lib/url-safe";
 import { jstMidnightIso, jstYmdString } from "@/lib/jst-date";
 import { cn } from "@/lib/utils";
+import { useMessages } from "@/lib/i18n/client";
 
 const SLUG_RE = /^[a-z0-9][a-z0-9-]{1,40}[a-z0-9]?$/;
 
@@ -101,6 +102,7 @@ export function CategoryFormDialog({
   onOpenChange: controlledOnOpenChange,
 }: Props) {
   const router = useRouter();
+  const m = useMessages();
   const isEdit = !!category;
   const isControlled = controlledOpen !== undefined;
   const [internalOpen, setInternalOpen] = useState(false);
@@ -160,16 +162,16 @@ export function CategoryFormDialog({
     const r = await fetchDiscordLinkBlocklist(category.id);
     setBlocklistLoading(false);
     if (r.ok) setBlocklist(r.items);
-    else toast.error("除外 URL 取得失敗: " + r.reason);
+    else toast.error(m.categoryForm.blocklistFetchFailed(r.reason));
   };
   const onRemoveBlocklist = async (id: string) => {
     const r = await removeDiscordLinkBlocklist(id);
     if (!r.ok) {
-      toast.error("解除失敗: " + r.reason);
+      toast.error(m.categoryForm.unblockFailed(r.reason));
       return;
     }
     setBlocklist((prev) => (prev ? prev.filter((x) => x.id !== id) : prev));
-    toast.success("除外を解除しました（次回取り込みから対象に戻ります）");
+    toast.success(m.categoryForm.unblocked);
   };
 
   // TODO #26 (2.1, 2026-04-29): 自由記述の説明文。空欄なら DB 保存時 null。
@@ -260,12 +262,12 @@ export function CategoryFormDialog({
     if (!file) return;
 
     if (!file.type.startsWith("image/")) {
-      setError("画像ファイルを選択してください");
+      setError(m.upload.selectImageFile);
       return;
     }
     const MAX_BYTES = 5 * 1024 * 1024;
     if (file.size > MAX_BYTES) {
-      setError("画像サイズは 5MB 以内にしてください");
+      setError(m.upload.maxSize);
       return;
     }
 
@@ -288,14 +290,14 @@ export function CategoryFormDialog({
           contentType: file.type,
         });
       if (upErr) {
-        setError(`アップロード失敗: ${upErr.message}`);
+        setError(m.upload.failed(upErr.message));
         return;
       }
       const { data } = supabase.storage
         .from("category-backgrounds")
         .getPublicUrl(path);
       setBackgroundImageUrl(data.publicUrl);
-      toast.success("画像をアップロードしました");
+      toast.success(m.upload.done);
     } finally {
       setUploadingBg(false);
     }
@@ -378,13 +380,12 @@ export function CategoryFormDialog({
 
   const validateUrl = (raw: string): string | null => {
     if (!raw.trim()) return null;
-    if (!/^https?:\/\//i.test(raw))
-      return "http:// または https:// で始めてください";
+    if (!/^https?:\/\//i.test(raw)) return m.categoryForm.urlScheme;
     try {
       new URL(raw);
       return null;
     } catch {
-      return "URL の形式が正しくありません";
+      return m.crud.invalidUrl;
     }
   };
 
@@ -398,26 +399,25 @@ export function CategoryFormDialog({
     const trimmedDiscordVideo = discordVideo.trim();
     const trimmedBackgroundImage = backgroundImageUrl.trim();
 
-    if (!trimmedName) return setError("名前を入力してください");
+    if (!trimmedName) return setError(m.categoryForm.enterName);
     if (!trimmedSlug || !SLUG_RE.test(trimmedSlug)) {
-      return setError(
-        "URL識別子は半角英数字とハイフン (a-z 0-9 -) で、3〜42文字で入力してください",
-      );
+      return setError(m.categoryForm.slugInvalid);
     }
     const mitigationErr = validateUrl(trimmedMitigation);
-    if (mitigationErr) return setError("軽減表URL: " + mitigationErr);
+    if (mitigationErr)
+      return setError(m.categoryForm.mitigationUrlPrefix + mitigationErr);
     const lootErr = validateUrl(trimmedLoot);
-    if (lootErr) return setError("ロット管理URL: " + lootErr);
+    if (lootErr) return setError(m.categoryForm.lootUrlPrefix + lootErr);
     const bgImageErr = validateUrl(trimmedBackgroundImage);
-    if (bgImageErr) return setError("背景画像URL: " + bgImageErr);
+    if (bgImageErr) return setError(m.categoryForm.bgUrlPrefix + bgImageErr);
 
     // Discord channel IDs are 17–20 digit snowflakes.
     const SNOWFLAKE_RE = /^\d{17,20}$/;
     if (trimmedDiscordStrategy && !SNOWFLAKE_RE.test(trimmedDiscordStrategy)) {
-      return setError("攻略チャンネル ID は 17〜20 桁の数字です");
+      return setError(m.categoryForm.strategyChannelInvalid);
     }
     if (trimmedDiscordVideo && !SNOWFLAKE_RE.test(trimmedDiscordVideo)) {
-      return setError("動画チャンネル ID は 17〜20 桁の数字です");
+      return setError(m.categoryForm.videoChannelInvalid);
     }
 
     setBusy(true);
@@ -543,13 +543,15 @@ export function CategoryFormDialog({
     if (!result.ok) {
       setError(
         result.reason.includes("duplicate")
-          ? "このURL識別子は既に使用されています"
-          : `保存失敗: ${result.reason}`,
+          ? m.categoryForm.slugDuplicate
+          : m.crud.saveFailed(result.reason),
       );
       return;
     }
 
-    toast.success(isEdit ? "更新しました" : `「${trimmedName}」を追加しました`);
+    toast.success(
+      isEdit ? m.crud.updated : m.categoryForm.created(trimmedName),
+    );
     setOpen(false);
     // 2.1 (2026-04-29) hot-fix: realtime ハンドラだけだと server-rendered
     // RSC が再実行されないため、ロール制限の追加/解除が UI に即時反映
@@ -560,7 +562,7 @@ export function CategoryFormDialog({
   const defaultTrigger = (
     <DialogTrigger className="inline-flex items-center gap-1.5 rounded-md border border-border/60 bg-background/30 px-3 py-1.5 text-[11px] tracking-normal text-muted-foreground transition-colors hover:border-[var(--neon-cyan)]/60 hover:text-foreground">
       <Plus className="h-3.5 w-3.5" aria-hidden />
-      コンテンツ追加
+      {m.categoryForm.addTrigger}
     </DialogTrigger>
   );
 
@@ -590,9 +592,7 @@ export function CategoryFormDialog({
               {isEdit ? "Edit" : "New"} Category
             </DialogTitle>
             <DialogDescription className="text-xs">
-              {isEdit
-                ? "コンテンツの情報・URL・ロール制限・クリア記録などを編集"
-                : "新しいレイドコンテンツを追加します"}
+              {isEdit ? m.categoryForm.descEdit : m.categoryForm.descNew}
             </DialogDescription>
           </div>
         </DialogHeader>
@@ -600,13 +600,13 @@ export function CategoryFormDialog({
         <div className="flex max-h-[70svh] flex-col gap-4 overflow-y-auto p-5">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="category-name" className="text-xs text-foreground/80">
-              名前
+              {m.categoryForm.nameLabel}
             </Label>
             <Input
               id="category-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="例: アルカディア:ライトヘビー級"
+              placeholder={m.categoryForm.namePlaceholder}
               autoFocus
               spellCheck={false}
             />
@@ -614,44 +614,46 @@ export function CategoryFormDialog({
 
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="category-slug" className="text-xs text-foreground/80">
-              URL識別子
+              {m.categoryForm.slugLabel}
             </Label>
             <Input
               id="category-slug"
               value={slug}
               onChange={(e) => setSlug(e.target.value)}
-              placeholder="例: arc-lightheavy"
+              placeholder={m.categoryForm.slugPlaceholder}
               className="font-mono text-[12px]"
               autoComplete="off"
               spellCheck={false}
               disabled={isEdit}
             />
             <p className="text-muted-foreground text-[11px] leading-relaxed">
-              URLパスに使われます — 半角英数字とハイフンのみ。
-              {isEdit && "（編集不可）"}
+              {m.categoryForm.slugHelp}
+              {isEdit && m.categoryForm.slugReadOnly}
             </p>
           </div>
 
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="category-description" className="text-xs text-foreground/80">
-              説明文（任意）
+              {m.categoryForm.descriptionLabel}
             </Label>
             <Textarea
               id="category-description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="例: 絶アレキサンダー討滅戦 — 2024 年から練習開始"
+              placeholder={m.categoryForm.descriptionPlaceholder}
               rows={2}
               className="text-sm"
               spellCheck={false}
             />
             <p className="text-muted-foreground text-[11px] leading-relaxed">
-              コンテンツ詳細ページ上部に表示されます。空欄なら非表示。
+              {m.categoryForm.descriptionHelp}
             </p>
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <Label className="text-xs text-foreground/80">ステータス</Label>
+            <Label className="text-xs text-foreground/80">
+              {m.categoryForm.statusHeading}
+            </Label>
             <div className="flex flex-wrap gap-1.5">
               {ALL_STATUSES.map((s) => (
                 <button
@@ -666,7 +668,7 @@ export function CategoryFormDialog({
                       : "border-border bg-background/30 text-muted-foreground hover:text-foreground/80",
                   )}
                 >
-                  {s}
+                  {m.categoryForm.statusLabel(s)}
                 </button>
               ))}
             </div>
@@ -676,19 +678,19 @@ export function CategoryFormDialog({
               各 SubTab の表示 ON/OFF + ラベル上書き。details で折りたためる。 */}
           <details className="flex flex-col gap-1.5 border-t border-border/30 pt-4">
             <summary className="cursor-pointer select-none text-xs text-foreground/80">
-              タブ設定（既定タブ・表示 ON/OFF・名前変更）
+              {m.categoryForm.tabSettingsSummary}
             </summary>
             <div className="mt-2 flex flex-col gap-3">
               <div className="flex flex-col gap-1.5">
                 <Label className="text-xs text-foreground/80">
-                  コンテンツカードから最初に開くタブ
+                  {m.categoryForm.defaultTabLabel}
                 </Label>
                 <div className="flex flex-wrap gap-1.5">
                   {CATEGORY_TAB_IDS.map((id) => {
                     const labelOverride = tabSettings[id].label.trim();
                     const label = labelOverride
                       ? labelOverride
-                      : DEFAULT_SUB_TAB_LABELS[id];
+                      : (m.categories.tabs[id] ?? DEFAULT_SUB_TAB_LABELS[id]);
                     const disabled = tabSettings[id].enabled === false;
                     return (
                       <button
@@ -698,9 +700,7 @@ export function CategoryFormDialog({
                         onClick={() => setDefaultTab(id)}
                         disabled={disabled}
                         title={
-                          disabled
-                            ? "このタブは非表示に設定されています"
-                            : undefined
+                          disabled ? m.categoryForm.tabHiddenTitle : undefined
                         }
                         className={cn(
                           "inline-flex items-center gap-1.5 rounded-sm border px-2 py-1 text-[10px] tracking-normal transition-colors",
@@ -716,14 +716,13 @@ export function CategoryFormDialog({
                   })}
                 </div>
                 <p className="text-muted-foreground text-[11px] leading-relaxed">
-                  コンテンツカードをクリックしたときの遷移先。非表示タブを既定にすると、
-                  保存時に表示されているタブの先頭にフォールバックします。
+                  {m.categoryForm.defaultTabHelp}
                 </p>
               </div>
 
               <div className="flex flex-col gap-2">
                 <Label className="text-xs text-foreground/80">
-                  各タブの表示 ON/OFF と名前
+                  {m.categoryForm.tabVisibilityLabel}
                 </Label>
                 <ul className="flex flex-col gap-2">
                   {CATEGORY_TAB_IDS.map((id) => {
@@ -746,7 +745,7 @@ export function CategoryFormDialog({
                             className="h-3.5 w-3.5 cursor-pointer accent-[var(--neon-cyan)]"
                           />
                           <span className="w-16 text-muted-foreground">
-                            {DEFAULT_SUB_TAB_LABELS[id]}
+                            {m.categories.tabs[id] ?? DEFAULT_SUB_TAB_LABELS[id]}
                           </span>
                         </label>
                         <Input
@@ -758,7 +757,9 @@ export function CategoryFormDialog({
                               [id]: { ...prev[id], label: e.target.value },
                             }))
                           }
-                          placeholder={`名前を変更（空欄＝既定「${DEFAULT_SUB_TAB_LABELS[id]}」）`}
+                          placeholder={m.categoryForm.tabRenamePlaceholder(
+                            m.categories.tabs[id] ?? DEFAULT_SUB_TAB_LABELS[id],
+                          )}
                           className="text-[11px] tracking-normal"
                           disabled={!s.enabled}
                         />
@@ -772,7 +773,7 @@ export function CategoryFormDialog({
 
           <div className="flex flex-col gap-1.5 border-t border-border/30 pt-4">
             <Label htmlFor="mitigation-url" className="text-xs text-foreground/80">
-              軽減表URL（任意）
+              {m.categoryForm.mitigationUrlLabel}
             </Label>
             <Input
               id="mitigation-url"
@@ -786,13 +787,13 @@ export function CategoryFormDialog({
               spellCheck={false}
             />
             <p className="text-muted-foreground text-[11px] leading-relaxed">
-              軽減表サブタブで iframe 埋め込み表示されます。
+              {m.categoryForm.mitigationUrlHelp}
             </p>
           </div>
 
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="loot-url" className="text-xs text-foreground/80">
-              ロット管理URL（任意）
+              {m.categoryForm.lootUrlLabel}
             </Label>
             <Input
               id="loot-url"
@@ -806,7 +807,7 @@ export function CategoryFormDialog({
               spellCheck={false}
             />
             <p className="text-muted-foreground text-[11px] leading-relaxed">
-              ロット管理サブタブで iframe 埋め込み表示されます。
+              {m.categoryForm.lootUrlHelp}
             </p>
           </div>
 
@@ -815,20 +816,20 @@ export function CategoryFormDialog({
               htmlFor="discord-strategy"
               className="text-xs text-foreground/80"
             >
-              Discord 攻略チャンネル ID（任意）
+              {m.categoryForm.strategyChannelLabel}
             </Label>
             <Input
               id="discord-strategy"
               inputMode="numeric"
               value={discordStrategy}
               onChange={(e) => setDiscordStrategy(e.target.value)}
-              placeholder="例: 1234567890123456789"
+              placeholder={m.categoryForm.channelPlaceholder}
               className="font-mono text-[12px]"
               autoComplete="off"
               spellCheck={false}
             />
             <p className="text-muted-foreground text-[11px] leading-relaxed">
-              設定すると、毎日1回このチャンネルから URL を自動で攻略情報タブに取り込みます。
+              {m.categoryForm.strategyChannelHelp}
             </p>
           </div>
 
@@ -837,19 +838,19 @@ export function CategoryFormDialog({
               htmlFor="discord-strategy-filter"
               className="text-xs text-foreground/80"
             >
-              攻略チャンネルの取り込みフィルタワード（任意）
+              {m.categoryForm.strategyFilterLabel}
             </Label>
             <Input
               id="discord-strategy-filter"
               value={strategyFilterInput}
               onChange={(e) => setStrategyFilterInput(e.target.value)}
-              placeholder="例: 軽減, ロット, 動き"
+              placeholder={m.categoryForm.strategyFilterPlaceholder}
               className="text-[12px]"
               autoComplete="off"
               spellCheck={false}
             />
             <p className="text-muted-foreground text-[11px] leading-relaxed">
-              カンマ区切りで複数指定可。いずれかがメッセージ本文または URL に含まれる投稿だけを取り込みます。空欄なら全件取り込み（従来通り）。
+              {m.categoryForm.strategyFilterHelp}
             </p>
           </div>
 
@@ -858,7 +859,7 @@ export function CategoryFormDialog({
               htmlFor="discord-video"
               className="text-xs text-foreground/80"
             >
-              Discord 動画チャンネル ID（任意）
+              {m.categoryForm.videoChannelLabel}
             </Label>
             {/* 動画ch だけ、フィルタワード説明にタイトル判定の有効化を明記 */}
             <Input
@@ -866,14 +867,13 @@ export function CategoryFormDialog({
               inputMode="numeric"
               value={discordVideo}
               onChange={(e) => setDiscordVideo(e.target.value)}
-              placeholder="例: 1234567890123456789"
+              placeholder={m.categoryForm.channelPlaceholder}
               className="font-mono text-[12px]"
               autoComplete="off"
               spellCheck={false}
             />
             <p className="text-muted-foreground text-[11px] leading-relaxed">
-              設定すると、毎日1回このチャンネルから URL を自動で動画タブに取り込みます。
-              Discord の開発者モードを ON にして、チャンネル名右クリック → IDコピーで取得できます。
+              {m.categoryForm.videoChannelHelp}
             </p>
           </div>
 
@@ -882,19 +882,19 @@ export function CategoryFormDialog({
               htmlFor="discord-video-filter"
               className="text-xs text-foreground/80"
             >
-              動画チャンネルの取り込みフィルタワード（任意）
+              {m.categoryForm.videoFilterLabel}
             </Label>
             <Input
               id="discord-video-filter"
               value={videoFilterInput}
               onChange={(e) => setVideoFilterInput(e.target.value)}
-              placeholder="例: クリア, 軽減, 解説"
+              placeholder={m.categoryForm.videoFilterPlaceholder}
               className="text-[12px]"
               autoComplete="off"
               spellCheck={false}
             />
             <p className="text-muted-foreground text-[11px] leading-relaxed">
-              カンマ区切りで複数指定可。いずれかが「メッセージ本文 / URL / 動画タイトル」のいずれかに含まれる投稿だけを取り込みます。URL のみのメッセージでもタイトル経由でマッチします。空欄なら全件取り込み（従来通り）。
+              {m.categoryForm.videoFilterHelp}
             </p>
           </div>
 
@@ -907,11 +907,10 @@ export function CategoryFormDialog({
             />
             <div className="flex-1">
               <span className="block text-xs text-foreground/90">
-                Discord 取り込みを有効化
+                {m.categoryForm.discordEnabledLabel}
               </span>
               <p className="text-muted-foreground text-[11px] leading-relaxed">
-                OFF にすると、このコンテンツは毎日の自動取り込みをスキップします。
-                チャンネルID は保存されたままなので、再 ON で即再開可能。
+                {m.categoryForm.discordEnabledHelp}
               </p>
             </div>
           </label>
@@ -929,15 +928,15 @@ export function CategoryFormDialog({
               }}
             >
               <summary className="cursor-pointer text-xs text-foreground/80">
-                取り込み除外 URL{blocklist ? `（${blocklist.length}）` : ""}
+                {m.categoryForm.blocklistSummary}
+                {blocklist ? `（${blocklist.length}）` : ""}
               </summary>
               <p className="text-muted-foreground mt-1.5 text-[11px] leading-relaxed">
-                登録した URL は Discord 自動取り込みで今後取り込まれません。動画 /
-                攻略の ⋮ メニュー「今後取り込まない」で登録されます。「解除」で再び取り込み対象に戻ります。
+                {m.categoryForm.blocklistHelp}
               </p>
               {blocklistLoading ? (
                 <p className="text-muted-foreground mt-2 text-[11px]">
-                  読み込み中…
+                  {m.common.loading}
                 </p>
               ) : blocklist && blocklist.length > 0 ? (
                 <ul className="mt-2 flex flex-col gap-1">
@@ -957,14 +956,14 @@ export function CategoryFormDialog({
                         onClick={() => onRemoveBlocklist(b.id)}
                         className="shrink-0 rounded-md border border-border/50 px-2 py-0.5 text-[10px] tracking-normal text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground"
                       >
-                        解除
+                        {m.categoryForm.unblock}
                       </button>
                     </li>
                   ))}
                 </ul>
               ) : blocklist ? (
                 <p className="text-muted-foreground mt-2 text-[11px]">
-                  除外 URL はありません
+                  {m.categoryForm.blocklistEmpty}
                 </p>
               ) : null}
             </details>
@@ -975,7 +974,7 @@ export function CategoryFormDialog({
               htmlFor="background-image-url"
               className="text-xs text-foreground/80"
             >
-              背景画像（任意）
+              {m.categoryForm.bgLabel}
             </Label>
             <div className="flex gap-1.5">
               <Input
@@ -1010,7 +1009,7 @@ export function CategoryFormDialog({
                 ) : (
                   <Upload className="h-3.5 w-3.5" aria-hidden />
                 )}
-                {uploadingBg ? "送信中" : "アップロード"}
+                {uploadingBg ? m.upload.sending : m.upload.button}
               </Button>
               {backgroundImageUrl && !uploadingBg && (
                 <Button
@@ -1020,13 +1019,12 @@ export function CategoryFormDialog({
                   onClick={() => setBackgroundImageUrl("")}
                   className="shrink-0 text-[10px] tracking-normal"
                 >
-                  クリア
+                  {m.common.clear}
                 </Button>
               )}
             </div>
             <p className="text-muted-foreground text-[11px] leading-relaxed">
-              URL を直接指定するか、ローカル画像をアップロード（最大 5MB）。
-              コンテンツ一覧のカード背景に表示されます。空欄で無効。
+              {m.categoryForm.bgHelp}
             </p>
             {backgroundImageUrl.trim() &&
               /^https?:\/\//i.test(backgroundImageUrl.trim()) && (
@@ -1045,31 +1043,30 @@ export function CategoryFormDialog({
           <details className="flex flex-col gap-1.5 border-t border-border/30 pt-4">
             <summary className="flex cursor-pointer items-center gap-1.5 text-xs text-foreground/80 list-none [&::-webkit-details-marker]:hidden">
               <Shield className="h-3 w-3" aria-hidden />
-              閲覧可能ロール（任意）
+              {m.categoryForm.rolesSummary}
               {selectedRoleIds.length > 0 && (
                 <span className="inline-flex items-center rounded-sm border border-[var(--neon-cyan)]/40 bg-[var(--neon-cyan)]/10 px-1.5 py-px text-[9px] tracking-normal text-[var(--neon-cyan)]">
-                  {selectedRoleIds.length} 選択中
+                  {m.categoryForm.rolesSelected(selectedRoleIds.length)}
                 </span>
               )}
               <span className="ml-auto text-[10px] tracking-normal text-muted-foreground">
-                クリックで展開
+                {m.categoryForm.clickToExpand}
               </span>
             </summary>
             <div className="mt-2 flex flex-col gap-1.5">
               <p className="text-muted-foreground text-[11px] leading-relaxed">
-                選択したロールのいずれか 1 つを持つ Discord メンバーのみが、このコンテンツのページを開けます。
-                何も選択しなければ全メンバーが閲覧可能です。
+                {m.categoryForm.rolesHelp}
               </p>
               {rolesLoading ? (
                 <div className="flex items-center gap-2 px-3 py-2 text-[11px] text-muted-foreground">
                   <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
-                  ロール一覧を読み込み中…
+                  {m.categoryForm.rolesLoading}
                 </div>
               ) : availableRoles.length === 0 ? (
                 <div className="rounded-md border border-border/30 bg-secondary/20 px-3 py-2 text-[11px] text-muted-foreground">
-                  ロール一覧を取得できませんでした
+                  {m.categoryForm.rolesUnavailable}
                   <span className="opacity-60">
-                    （DISCORD_BOT_TOKEN / DISCORD_GUILD_ID 未設定 or bot 権限不足）
+                    {m.categoryForm.rolesUnavailableHint}
                   </span>
                 </div>
               ) : (
@@ -1118,7 +1115,7 @@ export function CategoryFormDialog({
                   onClick={() => setSelectedRoleIds([])}
                   className="self-start text-[10px] tracking-normal text-muted-foreground hover:text-foreground"
                 >
-                  選択をクリア
+                  {m.categoryForm.clearSelection}
                 </button>
               )}
             </div>
@@ -1126,7 +1123,7 @@ export function CategoryFormDialog({
 
           <div className="flex flex-col gap-1.5 border-t border-border/30 pt-4">
             <Label htmlFor="first-clear" className="text-xs text-foreground/80">
-              初クリア日（任意）
+              {m.categoryForm.firstClearLabel}
             </Label>
             <div className="flex items-center gap-2">
               <Input
@@ -1144,13 +1141,12 @@ export function CategoryFormDialog({
                   onClick={() => setFirstClearDate("")}
                   className="text-[10px] tracking-normal"
                 >
-                  クリア
+                  {m.common.clear}
                 </Button>
               )}
             </div>
             <p className="text-muted-foreground text-[11px] leading-relaxed">
-              手動入力 or 動画タイトルに「クリア / Clear」が初めて現れた時点で自動登録。
-              一度設定された後は自動上書きされません。
+              {m.categoryForm.firstClearHelp}
             </p>
           </div>
 
@@ -1159,7 +1155,7 @@ export function CategoryFormDialog({
           <div className="flex flex-col gap-1.5 border-t border-border/30 pt-4">
             <Label className="flex items-center gap-1.5 text-xs text-foreground/80">
               <Hourglass className="h-3 w-3" aria-hidden />
-              クリアまでの累計時間（任意・手動上書き）
+              {m.categoryForm.manualClearLabel}
             </Label>
             <div className="flex items-center gap-2">
               <Input
@@ -1174,7 +1170,9 @@ export function CategoryFormDialog({
                 className="w-20 font-mono text-[12px]"
                 autoComplete="off"
               />
-              <span className="text-xs text-muted-foreground">時間</span>
+              <span className="text-xs text-muted-foreground">
+                {m.categoryForm.hours}
+              </span>
               <Input
                 id="manual-clear-minutes"
                 type="number"
@@ -1187,7 +1185,9 @@ export function CategoryFormDialog({
                 className="w-20 font-mono text-[12px]"
                 autoComplete="off"
               />
-              <span className="text-xs text-muted-foreground">分</span>
+              <span className="text-xs text-muted-foreground">
+                {m.categoryForm.minutes}
+              </span>
               {(manualHours.trim() || manualMinutes.trim()) && (
                 <Button
                   type="button"
@@ -1199,13 +1199,12 @@ export function CategoryFormDialog({
                   }}
                   className="text-[10px] tracking-normal"
                 >
-                  クリア
+                  {m.common.clear}
                 </Button>
               )}
             </div>
             <p className="text-muted-foreground text-[11px] leading-relaxed">
-              YouTube から duration が取得できない動画 (限定公開等) があると自動計算が欠落するため、手動値を入れるとそちらが優先表示されます。
-              空欄なら自動集計を使用。
+              {m.categoryForm.manualClearHelp}
             </p>
           </div>
 
@@ -1218,23 +1217,20 @@ export function CategoryFormDialog({
               htmlFor="fflogs-match-keywords"
               className="text-xs text-foreground/80"
             >
-              FFLogs マッチワード（任意）
+              {m.categoryForm.fflogsKeywordsLabel}
             </Label>
             <Textarea
               id="fflogs-match-keywords"
               value={matchKeywordsInput}
               onChange={(e) => setMatchKeywordsInput(e.target.value)}
-              placeholder="例: 絶アレキサンダー, リットアティン強襲戦, M4S"
+              placeholder={m.categoryForm.fflogsKeywordsPlaceholder}
               className="min-h-[2.4rem] text-[12px] leading-relaxed"
               autoComplete="off"
               spellCheck={false}
               rows={2}
             />
             <p className="text-muted-foreground text-[11px] leading-relaxed">
-              カンマ区切りで複数指定可。コンテンツ名 (例: 「絶アレキサンダー」
-              「リットアティン強襲戦」) や層指定 (例: 「M4S」) を入れておくと、
-              レポートの zone / タイトルにそれらが部分一致 (大小文字無視) したときに自動紐づけでこのコンテンツのものとして採用されます。
-              標準キーワードでマッチしない独自命名レポートの救済用途。
+              {m.categoryForm.fflogsKeywordsHelp}
             </p>
           </div>
 
@@ -1261,7 +1257,7 @@ export function CategoryFormDialog({
             disabled={busy}
             className="text-[11px] tracking-normal"
           >
-            キャンセル
+            {m.common.cancel}
           </Button>
           <Button
             type="button"
@@ -1275,7 +1271,7 @@ export function CategoryFormDialog({
             ) : (
               <Save className="h-3.5 w-3.5" aria-hidden />
             )}
-            {busy ? "保存中…" : isEdit ? "更新" : "追加"}
+            {busy ? m.common.saving : isEdit ? m.crud.update : m.common.add}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -1308,6 +1304,7 @@ function BackgroundFocalPicker({
   pos: { x: number; y: number };
   onChange: (pos: { x: number; y: number }) => void;
 }) {
+  const m = useMessages();
   const isCenter = pos.x === 50 && pos.y === 50;
 
   const setFromPointer = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -1325,7 +1322,7 @@ function BackgroundFocalPicker({
           ないので「目安」と明記する (カードの高さは中身で伸縮する)。 */}
       <div
         className="relative aspect-[5/2] w-full cursor-crosshair touch-none overflow-hidden rounded-md border border-border/40"
-        title="クリック / ドラッグで表示を寄せます (上をクリック = 画像の上の方を表示)"
+        title={m.categoryForm.focalTitle}
         onPointerDown={(e) => {
           e.currentTarget.setPointerCapture(e.pointerId);
           setFromPointer(e);
@@ -1354,8 +1351,8 @@ function BackgroundFocalPicker({
       <div className="flex flex-col gap-1">
         {(
           [
-            { axis: "x" as const, label: "横位置" },
-            { axis: "y" as const, label: "縦位置" },
+            { axis: "x" as const, label: m.categoryForm.focalX },
+            { axis: "y" as const, label: m.categoryForm.focalY },
           ]
         ).map(({ axis, label }) => (
           <div key={axis} className="flex items-center gap-2">
@@ -1385,8 +1382,7 @@ function BackgroundFocalPicker({
       </div>
       <div className="flex items-center justify-between gap-2">
         <p className="text-muted-foreground text-[11px] leading-relaxed">
-          プレビュー上のクリック / ドラッグで表示を寄せられます（上をクリック
-          = 画像の上の方を表示。カードの形は目安です）。
+          {m.categoryForm.focalHelp}
         </p>
         <Button
           type="button"
@@ -1396,7 +1392,7 @@ function BackgroundFocalPicker({
           onClick={() => onChange({ x: 50, y: 50 })}
           className="shrink-0 text-[10px] tracking-normal"
         >
-          中央に戻す
+          {m.categoryForm.focalReset}
         </Button>
       </div>
     </div>

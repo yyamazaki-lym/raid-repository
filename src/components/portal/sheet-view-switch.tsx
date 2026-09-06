@@ -3,6 +3,7 @@
 import { LayoutList, Table2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useCollapsible } from "@/lib/use-collapsible";
+import { useMessages } from "@/lib/i18n/client";
 
 /**
  * 軽減表 / ロットタブの「シート (iframe) ⇄ カード」表示切替 (TODO #94)。
@@ -26,6 +27,7 @@ export function SheetViewSwitch({
   cards: React.ReactNode;
   iframe: React.ReactNode;
 }) {
+  const m = useMessages();
   const [cardMode, setCardMode] = useCollapsible(storageKey, false);
   // モバイル側は既定が逆 (カード) なので別フラグ = 「シート表示に切替済み」。
   const [spSheet, setSpSheet] = useCollapsible(`${storageKey}:sp-sheet`, false);
@@ -44,12 +46,12 @@ export function SheetViewSwitch({
           {spSheet ? (
             <>
               <LayoutList className="h-3.5 w-3.5" aria-hidden />
-              カード表示に戻す
+              {m.sheet.backToCards}
             </>
           ) : (
             <>
               <Table2 className="h-3.5 w-3.5" aria-hidden />
-              シート表示で見る
+              {m.sheet.viewAsSheet}
             </>
           )}
         </Button>
@@ -66,12 +68,12 @@ export function SheetViewSwitch({
           {cardMode ? (
             <>
               <Table2 className="h-3.5 w-3.5" aria-hidden />
-              シート表示に戻す
+              {m.sheet.backToSheet}
             </>
           ) : (
             <>
               <LayoutList className="h-3.5 w-3.5" aria-hidden />
-              カード表示で見る
+              {m.sheet.viewAsCards}
             </>
           )}
         </Button>

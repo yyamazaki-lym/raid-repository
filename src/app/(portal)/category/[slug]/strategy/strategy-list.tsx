@@ -13,7 +13,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { LinkSiteIcon } from "@/components/portal/link-site-icon";
-import { detectFf14Resource, FF14_RESOURCE_LABEL } from "@/lib/link-site";
+import { detectFf14Resource, ff14ResourceLabel } from "@/lib/link-site";
+import { useLocale, useMessages } from "@/lib/i18n/client";
 import { DndContext, closestCenter } from "@dnd-kit/core";
 import {
   SortableContext,
@@ -55,6 +56,7 @@ export function StrategyList({
   initial,
   initialShowThumbnails,
 }: Props) {
+  const m = useMessages();
   const live = useRealtimeCategoryLinks(categoryId, "strategy", initial);
   const [editTarget, setEditTarget] = useState<CategoryLink | null>(null);
   // DnD 並び替えの共通フック (C-1/C-4)。
@@ -96,9 +98,9 @@ export function StrategyList({
       // ユーザー向けに日本語へ翻訳。それ以外は DB エラー文をそのまま表示。
       const msg =
         result.reason === "not_admin"
-          ? "ADMIN ロールが必要です"
+          ? m.strategy.adminRequired
           : result.reason;
-      toast.error("サムネイル表示の切替に失敗: " + msg);
+      toast.error(m.strategy.toggleThumbsFailed(msg));
     }
   };
 
@@ -134,7 +136,7 @@ export function StrategyList({
           </span>
           {!collapsed && links.length > 1 && (
             <span className="ml-2 hidden text-muted-foreground/60 sm:inline">
-              · ドラッグで並び替え
+              {m.crud.dragToReorderBullet}
             </span>
           )}
         </button>
@@ -151,9 +153,7 @@ export function StrategyList({
               disabled={togglingThumbs}
               aria-pressed={showThumbnails}
               title={
-                showThumbnails
-                  ? "サムネイル表示をオフ"
-                  : "サムネイル表示をオン"
+                showThumbnails ? m.strategy.thumbsOff : m.strategy.thumbsOn
               }
               className={
                 "inline-flex h-7 shrink-0 items-center gap-1 rounded-md border px-2 text-[10px] tracking-normal whitespace-nowrap transition-colors disabled:opacity-50 " +
@@ -167,7 +167,7 @@ export function StrategyList({
               ) : (
                 <ImageOff className="h-3 w-3" aria-hidden />
               )}
-              サムネ
+              {m.strategy.thumbs}
             </button>
             <LinkFormDialog categoryId={categoryId} kind="strategy" />
           </div>
@@ -182,10 +182,10 @@ export function StrategyList({
                 <BookOpen className="h-4 w-4" aria-hidden />
               </span>
               <p className="font-display text-foreground text-sm">
-                攻略リンク未登録
+                {m.strategy.emptyTitle}
               </p>
               <p className="text-muted-foreground max-w-md text-xs leading-relaxed">
-                wiki / 攻略ブログ / Twitter (X) などの URL を登録できます。
+                {m.strategy.emptyBody}
               </p>
             </Card>
           ) : (
@@ -250,6 +250,8 @@ function SortableStrategyCard({
   showThumbnail: boolean;
   onEdit: () => void;
 }) {
+  const m = useMessages();
+  const locale = useLocale();
   const {
     attributes,
     listeners,
@@ -282,7 +284,7 @@ function SortableStrategyCard({
         <button
           type="button"
           {...listeners}
-          aria-label={`${link.title} の並び替えハンドル`}
+          aria-label={m.crud.sortHandleAria(link.title)}
           className="flex shrink-0 cursor-grab items-center justify-center border-r border-border/40 bg-secondary/30 px-2 text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground active:cursor-grabbing"
         >
           <GripVertical className="h-4 w-4" aria-hidden />
@@ -298,7 +300,7 @@ function SortableStrategyCard({
               target="_blank"
               rel="noopener noreferrer"
               className="relative block aspect-video overflow-hidden bg-secondary/30"
-              aria-label={`${link.title} を新規タブで開く`}
+              aria-label={m.linkCard.openNewTabAria(link.title)}
             >
               <Image
                 src={thumbHref}
@@ -338,7 +340,7 @@ function SortableStrategyCard({
                         FF14_RESOURCE_TONE[kind]
                       }
                     >
-                      {FF14_RESOURCE_LABEL[kind]}
+                      {ff14ResourceLabel(kind, locale)}
                     </span>
                   );
                 })()}
@@ -346,8 +348,8 @@ function SortableStrategyCard({
             </a>
             {link.source === "discord" && (
               <span
-                title="Discord から自動取り込み"
-                aria-label="Discord 由来"
+                title={m.linkCard.discordTitle}
+                aria-label={m.linkCard.discordAria}
                 className="grid h-5 w-5 shrink-0 place-items-center rounded-sm border border-indigo-400/40 bg-indigo-400/10 text-indigo-300"
               >
                 <MessageCircle className="h-2.5 w-2.5" aria-hidden />

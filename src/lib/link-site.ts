@@ -72,6 +72,24 @@ export const COARSE_SITE_LABEL: Record<CoarseLinkSite, string> = {
   web: "Web",
 };
 
+/** 表示言語つきの LINK_SITE_LABEL (辞書は import しない — 純関数のまま)。 */
+export function linkSiteLabel(
+  site: LinkSite,
+  locale: "ja" | "en" = "ja",
+): string {
+  if (locale === "en" && site === "niconico") return "Niconico";
+  return LINK_SITE_LABEL[site];
+}
+
+/** 表示言語つきの COARSE_SITE_LABEL。 */
+export function coarseSiteLabel(
+  site: CoarseLinkSite,
+  locale: "ja" | "en" = "ja",
+): string {
+  if (locale === "en" && site === "video") return "Video";
+  return COARSE_SITE_LABEL[site];
+}
+
 /**
  * FF14 攻略リソースの種別 (2026-08-30 調査 D-2/D-4)。
  *
@@ -97,6 +115,25 @@ export const FF14_RESOURCE_LABEL: Record<Ff14ResourceKind, string> = {
   sim: "シム",
   plan: "作図",
 };
+
+const FF14_RESOURCE_LABEL_EN: Record<Ff14ResourceKind, string> = {
+  guide: "Guide",
+  meta: "PF meta",
+  logs: "Logs",
+  gear: "Gear",
+  sim: "Sim",
+  plan: "Diagram",
+};
+
+/** 表示言語つきの FF14_RESOURCE_LABEL。 */
+export function ff14ResourceLabel(
+  kind: Ff14ResourceKind,
+  locale: "ja" | "en" = "ja",
+): string {
+  return locale === "en"
+    ? FF14_RESOURCE_LABEL_EN[kind]
+    : FF14_RESOURCE_LABEL[kind];
+}
 
 /**
  * ホスト → 種別の辞書。判定は hostMatches (完全一致 or サブドメイン) なので

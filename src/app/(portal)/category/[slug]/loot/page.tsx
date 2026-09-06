@@ -17,13 +17,15 @@ import {
   formatUntilNextReset,
   formatWeekLabel,
 } from "@/lib/week-jst";
+import { getLocale, getMessages } from "@/lib/i18n/server";
 
 // TODO #54 part3 横展開: FFLogs 非依存ページなので Node runtime に切替 (cold start 短縮)。
 export const runtime = "nodejs";
 
-export const metadata = {
-  title: "ロット管理",
-};
+export async function generateMetadata() {
+  const m = await getMessages();
+  return { title: m.categoryTab.titles.loot };
+}
 
 export default async function LootPage({
   params,
@@ -31,18 +33,20 @@ export default async function LootPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const [category, canEdit, viewer] = await Promise.all([
+  const [category, canEdit, viewer, m, locale] = await Promise.all([
     findCategoryBySlug(slug),
     getCurrentUserCanEdit(),
     // 本人判定は server 側で済ませ、client には Discord ID を渡さない
     // (presence key の設計と同じ方針、`auth.ts` の注記参照)。
     requireDiscordMember(),
+    getMessages(),
+    getLocale(),
   ]);
 
   if (!category) {
     return (
       <p className="text-muted-foreground p-6 text-center text-sm">
-        コンテンツが見つかりませんでした。
+        {m.categoryTab.notFound}
       </p>
     );
   }
@@ -66,8 +70,8 @@ export default async function LootPage({
       <LootWeeklyPanel
         categoryId={category.id}
         weekStart={weekStart}
-        weekLabel={formatWeekLabel(weekStart)}
-        untilReset={formatUntilNextReset()}
+        weekLabel={formatWeekLabel(weekStart, locale)}
+        untilReset={formatUntilNextReset(new Date(), locale)}
         rows={weeklyRows}
       />
     </div>
@@ -92,7 +96,9 @@ export default async function LootPage({
   return (
     <div className="flex flex-col gap-4">
       {extras}
-      <Suspense fallback={<SheetSectionSkeleton />}>
+      <Suspense
+        fallback={<SheetSectionSkeleton label={m.categoryTab.sheetLoadingAria} />}
+      >
         <LootSheetSection
           sheetUrl={category.lootSheetUrl}
           categoryId={category.id}
@@ -120,11 +126,15 @@ async function LootSheetSection({
   categoryId: string;
   canEdit: boolean;
 }) {
-  const table = await fetchSheetTable(sheetUrl);
+  const [table, m] = await Promise.all([
+    fetchSheetTable(sheetUrl),
+    getMessages(),
+  ]);
+  const title = m.categoryTab.titles.loot;
   const iframe = (
     <SheetIframe
       url={sheetUrl}
-      title="ロット管理"
+      title={title}
       emptyHint=""
       categoryId={categoryId}
       kind="loot"
@@ -137,7 +147,7 @@ async function LootSheetSection({
     <SheetViewSwitch
       storageKey="raid-repo:sheet-card-mode:loot"
       cards={
-        <SheetCards table={table.table} sheetUrl={sheetUrl} title="ロット管理" />
+        <SheetCards table={table.table} sheetUrl={sheetUrl} title={title} />
       }
       iframe={iframe}
     />
@@ -145,11 +155,11 @@ async function LootSheetSection({
 }
 
 /** シート読み込み中のプレースホルダ (CSS のみ / client bundle に影響なし)。 */
-function SheetSectionSkeleton() {
+function SheetSectionSkeleton({ label }: { label: string }) {
   return (
     <div
       role="status"
-      aria-label="シートを読み込み中"
+      aria-label={label}
       className="flex flex-col gap-2 px-3 md:px-0"
     >
       {[0, 1, 2].map((i) => (
