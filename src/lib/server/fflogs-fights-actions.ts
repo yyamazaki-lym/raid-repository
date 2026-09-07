@@ -348,7 +348,7 @@ export async function diagnoseFflogsReportsAction(
   if (codes.length === 0) return { ok: false, reason: "レポート URL が見つかりませんでした" };
 
   const supabase = await createClient();
-  const [{ data: cats }, { data: ledger }, { data: fights }, { data: blocked }] =
+  const [{ data: cats }, { data: ledger }, fights, { data: blocked }] =
     await Promise.all([
       supabase
         .from("categories")
@@ -357,12 +357,11 @@ export async function diagnoseFflogsReportsAction(
         .from("fflogs_report_syncs")
         .select("report_code, ok, reason, title, zone_name, zone_id, category_id, synced_at")
         .in("report_code", codes),
-      supabase
-        .from("fflogs_fights")
-        .select(
-          "report_code, category_id, name, difficulty, encounter_id, kill, fight_percentage, last_phase, session_date",
-        )
-        .in("report_code", codes),
+      fetchAllFightRows(
+        supabase,
+        "report_code, category_id, name, difficulty, encounter_id, kill, fight_percentage, last_phase, session_date",
+        codes,
+      ),
       supabase.from("fflogs_report_blocklist").select("report_code").in("report_code", codes),
     ]);
   const categories: CategoryRef[] = (cats ?? []).map((r) => ({
@@ -378,7 +377,7 @@ export async function diagnoseFflogsReportsAction(
     (ledger ?? []).map((l) => [l.report_code as string, l as Record<string, unknown>]),
   );
   const fightsBy = new Map<string, Array<Record<string, unknown>>>();
-  for (const f of (fights ?? []) as Array<Record<string, unknown>>) {
+  for (const f of fights) {
     const code = f.report_code as string;
     const list = fightsBy.get(code) ?? [];
     list.push(f);
@@ -534,7 +533,7 @@ export async function recategorizeFflogsReportsAction(text: string): Promise<
   }
 
   const supabase = await createClient();
-  const [{ data: cats }, { data: ledger }, { data: fights }] = await Promise.all([
+  const [{ data: cats }, { data: ledger }, fights] = await Promise.all([
     supabase
       .from("categories")
       .select("id, name, slug, expected_fflogs_zone_ids, fflogs_match_keywords"),
@@ -542,10 +541,11 @@ export async function recategorizeFflogsReportsAction(text: string): Promise<
       .from("fflogs_report_syncs")
       .select("report_code, title, zone_name, zone_id, category_id")
       .in("report_code", codes),
-    supabase
-      .from("fflogs_fights")
-      .select("report_code, fight_id, name, encounter_id, category_id")
-      .in("report_code", codes),
+    fetchAllFightRows(
+      supabase,
+      "report_code, fight_id, name, encounter_id, category_id",
+      codes,
+    ),
   ]);
   const categories: CategoryRef[] = (cats ?? []).map((r) => ({
     id: r.id as string,
@@ -561,7 +561,7 @@ export async function recategorizeFflogsReportsAction(text: string): Promise<
   // 「このカテゴリへ移す fight_id」をまとめてから 1 カテゴリ 1 クエリで更新する。
   const moves = new Map<string, Map<string, number[]>>(); // code → cid → fight_ids
   let unchanged = 0;
-  for (const f of (fights ?? []) as Array<Record<string, unknown>>) {
+  for (const f of fights) {
     const code = f.report_code as string;
     const l = ledgerBy.get(code);
     const zoneCid = l
@@ -617,4 +617,37 @@ export async function recategorizeFflogsReportsAction(text: string): Promise<
   }
   revalidateQuietly();
   return { ok: true, reports: codes.length, moved, unchanged };
+}
+
+/**
+ * 指定レポートの pull を **全件** 読む (2026-09-07)。
+ *
+ * PostgREST は既定で 1 回 1000 行までしか返さない。25 レポート分の pull は
+ * 1000 行を超えうるので、`range()` でページングして取り切る (診断や再分類が
+ * 途中の pull しか見ないと、結果が実態とずれる)。
+ */
+async function fetchAllFightRows(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  columns: string,
+  codes: string[],
+): Promise<Array<Record<string, unknown>>> {
+  const PAGE = 1000;
+  const MAX_PAGES = 10;
+  const out: Array<Record<string, unknown>> = [];
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const { data, error } = await supabase
+      .from("fflogs_fights")
+      .select(columns)
+      .in("report_code", codes)
+      .order("report_code", { ascending: true })
+      .order("fight_id", { ascending: true })
+      .range(page * PAGE, page * PAGE + PAGE - 1);
+    if (error || !data) break;
+    // select 文字列は動的なので Supabase の型は具体化できない。行の中身は
+    // 呼び出し側が防御的に読むので unknown 経由でキャストする。
+    const rows = data as unknown as Array<Record<string, unknown>>;
+    out.push(...rows);
+    if (rows.length < PAGE) break;
+  }
+  return out;
 }
