@@ -57,6 +57,7 @@ import {
   type CategoryWaymarkKind,
 } from "@/lib/category-waymarks-client";
 import { useLocale, useMessages } from "@/lib/i18n/client";
+import { CodeBlock } from "@/components/portal/code-block";
 
 /**
  * ウェイマーク (markercode) 配布セクション — TODO #94 / A-5。
@@ -505,9 +506,19 @@ function SortableWaymarkRow({
                 label={name}
               />
             )}
-          <pre className="max-h-[12rem] min-w-0 flex-1 overflow-y-auto font-mono text-[11px] leading-relaxed whitespace-pre-wrap break-all text-foreground/85">
-            {waymark.body}
-          </pre>
+          <div className="min-w-0 flex-1">
+            {/* UI-6 (2026-09-07)。markercode / 共有コードは改行の無い長い
+                文字列なので break-all は残す。 */}
+            <CodeBlock
+              text={waymark.body}
+              label={
+                waymark.kind === "board"
+                  ? m.codeBlock.labelBoard
+                  : m.codeBlock.labelWaymark
+              }
+              breakAll
+            />
+          </div>
         </div>
       )}
     </li>

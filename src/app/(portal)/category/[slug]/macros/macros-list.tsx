@@ -60,6 +60,8 @@ import { MirrorActionSlot } from "@/components/portal/action-slot";
 import { WaymarksSection } from "./waymarks-section";
 import type { CategoryWaymark } from "@/lib/category-waymarks-client";
 import { useLocale, useMessages } from "@/lib/i18n/client";
+import { CodeBlock } from "@/components/portal/code-block";
+import { MACRO_LINE_LIMIT } from "@/lib/macro-lines";
 import type { Messages } from "@/lib/i18n/messages";
 
 /**
@@ -412,9 +414,15 @@ function SortableMacroRow({
         </div>
       </div>
       {expanded && (
-        <pre className="max-h-[12rem] overflow-y-auto px-3 py-2 font-mono text-[11px] leading-relaxed whitespace-pre-wrap text-foreground/85">
-          {macro.body}
-        </pre>
+        <div className="px-3 pb-2">
+          {/* UI-6 (2026-09-07): 素の <pre> 11px からコードフェンス風 12px へ。
+              マクロは 15 行までなので行数も出す (貼れないマクロに気付ける)。 */}
+          <CodeBlock
+            text={macro.body}
+            label={m.codeBlock.labelMacro}
+            lineLimit={MACRO_LINE_LIMIT}
+          />
+        </div>
       )}
     </li>
   );
@@ -767,9 +775,13 @@ function SortableTemplateRow({
         </div>
       </div>
       {expanded && (
-        <pre className="max-h-[10rem] overflow-y-auto px-3 py-2 font-mono text-[11px] leading-relaxed whitespace-pre-wrap text-foreground/85">
-          {template.body}
-        </pre>
+        <div className="px-3 pb-2">
+          <CodeBlock
+            text={template.body}
+            label={m.codeBlock.labelTemplate}
+            maxHeightClass="max-h-[10rem]"
+          />
+        </div>
       )}
     </li>
   );

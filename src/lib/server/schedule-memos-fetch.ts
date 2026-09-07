@@ -15,12 +15,14 @@ import { createClient } from "@/lib/supabase/server";
  * subscription で live 更新のみ受け取る。
  */
 import type { ScheduleSessionMemo } from "@/lib/schedule-memos-client";
+import { parseMemoSeverity } from "@/lib/memo-severity";
 
 type ScheduleSessionMemoRow = {
   id: string;
   raw_date: string;
   body: string;
   author_name: string;
+  severity?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -31,6 +33,8 @@ function rowToMemo(row: ScheduleSessionMemoRow): ScheduleSessionMemo {
     rawDate: row.raw_date,
     body: row.body,
     authorName: row.author_name ?? "",
+    // UI-3 (2026-09-07)。schema 適用前の応答でも落ちないよう既定へ倒す。
+    severity: parseMemoSeverity(row.severity),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

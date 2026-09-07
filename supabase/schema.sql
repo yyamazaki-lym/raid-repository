@@ -569,6 +569,26 @@ ALTER TABLE public.schedule_session_memos
     AND author_name !~ '[[:cntrl:]]'
   ) NOT VALID;
 
+-- 2026-09-07 (UI-3): 重要度。日付メモが平坦な時系列で「今夜必ず直すこと」と
+-- 「参考情報」が同じ見た目で並んでいたので、3 段階のラベルを付けて並び替え /
+-- 絞り込みできるようにする (調査ノート第 4 回 8-3 UI-3)。
+--
+-- 既定は 'none' (未設定)。既存メモに後から 'medium' を割り当てると、ただの
+-- 連絡が全部「注意」の色で並んで色の意味が薄れる。重要度は付けたい人が
+-- 付けるものにして、付いていないメモは今までと同じ見た目のままにする。
+ALTER TABLE public.schedule_session_memos
+  ADD COLUMN IF NOT EXISTS severity text NOT NULL DEFAULT 'none';
+-- 想定外の値が入った行があれば既定へ丸めてから CHECK を張る (text_sane の
+-- 先例と同じ順。通常は 0 行 = 冪等 no-op)。
+UPDATE public.schedule_session_memos
+   SET severity = 'none'
+ WHERE severity NOT IN ('none', 'major', 'medium', 'minor');
+ALTER TABLE public.schedule_session_memos
+  DROP CONSTRAINT IF EXISTS schedule_session_memos_severity_valid;
+ALTER TABLE public.schedule_session_memos
+  ADD CONSTRAINT schedule_session_memos_severity_valid
+  CHECK (severity IN ('none', 'major', 'medium', 'minor')) NOT VALID;
+
 DROP TRIGGER IF EXISTS set_updated_at_schedule_session_memos
   ON public.schedule_session_memos;
 CREATE TRIGGER set_updated_at_schedule_session_memos

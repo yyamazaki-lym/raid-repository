@@ -41,6 +41,16 @@ import { safeHref } from "@/lib/url-safe";
 import { DeleteConfirmModal } from "./schedule/session-memo-delete-modal";
 import { formatRelativeTime } from "@/lib/schedule/time-formatters";
 import { useLocale, useMessages } from "@/lib/i18n/client";
+import {
+  MemoSeverityBadge,
+  MemoSeverityPicker,
+} from "@/components/portal/schedule/memo-severity-picker";
+import {
+  countMinor,
+  filterMemoSeverity,
+  sortByMemoSeverity,
+  type MemoSeverity,
+} from "@/lib/memo-severity";
 
 const EMPTY_SESSION_LOGS: SessionLogEntry[] = [];
 
@@ -342,6 +352,9 @@ function MemoList({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingBody, setEditingBody] = useState("");
   const [editingAuthor, setEditingAuthor] = useState("");
+  // UI-3 (2026-09-07): 重要度。編集中の値と「参考を隠す」トグル。
+  const [editingSeverity, setEditingSeverity] = useState<MemoSeverity>("none");
+  const [hideMinor, setHideMinor] = useState(false);
   const [busy, setBusy] = useState(false);
   // Holds the memo currently pending delete-confirmation. `null` =
   // nothing pending. Replaces `window.confirm` (which renders at the
@@ -471,6 +484,7 @@ function MemoList({
   // from localStorage so returning users don't retype their name.
   const [draftBody, setDraftBody] = useState("");
   const [draftAuthor, setDraftAuthor] = useState("");
+  const [draftSeverity, setDraftSeverity] = useState<MemoSeverity>("none");
   useEffect(() => {
     setDraftAuthor(getStoredAuthorName());
   }, []);
@@ -483,7 +497,10 @@ function MemoList({
       return;
     }
     setBusy(true);
-    const result = await createScheduleMemo({ rawDate, body, authorName }, locale);
+    const result = await createScheduleMemo(
+      { rawDate, body, authorName, severity: draftSeverity },
+      locale,
+    );
     setBusy(false);
     if (!result.ok) {
       toast.error(msg.memo.errAddFailed(result.reason));
@@ -491,6 +508,7 @@ function MemoList({
     }
     persistAuthorName(authorName);
     setDraftBody("");
+    setDraftSeverity("none");
     toast.success(msg.memo.toastAdded);
     // Defense-in-depth: realtime should also fire, but force-refresh
     // immediately so the UI is correct even when realtime delivery
@@ -502,11 +520,13 @@ function MemoList({
     setEditingId(m.id);
     setEditingBody(m.body);
     setEditingAuthor(m.authorName);
+    setEditingSeverity(m.severity);
   };
   const cancelEdit = () => {
     setEditingId(null);
     setEditingBody("");
     setEditingAuthor("");
+    setEditingSeverity("none");
   };
   const saveEdit = async (id: string) => {
     const body = editingBody.trim();
@@ -516,7 +536,11 @@ function MemoList({
       return;
     }
     setBusy(true);
-    const result = await updateScheduleMemo(id, { body, authorName }, locale);
+    const result = await updateScheduleMemo(
+      id,
+      { body, authorName, severity: editingSeverity },
+      locale,
+    );
     setBusy(false);
     if (!result.ok) {
       toast.error(msg.memo.errUpdateFailed(result.reason));
@@ -560,8 +584,22 @@ function MemoList({
           {msg.memo.empty}
         </p>
       ) : (
+        <>
+          {/* UI-3: 「参考」を畳めるようにする。件数を出して、隠していることが
+              分かるようにする (黙って消すと「書いたのに無い」になる)。 */}
+          {countMinor(memos) > 0 && (
+            <button
+              type="button"
+              onClick={() => setHideMinor((v) => !v)}
+              className="mb-1 self-start text-[11px] tracking-normal text-muted-foreground/80 underline decoration-dotted underline-offset-2 transition-colors hover:text-foreground/90"
+            >
+              {hideMinor
+                ? msg.memoSeverity.showMinor(countMinor(memos))
+                : msg.memoSeverity.hideMinor(countMinor(memos))}
+            </button>
+          )}
         <ul className="flex flex-col gap-1.5 pr-0.5">
-          {memos.map((m) => (
+          {sortByMemoSeverity(filterMemoSeverity(memos, hideMinor)).map((m) => (
             <li
               key={m.id}
               className="group rounded-md border border-border/40 bg-secondary/15 px-2.5 py-2 transition-colors hover:border-[var(--neon-violet)]/30 hover:bg-secondary/25"
@@ -585,6 +623,11 @@ function MemoList({
                     spellCheck={false}
                     maxLength={MEMO_BODY_MAX}
                     className={inputClass}
+                  />
+                  <MemoSeverityPicker
+                    value={editingSeverity}
+                    onChange={setEditingSeverity}
+                    disabled={busy}
                   />
                   <div className="flex justify-end gap-1.5">
                     <button
@@ -621,6 +664,7 @@ function MemoList({
                       <span className="font-mono text-[11px] tracking-wide text-muted-foreground/65">
                         {formatRelativeTime(m.createdAt, locale)}
                       </span>
+                      <MemoSeverityBadge severity={m.severity} />
                     </div>
                     <span className="flex shrink-0 items-center gap-0.5 opacity-60 transition-opacity group-hover:opacity-100">
                       <button
@@ -651,6 +695,7 @@ function MemoList({
             </li>
           ))}
         </ul>
+        </>
       )}
 
       <div className="flex flex-col gap-1.5 border-t border-border/40 pt-2.5">
@@ -679,6 +724,11 @@ function MemoList({
           spellCheck={false}
           maxLength={MEMO_BODY_MAX}
           className={inputClass}
+        />
+        <MemoSeverityPicker
+          value={draftSeverity}
+          onChange={setDraftSeverity}
+          disabled={busy}
         />
         <div className="flex justify-end">
           <button

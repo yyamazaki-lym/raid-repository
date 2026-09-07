@@ -92,6 +92,27 @@ export const ja = {
     subAria: "コンテンツ内ナビゲーション",
     schedule: "スケジュール",
   },
+  /** 日付メモの重要度 (UI-3、2026-09-07)。 */
+  memoSeverity: {
+    labels: {
+      major: "要対応",
+      medium: "注意",
+      minor: "参考",
+      none: "なし",
+    },
+    title: (label: string): string => `重要度: ${label}`,
+    pickerAria: "重要度を選ぶ",
+    hideMinor: (n: number): string => `参考 ${n} 件を隠す`,
+    showMinor: (n: number): string => `参考 ${n} 件を表示`,
+  },
+  /** 行ごとの出欠サマリー (UI-9、2026-09-07)。 */
+  attendanceSummary: {
+    chip: (available: number, required: number): string =>
+      `${available}/${required}`,
+    unanswered: (n: number): string => `未回答 ${n}`,
+    unansweredNames: (names: string): string => `未回答: ${names}`,
+    other: (n: number): string => `その他 ${n}`,
+  },
   schedule: {
     nextLabel: "次回開催日",
     fetchFailed: "取得失敗",
@@ -558,6 +579,24 @@ export const en: CoreMessages = {
     mainAria: "Main navigation",
     subAria: "Section navigation",
     schedule: "Schedule",
+  },
+  memoSeverity: {
+    labels: {
+      major: "Action",
+      medium: "Caution",
+      minor: "FYI",
+      none: "None",
+    },
+    title: (label) => `Severity: ${label}`,
+    pickerAria: "Pick a severity",
+    hideMinor: (n) => `Hide ${n} FYI`,
+    showMinor: (n) => `Show ${n} FYI`,
+  },
+  attendanceSummary: {
+    chip: (available, required) => `${available}/${required}`,
+    unanswered: (n) => `${n} not answered`,
+    unansweredNames: (names) => `Not answered: ${names}`,
+    other: (n) => `Other ${n}`,
   },
   schedule: {
     nextLabel: "Next session",
