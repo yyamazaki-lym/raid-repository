@@ -39,6 +39,9 @@ import { updateCategory } from "@/lib/categories-client";
 import { safeHref } from "@/lib/url-safe";
 import { useCollapsible } from "@/lib/use-collapsible";
 import type { CategoryLink } from "@/lib/supabase/types";
+import { LinkCardFooter } from "@/components/portal/link-card-footer";
+import { linkMatchesTagFilter, linkTagToneClass, sameLinkTag } from "@/lib/link-tags";
+import type { LinkReadMap } from "@/lib/supabase/category-link-reads";
 
 type Props = {
   categoryId: string;
@@ -49,12 +52,24 @@ type Props = {
    * リンクのカード上部に og:image / YouTube サムネイルを表示する。
    */
   initialShowThumbnails: boolean;
+  /**
+   * リンク ID → 既読状態 (W-27、2026-09-07)。server で集計済みで、
+   * 「誰が読んだか」の生データは含まれない (未読メンバーの名前は admin のみ)。
+   */
+  linkReads: LinkReadMap;
+  /** リンク ID → タグ (B-1、2026-09-07)。label 昇順。 */
+  linkTags: Record<string, string[]>;
+  /** admin か (タグの付け外しの可否)。 */
+  canEdit: boolean;
 };
 
 export function StrategyList({
   categoryId,
   initial,
   initialShowThumbnails,
+  linkReads,
+  linkTags,
+  canEdit,
 }: Props) {
   const m = useMessages();
   const live = useRealtimeCategoryLinks(categoryId, "strategy", initial);
@@ -80,7 +95,40 @@ export function StrategyList({
     syncOnSettle(live.map((l) => l.id));
   }, [live, syncOnSettle]);
 
-  const ids = useMemo(() => links.map((l) => l.id), [links]);
+  // B-1 (2026-09-07): タグ絞り込み。AND (「P3 の 散開図」を出すのが用途)。
+  // URL には持たせず画面内 state だけ — 絞り込みは一時的な操作で、共有
+  // したいのはリンク自体だから。
+  const [tagFilter, setTagFilter] = useState<string[]>([]);
+  const toggleTagFilter = (label: string) =>
+    setTagFilter((prev) =>
+      prev.some((t) => sameLinkTag(t, label))
+        ? prev.filter((t) => !sameLinkTag(t, label))
+        : [...prev, label],
+    );
+  // 絞り込みチップに出す候補 = いまカテゴリのリンクに付いている全タグ。
+  const allTags = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const link of links) {
+      for (const label of linkTags[link.id] ?? []) {
+        const key = label.trim().toLowerCase();
+        if (!seen.has(key)) seen.set(key, label);
+      }
+    }
+    return [...seen.values()].sort((a, b) => a.localeCompare(b));
+  }, [links, linkTags]);
+  const visibleLinks = useMemo(
+    () =>
+      tagFilter.length === 0
+        ? links
+        : links.filter((l) => linkMatchesTagFilter(linkTags[l.id] ?? [], tagFilter)),
+    [links, linkTags, tagFilter],
+  );
+
+  // DnD の並び替え対象は「絞り込み後に見えているカード」。絞り込み中に
+  // 並び替えると見えていない行の順序が壊れるので、その間は DnD を止める
+  // (SortableContext に渡す ids も visible に揃える)。
+  const dndEnabled = tagFilter.length === 0;
+  const ids = useMemo(() => visibleLinks.map((l) => l.id), [visibleLinks]);
 
   // Phase 14: サムネイル表示 ON/OFF を server に反映。non-admin が押した場合
   // updateCategory が `ADMIN ロールが必要です` 等の reason を返す → 元に戻す。
@@ -174,6 +222,43 @@ export function StrategyList({
         </ActionSlot>
       </div>
 
+      {/* B-1: タグ絞り込みのチップ行。タグが 1 つも無いカテゴリでは出さない。 */}
+      {!collapsed && allTags.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1">
+          <span className="font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase">
+            {m.linkCard.tagFilterLabel}
+          </span>
+          {allTags.map((label) => {
+            const active = tagFilter.some((t) => sameLinkTag(t, label));
+            return (
+              <button
+                key={label}
+                type="button"
+                onClick={() => toggleTagFilter(label)}
+                aria-pressed={active}
+                title={m.linkCard.filterByTagTitle(label)}
+                className={
+                  "rounded-sm border px-1.5 py-0.5 font-mono text-[10px] whitespace-nowrap transition-opacity hover:opacity-80 " +
+                  linkTagToneClass(label) +
+                  (active ? " ring-1 ring-[var(--neon-cyan)]/70" : " opacity-60")
+                }
+              >
+                {label}
+              </button>
+            );
+          })}
+          {tagFilter.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setTagFilter([])}
+              className="rounded px-1 font-mono text-[10px] text-muted-foreground underline underline-offset-2 hover:text-foreground"
+            >
+              {m.linkCard.tagFilterClear}
+            </button>
+          )}
+        </div>
+      )}
+
       {!collapsed && (
         <div id="strategy-links-body">
           {links.length === 0 ? (
@@ -196,19 +281,31 @@ export function StrategyList({
               id="dnd-strategy-links"
               sensors={sensors}
               collisionDetection={closestCenter}
-              onDragEnd={(e) => handleDragEnd(e, links)}
+              onDragEnd={(e) => handleDragEnd(e, visibleLinks)}
             >
               <SortableContext items={ids} strategy={rectSortingStrategy}>
-                <ul className="grid gap-3 sm:grid-cols-2">
-                  {links.map((link) => (
-                    <SortableStrategyCard
-                      key={link.id}
-                      link={link}
-                      showThumbnail={showThumbnails}
-                      onEdit={() => setEditTarget(link)}
-                    />
-                  ))}
-                </ul>
+                {visibleLinks.length === 0 ? (
+                  <p className="rounded-md border border-border/40 bg-secondary/15 px-3 py-4 text-center text-xs text-muted-foreground">
+                    {m.linkCard.tagFilterEmpty(links.length)}
+                  </p>
+                ) : (
+                  <ul className="grid gap-3 sm:grid-cols-2">
+                    {visibleLinks.map((link) => (
+                      <SortableStrategyCard
+                        key={link.id}
+                        link={link}
+                        showThumbnail={showThumbnails}
+                        onEdit={() => setEditTarget(link)}
+                        tags={linkTags[link.id] ?? []}
+                        readState={linkReads[link.id] ?? null}
+                        canEdit={canEdit}
+                        selectedTags={tagFilter}
+                        onToggleTagFilter={toggleTagFilter}
+                        dragEnabled={dndEnabled}
+                      />
+                    ))}
+                  </ul>
+                )}
               </SortableContext>
             </DndContext>
           )}
@@ -245,10 +342,28 @@ function SortableStrategyCard({
   link,
   showThumbnail,
   onEdit,
+  tags,
+  readState,
+  canEdit,
+  selectedTags,
+  onToggleTagFilter,
+  dragEnabled,
 }: {
   link: CategoryLink;
   showThumbnail: boolean;
   onEdit: () => void;
+  /** B-1: このリンクのタグ。 */
+  tags: ReadonlyArray<string>;
+  /** W-27: 既読状態 (取得できなければ null)。 */
+  readState: LinkReadMap[string] | null;
+  canEdit: boolean;
+  selectedTags: ReadonlyArray<string>;
+  onToggleTagFilter: (label: string) => void;
+  /**
+   * ドラッグハンドルを有効にするか。タグで絞り込んでいる間は false —
+   * 見えていないカードを含む並びを、見えている分だけで書き換えてしまうため。
+   */
+  dragEnabled: boolean;
 }) {
   const m = useMessages();
   const locale = useLocale();
@@ -283,9 +398,15 @@ function SortableStrategyCard({
       <Card className="glass neon-edge group flex items-stretch gap-0 p-0 transition-transform hover:-translate-y-0.5">
         <button
           type="button"
-          {...listeners}
+          {...(dragEnabled ? listeners : {})}
+          disabled={!dragEnabled}
           aria-label={m.crud.sortHandleAria(link.title)}
-          className="flex shrink-0 cursor-grab items-center justify-center border-r border-border/40 bg-secondary/30 px-2 text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground active:cursor-grabbing"
+          className={
+            "flex shrink-0 items-center justify-center border-r border-border/40 bg-secondary/30 px-2 text-muted-foreground transition-colors " +
+            (dragEnabled
+              ? "cursor-grab hover:bg-secondary/60 hover:text-foreground active:cursor-grabbing"
+              : "cursor-not-allowed opacity-40")
+          }
         >
           <GripVertical className="h-4 w-4" aria-hidden />
         </button>
@@ -362,9 +483,20 @@ function SortableStrategyCard({
               {link.description}
             </p>
           )}
-          <p className="px-3 pt-1 pb-3 font-mono text-[10px] break-all text-muted-foreground/70">
+          <p className="px-3 pt-1 pb-1.5 font-mono text-[10px] break-all text-muted-foreground/70">
             {link.url}
           </p>
+          {/* W-27 既読 + B-1 タグ (2026-09-07)。 */}
+          <LinkCardFooter
+            linkId={link.id}
+            title={link.title}
+            url={link.url}
+            tags={tags}
+            readState={readState}
+            canEdit={canEdit}
+            selectedTags={selectedTags}
+            onToggleTagFilter={onToggleTagFilter}
+          />
         </div>
       </Card>
     </li>

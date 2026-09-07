@@ -933,6 +933,79 @@ CREATE TABLE IF NOT EXISTS public.tags (
 CREATE INDEX IF NOT EXISTS tags_target_idx
   ON public.tags(target_type, target_id);
 
+-- 2026-09-07 (B-1): 攻略リンクにフェーズ / ギミックのタグを付けられるように
+-- target_type へ 'category_link' を追加する。CREATE TABLE 時のインライン
+-- CHECK は postgres が自動命名するため、名前を指定して張り替える冪等パターン
+-- (category_links_kind_check と同じ)。既存行の値は 5 種のみなので violate は
+-- 起きない。
+DO $$
+DECLARE
+  c text;
+BEGIN
+  -- CREATE TABLE 由来の自動命名 CHECK (tags_target_type_check1 等) も含めて
+  -- target_type を参照する CHECK を全部落とす。
+  FOR c IN
+    SELECT con.conname
+      FROM pg_constraint con
+      JOIN pg_class t ON t.oid = con.conrelid
+     WHERE t.relname = 'tags'
+       AND con.contype = 'c'
+       AND pg_get_constraintdef(con.oid) LIKE '%target_type%'
+  LOOP
+    EXECUTE format('ALTER TABLE public.tags DROP CONSTRAINT %I', c);
+  END LOOP;
+END $$;
+ALTER TABLE public.tags
+  ADD CONSTRAINT tags_target_type_check
+  CHECK (target_type IN
+    ('category','category_link','loot_item','loot_entry',
+     'mitigation_entry','strategy_doc'));
+
+-- ラベルの長さ / 空文字を DB 層でも止める (app 層は 24 文字制限)。
+ALTER TABLE public.tags
+  DROP CONSTRAINT IF EXISTS tags_label_sane;
+ALTER TABLE public.tags
+  ADD CONSTRAINT tags_label_sane
+  CHECK (char_length(btrim(label)) BETWEEN 1 AND 24) NOT VALID;
+
+-- 同じ対象に同じラベルを二重登録しない (UI の付け外しが冪等になる)。
+-- ⚠ UNIQUE は NOT VALID にできないため、既存重複があると作成に失敗する。
+--   本テーブルはこれまでアプリから 1 行も書かれていない (2026-09-07 時点で
+--   参照は admin の一括削除だけ) ので通常 0 行だが、手で入れた行がある
+--   fork でも通るよう、category_links の UNIQUE と同じ形で先に圧縮する。
+DELETE FROM public.tags a
+  USING public.tags b
+ WHERE a.target_type = b.target_type
+   AND a.target_id   = b.target_id
+   AND a.label       = b.label
+   AND a.ctid        > b.ctid;
+CREATE UNIQUE INDEX IF NOT EXISTS tags_target_label_uidx
+  ON public.tags(target_type, target_id, label);
+
+-- ---- 6b-8. category_link_reads (W-27: 攻略リンクの既読) ----------------
+-- 「共有した攻略情報が読まれない」(調査ノート第 4 回 5-3) への対応。
+-- リンク × メンバーで「見た」を 1 行持つだけ。誰が読んだかの生データは
+-- **クライアントへ出さない** — 監視感を避けるため、UI に出すのは
+--   - 自分が既読かどうか
+--   - 未読の人数 (「未読 3 人」)
+--   - admin だけ: 未読メンバーの表示名
+-- の 3 つに絞る (7 章 W-27 の「誰が未読かは幹部のみ」)。
+--
+-- メンバーの実体は native_schedule_members (discord_user_id が主キー) だが、
+-- FK は張らない — メンバー行を消しても既読の履歴を壊さない方が安全で、
+-- 未読人数の計算は is_active なメンバーとの突き合わせで行うため、孤児行は
+-- 自然に無視される。
+CREATE TABLE IF NOT EXISTS public.category_link_reads (
+  link_id         uuid NOT NULL
+                  REFERENCES public.category_links(id) ON DELETE CASCADE,
+  discord_user_id text NOT NULL,
+  read_at         timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (link_id, discord_user_id)
+);
+-- 「このメンバーが読んだリンク」方向の引き (未読リンクの催促に使う)。
+CREATE INDEX IF NOT EXISTS category_link_reads_user_idx
+  ON public.category_link_reads(discord_user_id);
+
 -- ============================================================================
 -- 6b. 練習ログ / ウェイマーク / BiS / 週次消化 (TODO #94, 2026-08-28)
 -- ============================================================================
@@ -1341,6 +1414,14 @@ ALTER TABLE public.loot_weekly_checks            ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.fflogs_fights                 ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.fflogs_report_syncs           ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.fflogs_report_videos          ENABLE ROW LEVEL SECURITY;
+-- W-27 (2026-09-07): category_link_reads は **policy を 1 つも張らない**。
+-- RLS 有効 + policy なし = anon / authenticated からは読み書き不可で、
+-- service role だけが通る。誰が何を読んだかの生データを公開 anon key で
+-- 列挙されないようにするための意図的な設計 (7-0 の policy ループにも
+-- 入れていない)。読み取りは src/lib/supabase/category-link-reads.ts が
+-- 集計してから返し、書き込みは Server Action が本人 row だけを触る
+-- (loot_weekly_checks / native_schedule_members.comment と同じ経路)。
+ALTER TABLE public.category_link_reads           ENABLE ROW LEVEL SECURITY;
 
 -- ---- 7-0. 公開デモ用トグル (2026-08-05 監査 H-2) --------------------------
 --

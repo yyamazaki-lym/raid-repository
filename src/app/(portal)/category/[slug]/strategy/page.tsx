@@ -2,6 +2,10 @@ import { notFound } from "next/navigation";
 import { findCategoryBySlug } from "@/lib/supabase/categories";
 import { fetchCategoryLinks } from "@/lib/supabase/category-links";
 import { fetchCategoryGphotoAlbums } from "@/lib/supabase/category-gphoto-albums";
+import {
+  fetchCategoryLinkReads,
+  fetchCategoryLinkTags,
+} from "@/lib/supabase/category-link-reads";
 import { fetchCategoryBisLinks } from "@/lib/supabase/loot-extras";
 import { BisLinksPanel } from "@/components/portal/loot-extras";
 import { getCurrentUserCanEdit } from "@/lib/server/auth";
@@ -53,6 +57,14 @@ export default async function StrategyPage({
     fetchCategoryBisLinks(category.id),
     getCurrentUserCanEdit(),
   ]);
+  // W-27 既読 / B-1 タグ (2026-09-07)。リンクの ID が要るので links の後。
+  // 既読は canEdit で「未読メンバーの名前を含めるか」が変わるため、
+  // canEdit を解決してから呼ぶ (だからこの Promise.all には入れられない)。
+  const linkIds = links.map((l) => l.id);
+  const [linkReads, linkTags] = await Promise.all([
+    fetchCategoryLinkReads(linkIds, canEdit),
+    fetchCategoryLinkTags(linkIds),
+  ]);
   return (
     <div className="flex flex-col gap-6">
       <BisLinksPanel
@@ -64,6 +76,9 @@ export default async function StrategyPage({
         categoryId={category.id}
         initial={links}
         initialShowThumbnails={category.showStrategyThumbnails}
+        linkReads={linkReads}
+        linkTags={linkTags}
+        canEdit={canEdit}
       />
       <StrategyImagesList
         categoryId={category.id}
