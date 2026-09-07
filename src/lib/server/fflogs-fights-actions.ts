@@ -413,7 +413,10 @@ export async function diagnoseFflogsReportsAction(
         names: [...byName.values()]
           .sort((a, b) => b.count - a.count)
           .map((n) => {
-            const cid = resolveFightCategory(categories, n.name, null);
+            const cid = resolveFightCategory(categories, n.name, null, {
+              encounterId: n.encounterId,
+              zoneName: l ? ((l.zone_name as string | null) ?? null) : null,
+            });
             return { ...n, resolvedCategoryName: cid ? (nameOf.get(cid) ?? "?") : null };
           }),
       },

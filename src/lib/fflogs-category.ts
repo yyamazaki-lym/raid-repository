@@ -23,7 +23,52 @@
  * 実質的に 1. が効くのは絶だけ。
  */
 
-import { findContentGroups } from "./content-groups";
+import { findContentGroups, isUltimateContent } from "./content-groups";
+
+/**
+ * FFLogs の encounter ID → CONTENT_GROUPS の index (絶のみ、2026-09-07)。
+ *
+ * 実機の診断で判明: "Ultimates (Legacy)" zone の fight 名は encounter 名
+ * ("The Omega Protocol") ではなく **ボス名** ("Omega" / "Omega / Omega-M")
+ * だった。名前では絶の種類が決まらないので、encounter ID を最優先の手掛かり
+ * にする。ID は FFLogs が拡張ごとに振り直す (同じ絶でも zone が変わると別 ID)。
+ *
+ * 確認済み: 1077 = 絶オメガ (Dawntrail の Legacy zone 59、実機診断)。
+ * Legacy zone は UCOB / UWU / TEA / DSR / TOP の順に連番で振られているので
+ * 1073〜1076 をその順に置く。Endwalker 期の ID (1060〜1062 / 1065 / 1068) と
+ * 絶もうひとつの未来 (1079) も併記。誤マッピングは別コンテンツへの誤帰属に
+ * なるので、確度の低い旧拡張 (ShB / SB) の ID は入れていない — 診断画面で
+ * encounter ID が見えるので、必要になったら実機の値を足す。
+ */
+export const ULTIMATE_ENCOUNTER_GROUPS: Readonly<Record<number, number>> = {
+  // Dawntrail — Ultimates (Legacy) zone 59
+  1073: 1, // 絶バハムート
+  1074: 2, // 絶アルテマウェポン
+  1075: 0, // 絶アレキサンダー
+  1076: 3, // 絶竜詩戦争
+  1077: 4, // 絶オメガ検証戦 (実機確認)
+  // Dawntrail — 現行絶
+  1079: 5, // 絶もうひとつの未来
+  // Endwalker
+  1060: 1, // 絶バハムート (EW Legacy)
+  1061: 2, // 絶アルテマウェポン (EW Legacy)
+  1062: 0, // 絶アレキサンダー (EW Legacy)
+  1065: 3, // 絶竜詩戦争
+  1068: 4, // 絶オメガ検証戦
+};
+
+/**
+ * 絶 zone 内でのボス名 → グループ (encounter ID が map に無いときの保険)。
+ * "Omega" や "Titan" は零式 / 討滅にも出るので、**zone 名が絶のときだけ** 使う。
+ */
+const ULTIMATE_BOSS_GROUPS: ReadonlyArray<[RegExp, number]> = [
+  [/omega|alpha omega|dynamis/i, 4], // 絶オメガ
+  [/thordan|nidhogg|adelphel|grinnaux|charibert|hraesvelgr|eyes|vedrfolnir|dragon/i, 3], // 絶竜詩
+  [/twintania|nael|bahamut/i, 1], // 絶バハ
+  [/garuda|ifrit|titan|ultima weapon|lahabrea/i, 2], // 絶アルテマ
+  [/living liquid|brute justice|cruise chaser|alexander|perfect/i, 0], // 絶アレキ
+  [/fatebreaker|usurper|oracle|pandora|gaia|ryne|shiva|eden/i, 5], // 絶もうひとつの未来
+];
 
 export type CategoryRef = {
   id: string;
@@ -85,16 +130,58 @@ export function resolveCategoryByFightName(
   return uniqueCategoryForText(categories, fightName);
 }
 
+/** グループ index に落ちるカテゴリが **ちょうど 1 つ** ならその id。 */
+function uniqueCategoryForGroup(
+  categories: readonly CategoryRef[],
+  group: number,
+): string | null {
+  const hits = categories.filter((c) => categoryGroups(c).has(group));
+  return hits.length === 1 ? hits[0]!.id : null;
+}
+
+/** encounter ID → カテゴリ (絶の既知 ID のみ)。 */
+export function resolveCategoryByEncounter(
+  categories: readonly CategoryRef[],
+  encounterId: number | null | undefined,
+): string | null {
+  if (typeof encounterId !== "number") return null;
+  const group = ULTIMATE_ENCOUNTER_GROUPS[encounterId];
+  return group === undefined ? null : uniqueCategoryForGroup(categories, group);
+}
+
+/** 絶 zone のボス名 → カテゴリ (zone 名が絶のときだけ)。 */
+export function resolveCategoryByUltimateBoss(
+  categories: readonly CategoryRef[],
+  fightName: string | null | undefined,
+  zoneName: string | null | undefined,
+): string | null {
+  if (!fightName || !zoneName) return null;
+  if (!isUltimateContent(zoneName) && !/ultimate|絶/i.test(zoneName)) return null;
+  for (const [re, group] of ULTIMATE_BOSS_GROUPS) {
+    if (re.test(fightName)) return uniqueCategoryForGroup(categories, group);
+  }
+  return null;
+}
+
 /**
- * fight ごとのカテゴリ。fight 名で決まればそれ、決まらなければ
- * `reportCategoryId` (レポート単位の解決結果 / 動画リンク由来)。
+ * fight ごとのカテゴリ。優先順位:
+ *   1. encounter ID (絶の既知 ID)
+ *   2. fight 名の内容分類 ("The Omega Protocol" 等)
+ *   3. 絶 zone 内のボス名 ("Omega" 等、zone が絶のときだけ)
+ *   4. `reportCategoryId` (レポート単位の解決結果 / 動画リンク / 取り込み元)
  */
 export function resolveFightCategory(
   categories: readonly CategoryRef[],
   fightName: string | null | undefined,
   reportCategoryId: string | null,
+  ctx?: { encounterId?: number | null; zoneName?: string | null },
 ): string | null {
-  return resolveCategoryByFightName(categories, fightName) ?? reportCategoryId;
+  return (
+    resolveCategoryByEncounter(categories, ctx?.encounterId) ??
+    resolveCategoryByFightName(categories, fightName) ??
+    resolveCategoryByUltimateBoss(categories, fightName, ctx?.zoneName) ??
+    reportCategoryId
+  );
 }
 
 /**

@@ -455,7 +455,10 @@ export async function syncFflogsFights(opts?: {
     const categoryOf = new Map<number, string | null>(
       res.fights.map((f) => [
         f.id,
-        resolveFightCategory(categories, f.name, reportCategoryId),
+        resolveFightCategory(categories, f.name, reportCategoryId, {
+          encounterId: f.encounterID ?? null,
+          zoneName: res.zoneName,
+        }),
       ]),
     );
     // 台帳の代表カテゴリ (動画への橋渡し / 未確定判定に使う) は fight の最多。
@@ -627,7 +630,7 @@ export async function syncFflogsFights(opts?: {
       // 練習ログに出るようになる。
       const { data: fightRows } = await db
         .from("fflogs_fights")
-        .select("fight_id, name")
+        .select("fight_id, name, encounter_id")
         .eq("report_code", code)
         .is("category_id", null);
       const byCategory = new Map<string, number[]>();
@@ -636,6 +639,11 @@ export async function syncFflogsFights(opts?: {
           categories,
           (fr.name as string | null) ?? null,
           reportCid,
+          {
+            encounterId:
+              typeof fr.encounter_id === "number" ? fr.encounter_id : null,
+            zoneName: (row.zone_name as string | null) ?? null,
+          },
         );
         if (!cid) continue;
         const list = byCategory.get(cid) ?? [];

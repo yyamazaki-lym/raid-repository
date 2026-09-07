@@ -120,6 +120,9 @@ export const RELEASES: ReleaseEntry[] = [
       {
         title: "🩺 練習ログ: URL 取り込みは貼ったコンテンツのログとして取り込む / レポート診断と「このコンテンツに割り当て」を追加",
       },
+      {
+        title: "🎯 練習ログ: Legacy 絶の pull を encounter ID とボス名で振り分け (fight 名が「Omega」等のボス名だった)",
+      },
     ],
   },
 ];

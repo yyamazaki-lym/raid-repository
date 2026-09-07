@@ -55,6 +55,14 @@ try {
     m.resolveFightCategory(cats, null, null),
   ], ["top", "heavy", null]);
 
+  console.log("\n[Legacy zone: encounter ID / ボス名]");
+  check("encounter 1077 + ボス名 Omega → 絶オメガ (実機診断の形)", m.resolveFightCategory(cats, "Omega", null, { encounterId: 1077, zoneName: "Ultimates (Legacy)" }), "top");
+  check("encounter 1076 → 絶竜詩", m.resolveFightCategory(cats, "King Thordan", null, { encounterId: 1076, zoneName: "Ultimates (Legacy)" }), "dsr");
+  check("ID 不明でも絶 zone のボス名 Omega / Omega-M → 絶オメガ", m.resolveFightCategory(cats, "Omega / Omega-M", null, { encounterId: 9999, zoneName: "Ultimates (Legacy)" }), "top");
+  check("絶 zone 以外のボス名 Omega は決めない (零式オメガ)", m.resolveFightCategory(cats, "Omega", null, { encounterId: 9999, zoneName: "Omega: Alphascape (Savage)" }), null);
+  check("zone 不明のボス名は決めない", m.resolveFightCategory(cats, "Omega", "heavy", {}), "heavy");
+  check("encounter ID はカテゴリ重複なら null → 名前へ", m.resolveCategoryByEncounter([cats[0], { ...cats[0], id: "top2" }], 1077), null);
+
   console.log("\n[代表カテゴリ]");
   check("最多", m.consensusCategory(["top", "top", "dsr", null]), "top");
   check("同数は先勝ち", m.consensusCategory(["dsr", "top"]), "dsr");
