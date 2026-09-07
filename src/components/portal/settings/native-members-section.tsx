@@ -42,7 +42,10 @@ const generateLocalKey = () =>
     .toString(36)
     .padStart(4, "0")}`;
 
-type DraftMap = Record<string, { displayName: string; sortOrder: string }>;
+type DraftMap = Record<
+  string,
+  { displayName: string; sortOrder: string; dataCenter: string }
+>;
 
 export function NativeMembersSection({
   canEdit,
@@ -68,11 +71,16 @@ export function NativeMembersSection({
     drafts[mem.discord_user_id] ?? {
       displayName: mem.display_name,
       sortOrder: String(mem.sort_order),
+      dataCenter: mem.data_center ?? "",
     };
 
   const setDraft = (
     id: string,
-    patch: Partial<{ displayName: string; sortOrder: string }>,
+    patch: Partial<{
+      displayName: string;
+      sortOrder: string;
+      dataCenter: string;
+    }>,
   ) => {
     setDrafts((prev) => {
       const mem = members.find((x) => x.discord_user_id === id);
@@ -82,8 +90,9 @@ export function NativeMembersSection({
           ? {
               displayName: mem.display_name,
               sortOrder: String(mem.sort_order),
+              dataCenter: mem.data_center ?? "",
             }
-          : { displayName: "", sortOrder: "0" });
+          : { displayName: "", sortOrder: "0", dataCenter: "" });
       return { ...prev, [id]: { ...cur, ...patch } };
     });
   };
@@ -136,6 +145,7 @@ export function NativeMembersSection({
     const patch: {
       displayName?: string;
       sortOrder?: number;
+      dataCenter?: string | null;
     } = {};
     if (draft.displayName.trim() !== mem.display_name) {
       const v = draft.displayName.trim();
@@ -152,6 +162,11 @@ export function NativeMembersSection({
         return;
       }
       patch.sortOrder = n;
+    }
+    // W-33 ③ (2026-09-07): DC 表記。空文字列は「未設定に戻す」なので、
+    // 現在値が null のときだけ「変更なし」と見なす。
+    if (draft.dataCenter.trim() !== (mem.data_center ?? "")) {
+      patch.dataCenter = draft.dataCenter.trim();
     }
     if (Object.keys(patch).length === 0) {
       clearDraft(mem.discord_user_id);
@@ -251,7 +266,8 @@ export function NativeMembersSection({
             const draft = draftFor(mem);
             const dirty =
               draft.displayName !== mem.display_name ||
-              draft.sortOrder !== String(mem.sort_order);
+              draft.sortOrder !== String(mem.sort_order) ||
+              draft.dataCenter.trim() !== (mem.data_center ?? "");
             return (
               <li
                 key={mem.discord_user_id}
@@ -282,6 +298,27 @@ export function NativeMembersSection({
                     disabled={!canEdit || pending}
                     placeholder={m.nativeMembers.displayNamePlaceholder}
                     className="h-7 text-xs"
+                  />
+                </div>
+                {/* W-33 ③ (2026-09-07): データセンター。8.0 で Switch 2 版を
+                    含むクロスプレイ前提が固まり、別 DC のメンバーが混在する
+                    固定が増えている。名前は運営の再編で増減するので自由記述。 */}
+                <div className="flex shrink-0 items-center gap-1.5 sm:w-36">
+                  <span className="text-[10px] whitespace-nowrap text-muted-foreground">
+                    {m.nativeMembers.dcLabel}
+                  </span>
+                  <Input
+                    type="text"
+                    value={draft.dataCenter}
+                    maxLength={20}
+                    onChange={(e) =>
+                      setDraft(mem.discord_user_id, {
+                        dataCenter: e.target.value,
+                      })
+                    }
+                    disabled={!canEdit || pending}
+                    placeholder={m.nativeMembers.dcPlaceholder}
+                    className="h-7 w-20 text-xs"
                   />
                 </div>
                 <div className="flex shrink-0 items-center gap-1.5 sm:w-28">

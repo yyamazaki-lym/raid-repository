@@ -52,6 +52,11 @@ import type { DiscordGuildRole } from "@/lib/server/discord-roles";
 import { isOptimizableImageHost } from "@/lib/url-safe";
 import { jstMidnightIso, jstYmdString } from "@/lib/jst-date";
 import { cn } from "@/lib/utils";
+import {
+  DIFFICULTY_LABEL_MAX_LENGTH,
+  PROGRESS_MODELS,
+  type ProgressModel,
+} from "@/lib/content-model";
 import { useMessages } from "@/lib/i18n/client";
 
 const SLUG_RE = /^[a-z0-9][a-z0-9-]{1,40}[a-z0-9]?$/;
@@ -113,6 +118,14 @@ export function CategoryFormDialog({
   };
   const [name, setName] = useState(category?.name ?? "");
   const [slug, setSlug] = useState(category?.slug ?? "");
+  // W-33 ① (2026-09-07): 難易度ラベル (自由記述) と進行モデルの上書き。
+  // 8.0 の新難易度は名称未発表なので enum を増やさず設定値で吸収する。
+  const [difficultyLabel, setDifficultyLabel] = useState(
+    category?.difficultyLabel ?? "",
+  );
+  const [progressModel, setProgressModel] = useState<ProgressModel>(
+    category?.progressModel ?? "auto",
+  );
   const [status, setStatus] = useState<CategoryStatus>(
     category?.status ?? "未着手",
   );
@@ -344,6 +357,9 @@ export function CategoryFormDialog({
           : "mitigation",
       );
       setTabSettings(buildInitialTabSettings(category?.tabConfig));
+      // W-33 ① (2026-09-07): 開き直したときも DB の値へ戻す。
+      setDifficultyLabel(category?.difficultyLabel ?? "");
+      setProgressModel(category?.progressModel ?? "auto");
       setError(null);
     }
   }, [open, category]);
@@ -481,6 +497,9 @@ export function CategoryFormDialog({
       name: trimmedName,
       slug: trimmedSlug,
       status,
+      // 空文字列は「名前から推測」に戻す意味なので NULL で保存する。
+      difficulty_label: difficultyLabel.trim() || null,
+      progress_model: progressModel,
       mitigation_sheet_url: trimmedMitigation || null,
       loot_sheet_url: trimmedLoot || null,
       discord_strategy_channel_id: trimmedDiscordStrategy || null,
@@ -671,6 +690,59 @@ export function CategoryFormDialog({
                   {m.categoryForm.statusLabel(s)}
                 </button>
               ))}
+            </div>
+          </div>
+
+          {/* W-33 ① (2026-09-07): 難易度と進行モデル。
+              練習ログはこれまでカテゴリ名の文字列マッチだけで層 / フェーズを
+              決めていたが、8.0「白銀のワンダラー」(2027-01) の新難易度は
+              2026-09 時点で正式名称が未発表で辞書に足せない。名前から拾えない
+              コンテンツを人が直せるようにする (enum は増やさない)。 */}
+          <div className="flex flex-col gap-3 border-t border-border/30 pt-4">
+            <div className="flex flex-col gap-1.5">
+              <Label
+                htmlFor="category-difficulty"
+                className="text-xs text-foreground/80"
+              >
+                {m.categoryForm.difficultyLabel}
+              </Label>
+              <Input
+                id="category-difficulty"
+                value={difficultyLabel}
+                maxLength={DIFFICULTY_LABEL_MAX_LENGTH}
+                placeholder={m.categoryForm.difficultyPlaceholder}
+                onChange={(e) => setDifficultyLabel(e.target.value)}
+                className="text-sm"
+              />
+              <p className="text-muted-foreground text-[11px] leading-relaxed">
+                {m.categoryForm.difficultyHelp}
+              </p>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label className="text-xs text-foreground/80">
+                {m.categoryForm.progressModelLabel}
+              </Label>
+              <div className="flex flex-wrap gap-1.5">
+                {PROGRESS_MODELS.map((pm) => (
+                  <button
+                    key={pm}
+                    type="button"
+                    aria-pressed={progressModel === pm}
+                    onClick={() => setProgressModel(pm)}
+                    className={cn(
+                      "inline-flex items-center gap-1.5 rounded-sm border px-2 py-1 text-[10px] tracking-normal transition-colors",
+                      progressModel === pm
+                        ? "border-[var(--neon-cyan)]/60 bg-[var(--neon-cyan)]/10 text-foreground"
+                        : "border-border bg-background/30 text-muted-foreground hover:text-foreground/80",
+                    )}
+                  >
+                    {m.categoryForm.progressModelOption(pm)}
+                  </button>
+                ))}
+              </div>
+              <p className="text-muted-foreground text-[11px] leading-relaxed">
+                {m.categoryForm.progressModelHelp}
+              </p>
             </div>
           </div>
 

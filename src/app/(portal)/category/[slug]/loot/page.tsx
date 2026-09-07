@@ -12,8 +12,13 @@ import {
 } from "@/lib/server/auth";
 import { fetchLootWeekly } from "@/lib/supabase/loot-extras";
 import { LootWeeklyPanel } from "@/components/portal/loot-extras";
+import { fetchAppSetting } from "@/lib/supabase/app-settings";
 import {
-  currentWeekStart,
+  LOOT_WINDOW_WEEKS_KEY,
+  parseLootWindowWeeks,
+} from "@/lib/loot-window-keys";
+import {
+  openWeekStarts,
   formatUntilNextReset,
   formatWeekLabel,
 } from "@/lib/week-jst";
@@ -58,22 +63,31 @@ export default async function LootPage({
   // TODO #94 / A-4: 週制限の消化チェックは Sheets URL の有無にかかわらず
   // 使えるので、シート未設定 (onboarding) の画面でも上に出す。
   // 2026-08-30: BiS リンクは攻略情報タブ (LINKS の上) へ移動 (ユーザー要望)。
-  const weekStart = currentWeekStart();
-  const weeklyRows = await fetchLootWeekly(
-    category.id,
-    weekStart,
-    viewer.discordId,
+  // W-33 ② (2026-09-07): 開いている週は 1 週 (既定 / 7.x) か 2 週 (8.0 の
+  // トームストーン 2 週管理)。設定値で切り替える (コードに日付を焼かない)。
+  const windowWeeks = parseLootWindowWeeks(
+    await fetchAppSetting(LOOT_WINDOW_WEEKS_KEY),
+  );
+  const weeks = openWeekStarts(new Date(), windowWeeks);
+  const weeklyRowsByWeek = await Promise.all(
+    weeks.map((w) => fetchLootWeekly(category.id, w, viewer.discordId)),
   );
 
   const extras = (
     <div className="flex flex-col gap-3 px-3 md:px-0">
-      <LootWeeklyPanel
-        categoryId={category.id}
-        weekStart={weekStart}
-        weekLabel={formatWeekLabel(weekStart, locale)}
-        untilReset={formatUntilNextReset(new Date(), locale)}
-        rows={weeklyRows}
-      />
+      {weeks.map((week, i) => (
+        <LootWeeklyPanel
+          key={week}
+          categoryId={category.id}
+          weekStart={week}
+          weekLabel={formatWeekLabel(week, locale)}
+          untilReset={formatUntilNextReset(new Date(), locale)}
+          rows={weeklyRowsByWeek[i] ?? []}
+          // 先頭 (i=0) が今週。2 週目以降は「遡り取得できる前週」なので、
+          // 見出しと折りたたみキーを分けて今週と混同させない。
+          carryOver={i > 0}
+        />
+      ))}
     </div>
   );
 

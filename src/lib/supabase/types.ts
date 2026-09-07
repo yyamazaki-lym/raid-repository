@@ -1,3 +1,5 @@
+import { isProgressModel, type ProgressModel } from "@/lib/content-model";
+
 /**
  * Hand-rolled types matching `supabase/schema.sql`.
  *
@@ -33,6 +35,9 @@ export type CategoryRow = {
   loot_sheet_url: string | null;
   mitigation_sheet_url: string | null;
   mitigation_sheet_tabs?: string | null;
+  /** W-33 ① (2026-09-07)。既存 DB では列が無いので optional。 */
+  difficulty_label?: string | null;
+  progress_model?: string | null;
   mitigation_column_labels?: string | null;
   fflogs_min_difficulty?: number | null;
   discord_strategy_channel_id: string | null;
@@ -174,6 +179,18 @@ export type Category = {
    * key 未指定なら「enabled=true, label はデフォルト」を意味する。
    */
   tabConfig: Record<string, { enabled?: boolean; label?: string | null }>;
+  /**
+   * W-33 ① (2026-09-07): 表示用の難易度ラベル (自由記述、24 文字)。
+   * null / 空なら名前から推測する (`resolveDifficultyLabel`)。8.0 の
+   * 新難易度は名称が未発表なので enum にせず自由記述で吸収する。
+   */
+  difficultyLabel: string | null;
+  /**
+   * W-33 ① (2026-09-07): 練習ログの進行モデル。`auto` = 名前から推測
+   * (従来挙動)、`floors` = 層管理、`phases` = フェーズ管理。名前が辞書に
+   * 無いコンテンツ (8.0 の新難易度・英語名で登録した等) を人が直せる。
+   */
+  progressModel: ProgressModel;
 };
 
 // Phase 17 (2026-05-13): SubTabs の固定 id 一覧。CHECK 制約と一致させる。
@@ -240,6 +257,9 @@ export function rowToCategory(row: CategoryRow): Category {
       row.tab_config && typeof row.tab_config === "object"
         ? (row.tab_config as Category["tabConfig"])
         : {},
+    difficultyLabel: row.difficulty_label ?? null,
+    // 列が無い / 値が壊れている DB では 'auto' (従来挙動) に倒す。
+    progressModel: isProgressModel(row.progress_model) ? row.progress_model : "auto",
   };
 }
 

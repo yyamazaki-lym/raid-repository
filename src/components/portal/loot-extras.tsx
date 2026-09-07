@@ -89,12 +89,24 @@ export function LootWeeklyPanel({
   weekLabel,
   untilReset,
   rows,
+  carryOver = false,
 }: {
   categoryId: string;
   weekStart: string;
   weekLabel: string;
   untilReset: string;
   rows: LootWeeklyRow[];
+  /**
+   * 前週 (遡り取得できる週) のパネルか (W-33 ②、2026-09-07)。
+   *
+   * 8.0 でトームストーンが 2 週管理になり前週分を遡って取得できるため、
+   * 消化ウィンドウを 2 週にすると今週と前週の 2 枚が並ぶ。前週側は
+   *   - 見出しに「前週 (遡り)」バッジを出す
+   *   - 「次のリセットまで」を出さない (今週の話なので前週には無関係)
+   *   - 折りたたみキーを分ける (2 枚が連動して開閉しないように)
+   * の 3 点で区別する。
+   */
+  carryOver?: boolean;
 }) {
   const router = useRouter();
   const m = useMessages();
@@ -122,7 +134,11 @@ export function LootWeeklyPanel({
 
   // 折りたたみ状態は localStorage で永続 (他セクションと同じ use-collapsible)。
   const [collapsed, setCollapsed] = useCollapsible(
-    "raid-repo:loot-weekly-collapsed",
+    carryOver
+      ? "raid-repo:loot-weekly-collapsed:carryover"
+      : "raid-repo:loot-weekly-collapsed",
+    // 前週は既定で畳む — 普段見るのは今週で、遡りは必要なときだけ開く。
+    carryOver,
   );
 
   return (
@@ -148,10 +164,18 @@ export function LootWeeklyPanel({
           <h2 className="font-display text-base whitespace-nowrap">
             {m.lootWeekly.title}
           </h2>
+          {carryOver && (
+            <span className="rounded-sm border border-amber-400/45 bg-amber-400/10 px-1.5 py-0.5 font-mono text-[10px] whitespace-nowrap text-amber-200">
+              {m.lootWeekly.carryOver}
+            </span>
+          )}
           <span className="flex flex-wrap gap-x-1.5 font-mono text-[10px] tracking-[0.14em] text-muted-foreground">
             {/* 個々の断片が語中で折れないように分割しておく。 */}
             <span className="whitespace-nowrap">{weekLabel}</span>
-            <span className="whitespace-nowrap">{untilReset}</span>
+            {/* 「次のリセットまで」は今週の話。前週のパネルには出さない。 */}
+            {!carryOver && (
+              <span className="whitespace-nowrap">{untilReset}</span>
+            )}
           </span>
         </button>
         <span

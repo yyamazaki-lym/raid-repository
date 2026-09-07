@@ -7,7 +7,7 @@ import {
   fetchReportVideoLinks,
   fetchCategoryPhaseTotals,
 } from "@/lib/supabase/fflogs-fights";
-import { isUltimateContent } from "@/lib/content-groups";
+import { resolveProgressModel } from "@/lib/content-model";
 import { getMessages } from "@/lib/i18n/server";
 import { LogsView } from "./logs-view";
 
@@ -48,7 +48,11 @@ export default async function LogsPage({
   // 監査 P3-m: enabled=false のタブはナビから除外されるが直 URL では描画される。
   if (category.tabConfig?.["logs"]?.enabled === false) notFound();
 
-  const ultimate = isUltimateContent(category.name);
+  // W-33 ① (2026-09-07): カテゴリの明示指定を優先し、'auto' のときだけ
+  // 名前から推測する。8.0 の新難易度は名称未発表なので、名前の辞書に
+  // 頼りきらず人が指定できる経路を残す。
+  const ultimate =
+    resolveProgressModel(category.progressModel, category.name) === "phases";
   // フェーズ滞在時間の全件集計 (2026-09-07) は明細と独立なので並列に取る。
   const [{ fights, totalPulls, totalClears, truncated }, phaseTotalsAll] =
     await Promise.all([
@@ -74,6 +78,8 @@ export default async function LogsPage({
       totalPulls={totalPulls}
       totalClears={totalClears}
       truncated={truncated}
+      progressModel={category.progressModel}
+      difficultyLabel={category.difficultyLabel}
       phaseTotalsAll={phaseTotalsAll}
       videoLinks={videoLinks}
       failedSyncs={failedSyncs}

@@ -394,6 +394,11 @@ export type UpdateNativeScheduleMemberPatch = {
   displayName?: string;
   sortOrder?: number;
   isActive?: boolean;
+  /**
+   * W-33 ③ (2026-09-07): データセンター名 (自由記述、20 文字)。空文字列は
+   * NULL に正規化 (= 未設定)。DC 名は運営の再編で増減するので enum にしない。
+   */
+  dataCenter?: string | null;
 };
 
 export async function updateNativeScheduleMemberAction(
@@ -421,6 +426,13 @@ export async function updateNativeScheduleMemberAction(
   }
   if (patch.isActive !== undefined) {
     update.is_active = !!patch.isActive;
+  }
+  if (patch.dataCenter !== undefined) {
+    const v = (patch.dataCenter ?? "").trim();
+    if (v.length > 20) {
+      return { ok: false, reason: "データセンター名は 20 文字以内です" };
+    }
+    update.data_center = v || null;
   }
   if (Object.keys(update).length === 0) {
     return { ok: false, reason: "更新項目がありません" };

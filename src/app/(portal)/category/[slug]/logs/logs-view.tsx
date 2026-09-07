@@ -48,7 +48,13 @@ import {
   type PhaseTimeTotal,
   type PhaseFirstReach,
 } from "@/lib/fflogs-fight-detail";
-import { isSavageContent, isUltimateContent } from "@/lib/content-groups";
+import {
+  difficultyToneClass,
+  resolveDifficultyLabel,
+  resolveFloorCount,
+  resolveProgressModel,
+  type ProgressModel,
+} from "@/lib/content-model";
 import { humanizeFflogsSyncReason } from "@/lib/fflogs-sync-reason";
 import type { ReportVideoLink } from "@/lib/supabase/fflogs-fights";
 import {
@@ -105,6 +111,8 @@ export function LogsView({
   totalPulls,
   totalClears,
   truncated,
+  progressModel,
+  difficultyLabel,
   phaseTotalsAll = null,
   videoLinks,
   failedSyncs,
@@ -129,6 +137,13 @@ export function LogsView({
   totalPulls: number;
   totalClears: number;
   truncated: boolean;
+  /**
+   * W-33 ① (2026-09-07): 進行モデルの明示指定。`auto` のときだけ名前から
+   * 推測する (8.0 の新難易度は名称未発表なので人が指定できる経路を残す)。
+   */
+  progressModel: ProgressModel;
+  /** W-33 ① (2026-09-07): 表示用の難易度ラベル (空なら名前から推測)。 */
+  difficultyLabel: string | null;
   videoLinks: Record<string, ReportVideoLink[]>;
   failedSyncs: Array<{
     reportCode: string;
@@ -233,9 +248,12 @@ export function LogsView({
   const [offsetTarget, setOffsetTarget] = useState<OffsetTarget | null>(null);
 
   // フェーズ (P1〜) 単位で管理するのは実質「絶」だけ (2026-08-28 指摘)。
+  // 2026-09-07 (W-33 ①): カテゴリの明示指定 (`progress_model`) が
+  // 名前の推測より優先される。8.0 の新難易度は名称が未発表で辞書に
+  // 足せないため、admin が「フェーズ管理」を選べる経路を用意した。
   const showPhase = useMemo(
-    () => isUltimateContent(categoryName),
-    [categoryName],
+    () => resolveProgressModel(progressModel, categoryName) === "phases",
+    [progressModel, categoryName],
   );
   // 絶はフェーズ (P1〜) で管理するので層マップを作らない (別コンテンツの
   // 混入で誤った「◯層」表示が付くのを防ぐ)。零式ティアのみ層モデル。
@@ -245,8 +263,12 @@ export function LogsView({
     () =>
       showPhase
         ? null
-        : buildFloorMap(fights, isSavageContent(categoryName) ? 4 : null, locale),
-    [showPhase, fights, categoryName, locale],
+        : buildFloorMap(
+            fights,
+            resolveFloorCount(progressModel, categoryName),
+            locale,
+          ),
+    [showPhase, fights, progressModel, categoryName, locale],
   );
   // クラスタ外 (同じレポートに混ざった別コンテンツの戦闘) は集計から除外。
   const tierFights = useMemo(
@@ -952,6 +974,28 @@ export function LogsView({
           <span className="font-mono text-[10px] tracking-[0.18em] text-muted-foreground">
             {categoryName}
           </span>
+          {/* W-33 ① (2026-09-07): 難易度バッジ。明示設定が無ければ名前から
+              推測する (絶 / 零式)。8.0 の新難易度は名前から拾えないので、
+              コンテンツ編集で入れたラベルがそのまま出る。 */}
+          {(() => {
+            const label = resolveDifficultyLabel(
+              difficultyLabel,
+              categoryName,
+              locale,
+            );
+            if (!label) return null;
+            return (
+              <span
+                className={
+                  "rounded-sm border px-1.5 py-0.5 font-mono text-[10px] whitespace-nowrap " +
+                  difficultyToneClass(label)
+                }
+                title={m.logs.difficultyTitle}
+              >
+                {label}
+              </span>
+            );
+          })()}
         </div>
         <span className="flex items-center gap-2">
           {difficultyButton}

@@ -83,6 +83,10 @@ import {
 } from "./discord-roles";
 import { assertAdminResult } from "./auth";
 import { dbError } from "./db-error";
+import {
+  DIFFICULTY_LABEL_MAX_LENGTH,
+  isProgressModel,
+} from "@/lib/content-model";
 import { fflogsLogDedupeKey, parseFflogsReportCode } from "@/lib/fflogs-url";
 import {
   detectMitigationIcons,
@@ -185,6 +189,19 @@ export type CategoryUpdatePatch = Partial<{
    * 既存値を完全置換する patch (差分マージはしない)。
    */
   tab_config: Record<string, { enabled?: boolean; label?: string | null }>;
+  /**
+   * W-33 ① (2026-09-07): 表示用の難易度ラベル (自由記述、24 文字)。
+   * 空文字列は NULL に正規化 (= 名前から推測)。8.0「白銀のワンダラー」の
+   * 新難易度は 2026-09 時点で名称未発表なので、enum ではなく自由記述で
+   * 受ける (調査ノート第 4 回 W-33)。
+   */
+  difficulty_label: string | null;
+  /**
+   * W-33 ① (2026-09-07): 練習ログの進行モデル。'auto' (名前から推測 =
+   * 従来) / 'floors' (層管理) / 'phases' (フェーズ管理)。名前が辞書に
+   * 無いコンテンツを人が直せるようにするための上書き。
+   */
+  progress_model: string;
 }>;
 
 /**
@@ -255,10 +272,29 @@ export async function updateCategoryAction(
   const auth = await assertAdminResult();
   if (!auth.ok) return { ok: false, reason: auth.reason };
 
+  // W-33 ① (2026-09-07): 難易度 / 進行モデルは自由記述と 3 値なので、
+  // DB の CHECK に頼る前にここで正規化する (client からの直呼びもあり得る)。
+  const normalized: CategoryUpdatePatch = { ...patch };
+  if (normalized.difficulty_label !== undefined) {
+    const v = (normalized.difficulty_label ?? "").trim();
+    if (v.length > DIFFICULTY_LABEL_MAX_LENGTH) {
+      return {
+        ok: false,
+        reason: `難易度ラベルは ${DIFFICULTY_LABEL_MAX_LENGTH} 文字以内です`,
+      };
+    }
+    normalized.difficulty_label = v || null;
+  }
+  if (normalized.progress_model !== undefined) {
+    if (!isProgressModel(normalized.progress_model)) {
+      return { ok: false, reason: "進行モデルの指定が不正です" };
+    }
+  }
+
   const supabase = await createClient();
   const { error } = await supabase
     .from("categories")
-    .update(patch)
+    .update(normalized)
     .eq("id", id);
   if (error) return { ok: false, reason: dbError("カテゴリ更新", error) };
   revalidateCategoryPages();
