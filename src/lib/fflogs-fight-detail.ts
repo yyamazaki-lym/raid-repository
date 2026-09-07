@@ -384,3 +384,51 @@ function numberOrNull(v: unknown): number | null {
 function stringOrNull(v: unknown): string | null {
   return typeof v === "string" && v.trim() !== "" ? v.trim() : null;
 }
+
+/** 表示用: あるフェーズに初めて到達した時点 (2026-09-07)。 */
+export type PhaseFirstReach = {
+  /** フェーズ ID (P2 以降。P1 は 1 本目で必ず到達するので出さない)。 */
+  id: number;
+  /** そこまでの累計戦闘時間 (ms、到達した pull 自身を含む)。 */
+  ms: number;
+  /** 到達したのが何本目の pull か (1 始まり)。 */
+  pulls: number;
+  /** その pull のセッション日 (`YYYY-MM-DD`)。取れなければ null。 */
+  date: string | null;
+};
+
+/**
+ * 各フェーズに **初めて到達するまで** の累計戦闘時間 / pull 数 / 日付
+ * (2026-09-07 実機要望「フェーズ滞在時間の下に、はじめて次のフェーズに到達
+ * までの時間も表示できるか」)。
+ *
+ * 入力は pull の集合 (順不同で良い — ここで開始時刻の昇順に並べ替える)。
+ * `reachedPhase` はその pull で到達した最大フェーズ (FFLogs の `lastPhase`、
+ * 無ければフェーズ遷移の最大 ID)。P2 以降について「初めてその値に達した
+ * pull」を 1 つずつ記録する。1 本の pull で P2 と P3 を飛ばして到達した場合は
+ * 両方ともその pull で記録する (実際に通過しているため)。
+ */
+export function firstPhaseReaches(
+  fights: ReadonlyArray<{
+    startMs: number;
+    durationMs: number;
+    reachedPhase: number | null;
+    date: string | null;
+  }>,
+): PhaseFirstReach[] {
+  const sorted = [...fights].sort((a, b) => a.startMs - b.startMs);
+  const out = new Map<number, PhaseFirstReach>();
+  let cumulativeMs = 0;
+  let pulls = 0;
+  for (const f of sorted) {
+    pulls += 1;
+    cumulativeMs += Math.max(0, f.durationMs);
+    const reached = f.reachedPhase;
+    if (reached === null || !Number.isFinite(reached)) continue;
+    for (let p = 2; p <= reached; p++) {
+      if (out.has(p)) continue;
+      out.set(p, { id: p, ms: cumulativeMs, pulls, date: f.date });
+    }
+  }
+  return [...out.values()].sort((a, b) => a.id - b.id);
+}

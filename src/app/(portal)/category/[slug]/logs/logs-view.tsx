@@ -79,6 +79,7 @@ import {
   type PhaseSpan,
   type WipeCauseCount,
   type PhaseTimeTotal,
+  type PhaseFirstReach,
 } from "@/lib/fflogs-fight-detail";
 import { isSavageContent, isUltimateContent } from "@/lib/content-groups";
 import { humanizeFflogsSyncReason } from "@/lib/fflogs-sync-reason";
@@ -139,7 +140,11 @@ export function LogsView({
    * カテゴリ全 pull のフェーズ滞在時間 (2026-09-07)。絶のページで server が
    * 全件から集計して渡す。null なら表示中の明細から計算する (従来)。
    */
-  phaseTotalsAll?: { totals: PhaseTimeTotal[]; pulls: number } | null;
+  phaseTotalsAll?: {
+    totals: PhaseTimeTotal[];
+    pulls: number;
+    firstReach: PhaseFirstReach[];
+  } | null;
   /** 明細。件数が多いカテゴリでは直近分だけが渡る (`truncated`)。 */
   fights: FightRow[];
   /** カテゴリ全体の pull 数 / クリア数 (明細が打ち切られていても正確)。 */
@@ -1077,6 +1082,7 @@ export function LogsView({
           {phaseTotals.length > 1 && (
             <PhaseTimeCard
               totals={phaseTotals}
+              firstReach={phaseTotalsAll?.firstReach ?? []}
               truncated={truncated}
               allPulls={phaseTotalsAll?.pulls ?? null}
               totalPulls={shownTotalPulls}
@@ -1197,7 +1203,19 @@ export function LogsView({
                 <span className="w-14 shrink-0 text-right font-mono text-[11px] text-muted-foreground tabular-nums">
                   {m.logs.pulls(t.pulls)}
                 </span>
-                <span className="w-3 shrink-0">
+                {/* 2026-09-07 実機質問「右端のフラグの意味は」。読み上げ用の
+                    aria しか無く hover で何も出なかったので、包む span に
+                    title を付ける (lucide のアイコンは title prop を取らない)。 */}
+                <span
+                  className="w-3 shrink-0"
+                  title={
+                    t.isRecord
+                      ? t.isFirstClear
+                        ? m.logs.firstKillFlagTitle
+                        : m.logs.recordFlagTitle
+                      : undefined
+                  }
+                >
                   {t.isRecord && (
                     <Flag
                       className={
@@ -1449,11 +1467,14 @@ function WipeCausesCard({
  */
 function PhaseTimeCard({
   totals,
+  firstReach,
   truncated,
   allPulls,
   totalPulls,
 }: {
   totals: Array<{ id: number; ms: number; share: number }>;
+  /** 各フェーズへの初到達 (2026-09-07)。空なら節ごと出さない。 */
+  firstReach: PhaseFirstReach[];
   truncated: boolean;
   /** 全件集計のときの母数 (pull 数)。null なら表示中の明細からの集計。 */
   allPulls: number | null;
@@ -1516,6 +1537,38 @@ function PhaseTimeCard({
           </li>
         ))}
       </ul>
+      {/* 2026-09-07 実機要望: 各フェーズに初めて到達するまでの累計戦闘時間。
+          滞在時間 (どこで時間を使ったか) の下に、進捗の節目を並べる。 */}
+      {firstReach.length > 0 && (
+        <div className="mt-1 flex flex-col gap-0.5 border-t border-border/30 pt-1">
+          <span
+            className="font-mono text-[9px] tracking-[0.12em] text-muted-foreground/70 uppercase"
+            title={m.logs.phaseFirstReachHint}
+          >
+            {m.logs.phaseFirstReachTitle}
+          </span>
+          <ul
+            className="flex flex-wrap gap-x-2 gap-y-0.5"
+            aria-label={m.logs.phaseFirstReachAria}
+          >
+            {firstReach.map((r) => (
+              <li
+                key={r.id}
+                className="inline-flex items-baseline gap-1 whitespace-nowrap font-mono text-[10px] tabular-nums"
+                title={r.date ?? undefined}
+              >
+                <span className={PHASE_TEXT_TONE[r.id] ?? "text-foreground/75"}>
+                  P{r.id}
+                </span>
+                <span className="text-foreground/80">{formatMs(r.ms)}</span>
+                <span className="text-muted-foreground/80">
+                  ({m.logs.pulls(r.pulls)})
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }

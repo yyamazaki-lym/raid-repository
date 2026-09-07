@@ -230,6 +230,29 @@ try {
   ]);
   check("区間なしは空", m.phaseTimeTotals([null, undefined]), []);
 
+  console.log("\n[フェーズ初到達]");
+  const reach = m.firstPhaseReaches([
+    // 1 本目 P1 まで (10 分) → 2 本目 P2 (5 分) → 3 本目 P1 に戻る → 4 本目 P4 まで一気に
+    { startMs: 400, durationMs: 600_000, reachedPhase: 1, date: "2026-01-01" },
+    { startMs: 100, durationMs: 300_000, reachedPhase: 1, date: "2026-01-01" },
+    { startMs: 900, durationMs: 120_000, reachedPhase: 2, date: "2026-01-02" },
+    { startMs: 1200, durationMs: 60_000, reachedPhase: 1, date: "2026-01-02" },
+    { startMs: 1500, durationMs: 240_000, reachedPhase: 4, date: "2026-01-03" },
+  ]);
+  check("開始時刻順に累積し、飛ばした P3 もその pull で記録", reach, [
+    { id: 2, ms: 1_020_000, pulls: 3, date: "2026-01-02" },
+    { id: 3, ms: 1_320_000, pulls: 5, date: "2026-01-03" },
+    { id: 4, ms: 1_320_000, pulls: 5, date: "2026-01-03" },
+  ]);
+  check("到達フェーズ不明の pull は数だけ進む", m.firstPhaseReaches([
+    { startMs: 1, durationMs: 1000, reachedPhase: null, date: null },
+    { startMs: 2, durationMs: 1000, reachedPhase: 2, date: "2026-02-02" },
+  ]), [{ id: 2, ms: 2000, pulls: 2, date: "2026-02-02" }]);
+  check("P1 止まりなら空", m.firstPhaseReaches([
+    { startMs: 1, durationMs: 1000, reachedPhase: 1, date: null },
+  ]), []);
+  check("空入力", m.firstPhaseReaches([]), []);
+
   console.log("\n[書式]");
   check("m:ss", m.formatMs(125_400), "2:05");
   check("h:mm:ss", m.formatMs(3_725_000), "1:02:05");
