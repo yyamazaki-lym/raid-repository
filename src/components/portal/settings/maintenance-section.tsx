@@ -92,7 +92,7 @@ export function MaintenanceSection({
     <section className="flex flex-col gap-2">
       <header className="flex items-center gap-2 border-b border-border/30 pb-2">
         <Wrench className="h-3.5 w-3.5 text-orange-300" aria-hidden />
-        <span className="font-mono text-[10px] tracking-[0.22em] text-muted-foreground uppercase">
+        <span className="font-mono text-[11px] tracking-[0.22em] text-muted-foreground uppercase">
           {m.maintenanceSchedule.title}
         </span>
       </header>
@@ -121,7 +121,7 @@ export function MaintenanceSection({
                 aria-label={m.maintenanceSchedule.startLabel}
                 className="h-7 font-mono text-[11px] sm:w-44"
               />
-              <span className="hidden shrink-0 text-[10px] text-muted-foreground sm:inline">
+              <span className="hidden shrink-0 text-[12px] text-muted-foreground sm:inline">
                 〜
               </span>
               <Input
@@ -159,7 +159,7 @@ export function MaintenanceSection({
       {/* 保存済みの内容を人が読める形で見せる (datetime-local は
           ブラウザ既定の書式で出るので、確認用に整形版も並べる)。 */}
       {loaded && rows.length > 0 && !dirty && (
-        <p className="font-mono text-[10px] leading-relaxed text-muted-foreground/80">
+        <p className="font-mono text-[12px] leading-relaxed text-muted-foreground/80">
           {rows
             .filter((r) => r.start && r.end)
             .map((r) => formatMaintenanceRange(r, locale))
@@ -174,7 +174,7 @@ export function MaintenanceSection({
           size="sm"
           onClick={add}
           disabled={pending || !loaded}
-          className="gap-1.5 text-[10px] tracking-normal"
+          className="gap-1.5 text-[11px] tracking-normal"
         >
           <Plus className="h-3 w-3" aria-hidden />
           {m.maintenanceSchedule.add}
@@ -184,7 +184,7 @@ export function MaintenanceSection({
           size="sm"
           onClick={save}
           disabled={pending || !loaded || !dirty}
-          className="gap-1.5 text-[10px] tracking-normal"
+          className="gap-1.5 text-[11px] tracking-normal"
         >
           <Save className="h-3 w-3" aria-hidden />
           {m.common.save}

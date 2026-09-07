@@ -70,7 +70,7 @@ export function LootWindowSection({
     <section className="flex flex-col gap-2">
       <header className="flex items-center gap-2 border-b border-border/30 pb-2">
         <CalendarRange className="h-3.5 w-3.5 text-amber-300" aria-hidden />
-        <span className="font-mono text-[10px] tracking-[0.22em] text-muted-foreground uppercase">
+        <span className="font-mono text-[11px] tracking-[0.22em] text-muted-foreground uppercase">
           {m.lootWindow.title}
         </span>
       </header>
@@ -96,12 +96,12 @@ export function LootWindowSection({
           </button>
         ))}
         {!loaded && (
-          <span className="text-[10px] text-muted-foreground/80">
+          <span className="text-[12px] text-muted-foreground/80">
             {m.common.loading}
           </span>
         )}
       </div>
-      <p className="text-[10px] leading-relaxed text-muted-foreground/80">
+      <p className="text-[12px] leading-relaxed text-muted-foreground/80">
         {weeks === 1 ? m.lootWindow.oneWeekHint : m.lootWindow.twoWeeksHint}
       </p>
     </section>

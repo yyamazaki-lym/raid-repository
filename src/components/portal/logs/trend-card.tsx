@@ -52,11 +52,11 @@ export function TrendCard({
   return (
     <section className="flex flex-col gap-2 rounded-md border border-border/40 bg-secondary/10 px-3 py-2">
       <header className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5">
-        <h3 className="inline-flex items-center gap-1.5 font-mono text-[10px] tracking-[0.16em] text-muted-foreground uppercase">
+        <h3 className="inline-flex items-center gap-1.5 font-mono text-[11px] tracking-[0.16em] text-muted-foreground uppercase">
           <TrendingUp className="h-3 w-3 text-[var(--neon-cyan)]" aria-hidden />
           {m.trend.title}
         </h3>
-        <span className="font-mono text-[10px] text-muted-foreground tabular-nums">
+        <span className="font-mono text-[12px] text-muted-foreground tabular-nums">
           {m.trend.sessions(points.length)} ·{" "}
           {m.trend.cumulative(last.cumulativePulls)}
           {truncated ? ` · ${m.trend.truncated}` : ""}
@@ -119,7 +119,7 @@ export function TrendCard({
         )}
       </svg>
 
-      <p className="flex flex-wrap items-center gap-x-3 gap-y-0.5 font-mono text-[10px] tabular-nums">
+      <p className="flex flex-wrap items-center gap-x-3 gap-y-0.5 font-mono text-[12px] tabular-nums">
         <span className="text-[var(--neon-cyan)]">
           {m.trend.bestProgress(Math.round(last.bestProgress))}
         </span>

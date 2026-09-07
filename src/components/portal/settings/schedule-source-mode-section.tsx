@@ -101,7 +101,7 @@ export function ScheduleSourceModeSection({
           className="h-3.5 w-3.5 text-muted-foreground"
           aria-hidden
         />
-        <span className="font-mono text-[10px] tracking-[0.22em] text-muted-foreground uppercase">
+        <span className="font-mono text-[11px] tracking-[0.22em] text-muted-foreground uppercase">
           Schedule Source Mode
         </span>
       </header>
@@ -133,7 +133,7 @@ export function ScheduleSourceModeSection({
               />
               <div className="flex flex-col gap-0.5">
                 <span className="text-xs text-foreground">{opt.label}</span>
-                <span className="text-[10px] leading-relaxed text-muted-foreground">
+                <span className="text-[12px] leading-relaxed text-muted-foreground">
                   {opt.description}
                 </span>
               </div>
@@ -142,7 +142,7 @@ export function ScheduleSourceModeSection({
         })}
       </fieldset>
       {!canEdit && (
-        <p className="text-[10px] text-muted-foreground/80">
+        <p className="text-[12px] text-muted-foreground/80">
           {m.scheduleSourceMode.adminRequired}
         </p>
       )}

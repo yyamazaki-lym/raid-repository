@@ -282,12 +282,12 @@ export function SessionMemoPopover({
                   className="h-3 w-3 text-[var(--neon-violet)]"
                   aria-hidden
                 />
-                <p className="font-mono text-[10px] tracking-[0.22em] text-[var(--neon-violet)] uppercase">
+                <p className="font-mono text-[11px] tracking-[0.22em] text-[var(--neon-violet)] uppercase">
                   {displayDate}
                 </p>
                 <span
                   aria-hidden
-                  className="font-mono text-[10px] tracking-[0.18em] text-[var(--neon-violet)]/55 uppercase"
+                  className="font-mono text-[11px] tracking-[0.18em] text-[var(--neon-violet)]/55 uppercase"
                 >
                   · memo
                 </span>
@@ -591,7 +591,7 @@ function MemoList({
                       type="button"
                       onClick={cancelEdit}
                       disabled={busy}
-                      className="inline-flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[10px] whitespace-nowrap tracking-normal text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground disabled:opacity-50"
+                      className="inline-flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] whitespace-nowrap tracking-normal text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground disabled:opacity-50"
                     >
                       <X className="h-3 w-3" aria-hidden />
                       {msg.common.cancel}
@@ -600,7 +600,7 @@ function MemoList({
                       type="button"
                       onClick={() => saveEdit(m.id)}
                       disabled={busy}
-                      className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-[var(--neon-cyan)]/45 bg-[var(--neon-cyan)]/10 px-2.5 py-1.5 text-[10px] whitespace-nowrap tracking-normal text-[var(--neon-cyan)] transition-colors hover:border-[var(--neon-cyan)]/70 hover:bg-[var(--neon-cyan)]/18 disabled:opacity-50"
+                      className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-[var(--neon-cyan)]/45 bg-[var(--neon-cyan)]/10 px-2.5 py-1.5 text-[11px] whitespace-nowrap tracking-normal text-[var(--neon-cyan)] transition-colors hover:border-[var(--neon-cyan)]/70 hover:bg-[var(--neon-cyan)]/18 disabled:opacity-50"
                     >
                       <Save className="h-3 w-3" aria-hidden />
                       {msg.common.save}
@@ -618,7 +618,7 @@ function MemoList({
                           </span>
                         )}
                       </span>
-                      <span className="font-mono text-[9px] tracking-wide text-muted-foreground/65">
+                      <span className="font-mono text-[11px] tracking-wide text-muted-foreground/65">
                         {formatRelativeTime(m.createdAt, locale)}
                       </span>
                     </div>
@@ -654,7 +654,7 @@ function MemoList({
       )}
 
       <div className="flex flex-col gap-1.5 border-t border-border/40 pt-2.5">
-        <div className="flex items-center gap-1.5 text-[10px] tracking-normal text-muted-foreground">
+        <div className="flex items-center gap-1.5 text-[11px] tracking-normal text-muted-foreground">
           <MessageSquarePlus
             className="h-3 w-3 text-[var(--neon-violet)]/80"
             aria-hidden
@@ -685,7 +685,7 @@ function MemoList({
             type="button"
             onClick={submitDraft}
             disabled={busy || draftBody.trim().length === 0}
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-[var(--neon-violet)]/50 bg-[var(--neon-violet)]/10 px-3 py-1.5 text-[10px] whitespace-nowrap tracking-normal text-[var(--neon-violet)] transition-colors hover:border-[var(--neon-violet)]/70 hover:bg-[var(--neon-violet)]/18 disabled:opacity-50"
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-[var(--neon-violet)]/50 bg-[var(--neon-violet)]/10 px-3 py-1.5 text-[11px] whitespace-nowrap tracking-normal text-[var(--neon-violet)] transition-colors hover:border-[var(--neon-violet)]/70 hover:bg-[var(--neon-violet)]/18 disabled:opacity-50"
           >
             <Send className="h-3 w-3" aria-hidden />
             {msg.memo.post}
@@ -700,7 +700,7 @@ function MemoList({
           listed with open + × buttons (delete only, no edit-in-place),
           and a single input + 追加 button appends new manual entries. */}
       <div className="flex flex-col gap-1.5 border-t border-border/40 pt-2.5">
-        <div className="flex items-center gap-1.5 font-mono text-[10px] tracking-[0.22em] text-muted-foreground uppercase">
+        <div className="flex items-center gap-1.5 font-mono text-[11px] tracking-[0.22em] text-muted-foreground uppercase">
           <BarChart3
             className="h-3 w-3 text-amber-300/85"
             aria-hidden
@@ -709,7 +709,7 @@ function MemoList({
           {displayedLogs.length > 0 && (
             <span
               aria-hidden
-              className="font-mono text-[10px] tracking-[0.18em] text-amber-300/70"
+              className="font-mono text-[11px] tracking-[0.18em] text-amber-300/70"
             >
               {msg.fflogsLink.count(displayedLogs.length)}
             </span>
@@ -732,7 +732,7 @@ function MemoList({
                   </span>
                   <span
                     aria-hidden
-                    className="font-mono text-[9px] tracking-[0.18em] text-muted-foreground/70 uppercase"
+                    className="font-mono text-[11px] tracking-[0.18em] text-muted-foreground/70 uppercase"
                   >
                     {entry.source}
                   </span>
@@ -741,7 +741,7 @@ function MemoList({
                       href={safe}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex h-5 items-center gap-1 rounded px-1.5 text-[10px] text-amber-300/85 transition-colors hover:bg-amber-400/15 hover:text-amber-200"
+                      className="inline-flex h-5 items-center gap-1 rounded px-1.5 text-[11px] text-amber-300/85 transition-colors hover:bg-amber-400/15 hover:text-amber-200"
                       title={msg.common.openInNewTab}
                     >
                       <ExternalLink className="h-2.5 w-2.5" aria-hidden />
@@ -779,7 +779,7 @@ function MemoList({
             type="button"
             onClick={() => void handleAddLogs()}
             disabled={logsBusy || newLogsInput.trim().length === 0}
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-amber-400/45 bg-amber-400/10 px-3 py-1.5 text-[10px] whitespace-nowrap tracking-normal text-amber-200 transition-colors hover:border-amber-400/70 hover:bg-amber-400/18 disabled:opacity-50"
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-amber-400/45 bg-amber-400/10 px-3 py-1.5 text-[11px] whitespace-nowrap tracking-normal text-amber-200 transition-colors hover:border-amber-400/70 hover:bg-amber-400/18 disabled:opacity-50"
           >
             <Save className="h-3 w-3" aria-hidden />
             {msg.common.add}

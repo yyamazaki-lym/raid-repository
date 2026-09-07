@@ -142,7 +142,7 @@ export function NextSessionCard({
           <span className="font-medium">
             {m.maintenanceSchedule.conflictTitle}
           </span>
-          <span className="font-mono text-[10px] opacity-90">
+          <span className="font-mono text-[12px] opacity-90">
             {conflicts
               .map(
                 (w) =>
@@ -254,7 +254,7 @@ function Frame({
 
 function Label({ children }: { children: React.ReactNode }) {
   return (
-    <span className="text-[10px] font-medium tracking-normal text-muted-foreground">
+    <span className="text-[11px] font-medium tracking-normal text-muted-foreground">
       {children}
     </span>
   );

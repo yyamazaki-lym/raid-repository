@@ -202,19 +202,19 @@ export function NativeDiscordNotifySection({
     <section className="flex flex-col gap-3">
       <header className="flex items-center gap-2 border-b border-border/30 pb-2">
         <Bell className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
-        <span className="font-mono text-[10px] tracking-[0.22em] text-muted-foreground uppercase">
+        <span className="font-mono text-[11px] tracking-[0.22em] text-muted-foreground uppercase">
           Native Schedule Discord Notify
         </span>
       </header>
 
-      <p className="text-[10px] leading-relaxed text-muted-foreground">
+      <p className="text-[12px] leading-relaxed text-muted-foreground">
         {m.nativeDiscordNotify.description}
       </p>
 
       <div className="flex items-center justify-between gap-2 rounded-md border border-border/30 bg-secondary/20 px-3 py-2">
         <div className="flex flex-col gap-0.5">
           <span className="text-xs">{m.nativeDiscordNotify.dailyLabel}</span>
-          <span className="text-[10px] text-muted-foreground/80">
+          <span className="text-[12px] text-muted-foreground/80">
             {enabled
               ? m.nativeDiscordNotify.dailyOn(
                   String(parseInt(hour, 10)).padStart(2, "0"),
@@ -230,7 +230,7 @@ export function NativeDiscordNotifySection({
             onChange={(e) => onToggle(e.target.checked)}
             className="h-4 w-4 cursor-pointer accent-[var(--neon-cyan)]"
           />
-          <span className="font-mono text-[10px] tracking-[0.18em] text-muted-foreground uppercase">
+          <span className="font-mono text-[11px] tracking-[0.18em] text-muted-foreground uppercase">
             {enabled ? "ON" : "OFF"}
           </span>
         </label>
@@ -239,7 +239,7 @@ export function NativeDiscordNotifySection({
       <div className="flex items-center justify-between gap-2 rounded-md border border-border/30 bg-secondary/20 px-3 py-2">
         <div className="flex flex-col gap-0.5">
           <span className="text-xs">{m.nativeDiscordNotify.hourLabel}</span>
-          <span className="text-[10px] text-muted-foreground/80">
+          <span className="text-[12px] text-muted-foreground/80">
             {m.nativeDiscordNotify.hourDescription}
           </span>
         </div>
@@ -258,7 +258,7 @@ export function NativeDiscordNotifySection({
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <label className="text-[10px] tracking-normal text-muted-foreground">
+        <label className="text-[11px] tracking-normal text-muted-foreground">
           {m.nativeDiscordNotify.channelLabel}
         </label>
         <div className="flex items-center gap-1.5">
@@ -277,7 +277,7 @@ export function NativeDiscordNotifySection({
               size="sm"
               disabled={!loaded || pending || !channelDirty}
               onClick={onSaveChannel}
-              className="h-7 gap-1 px-3 text-[10px] tracking-normal"
+              className="h-7 gap-1 px-3 text-[11px] tracking-normal"
             >
               {pending ? (
                 <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
@@ -291,7 +291,7 @@ export function NativeDiscordNotifySection({
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <label className="text-[10px] tracking-normal text-muted-foreground">
+        <label className="text-[11px] tracking-normal text-muted-foreground">
           {m.nativeDiscordNotify.roleLabel}
         </label>
         <div className="flex items-center gap-1.5">
@@ -310,7 +310,7 @@ export function NativeDiscordNotifySection({
               size="sm"
               disabled={!loaded || pending || !roleDirty}
               onClick={onSaveRole}
-              className="h-7 gap-1 px-3 text-[10px] tracking-normal"
+              className="h-7 gap-1 px-3 text-[11px] tracking-normal"
             >
               {pending ? (
                 <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
@@ -327,7 +327,7 @@ export function NativeDiscordNotifySection({
       <div className="flex items-center justify-between gap-2 rounded-md border border-border/30 bg-secondary/20 px-3 py-2">
         <div className="flex flex-col gap-0.5">
           <span className="text-xs">{m.nativeDiscordNotify.onDecisionLabel}</span>
-          <span className="text-[10px] text-muted-foreground/80">
+          <span className="text-[12px] text-muted-foreground/80">
             {m.nativeDiscordNotify.onDecisionDescription}
           </span>
         </div>
@@ -339,7 +339,7 @@ export function NativeDiscordNotifySection({
             onChange={(e) => onToggleOnDecision(e.target.checked)}
             className="h-4 w-4 cursor-pointer accent-[var(--neon-cyan)]"
           />
-          <span className="font-mono text-[10px] tracking-[0.18em] text-muted-foreground uppercase">
+          <span className="font-mono text-[11px] tracking-[0.18em] text-muted-foreground uppercase">
             {onDecision ? "ON" : "OFF"}
           </span>
         </label>
@@ -348,7 +348,7 @@ export function NativeDiscordNotifySection({
       {/* 2.1 (2026-05-12) PR3-A: 通知 message template 編集。空文字列で保存すると
           DB から DELETE され、buildMessage は hardcode default に戻る。 */}
       <div className="flex flex-col gap-1.5">
-        <label className="text-[10px] tracking-normal text-muted-foreground">
+        <label className="text-[11px] tracking-normal text-muted-foreground">
           {m.nativeDiscordNotify.templateLabel}
         </label>
         <Textarea
@@ -361,7 +361,7 @@ export function NativeDiscordNotifySection({
           spellCheck={false}
           maxLength={4000}
         />
-        <p className="text-[10px] leading-relaxed text-muted-foreground/80">
+        <p className="text-[12px] leading-relaxed text-muted-foreground/80">
           {m.nativeDiscordNotify.placeholdersLabel}
           <code className="ml-1 font-mono">{`{mention}`}</code>,
           <code className="ml-1 font-mono">{`{date}`}</code>,
@@ -396,7 +396,7 @@ export function NativeDiscordNotifySection({
                 size="sm"
                 disabled={!loaded || pending}
                 onClick={onResetTemplateToDefault}
-                className="h-7 gap-1 px-2 text-[10px] tracking-normal"
+                className="h-7 gap-1 px-2 text-[11px] tracking-normal"
                 title={m.nativeDiscordNotify.fillDefaultTitle}
               >
                 <RotateCcw className="h-3 w-3" aria-hidden />
@@ -408,7 +408,7 @@ export function NativeDiscordNotifySection({
                 size="sm"
                 disabled={!loaded || pending || !templateDraft}
                 onClick={onClearTemplate}
-                className="h-7 px-2 text-[10px] tracking-normal"
+                className="h-7 px-2 text-[11px] tracking-normal"
                 title={m.nativeDiscordNotify.clearTitle}
               >
                 {m.common.clear}
@@ -419,7 +419,7 @@ export function NativeDiscordNotifySection({
                 size="sm"
                 disabled={!loaded || pending || !templateDirty}
                 onClick={onSaveTemplate}
-                className="h-7 gap-1 px-3 text-[10px] tracking-normal"
+                className="h-7 gap-1 px-3 text-[11px] tracking-normal"
               >
                 {pending ? (
                   <Loader2 className="h-3 w-3 animate-spin" aria-hidden />

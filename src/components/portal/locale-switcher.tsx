@@ -67,7 +67,7 @@ export function LocaleSwitcher({
               aria-pressed={active}
               disabled={pending}
               className={cn(
-                "inline-flex items-center gap-1.5 rounded-sm px-1.5 py-0.5 text-[10px] transition-colors",
+                "inline-flex items-center gap-1.5 rounded-sm px-1.5 py-0.5 text-[11px] transition-colors",
                 active
                   ? "bg-secondary/60 text-foreground"
                   : "text-muted-foreground hover:text-foreground",
@@ -86,7 +86,7 @@ export function LocaleSwitcher({
     <DropdownMenu>
       <DropdownMenuTrigger
         className={cn(
-          "group flex items-center gap-2 rounded-md border border-border/40 bg-background/30 px-2.5 py-1.5 text-[10px] tracking-normal text-muted-foreground transition-colors hover:border-[var(--neon-cyan)]/40 hover:text-foreground",
+          "group flex items-center gap-2 rounded-md border border-border/40 bg-background/30 px-2.5 py-1.5 text-[11px] tracking-normal text-muted-foreground transition-colors hover:border-[var(--neon-cyan)]/40 hover:text-foreground",
           pending && "opacity-70",
           className,
         )}
@@ -99,7 +99,7 @@ export function LocaleSwitcher({
         </span>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" sideOffset={8} className="glass-popup min-w-44">
-        <div className="px-1.5 pt-1 pb-1 font-mono text-[10px] tracking-[0.2em] text-muted-foreground uppercase">
+        <div className="px-1.5 pt-1 pb-1 font-mono text-[11px] tracking-[0.2em] text-muted-foreground uppercase">
           Language
         </div>
         {LOCALES.map((l) => {

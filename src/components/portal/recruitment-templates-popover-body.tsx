@@ -193,7 +193,7 @@ export function RecruitmentTemplatesPopoverBody({
 
   return (
     <>
-      <p className="px-1.5 pt-1 pb-1 text-[10px] leading-snug text-muted-foreground/85">
+      <p className="px-1.5 pt-1 pb-1 text-[12px] leading-snug text-muted-foreground/85">
         <span className="font-mono tracking-[0.18em] text-[var(--neon-cyan)]/80 uppercase">
           ★ Top
         </span>
@@ -332,15 +332,15 @@ function SortableCategorySection({
             )}
             aria-hidden
           />
-          <span className="truncate text-[10px] tracking-normal text-muted-foreground">
+          <span className="truncate text-[11px] tracking-normal text-muted-foreground">
             {displayName}
           </span>
-          <span className="font-mono text-[9px] text-muted-foreground/60">
+          <span className="font-mono text-[12px] text-muted-foreground/60">
             {group.items.length}
           </span>
           {containsTop && (
             <span
-              className="font-mono text-[9px] tracking-[0.18em] text-[var(--neon-cyan)]/85 uppercase"
+              className="font-mono text-[11px] tracking-[0.18em] text-[var(--neon-cyan)]/85 uppercase"
               title={m.recruitmentBody.containsTopTitle}
             >
               ★
@@ -471,12 +471,12 @@ function SortableTemplateRow({
           <p className="truncate text-sm">
             {label}
             {isTop && (
-              <span className="ml-1.5 font-mono text-[9px] tracking-[0.18em] text-[var(--neon-cyan)] uppercase">
+              <span className="ml-1.5 font-mono text-[11px] tracking-[0.18em] text-[var(--neon-cyan)] uppercase">
                 Top
               </span>
             )}
           </p>
-          <p className="truncate text-[10px] text-muted-foreground/80">
+          <p className="truncate text-[11px] text-muted-foreground/80">
             {template.body.slice(0, 60)}
             {template.body.length > 60 ? "…" : ""}
           </p>

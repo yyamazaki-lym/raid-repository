@@ -237,12 +237,12 @@ export function NativeMembersSection({
     <section className="flex flex-col gap-3">
       <header className="flex items-center gap-2 border-b border-border/30 pb-2">
         <Users className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
-        <span className="font-mono text-[10px] tracking-[0.22em] text-muted-foreground uppercase">
+        <span className="font-mono text-[11px] tracking-[0.22em] text-muted-foreground uppercase">
           Native Schedule Members
         </span>
       </header>
 
-      <p className="text-[10px] leading-relaxed text-muted-foreground">
+      <p className="text-[12px] leading-relaxed text-muted-foreground">
         {m.nativeMembers.description}
         <br />
         <span className="text-muted-foreground/80">
@@ -282,7 +282,7 @@ export function NativeMembersSection({
                   {/* Discord ID / local_ キーは最長 38 文字の 1 トークンで
                       折り返せないため truncate (full 値は title で参照可)。 */}
                   <span
-                    className="truncate font-mono text-[10px] text-muted-foreground/70"
+                    className="truncate font-mono text-[11px] text-muted-foreground/70"
                     title={mem.discord_user_id}
                   >
                     {mem.discord_user_id}
@@ -304,7 +304,7 @@ export function NativeMembersSection({
                     含むクロスプレイ前提が固まり、別 DC のメンバーが混在する
                     固定が増えている。名前は運営の再編で増減するので自由記述。 */}
                 <div className="flex shrink-0 items-center gap-1.5 sm:w-36">
-                  <span className="text-[10px] whitespace-nowrap text-muted-foreground">
+                  <span className="text-[12px] whitespace-nowrap text-muted-foreground">
                     {m.nativeMembers.dcLabel}
                   </span>
                   <Input
@@ -322,7 +322,7 @@ export function NativeMembersSection({
                   />
                 </div>
                 <div className="flex shrink-0 items-center gap-1.5 sm:w-28">
-                  <span className="text-[10px] whitespace-nowrap text-muted-foreground">
+                  <span className="text-[12px] whitespace-nowrap text-muted-foreground">
                     {m.nativeMembers.sortLabel}
                   </span>
                   <Input
@@ -355,7 +355,7 @@ export function NativeMembersSection({
                       size="sm"
                       disabled={!canEdit || pending}
                       onClick={() => onSaveRow(mem)}
-                      className="h-7 gap-1 px-2 text-[10px] tracking-normal"
+                      className="h-7 gap-1 px-2 text-[11px] tracking-normal"
                     >
                       <Save className="h-3 w-3" aria-hidden />
                       {m.common.save}
@@ -381,7 +381,7 @@ export function NativeMembersSection({
 
       {canEdit && (
         <div className="flex flex-col gap-2 rounded-md border border-dashed border-border/40 px-3 py-2.5">
-          <span className="font-mono text-[10px] tracking-[0.18em] text-muted-foreground uppercase">
+          <span className="font-mono text-[11px] tracking-[0.18em] text-muted-foreground uppercase">
             Add member
           </span>
           <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center">
@@ -428,7 +428,7 @@ export function NativeMembersSection({
               size="sm"
               disabled={pending}
               onClick={onAdd}
-              className="h-7 gap-1 px-3 text-[10px] tracking-normal"
+              className="h-7 gap-1 px-3 text-[11px] tracking-normal"
             >
               {pending ? (
                 <Loader2 className="h-3 w-3 animate-spin" aria-hidden />

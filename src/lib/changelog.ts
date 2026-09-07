@@ -198,6 +198,9 @@ export const RELEASES: ReleaseEntry[] = [
       {
         title: "🛡 BiS に部位別の「取得済」チェックを追加 (装備 n/11 のバッジ)",
       },
+      {
+        title: "🔠 文字サイズの下限を 11px に (10px 以下の 392 箇所を引き上げ / 本文は 12px)",
+      },
     ],
   },
 ];

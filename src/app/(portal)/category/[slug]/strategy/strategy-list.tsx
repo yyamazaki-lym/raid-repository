@@ -172,7 +172,7 @@ export function StrategyList({
           onClick={() => setCollapsed(!collapsed)}
           aria-expanded={!collapsed}
           aria-controls="strategy-links-body"
-          className="inline-flex items-center gap-1 font-mono text-[10px] tracking-[0.2em] whitespace-nowrap text-muted-foreground uppercase transition-colors hover:text-foreground"
+          className="inline-flex items-center gap-1 font-mono text-[11px] tracking-[0.2em] whitespace-nowrap text-muted-foreground uppercase transition-colors hover:text-foreground"
         >
           {collapsed ? (
             <ChevronRight className="h-3 w-3" aria-hidden />
@@ -204,7 +204,7 @@ export function StrategyList({
                 showThumbnails ? m.strategy.thumbsOff : m.strategy.thumbsOn
               }
               className={
-                "inline-flex h-7 shrink-0 items-center gap-1 rounded-md border px-2 text-[10px] tracking-normal whitespace-nowrap transition-colors disabled:opacity-50 " +
+                "inline-flex h-7 shrink-0 items-center gap-1 rounded-md border px-2 text-[11px] tracking-normal whitespace-nowrap transition-colors disabled:opacity-50 " +
                 (showThumbnails
                   ? "border-[var(--neon-cyan)]/60 bg-[var(--neon-cyan)]/12 text-[var(--neon-cyan)]"
                   : "border-border/40 bg-background/30 text-muted-foreground hover:text-foreground")
@@ -225,7 +225,7 @@ export function StrategyList({
       {/* B-1: タグ絞り込みのチップ行。タグが 1 つも無いカテゴリでは出さない。 */}
       {!collapsed && allTags.length > 0 && (
         <div className="flex flex-wrap items-center gap-1">
-          <span className="font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase">
+          <span className="font-mono text-[11px] tracking-[0.14em] text-muted-foreground uppercase">
             {m.linkCard.tagFilterLabel}
           </span>
           {allTags.map((label) => {
@@ -238,7 +238,7 @@ export function StrategyList({
                 aria-pressed={active}
                 title={m.linkCard.filterByTagTitle(label)}
                 className={
-                  "rounded-sm border px-1.5 py-0.5 font-mono text-[10px] whitespace-nowrap transition-opacity hover:opacity-80 " +
+                  "rounded-sm border px-1.5 py-0.5 font-mono text-[11px] whitespace-nowrap transition-opacity hover:opacity-80 " +
                   linkTagToneClass(label) +
                   (active ? " ring-1 ring-[var(--neon-cyan)]/70" : " opacity-60")
                 }
@@ -251,7 +251,7 @@ export function StrategyList({
             <button
               type="button"
               onClick={() => setTagFilter([])}
-              className="rounded px-1 font-mono text-[10px] text-muted-foreground underline underline-offset-2 hover:text-foreground"
+              className="rounded px-1 font-mono text-[11px] text-muted-foreground underline underline-offset-2 hover:text-foreground"
             >
               {m.linkCard.tagFilterClear}
             </button>
@@ -458,7 +458,7 @@ function SortableStrategyCard({
                   return (
                     <span
                       className={
-                        "ml-1.5 inline-block shrink-0 rounded-sm border px-1 py-px align-middle font-mono text-[9px] tracking-[0.1em] whitespace-nowrap " +
+                        "ml-1.5 inline-block shrink-0 rounded-sm border px-1 py-px align-middle font-mono text-[11px] tracking-[0.1em] whitespace-nowrap " +
                         FF14_RESOURCE_TONE[kind]
                       }
                     >
@@ -484,7 +484,7 @@ function SortableStrategyCard({
               {link.description}
             </p>
           )}
-          <p className="px-3 pt-1 pb-1.5 font-mono text-[10px] break-all text-muted-foreground/70">
+          <p className="px-3 pt-1 pb-1.5 font-mono text-[12px] break-all text-muted-foreground/70">
             {link.url}
           </p>
           {/* W-27 既読 + B-1 タグ (2026-09-07)。 */}

@@ -286,7 +286,7 @@ export function MitigationColumnsDialog({
               <strong className="text-foreground">{namedCount}</strong>
               {m.mitigationColumns.summaryNamedSuffix}
             </span>
-            <span className="font-mono text-[10px] text-muted-foreground/70">
+            <span className="font-mono text-[12px] text-muted-foreground/70">
               gid {gid || m.mitigationColumns.gidDefault}
             </span>
           </div>
@@ -316,7 +316,7 @@ export function MitigationColumnsDialog({
                 {m.mitigationColumns.onlyIcons(iconColumns.size)}
               </label>
             )}
-            <span className="text-[10px] leading-relaxed text-muted-foreground/70">
+            <span className="text-[12px] leading-relaxed text-muted-foreground/70">
               {m.mitigationColumns.detectHelpA}
               <strong>{m.mitigationColumns.detectHelpStrong}</strong>
               {m.mitigationColumns.detectHelpB}
@@ -344,7 +344,7 @@ export function MitigationColumnsDialog({
                   </option>
                 ))}
               </select>
-              <span className="text-[10px] text-muted-foreground/70">
+              <span className="text-[12px] text-muted-foreground/70">
                 {m.mitigationColumns.candidateHint}
               </span>
             </label>
@@ -357,10 +357,10 @@ export function MitigationColumnsDialog({
                 // でした」だけでは共有設定・URL・シートの作りのどれが原因か
                 // 切り分けられないため。
                 <details className="mt-1.5">
-                  <summary className="cursor-pointer text-[10px] text-muted-foreground/70">
+                  <summary className="cursor-pointer text-[12px] text-muted-foreground/70">
                     {m.mitigationColumns.detectLogSummary(detectLog.length)}
                   </summary>
-                  <ul className="mt-1 flex flex-col gap-0.5 font-mono text-[10px] text-muted-foreground/80">
+                  <ul className="mt-1 flex flex-col gap-0.5 font-mono text-[12px] text-muted-foreground/80">
                     {detectLog.map((line, i) => (
                       <li key={i} className="break-all">
                         {line}
@@ -407,11 +407,11 @@ export function MitigationColumnsDialog({
                           loading="lazy"
                         />
                       )}
-                      <span className="font-mono text-[10px] tabular-nums text-muted-foreground">
+                      <span className="font-mono text-[12px] tabular-nums text-muted-foreground">
                         ON {c.checkedCount}
                       </span>
                       {auto && (
-                        <span className="inline-flex items-center gap-1 rounded-sm border border-emerald-400/30 bg-emerald-400/5 px-1.5 py-0.5 text-[10px] text-emerald-200/90">
+                        <span className="inline-flex items-center gap-1 rounded-sm border border-emerald-400/30 bg-emerald-400/5 px-1.5 py-0.5 text-[11px] text-emerald-200/90">
                           {auto.name}
                           {auto.job ? ` / ${auto.job}` : ""}
                         </span>

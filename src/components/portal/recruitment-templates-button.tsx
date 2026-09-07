@@ -271,7 +271,7 @@ export function RecruitmentTopCopyButton({
             {/* 貼る前に完成形を見せる。未入力の変数は {name} のまま残るので
                 「入れ忘れ」がここで分かる。 */}
             <div className="flex flex-col gap-1">
-              <span className="font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase">
+              <span className="font-mono text-[11px] tracking-[0.14em] text-muted-foreground uppercase">
                 {m.recruitment.fillPreview}
               </span>
               <p className="max-h-40 overflow-y-auto rounded-sm border border-border/40 bg-secondary/20 px-2 py-1.5 text-[11px] leading-relaxed whitespace-pre-wrap">
@@ -297,7 +297,7 @@ export function RecruitmentTopCopyButton({
         >
           {/* Sub-label only — category name is implicit (this is the
               top template; the user picked it as default). */}
-          <p className="mb-1 text-[10px] tracking-normal text-[var(--neon-cyan)]">
+          <p className="mb-1 text-[11px] tracking-normal text-[var(--neon-cyan)]">
             ★ {subLabel}
           </p>
           <pre className="max-h-[14rem] overflow-y-auto font-mono text-[11px] leading-relaxed whitespace-pre-wrap text-foreground/90">

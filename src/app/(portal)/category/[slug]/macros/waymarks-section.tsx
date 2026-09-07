@@ -191,7 +191,7 @@ export function WaymarksSection({
         <div className="flex items-center gap-2">
           <HeaderIcon className="h-4 w-4 text-[var(--neon-cyan)]" aria-hidden />
           <h2 className="font-display text-base">{copy.title}</h2>
-          <span className="font-mono text-[10px] tracking-[0.18em] text-muted-foreground">
+          <span className="font-mono text-[11px] tracking-[0.18em] text-muted-foreground">
             {m.crud.count(ordered.length)}
           </span>
         </div>
@@ -425,7 +425,7 @@ function SortableWaymarkRow({
             {presetCheck?.kind === "valid" && (
               <p className="mt-0.5 flex flex-wrap items-center gap-1">
                 <span
-                  className="inline-flex items-center gap-1 rounded-sm border border-emerald-400/40 bg-emerald-400/10 px-1 py-px font-mono text-[9px] tracking-[0.1em] text-emerald-200"
+                  className="inline-flex items-center gap-1 rounded-sm border border-emerald-400/40 bg-emerald-400/10 px-1 py-px font-mono text-[11px] tracking-[0.1em] text-emerald-200"
                   title={m.waymarks.validTitle}
                 >
                   <BadgeCheck className="h-2.5 w-2.5" aria-hidden />
@@ -434,7 +434,7 @@ function SortableWaymarkRow({
                 {presetCheck.info.warnings.map((w) => (
                   <span
                     key={w}
-                    className="inline-flex items-center gap-1 rounded-sm border border-amber-400/40 bg-amber-400/10 px-1 py-px font-mono text-[9px] tracking-[0.1em] text-amber-200"
+                    className="inline-flex items-center gap-1 rounded-sm border border-amber-400/40 bg-amber-400/10 px-1 py-px font-mono text-[11px] tracking-[0.1em] text-amber-200"
                     title={w}
                   >
                     <AlertTriangle className="h-2.5 w-2.5" aria-hidden />
@@ -616,7 +616,7 @@ function WaymarkLayoutPreview({
           );
         })}
       </svg>
-      <figcaption className="text-[9px] text-muted-foreground/70">
+      <figcaption className="text-[12px] text-muted-foreground/70">
         {m.waymarks.layoutCaption}
       </figcaption>
     </figure>

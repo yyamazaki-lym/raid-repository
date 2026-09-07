@@ -89,7 +89,7 @@ export function DataInitConfirmDialog({
 
         {step === "warn" ? (
           <div className="flex flex-col gap-3 px-1 text-[12px] leading-relaxed">
-            <p className="text-[10px] tracking-normal text-rose-300/90">
+            <p className="text-[11px] tracking-normal text-rose-300/90">
               {m.dataInit.targetsLabel}
             </p>
             <ul className="ml-4 list-disc text-foreground/85 [&>li]:leading-snug">
@@ -117,7 +117,7 @@ export function DataInitConfirmDialog({
             <div className="flex flex-col gap-1.5">
               <Label
                 htmlFor="data-init-confirm-input"
-                className="text-[10px] tracking-normal text-muted-foreground"
+                className="text-[11px] tracking-normal text-muted-foreground"
               >
                 {m.dataInit.inputLabel}
               </Label>

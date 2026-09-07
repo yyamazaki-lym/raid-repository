@@ -172,11 +172,11 @@ export function LootWeeklyPanel({
             {m.lootWeekly.title}
           </h2>
           {carryOver && (
-            <span className="rounded-sm border border-amber-400/45 bg-amber-400/10 px-1.5 py-0.5 font-mono text-[10px] whitespace-nowrap text-amber-200">
+            <span className="rounded-sm border border-amber-400/45 bg-amber-400/10 px-1.5 py-0.5 font-mono text-[11px] whitespace-nowrap text-amber-200">
               {m.lootWeekly.carryOver}
             </span>
           )}
-          <span className="flex flex-wrap gap-x-1.5 font-mono text-[10px] tracking-[0.14em] text-muted-foreground">
+          <span className="flex flex-wrap gap-x-1.5 font-mono text-[11px] tracking-[0.14em] text-muted-foreground">
             {/* 個々の断片が語中で折れないように分割しておく。 */}
             <span className="whitespace-nowrap">{weekLabel}</span>
             {/* 「次のリセットまで」は今週の話。前週のパネルには出さない。 */}
@@ -187,7 +187,7 @@ export function LootWeeklyPanel({
         </button>
         <span
           className={
-            "rounded-sm border px-2 py-1 font-mono text-[10px] tracking-[0.14em] " +
+            "rounded-sm border px-2 py-1 font-mono text-[11px] tracking-[0.14em] " +
             // 未消化 0 名 = 良い、残っていれば「注意」(perf-tone.ts)。
             (unresolved === 0 ? PERF_CHIP.best : PERF_CHIP.warn)
           }
@@ -223,7 +223,7 @@ export function LootWeeklyPanel({
                 {r.displayName || m.lootWeekly.noName}
               </span>
               {r.isMe && (
-                <span className="font-mono text-[9px] tracking-[0.14em] opacity-70">
+                <span className="font-mono text-[11px] tracking-[0.14em] opacity-70">
                   YOU
                 </span>
               )}
@@ -234,7 +234,7 @@ export function LootWeeklyPanel({
 
       {!collapsed && (
       <div className="flex flex-wrap items-center gap-1.5">
-        <span className="font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase">
+        <span className="font-mono text-[11px] tracking-[0.14em] text-muted-foreground uppercase">
           {m.lootWeekly.myStatus}
         </span>
         {LOOT_WEEKLY_STATUSES.map((s) => (
@@ -433,7 +433,7 @@ export function BisLinksPanel({
           />
           <Shirt className="h-4 w-4 text-[var(--neon-violet)]" aria-hidden />
           <h2 className="font-display text-base">{m.bis.title}</h2>
-          <span className="font-mono text-[10px] tracking-[0.18em] text-muted-foreground">
+          <span className="font-mono text-[11px] tracking-[0.18em] text-muted-foreground">
             {m.crud.count(links.length)}
           </span>
         </button>
@@ -660,14 +660,14 @@ function XivgearSummaryStrip({
   // 読み込み前後で高さが変わるとページが揺れるので min-h を確保する。
   if (loading) {
     return (
-      <p className="min-h-[1.5rem] px-1 text-[10px] text-muted-foreground/80">
+      <p className="min-h-[1.5rem] px-1 text-[12px] text-muted-foreground/80">
         {m.bis.summaryLoading}
       </p>
     );
   }
   if (!summary) {
     return (
-      <p className="min-h-[1.5rem] px-1 text-[10px] text-muted-foreground/80">
+      <p className="min-h-[1.5rem] px-1 text-[12px] text-muted-foreground/80">
         {reason ?? m.bis.summaryFailed}
       </p>
     );
@@ -685,14 +685,14 @@ function XivgearSummaryStrip({
               <span className="text-[11px] text-foreground/85">{set.name}</span>
             )}
             {set.job && (
-              <span className="rounded-sm border border-border/50 px-1 font-mono text-[9px] tracking-[0.12em] text-muted-foreground uppercase">
+              <span className="rounded-sm border border-border/50 px-1 font-mono text-[11px] tracking-[0.12em] text-muted-foreground uppercase">
                 {set.job}
                 {set.level ? ` Lv${set.level}` : ""}
               </span>
             )}
             <span
               className={
-                "rounded-sm border px-1 py-px font-mono text-[10px] tabular-nums " +
+                "rounded-sm border px-1 py-px font-mono text-[11px] tabular-nums " +
                 // 部位の充足率を 5 段階スケールで (全部位 = 良い)。
                 PERF_CHIP[
                   perfForRatio(
@@ -711,16 +711,16 @@ function XivgearSummaryStrip({
               {m.bis.slots} {set.filledSlots}/{set.expectedSlots}
             </span>
             {!complete && (
-              <span className="text-[10px] text-amber-200/90">
+              <span className="text-[12px] text-amber-200/90">
                 {m.bis.missingSlots(set.missingSlots.join(", "))}
               </span>
             )}
-            <span className="font-mono text-[10px] tabular-nums text-muted-foreground">
+            <span className="font-mono text-[12px] tabular-nums text-muted-foreground">
               {m.bis.materia} {set.materiaCount}
             </span>
             <span
               className={
-                "font-mono text-[10px] " +
+                "font-mono text-[12px] " +
                 (set.hasFood ? "text-muted-foreground" : "text-amber-200/90")
               }
             >
@@ -729,7 +729,7 @@ function XivgearSummaryStrip({
             {set.stats.slice(0, 4).map((st) => (
               <span
                 key={st.label}
-                className="font-mono text-[10px] tabular-nums text-muted-foreground/85"
+                className="font-mono text-[12px] tabular-nums text-muted-foreground/85"
               >
                 {st.label} {st.value}
               </span>
@@ -738,7 +738,7 @@ function XivgearSummaryStrip({
         );
       })}
       {summary.sets.length > sets.length && (
-        <p className="text-[10px] text-muted-foreground/70">
+        <p className="text-[12px] text-muted-foreground/70">
           {m.bis.moreSets(summary.sets.length - sets.length)}
         </p>
       )}
@@ -916,7 +916,7 @@ function BisRow({
                   {link.label}
                 </span>
                 {link.job && (
-                  <span className="shrink-0 rounded-sm border border-border/50 px-1 font-mono text-[9px] tracking-[0.12em] text-muted-foreground uppercase">
+                  <span className="shrink-0 rounded-sm border border-border/50 px-1 font-mono text-[11px] tracking-[0.12em] text-muted-foreground uppercase">
                     {link.job}
                   </span>
                 )}
@@ -926,7 +926,7 @@ function BisRow({
                 />
               </span>
               {link.ownerName && (
-                <span className="block truncate text-[10px] text-muted-foreground">
+                <span className="block truncate text-[11px] text-muted-foreground">
                   {link.ownerName}
                 </span>
               )}
@@ -1035,7 +1035,7 @@ function BisSlotChecks({
         aria-expanded={open}
         title={m.bisSlots.title}
         className={
-          "self-start rounded-sm border px-1.5 py-0.5 font-mono text-[10px] whitespace-nowrap tabular-nums transition-opacity hover:opacity-80 " +
+          "self-start rounded-sm border px-1.5 py-0.5 font-mono text-[11px] whitespace-nowrap tabular-nums transition-opacity hover:opacity-80 " +
           bisProgressToneClass(progress)
         }
       >
@@ -1053,7 +1053,7 @@ function BisSlotChecks({
                   disabled={pending}
                   aria-pressed={on}
                   className={
-                    "rounded-sm border px-1.5 py-0.5 font-mono text-[10px] whitespace-nowrap transition-colors disabled:opacity-50 " +
+                    "rounded-sm border px-1.5 py-0.5 font-mono text-[11px] whitespace-nowrap transition-colors disabled:opacity-50 " +
                     (on
                       ? "border-emerald-400/45 bg-emerald-400/10 text-emerald-200"
                       : "border-border/50 text-muted-foreground hover:text-foreground")

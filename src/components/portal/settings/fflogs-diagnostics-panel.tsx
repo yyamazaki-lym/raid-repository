@@ -57,7 +57,7 @@ export function FflogsDiagnosticsPanel({
 }) {
   const m = useMessages();
   return (
-    <div className="mt-1.5 ml-3.5 flex flex-col gap-0.5 font-mono text-[10px] text-muted-foreground">
+    <div className="mt-1.5 ml-3.5 flex flex-col gap-0.5 font-mono text-[12px] text-muted-foreground">
         {diag.v2Me && (
           <p>
             v2 currentUser: id=
@@ -165,7 +165,7 @@ export function FflogsDiagnosticsPanel({
         )}
         {diag.titleDateMissSample && diag.titleDateMissSample.length > 0 && (
           <details className="mt-1 group/missdates">
-            <summary className="cursor-pointer list-none text-[10px] hover:text-foreground/90 [&::-webkit-details-marker]:hidden">
+            <summary className="cursor-pointer list-none text-[12px] hover:text-foreground/90 [&::-webkit-details-marker]:hidden">
               <span className="inline-flex items-center gap-1">
                 <span className="text-rose-300/70 transition-transform group-open/missdates:rotate-90">
                   ▸
@@ -175,7 +175,7 @@ export function FflogsDiagnosticsPanel({
                 )}
               </span>
             </summary>
-            <ul className="mt-1 ml-3 flex flex-col gap-0.5 font-mono text-[9px] leading-tight text-muted-foreground">
+            <ul className="mt-1 ml-3 flex flex-col gap-0.5 font-mono text-[11px] leading-tight text-muted-foreground">
               {diag.titleDateMissSample.map((t, i) => (
                 <li
                   key={i}
@@ -189,7 +189,7 @@ export function FflogsDiagnosticsPanel({
         )}
         {diag.htmlSample && (
           <details className="mt-1.5 group/htmlsample">
-            <summary className="cursor-pointer list-none text-[10px] hover:text-foreground/90 [&::-webkit-details-marker]:hidden">
+            <summary className="cursor-pointer list-none text-[12px] hover:text-foreground/90 [&::-webkit-details-marker]:hidden">
               <span className="inline-flex items-center gap-1">
                 <span className="text-amber-300/70 transition-transform group-open/htmlsample:rotate-90">
                   ▸
@@ -197,14 +197,14 @@ export function FflogsDiagnosticsPanel({
                 {m.fflogsDiagnostics.htmlSampleSummary}
               </span>
             </summary>
-            <pre className="mt-1 ml-3 rounded bg-secondary/30 px-1.5 py-1 font-mono text-[9px] leading-tight whitespace-pre-wrap break-all text-muted-foreground/85 max-h-[16rem] overflow-y-auto">
+            <pre className="mt-1 ml-3 rounded bg-secondary/30 px-1.5 py-1 font-mono text-[11px] leading-tight whitespace-pre-wrap break-all text-muted-foreground/85 max-h-[16rem] overflow-y-auto">
               {diag.htmlSample}
             </pre>
           </details>
         )}
         {userTypeFields && userTypeFields.length > 0 && (
           <details className="mt-1.5 group/userfields">
-            <summary className="cursor-pointer list-none text-[10px] hover:text-foreground/90 [&::-webkit-details-marker]:hidden">
+            <summary className="cursor-pointer list-none text-[12px] hover:text-foreground/90 [&::-webkit-details-marker]:hidden">
               <span className="inline-flex items-center gap-1">
                 <span className="text-amber-300/70 transition-transform group-open/userfields:rotate-90">
                   ▸
@@ -212,7 +212,7 @@ export function FflogsDiagnosticsPanel({
                 {m.fflogsDiagnostics.userFieldsSummary(userTypeFields.length)}
               </span>
             </summary>
-            <pre className="mt-1 ml-3 rounded bg-secondary/30 px-1.5 py-1 font-mono text-[9px] leading-tight whitespace-pre-wrap break-words text-muted-foreground/85 max-h-[12rem] overflow-y-auto">
+            <pre className="mt-1 ml-3 rounded bg-secondary/30 px-1.5 py-1 font-mono text-[11px] leading-tight whitespace-pre-wrap break-words text-muted-foreground/85 max-h-[12rem] overflow-y-auto">
               {userTypeFields.join("\n")}
             </pre>
           </details>

@@ -31,11 +31,11 @@ export function WipeCausesCard({
   return (
     <div className="flex flex-col gap-1 rounded-md border border-border/40 bg-secondary/15 px-3 py-2">
       <div className="flex items-baseline justify-between gap-2">
-        <span className="font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase">
+        <span className="font-mono text-[11px] tracking-[0.14em] text-muted-foreground uppercase">
           {m.logs.wipeCauses}
         </span>
         <span
-          className="font-mono text-[9px] tracking-[0.12em] text-muted-foreground/70"
+          className="font-mono text-[11px] tracking-[0.12em] text-muted-foreground/70"
           title={m.logs.wipeCausesHint}
         >
           {m.logs.wipeCausesSub(wipeCount)}
@@ -75,7 +75,7 @@ export function WipeCausesCard({
           {phaseCounts.map((p) => (
             <li
               key={p.phase}
-              className="inline-flex items-baseline gap-1 whitespace-nowrap font-mono text-[10px] tabular-nums"
+              className="inline-flex items-baseline gap-1 whitespace-nowrap font-mono text-[12px] tabular-nums"
             >
               <span className={phaseTextToneClass(p.phase)}>
                 P{p.phase}

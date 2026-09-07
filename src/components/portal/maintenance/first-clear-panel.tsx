@@ -17,7 +17,7 @@ export function FirstClearPanel({
   const t = m.maintenancePanels;
   return (
     <>
-      <p className="mb-2 pr-6 text-[10px] font-medium tracking-normal text-muted-foreground">
+      <p className="mb-2 pr-6 text-[11px] font-medium tracking-normal text-muted-foreground">
         {t.firstClearTitle}
       </p>
       {data.filled === 0 && data.noMatchDetails.length === 0 ? (
@@ -46,7 +46,7 @@ export function FirstClearPanel({
                     </span>
                     <span
                       className={
-                        "ml-2 inline-flex items-center rounded-sm border px-1 text-[9px] font-mono tracking-[0.18em] uppercase " +
+                        "ml-2 inline-flex items-center rounded-sm border px-1 text-[11px] font-mono tracking-[0.18em] uppercase " +
                         (d.source === "title"
                           ? "border-emerald-400/45 bg-emerald-400/10 text-emerald-200"
                           : "border-zinc-400/45 bg-zinc-400/10 text-zinc-300")
@@ -62,13 +62,13 @@ export function FirstClearPanel({
                           : "created"}
                     </span>
                     {d.timeToClearSeconds > 0 && (
-                      <span className="ml-2 inline-flex items-center rounded-sm border border-violet-400/45 bg-violet-400/10 px-1 text-[9px] font-mono tracking-[0.18em] uppercase text-violet-200">
+                      <span className="ml-2 inline-flex items-center rounded-sm border border-violet-400/45 bg-violet-400/10 px-1 text-[11px] font-mono tracking-[0.18em] uppercase text-violet-200">
                         {formatHM(d.timeToClearSeconds)}
                       </span>
                     )}
                     {d.videosWithoutDurationCount > 0 && (
                       <span
-                        className="ml-2 inline-flex items-center rounded-sm border border-amber-400/45 bg-amber-400/10 px-1 text-[9px] tracking-normal text-amber-200"
+                        className="ml-2 inline-flex items-center rounded-sm border border-amber-400/45 bg-amber-400/10 px-1 text-[11px] tracking-normal text-amber-200"
                         title={t.noDurationTitle(d.videosWithoutDurationCount)}
                       >
                         {t.noDurationBadge(d.videosWithoutDurationCount)}
@@ -76,7 +76,7 @@ export function FirstClearPanel({
                     )}
                     {d.excludedForeignCount > 0 && (
                       <span
-                        className="ml-2 inline-flex items-center rounded-sm border border-zinc-400/45 bg-zinc-400/10 px-1 text-[9px] tracking-normal text-zinc-300"
+                        className="ml-2 inline-flex items-center rounded-sm border border-zinc-400/45 bg-zinc-400/10 px-1 text-[11px] tracking-normal text-zinc-300"
                         title={t.foreignTitle(d.excludedForeignCount)}
                       >
                         {t.foreignBadge(d.excludedForeignCount)}
@@ -92,7 +92,7 @@ export function FirstClearPanel({
           )}
           {data.noMatchDetails.length > 0 && (
             <div className="mt-3 flex flex-col gap-1.5 border-t border-border/30 pt-2">
-              <p className="text-[10px] font-medium text-rose-300/85 tracking-normal">
+              <p className="text-[11px] font-medium text-rose-300/85 tracking-normal">
                 {t.noMatchHeading}
               </p>
               <ul className="flex flex-col gap-1 text-[11px] leading-relaxed">
@@ -106,14 +106,14 @@ export function FirstClearPanel({
                       <span className="font-mono break-all text-foreground">
                         {nm.slug}
                       </span>
-                      <span className="ml-2 text-[10px] text-rose-200/85">
+                      <span className="ml-2 text-[12px] text-rose-200/85">
                         {explainNoMatchReason(nm.reason, m)}
                       </span>
-                      <span className="ml-2 text-[10px] text-muted-foreground">
+                      <span className="ml-2 text-[12px] text-muted-foreground">
                         {t.countOf(nm.inCategoryCount, nm.videoCount)}
                       </span>
                       {nm.titleSamples.length > 0 && (
-                        <ul className="mt-0.5 flex flex-col gap-0.5 text-[10px] text-muted-foreground/80">
+                        <ul className="mt-0.5 flex flex-col gap-0.5 text-[12px] text-muted-foreground/80">
                           {nm.titleSamples.map((t, j) => (
                             <li key={j} className="break-words pl-2">
                               · {t}
@@ -131,7 +131,7 @@ export function FirstClearPanel({
       )}
       {(data.filled > 0 || data.noMatchDetails.length > 0) && (
         // 各項目を nowrap span にして「/」始まりの行を防ぐ。
-        <p className="mt-2 flex flex-wrap gap-x-1.5 text-[10px] text-muted-foreground">
+        <p className="mt-2 flex flex-wrap gap-x-1.5 text-[12px] text-muted-foreground">
           <span className="whitespace-nowrap">{t.summaryAlreadySet(data.alreadySet)}</span>
           <span className="whitespace-nowrap">{t.summaryNoMatch(data.noMatch)}</span>
           <span className="whitespace-nowrap">{t.summaryFilled(data.filled)}</span>
