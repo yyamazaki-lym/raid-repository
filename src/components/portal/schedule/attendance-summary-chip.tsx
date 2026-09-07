@@ -65,6 +65,9 @@ export function AttendanceSummaryChip({
   const parts = [
     summary.ok > 0 ? `${getAttendanceLabel("◯", locale) ?? "◯"} ${summary.ok}` : null,
     summary.late > 0 ? `${getAttendanceLabel("⏰", locale) ?? "⏰"} ${summary.late}` : null,
+    // カスタム凡例の 昼 / 夜 / 早 (時間帯つきの参加可)。参加見込みには
+    // 入っているので、内訳にも出さないと数が合わないように見える。
+    summary.partial > 0 ? m.attendanceSummary.partial(summary.partial) : null,
     summary.undecided > 0
       ? `${getAttendanceLabel("△", locale) ?? "△"} ${summary.undecided}`
       : null,

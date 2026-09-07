@@ -110,6 +110,7 @@ export const ja = {
     chip: (available: number, required: number): string =>
       `${available}/${required}`,
     unanswered: (n: number): string => `未回答 ${n}`,
+    partial: (n: number): string => `時間帯つき参加可 ${n}`,
     unansweredNames: (names: string): string => `未回答: ${names}`,
     other: (n: number): string => `その他 ${n}`,
   },
@@ -595,6 +596,7 @@ export const en: CoreMessages = {
   attendanceSummary: {
     chip: (available, required) => `${available}/${required}`,
     unanswered: (n) => `${n} not answered`,
+    partial: (n) => `${n} available for part of the day`,
     unansweredNames: (names) => `Not answered: ${names}`,
     other: (n) => `Other ${n}`,
   },

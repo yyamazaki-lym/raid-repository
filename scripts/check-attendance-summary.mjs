@@ -61,11 +61,21 @@ try {
   check("未回答 (－ / 空文字 / 未設定)", mixed.unanswered, 3);
   check("回答済みは 5", mixed.answered, 5);
 
-  console.log("\n知らない記号を「参加可」に寄せない");
+  console.log("\n辞書が参加可と言う記号は数える / 辞書外は other");
+  // 2026-09-07 マージ前レビューで検出: 全/昼/夜/早 を other に落としていたため、
+  // その凡例を使う固定では全員回答済みでも 0/8 と表示していた。
   const custom = summarizeAttendance(members, answers(["全","昼","夜","早","?","◯","◯","◯"]));
-  check("カスタム記号は other", custom.other, 5);
-  check("参加可は 3 のまま", custom.ok, 3);
+  check("全 は参加可 (◯ 相当) に数える", custom.ok, 4);
+  check("昼/夜/早 は時間帯つき参加可", custom.partial, 3);
+  check("辞書外の記号だけが other", custom.other, 1);
   check("other も回答済みには数える", custom.answered, 8);
+  check("参加見込みは 全 + 昼夜早 + ◯", availableCount(custom), 7);
+  const allCustom = summarizeAttendance(members, answers(["全","全","昼","夜","早","全","昼","夜"]));
+  check(
+    "カスタム凡例だけの固定でも 8/8 になる (0/8 と出ない)",
+    [availableCount(allCustom), attendanceStage(allCustom, 8)],
+    [8, "full"],
+  );
 
   console.log("\n未回答判定のゆらぎ");
   for (const [label, sym] of [

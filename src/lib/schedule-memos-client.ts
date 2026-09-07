@@ -128,7 +128,14 @@ export async function createScheduleMemo(
       raw_date: input.rawDate,
       body: input.body,
       author_name: sanitizeAuthorName(input.authorName),
-      severity: input.severity ?? "none",
+      // 既定値のときは列を送らない。schema の適用 (GitHub Actions) と
+      // デプロイが前後した数分の窓で、列がまだ無い DB へ severity を送ると
+      // **メモの投稿そのものが失敗する**。既定のままなら送らなければ
+      // 従来どおり投稿でき、壊れるのは新機能 (重要度の指定) だけになる
+      // (2026-09-07 マージ前レビュー)。
+      ...(input.severity && input.severity !== "none"
+        ? { severity: input.severity }
+        : {}),
     })
     .select("*")
     .single();

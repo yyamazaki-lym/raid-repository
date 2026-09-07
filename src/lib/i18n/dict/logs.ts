@@ -322,8 +322,8 @@ export const ja = {
       "動画を再生して、基準にする pull の戦闘開始の瞬間で止めてから「いまの位置を基準にする」を押すと、オフセットを秒数を数えずに決められます。",
     syncAnchorLabel: "基準にする pull",
     // 前半が映っていない動画では #1 を基準にできないため、映っている pull を選べる。
-    syncAnchorOption: (index: number, clock: string): string =>
-      `#${index} ${clock} の戦闘開始`,
+    // 番号は出さない (レポート内連番と pull 行の日単位連番が食い違うため)。
+    syncAnchorOption: (clock: string): string => `${clock} の戦闘開始`,
     syncPick: "いまの位置を基準にする",
     syncSeek: "推定位置へ移動",
     syncCurrent: (clock: string): string => `動画の現在位置 ${clock}`,
@@ -661,8 +661,7 @@ export const en: LogsMessages = {
     syncHint:
       "Play the video, pause at the moment the chosen pull starts, then press “Use current position” — no counting seconds.",
     syncAnchorLabel: "Reference pull",
-    syncAnchorOption: (index: number, clock: string): string =>
-      `#${index} — combat start at ${clock}`,
+    syncAnchorOption: (clock) => `Combat start at ${clock}`,
     syncPick: "Use current position",
     syncSeek: "Jump to estimate",
     syncCurrent: (clock: string): string => `Video position ${clock}`,

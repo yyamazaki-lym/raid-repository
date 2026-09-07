@@ -48,15 +48,21 @@ try {
   check("3 行", countMacroLines("/p a\n/p b\n/p c"), 3);
   check("末尾改行で増えない", countMacroLines("/p a\n/p b\n"), 2);
   check("末尾改行が 2 つでも増えない", countMacroLines("/p a\n\n\n"), 1);
-  check("途中の空行は数えない", countMacroLines("/p a\n\n/p b"), 2);
-  check("空白だけの行は数えない", countMacroLines("/p a\n   \n/p b"), 2);
-  check("全角スペースだけの行も数えない", countMacroLines("/p a\n　　\n/p b"), 2);
-  check("タブだけの行も数えない", countMacroLines("/p a\n\t\n/p b"), 2);
+  // 2026-09-07 マージ前レビューで修正: 途中の空行はゲーム内で 1 スロットを
+  // 消費するので数える。数えないと空行 1 つ入りの 16 行が「15/15」で通り、
+  // 貼ったときに最後の行が落ちる。
+  check("途中の空行は数える", countMacroLines("/p a\n\n/p b"), 3);
+  check("途中の空白だけの行も数える", countMacroLines("/p a\n   \n/p b"), 3);
+  check("途中の全角スペース行も数える", countMacroLines("/p a\n　　\n/p b"), 3);
+  check("途中のタブ行も数える", countMacroLines("/p a\n\t\n/p b"), 3);
+  check("末尾の空行は落とす (途中との違い)", countMacroLines("/p a\n/p b\n   \n\n"), 2);
   check("CRLF の \\r は行の中身にならない", countMacroLines("/p a\r\n/p b\r\n"), 2);
 
   console.log("\n上限の判定");
   check("上限は 15", MACRO_LINE_LIMIT, 15);
   const fifteen = Array.from({ length: 15 }, (_, i) => `/p ${i}`).join("\n");
+  // 空行を 1 つ含む 16 物理行 = 貼れない。ここが「15/15」に見えてはいけない。
+  const sixteenWithBlank = Array.from({ length: 14 }, (_, i) => `/p ${i}`).join("\n") + "\n\n/p last";
   check("15 行はちょうど収まる", macroLineInfo(fifteen, MACRO_LINE_LIMIT), {
     lines: 15, limit: 15, over: false,
   });
@@ -68,6 +74,9 @@ try {
   });
   check("上限を渡さなければ判定しない", macroLineInfo(fifteen + "\n/p x"), {
     lines: 16, limit: null, over: false,
+  });
+  check("空行入りの 16 物理行は超過 (15/15 に見えない)", macroLineInfo(sixteenWithBlank, MACRO_LINE_LIMIT), {
+    lines: 16, limit: 15, over: true,
   });
   check("空文字に上限を渡しても超過にならない", macroLineInfo("", MACRO_LINE_LIMIT), {
     lines: 0, limit: 15, over: false,

@@ -82,12 +82,20 @@ export function VideoSyncPanel({
   const anchor =
     anchors.find((a) => a.fightId === anchorFightId) ?? anchors[0] ?? null;
 
-  // 動画を差し替えたら読み取り状態をリセットする。effect で setState すると
-  // カスケードレンダーになるので、React 公式の「レンダー中に前回値と比べて
-  // 調整する」形にする (day-row.tsx の jumpNonce と同じ)。
-  const [syncedFor, setSyncedFor] = useState(videoId);
-  if (syncedFor !== videoId) {
-    setSyncedFor(videoId);
+  // 読み取り状態をリセットする条件は **プレーヤーが作り直されるとき**。
+  // 動画の差し替えだけでなく、**折りたたみでも iframe は破棄される**
+  // (`{open && ...}` の中にある) ので、開き直すと 0 秒から始まる新しい
+  // プレーヤーに対して前のインスタンスで読んだ秒数が残ってしまう。
+  // 残ったままだと「動画の現在位置 25:00」と出たまま押せてしまい、
+  // 見ている位置と違うオフセットを書き込む (2026-09-07 マージ前レビュー)。
+  //
+  // effect で setState するとカスケードレンダーになるので、React 公式の
+  // 「レンダー中に前回値と比べて調整する」形にする (day-row.tsx の
+  // jumpNonce と同じ)。キーは「プレーヤーの同一性」= open と videoId の対。
+  const playerKey = open ? videoId : null;
+  const [syncedFor, setSyncedFor] = useState(playerKey);
+  if (syncedFor !== playerKey) {
+    setSyncedFor(playerKey);
     setPlayerSeconds(null);
     setGiveUp(false);
   }
@@ -212,9 +220,13 @@ export function VideoSyncPanel({
                   onChange={(e) => setAnchorFightId(Number(e.target.value))}
                   className="h-8 rounded-sm border border-border/60 bg-background/60 px-2 text-[12px]"
                 >
+                  {/* 番号は出さない。ここの連番はレポート内の順序で、
+                      pull 行の「#N」は日単位の順序なので、同じ日に複数
+                      レポートがあると食い違う (2026-09-07 マージ前レビュー)。
+                      時刻だけなら pull 行と確実に対応する。 */}
                   {anchors.map((a) => (
                     <option key={a.fightId} value={a.fightId}>
-                      {m.logsOffset.syncAnchorOption(a.index, clockOf(a.startMs))}
+                      {m.logsOffset.syncAnchorOption(clockOf(a.startMs))}
                     </option>
                   ))}
                 </select>

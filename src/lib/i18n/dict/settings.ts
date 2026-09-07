@@ -297,7 +297,7 @@ export const ja = {
     guildIdLabel: "FFLogs guild ID (任意)",
     guildIdPlaceholder: "例: 123456",
     guildIdHint:
-      "固定の FFLogs guild の ID です。**現時点では取り込みに使われません** — 「動画リンクを介さず guild からレポートを自動で見つける」機能の準備として、記録場所だけを用意しています。数字のみ (URL ではありません)。",
+      "固定の FFLogs guild の ID です。上の発見元で「guild から自動」を選んだときに、この guild のレポート一覧を見ます。数字のみ (URL ではありません — FFLogs の guild ページの URL に含まれる数字です)。",
     guildIdSaved: "guild ID を保存しました",
     // W-5 (2026-09-07): レポートの発見元。
     sourceLabel: "レポートの発見元",
@@ -1032,7 +1032,7 @@ export const en: SettingsMessages = {
     guildIdLabel: "FFLogs guild ID (optional)",
     guildIdPlaceholder: "e.g. 123456",
     guildIdHint:
-      "Your static's FFLogs guild ID. **Not used by the sync yet** — this only records it, in preparation for discovering reports straight from the guild instead of via video links. Digits only (not a URL).",
+      "Your static's FFLogs guild ID. Used when the discovery source above is set to “From the guild” — the sync then reads that guild's report list. Digits only (not a URL — it is the number in the guild page's URL).",
     guildIdSaved: "Saved the guild ID",
     sourceLabel: "Report discovery",
     sourceLabels: {

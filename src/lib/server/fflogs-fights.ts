@@ -327,8 +327,10 @@ export async function syncFflogsFights(opts?: {
       videosBridged: 0,
       notified: 0,
       videoOffsetsSeeded: 0,
-      discovered: 0,
-      discoveryNote: null,
+      // 発見の結果はここでも返す。候補が 1 件も無いときこそ
+      // 「guild ID が未設定」などの理由が要る (2026-09-07 マージ前レビュー)。
+      discovered,
+      discoveryNote,
     };
   }
 

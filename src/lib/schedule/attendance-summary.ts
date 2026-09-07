@@ -9,10 +9,14 @@
  *
  * ## 記号の分類
  *
- * 記号は character-sheets 側の凡例で**自由に編集できる**ので、既知のもの
- * だけを分類し、知らない記号は `other` にまとめる (勝手に「参加可」に
- * 寄せると人数を偽ることになる)。分類の対応は `attendance-ui.ts` の
- * `ATT_LABEL_DICT` と同じ並び。
+ * 記号は character-sheets 側の凡例で**自由に編集できる**ので、`attendance-ui.ts`
+ * の `ATT_LABEL_DICT` が意味を知っている記号だけを分類し、辞書外の記号は
+ * `other` にまとめる (知らない記号を勝手に「参加可」に寄せると人数を偽る)。
+ *
+ * 逆に、**辞書が参加可と言っている記号は必ず数える**。カスタム凡例の
+ * 「全 / 昼 / 夜 / 早」(= 全日 / 昼 / 夜 / 早朝 参加可) を `other` に落として
+ * いたため、その凡例の固定では全員回答済みでも 0/8 と出ていた
+ * (2026-09-07 マージ前レビューで検出)。
  *
  * 未回答の判定は催促と同じ `isUnanswered` を使う (全角ハイフン・半角・
  * 長音・空白のゆらぎを 1 箇所で吸収するため)。
@@ -33,7 +37,18 @@ export type AttendanceSummary = {
   no: number;
   /** 未回答 (－ / 空)。 */
   unanswered: number;
-  /** 上記以外の記号 (凡例をカスタムした固定の「全 / 昼 / 夜 / 早」など)。 */
+  /**
+   * 時間帯つきの参加可 (昼 / 夜 / 早)。参加はするので `available` に入れる。
+   *
+   * character-sheets の凡例を「全 / 昼 / 夜 / 早」でカスタムしている固定が
+   * 実在し (`ATT_LABEL_DICT` がその 4 つを 全日参加可 / 昼参加可 / 夜参加可 /
+   * 早朝参加可 として持っている)、これを `other` に落としていたため
+   * **全員回答済みでも 0/8 と表示していた** (2026-09-07 マージ前レビュー)。
+   * 「知らない記号を参加可に寄せない」は守りつつ、**辞書が参加可と
+   * 言っている記号は数える**。
+   */
+  partial: number;
+  /** 上記いずれでもない記号 (辞書外のカスタム値)。 */
   other: number;
   /** 回答した人数 (未回答以外)。 */
   answered: number;
@@ -43,9 +58,14 @@ export type AttendanceSummary = {
   unansweredNames: string[];
 };
 
-/** 「参加可」として数える記号。半角/全角の同義記号を両方入れる。 */
-const OK_SYMBOLS = new Set(["◯", "○"]);
+/**
+ * 「参加可」として数える記号。半角/全角の同義記号を両方入れる。
+ * 「全」は character-sheets のカスタム凡例で ◯ に相当する (= 全日参加可)。
+ */
+const OK_SYMBOLS = new Set(["◯", "○", "全"]);
 const LATE_SYMBOLS = new Set(["⏰"]);
+/** 時間帯つきの参加可 (カスタム凡例)。参加はするので available に入れる。 */
+const PARTIAL_SYMBOLS = new Set(["昼", "夜", "早"]);
 const UNDECIDED_SYMBOLS = new Set(["△"]);
 const NO_SYMBOLS = new Set(["×"]);
 
@@ -66,6 +86,7 @@ export function summarizeAttendance(
     undecided: 0,
     no: 0,
     unanswered: 0,
+    partial: 0,
     other: 0,
     answered: 0,
     total: members.length,
@@ -82,6 +103,7 @@ export function summarizeAttendance(
     out.answered += 1;
     if (OK_SYMBOLS.has(symbol)) out.ok += 1;
     else if (LATE_SYMBOLS.has(symbol)) out.late += 1;
+    else if (PARTIAL_SYMBOLS.has(symbol)) out.partial += 1;
     else if (UNDECIDED_SYMBOLS.has(symbol)) out.undecided += 1;
     else if (NO_SYMBOLS.has(symbol)) out.no += 1;
     else out.other += 1;
@@ -90,13 +112,15 @@ export function summarizeAttendance(
 }
 
 /**
- * 参加できる見込みの人数 (参加可 + 遅刻)。
+ * 参加できる見込みの人数 (参加可 + 遅刻 + 時間帯つき参加可)。
  *
  * 遅刻を足すのは、8 人揃うかの判断では「遅れて来る人」も頭数に入るため
- * (W-13 で遅刻を構造化したときと同じ扱い)。未定は入れない。
+ * (W-13 で遅刻を構造化したときと同じ扱い)。昼 / 夜 / 早も参加はするので
+ * 足す (足さないと、その凡例を使っている固定で常に 0 になる)。
+ * 未定は入れない。
  */
 export function availableCount(summary: AttendanceSummary): number {
-  return summary.ok + summary.late;
+  return summary.ok + summary.late + summary.partial;
 }
 
 /**
