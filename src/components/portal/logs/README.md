@@ -30,13 +30,14 @@
 | `video-link.ts` | 動画リンクの表示ヘルパー (`OffsetTarget` 型 / 表示名 / オフセット表記) |
 | `session-summary-row.tsx` | セッションサマリー (W-3。拘束 / 実戦闘 / 戦闘外 / 平均プル長) |
 | `team-badges-card.tsx` | チーム実績バッジ (W-31。初討伐 / ノーデス / 最速 / 回数) |
+| `trend-card.tsx` | 進行トレンド (W-4。インライン SVG の折れ線 2 本 + ペースの目安) |
 
 依存の向きは一方向です:
 
 ```
 logs-view.tsx
   ├── stat-card / wipe-causes-card / phase-time-card / team-badges-card
-  │   / failed-list / offset-dialog
+  │   / trend-card / failed-list / offset-dialog
   └── day-row
         ├── session-summary-row
         └── pull-row
@@ -56,6 +57,10 @@ logs-view.tsx
 - **部品は表示だけを持つ**。Server Action の呼び出しは
   `offset-dialog.tsx` (動画の保存 / 削除) だけが持ちます。同期・取り込み・
   診断・再分類は `logs-view.tsx` 側です。
+- **グラフライブラリを入れない**。`trend-card.tsx` の折れ線はインライン SVG
+  (座標は `@/lib/fflogs-trend` の `sparklinePath()` が組む純関数)。
+  recharts / chart.js は 50〜200 KB の client bundle が乗るので、折れ線 1 枚
+  では釣り合わない (調査ノート第 4 回 W-4 のデメリット欄への回答)。
 - **`"use client"` は部品ごとに宣言**。`video-link.ts` は JSX も hook も
   持たない純関数なので付けていません。
 - 列幅を固定して縦に揃える約束 (`w-14` / `w-[3.75rem]` など) は
