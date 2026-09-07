@@ -40,8 +40,26 @@ jobs:
       - name: TypeScript typecheck
         run: npx tsc --noEmit
 
-      # 更新履歴の構造検査 (2026-09-06)。changelog.ts が最新 1 件だけを
-      # 持つこと (古い分は changelog-archive.ts へ graduate) / version|date
-      # の重複なし / 新→古の並び を検査する。詳細は scripts/check-changelog.mjs。
-      - name: Changelog structure
-        run: node scripts/check-changelog.mjs
+      # scripts/check-*.mjs を全部回す (2026-09-07)。
+      #
+      # 内訳は 3 種類:
+      #   - 更新履歴の構造検査 (check-changelog): changelog.ts が最新 1 件だけを
+      #     持つこと (古い分は changelog-archive.ts へ graduate) / version|date の
+      #     重複なし / 新→古の並び / release-notes の md と part title の一致
+      #   - 純関数の契約検査 (check-fflogs-category, check-fflogs-fight-detail,
+      #     check-content-groups, check-attendance-times, ...): 対象の .ts を
+      #     `npx tsc` で単体コンパイルして実データ相当の入力を通す
+      #   - 予算・回帰ガード (check-fights-payload): 明細の転送量が上限の根拠を
+      #     超えていないか
+      #
+      # 以前は changelog だけを CI で回していたため、他はローカルで走らせ忘れる
+      # と壊れたまま通ってしまっていた。1 本でも落ちたらジョブを失敗させる。
+      - name: Pure-function and structure checks
+        run: |
+          status=0
+          for f in scripts/check-*.mjs; do
+            echo "::group::$f"
+            node "$f" || status=1
+            echo "::endgroup::"
+          done
+          exit $status
