@@ -613,6 +613,29 @@ export function LogsView({
                       )}
                     </span>
                   )}
+                  {d.fights.total > 0 && (
+                    <span className="text-muted-foreground">
+                      {m.logsImport.diagProgress(
+                        d.fights.progress.kills,
+                        d.fights.progress.noPercentage,
+                        d.fights.progress.noPhase,
+                      )}
+                      {d.fights.progress.rawMin !== null &&
+                      d.fights.progress.rawMax !== null
+                        ? m.logsImport.diagProgressRaw(
+                            d.fights.progress.rawMin,
+                            d.fights.progress.rawMax,
+                          )
+                        : ""}
+                    </span>
+                  )}
+                  {d.fights.progress.sessionDates.length > 0 && (
+                    <span className="text-muted-foreground">
+                      {m.logsImport.diagDates(
+                        d.fights.progress.sessionDates.join(", "),
+                      )}
+                    </span>
+                  )}
                   {d.fights.names.map((n) => (
                     <span key={n.name ?? ""} className="pl-2 font-mono text-[10px] text-muted-foreground/85">
                       {m.logsImport.diagName(
