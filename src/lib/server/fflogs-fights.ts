@@ -197,6 +197,12 @@ export async function syncFflogsFights(opts?: {
    * 適用しない (明示指定 = 再試行の意思とみなす)。
    */
   onlyCodes?: string[];
+  /**
+   * URL 取り込みを実行したコンテンツ (2026-09-07)。動画リンクでも fight 名でも
+   * カテゴリが決まらないレポートは、貼った人の意図 = このコンテンツとして
+   * 取り込む (実機: Ultimates (Legacy) の絶オメガが未分類のまま残った)。
+   */
+  importCategoryId?: string | null;
 }): Promise<FflogsFightsSyncResult> {
   const token = await getValidFflogsOAuthToken();
   if (!token) {
@@ -296,6 +302,9 @@ export async function syncFflogsFights(opts?: {
       const prev = ledgerMap.get(code);
       targets.push({
         ...ref,
+        // 貼ったコンテンツを既定のカテゴリにする (動画リンク由来があればそれを優先、
+        // fight 名で別コンテンツと分かる pull は processReport 側でそちらへ)。
+        categoryId: ref.categoryId ?? opts?.importCategoryId ?? null,
         effectiveDate: ref.sessionDate ?? prev?.sessionDate ?? null,
         priority: 0,
       });
