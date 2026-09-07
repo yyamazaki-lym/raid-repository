@@ -301,6 +301,20 @@ export type FflogsReportDiag = {
     inCategory: number;
     unassigned: number;
     otherCategory: number;
+    /** 到達度まわりの保存状況 (2026-09-07)。「pull は数えられているのに
+     * 到達度が出ない」の切り分け用 — 何が null なのかをそのまま出す。 */
+    progress: {
+      kills: number;
+      /** fight_percentage が null の pull 数 (= 残 HP% を出せない)。 */
+      noPercentage: number;
+      /** last_phase が null の pull 数 (= P1〜 のチップを出せない)。 */
+      noPhase: number;
+      /** 保存されている fight_percentage の生値の範囲 (100 倍値の混在確認用)。 */
+      rawMin: number | null;
+      rawMax: number | null;
+      /** この pull 群の session_date (重複なし、最大 5 件)。 */
+      sessionDates: string[];
+    };
     /** fight 名ごとの件数と、今の分類器がその名前から決めるカテゴリ名。 */
     names: Array<{
       name: string | null;
@@ -341,7 +355,9 @@ export async function diagnoseFflogsReportsAction(
         .in("report_code", codes),
       supabase
         .from("fflogs_fights")
-        .select("report_code, category_id, name, difficulty, encounter_id")
+        .select(
+          "report_code, category_id, name, difficulty, encounter_id, kill, fight_percentage, last_phase, session_date",
+        )
         .in("report_code", codes),
       supabase.from("fflogs_report_blocklist").select("report_code").in("report_code", codes),
     ]);
@@ -374,7 +390,22 @@ export async function diagnoseFflogsReportsAction(
     let inCategory = 0;
     let unassigned = 0;
     let otherCategory = 0;
+    let kills = 0;
+    let noPercentage = 0;
+    let noPhase = 0;
+    let rawMin: number | null = null;
+    let rawMax: number | null = null;
+    const sessionDates = new Set<string>();
     for (const r of rows) {
+      if (r.kill === true) kills += 1;
+      const pct = typeof r.fight_percentage === "number" ? r.fight_percentage : null;
+      if (pct === null) noPercentage += 1;
+      else {
+        rawMin = rawMin === null ? pct : Math.min(rawMin, pct);
+        rawMax = rawMax === null ? pct : Math.max(rawMax, pct);
+      }
+      if (typeof r.last_phase !== "number") noPhase += 1;
+      if (typeof r.session_date === "string") sessionDates.add(r.session_date);
       const cid = (r.category_id as string | null) ?? null;
       if (cid === currentCategoryId) inCategory += 1;
       else if (cid === null) unassigned += 1;
@@ -410,6 +441,14 @@ export async function diagnoseFflogsReportsAction(
         inCategory,
         unassigned,
         otherCategory,
+        progress: {
+          kills,
+          noPercentage,
+          noPhase,
+          rawMin,
+          rawMax,
+          sessionDates: [...sessionDates].sort().slice(0, 5),
+        },
         names: [...byName.values()]
           .sort((a, b) => b.count - a.count)
           .map((n) => {

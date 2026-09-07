@@ -192,6 +192,10 @@ export const ja = {
       `pull ${total} 件 — このコンテンツ ${here} / 別コンテンツ ${other} / 未分類 ${none}`,
     diagName: (name: string, count: number, resolved: string) =>
       `${name} × ${count} → 分類器: ${resolved}`,
+    diagProgress: (kills: number, noPct: number, noPhase: number) =>
+      `到達度: クリア ${kills} / 残 HP% 未取得 ${noPct} / フェーズ未取得 ${noPhase}`,
+    diagProgressRaw: (min: number, max: number) => ` · 残 HP% の生値 ${min}〜${max}`,
+    diagDates: (dates: string) => `日付: ${dates}`,
     diagUnresolved: "決められない",
     diagUnnamed: "(名前なし)",
     assign: (n: number) => `残り ${n} pull をこのコンテンツに割り当て`,
@@ -432,6 +436,10 @@ export const en: LogsMessages = {
     diagFights: (total, here, other, none) =>
       `${total} pulls — this content ${here} / other content ${other} / unassigned ${none}`,
     diagName: (name, count, resolved) => `${name} × ${count} → classifier: ${resolved}`,
+    diagProgress: (kills, noPct, noPhase) =>
+      `Progress: clears ${kills} / HP% missing ${noPct} / phase missing ${noPhase}`,
+    diagProgressRaw: (min, max) => ` · stored HP% values ${min}-${max}`,
+    diagDates: (dates) => `Dates: ${dates}`,
     diagUnresolved: "undecided",
     diagUnnamed: "(unnamed)",
     assign: (n) => `Assign the remaining ${n} pulls to this content`,
