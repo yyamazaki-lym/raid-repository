@@ -43,6 +43,10 @@ export async function syncFflogsFightsAction(): Promise<
       reattributed: number;
       failures: Array<{ reportCode: string; reason: string }>;
       videosBridged: number;
+      /** W-5 (2026-09-07): 自動発見で新しく見つかった report 数。 */
+      discovered: number;
+      /** 自動発見が動かなかった / 失敗した理由 (動いたときは null)。 */
+      discoveryNote: string | null;
     }
   | { ok: false; reason: string }
 > {

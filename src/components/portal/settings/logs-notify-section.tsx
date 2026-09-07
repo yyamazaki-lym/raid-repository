@@ -11,7 +11,13 @@ import { LOGS_NOTIFY_KINDS, type LogsNotifyKind } from "@/lib/logs-notify";
 import {
   getFflogsGuildIdAction,
   setFflogsGuildIdAction,
+  setFflogsReportSourceAction,
 } from "@/lib/server/fflogs-guild-actions";
+import {
+  FFLOGS_REPORT_SOURCES,
+  reportSourceReadiness,
+  type FflogsReportSource,
+} from "@/lib/fflogs-report-source";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -43,11 +49,12 @@ export function LogsNotifySection({
     firstClear: false,
   });
 
-  // W-5 の前段 (2026-09-07): FFLogs guild ID。**まだ取り込みに使われない** —
-  // guild からのレポート自動発見は「レポートを guild に上げる」運用に固定内で
-  // 揃えてから実装する前提なので、先に記録場所だけを用意している。
+  // W-5 (2026-09-07): レポートの発見元と guild ID。
+  // 「どこを見るか」は固定の運用で変わるので 3 択にしている
+  // (従来のリンク経由 / guild / 接続アカウント)。
   const [guildId, setGuildId] = useState("");
   const [guildSaved, setGuildSaved] = useState("");
+  const [source, setSource] = useState<FflogsReportSource>("links");
 
   useEffect(() => {
     if (!open || !canEdit || loaded) return;
@@ -62,6 +69,7 @@ export function LogsNotifySection({
       if (guild.ok) {
         setGuildId(guild.guildId);
         setGuildSaved(guild.guildId);
+        setSource(guild.source);
       }
     });
     return () => {
@@ -127,9 +135,67 @@ export function LogsNotifySection({
         {m.logsNotify.channelHint}
       </p>
 
-      {/* W-5 の前段: FFLogs guild ID。取り込みでは未使用なので、期待させない
-          よう UI にもその旨を明示する。 */}
+      {/* W-5: レポートの発見元。既定は従来どおり「貼られた URL からのみ」で、
+          選んだときだけ自動発見する (guild で他コンテンツも回している固定で
+          無関係なレポートが台帳に入るのを避けるため)。 */}
       <div className="mt-1 flex flex-col gap-1.5 border-t border-border/30 pt-2">
+        <Label className="text-xs text-foreground/80">
+          {m.logsNotify.sourceLabel}
+        </Label>
+        <div role="radiogroup" aria-label={m.logsNotify.sourceLabel} className="flex flex-wrap gap-1.5">
+          {FFLOGS_REPORT_SOURCES.map((s) => (
+            <button
+              key={s}
+              type="button"
+              role="radio"
+              aria-checked={source === s}
+              disabled={pending || !loaded}
+              onClick={() => {
+                if (source === s) return;
+                const prev = source;
+                setSource(s);
+                startTransition(async () => {
+                  const r = await setFflogsReportSourceAction(s);
+                  if (!r.ok) {
+                    setSource(prev);
+                    toast.error(r.reason);
+                    return;
+                  }
+                  toast.success(m.logsNotify.sourceSaved);
+                });
+              }}
+              className={
+                "rounded-sm border px-2 py-1 text-[12px] tracking-normal transition-colors disabled:opacity-50 " +
+                (source === s
+                  ? "border-[var(--neon-cyan)]/50 bg-[var(--neon-cyan)]/10 text-[var(--neon-cyan)]"
+                  : "border-border/40 text-muted-foreground/80 hover:border-border/70 hover:text-foreground/85")
+              }
+            >
+              {m.logsNotify.sourceLabels[s]}
+            </button>
+          ))}
+        </div>
+        <p className="text-[12px] leading-relaxed text-muted-foreground/80">
+          {m.logsNotify.sourceHints[source]}
+        </p>
+        {/* 選んだのに条件が足りていない状態を出す (「自動発見にしたのに
+            増えない」の原因が画面で分かるように)。 */}
+        {(() => {
+          const readiness = reportSourceReadiness({
+            source,
+            guildId: guildSaved,
+            // OAuth の接続状態はこのセクションでは持っていないので、
+            // guild ID の不足だけをここで出す (OAuth 未接続は同期結果に出る)。
+            oauthConnected: true,
+          });
+          return readiness.missing === "guildId" ? (
+            <p className="text-[12px] leading-relaxed text-amber-200/90">
+              {m.logsNotify.sourceNeedsGuildId}
+            </p>
+          ) : null;
+        })()}
+      </div>
+      <div className="flex flex-col gap-1.5">
         <Label htmlFor="fflogs-guild-id" className="text-xs text-foreground/80">
           {m.logsNotify.guildIdLabel}
         </Label>

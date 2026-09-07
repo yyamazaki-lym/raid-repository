@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { noPermissionError, textLengthError } from "@/lib/text-length-error";
+import { parseMemoSeverity, type MemoSeverity } from "@/lib/memo-severity";
 import { createClient } from "@/lib/supabase/client";
 import { useRealtimeChannel } from "@/lib/use-realtime-table";
 
@@ -23,6 +24,8 @@ export type ScheduleSessionMemo = {
   rawDate: string;
   body: string;
   authorName: string;
+  /** 重要度 (UI-3、2026-09-07)。既定は "none" = 未設定。 */
+  severity: MemoSeverity;
   createdAt: string;
   updatedAt: string;
 };
@@ -32,6 +35,7 @@ type ScheduleSessionMemoRow = {
   raw_date: string;
   body: string;
   author_name: string;
+  severity?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -42,6 +46,8 @@ function rowToMemo(row: ScheduleSessionMemoRow): ScheduleSessionMemo {
     rawDate: row.raw_date,
     body: row.body,
     authorName: row.author_name ?? "",
+    // schema 適用前 (列が無い) の応答でも落ちないよう既定へ倒す。
+    severity: parseMemoSeverity(row.severity),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -107,6 +113,7 @@ export async function createScheduleMemo(
     rawDate: string;
     body: string;
     authorName: string;
+    severity?: MemoSeverity;
   },
   locale: TextLocale = "ja",
 ): Promise<
@@ -121,6 +128,14 @@ export async function createScheduleMemo(
       raw_date: input.rawDate,
       body: input.body,
       author_name: sanitizeAuthorName(input.authorName),
+      // 既定値のときは列を送らない。schema の適用 (GitHub Actions) と
+      // デプロイが前後した数分の窓で、列がまだ無い DB へ severity を送ると
+      // **メモの投稿そのものが失敗する**。既定のままなら送らなければ
+      // 従来どおり投稿でき、壊れるのは新機能 (重要度の指定) だけになる
+      // (2026-09-07 マージ前レビュー)。
+      ...(input.severity && input.severity !== "none"
+        ? { severity: input.severity }
+        : {}),
     })
     .select("*")
     .single();
@@ -130,7 +145,7 @@ export async function createScheduleMemo(
 
 export async function updateScheduleMemo(
   id: string,
-  patch: Partial<{ body: string; authorName: string }>,
+  patch: Partial<{ body: string; authorName: string; severity: MemoSeverity }>,
   locale: TextLocale = "ja",
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
   const lenError = validateMemoText(patch.body, patch.authorName, locale);
@@ -140,6 +155,7 @@ export async function updateScheduleMemo(
   if (patch.body !== undefined) dbPatch.body = patch.body;
   if (patch.authorName !== undefined)
     dbPatch.author_name = sanitizeAuthorName(patch.authorName);
+  if (patch.severity !== undefined) dbPatch.severity = patch.severity;
   // `.select("id")` で返却 0 件 (= RLS USING で弾かれた非 admin) を失敗扱いに。
   const { data, error } = await supabase
     .from("schedule_session_memos")

@@ -569,6 +569,26 @@ ALTER TABLE public.schedule_session_memos
     AND author_name !~ '[[:cntrl:]]'
   ) NOT VALID;
 
+-- 2026-09-07 (UI-3): 重要度。日付メモが平坦な時系列で「今夜必ず直すこと」と
+-- 「参考情報」が同じ見た目で並んでいたので、3 段階のラベルを付けて並び替え /
+-- 絞り込みできるようにする (調査ノート第 4 回 8-3 UI-3)。
+--
+-- 既定は 'none' (未設定)。既存メモに後から 'medium' を割り当てると、ただの
+-- 連絡が全部「注意」の色で並んで色の意味が薄れる。重要度は付けたい人が
+-- 付けるものにして、付いていないメモは今までと同じ見た目のままにする。
+ALTER TABLE public.schedule_session_memos
+  ADD COLUMN IF NOT EXISTS severity text NOT NULL DEFAULT 'none';
+-- 想定外の値が入った行があれば既定へ丸めてから CHECK を張る (text_sane の
+-- 先例と同じ順。通常は 0 行 = 冪等 no-op)。
+UPDATE public.schedule_session_memos
+   SET severity = 'none'
+ WHERE severity NOT IN ('none', 'major', 'medium', 'minor');
+ALTER TABLE public.schedule_session_memos
+  DROP CONSTRAINT IF EXISTS schedule_session_memos_severity_valid;
+ALTER TABLE public.schedule_session_memos
+  ADD CONSTRAINT schedule_session_memos_severity_valid
+  CHECK (severity IN ('none', 'major', 'medium', 'minor')) NOT VALID;
+
 DROP TRIGGER IF EXISTS set_updated_at_schedule_session_memos
   ON public.schedule_session_memos;
 CREATE TRIGGER set_updated_at_schedule_session_memos
@@ -1537,6 +1557,22 @@ ALTER TABLE public.category_waymarks             ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.category_bis_links            ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.category_bis_slots            ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.loot_weekly_checks            ENABLE ROW LEVEL SECURITY;
+-- 2026-09-07 (マージ前レビューで検出): この表は **30 テーブル中ただ 1 つ
+-- RLS が有効になっていなかった**。schema.sql には (関数以外の) 明示 GRANT が
+-- 無く Supabase の default privileges で anon / authenticated が DML 権限を
+-- 持つため、RLS 無しでは
+--   - INSERT … 任意のレポートを恒久的に取り込み不可にできる (機能の否認)
+--   - DELETE … admin が除外した誤取り込みレポートを復活させられる
+-- が誰にでもできる状態だった。W-5 (レポート自動発見) はこの表を「発見しても
+-- 取り込まない」ゲートとして参照するので、ゲート自体を閉じておく。
+--
+-- ⚠ policy を張らない形 (category_link_reads と同じ) には **できない**。
+-- 同期処理 (`collectReportRefs` / 発見ブロック) と admin の「ログ削除」は
+-- どちらも service role ではなく **ユーザースコープのクライアント**で
+-- この表を読み書きしているため、policy 0 本にすると除外リストが黙って
+-- 空になり (SELECT が 0 行)、除外したレポートが毎回復活する。
+-- 下の 7 章の汎用ループに載せて「SELECT 開放 / 書き込みは admin」にする。
+ALTER TABLE public.fflogs_report_blocklist       ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.fflogs_fights                 ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.fflogs_report_syncs           ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.fflogs_report_videos          ENABLE ROW LEVEL SECURITY;
@@ -1633,7 +1669,10 @@ BEGIN
     -- admin ポリシー + 非 admin は Server Action の service role 経路
     -- (loot_weekly_checks と同じ扱い)。
     'category_bis_slots',
-    'fflogs_fights','fflogs_report_syncs','fflogs_report_videos'
+    'fflogs_fights','fflogs_report_syncs','fflogs_report_videos',
+    -- 2026-09-07: 取り込み除外リスト。SELECT は同期処理 (ユーザースコープの
+    -- クライアント) が読むので開放し、書き込みは admin に限る。
+    'fflogs_report_blocklist'
   ]) LOOP
     FOREACH op IN ARRAY ops LOOP
       policy_name := t || '_anon_' || op;

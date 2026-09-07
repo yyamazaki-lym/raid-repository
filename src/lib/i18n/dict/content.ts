@@ -28,6 +28,19 @@ export const ja = {
       macros: "マクロ / ウェイマーク",
     },
   },
+  /** コードフェンス風ブロック (UI-6、2026-09-07)。 */
+  codeBlock: {
+    lines: (n: number): string => `${n} 行`,
+    // FF14 のマクロは 15 行まで。超えるとゲーム内に貼れない。
+    linesOfLimit: (n: number, limit: number): string => `${n} / ${limit} 行`,
+    overLimitTitle: (limit: number): string =>
+      `${limit} 行を超えています。ゲーム内マクロは ${limit} 行までなので、このままでは貼れません。`,
+    copyAria: "本文をコピー",
+    labelMacro: "マクロ",
+    labelWaymark: "markercode",
+    labelBoard: "共有コード",
+    labelTemplate: "募集文",
+  },
   /** タブ横断で使う定型文。 */
   crud: {
     updated: "更新しました",
@@ -696,6 +709,17 @@ export const en: ContentMessages = {
       videos: "Videos",
       macros: "Macros / Waymarks",
     },
+  },
+  codeBlock: {
+    lines: (n) => `${n} line${n === 1 ? "" : "s"}`,
+    linesOfLimit: (n, limit) => `${n} / ${limit} lines`,
+    overLimitTitle: (limit) =>
+      `Over ${limit} lines. In-game macros are limited to ${limit} lines, so this cannot be pasted as-is.`,
+    copyAria: "Copy the text",
+    labelMacro: "Macro",
+    labelWaymark: "markercode",
+    labelBoard: "Share code",
+    labelTemplate: "Recruitment text",
   },
   crud: {
     updated: "Updated",

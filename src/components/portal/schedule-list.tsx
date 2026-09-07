@@ -11,6 +11,7 @@ import { EmptyState } from "@/components/portal/empty-state";
 import { CommentPopover } from "./comment-popover-lazy";
 import { ScheduleEditFrameDialog } from "./schedule-edit-frame-dialog-lazy";
 import { SessionMemoDot } from "./schedule/session-memo-dot";
+import { AttendanceSummaryChip } from "@/components/portal/schedule/attendance-summary-chip";
 import {
   SessionMemoPopover,
   type SessionMemoPopoverHandle,
@@ -983,6 +984,14 @@ function SessionRow({
               invisible placeholder so memo / video / Logs icons sit
               at the same horizontal position across all rows
               (1.9.27). */}
+          {/* UI-9 (2026-09-07): 行の出欠内訳。8 列を目で追わずに
+              「何人 OK / 未回答何人」が分かるようにする。内訳と未回答者の
+              名前は hover に入れる (常時見せると監視感が出る)。 */}
+          <AttendanceSummaryChip
+            users={users}
+            attendances={session.attendances}
+            reserveSpace
+          />
           <SessionMemoDot
             count={memos.length}
             reserveSpace={slots.memo}

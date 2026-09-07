@@ -14,6 +14,19 @@ import { getSecretValue } from "./secret-store";
 import { buildFflogsXhrHeaders } from "./fflogs-scrape-request";
 import { parseFflogsReportCode } from "@/lib/fflogs-url";
 import { notifyLogsEvents } from "./logs-notify";
+import {
+  fetchFflogsGuildReports,
+  fetchFflogsRecentOwnReports,
+} from "./fflogs";
+import { fetchAppSettings } from "@/lib/supabase/app-settings";
+import { FFLOGS_GUILD_ID_KEY } from "@/lib/fflogs-guild-keys";
+import {
+  AUTO_DISCOVERY_LIMIT,
+  FFLOGS_REPORT_SOURCE_KEY,
+  parseFflogsReportSource,
+  reportSourceReadiness,
+  usesAutoDiscovery,
+} from "@/lib/fflogs-report-source";
 import { jstYmdString } from "@/lib/jst-date";
 import {
   type CategoryRef,
@@ -133,6 +146,15 @@ export type FflogsFightsSyncResult =
        * (2026-08-30)。秒数は 0 のままなので、あとは人が秒だけ直せばよい。
        */
       videoOffsetsSeeded: number;
+      /**
+       * W-5 (2026-09-07): 自動発見でこの回に新しく見つかった report 数
+       * (`fflogs_report_source` が guild / user のときだけ 0 以外)。
+       * 「設定したのに増えない」を画面で切り分けられるようにするため、
+       * 発見できなかった理由は `discoveryNote` に入れる。
+       */
+      discovered: number;
+      /** 自動発見が動かなかった / 失敗した理由 (動いたときは null)。 */
+      discoveryNote: string | null;
     }
   | { ok: false; reason: string };
 
@@ -227,6 +249,68 @@ export async function syncFflogsFights(opts?: {
     // private レポートの fallback 用 (fflogs.ts の scrape と同じ保管場所)。
     getSecretValue("fflogs_session_cookie").catch(() => null),
   ]);
+  // (W-5, 2026-09-07) 自動発見。既定 (`links`) では何もしない。
+  // URL が貼られるまで portal がレポートを知れなかった状態を、guild または
+  // 接続アカウントのレポート一覧で埋める。どこを見るかは固定の運用で
+  // 変わるので設定で選ぶ (`src/lib/fflogs-report-source.ts`)。
+  let discovered = 0;
+  let discoveryNote: string | null = null;
+  {
+    const settings = await fetchAppSettings([
+      FFLOGS_REPORT_SOURCE_KEY,
+      FFLOGS_GUILD_ID_KEY,
+    ]);
+    const source = parseFflogsReportSource(settings[FFLOGS_REPORT_SOURCE_KEY]);
+    if (usesAutoDiscovery(source)) {
+      // ここまで来ている = token があるので OAuth は接続済み。
+      const readiness = reportSourceReadiness({
+        source,
+        guildId: settings[FFLOGS_GUILD_ID_KEY],
+        oauthConnected: true,
+      });
+      if (!readiness.ready) {
+        discoveryNote =
+          readiness.missing === "guildId"
+            ? "guild ID が未設定です"
+            : "FFLogs OAuth が未接続です";
+      } else {
+        const found =
+          source === "guild"
+            ? await fetchFflogsGuildReports(
+                token,
+                (settings[FFLOGS_GUILD_ID_KEY] ?? "").trim(),
+                AUTO_DISCOVERY_LIMIT,
+              )
+            : await fetchFflogsRecentOwnReports(token, AUTO_DISCOVERY_LIMIT);
+        if (!found.ok) {
+          discoveryNote = found.reason;
+        } else {
+          // 除外したレポートを再び入れない。collectReportRefs は自前で
+          // blocklist を見ているので、発見側でも同じ表を引く (小さい表で、
+          // ここを省くと「誤取り込みで消したのに毎回復活する」になる)。
+          const { data: blocked } = await db
+            .from("fflogs_report_blocklist")
+            .select("report_code");
+          const blockedCodes = new Set(
+            ((blocked ?? []) as Array<{ report_code: string }>).map(
+              (r) => r.report_code,
+            ),
+          );
+          for (const r of found.reports) {
+            if (!r.id || blockedCodes.has(r.id) || refs.has(r.id)) continue;
+            // カテゴリと日付は付けない。zone / encounter からの振り分けは
+            // 既存の取り込み処理が行う (URL 貼り付けと同じ扱い)。
+            refs.set(r.id, { code: r.id, categoryId: null, sessionDate: null });
+            discovered += 1;
+          }
+          if (discovered === 0) {
+            discoveryNote = "新しいレポートはありませんでした";
+          }
+        }
+      }
+    }
+  }
+
   if (refs.size === 0) {
     return {
       ok: true,
@@ -243,6 +327,10 @@ export async function syncFflogsFights(opts?: {
       videosBridged: 0,
       notified: 0,
       videoOffsetsSeeded: 0,
+      // 発見の結果はここでも返す。候補が 1 件も無いときこそ
+      // 「guild ID が未設定」などの理由が要る (2026-09-07 マージ前レビュー)。
+      discovered,
+      discoveryNote,
     };
   }
 
@@ -755,6 +843,8 @@ export async function syncFflogsFights(opts?: {
     ok: true,
     notified,
     videoOffsetsSeeded,
+    discovered,
+    discoveryNote,
     reportsKnown: refs.size,
     reportsFetched: fetched,
     fightsUpserted: upserted,

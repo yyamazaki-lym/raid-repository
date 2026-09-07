@@ -26,14 +26,22 @@ import {
   setReportVideoAction,
   suggestVideoForReportAction,
 } from "@/lib/server/fflogs-fights-actions";
+import { clampOffsetSeconds, nudgeOffset, type VideoSyncAnchor } from "@/lib/video-sync";
 import { type OffsetTarget } from "./video-link";
+import { OffsetNudge, VideoSyncPanel } from "./video-sync-panel";
 
 export function OffsetDialog({
   target,
+  anchors,
+  firstPullStartMs,
   onChange,
   onSaved,
 }: {
   target: OffsetTarget | null;
+  /** 編集中のレポートの pull (W-11 の基準候補)。時刻の昇順。 */
+  anchors: VideoSyncAnchor[];
+  /** 編集中のレポートの最初の pull の戦闘開始 (オフセットの基準)。 */
+  firstPullStartMs: number | null;
   onChange: (v: OffsetTarget | null) => void;
   onSaved: () => void;
 }) {
@@ -136,16 +144,41 @@ export function OffsetDialog({
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="offset-seconds">{m.logsOffset.offsetLabel}</Label>
-            <Input
-              id="offset-seconds"
-              inputMode="numeric"
-              value={target?.offset ?? "0"}
-              placeholder={m.logsOffset.offsetPlaceholder}
-              onChange={(e) =>
-                onChange(target ? { ...target, offset: e.target.value } : null)
-              }
-            />
+            <div className="flex gap-1.5">
+              <Input
+                id="offset-seconds"
+                inputMode="numeric"
+                value={target?.offset ?? "0"}
+                placeholder={m.logsOffset.offsetPlaceholder}
+                onChange={(e) =>
+                  onChange(target ? { ...target, offset: e.target.value } : null)
+                }
+              />
+              {/* ±1 秒 (2026-09-07 W-11)。動画で合わせたあと「開幕が
+                  ちょっと早い/遅い」を数字を打ち直さずに詰められるように。 */}
+              <OffsetNudge
+                onNudge={(delta) => {
+                  if (!target) return;
+                  const base = clampOffsetSeconds(Number(target.offset));
+                  onChange({ ...target, offset: String(nudgeOffset(base, delta)) });
+                }}
+              />
+            </div>
           </div>
+          {/* W-11 動画で合わせる (2026-09-07)。YouTube 以外の URL では
+              パネル内に「使えない理由」だけ出る。 */}
+          {target && (
+            <VideoSyncPanel
+              videoUrl={target.videoUrl}
+              anchors={anchors}
+              firstPullStartMs={firstPullStartMs}
+              offsetSeconds={clampOffsetSeconds(Number(target.offset))}
+              onPick={(seconds) => {
+                onChange({ ...target, offset: String(seconds) });
+                toast.success(m.logsOffset.syncPicked(seconds));
+              }}
+            />
+          )}
           {/* 2026-09-07: 複数動画を並べたとき「1 本目 / 2 本目」を人が
               決められるようにする (未入力なら UI が「動画 1」と振る)。 */}
           <div className="flex flex-col gap-1.5">

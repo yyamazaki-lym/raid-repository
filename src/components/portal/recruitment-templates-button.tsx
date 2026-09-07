@@ -29,6 +29,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { CodeBlock } from "@/components/portal/code-block";
 
 /**
  * Header button on the schedule page that exposes saved PT-募集 text
@@ -300,11 +301,14 @@ export function RecruitmentTopCopyButton({
           <p className="mb-1 text-[11px] tracking-normal text-[var(--neon-cyan)]">
             ★ {subLabel}
           </p>
-          <pre className="max-h-[14rem] overflow-y-auto font-mono text-[11px] leading-relaxed whitespace-pre-wrap text-foreground/90">
-            {/* W-28: 自動で埋まる変数はプレビューでも埋めて見せる
-                (貼る文面と一致させる)。手入力分は {name} のまま残る。 */}
-            {fillRecruitmentTemplate(top.body, autoValues)}
-          </pre>
+          {/* W-28: 自動で埋まる変数はプレビューでも埋めて見せる
+              (貼る文面と一致させる)。手入力分は {name} のまま残る。
+              UI-6 (2026-09-07): コードフェンス風 12px に揃える。 */}
+          <CodeBlock
+            text={fillRecruitmentTemplate(top.body, autoValues)}
+            label={m.codeBlock.labelTemplate}
+            maxHeightClass="max-h-[14rem]"
+          />
         </div>
       )}
     </span>

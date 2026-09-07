@@ -28,6 +28,7 @@
 | `failed-list.tsx` | 取り込めなかったレポートの一覧 |
 | `offset-dialog.tsx` | 動画 URL / オフセット / 表示名の編集ダイアログ |
 | `video-link.ts` | 動画リンクの表示ヘルパー (`OffsetTarget` 型 / 表示名 / オフセット表記) |
+| `video-sync-panel.tsx` | 動画を見ながらオフセットを合わせるパネル (W-11。YouTube 埋め込み + ±1 秒) |
 | `session-summary-row.tsx` | セッションサマリー (W-3。拘束 / 実戦闘 / 戦闘外 / 平均プル長) |
 | `team-badges-card.tsx` | チーム実績バッジ (W-31。初討伐 / ノーデス / 最速 / 回数) |
 | `trend-card.tsx` | 進行トレンド (W-4。インライン SVG の折れ線 2 本 + ペースの目安) |
@@ -37,7 +38,9 @@
 ```
 logs-view.tsx
   ├── stat-card / wipe-causes-card / phase-time-card / team-badges-card
-  │   / trend-card / failed-list / offset-dialog
+  │   / trend-card / failed-list
+  ├── offset-dialog
+  │     └── video-sync-panel
   └── day-row
         ├── session-summary-row
         └── pull-row
@@ -55,7 +58,9 @@ logs-view.tsx
   として置いてあります。フォールバック色が呼び出し側で
   `text-foreground/70` と `/75` に分かれていた (事故) のは `/75` に揃えました。
 - **部品は表示だけを持つ**。Server Action の呼び出しは
-  `offset-dialog.tsx` (動画の保存 / 削除) だけが持ちます。同期・取り込み・
+  `offset-dialog.tsx` (動画の保存 / 削除) だけが持ちます。
+  `video-sync-panel.tsx` は外部プレーヤーと `postMessage` するだけで、
+  保存はしません (オフセットの値を `offset-dialog` に返すところまで)。同期・取り込み・
   診断・再分類は `logs-view.tsx` 側です。
 - **グラフライブラリを入れない**。`trend-card.tsx` の折れ線はインライン SVG
   (座標は `@/lib/fflogs-trend` の `sparklinePath()` が組む純関数)。
