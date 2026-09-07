@@ -538,7 +538,7 @@ export function LogsView({
             全レポート URL がクリップボードに入る。fflogs.com 側 (本人の
             ブラウザセッション) で動くので unlisted / private の一覧も拾える。 */}
         <div className="flex flex-col gap-1.5 rounded-md border border-border/40 bg-secondary/15 px-3 py-2">
-          <p className="font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase">
+          <p className="font-mono text-[11px] tracking-[0.14em] text-muted-foreground uppercase">
             {m.logsImport.bookmarkletTitle}
           </p>
           <ol className="ml-4 flex list-decimal flex-col gap-0.5 text-[11px] leading-relaxed text-muted-foreground">
@@ -668,7 +668,7 @@ export function LogsView({
                     </span>
                   )}
                   {d.fights.names.map((n) => (
-                    <span key={n.name ?? ""} className="pl-2 font-mono text-[10px] text-muted-foreground/85">
+                    <span key={n.name ?? ""} className="pl-2 font-mono text-[12px] text-muted-foreground/85">
                       {m.logsImport.diagName(
                         n.name ?? m.logsImport.diagUnnamed,
                         n.count,
@@ -767,7 +767,7 @@ export function LogsView({
         </DialogHeader>
         <div className="flex flex-col gap-3">
           <div className="rounded-md border border-border/40 bg-secondary/15 px-3 py-2">
-            <p className="font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase">
+            <p className="font-mono text-[11px] tracking-[0.14em] text-muted-foreground uppercase">
               {m.logsDifficulty.observedTitle}
             </p>
             {difficultyStats.length === 0 ? (
@@ -876,7 +876,7 @@ export function LogsView({
   const lastSyncFailuresBlock =
     lastSyncFailures.length > 0 ? (
       <section className="rounded-md border border-rose-400/35 bg-rose-400/5 px-3 py-2">
-        <h3 className="font-mono text-[10px] tracking-[0.16em] text-rose-200 uppercase">
+        <h3 className="font-mono text-[11px] tracking-[0.16em] text-rose-200 uppercase">
           {m.logsSync.failuresTitle(lastSyncFailures.length)}
         </h3>
         <ul className="mt-1 flex flex-col gap-1">
@@ -979,7 +979,7 @@ export function LogsView({
         <div className="flex items-center gap-2">
           <Activity className="h-4 w-4 text-[var(--neon-cyan)]" aria-hidden />
           <h2 className="font-display text-base">{m.logs.title}</h2>
-          <span className="font-mono text-[10px] tracking-[0.18em] text-muted-foreground">
+          <span className="font-mono text-[11px] tracking-[0.18em] text-muted-foreground">
             {categoryName}
           </span>
           {/* W-33 ① (2026-09-07): 難易度バッジ。明示設定が無ければ名前から
@@ -995,7 +995,7 @@ export function LogsView({
             return (
               <span
                 className={
-                  "rounded-sm border px-1.5 py-0.5 font-mono text-[10px] whitespace-nowrap " +
+                  "rounded-sm border px-1.5 py-0.5 font-mono text-[11px] whitespace-nowrap " +
                   difficultyToneClass(label)
                 }
                 title={m.logs.difficultyTitle}
@@ -1137,10 +1137,10 @@ export function LogsView({
           が読み取れなかった (2026-08-28 ユーザー指摘)。 */}
       <section className="flex flex-col gap-1.5">
         <div className="flex items-baseline justify-between gap-2">
-          <h3 className="font-mono text-[10px] tracking-[0.18em] text-muted-foreground uppercase">
+          <h3 className="font-mono text-[11px] tracking-[0.18em] text-muted-foreground uppercase">
             {m.logs.timelineTitle}
           </h3>
-          <span className="font-mono text-[9px] tracking-[0.12em] text-muted-foreground/70">
+          <span className="font-mono text-[11px] tracking-[0.12em] text-muted-foreground/70">
             {m.logs.timelineLegend}
             {segmentCount !== null &&
               (floors ? m.logs.timelineLegendFloors : m.logs.timelineLegendPhases)}
@@ -1270,7 +1270,7 @@ export function LogsView({
           <button
             type="button"
             onClick={() => setShowAllTimeline((v) => !v)}
-            className="self-start rounded px-1 font-mono text-[10px] tracking-[0.12em] text-muted-foreground underline underline-offset-2 hover:text-foreground"
+            className="self-start rounded px-1 font-mono text-[11px] tracking-[0.12em] text-muted-foreground underline underline-offset-2 hover:text-foreground"
           >
             {showAllTimeline
               ? m.logs.showRecentOnly
@@ -1282,7 +1282,7 @@ export function LogsView({
       {/* A-2: 日 → pull 一覧 → FFLogs / XIVAnalysis / 動画時刻。 */}
       <section className="flex flex-col gap-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h3 className="font-mono text-[10px] tracking-[0.18em] text-muted-foreground uppercase">
+          <h3 className="font-mono text-[11px] tracking-[0.18em] text-muted-foreground uppercase">
             {m.logs.sessionsTitle}
           </h3>
           {/* 層フィルタ: 表示層 (1..4) 単位。層マップが無いコンテンツ
@@ -1294,7 +1294,7 @@ export function LogsView({
                 onClick={() => setFloorFilter(null)}
                 aria-pressed={floorFilter === null}
                 className={
-                  "rounded-sm border px-1.5 py-0.5 font-mono text-[10px] tracking-normal transition-colors " +
+                  "rounded-sm border px-1.5 py-0.5 font-mono text-[11px] tracking-normal transition-colors " +
                   (floorFilter === null
                     ? "border-[var(--neon-cyan)]/60 bg-[var(--neon-cyan)]/12 text-[var(--neon-cyan)]"
                     : "border-border/50 text-muted-foreground hover:text-foreground")
@@ -1312,7 +1312,7 @@ export function LogsView({
                   aria-pressed={floorFilter === f.index}
                   title={m.logs.floorFilterTitle(f.label)}
                   className={
-                    "rounded-sm border px-1.5 py-0.5 font-mono text-[10px] tabular-nums transition-colors " +
+                    "rounded-sm border px-1.5 py-0.5 font-mono text-[11px] tabular-nums transition-colors " +
                     (floorFilter === f.index
                       ? floorToneClass(f.displayFloor, f.half)
                       : "border-border/50 text-muted-foreground hover:text-foreground")
@@ -1359,7 +1359,7 @@ export function LogsView({
           <button
             type="button"
             onClick={() => setShowAllDays((v) => !v)}
-            className="self-start rounded px-1 font-mono text-[10px] tracking-[0.12em] text-muted-foreground underline underline-offset-2 hover:text-foreground"
+            className="self-start rounded px-1 font-mono text-[11px] tracking-[0.12em] text-muted-foreground underline underline-offset-2 hover:text-foreground"
           >
             {showAllDays
               ? m.logs.showRecentOnly

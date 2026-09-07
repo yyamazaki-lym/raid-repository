@@ -10,7 +10,7 @@ export function DiscordPanel({ items }: { items: ImportNowItem[] }) {
   const m = useMessages();
   return (
     <>
-      <p className="mb-2 pr-6 text-[10px] font-medium tracking-normal text-muted-foreground">
+      <p className="mb-2 pr-6 text-[11px] font-medium tracking-normal text-muted-foreground">
         {m.maintenancePanels.discordTitle}
       </p>
       {items.length === 0 ? (

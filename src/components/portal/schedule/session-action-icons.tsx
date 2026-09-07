@@ -94,7 +94,7 @@ export function SessionActionIcons({
           <Film className={iconSizeClass} aria-hidden />
           <span
             aria-hidden
-            className="pointer-events-none absolute -right-0.5 -top-0.5 flex h-2.5 min-w-2.5 items-center justify-center rounded-full bg-[var(--neon-cyan)] px-0.5 font-mono text-[8px] leading-none text-background"
+            className="pointer-events-none absolute -right-0.5 -top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-[var(--neon-cyan)] px-0.5 font-mono text-[11px] leading-none text-background"
           >
             {videoLinks.length}
           </span>
@@ -210,7 +210,7 @@ export function SessionActionIcons({
           <BarChart3 className={iconSizeClass} aria-hidden />
           <span
             aria-hidden
-            className="pointer-events-none absolute -right-0.5 -top-0.5 flex h-2.5 min-w-2.5 items-center justify-center rounded-full bg-amber-300 px-0.5 font-mono text-[8px] leading-none text-background"
+            className="pointer-events-none absolute -right-0.5 -top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-amber-300 px-0.5 font-mono text-[11px] leading-none text-background"
           >
             {logsCandidates.length}
           </span>

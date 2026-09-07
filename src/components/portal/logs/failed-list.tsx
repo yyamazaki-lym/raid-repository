@@ -21,7 +21,7 @@ export function FailedList({
   const m = useMessages();
   return (
     <section className="rounded-md border border-amber-400/30 bg-amber-400/5 px-3 py-2">
-      <h3 className="font-mono text-[10px] tracking-[0.16em] text-amber-200 uppercase">
+      <h3 className="font-mono text-[11px] tracking-[0.16em] text-amber-200 uppercase">
         {m.logs.failedTitle}
       </h3>
       <ul className="mt-1 flex flex-col gap-1">
@@ -36,7 +36,7 @@ export function FailedList({
               {f.reportCode}
             </a>
             {f.unassigned && (
-              <span className="ml-1.5 rounded-sm border border-border/50 px-1 py-0.5 font-mono text-[9px] tracking-[0.1em] uppercase">
+              <span className="ml-1.5 rounded-sm border border-border/50 px-1 py-0.5 font-mono text-[11px] tracking-[0.1em] uppercase">
                 {m.logs.unassigned}
               </span>
             )}

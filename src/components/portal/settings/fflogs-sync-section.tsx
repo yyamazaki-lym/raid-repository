@@ -251,7 +251,7 @@ export function FflogsSyncSection({
     <section className="flex flex-col gap-3">
       <header className="flex items-center gap-2 border-b border-border/30 pb-2">
         <BarChart3 className="h-3.5 w-3.5 text-amber-300" aria-hidden />
-        <span className="font-mono text-[10px] tracking-[0.22em] text-muted-foreground uppercase">
+        <span className="font-mono text-[11px] tracking-[0.22em] text-muted-foreground uppercase">
           FFLogs Sync
         </span>
       </header>
@@ -273,7 +273,7 @@ export function FflogsSyncSection({
                 href="https://www.fflogs.com/profile"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-[10px] text-amber-300/85 underline decoration-dotted underline-offset-2 transition-colors hover:text-amber-300"
+                className="inline-flex items-center gap-1 text-[12px] text-amber-300/85 underline decoration-dotted underline-offset-2 transition-colors hover:text-amber-300"
                 title={m.fflogsSync.profileTitle}
               >
                 <BarChart3 className="h-2.5 w-2.5" aria-hidden />
@@ -307,7 +307,7 @@ export function FflogsSyncSection({
                   });
                 }}
                 disabled={savingUsername}
-                className="gap-1.5 text-[10px] tracking-normal"
+                className="gap-1.5 text-[11px] tracking-normal"
               >
                 <Save className="h-3 w-3" aria-hidden />
                 {m.common.save}
@@ -332,7 +332,7 @@ export function FflogsSyncSection({
           <details className="group/oauth flex flex-col gap-2">
             <summary className="cursor-pointer list-none [&::-webkit-details-marker]:hidden">
               <div className="flex items-center justify-between gap-2 rounded-md border border-border/40 bg-secondary/15 px-3 py-2 hover:bg-secondary/25 transition-colors">
-                <span className="flex items-center gap-1.5 text-[10px] tracking-normal text-muted-foreground">
+                <span className="flex items-center gap-1.5 text-[11px] tracking-normal text-muted-foreground">
                   <span className="text-[var(--neon-cyan)]/70 transition-transform group-open/oauth:rotate-90">
                     ▸
                   </span>
@@ -340,7 +340,7 @@ export function FflogsSyncSection({
                   {m.fflogsSync.oauthSummary}
                 </span>
                 {oauthStatus?.connected && (
-                  <span className="inline-flex items-center gap-1 rounded-sm border border-emerald-400/45 bg-emerald-400/10 px-1.5 py-px text-[9px] tracking-normal text-emerald-200">
+                  <span className="inline-flex items-center gap-1 rounded-sm border border-emerald-400/45 bg-emerald-400/10 px-1.5 py-px text-[11px] tracking-normal text-emerald-200">
                     <span className="inline-block h-1 w-1 rounded-full bg-emerald-400 shadow-[0_0_6px_rgb(52_211_153)]" />
                     {m.fflogsSync.connected}
                   </span>
@@ -349,12 +349,12 @@ export function FflogsSyncSection({
             </summary>
             <div className="ml-2 flex flex-col gap-2 rounded-md border border-amber-400/35 bg-amber-400/5 px-3 py-2.5">
               <div className="flex items-center justify-between gap-2">
-                <span className="flex items-center gap-1.5 text-[10px] tracking-normal text-amber-200/95">
+                <span className="flex items-center gap-1.5 text-[11px] tracking-normal text-amber-200/95">
                   <Link2 className="h-3 w-3" aria-hidden />
                   {m.fflogsSync.oauthTitle}
                 </span>
                 {oauthStatus?.connected && (
-                  <span className="inline-flex items-center gap-1 rounded-sm border border-emerald-400/45 bg-emerald-400/10 px-1.5 py-px text-[9px] tracking-normal text-emerald-200">
+                  <span className="inline-flex items-center gap-1 rounded-sm border border-emerald-400/45 bg-emerald-400/10 px-1.5 py-px text-[11px] tracking-normal text-emerald-200">
                     <span className="inline-block h-1 w-1 rounded-full bg-emerald-400 shadow-[0_0_6px_rgb(52_211_153)]" />
                     {m.fflogsSync.connected}
                   </span>
@@ -373,7 +373,7 @@ export function FflogsSyncSection({
                     )}
                   </p>
                   {oauthStatus.expiresAt && (
-                    <p className="text-[10px] text-muted-foreground/70">
+                    <p className="text-[12px] text-muted-foreground/70">
                       {m.fflogsSync.tokenExpiry(
                         new Date(oauthStatus.expiresAt).toLocaleString("ja-JP"),
                       )}
@@ -397,7 +397,7 @@ export function FflogsSyncSection({
                       });
                     }}
                     disabled={disconnecting}
-                    className="self-start inline-flex items-center gap-1.5 rounded-md border border-border/50 px-2.5 py-1.5 text-[10px] tracking-normal text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-rose-200 disabled:opacity-50"
+                    className="self-start inline-flex items-center gap-1.5 rounded-md border border-border/50 px-2.5 py-1.5 text-[11px] tracking-normal text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-rose-200 disabled:opacity-50"
                   >
                     <X className="h-3 w-3" aria-hidden />
                     {disconnecting
@@ -412,12 +412,12 @@ export function FflogsSyncSection({
                   </p>
                   <a
                     href="/api/auth/fflogs/start"
-                    className="self-start inline-flex items-center gap-1.5 rounded-md border border-amber-400/55 bg-amber-400/15 px-2.5 py-1.5 text-[10px] tracking-normal text-amber-100 transition-colors hover:border-amber-400/80 hover:bg-amber-400/25"
+                    className="self-start inline-flex items-center gap-1.5 rounded-md border border-amber-400/55 bg-amber-400/15 px-2.5 py-1.5 text-[11px] tracking-normal text-amber-100 transition-colors hover:border-amber-400/80 hover:bg-amber-400/25"
                   >
                     <Link2 className="h-3 w-3" aria-hidden />
                     {m.fflogsSync.oauthConnect}
                   </a>
-                  <p className="text-[10px] leading-relaxed text-muted-foreground/80">
+                  <p className="text-[12px] leading-relaxed text-muted-foreground/80">
                     {m.fflogsSync.oauthEnvBefore}{" "}
                     <code className="font-mono">FFLOGS_OAUTH_CLIENT_ID</code>{" "}
                     {m.fflogsSync.oauthEnvAnd}{" "}
@@ -445,7 +445,7 @@ export function FflogsSyncSection({
           <details className="group/cookie flex flex-col gap-2">
             <summary className="cursor-pointer list-none [&::-webkit-details-marker]:hidden">
               <div className="flex items-center justify-between gap-2 rounded-md border border-rose-400/40 bg-rose-500/5 px-3 py-2 hover:bg-rose-500/10 transition-colors">
-                <span className="flex items-center gap-1.5 font-mono text-[10px] tracking-[0.22em] text-rose-200/95 uppercase">
+                <span className="flex items-center gap-1.5 font-mono text-[11px] tracking-[0.22em] text-rose-200/95 uppercase">
                   <span className="text-rose-300/80 transition-transform group-open/cookie:rotate-90">
                     ▸
                   </span>
@@ -453,7 +453,7 @@ export function FflogsSyncSection({
                   {m.fflogsSync.cookieSummary}
                 </span>
                 {cookieStatus?.set && (
-                  <span className="inline-flex items-center gap-1 rounded-sm border border-amber-400/45 bg-amber-400/10 px-1.5 py-px text-[9px] tracking-normal text-amber-200">
+                  <span className="inline-flex items-center gap-1 rounded-sm border border-amber-400/45 bg-amber-400/10 px-1.5 py-px text-[11px] tracking-normal text-amber-200">
                     <span className="inline-block h-1 w-1 rounded-full bg-amber-400 shadow-[0_0_6px_rgb(251_191_36)]" />
                     {m.fflogsSync.cookieSet}
                   </span>
@@ -465,13 +465,13 @@ export function FflogsSyncSection({
                 <strong>{m.fflogsSync.cookieDescStrong}</strong>
                 {m.fflogsSync.cookieDescAfter}
               </p>
-              <p className="text-[10px] leading-relaxed text-rose-200/85">
+              <p className="text-[12px] leading-relaxed text-rose-200/85">
                 <strong>{m.fflogsSync.cookieWarnStrong}</strong>
                 {m.fflogsSync.cookieWarnPart1}
                 <strong>{m.fflogsSync.cookieWarnStrong2}</strong>
                 {m.fflogsSync.cookieWarnPart2}
               </p>
-              <details className="text-[10px]">
+              <details className="text-[12px]">
                 <summary className="cursor-pointer text-muted-foreground/85 hover:text-foreground/90">
                   {m.fflogsSync.cookieHowSummary}
                 </summary>
@@ -543,7 +543,7 @@ export function FflogsSyncSection({
                     });
                   }}
                   disabled={savingCookie || !sessionCookieInput.trim()}
-                  className="gap-1.5 text-[10px] tracking-normal"
+                  className="gap-1.5 text-[11px] tracking-normal"
                 >
                   <Save className="h-3 w-3" aria-hidden />
                   {m.fflogsSync.cookieSave}
@@ -567,7 +567,7 @@ export function FflogsSyncSection({
                       });
                     }}
                     disabled={savingCookie}
-                    className="gap-1.5 text-[10px] tracking-normal text-muted-foreground"
+                    className="gap-1.5 text-[11px] tracking-normal text-muted-foreground"
                   >
                     <X className="h-3 w-3" aria-hidden />
                     {m.fflogsSync.cookieDeleteNow}
@@ -583,7 +583,7 @@ export function FflogsSyncSection({
           <div className="flex items-center justify-between gap-2 rounded-md border border-border/30 bg-secondary/20 px-3 py-2">
             <div className="flex flex-col gap-0.5">
               <span className="text-xs">{m.fflogsSync.cronLabel}</span>
-              <span className="text-[10px] text-muted-foreground/80">
+              <span className="text-[12px] text-muted-foreground/80">
                 {cronEnabled === null
                   ? m.common.loading
                   : cronEnabled
@@ -599,7 +599,7 @@ export function FflogsSyncSection({
                 onChange={(e) => onToggleCron(e.target.checked)}
                 className="h-4 w-4 cursor-pointer accent-[var(--neon-cyan)]"
               />
-              <span className="font-mono text-[10px] tracking-[0.18em] text-muted-foreground uppercase">
+              <span className="font-mono text-[11px] tracking-[0.18em] text-muted-foreground uppercase">
                 {(cronEnabled ?? true) ? "ON" : "OFF"}
               </span>
             </label>
@@ -652,7 +652,7 @@ export function FflogsSyncSection({
                 <p className="text-amber-200/90">
                   {m.fflogsSync.conflictsRemaining(dedupeConflicts.length)}
                 </p>
-                <ul className="ml-2 flex flex-col gap-0.5 text-[10px] text-muted-foreground">
+                <ul className="ml-2 flex flex-col gap-0.5 text-[12px] text-muted-foreground">
                   {dedupeConflicts.slice(0, 5).map((c) => (
                     <li key={c.label} className="truncate" title={c.urls.join("\n")}>
                       {m.fflogsSync.conflictItem(c.label, c.urls.length)}
@@ -685,7 +685,7 @@ export function FflogsSyncSection({
                       {m.fflogsSync.resultLinkedSuffix(logsResult.reportsScanned)}
                       {logsResult.reportsScanned >= 625 && (
                         <span
-                          className="ml-1 inline-flex items-center gap-1 rounded-sm border border-amber-400/40 bg-amber-400/10 px-1 py-px text-[9px] tracking-[0.16em] text-amber-200/85 uppercase"
+                          className="ml-1 inline-flex items-center gap-1 rounded-sm border border-amber-400/40 bg-amber-400/10 px-1 py-px text-[11px] tracking-[0.16em] text-amber-200/85 uppercase"
                           title={m.fflogsSync.limitReachedTitle}
                         >
                           {m.fflogsSync.limitReached}
@@ -699,7 +699,7 @@ export function FflogsSyncSection({
                         {m.fflogsSync.bridgedAfter}
                       </p>
                     )}
-                    <p className="text-[10px] text-muted-foreground/70">
+                    <p className="text-[12px] text-muted-foreground/70">
                       {m.fflogsSync.candidates(
                         logsResult.videosScanned,
                         logsResult.sessionsScanned,
@@ -715,10 +715,10 @@ export function FflogsSyncSection({
                       logsResult.sessionsMatched === 0 &&
                       logsResult.reportsScanned > 0 && (
                         <div className="mt-2 flex flex-col gap-1 rounded-sm border border-amber-400/30 bg-amber-400/5 px-2 py-1.5">
-                          <p className="text-[10px] text-amber-200/90">
+                          <p className="text-[12px] text-amber-200/90">
                             {m.fflogsSync.noMatchTitle}
                           </p>
-                          <ul className="ml-2 flex flex-col gap-0.5 text-[10px] text-muted-foreground">
+                          <ul className="ml-2 flex flex-col gap-0.5 text-[12px] text-muted-foreground">
                             {logsResult.queriedUsername && (
                               <li>
                                 {m.fflogsSync.queriedUsername}{" "}
@@ -759,8 +759,8 @@ export function FflogsSyncSection({
                               </li>
                             )}
                           </ul>
-                          <div className="mt-1.5 flex flex-col gap-1 rounded-sm bg-secondary/30 px-2 py-1.5 text-[10px] leading-relaxed">
-                            <p className="text-[10px] text-amber-200/90">
+                          <div className="mt-1.5 flex flex-col gap-1 rounded-sm bg-secondary/30 px-2 py-1.5 text-[12px] leading-relaxed">
+                            <p className="text-[12px] text-amber-200/90">
                               {m.fflogsSync.causeTitle}
                             </p>
                             <p className="text-muted-foreground leading-relaxed">
@@ -804,7 +804,7 @@ export function FflogsSyncSection({
                     {logsResult.reportSamples &&
                       logsResult.reportSamples.length > 0 && (
                         <details className="mt-2 group/reports">
-                          <summary className="cursor-pointer list-none text-[10px] text-muted-foreground/80 hover:text-foreground/90 [&::-webkit-details-marker]:hidden">
+                          <summary className="cursor-pointer list-none text-[12px] text-muted-foreground/80 hover:text-foreground/90 [&::-webkit-details-marker]:hidden">
                             <span className="inline-flex items-center gap-1">
                               <span className="text-[var(--neon-cyan)]/70 transition-transform group-open/reports:rotate-90">
                                 ▸
@@ -814,7 +814,7 @@ export function FflogsSyncSection({
                               )}
                             </span>
                           </summary>
-                          <ul className="mt-1.5 ml-3.5 flex flex-col gap-0.5 font-mono text-[10px] text-muted-foreground">
+                          <ul className="mt-1.5 ml-3.5 flex flex-col gap-0.5 font-mono text-[12px] text-muted-foreground">
                             {logsResult.reportSamples.map((r, i) => (
                               <li
                                 key={i}
@@ -851,7 +851,7 @@ export function FflogsSyncSection({
                           setDiagOpen(e.currentTarget.open)
                         }
                       >
-                        <summary className="cursor-pointer list-none text-[10px] text-muted-foreground/80 hover:text-foreground/90 [&::-webkit-details-marker]:hidden">
+                        <summary className="cursor-pointer list-none text-[12px] text-muted-foreground/80 hover:text-foreground/90 [&::-webkit-details-marker]:hidden">
                           <span className="inline-flex items-center gap-1">
                             <span className="text-amber-300/70 transition-transform group-open/diag:rotate-90">
                               ▸
@@ -868,7 +868,7 @@ export function FflogsSyncSection({
                       </details>
                     )}
                     {logsResult.details.length > 0 && (
-                      <ul className="mt-1 flex flex-col gap-0.5 font-mono text-[10px] text-muted-foreground">
+                      <ul className="mt-1 flex flex-col gap-0.5 font-mono text-[12px] text-muted-foreground">
                         {logsResult.details.slice(0, 8).map((d, i) => {
                           const dateMismatch =
                             d.videoDate &&
@@ -909,7 +909,7 @@ export function FflogsSyncSection({
                               {d.label.slice(0, 40)}
                               {d.label.length > 40 ? "…" : ""}
                               {d.reportStartJst && (
-                                <span className="ml-1 text-[10px] text-muted-foreground/80">
+                                <span className="ml-1 text-[12px] text-muted-foreground/80">
                                   {` · report=${d.reportStartJst} JST`}
                                 </span>
                               )}

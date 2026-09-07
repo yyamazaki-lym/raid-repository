@@ -196,7 +196,7 @@ export function NativeAttendancePopover({
       >
         {currentSymbol}
         {timesHint && (
-          <span className="ml-1 font-mono text-[9px] leading-none opacity-80 tabular-nums">
+          <span className="ml-1 font-mono text-[11px] leading-none opacity-80 tabular-nums">
             {timesHint}
           </span>
         )}
@@ -219,7 +219,7 @@ export function NativeAttendancePopover({
           <div className="flex flex-col gap-3 p-3">
             <div className="flex items-center gap-1.5 border-b border-border/50 pb-1.5">
               <span
-                className="min-w-0 truncate font-mono text-[9px] tracking-[0.2em] text-muted-foreground uppercase"
+                className="min-w-0 truncate font-mono text-[11px] tracking-[0.2em] text-muted-foreground uppercase"
                 title={`${userName} — ${displayDate}`}
               >
                 {userName} — {displayDate}
@@ -233,7 +233,7 @@ export function NativeAttendancePopover({
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <span className="text-[10px] tracking-normal text-muted-foreground">
+              <span className="text-[11px] tracking-normal text-muted-foreground">
                 {m.attendance.statusLabel}
               </span>
               <div className="flex flex-wrap gap-1">
@@ -274,11 +274,11 @@ export function NativeAttendancePopover({
                 ときだけ入力できる。フォーカスが外れた時に保存 (時→分の途中で
                 保存が走らないように)。 */}
             <div className="flex flex-col gap-1.5 border-t border-border/40 pt-2">
-              <span className="text-[10px] tracking-normal text-muted-foreground">
+              <span className="text-[11px] tracking-normal text-muted-foreground">
                 {m.attendance.timesLabel}
               </span>
               <div className="flex flex-wrap items-center gap-2">
-                <label className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
+                <label className="inline-flex items-center gap-1 text-[12px] text-muted-foreground">
                   {m.attendance.arrive}
                   <input
                     type="time"
@@ -292,7 +292,7 @@ export function NativeAttendancePopover({
                     className="h-6 rounded-sm border border-border/60 bg-background/40 px-1 font-mono text-[11px] text-foreground tabular-nums [color-scheme:dark] disabled:cursor-not-allowed disabled:opacity-50"
                   />
                 </label>
-                <label className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
+                <label className="inline-flex items-center gap-1 text-[12px] text-muted-foreground">
                   {m.attendance.leave}
                   <input
                     type="time"
@@ -315,13 +315,13 @@ export function NativeAttendancePopover({
                       setLeaveDraft("");
                       applyTimes({ arriveAt: "", leaveAt: "" });
                     }}
-                    className="rounded-sm border border-border/60 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
+                    className="rounded-sm border border-border/60 px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
                   >
                     {m.attendance.clearTimes}
                   </button>
                 )}
               </div>
-              <p className="text-[10px] leading-relaxed text-muted-foreground/80">
+              <p className="text-[12px] leading-relaxed text-muted-foreground/80">
                 {timesAllowed
                   ? m.attendance.timesHintEnabled
                   : m.attendance.timesHintDisabled}
@@ -338,7 +338,7 @@ export function NativeAttendancePopover({
               </div>
             )}
 
-            <p className="text-[10px] leading-relaxed text-muted-foreground/80">
+            <p className="text-[12px] leading-relaxed text-muted-foreground/80">
               {m.attendance.commentHint}
             </p>
           </div>

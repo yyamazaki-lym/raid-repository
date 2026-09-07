@@ -222,7 +222,7 @@ export function DayRow({
         <div className="flex flex-col gap-2 border-t border-border/30 px-3 py-2">
           {canEdit && (
             <div className="flex flex-col gap-1">
-              <span className="font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase">
+              <span className="font-mono text-[11px] tracking-[0.14em] text-muted-foreground uppercase">
                 {m.logs.videoOffset}
               </span>
               {/* 2026-09-07 実機要望 2 点:
@@ -236,7 +236,7 @@ export function DayRow({
                 const links = videoLinks[code] ?? [];
                 return (
                   <div key={code} className="flex w-full flex-wrap items-center gap-1.5">
-                    <span className="font-mono text-[10px] text-muted-foreground/70">
+                    <span className="font-mono text-[12px] text-muted-foreground/70">
                       {code.slice(0, 6)}
                     </span>
                     {links.map((v, i) => (
@@ -245,7 +245,7 @@ export function DayRow({
                         type="button"
                         onClick={() => onEditOffset(code, v.id)}
                         className={
-                          "inline-flex items-center gap-1 rounded-sm border px-1.5 py-0.5 font-mono text-[10px] transition-colors " +
+                          "inline-flex items-center gap-1 rounded-sm border px-1.5 py-0.5 font-mono text-[11px] transition-colors " +
                           (v.videoUrl
                             ? "border-violet-400/45 bg-violet-400/10 text-violet-200 hover:bg-violet-400/20"
                             : "border-border/50 text-muted-foreground hover:text-foreground")
@@ -263,7 +263,7 @@ export function DayRow({
                       type="button"
                       onClick={() => onEditOffset(code, null)}
                       title={m.logs.addVideoTitle}
-                      className="inline-flex items-center gap-1 rounded-sm border border-dashed border-border/60 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground transition-colors hover:border-violet-400/45 hover:text-violet-200"
+                      className="inline-flex items-center gap-1 rounded-sm border border-dashed border-border/60 px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground transition-colors hover:border-violet-400/45 hover:text-violet-200"
                     >
                       <Plus className="h-3 w-3 shrink-0" aria-hidden />
                       {m.logs.addVideo}
@@ -278,7 +278,7 @@ export function DayRow({
                         disabled={deletingCode === code}
                         aria-label={m.logs.deleteReportAria(code)}
                         title={m.logs.deleteReportTitle}
-                        className="ml-auto inline-flex shrink-0 items-center gap-1 rounded-sm border border-rose-500/30 px-1.5 py-0.5 font-mono text-[10px] text-rose-300/80 transition-colors hover:bg-rose-500/15 hover:text-rose-200 disabled:opacity-40"
+                        className="ml-auto inline-flex shrink-0 items-center gap-1 rounded-sm border border-rose-500/30 px-1.5 py-0.5 font-mono text-[11px] text-rose-300/80 transition-colors hover:bg-rose-500/15 hover:text-rose-200 disabled:opacity-40"
                       >
                         <Trash2 className="h-3 w-3 shrink-0" aria-hidden />
                         {m.logs.deleteReport}
@@ -291,7 +291,7 @@ export function DayRow({
           )}
           {dayWipeCauses.length > 0 && (
             <p
-              className="flex flex-wrap items-center gap-x-2 gap-y-0.5 font-mono text-[10px] tabular-nums"
+              className="flex flex-wrap items-center gap-x-2 gap-y-0.5 font-mono text-[12px] tabular-nums"
               title={m.logs.dayWipeCausesTitle}
             >
               <span className="tracking-[0.14em] text-muted-foreground uppercase">

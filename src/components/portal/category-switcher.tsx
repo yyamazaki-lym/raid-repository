@@ -172,7 +172,7 @@ export function CategorySwitcher({ initialCategories, userRoleIds }: Props) {
         // Mobile caps at viewport width.
         className="glass-popup w-[max(20rem,min(calc(100vw-1rem),40rem))] border-border/40"
       >
-        <div className="px-1.5 pt-1 pb-1 font-mono text-[10px] tracking-[0.2em] text-muted-foreground uppercase">
+        <div className="px-1.5 pt-1 pb-1 font-mono text-[11px] tracking-[0.2em] text-muted-foreground uppercase">
           Contents
         </div>
 

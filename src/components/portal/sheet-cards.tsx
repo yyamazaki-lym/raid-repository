@@ -110,7 +110,7 @@ export function SheetCards({
         <div className="flex items-center gap-2">
           <Table2 className="h-4 w-4 text-[var(--neon-cyan)]" aria-hidden />
           <h2 className="font-display text-base">{title}</h2>
-          <span className="font-mono text-[10px] tracking-[0.18em] text-muted-foreground">
+          <span className="font-mono text-[11px] tracking-[0.18em] text-muted-foreground">
             {m.sheetCards.rows(table.rows.length)}
           </span>
         </div>
@@ -119,7 +119,7 @@ export function SheetCards({
             href={href}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 rounded-sm border border-border/50 px-2 py-1 font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase transition-colors hover:text-foreground"
+            className="inline-flex items-center gap-1 rounded-sm border border-border/50 px-2 py-1 font-mono text-[11px] tracking-[0.14em] text-muted-foreground uppercase transition-colors hover:text-foreground"
           >
             {m.sheetCards.editInSheets}
             <ExternalLink className="h-2.5 w-2.5 opacity-70" aria-hidden />
@@ -220,7 +220,7 @@ export function SheetCards({
                       {i > 0 && (
                         <span
                           aria-hidden
-                          className="text-[10px] text-muted-foreground/60"
+                          className="text-[12px] text-muted-foreground/60"
                         >
                           →
                         </span>
@@ -238,7 +238,7 @@ export function SheetCards({
                       >
                         {/* 2026-08-30: シートの実際の列名を出す (種別名だと
                             「軽減率」が 2 つ並んで区別できなかった)。 */}
-                        <span className="max-w-[8rem] truncate font-mono text-[9px] tracking-[0.1em] text-muted-foreground">
+                        <span className="max-w-[8rem] truncate font-mono text-[11px] tracking-[0.1em] text-muted-foreground">
                           {s.label}
                         </span>
                         <span
@@ -261,7 +261,7 @@ export function SheetCards({
                       className="inline-flex items-baseline gap-1 rounded-sm border border-violet-400/35 bg-violet-400/8 px-1.5 py-0.5"
                       title={m.sheetCards.target}
                     >
-                      <span className="font-mono text-[9px] tracking-[0.1em] text-muted-foreground uppercase">
+                      <span className="font-mono text-[11px] tracking-[0.1em] text-muted-foreground uppercase">
                         {m.sheetCards.target}
                       </span>
                       <span className="text-[12px] break-words text-violet-200">
@@ -288,7 +288,7 @@ export function SheetCards({
                       }
                       title={`${c.label || m.sheetCards.ownerFallback}: ${c.value}`}
                     >
-                      <span className="font-mono text-[10px] tracking-[0.08em] text-[var(--neon-cyan)]/85">
+                      <span className="font-mono text-[11px] tracking-[0.08em] text-[var(--neon-cyan)]/85">
                         {c.label || "—"}
                       </span>
                       <span className="text-[12px] break-words text-foreground/90">
@@ -306,11 +306,11 @@ export function SheetCards({
                       className="inline-flex items-baseline gap-1 rounded-sm border border-[var(--neon-violet)]/45 bg-[var(--neon-violet)]/10 px-1.5 py-0.5"
                       title={c.owner ? `${c.owner}: ${c.label}` : c.label}
                     >
-                      <span aria-hidden className="text-[10px] text-[var(--neon-violet)]">
+                      <span aria-hidden className="text-[12px] text-[var(--neon-violet)]">
                         ✓
                       </span>
                       {c.owner && (
-                        <span className="font-mono text-[9px] tracking-[0.08em] text-[var(--neon-violet)]/85">
+                        <span className="font-mono text-[11px] tracking-[0.08em] text-[var(--neon-violet)]/85">
                           {c.owner}
                         </span>
                       )}
@@ -326,7 +326,7 @@ export function SheetCards({
                 <dl className="mt-1.5 grid grid-cols-[minmax(3.5rem,7rem)_minmax(0,1fr)] gap-x-3 gap-y-1">
                   {cells.map((c, i) => (
                     <div key={i} className="contents">
-                      <dt className="truncate font-mono text-[10px] tracking-[0.12em] text-muted-foreground uppercase">
+                      <dt className="truncate font-mono text-[11px] tracking-[0.12em] text-muted-foreground uppercase">
                         {c.label || "—"}
                       </dt>
                       {/* URL のような区切りの無い長い文字列でも折り返す

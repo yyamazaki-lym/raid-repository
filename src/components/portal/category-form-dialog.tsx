@@ -681,7 +681,7 @@ export function CategoryFormDialog({
                   aria-pressed={status === s}
                   onClick={() => setStatus(s)}
                   className={cn(
-                    "inline-flex items-center gap-1.5 rounded-sm border px-2 py-1 text-[10px] tracking-normal transition-colors",
+                    "inline-flex items-center gap-1.5 rounded-sm border px-2 py-1 text-[11px] tracking-normal transition-colors",
                     status === s
                       ? "border-[var(--neon-cyan)]/60 bg-[var(--neon-cyan)]/10 text-foreground"
                       : "border-border bg-background/30 text-muted-foreground hover:text-foreground/80",
@@ -730,7 +730,7 @@ export function CategoryFormDialog({
                     aria-pressed={progressModel === pm}
                     onClick={() => setProgressModel(pm)}
                     className={cn(
-                      "inline-flex items-center gap-1.5 rounded-sm border px-2 py-1 text-[10px] tracking-normal transition-colors",
+                      "inline-flex items-center gap-1.5 rounded-sm border px-2 py-1 text-[11px] tracking-normal transition-colors",
                       progressModel === pm
                         ? "border-[var(--neon-cyan)]/60 bg-[var(--neon-cyan)]/10 text-foreground"
                         : "border-border bg-background/30 text-muted-foreground hover:text-foreground/80",
@@ -775,7 +775,7 @@ export function CategoryFormDialog({
                           disabled ? m.categoryForm.tabHiddenTitle : undefined
                         }
                         className={cn(
-                          "inline-flex items-center gap-1.5 rounded-sm border px-2 py-1 text-[10px] tracking-normal transition-colors",
+                          "inline-flex items-center gap-1.5 rounded-sm border px-2 py-1 text-[11px] tracking-normal transition-colors",
                           defaultTab === id
                             ? "border-[var(--neon-cyan)]/60 bg-[var(--neon-cyan)]/10 text-foreground"
                             : "border-border bg-background/30 text-muted-foreground hover:text-foreground/80",
@@ -1026,7 +1026,7 @@ export function CategoryFormDialog({
                       <button
                         type="button"
                         onClick={() => onRemoveBlocklist(b.id)}
-                        className="shrink-0 rounded-md border border-border/50 px-2 py-0.5 text-[10px] tracking-normal text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground"
+                        className="shrink-0 rounded-md border border-border/50 px-2 py-0.5 text-[11px] tracking-normal text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground"
                       >
                         {m.categoryForm.unblock}
                       </button>
@@ -1074,7 +1074,7 @@ export function CategoryFormDialog({
                 size="sm"
                 onClick={onPickBackgroundFile}
                 disabled={uploadingBg}
-                className="shrink-0 gap-1.5 text-[10px] tracking-normal"
+                className="shrink-0 gap-1.5 text-[11px] tracking-normal"
               >
                 {uploadingBg ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
@@ -1089,7 +1089,7 @@ export function CategoryFormDialog({
                   variant="ghost"
                   size="sm"
                   onClick={() => setBackgroundImageUrl("")}
-                  className="shrink-0 text-[10px] tracking-normal"
+                  className="shrink-0 text-[11px] tracking-normal"
                 >
                   {m.common.clear}
                 </Button>
@@ -1117,11 +1117,11 @@ export function CategoryFormDialog({
               <Shield className="h-3 w-3" aria-hidden />
               {m.categoryForm.rolesSummary}
               {selectedRoleIds.length > 0 && (
-                <span className="inline-flex items-center rounded-sm border border-[var(--neon-cyan)]/40 bg-[var(--neon-cyan)]/10 px-1.5 py-px text-[9px] tracking-normal text-[var(--neon-cyan)]">
+                <span className="inline-flex items-center rounded-sm border border-[var(--neon-cyan)]/40 bg-[var(--neon-cyan)]/10 px-1.5 py-px text-[11px] tracking-normal text-[var(--neon-cyan)]">
                   {m.categoryForm.rolesSelected(selectedRoleIds.length)}
                 </span>
               )}
-              <span className="ml-auto text-[10px] tracking-normal text-muted-foreground">
+              <span className="ml-auto text-[11px] tracking-normal text-muted-foreground">
                 {m.categoryForm.clickToExpand}
               </span>
             </summary>
@@ -1172,7 +1172,7 @@ export function CategoryFormDialog({
                         )}
                         <span className="min-w-0 flex-1 truncate">{role.name}</span>
                         {role.managed && (
-                          <span className="shrink-0 rounded border border-border/40 px-1 text-[9px] tracking-[0.16em] text-muted-foreground uppercase">
+                          <span className="shrink-0 rounded border border-border/40 px-1 text-[11px] tracking-[0.16em] text-muted-foreground uppercase">
                             managed
                           </span>
                         )}
@@ -1185,7 +1185,7 @@ export function CategoryFormDialog({
                 <button
                   type="button"
                   onClick={() => setSelectedRoleIds([])}
-                  className="self-start text-[10px] tracking-normal text-muted-foreground hover:text-foreground"
+                  className="self-start text-[11px] tracking-normal text-muted-foreground hover:text-foreground"
                 >
                   {m.categoryForm.clearSelection}
                 </button>
@@ -1211,7 +1211,7 @@ export function CategoryFormDialog({
                   variant="ghost"
                   size="sm"
                   onClick={() => setFirstClearDate("")}
-                  className="text-[10px] tracking-normal"
+                  className="text-[11px] tracking-normal"
                 >
                   {m.common.clear}
                 </Button>
@@ -1269,7 +1269,7 @@ export function CategoryFormDialog({
                     setManualHours("");
                     setManualMinutes("");
                   }}
-                  className="text-[10px] tracking-normal"
+                  className="text-[11px] tracking-normal"
                 >
                   {m.common.clear}
                 </Button>
@@ -1462,7 +1462,7 @@ function BackgroundFocalPicker({
           size="sm"
           disabled={isCenter}
           onClick={() => onChange({ x: 50, y: 50 })}
-          className="shrink-0 text-[10px] tracking-normal"
+          className="shrink-0 text-[11px] tracking-normal"
         >
           {m.categoryForm.focalReset}
         </Button>

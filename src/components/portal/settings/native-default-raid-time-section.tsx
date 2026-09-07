@@ -104,12 +104,12 @@ export function NativeDefaultRaidTimeSection({
           className="h-3.5 w-3.5 text-muted-foreground"
           aria-hidden
         />
-        <span className="font-mono text-[10px] tracking-[0.22em] text-muted-foreground uppercase">
+        <span className="font-mono text-[11px] tracking-[0.22em] text-muted-foreground uppercase">
           Native Default Raid Time
         </span>
       </header>
 
-      <p className="text-[10px] leading-relaxed text-muted-foreground">
+      <p className="text-[12px] leading-relaxed text-muted-foreground">
         {m.nativeRaidTime.description}
       </p>
 
@@ -133,7 +133,7 @@ export function NativeDefaultRaidTimeSection({
             aria-label={m.nativeRaidTime.endAria}
           />
         </div>
-        <p className="text-muted-foreground text-[10px] leading-relaxed">
+        <p className="text-muted-foreground text-[12px] leading-relaxed">
           {m.nativeRaidTime.jstNoteBefore}{" "}
           <span className="whitespace-nowrap">22:00〜00:00</span>
           {m.nativeRaidTime.jstNoteAfter}
@@ -146,7 +146,7 @@ export function NativeDefaultRaidTimeSection({
               size="sm"
               disabled={!loaded || pending || !dirty || !validRange}
               onClick={onSave}
-              className="h-7 gap-1 px-3 text-[10px] tracking-normal"
+              className="h-7 gap-1 px-3 text-[11px] tracking-normal"
             >
               {pending ? (
                 <Loader2 className="h-3 w-3 animate-spin" aria-hidden />

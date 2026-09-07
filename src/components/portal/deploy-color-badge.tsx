@@ -70,7 +70,7 @@ export function DeployColorBadge({
   const m = useMessages();
   return (
     <span
-      className={`flex items-center gap-1.5 font-mono text-[10px] tabular-nums tracking-[0.16em] sm:text-[11px] ${color}`}
+      className={`flex items-center gap-1.5 font-mono text-[11px] tabular-nums tracking-[0.16em] sm:text-[11px] ${color}`}
       title={m.header.deployTitle}
     >
       {children}

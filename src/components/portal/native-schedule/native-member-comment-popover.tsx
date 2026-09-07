@@ -196,7 +196,7 @@ export function NativeMemberCommentPopover({
                 aria-hidden
               />
               <span
-                className="min-w-0 truncate text-[9px] font-medium tracking-normal text-muted-foreground"
+                className="min-w-0 truncate text-[11px] font-medium tracking-normal text-muted-foreground"
                 title={userName}
               >
                 {m.comment.ofUser(userName)}
@@ -236,7 +236,7 @@ export function NativeMemberCommentPopover({
                       size="sm"
                       onClick={onClear}
                       disabled={busy || !draft}
-                      className="gap-1 text-[10px] tracking-normal"
+                      className="gap-1 text-[11px] tracking-normal"
                       title={m.comment.clearTitle}
                     >
                       <Trash2 className="h-3 w-3" aria-hidden />
@@ -249,7 +249,7 @@ export function NativeMemberCommentPopover({
                     size="sm"
                     onClick={onSave}
                     disabled={busy}
-                    className="gap-1 text-[10px] tracking-normal"
+                    className="gap-1 text-[11px] tracking-normal"
                   >
                     <Save className="h-3 w-3" aria-hidden />
                     {busy ? m.common.saving : m.common.save}

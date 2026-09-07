@@ -22,7 +22,7 @@ export function StrategyThumbPanel({
   const t = useMessages().maintenancePanels;
   return (
     <>
-      <p className="mb-2 pr-6 text-[10px] font-medium tracking-normal text-muted-foreground">
+      <p className="mb-2 pr-6 text-[11px] font-medium tracking-normal text-muted-foreground">
         {t.thumbTitle(force)}
       </p>
       <ul className="flex flex-col gap-0.5 text-[11px]">
@@ -45,7 +45,7 @@ export function StrategyThumbPanel({
             <span className="text-muted-foreground">{t.count}</span>
           </li>
         )}
-        <li className="text-[10px] text-muted-foreground">
+        <li className="text-[12px] text-muted-foreground">
           {t.target(data.scanned)}
         </li>
       </ul>

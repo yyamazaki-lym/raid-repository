@@ -93,12 +93,12 @@ export function NativeCancelledSessionsSection({
     <section className="flex flex-col gap-3">
       <header className="flex items-center gap-2 border-b border-border/30 pb-2">
         <Archive className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
-        <span className="font-mono text-[10px] tracking-[0.22em] text-muted-foreground uppercase">
+        <span className="font-mono text-[11px] tracking-[0.22em] text-muted-foreground uppercase">
           Native Schedule Cancelled Sessions
         </span>
       </header>
 
-      <p className="text-[10px] leading-relaxed text-muted-foreground">
+      <p className="text-[12px] leading-relaxed text-muted-foreground">
         {m.nativeCancelled.description}
       </p>
 
@@ -123,7 +123,7 @@ export function NativeCancelledSessionsSection({
                   <span className="text-xs text-foreground">{label}</span>
                   {/* 時刻は nowrap で「21:00 / 〜24:00」への分断を防ぎ、
                       自由記述 note は break-words で枠内に折り返す。 */}
-                  <span className="font-mono text-[10px] break-words text-muted-foreground/70">
+                  <span className="font-mono text-[12px] break-words text-muted-foreground/70">
                     <span className="whitespace-nowrap">
                       {s.start_time}〜{s.end_time}
                     </span>
@@ -137,7 +137,7 @@ export function NativeCancelledSessionsSection({
                     size="sm"
                     disabled={!canEdit || pending}
                     onClick={() => onRestore(s, "CANDIDATE")}
-                    className="h-7 gap-1 px-2 text-[10px]"
+                    className="h-7 gap-1 px-2 text-[12px]"
                   >
                     {pending && pendingKey === `${s.id}:CANDIDATE` ? (
                       <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
@@ -151,7 +151,7 @@ export function NativeCancelledSessionsSection({
                     size="sm"
                     disabled={!canEdit || pending}
                     onClick={() => onRestore(s, "DECISION")}
-                    className="h-7 gap-1 px-2 text-[10px]"
+                    className="h-7 gap-1 px-2 text-[12px]"
                   >
                     {pending && pendingKey === `${s.id}:DECISION` ? (
                       <Loader2 className="h-3 w-3 animate-spin" aria-hidden />

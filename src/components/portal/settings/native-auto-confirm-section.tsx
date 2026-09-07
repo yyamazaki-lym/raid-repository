@@ -82,7 +82,7 @@ export function NativeAutoConfirmSection({
     <section className="flex flex-col gap-2">
       <header className="flex items-center gap-2 border-b border-border/30 pb-2">
         <CheckCheck className="h-3.5 w-3.5 text-emerald-300" aria-hidden />
-        <span className="font-mono text-[10px] tracking-[0.22em] text-muted-foreground uppercase">
+        <span className="font-mono text-[11px] tracking-[0.22em] text-muted-foreground uppercase">
           {m.nativeAutoConfirm.title}
         </span>
       </header>
@@ -94,7 +94,7 @@ export function NativeAutoConfirmSection({
       <div className="flex items-center justify-between gap-2 rounded-md border border-border/40 bg-secondary/15 px-3 py-2">
         <span className="text-xs">
           {m.nativeAutoConfirm.toggleLabel}
-          <span className="ml-2 text-[10px] text-muted-foreground/80">
+          <span className="ml-2 text-[12px] text-muted-foreground/80">
             {!loaded ? m.common.loading : enabled ? "ON" : "OFF"}
           </span>
         </span>
@@ -129,7 +129,7 @@ export function NativeAutoConfirmSection({
           size="sm"
           onClick={onSaveMin}
           disabled={pending || minDraft === minAvailable}
-          className="gap-1.5 text-[10px] tracking-normal"
+          className="gap-1.5 text-[11px] tracking-normal"
         >
           <Save className="h-3 w-3" aria-hidden />
           {m.common.save}

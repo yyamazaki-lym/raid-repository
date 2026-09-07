@@ -181,7 +181,7 @@ export function Legend({
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-border/40 bg-secondary/15 px-3 py-2 text-[11px]">
       <span
         className={
-          "font-mono text-[10px] tracking-[0.22em] uppercase " +
+          "font-mono text-[11px] tracking-[0.22em] uppercase " +
           (hasUltimateClear
             ? "text-amber-300"
             : "text-muted-foreground")
@@ -222,7 +222,7 @@ export function Legend({
             disabled={dedupingLogs}
             aria-label={m.legend.dedupeAria}
             title={m.legend.dedupeTitle}
-            className="inline-flex h-6 items-center gap-1 rounded-md border border-border/60 bg-background/30 px-2 text-[10px] tracking-normal whitespace-nowrap text-muted-foreground transition-colors hover:border-amber-300/60 hover:text-foreground disabled:opacity-50"
+            className="inline-flex h-6 items-center gap-1 rounded-md border border-border/60 bg-background/30 px-2 text-[11px] tracking-normal whitespace-nowrap text-muted-foreground transition-colors hover:border-amber-300/60 hover:text-foreground disabled:opacity-50"
           >
             {dedupingLogs ? (
               <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
@@ -245,7 +245,7 @@ export function Legend({
               title={m.legend.rulesTitle}
               aria-expanded={showTopText}
               aria-controls="legend-rules-panel"
-              className="inline-flex h-6 items-center whitespace-nowrap gap-1 rounded-md border border-[var(--neon-violet)]/40 bg-[var(--neon-violet)]/8 px-2 text-[10px] tracking-normal text-[var(--neon-violet)]/90 transition-all hover:border-[var(--neon-violet)]/70 hover:bg-[var(--neon-violet)]/15 hover:shadow-[0_0_8px_-2px_rgba(167,139,250,0.55)]"
+              className="inline-flex h-6 items-center whitespace-nowrap gap-1 rounded-md border border-[var(--neon-violet)]/40 bg-[var(--neon-violet)]/8 px-2 text-[11px] tracking-normal text-[var(--neon-violet)]/90 transition-all hover:border-[var(--neon-violet)]/70 hover:bg-[var(--neon-violet)]/15 hover:shadow-[0_0_8px_-2px_rgba(167,139,250,0.55)]"
             >
               <MessageSquare className="h-3 w-3" aria-hidden />
               {m.legend.rulesButton}
@@ -272,7 +272,7 @@ export function Legend({
                 className="glass-popup absolute top-full right-0 z-40 mt-1 max-h-[min(70dvh,34rem)] w-[min(36rem,calc(100vw-2rem))] overflow-y-auto overscroll-contain rounded-lg border border-[var(--neon-violet)]/35 px-3.5 py-3 text-[12px] leading-relaxed text-foreground/85 shadow-[0_12px_40px_-16px_rgba(167,139,250,0.45),0_2px_8px_-2px_rgba(0,0,0,0.4)]"
               >
                 <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-[10px] font-medium tracking-normal text-[var(--neon-violet)]/85">
+                  <p className="text-[11px] font-medium tracking-normal text-[var(--neon-violet)]/85">
                     {m.legend.rulesTitle}
                   </p>
                   {!editing && (
@@ -291,7 +291,7 @@ export function Legend({
                             onClick={() => setView("scraped")}
                             title={m.legend.originalTitle}
                             className={
-                              "px-1.5 py-0.5 text-[9px] tracking-normal transition-colors " +
+                              "px-1.5 py-0.5 text-[11px] tracking-normal transition-colors " +
                               (view === "scraped"
                                 ? "bg-[var(--neon-violet)]/25 text-foreground"
                                 : "text-muted-foreground hover:bg-secondary/50")
@@ -306,7 +306,7 @@ export function Legend({
                             onClick={() => setView("edited")}
                             title={m.legend.editedTitle}
                             className={
-                              "inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[9px] tracking-normal transition-colors " +
+                              "inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[11px] tracking-normal transition-colors " +
                               (view === "edited"
                                 ? "bg-[var(--neon-cyan)]/25 text-foreground"
                                 : "text-muted-foreground hover:bg-secondary/50")
@@ -326,7 +326,7 @@ export function Legend({
                         }}
                         aria-label={m.legend.editAria}
                         title={m.legend.editTitle}
-                        className="inline-flex h-6 items-center whitespace-nowrap gap-1 rounded-md border border-[var(--neon-violet)]/40 bg-[var(--neon-violet)]/10 px-2 text-[10px] tracking-normal text-[var(--neon-violet)]/90 transition-colors hover:border-[var(--neon-violet)]/70 hover:bg-[var(--neon-violet)]/20"
+                        className="inline-flex h-6 items-center whitespace-nowrap gap-1 rounded-md border border-[var(--neon-violet)]/40 bg-[var(--neon-violet)]/10 px-2 text-[11px] tracking-normal text-[var(--neon-violet)]/90 transition-colors hover:border-[var(--neon-violet)]/70 hover:bg-[var(--neon-violet)]/20"
                       >
                         <Pencil className="h-3 w-3" aria-hidden />
                         {m.common.edit}
@@ -387,7 +387,7 @@ export function Legend({
                           setDraft("");
                         }}
                         disabled={saving}
-                        className="inline-flex h-6 items-center whitespace-nowrap gap-1 rounded-md border border-border/60 px-2 text-[10px] tracking-normal text-muted-foreground transition-colors hover:bg-secondary/40 disabled:opacity-50"
+                        className="inline-flex h-6 items-center whitespace-nowrap gap-1 rounded-md border border-border/60 px-2 text-[11px] tracking-normal text-muted-foreground transition-colors hover:bg-secondary/40 disabled:opacity-50"
                       >
                         <X className="h-3 w-3" aria-hidden />
                         {m.common.cancel}
@@ -417,7 +417,7 @@ export function Legend({
                           toast.success(m.legend.saveSuccess);
                           router.refresh();
                         }}
-                        className="inline-flex h-6 items-center whitespace-nowrap gap-1 rounded-md border border-[var(--neon-cyan)]/50 bg-[var(--neon-cyan)]/15 px-2 text-[10px] tracking-normal text-[var(--neon-cyan)] transition-colors hover:bg-[var(--neon-cyan)]/25 disabled:opacity-50"
+                        className="inline-flex h-6 items-center whitespace-nowrap gap-1 rounded-md border border-[var(--neon-cyan)]/50 bg-[var(--neon-cyan)]/15 px-2 text-[11px] tracking-normal text-[var(--neon-cyan)] transition-colors hover:bg-[var(--neon-cyan)]/25 disabled:opacity-50"
                       >
                         {saving ? (
                           <Loader2 className="h-3 w-3 animate-spin" aria-hidden />

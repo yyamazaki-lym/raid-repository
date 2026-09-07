@@ -319,7 +319,7 @@ export function ImageFormDialog({
                 size="sm"
                 onClick={onPickFile}
                 disabled={uploading || busy}
-                className="shrink-0 gap-1.5 text-[10px] tracking-normal"
+                className="shrink-0 gap-1.5 text-[11px] tracking-normal"
               >
                 {uploading ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />

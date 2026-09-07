@@ -650,7 +650,7 @@ export function VideosList({
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex flex-wrap items-center gap-1.5 font-mono text-[10px] tracking-[0.2em] text-muted-foreground uppercase">
+        <div className="flex flex-wrap items-center gap-1.5 font-mono text-[11px] tracking-[0.2em] text-muted-foreground uppercase">
           <span>
             {videos.length} video{videos.length === 1 ? "" : "s"}
           </span>
@@ -676,7 +676,7 @@ export function VideosList({
               <>
                 {showTotalBadge && (
                   <span
-                    className="inline-flex items-center gap-1 rounded-sm border border-violet-400/40 bg-violet-400/10 px-1.5 py-px text-[9px] text-violet-200 normal-case"
+                    className="inline-flex items-center gap-1 rounded-sm border border-violet-400/40 bg-violet-400/10 px-1.5 py-px text-[11px] text-violet-200 normal-case"
                     title={`${m.videos.totalPractice}: ${formatDurationLong(totalSeconds, locale)}${
                       missingDurationCount > 0
                         ? m.videos.missingDurations(missingDurationCount)
@@ -697,7 +697,7 @@ export function VideosList({
                   // 重複することはない。
                   <span
                     className={
-                      "inline-flex items-center gap-1 rounded-sm border px-1.5 py-px text-[9px] normal-case " +
+                      "inline-flex items-center gap-1 rounded-sm border px-1.5 py-px text-[11px] normal-case " +
                       (isCleared
                         ? "border-emerald-400/45 bg-emerald-400/10 text-emerald-200"
                         : "border-violet-400/45 bg-violet-400/10 text-violet-200")
@@ -721,7 +721,7 @@ export function VideosList({
             <button
               type="button"
               onClick={onJumpToFirstClear}
-              className="inline-flex items-center gap-1 rounded-sm border border-amber-400/45 bg-amber-400/10 px-1.5 py-px text-[9px] text-amber-200 normal-case transition-colors hover:border-amber-400/70 hover:bg-amber-400/20 hover:text-amber-100 focus-visible:ring-2 focus-visible:ring-amber-400/50 focus-visible:outline-none"
+              className="inline-flex items-center gap-1 rounded-sm border border-amber-400/45 bg-amber-400/10 px-1.5 py-px text-[11px] text-amber-200 normal-case transition-colors hover:border-amber-400/70 hover:bg-amber-400/20 hover:text-amber-100 focus-visible:ring-2 focus-visible:ring-amber-400/50 focus-visible:outline-none"
               title={m.videos.firstClearTitle(
                 formatFirstClear(firstClearAt, "long", locale),
               )}
@@ -766,7 +766,7 @@ export function VideosList({
               });
             }}
             className={
-              "inline-flex h-7 items-center whitespace-nowrap gap-1 rounded-md border px-2 text-[10px] tracking-normal transition-colors " +
+              "inline-flex h-7 items-center whitespace-nowrap gap-1 rounded-md border px-2 text-[11px] tracking-normal transition-colors " +
               (selectMode
                 ? "border-[var(--neon-cyan)]/60 bg-[var(--neon-cyan)]/12 text-[var(--neon-cyan)]"
                 : "border-border/40 bg-background/30 text-muted-foreground hover:text-foreground")
@@ -794,7 +794,7 @@ export function VideosList({
             type="button"
             onClick={() => persistFavoritesOnly(!favoritesOnly)}
             className={
-              "inline-flex h-7 items-center whitespace-nowrap gap-1 rounded-md border px-2 font-mono text-[10px] tracking-[0.18em] uppercase transition-colors " +
+              "inline-flex h-7 items-center whitespace-nowrap gap-1 rounded-md border px-2 font-mono text-[11px] tracking-[0.18em] uppercase transition-colors " +
               (favoritesOnly
                 ? "border-amber-400/60 bg-amber-400/12 text-amber-200"
                 : "border-border/40 bg-background/30 text-muted-foreground hover:text-foreground")
@@ -814,7 +814,7 @@ export function VideosList({
           </button>
           {/* Sort mode toggle: 日付順 (newest first) or カスタム順 (DnD). */}
           <div
-            className="inline-flex items-center rounded-md border border-border/40 bg-background/30 p-0.5 text-[10px] tracking-normal"
+            className="inline-flex items-center rounded-md border border-border/40 bg-background/30 p-0.5 text-[11px] tracking-normal"
             role="radiogroup"
             aria-label={m.videos.sortAria}
           >
@@ -968,7 +968,7 @@ export function VideosList({
           aria-live="polite"
         >
           <div className="glass pointer-events-auto flex max-w-[calc(100vw-1.5rem)] flex-wrap items-center gap-1.5 rounded-xl border border-border/50 bg-background/85 px-2.5 py-2 shadow-[0_18px_48px_-18px_rgba(0,0,0,0.8)] backdrop-blur-md">
-            <span className="px-1 text-[10px] tracking-normal text-[var(--neon-cyan)]">
+            <span className="px-1 text-[11px] tracking-normal text-[var(--neon-cyan)]">
               {m.videos.selectedCount(selectedIds.size)}
             </span>
             <span
@@ -979,7 +979,7 @@ export function VideosList({
               type="button"
               disabled={bulkFavoriting}
               onClick={onBulkToggleFavorite}
-              className="inline-flex h-7 items-center whitespace-nowrap gap-1 rounded-md border border-amber-400/55 bg-amber-400/10 px-2 text-[10px] tracking-normal text-amber-200 transition-colors hover:border-amber-400/80 hover:bg-amber-400/20 disabled:opacity-50"
+              className="inline-flex h-7 items-center whitespace-nowrap gap-1 rounded-md border border-amber-400/55 bg-amber-400/10 px-2 text-[11px] tracking-normal text-amber-200 transition-colors hover:border-amber-400/80 hover:bg-amber-400/20 disabled:opacity-50"
               title={
                 bulkFavoriteAction === "add"
                   ? m.videos.bulkFavAddTitle
@@ -1003,7 +1003,7 @@ export function VideosList({
               type="button"
               disabled={savingClearTime}
               onClick={onBulkSaveClearTime}
-              className="inline-flex h-7 items-center whitespace-nowrap gap-1 rounded-md border border-emerald-400/55 bg-emerald-400/10 px-2 text-[10px] tracking-normal text-emerald-200 transition-colors hover:border-emerald-400/80 hover:bg-emerald-400/20 disabled:opacity-50"
+              className="inline-flex h-7 items-center whitespace-nowrap gap-1 rounded-md border border-emerald-400/55 bg-emerald-400/10 px-2 text-[11px] tracking-normal text-emerald-200 transition-colors hover:border-emerald-400/80 hover:bg-emerald-400/20 disabled:opacity-50"
               title={m.videos.bulkClearTimeTitle}
             >
               <Hourglass className="h-3 w-3" aria-hidden />
@@ -1015,7 +1015,7 @@ export function VideosList({
               type="button"
               disabled={bulkDeleting}
               onClick={onBulkDelete}
-              className="inline-flex h-7 items-center whitespace-nowrap gap-1 rounded-md border border-rose-400/60 bg-rose-400/10 px-2 text-[10px] tracking-normal text-rose-200 transition-colors hover:border-rose-400/80 hover:bg-rose-400/20 disabled:opacity-50"
+              className="inline-flex h-7 items-center whitespace-nowrap gap-1 rounded-md border border-rose-400/60 bg-rose-400/10 px-2 text-[11px] tracking-normal text-rose-200 transition-colors hover:border-rose-400/80 hover:bg-rose-400/20 disabled:opacity-50"
               title={m.videos.bulkDeleteBtnTitle}
             >
               <Trash2 className="h-3 w-3" aria-hidden />
@@ -1224,7 +1224,7 @@ const VideoCard = memo(function VideoCard({
                 variant="fine"
                 className="h-8 w-8"
               />
-              <span className="font-mono text-[10px] tracking-[0.18em] uppercase">
+              <span className="font-mono text-[11px] tracking-[0.18em] uppercase">
                 {linkSiteLabel(detectLinkSite(video.url), locale)}
               </span>
             </div>
@@ -1358,7 +1358,7 @@ const VideoCard = memo(function VideoCard({
             href={logsHref}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 rounded-sm border border-amber-400/45 bg-amber-400/10 px-2 py-1 font-mono text-[10px] tracking-[0.18em] text-amber-200 uppercase transition-colors hover:bg-amber-400/15 hover:text-amber-100"
+            className="inline-flex items-center gap-1.5 rounded-sm border border-amber-400/45 bg-amber-400/10 px-2 py-1 font-mono text-[11px] tracking-[0.18em] text-amber-200 uppercase transition-colors hover:bg-amber-400/15 hover:text-amber-100"
             title={m.videos.fflogsTitle}
           >
             <BarChart3 className="h-3 w-3" aria-hidden />
@@ -1371,7 +1371,7 @@ const VideoCard = memo(function VideoCard({
             href={analysisHref}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 rounded-sm border border-sky-400/45 bg-sky-400/10 px-2 py-1 font-mono text-[10px] tracking-[0.18em] text-sky-200 uppercase transition-colors hover:bg-sky-400/15 hover:text-sky-100"
+            className="inline-flex items-center gap-1.5 rounded-sm border border-sky-400/45 bg-sky-400/10 px-2 py-1 font-mono text-[11px] tracking-[0.18em] text-sky-200 uppercase transition-colors hover:bg-sky-400/15 hover:text-sky-100"
             title={m.videos.analysisTitle}
           >
             <Microscope className="h-3 w-3" aria-hidden />
@@ -1381,7 +1381,7 @@ const VideoCard = memo(function VideoCard({
         )}
         {video.durationSeconds !== null && (
           <span
-            className="inline-flex items-center gap-1 rounded-sm border border-violet-400/40 bg-violet-400/10 px-1.5 py-1 font-mono text-[10px] tracking-[0.18em] text-violet-200"
+            className="inline-flex items-center gap-1 rounded-sm border border-violet-400/40 bg-violet-400/10 px-1.5 py-1 font-mono text-[11px] tracking-[0.18em] text-violet-200"
             title={m.videos.durationTitle(
               formatDurationLong(video.durationSeconds, locale),
             )}
@@ -1396,7 +1396,7 @@ const VideoCard = memo(function VideoCard({
         target="_blank"
         rel="noopener noreferrer"
         title={video.url}
-        className="flex items-center gap-1 px-3 pb-3 font-mono text-[10px] text-muted-foreground/70 hover:text-foreground/80"
+        className="flex items-center gap-1 px-3 pb-3 font-mono text-[12px] text-muted-foreground/70 hover:text-foreground/80"
       >
         <LinkSiteIcon
           url={video.url}
@@ -1496,7 +1496,7 @@ function YouTubePreview({
           target="_blank"
           rel="noopener noreferrer"
           onClick={(e) => e.stopPropagation()}
-          className="absolute top-2 right-2 inline-flex items-center gap-1 rounded-md bg-black/70 px-1.5 py-1 font-mono text-[9px] tracking-[0.18em] text-white/85 uppercase backdrop-blur-sm transition-colors hover:bg-black/90 hover:text-white"
+          className="absolute top-2 right-2 inline-flex items-center gap-1 rounded-md bg-black/70 px-1.5 py-1 font-mono text-[11px] tracking-[0.18em] text-white/85 uppercase backdrop-blur-sm transition-colors hover:bg-black/90 hover:text-white"
           aria-label={m.videos.openYoutubeAria}
           title={m.videos.embedFallbackTitle}
         >
@@ -1544,7 +1544,7 @@ function YouTubePreview({
         target="_blank"
         rel="noopener noreferrer"
         onClick={(e) => e.stopPropagation()}
-        className="absolute top-2 right-2 inline-flex items-center gap-1 rounded-md bg-black/60 px-1.5 py-1 font-mono text-[9px] tracking-[0.18em] text-white/80 uppercase transition-colors hover:text-white"
+        className="absolute top-2 right-2 inline-flex items-center gap-1 rounded-md bg-black/60 px-1.5 py-1 font-mono text-[11px] tracking-[0.18em] text-white/80 uppercase transition-colors hover:text-white"
         aria-label={m.videos.openYoutubeAria}
       >
         <ExternalLink className="h-3 w-3" aria-hidden />

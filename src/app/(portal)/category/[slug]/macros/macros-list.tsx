@@ -230,7 +230,7 @@ function MacrosSection({
         <div className="flex items-center gap-2">
           <Terminal className="h-4 w-4 text-[var(--neon-violet)]" aria-hidden />
           <h2 className="font-display text-base">{m.macros.title}</h2>
-          <span className="font-mono text-[10px] tracking-[0.18em] text-muted-foreground">
+          <span className="font-mono text-[11px] tracking-[0.18em] text-muted-foreground">
             {m.crud.count(ordered.length)}
           </span>
         </div>
@@ -552,7 +552,7 @@ function TemplatesSection({
         <div className="flex items-center gap-2">
           <ClipboardList className="h-4 w-4 text-[var(--neon-cyan)]" aria-hidden />
           <h2 className="font-display text-base">{m.macros.templatesTitle}</h2>
-          <span className="font-mono text-[10px] tracking-[0.18em] text-muted-foreground">
+          <span className="font-mono text-[11px] tracking-[0.18em] text-muted-foreground">
             {m.crud.count(templates.length)}
           </span>
         </div>
@@ -726,7 +726,7 @@ function SortableTemplateRow({
             )}
             {isGlobalTop && (
               <span
-                className="ml-1.5 font-mono text-[9px] tracking-[0.18em] text-[var(--neon-cyan)] uppercase"
+                className="ml-1.5 font-mono text-[11px] tracking-[0.18em] text-[var(--neon-cyan)] uppercase"
                 title={m.macros.topTitle}
               >
                 ★ Top
@@ -857,7 +857,7 @@ function EditDialog({
                   autoFocus
                 />
                 {kind === "template" && (
-                  <p className="text-[10px] text-muted-foreground leading-relaxed">
+                  <p className="text-[12px] text-muted-foreground leading-relaxed">
                     {m.macros.subLabelHelp}
                   </p>
                 )}
@@ -883,7 +883,7 @@ function EditDialog({
                         onChange({ ...value, body: next });
                         toast.success(m.macros.convertedHalfWidth);
                       }}
-                      className="inline-flex items-center gap-1 rounded-sm border border-[var(--neon-cyan)]/40 bg-[var(--neon-cyan)]/8 px-2 py-0.5 text-[10px] tracking-normal text-[var(--neon-cyan)] transition-colors hover:bg-[var(--neon-cyan)]/15"
+                      className="inline-flex items-center gap-1 rounded-sm border border-[var(--neon-cyan)]/40 bg-[var(--neon-cyan)]/8 px-2 py-0.5 text-[11px] tracking-normal text-[var(--neon-cyan)] transition-colors hover:bg-[var(--neon-cyan)]/15"
                       title={m.macros.toHalfWidth}
                     >
                       <CaseSensitive className="h-3 w-3" aria-hidden />

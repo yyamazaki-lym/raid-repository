@@ -156,7 +156,7 @@ export function SubTabs({
               <Link
                 href="/category"
                 tabIndex={stuck ? 0 : -1}
-                className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 rounded-md px-2 py-1 font-mono text-[10px] tracking-[0.16em] uppercase whitespace-nowrap transition-colors"
+                className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 rounded-md px-2 py-1 font-mono text-[11px] tracking-[0.16em] uppercase whitespace-nowrap transition-colors"
               >
                 <ChevronLeft className="h-3 w-3 shrink-0" aria-hidden />
                 <span>Contents</span>
@@ -189,7 +189,7 @@ export function SubTabs({
                     className={cn(
                       "relative flex items-center rounded-md font-medium tracking-normal transition-all duration-200",
                       stuck
-                        ? "gap-1 px-2 py-1 text-[10px]"
+                        ? "gap-1 px-2 py-1 text-[11px]"
                         : "gap-1.5 px-3 py-1.5 text-[11px]",
                       active
                         ? "bg-secondary/60 text-foreground"

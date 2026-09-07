@@ -106,12 +106,12 @@ export function NativeChoiceValuesSection({
           className="h-3.5 w-3.5 text-muted-foreground"
           aria-hidden
         />
-        <span className="font-mono text-[10px] tracking-[0.22em] text-muted-foreground uppercase">
+        <span className="font-mono text-[11px] tracking-[0.22em] text-muted-foreground uppercase">
           Native Schedule Choice Values
         </span>
       </header>
 
-      <p className="text-[10px] leading-relaxed text-muted-foreground">
+      <p className="text-[12px] leading-relaxed text-muted-foreground">
         {m.nativeChoices.description}
       </p>
 
@@ -126,7 +126,7 @@ export function NativeChoiceValuesSection({
         />
 
         <div className="flex flex-wrap items-center gap-1.5 rounded-md border border-border/30 bg-secondary/20 px-2.5 py-2">
-          <span className="font-mono text-[10px] tracking-[0.18em] text-muted-foreground/70 uppercase">
+          <span className="font-mono text-[11px] tracking-[0.18em] text-muted-foreground/70 uppercase">
             Preview
           </span>
           {(usingFallback ? DEFAULT_CHOICES : previewItems).map((c, i) => (
@@ -143,7 +143,7 @@ export function NativeChoiceValuesSection({
             </span>
           ))}
           {usingFallback && (
-            <span className="text-[10px] text-muted-foreground/80">
+            <span className="text-[12px] text-muted-foreground/80">
               {m.nativeChoices.defaultBadge}
             </span>
           )}
@@ -158,7 +158,7 @@ export function NativeChoiceValuesSection({
                 size="sm"
                 disabled={pending}
                 onClick={onReset}
-                className="h-7 gap-1 px-2 text-[10px] tracking-normal"
+                className="h-7 gap-1 px-2 text-[11px] tracking-normal"
               >
                 <RotateCcw className="h-3 w-3" aria-hidden />
                 {m.nativeChoices.resetButton}
@@ -169,7 +169,7 @@ export function NativeChoiceValuesSection({
               size="sm"
               disabled={!loaded || pending || !dirty}
               onClick={onSave}
-              className="h-7 gap-1 px-3 text-[10px] tracking-normal"
+              className="h-7 gap-1 px-3 text-[11px] tracking-normal"
             >
               {pending ? (
                 <Loader2 className="h-3 w-3 animate-spin" aria-hidden />

@@ -109,7 +109,7 @@ export function DeleteConfirmModal({
               <span className="text-muted-foreground/70">{m.memo.noBody}</span>
             )}
           </p>
-          <p className="mb-3 flex items-center gap-1 text-[10px] text-muted-foreground">
+          <p className="mb-3 flex items-center gap-1 text-[12px] text-muted-foreground">
             <span
               aria-hidden
               className="inline-block h-1 w-1 rounded-full bg-rose-400/70"
@@ -122,7 +122,7 @@ export function DeleteConfirmModal({
               type="button"
               onClick={onCancel}
               disabled={busy}
-              className="inline-flex items-center gap-1.5 rounded-md border border-border/50 px-3 py-1.5 text-[10px] tracking-normal text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded-md border border-border/50 px-3 py-1.5 text-[11px] tracking-normal text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground disabled:opacity-50"
             >
               <X className="h-3 w-3" aria-hidden />
               {m.common.cancel}
@@ -131,7 +131,7 @@ export function DeleteConfirmModal({
               type="button"
               onClick={onConfirm}
               disabled={busy}
-              className="inline-flex items-center gap-1.5 rounded-md border border-rose-400/55 bg-rose-500/15 px-3 py-1.5 text-[10px] tracking-normal text-rose-100 transition-colors hover:border-rose-400/80 hover:bg-rose-500/25 disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded-md border border-rose-400/55 bg-rose-500/15 px-3 py-1.5 text-[11px] tracking-normal text-rose-100 transition-colors hover:border-rose-400/80 hover:bg-rose-500/25 disabled:opacity-50"
             >
               <Trash2 className="h-3 w-3" aria-hidden />
               {m.common.delete}

@@ -41,11 +41,11 @@ export function PhaseTimeCard({
   return (
     <div className="flex flex-col gap-1 rounded-md border border-border/40 bg-secondary/15 px-3 py-2">
       <div className="flex items-baseline justify-between gap-2">
-        <span className="font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase">
+        <span className="font-mono text-[11px] tracking-[0.14em] text-muted-foreground uppercase">
           {m.logs.phaseTimeTitle}
         </span>
         <span
-          className="font-mono text-[9px] tracking-[0.12em] text-muted-foreground/70"
+          className="font-mono text-[11px] tracking-[0.12em] text-muted-foreground/70"
           title={partial ? m.logs.phaseTimePartialTitle : undefined}
         >
           {m.logs.phaseTimeTotal(formatMs(totalMs))}
@@ -78,7 +78,7 @@ export function PhaseTimeCard({
         {totals.map((t) => (
           <li
             key={t.id}
-            className="inline-flex items-baseline gap-1 whitespace-nowrap font-mono text-[10px] tabular-nums"
+            className="inline-flex items-baseline gap-1 whitespace-nowrap font-mono text-[12px] tabular-nums"
           >
             <span className={phaseTextToneClass(t.id)}>
               P{t.id}
@@ -93,7 +93,7 @@ export function PhaseTimeCard({
       {firstReach.length > 0 && (
         <div className="mt-1 flex flex-col gap-0.5 border-t border-border/30 pt-1">
           <span
-            className="font-mono text-[9px] tracking-[0.12em] text-muted-foreground/70 uppercase"
+            className="font-mono text-[11px] tracking-[0.12em] text-muted-foreground/70 uppercase"
             title={m.logs.phaseFirstReachHint}
           >
             {m.logs.phaseFirstReachTitle}
@@ -105,7 +105,7 @@ export function PhaseTimeCard({
             {firstReach.map((r) => (
               <li
                 key={r.id}
-                className="inline-flex items-baseline gap-1 whitespace-nowrap font-mono text-[10px] tabular-nums"
+                className="inline-flex items-baseline gap-1 whitespace-nowrap font-mono text-[12px] tabular-nums"
                 title={r.date ?? undefined}
               >
                 <span className={phaseTextToneClass(r.id)}>

@@ -93,7 +93,7 @@ export function LogsNotifySection({
     <section className="flex flex-col gap-2">
       <header className="flex items-center gap-2 border-b border-border/30 pb-2">
         <BellRing className="h-3.5 w-3.5 text-[var(--neon-cyan)]" aria-hidden />
-        <span className="font-mono text-[10px] tracking-[0.22em] text-muted-foreground uppercase">
+        <span className="font-mono text-[11px] tracking-[0.22em] text-muted-foreground uppercase">
           {m.logsNotify.title}
         </span>
       </header>
@@ -108,7 +108,7 @@ export function LogsNotifySection({
           >
             <span className="flex min-w-0 flex-col">
               <span className="text-xs">{m.logsNotify.label(kind)}</span>
-              <span className="text-[10px] leading-relaxed text-muted-foreground">
+              <span className="text-[12px] leading-relaxed text-muted-foreground">
                 {m.logsNotify.hint(kind)}
               </span>
             </span>
@@ -123,7 +123,7 @@ export function LogsNotifySection({
           </label>
         ))}
       </div>
-      <p className="text-[10px] leading-relaxed text-muted-foreground/80">
+      <p className="text-[12px] leading-relaxed text-muted-foreground/80">
         {m.logsNotify.channelHint}
       </p>
 
@@ -161,13 +161,13 @@ export function LogsNotifySection({
                 toast.success(m.logsNotify.guildIdSaved);
               });
             }}
-            className="gap-1.5 text-[10px] tracking-normal"
+            className="gap-1.5 text-[11px] tracking-normal"
           >
             <Save className="h-3 w-3" aria-hidden />
             {m.common.save}
           </Button>
         </div>
-        <p className="text-[10px] leading-relaxed text-muted-foreground/80">
+        <p className="text-[12px] leading-relaxed text-muted-foreground/80">
           {m.logsNotify.guildIdHint}
         </p>
       </div>
