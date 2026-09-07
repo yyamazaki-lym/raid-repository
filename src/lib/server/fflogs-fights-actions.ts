@@ -12,6 +12,8 @@ import {
 } from "@/lib/fflogs-url";
 import {
   type CategoryRef,
+  consensusCategory,
+  resolveCategory,
   resolveFightCategory,
 } from "@/lib/fflogs-category";
 
@@ -294,6 +296,8 @@ export type FflogsReportDiag = {
     zoneName: string | null;
     zoneId: number | null;
     categoryName: string | null;
+    /** zone 名 / タイトルだけから決まるカテゴリ (動画リンクを含めない)。 */
+    zoneCategoryName: string | null;
     syncedAt: string | null;
   } | null;
   fights: {
@@ -348,7 +352,7 @@ export async function diagnoseFflogsReportsAction(
     await Promise.all([
       supabase
         .from("categories")
-        .select("id, name, expected_fflogs_zone_ids, fflogs_match_keywords"),
+        .select("id, name, slug, expected_fflogs_zone_ids, fflogs_match_keywords"),
       supabase
         .from("fflogs_report_syncs")
         .select("report_code, ok, reason, title, zone_name, zone_id, category_id, synced_at")
@@ -364,6 +368,7 @@ export async function diagnoseFflogsReportsAction(
   const categories: CategoryRef[] = (cats ?? []).map((r) => ({
     id: r.id as string,
     name: (r.name as string) ?? "",
+    slug: (r.slug as string | null) ?? null,
     zoneIds: (r.expected_fflogs_zone_ids as number[] | null) ?? [],
     keywords: (r.fflogs_match_keywords as string[] | null) ?? [],
   }));
@@ -382,6 +387,14 @@ export async function diagnoseFflogsReportsAction(
 
   const reports: FflogsReportDiag[] = codes.map((code) => {
     const l = ledgerBy.get(code);
+    const zoneCid = l
+      ? resolveCategory(
+          categories,
+          typeof l.zone_id === "number" ? l.zone_id : null,
+          (l.zone_name as string | null) ?? null,
+          (l.title as string | null) ?? null,
+        )
+      : null;
     const rows = fightsBy.get(code) ?? [];
     const byName = new Map<
       string,
@@ -433,6 +446,7 @@ export async function diagnoseFflogsReportsAction(
             zoneName: (l.zone_name as string | null) ?? null,
             zoneId: typeof l.zone_id === "number" ? l.zone_id : null,
             categoryName: l.category_id ? (nameOf.get(l.category_id as string) ?? "?") : null,
+            zoneCategoryName: zoneCid ? (nameOf.get(zoneCid) ?? "?") : null,
             syncedAt: (l.synced_at as string | null) ?? null,
           }
         : null,
@@ -455,6 +469,7 @@ export async function diagnoseFflogsReportsAction(
             const cid = resolveFightCategory(categories, n.name, null, {
               encounterId: n.encounterId,
               zoneName: l ? ((l.zone_name as string | null) ?? null) : null,
+              zoneCategoryId: zoneCid,
             });
             return { ...n, resolvedCategoryName: cid ? (nameOf.get(cid) ?? "?") : null };
           }),
@@ -493,4 +508,113 @@ export async function assignFflogsReportsToCategoryAction(
   if (ledgerErr) console.warn("[fflogs-fights] ledger assign failed:", ledgerErr.message);
   revalidateQuietly();
   return { ok: true, reports: codes.length, fights: updated?.length ?? 0 };
+}
+
+/**
+ * 貼ったレポートの pull を、いまの分類器でもう一度振り分ける (2026-09-07)。
+ *
+ * 1 レポートに複数コンテンツが混ざっている場合 (実機: zone "Asphodelos" の
+ * レポートに絶竜詩の pull が同居し、動画リンク由来の「絶竜詩」が零式の pull
+ * にも付いて pull 数とクリア数を汚していた) の後始末。FFLogs は叩かず、
+ * 保存済みの fight 名 / encounter ID / zone 名だけで決め直す。
+ *
+ * 個別に判定できず zone からも決まらない fight は **今のカテゴリを維持** する
+ * (勝手に未分類へ落とさない)。全部まとめて動かしたいときは
+ * `assignFflogsReportsToCategoryAction` を使う。
+ */
+export async function recategorizeFflogsReportsAction(text: string): Promise<
+  | { ok: true; reports: number; moved: number; unchanged: number }
+  | { ok: false; reason: string }
+> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
+  const codes = extractFflogsReportCodes(text ?? "").slice(0, 25);
+  if (codes.length === 0) {
+    return { ok: false, reason: "レポート URL が見つかりませんでした" };
+  }
+
+  const supabase = await createClient();
+  const [{ data: cats }, { data: ledger }, { data: fights }] = await Promise.all([
+    supabase
+      .from("categories")
+      .select("id, name, slug, expected_fflogs_zone_ids, fflogs_match_keywords"),
+    supabase
+      .from("fflogs_report_syncs")
+      .select("report_code, title, zone_name, zone_id, category_id")
+      .in("report_code", codes),
+    supabase
+      .from("fflogs_fights")
+      .select("report_code, fight_id, name, encounter_id, category_id")
+      .in("report_code", codes),
+  ]);
+  const categories: CategoryRef[] = (cats ?? []).map((r) => ({
+    id: r.id as string,
+    name: (r.name as string) ?? "",
+    slug: (r.slug as string | null) ?? null,
+    zoneIds: (r.expected_fflogs_zone_ids as number[] | null) ?? [],
+    keywords: (r.fflogs_match_keywords as string[] | null) ?? [],
+  }));
+  const ledgerBy = new Map(
+    (ledger ?? []).map((l) => [l.report_code as string, l as Record<string, unknown>]),
+  );
+
+  // 「このカテゴリへ移す fight_id」をまとめてから 1 カテゴリ 1 クエリで更新する。
+  const moves = new Map<string, Map<string, number[]>>(); // code → cid → fight_ids
+  let unchanged = 0;
+  for (const f of (fights ?? []) as Array<Record<string, unknown>>) {
+    const code = f.report_code as string;
+    const l = ledgerBy.get(code);
+    const zoneCid = l
+      ? resolveCategory(
+          categories,
+          typeof l.zone_id === "number" ? l.zone_id : null,
+          (l.zone_name as string | null) ?? null,
+          (l.title as string | null) ?? null,
+        )
+      : null;
+    const current = (f.category_id as string | null) ?? null;
+    const next = resolveFightCategory(categories, (f.name as string | null) ?? null, current, {
+      encounterId: typeof f.encounter_id === "number" ? f.encounter_id : null,
+      zoneName: l ? ((l.zone_name as string | null) ?? null) : null,
+      zoneCategoryId: zoneCid,
+    });
+    if (!next || next === current) {
+      unchanged += 1;
+      continue;
+    }
+    const perCode = moves.get(code) ?? new Map<string, number[]>();
+    const ids = perCode.get(next) ?? [];
+    ids.push(f.fight_id as number);
+    perCode.set(next, ids);
+    moves.set(code, perCode);
+  }
+
+  let moved = 0;
+  for (const [code, perCode] of moves) {
+    for (const [cid, ids] of perCode) {
+      const { error } = await supabase
+        .from("fflogs_fights")
+        .update({ category_id: cid })
+        .eq("report_code", code)
+        .in("fight_id", ids);
+      if (error) return { ok: false, reason: dbError("pull の再分類", error) };
+      moved += ids.length;
+    }
+    // 台帳の代表カテゴリも、その レポートで最も多いカテゴリに合わせ直す。
+    const { data: after } = await supabase
+      .from("fflogs_fights")
+      .select("category_id")
+      .eq("report_code", code);
+    const top = consensusCategory(
+      ((after ?? []) as Array<{ category_id: string | null }>).map((r) => r.category_id),
+    );
+    if (top) {
+      await supabase
+        .from("fflogs_report_syncs")
+        .update({ category_id: top })
+        .eq("report_code", code);
+    }
+  }
+  revalidateQuietly();
+  return { ok: true, reports: codes.length, moved, unchanged };
 }

@@ -61,11 +61,15 @@ export const CONTENT_GROUPS: Array<string[]> = [
   // 6: Ultimate Zodiark
   ["絶ゾディアーク", "ultimate zodiark"],
   // 7: Asphodelos (P1-4S, EW Tier 1)
-  ["アスフォデロス", "asphodelos", "p1s", "p2s", "p3s", "p4s"],
+  // 2026-09-07: 日本語の公式ティア名 (辺獄編 / 煉獄編 / 天獄編) を追加。
+  // カテゴリ名を「万魔殿パンデモニウム零式:辺獄編」にしている固定では、
+  // FFLogs の zone 名 "Asphodelos" と突き合わせられず未分類になっていた。
+  // 「万魔殿」「パンデモニウム」だけでは 3 ティアを区別できないので入れない。
+  ["アスフォデロス", "asphodelos", "辺獄編", "p1s", "p2s", "p3s", "p4s"],
   // 8: Abyssos (P5-8S, EW Tier 2)
-  ["アビス", "abyssos", "p5s", "p6s", "p7s", "p8s"],
+  ["アビス", "abyssos", "煉獄編", "p5s", "p6s", "p7s", "p8s"],
   // 9: Anabaseios (P9-12S, EW Tier 3)
-  ["アナバセイオス", "anabaseios", "p9s", "p10s", "p11s", "p12s"],
+  ["アナバセイオス", "anabaseios", "天獄編", "p9s", "p10s", "p11s", "p12s"],
   // 10: Arcadion AAC Light-heavyweight Tier (DT M1-4S)
   // Abbreviations: 「LH級」 (1.9.17) / 「ライトヘビー」(no 級) for
   // titles that omit the suffix.

@@ -87,6 +87,7 @@ import {
   deleteFflogsReportAction,
   importFflogsReportsAction,
   diagnoseFflogsReportsAction,
+  recategorizeFflogsReportsAction,
   assignFflogsReportsToCategoryAction,
   type FflogsReportDiag,
   setCategoryMinDifficultyAction,
@@ -192,6 +193,20 @@ export function LogsView({
     (acc, d) => acc + d.fights.unassigned + d.fights.otherCategory,
     0,
   );
+  // 2026-09-07: 混在レポートの後始末 — いまの分類器で pull ごとに決め直す。
+  const [recatBusy, setRecatBusy] = useState(false);
+  const runRecategorize = async () => {
+    setRecatBusy(true);
+    const r = await recategorizeFflogsReportsAction(importText);
+    setRecatBusy(false);
+    if (!r.ok) {
+      toast.error(r.reason);
+      return;
+    }
+    toast.success(m.logsImport.recategorized(r.moved, r.unchanged));
+    setDiag(null);
+    router.refresh();
+  };
   const runAssign = async () => {
     setAssignBusy(true);
     const r = await assignFflogsReportsToCategoryAction(importText, categoryId);
@@ -613,6 +628,11 @@ export function LogsView({
                       )}
                     </span>
                   )}
+                  {d.ledger?.zoneCategoryName && (
+                    <span className="text-muted-foreground">
+                      {m.logsImport.diagZoneCategory(d.ledger.zoneCategoryName)}
+                    </span>
+                  )}
                   {d.fights.total > 0 && (
                     <span className="text-muted-foreground">
                       {m.logsImport.diagProgress(
@@ -651,16 +671,34 @@ export function LogsView({
               ))}
             </ul>
           )}
-          {diag && diagAssignable > 0 && (
-            <Button
-              type="button"
-              size="sm"
-              className="w-fit text-[11px] tracking-normal"
-              onClick={runAssign}
-              disabled={assignBusy}
-            >
-              {assignBusy ? m.logsImport.assignBusy : m.logsImport.assign(diagAssignable)}
-            </Button>
+          {diag && (
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="text-[11px] tracking-normal"
+                onClick={runRecategorize}
+                disabled={recatBusy}
+              >
+                {recatBusy
+                  ? m.logsImport.recategorizeBusy
+                  : m.logsImport.recategorize}
+              </Button>
+              {diagAssignable > 0 && (
+                <Button
+                  type="button"
+                  size="sm"
+                  className="text-[11px] tracking-normal"
+                  onClick={runAssign}
+                  disabled={assignBusy}
+                >
+                  {assignBusy
+                    ? m.logsImport.assignBusy
+                    : m.logsImport.assign(diagAssignable)}
+                </Button>
+              )}
+            </div>
           )}
         </div>
         <DialogFooter>

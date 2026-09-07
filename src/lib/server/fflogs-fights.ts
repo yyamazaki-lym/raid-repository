@@ -444,10 +444,16 @@ export async function syncFflogsFights(opts?: {
       return;
     }
 
+    // zone ID / 内容分類だけで決まるカテゴリ (動画リンクは含めない)。
+    // 混在レポートで「個別に判定できない fight」の帰属先に使う。
+    const zoneCategoryId = resolveCategory(
+      categories,
+      res.zoneId,
+      res.zoneName,
+      res.title,
+    );
     // 動画リンクで決まらなかった場合は zone ID / 内容分類で解決する。
-    const reportCategoryId =
-      ref.categoryId ??
-      resolveCategory(categories, res.zoneId, res.zoneName, res.title);
+    const reportCategoryId = ref.categoryId ?? zoneCategoryId;
     // 2026-09-06: fight ごとのカテゴリ。拡張をまたいだ絶は "Ultimates (Legacy)"
     // という 1 つの zone にまとめられ、レポート単位では何の絶か決められない
     // (実機: 絶オメガの 2024-07 以降が出ない)。fight の encounter 名
@@ -458,6 +464,7 @@ export async function syncFflogsFights(opts?: {
         resolveFightCategory(categories, f.name, reportCategoryId, {
           encounterId: f.encounterID ?? null,
           zoneName: res.zoneName,
+          zoneCategoryId,
         }),
       ]),
     );
@@ -617,13 +624,13 @@ export async function syncFflogsFights(opts?: {
       .eq("ok", true);
     for (const row of orphans ?? []) {
       const code = row.report_code as string;
-      const reportCid =
-        resolveCategory(
-          categories,
-          null,
-          (row.zone_name as string | null) ?? null,
-          (row.title as string | null) ?? null,
-        ) ?? refs.get(code)?.categoryId ?? null;
+      const zoneCid = resolveCategory(
+        categories,
+        null,
+        (row.zone_name as string | null) ?? null,
+        (row.title as string | null) ?? null,
+      );
+      const reportCid = zoneCid ?? refs.get(code)?.categoryId ?? null;
       // 2026-09-06: レポート単位で決まらなくても、保存済みの fight 名
       // (encounter 名) から fight ごとに決める (Ultimates (Legacy) 対応)。
       // 取得し直さずに済むので、既に台帳にある未確定レポートがこの経路で
@@ -643,6 +650,7 @@ export async function syncFflogsFights(opts?: {
             encounterId:
               typeof fr.encounter_id === "number" ? fr.encounter_id : null,
             zoneName: (row.zone_name as string | null) ?? null,
+            zoneCategoryId: zoneCid,
           },
         );
         if (!cid) continue;
@@ -885,10 +893,11 @@ async function collectReportRefs(db: Db): Promise<Map<string, ReportRef>> {
 async function loadCategories(db: Db): Promise<CategoryRef[]> {
   const { data } = await db
     .from("categories")
-    .select("id, name, expected_fflogs_zone_ids, fflogs_match_keywords");
+    .select("id, name, slug, expected_fflogs_zone_ids, fflogs_match_keywords");
   return (data ?? []).map((r) => ({
     id: r.id as string,
     name: (r.name as string) ?? "",
+    slug: (r.slug as string | null) ?? null,
     zoneIds: (r.expected_fflogs_zone_ids as number[] | null) ?? [],
     keywords: (r.fflogs_match_keywords as string[] | null) ?? [],
   }));
