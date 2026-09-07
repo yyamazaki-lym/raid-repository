@@ -155,6 +155,9 @@ export const ja = {
       ` / 経路: v2 ${v2} 件・代替 ${fallback} 件 (代替経路はフェーズ・死亡情報なし)`,
     remainingSuffix: (n: number) =>
       ` ※残り ${n} レポートは次回 — もう一度「ログを同期」を押すと続きを取得します`,
+    // W-5 (2026-09-07): 自動発見の結果。
+    discovered: (n: number): string => `自動発見: 新しいレポート ${n} 件を候補に追加しました`,
+    discoveryNote: (reason: string): string => `自動発見: ${reason}`,
     failuresTitle: (n: number) =>
       `今回の同期で取得できなかったレポート (${n} 件)`,
     // レポート削除
@@ -502,6 +505,8 @@ export const en: LogsMessages = {
       ` / routes: v2 ${v2}, fallback ${fallback} (fallback route has no phase / death data)`,
     remainingSuffix: (n) =>
       ` — ${n} report(s) left for next time; press "Sync logs" again to continue`,
+    discovered: (n) => `Auto-discovery: added ${n} new report(s) as candidates`,
+    discoveryNote: (reason) => `Auto-discovery: ${reason}`,
     failuresTitle: (n) => `Reports that failed in this sync (${n})`,
     deleteConfirmTitle: (code) => `Remove report ${code} from practice logs?`,
     deleteConfirmDescription:

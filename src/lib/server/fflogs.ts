@@ -312,6 +312,199 @@ export type FflogsV2Result =
     }
   | { ok: false; reason: string };
 
+/**
+ * guild のレポート一覧 (W-5、2026-09-07)。
+ *
+ * FFLogs 上に static (guild) を作って FFLogs Uploader でそれを選んでいる
+ * 固定では、guild のレポート一覧が「その固定の全ログ」になる。URL を貼る
+ * 前にレポートを見つけられるので、取り込みの起点として使う。
+ *
+ * `fetchFflogsReportsV2` (userID 版) との違い:
+ *
+ *   - **1 ページだけ**引く。取り込み枠 (1 回 40 件) より多く発見しても
+ *     その回では取り込めず、次回また同じ一覧の先頭を引くので、25 ページ
+ *     漁る意味がない (userID 版は「動画とのひも付け」用に全件必要だった)。
+ *   - owner でのフィルタをしない。guild のレポートは誰が上げても
+ *     その固定のログなので、上げた人で絞ると計測担当が交代したときに
+ *     取りこぼす。
+ *
+ * Unlisted が含まれるかは**保証しない**。`reports(userID:)` は実測で
+ * Public のみだった (上の調査コメント)。guild 側の挙動は本番の guild で
+ * 実測するまで断定できないので、取れた分だけ使い、取れないぶんは従来の
+ * URL 貼り付け / session cookie 経路に任せる。
+ */
+export async function fetchFflogsGuildReports(
+  accessToken: string,
+  guildId: string,
+  limit: number,
+): Promise<
+  { ok: true; reports: FflogsReport[] } | { ok: false; reason: string }
+> {
+  const id = Number((guildId ?? "").trim());
+  if (!Number.isInteger(id) || id <= 0) {
+    return { ok: false, reason: "guild ID が数値ではありません" };
+  }
+  const query = `query ($guildID: Int!, $limit: Int!) {
+    reportData {
+      reports(guildID: $guildID, limit: $limit, page: 1) {
+        data {
+          code
+          title
+          startTime
+          endTime
+          zone { id name }
+        }
+      }
+    }
+  }`;
+  try {
+    const res = await fetch(FFLOGS_GRAPHQL_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({ query, variables: { guildID: id, limit } }),
+      signal: AbortSignal.timeout(20000),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      if (res.status === 401) {
+        return {
+          ok: false,
+          reason: "FFLogs OAuth トークンが無効です — 設定で再認証してください",
+        };
+      }
+      return { ok: false, reason: `fflogs v2 ${res.status}: ${text.slice(0, 200)}` };
+    }
+    const json = (await res.json()) as {
+      errors?: Array<{ message?: string }>;
+      data?: {
+        reportData?: {
+          reports?: {
+            data?: Array<{
+              code: string;
+              title?: string | null;
+              startTime: number;
+              endTime: number;
+              zone?: { id?: number | null; name?: string | null } | null;
+            }>;
+          };
+        };
+      };
+    };
+    if (json.errors?.length) {
+      // guild ID が違う / 権限が無いときもここに来る。文言をそのまま返して
+      // 設定画面で原因が読めるようにする。
+      return {
+        ok: false,
+        reason: "fflogs v2 GraphQL error: " + json.errors[0]!.message,
+      };
+    }
+    const rows = json.data?.reportData?.reports?.data ?? [];
+    return {
+      ok: true,
+      reports: rows.map((r) => ({
+        id: r.code,
+        title: r.title ?? "",
+        startMs: r.startTime,
+        endMs: r.endTime,
+        zone: r.zone?.id ?? null,
+        zoneName: r.zone?.name ?? null,
+      })),
+    };
+  } catch (e) {
+    return { ok: false, reason: "fetch error: " + String(e) };
+  }
+}
+
+/**
+ * 接続した FFLogs アカウント自身の直近レポート (W-5、2026-09-07)。
+ *
+ * guild を作っていない固定 (計測担当が個人アカウントで上げている) 向けの
+ * 発見元。`fetchFflogsReportsV2` と同じ `reports(userID:)` を使うが、
+ * こちらは**1 ページだけ**引く (動画とのひも付けには全件が要るが、
+ * 発見は直近だけで足りる)。
+ *
+ * 実測どおり **Public のレポートだけ**が返る。Unlisted 運用の固定では
+ * 拾えないので、UI 側でその制約を明示している。
+ */
+export async function fetchFflogsRecentOwnReports(
+  accessToken: string,
+  limit: number,
+): Promise<
+  { ok: true; reports: FflogsReport[] } | { ok: false; reason: string }
+> {
+  const me = await fetchCurrentUser(accessToken);
+  if (!me.ok) return { ok: false, reason: me.reason };
+  const query = `query ($userID: Int!, $limit: Int!) {
+    reportData {
+      reports(userID: $userID, limit: $limit, page: 1) {
+        data {
+          code
+          title
+          startTime
+          endTime
+          zone { id name }
+        }
+      }
+    }
+  }`;
+  try {
+    const res = await fetch(FFLOGS_GRAPHQL_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({ query, variables: { userID: me.id, limit } }),
+      signal: AbortSignal.timeout(20000),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      return { ok: false, reason: `fflogs v2 ${res.status}: ${text.slice(0, 200)}` };
+    }
+    const json = (await res.json()) as {
+      errors?: Array<{ message?: string }>;
+      data?: {
+        reportData?: {
+          reports?: {
+            data?: Array<{
+              code: string;
+              title?: string | null;
+              startTime: number;
+              endTime: number;
+              zone?: { id?: number | null; name?: string | null } | null;
+            }>;
+          };
+        };
+      };
+    };
+    if (json.errors?.length) {
+      return {
+        ok: false,
+        reason: "fflogs v2 GraphQL error: " + json.errors[0]!.message,
+      };
+    }
+    const rows = json.data?.reportData?.reports?.data ?? [];
+    return {
+      ok: true,
+      reports: rows.map((r) => ({
+        id: r.code,
+        title: r.title ?? "",
+        startMs: r.startTime,
+        endMs: r.endTime,
+        zone: r.zone?.id ?? null,
+        zoneName: r.zone?.name ?? null,
+      })),
+    };
+  } catch (e) {
+    return { ok: false, reason: "fetch error: " + String(e) };
+  }
+}
+
 export async function fetchFflogsReportsV2(
   accessToken: string,
   deadlineAtMs?: number,

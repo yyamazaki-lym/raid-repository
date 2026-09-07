@@ -216,6 +216,9 @@ export const RELEASES: ReleaseEntry[] = [
       {
         title: "👥 予定表の各行に出欠の内訳チップを追加 (何人 OK / 未回答何人)",
       },
+      {
+        title: "🔎 レポートの自動発見を追加 (貼られた URL のみ / guild から / 自分のアカウントから の 3 択)",
+      },
     ],
   },
 ];

@@ -484,6 +484,14 @@ export function LogsView({
         return;
       }
       setLastSyncFailures(result.failures ?? []);
+      // W-5 (2026-09-07): 自動発見の結果は成功トーストと別に出す。件数 0 の
+      // 理由 (guild ID 未設定 / 新着なし / API エラー) を混ぜると本文が
+      // 読みにくくなるうえ、設定を直す人と同期を押す人が別なことが多い。
+      if (result.discovered > 0) {
+        toast.success(m.logsSync.discovered(result.discovered));
+      } else if (result.discoveryNote) {
+        toast.warning(m.logsSync.discoveryNote(result.discoveryNote));
+      }
       toast.success(
         m.logsSync.toastDone(result.reportsFetched, result.fightsUpserted) +
           (result.reattributed > 0 ? m.logsSync.reattributed(result.reattributed) : "") +

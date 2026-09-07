@@ -299,6 +299,24 @@ export const ja = {
     guildIdHint:
       "固定の FFLogs guild の ID です。**現時点では取り込みに使われません** — 「動画リンクを介さず guild からレポートを自動で見つける」機能の準備として、記録場所だけを用意しています。数字のみ (URL ではありません)。",
     guildIdSaved: "guild ID を保存しました",
+    // W-5 (2026-09-07): レポートの発見元。
+    sourceLabel: "レポートの発見元",
+    sourceLabels: {
+      links: "貼られた URL のみ",
+      guild: "guild から自動",
+      user: "自分のアカウントから自動",
+    },
+    sourceHints: {
+      links:
+        "従来どおり、動画や日付メモに貼られた FFLogs の URL からのみ取り込みます。誰かが URL を貼るまで portal はレポートを知りません。",
+      guild:
+        "FFLogs 上の static (guild) のレポート一覧も見ます。FFLogs Uploader で guild を選んで上げている固定向けで、URL を貼らなくても取り込まれます。guild ID の入力が必要です。",
+      user:
+        "接続した FFLogs アカウントが上げたレポート一覧も見ます。guild を作っていない固定 (計測担当が個人アカウントで上げている) 向けです。API の仕様で Public のレポートしか返らないため、Unlisted 運用では拾えません。",
+    },
+    sourceSaved: "発見元を保存しました",
+    sourceNeedsGuildId:
+      "guild ID が未設定です。下の欄に入れるまで自動発見は動きません。",
   },
   lootWindow: {
     title: "週制限の消化ウィンドウ",
@@ -1016,6 +1034,23 @@ export const en: SettingsMessages = {
     guildIdHint:
       "Your static's FFLogs guild ID. **Not used by the sync yet** — this only records it, in preparation for discovering reports straight from the guild instead of via video links. Digits only (not a URL).",
     guildIdSaved: "Saved the guild ID",
+    sourceLabel: "Report discovery",
+    sourceLabels: {
+      links: "Pasted URLs only",
+      guild: "From the guild",
+      user: "From your account",
+    },
+    sourceHints: {
+      links:
+        "As before, only FFLogs URLs pasted on videos or date notes are imported. The portal does not know a report exists until someone pastes its URL.",
+      guild:
+        "Also reads the report list of your static (guild) on FFLogs. For groups that pick the guild in FFLogs Uploader — reports are imported without pasting URLs. Requires the guild ID.",
+      user:
+        "Also reads the report list of the connected FFLogs account. For groups without a guild (the log runner uploads from a personal account). The API only returns Public reports, so Unlisted uploads are not picked up.",
+    },
+    sourceSaved: "Saved the discovery source",
+    sourceNeedsGuildId:
+      "The guild ID is not set. Auto-discovery stays off until you enter it below.",
   },
   lootWindow: {
     title: "Weekly lockout window",
