@@ -24,6 +24,10 @@ import {
 
 type WriteResult = { ok: true } | { ok: false; reason: string };
 
+/** 動画リンク行の ID (uuid) の形。UI 経由でも念のため検証する。 */
+const UUID_RE =
+  /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+
 /** 手動同期。cron (`/api/cron/fflogs-sync`) と同じ処理を admin が即時実行する。 */
 export async function syncFflogsFightsAction(): Promise<
   | {
@@ -113,11 +117,20 @@ export async function importFflogsReportsAction(
  *
  * 「レポート開始時刻が動画の何秒地点か」を 1 回入れておけば、以降の全 pull の
  * 動画内時刻が計算で出る。動画の URL 自体は空でもよい (後から入れられる)。
+ *
+ * 2026-09-07: **1 レポートに複数動画**を許した (実機要望「同日に複数動画が
+ * 上げられた場合、練習ログに複数紐づけ出来るか。切り替えでオフセットも
+ * 個別に入れられるか」)。`id` があればその行を更新、無ければ新しい動画として
+ * 追加する。オフセットは行ごとに独立 — 前半/後半で別々に投稿された動画は
+ * 録画開始位置が違うため、1 本目の秒数を 2 本目に流用できない。
  */
 export async function setReportVideoAction(input: {
+  /** 既存行の更新なら行 ID。未指定 = このレポートに動画を 1 本追加。 */
+  id?: string | null;
   reportCode: string;
   videoUrl: string | null;
   offsetSeconds: number;
+  label?: string | null;
 }): Promise<WriteResult> {
   const auth = await assertAdminResult();
   if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
@@ -128,6 +141,11 @@ export async function setReportVideoAction(input: {
     return { ok: false, reason: "レポートコードが不正です" };
   }
 
+  const id = (input.id ?? "").trim();
+  if (id && !UUID_RE.test(id)) {
+    return { ok: false, reason: "動画の ID が不正です" };
+  }
+
   const rawUrl = (input.videoUrl ?? "").trim();
   if (rawUrl) {
     const err = httpUrlError(rawUrl);
@@ -135,21 +153,76 @@ export async function setReportVideoAction(input: {
     if (rawUrl.length > 2000) return { ok: false, reason: "URL が長すぎます" };
   }
 
+  const label = (input.label ?? "").trim();
+  if (label.length > 40) return { ok: false, reason: "表示名は 40 文字以内です" };
+
   const offset = Math.trunc(input.offsetSeconds);
   if (!Number.isFinite(offset) || offset < -86400 || offset > 86400) {
     return { ok: false, reason: "オフセットは ±24 時間以内で指定してください" };
   }
 
   const supabase = await createClient();
-  const { error } = await supabase.from("fflogs_report_videos").upsert(
-    {
-      report_code: code,
-      video_url: rawUrl || null,
-      offset_seconds: offset,
-    },
-    { onConflict: "report_code" },
+  const values = {
+    video_url: rawUrl || null,
+    offset_seconds: offset,
+    label: label || null,
+  };
+
+  if (id) {
+    const { error } = await supabase
+      .from("fflogs_report_videos")
+      .update(values)
+      .eq("id", id);
+    if (error) return { ok: false, reason: dbError("動画オフセット保存", error) };
+    revalidateQuietly();
+    return { ok: true };
+  }
+
+  // 追加。末尾に置くので、いま最大の sort_order + 1 を採る (行数は 1 レポート
+  // 数本なので採番用の RPC は要らない)。
+  const { data: existing, error: readError } = await supabase
+    .from("fflogs_report_videos")
+    .select("sort_order, video_url")
+    .eq("report_code", code);
+  if (readError) return { ok: false, reason: dbError("動画一覧取得", readError) };
+  const rows = existing ?? [];
+  if (rawUrl && rows.some((r) => r.video_url === rawUrl)) {
+    return { ok: false, reason: "この動画はすでに紐づいています" };
+  }
+  if (rows.length >= 12) {
+    return { ok: false, reason: "1 レポートに紐づけられる動画は 12 本までです" };
+  }
+  const nextOrder = rows.reduce(
+    (max, r) => Math.max(max, Number(r.sort_order ?? 0) + 1),
+    0,
   );
+
+  const { error } = await supabase.from("fflogs_report_videos").insert({
+    report_code: code,
+    sort_order: nextOrder,
+    ...values,
+  });
   if (error) return { ok: false, reason: dbError("動画オフセット保存", error) };
+  revalidateQuietly();
+  return { ok: true };
+}
+
+/**
+ * 紐づけた動画を 1 本外す (2026-09-07)。pull 側のログには触らない —
+ * 消えるのは「この動画とオフセット」だけで、レポート自体は残る。
+ */
+export async function deleteReportVideoAction(id: string): Promise<WriteResult> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
+  if (!UUID_RE.test(id.trim())) {
+    return { ok: false, reason: "動画の ID が不正です" };
+  }
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("fflogs_report_videos")
+    .delete()
+    .eq("id", id.trim());
+  if (error) return { ok: false, reason: dbError("動画リンク削除", error) };
   revalidateQuietly();
   return { ok: true };
 }
@@ -165,17 +238,32 @@ export async function suggestVideoForReportAction(
   const auth = await assertAdminResult();
   if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("category_links")
-    .select("url, logs_url")
-    .eq("kind", "video")
-    .not("logs_url", "is", null)
-    .limit(500);
-  if (error) return { ok: false, reason: dbError("動画検索", error) };
-  for (const row of data ?? []) {
-    if (parseFflogsReportCode(row.logs_url as string) === reportCode) {
-      return { ok: true, videoUrl: (row.url as string) ?? null };
-    }
+  const [linksRes, linkedRes] = await Promise.all([
+    supabase
+      .from("category_links")
+      .select("url, logs_url")
+      .eq("kind", "video")
+      .not("logs_url", "is", null)
+      .limit(500),
+    // 2026-09-07: すでにこのレポートへ紐づけ済みの URL は候補から外す。
+    // 同じ日を前半/後半に分けた動画は logs_url が同じレポートを指すので、
+    // 除外しないと「動画を追加」の自動入力が 1 本目を繰り返してしまう。
+    supabase
+      .from("fflogs_report_videos")
+      .select("video_url")
+      .eq("report_code", reportCode),
+  ]);
+  if (linksRes.error) return { ok: false, reason: dbError("動画検索", linksRes.error) };
+  const already = new Set(
+    ((linkedRes.data ?? []) as Array<{ video_url: string | null }>)
+      .map((r) => r.video_url)
+      .filter((u): u is string => !!u),
+  );
+  for (const row of linksRes.data ?? []) {
+    if (parseFflogsReportCode(row.logs_url as string) !== reportCode) continue;
+    const url = (row.url as string | null) ?? null;
+    if (!url || already.has(url)) continue;
+    return { ok: true, videoUrl: url };
   }
   return { ok: true, videoUrl: null };
 }

@@ -11,6 +11,7 @@ import {
   Film,
   Flag,
   Microscope,
+  Plus,
   RefreshCw,
   ShieldAlert,
   Skull,
@@ -92,6 +93,7 @@ import {
   assignFflogsReportsToCategoryAction,
   type FflogsReportDiag,
   setCategoryMinDifficultyAction,
+  deleteReportVideoAction,
   setReportVideoAction,
   suggestVideoForReportAction,
   syncFflogsFightsAction,
@@ -151,7 +153,7 @@ export function LogsView({
   totalPulls: number;
   totalClears: number;
   truncated: boolean;
-  videoLinks: Record<string, ReportVideoLink>;
+  videoLinks: Record<string, ReportVideoLink[]>;
   failedSyncs: Array<{
     reportCode: string;
     reason: string | null;
@@ -250,11 +252,9 @@ export function LogsView({
     setImportText("");
     router.refresh();
   };
-  const [offsetTarget, setOffsetTarget] = useState<{
-    reportCode: string;
-    videoUrl: string;
-    offset: string;
-  } | null>(null);
+  // 2026-09-07: 1 レポートに複数動画。`id` が null なら「この report に
+  // 動画を 1 本追加」、非 null ならその行の編集 (オフセットは行ごと)。
+  const [offsetTarget, setOffsetTarget] = useState<OffsetTarget | null>(null);
 
   // フェーズ (P1〜) 単位で管理するのは実質「絶」だけ (2026-08-28 指摘)。
   const showPhase = useMemo(
@@ -1303,12 +1303,18 @@ export function LogsView({
               reserveDeaths={anyDeaths}
               floors={floors}
               firstPullStartByReport={firstPullStartByReport}
-              onEditOffset={(reportCode) => {
-                const existing = videoLinks[reportCode];
+              onEditOffset={(reportCode, videoId) => {
+                const existing =
+                  videoId === null
+                    ? null
+                    : ((videoLinks[reportCode] ?? []).find((v) => v.id === videoId) ??
+                      null);
                 setOffsetTarget({
+                  id: existing?.id ?? null,
                   reportCode,
                   videoUrl: existing?.videoUrl ?? "",
                   offset: String(existing?.offsetSeconds ?? 0),
+                  label: existing?.label ?? "",
                 });
               }}
             />
@@ -1686,6 +1692,31 @@ function PullBreakdownChips({
   );
 }
 
+/**
+ * 動画オフセットのダイアログが編集している対象 (2026-09-07)。
+ * `id === null` = このレポートに動画を 1 本追加する。
+ */
+type OffsetTarget = {
+  id: string | null;
+  reportCode: string;
+  videoUrl: string;
+  offset: string;
+  label: string;
+};
+
+/** 動画チップの表示名。`label` 未設定なら「動画 1」のような連番を使う。 */
+function videoName(link: ReportVideoLink, fallback: string): string {
+  return link.label?.trim() || fallback;
+}
+
+/**
+ * チップに添えるオフセット表記 (`+0:56` / `-1:20`)。動画ごとに別の値が
+ * 入っていることが一覧で分かるようにするため、符号を必ず出す。
+ */
+function formatSignedOffset(seconds: number): string {
+  return `${seconds < 0 ? "-" : "+"}${formatClock(Math.abs(seconds))}`;
+}
+
 function DayRow({
   day,
   jumpNonce,
@@ -1708,14 +1739,15 @@ function DayRow({
   /** admin のみ: このレポートを練習ログから削除する。 */
   onDeleteReport?: (reportCode: string) => void;
   deletingCode: string | null;
-  videoLinks: Record<string, ReportVideoLink>;
+  videoLinks: Record<string, ReportVideoLink[]>;
   canEdit: boolean;
   showPhase: boolean;
   /** カテゴリ全体で死亡数が 1 つでも取得済みか (見出しの列幅の確保用)。 */
   reserveDeaths: boolean;
   floors: FloorMap;
   firstPullStartByReport: Map<string, number>;
-  onEditOffset: (reportCode: string) => void;
+  /** videoId=null で「この report に動画を追加」、非 null でその行の編集。 */
+  onEditOffset: (reportCode: string, videoId: string | null) => void;
 }) {
   const m = useMessages();
   const locale = useLocale();
@@ -1738,7 +1770,17 @@ function DayRow({
   // 未取得の古い日や、動画が紐づいていない日で無駄な空白を作らないため)。
   const reserve = {
     metrics: day.fights.some((f) => f.partyDps !== null || f.deaths !== null),
-    video: day.fights.some((f) => videoLinks[f.reportCode]?.videoUrl),
+    // 2026-09-07: 1 レポートに複数動画。列幅はその日の最大本数ぶん確保して
+    // おき、本数の少ない report の pull は空きスロットで埋める (LOGS /
+    // ANALYSIS の位置が行ごとにずれないのを維持するため)。
+    videoSlots: day.fights.reduce(
+      (max, f) =>
+        Math.max(
+          max,
+          (videoLinks[f.reportCode] ?? []).filter((v) => v.videoUrl).length,
+        ),
+      0,
+    ),
     // 絶はフェーズを層と同じ位置のチップで出すので、その列を確保する。
     phase: showPhase && day.fights.some((f) => f.lastPhase !== null),
     // 2026-09-06 W-2: フェーズ滞在バー (絶で遷移が取れた日のみ)。
@@ -1866,43 +1908,72 @@ function DayRow({
       {open && (
         <div className="flex flex-col gap-2 border-t border-border/30 px-3 py-2">
           {canEdit && (
-            <div className="flex flex-wrap items-center gap-1.5">
+            <div className="flex flex-col gap-1">
               <span className="font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase">
                 {m.logs.videoOffset}
               </span>
-              {codes.map((code) => (
-                <span key={code} className="inline-flex items-center gap-0.5">
-                <button
-                  type="button"
-                  onClick={() => onEditOffset(code)}
-                  className={
-                    "inline-flex items-center gap-1 rounded-sm border px-1.5 py-0.5 font-mono text-[10px] transition-colors " +
-                    (videoLinks[code]?.videoUrl
-                      ? "border-violet-400/45 bg-violet-400/10 text-violet-200 hover:bg-violet-400/20"
-                      : "border-border/50 text-muted-foreground hover:text-foreground")
-                  }
-                  title={m.logs.setVideoOffsetTitle}
-                >
-                  <Video className="h-3 w-3" aria-hidden />
-                  {code.slice(0, 6)}
-                </button>
-                {/* 2026-08-30: 誤って取り込んだレポート (ノーマル等) を
-                    ここから消せるようにする。削除 = pull を消したうえで
-                    以後の同期でも取り込まない (除外リスト行き)。 */}
-                {onDeleteReport && (
-                  <button
-                    type="button"
-                    onClick={() => onDeleteReport(code)}
-                    disabled={deletingCode === code}
-                    aria-label={m.logs.deleteReportAria(code)}
-                    title={m.logs.deleteReportTitle}
-                    className="inline-flex h-5 w-5 items-center justify-center rounded text-rose-300/80 transition-colors hover:bg-rose-500/15 hover:text-rose-200 disabled:opacity-40"
-                  >
-                    <Trash2 className="h-3 w-3" aria-hidden />
-                  </button>
-                )}
-                </span>
-              ))}
+              {/* 2026-09-07 実機要望 2 点:
+                  (1) 同じ日に複数の動画 (前半/後半・視点違い) を紐づけたい。
+                      → report ごとに 1 行を持ち、動画チップを横に並べる。
+                        チップを押すとその動画の URL / オフセットだけを編集
+                        するので、オフセットは動画ごとに独立して入れられる。
+                  (2) 「ログ削除」がオフセットの真横だと押し間違えそう。
+                      → 同じ行の右端 (ml-auto) へ離した。 */}
+              {codes.map((code) => {
+                const links = videoLinks[code] ?? [];
+                return (
+                  <div key={code} className="flex w-full flex-wrap items-center gap-1.5">
+                    <span className="font-mono text-[10px] text-muted-foreground/70">
+                      {code.slice(0, 6)}
+                    </span>
+                    {links.map((v, i) => (
+                      <button
+                        key={v.id}
+                        type="button"
+                        onClick={() => onEditOffset(code, v.id)}
+                        className={
+                          "inline-flex items-center gap-1 rounded-sm border px-1.5 py-0.5 font-mono text-[10px] transition-colors " +
+                          (v.videoUrl
+                            ? "border-violet-400/45 bg-violet-400/10 text-violet-200 hover:bg-violet-400/20"
+                            : "border-border/50 text-muted-foreground hover:text-foreground")
+                        }
+                        title={m.logs.editVideoTitle}
+                      >
+                        <Video className="h-3 w-3 shrink-0" aria-hidden />
+                        {videoName(v, m.logs.videoNth(i + 1))}
+                        <span className="text-muted-foreground tabular-nums">
+                          {formatSignedOffset(v.offsetSeconds)}
+                        </span>
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => onEditOffset(code, null)}
+                      title={m.logs.addVideoTitle}
+                      className="inline-flex items-center gap-1 rounded-sm border border-dashed border-border/60 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground transition-colors hover:border-violet-400/45 hover:text-violet-200"
+                    >
+                      <Plus className="h-3 w-3 shrink-0" aria-hidden />
+                      {m.logs.addVideo}
+                    </button>
+                    {/* 2026-08-30: 誤って取り込んだレポート (ノーマル等) を
+                        ここから消せるようにする。削除 = pull を消したうえで
+                        以後の同期でも取り込まない (除外リスト行き)。 */}
+                    {onDeleteReport && (
+                      <button
+                        type="button"
+                        onClick={() => onDeleteReport(code)}
+                        disabled={deletingCode === code}
+                        aria-label={m.logs.deleteReportAria(code)}
+                        title={m.logs.deleteReportTitle}
+                        className="ml-auto inline-flex shrink-0 items-center gap-1 rounded-sm border border-rose-500/30 px-1.5 py-0.5 font-mono text-[10px] text-rose-300/80 transition-colors hover:bg-rose-500/15 hover:text-rose-200 disabled:opacity-40"
+                      >
+                        <Trash2 className="h-3 w-3 shrink-0" aria-hidden />
+                        {m.logs.deleteReport}
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
           {dayWipeCauses.length > 0 && (
@@ -1927,7 +1998,7 @@ function DayRow({
                 key={`${f.reportCode}:${f.fightId}`}
                 index={i + 1}
                 fight={f}
-                video={videoLinks[f.reportCode] ?? null}
+                videos={videoLinks[f.reportCode] ?? []}
                 showPhase={showPhase}
                 floors={floors}
                 firstPullStartMs={firstPullStartByReport.get(f.reportCode) ?? null}
@@ -1944,7 +2015,7 @@ function DayRow({
 function PullRow({
   index,
   fight,
-  video,
+  videos,
   showPhase,
   floors,
   firstPullStartMs,
@@ -1952,7 +2023,8 @@ function PullRow({
 }: {
   index: number;
   fight: FightRow;
-  video: ReportVideoLink | null;
+  /** この pull のレポートに紐づいた動画 (0..n 本)。オフセットは 1 本ごと。 */
+  videos: ReportVideoLink[];
   showPhase: boolean;
   floors: FloorMap;
   firstPullStartMs: number | null;
@@ -1960,7 +2032,13 @@ function PullRow({
    * 列幅を確保するか (2026-09-03)。その日のどれかの pull に値があれば、
    * 値の無い pull も幅だけ残して縦揃えを保つ。1 つも無い列は幅を取らない。
    */
-  reserve: { metrics: boolean; video: boolean; phase: boolean; phaseBar: boolean };
+  reserve: {
+    metrics: boolean;
+    /** その日の 1 レポートあたり最大動画本数 (列幅の確保用)。 */
+    videoSlots: number;
+    phase: boolean;
+    phaseBar: boolean;
+  };
 }) {
   const m = useMessages();
   const locale = useLocale();
@@ -1975,14 +2053,18 @@ function PullRow({
 
   // A-2 の肝: 「最初の pull の戦闘開始」からの相対位置 + オフセットで
   // 動画内時刻を計算する (オフセット = 動画上で pull #1 が始まる秒数)。
-  const videoSeconds =
-    video && firstPullStartMs !== null
-      ? video.offsetSeconds + (fight.startMs - firstPullStartMs) / 1000
-      : null;
-  const videoHref =
-    video?.videoUrl && videoSeconds !== null
-      ? buildVideoTimestampUrl(video.videoUrl, videoSeconds)
-      : null;
+  // 2026-09-07: 1 レポートに複数動画。動画ごとにオフセットが違う (前半と
+  // 後半が別投稿なら録画開始位置も別) ので、リンクは動画ごとに計算する。
+  const videoJumps =
+    firstPullStartMs === null
+      ? []
+      : videos.flatMap((v, i) => {
+          if (!v.videoUrl) return [];
+          const seconds = v.offsetSeconds + (fight.startMs - firstPullStartMs) / 1000;
+          const href = buildVideoTimestampUrl(v.videoUrl, seconds);
+          if (!href) return [];
+          return [{ id: v.id, href, seconds, name: videoName(v, m.logs.videoNth(i + 1)) }];
+        });
 
   return (
     <li className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-sm border border-border/30 bg-background/30 px-2 py-1">
@@ -2208,21 +2290,45 @@ function PullRow({
         </a>
         {/* 動画チップは「1:13:08」まで入る幅で固定し、動画が無い pull には
             同じ幅の空きを置く (その日に動画がある場合のみ)。これで LOGS /
-            ANALYSIS の位置が行ごとにずれない。 */}
-        {videoHref ? (
-          <a
-            href={videoHref}
-            target="_blank"
-            rel="noopener noreferrer"
-            title={m.logs.videoMomentTitle}
-            className="inline-flex w-[4.75rem] items-center justify-center gap-1 rounded-sm border border-violet-400/45 bg-violet-400/10 px-1 py-0.5 font-mono text-[10px] tracking-[0.1em] whitespace-nowrap text-violet-200 uppercase transition-colors hover:bg-violet-400/15"
-          >
-            <Film className="h-2.5 w-2.5 shrink-0" aria-hidden />
-            {videoSeconds !== null ? formatClock(videoSeconds) : m.logs.video}
-          </a>
-        ) : (
-          reserve.video && <span className="w-[4.75rem] shrink-0" aria-hidden />
-        )}
+            ANALYSIS の位置が行ごとにずれない。
+            2026-09-07: 複数動画のときは 1 本 = 1 チップで横に並べ、頭に
+            本数の番号を付ける (どのチップがどの動画かをホバー無しで拾える)。
+            スロット数はその日の最大本数なので、日の中では縦に揃う。 */}
+        {(() => {
+          const multi = reserve.videoSlots > 1;
+          // 番号 (「1 」) が入るぶんだけ複数動画の日は少し広げる。
+          const slotClass = multi ? "w-[5.5rem]" : "w-[4.75rem]";
+          const spacers = Math.max(0, reserve.videoSlots - videoJumps.length);
+          return (
+            <>
+              {videoJumps.map((j, i) => (
+                <a
+                  key={j.id}
+                  href={j.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title={m.logs.videoMomentTitleNamed(j.name)}
+                  className={
+                    `inline-flex ${slotClass} items-center justify-center gap-1 rounded-sm border border-violet-400/45 bg-violet-400/10 px-1 py-0.5 font-mono text-[10px] tracking-[0.1em] whitespace-nowrap text-violet-200 uppercase transition-colors hover:bg-violet-400/15`
+                  }
+                >
+                  <Film className="h-2.5 w-2.5 shrink-0" aria-hidden />
+                  {multi && (
+                    <span className="text-violet-200/60 tabular-nums">{i + 1}</span>
+                  )}
+                  {formatClock(j.seconds)}
+                </a>
+              ))}
+              {Array.from({ length: spacers }, (_, i) => (
+                <span
+                  key={`video-slot-${i}`}
+                  className={`${slotClass} shrink-0`}
+                  aria-hidden
+                />
+              ))}
+            </>
+          );
+        })()}
       </span>
     </li>
   );
@@ -2276,10 +2382,8 @@ function OffsetDialog({
   onChange,
   onSaved,
 }: {
-  target: { reportCode: string; videoUrl: string; offset: string } | null;
-  onChange: (
-    v: { reportCode: string; videoUrl: string; offset: string } | null,
-  ) => void;
+  target: OffsetTarget | null;
+  onChange: (v: OffsetTarget | null) => void;
   onSaved: () => void;
 }) {
   const m = useMessages();
@@ -2294,9 +2398,12 @@ function OffsetDialog({
     }
     setBusy(true);
     const result = await setReportVideoAction({
+      // id なし = このレポートに動画を 1 本追加 (2026-09-07)。
+      id: target.id,
       reportCode: target.reportCode,
       videoUrl: target.videoUrl.trim() || null,
       offsetSeconds: Math.trunc(offset),
+      label: target.label.trim() || null,
     });
     setBusy(false);
     if (!result.ok) {
@@ -2304,6 +2411,20 @@ function OffsetDialog({
       return;
     }
     toast.success(m.logsOffset.toastSaved);
+    onSaved();
+  };
+
+  /** 紐づけを 1 本だけ外す。pull 側のログはそのまま残る。 */
+  const remove = async () => {
+    if (!target?.id) return;
+    setBusy(true);
+    const result = await deleteReportVideoAction(target.id);
+    setBusy(false);
+    if (!result.ok) {
+      toast.error(m.logs.saveFailed(result.reason));
+      return;
+    }
+    toast.success(m.logsOffset.toastDeleted);
     onSaved();
   };
 
@@ -2330,7 +2451,9 @@ function OffsetDialog({
     >
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>{m.logsOffset.title}</DialogTitle>
+          <DialogTitle>
+            {target?.id ? m.logsOffset.title : m.logsOffset.titleAdd}
+          </DialogTitle>
           <DialogDescription>
             {m.logsOffset.descA}
             <strong>{m.logsOffset.descStrong}</strong>
@@ -2372,8 +2495,39 @@ function OffsetDialog({
               }
             />
           </div>
+          {/* 2026-09-07: 複数動画を並べたとき「1 本目 / 2 本目」を人が
+              決められるようにする (未入力なら UI が「動画 1」と振る)。 */}
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="offset-label">{m.logsOffset.labelLabel}</Label>
+            <Input
+              id="offset-label"
+              value={target?.label ?? ""}
+              maxLength={40}
+              placeholder={m.logsOffset.labelPlaceholder}
+              onChange={(e) =>
+                onChange(target ? { ...target, label: e.target.value } : null)
+              }
+            />
+          </div>
+          <p className="text-[11px] leading-relaxed text-muted-foreground">
+            {m.logsOffset.multiHint}
+          </p>
         </div>
         <DialogFooter>
+          {/* 動画の紐づけ解除。レポート自体を消す「ログ削除」とは別物なので、
+              取り違えないようダイアログの中 (左端) に置く。 */}
+          {target?.id && (
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={remove}
+              disabled={busy}
+              className="mr-auto text-rose-300 hover:bg-rose-500/10 hover:text-rose-200"
+            >
+              <Trash2 className="h-3.5 w-3.5" aria-hidden />
+              {m.logsOffset.deleteVideo}
+            </Button>
+          )}
           <Button
             type="button"
             variant="ghost"

@@ -1541,8 +1541,10 @@ async function postGraphql(
  * 機械的に決めると誤った時刻へ飛ぶ導線を量産してしまう (ユーザーも
  * 「秒数は後で手動編集」との認識)。
  *
- * 既存行は一切触らない (人が入れた秒数を壊さない)。同じ report に複数の
- * 動画が紐づく場合は最初の 1 本を採用する。
+ * 既存行は一切触らない (人が入れた秒数を壊さない)。**すでに 1 行でもある
+ * report は候補から外す** — 2026-09-07 に 1 レポート N 動画へ移行したが、
+ * seed が後から 2 本目を勝手に足すと、人が「この日はこの動画」と決めた
+ * 並びを機械が崩してしまう。2 本目以降は UI の「動画を追加」で入れる。
  */
 export async function seedReportVideosFromLinks(db: Db): Promise<number> {
   const [videosRes, existingRes] = await Promise.all([
@@ -1577,11 +1579,13 @@ export async function seedReportVideosFromLinks(db: Db): Promise<number> {
     report_code,
     video_url,
     offset_seconds: 0,
+    sort_order: 0,
   }));
   // ignoreDuplicates: 取得と書き込みの間に人が登録した行を上書きしない。
+  // 一意キーは (report_code, video_url) — 主キーが id になったため。
   const { data, error } = await db
     .from("fflogs_report_videos")
-    .upsert(rows, { onConflict: "report_code", ignoreDuplicates: true })
+    .upsert(rows, { onConflict: "report_code,video_url", ignoreDuplicates: true })
     .select("report_code");
   if (error) {
     console.warn("[fflogs-fights] report video seed upsert failed:", error.message);

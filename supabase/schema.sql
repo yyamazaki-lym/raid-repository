@@ -1186,16 +1186,62 @@ CREATE TABLE IF NOT EXISTS public.fflogs_report_blocklist (
 );
 
 -- ---- 6b-6. fflogs_report_videos (A-2: 動画オフセット) ------------------
--- 「レポート開始時刻が動画の何秒地点か」を report ごとに 1 回だけ入力すれば、
--- 各 pull の動画内時刻は
+-- 「レポート開始時刻が動画の何秒地点か」を入力すれば、各 pull の動画内時刻は
 --   offset_seconds + (fight.start_ms - report_start_ms) / 1000
 -- で計算できる。sync はこのテーブルに触らない (人が入れた値を壊さない)。
+--
+-- 2026-09-07: **1 レポートに複数動画**を許す (実機要望「同日に複数動画が
+-- 上げられた場合、練習ログに複数紐づけ出来るか」)。同じ練習日を前半/後半に
+-- 分けて投稿したり、視点違いを 2 本上げたりするケースで、動画ごとに別の
+-- オフセットが要る (投稿ごとに録画開始位置が違う) ため、主キーを
+-- report_code → id へ張り替えて 1 レポート N 行にした。
 CREATE TABLE IF NOT EXISTS public.fflogs_report_videos (
   report_code    text PRIMARY KEY,
   video_url      text,
   offset_seconds integer NOT NULL DEFAULT 0,
   updated_at     timestamptz NOT NULL DEFAULT now()
 );
+
+-- 既存 DB (report_code が主キー) の移行。新規作成時は ADD COLUMN が
+-- 空振りするだけなので、どちらの状態からでも同じ形に収束する。
+ALTER TABLE public.fflogs_report_videos
+  ADD COLUMN IF NOT EXISTS id uuid NOT NULL DEFAULT gen_random_uuid();
+-- 同じレポート内の並び順 (UI のチップ順)。0 = 先頭。
+ALTER TABLE public.fflogs_report_videos
+  ADD COLUMN IF NOT EXISTS sort_order integer NOT NULL DEFAULT 0;
+-- 「前半」「ヒラ視点」等の表示名 (任意)。空なら UI が「動画 1」と振る。
+ALTER TABLE public.fflogs_report_videos
+  ADD COLUMN IF NOT EXISTS label text;
+
+-- 主キーを id へ。旧主キー (report_code) は複数行を持てないため落とす。
+-- FK の参照元は無い (admin-actions.ts の一括削除も FK 無しとして扱う)。
+DO $$
+DECLARE
+  pk_cols text;
+BEGIN
+  SELECT string_agg(a.attname, ',' ORDER BY a.attname)
+    INTO pk_cols
+    FROM pg_constraint c
+    JOIN pg_class t       ON t.oid = c.conrelid
+    JOIN pg_namespace n   ON n.oid = t.relnamespace
+    JOIN pg_attribute a   ON a.attrelid = t.oid AND a.attnum = ANY (c.conkey)
+   WHERE n.nspname = 'public'
+     AND t.relname = 'fflogs_report_videos'
+     AND c.contype = 'p';
+  IF pk_cols IS NOT NULL AND pk_cols <> 'id' THEN
+    ALTER TABLE public.fflogs_report_videos DROP CONSTRAINT fflogs_report_videos_pkey;
+    ALTER TABLE public.fflogs_report_videos
+      ADD CONSTRAINT fflogs_report_videos_pkey PRIMARY KEY (id);
+  END IF;
+END $$;
+
+-- 同じレポートに同じ URL を二重登録しない (自動 seed の ON CONFLICT 推論に
+-- 使うので部分 index にはしない — 述語付き index は upsert から推論できない)。
+CREATE UNIQUE INDEX IF NOT EXISTS fflogs_report_videos_report_url_uidx
+  ON public.fflogs_report_videos (report_code, video_url);
+-- レポート単位の読み出し (fetchReportVideoLinks は .in("report_code", ...))。
+CREATE INDEX IF NOT EXISTS fflogs_report_videos_report_idx
+  ON public.fflogs_report_videos (report_code, sort_order);
 
 DROP TRIGGER IF EXISTS set_updated_at_fflogs_report_videos
   ON public.fflogs_report_videos;
@@ -1211,6 +1257,7 @@ ALTER TABLE public.fflogs_report_videos
     (video_url IS NULL OR (char_length(video_url) <= 2000 AND video_url ~* '^https?://'))
     -- ±24h。動画とレポートのずれがこれを超えるのは入力ミス。
     AND offset_seconds BETWEEN -86400 AND 86400
+    AND (label IS NULL OR char_length(label) <= 40)
   ) NOT VALID;
 
 -- ---- 6b-7. sort_order allocator RPCs (13c と同型) ----------------------

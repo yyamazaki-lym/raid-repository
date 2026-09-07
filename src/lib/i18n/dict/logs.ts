@@ -70,6 +70,11 @@ export const ja = {
     dayDeathsMissing: "この日の死亡数は未取得です",
     videoOffset: "動画オフセット",
     setVideoOffsetTitle: "この report の動画とオフセットを設定",
+    editVideoTitle: "この動画の URL とオフセットを編集",
+    addVideo: "動画を追加",
+    addVideoTitle: "この report にもう 1 本の動画を紐づける (オフセットは動画ごと)",
+    videoNth: (n: number) => `動画 ${n}`,
+    deleteReport: "ログ削除",
     deleteReportAria: (code: string) => `レポート ${code} を練習ログから削除`,
     deleteReportTitle: "このレポートを練習ログから削除 (以後も取り込まない)",
     dayWipeCausesTitle:
@@ -93,6 +98,7 @@ export const ja = {
     damageTakenAria: "被ダメージを開く",
     xivAnalysisTitle: "XIVAnalysis でこの pull を解析する",
     videoMomentTitle: "動画のこの瞬間から再生",
+    videoMomentTitleNamed: (name: string) => `${name} のこの瞬間から再生`,
     video: "動画",
     // 総 pull の内訳チップ
     breakdownAria: "pull 数の内訳",
@@ -249,6 +255,13 @@ export const ja = {
     errOffset: "オフセットは秒数で入力してください",
     toastSaved: "保存しました",
     errNoVideo: "この report に紐づいた動画が見つかりませんでした",
+    titleAdd: "動画の追加",
+    multiHint:
+      "同じ日に複数の動画 (前半/後半・視点違いなど) を紐づけられます。オフセットは動画ごとに別なので、投稿ごとに入れてください。",
+    labelLabel: "表示名（任意）",
+    labelPlaceholder: "例: 前半 / ヒラ視点",
+    deleteVideo: "この動画を外す",
+    toastDeleted: "動画の紐づけを外しました",
   },
   categoryStatus: {
     labels: {
@@ -336,6 +349,12 @@ export const en: LogsMessages = {
     dayDeathsMissing: "Deaths not fetched for this day",
     videoOffset: "Video offset",
     setVideoOffsetTitle: "Set the video and offset for this report",
+    editVideoTitle: "Edit this video's URL and offset",
+    addVideo: "Add video",
+    addVideoTitle:
+      "Link another video to this report (each video keeps its own offset)",
+    videoNth: (n) => `Video ${n}`,
+    deleteReport: "Remove log",
     deleteReportAria: (code) => `Remove report ${code} from practice logs`,
     deleteReportTitle:
       "Remove this report from practice logs (and skip it in future syncs)",
@@ -360,6 +379,7 @@ export const en: LogsMessages = {
     damageTakenAria: "Open damage taken",
     xivAnalysisTitle: "Analyze this pull in XIVAnalysis",
     videoMomentTitle: "Play the video from this moment",
+    videoMomentTitleNamed: (name) => `Play ${name} from this moment`,
     video: "Video",
     breakdownAria: "Pull breakdown",
     breakdownTitleTruncated:
@@ -505,6 +525,13 @@ export const en: LogsMessages = {
     errOffset: "Enter the offset in seconds",
     toastSaved: "Saved",
     errNoVideo: "No video linked to this report was found",
+    titleAdd: "Add a video",
+    multiHint:
+      "You can link several videos to the same day (part 1 / part 2, different POVs). Each video keeps its own offset, so enter it per upload.",
+    labelLabel: "Display name (optional)",
+    labelPlaceholder: "e.g. Part 1 / Healer POV",
+    deleteVideo: "Unlink this video",
+    toastDeleted: "Unlinked the video",
   },
   categoryStatus: {
     labels: {
