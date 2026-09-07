@@ -150,6 +150,9 @@ export const RELEASES: ReleaseEntry[] = [
       {
         title: "✅ CI: scripts/check-*.mjs を全部実行するように (これまで更新履歴の検査だけだった)",
       },
+      {
+        title: "🧱 練習ログ画面を 9 つの部品に分割 (2,546 → 1,320 行、表示は components/portal/logs へ)",
+      },
     ],
   },
 ];

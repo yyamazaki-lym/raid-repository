@@ -638,6 +638,84 @@ export function floorToneClass(
 }
 
 /**
+ * 層ラベルの文字色 (2026-08-30)。`floorToneClass` と同じ色相の text のみ版
+ * (枠線 / 背景を持たない、文字だけ色を付けたい箇所用)。
+ *
+ * 4 層は前半 / 後半で色相を分けたいが、この関数を使う箇所 (日ごとの到達度
+ * タイル・pull 内訳チップ) は日単位の最深層 (表示層番号) しか持たないため、
+ * 前半 / 後半の区別は行内の層チップ (`floorToneClass`) 側で付ける。
+ *
+ * 2026-09-07: `logs-view.tsx` のローカル定数 (FLOOR_TEXT_TONE) だったが、
+ * ファイル分割で 3 つの部品から参照されるようになったため、色相の対に
+ * なっている `floorToneClass` の隣へ移した。
+ */
+export function floorTextToneClass(displayFloor: number | null): string {
+  switch (displayFloor) {
+    case 1:
+      return "text-sky-200";
+    case 2:
+      return "text-teal-200";
+    case 3:
+      return "text-violet-200";
+    case 4:
+      return "text-rose-200";
+    default:
+      return "text-foreground/70";
+  }
+}
+
+/**
+ * フェーズ (P1〜) の文字色 (2026-09-03)。`phaseToneClass` と同じ色相の
+ * text のみ版で、層の `floorTextToneClass` と対になる。8 以降 / 不明は
+ * 既定色 (呼び出し側で薄さを変えたいので `text-foreground/75`)。
+ */
+export function phaseTextToneClass(phase: number | null): string {
+  switch (phase) {
+    case 1:
+      return "text-sky-200";
+    case 2:
+      return "text-teal-200";
+    case 3:
+      return "text-indigo-200";
+    case 4:
+      return "text-violet-200";
+    case 5:
+      return "text-fuchsia-200";
+    case 6:
+      return "text-rose-200";
+    case 7:
+      return "text-amber-200";
+    default:
+      return "text-foreground/75";
+  }
+}
+
+/**
+ * フェーズの帯 (滞在時間バー) の背景色 (2026-09-06)。`phaseToneClass` と
+ * 同じ色相の bg のみ版。8 以降 / 不明は cyan。
+ */
+export function phaseBarToneClass(phase: number | null): string {
+  switch (phase) {
+    case 1:
+      return "bg-sky-400/70";
+    case 2:
+      return "bg-teal-400/70";
+    case 3:
+      return "bg-indigo-400/70";
+    case 4:
+      return "bg-violet-400/70";
+    case 5:
+      return "bg-fuchsia-400/70";
+    case 6:
+      return "bg-rose-400/70";
+    case 7:
+      return "bg-amber-400/70";
+    default:
+      return "bg-[var(--neon-cyan)]/60";
+  }
+}
+
+/**
  * フェーズ管理コンテンツ (絶) の区間数 = 観測できた最深フェーズ (2026-09-03)。
  *
  * 零式の層数を「実データに現れた encounter の連番の幅」から出しているのと
