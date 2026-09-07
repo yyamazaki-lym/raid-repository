@@ -18,6 +18,7 @@ export type DataInitCounts = {
   fflogs_fights: number;
   fflogs_report_syncs: number;
   fflogs_report_videos: number;
+  category_link_reads: number;
   recruitment_templates: number;
   strategy_docs: number;
   mitigation_entries: number;
@@ -84,6 +85,7 @@ export async function initializeAllDataAction(): Promise<DataInitResult> {
     fflogs_fights: 0,
     fflogs_report_syncs: 0,
     fflogs_report_videos: 0,
+    category_link_reads: 0,
     recruitment_templates: 0,
     strategy_docs: 0,
     mitigation_entries: 0,
@@ -117,6 +119,10 @@ export async function initializeAllDataAction(): Promise<DataInitResult> {
     { table: "mitigation_phases", pk: "id" },
     { table: "loot_entries", pk: "id" },
     { table: "loot_items", pk: "id" },
+    // W-27 (2026-09-07): category_links の FK ON DELETE CASCADE でも消えるが、
+    // 削除件数を別カウントで見せたいので親より先に明示削除する
+    // (schedule_past_session_logs と同方針)。
+    { table: "category_link_reads", pk: "link_id" },
     { table: "category_links", pk: "id" },
     { table: "categories", pk: "id" },
     { table: "schedule_session_memos", pk: "id" },
