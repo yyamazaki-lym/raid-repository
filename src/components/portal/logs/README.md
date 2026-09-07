@@ -28,13 +28,17 @@
 | `failed-list.tsx` | 取り込めなかったレポートの一覧 |
 | `offset-dialog.tsx` | 動画 URL / オフセット / 表示名の編集ダイアログ |
 | `video-link.ts` | 動画リンクの表示ヘルパー (`OffsetTarget` 型 / 表示名 / オフセット表記) |
+| `session-summary-row.tsx` | セッションサマリー (W-3。拘束 / 実戦闘 / 戦闘外 / 平均プル長) |
+| `team-badges-card.tsx` | チーム実績バッジ (W-31。初討伐 / ノーデス / 最速 / 回数) |
 
 依存の向きは一方向です:
 
 ```
 logs-view.tsx
-  ├── stat-card / wipe-causes-card / phase-time-card / failed-list / offset-dialog
+  ├── stat-card / wipe-causes-card / phase-time-card / team-badges-card
+  │   / failed-list / offset-dialog
   └── day-row
+        ├── session-summary-row
         └── pull-row
               └── phase-span-bar
   (day-row と pull-row は video-link を共有)

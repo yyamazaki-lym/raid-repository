@@ -9,6 +9,8 @@
 import { useState } from "react";
 import { ChevronDown, Plus, Skull, Trash2, Trophy, Video } from "lucide-react";
 import { wipeCauseCounts } from "@/lib/fflogs-fight-detail";
+import { sessionSummary } from "@/lib/fflogs-session";
+import { SessionSummaryRow } from "./session-summary-row";
 import {
   type DaySummary,
   type FloorMap,
@@ -98,6 +100,8 @@ export function DayRow({
   };
   // 2026-09-06 W-1: この日のワイプ原因 (初死亡の技) 上位 3 つ。
   const dayWipeCauses = wipeCauseCounts(day.fights.map((f) => f.wipe), 3, locale);
+  // 2026-09-07 W-3: この日の拘束 / 実戦闘 / 戦闘外 / 平均プル長。
+  const daySession = sessionSummary(day.fights);
 
   return (
     <li
@@ -301,6 +305,9 @@ export function DayRow({
               ))}
             </p>
           )}
+          {/* 2026-09-07 W-3: セッションサマリー。pull 一覧の直上に置く
+              (「この日は何をどれだけやったか」を読んでから明細に入る流れ)。 */}
+          <SessionSummaryRow summary={daySession} />
           <ul className="flex flex-col gap-1">
             {day.fights.map((f, i) => (
               <PullRow
