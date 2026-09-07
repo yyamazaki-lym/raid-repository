@@ -13,6 +13,7 @@ import { buildFflogsReportUrl } from "@/lib/fflogs-url";
 import { getSecretValue } from "./secret-store";
 import { buildFflogsXhrHeaders } from "./fflogs-scrape-request";
 import { parseFflogsReportCode } from "@/lib/fflogs-url";
+import { notifyLogsEvents } from "./logs-notify";
 import { jstYmdString } from "@/lib/jst-date";
 import {
   type CategoryRef,
@@ -125,6 +126,8 @@ export type FflogsFightsSyncResult =
       failures: Array<{ reportCode: string; reason: string }>;
       /** 取り込んだレポートから同日動画へ橋渡しした logs_url の本数。 */
       videosBridged: number;
+      /** W-35 (2026-09-07): Discord に投稿した通知の数 (既定 OFF なので通常 0)。 */
+      notified: number;
       /**
        * 動画が紐づいている report のうち、動画オフセット行を新規作成した数
        * (2026-08-30)。秒数は 0 のままなので、あとは人が秒だけ直せばよい。
@@ -238,6 +241,7 @@ export async function syncFflogsFights(opts?: {
       reattributed: 0,
       failures: [],
       videosBridged: 0,
+      notified: 0,
       videoOffsetsSeeded: 0,
     };
   }
@@ -367,6 +371,9 @@ export async function syncFflogsFights(opts?: {
   let fetchedViaV2 = 0;
   let fetchedViaFallback = 0;
   let upserted = 0;
+  // W-35 (2026-09-07): 今回の同期でレポートが入ったカテゴリ → 件数。
+  // 通知の「新レポート N 件」と、ベスト更新 / 初討伐の判定対象になる。
+  const newReportsByCategory = new Map<string, number>();
   let failed = 0;
   const failures: Array<{ reportCode: string; reason: string }> = [];
   let truncated = targets.length > sliced.length;
@@ -542,6 +549,7 @@ export async function syncFflogsFights(opts?: {
       const plainRows = acceptedFights
         .filter((f) => !details.has(f.id))
         .map(baseRow);
+      let upsertOk = false;
       for (const rows of [detailedRows, plainRows]) {
         if (rows.length === 0) continue;
         const { error } = await db
@@ -552,6 +560,20 @@ export async function syncFflogsFights(opts?: {
           console.warn("[fflogs-fights] upsert failed:", error.message);
         } else {
           upserted += rows.length;
+          upsertOk = true;
+        }
+      }
+      // W-35: このレポートが入ったカテゴリを覚えておく (通知の対象)。
+      // 1 レポートに複数コンテンツが混ざることがあるので fight 単位の
+      // カテゴリを集める。件数はレポート数なので Set で重複を除く。
+      if (upsertOk) {
+        const touched = new Set<string>();
+        for (const f of acceptedFights) {
+          const cid = categoryOf.get(f.id) ?? null;
+          if (cid !== null) touched.add(cid);
+        }
+        for (const cid of touched) {
+          newReportsByCategory.set(cid, (newReportsByCategory.get(cid) ?? 0) + 1);
         }
       }
     }
@@ -711,8 +733,27 @@ export async function syncFflogsFights(opts?: {
     console.warn("[fflogs-fights] report video seed failed:", e);
   }
 
+  // (e) W-35 (2026-09-07): 新レポート / ベスト更新 / 初討伐を Discord に
+  //     流す。**全部既定 OFF** で、設定が全 OFF なら DB も Discord も
+  //     触らない。通知は同期の付随処理なので、失敗しても同期は成功扱い
+  //     にする (throw させない)。
+  let notified = 0;
+  try {
+    const res = await notifyLogsEvents({
+      newReportsByCategory,
+      baseUrl: process.env.NEXT_PUBLIC_SITE_URL ?? null,
+    });
+    notified = res.posted;
+    if (res.reason) {
+      console.warn("[fflogs-fights] logs notify partial:", res.reason);
+    }
+  } catch (e) {
+    console.warn("[fflogs-fights] logs notify failed:", e);
+  }
+
   return {
     ok: true,
+    notified,
     videoOffsetsSeeded,
     reportsKnown: refs.size,
     reportsFetched: fetched,

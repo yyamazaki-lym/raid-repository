@@ -19,6 +19,7 @@ export type DataInitCounts = {
   fflogs_report_syncs: number;
   fflogs_report_videos: number;
   category_link_reads: number;
+  fflogs_notify_state: number;
   recruitment_templates: number;
   strategy_docs: number;
   mitigation_entries: number;
@@ -86,6 +87,7 @@ export async function initializeAllDataAction(): Promise<DataInitResult> {
     fflogs_report_syncs: 0,
     fflogs_report_videos: 0,
     category_link_reads: 0,
+    fflogs_notify_state: 0,
     recruitment_templates: 0,
     strategy_docs: 0,
     mitigation_entries: 0,
@@ -113,6 +115,9 @@ export async function initializeAllDataAction(): Promise<DataInitResult> {
     { table: "fflogs_fights", pk: "id" },
     { table: "fflogs_report_syncs", pk: "report_code" },
     { table: "fflogs_report_videos", pk: "id" },
+    // W-35 (2026-09-07): 通知の「前回どこまで送ったか」。categories の FK
+    // CASCADE でも消えるが、件数を別カウントで見せたいので明示削除する。
+    { table: "fflogs_notify_state", pk: "category_id" },
     { table: "recruitment_templates", pk: "id" },
     { table: "strategy_docs", pk: "id" },
     { table: "mitigation_entries", pk: "id" },

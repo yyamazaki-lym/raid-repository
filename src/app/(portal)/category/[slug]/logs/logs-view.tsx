@@ -82,6 +82,7 @@ import { PhaseTimeCard } from "@/components/portal/logs/phase-time-card";
 import { PullBreakdownChips, StatCard } from "@/components/portal/logs/stat-card";
 import type { OffsetTarget } from "@/components/portal/logs/video-link";
 import { TeamBadgesCard } from "@/components/portal/logs/team-badges-card";
+import { TrendCard } from "@/components/portal/logs/trend-card";
 import { WipeCausesCard } from "@/components/portal/logs/wipe-causes-card";
 
 /**
@@ -1096,6 +1097,11 @@ export function LogsView({
           どちらも「PT として何で止まっているか」の指標で、個人の値は無い。
           データが 1 つも無いコンテンツでは丸ごと出さない (旧データのみの
           カテゴリで空セクションを並べない)。 */}
+      {/* 2026-09-07 W-4: 進行トレンド。2 セッション未満では傾向が存在しない
+          ので TrendCard 側で何も描かない。グラフライブラリは入れず
+          インライン SVG で描く (bundle を増やさない)。 */}
+      <TrendCard days={timeline} truncated={truncated} />
+
       {/* 2026-09-07 W-31: チーム実績バッジ。討伐が無いカテゴリでは何も
           出さない (空の枠が「まだ何も無い」ことだけを主張しないように)。
           個人の実績は作らない — 個人 DPS / 出席率のランキングを出さない
