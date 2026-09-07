@@ -78,6 +78,7 @@ import { useLocale, useMessages } from "@/lib/i18n/client";
 import { DayRow } from "@/components/portal/logs/day-row";
 import { FailedList } from "@/components/portal/logs/failed-list";
 import { OffsetDialog } from "@/components/portal/logs/offset-dialog";
+import { type VideoSyncAnchor } from "@/lib/video-sync";
 import { PhaseTimeCard } from "@/components/portal/logs/phase-time-card";
 import { PullBreakdownChips, StatCard } from "@/components/portal/logs/stat-card";
 import type { OffsetTarget } from "@/components/portal/logs/video-link";
@@ -356,6 +357,17 @@ export function LogsView({
   }, [tierFights]);
   // 631 pull / 54 日のような蓄積で縦に伸びすぎる (2026-08-28 実機報告)。
   // 到達度・振り返りとも既定は直近 10 日、トグルで全件。
+  // W-11 (2026-09-07): オフセットを動画で合わせるときの基準候補。
+  // 編集中のレポートの pull だけを時刻順に渡す (他のレポートの pull を
+  // 基準にするとオフセットの意味が変わるため、レポートで絞る)。
+  const offsetAnchors = useMemo<VideoSyncAnchor[]>(() => {
+    const code = offsetTarget?.reportCode;
+    if (!code) return [];
+    return tierFights
+      .filter((f) => f.reportCode === code)
+      .sort((a, b) => a.startMs - b.startMs)
+      .map((f, i) => ({ fightId: f.fightId, startMs: f.startMs, index: i + 1 }));
+  }, [offsetTarget?.reportCode, tierFights]);
   const [showAllTimeline, setShowAllTimeline] = useState(false);
   const [showAllDays, setShowAllDays] = useState(false);
   // 2026-08-30 (Tier3-13): 層で pull を絞り込む。層チップに色が付いた
@@ -1372,6 +1384,12 @@ export function LogsView({
 
       <OffsetDialog
         target={offsetTarget}
+        anchors={offsetAnchors}
+        firstPullStartMs={
+          offsetTarget
+            ? (firstPullStartByReport.get(offsetTarget.reportCode) ?? null)
+            : null
+        }
         onChange={setOffsetTarget}
         onSaved={() => {
           setOffsetTarget(null);

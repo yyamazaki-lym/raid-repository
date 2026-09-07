@@ -313,6 +313,26 @@ export const ja = {
     labelPlaceholder: "例: 前半 / ヒラ視点",
     deleteVideo: "この動画を外す",
     toastDeleted: "動画の紐づけを外しました",
+    // W-11 動画で合わせる (2026-09-07)。
+    syncTitle: "動画を見ながら合わせる",
+    syncHint:
+      "動画を再生して、基準にする pull の戦闘開始の瞬間で止めてから「いまの位置を基準にする」を押すと、オフセットを秒数を数えずに決められます。",
+    syncAnchorLabel: "基準にする pull",
+    // 前半が映っていない動画では #1 を基準にできないため、映っている pull を選べる。
+    syncAnchorOption: (index: number, clock: string): string =>
+      `#${index} ${clock} の戦闘開始`,
+    syncPick: "いまの位置を基準にする",
+    syncSeek: "推定位置へ移動",
+    syncCurrent: (clock: string): string => `動画の現在位置 ${clock}`,
+    syncWaiting: "プレーヤーの再生位置を待っています (一度再生すると取れます)",
+    syncUnavailable:
+      "この動画では再生位置を読み取れません。オフセットは手入力してください。",
+    syncYoutubeOnly:
+      "動画を見ながらの調整は YouTube の URL のときだけ使えます (Google フォト / ニコニコ動画は再生位置を外から読めません)。",
+    syncNoAnchor: "このレポートに pull がまだありません",
+    syncNudgeMinus: "1 秒戻す",
+    syncNudgePlus: "1 秒進める",
+    syncPicked: (seconds: number): string => `オフセットを ${seconds} 秒にしました`,
   },
   categoryStatus: {
     labels: {
@@ -632,6 +652,24 @@ export const en: LogsMessages = {
     labelPlaceholder: "e.g. Part 1 / Healer POV",
     deleteVideo: "Unlink this video",
     toastDeleted: "Unlinked the video",
+    syncTitle: "Set it while watching",
+    syncHint:
+      "Play the video, pause at the moment the chosen pull starts, then press “Use current position” — no counting seconds.",
+    syncAnchorLabel: "Reference pull",
+    syncAnchorOption: (index: number, clock: string): string =>
+      `#${index} — combat start at ${clock}`,
+    syncPick: "Use current position",
+    syncSeek: "Jump to estimate",
+    syncCurrent: (clock: string): string => `Video position ${clock}`,
+    syncWaiting: "Waiting for the player position (start playback once)",
+    syncUnavailable:
+      "The player position cannot be read for this video. Enter the offset manually.",
+    syncYoutubeOnly:
+      "Setting it while watching only works for YouTube URLs (Google Photos and Niconico do not expose the player position).",
+    syncNoAnchor: "This report has no pulls yet",
+    syncNudgeMinus: "Back 1 second",
+    syncNudgePlus: "Forward 1 second",
+    syncPicked: (seconds: number): string => `Offset set to ${seconds}s`,
   },
   categoryStatus: {
     labels: {
