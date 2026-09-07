@@ -276,6 +276,23 @@ export const ja = {
             : "登録ログに入っている討伐の回数",
     times: (n: number) => `${n} 回`,
   },
+  /** W-4 進行トレンド (2026-09-07)。 */
+  trend: {
+    title: "進行トレンド",
+    sessions: (n: number) => `${n} セッション`,
+    cumulative: (n: number) => `累計 ${n} pull`,
+    truncated: "表示中の明細のみ",
+    chartAria: (sessions: number, best: number) =>
+      `${sessions} セッションの到達度の推移 (最高 ${best}%)`,
+    bestProgress: (pct: number) => `最高到達 ${pct}%`,
+    pace: (sessions: number, pulls: number) =>
+      `この調子ならあと ${sessions} セッション / ${pulls} pull (目安)`,
+    paceTitle:
+      "直近 5 セッションの伸びをそのまま延長した目安です。到達度は線形に伸びないので (最後のフェーズで止まるのが普通)、あくまで参考値として見てください。",
+    noPace: "ペースの目安は出せません",
+    noPaceTitle:
+      "直近のセッションで最高到達が伸びていない (または既にクリア済み / セッションが 3 回未満) ため、延長する意味のある数字が出せません。",
+  },
   logsOffset: {
     title: "動画オフセットの設定",
     descA: "動画上で",
@@ -578,6 +595,22 @@ export const en: LogsMessages = {
             ? "The kill with the shortest combat time"
             : "How many kills are in the stored logs",
     times: (n) => `${n}x`,
+  },
+  trend: {
+    title: "Progress trend",
+    sessions: (n) => `${n} sessions`,
+    cumulative: (n) => `${n} pulls total`,
+    truncated: "shown pulls only",
+    chartAria: (sessions, best) =>
+      `Progress over ${sessions} sessions (best ${best}%)`,
+    bestProgress: (pct) => `Best ${pct}%`,
+    pace: (sessions, pulls) =>
+      `At this rate: ~${sessions} more sessions / ${pulls} pulls`,
+    paceTitle:
+      "Extrapolated from the last 5 sessions. Progress is not linear (runs usually stall on the final phase), so treat it as a rough guide only.",
+    noPace: "No pace estimate",
+    noPaceTitle:
+      "Best progress has not improved over the recent sessions (or the content is already cleared / there are fewer than 3 sessions), so extrapolating would be meaningless.",
   },
   logsOffset: {
     title: "Video offset",

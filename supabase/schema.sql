@@ -1030,6 +1030,45 @@ DELETE FROM public.tags a
 CREATE UNIQUE INDEX IF NOT EXISTS tags_target_label_uidx
   ON public.tags(target_type, target_id, label);
 
+-- ---- 6b-9. fflogs_notify_state (W-35: 練習ログのイベント通知) ----------
+-- 「新レポート到着 / ベスト到達更新 / 初討伐」を Discord に流すために、
+-- **前回通知した時点の到達度**をカテゴリごとに 1 行だけ持つ
+-- (調査ノート第 4 回 W-35)。
+--
+-- fflogs_fights から毎回 SQL で最深到達を出し直すこともできるが、それだと
+-- 「前回どこまで通知したか」が分からず、同期のたびに同じベスト更新を
+-- 送り続けてしまう。通知は取り消せないので、送った事実を残す方を採る。
+--
+-- 行が無い (= 初回同期) カテゴリでは **ベスト更新を通知しない**。初めて
+-- 取り込んだ全ログが「更新」として一斉に飛ぶのを避けるため
+-- (src/lib/logs-notify.ts の detectLogsEvents が prev=null で判定する)。
+CREATE TABLE IF NOT EXISTS public.fflogs_notify_state (
+  category_id     uuid PRIMARY KEY
+                  REFERENCES public.categories(id) ON DELETE CASCADE,
+  -- 到達した最深フェーズ (層モデルでは最深 encounter の層番号)。
+  best_phase      integer,
+  -- その最深フェーズでの最小残 HP% (小さいほど深い)。
+  best_percentage numeric(6,3),
+  -- 初討伐を通知済みか。
+  has_clear       boolean NOT NULL DEFAULT false,
+  updated_at      timestamptz NOT NULL DEFAULT now()
+);
+
+DROP TRIGGER IF EXISTS set_updated_at_fflogs_notify_state
+  ON public.fflogs_notify_state;
+CREATE TRIGGER set_updated_at_fflogs_notify_state
+  BEFORE UPDATE ON public.fflogs_notify_state
+  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+ALTER TABLE public.fflogs_notify_state
+  DROP CONSTRAINT IF EXISTS fflogs_notify_state_sane;
+ALTER TABLE public.fflogs_notify_state
+  ADD CONSTRAINT fflogs_notify_state_sane
+  CHECK (
+    (best_phase IS NULL OR best_phase BETWEEN 0 AND 99)
+    AND (best_percentage IS NULL OR best_percentage BETWEEN 0 AND 100)
+  ) NOT VALID;
+
 -- ---- 6b-8. category_link_reads (W-27: 攻略リンクの既読) ----------------
 -- 「共有した攻略情報が読まれない」(調査ノート第 4 回 5-3) への対応。
 -- リンク × メンバーで「見た」を 1 行持つだけ。誰が読んだかの生データは
@@ -1470,6 +1509,10 @@ ALTER TABLE public.fflogs_report_videos          ENABLE ROW LEVEL SECURITY;
 -- 集計してから返し、書き込みは Server Action が本人 row だけを触る
 -- (loot_weekly_checks / native_schedule_members.comment と同じ経路)。
 ALTER TABLE public.category_link_reads           ENABLE ROW LEVEL SECURITY;
+-- W-35 (2026-09-07): fflogs_notify_state も **policy を張らない**。
+-- 同期 (cron / admin の手動同期) だけが service role で読み書きする内部
+-- 状態で、クライアントから読む用途が無い。
+ALTER TABLE public.fflogs_notify_state           ENABLE ROW LEVEL SECURITY;
 
 -- ---- 7-0. 公開デモ用トグル (2026-08-05 監査 H-2) --------------------------
 --

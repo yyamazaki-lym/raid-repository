@@ -273,6 +273,33 @@ export const ja = {
     conflictBody: (label: string) => `この時間帯は ${label} と重なります。`,
     conflictFallback: "メンテナンス",
   },
+  /** W-35 練習ログのイベント通知 (2026-09-07)。既定はすべて OFF。 */
+  logsNotify: {
+    title: "練習ログの通知",
+    description:
+      "同期のたびに、練習ログで起きたことを Discord に投稿します。通知が多すぎると読まれなくなるので、**すべて既定 OFF** です。必要なものだけ ON にしてください。",
+    label: (kind: string): string =>
+      kind === "newReport"
+        ? "新しいレポートの取り込み"
+        : kind === "bestUpdate"
+          ? "ベスト到達の更新"
+          : "初討伐",
+    hint: (kind: string): string =>
+      kind === "newReport"
+        ? "同期で新しいレポートが入ったときに件数を投稿します (最も頻度が高い通知です)"
+        : kind === "bestUpdate"
+          ? "到達フェーズが進んだとき、または同じフェーズで残 HP% が下がったときに投稿します"
+          : "そのコンテンツを初めて討伐したときに 1 回だけ投稿します",
+    channelHint:
+      "投稿先はスケジュール通知と同じ Discord チャンネルです (上の「Discord 通知」で設定したチャンネル)。メンションは付けません。",
+    toastOn: (label: string) => `${label} の通知を ON にしました`,
+    toastOff: (label: string) => `${label} の通知を OFF にしました`,
+    guildIdLabel: "FFLogs guild ID (任意)",
+    guildIdPlaceholder: "例: 123456",
+    guildIdHint:
+      "固定の FFLogs guild の ID です。**現時点では取り込みに使われません** — 「動画リンクを介さず guild からレポートを自動で見つける」機能の準備として、記録場所だけを用意しています。数字のみ (URL ではありません)。",
+    guildIdSaved: "guild ID を保存しました",
+  },
   lootWindow: {
     title: "週制限の消化ウィンドウ",
     description:
@@ -963,6 +990,32 @@ export const en: SettingsMessages = {
     conflictTitle: "Overlaps maintenance",
     conflictBody: (label) => `This slot overlaps ${label}.`,
     conflictFallback: "maintenance",
+  },
+  logsNotify: {
+    title: "Practice log notifications",
+    description:
+      "Posts what happened in the practice log to Discord after each sync. Too many notifications get ignored, so **everything is off by default** — turn on only what you need.",
+    label: (kind) =>
+      kind === "newReport"
+        ? "New reports imported"
+        : kind === "bestUpdate"
+          ? "Best progress updated"
+          : "First kill",
+    hint: (kind) =>
+      kind === "newReport"
+        ? "Posts the count when a sync imports new reports (the most frequent notification)"
+        : kind === "bestUpdate"
+          ? "Posts when the reached phase advances, or when HP left drops within the same phase"
+          : "Posts once, the first time the content is killed",
+    channelHint:
+      "Posts to the same Discord channel as the schedule notifications (set above). No mentions are used.",
+    toastOn: (label) => `Turned on notifications for ${label}`,
+    toastOff: (label) => `Turned off notifications for ${label}`,
+    guildIdLabel: "FFLogs guild ID (optional)",
+    guildIdPlaceholder: "e.g. 123456",
+    guildIdHint:
+      "Your static's FFLogs guild ID. **Not used by the sync yet** — this only records it, in preparation for discovering reports straight from the guild instead of via video links. Digits only (not a URL).",
+    guildIdSaved: "Saved the guild ID",
   },
   lootWindow: {
     title: "Weekly lockout window",

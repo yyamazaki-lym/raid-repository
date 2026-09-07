@@ -41,6 +41,7 @@ import { AttendanceReminderSection } from "./settings/attendance-reminder-sectio
 import { NativeAutoConfirmSection } from "./settings/native-auto-confirm-section";
 import { LootWindowSection } from "./settings/loot-window-section";
 import { MaintenanceSection } from "./settings/maintenance-section";
+import { LogsNotifySection } from "./settings/logs-notify-section";
 import { FflogsSyncSection } from "./settings/fflogs-sync-section";
 import { ChangelogFooter } from "./settings/changelog-footer";
 import { DangerZoneSection } from "./settings/danger-zone-section";
@@ -316,6 +317,9 @@ export function SettingsDialog({
           {/* W-30 (2026-09-07): 公式メンテ日程。スケジュールのモードに
               関係なく使える (衝突警告は次回開催カードに出る)。 */}
           <MaintenanceSection open={open} canEdit={canEdit} />
+          {/* W-35 (2026-09-07): 練習ログのイベント通知。全部既定 OFF。
+              投稿先は上の Discord 通知と同じチャンネル設定を使う。 */}
+          <LogsNotifySection open={open} canEdit={canEdit} />
           <FflogsSyncSection open={open} canEdit={canEdit} />
           <ChangelogFooter showSignIn={showSignIn} />
           {canEdit && (
