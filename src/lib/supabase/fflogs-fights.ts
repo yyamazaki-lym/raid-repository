@@ -25,6 +25,16 @@ import {
  * count クエリで正確に取り、明細だけ直近 N 件に絞る。
  */
 const MAX_FIGHTS = 1200;
+/**
+ * 1 回のリクエストで返る最大行数 (2026-09-07)。
+ *
+ * PostgREST は **既定で 1000 行** を上限にしており、`.limit(1200)` を付けても
+ * 1000 行しか返らない。実機: 絶竜詩 (1047 pull) で最古の 47 pull —
+ * 2022-04-30 のセッション丸ごと — が明細から消えていた (総 pull 数は count
+ * クエリなので 1047 のまま = 「pull はあるのに日が出てこない」)。
+ * `range()` でページングして MAX_FIGHTS まで取り切る。
+ */
+const PAGE_SIZE = 1000;
 
 export type ReportVideoLink = {
   reportCode: string;
@@ -72,17 +82,30 @@ export async function fetchCategoryFights(
   };
   try {
     const supabase = await createClient();
-    const listRes = await supabase
-      .from("fflogs_fights")
-      .select(
-        "report_code, fight_id, session_date, name, kill, fight_percentage, last_phase, difficulty, encounter_id, party_dps, deaths, death_events, phase_transitions, start_ms, end_ms, report_start_ms",
-        { count: "exact" },
-      )
-      .eq("category_id", categoryId)
-      .order("start_ms", { ascending: false })
-      .limit(MAX_FIGHTS);
-    const { data, error, count } = listRes;
-    if (error || !data) return empty;
+    const columns =
+      "report_code, fight_id, session_date, name, kill, fight_percentage, last_phase, difficulty, encounter_id, party_dps, deaths, death_events, phase_transitions, start_ms, end_ms, report_start_ms";
+    // PAGE_SIZE ごとに range() で取り切る (PostgREST の 1000 行上限対策)。
+    // 総数 (count) は 1 ページ目だけで取る。同時刻の pull があってもページ境界で
+    // ずれないよう fight_id を second key にする。
+    const data: Array<Record<string, unknown>> = [];
+    let count: number | null = null;
+    for (let from = 0; from < MAX_FIGHTS; from += PAGE_SIZE) {
+      const to = Math.min(from + PAGE_SIZE, MAX_FIGHTS) - 1;
+      const page = await supabase
+        .from("fflogs_fights")
+        .select(columns, from === 0 ? { count: "exact" } : undefined)
+        .eq("category_id", categoryId)
+        .order("start_ms", { ascending: false })
+        .order("fight_id", { ascending: false })
+        .range(from, to);
+      if (page.error || !page.data) {
+        if (from === 0) return empty;
+        break;
+      }
+      if (from === 0) count = page.count ?? null;
+      data.push(...(page.data as Array<Record<string, unknown>>));
+      if (page.data.length < to - from + 1) break;
+    }
     const includePhases = opts?.includePhases === true;
     const fights = data.map((r) => {
       const startMs = Number(r.start_ms);
