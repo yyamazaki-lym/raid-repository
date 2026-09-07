@@ -243,6 +243,39 @@ export const ja = {
     toastCleared: "難易度の制限を解除しました",
     toastSet: (value: number) => `難易度 ${value} 未満を取り込まないようにしました`,
   },
+  /** W-3 セッションサマリー (2026-09-07)。 */
+  sessionSummary: {
+    label: "セッション",
+    title: "この日の拘束時間・実戦闘時間・平均プル長 (最初の pull の開始から最後の pull の終了まで)",
+    span: (dur: string) => `拘束 ${dur}`,
+    fight: (dur: string) => `戦闘 ${dur}`,
+    downtime: (dur: string, pct: number) => `戦闘外 ${dur} (${pct}%)`,
+    downtimeTitle:
+      "拘束時間から実戦闘時間を引いた値です。休憩・解説・作戦会議・リセット待ちを含みます (「無駄な時間」ではありません)。",
+    avgPull: (dur: string) => `平均 ${dur}`,
+    killWipe: (kills: number, wipes: number) => `討伐 ${kills} / ワイプ ${wipes}`,
+  },
+  /** W-31 チーム実績バッジ (2026-09-07)。 */
+  teamBadges: {
+    title: "チーム実績",
+    label: (kind: string): string =>
+      kind === "firstClear"
+        ? "初討伐"
+        : kind === "flawless"
+          ? "ノーデス討伐"
+          : kind === "fastestClear"
+            ? "最速討伐"
+            : "討伐回数",
+    hint: (kind: string): string =>
+      kind === "firstClear"
+        ? "最初に討伐した日 (登録ログのうち時系列で最初の討伐)"
+        : kind === "flawless"
+          ? "誰も倒れずに討伐した回があります (死亡数を取得できた討伐のみ判定)"
+          : kind === "fastestClear"
+            ? "討伐のうち戦闘時間が最短だったもの"
+            : "登録ログに入っている討伐の回数",
+    times: (n: number) => `${n} 回`,
+  },
   logsOffset: {
     title: "動画オフセットの設定",
     descA: "動画上で",
@@ -513,6 +546,38 @@ export const en: LogsMessages = {
     errNotNumber: "Enter a number",
     toastCleared: "Difficulty limit removed",
     toastSet: (value) => `Pulls below difficulty ${value} will no longer be imported`,
+  },
+  sessionSummary: {
+    label: "Session",
+    title:
+      "Time on task, time in combat and average pull length for this day (from the first pull's start to the last pull's end)",
+    span: (dur) => `On task ${dur}`,
+    fight: (dur) => `Combat ${dur}`,
+    downtime: (dur, pct) => `Out of combat ${dur} (${pct}%)`,
+    downtimeTitle:
+      "Time on task minus time in combat. Includes breaks, explanations, planning and waiting for resets — it is not “wasted” time.",
+    avgPull: (dur) => `Avg ${dur}`,
+    killWipe: (kills, wipes) => `${kills} kill / ${wipes} wipe`,
+  },
+  teamBadges: {
+    title: "Team achievements",
+    label: (kind) =>
+      kind === "firstClear"
+        ? "First kill"
+        : kind === "flawless"
+          ? "Deathless kill"
+          : kind === "fastestClear"
+            ? "Fastest kill"
+            : "Kills",
+    hint: (kind) =>
+      kind === "firstClear"
+        ? "The first kill in the stored logs"
+        : kind === "flawless"
+          ? "A kill with nobody dying (only kills with fetched death counts are considered)"
+          : kind === "fastestClear"
+            ? "The kill with the shortest combat time"
+            : "How many kills are in the stored logs",
+    times: (n) => `${n}x`,
   },
   logsOffset: {
     title: "Video offset",

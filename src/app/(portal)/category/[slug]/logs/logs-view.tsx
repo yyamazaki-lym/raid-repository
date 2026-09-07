@@ -55,6 +55,7 @@ import {
   resolveProgressModel,
   type ProgressModel,
 } from "@/lib/content-model";
+import { teamBadges } from "@/lib/fflogs-session";
 import { humanizeFflogsSyncReason } from "@/lib/fflogs-sync-reason";
 import type { ReportVideoLink } from "@/lib/supabase/fflogs-fights";
 import {
@@ -80,6 +81,7 @@ import { OffsetDialog } from "@/components/portal/logs/offset-dialog";
 import { PhaseTimeCard } from "@/components/portal/logs/phase-time-card";
 import { PullBreakdownChips, StatCard } from "@/components/portal/logs/stat-card";
 import type { OffsetTarget } from "@/components/portal/logs/video-link";
+import { TeamBadgesCard } from "@/components/portal/logs/team-badges-card";
 import { WipeCausesCard } from "@/components/portal/logs/wipe-causes-card";
 
 /**
@@ -284,6 +286,11 @@ export function LogsView({
     () => summarize(tierFights, floors, showPhase),
     [tierFights, floors, showPhase],
   );
+  // 2026-09-07 W-31: チーム実績バッジ。層クラスタ外 (別コンテンツの混入) を
+  // 除いた pull を対象にする — 混ざった別コンテンツの kill が「初討伐」に
+  // なると日付が狂う。明細が打ち切られている場合は「登録ログのうち」の
+  // 実績になるので、バッジの title でそう明示している。
+  const badges = useMemo(() => teamBadges(tierFights), [tierFights]);
   // バーを区切る区間数 = 層数 (零式) / フェーズ数 (絶)。
   const segmentCount = floors ? floors.floorCount : phaseCount;
   // 死亡数の列を確保するか (1 pull も取得できていないカテゴリでは幅を取らない)。
@@ -1089,6 +1096,12 @@ export function LogsView({
           どちらも「PT として何で止まっているか」の指標で、個人の値は無い。
           データが 1 つも無いコンテンツでは丸ごと出さない (旧データのみの
           カテゴリで空セクションを並べない)。 */}
+      {/* 2026-09-07 W-31: チーム実績バッジ。討伐が無いカテゴリでは何も
+          出さない (空の枠が「まだ何も無い」ことだけを主張しないように)。
+          個人の実績は作らない — 個人 DPS / 出席率のランキングを出さない
+          方針と揃える。 */}
+      <TeamBadgesCard badges={badges} />
+
       {(wipeCauses.length > 0 || phaseTotals.length > 1) && (
         <section className="grid gap-2 sm:grid-cols-2">
           {wipeCauses.length > 0 && (
