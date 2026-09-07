@@ -143,6 +143,39 @@ ALTER TABLE public.categories
   -- 全タブ表示 + デフォルトラベルになる。
   ADD COLUMN IF NOT EXISTS tab_config jsonb NOT NULL DEFAULT '{}'::jsonb;
 
+-- ---- W-33 ① (2026-09-07): 難易度軸と進行モデルを名前から切り離す --------
+--
+-- 練習ログはこれまで **カテゴリ名の文字列マッチ**だけで挙動を決めていた
+-- (`isUltimateContent` → フェーズ管理 / `isSavageContent` → 4 層構成)。
+-- 8.0「白銀のワンダラー」(2027-01) はノーマルと零式の中間の新難易度が入り、
+-- 2026-09 時点で **正式名称が未発表** (調査ノート第 4 回 5-2)。名前が
+-- 分からないものは辞書に足せないので、新難易度のカテゴリを作った瞬間に
+-- 表示が崩れる。
+--
+-- 対策は **enum を増やさず設定値で吸収する** (調査ノートの W-33 の判断):
+--   difficulty_label … 表示用の自由記述 (「零式」「絶」「新難易度 (仮)」)。
+--                      空なら従来どおり名前から推測して出す。
+--   progress_model   … 'auto' (名前から推測 = 従来) / 'floors' / 'phases'。
+-- 8.0 の名前が判明したら content-groups.ts の辞書に足せば 'auto' で通る。
+ALTER TABLE public.categories
+  ADD COLUMN IF NOT EXISTS difficulty_label text,
+  ADD COLUMN IF NOT EXISTS progress_model text NOT NULL DEFAULT 'auto';
+
+ALTER TABLE public.categories
+  DROP CONSTRAINT IF EXISTS categories_progress_model_check;
+ALTER TABLE public.categories
+  ADD CONSTRAINT categories_progress_model_check
+  CHECK (progress_model IN ('auto','floors','phases'));
+
+ALTER TABLE public.categories
+  DROP CONSTRAINT IF EXISTS categories_difficulty_label_sane;
+ALTER TABLE public.categories
+  ADD CONSTRAINT categories_difficulty_label_sane
+  CHECK (
+    difficulty_label IS NULL
+    OR (char_length(difficulty_label) <= 24 AND difficulty_label !~ '[[:cntrl:]]')
+  ) NOT VALID;
+
 -- default_tab の値域を新規追加時に絞っておく (今後タブが増えたら CHECK を
 -- 拡張する)。既存行 ('mitigation' default) は当該制約を満たす。
 ALTER TABLE public.categories
@@ -803,6 +836,21 @@ CREATE TABLE IF NOT EXISTS public.native_schedule_members (
   created_at      timestamptz NOT NULL DEFAULT now(),
   updated_at      timestamptz NOT NULL DEFAULT now()
 );
+-- W-33 ③ (2026-09-07): メンバー行に DC 表記。
+-- 8.0 で Switch 2 版 (2026-08-04 開始) を含むクロスプレイ前提が固まり、
+-- 別 DC のメンバーが混在する固定が増えている (調査ノート第 4 回 5-2)。
+-- DC 名は運営の再編で増減するので enum にせず自由記述 (20 文字) にする。
+ALTER TABLE public.native_schedule_members
+  ADD COLUMN IF NOT EXISTS data_center text;
+ALTER TABLE public.native_schedule_members
+  DROP CONSTRAINT IF EXISTS native_schedule_members_dc_sane;
+ALTER TABLE public.native_schedule_members
+  ADD CONSTRAINT native_schedule_members_dc_sane
+  CHECK (
+    data_center IS NULL
+    OR (char_length(data_center) <= 20 AND data_center !~ '[[:cntrl:]]')
+  ) NOT VALID;
+
 -- 2.1 (2026-05-12) PR3-D: メンバー全体コメント (同期式準拠で 1 メンバー = 1 行)。
 -- session ごとの comment (`native_schedule_attendances.comment`) は別概念で
 -- 並存する (UI 上は本コメントを優先表示し、attendances.comment は当面 UI 露出なし)。

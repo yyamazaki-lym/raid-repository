@@ -155,6 +155,9 @@ export const ja = {
       ") で登録したメンバーは本人として出欠入力できません (admin が代理運用)。",
     empty: "メンバーがまだ登録されていません。下のフォームから追加してください。",
     displayNamePlaceholder: "表示名",
+    /** W-33 ③ (2026-09-07): データセンター表記 (クロスプレイ前提)。 */
+    dcLabel: "DC",
+    dcPlaceholder: "例: Elemental",
     sortLabel: "並び",
     sortPlaceholder: "並び",
     active: "有効",
@@ -251,6 +254,22 @@ export const ja = {
     clearTitle: "textarea をクリア (保存すると DB から削除、既定に戻る)",
   },
   // ---- native-auto-confirm-section.tsx ----
+  /** W-33 ② (2026-09-07): 週制限の消化ウィンドウ (8.0 の 2 週管理対応)。 */
+  lootWindow: {
+    title: "週制限の消化ウィンドウ",
+    description:
+      "ロット管理の「消化チェック」で、何週分を入力できるようにするかです。パッチ 8.0 ではアラガントームストーンが 2 週管理になり前週分を遡って取得できるため、そのときに「今週 + 前週」へ切り替えてください。",
+    oneWeek: "今週だけ",
+    twoWeeks: "今週 + 前週",
+    oneWeekHint:
+      "火曜 17:00 (JST) のリセットで前週は締まります (7.x までの挙動)。",
+    twoWeeksHint:
+      "前週の行も開いたままにして、遡って消化を記録できます (8.0 以降)。",
+    // 戻り値を string に固定する。注釈が無いとリテラル union に推論され、
+    // DeepWiden で en 側が「同じリテラルを返せ」と要求されてしまう。
+    saved: (weeks: number): string =>
+      weeks === 1 ? "今週だけに設定しました" : "今週 + 前週に設定しました",
+  },
   nativeAutoConfirm: {
     toastOn: "自動確定を ON にしました",
     toastOff: "自動確定を OFF にしました",
@@ -803,6 +822,8 @@ export const en: SettingsMessages = {
       ") cannot enter their own attendance (an admin enters it for them).",
     empty: "No members yet. Add one with the form below.",
     displayNamePlaceholder: "Display name",
+    dcLabel: "DC",
+    dcPlaceholder: "e.g. Elemental",
     sortLabel: "Sort",
     sortPlaceholder: "Sort",
     active: "Active",
@@ -892,6 +913,19 @@ export const en: SettingsMessages = {
     fillDefaultTitle: "Fill the textarea with the default template (not saved yet)",
     fillDefault: "Fill with default",
     clearTitle: "Clear the textarea (saving removes it from the DB and restores the default)",
+  },
+  lootWindow: {
+    title: "Weekly lockout window",
+    description:
+      "How many weeks stay editable in the loot “weekly check”. Patch 8.0 moves Allagan tomestones to a two-week window where the previous week can still be claimed — switch to “this week + last week” then.",
+    oneWeek: "This week only",
+    twoWeeks: "This week + last week",
+    oneWeekHint:
+      "The previous week closes at the Tuesday 17:00 JST reset (behavior up to 7.x).",
+    twoWeeksHint:
+      "The previous week stays open so it can be claimed retroactively (8.0 onward).",
+    saved: (weeks) =>
+      weeks === 1 ? "Set to this week only" : "Set to this week + last week",
   },
   nativeAutoConfirm: {
     toastOn: "Auto-confirm turned ON",

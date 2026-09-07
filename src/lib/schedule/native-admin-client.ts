@@ -48,6 +48,13 @@ export type NativeMemberRowFull = {
   display_name: string;
   sort_order: number;
   is_active: boolean;
+  /**
+   * W-33 ③ (2026-09-07): データセンター名 (自由記述、20 文字)。
+   * Switch 2 版 (2026-08-04 開始) を含むクロスプレイ前提が固まり、別 DC の
+   * メンバーが混在する固定が増えている。DC 名は運営の再編で増減するので
+   * enum にしない。列が無い DB では undefined。
+   */
+  data_center?: string | null;
 };
 
 export type NativeCancelledSessionRow = {
@@ -91,7 +98,7 @@ export async function fetchNativeScheduleAdminAux(): Promise<NativeAdminAux> {
   const [membersRes, cancelledRes, settingsRes] = await Promise.all([
     supabase
       .from("native_schedule_members")
-      .select("discord_user_id, display_name, sort_order, is_active")
+      .select("discord_user_id, display_name, sort_order, is_active, data_center")
       .order("sort_order", { ascending: true })
       .order("display_name", { ascending: true }),
     supabase

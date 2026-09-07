@@ -100,6 +100,55 @@ export function formatWeekLabel(
   return `${Number(mo)}/${Number(d)}(${WEEKDAY_JA[dow]}) 17:00 〜`;
 }
 
+/**
+ * `weekStart` の 1 週前の識別子 (W-33 ②、2026-09-07)。
+ *
+ * 週識別子は「その週のリセットが起きた火曜の JST 暦日」なので、7 日引けば
+ * 必ず前週の火曜になる (週制限のリセットに DST は無い)。文字列を直接
+ * 引き算せず UTC 正午を経由するのは、月末・年末を跨ぐ計算を Date に
+ * 任せるため。
+ */
+export function previousWeekStart(weekStart: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(weekStart);
+  if (!m) return weekStart;
+  const [, y, mo, d] = m;
+  // 正午基準にして、DST や丸めで日付が前後にずれないようにする。
+  const at = Date.UTC(Number(y), Number(mo) - 1, Number(d), 12) - 7 * DAY_MS;
+  const dt = new Date(at);
+  return (
+    `${dt.getUTCFullYear()}-` +
+    `${String(dt.getUTCMonth() + 1).padStart(2, "0")}-` +
+    `${String(dt.getUTCDate()).padStart(2, "0")}`
+  );
+}
+
+/**
+ * いま「まだ消化を記録できる週」の識別子を **新しい順** で返す
+ * (W-33 ②、2026-09-07)。
+ *
+ * - `windowWeeks = 1` (既定 / 7.x): 今週だけ。
+ * - `windowWeeks = 2` (8.0 以降): 今週 + 前週。8.0 ではアラガントーム
+ *   ストーンが 2 週管理になり前週分を遡って取得できるため、前週の行を
+ *   締めずに開けておく必要がある (調査ノート第 4 回 5-2)。
+ *
+ * 週数は `app_settings` の `loot_window_weeks` で切り替える。コード側に
+ * 「8.0 以降なら 2」と焼き込まないのは、8.0 の実装が 2027-01 で、仕様が
+ * 確定するのがそれ以降になるため。
+ *
+ * 先頭が常に今週なので、`openWeekStarts(...)[0] === currentWeekStart(...)`。
+ */
+export function openWeekStarts(
+  at: Date = new Date(),
+  windowWeeks: number = 1,
+): string[] {
+  const weeks = Number.isInteger(windowWeeks) && windowWeeks > 0 ? windowWeeks : 1;
+  const out: string[] = [currentWeekStart(at)];
+  for (let i = 1; i < weeks; i++) {
+    out.push(previousWeekStart(out[i - 1]!));
+  }
+  return out;
+}
+
 /** `week_start` として妥当な `YYYY-MM-DD` かどうか (Server Action 入口検証用)。 */
 export function isWeekStartString(v: unknown): v is string {
   return typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v);

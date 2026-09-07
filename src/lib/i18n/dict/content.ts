@@ -246,6 +246,8 @@ export const ja = {
     statusLabel: (status: string) => status,
     setDone: (label: string) => `今週を「${label}」にしました`,
     title: "今週の消化",
+    /** W-33 ② (2026-09-07): 8.0 の 2 週管理で並ぶ前週パネルの目印。 */
+    carryOver: "前週 (遡り)",
     unresolved: (n: number) => `未消化 ${n} 名`,
     noMembers:
       "メンバー一覧が未登録です。下のボタンで自分の状態を記録すると、この コンテンツの今週分としてカウントされます。",
@@ -570,6 +572,18 @@ export const ja = {
     descriptionPlaceholder: "例: 絶アレキサンダー討滅戦 — 2024 年から練習開始",
     descriptionHelp: "コンテンツ詳細ページ上部に表示されます。空欄なら非表示。",
     statusHeading: "ステータス",
+    /** W-33 ① (2026-09-07): 難易度と進行モデル (8.0 の新難易度対応)。 */
+    difficultyLabel: "難易度 (任意)",
+    difficultyPlaceholder: "例: 零式 / 絶 / 新難易度 (仮)",
+    difficultyHelp:
+      "練習ログにバッジで表示します。空欄ならコンテンツ名から推測します (零式 / 絶)。",
+    progressModelLabel: "進行モデル",
+    // 戻り値を string に固定 (リテラル union に推論されると DeepWiden で
+    // en 側に同じ日本語リテラルを要求されてしまう)。
+    progressModelOption: (model: string): string =>
+      model === "floors" ? "層" : model === "phases" ? "フェーズ" : "自動",
+    progressModelHelp:
+      "練習ログを層で見るかフェーズ (P1〜) で見るかです。「自動」は名前から推測します (絶 → フェーズ、それ以外 → 層)。パッチ 8.0 の新難易度など、名前から判別できないコンテンツでは明示的に選んでください。",
     tabSettingsSummary: "タブ設定（既定タブ・表示 ON/OFF・名前変更）",
     defaultTabLabel: "コンテンツカードから最初に開くタブ",
     tabHiddenTitle: "このタブは非表示に設定されています",
@@ -893,6 +907,7 @@ export const en: ContentMessages = {
             : status,
     setDone: (label) => `Set this week to "${label}"`,
     title: "This week's loot",
+    carryOver: "Last week (catch-up)",
     unresolved: (n) => `${n} pending`,
     noMembers:
       "No member list yet. Record your status with the buttons below and it counts toward this content for this week.",
@@ -1215,6 +1230,15 @@ export const en: ContentMessages = {
     descriptionPlaceholder: "e.g. The Epic of Alexander — practicing since 2024",
     descriptionHelp: "Shown at the top of the content page. Hidden when empty.",
     statusHeading: "Status",
+    difficultyLabel: "Difficulty (optional)",
+    difficultyPlaceholder: "e.g. Savage / Ultimate / New tier (TBD)",
+    difficultyHelp:
+      "Shown as a badge on the practice log. Leave it empty to infer it from the content name (Savage / Ultimate).",
+    progressModelLabel: "Progress model",
+    progressModelOption: (model) =>
+      model === "floors" ? "Floors" : model === "phases" ? "Phases" : "Auto",
+    progressModelHelp:
+      "How the practice log groups pulls. “Auto” infers it from the name (Ultimate → phases, everything else → floors). Set it explicitly when the name cannot be recognised — for example patch 8.0\u2019s new difficulty.",
     tabSettingsSummary: "Tab settings (default tab / visibility / rename)",
     defaultTabLabel: "Tab opened first from the content card",
     tabHiddenTitle: "This tab is set to hidden",
