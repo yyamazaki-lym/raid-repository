@@ -10,6 +10,10 @@ import {
   extractFflogsReportCodes,
   parseFflogsReportCode,
 } from "@/lib/fflogs-url";
+import {
+  type CategoryRef,
+  resolveFightCategory,
+} from "@/lib/fflogs-category";
 
 /**
  * 練習ログ (fights) タブの書き込み系 Server Action (TODO #94)。
@@ -53,7 +57,11 @@ export async function syncFflogsFightsAction(): Promise<
  * なので、そのページの URL (丸ごとコピペでも可) を貼ってもらい、portal 側で
  * code を抽出して取得チェーン (v2 → v1 → cookie) に流す。
  */
-export async function importFflogsReportsAction(text: string): Promise<
+export async function importFflogsReportsAction(
+  text: string,
+  /** 取り込みを実行したコンテンツ (2026-09-07)。未分類レポートの既定カテゴリ。 */
+  categoryId?: string | null,
+): Promise<
   | {
       ok: true;
       codesFound: number;
@@ -80,6 +88,10 @@ export async function importFflogsReportsAction(text: string): Promise<
   const result = await syncFflogsFights({
     onlyCodes: codes,
     retryPermanentFailures: true,
+    importCategoryId:
+      typeof categoryId === "string" && /^[0-9a-f-]{36}$/i.test(categoryId)
+        ? categoryId
+        : null,
   });
   if (!result.ok) return result;
   revalidateQuietly();
@@ -269,4 +281,174 @@ export async function setCategoryMinDifficultyAction(
   if (error) return { ok: false, reason: dbError("難易度設定の保存", error) };
   revalidateQuietly();
   return { ok: true };
+}
+
+/** 1 レポートの診断結果 (2026-09-07、FFLogs は叩かず DB だけを見る)。 */
+export type FflogsReportDiag = {
+  code: string;
+  blocked: boolean;
+  ledger: {
+    ok: boolean;
+    reason: string | null;
+    title: string | null;
+    zoneName: string | null;
+    zoneId: number | null;
+    categoryName: string | null;
+    syncedAt: string | null;
+  } | null;
+  fights: {
+    total: number;
+    inCategory: number;
+    unassigned: number;
+    otherCategory: number;
+    /** fight 名ごとの件数と、今の分類器がその名前から決めるカテゴリ名。 */
+    names: Array<{
+      name: string | null;
+      count: number;
+      resolvedCategoryName: string | null;
+      difficulty: number | null;
+      encounterId: number | null;
+    }>;
+  };
+};
+
+/**
+ * レポート URL を貼って「portal に何が入っているか」を見る診断 (2026-09-07)。
+ *
+ * 実機で「URL 取り込みしても絶オメガに出ない」が続き、DB を見られない側から
+ * は原因を絞れなかった。台帳 (取得できたか / zone 名 / カテゴリ) と fights
+ * (どのカテゴリに何件、fight 名は何で、分類器はそれをどこに落とすか) を
+ * そのまま画面に出す。FFLogs API は叩かない (読み取りのみ、admin 限定)。
+ */
+export async function diagnoseFflogsReportsAction(
+  text: string,
+  currentCategoryId: string,
+): Promise<{ ok: true; reports: FflogsReportDiag[] } | { ok: false; reason: string }> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
+  const codes = extractFflogsReportCodes(text ?? "").slice(0, 25);
+  if (codes.length === 0) return { ok: false, reason: "レポート URL が見つかりませんでした" };
+
+  const supabase = await createClient();
+  const [{ data: cats }, { data: ledger }, { data: fights }, { data: blocked }] =
+    await Promise.all([
+      supabase
+        .from("categories")
+        .select("id, name, expected_fflogs_zone_ids, fflogs_match_keywords"),
+      supabase
+        .from("fflogs_report_syncs")
+        .select("report_code, ok, reason, title, zone_name, zone_id, category_id, synced_at")
+        .in("report_code", codes),
+      supabase
+        .from("fflogs_fights")
+        .select("report_code, category_id, name, difficulty, encounter_id")
+        .in("report_code", codes),
+      supabase.from("fflogs_report_blocklist").select("report_code").in("report_code", codes),
+    ]);
+  const categories: CategoryRef[] = (cats ?? []).map((r) => ({
+    id: r.id as string,
+    name: (r.name as string) ?? "",
+    zoneIds: (r.expected_fflogs_zone_ids as number[] | null) ?? [],
+    keywords: (r.fflogs_match_keywords as string[] | null) ?? [],
+  }));
+  const nameOf = new Map(categories.map((c) => [c.id, c.name]));
+  const blockedSet = new Set((blocked ?? []).map((b) => b.report_code as string));
+  const ledgerBy = new Map(
+    (ledger ?? []).map((l) => [l.report_code as string, l as Record<string, unknown>]),
+  );
+  const fightsBy = new Map<string, Array<Record<string, unknown>>>();
+  for (const f of (fights ?? []) as Array<Record<string, unknown>>) {
+    const code = f.report_code as string;
+    const list = fightsBy.get(code) ?? [];
+    list.push(f);
+    fightsBy.set(code, list);
+  }
+
+  const reports: FflogsReportDiag[] = codes.map((code) => {
+    const l = ledgerBy.get(code);
+    const rows = fightsBy.get(code) ?? [];
+    const byName = new Map<
+      string,
+      { name: string | null; count: number; difficulty: number | null; encounterId: number | null }
+    >();
+    let inCategory = 0;
+    let unassigned = 0;
+    let otherCategory = 0;
+    for (const r of rows) {
+      const cid = (r.category_id as string | null) ?? null;
+      if (cid === currentCategoryId) inCategory += 1;
+      else if (cid === null) unassigned += 1;
+      else otherCategory += 1;
+      const name = (r.name as string | null) ?? null;
+      const key = name ?? "";
+      const cur = byName.get(key);
+      if (cur) cur.count += 1;
+      else
+        byName.set(key, {
+          name,
+          count: 1,
+          difficulty: typeof r.difficulty === "number" ? r.difficulty : null,
+          encounterId: typeof r.encounter_id === "number" ? r.encounter_id : null,
+        });
+    }
+    return {
+      code,
+      blocked: blockedSet.has(code),
+      ledger: l
+        ? {
+            ok: l.ok === true,
+            reason: (l.reason as string | null) ?? null,
+            title: (l.title as string | null) ?? null,
+            zoneName: (l.zone_name as string | null) ?? null,
+            zoneId: typeof l.zone_id === "number" ? l.zone_id : null,
+            categoryName: l.category_id ? (nameOf.get(l.category_id as string) ?? "?") : null,
+            syncedAt: (l.synced_at as string | null) ?? null,
+          }
+        : null,
+      fights: {
+        total: rows.length,
+        inCategory,
+        unassigned,
+        otherCategory,
+        names: [...byName.values()]
+          .sort((a, b) => b.count - a.count)
+          .map((n) => {
+            const cid = resolveFightCategory(categories, n.name, null);
+            return { ...n, resolvedCategoryName: cid ? (nameOf.get(cid) ?? "?") : null };
+          }),
+      },
+    };
+  });
+  return { ok: true, reports };
+}
+
+/**
+ * 指定レポートの pull を **すべて** このコンテンツに割り当てる (2026-09-07)。
+ * 分類器で決められないレポート (Legacy zone + 想定外の fight 名など) の最終手段。
+ * 台帳の代表カテゴリも合わせて更新する。FFLogs は叩かない。
+ */
+export async function assignFflogsReportsToCategoryAction(
+  text: string,
+  categoryId: string,
+): Promise<{ ok: true; reports: number; fights: number } | { ok: false; reason: string }> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
+  if (!/^[0-9a-f-]{36}$/i.test(categoryId)) return { ok: false, reason: "カテゴリ ID が不正です" };
+  const codes = extractFflogsReportCodes(text ?? "").slice(0, 25);
+  if (codes.length === 0) return { ok: false, reason: "レポート URL が見つかりませんでした" };
+
+  const supabase = await createClient();
+  const { data: updated, error } = await supabase
+    .from("fflogs_fights")
+    .update({ category_id: categoryId })
+    .in("report_code", codes)
+    .select("id");
+  if (error) return { ok: false, reason: dbError("pull の割り当て", error) };
+  const { error: ledgerErr } = await supabase
+    .from("fflogs_report_syncs")
+    .update({ category_id: categoryId })
+    .in("report_code", codes);
+  if (ledgerErr) console.warn("[fflogs-fights] ledger assign failed:", ledgerErr.message);
+  revalidateQuietly();
+  return { ok: true, reports: codes.length, fights: updated?.length ?? 0 };
 }

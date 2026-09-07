@@ -86,6 +86,9 @@ import type { ReportVideoLink } from "@/lib/supabase/fflogs-fights";
 import {
   deleteFflogsReportAction,
   importFflogsReportsAction,
+  diagnoseFflogsReportsAction,
+  assignFflogsReportsToCategoryAction,
+  type FflogsReportDiag,
   setCategoryMinDifficultyAction,
   setReportVideoAction,
   suggestVideoForReportAction,
@@ -171,6 +174,37 @@ export function LogsView({
   // URL 貼り付けインポート (unlisted の「発見」を人間側で補う導線)。
   const [importOpen, setImportOpen] = useState(false);
   const [importText, setImportText] = useState("");
+  // 2026-09-07: 取り込んだのに出ないときの診断結果 (DB を見るだけ)。
+  const [diag, setDiag] = useState<FflogsReportDiag[] | null>(null);
+  const [diagBusy, setDiagBusy] = useState(false);
+  const [assignBusy, setAssignBusy] = useState(false);
+  const runDiagnose = async () => {
+    setDiagBusy(true);
+    const r = await diagnoseFflogsReportsAction(importText, categoryId);
+    setDiagBusy(false);
+    if (!r.ok) {
+      toast.error(r.reason);
+      return;
+    }
+    setDiag(r.reports);
+  };
+  const diagAssignable = (diag ?? []).reduce(
+    (acc, d) => acc + d.fights.unassigned + d.fights.otherCategory,
+    0,
+  );
+  const runAssign = async () => {
+    setAssignBusy(true);
+    const r = await assignFflogsReportsToCategoryAction(importText, categoryId);
+    setAssignBusy(false);
+    if (!r.ok) {
+      toast.error(r.reason);
+      return;
+    }
+    toast.success(m.logsImport.assigned(r.reports, r.fights));
+    setDiag(null);
+    setImportOpen(false);
+    router.refresh();
+  };
   const [importing, setImporting] = useState(false);
   const importCodes = useMemo(
     () => extractFflogsReportCodes(importText),
@@ -179,7 +213,8 @@ export function LogsView({
 
   const runImport = async () => {
     setImporting(true);
-    const result = await importFflogsReportsAction(importText);
+    // 2026-09-07: このコンテンツで貼った = このコンテンツのログとして取り込む。
+    const result = await importFflogsReportsAction(importText, categoryId);
     setImporting(false);
     if (!result.ok) {
       toast.error(result.reason);
@@ -524,6 +559,86 @@ export function LogsView({
               ? m.logsImport.detected(importCodes.length)
               : m.logsImport.notDetected}
           </p>
+        </div>
+        {/* 2026-09-07: 診断 — 台帳と pull の保存先を見せる (FFLogs は叩かない)。
+            分類器で決められないレポートは「このコンテンツに割り当て」で最終手段。 */}
+        <div className="flex flex-col gap-1.5 rounded-md border border-border/40 bg-secondary/10 px-3 py-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-[11px] leading-relaxed text-muted-foreground">
+              {m.logsImport.diagHint}
+            </p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="shrink-0 text-[11px] tracking-normal"
+              onClick={runDiagnose}
+              disabled={diagBusy || importCodes.length === 0}
+            >
+              {diagBusy ? m.logsImport.diagnosing : m.logsImport.diagnose}
+            </Button>
+          </div>
+          {diag && (
+            <ul className="flex flex-col gap-1.5 text-[11px] leading-relaxed">
+              {diag.map((d) => (
+                <li key={d.code} className="flex flex-col gap-0.5 border-t border-border/30 pt-1.5">
+                  <a
+                    href={`https://www.fflogs.com/reports/${encodeURIComponent(d.code)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-mono text-foreground underline underline-offset-2"
+                  >
+                    {d.code}
+                  </a>
+                  <span className="text-muted-foreground">
+                    {d.blocked
+                      ? m.logsImport.diagBlocked
+                      : !d.ledger
+                        ? m.logsImport.diagNotInLedger
+                        : !d.ledger.ok
+                          ? m.logsImport.diagFailed(d.ledger.reason ?? "?")
+                          : m.logsImport.diagOk(
+                              d.ledger.zoneName ?? m.logsImport.diagNone,
+                              d.ledger.title ?? m.logsImport.diagNone,
+                              d.ledger.categoryName ?? m.logsImport.diagNone,
+                            )}
+                  </span>
+                  {d.fights.total > 0 && (
+                    <span className="text-muted-foreground">
+                      {m.logsImport.diagFights(
+                        d.fights.total,
+                        d.fights.inCategory,
+                        d.fights.otherCategory,
+                        d.fights.unassigned,
+                      )}
+                    </span>
+                  )}
+                  {d.fights.names.map((n) => (
+                    <span key={n.name ?? ""} className="pl-2 font-mono text-[10px] text-muted-foreground/85">
+                      {m.logsImport.diagName(
+                        n.name ?? m.logsImport.diagUnnamed,
+                        n.count,
+                        n.resolvedCategoryName ?? m.logsImport.diagUnresolved,
+                      )}
+                      {n.difficulty !== null ? ` · difficulty ${n.difficulty}` : ""}
+                      {n.encounterId !== null ? ` · encounter ${n.encounterId}` : ""}
+                    </span>
+                  ))}
+                </li>
+              ))}
+            </ul>
+          )}
+          {diag && diagAssignable > 0 && (
+            <Button
+              type="button"
+              size="sm"
+              className="w-fit text-[11px] tracking-normal"
+              onClick={runAssign}
+              disabled={assignBusy}
+            >
+              {assignBusy ? m.logsImport.assignBusy : m.logsImport.assign(diagAssignable)}
+            </Button>
+          )}
         </div>
         <DialogFooter>
           <Button

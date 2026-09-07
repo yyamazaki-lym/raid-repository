@@ -177,6 +177,27 @@ export const ja = {
     notDetected: "レポート URL が未検出です",
     submit: (n: number) => `${n} 件を取り込む`,
     submitBusy: "取り込み中...",
+    // 2026-09-07: 診断 / 手動割り当て
+    diagnose: "診断",
+    diagnosing: "診断中...",
+    diagHint:
+      "取り込んだのに出ないときは「診断」で、台帳 (取得できたか / zone) と pull の保存先を確認できます。",
+    diagNotInLedger: "台帳に無い — まだ取り込まれていません (このダイアログから取り込んでください)",
+    diagBlocked: "除外リストに入っています (誤取り込みとして削除済み)",
+    diagFailed: (reason: string) => `取得失敗: ${reason}`,
+    diagOk: (zone: string, title: string, cat: string) =>
+      `取得済み — zone: ${zone} / タイトル: ${title} / 台帳のカテゴリ: ${cat}`,
+    diagNone: "(なし)",
+    diagFights: (total: number, here: number, other: number, none: number) =>
+      `pull ${total} 件 — このコンテンツ ${here} / 別コンテンツ ${other} / 未分類 ${none}`,
+    diagName: (name: string, count: number, resolved: string) =>
+      `${name} × ${count} → 分類器: ${resolved}`,
+    diagUnresolved: "決められない",
+    diagUnnamed: "(名前なし)",
+    assign: (n: number) => `残り ${n} pull をこのコンテンツに割り当て`,
+    assignBusy: "割り当て中...",
+    assigned: (reports: number, fights: number) =>
+      `${reports} レポート / ${fights} pull をこのコンテンツに割り当てました`,
     toastDone: (reports: number, pulls: number) =>
       `取り込み完了 — ${reports} レポート / ${pulls} pull`,
   },
@@ -399,6 +420,23 @@ export const en: LogsMessages = {
     notDetected: "No report URLs detected",
     submit: (n) => `Import ${n}`,
     submitBusy: "Importing...",
+    diagnose: "Diagnose",
+    diagnosing: "Diagnosing...",
+    diagHint:
+      "If imported reports do not show up, use Diagnose to see the ledger (fetched? zone) and where the pulls were stored.",
+    diagNotInLedger: "Not in the ledger — not imported yet (import from this dialog)",
+    diagBlocked: "On the exclusion list (deleted as a wrong import)",
+    diagFailed: (reason) => `Fetch failed: ${reason}`,
+    diagOk: (zone, title, cat) => `Fetched — zone: ${zone} / title: ${title} / ledger category: ${cat}`,
+    diagNone: "(none)",
+    diagFights: (total, here, other, none) =>
+      `${total} pulls — this content ${here} / other content ${other} / unassigned ${none}`,
+    diagName: (name, count, resolved) => `${name} × ${count} → classifier: ${resolved}`,
+    diagUnresolved: "undecided",
+    diagUnnamed: "(unnamed)",
+    assign: (n) => `Assign the remaining ${n} pulls to this content`,
+    assignBusy: "Assigning...",
+    assigned: (reports, fights) => `Assigned ${reports} report(s) / ${fights} pulls to this content`,
     toastDone: (reports, pulls) => `Imported — ${reports} reports / ${pulls} pulls`,
   },
   logsDifficulty: {
