@@ -551,6 +551,8 @@ Open http://localhost:3000
 
 ロゴは `public/brand/` にあります: `logo-mark.svg` (正方形マーク。クリスタル = 蓄積した知識の器、周囲の 8 点 = 8 人 PT で、上 2 点がタンク (青)、下 2 点がヒーラー (緑)、左右 4 点が DPS (赤))、`logo-wordmark-dark.svg` / `logo-wordmark-light.svg` (マーク + ワードマーク、背景の明暗別)。README の先頭ではダークテーマ / ライトテーマで自動的に切り替わります。アプリ側ではファビコン (`src/app/icon.svg`)、iOS ホーム画面アイコン (`src/app/apple-icon.png`)、ログイン画面、起動中スプラッシュにも同じマークを使っています。
 
+`social-preview.png` (1280×640) は GitHub のリポジトリカード / リンク共有時に出る画像です。`logo-wordmark-dark.svg` をそのまま (Inter で) 描き、機能名と技術スタックを添えて 1280×640 で書き出したもので、**リポジトリの Settings → Social preview から手動でアップロードします** (この設定は GitHub の API では変更できず、Web UI 専用です)。ロゴや説明文を変えたときは同じ手順で差し替えてください。
+
 ## License
 
 MIT
