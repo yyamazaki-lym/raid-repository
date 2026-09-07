@@ -26,7 +26,13 @@ import {
   setReportVideoAction,
   suggestVideoForReportAction,
 } from "@/lib/server/fflogs-fights-actions";
-import { clampOffsetSeconds, nudgeOffset, type VideoSyncAnchor } from "@/lib/video-sync";
+import {
+  clampOffsetSeconds,
+  explainOffset,
+  nudgeOffset,
+  type VideoSyncAnchor,
+} from "@/lib/video-sync";
+import { formatClock } from "@/lib/fflogs-url";
 import { type OffsetTarget } from "./video-link";
 import { OffsetNudge, VideoSyncPanel } from "./video-sync-panel";
 
@@ -165,6 +171,11 @@ export function OffsetDialog({
               />
             </div>
           </div>
+          {/* 2026-09-07 実機: 数字だけでは正しいか判断できず、基準の pull を
+              取り違えた 22 秒がそのまま保存されていた (その動画は最初の pull が
+              映っておらず、0:22 で始まっていたのは 2 本目だった)。値の意味を
+              実時刻で言い直して、取り違えをその場で見えるようにする。 */}
+          {target && <OffsetExplain target={target} anchors={anchors} firstPullStartMs={firstPullStartMs} />}
           {/* W-11 動画で合わせる (2026-09-07)。YouTube 以外の URL では
               パネル内に「使えない理由」だけ出る。 */}
           {target && (
@@ -226,5 +237,66 @@ export function OffsetDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * オフセットの値が「何を意味しているか」を実時刻で言い直す (2026-09-07)。
+ *
+ * 「オフセット 22」だけでは正しいか分からない。最初の pull の実時刻と、
+ * 動画に最初に映る pull を出せば、基準の取り違え (実機で起きた) はその場で
+ * 見える。判定は `@/lib/video-sync` の `explainOffset` (純関数)。
+ */
+function OffsetExplain({
+  target,
+  anchors,
+  firstPullStartMs,
+}: {
+  target: OffsetTarget;
+  anchors: VideoSyncAnchor[];
+  firstPullStartMs: number | null;
+}) {
+  const m = useMessages();
+  const info = explainOffset(
+    clampOffsetSeconds(Number(target.offset)),
+    anchors,
+    firstPullStartMs,
+  );
+  if (!info) return null;
+  const clock = (ms: number) =>
+    new Date(ms).toLocaleTimeString("ja-JP", {
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZone: "Asia/Tokyo",
+    });
+  const missing = info.firstPullVideoSeconds < 0;
+  return (
+    <div className="flex flex-col gap-1 rounded-sm border border-border/40 bg-secondary/20 px-2 py-1.5">
+      <p
+        className={
+          "text-[11px] leading-relaxed " +
+          (missing ? "text-amber-200/90" : "text-muted-foreground")
+        }
+      >
+        {missing
+          ? m.logsOffset.explainFirstMissing(
+              clock(info.firstPullStartMs),
+              formatClock(Math.abs(info.firstPullVideoSeconds)),
+            )
+          : m.logsOffset.explainFirst(
+              clock(info.firstPullStartMs),
+              formatClock(info.firstPullVideoSeconds),
+            )}
+      </p>
+      <p className="text-[11px] leading-relaxed text-muted-foreground/85">
+        {info.firstVisible
+          ? m.logsOffset.explainVisible(
+              info.firstVisible.index,
+              clock(info.firstVisible.startMs),
+              formatClock(info.firstVisible.videoSeconds),
+            )
+          : m.logsOffset.explainNoneVisible}
+      </p>
+    </div>
   );
 }

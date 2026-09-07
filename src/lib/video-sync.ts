@@ -101,6 +101,66 @@ export function nudgeOffset(offsetSeconds: number, delta: number): number {
   return clampOffsetSeconds(clampOffsetSeconds(offsetSeconds) + delta);
 }
 
+/**
+ * いまのオフセットが「何を意味しているか」を実データで言い直すための値
+ * (2026-09-07 実機報告)。
+ *
+ * 実機で起きた取り違え: 動画の 0:22 から始まる pull を「最初の pull」と見て
+ * 22 を入れたが、その動画は最初の pull が映っておらず (録画開始が 82 秒後)、
+ * 0:22 で始まっていたのは **2 本目の pull** だった。結果、全リンクが一律
+ * 104 秒 (= 2 本目までの経過 103 秒 + 端数) 遅い位置を指していた。
+ *
+ * 数字 (「オフセット 22」) だけでは、それが正しいかを画面から判断できない。
+ * 「最初の pull は動画の何秒か」「動画に最初に映る pull はどれか」を実時刻で
+ * 出せば、取り違えはその場で見える。
+ */
+export type OffsetExplain = {
+  /**
+   * このレポートの最初の pull が動画の何秒地点か。
+   * **負なら動画に映っていない** (録画開始がその pull より後)。
+   */
+  firstPullVideoSeconds: number;
+  /** 最初の pull の戦闘開始 (epoch ms)。表示で実時刻に直す。 */
+  firstPullStartMs: number;
+  /** 動画に映っている最初の pull。全部より前に録画が終わっていれば null。 */
+  firstVisible: {
+    fightId: number;
+    index: number;
+    startMs: number;
+    videoSeconds: number;
+  } | null;
+};
+
+/**
+ * オフセットの意味を実データに当てはめる (純関数)。
+ *
+ * `anchors` はそのレポートの pull を時刻の昇順で。`firstPullStartMs` は
+ * オフセットの基準 (= そのレポートの最初の pull の戦闘開始)。
+ */
+export function explainOffset(
+  offsetSeconds: number,
+  anchors: ReadonlyArray<VideoSyncAnchor>,
+  firstPullStartMs: number | null,
+): OffsetExplain | null {
+  if (firstPullStartMs === null || anchors.length === 0) return null;
+  const at = (a: VideoSyncAnchor) =>
+    videoSecondsForPull(offsetSeconds, a.startMs, firstPullStartMs);
+  // 0 秒以降に映る最初の pull。負の pull は録画開始より前なので映っていない。
+  const visible = anchors.find((a) => at(a) >= 0) ?? null;
+  return {
+    firstPullVideoSeconds: offsetSeconds,
+    firstPullStartMs,
+    firstVisible: visible
+      ? {
+          fightId: visible.fightId,
+          index: visible.index,
+          startMs: visible.startMs,
+          videoSeconds: at(visible),
+        }
+      : null,
+  };
+}
+
 /* ────────────────────────── YouTube プレーヤー ────────────────────────── */
 
 /**

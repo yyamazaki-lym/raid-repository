@@ -336,6 +336,15 @@ export const ja = {
     syncNudgeMinus: "1 秒戻す",
     syncNudgePlus: "1 秒進める",
     syncPicked: (seconds: number): string => `オフセットを ${seconds} 秒にしました`,
+    // 2026-09-07 実機: 数字だけでは正しいか判断できず、基準の pull を
+    // 取り違えたまま保存されていた。意味を実時刻で言い直す。
+    explainFirst: (clock: string, videoClock: string): string =>
+      `この値は「最初の pull (${clock}) が動画の ${videoClock}」という意味です`,
+    explainFirstMissing: (clock: string, gap: string): string =>
+      `この値は「動画が最初の pull (${clock}) の ${gap} 後から始まる」という意味です — 最初の pull は映っていません`,
+    explainVisible: (index: number, clock: string, videoClock: string): string =>
+      `動画に最初に映る pull: #${index} (${clock}) = 動画の ${videoClock}`,
+    explainNoneVisible: "この値ではどの pull も動画に映らないことになります",
   },
   categoryStatus: {
     labels: {
@@ -674,6 +683,13 @@ export const en: LogsMessages = {
     syncNudgeMinus: "Back 1 second",
     syncNudgePlus: "Forward 1 second",
     syncPicked: (seconds: number): string => `Offset set to ${seconds}s`,
+    explainFirst: (clock: string, videoClock: string): string =>
+      `This means “the first pull (${clock}) is at ${videoClock} in the video”`,
+    explainFirstMissing: (clock: string, gap: string): string =>
+      `This means “the video starts ${gap} after the first pull (${clock})” — the first pull is not in this video`,
+    explainVisible: (index: number, clock: string, videoClock: string): string =>
+      `First pull visible in the video: #${index} (${clock}) at ${videoClock}`,
+    explainNoneVisible: "With this value, no pull would appear in the video",
   },
   categoryStatus: {
     labels: {

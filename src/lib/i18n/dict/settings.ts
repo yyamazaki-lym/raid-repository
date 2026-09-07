@@ -310,7 +310,7 @@ export const ja = {
       links:
         "従来どおり、動画や日付メモに貼られた FFLogs の URL からのみ取り込みます。誰かが URL を貼るまで portal はレポートを知りません。",
       guild:
-        "FFLogs 上の static (guild) のレポート一覧も見ます。FFLogs Uploader で guild を選んで上げている固定向けで、URL を貼らなくても取り込まれます。guild ID の入力が必要です。",
+        "FFLogs 上の static (guild) のレポート一覧も見ます。⚠ 前提が 2 つあります: (1) レポートが guild に属していること — 所属はアップロード時に決まるので、Uploader で guild を選んでいないレポートは 0 件です (既存の履歴は後から移せません)。(2) 一覧が Unlisted を返すかは未確認です (API の一覧には可視性の引数が無く、実測できている経路はすべて Public のみでした)。guild ID の入力が必要です。",
       user:
         "接続した FFLogs アカウントが上げたレポート一覧も見ます。guild を作っていない固定 (計測担当が個人アカウントで上げている) 向けです。API の仕様で Public のレポートしか返らないため、Unlisted 運用では拾えません。",
     },
@@ -1044,7 +1044,7 @@ export const en: SettingsMessages = {
       links:
         "As before, only FFLogs URLs pasted on videos or date notes are imported. The portal does not know a report exists until someone pastes its URL.",
       guild:
-        "Also reads the report list of your static (guild) on FFLogs. For groups that pick the guild in FFLogs Uploader — reports are imported without pasting URLs. Requires the guild ID.",
+        "Also reads the report list of your static (guild) on FFLogs. ⚠ Two preconditions: (1) the reports must belong to the guild — membership is decided at upload time, so reports uploaded to personal logs return nothing (existing history cannot be moved). (2) Whether the list returns Unlisted reports is unverified (the list field takes no visibility argument, and every path we measured returned Public only). Requires the guild ID.",
       user:
         "Also reads the report list of the connected FFLogs account. For groups without a guild (the log runner uploads from a personal account). The API only returns Public reports, so Unlisted uploads are not picked up.",
     },

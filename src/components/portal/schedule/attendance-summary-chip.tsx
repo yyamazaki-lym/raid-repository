@@ -16,6 +16,21 @@
  * 色は 3 段階 (`attendanceStage`):
  *   full = 成立 / waiting = 未回答が残っている / short = 人数不足
  * 未回答が残っている間は「足りない」を赤で出さない (まだ埋まる余地がある)。
+ *
+ * ## スマホでは人数だけにする (2026-09-07 実機報告)
+ *
+ * 実機の指摘: 「PC なら良いがスマホだとおそらく長くなりすぎる。**参加人数と
+ * 確定が分かれば良い**」。`sm` 未満では日程セルが `.sticky-col` で固定されない
+ * (`globals.css` の `@media (min-width: 40rem)`) ため、チップの幅がそのまま
+ * 「確定」列を画面外へ押し出す。そこで `sm` 未満は `+n?` を出さず、幅も
+ * 68px → 40px に縮める (未回答が残っていることは琥珀色が示す)。
+ *
+ * ⚠ **幅は縮めても「固定」のまま**にする。`w-auto` / `min-w-*` にすると幅が
+ * 行ごと (その行に未回答が居るか) で変わり、アイコン列が `mx-auto` で
+ * 中央寄せされているせいで メモ / 動画 / Logs のアイコンが行ごとに半分ずつ
+ * ずれる。プレースホルダ (上の reserveSpace) と**同じ幅の対**を保つこと。
+ * 文字を小さくして幅を稼ぐのも不可 — `text-[11px]` は
+ * `scripts/check-font-sizes.mjs` の下限そのもの。
  */
 "use client";
 
@@ -48,7 +63,7 @@ export function AttendanceSummaryChip({
   const summary = summarizeAttendance(users, attendances);
   if (summary.total === 0) {
     return reserveSpace ? (
-      <span aria-hidden className="inline-block w-[4.25rem] shrink-0" />
+      <span aria-hidden className="inline-block w-[2.5rem] shrink-0 sm:w-[4.25rem]" />
     ) : null;
   }
 
@@ -86,13 +101,15 @@ export function AttendanceSummaryChip({
       title={title}
       aria-label={title.replace(/\n/g, " ")}
       className={
-        "inline-flex w-[4.25rem] shrink-0 items-center justify-center gap-1 rounded-sm border px-1 py-0.5 font-mono text-[11px] tabular-nums " +
+        "inline-flex w-[2.5rem] shrink-0 items-center justify-center gap-1 rounded-sm border px-1 py-0.5 font-mono text-[11px] tabular-nums sm:w-[4.25rem] " +
         tone
       }
     >
       {m.attendanceSummary.chip(availableCount(summary), required)}
       {summary.unanswered > 0 && (
-        <span className="opacity-70">{`+${summary.unanswered}?`}</span>
+        // スマホでは出さない (下の docstring 参照)。DOM には残すので、
+        // 親の title / aria-label が持つ「未回答 n 人 + 名前」は影響しない。
+        <span className="hidden opacity-70 sm:inline">{`+${summary.unanswered}?`}</span>
       )}
     </span>
   );
