@@ -18,6 +18,7 @@ import {
   type RecruitmentTemplate,
 } from "@/lib/recruitment-templates-client";
 import type { ScheduleSessionMemo } from "@/lib/schedule-memos-client";
+import type { MaintenanceWindow } from "@/lib/maintenance-schedule";
 import type { NextSessionResult, ScheduleFetchResult } from "@/lib/schedule/next-session";
 import type { SessionLogEntry } from "@/lib/schedule/session-logs";
 import type { ScheduleSourceMode } from "@/lib/schedule/source-mode";
@@ -92,6 +93,11 @@ type Props = {
    */
   topTextOverride?: string | null;
   /**
+   * W-30 (2026-09-07): 登録済みの公式メンテ枠。次回開催カードの衝突警告に
+   * 渡すだけで、この階層では使わない。
+   */
+  maintenanceWindows?: ReadonlyArray<MaintenanceWindow>;
+  /**
    * TODO #11: server で一括 prefetch した memos (rawDate → memos[])。
    * 各 chip / row が個別 SELECT をかけずにここから初期表示できるので
    * メモバッジが即時に表示される。realtime subscription は live 更新
@@ -133,6 +139,7 @@ export function SchedulePageBody({
   sessionLogsByDate,
   hasUltimateClear = false,
   topTextOverride = null,
+  maintenanceWindows = [],
   initialMemosByDate = {},
   // Phase 2-B (2026-05-07): native UI 第 1 弾で実利用開始。
   // - currentDiscordId: ScheduleList → SessionRow に drill、本人 cell 判定で popover trigger 化に使う。
@@ -267,6 +274,7 @@ export function SchedulePageBody({
 
       <NextSessionCard
         result={nextResult}
+        maintenanceWindows={maintenanceWindows}
         recruitmentTopButton={
           liveTemplates.length > 0 ? (
             <RecruitmentTopCopyButton templates={liveTemplates} />

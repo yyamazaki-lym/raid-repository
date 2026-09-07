@@ -43,6 +43,8 @@ try {
     [
       "tsc",
       SRC,
+      // W-20 (2026-09-07): 頻度の純関数は attendance-reminder-keys.ts 側。
+      "src/lib/schedule/attendance-reminder-keys.ts",
       "--outDir",
       outDir,
       "--target",
@@ -186,6 +188,64 @@ try {
     siteUrl: "",
   });
   check("名前経由の @everyone も崩される", injected.includes("​"), true);
+
+  console.log("\n[W-20 (2026-09-07) 催促の頻度]");
+  const keys = await import(
+    pathToFileURL(join(outDir, "attendance-reminder-keys.js")).href
+  );
+  const {
+    parseReminderCadence,
+    reminderLeadDaysToTry,
+    reminderDedupMarker,
+    REMINDER_DEFAULT_CADENCE,
+  } = keys;
+
+  // 既定は現行挙動。既存の設定を変えないことが最優先。
+  check("既定は once (現行挙動)", REMINDER_DEFAULT_CADENCE, "once");
+  check("未設定は once", parseReminderCadence(null), "once");
+  check("空文字は once", parseReminderCadence("  "), "once");
+  check("不正値は once", parseReminderCadence("hourly"), "once");
+  check("daily は通る", parseReminderCadence("daily"), "daily");
+  check(
+    "once_plus_day_of は通る",
+    parseReminderCadence("once_plus_day_of"),
+    "once_plus_day_of",
+  );
+
+  check("once は期限の日だけ", reminderLeadDaysToTry("once", 2), [2]);
+  check(
+    "once_plus_day_of は期限 + 当日",
+    reminderLeadDaysToTry("once_plus_day_of", 2),
+    [2, 0],
+  );
+  // lead=0 のときに [0, 0] と二重に試さない。
+  check(
+    "lead 0 なら 1 つに畳む",
+    reminderLeadDaysToTry("once_plus_day_of", 0),
+    [0],
+  );
+  check("daily は期限から当日まで", reminderLeadDaysToTry("daily", 3), [3, 2, 1, 0]);
+  check("daily の lead 0", reminderLeadDaysToTry("daily", 0), [0]);
+  check("不正な lead は 0 扱い", reminderLeadDaysToTry("daily", -1), [0]);
+
+  // dedup マーカー: once は開催日だけ、それ以外は暦日を混ぜて
+  // 「同じ開催日でも 1 日 1 通」にする (混ぜないと当日分が飛ばない)。
+  check(
+    "once のマーカーは開催日だけ",
+    reminderDedupMarker("once", "2026-09-10", "2026-09-09"),
+    "2026-09-10",
+  );
+  check(
+    "daily のマーカーは暦日を含む",
+    reminderDedupMarker("daily", "2026-09-10", "2026-09-09"),
+    "2026-09-10#2026-09-09",
+  );
+  check(
+    "翌日は別マーカーになる",
+    reminderDedupMarker("daily", "2026-09-10", "2026-09-09") !==
+      reminderDedupMarker("daily", "2026-09-10", "2026-09-10"),
+    true,
+  );
 } finally {
   rmSync(outDir, { recursive: true, force: true });
 }

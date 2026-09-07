@@ -40,6 +40,7 @@ import { NativeDiscordNotifySection } from "./settings/native-discord-notify-sec
 import { AttendanceReminderSection } from "./settings/attendance-reminder-section";
 import { NativeAutoConfirmSection } from "./settings/native-auto-confirm-section";
 import { LootWindowSection } from "./settings/loot-window-section";
+import { MaintenanceSection } from "./settings/maintenance-section";
 import { FflogsSyncSection } from "./settings/fflogs-sync-section";
 import { ChangelogFooter } from "./settings/changelog-footer";
 import { DangerZoneSection } from "./settings/danger-zone-section";
@@ -312,6 +313,9 @@ export function SettingsDialog({
           {/* W-33 ② (2026-09-07): 週制限の消化ウィンドウ。スケジュールの
               モードとは無関係 (ロット管理の設定) なので mode で出し分けない。 */}
           <LootWindowSection open={open} canEdit={canEdit} />
+          {/* W-30 (2026-09-07): 公式メンテ日程。スケジュールのモードに
+              関係なく使える (衝突警告は次回開催カードに出る)。 */}
+          <MaintenanceSection open={open} canEdit={canEdit} />
           <FflogsSyncSection open={open} canEdit={canEdit} />
           <ChangelogFooter showSignIn={showSignIn} />
           {canEdit && (

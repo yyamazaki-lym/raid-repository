@@ -24,6 +24,10 @@ import {
 import { fetchScheduleMemosByDateBulk } from "@/lib/server/schedule-memos-fetch";
 import { buildSessionVideoLinkMap } from "@/lib/server/session-video-link";
 import { fetchPortalSettings } from "@/lib/supabase/app-settings";
+import {
+  MAINTENANCE_WINDOWS_KEY,
+  parseMaintenanceWindows,
+} from "@/lib/maintenance-schedule";
 import { jstTodayStartMs } from "@/lib/schedule/jst-cutoff";
 import { fetchCategories } from "@/lib/supabase/categories";
 import { fetchRecruitmentTemplatesServer } from "@/lib/supabase/recruitment-templates";
@@ -170,6 +174,11 @@ export default async function SchedulePage() {
         sessionLogsByDate={sessionLogsByDate}
         hasUltimateClear={hasUltimateClear}
         topTextOverride={topTextOverride}
+        // W-30 (2026-09-07): メンテ衝突警告用。fetchPortalSettings の
+        // 一括読みに相乗りしているので追加の RTT は無い。
+        maintenanceWindows={parseMaintenanceWindows(
+          appSettings[MAINTENANCE_WINDOWS_KEY],
+        )}
         initialMemosByDate={initialMemosByDate}
         // 2.9 (2026-08-24): sync mode でも admin 判定を渡す。過去詳細表の
         // 「実施しなかった日を消す」ゴミ箱アイコンの表示判定に使う
@@ -282,6 +291,11 @@ export default async function SchedulePage() {
       sessionLogsByDate={nativeSessionLogsByDate}
       hasUltimateClear={hasUltimateClear}
       topTextOverride={topTextOverride}
+      // W-30 (2026-09-07): メンテ衝突警告用。fetchPortalSettings の
+      // 一括読みに相乗りしているので追加の RTT は無い。
+      maintenanceWindows={parseMaintenanceWindows(
+        appSettings[MAINTENANCE_WINDOWS_KEY],
+      )}
       initialMemosByDate={initialMemosByDate}
       currentDiscordId={member.discordId}
       isAdmin={isAdmin}

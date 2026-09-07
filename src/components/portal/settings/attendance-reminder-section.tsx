@@ -16,10 +16,15 @@ import {
   setAttendanceReminderExcludedAction,
   setAttendanceReminderHourAction,
   setAttendanceReminderLeadDaysAction,
+  setAttendanceReminderCadenceAction,
   setAttendanceReminderMemberMapAction,
   type AttendanceReminderSettings,
 } from "@/lib/server/attendance-reminder-actions";
 import type { ReminderPreview } from "@/lib/server/attendance-reminder";
+import {
+  REMINDER_CADENCES,
+  type ReminderCadence,
+} from "@/lib/schedule/attendance-reminder-keys";
 import { useMessages } from "@/lib/i18n/client";
 
 /**
@@ -80,6 +85,23 @@ export function AttendanceReminderSection({
       cancelled = true;
     };
   }, [open, canEdit, loaded]);
+
+  const onSaveCadence = (cadence: ReminderCadence) => {
+    if ((settings?.cadence ?? "once") === cadence) return;
+    startTransition(async () => {
+      const r = await setAttendanceReminderCadenceAction(cadence);
+      if (!r.ok) {
+        toast.error(r.reason);
+        return;
+      }
+      setSettings((s) => (s ? { ...s, cadence } : s));
+      toast.success(
+        m.attendanceReminder.cadenceSaved(
+          m.attendanceReminder.cadenceOption(cadence),
+        ),
+      );
+    });
+  };
 
   if (!canEdit) return null;
 
@@ -251,6 +273,40 @@ export function AttendanceReminderSection({
 
       {/* 送信設定 */}
       <div className="flex flex-col gap-2 rounded-md border border-border/40 bg-secondary/10 px-3 py-2.5">
+        {/* W-20 (2026-09-07): 催促の頻度。既定 `once` は現行挙動なので、
+            既存の設定を変えずに「前日 + 当日」「毎日」へ広げられる。
+            押した時点で保存する (他の 3 項目は「保存」ボタン方式だが、
+            頻度は 3 択のトグルなので即時が自然)。 */}
+        <div className="flex flex-col gap-1">
+          <Label className="text-[11px]">
+            {m.attendanceReminder.cadenceLabel}
+          </Label>
+          <div className="flex flex-wrap gap-1.5">
+            {REMINDER_CADENCES.map((c) => {
+              const active = (settings?.cadence ?? "once") === c;
+              return (
+                <button
+                  key={c}
+                  type="button"
+                  aria-pressed={active}
+                  disabled={pending || !loaded}
+                  onClick={() => onSaveCadence(c)}
+                  className={
+                    "rounded-md border px-2 py-1 text-[10px] whitespace-nowrap transition-colors disabled:opacity-50 " +
+                    (active
+                      ? "border-[var(--neon-violet)]/60 bg-[var(--neon-violet)]/12 text-[var(--neon-violet)]"
+                      : "border-border/40 bg-background/30 text-muted-foreground hover:text-foreground")
+                  }
+                >
+                  {m.attendanceReminder.cadenceOption(c)}
+                </button>
+              );
+            })}
+          </div>
+          <p className="text-[10px] leading-relaxed text-muted-foreground/80">
+            {m.attendanceReminder.cadenceHint(settings?.cadence ?? "once")}
+          </p>
+        </div>
         <div className="grid gap-2 sm:grid-cols-3">
           <div className="flex flex-col gap-1">
             <Label htmlFor="reminder-lead" className="text-[11px]">
