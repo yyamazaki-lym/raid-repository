@@ -49,7 +49,7 @@ try {
 
   console.log("\n[辞書の整合]");
   const levels = ["best", "good", "mid", "warn", "bad", "neutral"];
-  for (const dict of ["PERF_TEXT", "PERF_CHIP", "PERF_BAR", "PERF_BAR_SOFT", "PERF_LABEL"]) {
+  for (const dict of ["PERF_TEXT", "PERF_CHIP", "PERF_BAR", "PERF_BAR_SOFT"]) {
     check(`${dict} に全レベル`, levels.every((l) => typeof m[dict][l] === "string" && m[dict][l].length > 0), true);
   }
 } finally {

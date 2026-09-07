@@ -107,6 +107,7 @@ export function WaymarksSection({
   kind?: CategoryWaymarkKind;
 }) {
   const m = useMessages();
+  const locale = useLocale();
   const copy = m.waymarks.kinds[kind];
   const meta = KIND_META[kind];
   const HeaderIcon = meta.icon;
@@ -147,8 +148,11 @@ export function WaymarksSection({
     }
     setBusy(true);
     const result = editing.id
-      ? await updateCategoryWaymark(editing.id, { label, body, note })
-      : await createCategoryWaymark({ categoryId, kind, label, body, note });
+      ? await updateCategoryWaymark(editing.id, { label, body, note }, locale)
+      : await createCategoryWaymark(
+          { categoryId, kind, label, body, note },
+          locale,
+        );
     setBusy(false);
     if (!result.ok) {
       toast.error(m.crud.saveFailed(result.reason));

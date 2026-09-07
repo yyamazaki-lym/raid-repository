@@ -64,16 +64,6 @@ export const PERF_BAR_SOFT: Record<PerfLevel, string> = {
   neutral: "bg-secondary/40",
 };
 
-/** 日本語ラベル (title / aria 用)。 */
-export const PERF_LABEL: Record<PerfLevel, string> = {
-  best: "良い",
-  good: "やや良い",
-  mid: "ふつう",
-  warn: "注意",
-  bad: "悪い",
-  neutral: "—",
-};
-
 /**
  * 0〜1 の達成率 (高いほど良い) → レベル。閾値は WoWAnalyzer の
  * colorForPerformance と同じ (≥1.0 / >2/3 / >1/2 / >1/3 / それ以下)。

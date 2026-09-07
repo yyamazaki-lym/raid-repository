@@ -200,23 +200,3 @@ export function isOptimizableImageHost(
     parsed.hostname === "i.ytimg.com" || parsed.hostname.endsWith(".supabase.co")
   );
 }
-
-/**
- * Write-time validator. Throws a user-facing error message if the URL
- * is invalid, so callers can `catch` and surface the message in toast /
- * inline error UI.
- */
-export function assertSafeUrl(
-  raw: string | null | undefined,
-  fieldLabel = "URL",
-): string {
-  if (!raw || !raw.trim()) {
-    throw new Error(`${fieldLabel}が空です`);
-  }
-  if (!isSafeUrl(raw)) {
-    throw new Error(
-      `${fieldLabel}は http:// または https:// で始まる正しい URL である必要があります`,
-    );
-  }
-  return raw.trim();
-}
