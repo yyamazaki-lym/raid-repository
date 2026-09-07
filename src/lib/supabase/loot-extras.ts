@@ -11,6 +11,37 @@ import { isLootWeeklyStatus } from "@/lib/loot-weekly";
  * 妨げない (他の fetcher と同じ degrade 方針)。
  */
 
+/**
+ * BiS 行ごとの「取得済」部位 (W-23、2026-09-07)。
+ *
+ * 戻り値は BiS 行 ID → 部位名の配列。持つのは部位だけで、アイテム名や
+ * ソースは Google Sheets のロット表が正 (二重管理にしない)。
+ */
+export async function fetchCategoryBisSlots(
+  bisLinkIds: ReadonlyArray<string>,
+): Promise<Record<string, string[]>> {
+  const out: Record<string, string[]> = {};
+  for (const id of bisLinkIds) out[id] = [];
+  if (bisLinkIds.length === 0) return out;
+  try {
+    const supabase = await createClient();
+    const { data, error } = await supabase
+      .from("category_bis_slots")
+      .select("bis_link_id, slot")
+      .in("bis_link_id", bisLinkIds as string[])
+      .eq("obtained", true);
+    if (error || !data) return out;
+    for (const r of data as Array<{ bis_link_id: string; slot: string }>) {
+      (out[r.bis_link_id] ??= []).push(r.slot);
+    }
+    return out;
+  } catch (err) {
+    rethrowNextSentinel(err);
+    console.warn("[loot-extras] bis slots error:", err);
+    return out;
+  }
+}
+
 export async function fetchCategoryBisLinks(
   categoryId: string,
 ): Promise<CategoryBisLink[]> {

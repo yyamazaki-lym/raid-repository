@@ -37,6 +37,13 @@ import {
 } from "@/components/ui/dialog";
 import { useConfirm } from "@/components/portal/confirm-dialog";
 import { useCollapsible } from "@/lib/use-collapsible";
+import {
+  bisProgress,
+  bisProgressToneClass,
+  bisSlotLabel,
+  bisSlotsForJob,
+} from "@/lib/bis-slots";
+import { setCategoryBisSlotAction } from "@/lib/server/bis-slots-actions";
 import { LinkSiteIcon } from "@/components/portal/link-site-icon";
 import { toXivgearEmbedUrl } from "@/lib/xivgear-url";
 import { fetchXivgearSummaryAction } from "@/lib/server/xivgear-actions";
@@ -61,7 +68,7 @@ import {
   applyOptimisticOrder,
   useSortableReorder,
 } from "@/lib/use-sortable-reorder";
-import { useMessages } from "@/lib/i18n/client";
+import { useLocale, useMessages } from "@/lib/i18n/client";
 
 /**
  * ロットタブの上に置く 2 パネル (TODO #94)。
@@ -265,10 +272,16 @@ export function BisLinksPanel({
   categoryId,
   links,
   canEdit,
+  slotsByLink = {},
 }: {
   categoryId: string;
   links: CategoryBisLink[];
   canEdit: boolean;
+  /**
+   * W-23 (2026-09-07): BiS 行 ID → 取得済みの部位。行に `n / 11` の
+   * バッジを出し、開くと部位のチェックが並ぶ。
+   */
+  slotsByLink?: Record<string, string[]>;
 }) {
   const router = useRouter();
   const confirm = useConfirm();
@@ -468,6 +481,7 @@ export function BisLinksPanel({
           onPreview={openPreview}
           onEdit={startEdit}
           onDelete={onDelete}
+          slotsByLink={slotsByLink}
         />
       )}
 
@@ -748,6 +762,7 @@ function BisList({
   onPreview,
   onEdit,
   onDelete,
+  slotsByLink,
 }: {
   links: CategoryBisLink[];
   canEdit: boolean;
@@ -757,11 +772,14 @@ function BisList({
   onPreview: (link: CategoryBisLink) => void;
   onEdit: (link: CategoryBisLink) => void;
   onDelete: (link: CategoryBisLink) => void;
+  /** W-23 (2026-09-07): BiS 行 ID → 取得済みの部位。 */
+  slotsByLink: Record<string, string[]>;
 }) {
   const rows = links.map((l) => {
     const rowProps = {
       link: l,
       canEdit,
+      obtainedSlots: slotsByLink[l.id] ?? [],
       previewActive: previewId === l.id,
       onPreview: () => onPreview(l),
       onEdit: () => onEdit(l),
@@ -801,6 +819,8 @@ function BisList({
 type BisRowProps = {
   link: CategoryBisLink;
   canEdit: boolean;
+  /** W-23 (2026-09-07): この BiS で取得済みの部位。 */
+  obtainedSlots: ReadonlyArray<string>;
   previewActive: boolean;
   onPreview: () => void;
   onEdit: () => void;
@@ -836,6 +856,7 @@ function SortableBisRow(props: BisRowProps) {
 function BisRow({
   link,
   canEdit,
+  obtainedSlots,
   previewActive,
   onPreview,
   onEdit,
@@ -857,8 +878,9 @@ function BisRow({
             ref={setNodeRef}
             style={style}
             {...attributes}
-            className="flex items-center gap-2 rounded-md border border-border/40 bg-background/30 px-2 py-1.5"
+            className="flex flex-col gap-1.5 rounded-md border border-border/40 bg-background/30 px-2 py-1.5"
           >
+            <div className="flex items-center gap-2">
             {/* ドラッグハンドル。行全体を掴めるようにすると、
                 ラベルのリンクをタップしたいだけの操作を奪ってしまう
                 (ウェイマーク行と同じ理由でハンドルだけに listeners)。 */}
@@ -948,6 +970,102 @@ function BisRow({
                 </button>
               </span>
             )}
+            </div>
+
+            {/* W-23 (2026-09-07): 部位別の「取得済」。バッジを押すと
+                チェックが開く。持つのは部位だけで、アイテム名やソースは
+                Google Sheets のロット表が正 (二重管理にしない)。 */}
+            <BisSlotChecks link={link} obtainedSlots={obtainedSlots} />
           </li>
+  );
+}
+
+/**
+ * BiS 行の部位別チェック (W-23、2026-09-07)。
+ *
+ * 既定は畳んであり、`n / 11` のバッジだけを出す。開くと部位が並び、
+ * **サインイン済みなら誰でも**トグルできる (`owner_name` は自由記述で
+ * 本人判定ができず、実運用でも「今日出た分をその場で誰かが付ける」のが
+ * 自然なため。詳細は schema.sql の 該当節と Server Action の注記)。
+ */
+function BisSlotChecks({
+  link,
+  obtainedSlots,
+}: {
+  link: CategoryBisLink;
+  obtainedSlots: ReadonlyArray<string>;
+}) {
+  const m = useMessages();
+  const locale = useLocale();
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [pending, startTransition] = useTransition();
+  // 楽観反映。トグルは 1 クリックで連打され得るので、サーバー確定を
+  // 待って描き替えるとチェックが遅れて「押せていない」ように見える。
+  const [optimistic, setOptimistic] = useState<Record<string, boolean>>({});
+
+  const slots = bisSlotsForJob(link.job);
+  const effective = slots.filter((s) =>
+    s in optimistic ? optimistic[s] : obtainedSlots.includes(s),
+  );
+  const progress = bisProgress(link.job, effective);
+
+  const toggle = (slot: string, next: boolean) => {
+    setOptimistic((cur) => ({ ...cur, [slot]: next }));
+    startTransition(async () => {
+      const r = await setCategoryBisSlotAction({
+        bisLinkId: link.id,
+        slot,
+        obtained: next,
+      });
+      if (!r.ok) {
+        setOptimistic((cur) => ({ ...cur, [slot]: !next }));
+        toast.error(r.reason);
+        return;
+      }
+      router.refresh();
+    });
+  };
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        title={m.bisSlots.title}
+        className={
+          "self-start rounded-sm border px-1.5 py-0.5 font-mono text-[10px] whitespace-nowrap tabular-nums transition-opacity hover:opacity-80 " +
+          bisProgressToneClass(progress)
+        }
+      >
+        {m.bisSlots.badge(progress.obtained, progress.total)}
+      </button>
+      {open && (
+        <ul className="flex flex-wrap gap-1">
+          {slots.map((slot) => {
+            const on = effective.includes(slot);
+            return (
+              <li key={slot}>
+                <button
+                  type="button"
+                  onClick={() => toggle(slot, !on)}
+                  disabled={pending}
+                  aria-pressed={on}
+                  className={
+                    "rounded-sm border px-1.5 py-0.5 font-mono text-[10px] whitespace-nowrap transition-colors disabled:opacity-50 " +
+                    (on
+                      ? "border-emerald-400/45 bg-emerald-400/10 text-emerald-200"
+                      : "border-border/50 text-muted-foreground hover:text-foreground")
+                  }
+                >
+                  {bisSlotLabel(slot, locale)}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
   );
 }

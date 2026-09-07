@@ -432,6 +432,27 @@ export const ja = {
     copyTitle: (label: string) => `${label} をコピー`,
     copiedButton: "コピー済み",
     button: "募集",
+    // W-28 (2026-09-07): 募集文の変数差し込み。
+    fillTitle: "募集文の差し込み",
+    fillDescription:
+      "この募集文が使っている項目を入れてください。コンテンツ名や次回の日時は自動で入ります。未入力のままだと {項目名} が残るので、貼る前に気付けます。",
+    fillPreview: "貼られる文面",
+    placeholderLabel: (name: string): string =>
+      name === "phase"
+        ? "練習中のフェーズ / 層"
+        : name === "weapon"
+          ? "希望の武器 / ジョブ"
+          : name === "dc"
+            ? "データセンター"
+            : name,
+    placeholderExample: (name: string): string =>
+      name === "phase"
+        ? "例: P3 / 4層後半"
+        : name === "weapon"
+          ? "例: 零式武器 / 占星"
+          : name === "dc"
+            ? "例: Elemental"
+            : "",
   },
   categories: {
     trigger: "コンテンツ",
@@ -860,6 +881,26 @@ export const en: CoreMessages = {
     copyTitle: (label) => `Copy ${label}`,
     copiedButton: "Copied",
     button: "Recruit",
+    fillTitle: "Fill in the recruitment text",
+    fillDescription:
+      "Fill in what this template needs. The content name and next session time are filled automatically. Anything left blank stays as {name}, so you notice before pasting.",
+    fillPreview: "What will be copied",
+    placeholderLabel: (name) =>
+      name === "phase"
+        ? "Phase / floor in progress"
+        : name === "weapon"
+          ? "Wanted weapon / job"
+          : name === "dc"
+            ? "Data center"
+            : name,
+    placeholderExample: (name) =>
+      name === "phase"
+        ? "e.g. P3 / F4 second half"
+        : name === "weapon"
+          ? "e.g. Savage weapon / Astrologian"
+          : name === "dc"
+            ? "e.g. Elemental"
+            : "",
   },
   categories: {
     trigger: "Contents",

@@ -277,7 +277,25 @@ export function SchedulePageBody({
         maintenanceWindows={maintenanceWindows}
         recruitmentTopButton={
           liveTemplates.length > 0 ? (
-            <RecruitmentTopCopyButton templates={liveTemplates} />
+            <RecruitmentTopCopyButton
+              templates={liveTemplates}
+              // W-28 (2026-09-07): portal が知っている値だけを自動で埋める。
+              // カテゴリ名は「募集文に紐づいたコンテンツ」を使う (テンプレは
+              // カテゴリ単位で登録できる)。フェーズ / 武器 / DC は portal が
+              // 知りようがないのでコピー時に聞く。
+              autoValues={{
+                content: liveTemplates[0]?.categoryName ?? null,
+                date: nextResult.ok ? (nextResult.session?.rawDate ?? null) : null,
+                time_start: nextResult.ok
+                  ? (nextResult.session?.startTime ?? null)
+                  : null,
+                time_end: nextResult.ok
+                  ? (nextResult.session?.endTime ?? null)
+                  : null,
+                site_url:
+                  typeof window === "undefined" ? null : window.location.origin,
+              }}
+            />
           ) : null
         }
       />

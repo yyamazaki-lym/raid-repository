@@ -6,7 +6,10 @@ import {
   fetchCategoryLinkReads,
   fetchCategoryLinkTags,
 } from "@/lib/supabase/category-link-reads";
-import { fetchCategoryBisLinks } from "@/lib/supabase/loot-extras";
+import {
+  fetchCategoryBisLinks,
+  fetchCategoryBisSlots,
+} from "@/lib/supabase/loot-extras";
 import { BisLinksPanel } from "@/components/portal/loot-extras";
 import { getCurrentUserCanEdit } from "@/lib/server/auth";
 import { StrategyList } from "./strategy-list";
@@ -61,9 +64,11 @@ export default async function StrategyPage({
   // 既読は canEdit で「未読メンバーの名前を含めるか」が変わるため、
   // canEdit を解決してから呼ぶ (だからこの Promise.all には入れられない)。
   const linkIds = links.map((l) => l.id);
-  const [linkReads, linkTags] = await Promise.all([
+  const [linkReads, linkTags, bisSlots] = await Promise.all([
     fetchCategoryLinkReads(linkIds, canEdit),
     fetchCategoryLinkTags(linkIds),
+    // W-23 (2026-09-07): BiS 行ごとの取得済み部位。
+    fetchCategoryBisSlots(bisLinks.map((l) => l.id)),
   ]);
   return (
     <div className="flex flex-col gap-6">
@@ -71,6 +76,7 @@ export default async function StrategyPage({
         categoryId={category.id}
         links={bisLinks}
         canEdit={canEdit}
+        slotsByLink={bisSlots}
       />
       <StrategyList
         categoryId={category.id}

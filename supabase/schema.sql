@@ -1179,6 +1179,44 @@ CREATE TABLE IF NOT EXISTS public.category_bis_links (
 CREATE INDEX IF NOT EXISTS category_bis_links_category_idx
   ON public.category_bis_links(category_id, sort_order);
 
+-- ---- W-23 (2026-09-07): BiS の部位別「取得済」チェック ----------------
+-- 「消化週の残り目標が一目で分かる」ようにするためのもの (調査ノート第 4 回
+-- W-23)。持つのは **部位 × 取得済** だけ — 部位ごとのアイテム名やソースは
+-- Google Sheets のロット表が正なので、二重管理にしない。
+--
+-- 誰が入力するか: **サインイン済みのメンバーなら誰でも**。
+-- `category_bis_links.owner_name` は自由記述で Discord ID と紐づいていない
+-- ため「本人だけ」を強制できない。加えて実運用では「今日ドロップした分を
+-- その場で誰かが付ける」のが自然で、本人待ちにすると埋まらない
+-- (ロット表 Sheets と同じ信頼モデル)。loot_weekly_checks の「本人だけ」
+-- とは扱いが違う点に注意。
+CREATE TABLE IF NOT EXISTS public.category_bis_slots (
+  bis_link_id uuid NOT NULL
+              REFERENCES public.category_bis_links(id) ON DELETE CASCADE,
+  -- XIVGEAR_EQUIP_SLOTS (src/lib/xivgear-set.ts) の値。
+  slot        text NOT NULL,
+  obtained    boolean NOT NULL DEFAULT false,
+  updated_at  timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (bis_link_id, slot)
+);
+
+DROP TRIGGER IF EXISTS set_updated_at_category_bis_slots
+  ON public.category_bis_slots;
+CREATE TRIGGER set_updated_at_category_bis_slots
+  BEFORE UPDATE ON public.category_bis_slots
+  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+-- slot 名は app 層の定数と一致させる (誤った値で「12 部位中 13 取得」に
+-- ならないように)。値が増えたら CHECK を張り替える。
+ALTER TABLE public.category_bis_slots
+  DROP CONSTRAINT IF EXISTS category_bis_slots_slot_check;
+ALTER TABLE public.category_bis_slots
+  ADD CONSTRAINT category_bis_slots_slot_check
+  CHECK (slot IN (
+    'Weapon','OffHand','Head','Body','Hand','Legs','Feet',
+    'Ears','Neck','Wrist','RingLeft','RingRight'
+  )) NOT VALID;
+
 DROP TRIGGER IF EXISTS set_updated_at_category_bis_links
   ON public.category_bis_links;
 CREATE TRIGGER set_updated_at_category_bis_links
@@ -1497,6 +1535,7 @@ ALTER TABLE public.native_schedule_session_logs  ENABLE ROW LEVEL SECURITY;
 -- TODO #94 (2026-08-28): 6b 章の追加テーブル。
 ALTER TABLE public.category_waymarks             ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.category_bis_links            ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.category_bis_slots            ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.loot_weekly_checks            ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.fflogs_fights                 ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.fflogs_report_syncs           ENABLE ROW LEVEL SECURITY;
@@ -1590,6 +1629,10 @@ BEGIN
     -- 「SELECT 開放 / 書き込みは admin」で足りる。loot_weekly_checks の
     -- 本人書き込みは Server Action の service role 経路で通す (6b-3 参照)。
     'category_waymarks','category_bis_links','loot_weekly_checks',
+    -- W-23 (2026-09-07): BiS の部位別チェック。SELECT は開放、書き込みは
+    -- admin ポリシー + 非 admin は Server Action の service role 経路
+    -- (loot_weekly_checks と同じ扱い)。
+    'category_bis_slots',
     'fflogs_fights','fflogs_report_syncs','fflogs_report_videos'
   ]) LOOP
     FOREACH op IN ARRAY ops LOOP
