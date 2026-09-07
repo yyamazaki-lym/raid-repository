@@ -12,6 +12,7 @@ export type DataInitCounts = {
   // 消えるもの (waymarks / bis_links / weekly_checks) も件数を出すため明示。
   category_waymarks: number;
   category_bis_links: number;
+  category_bis_slots: number;
   loot_weekly_checks: number;
   // FFLogs 由来の 3 テーブルは categories への FK が SET NULL / FK 無しで、
   // 明示削除しないと category_id=NULL の行として残り続ける (不可視のゴミ)。
@@ -82,6 +83,7 @@ export async function initializeAllDataAction(): Promise<DataInitResult> {
     category_macros: 0,
     category_waymarks: 0,
     category_bis_links: 0,
+    category_bis_slots: 0,
     loot_weekly_checks: 0,
     fflogs_fights: 0,
     fflogs_report_syncs: 0,
@@ -110,6 +112,9 @@ export async function initializeAllDataAction(): Promise<DataInitResult> {
     { table: "tags", pk: "id" },
     { table: "category_macros", pk: "id" },
     { table: "category_waymarks", pk: "id" },
+    // W-23 (2026-09-07): 親 (category_bis_links) の CASCADE でも消えるが、
+    // 件数を別カウントで見せたいので先に明示削除する。
+    { table: "category_bis_slots", pk: "bis_link_id" },
     { table: "category_bis_links", pk: "id" },
     { table: "loot_weekly_checks", pk: "id" },
     { table: "fflogs_fights", pk: "id" },

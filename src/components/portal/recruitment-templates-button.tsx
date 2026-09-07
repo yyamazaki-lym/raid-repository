@@ -13,6 +13,22 @@ import { type RecruitmentTemplate } from "@/lib/recruitment-templates-client";
 import { cn } from "@/lib/utils";
 import type { CategoryOption } from "./recruitment-templates-popover-body";
 import { useMessages } from "@/lib/i18n/client";
+import {
+  fillRecruitmentTemplate,
+  needsManualInput,
+  type RecruitmentPlaceholder,
+} from "@/lib/recruitment-placeholders";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 /**
  * Header button on the schedule page that exposes saved PT-募集 text
@@ -112,11 +128,22 @@ export function RecruitmentTemplatesButton({ templates, categories }: Props) {
  */
 export function RecruitmentTopCopyButton({
   templates,
+  autoValues = {},
 }: {
   templates: RecruitmentTemplate[];
+  /**
+   * W-28 (2026-09-07): portal が知っている値 (コンテンツ名 / 難易度 /
+   * 次回開催の日時 / URL)。本文中の対応する変数を自動で埋める。
+   * 知りようがない値 (フェーズ / 武器 / DC) は本文が使っていればコピー時に
+   * 聞く (前回入力をブラウザに覚えさせる)。
+   */
+  autoValues?: Partial<Record<RecruitmentPlaceholder, string | null>>;
 }) {
   const m = useMessages();
   const [hovered, setHovered] = useState(false);
+  // 手入力が必要なテンプレのときだけ開くダイアログ。
+  const [asking, setAsking] = useState<RecruitmentPlaceholder[] | null>(null);
+  const [manual, setManual] = useState<Record<string, string>>({});
   // Brief "just copied" state — flips the button to emerald + Check
   // icon for ~1.5s as visual confirmation. Toast is also fired but
   // disappears quickly; the button color change is in the user's
@@ -131,15 +158,54 @@ export function RecruitmentTopCopyButton({
   // and adding it makes the tooltip / toast feel redundant.
   const subLabel = top.label || m.recruitment.defaultLabel;
 
-  const copy = async () => {
+  /** 前回の手入力を覚えておくキー (DC は固定、フェーズも数週間は同じ)。 */
+  const storageKey = (name: string) => `raid-repo:recruit-placeholder:${name}`;
+
+  const writeClipboard = async (text: string) => {
     try {
-      await navigator.clipboard.writeText(top.body);
+      await navigator.clipboard.writeText(text);
       toast.success(m.recruitment.copied(subLabel));
       setJustCopied(true);
       window.setTimeout(() => setJustCopied(false), 1500);
     } catch {
       toast.error(m.recruitment.copyFailed);
     }
+  };
+
+  const copy = async () => {
+    // W-28: 本文が手入力の変数を使っていればダイアログで聞く。使って
+    // いなければ従来どおり 1 クリックでコピーする (既存の体験を壊さない)。
+    const needed = needsManualInput(top.body);
+    if (needed.length > 0) {
+      const remembered: Record<string, string> = {};
+      for (const name of needed) {
+        try {
+          remembered[name] = window.localStorage.getItem(storageKey(name)) ?? "";
+        } catch {
+          // localStorage が使えない環境 (プライベートウィンドウ等) では
+          // 空欄から始める。コピー自体は動く。
+          remembered[name] = "";
+        }
+      }
+      setManual(remembered);
+      setAsking(needed);
+      return;
+    }
+    await writeClipboard(fillRecruitmentTemplate(top.body, autoValues));
+  };
+
+  const copyWithManual = async () => {
+    for (const [name, value] of Object.entries(manual)) {
+      try {
+        window.localStorage.setItem(storageKey(name), value);
+      } catch {
+        // best-effort
+      }
+    }
+    setAsking(null);
+    await writeClipboard(
+      fillRecruitmentTemplate(top.body, { ...autoValues, ...manual }),
+    );
   };
 
   return (
@@ -167,6 +233,63 @@ export function RecruitmentTopCopyButton({
         )}
         {justCopied ? m.recruitment.copiedButton : m.recruitment.button}
       </button>
+      {/* W-28: 手入力が必要なテンプレのときだけ開く。使われている変数の
+          欄だけを出す (`{phase}` を使わないテンプレでフェーズを聞かない)。 */}
+      <Dialog
+        open={asking !== null}
+        onOpenChange={(o) => {
+          if (!o) setAsking(null);
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{m.recruitment.fillTitle}</DialogTitle>
+            <DialogDescription>{m.recruitment.fillDescription}</DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-3">
+            {(asking ?? []).map((name) => (
+              <div key={name} className="flex flex-col gap-1.5">
+                <Label htmlFor={`recruit-ph-${name}`}>
+                  {m.recruitment.placeholderLabel(name)}
+                </Label>
+                <Input
+                  id={`recruit-ph-${name}`}
+                  value={manual[name] ?? ""}
+                  placeholder={m.recruitment.placeholderExample(name)}
+                  onChange={(e) =>
+                    setManual((cur) => ({ ...cur, [name]: e.target.value }))
+                  }
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      void copyWithManual();
+                    }
+                  }}
+                />
+              </div>
+            ))}
+            {/* 貼る前に完成形を見せる。未入力の変数は {name} のまま残るので
+                「入れ忘れ」がここで分かる。 */}
+            <div className="flex flex-col gap-1">
+              <span className="font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase">
+                {m.recruitment.fillPreview}
+              </span>
+              <p className="max-h-40 overflow-y-auto rounded-sm border border-border/40 bg-secondary/20 px-2 py-1.5 text-[11px] leading-relaxed whitespace-pre-wrap">
+                {fillRecruitmentTemplate(top.body, { ...autoValues, ...manual })}
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={() => setAsking(null)}>
+              {m.common.cancel}
+            </Button>
+            <Button type="button" onClick={copyWithManual}>
+              {m.recruitment.button}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {hovered && (
         <div
           role="tooltip"
@@ -178,7 +301,9 @@ export function RecruitmentTopCopyButton({
             ★ {subLabel}
           </p>
           <pre className="max-h-[14rem] overflow-y-auto font-mono text-[11px] leading-relaxed whitespace-pre-wrap text-foreground/90">
-            {top.body}
+            {/* W-28: 自動で埋まる変数はプレビューでも埋めて見せる
+                (貼る文面と一致させる)。手入力分は {name} のまま残る。 */}
+            {fillRecruitmentTemplate(top.body, autoValues)}
           </pre>
         </div>
       )}

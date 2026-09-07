@@ -255,6 +255,12 @@ export const ja = {
     myStatus: "自分の状態",
   },
   /** 攻略: 最適装備 (BiS) リンク。 */
+  /** W-23 BiS の部位別「取得済」(2026-09-07)。 */
+  bisSlots: {
+    title:
+      "部位ごとの「取得済」。クリックで開きます。サインインしていれば誰でも付け外しできます (アイテム名やソースはロット表が正)。",
+    badge: (obtained: number, total: number) => `装備 ${obtained}/${total}`,
+  },
   bis: {
     title: "最適装備 (BiS)",
     add: "BiS 追加",
@@ -913,6 +919,11 @@ export const en: ContentMessages = {
       "No member list yet. Record your status with the buttons below and it counts toward this content for this week.",
     noName: "(no name)",
     myStatus: "My status",
+  },
+  bisSlots: {
+    title:
+      "Per-slot “obtained” marks. Click to expand. Anyone signed in can toggle them (item names and sources stay in the loot sheet).",
+    badge: (obtained, total) => `Gear ${obtained}/${total}`,
   },
   bis: {
     title: "Best in Slot (BiS)",
