@@ -22,11 +22,29 @@ import {
  */
 
 /**
- * client へ渡す明細の上限。1 pull ≈ 200 バイトの JSON なので、
- * 数千 pull を全部送ると RSC ペイロードが MB 級になる。合計値は別途
- * count クエリで正確に取り、明細だけ直近 N 件に絞る。
+ * 明細の上限 (2026-09-07 に 1200 → 20000)。
+ *
+ * 以前の 1200 は「1 pull ≈ 200 B なので数千 pull で RSC ペイロードが MB 級に
+ * なる」という見立てで置いていたが、実機の絶竜詩が 1047 pull まで来て上限が
+ * 目前になったため実測し直した (`scripts/check-fights-payload.mjs`):
+ *
+ *   | pull  | raw     | gzip   | brotli |
+ *   |-------|---------|--------|--------|
+ *   | 1200  | 0.63 MB |  46 KB |  24 KB |
+ *   | 6000  | 3.16 MB | 228 KB |  99 KB |
+ *
+ * (絶 = phases 込みの重い側。零式は約 3/4。) raw は確かに MB 級だが、同じ
+ * report code / 日付 / ボス名 / 技名が何十行も並ぶため圧縮が 14 倍効き、
+ * **転送量は 6000 pull でも gzip 228 KB / brotli 99 KB**。描画も「直近 10 日
+ * + 人が開いた日だけ」なので DOM は pull 数に比例しない。よって実質の上限は
+ * 不要と判断した。
+ *
+ * ここに残す 20000 は事故の安全弁 — 誤分類で別コンテンツが大量に流れ込んだ
+ * ときにページを巻き込まないための値で、通常の固定運用では到達しない
+ * (週 3 日 × 5 年 × 40 pull ≈ 31000 なので、超長期では届き得る)。
+ * 打ち切ったときは従来どおり `truncated` を立てて UI に明示する。
  */
-const MAX_FIGHTS = 1200;
+const MAX_FIGHTS = 20000;
 /**
  * 1 回のリクエストで返る最大行数 (2026-09-07)。
  *
@@ -37,6 +55,63 @@ const MAX_FIGHTS = 1200;
  * `range()` でページングして MAX_FIGHTS まで取り切る。
  */
 const PAGE_SIZE = 1000;
+
+/**
+ * `fflogs_fights` をカテゴリ単位で取り切る (2026-09-07)。
+ *
+ * 1 ページ目で `count` を取り、**残りのページは並列**に投げる。直列だと
+ * 6000 pull で 6 往復 = レイテンシがそのまま 6 倍になり、上限を上げた分だけ
+ * ページが遅くなってしまう。並列なら実質 2 往復で済む。
+ *
+ * 並び順は `start_ms` 降順 + `fight_id` 降順。同時刻の pull があっても
+ * ページ境界で行がずれない (第 2 キーが無いと ORDER BY が非決定になり、
+ * 同じ行が 2 ページに出たり抜けたりする)。
+ *
+ * 戻り値の `count` はカテゴリ全体の pull 数 (打ち切りに影響されない)。
+ * 1 ページ目が失敗したら null、2 ページ目以降が失敗したらそこまでの
+ * 部分結果を返す (呼び出し側が `truncated` を立てる)。
+ */
+async function fetchAllCategoryFightRows(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  columns: string,
+  categoryId: string,
+): Promise<{ rows: Array<Record<string, unknown>>; count: number | null } | null> {
+  const fetchPage = (from: number, to: number, withCount: boolean) =>
+    supabase
+      .from("fflogs_fights")
+      .select(columns, withCount ? { count: "exact" } : undefined)
+      .eq("category_id", categoryId)
+      .order("start_ms", { ascending: false })
+      .order("fight_id", { ascending: false })
+      .range(from, to);
+
+  const first = await fetchPage(0, PAGE_SIZE - 1, true);
+  if (first.error || !first.data) {
+    console.warn("[fflogs-fights] fights fetch failed:", first.error?.message);
+    return null;
+  }
+  const rows = first.data as unknown as Array<Record<string, unknown>>;
+  const count = first.count ?? null;
+  const total = Math.min(count ?? rows.length, MAX_FIGHTS);
+  // 1 ページで収まった / これ以上無い。
+  if (rows.length < PAGE_SIZE || rows.length >= total) return { rows, count };
+
+  const starts: number[] = [];
+  for (let from = PAGE_SIZE; from < total; from += PAGE_SIZE) starts.push(from);
+  const pages = await Promise.all(
+    starts.map((from) => fetchPage(from, Math.min(from + PAGE_SIZE, total) - 1, false)),
+  );
+  // Promise.all は順序を保つので、失敗ページで打ち切れば行は連続した
+  // prefix のまま (穴あきにならない)。
+  for (const page of pages) {
+    if (page.error || !page.data) {
+      console.warn("[fflogs-fights] fights page failed:", page.error?.message);
+      break;
+    }
+    rows.push(...(page.data as unknown as Array<Record<string, unknown>>));
+  }
+  return { rows, count };
+}
 
 export type ReportVideoLink = {
   /** 行 ID (2026-09-07 に 1 レポート N 動画へ移行したので report_code は一意でない)。 */
@@ -91,28 +166,9 @@ export async function fetchCategoryFights(
     const supabase = await createClient();
     const columns =
       "report_code, fight_id, session_date, name, kill, fight_percentage, last_phase, difficulty, encounter_id, party_dps, deaths, death_events, phase_transitions, start_ms, end_ms, report_start_ms";
-    // PAGE_SIZE ごとに range() で取り切る (PostgREST の 1000 行上限対策)。
-    // 総数 (count) は 1 ページ目だけで取る。同時刻の pull があってもページ境界で
-    // ずれないよう fight_id を second key にする。
-    const data: Array<Record<string, unknown>> = [];
-    let count: number | null = null;
-    for (let from = 0; from < MAX_FIGHTS; from += PAGE_SIZE) {
-      const to = Math.min(from + PAGE_SIZE, MAX_FIGHTS) - 1;
-      const page = await supabase
-        .from("fflogs_fights")
-        .select(columns, from === 0 ? { count: "exact" } : undefined)
-        .eq("category_id", categoryId)
-        .order("start_ms", { ascending: false })
-        .order("fight_id", { ascending: false })
-        .range(from, to);
-      if (page.error || !page.data) {
-        if (from === 0) return empty;
-        break;
-      }
-      if (from === 0) count = page.count ?? null;
-      data.push(...(page.data as Array<Record<string, unknown>>));
-      if (page.data.length < to - from + 1) break;
-    }
+    const paged = await fetchAllCategoryFightRows(supabase, columns, categoryId);
+    if (!paged) return empty;
+    const { rows: data, count } = paged;
     const includePhases = opts?.includePhases === true;
     const fights = data.map((r) => {
       const startMs = Number(r.start_ms);
@@ -343,8 +399,6 @@ export async function fetchCategoryPhaseTotals(categoryId: string): Promise<{
   firstReach: PhaseFirstReach[];
 } | null> {
   const supabase = await createClient();
-  const PAGE = 1000;
-  const MAX_PAGES = 20;
   const spansList: Array<PhaseSpan[] | null> = [];
   const reaches: Array<{
     startMs: number;
@@ -353,44 +407,39 @@ export async function fetchCategoryPhaseTotals(categoryId: string): Promise<{
     date: string | null;
   }> = [];
   try {
-    for (let page = 0; page < MAX_PAGES; page++) {
-      const { data, error } = await supabase
-        .from("fflogs_fights")
-        .select("start_ms, end_ms, phase_transitions, last_phase, session_date")
-        .eq("category_id", categoryId)
-        .order("start_ms", { ascending: false })
-        .range(page * PAGE, page * PAGE + PAGE - 1);
-      if (error) {
-        console.warn("[fflogs-fights] phase totals fetch failed:", error.message);
-        return null;
-      }
-      const rows = (data ?? []) as Array<Record<string, unknown>>;
-      for (const r of rows) {
-        const startMs = Number(r.start_ms);
-        const endMs = Number(r.end_ms);
-        if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) continue;
-        const durationMs = Math.max(0, endMs - startMs);
-        const transitions = asPhaseTransitions(r.phase_transitions);
-        if (transitions !== null) spansList.push(phaseSpans(transitions, durationMs));
-        // 到達フェーズ: last_phase が基本。遷移が取れていればその最大 ID とも
-        // 突き合わせる (片方しか無いレポートがあるため)。
-        const lastPhase = numberOrNull(r.last_phase);
-        const maxTransition =
-          transitions && transitions.length > 0
-            ? Math.max(...transitions.map((t) => t.id))
-            : null;
-        const reachedPhase =
-          lastPhase === null && maxTransition === null
-            ? null
-            : Math.max(lastPhase ?? 0, maxTransition ?? 0);
-        reaches.push({
-          startMs,
-          durationMs,
-          reachedPhase,
-          date: typeof r.session_date === "string" ? r.session_date : null,
-        });
-      }
-      if (rows.length < PAGE) break;
+    // 明細と同じ並列ページングで全 pull を取る (2026-09-07)。以前は直列
+    // 20 ページのループを自前で持っていたが、上限の管理が 2 箇所に分かれて
+    // いると片方だけ古い値のまま残る (実際 1200 と 20000 でずれていた)。
+    const paged = await fetchAllCategoryFightRows(
+      supabase,
+      "start_ms, end_ms, phase_transitions, last_phase, session_date",
+      categoryId,
+    );
+    if (!paged) return null;
+    for (const r of paged.rows) {
+      const startMs = Number(r.start_ms);
+      const endMs = Number(r.end_ms);
+      if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) continue;
+      const durationMs = Math.max(0, endMs - startMs);
+      const transitions = asPhaseTransitions(r.phase_transitions);
+      if (transitions !== null) spansList.push(phaseSpans(transitions, durationMs));
+      // 到達フェーズ: last_phase が基本。遷移が取れていればその最大 ID とも
+      // 突き合わせる (片方しか無いレポートがあるため)。
+      const lastPhase = numberOrNull(r.last_phase);
+      const maxTransition =
+        transitions && transitions.length > 0
+          ? Math.max(...transitions.map((t) => t.id))
+          : null;
+      const reachedPhase =
+        lastPhase === null && maxTransition === null
+          ? null
+          : Math.max(lastPhase ?? 0, maxTransition ?? 0);
+      reaches.push({
+        startMs,
+        durationMs,
+        reachedPhase,
+        date: typeof r.session_date === "string" ? r.session_date : null,
+      });
     }
   } catch (e) {
     console.warn("[fflogs-fights] phase totals fetch threw:", e);
