@@ -59,7 +59,7 @@ import { useConfirm } from "@/components/portal/confirm-dialog";
 import { MirrorActionSlot } from "@/components/portal/action-slot";
 import { WaymarksSection } from "./waymarks-section";
 import type { CategoryWaymark } from "@/lib/category-waymarks-client";
-import { useMessages } from "@/lib/i18n/client";
+import { useLocale, useMessages } from "@/lib/i18n/client";
 import type { Messages } from "@/lib/i18n/messages";
 
 /**
@@ -162,6 +162,7 @@ function MacrosSection({
   macros: CategoryMacro[];
 }) {
   const m = useMessages();
+  const locale = useLocale();
   const [editing, setEditing] = useState<{
     id?: string;
     label: string;
@@ -196,8 +197,8 @@ function MacrosSection({
     }
     setBusy(true);
     const result = editing.id
-      ? await updateCategoryMacro(editing.id, { label, body })
-      : await createCategoryMacro({ categoryId, label, body });
+      ? await updateCategoryMacro(editing.id, { label, body }, locale)
+      : await createCategoryMacro({ categoryId, label, body }, locale);
     setBusy(false);
     if (!result.ok) {
       toast.error(m.crud.saveFailed(result.reason));
@@ -431,6 +432,7 @@ function TemplatesSection({
   initialTemplates: RecruitmentTemplateLite[];
 }) {
   const m = useMessages();
+  const locale = useLocale();
   // Hydrate from initial server-fetched data, then live-track via the
   // realtime hook (which gets ALL templates) and filter back down to
   // this category. Keeps the per-page list in sync with edits made
@@ -520,8 +522,8 @@ function TemplatesSection({
     }
     setBusy(true);
     const result = editing.id
-      ? await updateRecruitmentTemplate(editing.id, { label, body })
-      : await createRecruitmentTemplate({ categoryId, label, body });
+      ? await updateRecruitmentTemplate(editing.id, { label, body }, locale)
+      : await createRecruitmentTemplate({ categoryId, label, body }, locale);
     setBusy(false);
     if (!result.ok) {
       toast.error(m.crud.saveFailed(result.reason));

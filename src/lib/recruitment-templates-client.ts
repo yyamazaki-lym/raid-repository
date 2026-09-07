@@ -1,6 +1,10 @@
 "use client";
 
+import { textLengthError } from "@/lib/text-length-error";
 import { createClient } from "@/lib/supabase/client";
+
+/** 表示言語。辞書は import せず引数で受ける (url-validation.ts と同方針)。 */
+type TextLocale = "ja" | "en";
 import { useRealtimeTable } from "@/lib/use-realtime-table";
 import {
   createRecruitmentTemplateAction,
@@ -69,12 +73,15 @@ const TEMPLATE_LABEL_MAX = 200;
 function validateTemplateText(
   label: string | undefined,
   body: string | undefined,
+  locale: TextLocale = "ja",
 ): string | null {
-  if (body !== undefined && body.length > TEMPLATE_BODY_MAX)
-    return `本文が長すぎます（最大 ${TEMPLATE_BODY_MAX} 文字）`;
-  if (label !== undefined && label.length > TEMPLATE_LABEL_MAX)
-    return `ラベルが長すぎます（最大 ${TEMPLATE_LABEL_MAX} 文字）`;
-  return null;
+  return textLengthError(
+    [
+      { field: "body", value: body, max: TEMPLATE_BODY_MAX },
+      { field: "label", value: label, max: TEMPLATE_LABEL_MAX },
+    ],
+    locale,
+  );
 }
 
 export async function fetchRecruitmentTemplates(): Promise<RecruitmentTemplate[]> {
@@ -88,12 +95,15 @@ export async function fetchRecruitmentTemplates(): Promise<RecruitmentTemplate[]
   return (data as unknown as RecruitmentTemplateRow[]).map(rowToTemplate);
 }
 
-export async function createRecruitmentTemplate(input: {
-  categoryId: string;
-  label: string;
-  body: string;
-}): Promise<{ ok: true } | { ok: false; reason: string }> {
-  const lenError = validateTemplateText(input.label, input.body);
+export async function createRecruitmentTemplate(
+  input: {
+    categoryId: string;
+    label: string;
+    body: string;
+  },
+  locale: TextLocale = "ja",
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const lenError = validateTemplateText(input.label, input.body, locale);
   if (lenError) return { ok: false, reason: lenError };
   return createRecruitmentTemplateAction(input);
 }
@@ -101,8 +111,9 @@ export async function createRecruitmentTemplate(input: {
 export async function updateRecruitmentTemplate(
   id: string,
   patch: Partial<{ label: string; body: string; categoryId: string | null }>,
+  locale: TextLocale = "ja",
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
-  const lenError = validateTemplateText(patch.label, patch.body);
+  const lenError = validateTemplateText(patch.label, patch.body, locale);
   if (lenError) return { ok: false, reason: lenError };
   return updateRecruitmentTemplateAction(id, patch);
 }

@@ -190,6 +190,27 @@ try {
     headingMismatch.join("\n       "),
   );
 
+  // マージ衝突の残骸 (2026-09-07)。squash merge のあとブランチ側で
+  // origin/main を取り込み直したときに、この md の衝突マーカーを消し忘れて
+  // main に入った事故があった。`## ` 見出しの検査はマーカー行を無視するので
+  // 気付けなかったため、専用に見る。
+  const withMarkers = [];
+  for (const r of withParts) {
+    const path = join(NOTES_DIR, mdNameOf(r));
+    if (!existsSync(path)) continue;
+    const bad = readFileSync(path, "utf8")
+      .split("\n")
+      .map((line, i) => [line, i + 1])
+      .filter(([line]) => /^(?:<{7}|={7}|>{7})(?:\s|$)/.test(line))
+      .map(([, n]) => n);
+    if (bad.length) withMarkers.push(`${mdNameOf(r)}: line ${bad.join(", ")}`);
+  }
+  check(
+    "no merge conflict markers in release notes",
+    withMarkers.length === 0,
+    withMarkers.join("\n       "),
+  );
+
   const known = new Set(withParts.map(mdNameOf));
   const orphans = existsSync(NOTES_DIR)
     ? readdirSync(NOTES_DIR).filter(

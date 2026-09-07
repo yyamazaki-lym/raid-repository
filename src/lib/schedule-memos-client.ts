@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { noPermissionError, textLengthError } from "@/lib/text-length-error";
 import { createClient } from "@/lib/supabase/client";
 import { useRealtimeChannel } from "@/lib/use-realtime-table";
 
@@ -71,15 +72,22 @@ export function persistAuthorName(name: string): void {
 // (recruitment-templates-client の validateTemplateText と同方針)。
 export const MEMO_BODY_MAX = 4000;
 export const MEMO_AUTHOR_NAME_MAX = 100;
+
+/** 表示言語。辞書は import せず引数で受ける (url-validation.ts と同方針)。 */
+type TextLocale = "ja" | "en";
+
 function validateMemoText(
   body: string | undefined,
   authorName: string | undefined,
+  locale: TextLocale = "ja",
 ): string | null {
-  if (body !== undefined && body.length > MEMO_BODY_MAX)
-    return `メモが長すぎます（最大 ${MEMO_BODY_MAX} 文字）`;
-  if (authorName !== undefined && authorName.length > MEMO_AUTHOR_NAME_MAX)
-    return `名前が長すぎます（最大 ${MEMO_AUTHOR_NAME_MAX} 文字）`;
-  return null;
+  return textLengthError(
+    [
+      { field: "note", value: body, max: MEMO_BODY_MAX },
+      { field: "name", value: authorName, max: MEMO_AUTHOR_NAME_MAX },
+    ],
+    locale,
+  );
 }
 
 /**
@@ -94,14 +102,17 @@ function sanitizeAuthorName(name: string): string {
   return name.replace(/\p{Cc}/gu, "");
 }
 
-export async function createScheduleMemo(input: {
-  rawDate: string;
-  body: string;
-  authorName: string;
-}): Promise<
+export async function createScheduleMemo(
+  input: {
+    rawDate: string;
+    body: string;
+    authorName: string;
+  },
+  locale: TextLocale = "ja",
+): Promise<
   { ok: true; memo: ScheduleSessionMemo } | { ok: false; reason: string }
 > {
-  const lenError = validateMemoText(input.body, input.authorName);
+  const lenError = validateMemoText(input.body, input.authorName, locale);
   if (lenError) return { ok: false, reason: lenError };
   const supabase = createClient();
   const { data, error } = await supabase
@@ -120,8 +131,9 @@ export async function createScheduleMemo(input: {
 export async function updateScheduleMemo(
   id: string,
   patch: Partial<{ body: string; authorName: string }>,
+  locale: TextLocale = "ja",
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
-  const lenError = validateMemoText(patch.body, patch.authorName);
+  const lenError = validateMemoText(patch.body, patch.authorName, locale);
   if (lenError) return { ok: false, reason: lenError };
   const supabase = createClient();
   const dbPatch: Record<string, unknown> = {};
@@ -137,12 +149,13 @@ export async function updateScheduleMemo(
     .maybeSingle();
   if (error) return { ok: false, reason: error.message };
   if (!data)
-    return { ok: false, reason: "更新できませんでした（権限がない可能性があります）" };
+    return { ok: false, reason: noPermissionError("update", locale) };
   return { ok: true };
 }
 
 export async function deleteScheduleMemo(
   id: string,
+  locale: TextLocale = "ja",
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
   const supabase = createClient();
   const { data, error } = await supabase
@@ -153,7 +166,7 @@ export async function deleteScheduleMemo(
     .maybeSingle();
   if (error) return { ok: false, reason: error.message };
   if (!data)
-    return { ok: false, reason: "削除できませんでした（権限がない可能性があります）" };
+    return { ok: false, reason: noPermissionError("delete", locale) };
   return { ok: true };
 }
 

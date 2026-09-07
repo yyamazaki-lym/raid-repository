@@ -1,6 +1,10 @@
 "use client";
 
+import { textLengthError } from "@/lib/text-length-error";
 import { createClient } from "@/lib/supabase/client";
+
+/** 表示言語。辞書は import せず引数で受ける (url-validation.ts と同方針)。 */
+type TextLocale = "ja" | "en";
 import { useRealtimeTable } from "@/lib/use-realtime-table";
 import {
   createCategoryWaymarkAction,
@@ -67,24 +71,34 @@ function validateWaymarkText(
   label: string | undefined,
   body: string | undefined,
   note: string | null | undefined,
+  locale: TextLocale = "ja",
 ): string | null {
-  if (body !== undefined && body.length > WAYMARK_BODY_MAX)
-    return `本文が長すぎます（最大 ${WAYMARK_BODY_MAX} 文字）`;
-  if (label !== undefined && label.length > WAYMARK_LABEL_MAX)
-    return `ラベルが長すぎます（最大 ${WAYMARK_LABEL_MAX} 文字）`;
-  if (note != null && note.length > WAYMARK_NOTE_MAX)
-    return `メモが長すぎます（最大 ${WAYMARK_NOTE_MAX} 文字）`;
-  return null;
+  return textLengthError(
+    [
+      { field: "body", value: body, max: WAYMARK_BODY_MAX },
+      { field: "label", value: label, max: WAYMARK_LABEL_MAX },
+      { field: "note", value: note, max: WAYMARK_NOTE_MAX },
+    ],
+    locale,
+  );
 }
 
-export async function createCategoryWaymark(input: {
-  categoryId: string;
-  kind: CategoryWaymarkKind;
-  label: string;
-  body: string;
-  note: string | null;
-}): Promise<{ ok: true } | { ok: false; reason: string }> {
-  const lenError = validateWaymarkText(input.label, input.body, input.note);
+export async function createCategoryWaymark(
+  input: {
+    categoryId: string;
+    kind: CategoryWaymarkKind;
+    label: string;
+    body: string;
+    note: string | null;
+  },
+  locale: TextLocale = "ja",
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const lenError = validateWaymarkText(
+    input.label,
+    input.body,
+    input.note,
+    locale,
+  );
   if (lenError) return { ok: false, reason: lenError };
   return createCategoryWaymarkAction(input);
 }
@@ -92,8 +106,14 @@ export async function createCategoryWaymark(input: {
 export async function updateCategoryWaymark(
   id: string,
   patch: Partial<{ label: string; body: string; note: string | null }>,
+  locale: TextLocale = "ja",
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
-  const lenError = validateWaymarkText(patch.label, patch.body, patch.note);
+  const lenError = validateWaymarkText(
+    patch.label,
+    patch.body,
+    patch.note,
+    locale,
+  );
   if (lenError) return { ok: false, reason: lenError };
   return updateCategoryWaymarkAction(id, patch);
 }

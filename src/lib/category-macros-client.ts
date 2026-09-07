@@ -1,6 +1,10 @@
 "use client";
 
+import { textLengthError } from "@/lib/text-length-error";
 import { createClient } from "@/lib/supabase/client";
+
+/** 表示言語。辞書は import せず引数で受ける (url-validation.ts と同方針)。 */
+type TextLocale = "ja" | "en";
 import { useRealtimeTable } from "@/lib/use-realtime-table";
 import {
   createCategoryMacroAction,
@@ -47,27 +51,32 @@ function rowToMacro(row: CategoryMacroRow): CategoryMacro {
 }
 
 // schema 側 CHECK (category_macros_text_sane) と同じ上限。DB が弾く前に
-// 友好的なエラーを返すための入口検証。`.length` (UTF-16) は Postgres の
-// char_length (コードポイント) 以上なので、ここを通れば DB も通る安全側。
+// 友好的なエラーを返すための入口検証 (文言は text-length-error.ts に集約)。
 const MACRO_BODY_MAX = 8000;
 const MACRO_LABEL_MAX = 200;
 function validateMacroText(
   label: string | undefined,
   body: string | undefined,
+  locale: TextLocale = "ja",
 ): string | null {
-  if (body !== undefined && body.length > MACRO_BODY_MAX)
-    return `本文が長すぎます（最大 ${MACRO_BODY_MAX} 文字）`;
-  if (label !== undefined && label.length > MACRO_LABEL_MAX)
-    return `ラベルが長すぎます（最大 ${MACRO_LABEL_MAX} 文字）`;
-  return null;
+  return textLengthError(
+    [
+      { field: "body", value: body, max: MACRO_BODY_MAX },
+      { field: "label", value: label, max: MACRO_LABEL_MAX },
+    ],
+    locale,
+  );
 }
 
-export async function createCategoryMacro(input: {
-  categoryId: string;
-  label: string;
-  body: string;
-}): Promise<{ ok: true } | { ok: false; reason: string }> {
-  const lenError = validateMacroText(input.label, input.body);
+export async function createCategoryMacro(
+  input: {
+    categoryId: string;
+    label: string;
+    body: string;
+  },
+  locale: TextLocale = "ja",
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const lenError = validateMacroText(input.label, input.body, locale);
   if (lenError) return { ok: false, reason: lenError };
   return createCategoryMacroAction(input);
 }
@@ -75,8 +84,9 @@ export async function createCategoryMacro(input: {
 export async function updateCategoryMacro(
   id: string,
   patch: Partial<{ label: string; body: string }>,
+  locale: TextLocale = "ja",
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
-  const lenError = validateMacroText(patch.label, patch.body);
+  const lenError = validateMacroText(patch.label, patch.body, locale);
   if (lenError) return { ok: false, reason: lenError };
   return updateCategoryMacroAction(id, patch);
 }

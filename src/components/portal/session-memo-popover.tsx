@@ -483,7 +483,7 @@ function MemoList({
       return;
     }
     setBusy(true);
-    const result = await createScheduleMemo({ rawDate, body, authorName });
+    const result = await createScheduleMemo({ rawDate, body, authorName }, locale);
     setBusy(false);
     if (!result.ok) {
       toast.error(msg.memo.errAddFailed(result.reason));
@@ -516,7 +516,7 @@ function MemoList({
       return;
     }
     setBusy(true);
-    const result = await updateScheduleMemo(id, { body, authorName });
+    const result = await updateScheduleMemo(id, { body, authorName }, locale);
     setBusy(false);
     if (!result.ok) {
       toast.error(msg.memo.errUpdateFailed(result.reason));
@@ -532,7 +532,7 @@ function MemoList({
     if (!pendingDelete) return;
     const m = pendingDelete;
     setBusy(true);
-    const result = await deleteScheduleMemo(m.id);
+    const result = await deleteScheduleMemo(m.id, locale);
     setBusy(false);
     setPendingDelete(null);
     if (!result.ok) {
