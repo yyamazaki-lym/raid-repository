@@ -110,7 +110,7 @@ export async function initializeAllDataAction(): Promise<DataInitResult> {
     { table: "loot_weekly_checks", pk: "id" },
     { table: "fflogs_fights", pk: "id" },
     { table: "fflogs_report_syncs", pk: "report_code" },
-    { table: "fflogs_report_videos", pk: "report_code" },
+    { table: "fflogs_report_videos", pk: "id" },
     { table: "recruitment_templates", pk: "id" },
     { table: "strategy_docs", pk: "id" },
     { table: "mitigation_entries", pk: "id" },

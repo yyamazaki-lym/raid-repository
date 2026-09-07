@@ -39,9 +39,14 @@ const MAX_FIGHTS = 1200;
 const PAGE_SIZE = 1000;
 
 export type ReportVideoLink = {
+  /** 行 ID (2026-09-07 に 1 レポート N 動画へ移行したので report_code は一意でない)。 */
+  id: string;
   reportCode: string;
   videoUrl: string | null;
   offsetSeconds: number;
+  /** 「前半」「ヒラ視点」等の表示名。空なら UI が「動画 1」と振る。 */
+  label: string | null;
+  sortOrder: number;
 };
 
 export type CategoryFights = {
@@ -172,22 +177,31 @@ export async function fetchCategoryFights(
 /** report ごとの動画紐づけ + オフセット (A-2)。 */
 export async function fetchReportVideoLinks(
   reportCodes: string[],
-): Promise<Record<string, ReportVideoLink>> {
+): Promise<Record<string, ReportVideoLink[]>> {
   if (reportCodes.length === 0) return {};
   try {
     const supabase = await createClient();
     const { data, error } = await supabase
       .from("fflogs_report_videos")
-      .select("report_code, video_url, offset_seconds")
-      .in("report_code", reportCodes);
+      .select("id, report_code, video_url, offset_seconds, label, sort_order")
+      .in("report_code", reportCodes)
+      .order("sort_order", { ascending: true })
+      .order("updated_at", { ascending: true });
     if (error || !data) return {};
-    const out: Record<string, ReportVideoLink> = {};
+    // 2026-09-07: 1 レポートに複数動画 (前半/後半・視点違い) が紐づくので
+    // report_code → 配列。並びは sort_order → 登録順で安定させる (UI の
+    // 「動画 1 / 2」の番号と pull 行のチップ順がリロードで入れ替わらない)。
+    const out: Record<string, ReportVideoLink[]> = {};
     for (const r of data) {
-      out[r.report_code as string] = {
-        reportCode: r.report_code as string,
+      const code = r.report_code as string;
+      (out[code] ??= []).push({
+        id: String(r.id),
+        reportCode: code,
         videoUrl: (r.video_url as string | null) ?? null,
         offsetSeconds: Number(r.offset_seconds ?? 0),
-      };
+        label: (r.label as string | null) ?? null,
+        sortOrder: Number(r.sort_order ?? 0),
+      });
     }
     return out;
   } catch (err) {
