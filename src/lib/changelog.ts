@@ -123,6 +123,9 @@ export const RELEASES: ReleaseEntry[] = [
       {
         title: "🎯 練習ログ: Legacy 絶の pull を encounter ID とボス名で振り分け (fight 名が「Omega」等のボス名だった)",
       },
+      {
+        title: "🖼 動画登録: Google フォトのリンクに対応 (専用アイコン / 動画として分類)",
+      },
     ],
   },
 ];

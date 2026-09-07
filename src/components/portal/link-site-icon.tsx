@@ -6,8 +6,9 @@
  * 攻略リンク (coarse: web / video / x) と動画リンク (fine: youtube /
  * twitch / niconico / x / web) の両方で使えるよう `variant` で粒度を切り替え。
  *
- * Lucide v1.11 はブランドアイコン非搭載のため、X (Twitter) はインライン SVG、
- * YouTube/Twitch/ニコニコ動画はブランドカラー付きの `Video` アイコンで代用。
+ * Lucide v1.11 はブランドアイコン非搭載のため、X (Twitter) と Google フォトは
+ * インライン SVG、YouTube/Twitch/ニコニコ動画はブランドカラー付きの `Video`
+ * アイコンで代用。
  */
 
 import { Globe, Video } from "lucide-react";
@@ -44,10 +45,27 @@ function XGlyph({ className }: { className?: string }) {
   );
 }
 
+/**
+ * Google フォトの風車マーク (2026-09-07)。4 枚の羽根はブランド 4 色の固定色
+ * なので currentColor は使わない (親の `text-*` の影響を受けない)。
+ */
+function GooglePhotosGlyph({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden className={className}>
+      <path fill="#4285F4" d="M11 2v9H2a9 9 0 0 1 9-9z" />
+      <path fill="#EA4335" d="M22 11h-9V2a9 9 0 0 1 9 9z" />
+      <path fill="#FBBC04" d="M13 22v-9h9a9 9 0 0 1-9 9z" />
+      <path fill="#34A853" d="M2 13h9v9a9 9 0 0 1-9-9z" />
+    </svg>
+  );
+}
+
 const FINE_COLOR: Record<LinkSite, string> = {
   youtube: "text-red-500",
   twitch: "text-violet-400",
   niconico: "text-orange-300",
+  // 風車マーク側がブランド 4 色を持つので、色クラスは使わない (型の穴埋め)。
+  googlephotos: "text-foreground",
   x: "text-foreground",
   web: "text-[var(--neon-magenta)]",
 };
@@ -69,6 +87,13 @@ export function LinkSiteIcon({ url, variant = "coarse", className }: Props) {
       return (
         <span aria-label={label} title={label} className={className}>
           <XGlyph className={`h-full w-full ${color}`} />
+        </span>
+      );
+    }
+    if (fine === "googlephotos") {
+      return (
+        <span aria-label={label} title={label} className={className}>
+          <GooglePhotosGlyph className="h-full w-full" />
         </span>
       );
     }

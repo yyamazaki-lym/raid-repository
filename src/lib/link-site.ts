@@ -9,7 +9,13 @@
  * SSR / クライアント双方で動かすため `URL` のみ使用 (DOM API 不使用)。
  */
 
-export type LinkSite = "youtube" | "twitch" | "niconico" | "x" | "web";
+export type LinkSite =
+  | "youtube"
+  | "twitch"
+  | "niconico"
+  | "googlephotos"
+  | "x"
+  | "web";
 
 /** 攻略リンク用の coarse バケット (動画系をまとめる) */
 export type CoarseLinkSite = "video" | "x" | "web";
@@ -41,13 +47,30 @@ export function detectLinkSite(url: string): LinkSite {
   if (hostMatches(host, ["youtube.com", "youtu.be"])) return "youtube";
   if (hostMatches(host, ["twitch.tv"])) return "twitch";
   if (hostMatches(host, ["nicovideo.jp", "nico.ms"])) return "niconico";
+  // 2026-09-07: Google フォト (実機要望「動画登録に Google フォト対応」)。
+  // 共有リンクは `photos.app.goo.gl/...` (短縮) と `photos.google.com/share/...`
+  // の 2 形。`photos.googleusercontent.com` は本体が返す実体 URL。
+  if (
+    hostMatches(host, [
+      "photos.google.com",
+      "photos.app.goo.gl",
+      "photos.googleusercontent.com",
+    ])
+  ) {
+    return "googlephotos";
+  }
   if (hostMatches(host, ["twitter.com", "x.com"])) return "x";
   return "web";
 }
 
 /** fine な LinkSite を coarse バケットに丸める (攻略リンクの 3 区分用) */
 export function coarseSite(site: LinkSite): CoarseLinkSite {
-  if (site === "youtube" || site === "twitch" || site === "niconico") {
+  if (
+    site === "youtube" ||
+    site === "twitch" ||
+    site === "niconico" ||
+    site === "googlephotos"
+  ) {
     return "video";
   }
   if (site === "x") return "x";
@@ -62,6 +85,7 @@ export const LINK_SITE_LABEL: Record<LinkSite, string> = {
   youtube: "YouTube",
   twitch: "Twitch",
   niconico: "ニコニコ動画",
+  googlephotos: "Google フォト",
   x: "X (Twitter)",
   web: "Web",
 };
@@ -78,6 +102,7 @@ export function linkSiteLabel(
   locale: "ja" | "en" = "ja",
 ): string {
   if (locale === "en" && site === "niconico") return "Niconico";
+  if (locale === "en" && site === "googlephotos") return "Google Photos";
   return LINK_SITE_LABEL[site];
 }
 
