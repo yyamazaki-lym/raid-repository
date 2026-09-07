@@ -6,6 +6,7 @@ import {
   NATIVE_DEFAULT_END_TIME_KEY,
   NATIVE_DEFAULT_START_TIME_KEY,
 } from "@/lib/schedule/native-defaults";
+import { MAINTENANCE_WINDOWS_KEY } from "@/lib/maintenance-schedule";
 import {
   NATIVE_CHOICE_VALUES_KEY,
   SCHEDULE_SOURCE_MODE_KEY,
@@ -104,6 +105,9 @@ const PORTAL_SETTING_KEYS: string[] = [
   NATIVE_DEFAULT_START_TIME_KEY,
   NATIVE_DEFAULT_END_TIME_KEY,
   NATIVE_CHOICE_VALUES_KEY,
+  // W-30 (2026-09-07): 次回開催カードのメンテ衝突警告で使う。TOP 描画パスの
+  // 参照なので、個別 fetch を増やさずここへ相乗りさせる。
+  MAINTENANCE_WINDOWS_KEY,
 ];
 
 /**

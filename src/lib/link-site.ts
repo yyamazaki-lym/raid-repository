@@ -130,7 +130,8 @@ export type Ff14ResourceKind =
   | "logs" // FFLogs / xivanalysis / Tomestone
   | "gear" // BiS / 装備シミュレータ
   | "sim" // ギミック練習シム
-  | "plan"; // 作図・ストラテジーボード共有
+  | "plan" // 作図・ストラテジーボード共有
+  | "recruit"; // 固定・PT 募集 (W-32、2026-09-07)
 
 export const FF14_RESOURCE_LABEL: Record<Ff14ResourceKind, string> = {
   guide: "攻略",
@@ -139,6 +140,7 @@ export const FF14_RESOURCE_LABEL: Record<Ff14ResourceKind, string> = {
   gear: "装備",
   sim: "シム",
   plan: "作図",
+  recruit: "募集",
 };
 
 const FF14_RESOURCE_LABEL_EN: Record<Ff14ResourceKind, string> = {
@@ -148,6 +150,7 @@ const FF14_RESOURCE_LABEL_EN: Record<Ff14ResourceKind, string> = {
   gear: "Gear",
   sim: "Sim",
   plan: "Diagram",
+  recruit: "Recruit",
 };
 
 /** 表示言語つきの FF14_RESOURCE_LABEL。 */
@@ -175,6 +178,8 @@ const FF14_RESOURCE_HOSTS: Array<{ kind: Ff14ResourceKind; hosts: string[] }> = 
       "naurffxiv.com",
       "icy-veins.com",
       "thebalanceffxiv.com",
+      // W-32 (2026-09-07): 調査ノート第 4 回 3-1 / 3-2 で挙がった追加分。
+      "knt-a.com",
     ],
   },
   {
@@ -185,7 +190,15 @@ const FF14_RESOURCE_HOSTS: Array<{ kind: Ff14ResourceKind; hosts: string[] }> = 
   },
   {
     kind: "logs",
-    hosts: ["fflogs.com", "xivanalysis.com", "tomestone.gg", "archon.gg"],
+    hosts: [
+      "fflogs.com",
+      "xivanalysis.com",
+      "tomestone.gg",
+      "archon.gg",
+      // W-32: FFLogs のリプレイビューア。**公開ホスト名を確認できていない**
+      // ものは足していない (誤った host を入れると別サイトのリンクに
+      // 「ログ」バッジが付く)。確認できたら追加する。
+    ],
   },
   {
     kind: "gear",
@@ -203,7 +216,16 @@ const FF14_RESOURCE_HOSTS: Array<{ kind: Ff14ResourceKind; hosts: string[] }> = 
       "board.wtfdig.info",
       "asellog.com",
       "sourpuh.github.io",
+      // W-32 (2026-09-07): 固定運営 / BiS 進捗の Web ツール。作図そのもの
+      // ではないが「計画を共有するページ」として plan に寄せる。
+      "xivraidplanner.app",
     ],
+  },
+  {
+    // W-32 (2026-09-07): 固定 / PT 募集サイト。攻略資料ではないので専用の
+    // 種別にする (「攻略」バッジが付くと中身を誤解させる)。
+    kind: "recruit",
+    hosts: ["xivrecruit.com"],
   },
 ];
 

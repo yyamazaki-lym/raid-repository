@@ -58,6 +58,72 @@ export const REMINDER_DEFAULT_HOUR = 21;
 export const REMINDER_DEFAULT_LEAD_DAYS = 1;
 
 /**
+ * 催促の頻度 (W-20、2026-09-07)。
+ *
+ * 現行は「期限 (lead_days 前) の目標時刻以降に、開催日ごとに 1 通」だけ。
+ * 国内固定では「前日に 1 回 + 当日にもう 1 回」や「埋まるまで毎日 1 回」も
+ * 受容されているので (調査ノート第 4 回 W-20 / デイコード)、選べるように
+ * する。既定は `once` = **現行と同じ挙動**なので、既存の設定は変わらない。
+ */
+export const REMINDER_CADENCE_KEY = "attendance_reminder_cadence";
+
+export const REMINDER_CADENCES = ["once", "once_plus_day_of", "daily"] as const;
+export type ReminderCadence = (typeof REMINDER_CADENCES)[number];
+
+/** 既定は現行挙動 (期限ベースに 1 通だけ)。 */
+export const REMINDER_DEFAULT_CADENCE: ReminderCadence = "once";
+
+export function parseReminderCadence(
+  raw: string | null | undefined,
+): ReminderCadence {
+  const v = (raw ?? "").trim();
+  return (REMINDER_CADENCES as readonly string[]).includes(v)
+    ? (v as ReminderCadence)
+    : REMINDER_DEFAULT_CADENCE;
+}
+
+/**
+ * その日に催促を試みる「何日前」の一覧 (新しい順 = 期限が遠い順)。
+ *
+ * - `once`: 期限の日だけ (現行)
+ * - `once_plus_day_of`: 期限の日と当日 (`leadDays` が 0 なら 1 つに畳む)
+ * - `daily`: 期限の日から当日まで毎日
+ *
+ * 呼び出し側はこの配列を順に試し、**未入力者がいる最初の日**を対象にする。
+ * 期限が遠い順に見るのは「まだ 2 日前の分が未入力」なら、より早い催促を
+ * 優先したいから (当日を先に見ると、当日分が埋まっていて 2 日前が空の
+ * ケースを取りこぼす)。
+ */
+export function reminderLeadDaysToTry(
+  cadence: ReminderCadence,
+  leadDays: number,
+): number[] {
+  const lead = Number.isInteger(leadDays) && leadDays >= 0 ? leadDays : 0;
+  if (cadence === "once") return [lead];
+  if (cadence === "once_plus_day_of") {
+    return lead === 0 ? [0] : [lead, 0];
+  }
+  const out: number[] = [];
+  for (let d = lead; d >= 0; d--) out.push(d);
+  return out;
+}
+
+/**
+ * 二重送信を止めるマーカー。
+ *
+ * `once` は開催日ごとに 1 通なので開催日 (`rawDate`) だけ。それ以外は
+ * 「同じ開催日に 1 日 1 通まで」なので**暦日を混ぜる** — 混ぜないと
+ * 当日分も「送信済み」に当たって 1 通も飛ばなくなる。
+ */
+export function reminderDedupMarker(
+  cadence: ReminderCadence,
+  rawDate: string,
+  todayKey: string,
+): string {
+  return cadence === "once" ? rawDate : `${rawDate}#${todayKey}`;
+}
+
+/**
  * 既定テンプレート。`{mentions}` は未入力者のメンション列、`{names}` は
  * 表示名だけの列、`{date}` `{day}` `{time_start}` `{time_end}` は対象日、
  * `{site_url}` は portal の URL。

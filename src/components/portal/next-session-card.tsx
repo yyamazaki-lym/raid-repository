@@ -1,13 +1,19 @@
-import { CalendarCheck2, AlertTriangle, CalendarPlus } from "lucide-react";
+import { CalendarCheck2, AlertTriangle, CalendarPlus, Wrench } from "lucide-react";
 import type { NextSessionResult } from "@/lib/schedule/next-session";
 import { DECISION_BADGE_CLASS } from "@/lib/schedule/status-ui";
 import { buildGoogleCalendarUrl } from "@/lib/calendar-link";
 import { SessionCountdown } from "./session-countdown";
-import { useMessages } from "@/lib/i18n/client";
+import { useLocale, useMessages } from "@/lib/i18n/client";
+import {
+  formatMaintenanceRange,
+  overlappingMaintenance,
+  type MaintenanceWindow,
+} from "@/lib/maintenance-schedule";
 
 export function NextSessionCard({
   result,
   recruitmentTopButton = null,
+  maintenanceWindows = [],
 }: {
   result: NextSessionResult;
   /**
@@ -17,8 +23,14 @@ export function NextSessionCard({
    * click away from the most-relevant card.
    */
   recruitmentTopButton?: React.ReactNode;
+  /**
+   * W-30 (2026-09-07): 登録済みの公式メンテ枠。この開催予定と時間帯が
+   * 重なるときに警告を出す (「今夜メンテだった」を防ぐ)。
+   */
+  maintenanceWindows?: ReadonlyArray<MaintenanceWindow>;
 }) {
   const m = useMessages();
+  const locale = useLocale();
   if (!result.ok) {
     return (
       <Frame tone="warn" icon={<AlertTriangle className="h-4 w-4" aria-hidden />}>
@@ -61,25 +73,40 @@ export function NextSessionCard({
   // 注: server-render なので 1 ページロード分のスナップショット。session 中
   // にロード済みのページは label が更新されないが、refresh / リアルタイム
   // 更新ボタンで再取得できるので許容。
-  const inSession = (() => {
-    if (!isToday) return false;
-    const [endH, endM] = endTime.split(":").map((s) => parseInt(s, 10));
-    if (!Number.isFinite(endH) || !Number.isFinite(endM)) return false;
+  // 開催の絶対時刻 [start, end)。inSession の判定と W-30 のメンテ衝突判定で
+  // 同じ値を使う (別々に計算すると片方だけ翌日跨ぎを取りこぼす)。
+  const range = (() => {
     const startMs = date.getTime();
-    // start の HH:MM (= startTime) と end の HH:MM を比較し、end のほうが
-    // 小さい / 等しい (= 翌日跨ぎ、例: 22:00~0:00) なら end は +24h、
-    // それ以外なら同日 end。startTime をパースして比較。
+    const [endH, endM] = endTime.split(":").map((s) => parseInt(s, 10));
     const [startH, startM] = startTime.split(":").map((s) => parseInt(s, 10));
-    if (!Number.isFinite(startH) || !Number.isFinite(startM)) return false;
+    if (
+      !Number.isFinite(endH) ||
+      !Number.isFinite(endM) ||
+      !Number.isFinite(startH) ||
+      !Number.isFinite(startM)
+    ) {
+      return null;
+    }
+    // end の HH:MM が start 以下なら翌日跨ぎ (例: 22:00〜0:00) なので +24h。
     const endIsNextDay =
       endH! < startH! || (endH! === startH! && endM! <= startM!);
     const endMs =
       startMs +
       ((endH! - startH!) * 60 + (endM! - startM!)) * 60 * 1000 +
       (endIsNextDay ? 24 * 60 * 60 * 1000 : 0);
-    const now = Date.now();
-    return now >= startMs && now < endMs;
+    return { startMs, endMs };
   })();
+
+  const inSession = (() => {
+    if (!isToday || !range) return false;
+    const now = Date.now();
+    return now >= range.startMs && now < range.endMs;
+  })();
+
+  // W-30 (2026-09-07): この開催予定と重なるメンテ枠。
+  const conflicts = range
+    ? overlappingMaintenance(maintenanceWindows, range.startMs, range.endMs)
+    : [];
 
   const relative = inSession
     ? m.schedule.inSession
@@ -106,6 +133,25 @@ export function NextSessionCard({
           {m.schedule.decided}
         </span>
       </div>
+      {/* W-30: メンテと重なる開催予定への警告。「今夜メンテだった」を
+          当日の朝までに気付けるようにするのが目的なので、カードの中で
+          日時と同じ視線の流れに置く。 */}
+      {conflicts.length > 0 && (
+        <p className="flex flex-wrap items-center gap-1.5 rounded-sm border border-orange-400/45 bg-orange-400/10 px-2 py-1 text-[11px] leading-relaxed text-orange-200">
+          <Wrench className="h-3 w-3 shrink-0" aria-hidden />
+          <span className="font-medium">
+            {m.maintenanceSchedule.conflictTitle}
+          </span>
+          <span className="font-mono text-[10px] opacity-90">
+            {conflicts
+              .map(
+                (w) =>
+                  `${formatMaintenanceRange(w, locale)}${w.label ? ` (${w.label})` : ""}`,
+              )
+              .join(" / ")}
+          </span>
+        </p>
+      )}
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <Value highlight={isToday} inSession={inSession}>
           {rawDate}

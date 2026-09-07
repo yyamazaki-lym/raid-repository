@@ -255,6 +255,24 @@ export const ja = {
   },
   // ---- native-auto-confirm-section.tsx ----
   /** W-33 ② (2026-09-07): 週制限の消化ウィンドウ (8.0 の 2 週管理対応)。 */
+  /** W-30 公式メンテ / パッチ日程 (2026-09-07)。 */
+  maintenanceSchedule: {
+    title: "メンテナンス日程",
+    description:
+      "公式メンテ / パッチの時間帯を登録すると、活動予定と重なるときに次回開催カードへ警告が出ます。公式に機械可読な情報が無いので手入力です (年に数回)。",
+    empty: "登録されていません。",
+    add: "行を追加",
+    saved: "メンテ日程を保存しました",
+    tooMany: (n: number) => `登録できるのは ${n} 件までです`,
+    startLabel: "開始",
+    endLabel: "終了",
+    labelLabel: "メモ",
+    labelPlaceholder: "例: 7.56 パッチメンテ",
+    removeAria: "この行を削除",
+    conflictTitle: "メンテナンスと重なっています",
+    conflictBody: (label: string) => `この時間帯は ${label} と重なります。`,
+    conflictFallback: "メンテナンス",
+  },
   /** W-35 練習ログのイベント通知 (2026-09-07)。既定はすべて OFF。 */
   logsNotify: {
     title: "練習ログの通知",
@@ -315,6 +333,21 @@ export const ja = {
     toastOn: "催促を ON にしました",
     toastOff: "催促を OFF にしました",
     toastBasicsSaved: "送信設定を保存しました",
+    // W-20 (2026-09-07): 催促の頻度。
+    cadenceLabel: "催促の頻度",
+    cadenceOption: (cadence: string): string =>
+      cadence === "once"
+        ? "期限に 1 回"
+        : cadence === "once_plus_day_of"
+          ? "期限 + 当日"
+          : "毎日 1 回",
+    cadenceHint: (cadence: string): string =>
+      cadence === "once"
+        ? "設定した日数前に 1 通だけ送ります (これまでと同じ挙動)。"
+        : cadence === "once_plus_day_of"
+          ? "設定した日数前と、開催当日にもう 1 通送ります。"
+          : "設定した日数前から開催当日まで、未入力が残っている間は 1 日 1 通送ります。",
+    cadenceSaved: (label: string) => `催促の頻度を「${label}」にしました`,
     toastMembersSaved: "メンション先 / 除外を保存しました",
     toastSendFailed: (reason: string) => `送信失敗: ${reason}`,
     toastSent: "催促を送信しました",
@@ -941,6 +974,23 @@ export const en: SettingsMessages = {
     fillDefault: "Fill with default",
     clearTitle: "Clear the textarea (saving removes it from the DB and restores the default)",
   },
+  maintenanceSchedule: {
+    title: "Maintenance schedule",
+    description:
+      "Register official maintenance / patch windows and the next-session card warns you when they overlap your raid time. There is no machine-readable source, so this is entered by hand (a few times a year).",
+    empty: "Nothing registered.",
+    add: "Add row",
+    saved: "Saved the maintenance schedule",
+    tooMany: (n) => `You can register at most ${n} entries`,
+    startLabel: "Start",
+    endLabel: "End",
+    labelLabel: "Note",
+    labelPlaceholder: "e.g. Patch 7.56 maintenance",
+    removeAria: "Remove this row",
+    conflictTitle: "Overlaps maintenance",
+    conflictBody: (label) => `This slot overlaps ${label}.`,
+    conflictFallback: "maintenance",
+  },
   logsNotify: {
     title: "Practice log notifications",
     description:
@@ -997,6 +1047,20 @@ export const en: SettingsMessages = {
     toastOn: "Reminders turned ON",
     toastOff: "Reminders turned OFF",
     toastBasicsSaved: "Sending settings saved",
+    cadenceLabel: "Reminder frequency",
+    cadenceOption: (cadence) =>
+      cadence === "once"
+        ? "Once, on the deadline"
+        : cadence === "once_plus_day_of"
+          ? "Deadline + day of"
+          : "Once a day",
+    cadenceHint: (cadence) =>
+      cadence === "once"
+        ? "Sends a single reminder the configured number of days ahead (the previous behavior)."
+        : cadence === "once_plus_day_of"
+          ? "Sends one the configured number of days ahead, plus one on the day itself."
+          : "Sends one per day from the configured lead time until the session day, while anyone is still missing.",
+    cadenceSaved: (label) => `Reminder frequency set to “${label}”`,
     toastMembersSaved: "Mentions / exclusions saved",
     toastSendFailed: (reason) => `Send failed: ${reason}`,
     toastSent: "Reminder sent",

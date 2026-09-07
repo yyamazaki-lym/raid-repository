@@ -336,6 +336,7 @@ const FF14_RESOURCE_TONE: Record<
   gear: "border-violet-400/40 bg-violet-400/10 text-violet-200",
   sim: "border-teal-400/40 bg-teal-400/10 text-teal-200",
   plan: "border-rose-400/40 bg-rose-400/10 text-rose-200",
+  recruit: "border-orange-400/40 bg-orange-400/10 text-orange-200",
 };
 
 function SortableStrategyCard({

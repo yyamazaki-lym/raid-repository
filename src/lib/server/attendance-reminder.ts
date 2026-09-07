@@ -28,6 +28,11 @@ import {
   REMINDER_HOUR_KEY,
   REMINDER_LAST_SENT_KEY,
   REMINDER_LEAD_DAYS_KEY,
+  REMINDER_CADENCE_KEY,
+  parseReminderCadence,
+  reminderDedupMarker,
+  reminderLeadDaysToTry,
+  type ReminderCadence,
   REMINDER_MEMBER_MAP_KEY,
   REMINDER_TEMPLATE_KEY,
 } from "@/lib/schedule/attendance-reminder-keys";
@@ -90,26 +95,38 @@ export async function fetchAttendanceReminderSettings(): Promise<{
   channelId: string;
   hour: number;
   leadDays: number;
+  /** W-20 (2026-09-07): 催促の頻度。既定 `once` = 現行挙動。 */
+  cadence: ReminderCadence;
   memberMap: Record<string, string>;
   excluded: string[];
   template: string;
   memberNames: string[];
 }> {
-  const [enabledRaw, channelRaw, hourRaw, leadRaw, mapRaw, excludedRaw, templateRaw] =
-    await Promise.all([
-      fetchAppSetting(REMINDER_ENABLED_KEY),
-      fetchAppSetting(REMINDER_CHANNEL_KEY),
-      fetchAppSetting(REMINDER_HOUR_KEY),
-      fetchAppSetting(REMINDER_LEAD_DAYS_KEY),
-      fetchAppSetting(REMINDER_MEMBER_MAP_KEY),
-      fetchAppSetting(REMINDER_EXCLUDED_KEY),
-      fetchAppSetting(REMINDER_TEMPLATE_KEY),
-    ]);
+  const [
+    enabledRaw,
+    channelRaw,
+    hourRaw,
+    leadRaw,
+    mapRaw,
+    excludedRaw,
+    templateRaw,
+    cadenceRaw,
+  ] = await Promise.all([
+    fetchAppSetting(REMINDER_ENABLED_KEY),
+    fetchAppSetting(REMINDER_CHANNEL_KEY),
+    fetchAppSetting(REMINDER_HOUR_KEY),
+    fetchAppSetting(REMINDER_LEAD_DAYS_KEY),
+    fetchAppSetting(REMINDER_MEMBER_MAP_KEY),
+    fetchAppSetting(REMINDER_EXCLUDED_KEY),
+    fetchAppSetting(REMINDER_TEMPLATE_KEY),
+    fetchAppSetting(REMINDER_CADENCE_KEY),
+  ]);
   return {
     enabled: enabledRaw === "true",
     channelId: channelRaw?.trim() ?? "",
     hour: parseIntSetting(hourRaw, REMINDER_DEFAULT_HOUR, 0, 23),
     leadDays: parseIntSetting(leadRaw, REMINDER_DEFAULT_LEAD_DAYS, 0, 14),
+    cadence: parseReminderCadence(cadenceRaw),
     memberMap: parseJsonRecord(mapRaw),
     excluded: parseJsonStringArray(excludedRaw),
     template: templateRaw ?? "",
@@ -344,19 +361,46 @@ export async function dispatchAttendanceReminder(input: {
     }
   }
 
-  const preview = await buildReminderPreview();
-  if (!preview) {
-    return { ok: true, posted: 0, skipped: 1, reason: "対象の開催予定なし" };
-  }
-  if (preview.targets.length === 0) {
-    return { ok: true, posted: 0, skipped: 1, reason: "未入力者なし" };
-  }
+  // W-20 (2026-09-07): 頻度の設定。`once` (既定) は現行どおり期限の日だけ、
+  // `once_plus_day_of` は期限 + 当日、`daily` は期限から当日まで毎日。
+  // 未入力者がいる最初の (= 期限が最も遠い) 日を対象にする。
+  const cadence = parseReminderCadence(await fetchAppSetting(REMINDER_CADENCE_KEY));
+  const leadDays = parseIntSetting(
+    await fetchAppSetting(REMINDER_LEAD_DAYS_KEY),
+    REMINDER_DEFAULT_LEAD_DAYS,
+    0,
+    14,
+  );
+  const todayKey = jstDayKey(Date.now());
+  const lastSent = input.respectDedup
+    ? ((await fetchAppSetting(REMINDER_LAST_SENT_KEY)) ?? "")
+    : "";
 
-  if (input.respectDedup) {
-    const last = await fetchAppSetting(REMINDER_LAST_SENT_KEY);
-    if (last && last === preview.rawDate) {
-      return { ok: true, posted: 0, skipped: 1, reason: "送信済み" };
+  let preview: ReminderPreview | null = null;
+  let marker = "";
+  let lastReason = "対象の開催予定なし";
+  for (const lead of reminderLeadDaysToTry(cadence, leadDays)) {
+    const candidate = await buildReminderPreview({ leadDays: lead });
+    if (!candidate) continue;
+    if (candidate.targets.length === 0) {
+      lastReason = "未入力者なし";
+      continue;
     }
+    const candidateMarker = reminderDedupMarker(
+      cadence,
+      candidate.rawDate,
+      todayKey,
+    );
+    if (input.respectDedup && lastSent === candidateMarker) {
+      lastReason = "送信済み";
+      continue;
+    }
+    preview = candidate;
+    marker = candidateMarker;
+    break;
+  }
+  if (!preview) {
+    return { ok: true, posted: 0, skipped: 1, reason: lastReason };
   }
 
   const channelId =
@@ -385,7 +429,7 @@ export async function dispatchAttendanceReminder(input: {
     await supabase
       .from("app_settings")
       .upsert(
-        { key: REMINDER_LAST_SENT_KEY, value: preview.rawDate },
+        { key: REMINDER_LAST_SENT_KEY, value: marker },
         { onConflict: "key" },
       );
   } catch (e) {

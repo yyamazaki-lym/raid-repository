@@ -60,6 +60,34 @@ try {
     m.detectFf14Resource("https://www.fflogs.com/reports/x"),
     m.detectFf14Resource("https://photos.app.goo.gl/x"),
   ], ["logs", null]);
+
+  console.log("\n[W-32 (2026-09-07) 追加した判定]");
+  check("knt-a.com は攻略", m.detectFf14Resource("https://knt-a.com/ff14/x"), "guide");
+  check(
+    "xivraidplanner.app は作図 (計画共有)",
+    m.detectFf14Resource("https://xivraidplanner.app/teams/1"),
+    "plan",
+  );
+  check(
+    "xivrecruit.com は募集 (専用の種別)",
+    m.detectFf14Resource("https://xivrecruit.com/listings"),
+    "recruit",
+  );
+  check("サブドメインも拾う", m.detectFf14Resource("https://www.knt-a.com/"), "guide");
+  check(
+    "募集ラベル ja / en",
+    [m.ff14ResourceLabel("recruit"), m.ff14ResourceLabel("recruit", "en")],
+    ["募集", "Recruit"],
+  );
+  // 似た名前の別ホストを巻き込まないこと (辞書は完全一致 or サブドメイン)。
+  check(
+    "似た名前は巻き込まない",
+    [
+      m.detectFf14Resource("https://knt-a.com.example.com/"),
+      m.detectFf14Resource("https://notxivrecruit.com/"),
+    ],
+    [null, null],
+  );
 } finally {
   rmSync(outDir, { recursive: true, force: true });
 }

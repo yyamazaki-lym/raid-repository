@@ -16,6 +16,9 @@ import {
   REMINDER_EXCLUDED_KEY,
   REMINDER_HOUR_KEY,
   REMINDER_LEAD_DAYS_KEY,
+  REMINDER_CADENCE_KEY,
+  REMINDER_CADENCES,
+  type ReminderCadence,
   REMINDER_MEMBER_MAP_KEY,
   REMINDER_TEMPLATE_KEY,
 } from "@/lib/schedule/attendance-reminder-keys";
@@ -80,6 +83,19 @@ export async function setAttendanceReminderLeadDaysAction(
 }
 
 /**
+ * 催促の頻度 (W-20、2026-09-07)。`once` (既定 / 現行挙動) /
+ * `once_plus_day_of` (期限 + 当日) / `daily` (期限から当日まで毎日)。
+ */
+export async function setAttendanceReminderCadenceAction(
+  cadence: string,
+): Promise<WriteResult> {
+  if (!(REMINDER_CADENCES as readonly string[]).includes(cadence)) {
+    return { ok: false, reason: "催促の頻度の指定が不正です" };
+  }
+  return saveSetting(REMINDER_CADENCE_KEY, cadence);
+}
+
+/**
  * 表示名 → Discord ユーザー ID の対応表。UI からは
  * `[{ name, discordUserId }]` の配列で受け、JSON オブジェクトで保存する。
  */
@@ -127,6 +143,8 @@ export type AttendanceReminderSettings = {
   channelId: string;
   hour: number;
   leadDays: number;
+  /** W-20 (2026-09-07): 催促の頻度。既定 `once` = 現行挙動。 */
+  cadence: ReminderCadence;
   /** 表示名 → Discord ユーザー ID。 */
   memberMap: Record<string, string>;
   excluded: string[];
