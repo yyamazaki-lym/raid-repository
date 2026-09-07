@@ -46,6 +46,9 @@ try {
     ["至天の座アルカディア零式：ヘビー級", "AAC Heavyweight M9-M12 (Savage)"],
     ["至天の座アルカディア零式：ライトヘビー級", "AAC Light-heavyweight M1-M4 (Savage)"],
     ["至天の座アルカディア零式：クルーザー級", "AAC Cruiserweight M5-M8 (Savage)"],
+    ["万魔殿パンデモニウム零式:辺獄編", "Asphodelos"],
+    ["万魔殿パンデモニウム零式:煉獄編", "Abyssos"],
+    ["万魔殿パンデモニウム零式:天獄編", "Anabaseios"],
   ];
   for (const [ja, en] of pairs) {
     const a = g(ja), b = g(en);

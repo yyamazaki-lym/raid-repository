@@ -63,6 +63,34 @@ try {
   check("zone 不明のボス名は決めない", m.resolveFightCategory(cats, "Omega", "heavy", {}), "heavy");
   check("encounter ID はカテゴリ重複なら null → 名前へ", m.resolveCategoryByEncounter([cats[0], { ...cats[0], id: "top2" }], 1077), null);
 
+  console.log("\n[混在レポート: zone 由来カテゴリが動画リンクより優先]");
+  // 実機 6W8nkQV2BAtJqa3T: zone "Asphodelos" のレポートに絶竜詩 (encounter 1065)
+  // の pull が同居し、動画リンク由来の「絶竜詩」が零式の pull にも付いていた。
+  const mixed = [...cats, { id: "asph", name: "万魔殿パンデモニウム零式:辺獄編", slug: "ASPHODELOS", zoneIds: [], keywords: [] }];
+  check(
+    "zone Asphodelos は辺獄編カテゴリに解決する (日本語ティア名 / slug)",
+    m.resolveCategory(mixed, null, "Asphodelos", "Asphodelos"),
+    "asph",
+  );
+  const zoneCid = m.resolveCategory(mixed, null, "Asphodelos", "Asphodelos");
+  check(
+    "絶竜詩の pull は encounter ID で絶竜詩に残る",
+    m.resolveFightCategory(mixed, "Ser Adelphel / Ser Grinnaux / Ser Charibert", "dsr", { encounterId: 1065, zoneName: "Asphodelos", zoneCategoryId: zoneCid }),
+    "dsr",
+  );
+  check(
+    "零式の pull は zone 由来カテゴリへ (動画リンクの絶竜詩に落ちない)",
+    ["Erichthonios", "Hippokampos", "Phoinix", "Hesperos"].map((n, i) =>
+      m.resolveFightCategory(mixed, n, "dsr", { encounterId: 78 + i, zoneName: "Asphodelos", zoneCategoryId: zoneCid }),
+    ),
+    ["asph", "asph", "asph", "asph"],
+  );
+  check(
+    "zone から決まらないときは従来どおり動画リンク / 取り込み元",
+    m.resolveFightCategory(mixed, "Omega", "top", { encounterId: 9999, zoneName: "Ultimates (Legacy)", zoneCategoryId: null }),
+    "top",
+  );
+
   console.log("\n[代表カテゴリ]");
   check("最多", m.consensusCategory(["top", "top", "dsr", null]), "top");
   check("同数は先勝ち", m.consensusCategory(["dsr", "top"]), "dsr");

@@ -187,6 +187,7 @@ export const ja = {
     diagFailed: (reason: string) => `取得失敗: ${reason}`,
     diagOk: (zone: string, title: string, cat: string) =>
       `取得済み — zone: ${zone} / タイトル: ${title} / 台帳のカテゴリ: ${cat}`,
+    diagZoneCategory: (cat: string) => `zone から決まるコンテンツ: ${cat}`,
     diagNone: "(なし)",
     diagFights: (total: number, here: number, other: number, none: number) =>
       `pull ${total} 件 — このコンテンツ ${here} / 別コンテンツ ${other} / 未分類 ${none}`,
@@ -198,6 +199,12 @@ export const ja = {
     diagDates: (dates: string) => `日付: ${dates}`,
     diagUnresolved: "決められない",
     diagUnnamed: "(名前なし)",
+    recategorize: "いまの分類器で再分類",
+    recategorizeBusy: "再分類中...",
+    recategorized: (moved: number, unchanged: number) =>
+      moved > 0
+        ? `${moved} pull を正しいコンテンツへ移しました (${unchanged} pull は変更なし)`
+        : `移動が必要な pull はありませんでした (${unchanged} pull を確認)`,
     assign: (n: number) => `残り ${n} pull をこのコンテンツに割り当て`,
     assignBusy: "割り当て中...",
     assigned: (reports: number, fights: number) =>
@@ -432,6 +439,7 @@ export const en: LogsMessages = {
     diagBlocked: "On the exclusion list (deleted as a wrong import)",
     diagFailed: (reason) => `Fetch failed: ${reason}`,
     diagOk: (zone, title, cat) => `Fetched — zone: ${zone} / title: ${title} / ledger category: ${cat}`,
+    diagZoneCategory: (cat) => `Content implied by the zone: ${cat}`,
     diagNone: "(none)",
     diagFights: (total, here, other, none) =>
       `${total} pulls — this content ${here} / other content ${other} / unassigned ${none}`,
@@ -442,6 +450,12 @@ export const en: LogsMessages = {
     diagDates: (dates) => `Dates: ${dates}`,
     diagUnresolved: "undecided",
     diagUnnamed: "(unnamed)",
+    recategorize: "Re-classify with the current rules",
+    recategorizeBusy: "Re-classifying...",
+    recategorized: (moved, unchanged) =>
+      moved > 0
+        ? `Moved ${moved} pulls to the right content (${unchanged} unchanged)`
+        : `No pulls needed moving (${unchanged} checked)`,
     assign: (n) => `Assign the remaining ${n} pulls to this content`,
     assignBusy: "Assigning...",
     assigned: (reports, fights) => `Assigned ${reports} report(s) / ${fights} pulls to this content`,

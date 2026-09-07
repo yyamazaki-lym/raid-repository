@@ -73,13 +73,19 @@ const ULTIMATE_BOSS_GROUPS: ReadonlyArray<[RegExp, number]> = [
 export type CategoryRef = {
   id: string;
   name: string;
+  /**
+   * URL スラッグ (2026-09-07)。`ASPHODELOS` `TOP` のように英語の通称を
+   * 入れている固定が多く、日本語のカテゴリ名だけでは英語 zone 名と
+   * 突き合わせられないケースの手掛かりになる。無くてもよい。
+   */
+  slug?: string | null;
   zoneIds: number[];
   keywords: string[];
 };
 
 /** カテゴリ名 + マッチワードが落ちるグループ (呼び出しごとに計算、件数は少ない)。 */
 function categoryGroups(c: CategoryRef): Set<number> {
-  return findContentGroups([c.name, ...c.keywords].join(" "));
+  return findContentGroups([c.name, c.slug ?? "", ...c.keywords].join(" "));
 }
 
 /** テキストのグループと重なるカテゴリが **ちょうど 1 つ** ならその id。 */
@@ -168,18 +174,32 @@ export function resolveCategoryByUltimateBoss(
  *   1. encounter ID (絶の既知 ID)
  *   2. fight 名の内容分類 ("The Omega Protocol" 等)
  *   3. 絶 zone 内のボス名 ("Omega" 等、zone が絶のときだけ)
- *   4. `reportCategoryId` (レポート単位の解決結果 / 動画リンク / 取り込み元)
+ *   4. `zoneCategoryId` — レポートの zone 名 / タイトルから決まるカテゴリ
+ *   5. `reportCategoryId` (動画リンク / 取り込み元コンテンツ)
+ *
+ * 4 が 5 より先なのは、**1 レポートに複数コンテンツが混ざる** ため
+ * (実機: zone "Asphodelos" のレポートに絶竜詩の pull が同居していて、動画
+ * リンク由来の「絶竜詩」が零式の pull にも付き、pull 数とクリア数を汚して
+ * いた)。zone は「そのレポートが本来どのコンテンツか」を示すので、個別に
+ * 判定できない fight は動画リンクより zone を信じる。zone から決まらない
+ * (Ultimates (Legacy) / HTML scrape で zone 名が無い) ときは従来どおり 5。
  */
 export function resolveFightCategory(
   categories: readonly CategoryRef[],
   fightName: string | null | undefined,
   reportCategoryId: string | null,
-  ctx?: { encounterId?: number | null; zoneName?: string | null },
+  ctx?: {
+    encounterId?: number | null;
+    zoneName?: string | null;
+    /** レポートの zone / タイトルから決まるカテゴリ (動画リンクは含めない)。 */
+    zoneCategoryId?: string | null;
+  },
 ): string | null {
   return (
     resolveCategoryByEncounter(categories, ctx?.encounterId) ??
     resolveCategoryByFightName(categories, fightName) ??
     resolveCategoryByUltimateBoss(categories, fightName, ctx?.zoneName) ??
+    ctx?.zoneCategoryId ??
     reportCategoryId
   );
 }
