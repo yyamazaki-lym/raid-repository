@@ -65,6 +65,7 @@ try {
     youtubeListeningMessage,
     youtubeCommandMessage,
     parseYoutubePlayerTime,
+    explainOffset,
     OFFSET_LIMIT_SECONDS,
   } = v;
 
@@ -123,6 +124,33 @@ try {
   check("-1 秒", nudgeOffset(120, -1), 119);
   check("負の側へも越えられる", nudgeOffset(0, -1), -1);
   check("上限で止まる", nudgeOffset(OFFSET_LIMIT_SECONDS, 1), OFFSET_LIMIT_SECONDS);
+
+  console.log("\nオフセットの意味の言い直し (2026-09-07 実機の取り違え)");
+  // 実機: 動画1 は pull #1 が映っておらず (録画開始が 82 秒後)、0:22 で
+  // 始まっていたのは pull #2 だった。それを #1 と見て 22 を入れたため、
+  // 全リンクが一律 104 秒遅い位置を指していた。
+  const anchors = [
+    { fightId: 1, index: 1, startMs: first },
+    { fightId: 2, index: 2, startMs: first + 103 * 1000 },
+    { fightId: 7, index: 7, startMs: first + 3387 * 1000 },
+  ];
+  const wrong = explainOffset(22, anchors, first);
+  check("誤った 22: 最初の pull は動画の 22 秒地点ということになる", wrong.firstPullVideoSeconds, 22);
+  check("誤った 22: 最初の pull が『映っている』ことになってしまう", wrong.firstVisible.index, 1);
+  const right = explainOffset(-82, anchors, first);
+  check("正しい -82: 最初の pull は動画の -82 秒 = 映っていない", right.firstPullVideoSeconds, -82);
+  check("正しい -82: 動画に最初に映るのは #2", right.firstVisible.index, 2);
+  check("正しい -82: その #2 は動画の 21 秒地点", right.firstVisible.videoSeconds, 21);
+  check("正しい -82: #7 は 55:05 に来る", videoSecondsForPull(-82, anchors[2].startMs, first), 3305);
+  check("基準が無ければ null", explainOffset(0, anchors, null), null);
+  check("pull が無ければ null", explainOffset(0, [], first), null);
+  const allBefore = explainOffset(-99999, anchors, first);
+  check("全部が録画開始より前なら映っている pull は無い", allBefore.firstVisible, null);
+  check(
+    "0 秒ちょうどは映っている扱い",
+    explainOffset(0, anchors, first).firstVisible.index,
+    1,
+  );
 
   console.log("\nプレーヤーの origin 検証 (完全一致)");
   check("nocookie", isYoutubePlayerOrigin("https://www.youtube-nocookie.com"), true);
