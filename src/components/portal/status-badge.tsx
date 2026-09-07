@@ -105,7 +105,7 @@ export function StatusBadge({
               <span className={cn("h-1.5 w-1.5 rounded-full", STATUS_DOT[s])} aria-hidden />
               <span className="flex-1 text-sm">{m.categoryStatus.labels[s]}</span>
               {isCurrent && (
-                <span className="text-muted-foreground font-mono text-[9px] tracking-[0.22em] uppercase">
+                <span className="text-muted-foreground font-mono text-[11px] tracking-[0.22em] uppercase">
                   current
                 </span>
               )}

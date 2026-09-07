@@ -271,7 +271,7 @@ export function PullRow({
             target="_blank"
             rel="noopener noreferrer"
             title={m.logs.openFflogsTitle}
-            className="inline-flex items-center gap-1 px-1.5 py-0.5 font-mono text-[10px] tracking-[0.14em] text-amber-200 uppercase transition-colors hover:bg-amber-400/20"
+            className="inline-flex items-center gap-1 px-1.5 py-0.5 font-mono text-[11px] tracking-[0.14em] text-amber-200 uppercase transition-colors hover:bg-amber-400/20"
           >
             <BarChart3 className="h-2.5 w-2.5" aria-hidden />
             Logs
@@ -312,7 +312,7 @@ export function PullRow({
           target="_blank"
           rel="noopener noreferrer"
           title={m.logs.xivAnalysisTitle}
-          className="inline-flex items-center gap-1 rounded-sm border border-sky-400/45 bg-sky-400/10 px-1.5 py-0.5 font-mono text-[10px] tracking-[0.14em] text-sky-200 uppercase transition-colors hover:bg-sky-400/15"
+          className="inline-flex items-center gap-1 rounded-sm border border-sky-400/45 bg-sky-400/10 px-1.5 py-0.5 font-mono text-[11px] tracking-[0.14em] text-sky-200 uppercase transition-colors hover:bg-sky-400/15"
         >
           <Microscope className="h-2.5 w-2.5" aria-hidden />
           Analysis
@@ -338,7 +338,7 @@ export function PullRow({
                   rel="noopener noreferrer"
                   title={m.logs.videoMomentTitleNamed(j.name)}
                   className={
-                    `inline-flex ${slotClass} items-center justify-center gap-1 rounded-sm border border-violet-400/45 bg-violet-400/10 px-1 py-0.5 font-mono text-[10px] tracking-[0.1em] whitespace-nowrap text-violet-200 uppercase transition-colors hover:bg-violet-400/15`
+                    `inline-flex ${slotClass} items-center justify-center gap-1 rounded-sm border border-violet-400/45 bg-violet-400/10 px-1 py-0.5 font-mono text-[11px] tracking-[0.1em] whitespace-nowrap text-violet-200 uppercase transition-colors hover:bg-violet-400/15`
                   }
                 >
                   <Film className="h-2.5 w-2.5 shrink-0" aria-hidden />

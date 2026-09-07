@@ -391,7 +391,7 @@ export function ScheduleList({
   // しまう事故を防ぐ。upcoming 表は引き続き clickable のまま。
   const tableHead = (showDecided: boolean, showComments = true) => (
     <thead>
-      <tr className="border-b border-border/60 text-[10px] font-medium tracking-normal text-muted-foreground">
+      <tr className="border-b border-border/60 text-[11px] font-medium tracking-normal text-muted-foreground">
         {/* 日程列はメンバー数が増えて横スクロールに入っても左端に固定する
             (`.sticky-col`, globals.css — sm 以上でのみ固定)。thead は行 tint が
             ないので疑似要素のオーバーレイは不要。 */}
@@ -504,7 +504,7 @@ export function ScheduleList({
       {showDetailedPast && renderedPast.length > 0 && (
         <Card className={baseCardClass + "overflow-hidden p-0"}>
           <header className="flex items-center justify-between gap-2 border-b border-border/40 bg-secondary/20 px-3 py-2">
-            <div className="flex items-center gap-2 font-mono text-[10px] tracking-[0.22em] text-muted-foreground uppercase">
+            <div className="flex items-center gap-2 font-mono text-[11px] tracking-[0.22em] text-muted-foreground uppercase">
               <span className="inline-flex h-1.5 w-1.5 rounded-full bg-muted-foreground/60" />
               Past
               <span className="font-sans text-[11px] tracking-normal normal-case text-muted-foreground/85">
@@ -1208,7 +1208,7 @@ function SessionRow({
           >
             {att}
             {timesHint && (
-              <span className="ml-1 font-mono text-[9px] leading-none opacity-80 tabular-nums">
+              <span className="ml-1 font-mono text-[11px] leading-none opacity-80 tabular-nums">
                 {timesHint}
               </span>
             )}

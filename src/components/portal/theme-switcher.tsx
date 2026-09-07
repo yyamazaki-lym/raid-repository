@@ -20,7 +20,7 @@ export function ThemeSwitcher() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
-        className="group flex items-center gap-2 rounded-md border border-border/40 bg-background/30 px-2.5 py-1.5 text-[10px] tracking-normal text-muted-foreground transition-colors hover:border-[var(--neon-cyan)]/40 hover:text-foreground"
+        className="group flex items-center gap-2 rounded-md border border-border/40 bg-background/30 px-2.5 py-1.5 text-[11px] tracking-normal text-muted-foreground transition-colors hover:border-[var(--neon-cyan)]/40 hover:text-foreground"
         aria-label={m.header.themeAria}
       >
         <Palette className="h-3.5 w-3.5 text-[var(--neon-cyan)]" aria-hidden />
@@ -28,7 +28,7 @@ export function ThemeSwitcher() {
         <span className="hidden sm:inline">{currentTheme.label}</span>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" sideOffset={8} className="glass-popup min-w-64">
-        <div className="px-1.5 pt-1 pb-1 font-mono text-[10px] tracking-[0.2em] text-muted-foreground uppercase">
+        <div className="px-1.5 pt-1 pb-1 font-mono text-[11px] tracking-[0.2em] text-muted-foreground uppercase">
           Theme
         </div>
         {THEMES.map((t) => {
@@ -45,7 +45,7 @@ export function ThemeSwitcher() {
               <Swatch theme={t} />
               <div className="flex min-w-0 flex-1 flex-col leading-tight">
                 <span className="truncate text-sm">{t.title}</span>
-                <span className="font-mono text-[10px] tracking-[0.18em] text-muted-foreground uppercase">
+                <span className="font-mono text-[11px] tracking-[0.18em] text-muted-foreground uppercase">
                   v{t.version} · {t.subtitle}
                 </span>
               </div>

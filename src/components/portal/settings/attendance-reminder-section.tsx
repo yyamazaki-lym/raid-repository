@@ -214,7 +214,7 @@ export function AttendanceReminderSection({
           ON/OFF を出しておく — 「送っているのか」は開かずに知りたい情報。 */}
       <details className="group/reminder flex flex-col gap-3">
         <summary className="cursor-pointer list-none [&::-webkit-details-marker]:hidden">
-          <h3 className="flex items-center gap-2 border-b border-border/30 pb-2 font-mono text-[10px] tracking-[0.22em] text-muted-foreground uppercase transition-colors hover:text-foreground">
+          <h3 className="flex items-center gap-2 border-b border-border/30 pb-2 font-mono text-[11px] tracking-[0.22em] text-muted-foreground uppercase transition-colors hover:text-foreground">
             <span className="text-muted-foreground/80 transition-transform group-open/reminder:rotate-90">
               ▸
             </span>
@@ -225,7 +225,7 @@ export function AttendanceReminderSection({
             {m.attendanceReminder.title}
             <span
               className={
-                "ml-auto rounded-sm border px-1.5 py-px text-[9px] tracking-normal " +
+                "ml-auto rounded-sm border px-1.5 py-px text-[11px] tracking-normal " +
                 (!loaded
                   ? "border-border/50 text-muted-foreground/70"
                   : enabled
@@ -248,7 +248,7 @@ export function AttendanceReminderSection({
       <div className="flex items-center justify-between gap-2 rounded-md border border-border/40 bg-secondary/15 px-3 py-2">
         <div className="flex flex-col">
           <span className="text-xs">{m.attendanceReminder.cronLabel}</span>
-          <span className="text-[10px] text-muted-foreground/80">
+          <span className="text-[12px] text-muted-foreground/80">
             {!loaded
               ? m.common.loading
               : enabled
@@ -292,7 +292,7 @@ export function AttendanceReminderSection({
                   disabled={pending || !loaded}
                   onClick={() => onSaveCadence(c)}
                   className={
-                    "rounded-md border px-2 py-1 text-[10px] whitespace-nowrap transition-colors disabled:opacity-50 " +
+                    "rounded-md border px-2 py-1 text-[11px] whitespace-nowrap transition-colors disabled:opacity-50 " +
                     (active
                       ? "border-[var(--neon-violet)]/60 bg-[var(--neon-violet)]/12 text-[var(--neon-violet)]"
                       : "border-border/40 bg-background/30 text-muted-foreground hover:text-foreground")
@@ -303,7 +303,7 @@ export function AttendanceReminderSection({
               );
             })}
           </div>
-          <p className="text-[10px] leading-relaxed text-muted-foreground/80">
+          <p className="text-[12px] leading-relaxed text-muted-foreground/80">
             {m.attendanceReminder.cadenceHint(settings?.cadence ?? "once")}
           </p>
         </div>
@@ -355,7 +355,7 @@ export function AttendanceReminderSection({
             size="sm"
             onClick={onSaveBasics}
             disabled={pending}
-            className="gap-1.5 text-[10px] tracking-normal"
+            className="gap-1.5 text-[11px] tracking-normal"
           >
             <Save className="h-3 w-3" aria-hidden />
             {m.attendanceReminder.saveBasics}
@@ -397,7 +397,7 @@ export function AttendanceReminderSection({
                     className="h-7 min-w-0 flex-1 font-mono text-[11px] disabled:opacity-40"
                     aria-label={m.attendanceReminder.userIdAria(name)}
                   />
-                  <label className="inline-flex shrink-0 cursor-pointer items-center gap-1 text-[10px] text-muted-foreground">
+                  <label className="inline-flex shrink-0 cursor-pointer items-center gap-1 text-[12px] text-muted-foreground">
                     <input
                       type="checkbox"
                       className="h-3 w-3 accent-rose-400"
@@ -425,7 +425,7 @@ export function AttendanceReminderSection({
             size="sm"
             onClick={onSaveMembers}
             disabled={pending || names.length === 0}
-            className="gap-1.5 text-[10px] tracking-normal"
+            className="gap-1.5 text-[11px] tracking-normal"
           >
             <Save className="h-3 w-3" aria-hidden />
             {m.attendanceReminder.saveMembers}
@@ -441,7 +441,7 @@ export function AttendanceReminderSection({
           size="sm"
           onClick={onPreview}
           disabled={previewing}
-          className="gap-1.5 text-[10px] tracking-normal"
+          className="gap-1.5 text-[11px] tracking-normal"
           title={m.attendanceReminder.previewTitle}
         >
           {previewing ? (
@@ -457,7 +457,7 @@ export function AttendanceReminderSection({
           size="sm"
           onClick={onSendNow}
           disabled={sending}
-          className="gap-1.5 text-[10px] tracking-normal"
+          className="gap-1.5 text-[11px] tracking-normal"
           title={m.attendanceReminder.sendNowTitle}
         >
           {sending ? (
@@ -515,7 +515,7 @@ export function AttendanceReminderSection({
                 )}
               </p>
               {preview.excluded.length > 0 && (
-                <p className="mt-0.5 text-[10px] text-muted-foreground">
+                <p className="mt-0.5 text-[12px] text-muted-foreground">
                   {m.attendanceReminder.previewExcluded(
                     preview.excluded.join(", "),
                   )}

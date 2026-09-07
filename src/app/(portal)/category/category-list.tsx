@@ -168,7 +168,7 @@ export function CategoryList({
   return (
     <div className="flex flex-col gap-2">
       {canEdit && (
-        <p className="flex items-center gap-2 font-mono text-[10px] tracking-[0.22em] text-muted-foreground uppercase">
+        <p className="flex items-center gap-2 font-mono text-[11px] tracking-[0.22em] text-muted-foreground uppercase">
           <span className="inline-flex h-1.5 w-1.5 rounded-full bg-muted-foreground/60" />
           Drag to reorder
           <span className="font-sans text-[11px] tracking-normal normal-case text-muted-foreground/85">
@@ -369,7 +369,7 @@ function SortableCategoryCard({
               </p>
               {!viewerCanSee && (
                 <span
-                  className="inline-flex shrink-0 items-center gap-1 rounded-sm border border-badge-accent/40 bg-badge-accent/10 px-1.5 py-px font-mono text-[9px] tracking-[0.18em] text-badge-accent-fg uppercase"
+                  className="inline-flex shrink-0 items-center gap-1 rounded-sm border border-badge-accent/40 bg-badge-accent/10 px-1.5 py-px font-mono text-[11px] tracking-[0.18em] text-badge-accent-fg uppercase"
                   title={m.categoryList.lockedTitle(category.requiredRoleIds.length)}
                 >
                   <Lock className="h-2.5 w-2.5" aria-hidden />
@@ -432,7 +432,7 @@ function SortableCategoryCard({
                     { scroll: false },
                   );
                 }}
-                className="inline-flex items-center gap-1 rounded-sm border border-badge-accent/45 bg-badge-accent/10 px-1.5 py-px font-mono text-[9px] tracking-[0.18em] text-badge-accent-fg uppercase transition-colors hover:border-badge-accent/80 hover:bg-badge-accent/20"
+                className="inline-flex items-center gap-1 rounded-sm border border-badge-accent/45 bg-badge-accent/10 px-1.5 py-px font-mono text-[11px] tracking-[0.18em] text-badge-accent-fg uppercase transition-colors hover:border-badge-accent/80 hover:bg-badge-accent/20"
                 title={m.categoryList.firstClearTitle(
                   formatFirstClear(category.firstClearAt, "long", locale),
                 )}
@@ -444,7 +444,7 @@ function SortableCategoryCard({
               // Trophy が無いカードでもサイズを揃える placeholder。
               <span
                 aria-hidden
-                className="invisible inline-flex items-center gap-1 rounded-sm border px-1.5 py-px font-mono text-[9px] tracking-[0.18em] uppercase"
+                className="invisible inline-flex items-center gap-1 rounded-sm border px-1.5 py-px font-mono text-[11px] tracking-[0.18em] uppercase"
               >
                 <Trophy className="h-2.5 w-2.5" aria-hidden />
                 0000-00-00
@@ -461,7 +461,7 @@ function SortableCategoryCard({
                 // (クリア達成感)、未クリア = violet (進行中・練習感)。これで
                 // 一覧上でクリア状況が色だけで一目で判別できる。
                 className={
-                  "inline-flex items-center gap-1 rounded-sm border px-1.5 py-px font-mono text-[9px] tracking-[0.18em] " +
+                  "inline-flex items-center gap-1 rounded-sm border px-1.5 py-px font-mono text-[11px] tracking-[0.18em] " +
                   (isCleared
                     ? "border-badge-clear/45 bg-badge-clear/10 text-badge-clear-fg"
                     : "border-badge-progress/45 bg-badge-progress/10 text-badge-progress-fg")
@@ -476,7 +476,7 @@ function SortableCategoryCard({
               // Hourglass が無いカードでもサイズを揃える placeholder。
               <span
                 aria-hidden
-                className="invisible inline-flex items-center gap-1 rounded-sm border px-1.5 py-px font-mono text-[9px] tracking-[0.18em]"
+                className="invisible inline-flex items-center gap-1 rounded-sm border px-1.5 py-px font-mono text-[11px] tracking-[0.18em]"
               >
                 <Hourglass className="h-2.5 w-2.5" aria-hidden />
                 →000h
@@ -485,7 +485,7 @@ function SortableCategoryCard({
             <div className="flex items-center gap-1">
               {recentImports > 0 ? (
                 <span
-                  className="inline-flex items-center gap-1 rounded-sm border border-badge-recent/40 bg-badge-recent/10 px-1.5 py-px font-mono text-[9px] tracking-[0.18em] text-badge-recent-fg uppercase"
+                  className="inline-flex items-center gap-1 rounded-sm border border-badge-recent/40 bg-badge-recent/10 px-1.5 py-px font-mono text-[11px] tracking-[0.18em] text-badge-recent-fg uppercase"
                   title={m.categoryList.recentImportsTitle(recentImports)}
                 >
                   +{recentImports}/wk
@@ -495,7 +495,7 @@ function SortableCategoryCard({
                 // `invisible` で確保し、⋮ の位置がぶれないようにする。
                 <span
                   aria-hidden
-                  className="invisible inline-flex items-center gap-1 rounded-sm border px-1.5 py-px font-mono text-[9px] tracking-[0.18em] uppercase"
+                  className="invisible inline-flex items-center gap-1 rounded-sm border px-1.5 py-px font-mono text-[11px] tracking-[0.18em] uppercase"
                 >
                   +0/wk
                 </span>

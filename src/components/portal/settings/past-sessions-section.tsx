@@ -245,7 +245,7 @@ export function PastSessionsSection({
     <section className="flex flex-col gap-3">
       <header className="flex items-center gap-2 border-b border-border/30 pb-2">
         <History className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
-        <span className="font-mono text-[10px] tracking-[0.22em] text-muted-foreground uppercase">
+        <span className="font-mono text-[11px] tracking-[0.22em] text-muted-foreground uppercase">
           Past Sessions from Discord
         </span>
       </header>
@@ -272,7 +272,7 @@ export function PastSessionsSection({
           <strong>{m.pastSessions.channelHelpStrong}</strong>
           {m.pastSessions.channelHelpAfter}
         </p>
-        <p className="text-muted-foreground/80 text-[10px] leading-relaxed">
+        <p className="text-muted-foreground/80 text-[12px] leading-relaxed">
           {m.pastSessions.botAccessNote}
         </p>
       </div>
@@ -376,7 +376,7 @@ export function PastSessionsSection({
                       importResult.cleanedFuture ?? 0,
                     )}
                 </p>
-                <p className="text-muted-foreground text-[10px]">
+                <p className="text-muted-foreground text-[12px]">
                   {m.pastSessions.importNote}
                 </p>
               </>
@@ -416,7 +416,7 @@ export function PastSessionsSection({
                   </>
                 )}
               </p>
-              <p className="text-muted-foreground text-[10px]">
+              <p className="text-muted-foreground text-[12px]">
                 {m.pastSessions.snapshotNote}
               </p>
             </>
@@ -447,7 +447,7 @@ export function PastSessionsSection({
                 {m.pastSessions.excludedCountAfter}
               </p>
               {excludedInfo.rows.length > 0 && (
-                <ul className="font-mono text-[10px] text-muted-foreground">
+                <ul className="font-mono text-[12px] text-muted-foreground">
                   {excludedInfo.rows.map((row) => (
                     <li
                       key={row.rawDate}
@@ -471,7 +471,7 @@ export function PastSessionsSection({
                   ))}
                 </ul>
               )}
-              <p className="mt-1 text-muted-foreground text-[10px]">
+              <p className="mt-1 text-muted-foreground text-[12px]">
                 {m.pastSessions.excludedNote}
               </p>
             </>
@@ -500,7 +500,7 @@ export function PastSessionsSection({
                 {m.pastSessions.storedCount} <strong>{storedInfo.count}</strong>
               </p>
               {storedInfo.recentRows.length > 0 && (
-                <ul className="font-mono text-[10px] text-muted-foreground">
+                <ul className="font-mono text-[12px] text-muted-foreground">
                   <li className="mb-0.5">
                     {m.pastSessions.recentRows(storedInfo.recentRows.length)}
                   </li>
@@ -532,7 +532,7 @@ export function PastSessionsSection({
                   ))}
                 </ul>
               )}
-              <p className="mt-1 text-muted-foreground text-[10px]">
+              <p className="mt-1 text-muted-foreground text-[12px]">
                 {m.pastSessions.storedNote}
               </p>
             </>

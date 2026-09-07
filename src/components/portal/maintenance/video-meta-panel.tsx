@@ -19,12 +19,12 @@ export function VideoMetaPanel({
   const t = useMessages().maintenancePanels;
   return (
     <>
-      <p className="mb-2 pr-6 text-[10px] font-medium tracking-normal text-muted-foreground">
+      <p className="mb-2 pr-6 text-[11px] font-medium tracking-normal text-muted-foreground">
         {t.videoMetaTitle}
       </p>
       <div className="flex flex-col gap-2 text-[11px] leading-relaxed">
         <section>
-          <p className="font-mono text-[10px] text-violet-300/85 tracking-[0.18em] uppercase">
+          <p className="font-mono text-[11px] text-violet-300/85 tracking-[0.18em] uppercase">
             YouTube (duration / uploadDate)
           </p>
           <ul className="mt-0.5 flex flex-col gap-0.5">
@@ -49,13 +49,13 @@ export function VideoMetaPanel({
                 </span>
               </li>
             )}
-            <li className="text-[10px] text-muted-foreground">
+            <li className="text-[12px] text-muted-foreground">
               {t.target(durations.scanned)}
             </li>
           </ul>
         </section>
         <section>
-          <p className="font-mono text-[10px] text-emerald-300/85 tracking-[0.18em] uppercase">
+          <p className="font-mono text-[11px] text-emerald-300/85 tracking-[0.18em] uppercase">
             Discord (posted_at)
           </p>
           <ul className="mt-0.5 flex flex-col gap-0.5">
@@ -73,12 +73,12 @@ export function VideoMetaPanel({
               </span>
               <span className="text-muted-foreground">{t.count}</span>
             </li>
-            <li className="text-[10px] text-muted-foreground">
+            <li className="text-[12px] text-muted-foreground">
               {t.scanned(postedAt.scannedMessages, postedAt.scannedUrls)}
             </li>
           </ul>
           {postedAt.channels.length > 0 && (
-            <ul className="mt-1 flex flex-col gap-0.5 text-[10px] leading-relaxed">
+            <ul className="mt-1 flex flex-col gap-0.5 text-[12px] leading-relaxed">
               {postedAt.channels.map((c, i) => (
                 <li
                   key={i}

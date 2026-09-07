@@ -39,13 +39,13 @@ export function StatCard({
           : "border-border/40 bg-secondary/15")
       }
     >
-      <span className="font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase">
+      <span className="font-mono text-[11px] tracking-[0.14em] text-muted-foreground uppercase">
         {label}
       </span>
       {/* 2026-08-30: PC では一回り大きく (実機報告「PC から見ると小さい」)。 */}
       <span className="font-display text-lg tabular-nums sm:text-xl">{value}</span>
       {sub && (
-        <span className="truncate text-[10px] text-muted-foreground sm:text-[11px]">
+        <span className="truncate text-[11px] text-muted-foreground sm:text-[11px]">
           {sub}
         </span>
       )}
@@ -92,7 +92,7 @@ export function PullBreakdownChips({
       {items.map((b) => (
         <li
           key={b.label}
-          className="inline-flex items-baseline gap-1 whitespace-nowrap font-mono text-[10px] tabular-nums"
+          className="inline-flex items-baseline gap-1 whitespace-nowrap font-mono text-[12px] tabular-nums"
         >
           <span className={tone(b)}>{b.label}</span>
           <span className="text-muted-foreground">{b.count}</span>

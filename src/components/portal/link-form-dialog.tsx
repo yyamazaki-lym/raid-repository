@@ -282,7 +282,7 @@ export function LinkFormDialog({
                 type="button"
                 onClick={onFetchTitle}
                 disabled={fetchingTitle || !url.trim()}
-                className="inline-flex items-center gap-1 rounded-sm border border-[var(--neon-cyan)]/40 bg-[var(--neon-cyan)]/8 px-2 py-0.5 text-[10px] tracking-normal text-[var(--neon-cyan)] transition-colors hover:bg-[var(--neon-cyan)]/15 disabled:opacity-40"
+                className="inline-flex items-center gap-1 rounded-sm border border-[var(--neon-cyan)]/40 bg-[var(--neon-cyan)]/8 px-2 py-0.5 text-[11px] tracking-normal text-[var(--neon-cyan)] transition-colors hover:bg-[var(--neon-cyan)]/15 disabled:opacity-40"
                 aria-label={m.linkForm.fetchTitleAria}
               >
                 <Wand2 className="h-3 w-3" aria-hidden />

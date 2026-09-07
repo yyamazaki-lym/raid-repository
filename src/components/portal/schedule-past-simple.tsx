@@ -98,14 +98,14 @@ export function SchedulePastSimple({
   return (
     <Card className="glass overflow-hidden p-0">
       <header className="flex items-center justify-between gap-2 border-b border-border/40 bg-secondary/20 px-3 py-2">
-        <div className="flex items-center gap-2 font-mono text-[10px] tracking-[0.22em] text-muted-foreground uppercase">
+        <div className="flex items-center gap-2 font-mono text-[11px] tracking-[0.22em] text-muted-foreground uppercase">
           <span className="inline-flex h-1.5 w-1.5 rounded-full bg-muted-foreground/60" />
           Past
           <span className="font-sans text-[11px] tracking-normal normal-case text-muted-foreground/85">
             {m.pastSimple.subtitle}
           </span>
         </div>
-        <span className="text-[10px] tabular-nums text-muted-foreground/80">
+        <span className="text-[12px] tabular-nums text-muted-foreground/80">
           {m.pastSimple.recentCount(recent.length)}
         </span>
       </header>

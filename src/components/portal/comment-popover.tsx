@@ -201,7 +201,7 @@ export function CommentPopover({
                 aria-hidden
               />
               <span
-                className="min-w-0 truncate text-[9px] tracking-normal text-muted-foreground"
+                className="min-w-0 truncate text-[11px] tracking-normal text-muted-foreground"
                 title={user.name}
               >
                 {m.comment.quip(user.name)}
@@ -214,7 +214,7 @@ export function CommentPopover({
                     {c.body || "—"}
                   </p>
                   {c.timestamp && (
-                    <span className="font-mono text-[9px] text-muted-foreground">
+                    <span className="font-mono text-[12px] text-muted-foreground">
                       {c.timestamp}
                     </span>
                   )}

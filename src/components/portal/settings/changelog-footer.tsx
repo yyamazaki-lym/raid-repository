@@ -103,7 +103,7 @@ export function ChangelogFooter({
                 });
             }
           }}
-          className="h-8 gap-1.5 rounded-md px-3 text-[10px] tracking-normal"
+          className="h-8 gap-1.5 rounded-md px-3 text-[11px] tracking-normal"
           title={m.changelogFooter.toggleTitle}
           aria-expanded={showChangelog}
           aria-busy={loadingReleases}
@@ -118,7 +118,7 @@ export function ChangelogFooter({
           target="_blank"
           rel="noopener noreferrer"
           title={m.changelogFooter.githubTitle}
-          className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border/60 bg-background/40 px-3 font-mono text-[10px] tracking-[0.18em] text-muted-foreground uppercase transition-colors hover:border-[var(--neon-cyan)]/60 hover:bg-secondary/40 hover:text-foreground"
+          className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border/60 bg-background/40 px-3 font-mono text-[11px] tracking-[0.18em] text-muted-foreground uppercase transition-colors hover:border-[var(--neon-cyan)]/60 hover:bg-secondary/40 hover:text-foreground"
         >
           <GithubMark className="h-3 w-3" />
           Source
@@ -132,7 +132,7 @@ export function ChangelogFooter({
           target="_blank"
           rel="noopener noreferrer"
           title={m.changelogFooter.lodestoneTitle}
-          className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border/60 bg-background/40 px-3 font-mono text-[10px] tracking-[0.18em] text-muted-foreground uppercase transition-colors hover:border-[var(--neon-cyan)]/60 hover:bg-secondary/40 hover:text-foreground"
+          className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border/60 bg-background/40 px-3 font-mono text-[11px] tracking-[0.18em] text-muted-foreground uppercase transition-colors hover:border-[var(--neon-cyan)]/60 hover:bg-secondary/40 hover:text-foreground"
         >
           <Link2 className="h-3 w-3" aria-hidden />
           Lodestone
@@ -148,7 +148,7 @@ export function ChangelogFooter({
           <Link
             href={`/login?next=${encodeURIComponent(pathname)}`}
             title={m.changelogFooter.signInTitle}
-            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[var(--neon-cyan)]/30 bg-[var(--neon-cyan)]/5 px-3 font-mono text-[10px] tracking-[0.18em] text-[var(--neon-cyan)]/85 uppercase transition-colors hover:border-[var(--neon-cyan)]/60 hover:bg-[var(--neon-cyan)]/10 hover:text-[var(--neon-cyan)]"
+            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[var(--neon-cyan)]/30 bg-[var(--neon-cyan)]/5 px-3 font-mono text-[11px] tracking-[0.18em] text-[var(--neon-cyan)]/85 uppercase transition-colors hover:border-[var(--neon-cyan)]/60 hover:bg-[var(--neon-cyan)]/10 hover:text-[var(--neon-cyan)]"
           >
             <LogIn className="h-3 w-3" aria-hidden />
             Sign in
@@ -176,7 +176,7 @@ export function ChangelogFooter({
             <button
               type="submit"
               title={m.changelogFooter.signOut}
-              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-rose-400/30 bg-rose-400/5 px-3 font-mono text-[10px] tracking-[0.18em] text-rose-300 uppercase transition-colors hover:border-rose-400/60 hover:bg-rose-400/10 hover:text-rose-200"
+              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-rose-400/30 bg-rose-400/5 px-3 font-mono text-[11px] tracking-[0.18em] text-rose-300 uppercase transition-colors hover:border-rose-400/60 hover:bg-rose-400/10 hover:text-rose-200"
             >
               <LogOut className="h-3 w-3" aria-hidden />
               Sign out
@@ -186,7 +186,7 @@ export function ChangelogFooter({
       </div>
       {showChangelog && (
         <div className="flex flex-col gap-3 rounded-sm border border-border/40 bg-secondary/20 px-3 py-2.5 text-[11px] leading-relaxed">
-          <p className="text-[10px] tracking-normal text-muted-foreground">
+          <p className="text-[11px] tracking-normal text-muted-foreground">
             {m.changelogFooter.heading}
           </p>
           {(() => {
@@ -195,7 +195,7 @@ export function ChangelogFooter({
                 <p
                   className={
                     releasesError
-                      ? "text-[10px] text-rose-400/80"
+                      ? "text-[12px] text-rose-400/80"
                       : "text-muted-foreground"
                   }
                   role="status"
@@ -225,18 +225,18 @@ export function ChangelogFooter({
                       <summary className="flex cursor-pointer list-none items-baseline gap-2 select-none outline-none [&::-webkit-details-marker]:hidden">
                         <span
                           aria-hidden
-                          className="inline-block w-2 text-[10px] text-muted-foreground transition-transform duration-150 group-open/release:rotate-90"
+                          className="inline-block w-2 text-[12px] text-muted-foreground transition-transform duration-150 group-open/release:rotate-90"
                         >
                           ▶
                         </span>
                         <span className="font-mono text-[12px] font-bold text-[var(--neon-cyan)]">
                           v{r.version}
                         </span>
-                        <span className="font-mono text-[10px] text-muted-foreground">
+                        <span className="font-mono text-[12px] text-muted-foreground">
                           {r.date}
                         </span>
                         {r.parts && (
-                          <span className="font-mono text-[9px] tracking-[0.18em] text-muted-foreground/70 uppercase">
+                          <span className="font-mono text-[11px] tracking-[0.18em] text-muted-foreground/70 uppercase">
                             {r.parts.length} parts
                           </span>
                         )}
@@ -255,7 +255,7 @@ export function ChangelogFooter({
                               </li>
                             ))}
                             {r.parts.length > 5 && (
-                              <li className="font-mono text-[9px] tracking-[0.18em] text-muted-foreground/70 uppercase">
+                              <li className="font-mono text-[11px] tracking-[0.18em] text-muted-foreground/70 uppercase">
                                 … +{r.parts.length - 5} more
                               </li>
                             )}
@@ -299,7 +299,7 @@ export function ChangelogFooter({
                   });
               }}
               disabled={loadingArchive}
-              className="self-start cursor-pointer rounded-sm border border-[var(--neon-cyan)]/30 bg-secondary/30 px-2.5 py-1 text-[10px] tracking-normal text-[var(--neon-cyan)]/85 transition-colors hover:border-[var(--neon-cyan)]/60 hover:bg-secondary/50 hover:text-[var(--neon-cyan)] disabled:cursor-wait disabled:opacity-60"
+              className="self-start cursor-pointer rounded-sm border border-[var(--neon-cyan)]/30 bg-secondary/30 px-2.5 py-1 text-[11px] tracking-normal text-[var(--neon-cyan)]/85 transition-colors hover:border-[var(--neon-cyan)]/60 hover:bg-secondary/50 hover:text-[var(--neon-cyan)] disabled:cursor-wait disabled:opacity-60"
               aria-busy={loadingArchive}
             >
               {loadingArchive
@@ -308,7 +308,7 @@ export function ChangelogFooter({
             </button>
           ) : null}
           {archiveError && (
-            <p className="text-[10px] text-rose-400/80" role="status">
+            <p className="text-[12px] text-rose-400/80" role="status">
               {archiveError}
             </p>
           )}
@@ -316,7 +316,7 @@ export function ChangelogFooter({
             href="https://github.com/yyamazaki-lym/raid-repository/commits/main"
             target="_blank"
             rel="noopener noreferrer"
-            className="self-start text-[10px] tracking-normal text-[var(--neon-cyan)]/85 transition-colors hover:text-[var(--neon-cyan)]"
+            className="self-start text-[11px] tracking-normal text-[var(--neon-cyan)]/85 transition-colors hover:text-[var(--neon-cyan)]"
             title={m.changelogFooter.commitLogTitle}
           >
             {m.changelogFooter.commitLog}

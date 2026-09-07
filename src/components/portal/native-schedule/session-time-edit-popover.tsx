@@ -205,7 +205,7 @@ export function SessionTimeEditPopover({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
         className={
-          "inline-flex h-5 w-5 items-center justify-center rounded-sm border text-[10px] leading-none transition-all hover:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--neon-cyan)]/60 active:scale-95 " +
+          "inline-flex h-5 w-5 items-center justify-center rounded-sm border text-[11px] leading-none transition-all hover:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--neon-cyan)]/60 active:scale-95 " +
           (isOverridden
             ? "border-[var(--neon-cyan)]/50 bg-[var(--neon-cyan)]/10 text-[var(--neon-cyan)]"
             : "border-border/40 text-muted-foreground/70 hover:text-foreground ") +
@@ -237,13 +237,13 @@ export function SessionTimeEditPopover({
         >
           <div className="flex flex-col gap-3 p-3">
             <div className="flex items-center gap-1.5 border-b border-border/50 pb-1.5">
-              <span className="text-[9px] font-medium tracking-normal text-muted-foreground">
+              <span className="text-[11px] font-medium tracking-normal text-muted-foreground">
                 {m.sessionTime.header(displayDate)}
               </span>
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <span className="text-[10px] tracking-normal text-muted-foreground">
+              <span className="text-[11px] tracking-normal text-muted-foreground">
                 {m.sessionTime.rangeLabel}
               </span>
               <div className="flex items-center gap-1.5">
@@ -263,7 +263,7 @@ export function SessionTimeEditPopover({
                   className="h-7 w-24 text-xs"
                 />
               </div>
-              <span className="text-[10px] text-muted-foreground/80">
+              <span className="text-[12px] text-muted-foreground/80">
                 {m.sessionTime.defaultPrefix}{" "}
                 {/* nowrap: 「21:00 / 〜24:00」の分断を防ぐ (〜 は改行可能文字)。 */}
                 <span className="whitespace-nowrap">
@@ -280,7 +280,7 @@ export function SessionTimeEditPopover({
             {/* 2.8 (2026-06-10) TODO #81 follow-up: note Textarea。空文字で
                 NULL 化 (= 備考削除)。CandidateDateDialog と同じ maxLength=200。 */}
             <div className="flex flex-col gap-1.5">
-              <span className="text-[10px] tracking-normal text-muted-foreground">
+              <span className="text-[11px] tracking-normal text-muted-foreground">
                 {m.sessionTime.noteLabel}
               </span>
               <Textarea
@@ -312,7 +312,7 @@ export function SessionTimeEditPopover({
                 size="sm"
                 onClick={onResetToDefault}
                 disabled={busy || !isOverridden}
-                className="gap-1 text-[10px] tracking-normal"
+                className="gap-1 text-[11px] tracking-normal"
                 title={m.sessionTime.resetTitle}
               >
                 <RotateCcw className="h-3 w-3" aria-hidden />
@@ -325,7 +325,7 @@ export function SessionTimeEditPopover({
                 size="sm"
                 onClick={onCancel}
                 disabled={busy}
-                className="text-[10px] tracking-normal"
+                className="text-[11px] tracking-normal"
               >
                 {m.common.cancel}
               </Button>
@@ -334,7 +334,7 @@ export function SessionTimeEditPopover({
                 size="sm"
                 onClick={onSave}
                 disabled={busy}
-                className="gap-1 text-[10px] tracking-normal"
+                className="gap-1 text-[11px] tracking-normal"
               >
                 <Save className="h-3 w-3" aria-hidden />
                 {busy ? m.common.saving : m.common.save}

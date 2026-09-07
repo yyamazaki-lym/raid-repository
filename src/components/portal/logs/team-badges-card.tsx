@@ -26,7 +26,7 @@ export function TeamBadgesCard({ badges }: { badges: TeamBadge[] }) {
 
   return (
     <section className="flex flex-col gap-1.5 rounded-md border border-border/40 bg-secondary/10 px-3 py-2">
-      <h3 className="inline-flex items-center gap-1.5 font-mono text-[10px] tracking-[0.16em] text-muted-foreground uppercase">
+      <h3 className="inline-flex items-center gap-1.5 font-mono text-[11px] tracking-[0.16em] text-muted-foreground uppercase">
         <Award className="h-3 w-3 text-amber-300" aria-hidden />
         {m.teamBadges.title}
       </h3>
@@ -48,7 +48,7 @@ export function TeamBadgesCard({ badges }: { badges: TeamBadge[] }) {
               <span className="opacity-80">{m.teamBadges.times(b.value)}</span>
             )}
             {b.date && (
-              <span className="text-[10px] opacity-60">{b.date}</span>
+              <span className="text-[12px] opacity-60">{b.date}</span>
             )}
           </li>
         ))}

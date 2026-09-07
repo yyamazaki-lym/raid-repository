@@ -42,7 +42,7 @@ export function DangerZoneSection({
       <section>
         <details className="group/danger flex flex-col gap-3">
           <summary className="cursor-pointer list-none [&::-webkit-details-marker]:hidden">
-            <h3 className="flex items-center gap-2 border-b border-border/30 pb-2 font-mono text-[10px] tracking-[0.22em] text-rose-300 uppercase transition-colors hover:text-rose-200">
+            <h3 className="flex items-center gap-2 border-b border-border/30 pb-2 font-mono text-[11px] tracking-[0.22em] text-rose-300 uppercase transition-colors hover:text-rose-200">
               <span className="text-rose-300/80 transition-transform group-open/danger:rotate-90">
                 ▸
               </span>

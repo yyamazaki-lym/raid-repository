@@ -68,7 +68,7 @@ export function ScheduleOnboarding() {
         <div className="flex flex-col gap-1.5">
           <Label
             htmlFor="onboard-url"
-            className="text-[10px] font-medium tracking-normal text-muted-foreground"
+            className="text-[11px] font-medium tracking-normal text-muted-foreground"
           >
             {m.onboarding.urlLabel}
           </Label>

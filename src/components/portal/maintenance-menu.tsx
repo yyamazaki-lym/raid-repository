@@ -531,7 +531,7 @@ export function MaintenanceMenu() {
               )}
               {m.maintenance.discordItem}
             </span>
-            <span className="pl-5 text-[10px] text-muted-foreground whitespace-nowrap">
+            <span className="pl-5 text-[12px] text-muted-foreground whitespace-nowrap">
               {m.maintenance.discordItemDesc}
             </span>
           </DropdownMenuItem>
@@ -548,7 +548,7 @@ export function MaintenanceMenu() {
               )}
               {m.maintenance.videoMetaItem}
             </span>
-            <span className="pl-5 text-[10px] text-muted-foreground whitespace-nowrap">
+            <span className="pl-5 text-[12px] text-muted-foreground whitespace-nowrap">
               {m.maintenance.videoMetaItemDesc}
             </span>
           </DropdownMenuItem>
@@ -565,7 +565,7 @@ export function MaintenanceMenu() {
               )}
               {m.maintenance.firstClearItem}
             </span>
-            <span className="pl-5 text-[10px] text-muted-foreground whitespace-nowrap">
+            <span className="pl-5 text-[12px] text-muted-foreground whitespace-nowrap">
               {m.maintenance.firstClearItemDesc}
             </span>
           </DropdownMenuItem>
@@ -586,7 +586,7 @@ export function MaintenanceMenu() {
               )}
               {m.maintenance.thumbItem}
             </span>
-            <span className="pl-5 text-[10px] text-muted-foreground whitespace-nowrap">
+            <span className="pl-5 text-[12px] text-muted-foreground whitespace-nowrap">
               {m.maintenance.thumbItemDesc}
             </span>
           </DropdownMenuItem>
@@ -603,7 +603,7 @@ export function MaintenanceMenu() {
               )}
               {m.maintenance.thumbForceItem}
             </span>
-            <span className="pl-5 text-[10px] text-muted-foreground whitespace-nowrap">
+            <span className="pl-5 text-[12px] text-muted-foreground whitespace-nowrap">
               {m.maintenance.thumbForceItemDesc}
             </span>
           </DropdownMenuItem>
