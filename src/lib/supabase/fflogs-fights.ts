@@ -12,6 +12,8 @@ import {
   phaseTimeTotals,
   type PhaseSpan,
   type PhaseTimeTotal,
+  firstPhaseReaches,
+  type PhaseFirstReach,
 } from "@/lib/fflogs-fight-detail";
 
 /**
@@ -316,21 +318,32 @@ function rethrowNextSentinel(err: unknown): void {
  *
  * 戻り値の `pulls` は区間が取れた pull 数 (= 合計の母数)。フェーズ遷移が
  * 保存されていない pull (古い同期分) は数えない。
+ *
+ * 2026-09-07: あわせて「各フェーズへの初到達」(`firstReach`) も返す。こちらは
+ * フェーズ遷移が無い pull でも `last_phase` があれば数えられるので、全 pull を
+ * 対象にする (pull 数がフェーズ滞在時間の母数とは一致しない)。
  */
-export async function fetchCategoryPhaseTotals(
-  categoryId: string,
-): Promise<{ totals: PhaseTimeTotal[]; pulls: number } | null> {
+export async function fetchCategoryPhaseTotals(categoryId: string): Promise<{
+  totals: PhaseTimeTotal[];
+  pulls: number;
+  firstReach: PhaseFirstReach[];
+} | null> {
   const supabase = await createClient();
   const PAGE = 1000;
   const MAX_PAGES = 20;
   const spansList: Array<PhaseSpan[] | null> = [];
+  const reaches: Array<{
+    startMs: number;
+    durationMs: number;
+    reachedPhase: number | null;
+    date: string | null;
+  }> = [];
   try {
     for (let page = 0; page < MAX_PAGES; page++) {
       const { data, error } = await supabase
         .from("fflogs_fights")
-        .select("start_ms, end_ms, phase_transitions")
+        .select("start_ms, end_ms, phase_transitions, last_phase, session_date")
         .eq("category_id", categoryId)
-        .not("phase_transitions", "is", null)
         .order("start_ms", { ascending: false })
         .range(page * PAGE, page * PAGE + PAGE - 1);
       if (error) {
@@ -342,9 +355,26 @@ export async function fetchCategoryPhaseTotals(
         const startMs = Number(r.start_ms);
         const endMs = Number(r.end_ms);
         if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) continue;
-        spansList.push(
-          phaseSpans(asPhaseTransitions(r.phase_transitions), Math.max(0, endMs - startMs)),
-        );
+        const durationMs = Math.max(0, endMs - startMs);
+        const transitions = asPhaseTransitions(r.phase_transitions);
+        if (transitions !== null) spansList.push(phaseSpans(transitions, durationMs));
+        // 到達フェーズ: last_phase が基本。遷移が取れていればその最大 ID とも
+        // 突き合わせる (片方しか無いレポートがあるため)。
+        const lastPhase = numberOrNull(r.last_phase);
+        const maxTransition =
+          transitions && transitions.length > 0
+            ? Math.max(...transitions.map((t) => t.id))
+            : null;
+        const reachedPhase =
+          lastPhase === null && maxTransition === null
+            ? null
+            : Math.max(lastPhase ?? 0, maxTransition ?? 0);
+        reaches.push({
+          startMs,
+          durationMs,
+          reachedPhase,
+          date: typeof r.session_date === "string" ? r.session_date : null,
+        });
       }
       if (rows.length < PAGE) break;
     }
@@ -354,5 +384,9 @@ export async function fetchCategoryPhaseTotals(
   }
   const totals = phaseTimeTotals(spansList);
   if (totals.length === 0) return null;
-  return { totals, pulls: spansList.filter((s) => s !== null).length };
+  return {
+    totals,
+    pulls: spansList.filter((s) => s !== null).length,
+    firstReach: firstPhaseReaches(reaches),
+  };
 }
