@@ -86,6 +86,7 @@ export function pullAnchorId(reportCode: string, fightId: number): string {
 export function PullRow({
   index,
   fight,
+  categoryId,
   videos,
   showPhase,
   floors,
@@ -95,6 +96,8 @@ export function PullRow({
 }: {
   index: number;
   fight: FightRow;
+  /** W-7 (2026-09-08): ミス注釈をコンテンツ単位で集計するための非正規化キー。 */
+  categoryId: string | null;
   /** この pull のレポートに紐づいた動画 (0..n 本)。オフセットは 1 本ごと。 */
   videos: ReportVideoLink[];
   showPhase: boolean;
@@ -507,6 +510,7 @@ export function PullRow({
         <PullDetailPanel
           reportCode={fight.reportCode}
           fightId={fight.fightId}
+          categoryId={categoryId}
         />
       )}
     </li>

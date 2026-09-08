@@ -31,6 +31,7 @@ import { formatSignedOffset, videoName } from "./video-link";
 
 export function DayRow({
   day,
+  categoryId,
   jumpNonce,
   onDeleteReport,
   deletingCode,
@@ -43,6 +44,8 @@ export function DayRow({
   firstPullStartByReport,
   onEditOffset,
 }: {
+  /** W-7 (2026-09-08): ミス注釈の集計キー。PullRow へ drill する。 */
+  categoryId: string | null;
   day: DaySummary;
   /**
    * 「日ごとの到達度」の日付クリックで飛んできたときに増える値
@@ -360,6 +363,7 @@ export function DayRow({
                 key={`${f.reportCode}:${f.fightId}`}
                 index={i + 1}
                 fight={f}
+                categoryId={categoryId}
                 videos={videoLinks[f.reportCode] ?? []}
                 showPhase={showPhase}
                 floors={floors}

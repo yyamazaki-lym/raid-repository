@@ -1532,6 +1532,67 @@ GRANT EXECUTE ON FUNCTION public.next_category_waymark_sort_order(uuid)
 GRANT EXECUTE ON FUNCTION public.next_category_bis_link_sort_order(uuid)
   TO anon, authenticated;
 
+-- ---- 6b-10. ミス注釈 (W-7、2026-09-08) --------------------------------
+-- pull ごとの「なぜ崩れたか」を人が付けるタグ。FFLogs は「何が起きたか」
+-- (誰がいつ何で落ちたか) までしか持たないので、そこに人の判断を重ねる。
+--
+-- ⚠ **既定はチーム帰属** (`scope='team'`)。調査ノート第 4 回 7-A W-7 の
+--   デメリット欄が「個人責任の可視化は雰囲気悪化の恐れ」で、そのための
+--   運用設計がこの列。`scope='self'` は **本人が自分に付けるときだけ**
+--   許す (Server Action が `discord_user_id = 本人` を強制する)。
+--   他人に付ける個人タグは作れない。
+--
+-- タグの語彙はアプリ側の固定リスト (`src/lib/logs/pull-note-tags.ts`) で、
+-- DB では CHECK せず 32 文字の自由文字列にしてある。理由は 2 つ:
+--   - 語彙を増やすたびに schema を触ると、デプロイ順で新タグが弾かれる
+--   - 集計はアプリ側の既知リストとの突き合わせで行い、知らないタグは
+--     「その他」に落とす (attendance-summary の記号と同じ方針)
+CREATE TABLE IF NOT EXISTS public.fflogs_pull_notes (
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  report_code     text NOT NULL,
+  fight_id        integer NOT NULL,
+  -- 傾向の集計をコンテンツ単位で引くための非正規化 (fflogs_fights と同じ値)。
+  category_id     uuid REFERENCES public.categories(id) ON DELETE CASCADE,
+  tag             text NOT NULL,
+  scope           text NOT NULL DEFAULT 'team'
+                  CHECK (scope IN ('team','self')),
+  -- scope='self' のときだけ入る本人のメンバーキー。
+  discord_user_id text,
+  -- 任意の一言 (テンプレのタグで足りないときだけ)。
+  note            text,
+  created_by_id   text,
+  created_at      timestamptz NOT NULL DEFAULT now()
+);
+-- 同じ pull に同じタグを二重に付けない (チーム帰属は 1 本、個人タグは人ごと)。
+-- NULL を含む複合 UNIQUE は Postgres では重複を許すため、`coalesce` の
+-- 式インデックスにする。
+CREATE UNIQUE INDEX IF NOT EXISTS fflogs_pull_notes_uniq
+  ON public.fflogs_pull_notes (
+    report_code, fight_id, tag, scope, coalesce(discord_user_id, '')
+  );
+-- 傾向の集計 (コンテンツ単位)。
+CREATE INDEX IF NOT EXISTS fflogs_pull_notes_category_idx
+  ON public.fflogs_pull_notes (category_id, created_at DESC);
+-- pull 単位の読み出し (展開行)。
+CREATE INDEX IF NOT EXISTS fflogs_pull_notes_pull_idx
+  ON public.fflogs_pull_notes (report_code, fight_id);
+ALTER TABLE public.fflogs_pull_notes
+  DROP CONSTRAINT IF EXISTS fflogs_pull_notes_sane;
+ALTER TABLE public.fflogs_pull_notes
+  ADD CONSTRAINT fflogs_pull_notes_sane
+  CHECK (
+    char_length(report_code) <= 64
+    AND char_length(tag) <= 32
+    AND tag !~ '[[:cntrl:]]'
+    AND (discord_user_id IS NULL OR char_length(discord_user_id) <= 64)
+    AND (note IS NULL OR (char_length(note) <= 200 AND note !~ '[[:cntrl:]]'))
+    -- 個人タグは本人のキーが必須 / チーム帰属はキーを持たない。
+    AND (
+      (scope = 'self' AND discord_user_id IS NOT NULL)
+      OR (scope = 'team' AND discord_user_id IS NULL)
+    )
+  ) NOT VALID;
+
 -- ---- 6b-9. 出席の自動突合 (W-6、2026-09-08) ---------------------------
 -- FFLogs のログに映っていた人と、○×△ の回答を突き合わせるための 2 表。
 --
@@ -1707,6 +1768,11 @@ ALTER TABLE public.category_link_reads           ENABLE ROW LEVEL SECURITY;
 -- src/lib/server/attendance-actuals.ts が可視範囲 (本人 or admin) を
 -- 適用してから返し、書き込みは同期処理が service role で行う。
 ALTER TABLE public.fflogs_attendance_actuals    ENABLE ROW LEVEL SECURITY;
+-- W-7 (2026-09-08): ミス注釈も **policy を張らない**。誰がどの pull に何の
+-- タグを付けたかは、公開 anon key で列挙されると「個人責任の可視化」その
+-- ものになる。読み出しは Server Action / server モジュールが行い、
+-- 書き込みは本人 or チーム帰属のみを Server Action が強制する。
+ALTER TABLE public.fflogs_pull_notes            ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.fflogs_attendance_unresolved ENABLE ROW LEVEL SECURITY;
 -- W-35 (2026-09-07): fflogs_notify_state も **policy を張らない**。
 -- 同期 (cron / admin の手動同期) だけが service role で読み書きする内部

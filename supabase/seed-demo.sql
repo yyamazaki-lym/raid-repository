@@ -1129,3 +1129,58 @@ BEGIN
 
   RAISE NOTICE 'Demo seed (W-6) applied — % attendance_actuals rows.', v_rows;
 END $$;
+
+-- ============================================================================
+-- Section 6: W-7 ミス注釈のデモデータ (2026-09-08)
+-- ============================================================================
+-- 「ミス注釈の傾向」カードと pull の展開行が空だと機能の意味が伝わらないので、
+-- Section 3 が作った合成 pull にタグを付ける。
+--
+--   - 冪等: sentinel `demo_seed_w7_applied` で 2 回目以降スキップ
+--   - **チーム帰属だけを入れる。** 個人タグ (scope='self') はデモに入れない —
+--     デモは匿名で読めるので、架空でも「個人に紐づいた失敗の記録」を並べると
+--     機能の意図 (既定はチーム帰属) を誤解させる
+--   - 付けるのは wipe pull だけ (討伐 pull に「なぜ崩れたか」は無い)
+DO $$
+DECLARE
+  v_tags text[] := ARRAY[
+    'aoe-hit','mit-missing','switch-late','position','knockback','call-missed'
+  ];
+  r       RECORD;
+  v_n     integer := 0;
+BEGIN
+  IF EXISTS (SELECT 1 FROM public.app_settings WHERE key = 'demo_seed_w7_applied') THEN
+    RAISE NOTICE 'Demo seed (W-7) already applied — skipping.';
+    RETURN;
+  END IF;
+
+  -- 直近 40 wipe のうち 3 pull に 1 回、タグを 1 つ付ける。
+  FOR r IN
+    SELECT report_code, fight_id, category_id,
+           row_number() OVER (ORDER BY start_ms DESC)::integer AS rn
+      FROM public.fflogs_fights
+     WHERE report_code LIKE 'demo%'
+       AND kill = false
+     ORDER BY start_ms DESC
+     LIMIT 40
+  LOOP
+    CONTINUE WHEN r.rn % 3 <> 0;
+    INSERT INTO public.fflogs_pull_notes
+      (report_code, fight_id, category_id, tag, scope, note, created_by_id)
+    VALUES (
+      r.report_code, r.fight_id, r.category_id,
+      v_tags[1 + (r.rn % array_length(v_tags, 1))],
+      'team',
+      CASE WHEN r.rn % 9 = 0 THEN '次回は開幕の配置を先に決める' ELSE NULL END,
+      'local_mq7sifrh40py'
+    )
+    ON CONFLICT DO NOTHING;
+    v_n := v_n + 1;
+  END LOOP;
+
+  INSERT INTO public.app_settings (key, value) VALUES
+    ('demo_seed_w7_applied', '1')
+  ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
+
+  RAISE NOTICE 'Demo seed (W-7) applied — % pull notes.', v_n;
+END $$;

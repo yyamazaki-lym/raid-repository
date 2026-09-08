@@ -97,6 +97,7 @@ import type { OffsetTarget } from "@/components/portal/logs/video-link";
 import { TeamBadgesCard } from "@/components/portal/logs/team-badges-card";
 import { TrendCard } from "@/components/portal/logs/trend-card";
 import { WipeCausesCard } from "@/components/portal/logs/wipe-causes-card";
+import { PullNotesCard } from "@/components/portal/logs/pull-notes-card";
 
 /**
  * 練習ログの表示 (TODO #94 / A-1 + A-2)。
@@ -1271,6 +1272,12 @@ export function LogsView({
           方針と揃える。 */}
       <TeamBadgesCard badges={badges} />
 
+      {/* W-7 (2026-09-08): ミス注釈の傾向 + Discord 用の振り返り。
+          注釈が 1 件も無い固定ではカードごと出ない (自前で消える)。
+          ワイプ原因カード (致命技ベース) と同じ問いに人の判断で答える
+          位置づけなので、その直前に置く。 */}
+      <PullNotesCard categoryId={categoryId} categoryName={categoryName} />
+
       {(wipeCauses.length > 0 ||
         phaseTotals.length > 1 ||
         floorClears.length > 0) && (
@@ -1493,6 +1500,7 @@ export function LogsView({
             <DayRow
               key={day.date}
               day={day}
+              categoryId={categoryId}
               jumpNonce={jump?.date === day.date ? jump.nonce : null}
               onDeleteReport={canEdit ? onDeleteReport : undefined}
               deletingCode={deletingCode}

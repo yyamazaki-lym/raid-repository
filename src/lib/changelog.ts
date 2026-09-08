@@ -270,6 +270,9 @@ export const RELEASES: ReleaseEntry[] = [
       {
         title: "💀 練習ログ: pull の番号を押すと、その pull の死亡を時刻順の一覧で開けるように",
       },
+      {
+        title: "🏷 練習ログ: pull に「なぜ崩れたか」の注釈を付けられるように (既定はチーム帰属 / 傾向カード / Discord 用の振り返り)",
+      },
     ],
   },
 ];
