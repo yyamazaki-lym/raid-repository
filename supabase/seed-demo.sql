@@ -1184,3 +1184,43 @@ BEGIN
 
   RAISE NOTICE 'Demo seed (W-7) applied — % pull notes.', v_n;
 END $$;
+
+-- ============================================================================
+-- Section 7: W-24 / W-25 「欲しい人」行列を見せるための調整 (2026-09-08)
+-- ============================================================================
+-- Section 3 の BiS 取得済チェックは 4 人が別々の部位を欠く形なので、
+-- どの部位も「欲しい人 1 人」になり、**提案の 2 番目以降 (黄)** がデモに
+-- 出てこない。1 部位だけ 2 人が欲しい状態を作る。
+--
+--   - 冪等: sentinel `demo_seed_w25_applied` で 2 回目以降スキップ
+--   - 変えるのは「脚」の取得済フラグ 1 行だけ (取得済 → 未取得)
+DO $$
+DECLARE
+  v_link uuid;
+BEGIN
+  IF EXISTS (SELECT 1 FROM public.app_settings WHERE key = 'demo_seed_w25_applied') THEN
+    RAISE NOTICE 'Demo seed (W-25) already applied — skipping.';
+    RETURN;
+  END IF;
+
+  -- 「脚」を取得済にしている BiS 行のうち 1 本を未取得へ戻す。
+  SELECT s.bis_link_id INTO v_link
+    FROM public.category_bis_slots s
+    JOIN public.category_bis_links l ON l.id = s.bis_link_id
+   WHERE s.slot = 'Legs'
+     AND s.obtained = true
+   ORDER BY l.sort_order DESC, l.created_at DESC
+   LIMIT 1;
+
+  IF v_link IS NOT NULL THEN
+    UPDATE public.category_bis_slots
+       SET obtained = false
+     WHERE bis_link_id = v_link AND slot = 'Legs';
+  END IF;
+
+  INSERT INTO public.app_settings (key, value) VALUES
+    ('demo_seed_w25_applied', '1')
+  ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
+
+  RAISE NOTICE 'Demo seed (W-25) applied — one Legs slot reset to unobtained.';
+END $$;
