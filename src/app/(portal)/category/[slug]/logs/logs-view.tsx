@@ -36,6 +36,7 @@ import {
   observedPhaseCount,
   percentageToneClass,
   phaseTextToneClass,
+  phaseToneClass,
   progressTimeline,
   pullBreakdown,
   summarize,
@@ -56,6 +57,12 @@ import {
   type ProgressModel,
 } from "@/lib/content-model";
 import { floorFirstClears, teamBadges } from "@/lib/fflogs-session";
+import {
+  floorParamValue,
+  parseFloorParam,
+  parsePhaseParam,
+  withParam,
+} from "@/lib/logs-filter-url";
 import { humanizeFflogsSyncReason } from "@/lib/fflogs-sync-reason";
 import type { ReportVideoLink } from "@/lib/supabase/fflogs-fights";
 import {
@@ -84,6 +91,7 @@ import {
   type FloorClearItem,
 } from "@/components/portal/logs/floor-clear-card";
 import { PhaseTimeCard } from "@/components/portal/logs/phase-time-card";
+import { SegmentFilter } from "@/components/portal/logs/segment-filter";
 import { PullBreakdownChips, StatCard } from "@/components/portal/logs/stat-card";
 import type { OffsetTarget } from "@/components/portal/logs/video-link";
 import { TeamBadgesCard } from "@/components/portal/logs/team-badges-card";
@@ -121,6 +129,8 @@ export function LogsView({
   truncated,
   progressModel,
   difficultyLabel,
+  initialFloorParam = null,
+  initialPhaseParam = null,
   phaseTotalsAll = null,
   videoLinks,
   failedSyncs,
@@ -152,6 +162,13 @@ export function LogsView({
   progressModel: ProgressModel;
   /** W-33 ① (2026-09-07): 表示用の難易度ラベル (空なら名前から推測)。 */
   difficultyLabel: string | null;
+  /**
+   * UI-5 (2026-09-08): URL から復元する絞り込み (`?floor=4b` / `?phase=2`)。
+   * 検証していない生の文字列で、実在しない値は `logs-filter-url.ts` が
+   * null に倒す。層モデルのカテゴリでは floor、絶では phase だけを見る。
+   */
+  initialFloorParam?: string | null;
+  initialPhaseParam?: string | null;
   videoLinks: Record<string, ReportVideoLink[]>;
   failedSyncs: Array<{
     reportCode: string;
@@ -374,9 +391,92 @@ export function LogsView({
   }, [offsetTarget?.reportCode, tierFights]);
   const [showAllTimeline, setShowAllTimeline] = useState(false);
   const [showAllDays, setShowAllDays] = useState(false);
+  // 絞り込みに出す層 / フェーズの一覧 (実データに存在するものだけ、昇順)。
+  // 2026-08-30: 4層前半 / 4層後半 は別項目にする (色も分けたので、
+  // 「後半だけ見たい」に応えられるようにする)。キーは層 index。
+  //
+  // UI-5 (2026-09-08): URL から復元する初期値の照合に要るので、フィルタの
+  // state より **前** で組み立てる (`useState` の初期化関数から読む)。
+  const floorChoices = useMemo(() => {
+    if (!floors) return [];
+    const set = new Set<number>();
+    for (const f of tierFights) {
+      if (f.encounterId === null) continue;
+      const idx = floors.byEncounter.get(f.encounterId);
+      if (idx !== undefined) set.add(idx);
+    }
+    return [...set]
+      .sort((a, b) => a - b)
+      .map((idx) => ({
+        index: idx,
+        label: floorLabel(floors, idx, locale),
+        displayFloor: floors.displayFloorByIndex.get(idx) ?? idx,
+        half: floorHalf(floors, idx),
+      }));
+  }, [floors, tierFights, locale]);
+  // UI-5 (2026-09-08): 絶はフェーズで絞る (従来は絞り込みが無かった)。
+  // 観測された `lastPhase` の集合。
+  const phaseChoices = useMemo(() => {
+    if (!showPhase) return [];
+    const set = new Set<number>();
+    for (const f of tierFights) {
+      if (f.lastPhase !== null && Number.isFinite(f.lastPhase)) set.add(f.lastPhase);
+    }
+    return [...set].sort((a, b) => a - b);
+  }, [showPhase, tierFights]);
+
   // 2026-08-30 (Tier3-13): 層で pull を絞り込む。層チップに色が付いた
-  // ので「4層だけ見たい」を安価に足せる。null = 全層。
-  const [floorFilter, setFloorFilter] = useState<number | null>(null);
+  // ので「4層だけ見たい」を安価に足せる。null = 全層 / 全フェーズ。
+  //
+  // UI-5 (2026-09-08): 初期値は URL (`?floor=4b` / `?phase=2`) から。実在
+  // しない値は null に倒す (`logs-filter-url.ts` の docstring 参照)。
+  // `useState` の初期化関数は初回レンダーでしか走らないので、あとから
+  // 明細が増えても選択が勝手に戻ることはない。
+  const [floorFilter, setFloorFilter] = useState<number | null>(() =>
+    parseFloorParam(initialFloorParam, floorChoices),
+  );
+  const [phaseFilter, setPhaseFilter] = useState<number | null>(() =>
+    parsePhaseParam(initialPhaseParam, phaseChoices),
+  );
+
+  /**
+   * UI-5 (2026-09-08): 絞り込みを URL に反映する。
+   *
+   * `router.replace` ではなく **`history.replaceState`** を使う。Next の
+   * ドキュメント (`linking-and-navigating` の Native History API) が
+   * 「pushState / replaceState は Next の router に統合され、
+   * usePathname / useSearchParams と同期する」と明記している経路で、
+   * サーバーへの往復もページの再取得も起きない — この絞り込みは
+   * **すでにブラウザに来ている明細**を間引くだけなので、往復させると
+   * 押すたびに数百 KB を取り直すことになる。
+   *
+   * `push` ではなく `replace` にしているのは、フィルタが「移動」ではなく
+   * 「今の画面の状態」だから。連打したぶん戻るボタンを押す羽目になるのは
+   * 望ましくない (代わりに戻る / 進むでは選択が変わらない)。
+   */
+  const syncFilterUrl = (floor: number | null, phase: number | null) => {
+    if (typeof window === "undefined") return;
+    const choice = floorChoices.find((c) => c.index === floor);
+    let q = withParam(
+      window.location.search,
+      "floor",
+      choice ? floorParamValue(choice) : null,
+    );
+    q = withParam(q, "phase", phase === null ? null : String(phase));
+    window.history.replaceState(
+      null,
+      "",
+      window.location.pathname + (q ? `?${q}` : ""),
+    );
+  };
+  const onPickFloor = (next: number | null) => {
+    setFloorFilter(next);
+    syncFilterUrl(next, null);
+  };
+  const onPickPhase = (next: number | null) => {
+    setPhaseFilter(next);
+    syncFilterUrl(null, next);
+  };
   // 2026-08-30 実機要望「日時クリックで該当日のセッション振り返りに飛びたい」。
   // 対象日と「何回目の要求か」を持ち、DayRow 側は nonce の変化を見て開く
   // (同じ日を続けて押しても再度開ける)。
@@ -460,48 +560,39 @@ export function LogsView({
     }));
   }, [floors, tierFights, truncated, locale]);
 
-  // フィルタに出す層の一覧 (実データに存在する層のみ、昇順)。
-  // 2026-08-30: 4層前半 / 4層後半 は別項目にする (色も分けたので、
-  // 「後半だけ見たい」に応えられるようにする)。キーは層 index。
-  const floorChoices = useMemo(() => {
-    if (!floors) return [];
-    const set = new Set<number>();
-    for (const f of tierFights) {
-      if (f.encounterId === null) continue;
-      const idx = floors.byEncounter.get(f.encounterId);
-      if (idx !== undefined) set.add(idx);
-    }
-    return [...set]
-      .sort((a, b) => a - b)
-      .map((idx) => ({
-        index: idx,
-        label: floorLabel(floors, idx, locale),
-        displayFloor: floors.displayFloorByIndex.get(idx) ?? idx,
-        half: floorHalf(floors, idx),
-      }));
-  }, [floors, tierFights, locale]);
-
-  // 層フィルタ適用後の日リスト。pull が 1 つも残らない日は表示しない
+  // 絞り込み適用後の日リスト。pull が 1 つも残らない日は出さない
   // (その層に挑んでいない日を空行で並べても意味が無い)。
+  //
+  // UI-5 (2026-09-08): **`summarize` に通し直す**。以前は `day.fights` だけ
+  // 差し替えていたので、見出しの「30 pull / 戦闘 2:10 / 残 12%」は全層の値の
+  // ままで、下に並ぶ 12 本の pull と食い違っていた。日の見出しは
+  // `DaySummary` の集計値から描かれるので、絞った pull で作り直す必要がある。
   const filteredDays = useMemo(() => {
-    if (floorFilter === null || !floors) return summary.days;
-    return summary.days
-      .map((day) => ({
-        ...day,
-        fights: day.fights.filter((f) => {
-          if (f.encounterId === null) return false;
-          return floors.byEncounter.get(f.encounterId) === floorFilter;
-        }),
-      }))
-      .filter((day) => day.fights.length > 0);
-  }, [summary.days, floors, floorFilter]);
+    const segment = floors ? floorFilter : phaseFilter;
+    if (segment === null) return summary.days;
+    const kept = tierFights.filter((f) =>
+      floors
+        ? f.encounterId !== null &&
+          floors.byEncounter.get(f.encounterId) === segment
+        : f.lastPhase === segment,
+    );
+    return summarize(kept, floors, showPhase).days;
+  }, [summary.days, tierFights, floors, floorFilter, phaseFilter, showPhase]);
+
+  /** いま効いている絞り込み (層 / フェーズのどちらか)。 */
+  const segmentFilter = floors ? floorFilter : phaseFilter;
+  const clearSegmentFilter = () => {
+    setFloorFilter(null);
+    setPhaseFilter(null);
+    syncFilterUrl(null, null);
+  };
 
   const jumpToDay = (date: string) => {
     // 折りたたみ中 / フィルタで隠れている日にも飛べるようにする。
     setShowAllDays(true);
-    if (floorFilter !== null) {
+    if (segmentFilter !== null) {
       const stillVisible = filteredDays.some((d) => d.date === date);
-      if (!stillVisible) setFloorFilter(null);
+      if (!stillVisible) clearSegmentFilter();
     }
     setJump((cur) => ({ date, nonce: (cur?.nonce ?? 0) + 1 }));
     // 展開後にレイアウトが決まってからスクロールする。
@@ -1350,43 +1441,37 @@ export function LogsView({
           <h3 className="font-mono text-[11px] tracking-[0.18em] text-muted-foreground uppercase">
             {m.logs.sessionsTitle}
           </h3>
-          {/* 層フィルタ: 表示層 (1..4) 単位。層マップが無いコンテンツ
-              (絶など) では出さない。選択中を再クリックで解除。 */}
-          {floors && floorChoices.length > 1 && (
-            <div className="flex flex-wrap items-center gap-1">
-              <button
-                type="button"
-                onClick={() => setFloorFilter(null)}
-                aria-pressed={floorFilter === null}
-                className={
-                  "rounded-sm border px-1.5 py-0.5 font-mono text-[11px] tracking-normal transition-colors " +
-                  (floorFilter === null
-                    ? "border-[var(--neon-cyan)]/60 bg-[var(--neon-cyan)]/12 text-[var(--neon-cyan)]"
-                    : "border-border/50 text-muted-foreground hover:text-foreground")
-                }
-              >
-                {m.logs.allFloors}
-              </button>
-              {floorChoices.map((f) => (
-                <button
-                  key={f.index}
-                  type="button"
-                  onClick={() =>
-                    setFloorFilter((cur) => (cur === f.index ? null : f.index))
-                  }
-                  aria-pressed={floorFilter === f.index}
-                  title={m.logs.floorFilterTitle(f.label)}
-                  className={
-                    "rounded-sm border px-1.5 py-0.5 font-mono text-[11px] tabular-nums transition-colors " +
-                    (floorFilter === f.index
-                      ? floorToneClass(f.displayFloor, f.half)
-                      : "border-border/50 text-muted-foreground hover:text-foreground")
-                  }
-                >
-                  {f.label}
-                </button>
-              ))}
-            </div>
+          {/* UI-5 (2026-09-08): 区間の絞り込みを 1 段のセグメントに。零式は
+              層 (1..4、最終層は前半 / 後半)、絶はフェーズ (P1〜)。選択は
+              URL (`?floor=4b` / `?phase=2`) に載るので、Discord に貼ると
+              その状態で開く。区間が 1 つしか無いカテゴリでは
+              `SegmentFilter` 側が何も描かない。 */}
+          {floors ? (
+            <SegmentFilter
+              ariaLabel={m.logs.floorFilterAria}
+              allTitle={m.logs.floorFilterAllTitle}
+              value={floorFilter}
+              onChange={onPickFloor}
+              choices={floorChoices.map((f) => ({
+                value: f.index,
+                label: f.label,
+                toneClass: floorToneClass(f.displayFloor, f.half),
+                title: m.logs.floorFilterTitle(f.label),
+              }))}
+            />
+          ) : (
+            <SegmentFilter
+              ariaLabel={m.logs.phaseFilterAria}
+              allTitle={m.logs.phaseFilterAllTitle}
+              value={phaseFilter}
+              onChange={onPickPhase}
+              choices={phaseChoices.map((p) => ({
+                value: p,
+                label: `P${p}`,
+                toneClass: phaseToneClass(p),
+                title: m.logs.phaseFilterTitle(p),
+              }))}
+            />
           )}
         </div>
         <ul className="flex flex-col gap-2">

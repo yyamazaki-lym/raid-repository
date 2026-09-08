@@ -285,6 +285,50 @@ try {
     flame.stats.map((s) => s.kind),
     ["damage", "rate", "final"],
   );
+
+  // UI-5 (2026-09-08): iframe 側にも層タブを効かせるための gid 差し替え。
+  // 判定できない URL を組み替えると、いま動いている埋め込みを壊すので
+  // 「素通し」の条件を重点的に見る。
+  console.log("\n[iframe URL の gid 差し替え]");
+  const PUB = "https://docs.google.com/spreadsheets/d/e/2PACX-abc/pubhtml?gid=0&single=true";
+  const EDIT = "https://docs.google.com/spreadsheets/d/1a2b3c4d5e6f7g8h9i/edit#gid=0";
+  check(
+    "published 形は ?gid= を差し替える",
+    mod.toSheetEmbedUrl(PUB, "123"),
+    "https://docs.google.com/spreadsheets/d/e/2PACX-abc/pubhtml?gid=123&single=true",
+  );
+  check(
+    "published 形は single=true を必ず付ける (Google 側のタブバーと二重にしない)",
+    mod.toSheetEmbedUrl(
+      "https://docs.google.com/spreadsheets/d/e/2PACX-abc/pubhtml",
+      "7",
+    ).includes("single=true"),
+    true,
+  );
+  check(
+    "共有形は #gid= を差し替える",
+    mod.toSheetEmbedUrl(EDIT, "456"),
+    "https://docs.google.com/spreadsheets/d/1a2b3c4d5e6f7g8h9i/edit#gid=456",
+  );
+  check("gid 未指定は素通し", mod.toSheetEmbedUrl(EDIT, null), EDIT);
+  check("gid が空文字なら素通し", mod.toSheetEmbedUrl(EDIT, ""), EDIT);
+  check("数字でない gid は素通し", mod.toSheetEmbedUrl(EDIT, "1; DROP"), EDIT);
+  check(
+    "docs.google.com 以外は素通し",
+    mod.toSheetEmbedUrl("https://example.com/sheet?gid=0", "9"),
+    "https://example.com/sheet?gid=0",
+  );
+  check(
+    "URL として壊れていても素通し",
+    mod.toSheetEmbedUrl("not a url", "9"),
+    "not a url",
+  );
+  check("null は null", mod.toSheetEmbedUrl(null, "9"), null);
+  check(
+    "CSV 側の gid 上書きと同じワークシートを指す",
+    mod.extractSheetGid(mod.toSheetEmbedUrl(PUB, "123")),
+    "123",
+  );
 } finally { rmSync(outDir, { recursive: true, force: true }); }
 console.log("");
 if (failures) { console.error(`${failures} 件失敗`); process.exit(1); }
