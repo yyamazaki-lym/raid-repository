@@ -630,6 +630,20 @@ ALTER TABLE public.category_macros
   ADD CONSTRAINT category_macros_text_sane
   CHECK (char_length(body) <= 8000 AND char_length(label) <= 200) NOT VALID;
 
+-- UI-7 (2026-09-08): 「採用中」の印。複数のマクロ (層ごと / 攻略サイトごと)
+-- が並ぶとき、**うちが使っているのはどれか**が画面から分からなかった
+-- (調査ノート第 4 回 8-3 UI-7)。
+--
+-- ⚠ **1 コンテンツに 1 本だけ**を DB で保証する (部分 UNIQUE index)。
+-- 「採用中が 2 本」は表示が壊れるだけでなく、差分表示の基準が決まらない。
+-- 切り替えは Server Action が「同カテゴリの他を false → 対象を true」の
+-- 順で更新する (逆順だと一瞬 2 本になって index に弾かれる)。
+ALTER TABLE public.category_macros
+  ADD COLUMN IF NOT EXISTS is_current boolean NOT NULL DEFAULT false;
+CREATE UNIQUE INDEX IF NOT EXISTS category_macros_current_uidx
+  ON public.category_macros (category_id)
+  WHERE is_current;
+
 -- ---- 5d. recruitment_templates (PT募集文 templates, shared) -----------
 -- Text templates that get copy-pasted into Discord / FF14 PT-募集 sites.
 -- Each template is associated with a category (heavy / cruiser / ...)

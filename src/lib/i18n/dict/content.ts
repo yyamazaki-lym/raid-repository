@@ -414,6 +414,18 @@ export const ja = {
     emptyTitle: "マクロ未登録",
     emptyBody: "攻略に用いる戦術のテンプレ等をここに保存できます。",
     macroFallback: "マクロ",
+    // UI-7 (2026-09-08): 採用中のマクロと、採用中との差分の要点。
+    currentBadge: "採用中",
+    currentSet: (name: string): string => `「${name}」を採用中にしました`,
+    currentCleared: "採用中を解除しました",
+    setCurrentAria: (name: string, current: boolean): string =>
+      current ? `「${name}」の採用中を解除` : `「${name}」を採用中にする`,
+    diffSame: "採用中と同じ",
+    diffCount: (added: number, removed: number): string =>
+      `採用中と +${added} / -${removed} 行`,
+    diffTitle: (added: string, removed: string): string =>
+      `採用中に無い行: ${added}
+採用中にしか無い行: ${removed}`,
     categoryMacro: (name: string) => `${name} マクロ`,
     toggleBodyAria: (name: string, expanded: boolean) =>
       `${name} の本文を${expanded ? "閉じる" : "開く"}`,
@@ -1101,6 +1113,16 @@ export const en: ContentMessages = {
     emptyTitle: "No macros yet",
     emptyBody: "Save tactical templates and other text used in the fight here.",
     macroFallback: "Macro",
+    currentBadge: "In use",
+    currentSet: (name) => `"${name}" is now the one in use`,
+    currentCleared: "Cleared the in-use macro",
+    setCurrentAria: (name, current) =>
+      current ? `Clear "${name}" as the one in use` : `Mark "${name}" as in use`,
+    diffSame: "same as the one in use",
+    diffCount: (added, removed) => `+${added} / -${removed} lines vs in use`,
+    diffTitle: (added, removed) =>
+      `Lines not in the one in use: ${added}
+Lines only in the one in use: ${removed}`,
     categoryMacro: (name) => `${name} macro`,
     toggleBodyAria: (name, expanded) =>
       `${expanded ? "Collapse" : "Expand"} the body of ${name}`,
