@@ -32,9 +32,9 @@ const outDir = mkdtempSync(join(tmpdir(), "content-model-check-"));
 try {
   // content-model.ts は content-groups.ts を import するので両方コンパイルする。
   execFileSync(
-    "npx",
+    process.execPath,
     [
-      "tsc", SRC, "src/lib/content-groups.ts",
+      "node_modules/typescript/bin/tsc", SRC, "src/lib/content-groups.ts",
       "--outDir", outDir,
       "--target", "es2022",
       "--module", "es2022",

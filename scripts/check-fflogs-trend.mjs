@@ -39,9 +39,9 @@ function day(n, pulls, progress, hasClear = false) {
 const outDir = mkdtempSync(join(tmpdir(), "fflogs-trend-check-"));
 try {
   execFileSync(
-    "npx",
+    process.execPath,
     [
-      "tsc", SRC,
+      "node_modules/typescript/bin/tsc", SRC,
       "--outDir", outDir,
       "--target", "es2022",
       "--module", "es2022",

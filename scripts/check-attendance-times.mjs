@@ -25,8 +25,8 @@ function check(name, actual, expected) {
 const outDir = mkdtempSync(join(tmpdir(), "att-times-check-"));
 try {
   execFileSync(
-    "npx",
-    ["tsc", SRC, "--outDir", outDir, "--target", "es2022", "--module", "es2022", "--moduleResolution", "bundler", "--strict"],
+    process.execPath,
+    ["node_modules/typescript/bin/tsc", SRC, "--outDir", outDir, "--target", "es2022", "--module", "es2022", "--moduleResolution", "bundler", "--strict"],
     { stdio: "inherit" },
   );
   const m = await import(pathToFileURL(join(outDir, "attendance-times.js")).href);

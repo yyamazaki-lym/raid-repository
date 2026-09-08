@@ -26,8 +26,8 @@ function check(name, actual, expected) {
 const outDir = mkdtempSync(join(tmpdir(), "bis-slots-check-"));
 try {
   execFileSync(
-    "npx",
-    ["tsc", "src/lib/bis-slots.ts", "src/lib/xivgear-set.ts",
+    process.execPath,
+    ["node_modules/typescript/bin/tsc", "src/lib/bis-slots.ts", "src/lib/xivgear-set.ts",
      "--outDir", outDir, "--target", "es2022", "--module", "es2022",
      "--moduleResolution", "bundler", "--strict"],
     { stdio: "inherit" },

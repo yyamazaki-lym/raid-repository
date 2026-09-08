@@ -2,7 +2,7 @@
  * 出欠催促の純粋ロジックの検証 (2026-08-30)。
  *
  * 実行: `node scripts/check-attendance-reminder.mjs`
- *   (内部で `npx tsc` を使って attendance-reminder-core.ts だけを
+ *   (内部で tsc を直接叩いて attendance-reminder-core.ts だけを
  *    一時ディレクトリに JS 出力し、それを import して検証する)
  *
  * このプロジェクトにはテストランナーが無いが、催促は「実在の人へ
@@ -39,9 +39,9 @@ function check(name, actual, expected) {
 const outDir = mkdtempSync(join(tmpdir(), "reminder-check-"));
 try {
   execFileSync(
-    "npx",
+    process.execPath,
     [
-      "tsc",
+      "node_modules/typescript/bin/tsc",
       SRC,
       // W-20 (2026-09-07): 頻度の純関数は attendance-reminder-keys.ts 側。
       "src/lib/schedule/attendance-reminder-keys.ts",

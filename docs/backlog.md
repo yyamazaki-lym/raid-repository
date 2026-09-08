@@ -565,6 +565,16 @@ table 単位でしか要らない)。upcoming 行のチップはそのまま。
 push 前に検証できる。**`DO` ブロックの中は SQL パーサからは不透明な文字列**
 なので、両方を通す必要がある。
 
+### `scripts/check-*.mjs` は Windows でも走る (2026-09-08)
+
+全 48 本を手元 (Windows) で `for f in scripts/check-*.mjs; do node "$f"; done`
+まで通した。tsc の起動は `execFileSync(process.execPath,
+["node_modules/typescript/bin/tsc", ...])` に統一してあり、**`npx` に戻すと
+Windows で ENOENT / EINVAL になって 1 本も走らなくなる** (CI の ubuntu では
+通るので気付けない)。`check-ja-strings.mjs` は同じ理由で走査パスを `/` に
+正規化している (`\` は `EXCLUDE` にも `BASELINE` の `src/lib/...` 表記にも
+一致せず、全ファイルが未登録扱いになる)。
+
 ### 2026-09-08 に schema.sql の再実行が要る
 
 UI-2 (コンテンツカードのスパークライン) で関数を 1 本足した

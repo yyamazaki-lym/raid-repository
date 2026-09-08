@@ -13,7 +13,8 @@
  *   4. 範囲外のイベントを捨てること (別 pull の混入)
  *
  * ⚠ tsc は `process.execPath` + `node_modules/typescript/bin/tsc` で起動する
- *   (`npx` は Windows で ENOENT / EINVAL になる)。
+ *   (`npx` 経由は Windows で ENOENT / EINVAL になり、CI の ubuntu では
+ *   通るので壊れていることに気付けない)。
  */
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";

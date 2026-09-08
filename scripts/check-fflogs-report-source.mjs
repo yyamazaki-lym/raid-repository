@@ -38,8 +38,8 @@ function check(name, actual, expected) {
 const outDir = mkdtempSync(join(tmpdir(), "report-source-check-"));
 try {
   execFileSync(
-    "npx",
-    ["tsc", "src/lib/fflogs-report-source.ts", "--outDir", outDir, "--target", "es2022",
+    process.execPath,
+    ["node_modules/typescript/bin/tsc", "src/lib/fflogs-report-source.ts", "--outDir", outDir, "--target", "es2022",
      "--module", "es2022", "--moduleResolution", "bundler", "--strict"],
     { stdio: "inherit" },
   );

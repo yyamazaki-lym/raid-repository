@@ -32,8 +32,8 @@ try {
   execFileSync(
     process.execPath,
     [
-      // ⚠ `npx` は Windows で ENOENT / EINVAL になる (他の check スクリプトが
-      // 手元で走らない原因)。tsc の実体を直接叩けば両方の OS で動く。
+      // ⚠ `npx` 経由にすると Windows で ENOENT / EINVAL になる。tsc の実体を
+      // 直接叩けば両方の OS で動く (全 check スクリプトで揃えてある)。
       "node_modules/typescript/bin/tsc",
       SRC,
       "--outDir",

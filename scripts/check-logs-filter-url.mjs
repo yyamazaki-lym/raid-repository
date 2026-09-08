@@ -32,9 +32,9 @@ function check(name, actual, expected) {
 const outDir = mkdtempSync(join(tmpdir(), "logs-filter-url-check-"));
 try {
   execFileSync(
-    "npx",
+    process.execPath,
     [
-      "tsc", SRC,
+      "node_modules/typescript/bin/tsc", SRC,
       "--outDir", outDir,
       "--target", "es2022",
       "--module", "es2022",
