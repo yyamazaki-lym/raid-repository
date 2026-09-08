@@ -168,6 +168,8 @@ export const ja = {
     pastDetailTitleOn: "過去の活動 (詳細) — 表示中",
     pastDetailTitleOff: "過去の活動 (詳細) — 出席者付きの全件表",
     openSource: "元サイトを開く",
+    // UI-10 (2026-09-08): スマホのアジェンダ表示。
+    agendaMine: "自分",
   },
   settings: {
     aria: "設定",
@@ -763,6 +765,7 @@ export const en: CoreMessages = {
     pastDetailTitleOn: "Past sessions (detailed) — shown",
     pastDetailTitleOff: "Past sessions (detailed) — full table with attendees",
     openSource: "Open the source site",
+    agendaMine: "You",
   },
   settings: {
     aria: "Settings",
