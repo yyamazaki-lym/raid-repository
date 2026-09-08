@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState, useTransition } from "react";
-import { Loader2, Plus, Skull, Tag, X } from "lucide-react";
+import { HeartPulse, Loader2, Plus, Skull, Tag, X } from "lucide-react";
 import { toast } from "sonner";
 import {
   fetchPullDetailAction,
@@ -17,6 +17,11 @@ import {
   type PullNote,
   type PullNoteScope,
 } from "@/lib/logs/pull-note-tags";
+import { fetchDeathLeadUpAction } from "@/lib/server/death-leadup-actions";
+import {
+  formatLeadUpHp,
+  type LeadUpDeath,
+} from "@/lib/logs/death-leadup";
 import { formatMs, jobAbbr } from "@/lib/fflogs-fight-detail";
 import { useMessages } from "@/lib/i18n/client";
 import type { Messages } from "@/lib/i18n/messages";
@@ -53,6 +58,14 @@ import type { Messages } from "@/lib/i18n/messages";
  * ⚠ 帰属の既定は**チーム**。`自分` を選んだときだけ本人のタグになり、
  * 相手は server が呼び出し本人で埋める (他人に付ける経路が無い)。
  * 詳細は `lib/logs/pull-note-tags.ts` と `server/pull-notes-actions.ts`。
+ *
+ * ## 死亡の直前 (W-8、2026-09-08)
+ *
+ * 「HP はどれだけ残っていたか / 何がかかっていたか」を FFLogs から取る
+ * ボタンを死亡一覧の下に置く。⚠ **押されたときだけ取る**
+ * (`includeResources` は帯域が大きく、同期に載せると毎晩走って pull の
+ * 取り込み自体を遅らせる)。**保存もしない** — 振り返りの最中に 1 回見る値で、
+ * DB に持つと「個人の立ち回りの記録」になってしまう。
  */
 export function PullDetailPanel({
   reportCode,
@@ -80,6 +93,13 @@ export function PullDetailPanel({
     isAdmin: boolean;
   } | null>(null);
   const [busy, startTransition] = useTransition();
+  // W-8: 死亡の直前 (押されたときだけ FFLogs から取る)。
+  const [leadUp, setLeadUp] = useState<
+    | { kind: "idle" }
+    | { kind: "loading" }
+    | { kind: "error"; reason: string }
+    | { kind: "ready"; deaths: LeadUpDeath[] }
+  >({ kind: "idle" });
 
   useEffect(() => {
     let alive = true;
@@ -166,6 +186,22 @@ export function PullDetailPanel({
         </ol>
       )}
 
+      {/* W-8 (2026-09-08): 死亡の直前。死亡が 1 件も無い pull では出さない
+          (取りに行っても空)。 */}
+      {state.kind === "ready" && state.deaths.length > 0 && (
+        <LeadUpBlock
+          m={m}
+          leadUp={leadUp}
+          onLoad={() => {
+            setLeadUp({ kind: "loading" });
+            void fetchDeathLeadUpAction(reportCode, fightId).then((r) => {
+              if (!r.ok) setLeadUp({ kind: "error", reason: r.reason });
+              else setLeadUp({ kind: "ready", deaths: r.deaths });
+            });
+          }}
+        />
+      )}
+
       {/* W-7 (2026-09-08): ミス注釈。死亡イベントの真下に置くので、
           何が起きたかを見ながら「なぜ崩れたか」を付けられる。 */}
       <PullNotesBlock
@@ -201,6 +237,110 @@ export function PullDetailPanel({
         }
       />
     </div>
+  );
+}
+
+/**
+ * 死亡の直前 (W-8)。押すまで何も取らない。
+ *
+ * 出すのは「HP / シールド / かかっていた効果」で、**軽減率の計算はしない**
+ * (パッチごとに変わる表を抱えないため。詳細は `lib/logs/death-leadup.ts`)。
+ * ダメージダウンだけは ID が固定なので明示する。
+ */
+function LeadUpBlock({
+  m,
+  leadUp,
+  onLoad,
+}: {
+  m: Messages;
+  leadUp:
+    | { kind: "idle" }
+    | { kind: "loading" }
+    | { kind: "error"; reason: string }
+    | { kind: "ready"; deaths: LeadUpDeath[] };
+  onLoad: () => void;
+}) {
+  if (leadUp.kind === "idle") {
+    return (
+      <button
+        type="button"
+        onClick={onLoad}
+        className="mt-1 inline-flex w-fit items-center gap-1 rounded-sm border border-rose-400/40 bg-rose-400/5 px-1.5 py-0.5 text-[11px] text-rose-200/90 transition-colors hover:bg-rose-400/15"
+        title={m.logs.leadUpHint}
+      >
+        <HeartPulse className="h-2.5 w-2.5" aria-hidden />
+        {m.logs.leadUpLoad}
+      </button>
+    );
+  }
+  if (leadUp.kind === "loading") {
+    return (
+      <span className="mt-1 inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
+        <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
+        {m.logs.leadUpLoading}
+      </span>
+    );
+  }
+  if (leadUp.kind === "error") {
+    return (
+      <span className="mt-1 text-[11px] text-destructive-foreground/90">
+        {leadUp.reason}
+      </span>
+    );
+  }
+  if (leadUp.deaths.length === 0) {
+    return (
+      <span className="mt-1 text-[11px] text-muted-foreground">
+        {m.logs.leadUpEmpty}
+      </span>
+    );
+  }
+  return (
+    <ol className="mt-1 flex flex-col gap-0.5">
+      {leadUp.deaths.map((d, i) => {
+        const hp = formatLeadUpHp(d.hp, d.maxHp);
+        return (
+          <li
+            key={`${d.t}:${i}`}
+            className="flex flex-wrap items-baseline gap-x-2 text-[11px]"
+          >
+            <span className="w-10 shrink-0 text-right font-mono text-slate-400 tabular-nums">
+              {formatMs(d.t)}
+            </span>
+            <span className="w-10 shrink-0 font-mono text-cyan-300/85">
+              {jobAbbr(d.job)}
+            </span>
+            {hp && (
+              <span className="font-mono text-foreground/85 tabular-nums">
+                {m.logs.leadUpHp(hp)}
+              </span>
+            )}
+            {d.shield !== null && d.shield > 0 && (
+              <span className="font-mono text-sky-200/85 tabular-nums">
+                {m.logs.leadUpShield(d.shield)}
+              </span>
+            )}
+            {d.damageDown && (
+              <span className="rounded-sm border border-rose-400/50 bg-rose-400/10 px-1 text-rose-200">
+                {m.logs.leadUpDamageDown}
+              </span>
+            )}
+            {d.auras.length > 0 && (
+              <span className="min-w-0 text-muted-foreground/85">
+                {m.logs.leadUpAuras(
+                  d.auras
+                    .map((a) => a.name ?? String(a.id ?? "?"))
+                    .join(" / "),
+                )}
+              </span>
+            )}
+          </li>
+        );
+      })}
+      <li className="text-[11px] leading-snug text-muted-foreground/70">
+        {m.logs.leadUpNote}
+      </li>
+    </ol>
   );
 }
 
