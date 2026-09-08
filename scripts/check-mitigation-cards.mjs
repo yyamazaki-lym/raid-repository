@@ -23,9 +23,9 @@ try {
   // tsc は相対 import に拡張子を付けない (bundler 前提) が、Node の ESM は
   // 拡張子必須なので出力後に補う。
   execFileSync(
-    "npx",
+    process.execPath,
     [
-      "tsc",
+      "node_modules/typescript/bin/tsc",
       "src/lib/sheet-csv.ts",
       "src/lib/mitigation-terms.ts",
       "--outDir",

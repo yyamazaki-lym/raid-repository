@@ -93,7 +93,12 @@ const BASELINE = [
 const files = [];
 const walk = (dir) => {
   for (const name of readdirSync(dir)) {
-    const p = join(dir, name);
+    // ⚠ パス区切りを `/` に正規化する。`join()` は Windows で `\` を返し、
+    // そのままだと **EXCLUDE (`/\/server\//` 等) も BASELINE の
+    // `src/lib/...` 表記もどちらにも一致しない** — 除外したいファイルが
+    // 走査に入り、全ファイルが「baseline に無い」と報告されて手元では
+    // 常に失敗する (CI の ubuntu では `/` なので通る)。
+    const p = join(dir, name).split("\\").join("/");
     if (statSync(p).isDirectory()) walk(p);
     else if (/\.(tsx?|mts)$/.test(name) && !EXCLUDE.test(p)) files.push(p);
   }

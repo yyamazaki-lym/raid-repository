@@ -11,8 +11,8 @@
  *   3. 遅刻 / 時間帯つきの回答では部分参加をズレにしない (申告どおり)
  *
  * ⚠ tsc の起動は `process.execPath` + `node_modules/typescript/bin/tsc`。
- *   他の check スクリプトの `execFileSync("npx", ...)` は Windows で
- *   ENOENT / EINVAL になり手元で走らない (CI の ubuntu では通る)。
+ *   `npx` 経由にすると Windows で ENOENT / EINVAL になり手元で走らない
+ *   (CI の ubuntu では通るので、壊れていることに気付けない)。
  */
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync, readdirSync, readFileSync, writeFileSync } from "node:fs";

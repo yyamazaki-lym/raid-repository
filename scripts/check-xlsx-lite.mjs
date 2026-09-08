@@ -73,9 +73,9 @@ function makeZip(entries) {
 const outDir = mkdtempSync(join(tmpdir(), "xlsx-lite-check-"));
 try {
   execFileSync(
-    "npx",
+    process.execPath,
     [
-      "tsc",
+      "node_modules/typescript/bin/tsc",
       SRC,
       "--outDir",
       outDir,

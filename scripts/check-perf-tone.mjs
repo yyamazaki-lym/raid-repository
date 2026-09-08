@@ -16,7 +16,7 @@ function check(name, actual, expected) {
 }
 const outDir = mkdtempSync(join(tmpdir(), "perf-tone-"));
 try {
-  execFileSync("npx", ["tsc", "src/lib/perf-tone.ts", "--outDir", outDir, "--target", "es2022", "--module", "es2022", "--moduleResolution", "bundler", "--strict"], { stdio: "inherit" });
+  execFileSync(process.execPath, ["node_modules/typescript/bin/tsc", "src/lib/perf-tone.ts", "--outDir", outDir, "--target", "es2022", "--module", "es2022", "--moduleResolution", "bundler", "--strict"], { stdio: "inherit" });
   const m = await import(pathToFileURL(join(outDir, "perf-tone.js")).href);
 
   console.log("\n[残 HP%]");

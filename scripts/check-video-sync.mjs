@@ -32,9 +32,9 @@ function check(name, actual, expected) {
 const outDir = mkdtempSync(join(tmpdir(), "video-sync-check-"));
 try {
   execFileSync(
-    "npx",
+    process.execPath,
     [
-      "tsc", "src/lib/video-sync.ts",
+      "node_modules/typescript/bin/tsc", "src/lib/video-sync.ts",
       "--outDir", outDir,
       "--target", "es2022",
       "--module", "es2022",

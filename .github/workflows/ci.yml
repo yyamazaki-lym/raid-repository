@@ -57,6 +57,14 @@ jobs:
       #
       # 以前は changelog だけを CI で回していたため、他はローカルで走らせ忘れる
       # と壊れたまま通ってしまっていた。1 本でも落ちたらジョブを失敗させる。
+      #
+      # ⚠ 各スクリプトの tsc 起動は `execFileSync(process.execPath,
+      #   ["node_modules/typescript/bin/tsc", ...])` に揃えてある (2026-09-08)。
+      #   **`npx` に戻さないこと** — Windows では ENOENT / EINVAL になり
+      #   手元で 1 本も走らなくなるが、この ubuntu ランナーでは通るので
+      #   壊れたことに気付けない。同じ理由で `check-ja-strings.mjs` は
+      #   走査パスを `/` に正規化している (Windows の `\` だと EXCLUDE と
+      #   BASELINE のどちらにも一致せず全ファイルが未登録扱いになる)。
       - name: Pure-function and structure checks
         run: |
           status=0

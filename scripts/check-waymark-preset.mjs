@@ -29,9 +29,9 @@ function check(name, actual, expected) {
 const outDir = mkdtempSync(join(tmpdir(), "waymark-check-"));
 try {
   execFileSync(
-    "npx",
+    process.execPath,
     [
-      "tsc",
+      "node_modules/typescript/bin/tsc",
       SRC,
       "--outDir",
       outDir,

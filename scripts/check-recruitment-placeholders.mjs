@@ -32,8 +32,8 @@ function check(name, actual, expected) {
 const outDir = mkdtempSync(join(tmpdir(), "recruit-ph-check-"));
 try {
   execFileSync(
-    "npx",
-    ["tsc", SRC, "--outDir", outDir, "--target", "es2022", "--module", "es2022",
+    process.execPath,
+    ["node_modules/typescript/bin/tsc", SRC, "--outDir", outDir, "--target", "es2022", "--module", "es2022",
      "--moduleResolution", "bundler", "--strict"],
     { stdio: "inherit" },
   );

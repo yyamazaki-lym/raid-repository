@@ -29,9 +29,9 @@ function check(name, actual, expected) {
 const outDir = mkdtempSync(join(tmpdir(), "text-length-check-"));
 try {
   execFileSync(
-    "npx",
+    process.execPath,
     [
-      "tsc", "src/lib/text-length-error.ts",
+      "node_modules/typescript/bin/tsc", "src/lib/text-length-error.ts",
       "--outDir", outDir,
       "--target", "es2022",
       "--module", "es2022",

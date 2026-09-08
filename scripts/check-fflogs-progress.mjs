@@ -41,9 +41,9 @@ function check(name, actual, expected) {
 const outDir = mkdtempSync(join(tmpdir(), "fflogs-progress-check-"));
 try {
   execFileSync(
-    "npx",
+    process.execPath,
     [
-      "tsc", ...SRCS,
+      "node_modules/typescript/bin/tsc", ...SRCS,
       "--outDir", outDir,
       "--target", "es2022",
       "--module", "es2022",

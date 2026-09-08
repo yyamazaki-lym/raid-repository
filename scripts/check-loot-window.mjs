@@ -32,9 +32,9 @@ function check(name, actual, expected) {
 const outDir = mkdtempSync(join(tmpdir(), "loot-window-check-"));
 try {
   execFileSync(
-    "npx",
+    process.execPath,
     [
-      "tsc", "src/lib/week-jst.ts", "src/lib/loot-window-keys.ts",
+      "node_modules/typescript/bin/tsc", "src/lib/week-jst.ts", "src/lib/loot-window-keys.ts",
       "--outDir", outDir,
       "--target", "es2022",
       "--module", "es2022",

@@ -28,8 +28,8 @@ function check(name, actual, expected) {
 const outDir = mkdtempSync(join(tmpdir(), "att-summary-check-"));
 try {
   execFileSync(
-    "npx",
-    ["tsc", "src/lib/schedule/attendance-summary.ts", "--outDir", outDir,
+    process.execPath,
+    ["node_modules/typescript/bin/tsc", "src/lib/schedule/attendance-summary.ts", "--outDir", outDir,
      "--target", "es2022", "--module", "es2022", "--moduleResolution", "bundler", "--strict"],
     { stdio: "inherit" },
   );
