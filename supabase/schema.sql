@@ -2355,6 +2355,20 @@ GRANT EXECUTE ON FUNCTION public.practice_seconds_by_category()
 --
 -- STABLE read-only。fflogs_fights の SELECT は RLS `USING (true)` で anon に
 -- 全開なので DEFINER でも露出は増えない (13c-2 と同方針)。
+--
+-- 検証 (2026-09-08): ローカルの Postgres 16 に本関数だけを載せ、合成データで
+-- 実行して TS 側と突き合わせた。
+--   - 別コンテンツの混入 (錨から離れた encounter) が集計から外れること
+--   - 残 HP% がその日の最深区間の中の最小になること (消化で下層を倒した日が
+--     「残 0%」にならない)
+--   - 最終 encounter の討伐だけが has_clear になること
+--   - session_date が NULL の行が start_ms の JST 暦日にまとまること
+--   - p_days が 1..365 に clamp されること (NULL は既定 56)
+--   - **未挑戦の層があるティアで segment_count が幅と一致すること**
+--     — 最初の実装は出現した encounter の個数で数えていて、1 層と 4 層しか
+--     回していない期間に 2 区間となり、同じ 4 層の到達度がカードと練習ログ
+--     画面で食い違っていた (encounter 100 / 103 / 104 のデータで TS の
+--     `buildFloorMap` が 5、SQL が 3 を返していた)。
 CREATE OR REPLACE FUNCTION public.category_progress_by_day(p_days integer DEFAULT 56)
 RETURNS TABLE (
   category_id      uuid,
@@ -2385,22 +2399,35 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
      ORDER BY e.category_id, e.pulls DESC, e.encounter_id
   ),
   -- 錨から ±7 に収まる encounter だけをティアとみなす (docstring 参照)。
-  tier AS (
-    SELECT e.category_id,
-           e.encounter_id,
-           DENSE_RANK() OVER (
-             PARTITION BY e.category_id ORDER BY e.encounter_id
-           )::integer AS segment_index
+  cluster AS (
+    SELECT e.category_id, e.encounter_id
       FROM enc e
       JOIN anchor a ON a.category_id = e.category_id
      WHERE e.encounter_id BETWEEN a.encounter_id - 7 AND a.encounter_id + 7
   ),
+  -- ⚠ 区間数は **encounter ID の幅** (max − min + 1) で数える。出現した
+  -- encounter の個数ではない。TS 側 `buildFloorMap` が同じ式で、
+  -- 「1 層と 4 層しか回していない期間」でも 4 区間のティアとして扱う
+  -- ため — 個数で数えると同じティアが 2 区間になり、4 層の到達度が
+  -- カードと練習ログ画面で食い違う。
+  cluster_meta AS (
+    SELECT c.category_id,
+           MIN(c.encounter_id)::integer AS min_encounter_id,
+           MAX(c.encounter_id)::integer AS final_encounter_id,
+           (MAX(c.encounter_id) - MIN(c.encounter_id) + 1)::integer AS floor_count
+      FROM cluster c
+     GROUP BY c.category_id
+  ),
+  tier AS (
+    SELECT c.category_id,
+           c.encounter_id,
+           (c.encounter_id - cm.min_encounter_id + 1)::integer AS segment_index
+      FROM cluster c
+      JOIN cluster_meta cm ON cm.category_id = c.category_id
+  ),
   tier_meta AS (
-    SELECT t.category_id,
-           MAX(t.segment_index)::integer AS floor_count,
-           MAX(t.encounter_id)::integer  AS final_encounter_id
-      FROM tier t
-     GROUP BY t.category_id
+    SELECT cm.category_id, cm.floor_count, cm.final_encounter_id
+      FROM cluster_meta cm
   ),
   -- 絶 / 討滅 (encounter 1 つ) 用のフェーズ数。
   phase_meta AS (

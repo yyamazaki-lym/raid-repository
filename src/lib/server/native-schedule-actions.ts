@@ -1109,13 +1109,25 @@ export async function createNativeScheduleSessionsBulkAction(
   // 防ぐには **日付 prefix** で突き合わせる必要がある
   // (`native-schedule-placeholders.ts` と同じ判断)。CANCELLED も既存として
   // 扱う — 取り消した日を一括生成で勝手に復活させない。
-  const first = rows[0]!;
-  const last = rows[rows.length - 1]!;
+  //
+  // ⚠ 突き合わせの範囲は **暦日の全体** (最初の日の 0:00 JST 〜 最後の日の
+  // 翌 0:00 JST) にする。生成する時刻 (`parsed_date`) の範囲で引くと、
+  // 同じ日に **より早い時刻**で登録済みの候補日が範囲の外に落ちて検出できず、
+  // 同じ日付の行が二重にできる (21:00 で作るとき、その日の 20:00 の行が
+  // 見えない)。
+  const firstDate = dates[0]!;
+  const lastDate = dates[dates.length - 1]!;
+  const rangeStart = new Date(
+    Date.UTC(firstDate.y, firstDate.m - 1, firstDate.d) - JST_OFFSET_MS,
+  ).toISOString();
+  const rangeEnd = new Date(
+    Date.UTC(lastDate.y, lastDate.m - 1, lastDate.d + 1) - JST_OFFSET_MS,
+  ).toISOString();
   const { data: existing, error: existErr } = await supabase
     .from("native_schedule_sessions")
     .select("raw_date")
-    .gte("parsed_date", first.parsed_date)
-    .lte("parsed_date", last.parsed_date);
+    .gte("parsed_date", rangeStart)
+    .lt("parsed_date", rangeEnd);
   if (existErr) {
     return { ok: false, reason: dbError("既存候補日の確認", existErr) };
   }
@@ -1144,6 +1156,14 @@ export async function createNativeScheduleSessionsBulkAction(
     })),
   );
   if (error) {
+    // 上の日付 prefix 判定を抜けた同 raw_date は、別の誰かが同時に足した
+    // 場合しか起きない。生の PG エラーではなく状況を返す。
+    if ((error as { code?: string }).code === "23505") {
+      return {
+        ok: false,
+        reason: "同じ日時の候補日が追加されたところです。もう一度お試しください",
+      };
+    }
     return { ok: false, reason: dbError("候補日の一括追加", error) };
   }
   try {
