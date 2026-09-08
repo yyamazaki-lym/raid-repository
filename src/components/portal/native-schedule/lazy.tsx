@@ -64,6 +64,19 @@ export const NativeFflogsLinkPopover = dynamic(() =>
   })),
 );
 
+/**
+ * W-19 (2026-09-08): 出席サマリー。`components/portal/schedule/` に置いて
+ * あるが **native モード限定**の render なので、他の native 一式と同じく
+ * ここから lazy re-export する (sync モードの TOP からチャンクごと外す)。
+ * ssr は既定 (true) — trigger は native で常時表示なので、false にすると
+ * SSR HTML から欠けて hydrate 後に pop-in する。
+ */
+export const AttendanceSummaryDialog = dynamic(() =>
+  import("../schedule/attendance-summary-dialog").then((m) => ({
+    default: m.AttendanceSummaryDialog,
+  })),
+);
+
 export const CandidateDateDialog = dynamic(() =>
   import("./candidate-date-dialog").then((m) => ({
     default: m.CandidateDateDialog,

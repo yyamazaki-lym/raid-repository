@@ -1059,3 +1059,73 @@ BEGIN
 
   RAISE NOTICE 'Demo seed (W-18) applied — one candidate session flagged is_optional.';
 END $$;
+
+-- ============================================================================
+-- Section 5: W-6 / W-19 出席の自動突合のデモデータ (2026-09-08)
+-- ============================================================================
+-- 「出席サマリー」(予定表ヘッダーのクリップボードアイコン) が空だと機能の
+-- 意味が伝わらないので、Section 3 が作った合成レポートに対して
+-- fflogs_attendance_actuals を埋める。
+--
+--   - 冪等: sentinel `demo_seed_w6_applied` で 2 回目以降スキップ
+--   - **キャラクター名は入れない** (突合結果の表は名前を持たない設計。
+--     対応表 native_schedule_members.fflogs_character_name には、機能の
+--     説明として 1 人だけ例を入れる)
+--   - ズレを意図的に 2 種類作る:
+--       * 4 人目が 3 レポートに 1 回だけ丸ごと欠ける → 「参加と回答したが不在」
+--       * 3 人目が 5 レポートに 1 回だけごく一部しか映らない → 「一部のみ」
+--     ○×△ の記号は Section 3 が別ロジックで入れているので、
+--     「不可と回答したが参加」も自然に発生する
+DO $$
+DECLARE
+  v_members text[] := ARRAY[
+    'local_mq7sifrh40py','local_mq7siphtq692','local_mq7siwonqhul','local_mq7sjctf795b'
+  ];
+  r         RECORD;
+  i         integer;
+  v_pulls   integer;
+  v_rows    integer := 0;
+BEGIN
+  IF EXISTS (SELECT 1 FROM public.app_settings WHERE key = 'demo_seed_w6_applied') THEN
+    RAISE NOTICE 'Demo seed (W-6) already applied — skipping.';
+    RETURN;
+  END IF;
+
+  FOR r IN
+    SELECT report_code,
+           count(*)::integer                              AS pulls,
+           max(session_date)                              AS session_date,
+           row_number() OVER (ORDER BY report_code)::integer AS rn
+      FROM public.fflogs_fights
+     WHERE report_code LIKE 'demo%'
+     GROUP BY report_code
+  LOOP
+    FOR i IN 1..array_length(v_members, 1) LOOP
+      -- 4 人目は 3 レポートに 1 回だけ不在 (「参加と回答したが不在」)。
+      CONTINUE WHEN i = 4 AND r.rn % 3 = 0;
+      -- 3 人目は 5 レポートに 1 回だけ一部参加 (「一部のみ」)。
+      v_pulls := CASE
+        WHEN i = 3 AND r.rn % 5 = 0 THEN GREATEST(1, r.pulls / 8)
+        ELSE r.pulls
+      END;
+      INSERT INTO public.fflogs_attendance_actuals
+        (report_code, discord_user_id, session_date, pulls)
+      VALUES (r.report_code, v_members[i], r.session_date, v_pulls)
+      ON CONFLICT (report_code, discord_user_id)
+        DO UPDATE SET pulls = EXCLUDED.pulls, session_date = EXCLUDED.session_date;
+      v_rows := v_rows + 1;
+    END LOOP;
+  END LOOP;
+
+  -- 対応表の例を 1 人だけ (「表示名と違う人だけ入れる」ことを示すため)。
+  UPDATE public.native_schedule_members
+     SET fflogs_character_name = 'Vee Nes'
+   WHERE discord_user_id = v_members[1]
+     AND fflogs_character_name IS NULL;
+
+  INSERT INTO public.app_settings (key, value) VALUES
+    ('demo_seed_w6_applied', '1')
+  ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
+
+  RAISE NOTICE 'Demo seed (W-6) applied — % attendance_actuals rows.', v_rows;
+END $$;

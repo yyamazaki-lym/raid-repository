@@ -252,6 +252,44 @@ export const ja = {
     timeOverride: "今回だけ",
     timeOverrideTitle: "定期枠の曜日ですが、この日だけ時刻を変えています",
   },
+  // W-19 (2026-09-08): 出席サマリー (ログとの突合)。
+  // ⚠ `attendanceSummary` は行の内訳チップ (UI-9) が既に使っているので別名。
+  attendanceHistory: {
+    trigger: "出席サマリー (ログとの突合)",
+    title: "出席サマリー",
+    descriptionLoading: "ログと回答を突き合わせています…",
+    // 第 3 引数は「ログが無い日 + 参加者を紐づけられなかった日」の合計。
+    // どちらも理由は違うが「突合できなかった」で括るのが正確
+    // (内訳は下の unmatchedNote / emptyUnmatched で出す)。
+    description: (days: number, sessions: number, skipped: number): string =>
+      skipped > 0
+        ? `直近 ${days} 日 / 突合できた活動日 ${sessions} 日 (突合できなかった ${skipped} 日は除外)`
+        : `直近 ${days} 日 / 突合できた活動日 ${sessions} 日`,
+    selfOnlyNote:
+      "あなたの分だけを表示しています (全員の集計は幹部のみが見られます)。",
+    emptyNoLog:
+      "ログのある活動日がまだありません。練習ログを取り込むと、ここに回答との突合が出ます。",
+    emptyUnmatched: (n: number): string =>
+      `pull はあるのに参加者を 1 人も紐づけられなかった活動日が ${n} 日あります (突合結果が 0 件)。「全員休んだ」ではなく突合が効いていない状態です — 設定のメンバー一覧で「ログ名」を入れ、練習ログの同期をもう一度実行してください。`,
+    unmatchedNote: (n: number): string =>
+      `参加者を紐づけられなかった ${n} 日は集計から外しています (「全員不在」にしないため)。`,
+    emptyNoMember:
+      "あなたのメンバー行が見つかりませんでした (設定のメンバー一覧に Discord ID が登録されていない可能性があります)。",
+    colMember: "メンバー",
+    colSaidYes: "参加と回答",
+    colAttended: "実際に参加",
+    colMismatch: "ズレ",
+    mismatchHeading: "回答とのズレ (新しい順)",
+    mismatchNote:
+      "ログに映っていたかだけを見ています。別アカウントでの参加や、ログ担当が録り忘れた日はズレとして出ます。",
+    excludedNote: (n: number): string =>
+      `有志練習 / 中止の ${n} 日は集計から外しています。`,
+    kindAbsentThoughYes: "参加と回答したが不在",
+    kindPartialThoughYes: (pulls: number, dayPulls: number): string =>
+      `参加と回答したが一部のみ (${pulls}/${dayPulls} pull)`,
+    kindPresentThoughNo: "不可と回答したが参加",
+    kindPresentThoughOther: "未定 / 未回答だが参加",
+  },
   // W-18 (2026-09-08): 有志練習 (任意参加) の印。
   optionalBadge: {
     label: "有志",
@@ -780,6 +818,39 @@ export const en: CoreMessages = {
     timeOverride: "One-off",
     timeOverrideTitle:
       "A recurring-slot weekday, but the time was changed just for this day",
+  },
+  attendanceHistory: {
+    trigger: "Attendance summary (log reconciliation)",
+    title: "Attendance summary",
+    descriptionLoading: "Reconciling logs with answers…",
+    description: (days, sessions, skipped) =>
+      skipped > 0
+        ? `Last ${days} days / ${sessions} reconciled day(s) (${skipped} could not be reconciled)`
+        : `Last ${days} days / ${sessions} reconciled day(s)`,
+    selfOnlyNote:
+      "Showing only your own rows (the team-wide summary is visible to leads).",
+    emptyNoLog:
+      "No days with logs yet. Import practice logs and the reconciliation shows up here.",
+    emptyUnmatched: (n) =>
+      `${n} day(s) have pulls but no participant could be linked (zero reconciled rows). That means the reconciliation is not working, not that everybody was away — fill in "Log name" in the member list and run the log sync again.`,
+    unmatchedNote: (n) =>
+      `${n} day(s) with no linked participants are excluded (so they do not read as "everyone absent").`,
+    emptyNoMember:
+      "Could not find your member row (your Discord ID may not be registered in the member list).",
+    colMember: "Member",
+    colSaidYes: "Said yes",
+    colAttended: "Attended",
+    colMismatch: "Mismatch",
+    mismatchHeading: "Mismatches (newest first)",
+    mismatchNote:
+      "This only checks whether you appear in the logs. Joining on another account, or a night nobody recorded, shows up as a mismatch.",
+    excludedNote: (n) =>
+      `${n} optional/cancelled day(s) are excluded from the totals.`,
+    kindAbsentThoughYes: "said yes but absent",
+    kindPartialThoughYes: (pulls, dayPulls) =>
+      `said yes but only part of the night (${pulls}/${dayPulls} pulls)`,
+    kindPresentThoughNo: "said no but attended",
+    kindPresentThoughOther: "attended with no yes on record",
   },
   optionalBadge: {
     label: "Optional",

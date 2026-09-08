@@ -5,7 +5,10 @@ import { History, Table, ExternalLink } from "lucide-react";
 import { NextSessionCard } from "./next-session-card";
 // C-2 (2026-07-12): mode==="native" && isAdmin でのみ render されるため
 // lazy re-export 経由 (sync モードの TOP からチャンクごと外す)。
-import { CandidateDateDialog } from "./native-schedule/lazy";
+import {
+  AttendanceSummaryDialog,
+  CandidateDateDialog,
+} from "./native-schedule/lazy";
 import {
   RecruitmentTemplatesButton,
   RecruitmentTopCopyButton,
@@ -261,6 +264,11 @@ export function SchedulePageBody({
               recurringDows={nativeRecurringDows}
             />
           )}
+          {/* W-19 (2026-09-08): 出席サマリー (ログとの突合)。native だけ —
+              集計は native_schedule_* と練習ログの突合で、sync (外部シート)
+              モードでは対応表が無い。可視範囲 (幹部=全員 / 本人=自分だけ) は
+              Server Action 側で決める。 */}
+          {mode === "native" && <AttendanceSummaryDialog />}
           <RecruitmentTemplatesButton
             templates={liveTemplates}
             categories={recruitmentCategories}
