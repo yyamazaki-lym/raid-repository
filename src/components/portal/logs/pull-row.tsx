@@ -19,9 +19,9 @@
  *     「途中で落ちた分だけ低い」だけで判断材料にならない。クリア pull では
  *     タイムの裏付けになるので残す (列幅の確保も、その日にクリアがある
  *     ときだけ = `reserve.metricsDps`)
- *   - **動画が 3 本以上ある行はチップを畳む。** 2 本までは横に並べ、
- *     3 本目以降は「+N」の 1 チップにまとめて hover で全部出す
- *     (`videoJumps` が伸びると右のリンク群が押し出されて折り返す)
+ *   - **動画チップは「マーク 1 個 + 番号」だけにする。** 再生開始時刻を
+ *     行に出さない (2026-09-08 実機要望)。どの動画も同じ pull の同じ瞬間へ
+ *     飛ぶので、行で要るのは「どれを開くか」だけ。幅が 5.5N → 1.25 + 1.25N rem
  *
  * ⚠ 死亡数は練習 pull でも意味がある (何人落ちたか) ので残す。DPS だけを
  * 出し分けている。
@@ -396,32 +396,34 @@ export function PullRow({
           <Microscope className="h-2.5 w-2.5" aria-hidden />
           Analysis
         </a>
-        {/* 動画チップは「1:13:08」まで入る幅で固定し、動画が無い pull には
-            同じ幅の空きを置く (その日に動画がある場合のみ)。これで LOGS /
-            ANALYSIS の位置が行ごとにずれない。
-            2026-09-07: 複数動画のときは 1 本 = 1 チップで横に並べ、頭に
-            本数の番号を付ける (どのチップがどの動画かをホバー無しで拾える)。
-            スロット数はその日の最大本数なので、日の中では縦に揃う。 */}
+        {/* 動画チップ。動画が無い pull には同じ幅の空きを置く (その日に
+            動画がある場合のみ) ので、LOGS / ANALYSIS の位置が行ごとに
+            ずれない。スロット数はその日の最大本数なので日の中で縦に揃う。
+            中身の変遷と幅の根拠は下のブロックのコメントを参照。 */}
         {(() => {
-          // L-6 (2026-09-08): 動画が複数ある行でリンク群が伸びて折り返して
-          // いた。1 本 = 1 チップ (各 5.5rem) をやめ、**FFLogs の 3 ビューと
-          // 同じ「枠を共有した 1 グループ」**に畳む:
+          // 動画チップ (L-6、2026-09-08 → 2026-09-08 実機要望で再縮小)。
           //
-          //   - 1 本目は従来どおり時刻つき (「1:13:08」が入る幅)
-          //   - 2 本目以降は**番号だけ** (幅 1.5rem)。どのリンクも押せる
-          //     ままで、隠すものは無い
+          // 経緯: もともと 1 本 = 1 チップ (各 5.5rem) で、複数動画の行が
+          // 折り返す原因になっていた。まず「枠を共有した 1 グループ」に畳み、
+          // 1 本目だけ再生開始時刻を出す形にした。その実機確認で
+          // **「再生開始時間はいらない。動画マークと動画ナンバーだけにして
+          // 小さくできるか」**という要望が出たので、時刻を全部落とした。
           //
-          // どの動画も**同じ pull の同じ瞬間**へ飛ぶので、2 本目以降で
-          // 知りたいのは時刻ではなく「どの動画か」。時刻と名前は title に
-          // 入れてある。これで N 本の幅が 5.5N → 4.75 + 1.5(N-1) rem になり、
-          // 4 本でも 1 行に収まる。
+          // 妥当な要望だった: どの動画も**同じ pull の同じ瞬間**へ飛ぶので、
+          // 行の中で知りたいのは「動画があるか / どれを開くか」だけ。時刻は
+          // 開いた先で見える値で、行に出す必要が無い (名前と時刻は title に
+          // 入れてある)。
+          //
+          // 形: フィルムのマークをグループの先頭に **1 個だけ**置き、その右に
+          // 番号のリンクを並べる (`▶ 1 2`)。マークを番号ごとに繰り返さない
+          // のは幅のため。番号だけだと意味が読めないので、マークは要る。
+          //
+          // 幅: 5.5N rem → 1.25 + 1.25N rem。1 本で 4.75rem → 2.5rem、
+          // 2 本で 6.25rem → 3.75rem。
           if (reserve.videoSlots === 0) return null;
           // その日の最大本数ぶんだけ幅を確保して、LOGS / ANALYSIS の位置が
           // 行ごとにずれないのを維持する (従来の spacer と同じ役割)。
-          const reservedWidth = `calc(4.75rem + ${Math.max(
-            0,
-            reserve.videoSlots - 1,
-          )} * 1.5rem)`;
+          const reservedWidth = `calc(1.25rem + ${reserve.videoSlots} * 1.25rem)`;
           return (
             <span
               className="inline-flex shrink-0 items-stretch"
@@ -429,6 +431,14 @@ export function PullRow({
             >
               {videoJumps.length > 0 && (
                 <span className="inline-flex h-full items-stretch overflow-hidden rounded-sm border border-violet-400/45 bg-violet-400/10">
+                  {/* マークは 1 個だけ。押せないので aria からも外す
+                      (すぐ右の番号リンクが動画 1 本ずつに対応する)。 */}
+                  <span
+                    className="inline-flex w-5 shrink-0 items-center justify-center text-violet-200/70"
+                    aria-hidden
+                  >
+                    <Film className="h-2.5 w-2.5" aria-hidden />
+                  </span>
                   {videoJumps.map((j, i) => (
                     <a
                       key={j.id}
@@ -443,21 +453,9 @@ export function PullRow({
                         j.name,
                         formatClock(j.seconds),
                       )}
-                      className={
-                        "inline-flex items-center justify-center gap-1 py-0.5 font-mono text-[11px] tracking-[0.1em] whitespace-nowrap text-violet-200 uppercase transition-colors hover:bg-violet-400/20 " +
-                        (i === 0
-                          ? "w-[4.75rem] px-1"
-                          : "w-6 border-l border-violet-400/35 text-violet-200/85 tabular-nums")
-                      }
+                      className="inline-flex w-5 items-center justify-center border-l border-violet-400/35 py-0.5 font-mono text-[11px] text-violet-200 tabular-nums transition-colors hover:bg-violet-400/20"
                     >
-                      {i === 0 ? (
-                        <>
-                          <Film className="h-2.5 w-2.5 shrink-0" aria-hidden />
-                          {formatClock(j.seconds)}
-                        </>
-                      ) : (
-                        i + 1
-                      )}
+                      {i + 1}
                     </a>
                   ))}
                 </span>

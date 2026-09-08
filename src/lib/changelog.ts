@@ -252,6 +252,9 @@ export const RELEASES: ReleaseEntry[] = [
       {
         title: "🔀 設定: レポートの自動発見を FFLogs Sync へ移動 / 週制限の消化ウィンドウを畳んだままでも現在値が読めるように",
       },
+      {
+        title: "🎬 練習ログ: 動画チップを「マークと番号」だけに縮小 (再生開始時刻は hover へ)",
+      },
     ],
   },
 ];
