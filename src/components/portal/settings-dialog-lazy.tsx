@@ -2,7 +2,8 @@
 
 import dynamic from "next/dynamic";
 import { useMessages } from "@/lib/i18n/client";
-import { useState, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
+import { onOpenSettings } from "@/lib/portal-commands";
 import { Settings } from "lucide-react";
 
 /**
@@ -113,7 +114,24 @@ export function SettingsDialog({
   showSignIn?: boolean;
 }) {
   // null = 未活性 (placeholder のみ)。open は mount 直後に開くかどうか。
-  const [clicked, setClicked] = useState<{ open: boolean } | null>(null);
+  // section は UI-8 のコマンドパレットから「設定 → <節>」で開いたときの
+  // 対象節 (mount 後にその節を開いてスクロールする)。
+  const [clicked, setClicked] = useState<{
+    open: boolean;
+    section?: string;
+  } | null>(null);
+
+  // UI-8 (2026-09-08): コマンドパレットからの「設定を開く」。
+  // ⚠ **本体ではなくこのラッパーで受ける必要がある。** 本体は初回クリック
+  // まで mount されないので、本体側のリスナーだけではパレットからの 1 回目が
+  // 何も起きない (dev preview で実際にそうなった)。2 回目以降は本体側の
+  // リスナーが受けるため、両方に置いてある。
+  useEffect(() => {
+    return onOpenSettings(({ section }) => {
+      preloadSettingsDialog();
+      setClicked({ open: true, section });
+    });
+  }, []);
   // OAuth 復帰時は本体側の useEffect (toast + setOpen(true) + query 除去)
   // に処理を委ねるため、閉じた状態で即 mount する。SSR / hydration 中は
   // false (placeholder) で描画し、hydration 後に client 値で再描画される。
@@ -135,6 +153,7 @@ export function SettingsDialog({
       canEdit={canEdit}
       showSignIn={showSignIn}
       defaultOpen={activated.open}
+      defaultSection={activated.section}
     />
   );
 }

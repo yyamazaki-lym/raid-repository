@@ -252,6 +252,30 @@ export const ja = {
     timeOverride: "今回だけ",
     timeOverrideTitle: "定期枠の曜日ですが、この日だけ時刻を変えています",
   },
+  // UI-8 (2026-09-08): コマンドパレット。
+  commandPalette: {
+    trigger: "コマンドパレット (Ctrl+K / ⌘K)",
+    title: "コマンドパレット",
+    placeholder: "コンテンツ名や設定の名前で検索…",
+    empty: "一致する項目がありません",
+    groupJump: "ジャンプ",
+    groupSettings: "設定",
+    contents: "コンテンツ一覧",
+    openSettings: "設定",
+    sections: {
+      members: "メンバー一覧",
+      discordNotify: "Discord 通知",
+      attendanceReminder: "出欠の催促",
+      choiceValues: "出欠の凡例",
+      cancelledSessions: "中止した候補日",
+      fflogsSync: "FFLogs 連携",
+      logsNotify: "練習ログの通知",
+      lootWindow: "週制限のウィンドウ",
+      pastSessions: "過去の活動",
+      maintenance: "メンテナンス日程",
+      dangerZone: "データの初期化",
+    },
+  },
   // W-19 (2026-09-08): 出席サマリー (ログとの突合)。
   // ⚠ `attendanceSummary` は行の内訳チップ (UI-9) が既に使っているので別名。
   attendanceHistory: {
@@ -818,6 +842,29 @@ export const en: CoreMessages = {
     timeOverride: "One-off",
     timeOverrideTitle:
       "A recurring-slot weekday, but the time was changed just for this day",
+  },
+  commandPalette: {
+    trigger: "Command palette (Ctrl+K / ⌘K)",
+    title: "Command palette",
+    placeholder: "Search contents or settings…",
+    empty: "No matching entries",
+    groupJump: "Jump",
+    groupSettings: "Settings",
+    contents: "All contents",
+    openSettings: "Settings",
+    sections: {
+      members: "Members",
+      discordNotify: "Discord notifications",
+      attendanceReminder: "Attendance reminders",
+      choiceValues: "Attendance legend",
+      cancelledSessions: "Cancelled candidate dates",
+      fflogsSync: "FFLogs integration",
+      logsNotify: "Practice log notifications",
+      lootWindow: "Weekly lockout window",
+      pastSessions: "Past sessions",
+      maintenance: "Maintenance windows",
+      dangerZone: "Data reset",
+    },
   },
   attendanceHistory: {
     trigger: "Attendance summary (log reconciliation)",

@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { onOpenSettings } from "@/lib/portal-commands";
+import { openSettingsSection } from "./settings/collapsible-section";
 import { useRouter } from "next/navigation";
 import { Settings, Save, Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -78,6 +80,7 @@ export function SettingsDialog({
   canEdit,
   showSignIn = false,
   defaultOpen = false,
+  defaultSection,
 }: {
   canEdit: boolean;
   showSignIn?: boolean;
@@ -87,6 +90,13 @@ export function SettingsDialog({
    * そのまま開いた状態で mount する経路が必要。初期値にのみ使う。
    */
   defaultOpen?: boolean;
+  /**
+   * UI-8 (2026-09-08): mount 直後に開いてスクロールする節の id
+   * (`CollapsibleSection` の `id`)。コマンドパレットの「設定 → <節>」から
+   * 開いたときだけ渡る。lazy ラッパー側で受けたイベントの引き継ぎで、
+   * 本体が mount していない 1 回目もここを通る。
+   */
+  defaultSection?: string;
 }) {
   const router = useRouter();
   const m = useMessages();
@@ -143,6 +153,23 @@ export function SettingsDialog({
       window.location.pathname + (cleanQuery ? `?${cleanQuery}` : "");
     window.history.replaceState({}, "", cleanUrl);
   }, [m]);
+
+  // UI-8 (2026-09-08): コマンドパレットからの「設定を開く / 設定 → <節>」。
+  // 合図は window の CustomEvent (理由は @/lib/portal-commands の docstring)。
+  // 本体が mount する前の 1 回目は lazy ラッパーが受け、`defaultSection`
+  // として引き継がれる (下の effect)。
+  useEffect(() => {
+    return onOpenSettings(({ section }) => {
+      setOpen(true);
+      if (section) openSettingsSection(section);
+    });
+  }, []);
+
+  // mount 時に節が指定されていれば開いてスクロールする (上のイベントの
+  // 1 回目ぶん)。`defaultSection` は mount 中変わらないので 1 回だけ走る。
+  useEffect(() => {
+    if (defaultSection) openSettingsSection(defaultSection);
+  }, [defaultSection]);
 
   // Initial fetch of url + channelId + mode on open. URL / channelId は
   // sync mode の Save ボタン経由で永続化、mode は ScheduleSourceModeSection

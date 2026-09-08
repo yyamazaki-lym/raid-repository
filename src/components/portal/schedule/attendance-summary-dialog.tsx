@@ -125,9 +125,12 @@ export function AttendanceSummaryDialog() {
                   {m.attendanceHistory.selfOnlyNote}
                 </p>
               )}
-              {/* 表は狭い端末で横スクロール (本文は 12px を維持する)。 */}
+              {/* 表は狭い端末で横スクロール (本文は 12px を維持する)。
+                  ⚠ min-w は 20rem。24rem にしていたら 375px 幅で「ズレ」列が
+                  画面外に出て、横スクロールしないと肝心の数字が読めなかった
+                  (mobile 実測)。名前は truncate して数字 3 列を優先する。 */}
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[24rem] border-collapse text-[12px]">
+                <table className="w-full min-w-[20rem] border-collapse text-[12px]">
                   <thead>
                     <tr className="border-b border-border/40 text-left text-[11px] tracking-normal text-muted-foreground">
                       <th className="py-1.5 pr-2 font-normal">
@@ -150,7 +153,7 @@ export function AttendanceSummaryDialog() {
                         key={row.discordUserId}
                         className="border-b border-border/20 last:border-b-0"
                       >
-                        <td className="py-1.5 pr-2 text-foreground">
+                        <td className="max-w-[9rem] truncate py-1.5 pr-2 text-foreground">
                           {row.displayName}
                         </td>
                         <td className="py-1.5 pr-2 text-right font-mono tabular-nums text-muted-foreground">
@@ -192,7 +195,9 @@ export function AttendanceSummaryDialog() {
                         <span className="text-[12px] text-foreground">
                           {mm.displayName}
                         </span>
-                        <span className="text-[12px] text-amber-200">
+                        {/* min-w-0 が無いと flex 子が縮まず、狭い端末で
+                            「(1/6 pull)」の括弧が画面外に切れる (mobile 実測)。 */}
+                        <span className="min-w-0 text-[12px] text-amber-200">
                           {mismatchLabel(m, mm.kind, mm.pulls, mm.dayPulls)}
                         </span>
                       </li>
