@@ -74,7 +74,9 @@ export function CollapsibleSection({
   );
 
   return (
-    <section className={className}>
+    // UI-8 (2026-09-08): コマンドパレットが節を名指しでスクロールできるよう
+    // に id を DOM に出す (`openSettingsSection` が querySelector で引く)。
+    <section className={className} data-settings-section={id}>
       <details
         open={open}
         onToggle={(e) => writeOpen(id, e.currentTarget.open)}
@@ -116,6 +118,30 @@ export function CollapsibleSection({
       </details>
     </section>
   );
+}
+
+/**
+ * 節を外から開いて画面内へ持ってくる (UI-8、2026-09-08)。
+ *
+ * コマンドパレットの「設定 → <節>」が、設定ダイアログを開いた直後に呼ぶ。
+ * 開閉は既存の store をそのまま使う (= 次回もその節が開いたままになる。
+ * 明示的に開いた節は覚えていてよい)。
+ *
+ * ⚠ スクロールは **ダイアログの中身が描かれた後** でないと効かない。
+ * `requestAnimationFrame` を 2 回待つのは、1 回目が Dialog の mount、
+ * 2 回目が `<details open>` の反映後になるため (実測で 1 回では
+ * 畳まれた高さのままスクロールし、節が画面外に残った)。
+ */
+export function openSettingsSection(id: string): void {
+  if (typeof window === "undefined") return;
+  writeOpen(id, true);
+  for (const l of listeners) l();
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      const el = document.querySelector(`[data-settings-section="${id}"]`);
+      el?.scrollIntoView({ block: "start", behavior: "smooth" });
+    });
+  });
 }
 
 /**
