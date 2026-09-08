@@ -479,13 +479,31 @@ export function SheetCards({
                   {/* 2026-08-30 実機要望「チェックが付いたアビリティを Type の
                       横に出せないか」: 担当チップと同じ行に続けて並べる。
                       別ブロックにすると 1 攻撃が縦に伸びて追いにくかった。 */}
-                  {checks?.map((c, i) => (
+                  {checks?.map((c, i) => {
+                    // L-8 (2026-09-08): チェック列のラベルは `アドル (赤魔道士)`
+                    // のように**ジョブ名を持っている**。ここを実機報告
+                    // 「どこが対応するロール名か分からない」の答えにする —
+                    // ロールが読めた列はロール色で塗る (凡例は上に出す)。
+                    // 読めなければ従来の紫。
+                    const chkRole = roleOf(c.label);
+                    return (
                     <li
                       key={`chk-${i}`}
-                      className="inline-flex items-baseline gap-1 rounded-sm border border-[var(--neon-violet)]/45 bg-[var(--neon-violet)]/10 px-1.5 py-0.5"
+                      className={
+                        "inline-flex items-baseline gap-1 rounded-sm border px-1.5 py-0.5 " +
+                        (chkRole
+                          ? ROLE_TONE[chkRole]
+                          : "border-[var(--neon-violet)]/45 bg-[var(--neon-violet)]/10")
+                      }
                       title={c.owner ? `${c.owner}: ${c.label}` : c.label}
                     >
-                      <span aria-hidden className="text-[12px] text-[var(--neon-violet)]">
+                      <span
+                        aria-hidden
+                        className={
+                          "text-[12px] " +
+                          (chkRole ? ROLE_MARK[chkRole] : "text-[var(--neon-violet)]")
+                        }
+                      >
                         ✓
                       </span>
                       {c.owner && (
@@ -497,7 +515,8 @@ export function SheetCards({
                         {c.label}
                       </span>
                     </li>
-                  ))}
+                    );
+                  })}
                 </ul>
               ) : cells.length > 0 ? (
                 // 見出し列は max-content で伸びると長い担当者名でグリッドが
@@ -556,6 +575,13 @@ const ROLE_TONE: Record<"tank" | "healer" | "dps", string> = {
   tank: "border-sky-400/40 bg-sky-400/10",
   healer: "border-emerald-400/40 bg-emerald-400/10",
   dps: "border-rose-400/40 bg-rose-400/10",
+};
+
+/** チェック印の色 (枠の色と揃える)。L-8 (2026-09-08)。 */
+const ROLE_MARK: Record<"tank" | "healer" | "dps", string> = {
+  tank: "text-sky-300",
+  healer: "text-emerald-300",
+  dps: "text-rose-300",
 };
 
 /**
