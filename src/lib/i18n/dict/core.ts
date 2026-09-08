@@ -224,6 +224,45 @@ export const ja = {
     errTimeFormat: "時刻は HH:MM 形式で入力してください",
     errSameTime: "開始時刻と終了時刻が同じです",
     toastAdded: (rawDate: string) => `候補日「${rawDate}」を追加しました`,
+    // W-15 (2026-09-08): 期間 + 曜日で一括生成。
+    modeAria: "追加のしかた",
+    modeSingle: "1 日だけ",
+    modeRepeat: "繰り返し",
+    rangeLabel: "期間",
+    rangeFromAria: "開始日",
+    rangeToAria: "終了日",
+    dowLabel: "曜日",
+    dowHelp: "設定画面の「定期枠」で選んだ曜日が最初から入ります。既にある日付は飛ばすので、期間を重ねて実行しても増えません。",
+    previewCount: (n: number) => `${n} 件を作成します`,
+    previewTruncated: (max: number) => ` (上限 ${max} 件で打ち切り)`,
+    submitBulk: (n: number) => `${n} 件を追加`,
+    errRangeRequired: "期間を入力してください",
+    errDowRequired: "曜日を 1 つ以上選んでください",
+    errNoMatch: "その期間に該当する曜日がありません",
+    toastBulk: (created: number, skipped: number) =>
+      skipped > 0
+        ? `候補日 ${created} 件を追加しました (既にある ${skipped} 件はそのまま)`
+        : `候補日 ${created} 件を追加しました`,
+    toastTruncated: (max: number) => ` / 上限 ${max} 件で打ち切りました`,
+  },
+  // W-15 (2026-09-08): 定期枠から外れた日の印。
+  frameBadge: {
+    extra: "臨時",
+    extraTitle: "定期枠に無い曜日の候補日です",
+    timeOverride: "今回だけ",
+    timeOverrideTitle: "定期枠の曜日ですが、この日だけ時刻を変えています",
+  },
+  // W-15 (2026-09-08): 定期枠。
+  nativeRecurring: {
+    description:
+      "毎週どの曜日に活動するかを決めておくと、候補日の自動追加がその曜日だけになります。曜日を 1 つも選ばなければ従来どおり当月の全日付が候補になります。",
+    dowAria: "定期枠の曜日",
+    currentEvery: (dows: string) => `いまの定期枠: 毎週 ${dows}`,
+    currentNone: "いまの定期枠: なし (当月の全日付が候補)",
+    keepsExisting:
+      "保存しても既にある候補日は消えません (その日の出欠やメモを巻き添えにしないため)。要らない日は「確定」列から中止にしてください。",
+    toastSaved: (dows: string) => `定期枠を「毎週 ${dows}」にしました`,
+    toastCleared: "定期枠を解除しました (当月の全日付が候補になります)",
   },
   sessionTime: {
     ariaLabel: (date: string, current: string) =>
@@ -705,6 +744,43 @@ export const en: CoreMessages = {
     errTimeFormat: "Enter times as HH:MM",
     errSameTime: "Start and end time are the same",
     toastAdded: (rawDate) => `Added candidate date "${rawDate}"`,
+    modeAria: "How to add",
+    modeSingle: "One day",
+    modeRepeat: "Repeat",
+    rangeLabel: "Range",
+    rangeFromAria: "Start date",
+    rangeToAria: "End date",
+    dowLabel: "Days of the week",
+    dowHelp: "Pre-selected from the recurring slot in settings. Existing dates are skipped, so re-running over the same range adds nothing.",
+    previewCount: (n) => `Will create ${n}`,
+    previewTruncated: (max) => ` (capped at ${max})`,
+    submitBulk: (n) => `Add ${n}`,
+    errRangeRequired: "Enter a range",
+    errDowRequired: "Pick at least one day of the week",
+    errNoMatch: "No matching days in that range",
+    toastBulk: (created, skipped) =>
+      skipped > 0
+        ? `Added ${created} candidate date(s) (${skipped} already existed)`
+        : `Added ${created} candidate date(s)`,
+    toastTruncated: (max) => ` / capped at ${max}`,
+  },
+  frameBadge: {
+    extra: "Extra",
+    extraTitle: "A candidate date on a weekday outside the recurring slot",
+    timeOverride: "One-off",
+    timeOverrideTitle:
+      "A recurring-slot weekday, but the time was changed just for this day",
+  },
+  nativeRecurring: {
+    description:
+      "Set which weekdays you normally raid, and candidate dates are auto-added only on those days. Pick none to keep the previous behaviour (every day of the month).",
+    dowAria: "Recurring weekdays",
+    currentEvery: (dows) => `Current slot: every ${dows}`,
+    currentNone: "Current slot: none (every day of the month is a candidate)",
+    keepsExisting:
+      "Saving never deletes existing candidate dates (that would take their attendance and notes with them). Cancel the ones you don't need from the status column.",
+    toastSaved: (dows) => `Recurring slot set to every ${dows}`,
+    toastCleared: "Recurring slot cleared (every day of the month is a candidate)",
   },
   sessionTime: {
     ariaLabel: (date, current) => `Edit the time for ${date} (current: ${current})`,

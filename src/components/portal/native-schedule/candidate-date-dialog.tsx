@@ -17,7 +17,15 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { createNativeScheduleSessionAction } from "@/lib/server/native-schedule-actions";
+import {
+  createNativeScheduleSessionAction,
+  createNativeScheduleSessionsBulkAction,
+} from "@/lib/server/native-schedule-actions";
+import {
+  expandRecurringDates,
+  parseRecurringDows,
+  RECURRING_MAX_DATES,
+} from "@/lib/schedule/recurring-frames";
 import {
   FALLBACK_DEFAULT_END_TIME,
   FALLBACK_DEFAULT_START_TIME,
@@ -41,6 +49,19 @@ import { useMessages } from "@/lib/i18n/client";
  * defaultStartTime / defaultEndTime props 経由で受け取って初期値にする。
  * props 未指定時は `FALLBACK_DEFAULT_*` (= 既存 hardcode 値 21:00 / 23:00)
  * に倒れる graceful degrade。
+ *
+ * ## W-15 (2026-09-08): 「繰り返し」モード
+ *
+ * 調査ノート第 4 回 7-B W-15「毎週 X 曜 21:00 を期間 + 曜日で一括生成」。
+ * 同じダイアログに 1 日 / 繰り返しの切替を置く — 別ボタンを増やすと
+ * 「候補日を足す」導線が 2 つになり、どちらを押すか毎回考えることになる。
+ *
+ * 繰り返しでは **既にある日付を飛ばす** (上書きしない)。同じ日に手で入れた
+ * 候補日や、既に出欠が入っている行を一括操作で潰さないため。件数は送信前に
+ * その場で数えて出す (期間と曜日の指定ミスにその場で気付けるように)。
+ *
+ * 曜日の初期選択は設定画面の**定期枠**に揃える (`recurringDows`)。
+ * 「うちは火・木・土」を一度決めたら、期間を入れるだけで済む。
  */
 
 const DOW_LABELS = ["日", "月", "火", "水", "木", "金", "土"] as const;
@@ -50,6 +71,12 @@ const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
 const TIME_RE = /^([01]?\d|2[0-3]):([0-5]\d)$/;
 
 type CandidateDateDialogProps = {
+  /**
+   * W-15 (2026-09-08): 定期枠の曜日 CSV。「繰り返し」の曜日の初期選択に
+   * 使う。未設定なら何も選ばない (期間だけ入れて曜日を選び忘れると
+   * 0 件になるので、その場合はボタンを押せなくしてある)。
+   */
+  recurringDows?: string | null;
   /**
    * `app_settings.native_schedule_default_start_time` の値。
    * 候補日追加時の開始時刻 input の初期値に使う。未指定 / 空 / 無効な
@@ -74,6 +101,7 @@ const normalizeTime = (value: string | null | undefined, fallback: string) => {
 export function CandidateDateDialog({
   defaultStartTime,
   defaultEndTime,
+  recurringDows,
 }: CandidateDateDialogProps = {}) {
   const initialStart = normalizeTime(defaultStartTime, FALLBACK_DEFAULT_START_TIME);
   const initialEnd = normalizeTime(defaultEndTime, FALLBACK_DEFAULT_END_TIME);
@@ -88,6 +116,13 @@ export function CandidateDateDialog({
   const [error, setError] = useState<string | null>(null);
   const [busy, startTransition] = useTransition();
 
+  // W-15 (2026-09-08): 繰り返しモード。
+  const initialDows = parseRecurringDows(recurringDows);
+  const [repeat, setRepeat] = useState(false);
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [dows, setDows] = useState<number[]>(initialDows);
+
   // Reset on dialog open (新規追加 dialog なので、開くたびに blank に戻す)。
   // 時刻は app_settings default に追従するため、render 時に解決した値を再利用。
   useEffect(() => {
@@ -97,8 +132,62 @@ export function CandidateDateDialog({
       setEndTime(initialEnd);
       setNote("");
       setError(null);
+      setRepeat(false);
+      setFrom("");
+      setTo("");
+      setDows(parseRecurringDows(recurringDows));
     }
-  }, [open, initialStart, initialEnd]);
+  }, [open, initialStart, initialEnd, recurringDows]);
+
+  // 送信前に件数をその場で数えて出す (期間と曜日の指定ミスに気付けるように)。
+  // 既存日付の除外はサーバー側でしか分からないので、ここは「作ろうとする数」。
+  const preview = repeat
+    ? expandRecurringDates(from, to, dows)
+    : { dates: [], truncated: false };
+
+  const onSubmitBulk = () => {
+    setError(null);
+    if (!from.trim() || !to.trim()) {
+      setError(m.candidateDate.errRangeRequired);
+      return;
+    }
+    if (dows.length === 0) {
+      setError(m.candidateDate.errDowRequired);
+      return;
+    }
+    if (!TIME_RE.test(startTime) || !TIME_RE.test(endTime)) {
+      setError(m.candidateDate.errTimeFormat);
+      return;
+    }
+    if (startTime === endTime) {
+      setError(m.candidateDate.errSameTime);
+      return;
+    }
+    if (preview.dates.length === 0) {
+      setError(m.candidateDate.errNoMatch);
+      return;
+    }
+    startTransition(async () => {
+      const result = await createNativeScheduleSessionsBulkAction({
+        from,
+        to,
+        dows,
+        startTime,
+        endTime,
+        note: note.trim() || undefined,
+      });
+      if (!result.ok) {
+        setError(result.reason);
+        return;
+      }
+      toast.success(
+        m.candidateDate.toastBulk(result.created, result.skipped) +
+          (result.truncated ? m.candidateDate.toastTruncated(RECURRING_MAX_DATES) : ""),
+      );
+      setOpen(false);
+      router.refresh();
+    });
+  };
 
   const onSubmit = () => {
     setError(null);
@@ -190,19 +279,115 @@ export function CandidateDateDialog({
         </DialogHeader>
 
         <div className="flex max-h-[70svh] flex-col gap-4 overflow-y-auto p-5">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="candidate-date" className="text-xs text-foreground/80">
-              {m.candidateDate.dateLabel}
-            </Label>
-            <Input
-              id="candidate-date"
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              className="font-mono text-[12px]"
-              autoFocus
-            />
+          {/* W-15 (2026-09-08): 1 日 / 繰り返しの切替。導線を 1 つに保つため
+              別ボタンにはせず、このダイアログの中で切り替える。 */}
+          <div
+            role="group"
+            aria-label={m.candidateDate.modeAria}
+            className="inline-flex w-fit divide-x divide-border/40 overflow-hidden rounded-md border border-border/50"
+          >
+            {[false, true].map((v) => (
+              <button
+                key={String(v)}
+                type="button"
+                onClick={() => {
+                  setRepeat(v);
+                  setError(null);
+                }}
+                aria-current={repeat === v ? "true" : undefined}
+                className={
+                  "px-3 py-1 font-mono text-[11px] tracking-normal transition-colors " +
+                  (repeat === v
+                    ? "bg-[var(--neon-cyan)]/12 text-[var(--neon-cyan)]"
+                    : "text-muted-foreground hover:bg-secondary/40 hover:text-foreground")
+                }
+              >
+                {v ? m.candidateDate.modeRepeat : m.candidateDate.modeSingle}
+              </button>
+            ))}
           </div>
+
+          {!repeat ? (
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="candidate-date" className="text-xs text-foreground/80">
+                {m.candidateDate.dateLabel}
+              </Label>
+              <Input
+                id="candidate-date"
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                className="font-mono text-[12px]"
+                autoFocus
+              />
+            </div>
+          ) : (
+            <>
+              <div className="flex flex-col gap-1.5">
+                <Label className="text-xs text-foreground/80">
+                  {m.candidateDate.rangeLabel}
+                </Label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="date"
+                    value={from}
+                    onChange={(e) => setFrom(e.target.value)}
+                    className="font-mono text-[12px]"
+                    aria-label={m.candidateDate.rangeFromAria}
+                    autoFocus
+                  />
+                  <span className="text-xs text-muted-foreground">〜</span>
+                  <Input
+                    type="date"
+                    value={to}
+                    onChange={(e) => setTo(e.target.value)}
+                    className="font-mono text-[12px]"
+                    aria-label={m.candidateDate.rangeToAria}
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <Label className="text-xs text-foreground/80">
+                  {m.candidateDate.dowLabel}
+                </Label>
+                <div
+                  role="group"
+                  aria-label={m.candidateDate.dowLabel}
+                  className="flex flex-wrap gap-1"
+                >
+                  {DOW_LABELS.map((label, i) => {
+                    const on = dows.includes(i);
+                    return (
+                      <button
+                        key={label}
+                        type="button"
+                        onClick={() =>
+                          setDows((cur) =>
+                            cur.includes(i)
+                              ? cur.filter((d) => d !== i)
+                              : [...cur, i].sort((a, b) => a - b),
+                          )
+                        }
+                        aria-pressed={on}
+                        className={
+                          "h-8 w-8 rounded-md border font-mono text-[12px] transition-colors " +
+                          (on
+                            ? "border-[var(--neon-cyan)]/60 bg-[var(--neon-cyan)]/12 text-[var(--neon-cyan)]"
+                            : "border-border/50 text-muted-foreground hover:text-foreground")
+                        }
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-muted-foreground text-[11px] leading-relaxed">
+                  {m.candidateDate.dowHelp}
+                </p>
+              </div>
+            </>
+          )}
 
           <div className="flex flex-col gap-1.5">
             <Label className="text-xs text-foreground/80">{m.candidateDate.timeLabel}</Label>
@@ -246,6 +431,17 @@ export function CandidateDateDialog({
             />
           </div>
 
+          {/* 送信前の件数。既存日付の除外はサーバー側でしか分からないので
+              「作ろうとする数」と明記する (docstring 参照)。 */}
+          {repeat && preview.dates.length > 0 && (
+            <p className="rounded-md border border-border/40 bg-secondary/20 px-3 py-2 font-mono text-[11px] tabular-nums text-muted-foreground">
+              {m.candidateDate.previewCount(preview.dates.length)}
+              {preview.truncated
+                ? m.candidateDate.previewTruncated(RECURRING_MAX_DATES)
+                : ""}
+            </p>
+          )}
+
           {error && (
             <div className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive-foreground/90">
               <AlertTriangle
@@ -271,8 +467,8 @@ export function CandidateDateDialog({
           <Button
             type="button"
             size="sm"
-            onClick={onSubmit}
-            disabled={busy}
+            onClick={repeat ? onSubmitBulk : onSubmit}
+            disabled={busy || (repeat && preview.dates.length === 0)}
             className="gap-1.5 text-[11px] tracking-normal"
           >
             {busy ? (
@@ -280,7 +476,11 @@ export function CandidateDateDialog({
             ) : (
               <Save className="h-3.5 w-3.5" aria-hidden />
             )}
-            {busy ? m.common.saving : m.candidateDate.submit}
+            {busy
+              ? m.common.saving
+              : repeat
+                ? m.candidateDate.submitBulk(preview.dates.length)
+                : m.candidateDate.submit}
           </Button>
         </DialogFooter>
       </DialogContent>

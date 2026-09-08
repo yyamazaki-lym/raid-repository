@@ -11,6 +11,7 @@ import {
   findAbilityHeaderRows,
   buildAutoColumnLabels,
   parseSheetTabsSetting,
+  toSheetEmbedUrl,
 } from "@/lib/sheet-csv";
 import { MitigationColumnsDialog } from "@/components/portal/mitigation-columns-dialog";
 import { MitigationSheetTabsDialog } from "@/components/portal/mitigation-sheet-tabs-dialog";
@@ -222,28 +223,35 @@ export default async function MitigationPage({
       </div>
     );
 
+  // UI-5 (2026-09-08、第 2 回 UI 監査の残課題 4): iframe 側も選ばれた層を
+  // 開く。埋め込み URL の gid を差し替えないと、タブを押しても iframe は
+  // 最初のワークシートを表示したままになる (`toSheetEmbedUrl` の docstring)。
+  const embedUrl = toSheetEmbedUrl(category.mitigationSheetUrl, activeGid);
+
   return (
     <div className="flex flex-col gap-4">
+      {/* UI-5 (2026-09-08): 層タブは **表示形式の外**に置く。2026-08-30 の
+          導入時は card ビューの中にしか無く、シート (iframe) 表示に切り替えた
+          瞬間にタブが消えていた (第 2 回 UI 監査の残課題 4)。どちらの表示でも
+          同じ位置に出す。 */}
+      {floorTabs}
       {/* TODO #94: モバイルはカード固定、PC はボタンでシート ⇄ カードを切替。 */}
       {table.ok ? (
         <SheetViewSwitch
           storageKey="raid-repo:sheet-card-mode:mitigation"
           cards={
-            <div className="flex flex-col gap-3">
-              {floorTabs}
-              <SheetCards
-                table={table.table}
-                sheetUrl={category.mitigationSheetUrl}
-                title={title}
-                variant="mitigation"
-                columnLabels={columnLabels}
-                ignoreRows={ignoreRows}
-              />
-            </div>
+            <SheetCards
+              table={table.table}
+              sheetUrl={category.mitigationSheetUrl}
+              title={title}
+              variant="mitigation"
+              columnLabels={columnLabels}
+              ignoreRows={ignoreRows}
+            />
           }
           iframe={
             <SheetIframe
-              url={category.mitigationSheetUrl}
+              url={embedUrl}
               title={title}
               emptyHint=""
               categoryId={category.id}
@@ -254,7 +262,7 @@ export default async function MitigationPage({
         />
       ) : (
         <SheetIframe
-          url={category.mitigationSheetUrl}
+          url={embedUrl}
           title={title}
           emptyHint=""
           categoryId={category.id}

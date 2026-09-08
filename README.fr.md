@@ -24,6 +24,7 @@ Site de démonstration public en lecture seule : 🔗 **https://demo-raid-reposi
 ### Planning
 - Trois modes de source : **Synchronisé** (import depuis character-sheets), **Natif** (dates candidates, présence ○ × △ et confirmation dans le portail, avec liaison FFLogs et notifications Discord), **Désactivé**
 - La session confirmée est mise en avant comme **prochaine session** (le jour même, avec un compte à rebours « commence dans N h M min »)
+- **Créneau récurrent** (« tous les mardis / jeudis / samedis ») : les dates candidates ne sont créées automatiquement que ces jours-là, et le dialogue les génère en lot par **période × jours de la semaine**. Les jours hors créneau portent les mentions « Extra » / « Ponctuel »
 - En mode natif, chaque membre peut indiquer une **heure d'arrivée tardive / de départ anticipé** (HH:MM), affichée à côté du symbole (`21:30〜`) et à côté du nom dans la confirmation Discord
 - Les modèles Discord acceptent `{discord_relative}` / `{discord_time}` (rendus dans le fuseau du lecteur, par ex. « dans 3 heures »)
 - Rappel automatique par @mention aux membres sans réponse ; confirmation automatique optionnelle quand tout le monde a répondu
@@ -31,12 +32,13 @@ Site de démonstration public en lecture seule : 🔗 **https://demo-raid-reposi
 
 ### Contenus (catégories)
 - Par contenu de raid, un **statut** (Non commencé / En cours / Terminé / En pause), tri par glisser-déposer, dialogue d'édition, synchronisation temps réel via Supabase Realtime
+- Chaque carte affiche une **sparkline de progression sur les 8 dernières semaines** : on voit où en est le groupe sans ouvrir l'onglet
 
 ### Sous-onglets par contenu
 - **Mitigation / Loot** : vos Google Sheets existants en iframe ; **sur mobile, une vue en cartes en lecture seule** (feuille chargée en CSV, une carte par phase, filtre « ma colonne seulement »). L'onglet loot ajoute le **suivi hebdomadaire** (réinitialisation le mardi 17:00 JST) et les **liens BiS** (intégration XivGear)
 - **Guides** : liste de liens avec titre automatique ; **Vidéos** : aperçu YouTube en lazy-embed, lien FFLogs / XIVAnalysis optionnel
 - **Macros** : macros du jeu avec copie en un clic ; plus les **presets de waymarks** (markercode) et les **codes de partage du Strategy Board**
-- **Journal d'entraînement** : données pull par pull importées de FFLogs — total de pulls, jours d'entraînement, progression maximale, clears ; barre de progression par jour ; depuis chaque pull, un clic vers FFLogs / XIVAnalysis / l'instant dans la vidéo ; **cause du wipe** par pull (job mort en premier ← compétence fatale, morts dans les 10 s) et comptage des mécaniques qui font tomber le groupe ; pour les Ultimates, **temps passé par phase**. Les DPS individuels ne sont ni stockés ni affichés ; les morts sont enregistrées sans nom de joueur (job + compétence seulement)
+- **Journal d'entraînement** : données pull par pull importées de FFLogs — total de pulls, jours d'entraînement, progression maximale, clears ; barre de progression par jour ; depuis chaque pull, un clic vers FFLogs / XIVAnalysis / l'instant dans la vidéo ; **cause du wipe** par pull (job mort en premier ← compétence fatale, morts dans les 10 s) et comptage des mécaniques qui font tomber le groupe ; pour les Ultimates, **temps passé par phase** et **première arrivée dans chaque phase** ; pour les Savage, **premier clear par étage**. Chaque jour affiche une **rangée de boîtes de pulls** (1 pull = 1 case portant le numéro de segment, `✓` pour un clear) ; le filtre étage / phase est un contrôle segmenté dont la sélection tient dans l'URL (`?floor=4b` / `?phase=2`). Les DPS individuels ne sont ni stockés ni affichés ; les morts sont enregistrées sans nom de joueur (job + compétence seulement)
 
 ### Import automatique depuis Discord
 - Par contenu, un canal « guides » et un canal « vidéos » ; Vercel Cron récupère chaque jour à 01:00 JST les 100 derniers messages, extrait les URL, dédoublonne et les range dans l'onglet correspondant. Import immédiat par bouton

@@ -23,6 +23,12 @@ import {
   normalizeAttendanceTime,
   symbolAllowsTimes,
 } from "@/lib/schedule/attendance-times";
+import {
+  expandRecurringDates,
+  NATIVE_RECURRING_DOWS_KEY,
+  RECURRING_MAX_DATES,
+  serializeRecurringDows,
+} from "@/lib/schedule/recurring-frames";
 
 /**
  * TODO #2 phase 2-A (2026-05-07): native スケジュール用 Server Actions。
@@ -983,3 +989,190 @@ export async function setNativeScheduleAutoConfirmMinAvailableAction(
   }
   return { ok: true };
 }
+
+// ---- W-15 定期枠 (2026-09-08) --------------------------------------------
+
+/**
+ * 定期枠の曜日を保存する (W-15)。
+ *
+ * 保存後は `ensureNativeMonthlyPlaceholders` が**その曜日だけ**候補日を
+ * 敷設する。既に敷設済みの他曜日の行は消さない — 消すと、その日に入っていた
+ * 出欠やメモまで巻き添えになる。要らない行は従来どおり status を CANCELLED
+ * にする (取り消した日の一覧は設定画面にある)。
+ */
+export async function setNativeScheduleRecurringDowsAction(
+  dows: number[],
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
+  if (!Array.isArray(dows)) {
+    return { ok: false, reason: "曜日の指定が不正です" };
+  }
+  // 0-6 以外は `serializeRecurringDows` が落とす。全部落ちたら空文字 =
+  // 「定期枠なし」= 従来どおり全日。
+  const value = serializeRecurringDows(dows);
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("app_settings")
+    .upsert({ key: NATIVE_RECURRING_DOWS_KEY, value }, { onConflict: "key" });
+  if (error) return { ok: false, reason: dbError("定期枠の保存", error) };
+  try {
+    revalidatePath("/");
+  } catch {
+    // best-effort
+  }
+  return { ok: true };
+}
+
+export type BulkCandidateInput = {
+  /** `YYYY-MM-DD` (両端含む)。 */
+  from: string;
+  to: string;
+  /** 曜日 (0 = 日 .. 6 = 土)。 */
+  dows: number[];
+  startTime: string;
+  endTime: string;
+  note?: string;
+};
+
+/**
+ * 期間 + 曜日で候補日を一括生成する (W-15)。
+ *
+ * 「毎週 X 曜 21:00 を期間 + 曜日で一括生成」そのもの。1 件ずつの
+ * `createNativeScheduleSessionAction` と同じ形の行を作り、
+ * **既にある日付は飛ばす** (上書きしない)。同じ日に手で入れた候補日や、
+ * 出欠が入っている行を一括操作で潰さないため。
+ *
+ * 時刻は日個別の値として保存する (`start_time` / `end_time` に NOT NULL)。
+ * placeholder の「default 追従」とは別扱いにするのは、一括生成が
+ * **人が時刻を明示して作る操作**だから — あとで default を変えても、
+ * 意図して作った枠が勝手に動かない。
+ */
+export async function createNativeScheduleSessionsBulkAction(
+  input: BulkCandidateInput,
+): Promise<
+  | { ok: true; created: number; skipped: number; truncated: boolean }
+  | { ok: false; reason: string }
+> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
+
+  const startTime = input.startTime?.trim() ?? "";
+  const endTime = input.endTime?.trim() ?? "";
+  const TIME = /^([01]?\d|2[0-3]):([0-5]\d)$/;
+  if (!TIME.test(startTime) || !TIME.test(endTime)) {
+    return { ok: false, reason: "時刻は HH:MM 形式で入力してください" };
+  }
+  if (startTime === endTime) {
+    return { ok: false, reason: "開始と終了が同じ時刻です" };
+  }
+  const noteRaw = input.note?.trim() ?? "";
+  if (noteRaw.length > 200) {
+    return { ok: false, reason: "備考は 200 文字以内で入力してください" };
+  }
+  const note = noteRaw || null;
+
+  const { dates, truncated } = expandRecurringDates(
+    input.from,
+    input.to,
+    input.dows ?? [],
+  );
+  if (dates.length === 0) {
+    return {
+      ok: false,
+      reason: "その期間に該当する曜日がありません (期間と曜日を確認してください)",
+    };
+  }
+
+  const DOW_LABELS = ["日", "月", "火", "水", "木", "金", "土"] as const;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const [sh, sm] = startTime.split(":").map(Number);
+  const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
+  const rows = dates.map((c) => {
+    const dow = DOW_LABELS[c.dow] ?? "日";
+    return {
+      raw_date: `${c.y}/${pad(c.m)}/${pad(c.d)}(${dow}) ${startTime}~${endTime}`,
+      parsed_date: new Date(
+        Date.UTC(c.y, c.m - 1, c.d, sh ?? 0, sm ?? 0, 0, 0) - JST_OFFSET_MS,
+      ).toISOString(),
+      start_time: startTime,
+      end_time: endTime,
+      day_of_week: dow,
+      note,
+      created_by_id: auth.user.discordId,
+      datePrefix: `${c.y}/${pad(c.m)}/${pad(c.d)}(${dow})`,
+    };
+  });
+
+  const supabase = await createClient();
+  // 既存日付の除外。`raw_date` は時刻を含むので、時刻が違うだけの二重登録を
+  // 防ぐには **日付 prefix** で突き合わせる必要がある
+  // (`native-schedule-placeholders.ts` と同じ判断)。CANCELLED も既存として
+  // 扱う — 取り消した日を一括生成で勝手に復活させない。
+  //
+  // ⚠ 突き合わせの範囲は **暦日の全体** (最初の日の 0:00 JST 〜 最後の日の
+  // 翌 0:00 JST) にする。生成する時刻 (`parsed_date`) の範囲で引くと、
+  // 同じ日に **より早い時刻**で登録済みの候補日が範囲の外に落ちて検出できず、
+  // 同じ日付の行が二重にできる (21:00 で作るとき、その日の 20:00 の行が
+  // 見えない)。
+  const firstDate = dates[0]!;
+  const lastDate = dates[dates.length - 1]!;
+  const rangeStart = new Date(
+    Date.UTC(firstDate.y, firstDate.m - 1, firstDate.d) - JST_OFFSET_MS,
+  ).toISOString();
+  const rangeEnd = new Date(
+    Date.UTC(lastDate.y, lastDate.m - 1, lastDate.d + 1) - JST_OFFSET_MS,
+  ).toISOString();
+  const { data: existing, error: existErr } = await supabase
+    .from("native_schedule_sessions")
+    .select("raw_date")
+    .gte("parsed_date", rangeStart)
+    .lt("parsed_date", rangeEnd);
+  if (existErr) {
+    return { ok: false, reason: dbError("既存候補日の確認", existErr) };
+  }
+  const prefixRe = /^(\d{4}\/\d{2}\/\d{2}\([日月火水木金土]\))/;
+  const taken = new Set<string>();
+  for (const r of (existing ?? []) as Array<{ raw_date: string }>) {
+    const mt = prefixRe.exec(r.raw_date);
+    if (mt) taken.add(mt[1]!);
+  }
+  const fresh = rows.filter((r) => !taken.has(r.datePrefix));
+  const skipped = rows.length - fresh.length;
+  if (fresh.length === 0) {
+    return { ok: true, created: 0, skipped, truncated };
+  }
+
+  const { error } = await supabase.from("native_schedule_sessions").insert(
+    // `datePrefix` は既存判定にしか使わない作業用フィールドなので落とす。
+    fresh.map((r) => ({
+      raw_date: r.raw_date,
+      parsed_date: r.parsed_date,
+      start_time: r.start_time,
+      end_time: r.end_time,
+      day_of_week: r.day_of_week,
+      note: r.note,
+      created_by_id: r.created_by_id,
+    })),
+  );
+  if (error) {
+    // 上の日付 prefix 判定を抜けた同 raw_date は、別の誰かが同時に足した
+    // 場合しか起きない。生の PG エラーではなく状況を返す。
+    if ((error as { code?: string }).code === "23505") {
+      return {
+        ok: false,
+        reason: "同じ日時の候補日が追加されたところです。もう一度お試しください",
+      };
+    }
+    return { ok: false, reason: dbError("候補日の一括追加", error) };
+  }
+  try {
+    revalidatePath("/");
+  } catch {
+    // best-effort
+  }
+  return { ok: true, created: fresh.length, skipped, truncated };
+}
+
+/** 一括生成の上限 (UI の説明文で参照する)。 */
+export const BULK_CANDIDATE_MAX = RECURRING_MAX_DATES;

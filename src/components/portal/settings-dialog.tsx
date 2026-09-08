@@ -36,6 +36,7 @@ import { NativeMembersSection } from "./settings/native-members-section";
 import { NativeChoiceValuesSection } from "./settings/native-choice-values-section";
 import { NativeCancelledSessionsSection } from "./settings/native-cancelled-sessions-section";
 import { NativeDefaultRaidTimeSection } from "./settings/native-default-raid-time-section";
+import { NativeRecurringFrameSection } from "./settings/native-recurring-frame-section";
 import { NativeDiscordNotifySection } from "./settings/native-discord-notify-section";
 import { AttendanceReminderSection } from "./settings/attendance-reminder-section";
 import { NativeAutoConfirmSection } from "./settings/native-auto-confirm-section";
@@ -281,6 +282,16 @@ export function SettingsDialog({
               loaded={adminAux !== null}
               defaultStartTime={adminAux?.defaultStartTime ?? "21:00"}
               defaultEndTime={adminAux?.defaultEndTime ?? "23:00"}
+              onChanged={() => setAdminAuxTick((t) => t + 1)}
+            />
+          )}
+          {/* W-15 (2026-09-08): 定期枠。既定時刻のすぐ下に置く — 「毎週いつ /
+              何時から」は 1 組の設定として読まれるため。 */}
+          {mode === "native" && (
+            <NativeRecurringFrameSection
+              canEdit={canEdit}
+              loaded={adminAux !== null}
+              recurringDows={adminAux?.recurringDows ?? null}
               onChanged={() => setAdminAuxTick((t) => t + 1)}
             />
           )}

@@ -7,6 +7,7 @@ import {
   NATIVE_DEFAULT_START_TIME_KEY,
 } from "@/lib/schedule/native-defaults";
 import { MAINTENANCE_WINDOWS_KEY } from "@/lib/maintenance-schedule";
+import { NATIVE_RECURRING_DOWS_KEY } from "@/lib/schedule/recurring-frames";
 import {
   NATIVE_CHOICE_VALUES_KEY,
   SCHEDULE_SOURCE_MODE_KEY,
@@ -108,6 +109,9 @@ const PORTAL_SETTING_KEYS: string[] = [
   // W-30 (2026-09-07): 次回開催カードのメンテ衝突警告で使う。TOP 描画パスの
   // 参照なので、個別 fetch を増やさずここへ相乗りさせる。
   MAINTENANCE_WINDOWS_KEY,
+  // W-15 (2026-09-08): 定期枠の曜日。placeholder 敷設と予定表の「臨時 /
+  // 今回だけ」バッジの両方が見るので、TOP 描画パスの一括 SELECT に載せる。
+  NATIVE_RECURRING_DOWS_KEY,
 ];
 
 /**

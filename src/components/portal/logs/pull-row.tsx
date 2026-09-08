@@ -41,6 +41,15 @@ import { type ReportVideoLink } from "@/lib/supabase/fflogs-fights";
 import { PhaseSpanBar } from "./phase-span-bar";
 import { videoName } from "./video-link";
 
+/**
+ * pull 行の DOM id (UI-1、2026-09-08)。プル・ボックス列 (`pull-box-row.tsx`)
+ * が押された pull までスクロールするのに使う。report code + fight ID の対は
+ * `fflogs_fights` の複合主キーそのものなので衝突しない。
+ */
+export function pullAnchorId(reportCode: string, fightId: number): string {
+  return `log-pull-${reportCode}-${fightId}`;
+}
+
 export function PullRow({
   index,
   fight,
@@ -96,7 +105,13 @@ export function PullRow({
         });
 
   return (
-    <li className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-sm border border-border/30 bg-background/30 px-2 py-1">
+    <li
+      // UI-1 (2026-09-08): プル・ボックス列から個々の pull へ飛べるように
+      // 錨を付ける。report + fight ID の対はカテゴリ内で一意
+      // (`fflogs_fights` の複合主キーと同じ)。
+      id={pullAnchorId(fight.reportCode, fight.fightId)}
+      className="flex scroll-mt-24 flex-wrap items-center gap-x-2 gap-y-1 rounded-sm border border-border/30 bg-background/30 px-2 py-1"
+    >
       {/* 2026-08-30: 10px 灰色一色の行を再配色 (実機報告「灰色だらけで
           見にくい」)。番号/時刻/時間は 11px に上げ、層は識別色チップ、
           結果 (CLEAR / 残%) は熱量色の別チップに分離した。

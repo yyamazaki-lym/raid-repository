@@ -27,10 +27,19 @@ export async function generateMetadata() {
 
 export default async function LogsPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string }>;
+  // UI-5 (2026-09-08): 区間の絞り込みを URL に載せる (`?floor=4b` /
+  // `?phase=2`)。Next 16 では params / searchParams はどちらも Promise なので
+  // await して読む。値の検証は client 側 (`logs-filter-url.ts`) — 実在する
+  // 層 / フェーズの一覧が明細から決まるので、そこでしか照合できない。
+  searchParams: Promise<{ floor?: string | string[]; phase?: string | string[] }>;
 }) {
-  const { slug } = await params;
+  const [{ slug }, sp] = await Promise.all([params, searchParams]);
+  // `?floor=a&floor=b` のように複数回書かれたら先頭だけ見る。
+  const firstParam = (v: string | string[] | undefined): string | null =>
+    Array.isArray(v) ? (v[0] ?? null) : (v ?? null);
   const [category, canEdit, m] = await Promise.all([
     findCategoryBySlug(slug),
     getCurrentUserCanEdit(),
@@ -80,6 +89,8 @@ export default async function LogsPage({
       truncated={truncated}
       progressModel={category.progressModel}
       difficultyLabel={category.difficultyLabel}
+      initialFloorParam={firstParam(sp.floor)}
+      initialPhaseParam={firstParam(sp.phase)}
       phaseTotalsAll={phaseTotalsAll}
       videoLinks={videoLinks}
       failedSyncs={failedSyncs}

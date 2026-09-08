@@ -43,6 +43,7 @@ Optional variables (DISCORD_ADMIN_ROLE_IDS / YOUTUBE_API_KEY / FFLOGS_API_KEY / 
 ### Schedule
 - Pick the source mode in the settings dialog: **Sync** (imports from character-sheets, the default) / **Native** (add candidate dates, enter attendance and confirm sessions inside the portal, with FFLogs linkage and Discord notifications) / **Off**
 - The "confirmed" (`DECISION`) row is highlighted as the **next session** (on the day itself, with a "starts in N h M min" countdown)
+- Native mode has a **recurring slot** (which weekdays you normally raid): candidate dates are auto-added only on those days. The candidate dialog's "Repeat" mode **bulk-creates a range × weekdays** (existing dates are skipped). Days outside the slot are badged "Extra" / "One-off"
 - In native mode, besides ○ × △, members can enter their own **late arrival / early leave time** (HH:MM). It shows next to the symbol as `21:30〜` and next to the name in the Discord confirmation post
 - Discord notification templates (session confirmation / attendance reminder) accept `{discord_relative}` / `{discord_time}`, rendered in the reader's time zone as "in 3 hours" / "Tue, Sep 8, 21:00"
 - Hover (PC) / tap (mobile) a member name to see their one-line comment
@@ -52,6 +53,8 @@ Optional variables (DISCORD_ADMIN_ROLE_IDS / YOUTUBE_API_KEY / FFLOGS_API_KEY / 
 
 ### Contents (categories)
 - Per raid content, a **status** (Not started / In progress / Cleared / On hold)
+- Each card carries a **per-day progress sparkline** (last 8 weeks) so you can see how far the party has got without opening the tab
+- A **difficulty label** and a **progress model** (floors / phases) can be set per content (so a new difficulty tier works even before its name is announced)
 - Drag to reorder (mouse, long-press touch, keyboard)
 - Edit dialog for name / URL slug / status / sheet URLs / Discord channel IDs
 - Delete confirmation dialog
@@ -60,6 +63,7 @@ Optional variables (DISCORD_ADMIN_ROLE_IDS / YOUTUBE_API_KEY / FFLOGS_API_KEY / 
 ### Sub tabs (per content)
 - **Mitigation / Loot**: your existing Google Sheets embedded full width in an iframe (80% scale)
   - **Mobile gets a read-only card view** (the sheet is fetched as CSV and rebuilt as per-phase cards, with a "only my column" filter). Falls back to the iframe when the sheet cannot be fetched
+  - Worksheets inside the spreadsheet (floors) get **floor tabs**. They work in both the card and the sheet view, and the selection is shareable through `?gid=`
   - The loot tab adds a **weekly clear check** (reset Tuesday 17:00 JST, badge with the number of members still pending) and **best-in-slot (BiS) links** (share URLs from XivGear etc., tagged with job / owner)
 - **Strategy**: list of wiki / article links, drag-and-drop ordering, title fetched from the URL
 - **Videos**: YouTube shows a thumbnail with click-to-play (lazy embed); other video sites show as link cards
@@ -68,11 +72,15 @@ Optional variables (DISCORD_ADMIN_ROLE_IDS / YOUTUBE_API_KEY / FFLOGS_API_KEY / 
   - The same tab has a **waymark (markercode)** section: placement strings exported by EchoPlan and similar tools, stored with a label and note, one-tap copy
 - **Practice log**: pull-by-pull data imported from FFLogs
   - Summary of total pulls / practice days / deepest reach / clears, plus a per-day **progress bar** (bar = best reach that day, right edge = kill, flag on personal-best days)
+  - A **progress trend** (reach over time plus a rough pace to clear) and **team badges** (first clear / flawless clear / fastest clear / clear count)
   - Phase labels (P1…) are shown **only for Ultimates** (Savage shows remaining HP%). Trash fights are dropped at import
-  - Open a day to see its pulls; from each pull, one click to **the fight on FFLogs / the XIVAnalysis analysis / that moment in the video**
+  - Every day gets a **pull box row** (1 pull = 1 small box, labelled with the segment it reached, `✓` for a clear). You can read how the day went without opening it, and clicking a box jumps to that pull
+  - The **floor / phase filter** is a single segmented control and its selection lives in the URL (`?floor=4b` / `?phase=2` opens in that state when pasted into Discord)
+  - Open a day to see its pulls plus a **session summary** (elapsed / in combat / out of combat / average pull length); from each pull, one click to **the fight on FFLogs / the XIVAnalysis analysis / that moment in the video**
   - The video jump works for every pull once you register, per report, "how many seconds into the video the report starts"
   - Each pull shows the **wipe cause** (abbreviated job that died first ← killing-blow ability, number of deaths within 10 s). Per day and per content, the abilities that break the party are counted
-  - Ultimates get **time per phase** (a phase band bar per pull and the share over all pulls)
+  - Ultimates get **time per phase** (a phase band bar per pull and the share over all pulls) and **first reach per phase** (cumulative fight time and pull count up to it)
+  - Savage tiers get **first clear per floor** (fight time on that floor, that floor's pull count plus the tier total, date on hover)
   - Individual DPS is neither aggregated nor displayed (party-level progress only). Deaths are stored without player names, down to job + ability
 
 ### Discord auto-import
@@ -544,6 +552,24 @@ Open http://localhost:3000
 ## Schema migration
 
 `supabase/schema.sql` is idempotent. Re-run the same SQL after any schema change.
+
+> 📌 **One function was added on 2026-09-08** (`category_progress_by_day`, for the progress sparkline on content cards). On a deployment that has not re-run the SQL, only that sparkline is missing — nothing else is affected.
+
+## Documentation
+
+| File | What it is |
+|---|---|
+| [`docs/backlog.md`](docs/backlog.md) | **Remaining work.** Start here to see what is next: the research notes' W- / UI- items reordered by implementation order, plus requests from real use and operational notes |
+| [`docs/ff14-tools-research-2026-09-06-wide.md`](docs/ff14-tools-research-2026-09-06-wide.md) | The rationale behind the feature candidates (4th round, wide survey): pros / cons / cost / priority per item |
+| [`docs/guides/log-runner.md`](docs/guides/log-runner.md) | Guide for whoever runs the logging (who records, visibility, patch-week caveats, what to check when imports stop working) |
+| [`docs/guides/discord-setup.md`](docs/guides/discord-setup.md) | Recommended Discord channel layout and setup steps |
+| [`docs/release-notes/`](docs/release-notes/) | The body text of each release (the one-line summaries shown in the app live in `src/lib/changelog.ts`) |
+
+## Brand assets
+
+The logos live in `public/brand/`: `logo-mark.svg` (square mark — the crystal is the vessel holding what the group has learned, the 8 surrounding points are the 8-player party: 2 tanks on top in blue, 2 healers at the bottom in green, 4 DPS on the sides in red), and `logo-wordmark-dark.svg` / `logo-wordmark-light.svg` (mark + wordmark for dark and light backgrounds). The header of this README switches between them automatically. The app uses the same mark for the favicon (`src/app/icon.svg`), the iOS home-screen icon (`src/app/apple-icon.png`), the login screen and the loading splash.
+
+`social-preview.png` (1280×640) is the image GitHub shows on the repository card and in link previews. **Upload it by hand from Settings → Social preview** — that setting cannot be changed through the GitHub API. Re-export and re-upload it the same way whenever the logo or the tagline changes.
 
 ## License
 

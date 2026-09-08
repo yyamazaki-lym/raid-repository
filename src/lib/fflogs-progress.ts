@@ -387,6 +387,76 @@ export type ProgressPoint = {
   hasClear: boolean;
 };
 
+/**
+ * 到達度 (0-100) の計算式 (2026-09-08 に `progressTimeline` から切り出し)。
+ *
+ * 「区間」= 零式の層 / 絶のフェーズ。区間モデルがあるコンテンツでは
+ * **突破済みの区間数 + 現在区間の削り** を全区間で割る。無ければ
+ * 100 − 残 HP%。
+ *
+ * UI-1 (プル・ボックス列) が pull 単位で同じ値を要るので関数にした。
+ * 日単位 (`progressTimeline`) と pull 単位 (`pullProgress`) で式が分かれると、
+ * 同じ日のバーと箱の色が食い違う。
+ */
+export function progressValue(opts: {
+  /** クリア (最終区間の討伐)。true なら無条件で 100。 */
+  hasClear: boolean;
+  /** 到達区間 (1 始まり)。取れなければ null。 */
+  segment: number | null;
+  /** 区間の総数。null なら区間モデルが無いコンテンツ。 */
+  segmentCount: number | null;
+  /** 区間内のボス残 HP% (0-100)。取れなければ null。 */
+  remainingPercent: number | null;
+}): number {
+  if (opts.hasClear) return 100;
+  if (opts.segmentCount !== null) {
+    const inSegment =
+      opts.remainingPercent !== null
+        ? Math.max(0, Math.min(1, 1 - opts.remainingPercent / 100))
+        : 0;
+    // 区間が分かっているコンテンツで区間が取れない (FFLogs が lastPhase を
+    // 返していない) 場合は **最も浅い区間** に置く。バー全体に対する
+    // 100 − 残% として描くと、P1 で死んだ pull が「ほぼ討伐」に見えてしまう
+    // (過大より過小に倒す)。
+    const seg = opts.segment ?? 1;
+    return Math.max(
+      0,
+      Math.min(100, ((seg - 1 + inSegment) / opts.segmentCount) * 100),
+    );
+  }
+  if (opts.remainingPercent !== null) {
+    return Math.max(0, Math.min(100, 100 - opts.remainingPercent));
+  }
+  return 0;
+}
+
+/**
+ * 1 pull の到達度 (0-100)。UI-1 のプル・ボックス列の色に使う
+ * (2026-09-08)。
+ *
+ * 層モデルでは「最終層の討伐」だけを 100 にする — 消化で 1 層を倒した pull
+ * を 100 にすると、箱列が毎週の消化で緑に埋まって練習の伸びが読めなくなる
+ * (`isClearFight` と同じ判断)。下層の討伐はその層を突破した扱い
+ * (= 区間 1 つぶん) になる。
+ */
+export function pullProgress(
+  f: FightRow,
+  floors: FloorMap,
+  segmentCount: number | null,
+): number {
+  const segment =
+    floors && f.encounterId !== null
+      ? (floors.byEncounter.get(f.encounterId) ?? null)
+      : f.lastPhase;
+  return progressValue({
+    hasClear: isClearFight(f, floors),
+    segment,
+    segmentCount,
+    // 討伐した pull は残 0% (FFLogs が値を返さないことがある)。
+    remainingPercent: f.kill ? 0 : f.fightPercentage,
+  });
+}
+
 export function progressTimeline(
   days: DaySummary[],
   floors: FloorMap = null,
@@ -430,28 +500,14 @@ export function progressTimeline(
     if (improvedPhase) bestPhase = d.bestPhase;
 
     const hasClear = d.clears > 0;
-    let progress: number;
-    if (hasClear) {
-      progress = 100;
-    } else if (segmentCount !== null) {
-      const inSegment =
-        d.bestPercentage !== null
-          ? Math.max(0, Math.min(1, 1 - d.bestPercentage / 100))
-          : 0;
-      // 区間が分かっているコンテンツで、その日だけ区間が取れない
-      // (FFLogs が lastPhase を返していない) 場合は **最も浅い区間** に
-      // 置く。バー全体に対する 100 − 残% として描くと、P1 で死んだ日が
-      // 「ほぼ討伐」に見えてしまうため (過大より過小に倒す)。
-      const seg = segment ?? 1;
-      progress = Math.max(
-        0,
-        Math.min(100, ((seg - 1 + inSegment) / segmentCount) * 100),
-      );
-    } else if (d.bestPercentage !== null) {
-      progress = Math.max(0, Math.min(100, 100 - d.bestPercentage));
-    } else {
-      progress = 0;
-    }
+    // 式は `progressValue` に集約 (2026-09-08)。pull 単位の箱色
+    // (`pullProgress`) と同じ計算にしないと、同じ日のバーと箱が食い違う。
+    const progress = progressValue({
+      hasClear,
+      segment,
+      segmentCount,
+      remainingPercent: d.bestPercentage,
+    });
 
     // 2026-08-30 実機報告「討伐済みなのにフラグが出ていないことがある」。
     //

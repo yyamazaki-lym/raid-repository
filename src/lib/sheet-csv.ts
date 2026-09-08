@@ -101,6 +101,54 @@ export function extractSheetGid(raw: string | null | undefined): string | null {
 }
 
 /**
+ * iframe に出すシート URL の gid を差し替える (UI-5、2026-09-08)。
+ *
+ * 層タブ (`?gid=`) は 2026-08-30 の導入時から **card ビューでしか出ていな
+ * かった** (第 2 回 UI 監査の残課題 4)。iframe 側にも同じタブを出すには、
+ * 埋め込み URL 側の gid も一緒に動かす必要がある — そうしないとタブを
+ * 押しても iframe は最初のワークシートを表示したままになる。
+ *
+ * 登録された URL の形をなるべく保つ:
+ *   - published 形 (`/d/e/<token>/pubhtml`) は `?gid=` を差し替える
+ *     (`single=true` も付ける。付けないと Google がタブバーを出して、
+ *     portal 側のタブと二重になる)
+ *   - 通常の共有形 (`/d/<id>/edit` 等) は `#gid=` を差し替える
+ *     (Google が hash で開くワークシートを決める形)
+ *
+ * docs.google.com 以外、または gid が空のときは **入力をそのまま返す**。
+ * 判定できない URL を組み替えると、いま動いている埋め込みを壊しうる。
+ */
+export function toSheetEmbedUrl(
+  raw: string | null | undefined,
+  overrideGid?: string | null,
+): string | null {
+  if (!raw) return null;
+  const trimmed = raw.trim();
+  if (!overrideGid || !/^\d+$/.test(overrideGid)) return trimmed;
+  let u: URL;
+  try {
+    u = new URL(trimmed);
+  } catch {
+    return trimmed;
+  }
+  if (u.hostname !== "docs.google.com") return trimmed;
+
+  if (/^\/spreadsheets\/d\/e\/[^/]+\/(pubhtml|pub)\b/.test(u.pathname)) {
+    u.searchParams.set("gid", overrideGid);
+    u.searchParams.set("single", "true");
+    // hash 側に残った古い gid が query より優先される環境があるので消す。
+    u.hash = "";
+    return u.toString();
+  }
+  if (/^\/spreadsheets\/d\/[a-zA-Z0-9-_]{10,}/.test(u.pathname)) {
+    u.searchParams.delete("gid");
+    u.hash = `#gid=${overrideGid}`;
+    return u.toString();
+  }
+  return trimmed;
+}
+
+/**
  * シートのワークシート一覧 (層タブ) の HTML を取得するための URL。
  * published 形は pubhtml、通常共有形は htmlview がタブ一覧
  * (`<li id="sheet-button-<gid>"><a>名前</a></li>`) を含む。
