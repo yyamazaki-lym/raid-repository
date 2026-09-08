@@ -10,8 +10,13 @@ import {
   getCurrentUserCanEdit,
   requireDiscordMember,
 } from "@/lib/server/auth";
-import { fetchLootWeekly } from "@/lib/supabase/loot-extras";
+import {
+  fetchCategoryBisLinks,
+  fetchCategoryBisSlots,
+  fetchLootWeekly,
+} from "@/lib/supabase/loot-extras";
 import { LootWeeklyPanel } from "@/components/portal/loot-extras";
+import { LootWantMatrix } from "@/components/portal/loot-want-matrix";
 import { fetchAppSetting } from "@/lib/supabase/app-settings";
 import {
   LOOT_WINDOW_WEEKS_KEY,
@@ -73,8 +78,22 @@ export default async function LootPage({
     weeks.map((w) => fetchLootWeekly(category.id, w, viewer.discordId)),
   );
 
+  // W-24 + W-25 (2026-09-08): 「欲しい人」行列。BiS の「取得済」だけを根拠に
+  // 部位 × メンバーで並べ、取得済の少ない人を先に提案する (確定はしない)。
+  // BiS リンクが 0 本の固定では行列そのものを出さない。
+  const bisLinks = await fetchCategoryBisLinks(category.id);
+  const bisSlots = await fetchCategoryBisSlots(bisLinks.map((l) => l.id));
+  const wantMembers = bisLinks.map((l) => ({
+    bisLinkId: l.id,
+    // 列見出しは「誰の BiS か」が分かる方を優先する (owner_name が正)。
+    label: l.ownerName?.trim() || l.label,
+    job: l.job,
+    obtainedSlots: bisSlots[l.id] ?? [],
+  }));
+
   const extras = (
     <div className="flex flex-col gap-3 px-3 md:px-0">
+      <LootWantMatrix members={wantMembers} />
       {weeks.map((week, i) => (
         <LootWeeklyPanel
           key={week}

@@ -692,6 +692,21 @@ export const ja = {
     copyBodyAria: (label: string) => `${label} の本文をコピー`,
     copyBodyTitle: "クリックで本文をコピー",
   },
+  // W-24 + W-25 (2026-09-08): ロットの「欲しい人」行列 + 優先度の提案。
+  lootWant: {
+    title: "欲しい人",
+    subtitle: "BiS の「取得済」から自動で作った提案です (確定はしません)",
+    allDone: "登録されている BiS はすべて揃っています。",
+    colSlot: "部位",
+    memberTitle: (obtained: number, total: number): string =>
+      `取得済 ${obtained} / ${total} 部位`,
+    cellDone: "取得済",
+    cellNa: "このジョブでは数えない部位",
+    cellWant: (rank: number, obtained: number, total: number): string =>
+      `提案 ${rank} 番目 (取得済 ${obtained}/${total})`,
+    legend:
+      "数字 = 提案の順番 (取得済が少ない人が先、同数なら残りが多い人が先)。緑 = 1 番目 / 黄 = それ以外 / ✓ = 取得済。ロットのルールは固定ごとに違うので、決めるのは人です。",
+  },
 } as const;
 
 type ContentMessages = DeepWiden<typeof ja>;
@@ -1360,5 +1375,18 @@ export const en: ContentMessages = {
     rowDragTitle: "Drag to reorder this row",
     copyBodyAria: (label) => `Copy the body of ${label}`,
     copyBodyTitle: "Click to copy the body",
+  },
+  lootWant: {
+    title: "Who wants it",
+    subtitle: "Suggested from the BiS obtained checks (nothing is decided here)",
+    allDone: "Every registered BiS set is complete.",
+    colSlot: "Slot",
+    memberTitle: (obtained, total) => `${obtained} / ${total} slots obtained`,
+    cellDone: "Already obtained",
+    cellNa: "Not counted for this job",
+    cellWant: (rank, obtained, total) =>
+      `Suggestion #${rank} (${obtained}/${total} obtained)`,
+    legend:
+      "Numbers are the suggested order (fewest obtained first, then most remaining). Green = first / amber = the rest / check = obtained. Loot rules differ per team, so the call is yours.",
   },
 };
