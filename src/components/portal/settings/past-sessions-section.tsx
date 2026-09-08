@@ -27,6 +27,7 @@ import {
   type ScheduleSnapshotResult,
 } from "@/lib/server/categories-actions";
 import { useMessages } from "@/lib/i18n/client";
+import { CollapsibleSection } from "./collapsible-section";
 
 // Inline copy of the Server Action result type — we can't re-export the
 // type from a "use server" module on the client side, and the shape is
@@ -242,14 +243,13 @@ export function PastSessionsSection({
   };
 
   return (
-    <section className="flex flex-col gap-3">
-      <header className="flex items-center gap-2 border-b border-border/30 pb-2">
+    <CollapsibleSection
+      id="past-sessions"
+      icon={
         <History className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
-        <span className="font-mono text-[11px] tracking-[0.22em] text-muted-foreground uppercase">
-          Past Sessions from Discord
-        </span>
-      </header>
-
+      }
+      title="Past Sessions from Discord"
+    >
       <div className="flex flex-col gap-2">
         <Label
           htmlFor="discord-schedule-channel"
@@ -545,6 +545,6 @@ export function PastSessionsSection({
           )}
         </div>
       )}
-    </section>
+    </CollapsibleSection>
   );
 }

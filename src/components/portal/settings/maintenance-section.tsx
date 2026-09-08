@@ -16,6 +16,7 @@ import {
   type MaintenanceWindow,
 } from "@/lib/maintenance-schedule";
 import { useLocale, useMessages } from "@/lib/i18n/client";
+import { CollapsibleSection } from "./collapsible-section";
 
 /**
  * 公式メンテ / パッチ日程の登録 (W-30、2026-09-07)。
@@ -89,13 +90,11 @@ export function MaintenanceSection({
   };
 
   return (
-    <section className="flex flex-col gap-2">
-      <header className="flex items-center gap-2 border-b border-border/30 pb-2">
-        <Wrench className="h-3.5 w-3.5 text-orange-300" aria-hidden />
-        <span className="font-mono text-[11px] tracking-[0.22em] text-muted-foreground uppercase">
-          {m.maintenanceSchedule.title}
-        </span>
-      </header>
+    <CollapsibleSection
+      id="maintenance"
+      icon={<Wrench className="h-3.5 w-3.5 text-orange-300" aria-hidden />}
+      title={m.maintenanceSchedule.title}
+    >
       <p className="text-[11px] leading-relaxed text-muted-foreground">
         {m.maintenanceSchedule.description}
       </p>
@@ -190,6 +189,6 @@ export function MaintenanceSection({
           {m.common.save}
         </Button>
       </div>
-    </section>
+    </CollapsibleSection>
   );
 }

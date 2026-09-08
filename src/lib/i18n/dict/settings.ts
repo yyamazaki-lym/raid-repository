@@ -297,26 +297,34 @@ export const ja = {
     guildIdLabel: "FFLogs guild ID (任意)",
     guildIdPlaceholder: "例: 123456",
     guildIdHint:
-      "固定の FFLogs guild の ID です。上の発見元で「guild から自動」を選んだときに、この guild のレポート一覧を見ます。数字のみ (URL ではありません — FFLogs の guild ページの URL に含まれる数字です)。",
+      "固定の FFLogs guild の ID です。上の「guild から自動」を ON にしたときに、この guild のレポート一覧を見ます。数字のみ (URL ではありません — FFLogs の guild ページの URL に含まれる数字です)。",
     guildIdSaved: "guild ID を保存しました",
-    // W-5 (2026-09-07): レポートの発見元。
+    // 折りたたんだままでも運用状態が読めるようにするバッジ (2026-09-08)。
+    badgeOn: (n: number): string => `${n} 件 ON`,
+    badgeOff: "OFF",
+    // L-3 (2026-09-08): 初期読み込みが失敗したことを画面に出す。
+    loadFailed: (reason: string): string =>
+      `設定を読み込めませんでした (${reason})。表示は既定値です — 保存する前に読み直してください。`,
+    reload: "読み直す",
+    // W-5 (2026-09-07) / L-4 (2026-09-08): レポートの発見元。
     sourceLabel: "レポートの発見元",
-    sourceLabels: {
-      links: "貼られた URL のみ",
+    sourceAlwaysOn:
+      "貼られた URL からは常に取り込みます (動画や日付メモの FFLogs URL)。これは切れません — portal の土台の経路です。下の 2 つは、URL が貼られていないレポートも自動で探しに行くかどうかです。",
+    routeLabels: {
       guild: "guild から自動",
       user: "自分のアカウントから自動",
     },
-    sourceHints: {
-      links:
-        "従来どおり、動画や日付メモに貼られた FFLogs の URL からのみ取り込みます。誰かが URL を貼るまで portal はレポートを知りません。",
+    routeHints: {
       guild:
         "FFLogs 上の static (guild) のレポート一覧も見ます。⚠ 前提が 2 つあります: (1) レポートが guild に属していること — 所属はアップロード時に決まるので、Uploader で guild を選んでいないレポートは 0 件です (既存の履歴は後から移せません)。(2) 一覧が Unlisted を返すかは未確認です (API の一覧には可視性の引数が無く、実測できている経路はすべて Public のみでした)。guild ID の入力が必要です。",
       user:
         "接続した FFLogs アカウントが上げたレポート一覧も見ます。guild を作っていない固定 (計測担当が個人アカウントで上げている) 向けです。API の仕様で Public のレポートしか返らないため、Unlisted 運用では拾えません。",
     },
+    sourceUnlistedWarning:
+      "⚠ Unlisted のレポートは、どちらの一覧にも出てきません。Unlisted 運用のままだと ON にしても 0 件です (確実なのは URL の貼り付け — 設定の FFLogs 節にレポート一覧から URL をまとめて拾うブックマークレットがあります)。",
     sourceSaved: "発見元を保存しました",
     sourceNeedsGuildId:
-      "guild ID が未設定です。下の欄に入れるまで自動発見は動きません。",
+      "guild ID が未設定です。下の欄に入れるまでこの経路は動きません。",
   },
   lootWindow: {
     title: "週制限の消化ウィンドウ",
@@ -1032,25 +1040,31 @@ export const en: SettingsMessages = {
     guildIdLabel: "FFLogs guild ID (optional)",
     guildIdPlaceholder: "e.g. 123456",
     guildIdHint:
-      "Your static's FFLogs guild ID. Used when the discovery source above is set to “From the guild” — the sync then reads that guild's report list. Digits only (not a URL — it is the number in the guild page's URL).",
+      "Your static's FFLogs guild ID. Used when “From the guild” above is on — the sync then reads that guild's report list. Digits only (not a URL — it is the number in the guild page's URL).",
     guildIdSaved: "Saved the guild ID",
+    badgeOn: (n) => `${n} on`,
+    badgeOff: "OFF",
+    loadFailed: (reason) =>
+      `Could not load these settings (${reason}). The values shown are defaults — reload before saving.`,
+    reload: "Reload",
     sourceLabel: "Report discovery",
-    sourceLabels: {
-      links: "Pasted URLs only",
+    sourceAlwaysOn:
+      "Pasted URLs are always imported (FFLogs URLs on videos or date notes). That cannot be turned off — it is the portal's baseline path. The two options below decide whether reports with no pasted URL are also looked up automatically.",
+    routeLabels: {
       guild: "From the guild",
       user: "From your account",
     },
-    sourceHints: {
-      links:
-        "As before, only FFLogs URLs pasted on videos or date notes are imported. The portal does not know a report exists until someone pastes its URL.",
+    routeHints: {
       guild:
         "Also reads the report list of your static (guild) on FFLogs. ⚠ Two preconditions: (1) the reports must belong to the guild — membership is decided at upload time, so reports uploaded to personal logs return nothing (existing history cannot be moved). (2) Whether the list returns Unlisted reports is unverified (the list field takes no visibility argument, and every path we measured returned Public only). Requires the guild ID.",
       user:
         "Also reads the report list of the connected FFLogs account. For groups without a guild (the log runner uploads from a personal account). The API only returns Public reports, so Unlisted uploads are not picked up.",
     },
+    sourceUnlistedWarning:
+      "⚠ Unlisted reports do not appear in either listing. While you keep uploading as Unlisted, turning these on still finds nothing — pasting URLs is the reliable path (the FFLogs section has a bookmarklet that collects URLs from a report list).",
     sourceSaved: "Saved the discovery source",
     sourceNeedsGuildId:
-      "The guild ID is not set. Auto-discovery stays off until you enter it below.",
+      "The guild ID is not set. This path stays off until you enter it below.",
   },
   lootWindow: {
     title: "Weekly lockout window",

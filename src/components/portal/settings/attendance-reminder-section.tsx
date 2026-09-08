@@ -26,6 +26,10 @@ import {
   type ReminderCadence,
 } from "@/lib/schedule/attendance-reminder-keys";
 import { useMessages } from "@/lib/i18n/client";
+import {
+  CollapsibleSection,
+  SectionBadge,
+} from "./collapsible-section";
 
 /**
  * 出欠催促の設定 (2026-08-30、調査 第3回 D-3)。
@@ -206,38 +210,27 @@ export function AttendanceReminderSection({
   };
 
   return (
-    <section>
-      {/* 2026-09-04 実機要望「出欠の催促が長いので折り畳めるように」。
-          設定ダイアログの中でこの節だけ縦に長く、下の節までスクロールする
-          のが手間だった。Danger Zone / FFLogs 節と同じ native <details> に
-          揃える (既定は畳む)。畳んだままでも運用状態が分かるよう、見出しに
-          ON/OFF を出しておく — 「送っているのか」は開かずに知りたい情報。 */}
-      <details className="group/reminder flex flex-col gap-3">
-        <summary className="cursor-pointer list-none [&::-webkit-details-marker]:hidden">
-          <h3 className="flex items-center gap-2 border-b border-border/30 pb-2 font-mono text-[11px] tracking-[0.22em] text-muted-foreground uppercase transition-colors hover:text-foreground">
-            <span className="text-muted-foreground/80 transition-transform group-open/reminder:rotate-90">
-              ▸
-            </span>
-            <AlarmClock
-              className="h-3.5 w-3.5 text-[var(--neon-violet)]"
-              aria-hidden
-            />
-            {m.attendanceReminder.title}
-            <span
-              className={
-                "ml-auto rounded-sm border px-1.5 py-px text-[11px] tracking-normal " +
-                (!loaded
-                  ? "border-border/50 text-muted-foreground/70"
-                  : enabled
-                    ? "border-[var(--neon-violet)]/50 bg-[var(--neon-violet)]/10 text-[var(--neon-violet)]"
-                    : "border-border/50 text-muted-foreground/70")
-              }
-            >
-              {!loaded ? "…" : enabled ? "ON" : "OFF"}
-            </span>
-          </h3>
-        </summary>
-
+    // 2026-09-04 実機要望「出欠の催促が長いので折り畳めるように」。設定
+    // ダイアログの中でこの節だけ縦に長く、下の節までスクロールするのが
+    // 手間だった。2026-09-08 に畳める節を全体へ広げたので、手書きの
+    // <details> を共通の殻へ寄せてある (開閉が localStorage に残るように
+    // なったのが差分)。畳んだままでも「送っているのか」が読めるよう、
+    // 見出しの ON/OFF はそのまま残す。
+    <CollapsibleSection
+      id="attendance-reminder"
+      icon={
+        <AlarmClock
+          className="h-3.5 w-3.5 text-[var(--neon-violet)]"
+          aria-hidden
+        />
+      }
+      title={m.attendanceReminder.title}
+      badge={
+        <SectionBadge state={!loaded ? "loading" : enabled ? "on" : "off"}>
+          {!loaded ? "…" : enabled ? "ON" : "OFF"}
+        </SectionBadge>
+      }
+    >
       <p className="text-[11px] leading-relaxed text-muted-foreground">
         {m.attendanceReminder.descriptionBefore}
         <strong>{m.attendanceReminder.descriptionStrong}</strong>
@@ -525,7 +518,6 @@ export function AttendanceReminderSection({
           )}
         </div>
       )}
-      </details>
-    </section>
+    </CollapsibleSection>
   );
 }

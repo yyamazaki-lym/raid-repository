@@ -10,6 +10,7 @@ import {
 } from "@/lib/server/loot-window-actions";
 import { LOOT_WINDOW_WEEKS_DEFAULT } from "@/lib/loot-window-keys";
 import { useMessages } from "@/lib/i18n/client";
+import { CollapsibleSection } from "./collapsible-section";
 
 /**
  * 週制限の消化ウィンドウ設定 (W-33 ②、2026-09-07)。
@@ -67,13 +68,13 @@ export function LootWindowSection({
   };
 
   return (
-    <section className="flex flex-col gap-2">
-      <header className="flex items-center gap-2 border-b border-border/30 pb-2">
+    <CollapsibleSection
+      id="loot-window"
+      icon={
         <CalendarRange className="h-3.5 w-3.5 text-amber-300" aria-hidden />
-        <span className="font-mono text-[11px] tracking-[0.22em] text-muted-foreground uppercase">
-          {m.lootWindow.title}
-        </span>
-      </header>
+      }
+      title={m.lootWindow.title}
+    >
       <p className="text-[11px] leading-relaxed text-muted-foreground">
         {m.lootWindow.description}
       </p>
@@ -104,6 +105,6 @@ export function LootWindowSection({
       <p className="text-[12px] leading-relaxed text-muted-foreground/80">
         {weeks === 1 ? m.lootWindow.oneWeekHint : m.lootWindow.twoWeeksHint}
       </p>
-    </section>
+    </CollapsibleSection>
   );
 }

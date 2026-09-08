@@ -64,6 +64,15 @@ import { useMessages } from "@/lib/i18n/client";
  *   - ChangelogFooter: 更新履歴 + GitHub / Lodestone / Sign out
  *     (demo ゲスト時は Sign out の代わりに Sign in 導線、TODO #91 follow-up)
  *   - DangerZoneSection: 全データ初期化 (canEdit only)
+ *
+ * 2026-09-08 実機要望「Settings が長くなってきたので、折り畳めそうなものは
+ * 折り畳めるようにする」。節が 15 を超えて目的の節まで縦に長くスクロール
+ * する状態だったので、**長い節を `CollapsibleSection` で畳めるようにした**
+ * (既定は畳む / 開閉は端末ごとに localStorage で覚える)。
+ *
+ * 畳まないまま残してあるのは、**短くて開閉の手間が中身より大きい節**:
+ * モードの選択 (これを畳むと下の節が出る理由が読めなくなる) / URL /
+ * 既定時刻 / 定期枠 / 自動成立 / 更新履歴のフッタ。
  */
 export function SettingsDialog({
   canEdit,

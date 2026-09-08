@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { setNativeScheduleChoiceValuesAction } from "@/lib/server/native-schedule-actions";
 import { useConfirm } from "@/components/portal/confirm-dialog";
 import { useMessages } from "@/lib/i18n/client";
+import { CollapsibleSection } from "./collapsible-section";
 
 /**
  * TODO #2 phase 2-C (2026-05-07): native スケジュール凡例 (choice values)
@@ -100,17 +101,13 @@ export function NativeChoiceValuesSection({
   };
 
   return (
-    <section className="flex flex-col gap-3">
-      <header className="flex items-center gap-2 border-b border-border/30 pb-2">
-        <ListChecks
-          className="h-3.5 w-3.5 text-muted-foreground"
-          aria-hidden
-        />
-        <span className="font-mono text-[11px] tracking-[0.22em] text-muted-foreground uppercase">
-          Native Schedule Choice Values
-        </span>
-      </header>
-
+    <CollapsibleSection
+      id="native-choice-values"
+      icon={
+        <ListChecks className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
+      }
+      title="Native Schedule Choice Values"
+    >
       <p className="text-[12px] leading-relaxed text-muted-foreground">
         {m.nativeChoices.description}
       </p>
@@ -181,6 +178,6 @@ export function NativeChoiceValuesSection({
           </div>
         )}
       </div>
-    </section>
+    </CollapsibleSection>
   );
 }
