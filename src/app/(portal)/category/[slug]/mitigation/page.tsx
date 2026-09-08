@@ -63,26 +63,6 @@ export default async function MitigationPage({
 
   if (!category.mitigationSheetUrl) {
     return (
-      <div className="flex flex-col gap-4">
-        <SheetCards
-          table={{
-            headers: ["ギミック", "ヴェー★ネス", "卍アゼム卍", "エメトセルク", "ヒュトロダエウス"],
-            rows: [
-              ["P1 開幕", "堅陣", "士気", "鼓舞", "夜天"],
-              ["P2 全体", "鉄壁", "リプライザル", "野生", "マクロコスモス"],
-              ["P3 散開", "-", "牽制", "アドル", "-"],
-            ],
-          }}
-          sheetUrl="https://example.com/"
-          title="軽減表 (検証用)"
-          variant="generic"
-          memberRoles={memberRoles}
-        />
-      </div>
-    );
-  }
-  if (!category.mitigationSheetUrl) {
-    return (
       <SheetUrlOnboarding
         categoryId={category.id}
         categoryName={category.name}
