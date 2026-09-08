@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { assertAdminResult } from "./auth";
 import { dbError } from "./db-error";
 import { syncFflogsFights } from "./fflogs-fights";
+import { deleteAttendanceActualsForReport } from "./attendance-actuals";
 import { httpUrlError } from "@/lib/url-validation";
 import {
   extractFflogsReportCodes,
@@ -47,6 +48,13 @@ export async function syncFflogsFightsAction(): Promise<
       discovered: number;
       /** 自動発見が動かなかった / 失敗した理由 (動いたときは null)。 */
       discoveryNote: string | null;
+      /**
+       * W-6 (2026-09-08): 出席の自動突合。0 件のときも画面に出す
+       * (参加者名を 1 つも拾えていない状態を切り分けるため)。
+       */
+      attendanceMatched: number;
+      attendanceUnresolved: number;
+      attendanceUnresolvedNames: string[];
     }
   | { ok: false; reason: string }
 > {
@@ -307,6 +315,11 @@ export async function deleteFflogsReportAction(
     .eq("report_code", code)
     .select("id");
   if (delErr) return { ok: false, reason: dbError("pull 削除", delErr) };
+
+  // W-6 (2026-09-08): 出席の突合結果も消す。この表は policy 0 本なので
+  // **service role でしか消せない** (admin クライアントの DELETE は 0 行で
+  // 静かに成功し、消したレポートの出席が残る)。
+  await deleteAttendanceActualsForReport(code);
 
   // 台帳を消してから除外登録 (順序が逆だと、間に同期が走って再取得しうる)。
   const { error: ledgerErr } = await supabase

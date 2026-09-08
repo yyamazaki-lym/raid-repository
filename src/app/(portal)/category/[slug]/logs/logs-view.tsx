@@ -621,6 +621,20 @@ export function LogsView({
       } else if (result.discoveryNote) {
         toast.warning(m.logsSync.discoveryNote(result.discoveryNote));
       }
+      // W-6 (2026-09-08): 出席の自動突合。**0 / 0 のときも出す** — 参加者名が
+      // Summary table のどの項目に入るかは実データでしか確かめられないので、
+      // 「1 件も拾えていない」状態が画面から分かる必要がある (対応表の
+      // 問題ではなく取得側の問題だと切り分けられるようにするため)。
+      if (result.attendanceUnresolved > 0) {
+        toast.warning(
+          m.logsSync.attendanceUnresolved(
+            result.attendanceMatched,
+            result.attendanceUnresolvedNames.join(" / "),
+          ),
+        );
+      } else if (result.attendanceMatched > 0) {
+        toast.success(m.logsSync.attendanceMatched(result.attendanceMatched));
+      }
       toast.success(
         m.logsSync.toastDone(result.reportsFetched, result.fightsUpserted) +
           (result.reattributed > 0 ? m.logsSync.reattributed(result.reattributed) : "") +

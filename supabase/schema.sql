@@ -880,6 +880,25 @@ ALTER TABLE public.native_schedule_members
     OR (char_length(data_center) <= 20 AND data_center !~ '[[:cntrl:]]')
   ) NOT VALID;
 
+-- W-6 (2026-09-08): 出席の自動突合に使う FFLogs のキャラクター名。
+-- ログの参加者名 ↔ メンバーの対応表で、**これだけが名前を持つ列**
+-- (突合結果の表は名前を持たない。理由は 6b-9 節)。本人のキャラ名は
+-- FFLogs 上で既に公開されている情報で、admin が入力する。
+-- 表示名での一致も試すので、表示名 = キャラ名の固定では入力不要。
+ALTER TABLE public.native_schedule_members
+  ADD COLUMN IF NOT EXISTS fflogs_character_name text;
+ALTER TABLE public.native_schedule_members
+  DROP CONSTRAINT IF EXISTS native_schedule_members_charname_sane;
+ALTER TABLE public.native_schedule_members
+  ADD CONSTRAINT native_schedule_members_charname_sane
+  CHECK (
+    fflogs_character_name IS NULL
+    OR (
+      char_length(fflogs_character_name) <= 64
+      AND fflogs_character_name !~ '[[:cntrl:]]'
+    )
+  ) NOT VALID;
+
 -- 2.1 (2026-05-12) PR3-D: メンバー全体コメント (同期式準拠で 1 メンバー = 1 行)。
 -- session ごとの comment (`native_schedule_attendances.comment`) は別概念で
 -- 並存する (UI 上は本コメントを優先表示し、attendances.comment は当面 UI 露出なし)。
@@ -1513,6 +1532,95 @@ GRANT EXECUTE ON FUNCTION public.next_category_waymark_sort_order(uuid)
 GRANT EXECUTE ON FUNCTION public.next_category_bis_link_sort_order(uuid)
   TO anon, authenticated;
 
+-- ---- 6b-9. 出席の自動突合 (W-6、2026-09-08) ---------------------------
+-- FFLogs のログに映っていた人と、○×△ の回答を突き合わせるための 2 表。
+--
+-- ⚠ **キャラクター名は保存しない** (ユーザー判断 2026-09-08「突合結果だけ
+--   持たせる」)。ログから拾った名前は同期処理のメモリ内で対応表に解決し、
+--   保存するのは `(レポートコード, メンバーキー, 映った pull 数)` だけ。
+--   名前を pull 行の隣に置くと `fflogs_fights.death_events` (ジョブ名のみで
+--   意図的に名前を持たない) と結合できてしまい、「誰が落ちたか」を復元
+--   できる状態になる。突合結果だけならその経路が存在しない。
+--
+-- 対応表は `native_schedule_members.fflogs_character_name` (下記)。表示名
+-- での一致も試すので、表示名がキャラ名と同じ固定では入力不要。
+--
+-- データ初期化 (`admin-actions.ts`) の対象には**入れない** — native
+-- スケジュールの表 (sessions / members / attendances) がどれも対象外で、
+-- 出席の突合結果はその一族だからである (メンバーが残るのに出席履歴だけ
+-- 消えると、W-19 の履歴が黙って欠ける)。
+CREATE TABLE IF NOT EXISTS public.fflogs_attendance_actuals (
+  -- レポート単位で持つ (JST 暦日ではなく) 理由: 同期は時間予算で途中打ち切り
+  -- になることがあり、日単位で「今回拾えた pull 数」を上書きすると、
+  -- **一部のレポートしか取れなかった回に pull 数が減って「○ なのに不在」を
+  -- 捏造する**。レポート単位なら 1 レポート = 1 回の書き込みで冪等になり、
+  -- 日の値は読み出し時に合計すればよい。
+  report_code     text NOT NULL,
+  -- native_schedule_members.discord_user_id。FK は張らない
+  -- (category_link_reads と同じ方針 — メンバー行を消しても履歴を壊さない。
+  --  孤児行は is_active なメンバーとの突き合わせで自然に無視される)。
+  discord_user_id text NOT NULL,
+  -- JST 暦日 ("YYYY-MM-DD")。fflogs_fights.session_date と同じ値を非正規化
+  -- して持つ (日単位の読み出しを 1 クエリで済ませるため)。
+  session_date    text,
+  -- そのレポートで「この人が映っていた」pull 数。0 の行は作らない。
+  -- 「○ なのに 1 pull だけ」= 実質不参加を見分けるために持つ。個人の
+  -- パフォーマンス値ではないので序列化にはならない。
+  pulls           integer NOT NULL DEFAULT 0,
+  updated_at      timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (report_code, discord_user_id)
+);
+-- 日単位の読み出し (W-19 の突合表)。
+CREATE INDEX IF NOT EXISTS fflogs_attendance_actuals_date_idx
+  ON public.fflogs_attendance_actuals(session_date);
+-- 「このメンバーの出席履歴」方向の引き (W-19 の本人向け履歴)。
+CREATE INDEX IF NOT EXISTS fflogs_attendance_actuals_user_idx
+  ON public.fflogs_attendance_actuals(discord_user_id);
+ALTER TABLE public.fflogs_attendance_actuals
+  DROP CONSTRAINT IF EXISTS fflogs_attendance_actuals_sane;
+ALTER TABLE public.fflogs_attendance_actuals
+  ADD CONSTRAINT fflogs_attendance_actuals_sane
+  CHECK (
+    char_length(report_code) <= 64
+    AND char_length(discord_user_id) <= 64
+    AND (session_date IS NULL OR char_length(session_date) <= 20)
+    AND pulls >= 0
+  ) NOT VALID;
+
+DROP TRIGGER IF EXISTS set_updated_at_fflogs_attendance_actuals
+  ON public.fflogs_attendance_actuals;
+CREATE TRIGGER set_updated_at_fflogs_attendance_actuals
+  BEFORE UPDATE ON public.fflogs_attendance_actuals
+  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+-- 対応表で解決できなかった名前の控え。**これは名前を持つ**が、
+--   - メンバーに紐づいていない名前だけ (紐づいたら DELETE する)
+--   - pull 単位の情報を持たない (日付は「最後に見た日」1 つだけ)
+-- なので、死亡イベント (pull 単位・ジョブのみ) と結合しても個人を復元
+-- できない。admin が「この名前は誰か」を対応表に入れるためだけの一覧。
+CREATE TABLE IF NOT EXISTS public.fflogs_attendance_unresolved (
+  character_name    text PRIMARY KEY,
+  pulls             integer NOT NULL DEFAULT 0,
+  last_session_date text,
+  updated_at        timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.fflogs_attendance_unresolved
+  DROP CONSTRAINT IF EXISTS fflogs_attendance_unresolved_sane;
+ALTER TABLE public.fflogs_attendance_unresolved
+  ADD CONSTRAINT fflogs_attendance_unresolved_sane
+  CHECK (
+    char_length(character_name) <= 64
+    AND character_name !~ '[[:cntrl:]]'
+    AND pulls >= 0
+    AND (last_session_date IS NULL OR char_length(last_session_date) <= 20)
+  ) NOT VALID;
+
+DROP TRIGGER IF EXISTS set_updated_at_fflogs_attendance_unresolved
+  ON public.fflogs_attendance_unresolved;
+CREATE TRIGGER set_updated_at_fflogs_attendance_unresolved
+  BEFORE UPDATE ON public.fflogs_attendance_unresolved
+  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
 -- ---- 7. RLS — SELECT 解放 / 書き込みは admin (is_admin claim) のみ ----
 -- TODO #36 phase 1 (2.1, 2026-04-29): 書き込みを `TO authenticated` に。
 -- TODO #36 phase 2 (2.1, 2026-04-29): さらに `auth.jwt()->>is_admin` を
@@ -1593,6 +1701,13 @@ ALTER TABLE public.fflogs_report_videos          ENABLE ROW LEVEL SECURITY;
 -- 集計してから返し、書き込みは Server Action が本人 row だけを触る
 -- (loot_weekly_checks / native_schedule_members.comment と同じ経路)。
 ALTER TABLE public.category_link_reads           ENABLE ROW LEVEL SECURITY;
+-- W-6 (2026-09-08): 出席の突合結果も **policy を張らない**。
+-- 「誰がどの日に来ていたか」の生データを公開 anon key で列挙されないように
+-- するための意図的な設計 (category_link_reads と同じ形)。読み取りは
+-- src/lib/server/attendance-actuals.ts が可視範囲 (本人 or admin) を
+-- 適用してから返し、書き込みは同期処理が service role で行う。
+ALTER TABLE public.fflogs_attendance_actuals    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.fflogs_attendance_unresolved ENABLE ROW LEVEL SECURITY;
 -- W-35 (2026-09-07): fflogs_notify_state も **policy を張らない**。
 -- 同期 (cron / admin の手動同期) だけが service role で読み書きする内部
 -- 状態で、クライアントから読む用途が無い。

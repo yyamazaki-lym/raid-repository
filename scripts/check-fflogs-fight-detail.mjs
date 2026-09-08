@@ -30,9 +30,11 @@ function check(name, actual, expected) {
 const outDir = mkdtempSync(join(tmpdir(), "fight-detail-check-"));
 try {
   execFileSync(
-    "npx",
+    process.execPath,
     [
-      "tsc",
+      // ⚠ `npx` は Windows で ENOENT / EINVAL になる (他の check スクリプトが
+      // 手元で走らない原因)。tsc の実体を直接叩けば両方の OS で動く。
+      "node_modules/typescript/bin/tsc",
       SRC,
       "--outDir",
       outDir,
@@ -252,6 +254,41 @@ try {
     { startMs: 1, durationMs: 1000, reachedPhase: 1, date: null },
   ]), []);
   check("空入力", m.firstPhaseReaches([]), []);
+
+  console.log("\n[参加者名 (W-6)]");
+  check(
+    "composition から名前を拾う",
+    m.extractPlayerNames([
+      { name: "Taro Yamada", type: "WhiteMage" },
+      { name: "Hanako Sato", type: "Warrior" },
+    ]),
+    ["Taro Yamada", "Hanako Sato"],
+  );
+  check(
+    "damageDone の形 (total つき) でも拾える",
+    m.extractPlayerNames([{ name: "Taro Yamada", type: "Samurai", total: 12345 }]),
+    ["Taro Yamada"],
+  );
+  check("ペット行は落とす", m.extractPlayerNames([
+    { name: "Taro Yamada", type: "Summoner" },
+    { name: "Demi-Bahamut", type: "Pet" },
+  ]), ["Taro Yamada"]);
+  check("重複は 1 回だけ", m.extractPlayerNames([
+    { name: "Taro Yamada", type: "Samurai" },
+    { name: "Taro Yamada", type: "Samurai" },
+  ]), ["Taro Yamada"]);
+  check("名前を持たない形は null", m.extractPlayerNames([{ total: 1 }]), null);
+  check("配列以外は null", m.extractPlayerNames(null), null);
+  check("空配列は null", m.extractPlayerNames([]), null);
+  check(
+    "制御文字入り / 長すぎる名前は落とす",
+    m.extractPlayerNames([
+      { name: "bad" + String.fromCharCode(1) + "name" },
+      { name: "x".repeat(65) },
+      { name: "Ok Name" },
+    ]),
+    ["Ok Name"],
+  );
 
   console.log("\n[書式]");
   check("m:ss", m.formatMs(125_400), "2:05");

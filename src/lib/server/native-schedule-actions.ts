@@ -443,6 +443,11 @@ export type UpdateNativeScheduleMemberPatch = {
    * NULL に正規化 (= 未設定)。DC 名は運営の再編で増減するので enum にしない。
    */
   dataCenter?: string | null;
+  /**
+   * W-6 (2026-09-08): 出席の自動突合に使う FFLogs のキャラクター名
+   * (64 文字)。空文字列は NULL に正規化 (= 未設定 → 表示名で一致を試す)。
+   */
+  fflogsCharacterName?: string | null;
 };
 
 export async function updateNativeScheduleMemberAction(
@@ -477,6 +482,13 @@ export async function updateNativeScheduleMemberAction(
       return { ok: false, reason: "データセンター名は 20 文字以内です" };
     }
     update.data_center = v || null;
+  }
+  if (patch.fflogsCharacterName !== undefined) {
+    const v = (patch.fflogsCharacterName ?? "").trim();
+    if (v.length > 64) {
+      return { ok: false, reason: "キャラクター名は 64 文字以内です" };
+    }
+    update.fflogs_character_name = v || null;
   }
   if (Object.keys(update).length === 0) {
     return { ok: false, reason: "更新項目がありません" };
