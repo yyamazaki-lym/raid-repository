@@ -29,6 +29,7 @@ import {
 import { getFflogsUsername } from "@/lib/schedule-url-store";
 import { useMessages } from "@/lib/i18n/client";
 import { CollapsibleSection } from "./collapsible-section";
+import { ReportDiscovery } from "./report-discovery";
 
 /**
  * TODO #68 (2026-05-02): 詳細診断パネル (~190 行) を別 chunk に分離。
@@ -437,6 +438,13 @@ export function FflogsSyncSection({
               )}
             </div>
           </details>
+
+          {/* レポートの自動発見 (L-4、2026-09-08 実機要望で通知節から移設)。
+              OAuth / 表示名の直下に置く — どちらも
+              `reports(userID: me.id)` という**同じクエリ**を叩く設定で、
+              離して置くと「機能が被っている」に見える (実機の指摘)。
+              差分は `./report-discovery.tsx` の docstring に書いてある。 */}
+          <ReportDiscovery open={open} canEdit={canEdit} />
 
           {/* Session Cookie — オプション。Private/Unlisted を取得したい
               場合のみ使う。auto-delete でセキュリティリスクを最小化。 */}

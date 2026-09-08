@@ -816,6 +816,36 @@
 }
 
 /* ============================================================
+ * pull 行のジャンプ・ハイライト (L-5 ③、2026-09-08)
+ * プル・ボックス列 (`pull-box-row.tsx`) の箱を押すと該当 pull まで
+ * スクロールするが、30 行の中のどれに来たのかが分からないという実機報告。
+ * 該当行に 1.4 秒だけリングを出してフェードで消す。
+ *
+ * 再生のやり直しは React 側の `key` (nonce) で行う — 同じ pull を続けて
+ * 押しても要素が作り直されるのでアニメが頭から走る。CSS 側に
+ * `animation-iteration-count` などの仕掛けは要らない。
+ *
+ * ⚠ 下の prefers-reduced-motion 節でアニメを止めるが、**opacity は残す**。
+ * 「どこに来たか」を示すのが役割なので、消えずに出たままにする方が
+ * 目的に合う (動きだけを外す)。
+ * ============================================================ */
+@keyframes pullJumpFlash {
+  0% {
+    opacity: 1;
+  }
+  60% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.pull-jump-flash {
+  animation: pullJumpFlash 1.4s ease-out 1 forwards;
+}
+
+/* ============================================================
  * prefers-reduced-motion (F-2, 2026-06-13)
  * OS / ブラウザで「視差効果を減らす」設定の利用者向けに、常時動作する
  * 装飾アニメ (背景の雪/オーロラ/砂/twinkle/aether-pulse/drift、link-pending
@@ -837,6 +867,12 @@
   .link-pending-dot.is-pending {
     animation: none !important;
     opacity: 0.7; /* fade-in 完了後の静止可視状態を維持 */
+  }
+  /* pull 行のジャンプ・ハイライト: 動きは外すが、飛んだ先を示す役割なので
+     可視のまま残す (次に別の pull を押すまで出たまま)。 */
+  .pull-jump-flash {
+    animation: none !important;
+    opacity: 1;
   }
   /* Dialog / Popover / DropdownMenu の入退場アニメ (#207 では対象外だった
      user-initiated な popup) から vestibular な zoom (scale) / slide (translate)

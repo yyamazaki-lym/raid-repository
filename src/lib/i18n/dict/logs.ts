@@ -116,6 +116,10 @@ export const ja = {
     durationTitle: "戦闘時間",
     partyDpsTitle: "PT 合計 DPS (個人の内訳は保存していません)",
     partyDpsMissing: "PT 合計 DPS は未取得です",
+    // L-6 (2026-09-08): 練習 pull の DPS は「途中で落ちた分だけ低い」だけで
+    // 判断材料にならないため、クリア pull だけに出す。
+    partyDpsClearOnly:
+      "PT 合計 DPS はクリアした pull だけに出します (練習中の pull は途中で落ちた分だけ低くなり、比較の意味がありません)",
     deathsTitle: "死亡数",
     deathsMissing: "死亡数は未取得です",
     wipeFirstDeath: (t: string) => `最初の死亡: ${t}`,
@@ -129,6 +133,10 @@ export const ja = {
     xivAnalysisTitle: "XIVAnalysis でこの pull を解析する",
     videoMomentTitle: "動画のこの瞬間から再生",
     videoMomentTitleNamed: (name: string) => `${name} のこの瞬間から再生`,
+    // L-6 (2026-09-08): 動画チップを 1 グループに畳んだので、2 本目以降は
+    // 番号しか出ない。時刻は title 側に入れる。
+    videoMomentTitleNamedAt: (name: string, clock: string) =>
+      `${name} の ${clock} から再生 (この pull の開始)`,
     video: "動画",
     // 総 pull の内訳チップ
     breakdownAria: "pull 数の内訳",
@@ -324,6 +332,11 @@ export const ja = {
     noPace: "ペースの目安は出せません",
     noPaceTitle:
       "直近のセッションで最高到達が伸びていない (または既にクリア済み / セッションが 3 回未満) ため、延長する意味のある数字が出せません。",
+    // 2026-09-08 実機要望: 目盛りと凡例。線の意味が画面に出ていなかった。
+    axisPercent: (pct: number) => `${pct}%`,
+    legendBest: "濃い線 = 最高到達 (下がらない)",
+    legendDaily: "薄い線 = その日の到達度 (調子で上下する)",
+    legendClear: "初討伐",
   },
   logsOffset: {
     title: "動画オフセットの設定",
@@ -503,6 +516,8 @@ export const en: LogsMessages = {
     durationTitle: "Combat time",
     partyDpsTitle: "Party DPS (individual breakdown is not stored)",
     partyDpsMissing: "Party DPS not fetched",
+    partyDpsClearOnly:
+      "Party DPS is shown for cleared pulls only (on a wipe it is just lower by however early the party died, so it is not comparable)",
     deathsTitle: "Deaths",
     deathsMissing: "Deaths not fetched",
     wipeFirstDeath: (t) => `First death: ${t}`,
@@ -517,6 +532,8 @@ export const en: LogsMessages = {
     xivAnalysisTitle: "Analyze this pull in XIVAnalysis",
     videoMomentTitle: "Play the video from this moment",
     videoMomentTitleNamed: (name) => `Play ${name} from this moment`,
+    videoMomentTitleNamedAt: (name, clock) =>
+      `Play ${name} from ${clock} (start of this pull)`,
     video: "Video",
     breakdownAria: "Pull breakdown",
     breakdownTitleTruncated:
@@ -698,6 +715,10 @@ export const en: LogsMessages = {
     noPace: "No pace estimate",
     noPaceTitle:
       "Best progress has not improved over the recent sessions (or the content is already cleared / there are fewer than 3 sessions), so extrapolating would be meaningless.",
+    axisPercent: (pct) => `${pct}%`,
+    legendBest: "Bold line = best progress (never drops)",
+    legendDaily: "Faint line = that day's progress (varies)",
+    legendClear: "First kill",
   },
   logsOffset: {
     title: "Video offset",

@@ -49,9 +49,19 @@ try {
 
   console.log("\n[辞書の整合]");
   const levels = ["best", "good", "mid", "warn", "bad", "neutral"];
-  for (const dict of ["PERF_TEXT", "PERF_CHIP", "PERF_BAR", "PERF_BAR_SOFT"]) {
+  // PERF_BOX は箱を大量に並べる列専用のトーン (2026-09-08、L-5 ①)。
+  // レベルが欠けると `PERF_BOX[level]` が undefined になり、箱が
+  // 無色 (= 5 段階が読めない) で描かれる。
+  for (const dict of ["PERF_TEXT", "PERF_CHIP", "PERF_BOX", "PERF_BAR", "PERF_BAR_SOFT"]) {
     check(`${dict} に全レベル`, levels.every((l) => typeof m[dict][l] === "string" && m[dict][l].length > 0), true);
   }
+  // 箱のトーンはチップより薄いこと (並べたときの色の総量を抑えるのが目的
+  // なので、同じ値に戻ると実機報告「識別色が強すぎる」に逆戻りする)。
+  check(
+    "PERF_BOX はチップより薄い背景",
+    levels.slice(0, 5).every((l) => m.PERF_BOX[l] !== m.PERF_CHIP[l] && /bg-[a-z]+-400\/5 /.test(m.PERF_BOX[l] + " ")),
+    true,
+  );
 } finally {
   rmSync(outDir, { recursive: true, force: true });
 }

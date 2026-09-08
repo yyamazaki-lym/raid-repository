@@ -78,6 +78,12 @@ export function DayRow({
     setLastJump(jumpNonce);
     if (jumpNonce !== null && !open) setOpen(true);
   }
+  // L-5 ③ (2026-09-08): プル・ボックス列から飛んだ pull を短くハイライト
+  // する。`nonce` は「何回目の選択か」で、同じ pull を続けて選んでも
+  // アニメを出し直せるようにするためのもの (`pull-row.tsx` の docstring)。
+  const [flash, setFlash] = useState<{ key: string; nonce: number } | null>(
+    null,
+  );
   const codes = Array.from(new Set(day.fights.map((f) => f.reportCode)));
   // その日の死亡数の合計 (2026-09-03)。1 pull も取得できていない日は出さない。
   const dayDeaths = day.fights.some((f) => f.deaths !== null)
@@ -88,6 +94,10 @@ export function DayRow({
   // 未取得の古い日や、動画が紐づいていない日で無駄な空白を作らないため)。
   const reserve = {
     metrics: day.fights.some((f) => f.partyDps !== null || f.deaths !== null),
+    // L-6 (2026-09-08): PT 合計 DPS はクリア pull だけに出すので、列幅も
+    // **その日にクリアがあるときだけ**確保する。クリアの無い日 (練習だけの
+    // 日 = ほとんどの日) はこの列が消えて、行が 1 行に収まりやすくなる。
+    metricsDps: day.fights.some((f) => f.kill && f.partyDps !== null),
     // 2026-09-07: 1 レポートに複数動画。列幅はその日の最大本数ぶん確保して
     // おき、本数の少ない report の pull は空きスロットで埋める (LOGS /
     // ANALYSIS の位置が行ごとにずれないのを維持するため)。
@@ -236,6 +246,12 @@ export function DayRow({
         showPhase={showPhase}
         onPick={(reportCode, fightId) => {
           setOpen(true);
+          // L-5 ③ (2026-09-08): 飛んだ先を短く光らせる。nonce を進めるので
+          // **同じ箱を続けて押しても**光り直す (真偽値だと 2 回目が無反応)。
+          setFlash((prev) => ({
+            key: `${reportCode}:${fightId}`,
+            nonce: (prev?.nonce ?? 0) + 1,
+          }));
           // 展開後にレイアウトが決まってからスクロールする
           // (`logs-view.tsx` の日付ジャンプと同じ 2 段 rAF)。
           requestAnimationFrame(() => {
@@ -348,6 +364,11 @@ export function DayRow({
                 showPhase={showPhase}
                 floors={floors}
                 firstPullStartMs={firstPullStartByReport.get(f.reportCode) ?? null}
+                flashNonce={
+                  flash !== null && flash.key === `${f.reportCode}:${f.fightId}`
+                    ? flash.nonce
+                    : null
+                }
                 reserve={reserve}
               />
             ))}
