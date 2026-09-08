@@ -707,6 +707,23 @@ export const ja = {
     copyBodyAria: (label: string) => `${label} の本文をコピー`,
     copyBodyTitle: "クリックで本文をコピー",
   },
+  // B-3 (2026-09-08): 新規メンバーの学習パス。
+  onboardingPath: {
+    title: "学習パス",
+    progress: (done: number, total: number): string => `${done} / ${total} 完了`,
+    allDone: "全部見終わっています",
+    nextBadge: "次はここ",
+    doneCount: (n: number): string => `${n} 人`,
+    toggleAria: (label: string, done: boolean): string =>
+      done ? `「${label}」のチェックを外す` : `「${label}」を見終わりにする`,
+    note: "チェックは自分用です。誰が終わっていないかは表示しません。",
+    steps: {
+      video: "動画で全体像をつかむ",
+      waymark: "散開図 / ウェイマークを取り込む",
+      macro: "マクロをコピーしておく",
+      mitigation: "軽減表で自分の担当を確認する",
+    },
+  },
   // W-24 + W-25 (2026-09-08): ロットの「欲しい人」行列 + 優先度の提案。
   lootWant: {
     title: "欲しい人",
@@ -1402,6 +1419,22 @@ Lines only in the one in use: ${removed}`,
     rowDragTitle: "Drag to reorder this row",
     copyBodyAria: (label) => `Copy the body of ${label}`,
     copyBodyTitle: "Click to copy the body",
+  },
+  onboardingPath: {
+    title: "Learning path",
+    progress: (done, total) => `${done} / ${total} done`,
+    allDone: "All done",
+    nextBadge: "Next",
+    doneCount: (n) => `${n} member(s)`,
+    toggleAria: (label, done) =>
+      done ? `Uncheck "${label}"` : `Mark "${label}" as done`,
+    note: "These checks are for you. We never show who has not finished.",
+    steps: {
+      video: "Watch a video for the overall picture",
+      waymark: "Import the waymarks / spread chart",
+      macro: "Copy the macros",
+      mitigation: "Check your assignments in the mitigation table",
+    },
   },
   lootWant: {
     title: "Who wants it",

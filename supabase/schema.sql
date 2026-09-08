@@ -1561,6 +1561,40 @@ GRANT EXECUTE ON FUNCTION public.next_category_waymark_sort_order(uuid)
 GRANT EXECUTE ON FUNCTION public.next_category_bis_link_sort_order(uuid)
   TO anon, authenticated;
 
+-- ---- 6b-11. 新規メンバーの学習パス (B-3、2026-09-08) ------------------
+-- 「何から見ればいいか」の順番を示すチェックリストの進捗。1 行 = 
+-- (コンテンツ, メンバー, 手順)。
+--
+-- ⚠ **自動判定はしない。** 「動画を見た」は portal から観測できず、
+--   観測できないものを自動で済にすると**見ていないのに済**になる。
+--   本人が手で付ける (`category_link_reads` の「見た」と同じ信頼モデル)。
+--
+-- 手順 id はアプリ側の固定リスト (`src/lib/onboarding-steps.ts`)。
+-- ミス注釈のタグと同じ理由で DB では CHECK せず 32 文字の自由文字列に
+-- する (語彙を増やすたびに schema を触るとデプロイ順で弾かれる)。
+CREATE TABLE IF NOT EXISTS public.category_onboarding_steps (
+  category_id     uuid NOT NULL
+                  REFERENCES public.categories(id) ON DELETE CASCADE,
+  -- native_schedule_members.discord_user_id。FK は張らない
+  -- (category_link_reads と同じ方針)。
+  discord_user_id text NOT NULL,
+  step            text NOT NULL,
+  done_at         timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (category_id, discord_user_id, step)
+);
+-- 「このメンバーの進捗」方向の引き (B-5 の /me)。
+CREATE INDEX IF NOT EXISTS category_onboarding_steps_user_idx
+  ON public.category_onboarding_steps(discord_user_id);
+ALTER TABLE public.category_onboarding_steps
+  DROP CONSTRAINT IF EXISTS category_onboarding_steps_sane;
+ALTER TABLE public.category_onboarding_steps
+  ADD CONSTRAINT category_onboarding_steps_sane
+  CHECK (
+    char_length(discord_user_id) <= 64
+    AND char_length(step) <= 32
+    AND step !~ '[[:cntrl:]]'
+  ) NOT VALID;
+
 -- ---- 6b-10. ミス注釈 (W-7、2026-09-08) --------------------------------
 -- pull ごとの「なぜ崩れたか」を人が付けるタグ。FFLogs は「何が起きたか」
 -- (誰がいつ何で落ちたか) までしか持たないので、そこに人の判断を重ねる。
@@ -1802,6 +1836,10 @@ ALTER TABLE public.fflogs_attendance_actuals    ENABLE ROW LEVEL SECURITY;
 -- ものになる。読み出しは Server Action / server モジュールが行い、
 -- 書き込みは本人 or チーム帰属のみを Server Action が強制する。
 ALTER TABLE public.fflogs_pull_notes            ENABLE ROW LEVEL SECURITY;
+-- B-3 (2026-09-08): 学習パスの進捗も **policy を張らない**。誰がどこまで
+-- 見たかを公開 anon key で列挙されると「進んでいない人」の可視化になる。
+-- 読み書きは Server Action が本人 (と集計) だけを通す。
+ALTER TABLE public.category_onboarding_steps    ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.fflogs_attendance_unresolved ENABLE ROW LEVEL SECURITY;
 -- W-35 (2026-09-07): fflogs_notify_state も **policy を張らない**。
 -- 同期 (cron / admin の手動同期) だけが service role で読み書きする内部

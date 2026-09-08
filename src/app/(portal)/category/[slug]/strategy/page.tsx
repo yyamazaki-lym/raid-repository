@@ -11,6 +11,9 @@ import {
   fetchCategoryBisSlots,
 } from "@/lib/supabase/loot-extras";
 import { BisLinksPanel } from "@/components/portal/loot-extras";
+import { OnboardingPathCard } from "@/components/portal/onboarding-path-card";
+import { fetchCategoryMacros } from "@/lib/supabase/category-macros";
+import { fetchCategoryWaymarks } from "@/lib/supabase/category-waymarks";
 import { getCurrentUserCanEdit } from "@/lib/server/auth";
 import { StrategyList } from "./strategy-list";
 import { StrategyImagesList } from "./strategy-images-list";
@@ -64,14 +67,33 @@ export default async function StrategyPage({
   // 既読は canEdit で「未読メンバーの名前を含めるか」が変わるため、
   // canEdit を解決してから呼ぶ (だからこの Promise.all には入れられない)。
   const linkIds = links.map((l) => l.id);
-  const [linkReads, linkTags, bisSlots] = await Promise.all([
-    fetchCategoryLinkReads(linkIds, canEdit),
-    fetchCategoryLinkTags(linkIds),
-    // W-23 (2026-09-07): BiS 行ごとの取得済み部位。
-    fetchCategoryBisSlots(bisLinks.map((l) => l.id)),
-  ]);
+  const [linkReads, linkTags, bisSlots, videoLinks, macros, waymarks] =
+    await Promise.all([
+      fetchCategoryLinkReads(linkIds, canEdit),
+      fetchCategoryLinkTags(linkIds),
+      // W-23 (2026-09-07): BiS 行ごとの取得済み部位。
+      fetchCategoryBisSlots(bisLinks.map((l) => l.id)),
+      // B-3 (2026-09-08): 学習パスの「中身があるか」の判定。中身が無い手順は
+      // 促さない (押しても空の画面になるので)。件数だけ要る。
+      fetchCategoryLinks(category.id, "video"),
+      fetchCategoryMacros(category.id),
+      fetchCategoryWaymarks(category.id),
+    ]);
   return (
     <div className="flex flex-col gap-6">
+      {/* B-3 (2026-09-08): 新規メンバーの学習パス。攻略情報タブに置くのは、
+          「このコンテンツをどう覚えるか」を探しに来る場所だから。
+          全部済んだ人には 1 行に縮む (カード自身が畳む)。 */}
+      <OnboardingPathCard
+        categoryId={category.id}
+        categorySlug={category.slug}
+        availability={{
+          video: videoLinks.length > 0 || albums.length > 0,
+          waymark: waymarks.length > 0,
+          macro: macros.length > 0,
+          mitigation: Boolean(category.mitigationSheetUrl),
+        }}
+      />
       <BisLinksPanel
         categoryId={category.id}
         links={bisLinks}
