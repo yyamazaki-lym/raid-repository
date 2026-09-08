@@ -18,6 +18,7 @@ import {
   type PullNoteScope,
 } from "@/lib/logs/pull-note-tags";
 import { fetchDeathLeadUpAction } from "@/lib/server/death-leadup-actions";
+import { MitigationDraftPanel } from "./mitigation-draft-panel";
 import {
   formatLeadUpHp,
   type LeadUpDeath,
@@ -186,7 +187,12 @@ export function PullDetailPanel({
         </ol>
       )}
 
-      {/* W-8 (2026-09-08): 死亡の直前。死亡が 1 件も無い pull では出さない
+      {/* W-8 / W-10 (2026-09-08): FFLogs から押したときだけ取る 2 つ。
+          ⚠ **縦に積む器で包む。** 素の div に並べると inline-flex の
+          ボタンと span が**同じ行に並んで**しまい (実測: 両方 top≈1520)、
+          `mt-1` も効かない。 */}
+      <div className="flex flex-col items-start gap-1">
+      {/* W-8: 死亡の直前。死亡が 1 件も無い pull では出さない
           (取りに行っても空)。 */}
       {state.kind === "ready" && state.deaths.length > 0 && (
         <LeadUpBlock
@@ -201,6 +207,14 @@ export function PullDetailPanel({
           }}
         />
       )}
+
+      {/* W-10 (2026-09-08): 軽減表の雛形。押したときだけ FFLogs から取る。
+          新層初週にしか使わないので、死亡が無い pull でも出す
+          (討伐 pull の被弾こそ雛形の材料になる)。 */}
+      {state.kind === "ready" && (
+        <MitigationDraftPanel reportCode={reportCode} fightId={fightId} />
+      )}
+      </div>
 
       {/* W-7 (2026-09-08): ミス注釈。死亡イベントの真下に置くので、
           何が起きたかを見ながら「なぜ崩れたか」を付けられる。 */}

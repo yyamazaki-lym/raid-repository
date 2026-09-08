@@ -117,6 +117,25 @@ export const ja = {
     pullDetailNoDeaths: "この pull に死亡はありません",
     pullDetailMissing:
       "この pull の死亡イベントは取得できていません (代替経路で取り込んだレポート、または同期の時間切れ)。同期をもう一度実行すると入ることがあります。",
+    // W-10 (2026-09-08): 軽減表の雛形 (ボスの被ダメージ時系列)。
+    mitDraftLoad: "軽減表の雛形を作る",
+    mitDraftHint:
+      "この pull でボスが撃った大きい技を 時刻 / 技名 / 対象人数 / ダメージ の表にします。Sheets に貼れる形でコピーできます (押したときだけ取得。保存はしません)",
+    mitDraftLoading: "FFLogs から取得中…",
+    mitDraftEmpty:
+      "大きい被弾が見つかりませんでした (継続ダメージだけの pull か、代替経路で取り込んだレポートです)",
+    mitDraftCount: (n: number): string => `${n} 行`,
+    mitDraftTruncated: "上限で打ち切り (大きい技は前半に出そろいます)",
+    mitDraftCopy: "貼り付け用にコピー",
+    mitDraftCopied: (n: number): string =>
+      `${n} 行をコピーしました (Sheets にそのまま貼れます)`,
+    mitDraftColTime: "時刻",
+    mitDraftColAbility: "技名",
+    mitDraftColTargets: "対象",
+    mitDraftColTotal: "合計",
+    mitDraftColMax: "最大",
+    mitDraftNote:
+      "軽減の判定と軽減率の計算はしていません (パッチごとに変わるため)。実測値だけを並べています。",
     // W-8 (2026-09-08): 死亡の直前 (FFLogs から押されたときだけ取る)。
     leadUpLoad: "死亡の直前を読む",
     leadUpHint:
@@ -572,6 +591,23 @@ export const en: LogsMessages = {
     pullDetailNoDeaths: "No deaths in this pull",
     pullDetailMissing:
       "Death events were not captured for this pull (imported through a fallback route, or the sync ran out of time). Running the sync again may fill it in.",
+    mitDraftLoad: "Draft a mitigation table",
+    mitDraftHint:
+      "Turns the boss's big hits in this pull into time / ability / targets / damage rows you can paste into Sheets (fetched only when you click; nothing is stored)",
+    mitDraftLoading: "Fetching from FFLogs…",
+    mitDraftEmpty:
+      "No big hits found (a pull with only damage-over-time, or a report imported through a fallback route)",
+    mitDraftCount: (n) => `${n} row(s)`,
+    mitDraftTruncated: "cut off at the limit (the big hits come first)",
+    mitDraftCopy: "Copy for pasting",
+    mitDraftCopied: (n) => `Copied ${n} row(s) — paste straight into Sheets`,
+    mitDraftColTime: "Time",
+    mitDraftColAbility: "Ability",
+    mitDraftColTargets: "Targets",
+    mitDraftColTotal: "Total",
+    mitDraftColMax: "Max",
+    mitDraftNote:
+      "No mitigation detection or percentages (they change every patch). Only measured values are listed.",
     leadUpLoad: "Read the moment of death",
     leadUpHint:
       "Fetches HP / shield / active effects at each death from FFLogs (only when you click; nothing is stored)",
