@@ -13,6 +13,7 @@ import { ScheduleEditFrameDialog } from "./schedule-edit-frame-dialog-lazy";
 import { SessionMemoDot } from "./schedule/session-memo-dot";
 import { AttendanceSummaryChip } from "@/components/portal/schedule/attendance-summary-chip";
 import { FrameDeviationBadge } from "@/components/portal/native-schedule/frame-deviation-badge";
+import { ScheduleAgendaList } from "@/components/portal/schedule/agenda-list";
 import { OptionalSessionBadge } from "@/components/portal/native-schedule/optional-session-badge";
 import {
   dowIndexFromLabel,
@@ -480,7 +481,25 @@ export function ScheduleList({
           attendanceChoices={result.data.attendanceOptions.choices}
           isAdmin={isAdmin}
         />
-        <div className="overflow-x-auto">
+        {/* UI-10 (2026-09-08): スマホはアジェンダ (縦リスト) に差し替える。
+            8 人の表は 375px 幅で横スクロールが必須 (実測: 内容 778px /
+            表示 341px) で、開催直前にやりたい「次はいつか」「自分の回答を
+            入れる」に横スクロール 2 往復が挟まっていた。
+            ⚠ **表は消さず md 未満だけ差し替える** — 8 人の記号を一望できる
+            のは表の強みで、PC ではそのままが最善 (ノートの UI-10 も
+            「デスクトップは現状維持で二系統になる」を前提にしている)。 */}
+        <div className="md:hidden">
+          <ScheduleAgendaList
+            sessions={upcoming}
+            users={users}
+            mode={mode}
+            currentDiscordId={currentDiscordId}
+            attendanceOptions={attendanceOptionsForNative}
+            sessionIdByRawDate={nativeMeta?.sessionIdByRawDate}
+            optionalByRawDate={nativeMeta?.optionalByRawDate}
+          />
+        </div>
+        <div className="hidden overflow-x-auto md:block">
           <table className="w-full min-w-[640px] border-collapse text-left text-sm">
             {tableHead(true)}
             <tbody>
