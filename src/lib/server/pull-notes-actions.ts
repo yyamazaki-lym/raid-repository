@@ -114,6 +114,11 @@ export async function addPullNoteAction(
   input: AddPullNoteInput,
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
   const user = await requireDiscordMember();
+  // 公開デモの匿名ゲストは共有 ID を持つので、service role 経路で
+  // 書けてしまわないよう弾く (他の service role Server Action と同じ扱い)。
+  if (user.isDemoGuest) {
+    return { ok: false, reason: "デモ表示中は変更できません" };
+  }
   const code = (input.reportCode ?? "").trim();
   if (!/^[A-Za-z0-9]{8,64}$/.test(code) || !Number.isInteger(input.fightId)) {
     return { ok: false, reason: "pull の指定が不正です" };
@@ -171,6 +176,11 @@ export async function deletePullNoteAction(
   id: string,
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
   const user = await requireDiscordMember();
+  // 公開デモの匿名ゲストは共有 ID を持つので、service role 経路で
+  // 書けてしまわないよう弾く (他の service role Server Action と同じ扱い)。
+  if (user.isDemoGuest) {
+    return { ok: false, reason: "デモ表示中は変更できません" };
+  }
   const isAdmin = userIsAdmin(user.roles);
   if (!/^[0-9a-f-]{36}$/i.test(id ?? "")) {
     return { ok: false, reason: "注釈の指定が不正です" };

@@ -1581,9 +1581,9 @@ $$;
 REVOKE EXECUTE ON FUNCTION public.next_category_waymark_sort_order(uuid) FROM PUBLIC;
 REVOKE EXECUTE ON FUNCTION public.next_category_bis_link_sort_order(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.next_category_waymark_sort_order(uuid)
-  TO anon, authenticated;
+  TO authenticated;
 GRANT EXECUTE ON FUNCTION public.next_category_bis_link_sort_order(uuid)
-  TO anon, authenticated;
+  TO authenticated;
 
 -- ---- 6b-11. 新規メンバーの学習パス (B-3、2026-09-08) ------------------
 -- 「何から見ればいいか」の順番を示すチェックリストの進捗。1 行 = 
@@ -2538,9 +2538,9 @@ $$;
 -- を明示し、security advisor の PUBLIC EXECUTE 指摘も消す。
 REVOKE EXECUTE ON FUNCTION public.next_category_sort_order() FROM PUBLIC;
 REVOKE EXECUTE ON FUNCTION public.next_category_link_sort_order(uuid, text) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.next_category_sort_order() TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.next_category_sort_order() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.next_category_link_sort_order(uuid, text)
-  TO anon, authenticated;
+  TO authenticated;
 
 -- ---- 13c. sort_order allocator RPCs (TODO #83, 2.4) -------------------
 -- TODO #83 (2026-06-09): `recruitment_templates` / `category_macros` の
@@ -2574,9 +2574,9 @@ $$;
 REVOKE EXECUTE ON FUNCTION public.next_recruitment_template_sort_order() FROM PUBLIC;
 REVOKE EXECUTE ON FUNCTION public.next_category_macro_sort_order(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.next_recruitment_template_sort_order()
-  TO anon, authenticated;
+  TO authenticated;
 GRANT EXECUTE ON FUNCTION public.next_category_macro_sort_order(uuid)
-  TO anon, authenticated;
+  TO authenticated;
 
 -- ---- 13c-2. practice seconds aggregate RPC (2026-07-12 監査 B-7) -------
 -- /category 一覧の「累計練習時間」バッジ用の集計。従来は
@@ -2602,7 +2602,7 @@ $$;
 
 REVOKE EXECUTE ON FUNCTION public.practice_seconds_by_category() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.practice_seconds_by_category()
-  TO anon, authenticated;
+  TO authenticated;
 
 -- ---- 13c-3. per-day progress aggregate RPC (UI-2、2026-09-08) ---------
 -- /category 一覧のカードに「日別の到達度スパークライン」を出すための集計
@@ -2788,7 +2788,7 @@ $$;
 
 REVOKE EXECUTE ON FUNCTION public.category_progress_by_day(integer) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.category_progress_by_day(integer)
-  TO anon, authenticated;
+  TO authenticated;
 
 -- ---- 13d. native placeholder raid time retro-update RPC (TODO #85) ----
 -- 2.6 (2026-06-10): TODO #81 follow-up。`ensureNativeMonthlyPlaceholders()`
@@ -3024,3 +3024,53 @@ DELETE FROM public.app_settings
     'fflogs_session_cookie',
     'fflogs_oauth_state_pending'
   );
+
+-- ---- 15. RPC の anon EXECUTE を公開デモだけに限定する -------------------
+-- 2026-09-09 監査: 13c 章の集計 RPC が `SECURITY DEFINER` かつ anon に
+-- EXECUTE 付与されており、**7 章で閉じたはずの anon 読み取りを迂回できた**。
+--
+-- 経緯: これらの GRANT は「どうせ anon SELECT が全テーブル全開なので
+-- DEFINER でも露出は増えない」という前提で書かれた (関数定義の直上コメント)。
+-- その前提は 2026-08-05 監査 H-2 で **SELECT を `TO authenticated` に締めた
+-- 時点で偽になった**が、GRANT 側は追随していなかった。`/login` は未認証で
+-- 開けて anon key がバンドルから取れるため、guild 外の第三者が
+-- `POST /rest/v1/rpc/category_progress_by_day` でカテゴリ別の日次 pull 数・
+-- 到達区間・最良残 HP%・討伐フラグを最大 365 日ぶん読めた。
+-- (`practice_seconds_by_category` は動画の累計秒数。`next_*_sort_order` は
+-- 整数 1 個で実害はほぼ無いが、同じ理由で anon に配る必要が無いので揃える)
+--
+-- ⚠ **デモの挙動は変えない。** スパークラインと累計練習時間はデモの匿名
+-- ゲスト (= anon) が `createClient()` 経由で読むので、`app.public_demo` が
+-- 立っているときだけ anon に戻す。7 章の SELECT ポリシーと同じ分岐。
+--
+-- ⚠ **`REVOKE ... FROM PUBLIC` では消えない。** 既存の本番 DB には anon への
+-- **直接の** GRANT が入っているので、anon を名指しで REVOKE してから配り直す
+-- (この節は再実行しても同じ状態になる)。
+DO $$
+DECLARE
+  fn text;
+  exec_roles text := CASE
+    WHEN coalesce(current_setting('app.public_demo', true), '') = 'true'
+      THEN 'anon, authenticated'
+    ELSE 'authenticated'
+  END;
+BEGIN
+  IF exec_roles = 'authenticated' THEN
+    RAISE NOTICE '[GRANT] 集計 RPC の EXECUTE を authenticated 限定にします';
+  ELSE
+    RAISE NOTICE '[GRANT] app.public_demo=true — 集計 RPC を anon にも開放します (公開デモ用)';
+  END IF;
+  FOREACH fn IN ARRAY ARRAY[
+    'public.next_category_waymark_sort_order(uuid)',
+    'public.next_category_bis_link_sort_order(uuid)',
+    'public.next_category_sort_order()',
+    'public.next_category_link_sort_order(uuid, text)',
+    'public.next_recruitment_template_sort_order()',
+    'public.next_category_macro_sort_order(uuid)',
+    'public.practice_seconds_by_category()',
+    'public.category_progress_by_day(integer)'
+  ] LOOP
+    EXECUTE format('REVOKE EXECUTE ON FUNCTION %s FROM PUBLIC, anon, authenticated', fn);
+    EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO %s', fn, exec_roles);
+  END LOOP;
+END $$;
