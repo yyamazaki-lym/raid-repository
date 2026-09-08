@@ -267,6 +267,9 @@ export const RELEASES: ReleaseEntry[] = [
       {
         title: "⌨ コマンドパレット (Ctrl+K): コンテンツへのジャンプと設定の各節を検索して開けるように",
       },
+      {
+        title: "💀 練習ログ: pull の番号を押すと、その pull の死亡を時刻順の一覧で開けるように",
+      },
     ],
   },
 ];

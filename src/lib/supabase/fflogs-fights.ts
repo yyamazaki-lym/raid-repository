@@ -5,10 +5,10 @@ import {
   type FightRow,
 } from "@/lib/fflogs-progress";
 import {
+  asDeathEvents,
+  asPhaseTransitions,
   phaseSpans,
   summarizeWipe,
-  type StoredDeathEvent,
-  type StoredPhaseTransition,
   phaseTimeTotals,
   type PhaseSpan,
   type PhaseTimeTotal,
@@ -319,42 +319,6 @@ export async function fetchFailedReportSyncs(
     rethrowNextSentinel(err);
     return [];
   }
-}
-
-/** jsonb `death_events` の防御的パース (要素の形が違えば捨てる)。 */
-function asDeathEvents(v: unknown): StoredDeathEvent[] | null {
-  if (!Array.isArray(v)) return null;
-  const out: StoredDeathEvent[] = [];
-  for (const e of v) {
-    if (!e || typeof e !== "object") continue;
-    const o = e as Record<string, unknown>;
-    const t = numberOrNull(o.t);
-    if (t === null) continue;
-    const id = numberOrNull(o.id);
-    out.push({
-      t,
-      job: typeof o.job === "string" ? o.job : null,
-      ability: typeof o.ability === "string" ? o.ability : null,
-      ...(id !== null ? { id } : {}),
-      ...(typeof o.ja === "string" && o.ja !== "" ? { ja: o.ja } : {}),
-    });
-  }
-  return out;
-}
-
-/** jsonb `phase_transitions` の防御的パース。 */
-function asPhaseTransitions(v: unknown): StoredPhaseTransition[] | null {
-  if (!Array.isArray(v)) return null;
-  const out: StoredPhaseTransition[] = [];
-  for (const e of v) {
-    if (!e || typeof e !== "object") continue;
-    const o = e as Record<string, unknown>;
-    const id = numberOrNull(o.id);
-    const t = numberOrNull(o.t);
-    if (id === null || t === null) continue;
-    out.push({ id, t });
-  }
-  return out.length > 0 ? out : null;
 }
 
 function numberOrNull(v: unknown): number | null {
