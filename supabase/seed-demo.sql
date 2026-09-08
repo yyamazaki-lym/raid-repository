@@ -1017,3 +1017,45 @@ BEGIN
 
   RAISE NOTICE 'Demo seed (2026-09) applied — fflogs_fights(zk+ul), report_videos, native sessions/attendances/logs, waymarks, bis, loot_weekly, link_reads, gphoto, settings(native).';
 END $$;
+
+-- ============================================================================
+-- Section 4: W-18 有志練習 (任意参加) の実例 (2026-09-08)
+-- ============================================================================
+-- 「有志」バッジと、そのバッジが付いた日が自動確定・催促・出席集計から
+-- 外れることを demo で見せるための 1 行だけの節。
+--
+--   - 冪等: sentinel `demo_seed_w18_applied` で 2 回目以降スキップ
+--     (Section 1 / 3 とは別の sentinel。既に適用済みの demo project に
+--      この節だけを 1 回走らせるため)
+--   - 対象は**未来の候補日のうち最も遠い 1 件**。近い方を任意参加にすると
+--     「次の活動」カードが有志練習になってしまい、デモとして誤解を招く
+--   - 該当行が無い (placeholder 生成前) なら何もしない
+DO $$
+DECLARE
+  v_sid uuid;
+BEGIN
+  IF EXISTS (SELECT 1 FROM public.app_settings WHERE key = 'demo_seed_w18_applied') THEN
+    RAISE NOTICE 'Demo seed (W-18) already applied — skipping.';
+    RETURN;
+  END IF;
+
+  SELECT id INTO v_sid
+    FROM public.native_schedule_sessions
+   WHERE status = 'CANDIDATE'
+     AND parsed_date >= (now() AT TIME ZONE 'Asia/Tokyo')::date
+   ORDER BY parsed_date DESC
+   LIMIT 1;
+
+  IF v_sid IS NOT NULL THEN
+    UPDATE public.native_schedule_sessions
+       SET is_optional = true,
+           note = COALESCE(NULLIF(note, ''), '有志練習: 来られる人だけで零式 1〜2 層の周回')
+     WHERE id = v_sid;
+  END IF;
+
+  INSERT INTO public.app_settings (key, value) VALUES
+    ('demo_seed_w18_applied', '1')
+  ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
+
+  RAISE NOTICE 'Demo seed (W-18) applied — one candidate session flagged is_optional.';
+END $$;

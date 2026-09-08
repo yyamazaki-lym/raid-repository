@@ -21,6 +21,7 @@ import { isUnanswered } from "@/lib/schedule/attendance-reminder-core";
  *   4. 参加可能な人数 (`×` 以外の回答) が閾値以上
  *      — 全員が「×」でも「全員入力済み」は成立してしまうため、
  *        人数条件が無いと「誰も来られない日」を確定してしまう
+ *   5. 有志練習 (任意参加) でない (W-18、2026-09-08)
  *
  * 書き込みは service role (出欠を入れるのは非 admin のメンバーなので、
  * RLS の admin ポリシーでは status を更新できない)。設定 ON かつ上記
@@ -63,12 +64,18 @@ export async function maybeAutoConfirmSession(
     const supabase = createSupabaseServiceRoleClient();
     const { data: session } = await supabase
       .from("native_schedule_sessions")
-      .select("id, status")
+      .select("id, status, is_optional")
       .eq("id", sessionId)
       .maybeSingle();
     if (!session) return { confirmed: false, reason: "セッション不明" };
     if ((session as { status: string }).status !== "CANDIDATE") {
       return { confirmed: false, reason: "CANDIDATE ではない" };
+    }
+    // W-18 (2026-09-08): 有志練習 (任意参加) は自動確定の対象外。
+    // 全員回答 + 人数閾値という条件は「全員で行く日」の前提なので、
+    // 任意参加の日に当てると「来られない人がいるから確定しない」に化ける。
+    if ((session as { is_optional?: boolean }).is_optional === true) {
+      return { confirmed: false, reason: "有志練習 (自動確定の対象外)" };
     }
 
     const [membersRes, attendancesRes] = await Promise.all([

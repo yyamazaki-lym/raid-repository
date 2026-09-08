@@ -841,6 +841,15 @@ ALTER TABLE public.native_schedule_sessions
   ADD CONSTRAINT native_schedule_sessions_note_sane
   CHECK (note IS NULL OR char_length(note) <= 200) NOT VALID;
 
+-- 2026-09-08 (調査ノート第 4 回 W-18): 有志練習 (任意参加) フラグ。
+-- 「参加できる人だけ」の日を公式化するための 1 列で、次の 3 つを外す:
+--   1. 自動確定 (native_schedule_auto_confirm) — 全員回答を待つ意味がない
+--   2. 未回答の催促 (attendance-reminder) — 任意参加なのにメンションは矛盾
+--   3. 出席統計 (W-19) — 母数に入れると「休んだ人」に見えてしまう
+-- 既存行は false (= 従来の本活動) なので、未使用のデプロイは挙動が変わらない。
+ALTER TABLE public.native_schedule_sessions
+  ADD COLUMN IF NOT EXISTS is_optional boolean NOT NULL DEFAULT false;
+
 DROP TRIGGER IF EXISTS set_updated_at_native_schedule_sessions
   ON public.native_schedule_sessions;
 CREATE TRIGGER set_updated_at_native_schedule_sessions

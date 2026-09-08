@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
   updateNativeScheduleSessionNoteAction,
+  updateNativeScheduleSessionOptionalAction,
   updateNativeScheduleSessionTimeAction,
 } from "@/lib/server/native-schedule-actions";
 import { useMessages } from "@/lib/i18n/client";
@@ -32,6 +33,11 @@ import { useMessages } from "@/lib/i18n/client";
  * 追加。save 時に「時刻 diff だけ」「note diff だけ」「両方 diff」で対応する
  * action を呼び分け、無駄な UPDATE と revalidatePath を抑止。「default に戻す」
  * は時刻専用 (note は空文字保存で NULL 化、別経路)。
+ *
+ * W-18 (2026-09-08): 「有志練習 (任意参加)」チェックボックスを同 popover に
+ * 追加。種別テーブルや enum を作らず boolean 1 列にしたので、入口も
+ * 「備考のとなりのチェックボックス」1 つで足りる。save は時刻 / 備考 /
+ * 有志の 3 つを差分のあるものだけ順次呼ぶ。
  *
  * popover 構造は `native-attendance-popover.tsx` の TODO #72 教訓踏襲:
  *   - `<Popover open={open} onOpenChange={setOpen}>` controlled
@@ -57,6 +63,11 @@ type Props = {
    * Textarea の初期値 + 「未変更時に action 呼ばない」差分判定に使う。
    */
   note?: string | null;
+  /**
+   * W-18 (2026-09-08): 現在の有志練習 (任意参加) フラグ。チェックボックスの
+   * 初期値 + 「未変更時に action を呼ばない」差分判定に使う。
+   */
+  isOptional?: boolean;
   /** trigger の追加クラス。schedule-list 側で色味を寄せたい場合用。 */
   triggerClass?: string;
 };
@@ -69,6 +80,7 @@ export function SessionTimeEditPopover({
   defaultEndTime,
   displayDate,
   note = null,
+  isOptional = false,
   triggerClass = "",
 }: Props) {
   const m = useMessages();
@@ -81,6 +93,7 @@ export function SessionTimeEditPopover({
     overrideEnd ?? defaultEndTime,
   );
   const [draftNote, setDraftNote] = useState<string>(note ?? "");
+  const [draftOptional, setDraftOptional] = useState<boolean>(isOptional);
   const [error, setError] = useState<string | null>(null);
   const [busy, startTransition] = useTransition();
 
@@ -90,18 +103,28 @@ export function SessionTimeEditPopover({
       setDraftStart(overrideStart ?? defaultStartTime);
       setDraftEnd(overrideEnd ?? defaultEndTime);
       setDraftNote(note ?? "");
+      setDraftOptional(isOptional);
       setError(null);
     }
-  }, [open, overrideStart, overrideEnd, defaultStartTime, defaultEndTime, note]);
+  }, [
+    open,
+    overrideStart,
+    overrideEnd,
+    defaultStartTime,
+    defaultEndTime,
+    note,
+    isOptional,
+  ]);
 
   const isOverridden = overrideStart !== null || overrideEnd !== null;
 
   /**
-   * 時刻 + note を Save する複合ハンドラ。
+   * 時刻 + note + 有志練習を Save する複合ハンドラ。
    * - time 差分あり → updateNativeScheduleSessionTimeAction
    * - note 差分あり → updateNativeScheduleSessionNoteAction
-   * - 両方差分あり → 順次呼び出し (片方失敗で残りは skip して error 表示)
-   * - 両方無差分 → 何もせず close
+   * - 有志 差分あり → updateNativeScheduleSessionOptionalAction (W-18)
+   * - 複数差分あり → 順次呼び出し (途中失敗で残りは skip して error 表示)
+   * - 無差分 → 何もせず close
    */
   const onSave = () => {
     setError(null);
@@ -134,8 +157,9 @@ export function SessionTimeEditPopover({
     const timeChanged =
       draftStart !== currentDisplayStart || draftEnd !== currentDisplayEnd;
     const noteChanged = nextNote !== (note ?? null);
+    const optionalChanged = draftOptional !== isOptional;
 
-    if (!timeChanged && !noteChanged) {
+    if (!timeChanged && !noteChanged && !optionalChanged) {
       // 何も変わってないので action なしで close
       setOpen(false);
       return;
@@ -163,6 +187,16 @@ export function SessionTimeEditPopover({
           return;
         }
       }
+      if (optionalChanged) {
+        const r = await updateNativeScheduleSessionOptionalAction({
+          sessionId,
+          isOptional: draftOptional,
+        });
+        if (!r.ok) {
+          setError(r.reason);
+          return;
+        }
+      }
       const msgs: string[] = [];
       if (timeChanged) msgs.push(m.sessionTime.changedTime(draftStart, draftEnd));
       if (noteChanged) {
@@ -170,6 +204,13 @@ export function SessionTimeEditPopover({
           nextNote === null
             ? m.sessionTime.changedNoteCleared
             : m.sessionTime.changedNoteUpdated,
+        );
+      }
+      if (optionalChanged) {
+        msgs.push(
+          draftOptional
+            ? m.sessionTime.changedOptionalOn
+            : m.sessionTime.changedOptionalOff,
         );
       }
       toast.success(m.sessionTime.toastChanged(displayDate, msgs.join(" / ")));
@@ -293,6 +334,27 @@ export function SessionTimeEditPopover({
                 spellCheck={false}
                 className="text-sm"
               />
+            </div>
+
+            {/* W-18 (2026-09-08): 有志練習 (任意参加)。自動確定・催促・
+                出席集計から外れるので、何が外れるかを下に明記する
+                (チェックだけでは「印が付くだけ」に見える)。 */}
+            <div className="flex flex-col gap-1">
+              <label className="inline-flex cursor-pointer items-start gap-2">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--neon-violet)]"
+                  checked={draftOptional}
+                  disabled={busy}
+                  onChange={(e) => setDraftOptional(e.target.checked)}
+                />
+                <span className="text-[12px] leading-snug text-foreground">
+                  {m.sessionTime.optionalLabel}
+                </span>
+              </label>
+              <span className="pl-6 text-[11px] leading-snug text-muted-foreground/80">
+                {m.sessionTime.optionalHint}
+              </span>
             </div>
 
             {error && (

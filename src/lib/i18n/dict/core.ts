@@ -252,6 +252,11 @@ export const ja = {
     timeOverride: "今回だけ",
     timeOverrideTitle: "定期枠の曜日ですが、この日だけ時刻を変えています",
   },
+  // W-18 (2026-09-08): 有志練習 (任意参加) の印。
+  optionalBadge: {
+    label: "有志",
+    title: "有志練習 (任意参加)。催促と出席の集計から外れます",
+  },
   // W-15 (2026-09-08): 定期枠。
   nativeRecurring: {
     description:
@@ -277,6 +282,11 @@ export const ja = {
     overrideNote: "(現在この日は個別 override)",
     noteLabel: "備考",
     notePlaceholder: "例: アルカディア LH4 練習",
+    optionalLabel: "有志練習 (任意参加)",
+    optionalHint:
+      "この日を「参加できる人だけ」にします。自動確定・未回答の催促・出席の集計から外れます。",
+    changedOptionalOn: "有志練習に変更",
+    changedOptionalOff: "有志練習を解除",
     resetTitle: "この日の時刻を既定に戻す",
     reset: "既定に戻す",
     errStartFormat: "開始時刻は HH:MM 形式で入力してください",
@@ -771,6 +781,10 @@ export const en: CoreMessages = {
     timeOverrideTitle:
       "A recurring-slot weekday, but the time was changed just for this day",
   },
+  optionalBadge: {
+    label: "Optional",
+    title: "Optional practice (join if you can). Excluded from reminders and attendance stats",
+  },
   nativeRecurring: {
     description:
       "Set which weekdays you normally raid, and candidate dates are auto-added only on those days. Pick none to keep the previous behaviour (every day of the month).",
@@ -794,6 +808,11 @@ export const en: CoreMessages = {
     overrideNote: "(this day uses a custom override)",
     noteLabel: "Note",
     notePlaceholder: "e.g. Arcadion LH4 practice",
+    optionalLabel: "Optional practice (join if you can)",
+    optionalHint:
+      "Marks this day as join-if-you-can. It is excluded from auto-confirm, unanswered reminders and attendance stats.",
+    changedOptionalOn: "marked as optional practice",
+    changedOptionalOff: "optional practice cleared",
     resetTitle: "Reset this day's time to the default",
     reset: "Reset to default",
     errStartFormat: "Enter the start time as HH:MM",
