@@ -44,5 +44,5 @@
  */
 export const LATEST_RELEASE_META: { version: string; date: string } = {
   version: "2.16",
-  date: "2026-09-07",
+  date: "2026-09-08",
 };

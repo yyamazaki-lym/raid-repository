@@ -1,6 +1,8 @@
 # Raid Repository — 引き継ぎノート
 
-> 2.9 (2026-07-12) 時点。完了済 TODO の詳細は `src/lib/changelog.ts` / 過去版番号は `.claude/done.md`。
+> 2.16 (2026-09-08) 時点。完了済 TODO の詳細は `src/lib/changelog.ts` / 過去版番号は `.claude/done.md`。
+>
+> **残タスクの正本は `docs/backlog.md`。** このファイルは番号体系の索引とコード外の判断待ちを持つ (下記「TODO 番号の体系」)。
 >
 > **新規会話の手順**: このファイルを読んだ後、TODO 一覧は自動表示せずユーザーの要望を待つ。新規 TODO 追記時は part 単位ではなく TODO 完了時のみ統合追記する (part 細分は commit log に任せる)。
 
@@ -57,30 +59,38 @@
 
 ## 📌 次回の作業優先度
 
-未完了 TODO は **#11 (パフォーマンス、休眠中 = 新ボトルネック発見時のみ再開) のみ**。TODO #86 の 24h 観察 (UTC 19:00 自動発火確認) は 2026-06-12 に DB 実測で完了 (保留オペレーション項目 3 参照)。**非 admin メンバーの実機確認 2 件 (出欠「未回答に戻す」 #189 / 日付メモ CRUD #213 A-4) は 2026-06-15 ユーザー実機確認 OK で検収完了** (詳細は下記「完了済み TODO」2.9 (2026-06-15))。残作業は:
-1. 保留オペレーション項目 1 (Discord 通知 ON 切替、ユーザー判断)
-2. **総合レビューレポート (`docs/code-review-2026-06-13.md`) の P2/P3 を消化完了 — 残課題なし** (P0+P1+P2 主要に続き、残 P2/P3 を 2026-06-15 に実装。下記「完了済み TODO」2.9 (2026-06-15) 参照)。完了: C-4 Realtime 集約 (#219) / F-1 生 Tailwind 色 (#220) / B-3 login 軽量化 (#221) / C-5 ファイル分割 (maintenance-menu #222 / schedule-list 1943→1155 #224 / session-memo-popover 967→782 #225)。**見送り確定 (ユーザー判断 2026-06-15)**: ① B-3 の ISR — mitigation/loot は per-user 認証=canEdit + cookie 読みで Next が動的化し ISR 不可 (cold start は #181 済) ② C-5 の残り 2 ファイル (category-form-dialog 1185 行 / fflogs-sync-section 879 行) — 本体が単一の巨大 state マシン (25 / 13 useState) で安全分割不可
-3. **✅ F-4 ONLINE ドットに意味付け (presence) — 完了 ([#228](https://github.com/yyamazaki-lym/raid-repository/pull/228))**: 常時装飾だった ONLINE 表示を Supabase Realtime Presence で「オンライン中のメンバー数」表示に変更 (新 `src/lib/use-online-presence.ts` / `src/components/portal/online-presence-indicator.tsx`、presence key = Discord ID で複数タブ=1カウント、DB/RLS 変更なし)。dev preview + **実機で self=1 (オンライン 1 人) 表示をユーザー確認 OK (2026-06-15)**。複数人時の増分は実メンバーが集まった際に目視。
-4. **✅ Discord 取り込み除外 (blocklist) — 実装完了 ([#232](https://github.com/yyamazaki-lym/raid-repository/pull/232))**: 特定の動画/攻略 URL を「今後取り込まない」除外する機能 (ユーザー要望 2026-06-15)。削除しても dedup は URL 在不在しか見ず cron で復活する問題への対処。新テーブル `category_discord_blocklist` (admin-only RLS、汎用ループ外の独立章) + 取り込み skip (service role 読取) + ⋮ メニュー「今後取り込まない」(source='discord' 限定) + 編集ダイアログの「取り込み除外 URL」管理 (lazy fetch + 解除)。schema は本番/demo 自動デプロイ成功、本番で **admin policy 3 種 (select/insert/delete) + UNIQUE + RLS 有効** を SQL 実査済。**実 admin での除外操作は 2026-06-15 ユーザー実機確認 OK** (除外 → 消える + 以後取り込まれないことを確認済)。import skip 読取は service role で RLS 非依存。
+> 2026-09-09 更新。**残タスクの正本は `docs/backlog.md`** (調査ノート
+> `docs/ff14-tools-research-2026-09-06-wide.md` が根拠)。このファイルは
+> 「番号体系の索引」と「コード外の判断待ち」だけを持つ。
 
-**→ 実質の残作業は項目 1 (Discord 通知 ON 切替) と保留オペレーション項目 4 (TODO #92 メモ所有者、いずれもユーザー判断) の 2 件。** 総合レビュー (P0/P1/P2/P3) は実施対象を全消化、追加機能 (presence / blocklist) も実機検収完了 (見送り確定分を除く)。
+残っている実装は **W-9 + UI-13 (軽減の計画 × 実測) のみ**で、これは 8.0 の
+軽減再編後に着手する方が保守的に有利 (調査ノート自身の判断)。TODO #11
+(パフォーマンス) は休眠中。**それ以外に着手待ちの実装は無い。**
 
-6. **✅ 重点セキュリティ監査 (2026-08-05) — High 3 / Medium 3 / Low 8 を修正済、M-1 のみ保留**:
-   5 領域 (認証認可 / RLS / Server Actions / API routes / 境界) の並列監査。Critical ゼロ。
-   修正した High は (a) **メンバーシップ / admin ロールの失効が反映されない** —
-   `discord_member_verified_at` を書くだけで読む箇所が無く、kick / ロール剥奪後も 4 層の gate を
-   通過し続けた (proxy に TTL 再検証を実装、soft 6h / hard 72h)、(b) **全 19 テーブルの anon SELECT** —
-   `/login` 経由で誰でも入手できる anon key と噛み合い、guild 外から Supabase REST 直叩きで
-   全メンバーの Discord ID・ロール制限カテゴリ・`app_settings` が読めた (`TO authenticated` 化、
-   demo は `app.public_demo` GUC で opt-in、CI 化済)、(c) **ホスト名経由の SSRF** —
-   `nip.io` 等で rebinding 無しに内部 IP へ到達できた (DNS 解決結果を検証 + ピン留めする
-   `safe-fetch.ts` を新設)。詳細は `docs/security-audit-2026-08-05.md`。
+手が空いたときに拾う順:
 
-5. **✅ 全体再監査 (2026-06-19) — 確定 20 件を全修正・実機検収済 (#242–#248)**: 13 領域マルチエージェント監査で P0/P1 ゼロを再確認し、確定した P2 2 件 (SSRF #242 / FFLogs wipe #243) + P3 18 件 (#244–#248) を 7 PR で全修正・merge (changelog 据え置き = #245 のユーザー可視分も載せない確定)。dev preview 再現不可だった実機確認 5 点 (出欠コメント保存 / 未来日確定の「本日」非表示 / 無効タブ直URL 404 / reduced-motion / 画像孤児掃除) は **2026-06-19 ユーザー実機確認 OK で検収完了**。詳細は下記「完了済み TODO」2.9 (2026-06-15) の 2026-06-19 エントリ。
+1. **実機確認 3 件** (ユーザー操作が必要。下記「実機確認待ち」)
+2. **判断待ち 2 件** (Discord 通知 ON 切替 / TODO #92 メモ所有者。下記「保留オペレーション」)
+3. W-9 + UI-13 (8.0 後)
+
+## 🔢 TODO 番号の体系
+
+番号が 3 系統あるので、**接頭辞で出どころを見分ける**。混ぜて振り直さない
+(過去の `changelog.ts` / PR 本文が参照キーとして持っているため)。
+
+| 体系 | 例 | 出どころ | 一覧の場所 |
+|---|---|---|---|
+| `#N` (数字のみ) | #11 / #92 | 2026-04〜07 の履歴上の通番。`changelog.ts` の参照キー | このファイルの「未完了 TODO 一覧」 |
+| `W-N` / `UI-N` / `B-N` | W-9 / UI-13 / B-5 | 調査ノート (`docs/ff14-tools-research-2026-09-06-wide.md`) の項目番号。W=機能、UI=画面、B=第 1 回ノートの項目 | `docs/backlog.md` |
+| `L-N` | L-7 / L-8 | 実機で出た要望・不具合。調査ノートに番号が無いので `docs/backlog.md` 側で採番 | `docs/backlog.md` |
+
+⚠ **新しい実機要望は `L-N` を `docs/backlog.md` で採番する** (このファイルの
+`#N` を伸ばさない)。`#N` は既に閉じた体系で、`changelog.ts` の過去エントリが
+参照しているキーなので現状のまま凍結する。
 
 ## 未完了 TODO 一覧
 
-ページ / 領域ごとに分類。番号は履歴上の通番なので連続しないが、`changelog.ts` の参照キーとしてそのまま維持する。
+ページ / 領域ごとに分類。番号は上表の体系に従う。
 
 ### 🗓 スケジュールページ (`/` = top)
 
@@ -92,7 +102,7 @@
 
 | # | 項目 | 規模 |
 |---|---|---|
-| _(現在なし)_ | — | — |
+| W-9 + UI-13 | 軽減の「計画 × 実測」3 要素バー / レーン型タイムライン。x 軸に当たる W-10 (雛形の自動生成) は 2026-09-08 実装済み。⚠ **8.0 の軽減再編後に着手する** — シートの略称と FFLogs の正式名が一致せず、計画側の重ね合わせが壊れやすい (調査ノートの判断) | 大 |
 
 ### ⚙ 設定 / 管理系 (settings-dialog / maintenance-menu)
 
@@ -104,7 +114,7 @@
 
 | # | 項目 | 規模 |
 |---|---|---|
-| 11 | ページ全体のパフォーマンス最適化。phase 1-10 完了済、見送り候補あり。詳細: `.claude/todos/11.md` | — |
+| 11 | ページ全体のパフォーマンス最適化。phase 1-10 完了済、**休眠中** (新ボトルネック発見時のみ再開)。見送り候補は再検討禁止。詳細: `.claude/todos/11.md` | — |
 
 ### 🧹 コードベース最適化 / リファクタ
 
@@ -117,6 +127,17 @@
 | # | 項目 | 規模 |
 |---|---|---|
 | _(現在なし)_ | — | — |
+
+## 🔍 実機確認待ち
+
+実装は入っているが、**この環境から確かめられない**もの (実 API に到達できない
+/ 実物のシートが要る)。詳細は `docs/backlog.md` の各節。
+
+| 対象 | 何を見るか | 外れていたら疑う場所 |
+|---|---|---|
+| L-8 軽減表 | 実物のシート (見出しがアイコン画像) で列ラベルの括弧内ジョブ名が読めるか | 読めない列は `アビリティ名` を `名前 (ジョブ)` の形に直す |
+| W-8 死亡の直前 | 実 pull を 1 つ開いて直前の被弾が並ぶか | `parseDeathLeadUp` の入力側 (レスポンスの形) |
+| W-6 出席の自動突合 | 同期後のトーストで突合が 0 件でないか | `extractPlayerNames` の入力側 (参加者名が `composition` か `damageDone` か) |
 
 ## 完了済み TODO
 
