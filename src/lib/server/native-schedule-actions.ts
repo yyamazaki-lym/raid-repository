@@ -20,6 +20,7 @@ import {
 } from "./native-schedule-discord";
 import { NATIVE_CHOICE_VALUES_KEY } from "@/lib/schedule/settings-keys";
 import { isMemberRole } from "@/lib/member-roles";
+import { isJobKey } from "@/lib/jobs";
 import {
   normalizeAttendanceTime,
   symbolAllowsTimes,
@@ -454,6 +455,12 @@ export type UpdateNativeScheduleMemberPatch = {
    * 3 値に固定しているのはゲームの構造だから (DC 名の自由記述と違う)。
    */
   role?: string | null;
+  /**
+   * L-8 (2026-09-08): ジョブ (FFLogs 名。`RedMage` 等)。空文字列は NULL に
+   * 正規化 (= 未設定)。ロールはここから導出されるので、ジョブが入っている
+   * 行では `role` は使われない。
+   */
+  job?: string | null;
 };
 
 export async function updateNativeScheduleMemberAction(
@@ -495,6 +502,15 @@ export async function updateNativeScheduleMemberAction(
       return { ok: false, reason: "キャラクター名は 64 文字以内です" };
     }
     update.fflogs_character_name = v || null;
+  }
+  if (patch.job !== undefined) {
+    // L-8 (2026-09-08): ジョブ。妥当性は `isJobKey` (schema は長さと文字種
+    // だけを見る — 拡張でジョブが増えるたびの migration を避けるため)。
+    const v = (patch.job ?? "").trim();
+    if (v !== "" && !isJobKey(v)) {
+      return { ok: false, reason: "ジョブの指定が不正です" };
+    }
+    update.job = v || null;
   }
   if (patch.role !== undefined) {
     const v = (patch.role ?? "").trim();

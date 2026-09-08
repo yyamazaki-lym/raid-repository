@@ -918,6 +918,30 @@ ALTER TABLE public.native_schedule_members
   ADD CONSTRAINT native_schedule_members_role_sane
   CHECK (role IS NULL OR role IN ('tank', 'healer', 'dps')) NOT VALID;
 
+-- L-8 (2026-09-08): 本人のジョブ。値は **FFLogs 名** (`RedMage` 等) で、
+-- 死亡イベントの `job` と同じ体系 (`lib/jobs.ts` / `JOB_ABBR`)。
+--
+-- なぜ role とは別に持つのか:
+--   * 軽減表の担当は**シートのジョブ名の行**に入っているので、列と本人を
+--     結ぶキーはジョブ名になる (表示名やロールでは当たらない)。
+--   * ロールは**ジョブから導出できる** (`roleOfJob`)。本人に選ばせるのは
+--     ジョブだけにして設定を 1 つ減らす。既存の `role` は残し、ジョブが
+--     未設定のときの手動指定として使い続ける。
+--
+-- ⚠ **CHECK でジョブ名を列挙しない。** 拡張でジョブが増えるたびに
+-- schema の変更が必要になるのを避ける。妥当性 (既知のジョブか) は
+-- アプリ側 (`isJobKey`) で見て、ここは長さと制御文字だけを見る。
+ALTER TABLE public.native_schedule_members
+  ADD COLUMN IF NOT EXISTS job text;
+ALTER TABLE public.native_schedule_members
+  DROP CONSTRAINT IF EXISTS native_schedule_members_job_sane;
+ALTER TABLE public.native_schedule_members
+  ADD CONSTRAINT native_schedule_members_job_sane
+  CHECK (
+    job IS NULL
+    OR (char_length(job) <= 32 AND job ~ '^[A-Za-z]+$')
+  ) NOT VALID;
+
 ALTER TABLE public.native_schedule_members
   ADD CONSTRAINT native_schedule_members_charname_sane
   CHECK (

@@ -254,6 +254,16 @@ export const ja = {
     timeOverride: "今回だけ",
     timeOverrideTitle: "定期枠の曜日ですが、この日だけ時刻を変えています",
   },
+  /** L-8 (2026-09-08): 本人のジョブ設定 (軽減表タブと /me)。 */
+  myJob: {
+    label: "自分のジョブ",
+    unset: "未設定",
+    roleIs: (role: string): string => `ロール: ${role}`,
+    saved: "保存しました",
+    notRegistered:
+      "メンバー一覧にあなたの行がないため保存できません。幹部に追加を依頼してください。",
+    hint: "ジョブを設定すると、軽減表を「自分のロール」「自分の担当だけ」に絞れます。",
+  },
   // B-5 (2026-09-08): 個人ページ /me。
   mePage: {
     title: "自分のページ",
@@ -868,6 +878,16 @@ export const en: CoreMessages = {
     timeOverride: "One-off",
     timeOverrideTitle:
       "A recurring-slot weekday, but the time was changed just for this day",
+  },
+  /** L-8 (2026-09-08): the viewer's own job (mitigation tab and /me). */
+  myJob: {
+    label: "My job",
+    unset: "Not set",
+    roleIs: (role: string): string => `Role: ${role}`,
+    saved: "Saved",
+    notRegistered:
+      "You have no row in the member list, so this cannot be saved. Ask an officer to add you.",
+    hint: 'Set your job to filter the mitigation table by "My role" or "Only mine".',
   },
   mePage: {
     title: "My page",

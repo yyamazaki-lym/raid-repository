@@ -1224,3 +1224,49 @@ BEGIN
 
   RAISE NOTICE 'Demo seed (W-25) applied — one Legs slot reset to unobtained.';
 END $$;
+
+-- ============================================================================
+-- Section 8: L-8 メンバーのジョブ (2026-09-08)
+-- ============================================================================
+-- ジョブが 1 人も入っていないと、軽減表の「自分のロール / 自分の担当だけ」
+-- が**デモでは一度も出ない** (ジョブが自分の列を決めるキーなので)。
+-- Section 3 が入れた 4 人に、ロールが 3 種そろう並びでジョブを割り当てる
+-- (ナイト / 白魔道士 / 侍 / 赤魔道士)。
+--
+--   - 冪等: sentinel `demo_seed_l8_applied` で 2 回目以降スキップ
+--   - **既に入っている値は上書きしない** (手で設定したジョブを潰さない)
+--   - 値は FFLogs 名 (`lib/jobs.ts` の JOBS のキー)。ロールはここから
+--     導出されるので、`role` 列は触らない
+DO $$
+DECLARE
+  -- Section 3 / 5 と同じ 4 人 (demo project の実 ID)。
+  v_members text[] := ARRAY[
+    'local_mq7sifrh40py','local_mq7siphtq692','local_mq7siwonqhul','local_mq7sjctf795b'
+  ];
+  -- ロールが 3 種そろう並び。**DPS を 2 人**にして「自分のロール」で
+  -- 複数列が残る様子がデモで見えるようにする。
+  v_jobs    text[] := ARRAY[
+    'Paladin', 'WhiteMage', 'Samurai', 'RedMage'
+  ];
+  i         integer;
+  v_rows    integer := 0;
+BEGIN
+  IF EXISTS (SELECT 1 FROM public.app_settings WHERE key = 'demo_seed_l8_applied') THEN
+    RAISE NOTICE 'Demo seed (L-8) already applied — skipping.';
+    RETURN;
+  END IF;
+
+  FOR i IN 1..array_length(v_members, 1) LOOP
+    UPDATE public.native_schedule_members
+       SET job = v_jobs[i]
+     WHERE discord_user_id = v_members[i]
+       AND job IS NULL;
+    v_rows := v_rows + 1;
+  END LOOP;
+
+  INSERT INTO public.app_settings (key, value) VALUES
+    ('demo_seed_l8_applied', '1')
+  ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
+
+  RAISE NOTICE 'Demo seed (L-8) applied — % members considered for job.', v_rows;
+END $$;

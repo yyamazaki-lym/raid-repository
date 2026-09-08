@@ -6,6 +6,7 @@ import { userIsAdmin } from "./admin-roles";
 import { bisProgress } from "@/lib/bis-slots";
 import { normalizeName } from "@/lib/schedule/attendance-reminder-core";
 import { isMemberRole, type MemberRole } from "@/lib/member-roles";
+import { roleOfJob } from "@/lib/jobs";
 import {
   buildOnboardingProgress,
   isOnboardingStepId,
@@ -57,6 +58,11 @@ export type MyOnboardingRow = {
 export type MyProfile = {
   discordId: string;
   displayName: string | null;
+  /**
+   * ジョブ (L-8、2026-09-08)。`native_schedule_members.job`。
+   * ここから `role` を導出する。
+   */
+  job: string | null;
   role: MemberRole | null;
   characterName: string | null;
   isAdmin: boolean;
@@ -82,6 +88,7 @@ export async function fetchMyDashboard(): Promise<MyDashboard> {
   const profile: MyProfile = {
     discordId: user.discordId,
     displayName: null,
+    job: null,
     role: null,
     characterName: null,
     isAdmin: userIsAdmin(user.roles),
@@ -93,17 +100,22 @@ export async function fetchMyDashboard(): Promise<MyDashboard> {
     const db = createSupabaseServiceRoleClient();
     const { data: memberRow } = await db
       .from("native_schedule_members")
-      .select("display_name, role, fflogs_character_name")
+      .select("display_name, role, job, fflogs_character_name")
       .eq("discord_user_id", user.discordId)
       .maybeSingle();
     if (memberRow) {
       const r = memberRow as {
         display_name?: string | null;
         role?: string | null;
+        job?: string | null;
         fflogs_character_name?: string | null;
       };
       profile.displayName = r.display_name ?? null;
-      profile.role = isMemberRole(r.role) ? r.role : null;
+      profile.job = r.job ?? null;
+      // L-8: ロールは**ジョブから導出**したものを優先し、ジョブ未設定なら
+      // 手動指定の `role` に落ちる (ジョブを入れる前の固定を壊さない)。
+      profile.role =
+        roleOfJob(r.job) ?? (isMemberRole(r.role) ? r.role : null);
       profile.characterName = r.fflogs_character_name ?? null;
       profile.registered = true;
     }
