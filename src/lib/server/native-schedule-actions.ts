@@ -341,6 +341,45 @@ export async function updateNativeScheduleSessionNoteAction(
   return { ok: true };
 }
 
+/**
+ * W-18 (2026-09-08): 有志練習 (任意参加) フラグの切り替え。
+ *
+ * 調査ノート第 4 回 7-B W-18 の趣旨は「参加できる人だけ」を公式化すること。
+ * フラグを立てた日は自動確定・未回答の催促・出席統計から外れる (判定は
+ * それぞれ `native-schedule-auto-confirm.ts` / `attendance-reminder.ts` /
+ * 出席サマリー側が同じ列を見る)。
+ *
+ * 入口は時刻編集 popover のチェックボックス 1 つだけにしている — 種別を
+ * 増やす (session_type enum 等) と status との組み合わせが増えて確定判定が
+ * 複雑になるため、**boolean 1 列で足りる範囲に留める**。
+ */
+export type UpdateNativeScheduleSessionOptionalInput = {
+  sessionId: string;
+  isOptional: boolean;
+};
+
+export async function updateNativeScheduleSessionOptionalAction(
+  input: UpdateNativeScheduleSessionOptionalInput,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
+  const trimmed = input.sessionId?.trim();
+  if (!trimmed) return { ok: false, reason: "sessionId が空です" };
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("native_schedule_sessions")
+    .update({ is_optional: input.isOptional === true })
+    .eq("id", trimmed);
+  if (error) return { ok: false, reason: dbError("有志練習の切替", error) };
+  try {
+    revalidatePath("/");
+  } catch {
+    // best-effort
+  }
+  return { ok: true };
+}
+
 // ---- members (admin gate) -------------------------------------------------
 
 const DISCORD_ID_RE = /^\d{17,20}$/;

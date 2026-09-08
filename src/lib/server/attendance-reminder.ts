@@ -247,7 +247,10 @@ async function collectFromNative(
   const supabase = createSupabaseServiceRoleClient();
   const { data: sessions, error } = await supabase
     .from("native_schedule_sessions")
-    .select("id, raw_date, parsed_date, start_time, end_time, day_of_week, status")
+    // W-18 (2026-09-08): is_optional を追加 (有志練習は催促しない)。
+    .select(
+      "id, raw_date, parsed_date, start_time, end_time, day_of_week, status, is_optional",
+    )
     .neq("status", "CANCELLED");
   if (error || !sessions) return null;
   const session = (
@@ -258,12 +261,16 @@ async function collectFromNative(
       start_time: string | null;
       end_time: string | null;
       day_of_week: string;
+      is_optional?: boolean;
     }>
   ).find((s) => {
     const ms = new Date(s.parsed_date).getTime();
     return Number.isFinite(ms) && jstDayKey(ms) === targetDayKey;
   });
   if (!session) return null;
+  // W-18 (2026-09-08): 有志練習 (任意参加) の日は催促しない。「参加できる人
+  // だけ」の日に未回答メンションを飛ばすのは矛盾していて、催促圧だけが残る。
+  if (session.is_optional === true) return null;
 
   const [membersRes, attendancesRes] = await Promise.all([
     supabase
