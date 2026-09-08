@@ -50,7 +50,7 @@ import {
   type StoredDeathEvent,
   type StoredPhaseTransition,
 } from "@/lib/fflogs-fight-detail";
-import { attachJapaneseAbilityNames } from "./xivapi-action-names";
+import { attachBothAbilityNames } from "./xivapi-action-names";
 import {
   recordAttendanceActuals,
   type ReportParticipants,
@@ -1611,10 +1611,12 @@ async function fetchFightDetails(
       break;
     }
   }
-  // 2026-09-06: 致命技の名前を XIVAPI で日本語にする (ワイプ原因の表示 /
-  // 集計は日本語名で行う)。失敗しても英語名のまま保存されるだけ。
+  // 2026-09-06: 致命技の名前を XIVAPI で解決する (ワイプ原因の表示 / 集計)。
+  // L-7 (2026-09-08): **ja と en の両方**を入れる — 表示言語を切り替えた
+  // ときに片方の言語しか無いと、もう片方で元の名前 (FFLogs のクライアント
+  // 言語) が出てしまう。失敗しても元の名前のまま保存されるだけ。
   if (out.size > 0 && Date.now() <= deadlineAtMs) {
-    await attachJapaneseAbilityNames(
+    await attachBothAbilityNames(
       [...out.values()].flatMap((d) => d.deathEvents ?? []),
       deadlineAtMs,
     );

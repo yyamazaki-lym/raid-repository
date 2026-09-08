@@ -8,7 +8,8 @@ import {
   fetchCategoryPhaseTotals,
 } from "@/lib/supabase/fflogs-fights";
 import { resolveProgressModel } from "@/lib/content-model";
-import { getMessages } from "@/lib/i18n/server";
+import { getLocale, getMessages } from "@/lib/i18n/server";
+import { localizeWipeAbilities } from "@/lib/server/wipe-ability-names";
 import { LogsView } from "./logs-view";
 
 /**
@@ -16,7 +17,13 @@ import { LogsView } from "./logs-view";
  *
  * FFLogs に溜まっている pull 単位のデータを「読み物」に変える場所。
  * データ取得自体は日次 cron (`/api/cron/fflogs-sync`) で materialize 済み
- * なので、このページは DB を読むだけ (FFLogs API は叩かない = 速い)。
+ * なので、このページは DB を読むだけ (**FFLogs API は叩かない** = 速い)。
+ *
+ * ⚠ 例外が 1 つある: L-7 (2026-09-08) でワイプ原因の技名を表示言語に
+ * 揃えるため、**保存に足りない言語の名前だけ** XIVAPI (ゲームデータの
+ * 公開ダンプ) に引きに行く。上限 100 ID / 締切 2.5 秒 / プロセス内 7 日
+ * キャッシュで、失敗しても元の名前で描画は続く
+ * (`server/wipe-ability-names.ts`)。FFLogs は今も叩かない。
  */
 export const runtime = "nodejs";
 
@@ -76,6 +83,12 @@ export default async function LogsPage({
   const [videoLinks, failedSyncs] = await Promise.all([
     fetchReportVideoLinks(codes),
     fetchFailedReportSyncs(category.id),
+    // L-7: 同期より前に取り込んだ pull は技名がクライアント言語のままなので、
+    // 足りているものは触らず、欠けている ID だけ表示言語で埋める (in place)。
+    localizeWipeAbilities(
+      fights.map((f) => f.wipe),
+      await getLocale(),
+    ),
   ]);
 
   return (

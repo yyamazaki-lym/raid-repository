@@ -46,7 +46,12 @@ import {
   Skull,
   Swords,
 } from "lucide-react";
-import { formatMs, formatWipeLabel, jobAbbr } from "@/lib/fflogs-fight-detail";
+import {
+  formatMs,
+  formatWipeLabel,
+  jobAbbr,
+  wipeAbilityLabel,
+} from "@/lib/fflogs-fight-detail";
 import {
   type FightRow,
   type FloorMap,
@@ -346,6 +351,11 @@ export function PullRow({
           ) : null;
         // 2026-09-06 W-1: ワイプ原因 (最初に落ちたジョブ ← 致命技 +同時死亡数)。
         // 個人名は持っていない。可変幅なので左グループの末尾に置く。
+        // L-7 (2026-09-08): 技名は表示言語で選ぶ (`ja` / `en` が入っていれば
+        // それ、無ければ FFLogs が返した名前)。
+        const wipeAbility = fight.wipe
+          ? wipeAbilityLabel(fight.wipe, locale)
+          : null;
         const wipeChip = fight.wipe ? (
           <span
             className={
@@ -360,7 +370,7 @@ export function PullRow({
               m.logs.wipeFirstDeath(formatMs(fight.wipe.t)) +
               (fight.wipe.phase !== null ? ` (P${fight.wipe.phase})` : "") +
               ` / ${jobAbbr(fight.wipe.job)}` +
-              (fight.wipe.ability ? ` ← ${fight.wipe.ability}` : "") +
+              (wipeAbility ? ` ← ${wipeAbility}` : "") +
               (fight.wipe.cluster > 1 ? m.logs.wipeCluster(fight.wipe.cluster) : "") +
               m.logs.wipeDeaths(fight.wipe.total)
             }

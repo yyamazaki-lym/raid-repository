@@ -100,23 +100,51 @@ try {
       { t: 2_000, job: "Bard", ability: "Akh Morn", id: 26814 },
     ],
   );
+  // L-7 (2026-09-08): 表示名は **表示言語で選ぶ**。その言語の名前が
+  // 無ければ FFLogs が返した名前に落ちる (別言語の名前は出さない)。
   check(
-    "表示名は日本語優先",
+    "表示名: ja は ja を、無ければ元の名前",
     [
-      m.deathAbilityLabel({ ability: "Akh Morn", ja: "アク・モーン" }),
-      m.deathAbilityLabel({ ability: "Akh Morn" }),
-      m.deathAbilityLabel({ ability: null }),
+      m.deathAbilityLabel({ ability: "Akh Morn", ja: "アク・モーン" }, "ja"),
+      m.deathAbilityLabel({ ability: "Akh Morn" }, "ja"),
+      m.deathAbilityLabel({ ability: null }, "ja"),
     ],
     ["アク・モーン", "Akh Morn", null],
   );
   check(
-    "ワイプ要約の技名も日本語優先",
-    m.summarizeWipe(
-      [{ t: 5_000, job: "Paladin", ability: "Akh Morn", id: 26814, ja: "アク・モーン" }],
-      null,
-      false,
-    ).ability,
-    "アク・モーン",
+    "表示名: en は en を使い、ja が入っていても使わない",
+    [
+      m.deathAbilityLabel({ ability: "アク・モーン", en: "Akh Morn" }, "en"),
+      m.deathAbilityLabel({ ability: "アク・モーン", ja: "アク・モーン" }, "en"),
+    ],
+    ["Akh Morn", "アク・モーン"],
+  );
+  check("locale 既定は ja", m.deathAbilityLabel({ ability: "x", ja: "エックス" }), "エックス");
+  // ⚠ summarizeWipe は **表示言語を決めない** (DB 行を読む server 側で
+  //   locale を知らないまま呼ばれる)。生の名前 + id + ja / en を持たせ、
+  //   言語の選択は wipeAbilityLabel / formatWipeLabel が行う。
+  const wipeJa = m.summarizeWipe(
+    [
+      {
+        t: 5_000,
+        job: "Paladin",
+        ability: "Akh Morn",
+        id: 26814,
+        ja: "アク・モーン",
+      },
+    ],
+    null,
+    false,
+  );
+  check(
+    "ワイプ要約は生の名前 / id / ja を持つ",
+    [wipeJa.ability, wipeJa.id, wipeJa.ja ?? null, wipeJa.en ?? null],
+    ["Akh Morn", 26814, "アク・モーン", null],
+  );
+  check(
+    "ワイプ要約の技名は locale で選ぶ",
+    [m.wipeAbilityLabel(wipeJa, "ja"), m.wipeAbilityLabel(wipeJa, "en")],
+    ["アク・モーン", "Akh Morn"],
   );
 
   console.log("\n[フェーズ遷移の正規化]");
