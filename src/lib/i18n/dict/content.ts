@@ -153,6 +153,9 @@ export const ja = {
     editInSheets: "Sheets で編集",
     onlyMineOf: (name: string) => `${name} の担当のみ`,
     onlyMine: "自分の担当だけ",
+    // UI-4 (2026-09-08): 絞り方 3 段 (全部 / 自分のロール / 自分だけ)。
+    filterAll: "全部",
+    filterRole: "自分のロール",
     namePlaceholder: "シートの見出しと同じ表示名",
     nameAria: "表示名",
     displayName: (name: string) => `表示名: ${name}`,
@@ -850,6 +853,8 @@ export const en: ContentMessages = {
     editInSheets: "Edit in Sheets",
     onlyMineOf: (name) => `Only ${name}'s assignments`,
     onlyMine: "Only my assignments",
+    filterAll: "All",
+    filterRole: "My role",
     namePlaceholder: "Same display name as the sheet header",
     nameAria: "Display name",
     displayName: (name) => `Display name: ${name}`,

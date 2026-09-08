@@ -63,6 +63,11 @@ export type NativeMemberRowFull = {
    * 未設定 (null) なら表示名での一致だけを試す。列が無い DB では undefined。
    */
   fflogs_character_name?: string | null;
+  /**
+   * UI-4 (2026-09-08): ロール (`tank` / `healer` / `dps`)。軽減表の
+   * 「自分のロールだけ」に使う。列が無い DB では undefined。
+   */
+  role?: string | null;
 };
 
 export type NativeCancelledSessionRow = {
@@ -110,7 +115,8 @@ export async function fetchNativeScheduleAdminAux(): Promise<NativeAdminAux> {
       .from("native_schedule_members")
       .select(
         // W-6 (2026-09-08): fflogs_character_name を追加 (出席突合の対応表)。
-        "discord_user_id, display_name, sort_order, is_active, data_center, fflogs_character_name",
+        // UI-4 (2026-09-08): role を追加 (軽減表のロール別フィルタ)。
+        "discord_user_id, display_name, sort_order, is_active, data_center, fflogs_character_name, role",
       )
       .order("sort_order", { ascending: true })
       .order("display_name", { ascending: true }),

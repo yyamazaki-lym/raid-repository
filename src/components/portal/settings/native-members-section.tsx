@@ -15,6 +15,7 @@ import type { NativeMemberRowFull } from "@/lib/schedule/native-admin-client";
 import { useConfirm } from "@/components/portal/confirm-dialog";
 import { useMessages } from "@/lib/i18n/client";
 import { CollapsibleSection } from "./collapsible-section";
+import { MEMBER_ROLES } from "@/lib/member-roles";
 
 /**
  * TODO #2 phase 2-C (2026-05-07): native スケジュール member CRUD section。
@@ -50,6 +51,7 @@ type DraftMap = Record<
     sortOrder: string;
     dataCenter: string;
     characterName: string;
+    role: string;
   }
 >;
 
@@ -79,6 +81,7 @@ export function NativeMembersSection({
       sortOrder: String(mem.sort_order),
       dataCenter: mem.data_center ?? "",
       characterName: mem.fflogs_character_name ?? "",
+      role: mem.role ?? "",
     };
 
   const setDraft = (
@@ -88,6 +91,7 @@ export function NativeMembersSection({
       sortOrder: string;
       dataCenter: string;
       characterName: string;
+      role: string;
     }>,
   ) => {
     setDrafts((prev) => {
@@ -100,12 +104,14 @@ export function NativeMembersSection({
               sortOrder: String(mem.sort_order),
               dataCenter: mem.data_center ?? "",
               characterName: mem.fflogs_character_name ?? "",
+              role: mem.role ?? "",
             }
           : {
               displayName: "",
               sortOrder: "0",
               dataCenter: "",
               characterName: "",
+              role: "",
             });
       return { ...prev, [id]: { ...cur, ...patch } };
     });
@@ -161,6 +167,7 @@ export function NativeMembersSection({
       sortOrder?: number;
       dataCenter?: string | null;
       fflogsCharacterName?: string | null;
+      role?: string | null;
     } = {};
     if (draft.displayName.trim() !== mem.display_name) {
       const v = draft.displayName.trim();
@@ -186,6 +193,10 @@ export function NativeMembersSection({
     // W-6 (2026-09-08): 出席突合の対応表。DC と同じく空文字列 = 未設定に戻す。
     if (draft.characterName.trim() !== (mem.fflogs_character_name ?? "")) {
       patch.fflogsCharacterName = draft.characterName.trim();
+    }
+    // UI-4 (2026-09-08): ロール。空文字は「未設定に戻す」。
+    if (draft.role !== (mem.role ?? "")) {
+      patch.role = draft.role;
     }
     if (Object.keys(patch).length === 0) {
       clearDraft(mem.discord_user_id);
@@ -284,7 +295,8 @@ export function NativeMembersSection({
               draft.displayName !== mem.display_name ||
               draft.sortOrder !== String(mem.sort_order) ||
               draft.dataCenter.trim() !== (mem.data_center ?? "") ||
-              draft.characterName.trim() !== (mem.fflogs_character_name ?? "");
+              draft.characterName.trim() !== (mem.fflogs_character_name ?? "") ||
+              draft.role !== (mem.role ?? "");
             return (
               <li
                 key={mem.discord_user_id}
@@ -338,6 +350,30 @@ export function NativeMembersSection({
                     aria-label={m.nativeMembers.charNameLabel}
                     className="h-7 text-xs"
                   />
+                </div>
+                {/* UI-4 (2026-09-08): ロール。軽減表のカードを「自分のロール
+                    だけ」に絞るのに使う。3 値固定 (ゲームの構造なので DC 名
+                    のような自由記述にしない)。未設定のままでも従来どおり。 */}
+                <div className="flex shrink-0 items-center gap-1.5 sm:w-32">
+                  <span className="text-[12px] whitespace-nowrap text-muted-foreground">
+                    {m.nativeMembers.roleLabel}
+                  </span>
+                  <select
+                    value={draft.role}
+                    onChange={(e) =>
+                      setDraft(mem.discord_user_id, { role: e.target.value })
+                    }
+                    disabled={!canEdit || pending}
+                    aria-label={m.nativeMembers.roleLabel}
+                    className="h-7 rounded-md border border-border/50 bg-background/60 px-1 text-xs text-foreground"
+                  >
+                    <option value="">{m.nativeMembers.roleUnset}</option>
+                    {MEMBER_ROLES.map((r) => (
+                      <option key={r} value={r}>
+                        {m.nativeMembers.roleNames[r]}
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 {/* W-33 ③ (2026-09-07): データセンター。8.0 で Switch 2 版を
                     含むクロスプレイ前提が固まり、別 DC のメンバーが混在する

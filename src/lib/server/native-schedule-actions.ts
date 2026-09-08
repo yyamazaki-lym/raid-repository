@@ -19,6 +19,7 @@ import {
   notifyNativeScheduleSession,
 } from "./native-schedule-discord";
 import { NATIVE_CHOICE_VALUES_KEY } from "@/lib/schedule/settings-keys";
+import { isMemberRole } from "@/lib/member-roles";
 import {
   normalizeAttendanceTime,
   symbolAllowsTimes,
@@ -448,6 +449,11 @@ export type UpdateNativeScheduleMemberPatch = {
    * (64 文字)。空文字列は NULL に正規化 (= 未設定 → 表示名で一致を試す)。
    */
   fflogsCharacterName?: string | null;
+  /**
+   * UI-4 (2026-09-08): ロール。`tank` / `healer` / `dps` / null (未設定)。
+   * 3 値に固定しているのはゲームの構造だから (DC 名の自由記述と違う)。
+   */
+  role?: string | null;
 };
 
 export async function updateNativeScheduleMemberAction(
@@ -489,6 +495,13 @@ export async function updateNativeScheduleMemberAction(
       return { ok: false, reason: "キャラクター名は 64 文字以内です" };
     }
     update.fflogs_character_name = v || null;
+  }
+  if (patch.role !== undefined) {
+    const v = (patch.role ?? "").trim();
+    if (v !== "" && !isMemberRole(v)) {
+      return { ok: false, reason: "ロールの指定が不正です" };
+    }
+    update.role = v || null;
   }
   if (Object.keys(update).length === 0) {
     return { ok: false, reason: "更新項目がありません" };
