@@ -15,6 +15,11 @@ import {
   persistAuthorName,
 } from "@/lib/schedule-memos-client";
 import { useLocale, useMessages } from "@/lib/i18n/client";
+import {
+  isSameRoleColumn,
+  roleOfName,
+  type RoleByName,
+} from "@/lib/member-roles";
 
 /**
  * 軽減表 / ロット表の **読み取り専用カードビュー** (TODO #94 / A-3)。
@@ -27,6 +32,18 @@ import { useLocale, useMessages } from "@/lib/i18n/client";
  * 見出し行のどれかと一致すればその列だけを残す。一致しなければトグルは
  * 出さない — 固定ごとにシートの作りが違うので、規約を押し付けない。
  *
+ * ## ロール別 (UI-4、2026-09-08)
+ *
+ * 絞り方を 3 段にした: **全部 / 自分のロール / 自分だけ**。ノートの UI-4 は
+ * 「テキストモード All / Role Only / Image Only」だが、Image Only は
+ * 攻略データの構造化入力が前提で今は作れない。**ロールで絞る**ところまでを
+ * 先に入れる (ノート自身が「まず軽減カードの『自分の担当だけ』を拡張」と
+ * 書いている)。
+ *
+ * ロールは `native_schedule_members.role` を表示名で引く (`memberRoles`)。
+ * ⚠ **自分のロールが分からないときはロール絞りを出さない** — 押しても
+ * 全部が残るだけのボタンは、壊れているように見える。
+ *
  * 編集は一切しない。編集導線は従来どおり Google Sheets 本体 (下のリンク /
  * PC の iframe)。
  */
@@ -37,6 +54,7 @@ export function SheetCards({
   variant = "generic",
   columnLabels,
   ignoreRows,
+  memberRoles,
 }: {
   table: SheetTable;
   sheetUrl: string;
@@ -54,6 +72,11 @@ export function SheetCards({
    * 入れるか) をチップで出す (ユーザー要望)。`generic` は従来どおり。
    */
   variant?: "generic" | "mitigation";
+  /**
+   * UI-4 (2026-09-08): 表示名 → ロールの対応。空なら「自分のロールだけ」の
+   * トグルを出さない。
+   */
+  memberRoles?: RoleByName;
 }) {
   const m = useMessages();
   const locale = useLocale();
@@ -68,7 +91,8 @@ export function SheetCards({
   // 入力中の値は draft として持ち、保存すると storedName 側に反映される。
   const [draftName, setDraftName] = useState<string | null>(null);
   const name = draftName ?? storedName;
-  const [onlyMine, setOnlyMine] = useState(false);
+  // UI-4 (2026-09-08): 絞り方は 3 段 (全部 / 自分のロール / 自分だけ)。
+  const [filterMode, setFilterMode] = useState<"all" | "role" | "mine">("all");
   const [editingName, setEditingName] = useState(false);
 
   const myColumn = useMemo(
@@ -76,12 +100,32 @@ export function SheetCards({
     [table, name],
   );
 
-  // 見出し列 (0 番) は常に残す。onlyMine のときは自分の列だけ追加。
+  // 自分のロール (対応表が無い / 未登録なら null)。ロール絞りの出し分けに使う。
+  const myRole = useMemo(
+    () => (memberRoles ? roleOfName(memberRoles, name) : null),
+    [memberRoles, name],
+  );
+
+  // 見出し列 (0 番) は常に残す。
+  //   mine … 自分の列だけ
+  //   role … 自分と同じロールの列だけ (判定は member-roles.ts に集約)
+  //   all  … 全部
   const visibleColumns = useMemo(() => {
     const all = table.headers.map((_, i) => i);
-    if (!onlyMine || myColumn === null) return all.slice(1);
-    return [myColumn];
-  }, [table.headers, onlyMine, myColumn]);
+    if (filterMode === "mine" && myColumn !== null) return [myColumn];
+    if (filterMode === "role" && memberRoles && myRole !== null) {
+      return all
+        .slice(1)
+        .filter((i) =>
+          isSameRoleColumn({
+            roleByName: memberRoles,
+            myName: name,
+            columnName: table.headers[i] ?? null,
+          }),
+        );
+    }
+    return all.slice(1);
+  }, [table.headers, filterMode, myColumn, memberRoles, myRole, name]);
 
   const href = safeHref(sheetUrl);
 
@@ -128,18 +172,39 @@ export function SheetCards({
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
+        {/* UI-4 (2026-09-08): 全部 / 自分のロール / 自分だけ。
+            ⚠ 自分のロールが分からないときは「自分のロール」を出さない
+            (押しても全部が残るだけのボタンは壊れて見える)。 */}
         {myColumn !== null && !editingName ? (
-          <Button
-            type="button"
-            size="sm"
-            variant={onlyMine ? "default" : "outline"}
-            onClick={() => setOnlyMine((v) => !v)}
-            className="gap-1.5 text-[11px] tracking-normal"
-            aria-pressed={onlyMine}
-          >
-            <Filter className="h-3.5 w-3.5" aria-hidden />
-            {onlyMine ? m.sheetCards.onlyMineOf(name) : m.sheetCards.onlyMine}
-          </Button>
+          <span className="inline-flex overflow-hidden rounded-md border border-border/60">
+            {(
+              [
+                ["all", m.sheetCards.filterAll],
+                ...(myRole !== null
+                  ? ([["role", m.sheetCards.filterRole]] as const)
+                  : []),
+                ["mine", m.sheetCards.onlyMine],
+              ] as ReadonlyArray<readonly [typeof filterMode, string]>
+            ).map(([mode, label]) => (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => setFilterMode(mode)}
+                aria-pressed={filterMode === mode}
+                className={
+                  "px-2 py-1 text-[11px] tracking-normal transition-colors " +
+                  (filterMode === mode
+                    ? "bg-[var(--neon-cyan)]/15 text-[var(--neon-cyan)]"
+                    : "text-muted-foreground hover:text-foreground")
+                }
+              >
+                {mode === "all" && (
+                  <Filter className="mr-1 inline h-3 w-3" aria-hidden />
+                )}
+                {label}
+              </button>
+            ))}
+          </span>
         ) : null}
         {editingName ? (
           <form
@@ -176,12 +241,12 @@ export function SheetCards({
             {name ? m.sheetCards.displayName(name) : m.sheetCards.setDisplayName}
           </Button>
         )}
-        {onlyMine && (
+        {filterMode !== "all" && (
           <Button
             type="button"
             size="sm"
             variant="ghost"
-            onClick={() => setOnlyMine(false)}
+            onClick={() => setFilterMode("all")}
             className="gap-1.5 text-[11px] tracking-normal text-muted-foreground"
           >
             <RotateCcw className="h-3.5 w-3.5" aria-hidden />

@@ -17,6 +17,7 @@ import { MitigationColumnsDialog } from "@/components/portal/mitigation-columns-
 import { MitigationSheetTabsDialog } from "@/components/portal/mitigation-sheet-tabs-dialog";
 import { notFound } from "next/navigation";
 import { findCategoryBySlug } from "@/lib/supabase/categories";
+import { fetchMemberRoleByName } from "@/lib/supabase/member-roles";
 import { getCurrentUserCanEdit } from "@/lib/server/auth";
 import { getMessages } from "@/lib/i18n/server";
 
@@ -37,10 +38,13 @@ export default async function MitigationPage({
   searchParams: Promise<{ gid?: string }>;
 }) {
   const [{ slug }, { gid: rawGid }] = await Promise.all([params, searchParams]);
-  const [category, canEdit, m] = await Promise.all([
+  const [category, canEdit, m, memberRoles] = await Promise.all([
     findCategoryBySlug(slug),
     getCurrentUserCanEdit(),
     getMessages(),
+    // UI-4 (2026-09-08): 表示名 → ロール。ロール未設定の固定では空 →
+    // カード側で「自分のロールだけ」のトグルが出ない。
+    fetchMemberRoleByName(),
   ]);
   const title = m.categoryTab.titles.mitigation;
 
@@ -247,6 +251,10 @@ export default async function MitigationPage({
               variant="mitigation"
               columnLabels={columnLabels}
               ignoreRows={ignoreRows}
+              // UI-4 (2026-09-08): 表示名 → ロール。空なら「自分のロール
+              // だけ」のトグルは出ない (native スケジュールを使っていない
+              // 固定 / ロール未設定はこれまでどおり)。
+              memberRoles={memberRoles}
             />
           }
           iframe={

@@ -903,6 +903,21 @@ ALTER TABLE public.native_schedule_members
   ADD COLUMN IF NOT EXISTS fflogs_character_name text;
 ALTER TABLE public.native_schedule_members
   DROP CONSTRAINT IF EXISTS native_schedule_members_charname_sane;
+-- UI-4 (2026-09-08): メンバーのロール。軽減表のカードを「自分のロールだけ」
+-- に絞るために使う (調査ノート第 4 回 8-3 UI-4 の前提だった「ロール」を
+-- portal 側に置く最小の形)。
+--
+-- ⚠ **3 値に固定する。** DC 名 (自由記述) と違い、タンク / ヒーラー / DPS は
+-- ゲームの構造で、運営の再編で増減しない。MT/ST/H1/H2/D1〜D4 の細かい
+-- 位置は固定ごとの呼び方が違うので**持たない** (シートの列見出しが正)。
+ALTER TABLE public.native_schedule_members
+  ADD COLUMN IF NOT EXISTS role text;
+ALTER TABLE public.native_schedule_members
+  DROP CONSTRAINT IF EXISTS native_schedule_members_role_sane;
+ALTER TABLE public.native_schedule_members
+  ADD CONSTRAINT native_schedule_members_role_sane
+  CHECK (role IS NULL OR role IN ('tank', 'healer', 'dps')) NOT VALID;
+
 ALTER TABLE public.native_schedule_members
   ADD CONSTRAINT native_schedule_members_charname_sane
   CHECK (

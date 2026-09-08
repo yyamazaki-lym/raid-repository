@@ -159,6 +159,10 @@ export const ja = {
     dcLabel: "DC",
     dcPlaceholder: "例: Elemental",
     // W-6 (2026-09-08): 出席の自動突合の対応表。
+    // UI-4 (2026-09-08): ロール (軽減表の「自分のロールだけ」に使う)。
+    roleLabel: "ロール",
+    roleUnset: "未設定",
+    roleNames: { tank: "タンク", healer: "ヒーラー", dps: "DPS" },
     charNameLabel: "ログ名",
     charNamePlaceholder: "ログ名 (例: Taro Yamada)",
     charNameHint:
@@ -918,6 +922,9 @@ export const en: SettingsMessages = {
     displayNamePlaceholder: "Display name",
     dcLabel: "DC",
     dcPlaceholder: "e.g. Elemental",
+    roleLabel: "Role",
+    roleUnset: "Not set",
+    roleNames: { tank: "Tank", healer: "Healer", dps: "DPS" },
     charNameLabel: "Log name",
     charNamePlaceholder: "Log name (e.g. Taro Yamada)",
     charNameHint:
