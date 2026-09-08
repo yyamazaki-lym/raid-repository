@@ -11,6 +11,7 @@ import {
   updateCategoryMacroAction,
   deleteCategoryMacroAction,
   setCategoryMacroOrderAction,
+  setCategoryMacroCurrentAction,
 } from "@/lib/server/category-macros-actions";
 
 /**
@@ -30,6 +31,12 @@ export type CategoryMacro = {
   label: string;
   body: string;
   sortOrder: number;
+  /**
+   * UI-7 (2026-09-08): このコンテンツで**採用中**のマクロか。
+   * 1 コンテンツに 1 本だけ (DB の部分 UNIQUE index で保証)。
+   * 列が無い旧 DB では常に false。
+   */
+  isCurrent: boolean;
 };
 
 type CategoryMacroRow = {
@@ -38,6 +45,7 @@ type CategoryMacroRow = {
   label: string;
   body: string;
   sort_order: number;
+  is_current?: boolean | null;
 };
 
 function rowToMacro(row: CategoryMacroRow): CategoryMacro {
@@ -47,6 +55,7 @@ function rowToMacro(row: CategoryMacroRow): CategoryMacro {
     label: row.label ?? "",
     body: row.body,
     sortOrder: row.sort_order,
+    isCurrent: row.is_current === true,
   };
 }
 
@@ -101,6 +110,18 @@ export async function setCategoryMacroOrder(
   orderedIds: string[],
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
   return setCategoryMacroOrderAction(orderedIds);
+}
+
+/**
+ * UI-7 (2026-09-08): 採用中のマクロを切り替える (null で解除)。
+ * 1 コンテンツ 1 本の保証は DB の部分 UNIQUE index と action 側の
+ * 更新順にある (`setCategoryMacroCurrentAction` の docstring)。
+ */
+export async function setCategoryMacroCurrent(input: {
+  categoryId: string;
+  macroId: string | null;
+}): Promise<{ ok: true } | { ok: false; reason: string }> {
+  return setCategoryMacroCurrentAction(input);
 }
 
 export function useRealtimeCategoryMacros(

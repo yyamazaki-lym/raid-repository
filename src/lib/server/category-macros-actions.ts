@@ -74,6 +74,49 @@ export async function deleteCategoryMacroAction(
   return { ok: true };
 }
 
+/**
+ * UI-7 (2026-09-08): 「採用中」のマクロを 1 本に切り替える。
+ *
+ * ⚠ **他を false にしてから対象を true にする。** 逆順だと一瞬 2 本が
+ * true になり、部分 UNIQUE index (`category_macros_current_uidx`) に
+ * 弾かれる。`macroId` に null を渡すと「採用中なし」に戻す。
+ */
+export async function setCategoryMacroCurrentAction(input: {
+  categoryId: string;
+  macroId: string | null;
+}): Promise<MacroWriteResult> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) return { ok: false, reason: auth.reason };
+  if (!/^[0-9a-f-]{36}$/i.test(input.categoryId ?? "")) {
+    return { ok: false, reason: "コンテンツの指定が不正です" };
+  }
+  if (input.macroId !== null && !/^[0-9a-f-]{36}$/i.test(input.macroId)) {
+    return { ok: false, reason: "マクロの指定が不正です" };
+  }
+
+  const supabase = await createClient();
+  const cleared = await supabase
+    .from("category_macros")
+    .update({ is_current: false })
+    .eq("category_id", input.categoryId)
+    .eq("is_current", true);
+  if (cleared.error) {
+    // 解除も設定も利用者から見れば「切り替え」1 つなので、失敗の文言は
+    // 段階で分けない (押した操作と違う語が出ると原因を誤解させる)。
+    return { ok: false, reason: dbError("採用中の切り替え", cleared.error) };
+  }
+  if (input.macroId === null) return { ok: true };
+  const set = await supabase
+    .from("category_macros")
+    .update({ is_current: true })
+    .eq("id", input.macroId)
+    .eq("category_id", input.categoryId);
+  if (set.error) {
+    return { ok: false, reason: dbError("採用中の切り替え", set.error) };
+  }
+  return { ok: true };
+}
+
 export async function setCategoryMacroOrderAction(
   orderedIds: string[],
 ): Promise<MacroWriteResult> {

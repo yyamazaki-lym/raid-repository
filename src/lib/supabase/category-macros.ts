@@ -24,6 +24,8 @@ export async function fetchCategoryMacros(
       label: (r.label as string) ?? "",
       body: r.body as string,
       sortOrder: r.sort_order as number,
+      // UI-7 (2026-09-08): 列が無い旧 DB では undefined → false。
+      isCurrent: (r as { is_current?: boolean | null }).is_current === true,
     }));
   } catch (err) {
     if (

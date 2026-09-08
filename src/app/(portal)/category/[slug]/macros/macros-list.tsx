@@ -10,6 +10,7 @@ import {
   Pencil,
   Plus,
   Save,
+  Star,
   Terminal,
   Trash2,
   X,
@@ -39,6 +40,7 @@ import {
   createCategoryMacro,
   deleteCategoryMacro,
   setCategoryMacroOrder,
+  setCategoryMacroCurrent,
   updateCategoryMacro,
   useRealtimeCategoryMacros,
   type CategoryMacro,
@@ -61,6 +63,7 @@ import { WaymarksSection } from "./waymarks-section";
 import type { CategoryWaymark } from "@/lib/category-waymarks-client";
 import { useLocale, useMessages } from "@/lib/i18n/client";
 import { CodeBlock } from "@/components/portal/code-block";
+import { diffMacroBodies, macroDiffSummary } from "@/lib/macro-diff";
 import { MACRO_LINE_LIMIT } from "@/lib/macro-lines";
 import type { Messages } from "@/lib/i18n/messages";
 
@@ -185,6 +188,37 @@ function MacrosSection({
     syncOnSettle(macros.map((m) => m.id));
   }, [macros, syncOnSettle]);
 
+  // UI-7 (2026-09-08): 採用中のマクロ (無ければ null)。差分の基準に使う。
+  const currentMacro = useMemo(
+    () => macros.find((x) => x.isCurrent) ?? null,
+    [macros],
+  );
+
+  /**
+   * 採用中を切り替える。既に採用中のものを押したら解除 (null)。
+   *
+   * ⚠ 書き込みは admin ゲート。編集 / 削除と同じで UI では隠さず、
+   * 失敗をトーストで返す (このファイルの既存の方針に合わせる)。
+   */
+  const onSetCurrent = async (target: CategoryMacro) => {
+    setBusy(true);
+    const r = await setCategoryMacroCurrent({
+      categoryId,
+      macroId: target.isCurrent ? null : target.id,
+    });
+    setBusy(false);
+    if (!r.ok) {
+      toast.error(r.reason);
+      return;
+    }
+    toast.success(
+      target.isCurrent
+        ? m.macros.currentCleared
+        : m.macros.currentSet(target.label || m.macros.macroFallback),
+    );
+  };
+
+
   const startNew = () => setEditing({ label: "", body: "" });
   const startEdit = (m: CategoryMacro) =>
     setEditing({ id: m.id, label: m.label, body: m.body });
@@ -288,6 +322,14 @@ function MacrosSection({
                 <SortableMacroRow
                   key={macro.id}
                   macro={macro}
+                  // UI-7 (2026-09-08): 採用中との差分を出すため、基準の
+                  // 本文を渡す (自分が採用中なら null)。
+                  currentBody={
+                    currentMacro && currentMacro.id !== macro.id
+                      ? currentMacro.body
+                      : null
+                  }
+                  onSetCurrent={() => onSetCurrent(macro)}
                   onEdit={() => startEdit(macro)}
                   onDelete={() => onDelete(macro)}
                   onCopy={() =>
@@ -317,11 +359,20 @@ function MacrosSection({
 
 function SortableMacroRow({
   macro,
+  currentBody,
+  onSetCurrent,
   onEdit,
   onDelete,
   onCopy,
 }: {
   macro: CategoryMacro;
+  /**
+   * UI-7 (2026-09-08): 差分の基準になる「採用中」の本文。
+   * 自分が採用中のとき / 採用中が無いときは null。
+   */
+  currentBody: string | null;
+  /** admin だけ。押すとこのマクロを採用中にする (もう一度押すと解除)。 */
+  onSetCurrent?: () => void;
   onEdit: () => void;
   onDelete: () => void;
   onCopy: () => void;
@@ -340,12 +391,30 @@ function SortableMacroRow({
   // macros are registered.
   const [expanded, setExpanded] = useState(false);
   const name = macro.label || m.macros.macroFallback;
+  // UI-7: 採用中との差分。基準が無い (自分が採用中 / 採用中未設定) なら出さない。
+  const diff = currentBody === null ? null : macroDiffSummary(diffMacroBodies(currentBody, macro.body));
+  const diffDetail =
+    currentBody === null ? null : diffMacroBodies(currentBody, macro.body);
+  const diffTitle =
+    diffDetail === null
+      ? undefined
+      : m.macros.diffTitle(
+          diffDetail.onlyInOther.slice(0, 3).join(" / ") || "-",
+          diffDetail.onlyInBase.slice(0, 3).join(" / ") || "-",
+        );
   return (
     <li
       ref={setNodeRef}
       style={style}
       {...attributes}
-      className="rounded-md border border-border/40 bg-secondary/20 transition-colors hover:border-border/80"
+      className={
+        "rounded-md border bg-secondary/20 transition-colors " +
+        // UI-7: 採用中は ring で強調する。「うちが使っているのはどれか」が
+        // 一覧のまま分かる必要があるので、開かなくても見える形にする。
+        (macro.isCurrent
+          ? "border-[var(--neon-cyan)]/60 ring-1 ring-[var(--neon-cyan)]/40"
+          : "border-border/40 hover:border-border/80")
+      }
     >
       <div
         className={
@@ -382,8 +451,44 @@ function SortableMacroRow({
               <span className="text-muted-foreground/80">{m.crud.noLabel}</span>
             )}
           </p>
+          {/* UI-7 (2026-09-08): 採用中の印と、採用中との差分の要点。
+              色だけに頼らないよう文字で「採用中」と出す。 */}
+          {macro.isCurrent ? (
+            <span className="shrink-0 rounded-sm border border-[var(--neon-cyan)]/50 bg-[var(--neon-cyan)]/10 px-1 py-[0.5px] text-[11px] whitespace-nowrap text-[var(--neon-cyan)]">
+              {m.macros.currentBadge}
+            </span>
+          ) : diff ? (
+            <span
+              className="shrink-0 text-[11px] whitespace-nowrap text-muted-foreground/80"
+              title={diffTitle}
+            >
+              {diff.identical
+                ? m.macros.diffSame
+                : m.macros.diffCount(diff.added, diff.removed)}
+            </span>
+          ) : null}
         </button>
         <div className="flex items-center gap-1">
+          {onSetCurrent && (
+            <button
+              type="button"
+              onClick={onSetCurrent}
+              aria-pressed={macro.isCurrent}
+              aria-label={m.macros.setCurrentAria(name, macro.isCurrent)}
+              title={m.macros.setCurrentAria(name, macro.isCurrent)}
+              className={
+                "inline-flex h-7 w-7 items-center justify-center rounded " +
+                (macro.isCurrent
+                  ? "text-[var(--neon-cyan)] hover:bg-[var(--neon-cyan)]/15"
+                  : "text-muted-foreground hover:bg-secondary/60 hover:text-foreground")
+              }
+            >
+              <Star
+                className={"h-3.5 w-3.5 " + (macro.isCurrent ? "fill-current" : "")}
+                aria-hidden
+              />
+            </button>
+          )}
           <button
             type="button"
             onClick={onCopy}
