@@ -50,6 +50,14 @@ export const ja = {
     phaseFirstReachHint:
       "各フェーズに初めて到達した pull までの累計戦闘時間 (その pull を含む)。カッコ内は何本目の pull か",
     phaseFirstReachAria: "各フェーズへの初到達",
+    // L-1 (2026-09-08): 零式の層ごとの初討伐。絶の「初到達まで」の層版。
+    floorClearTitle: "各層の初討伐",
+    floorClearHint:
+      "その層を初めて討伐した pull までの、その層だけの累計戦闘時間 (その pull を含む)。「N pull」はその層で何本目か、「通算 N」はティア開始から数えて何本目か。初討伐の日時は各行の hover で表示",
+    floorClearAria: "各層の初討伐",
+    floorClearOverall: (n: number) => `通算 ${n}`,
+    floorClearHover: (date: string, time: string, overall: number) =>
+      `初討伐 ${date} ${time} 開始の pull (ティア通算 ${overall} pull 目)`,
     timelineLegendFloors: " / 縦線 = 層の境目",
     timelineLegendPhases: " / 縦線 = フェーズの境目",
     openDayTitle: (date: string) => `${date} のセッション振り返りを開く`,
@@ -414,6 +422,13 @@ export const en: LogsMessages = {
     phaseFirstReachHint:
       "Cumulative fight time up to and including the pull that first reached each phase. The number in brackets is which pull it was",
     phaseFirstReachAria: "First time each phase was reached",
+    floorClearTitle: "First clear per floor",
+    floorClearHint:
+      "Fight time spent on that floor up to and including the pull that first cleared it. \"N pull\" is which pull it was on that floor, \"total N\" counts from the start of the tier. Hover for the date and time",
+    floorClearAria: "First clear of each floor",
+    floorClearOverall: (n) => `total ${n}`,
+    floorClearHover: (date, time, overall) =>
+      `First cleared on the pull that started ${date} ${time} JST (pull ${overall} of the tier)`,
     timelineLegendFloors: " / lines = floor boundaries",
     timelineLegendPhases: " / lines = phase boundaries",
     openDayTitle: (date) => `Open the session review for ${date}`,

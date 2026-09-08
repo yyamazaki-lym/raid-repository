@@ -3,11 +3,15 @@
  * (2026-09-07、W-3 / W-31)。
  * 実行: `node scripts/check-fflogs-session.mjs`
  *
- * どちらも既存の列 (start_ms / end_ms / kill / deaths) の集計だけなので、
- * 検証も合成データで完結する。重点は
+ * 層ごとの初討伐 (L-1) は 2026-09-08 に追加。
+ *
+ * どれも既存の列 (start_ms / end_ms / kill / deaths / encounter_id) の集計
+ * だけなので、検証も合成データで完結する。重点は
  *   - 拘束時間が pull の並び順に依存しないこと
  *   - 戦闘外時間が負にならないこと (pull が重なって記録された場合)
  *   - deaths 未取得 (null) を「ノーデス」と誤判定しないこと
+ *   - 層ごとの初討伐で「その層の pull 数」と「通算 pull 数」が食い違うこと
+ *     (零式は層を行き来するので、ここが同じ値になったら数え方が壊れている)
  */
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -57,9 +61,8 @@ try {
     ],
     { stdio: "inherit" },
   );
-  const { sessionSummary, teamBadges, teamBadgeToneClass } = await import(
-    pathToFileURL(join(outDir, "fflogs-session.js")).href
-  );
+  const { sessionSummary, teamBadges, teamBadgeToneClass, floorFirstClears } =
+    await import(pathToFileURL(join(outDir, "fflogs-session.js")).href);
 
   console.log("セッションサマリー (W-3)");
   const empty = sessionSummary([]);
@@ -173,6 +176,91 @@ try {
     ).size,
     4,
   );
+
+  console.log("\n層ごとの初討伐 (L-1)");
+
+  /** 層つきの pull。`at` / `len` は分。 */
+  const fpull = (at, len, floorIndex, opts = {}) => ({
+    ...pull(at, len, opts),
+    floorIndex,
+  });
+
+  check("討伐が無ければ空", floorFirstClears([fpull(0, 5, 1), fpull(10, 5, 2)]), []);
+  check("pull が無ければ空", floorFirstClears([]), []);
+
+  // 零式の実態: 1〜3 層を消化で回しながら 4 層を練習する。
+  //   1 層: 3 本目 (通算 3) で討伐 / 2 層: その層の 2 本目 (通算 5) で討伐
+  //   4 層: その層の 3 本目 (通算 8) で討伐
+  const tier = [
+    fpull(0, 5, 1, { date: "2026-08-01" }),
+    fpull(10, 5, 1, { date: "2026-08-01" }),
+    fpull(20, 4, 1, { kill: true, date: "2026-08-01" }),
+    fpull(30, 6, 2, { date: "2026-08-01" }),
+    fpull(40, 7, 2, { kill: true, date: "2026-08-01" }),
+    fpull(50, 9, 4, { date: "2026-08-08" }),
+    fpull(70, 9, 4, { date: "2026-08-08" }),
+    fpull(90, 8, 4, { kill: true, date: "2026-08-15" }),
+  ];
+  const clears = floorFirstClears(tier);
+  check("討伐した層だけ / 層 index の昇順", clears.map((c) => c.index), [1, 2, 4]);
+  check(
+    "その層の pull 数 (討伐した pull を含む)",
+    clears.map((c) => c.pulls),
+    [3, 2, 3],
+  );
+  check(
+    "通算 pull 数はティア開始からの通し番号",
+    clears.map((c) => c.overallPulls),
+    [3, 5, 8],
+  );
+  check(
+    "所要時間はその層だけの累計戦闘時間",
+    clears.map((c) => c.ms),
+    [(5 + 5 + 4) * MIN, (6 + 7) * MIN, (9 + 9 + 8) * MIN],
+  );
+  check("初討伐の日付", clears.map((c) => c.date), [
+    "2026-08-01",
+    "2026-08-01",
+    "2026-08-15",
+  ]);
+  check("初討伐 pull の開始時刻", clears[2].startMs, tier[7].startMs);
+
+  // 並び順に依存しないこと (DB からは start_ms 降順で来る)。
+  check("並び順を変えても同じ", floorFirstClears([...tier].reverse()), clears);
+
+  // 2 回目以降の討伐 (毎週の消化) で初討伐が上書きされないこと。
+  const repeat = floorFirstClears([
+    fpull(0, 5, 1, { kill: true, date: "2026-08-01" }),
+    fpull(10, 4, 1, { kill: true, date: "2026-08-08" }),
+    fpull(20, 4, 1, { kill: true, date: "2026-08-15" }),
+  ]);
+  check("初討伐は最初の 1 回だけ", repeat.length, 1);
+  check("上書きされない (日付)", repeat[0].date, "2026-08-01");
+  check("上書きされない (pull 数)", [repeat[0].pulls, repeat[0].overallPulls], [1, 1]);
+
+  // 4 層前半 / 後半は別 index。後半の pull 数に前半の分を混ぜない。
+  const halves = floorFirstClears([
+    fpull(0, 6, 4, { date: "2026-08-20" }),
+    fpull(10, 6, 4, { kill: true, date: "2026-08-20" }),
+    fpull(20, 8, 5, { date: "2026-08-20" }),
+    fpull(40, 8, 5, { date: "2026-08-27" }),
+    fpull(60, 7, 5, { kill: true, date: "2026-08-27" }),
+  ]);
+  check(
+    "前半 / 後半は別の層として数える",
+    halves.map((c) => [c.index, c.pulls, c.overallPulls]),
+    [
+      [4, 2, 2],
+      [5, 3, 5],
+    ],
+  );
+
+  // 不正な値の pull は無視する (NaN の行が混ざり得る)。
+  const bogus = floorFirstClears([
+    { startMs: NaN, endMs: NaN, kill: true, floorIndex: 1, sessionDate: null },
+    fpull(0, 5, 1, { kill: true, date: "2026-08-01" }),
+  ]);
+  check("NaN の pull は数えない", [bogus.length, bogus[0].overallPulls], [1, 1]);
 } finally {
   rmSync(outDir, { recursive: true, force: true });
 }

@@ -55,7 +55,7 @@ import {
   resolveProgressModel,
   type ProgressModel,
 } from "@/lib/content-model";
-import { teamBadges } from "@/lib/fflogs-session";
+import { floorFirstClears, teamBadges } from "@/lib/fflogs-session";
 import { humanizeFflogsSyncReason } from "@/lib/fflogs-sync-reason";
 import type { ReportVideoLink } from "@/lib/supabase/fflogs-fights";
 import {
@@ -79,6 +79,10 @@ import { DayRow } from "@/components/portal/logs/day-row";
 import { FailedList } from "@/components/portal/logs/failed-list";
 import { OffsetDialog } from "@/components/portal/logs/offset-dialog";
 import { type VideoSyncAnchor } from "@/lib/video-sync";
+import {
+  FloorClearCard,
+  type FloorClearItem,
+} from "@/components/portal/logs/floor-clear-card";
 import { PhaseTimeCard } from "@/components/portal/logs/phase-time-card";
 import { PullBreakdownChips, StatCard } from "@/components/portal/logs/stat-card";
 import type { OffsetTarget } from "@/components/portal/logs/video-link";
@@ -421,6 +425,40 @@ export function LogsView({
     () => progressTimeline(summary.days, floors, phaseCount),
     [summary.days, floors, phaseCount],
   );
+
+  // L-1 (2026-09-08 実機要望): 層ごとの初討伐 (日時 / pull 数 / 所要時間)。
+  // 絶の「各フェーズへの初到達」の層版で、既存の明細 (kill / encounter_id)
+  // から出せるので新しい取得は要らない。
+  //
+  // 明細が打ち切られている (`truncated`) ときは出さない — 明細は新しい順に
+  // 切られるため、古い pull が落ちると「初討伐」も pull 数も過小になる
+  // (サマリータイルの「初クリア」を truncated で伏せているのと同じ理由)。
+  const floorClears = useMemo<FloorClearItem[]>(() => {
+    if (!floors || truncated) return [];
+    const rows = floorFirstClears(
+      tierFights.flatMap((f) => {
+        const index =
+          f.encounterId === null ? undefined : floors.byEncounter.get(f.encounterId);
+        return index === undefined
+          ? []
+          : [
+              {
+                startMs: f.startMs,
+                endMs: f.endMs,
+                kill: f.kill,
+                floorIndex: index,
+                sessionDate: f.sessionDate,
+              },
+            ];
+      }),
+    );
+    return rows.map((c) => ({
+      ...c,
+      label: floorLabel(floors, c.index, locale),
+      displayFloor: floors.displayFloorByIndex.get(c.index) ?? c.index,
+      half: floorHalf(floors, c.index),
+    }));
+  }, [floors, tierFights, truncated, locale]);
 
   // フィルタに出す層の一覧 (実データに存在する層のみ、昇順)。
   // 2026-08-30: 4層前半 / 4層後半 は別項目にする (色も分けたので、
@@ -1128,7 +1166,9 @@ export function LogsView({
           方針と揃える。 */}
       <TeamBadgesCard badges={badges} />
 
-      {(wipeCauses.length > 0 || phaseTotals.length > 1) && (
+      {(wipeCauses.length > 0 ||
+        phaseTotals.length > 1 ||
+        floorClears.length > 0) && (
         <section className="grid gap-2 sm:grid-cols-2">
           {wipeCauses.length > 0 && (
             <WipeCausesCard
@@ -1147,6 +1187,11 @@ export function LogsView({
               totalPulls={shownTotalPulls}
             />
           )}
+          {/* L-1 (2026-09-08): 零式の各層の初討伐。絶で `PhaseTimeCard` が
+              占める枠に置く — 「初到達まで」と同じ位置に同じ性質の情報が
+              来るようにする。1 項目の実測幅と、値を足すときに何を hover へ
+              退避するかは `floor-clear-card.tsx` の docstring を参照。 */}
+          <FloorClearCard clears={floorClears} />
         </section>
       )}
 
