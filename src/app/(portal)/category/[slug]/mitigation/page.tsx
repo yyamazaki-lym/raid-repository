@@ -18,6 +18,8 @@ import { MitigationSheetTabsDialog } from "@/components/portal/mitigation-sheet-
 import { notFound } from "next/navigation";
 import { findCategoryBySlug } from "@/lib/supabase/categories";
 import { fetchMemberRoleByName } from "@/lib/supabase/member-roles";
+import { fetchMyMember } from "@/lib/server/my-member";
+import { buildColumnJobs } from "@/lib/jobs";
 import { getCurrentUserCanEdit } from "@/lib/server/auth";
 import { getMessages } from "@/lib/i18n/server";
 
@@ -38,13 +40,16 @@ export default async function MitigationPage({
   searchParams: Promise<{ gid?: string }>;
 }) {
   const [{ slug }, { gid: rawGid }] = await Promise.all([params, searchParams]);
-  const [category, canEdit, m, memberRoles] = await Promise.all([
+  const [category, canEdit, m, memberRoles, myMember] = await Promise.all([
     findCategoryBySlug(slug),
     getCurrentUserCanEdit(),
     getMessages(),
     // UI-4 (2026-09-08): 表示名 → ロール。ロール未設定の固定では空 →
     // カード側で「自分のロールだけ」のトグルが出ない。
     fetchMemberRoleByName(),
+    // L-8 (2026-09-08): 自分のジョブ。軽減表の列は**ジョブ名**で担当を
+    // 書くので、列に当てるキーはこれ (表示名では当たらない)。
+    fetchMyMember(),
   ]);
   const title = m.categoryTab.titles.mitigation;
 
@@ -164,6 +169,10 @@ export default async function MitigationPage({
   for (const [k, v] of Object.entries(manualLabels)) {
     columnLabels[Number(k)] = v;
   }
+  // L-8 (2026-09-08): 列番号 → ジョブ。`アドル (赤魔道士)` の括弧の中を見る。
+  // ⚠ 手動登録を含めた**最終的なラベル**から引く (自動判定の job 欄だけを
+  //   見ると、admin が名前を直した列で当たらなくなる)。
+  const columnJobs = buildColumnJobs(columnLabels);
 
   const columnsEditor =
     canEdit && table.ok ? (
@@ -255,6 +264,11 @@ export default async function MitigationPage({
               // だけ」のトグルは出ない (native スケジュールを使っていない
               // 固定 / ロール未設定はこれまでどおり)。
               memberRoles={memberRoles}
+              // L-8 (2026-09-08): ジョブで列に当てる + この画面でジョブを
+              // 設定できるようにする (設定ダイアログの奥だと見つからない)。
+              columnJobs={columnJobs}
+              myJob={myMember.job}
+              myRegistered={myMember.registered}
             />
           }
           iframe={

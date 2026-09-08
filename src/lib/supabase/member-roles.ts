@@ -1,5 +1,6 @@
 import { createClient } from "./server";
 import { buildRoleByName, type RoleByName } from "@/lib/member-roles";
+import { roleOfJob } from "@/lib/jobs";
 
 /**
  * 表示名 → ロールの対応 (UI-4、2026-09-08)。
@@ -16,13 +17,23 @@ export async function fetchMemberRoleByName(): Promise<RoleByName> {
     const supabase = await createClient();
     const { data, error } = await supabase
       .from("native_schedule_members")
-      .select("display_name, role")
+      .select("display_name, role, job")
       .eq("is_active", true);
     if (error || !data) return {};
     return buildRoleByName(
-      (data as Array<{ display_name: string; role?: string | null }>).map(
-        (r) => ({ displayName: r.display_name ?? "", role: r.role ?? null }),
-      ),
+      (
+        data as Array<{
+          display_name: string;
+          role?: string | null;
+          job?: string | null;
+        }>
+      ).map((r) => ({
+        displayName: r.display_name ?? "",
+        // L-8 (2026-09-08): ジョブが入っていれば**そこから導出**する
+        // (ジョブは本人が設定でき、ロールは admin しか触れないため、
+        // ジョブの方が埋まりやすい)。無ければ手動指定の role。
+        role: roleOfJob(r.job) ?? r.role ?? null,
+      })),
     );
   } catch (err) {
     // Next の内部 sentinel (DYNAMIC_SERVER_USAGE 等) は再 throw する

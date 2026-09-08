@@ -13,9 +13,10 @@ import {
 } from "@/lib/server/native-schedule-actions";
 import type { NativeMemberRowFull } from "@/lib/schedule/native-admin-client";
 import { useConfirm } from "@/components/portal/confirm-dialog";
-import { useMessages } from "@/lib/i18n/client";
+import { useLocale, useMessages } from "@/lib/i18n/client";
 import { CollapsibleSection } from "./collapsible-section";
 import { MEMBER_ROLES } from "@/lib/member-roles";
+import { JOBS, jobLabel } from "@/lib/jobs";
 
 /**
  * TODO #2 phase 2-C (2026-05-07): native スケジュール member CRUD section。
@@ -52,6 +53,7 @@ type DraftMap = Record<
     dataCenter: string;
     characterName: string;
     role: string;
+    job: string;
   }
 >;
 
@@ -69,6 +71,7 @@ export function NativeMembersSection({
   const router = useRouter();
   const confirm = useConfirm();
   const m = useMessages();
+  const locale = useLocale();
   const [pending, startTransition] = useTransition();
   const [newDiscordId, setNewDiscordId] = useState("");
   const [newDisplayName, setNewDisplayName] = useState("");
@@ -82,6 +85,7 @@ export function NativeMembersSection({
       dataCenter: mem.data_center ?? "",
       characterName: mem.fflogs_character_name ?? "",
       role: mem.role ?? "",
+      job: mem.job ?? "",
     };
 
   const setDraft = (
@@ -92,6 +96,7 @@ export function NativeMembersSection({
       dataCenter: string;
       characterName: string;
       role: string;
+      job: string;
     }>,
   ) => {
     setDrafts((prev) => {
@@ -105,6 +110,7 @@ export function NativeMembersSection({
               dataCenter: mem.data_center ?? "",
               characterName: mem.fflogs_character_name ?? "",
               role: mem.role ?? "",
+              job: mem.job ?? "",
             }
           : {
               displayName: "",
@@ -112,6 +118,7 @@ export function NativeMembersSection({
               dataCenter: "",
               characterName: "",
               role: "",
+              job: "",
             });
       return { ...prev, [id]: { ...cur, ...patch } };
     });
@@ -168,6 +175,7 @@ export function NativeMembersSection({
       dataCenter?: string | null;
       fflogsCharacterName?: string | null;
       role?: string | null;
+      job?: string | null;
     } = {};
     if (draft.displayName.trim() !== mem.display_name) {
       const v = draft.displayName.trim();
@@ -197,6 +205,11 @@ export function NativeMembersSection({
     // UI-4 (2026-09-08): ロール。空文字は「未設定に戻す」。
     if (draft.role !== (mem.role ?? "")) {
       patch.role = draft.role;
+    }
+    // L-8 (2026-09-08): ジョブ。本人も `/me` と軽減表タブから変えられるが、
+    // 幹部が代わりに埋められる経路も残す。空文字は「未設定に戻す」。
+    if (draft.job !== (mem.job ?? "")) {
+      patch.job = draft.job;
     }
     if (Object.keys(patch).length === 0) {
       clearDraft(mem.discord_user_id);
@@ -372,6 +385,36 @@ export function NativeMembersSection({
                       <option key={r} value={r}>
                         {m.nativeMembers.roleNames[r]}
                       </option>
+                    ))}
+                  </select>
+                </div>
+                {/* L-8 (2026-09-08): ジョブ。**ロールの導出元**で、軽減表の
+                    列 (シートのジョブ名) と本人を結ぶキーでもある。本人が
+                    `/me` と軽減表タブから設定できるが、幹部が代わりに
+                    埋められる経路もここに残す。ジョブが入っている行では
+                    左のロールは使われない (導出値が優先)。 */}
+                <div className="flex shrink-0 items-center gap-1.5 sm:w-40">
+                  <span className="text-[12px] whitespace-nowrap text-muted-foreground">
+                    {m.myJob.label}
+                  </span>
+                  <select
+                    value={draft.job}
+                    onChange={(e) =>
+                      setDraft(mem.discord_user_id, { job: e.target.value })
+                    }
+                    disabled={!canEdit || pending}
+                    aria-label={m.myJob.label}
+                    className="h-7 rounded-md border border-border/50 bg-background/60 px-1 text-xs text-foreground"
+                  >
+                    <option value="">{m.myJob.unset}</option>
+                    {MEMBER_ROLES.map((r) => (
+                      <optgroup key={r} label={m.nativeMembers.roleNames[r]}>
+                        {JOBS.filter((j) => j.role === r).map((j) => (
+                          <option key={j.key} value={j.key}>
+                            {jobLabel(j.key, locale)} ({j.abbr})
+                          </option>
+                        ))}
+                      </optgroup>
                     ))}
                   </select>
                 </div>

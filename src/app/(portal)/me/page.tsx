@@ -5,6 +5,8 @@ import { AttendanceSummaryDialog } from "@/components/portal/schedule/attendance
 import { bisSlotLabel } from "@/lib/bis-slots";
 import { getMessages } from "@/lib/i18n/server";
 import { getLocale } from "@/lib/i18n/server";
+import { MyJobPicker } from "@/components/portal/my-job-picker";
+import { jobLabel } from "@/lib/jobs";
 
 /**
  * 個人ページ `/me` (B-5、2026-09-08)。
@@ -74,6 +76,13 @@ export default async function MePage() {
                   : m.mePage.unset}
               </dd>
             </div>
+            {/* L-8 (2026-09-08): ジョブも出す (ロールの導出元)。 */}
+            <div className="flex gap-2">
+              <dt className="text-muted-foreground">{m.myJob.label}</dt>
+              <dd className="text-foreground">
+                {jobLabel(profile.job, locale) ?? m.myJob.unset}
+              </dd>
+            </div>
             <div className="flex gap-2">
               <dt className="text-muted-foreground">{m.mePage.logName}</dt>
               <dd className="text-foreground">
@@ -86,6 +95,12 @@ export default async function MePage() {
             {m.mePage.notRegistered}
           </p>
         )}
+        {/* L-8 (2026-09-08): ジョブは**本人が**ここで設定できる。ロールは
+            ジョブから決まるので、選ばせるのはジョブだけ。 */}
+        <MyJobPicker job={profile.job} registered={profile.registered} />
+        <p className="text-[11px] leading-snug text-muted-foreground/85">
+          {m.myJob.hint}
+        </p>
       </section>
 
       {/* ---- 残り BiS ---- */}

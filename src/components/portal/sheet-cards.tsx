@@ -18,8 +18,11 @@ import { useLocale, useMessages } from "@/lib/i18n/client";
 import {
   isSameRoleColumn,
   roleOfName,
+  type MemberRole,
   type RoleByName,
 } from "@/lib/member-roles";
+import { jobFromColumnLabel, roleOfJob } from "@/lib/jobs";
+import { MyJobPicker } from "./my-job-picker";
 
 /**
  * 軽減表 / ロット表の **読み取り専用カードビュー** (TODO #94 / A-3)。
@@ -44,6 +47,24 @@ import {
  * ⚠ **自分のロールが分からないときはロール絞りを出さない** — 押しても
  * 全部が残るだけのボタンは、壊れているように見える。
  *
+ * ## ジョブで列に当てる (L-8、2026-09-08)
+ *
+ * 実機報告「ロール設定が分かりにくい / 軽減表のどの列が自分か分からない」
+ * への対応。実物の軽減表は **見出しがアイコン画像**で、担当は
+ * `アドル (赤魔道士)` のように**ジョブ名**で書かれている。表示名を
+ * 見出し行に突き合わせる従来の判定では 1 列も当たらず、「一致する列が
+ * 見つかりません」しか出せていなかった。
+ *
+ * そこで `columnJobs` (列番号 → ジョブ、ページ側で列ラベルから解決) と
+ * `myJob` (本人が選んだジョブ) を受け取り、**ジョブで列に当てる**。
+ * 表示名による従来の判定は**残す** — 見出しにメンバー名を書く固定を
+ * 壊さないため。両方あればジョブを優先する (シートの構造から読めた方が
+ * 確度が高い)。
+ *
+ * ジョブの設定 UI (`MyJobPicker`) も**この画面に置く**。設定ダイアログの
+ * メンバー一覧の奥にしか無かったのが「分かりにくい」の実体で、しかも
+ * そこは admin しか触れなかった。
+ *
  * 編集は一切しない。編集導線は従来どおり Google Sheets 本体 (下のリンク /
  * PC の iframe)。
  */
@@ -55,6 +76,9 @@ export function SheetCards({
   columnLabels,
   ignoreRows,
   memberRoles,
+  columnJobs,
+  myJob = null,
+  myRegistered = false,
 }: {
   table: SheetTable;
   sheetUrl: string;
@@ -77,6 +101,16 @@ export function SheetCards({
    * トグルを出さない。
    */
   memberRoles?: RoleByName;
+  /**
+   * L-8 (2026-09-08): 列番号 → ジョブのキー。軽減表の列ラベル
+   * (`アドル (赤魔道士)`) から解決したもの。ジョブが読めなかった列は
+   * 入っていない。
+   */
+  columnJobs?: Record<number, string>;
+  /** L-8: 本人のジョブ (`native_schedule_members.job`)。未設定は null。 */
+  myJob?: string | null;
+  /** L-8: メンバー一覧に本人の行があるか (無いとジョブを保存できない)。 */
+  myRegistered?: boolean;
 }) {
   const m = useMessages();
   const locale = useLocale();
@@ -100,32 +134,78 @@ export function SheetCards({
     [table, name],
   );
 
-  // 自分のロール (対応表が無い / 未登録なら null)。ロール絞りの出し分けに使う。
-  const myRole = useMemo(
-    () => (memberRoles ? roleOfName(memberRoles, name) : null),
-    [memberRoles, name],
+  // L-8: ジョブの設定はこの画面から変えられるので、保存後の値を持つ。
+  const [jobDraft, setJobDraft] = useState<string | null>(null);
+  const job = jobDraft ?? myJob;
+
+  // L-8: 自分のジョブに当たる列 (シートのジョブ名の行から解決済み)。
+  const myJobColumns = useMemo(() => {
+    if (!job || !columnJobs) return [] as number[];
+    return Object.entries(columnJobs)
+      .filter(([, v]) => v === job)
+      .map(([k]) => Number(k))
+      .sort((a, b) => a - b);
+  }, [columnJobs, job]);
+
+  /** 「自分の担当だけ」に絞れるか (ジョブ優先、無ければ表示名)。 */
+  const hasMine = myJobColumns.length > 0 || myColumn !== null;
+
+  // 自分のロール。**ジョブから導出したものを優先**し、無ければ表示名で
+  // メンバー一覧を引く (ジョブを入れる前の固定を壊さない)。
+  const myRole: MemberRole | null = useMemo(
+    () => roleOfJob(job) ?? (memberRoles ? roleOfName(memberRoles, name) : null),
+    [job, memberRoles, name],
   );
+
+  /** 列のロール (ジョブから解決できた列だけ)。 */
+  const roleOfColumn = useMemo(() => {
+    const out = new Map<number, MemberRole>();
+    for (const [k, v] of Object.entries(columnJobs ?? {})) {
+      const r = roleOfJob(v);
+      if (r) out.set(Number(k), r);
+    }
+    return out;
+  }, [columnJobs]);
 
   // 見出し列 (0 番) は常に残す。
   //   mine … 自分の列だけ
-  //   role … 自分と同じロールの列だけ (判定は member-roles.ts に集約)
+  //   role … 自分と同じロールの列だけ
   //   all  … 全部
   const visibleColumns = useMemo(() => {
     const all = table.headers.map((_, i) => i);
-    if (filterMode === "mine" && myColumn !== null) return [myColumn];
-    if (filterMode === "role" && memberRoles && myRole !== null) {
-      return all
-        .slice(1)
-        .filter((i) =>
-          isSameRoleColumn({
-            roleByName: memberRoles,
-            myName: name,
-            columnName: table.headers[i] ?? null,
-          }),
-        );
+    if (filterMode === "mine") {
+      if (myJobColumns.length > 0) return myJobColumns;
+      if (myColumn !== null) return [myColumn];
+    }
+    if (filterMode === "role" && myRole !== null) {
+      // ジョブで解決できた列が 1 つでもあれば**そちらで絞る**
+      // (シートの構造から読めているので確度が高い)。
+      if (roleOfColumn.size > 0) {
+        return all.slice(1).filter((i) => roleOfColumn.get(i) === myRole);
+      }
+      if (memberRoles) {
+        return all
+          .slice(1)
+          .filter((i) =>
+            isSameRoleColumn({
+              roleByName: memberRoles,
+              myName: name,
+              columnName: table.headers[i] ?? null,
+            }),
+          );
+      }
     }
     return all.slice(1);
-  }, [table.headers, filterMode, myColumn, memberRoles, myRole, name]);
+  }, [
+    table.headers,
+    filterMode,
+    myColumn,
+    myJobColumns,
+    memberRoles,
+    myRole,
+    roleOfColumn,
+    name,
+  ]);
 
   const href = safeHref(sheetUrl);
 
@@ -175,13 +255,20 @@ export function SheetCards({
         {/* UI-4 (2026-09-08): 全部 / 自分のロール / 自分だけ。
             ⚠ 自分のロールが分からないときは「自分のロール」を出さない
             (押しても全部が残るだけのボタンは壊れて見える)。 */}
-        {myColumn !== null && !editingName ? (
+        {hasMine && !editingName ? (
           <span className="inline-flex overflow-hidden rounded-md border border-border/60">
             {(
               [
                 ["all", m.sheetCards.filterAll],
                 ...(myRole !== null
-                  ? ([["role", m.sheetCards.filterRole]] as const)
+                  ? ([
+                      [
+                        "role",
+                        // L-8: どのロールで絞るのかを名前で出す
+                        // (「自分のロール」だけでは何が残るか分からない)。
+                        `${m.sheetCards.filterRole} (${m.nativeMembers.roleNames[myRole]})`,
+                      ],
+                    ] as const)
                   : []),
                 ["mine", m.sheetCards.onlyMine],
               ] as ReadonlyArray<readonly [typeof filterMode, string]>
@@ -255,7 +342,34 @@ export function SheetCards({
         )}
       </div>
 
-      {name.trim() && myColumn === null && (
+      {/* L-8 (2026-09-08): ジョブの設定をこの画面に置く。設定ダイアログの
+          メンバー一覧の奥にしか無く、しかも admin しか触れなかったのが
+          「ロール設定が分かりにくい」の実体だった。 */}
+      {variant === "mitigation" && (
+        <MyJobPicker
+          job={job}
+          registered={myRegistered}
+          onChanged={setJobDraft}
+        />
+      )}
+
+      {/* ロール色の凡例。どの色がどのロールかを画面に書いておく
+          (実機報告「どこが対応するロール名か分からない」)。 */}
+      {variant === "mitigation" && roleOfColumn.size > 0 && (
+        <p className="flex flex-wrap items-center gap-2 px-1 text-[11px] text-muted-foreground">
+          {(["tank", "healer", "dps"] as const).map((r) => (
+            <span key={r} className="inline-flex items-center gap-1">
+              <span
+                className={"inline-block h-2.5 w-2.5 rounded-sm border " + ROLE_TONE[r]}
+                aria-hidden
+              />
+              {m.nativeMembers.roleNames[r]}
+            </span>
+          ))}
+        </p>
+      )}
+
+      {name.trim() && !hasMine && (
         <p className="rounded-md border border-amber-400/30 bg-amber-400/5 px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
           {m.sheetCards.noMatchingColumn(name)}
         </p>
@@ -432,7 +546,9 @@ function roleOf(label: string): "tank" | "healer" | "dps" | null {
   if (/^(MT|ST|T[12]?)\b/.test(t)) return "tank";
   if (/^(H[12]?)\b/.test(t)) return "healer";
   if (/^(D[1-4]?|DPS)\b/.test(t)) return "dps";
-  return null;
+  // L-8 (2026-09-08): 実物の軽減表は `アドル (赤魔道士)` のように**ジョブ名**
+  // で担当を書く。略号だけを見ていたので色が 1 つも付いていなかった。
+  return roleOfJob(jobFromColumnLabel(label)?.key ?? null);
 }
 
 /** ロール色 (FF14 のロールカラーに寄せる: タンク=青 / ヒーラー=緑 / DPS=赤)。 */

@@ -66,8 +66,17 @@ export type NativeMemberRowFull = {
   /**
    * UI-4 (2026-09-08): ロール (`tank` / `healer` / `dps`)。軽減表の
    * 「自分のロールだけ」に使う。列が無い DB では undefined。
+   *
+   * ⚠ L-8 (2026-09-08) 以降は `job` から導出できるので、**ジョブが
+   * 入っている行ではこの値は使われない** (手動指定のフォールバック)。
    */
   role?: string | null;
+  /**
+   * L-8 (2026-09-08): ジョブ (FFLogs 名。`RedMage` 等)。軽減表の列は
+   * ジョブ名で担当を書くので、列と本人を結ぶキーはこれ。ロールはここから
+   * 導出する。列が無い DB では undefined。
+   */
+  job?: string | null;
 };
 
 export type NativeCancelledSessionRow = {
@@ -116,7 +125,8 @@ export async function fetchNativeScheduleAdminAux(): Promise<NativeAdminAux> {
       .select(
         // W-6 (2026-09-08): fflogs_character_name を追加 (出席突合の対応表)。
         // UI-4 (2026-09-08): role を追加 (軽減表のロール別フィルタ)。
-        "discord_user_id, display_name, sort_order, is_active, data_center, fflogs_character_name, role",
+        // L-8 (2026-09-08): job を追加 (ロールの導出元 / 軽減表の列の突合)。
+        "discord_user_id, display_name, sort_order, is_active, data_center, fflogs_character_name, role, job",
       )
       .order("sort_order", { ascending: true })
       .order("display_name", { ascending: true }),
