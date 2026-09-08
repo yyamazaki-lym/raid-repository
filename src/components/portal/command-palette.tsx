@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { useRouter } from "next/navigation";
-import { Command, Cog, Search } from "lucide-react";
+import { Command, Cog, Search, UserRound } from "lucide-react";
 import type { Category } from "@/lib/supabase/types";
 import type { ScheduleSourceMode } from "@/lib/schedule/source-mode";
 import { getSubTabDefs } from "@/lib/sub-tab-defs";
@@ -307,6 +307,16 @@ function buildItems({
       run: () => router.push("/"),
     });
   }
+  // B-5 (2026-09-08): 個人ページ。ヘッダーにボタンを増やさず、パレットと
+  // 出席サマリーからの導線に留める (常時見せるほどの頻度ではない)。
+  out.push({
+    id: "nav:me",
+    label: m.mePage.title,
+    group: jump,
+    keywords: "me profile mypage",
+    icon: <UserRound className="h-3.5 w-3.5" aria-hidden />,
+    run: () => router.push("/me"),
+  });
   out.push({
     id: "nav:categories",
     label: m.commandPalette.contents,

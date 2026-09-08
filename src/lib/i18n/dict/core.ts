@@ -254,6 +254,29 @@ export const ja = {
     timeOverride: "今回だけ",
     timeOverrideTitle: "定期枠の曜日ですが、この日だけ時刻を変えています",
   },
+  // B-5 (2026-09-08): 個人ページ /me。
+  mePage: {
+    title: "自分のページ",
+    profileTitle: "自分の情報",
+    name: "表示名",
+    role: "ロール",
+    logName: "ログ名",
+    unset: "未設定",
+    sameAsName: "表示名と同じ (未設定)",
+    roleNames: { tank: "タンク", healer: "ヒーラー", dps: "DPS" },
+    notRegistered:
+      "メンバー一覧にあなたの行がありません。設定のメンバー一覧に Discord ID を登録すると、出席や BiS の残りがここに出ます。",
+    bisTitle: "残り BiS",
+    bisEmpty:
+      "あなたの BiS が見つかりません。攻略情報タブの「最適装備 (BiS)」に、所有者をあなたの表示名にして登録すると出ます。",
+    bisRemaining: (slots: string): string => `残り: ${slots}`,
+    onboardingTitle: "学習パス",
+    onboardingEmpty:
+      "まだチェックがありません。コンテンツの攻略情報タブに順序付きのチェックリストがあります。",
+    onboardingNext: (step: string): string => `次: ${step}`,
+    mitigationHint:
+      "自分の担当軽減は、各コンテンツの軽減表タブでカード表示にして「自分のロール」または「自分の担当だけ」に絞ると見られます (シートが正なのでここには集めていません)。",
+  },
   // UI-8 (2026-09-08): コマンドパレット。
   commandPalette: {
     trigger: "コマンドパレット (Ctrl+K / ⌘K)",
@@ -845,6 +868,28 @@ export const en: CoreMessages = {
     timeOverride: "One-off",
     timeOverrideTitle:
       "A recurring-slot weekday, but the time was changed just for this day",
+  },
+  mePage: {
+    title: "My page",
+    profileTitle: "About you",
+    name: "Display name",
+    role: "Role",
+    logName: "Log name",
+    unset: "Not set",
+    sameAsName: "same as display name (not set)",
+    roleNames: { tank: "Tank", healer: "Healer", dps: "DPS" },
+    notRegistered:
+      "You are not in the member list. Register your Discord ID in the settings member list and your attendance and BiS progress will show up here.",
+    bisTitle: "BiS remaining",
+    bisEmpty:
+      "No BiS set found for you. Add one under \"Best in slot\" on a content's strategy tab with your display name as the owner.",
+    bisRemaining: (slots) => `Remaining: ${slots}`,
+    onboardingTitle: "Learning path",
+    onboardingEmpty:
+      "No checks yet. Each content's strategy tab has an ordered checklist.",
+    onboardingNext: (step) => `Next: ${step}`,
+    mitigationHint:
+      "Your mitigation assignments live in each content's mitigation tab — switch to cards and filter by \"My role\" or \"Only my assignments\" (the sheet is the source of truth, so we do not aggregate it here).",
   },
   commandPalette: {
     trigger: "Command palette (Ctrl+K / ⌘K)",
