@@ -250,6 +250,34 @@ table 単位でしか要らない)。upcoming 行のチップはそのまま。
 
 ## 運用上の注記 (実機で判明したこと)
 
+### デモサイトのデータは `supabase/seed-demo.sql` の Section 3 (2026-09-08)
+
+デモに直接 SQL を打たない。`seed-demo.sql` は main push で
+`deploy-database-demo.yml` が demo project へ自動適用する (schema.sql と同じ
+経路)。追加するときは**新しい sentinel を持つ節**を足す — 既存の
+`demo_seed_applied` は 2 回目以降スキップするので、既に適用済みの demo に
+対して新しい節だけを 1 回走らせるにはこれが必要。
+
+- ⚠ **seed は CI で実行されない。** 実行時エラーはデプロイまで出ない。
+  `scripts/check-seed-sql.mjs` が「列名」と「ON CONFLICT の列組」を
+  schema.sql と突き合わせて CI で止める (2026-09-08 に
+  `fflogs_report_videos` の主キー差し替えを見落として実際に踏んだ)。
+  構文は libpg_query で別途見られる (下の注記)。
+- 日付は**適用時の JST 今日から逆算**する。固定日を焼くと数か月で
+  「半年前のログしか無いデモ」になる。
+- デモは **native モード**。sync (外部シート) では出欠系の追加機能が
+  データを入れても画面に出ない。
+- 運用台帳系 (`fflogs_report_syncs` / `fflogs_notify_state` /
+  `fflogs_report_blocklist`) は**意図的に入れていない**。同期の「未取得
+  レポート」や通知の抑制状態を偽装すると、デモを見た人が挙動を誤解する。
+
+### seed / schema の SQL はローカルで構文検証できる
+
+`pip install pglast` (libpg_query = 本物の Postgres パーサ) を入れると、
+`parse_sql` で外側の SQL、`parse_plpgsql_json` で `DO $$ … $$` の中身を
+push 前に検証できる。**`DO` ブロックの中は SQL パーサからは不透明な文字列**
+なので、両方を通す必要がある。
+
 ### 2026-09-08 に schema.sql の再実行が要る
 
 UI-2 (コンテンツカードのスパークライン) で関数を 1 本足した

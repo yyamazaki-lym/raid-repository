@@ -16,6 +16,11 @@
 --   - 2026-05-08 (TODO #76 follow-up): 旧 schema.sql Section 11 (sample 7
 --     categories) も demo 扱いに格上げして本ファイルに移管
 --     (本番 fork では空 portal の方が望ましいというユーザー判断)
+--   - 2026-09-08: Section 3 追加。5〜9 月の機能追加に demo データが追いついて
+--     おらず、練習ログ (fflogs_fights) が 0 件 = プル箱列 / 進行トレンド /
+--     ワイプ原因 / 実績バッジ / フェーズ滞在時間が全部空だった。あわせて
+--     スケジュールを native へ切り替える (sync = 外部シート依存では出欠系の
+--     追加機能がデータを入れても画面に出ない)
 -- ============================================================================
 
 -- ---- 0. Sample seed categories (was schema.sql Section 11) ----------------
@@ -523,4 +528,492 @@ BEGIN
       WHERE category_id = v_lh AND url = 'https://jp.finalfantasyxiv.com/dawntrail/'
     );
   END IF;
+END $$;
+
+-- ---- 3. 2026-09 の新機能ぶんの demo データ --------------------------------
+-- 2026-09-08: 5〜9 月に機能を大幅に追加した結果、demo project のデータが
+-- 追いつかなくなっていた。実測した未投入テーブルは 16 個で、うち
+-- **練習ログ (fflogs_fights) が 0 件** = プル・ボックス列 / 進行トレンド /
+-- ワイプ原因 / チーム実績 / 各層の初討伐 / セッションサマリー /
+-- フェーズ滞在時間が**全部空**という状態だった。
+--
+-- 方針:
+--   - データは**すべて合成**。本番の値・実名・実レポートは持ち込まない
+--     (demo は匿名で読める。本番を参考にしたのは「規模と形」だけ)
+--   - report_code は `demo` 接頭辞。FFLogs 上に存在しないので LOGS リンクは
+--     404 になる — 合成データの既知の割り切り
+--   - 日付は**適用時の JST 今日から逆算**する。固定日を焼き込むと数か月で
+--     「半年前のログしか無いデモ」になるため
+--   - 冪等: sentinel `demo_seed_2026_09_applied` で 2 回目以降スキップ
+--     (Section 1 の sentinel とは別。既に適用済みの demo project に対して
+--     この節だけを 1 回走らせる必要があるため)
+--
+-- ⚠ 運用台帳系 (fflogs_report_syncs / fflogs_notify_state /
+--   fflogs_report_blocklist / category_discord_blocklist) は**意図的に
+--   入れない**。同期の「未取得レポート」表示や通知の抑制状態を偽装すると、
+--   デモを見た人が同期の挙動を誤解する。
+
+DO $$
+DECLARE
+  v_arc     uuid;   -- arcadion-heavy (零式・層モデル) — 練習ログの主役
+  v_fru     uuid;   -- ultimate-futures-rewritten (絶・フェーズモデル)
+  v_today   date := (now() AT TIME ZONE 'Asia/Tokyo')::date;
+  v_monday  date;   -- 今週の月曜 (JST)
+  v_day     date;
+  v_code    text;
+  v_sess    integer;
+  v_pulls   integer;
+  v_floor   integer;
+  v_enc     integer;
+  v_start   bigint;
+  v_dur     integer;
+  v_pct     numeric;
+  v_kill    boolean;
+  v_deaths  integer;
+  v_dps     integer;
+  v_p       integer;
+  v_w       integer;
+  v_dw      integer;
+  v_sid     uuid;
+  v_bis     uuid;
+  v_link    uuid;
+  v_week    date;
+  -- ワイプ原因に出る技名 (架空 + 一般名詞のみ。実装済みの表示は
+  -- 「ジョブ略称 ← 技名」なので、技名の実在性は表示の正しさに影響しない)
+  v_abilities text[] := ARRAY[
+    'デモリッシュ・スラム', '重圧の呪詛', '崩落する足場', '連鎖爆雷',
+    '大破断', '選定の刃', 'オーバーロード', '滅びの咆哮'
+  ];
+  v_jobs text[] := ARRAY[
+    'WhiteMage','Warrior','Samurai','Bard','Scholar','DarkKnight','BlackMage','Dancer'
+  ];
+  v_members text[] := ARRAY[
+    'local_mq7sifrh40py','local_mq7siphtq692','local_mq7siwonqhul','local_mq7sjctf795b'
+  ];
+  v_names text[];
+BEGIN
+  IF EXISTS (SELECT 1 FROM public.app_settings WHERE key = 'demo_seed_2026_09_applied') THEN
+    RAISE NOTICE 'Demo seed (2026-09) already applied — skipping.';
+    RETURN;
+  END IF;
+
+  SELECT id INTO v_arc FROM public.categories WHERE slug = 'arcadion-heavy';
+  SELECT id INTO v_fru FROM public.categories WHERE slug = 'ultimate-futures-rewritten';
+  IF v_arc IS NULL OR v_fru IS NULL THEN
+    RAISE NOTICE 'Section 0 sample categories missing — skipping 2026-09 demo seed.';
+    RETURN;
+  END IF;
+
+  v_monday := (v_today - ((EXTRACT(ISODOW FROM v_today)::integer - 1)))::date;
+
+  -- ---- 3.0 カテゴリの正規化 -------------------------------------------
+  -- 層モデルの「4層前半 / 4層後半」畳み込みと 零式バッジは **カテゴリ名に
+  -- 零式が含まれるか**で決まる (`content-groups.ts` の isSavageContent →
+  -- `resolveFloorCount` が 4 を返す)。demo の名前は 零式 が抜けていて
+  -- encounter 5 個が「5層」と表示される状態だったので、実コンテンツの
+  -- 表記に合わせて直す。
+  UPDATE public.categories
+     SET name = '至天の座アルカディア零式：ヘビー級',
+         difficulty_label = '零式',
+         progress_model = 'floors',
+         status = '練習中'
+   WHERE slug = 'arcadion-heavy';
+  UPDATE public.categories
+     SET name = '至天の座アルカディア零式：クルーザー級', difficulty_label = '零式'
+   WHERE slug = 'arcadion-cruiser';
+  UPDATE public.categories
+     SET name = '至天の座アルカディア零式：ライトヘビー級', difficulty_label = '零式'
+   WHERE slug = 'arcadion-lightheavy';
+  UPDATE public.categories
+     SET difficulty_label = '絶', progress_model = 'phases'
+   WHERE slug IN ('ultimate-omega-protocol','ultimate-futures-rewritten');
+
+  -- ---- 3.1 練習ログ: 零式 (層モデル) ----------------------------------
+  -- 直近 8 週の 水木金 = 24 セッション。層は 1層 → 4層後半 へ進み、
+  -- 最後の 2 セッションで最終層を討伐する (初討伐 / ノーデス討伐 /
+  -- 最速討伐 / 討伐回数 の実績バッジが全部立つ最小構成)。
+  -- encounter は 5 連番 = 「最終層が前半/後半に分かれるティア」。
+  v_sess := 0;
+  FOR v_w IN REVERSE 8..1 LOOP
+    FOREACH v_dw IN ARRAY ARRAY[3,4,5] LOOP
+      v_day := v_monday + (v_dw - 1) - (v_w * 7);
+      CONTINUE WHEN v_day >= v_today;
+      v_sess := v_sess + 1;
+      v_pulls := 6 + (v_sess % 5);
+      v_floor := CASE
+        WHEN v_sess <= 4  THEN 1
+        WHEN v_sess <= 8  THEN 2
+        WHEN v_sess <= 13 THEN 3
+        WHEN v_sess <= 19 THEN 4
+        ELSE 5
+      END;
+      v_enc := 999 + v_floor;
+      v_code := 'demoArc' || to_char(v_day, 'MMDD') || lpad(v_sess::text, 2, '0') || 'zk';
+
+      FOR v_p IN 1..v_pulls LOOP
+        -- 21:00 JST 開始、1 pull あたり 8 分 (戦闘 + 仕切り直し)。
+        v_start := (EXTRACT(EPOCH FROM (v_day + time '21:00') AT TIME ZONE 'Asia/Tokyo')::bigint
+                    + (v_p - 1) * 480) * 1000;
+        v_dur := 150 + ((v_sess * 7 + v_p * 11) % 220);
+        -- 討伐: 各層の初討伐をその層の最終セッションの最終 pull に置き、
+        -- 最終層は 2 回討伐する (2 回目 = 消化)。
+        v_kill := (v_sess IN (4, 8, 13, 19, 23) AND v_p = v_pulls)
+               OR (v_sess = 24 AND v_p = v_pulls);
+        IF v_kill THEN
+          v_pct := 0;
+          v_dur := 400 + (v_sess % 40);
+          -- 23 回目の討伐は死者ゼロ (ノーデス討伐バッジ用)。
+          v_deaths := CASE WHEN v_sess = 23 THEN 0 ELSE 2 END;
+        ELSE
+          -- 同じ層の中でセッションが進むほど削れる。
+          v_pct := LEAST(99, GREATEST(0.8, 88 - (v_sess * 2.6) - (v_p * 1.4)
+                                      + ((v_sess * 13 + v_p * 29) % 17)));
+          v_deaths := GREATEST(0, 7 - (v_sess / 4) + ((v_sess + v_p) % 3));
+        END IF;
+        v_dps := 92000 + v_sess * 950 + ((v_sess * 31 + v_p * 17) % 6000);
+
+        INSERT INTO public.fflogs_fights (
+          report_code, fight_id, category_id, session_date, name, kill,
+          fight_percentage, last_phase, difficulty, encounter_id,
+          start_ms, end_ms, report_start_ms, party_dps, deaths, death_events
+        ) VALUES (
+          v_code, v_p, v_arc, to_char(v_day, 'YYYY-MM-DD'), NULL, v_kill,
+          v_pct, NULL, 101, v_enc,
+          v_start, v_start + v_dur * 1000,
+          (EXTRACT(EPOCH FROM (v_day + time '20:50') AT TIME ZONE 'Asia/Tokyo')::bigint) * 1000,
+          v_dps, v_deaths,
+          CASE WHEN v_kill OR v_deaths = 0 THEN NULL ELSE
+            jsonb_build_array(
+              jsonb_build_object(
+                't', (v_dur - 30) * 1000,
+                'job', v_jobs[1 + ((v_sess + v_p) % 8)],
+                'ability', v_abilities[1 + ((v_sess * 3 + v_p) % 8)]
+              ),
+              jsonb_build_object(
+                't', (v_dur - 20) * 1000,
+                'job', v_jobs[1 + ((v_sess + v_p + 3) % 8)],
+                'ability', v_abilities[1 + ((v_sess * 3 + v_p) % 8)]
+              )
+            )
+          END
+        ) ON CONFLICT (report_code, fight_id) DO NOTHING;
+      END LOOP;
+
+      -- 動画は 3 セッションに 1 回だけ紐づける (「動画がある日 / ない日」
+      -- の両方をデモで見せるため)。オフセットは実運用と同じ桁。
+      IF v_sess % 3 = 0 THEN
+        -- ⚠ 一意制約は (report_code, video_url)。2026-09-07 に「1 レポートに
+        -- 複数動画」へ移行した際、主キーが report_code から id へ変わって
+        -- いる (schema.sql 6b-6)。ON CONFLICT (report_code) は実行時に
+        -- 「no unique or exclusion constraint matching」で落ちる。
+        INSERT INTO public.fflogs_report_videos
+          (report_code, video_url, offset_seconds, label)
+        VALUES (
+          v_code, 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+          56 + (v_sess % 90), '固定視点'
+        )
+        ON CONFLICT (report_code, video_url) DO NOTHING;
+      END IF;
+    END LOOP;
+  END LOOP;
+
+  -- ---- 3.2 練習ログ: 絶 (フェーズモデル) ------------------------------
+  -- 9〜14 週前に練習して休止した、という並び (カテゴリの status は 休止中)。
+  -- encounter が 1 種類なので層マップは作られず、フェーズ (P1〜) 表示になる。
+  v_sess := 0;
+  FOR v_w IN REVERSE 14..9 LOOP
+    FOREACH v_dw IN ARRAY ARRAY[3,4,5] LOOP
+      v_day := v_monday + (v_dw - 1) - (v_w * 7);
+      v_sess := v_sess + 1;
+      v_pulls := 4 + (v_sess % 3);
+      v_code := 'demoFru' || to_char(v_day, 'MMDD') || lpad(v_sess::text, 2, '0') || 'ul';
+
+      FOR v_p IN 1..v_pulls LOOP
+        v_start := (EXTRACT(EPOCH FROM (v_day + time '21:00') AT TIME ZONE 'Asia/Tokyo')::bigint
+                    + (v_p - 1) * 660) * 1000;
+        v_dur := 300 + ((v_sess * 13 + v_p * 23) % 380);
+        v_deaths := GREATEST(1, 6 - (v_sess / 5) + ((v_sess + v_p) % 3));
+        INSERT INTO public.fflogs_fights (
+          report_code, fight_id, category_id, session_date, name, kill,
+          fight_percentage, last_phase, difficulty, encounter_id,
+          start_ms, end_ms, report_start_ms, party_dps, deaths,
+          death_events, phase_transitions
+        ) VALUES (
+          v_code, v_p, v_fru, to_char(v_day, 'YYYY-MM-DD'), NULL, false,
+          GREATEST(1.2, 74 - (v_sess * 3.1) - (v_p * 0.9)
+                   + ((v_sess * 7 + v_p * 19) % 15)),
+          LEAST(4, 1 + (v_sess / 5)), 100, 3000,
+          v_start, v_start + v_dur * 1000,
+          (EXTRACT(EPOCH FROM (v_day + time '20:55') AT TIME ZONE 'Asia/Tokyo')::bigint) * 1000,
+          88000 + v_sess * 1100, v_deaths,
+          jsonb_build_array(
+            jsonb_build_object(
+              't', (v_dur - 15) * 1000,
+              'job', v_jobs[1 + ((v_sess + v_p) % 8)],
+              'ability', v_abilities[1 + ((v_sess + v_p * 5) % 8)]
+            )
+          ),
+          -- フェーズ滞在時間 / 各フェーズへの初到達 を出すための遷移列。
+          (SELECT jsonb_agg(jsonb_build_object('id', ph, 't', (ph - 1) * 95000))
+             FROM generate_series(1, LEAST(4, 1 + (v_sess / 5))) AS ph)
+        ) ON CONFLICT (report_code, fight_id) DO NOTHING;
+      END LOOP;
+    END LOOP;
+  END LOOP;
+
+  -- ---- 3.3 native スケジュール ----------------------------------------
+  -- demo は sync モード (= 外部 character-sheets がソース) だったため、
+  -- 出欠・定期枠・自動成立・過去ログといった 2026 年の追加機能が
+  -- **どうデータを入れても画面に出ない**状態だった。native へ切り替える。
+  v_names := ARRAY['ヴェー★ネス','卍アゼム卍','エメトセルク','ヒュトロダエウス'];
+  FOR v_p IN 1..4 LOOP
+    INSERT INTO public.native_schedule_members
+      (discord_user_id, display_name, sort_order, is_active, data_center, comment)
+    VALUES (
+      v_members[v_p], v_names[v_p], v_p - 1, true,
+      (ARRAY['Elemental','Gaia','Mana','Meteor'])[v_p],
+      CASE v_p WHEN 2 THEN '木曜は 21:30 から参加します' ELSE NULL END
+    )
+    -- ⚠ display_name は上書きしない。demo project には手で入れた表記が
+    -- あり (星記号の異体字など)、seed の literal で潰すと表示が変わる。
+    -- 2026-09 に足した列だけを、未設定のときに埋める。
+    ON CONFLICT (discord_user_id) DO UPDATE
+      SET data_center = COALESCE(native_schedule_members.data_center, EXCLUDED.data_center),
+          comment     = COALESCE(native_schedule_members.comment,     EXCLUDED.comment);
+  END LOOP;
+
+  -- 既に入っている 6 月の候補日 21 件は、出欠が 1 件も無い置き去りの行。
+  -- 消さずに「実施しなかった日」へ倒して、過去表の意味を通す。
+  UPDATE public.native_schedule_sessions
+     SET status = 'CANCELLED'
+   WHERE status = 'CANDIDATE'
+     AND parsed_date < (v_today - 60)::timestamptz;
+
+  -- 過去 8 週の 水木金 = 実施済み (DECISION)。出欠と練習ログの URL を付ける。
+  v_sess := 0;
+  FOR v_w IN REVERSE 8..1 LOOP
+    FOREACH v_dw IN ARRAY ARRAY[3,4,5] LOOP
+      v_day := v_monday + (v_dw - 1) - (v_w * 7);
+      CONTINUE WHEN v_day >= v_today;
+      v_sess := v_sess + 1;
+      -- ⚠ RETURNING INTO は 0 行のとき変数をどうするかに依存させない。
+      -- 前の周回の id が残ると、別の日の出欠を書き込む事故になる。
+      v_sid := NULL;
+      -- 3 週に 1 回は中止 (「実施しなかった日」と中止の表示を見せる)。
+      INSERT INTO public.native_schedule_sessions
+        (raw_date, parsed_date, day_of_week, status, note)
+      VALUES (
+        to_char(v_day, 'YYYY/MM/DD') || '('
+          || (ARRAY['月','火','水','木','金','土','日'])[EXTRACT(ISODOW FROM v_day)::integer]
+          || ') 21:00~23:00',
+        (v_day + time '21:00') AT TIME ZONE 'Asia/Tokyo',
+        (ARRAY['月','火','水','木','金','土','日'])[EXTRACT(ISODOW FROM v_day)::integer],
+        CASE WHEN v_sess % 9 = 0 THEN 'CANCELLED' ELSE 'DECISION' END,
+        CASE WHEN v_sess % 9 = 0 THEN '人数が揃わず中止' ELSE NULL END
+      )
+      ON CONFLICT (raw_date) DO NOTHING
+      RETURNING id INTO v_sid;
+
+      IF v_sid IS NULL THEN
+        SELECT id INTO v_sid FROM public.native_schedule_sessions
+         WHERE raw_date = to_char(v_day, 'YYYY/MM/DD') || '('
+           || (ARRAY['月','火','水','木','金','土','日'])[EXTRACT(ISODOW FROM v_day)::integer]
+           || ') 21:00~23:00';
+      END IF;
+
+      CONTINUE WHEN v_sid IS NULL;
+      FOR v_p IN 1..4 LOOP
+        INSERT INTO public.native_schedule_attendances
+          (session_id, discord_user_id, symbol)
+        VALUES (
+          v_sid, v_members[v_p],
+          CASE
+            WHEN v_sess % 9 = 0 AND v_p >= 3 THEN '×'
+            WHEN (v_sess + v_p) % 11 = 0 THEN '×'
+            WHEN (v_sess + v_p) % 7  = 0 THEN '△'
+            WHEN (v_sess + v_p) % 5  = 0 THEN '夜'
+            ELSE '全'
+          END
+        ) ON CONFLICT (session_id, discord_user_id) DO NOTHING;
+      END LOOP;
+
+      -- 実施した日には練習ログの URL を付ける (過去表の LOGS ボタン)。
+      IF v_sess % 9 <> 0 THEN
+        INSERT INTO public.native_schedule_session_logs (native_session_id, url, source)
+        VALUES (
+          v_sid,
+          'https://www.fflogs.com/reports/demoArc' || to_char(v_day, 'MMDD')
+            || lpad(v_sess::text, 2, '0') || 'zk',
+          'auto'
+        ) ON CONFLICT (native_session_id, url) DO NOTHING;
+      END IF;
+    END LOOP;
+  END LOOP;
+
+  -- 今後 2 週間の 水木金 = 候補日。直近 1 件だけ 確定 (DECISION) にして
+  -- 「次回開催日」が埋まるようにする。出欠は一部だけ入れて未回答も残す。
+  v_sess := 0;
+  FOR v_p IN 0..13 LOOP
+    v_day := v_today + v_p;
+    CONTINUE WHEN EXTRACT(ISODOW FROM v_day)::integer NOT IN (3,4,5);
+    v_sess := v_sess + 1;
+    v_sid := NULL;
+    INSERT INTO public.native_schedule_sessions
+      (raw_date, parsed_date, day_of_week, status)
+    VALUES (
+      to_char(v_day, 'YYYY/MM/DD') || '('
+        || (ARRAY['月','火','水','木','金','土','日'])[EXTRACT(ISODOW FROM v_day)::integer]
+        || ') 21:00~23:00',
+      (v_day + time '21:00') AT TIME ZONE 'Asia/Tokyo',
+      (ARRAY['月','火','水','木','金','土','日'])[EXTRACT(ISODOW FROM v_day)::integer],
+      CASE WHEN v_sess = 1 THEN 'DECISION' ELSE 'CANDIDATE' END
+    )
+    ON CONFLICT (raw_date) DO UPDATE SET status = EXCLUDED.status
+    RETURNING id INTO v_sid;
+
+    CONTINUE WHEN v_sid IS NULL;
+    -- 未回答を残す: 直近ほど回答が揃っている形にする。
+    FOR v_w IN 1..(4 - LEAST(3, v_sess - 1)) LOOP
+      INSERT INTO public.native_schedule_attendances
+        (session_id, discord_user_id, symbol)
+      VALUES (
+        v_sid, v_members[v_w],
+        CASE WHEN (v_sess + v_w) % 6 = 0 THEN '×'
+             WHEN (v_sess + v_w) % 4 = 0 THEN '夜'
+             ELSE '全' END
+      ) ON CONFLICT (session_id, discord_user_id) DO NOTHING;
+    END LOOP;
+  END LOOP;
+
+  -- ---- 3.4 ウェイマーク -----------------------------------------------
+  -- PaisleyPark 形式 (X/Y/Z + Active)。座標は検品 (waymark-preset.ts) を
+  -- 通る常識的な範囲にしてある。
+  INSERT INTO public.category_waymarks (category_id, label, body, note, sort_order)
+  SELECT v_arc, '4層後半 基本形',
+    '{"Name":"M8S P2 基本","MapID":1,'
+    || '"A":{"X":100.0,"Y":0.0,"Z":90.0,"Active":true},'
+    || '"B":{"X":110.0,"Y":0.0,"Z":100.0,"Active":true},'
+    || '"C":{"X":100.0,"Y":0.0,"Z":110.0,"Active":true},'
+    || '"D":{"X":90.0,"Y":0.0,"Z":100.0,"Active":true},'
+    || '"One":{"X":93.0,"Y":0.0,"Z":93.0,"Active":true},'
+    || '"Two":{"X":107.0,"Y":0.0,"Z":93.0,"Active":true},'
+    || '"Three":{"X":107.0,"Y":0.0,"Z":107.0,"Active":true},'
+    || '"Four":{"X":93.0,"Y":0.0,"Z":107.0,"Active":true}}',
+    '散開はいつもの時計回り', 0
+  WHERE NOT EXISTS (
+    SELECT 1 FROM public.category_waymarks WHERE category_id = v_arc AND label = '4層後半 基本形');
+
+  INSERT INTO public.category_waymarks (category_id, label, body, note, sort_order)
+  SELECT v_arc, '4層前半 塔処理',
+    '{"Name":"M8S P1 塔","MapID":1,'
+    || '"A":{"X":100.0,"Y":0.0,"Z":86.0,"Active":true},'
+    || '"B":{"X":114.0,"Y":0.0,"Z":100.0,"Active":true},'
+    || '"C":{"X":100.0,"Y":0.0,"Z":114.0,"Active":true},'
+    || '"D":{"X":86.0,"Y":0.0,"Z":100.0,"Active":true},'
+    || '"One":{"X":100.0,"Y":0.0,"Z":100.0,"Active":false},'
+    || '"Two":{"X":100.0,"Y":0.0,"Z":100.0,"Active":false},'
+    || '"Three":{"X":100.0,"Y":0.0,"Z":100.0,"Active":false},'
+    || '"Four":{"X":100.0,"Y":0.0,"Z":100.0,"Active":false}}',
+    NULL, 1
+  WHERE NOT EXISTS (
+    SELECT 1 FROM public.category_waymarks WHERE category_id = v_arc AND label = '4層前半 塔処理');
+
+  -- ---- 3.5 BiS (部位別の取得済みチェック) -----------------------------
+  FOR v_p IN 1..4 LOOP
+    v_bis := NULL;  -- ③ と同じ理由 (0 行のとき前の周回の id を使わない)
+    INSERT INTO public.category_bis_links
+      (category_id, label, url, job, owner_name, sort_order)
+    SELECT v_arc,
+      v_names[v_p] || ' BiS',
+      'https://xivgear.app/?page=sl%7Cdemo-' || v_p,
+      (ARRAY['WHM','WAR','SAM','BRD'])[v_p],
+      v_names[v_p], v_p - 1
+    WHERE NOT EXISTS (
+      SELECT 1 FROM public.category_bis_links
+       WHERE category_id = v_arc AND label = v_names[v_p] || ' BiS')
+    RETURNING id INTO v_bis;
+
+    IF v_bis IS NOT NULL THEN
+      -- 取得済みは人ごとに違う進み方 (バッジの n/11 を見せるため)。
+      INSERT INTO public.category_bis_slots (bis_link_id, slot, obtained)
+      SELECT v_bis, s.slot, ((v_p * 3 + s.ord) % 4) <> 0
+        FROM (
+          SELECT slot, row_number() OVER () AS ord
+            FROM unnest(ARRAY['Weapon','Head','Body','Hand','Legs','Feet',
+                              'Ears','Neck','Wrist','RingLeft','RingRight']) AS slot
+        ) AS s
+       ON CONFLICT (bis_link_id, slot) DO NOTHING;
+    END IF;
+  END LOOP;
+
+  -- ---- 3.6 週制限の消化チェック ---------------------------------------
+  -- 週の識別子は「その週のリセットが起きた火曜の JST 暦日」(week-jst.ts)。
+  -- 今週の週制限リセット (火曜 08:00 UTC = JST 17:00) が起きた火曜の JST 暦日。
+  -- `week-jst.ts` の currentWeekStart と同じ規則にする — ずれると UI が
+  -- 表示している週と違う行になり、消化チェックが画面に出ない。
+  v_week := (date_trunc('week', (now() AT TIME ZONE 'UTC')) + interval '1 day')::date;
+  IF now() < ((v_week + time '08:00') AT TIME ZONE 'UTC') THEN
+    v_week := v_week - 7;  -- 火曜 17:00 JST より前なら、まだ前週
+  END IF;
+  FOR v_w IN 0..1 LOOP
+    FOR v_p IN 1..4 LOOP
+      INSERT INTO public.loot_weekly_checks
+        (category_id, week_start, discord_user_id, display_name, status)
+      VALUES (
+        v_arc, v_week - (v_w * 7), v_members[v_p], v_names[v_p],
+        CASE WHEN v_w = 1 THEN '消化済'
+             WHEN v_p = 4 THEN '辞退'
+             WHEN v_p <= 2 THEN '消化済'
+             ELSE '未消化' END
+      ) ON CONFLICT (category_id, week_start, discord_user_id) DO NOTHING;
+    END LOOP;
+  END LOOP;
+
+  -- ---- 3.7 攻略情報の既読 ---------------------------------------------
+  -- 既存の攻略リンク (Section 1/2 で投入済み) に既読を付ける。
+  -- 全員既読 / 一部未読の両方が出るように人数を散らす。
+  FOR v_link IN
+    SELECT id FROM public.category_links
+     WHERE category_id = v_arc AND kind = 'strategy'
+     ORDER BY sort_order, id LIMIT 4
+  LOOP
+    FOR v_p IN 1..(2 + (('x' || substr(md5(v_link::text), 1, 4))::bit(16)::integer % 3)) LOOP
+      INSERT INTO public.category_link_reads (link_id, discord_user_id)
+      VALUES (v_link, v_members[v_p])
+      ON CONFLICT (link_id, discord_user_id) DO NOTHING;
+    END LOOP;
+  END LOOP;
+
+  -- ---- 3.8 Google フォトのアルバム ------------------------------------
+  INSERT INTO public.category_gphoto_albums
+    (category_id, share_url, title, image_count, sort_order)
+  SELECT v_arc, 'https://photos.app.goo.gl/demoArcadionHeavy', '討伐記念 / 進捗スクショ', 24, 0
+  WHERE NOT EXISTS (
+    SELECT 1 FROM public.category_gphoto_albums
+     WHERE category_id = v_arc AND share_url = 'https://photos.app.goo.gl/demoArcadionHeavy');
+
+  -- ---- 3.9 設定 --------------------------------------------------------
+  -- native へ切り替え、2026 年に足した設定の既定値を demo らしい値にする。
+  INSERT INTO public.app_settings (key, value) VALUES
+    ('schedule_source_mode',                   'native'),
+    -- 実シートへの依存を外す (native では読まれないが、残すと設定画面に
+    -- 実在 URL が出たままになる)。
+    ('schedule_url',                           'https://character-sheets.appspot.com/schedule/list?key=demoplaceholder'),
+    ('native_schedule_default_start_time',     '21:00'),
+    ('native_schedule_default_end_time',       '23:00'),
+    -- W-15 定期枠: 毎週 水木金。候補日の自動追加がこの曜日だけになる。
+    -- ⚠ 曜日番号は JS の getDay() 規約 (0=日 … 6=土) — `parseRecurringDows`
+    -- が [0-6] を取り、`isRecurringDow` に渡るのが getDay() の値。
+    -- 3,4,5 = 水木金。SQL 側の EXTRACT(ISODOW) (1=月…7=日) とは別規約なので
+    -- 数字を揃えて直さないこと。
+    ('native_schedule_recurring_dows',         '3,4,5'),
+    ('native_schedule_auto_confirm_enabled',   'true'),
+    ('native_schedule_auto_confirm_min_available', '4'),
+    -- W-33 ②: 週制限は 8.0 を見据えて「今週 + 前週」。
+    ('loot_window_weeks',                      '2'),
+    -- W-35 練習ログの通知は既定 OFF のまま (デモで Discord へ投げない)。
+    ('demo_seed_2026_09_applied',              '1')
+  ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
+
+  RAISE NOTICE 'Demo seed (2026-09) applied — fflogs_fights(zk+ul), report_videos, native sessions/attendances/logs, waymarks, bis, loot_weekly, link_reads, gphoto, settings(native).';
 END $$;
