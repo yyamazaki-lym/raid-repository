@@ -1,15 +1,24 @@
 /**
- * 技名の日本語化 — XIVAPI v2 の `Action` シートを ID で引く (2026-09-06)。
+ * 技名の言語解決 — XIVAPI v2 の `Action` シートを ID で引く
+ * (2026-09-06、L-7 で ja / en の両対応に、2026-09-08)。
  * 純関数のみ (server 側の fetch は `server/xivapi-action-names.ts`)。
  *
- * FFLogs の Summary table が返す致命技の名前 (`ability.name`) は英語で、
- * 練習ログの「ワイプ原因」がそのまま英語表示になっていた。同じ要素に
- * ゲーム内 action ID (`ability.guid`) が付いているので、これをキーに
- * XIVAPI (ゲームデータのダンプを配信している公開 API) から日本語名を引く。
+ * FFLogs の Summary table が返す致命技の名前 (`ability.name`) は
+ * **アップロードしたクライアントの言語**で、日本語固定でも英語で入ることが
+ * 多い。同じ要素にゲーム内 action ID (`ability.guid`) が付いているので、
+ * これをキーに XIVAPI (ゲームデータのダンプを配信している公開 API) から
+ * 表示言語の名前を引く。
  *
- * - 名前が既に非 ASCII (アップロード者の言語で翻訳済み等) なら引かない。
+ * ## 言語ごとに「引く価値がある」の判定が逆になる
+ *
+ * ⚠ ja を引くのは名前が **ASCII だけ**のとき (= 英語で入っている)。
+ * en を引くのは名前に **非 ASCII が混じる**とき (= 日本語等で入っている)。
+ * 同じ言語で既に入っているものを引き直しても表示は変わらないので、
+ * ここで弾いて XIVAPI への要求を減らす。
+ *
  * - ID が無い死亡 (DoT など) はそのまま。
- * - 解決できなくても英語名で表示は続く (この機能は装飾であって依存先ではない)。
+ * - 解決できなくても元の名前で表示は続く
+ *   (この機能は装飾であって依存先ではない)。
  */
 
 import type { StoredDeathEvent } from "./fflogs-fight-detail";
@@ -19,19 +28,34 @@ export const XIVAPI_ACTION_SHEET_URL = "https://v2.xivapi.com/api/sheet/Action";
 /** 1 リクエストで引く行数の上限 (URL 長と応答サイズの妥協点)。 */
 export const XIVAPI_ROWS_PER_REQUEST = 50;
 
-/** FFLogs が返した名前が ASCII だけなら日本語を引く価値がある。 */
-export function needsJapaneseLookup(name: string | null | undefined): boolean {
+/** 解決する言語。表示言語 (`@/lib/i18n`) と同じ 2 値。 */
+export type ActionNameLang = "ja" | "en";
+
+/**
+ * その言語を引く価値があるか。
+ *
+ * - `ja`: 名前が ASCII だけ (英語で入っている) なら引く
+ * - `en`: 名前に非 ASCII が混じる (日本語等で入っている) なら引く
+ */
+export function needsLookup(
+  name: string | null | undefined,
+  lang: ActionNameLang,
+): boolean {
   if (!name) return false;
-  return /^[ -~]+$/.test(name);
+  const asciiOnly = /^[ -~]+$/.test(name);
+  return lang === "ja" ? asciiOnly : !asciiOnly;
 }
 
 /** `rows=1,2,3&fields=Name&language=ja` の形の URL を作る (重複除去 / 昇順)。 */
-export function buildActionSheetUrl(ids: readonly number[]): string {
+export function buildActionSheetUrl(
+  ids: readonly number[],
+  lang: ActionNameLang = "ja",
+): string {
   const rows = [...new Set(ids)]
     .filter((n) => Number.isInteger(n) && n > 0)
     .sort((a, b) => a - b)
     .join(",");
-  return `${XIVAPI_ACTION_SHEET_URL}?rows=${rows}&fields=Name&language=ja`;
+  return `${XIVAPI_ACTION_SHEET_URL}?rows=${rows}&fields=Name&language=${lang}`;
 }
 
 /**
@@ -60,18 +84,28 @@ export function parseActionSheetRows(json: unknown): Map<number, string> {
   return out;
 }
 
-/** 日本語名を引くべき死亡イベントの action ID (重複除去、出現順)。 */
+/** その言語の名前を引くべき死亡イベントの action ID (重複除去、出現順)。 */
 export function collectLookupIds(
-  events: ReadonlyArray<Pick<StoredDeathEvent, "id" | "ability" | "ja">>,
+  events: ReadonlyArray<Pick<StoredDeathEvent, "id" | "ability" | "ja" | "en">>,
+  lang: ActionNameLang = "ja",
 ): number[] {
   const seen = new Set<number>();
   for (const e of events) {
-    if (e.ja) continue;
+    if (localizedName(e, lang)) continue;
     if (typeof e.id !== "number" || !Number.isInteger(e.id) || e.id <= 0) continue;
-    if (!needsJapaneseLookup(e.ability)) continue;
+    if (!needsLookup(e.ability, lang)) continue;
     seen.add(e.id);
   }
   return [...seen];
+}
+
+/** その言語で既に入っている名前 (無ければ null)。 */
+function localizedName(
+  e: Pick<StoredDeathEvent, "ja" | "en">,
+  lang: ActionNameLang,
+): string | null {
+  const v = lang === "ja" ? e.ja : e.en;
+  return v && v !== "" ? v : null;
 }
 
 /** 配列を `size` 件ずつに切る。 */
@@ -81,17 +115,23 @@ export function chunk<T>(items: readonly T[], size: number): T[][] {
   return out;
 }
 
-/** 解決結果を死亡イベントへ書き戻す (in place)。書き換えた件数を返す。 */
-export function applyJapaneseNames(
-  events: Array<Pick<StoredDeathEvent, "id" | "ability" | "ja">>,
+/**
+ * 解決結果を死亡イベントへ書き戻す (in place)。書き換えた件数を返す。
+ *
+ * 元の名前と同じ文字列は入れない (保存を無駄に太らせないため)。
+ */
+export function applyResolvedNames(
+  events: Array<Pick<StoredDeathEvent, "id" | "ability" | "ja" | "en">>,
   names: ReadonlyMap<number, string>,
+  lang: ActionNameLang = "ja",
 ): number {
   let n = 0;
   for (const e of events) {
-    if (e.ja || typeof e.id !== "number") continue;
-    const ja = names.get(e.id);
-    if (!ja || ja === e.ability) continue;
-    e.ja = ja;
+    if (localizedName(e, lang) || typeof e.id !== "number") continue;
+    const resolved = names.get(e.id);
+    if (!resolved || resolved === e.ability) continue;
+    if (lang === "ja") e.ja = resolved;
+    else e.en = resolved;
     n += 1;
   }
   return n;

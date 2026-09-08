@@ -31,13 +31,27 @@ export type StoredDeathEvent = {
    * (2026-09-06)。解決できなかった / 元から日本語なら省略。
    */
   ja?: string | null;
+  /**
+   * 致命技の英語名 (L-7、2026-09-08)。`ability` が日本語で入っている
+   * レポート (JP クライアントからのアップロード) を英語表示に切り替えた
+   * ときに使う。解決できなかった / 元から英語なら省略。
+   */
+  en?: string | null;
 };
 
-/** 表示に使う技名 (日本語名があればそれ、無ければ FFLogs の名前)。 */
+/**
+ * 表示に使う技名 (L-7 で locale 対応、2026-09-08)。
+ *
+ * その言語の名前が解決済みならそれを、無ければ **FFLogs が返した名前**を
+ * 出す。⚠ 解決できていない言語のために別言語の名前を出すことはしない
+ * (英語表示で日本語名が出る / その逆を防ぐ)。
+ */
 export function deathAbilityLabel(
-  d: Pick<StoredDeathEvent, "ability" | "ja">,
+  d: Pick<StoredDeathEvent, "ability" | "ja" | "en">,
+  locale: FightDetailLocale = "ja",
 ): string | null {
-  return d.ja ?? d.ability;
+  const localized = locale === "ja" ? d.ja : d.en;
+  return localized && localized !== "" ? localized : d.ability;
 }
 
 /** フェーズ遷移 1 件の保存形 (jsonb `phase_transitions` の要素)。 */
@@ -63,8 +77,17 @@ export type WipeSummary = {
   t: number;
   /** 最初に落ちたジョブ (FFLogs 名)。 */
   job: string | null;
-  /** 最初の死亡の致命技 (表示用: 日本語名があればそれ)。 */
+  /** 最初の死亡の致命技 (FFLogs が返した名前)。 */
   ability: string | null;
+  /**
+   * 致命技のゲーム内 action ID (L-7、2026-09-08)。表示時に足りない言語を
+   * XIVAPI で引くためのキー。取れなければ省略。
+   */
+  id?: number | null;
+  /** 致命技の日本語名 (解決済みのときだけ)。L-7 (2026-09-08)。 */
+  ja?: string | null;
+  /** 致命技の英語名 (解決済みのときだけ)。L-7 (2026-09-08)。 */
+  en?: string | null;
   /** 最初の死亡から CLUSTER_WINDOW_MS 以内の死亡数 (最初の 1 人を含む)。 */
   cluster: number;
   /** その pull の死亡総数 (ワイプコール後の巻き添え込み)。 */
@@ -215,6 +238,7 @@ export function asDeathEvents(v: unknown): StoredDeathEvent[] | null {
       ability: typeof o.ability === "string" ? o.ability : null,
       ...(id !== null ? { id } : {}),
       ...(typeof o.ja === "string" && o.ja !== "" ? { ja: o.ja } : {}),
+      ...(typeof o.en === "string" && o.en !== "" ? { en: o.en } : {}),
     });
   }
   return out;
@@ -368,7 +392,13 @@ export function summarizeWipe(
   return {
     t: first.t,
     job: first.job,
-    ability: deathAbilityLabel(first),
+    // ⚠ ここで表示言語を決めない (この関数は DB 行を読む server 側で
+    //   locale を知らないまま呼ばれる)。言語の選択は表示直前に
+    //   `wipeAbilityLabel()` で行う。
+    ability: first.ability,
+    ...(typeof first.id === "number" ? { id: first.id } : {}),
+    ...(first.ja ? { ja: first.ja } : {}),
+    ...(first.en ? { en: first.en } : {}),
     cluster,
     total: sorted.length,
     phase: phaseAt(transitions, first.t),
@@ -386,13 +416,21 @@ export function unknownAbilityLabel(locale: FightDetailLocale = "ja"): string {
   return locale === "en" ? "Unknown" : "不明";
 }
 
+/** ワイプ原因の技名を表示言語で選ぶ (L-7、2026-09-08)。 */
+export function wipeAbilityLabel(
+  w: Pick<WipeSummary, "ability" | "ja" | "en">,
+  locale: FightDetailLocale = "ja",
+): string | null {
+  return deathAbilityLabel(w, locale);
+}
+
 /** ワイプ原因の表示ラベル (`WHM ← 技名 +2` の形)。 */
 export function formatWipeLabel(
   w: WipeSummary,
   locale: FightDetailLocale = "ja",
 ): string {
   const extra = w.cluster > 1 ? ` +${w.cluster - 1}` : "";
-  const ability = w.ability ?? unknownAbilityLabel(locale);
+  const ability = wipeAbilityLabel(w, locale) ?? unknownAbilityLabel(locale);
   return `${jobAbbr(w.job)} ← ${ability}${extra}`;
 }
 
@@ -410,7 +448,7 @@ export function wipeCauseCounts(
   const counts = new Map<string, number>();
   for (const w of wipes) {
     if (!w) continue;
-    const key = w.ability ?? unknownAbilityLabel(locale);
+    const key = wipeAbilityLabel(w, locale) ?? unknownAbilityLabel(locale);
     counts.set(key, (counts.get(key) ?? 0) + 1);
   }
   return [...counts.entries()]

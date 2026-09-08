@@ -1,5 +1,6 @@
 /**
- * 技名の日本語化 (src/lib/xivapi-actions.ts) の純関数部分の検証 (2026-09-06)。
+ * 技名の言語解決 (src/lib/xivapi-actions.ts) の純関数部分の検証
+ * (2026-09-06、L-7 で ja / en 両対応に 2026-09-08)。
  * 実行: `node scripts/check-xivapi-actions.mjs`
  *
  * XIVAPI 実 API には本環境から到達できないため、v2 の応答の形
@@ -46,16 +47,27 @@ try {
   );
   const m = await import(pathToFileURL(join(outDir, "xivapi-actions.js")).href);
 
-  console.log("\n[引くかどうか]");
-  check("英語名は引く", m.needsJapaneseLookup("Akh Morn"), true);
-  check("日本語名は引かない", m.needsJapaneseLookup("アク・モーン"), false);
-  check("null / 空は引かない", [m.needsJapaneseLookup(null), m.needsJapaneseLookup("")], [false, false]);
+  console.log("\n[引くかどうか — ja は英語名を、en は非英語名を引く]");
+  check("ja: 英語名は引く", m.needsLookup("Akh Morn", "ja"), true);
+  check("ja: 日本語名は引かない", m.needsLookup("アク・モーン", "ja"), false);
+  check("en: 日本語名は引く", m.needsLookup("アク・モーン", "en"), true);
+  check("en: 英語名は引かない", m.needsLookup("Akh Morn", "en"), false);
+  check(
+    "null / 空はどちらも引かない",
+    [m.needsLookup(null, "ja"), m.needsLookup("", "en")],
+    [false, false],
+  );
 
   console.log("\n[URL]");
   check(
     "重複除去 / 昇順 / 0 と負値を除く",
     m.buildActionSheetUrl([26814, 3, 26814, 0, -1, 3.5]),
     "https://v2.xivapi.com/api/sheet/Action?rows=3,26814&fields=Name&language=ja",
+  );
+  check(
+    "language は引数で切り替わる",
+    m.buildActionSheetUrl([1], "en"),
+    "https://v2.xivapi.com/api/sheet/Action?rows=1&fields=Name&language=en",
   );
 
   console.log("\n[応答のパース]");
@@ -82,7 +94,9 @@ try {
     { t: 5, job: "Bard", ability: "Doom" },
     { t: 6, job: "Bard", ability: "Slam", id: 99 },
   ];
-  check("重複除去 / 日本語済み / ID 無しを除く", m.collectLookupIds(events), [26814, 99]);
+  check("ja: 重複除去 / 日本語済み / ID 無しを除く", m.collectLookupIds(events, "ja"), [26814, 99]);
+  // en は判定が逆になる: 既に英語で入っている行は引かない。
+  check("en: 日本語で入っている行だけ引く", m.collectLookupIds(events, "en"), [26814]);
   check("chunk", m.chunk([1, 2, 3, 4, 5], 2), [[1, 2], [3, 4], [5]]);
   check("chunk 空", m.chunk([], 2), []);
 
@@ -91,12 +105,24 @@ try {
     [26814, "アク・モーン"],
     [99, "Slam"],
   ]);
-  const n = m.applyJapaneseNames(events, names);
+  const n = m.applyResolvedNames(events, names, "ja");
   check("書き換えた件数 (同名は書かない / 既存 ja は保持)", n, 2);
   check(
-    "書き戻し結果",
+    "書き戻し結果 (ja)",
     events.map((e) => e.ja ?? null),
     ["アク・モーン", "アク・モーン", null, "エクサフレア", null, null],
+  );
+  // en は `en` 欄に入る。ja を上書きしないこと。
+  const enEvents = [
+    { t: 1, job: "Bard", ability: "アク・モーン", id: 26814, ja: "アク・モーン" },
+    { t: 2, job: "Bard", ability: "Akh Morn", id: 26814 },
+  ];
+  const nEn = m.applyResolvedNames(enEvents, new Map([[26814, "Akh Morn"]]), "en");
+  check("en: 元の名前と同じ行は書かない", nEn, 1);
+  check(
+    "en: `en` 欄に入り ja は変わらない",
+    enEvents.map((e) => [e.ja ?? null, e.en ?? null]),
+    [["アク・モーン", "Akh Morn"], [null, null]],
   );
 } finally {
   rmSync(outDir, { recursive: true, force: true });

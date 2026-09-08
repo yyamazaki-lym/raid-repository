@@ -5,9 +5,12 @@ import { requireDiscordMember } from "./auth";
 import {
   asDeathEvents,
   asPhaseTransitions,
+  deathAbilityLabel,
   phaseAt,
   type StoredDeathEvent,
 } from "@/lib/fflogs-fight-detail";
+import { getLocale } from "@/lib/i18n/server";
+import { attachAbilityNames } from "./xivapi-action-names";
 
 /**
  * pull 1 本の構造化リキャップ (UI-14、2026-09-08)。
@@ -23,15 +26,26 @@ import {
  * ## 何を返さないか
  *
  * `death_events` は **プレイヤー名を持たない** (W-1 の設計。保存形は
- * `{t, job, ability, id, ja}`)。したがってこのリキャップにも名前は出ない。
- * 「誰が落ちたか」ではなく「どのジョブが何で落ちたか」を並べる。
+ * `{t, job, ability, id, ja, en}`)。したがってこのリキャップにも名前は
+ * 出ない。「誰が落ちたか」ではなく「どのジョブが何で落ちたか」を並べる。
+ *
+ * ## 技名は表示言語で出す (L-7、2026-09-08)
+ *
+ * 保存に**その言語の名前が無い pull は、ここで XIVAPI に引きに行く**。
+ * 同期時に解決した ja / en は保存済みだが、それ以前に取り込んだ pull には
+ * 何も入っていない。展開は「押したときだけ」なので、ここで 1 回引く方が
+ * 一覧の表示を待たせずに済む。
+ *
+ * ⚠ 引いた結果は**保存しない**。ここは読み取り (RLS の anon クライアント)
+ * で、書き戻すには service role が必要になる。保存済みデータの一括解決は
+ * 設定の「技名を解決」(admin) 側に置いてある。
  */
 
 export type PullDetailDeath = {
   /** pull 開始からの相対 ms。 */
   t: number;
   job: string | null;
-  /** 致命技の表示名 (日本語があれば日本語)。 */
+  /** 致命技の表示名 (表示言語で解決できたものがあればそれ)。 */
   ability: string | null;
   /** その時刻のフェーズ (遷移が取れていれば)。 */
   phase: number | null;
@@ -88,11 +102,15 @@ export async function fetchPullDetailAction(
   }
 
   const sorted = [...events].sort((a, b) => a.t - b.t);
+  // L-7: 表示言語の名前が欠けているぶんだけ XIVAPI に引く (in place)。
+  // 失敗しても元の名前で表示は続くので、戻り値は見ない。
+  const locale = await getLocale();
+  await attachAbilityNames(sorted, locale);
   const deaths: PullDetailDeath[] = sorted.map(
     (e: StoredDeathEvent, i: number) => ({
       t: e.t,
       job: e.job ?? null,
-      ability: e.ja ?? e.ability ?? null,
+      ability: deathAbilityLabel(e, locale),
       phase: phaseAt(transitions, e.t),
       sincePrev: i === 0 ? null : e.t - sorted[i - 1]!.t,
     }),

@@ -7,6 +7,9 @@ import {
   buildBossDamageTimeline,
   type BossDamageRow,
 } from "@/lib/logs/boss-damage-timeline";
+import { getLocale } from "@/lib/i18n/server";
+import { needsLookup } from "@/lib/xivapi-actions";
+import { resolveActionNames } from "./xivapi-action-names";
 
 /**
  * ボスの被ダメージ時系列 (W-10 + W-9 の x 軸、2026-09-08)。
@@ -26,6 +29,12 @@ import {
  * ⚠ 「どの技が軽減か」「軽減率は何%か」は出さない (`lib/logs/
  * boss-damage-timeline.ts` の docstring)。ゲーム側のデータ表を抱えると
  * パッチごとの保守が続かない。出すのは実測値だけ。
+ *
+ * ## 技名は表示言語で出す (L-7、2026-09-08)
+ *
+ * FFLogs が返す `ability.name` はアップロード元のクライアント言語なので、
+ * `ability.guid` をキーに XIVAPI で表示言語の名前へ差し替える。保存しない
+ * 経路なので、**取るたびに引き直す** (プロセス内キャッシュで足りる)。
  *
  * ## 上限
  *
@@ -161,6 +170,7 @@ export async function fetchBossDamageTimelineAction(
       relEnd,
       MIN_TOTAL_DAMAGE,
     );
+    await localizeRowAbilities(rows);
     return {
       ok: true,
       rows,
@@ -169,5 +179,26 @@ export async function fetchBossDamageTimelineAction(
   } catch (e) {
     console.warn("[boss-damage] fetch failed:", e);
     return { ok: false, reason: "FFLogs から取得できませんでした" };
+  }
+}
+
+/**
+ * 行の技名を表示言語に差し替える (in place、L-7 2026-09-08)。
+ *
+ * 既にその言語で入っている行 (`needsLookup` が false) と action ID が
+ * 無い行は触らない。解決できなければ FFLogs の名前がそのまま残る。
+ */
+async function localizeRowAbilities(rows: BossDamageRow[]): Promise<void> {
+  const locale = await getLocale();
+  const ids = rows
+    .filter((r) => r.abilityId !== null && needsLookup(r.ability, locale))
+    .map((r) => r.abilityId as number);
+  if (ids.length === 0) return;
+  const names = await resolveActionNames(ids, locale);
+  if (names.size === 0) return;
+  for (const r of rows) {
+    if (r.abilityId === null) continue;
+    const name = names.get(r.abilityId);
+    if (name) r.ability = name;
   }
 }
