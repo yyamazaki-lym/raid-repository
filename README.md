@@ -547,6 +547,16 @@ Open http://localhost:3000
 
 `supabase/schema.sql` は冪等です。スキーマ変更があったら同じ SQL を再実行すれば反映されます。
 
+## ドキュメント
+
+| ファイル | 内容 |
+|---|---|
+| [`docs/backlog.md`](docs/backlog.md) | **残タスク**。次に何をやるかはここから。調査ノートの W-番号 / UI-番号を実装順に並べ直し、実機で出た要望と運用上の注記を足したもの |
+| [`docs/ff14-tools-research-2026-09-06-wide.md`](docs/ff14-tools-research-2026-09-06-wide.md) | 機能候補の根拠 (第 4 回・広域調査)。各項目のメリット / デメリット / コスト / 優先度 |
+| [`docs/guides/log-runner.md`](docs/guides/log-runner.md) | ログ担当の手引き (計測の分担・公開範囲・パッチ週の注意・取り込みが動かないときの順番) |
+| [`docs/guides/discord-setup.md`](docs/guides/discord-setup.md) | Discord の推奨チャンネル構成と設定手順 |
+| [`docs/release-notes/`](docs/release-notes/) | 各リリースの本文 (画面に出る 1 行サマリーは `src/lib/changelog.ts`) |
+
 ## Brand assets
 
 ロゴは `public/brand/` にあります: `logo-mark.svg` (正方形マーク。クリスタル = 蓄積した知識の器、周囲の 8 点 = 8 人 PT で、上 2 点がタンク (青)、下 2 点がヒーラー (緑)、左右 4 点が DPS (赤))、`logo-wordmark-dark.svg` / `logo-wordmark-light.svg` (マーク + ワードマーク、背景の明暗別)。README の先頭ではダークテーマ / ライトテーマで自動的に切り替わります。アプリ側ではファビコン (`src/app/icon.svg`)、iOS ホーム画面アイコン (`src/app/apple-icon.png`)、ログイン画面、起動中スプラッシュにも同じマークを使っています。
