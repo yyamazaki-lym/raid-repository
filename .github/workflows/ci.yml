@@ -51,6 +51,9 @@ jobs:
       #     `npx tsc` で単体コンパイルして実データ相当の入力を通す
       #   - 予算・回帰ガード (check-fights-payload): 明細の転送量が上限の根拠を
       #     超えていないか
+      #   - SQL の静的照合 (check-seed-sql): seed-demo.sql は CI で **実行され
+      #     ない** (適用は main push 後の deploy-database-demo.yml) ので、
+      #     列名と ON CONFLICT の列組を schema.sql と突き合わせる
       #
       # 以前は changelog だけを CI で回していたため、他はローカルで走らせ忘れる
       # と壊れたまま通ってしまっていた。1 本でも落ちたらジョブを失敗させる。
