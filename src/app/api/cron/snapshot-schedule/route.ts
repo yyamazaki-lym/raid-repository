@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { runScheduleSnapshot } from "@/lib/server/schedule-snapshot";
 import { getScheduleSourceMode } from "@/lib/schedule/source-mode";
 import { fetchPortalSettings } from "@/lib/supabase/app-settings";
+import { NATIVE_RECURRING_DOWS_KEY } from "@/lib/schedule/recurring-frames";
 import {
   ensureNativeMonthlyPlaceholders,
   NATIVE_DEFAULT_END_TIME_KEY,
@@ -44,6 +45,8 @@ export async function GET(req: NextRequest) {
     await ensureNativeMonthlyPlaceholders({
       startTime: settings[NATIVE_DEFAULT_START_TIME_KEY],
       endTime: settings[NATIVE_DEFAULT_END_TIME_KEY],
+      // W-15 (2026-09-08): 定期枠が設定されていればその曜日だけ敷設する。
+      recurringDows: settings[NATIVE_RECURRING_DOWS_KEY],
     });
     return NextResponse.json({ ok: true, mode: "native", ensured: true });
   }

@@ -42,6 +42,9 @@ const AUTO_CONFIRM_MIN_AVAILABLE_KEY =
   "native_schedule_auto_confirm_min_available";
 const NATIVE_DISCORD_NOTIFY_ON_DECISION_KEY =
   "native_schedule_discord_notify_on_decision";
+// W-15 (2026-09-08): 定期枠の曜日 CSV。値の解釈は
+// `@/lib/schedule/recurring-frames` (このファイルは値をそのまま運ぶだけ)。
+const NATIVE_RECURRING_DOWS_KEY = "native_schedule_recurring_dows";
 
 export type NativeMemberRowFull = {
   discord_user_id: string;
@@ -77,6 +80,8 @@ export type NativeAdminAux = {
   discordNotifyChannelId: string | null;
   /** TODO #2 phase 4: mention 対象 role ID (空なら平文)。 */
   discordNotifyRoleId: string | null;
+  /** W-15 (2026-09-08): 定期枠の曜日 CSV (未設定 = null = 全日)。 */
+  recurringDows: string | null;
   /** TODO #2 候補 B: 通知時刻 (HH 文字列 "0"-"23", default "12")。 */
   discordNotifyHour: string;
   /** TODO #81: placeholder auto-insert の開始時刻 (HH:MM, default "21:00")。 */
@@ -123,6 +128,7 @@ export async function fetchNativeScheduleAdminAux(): Promise<NativeAdminAux> {
         NATIVE_DISCORD_NOTIFY_ON_DECISION_KEY,
         AUTO_CONFIRM_ENABLED_KEY,
         AUTO_CONFIRM_MIN_AVAILABLE_KEY,
+        NATIVE_RECURRING_DOWS_KEY,
       ]),
   ]);
 
@@ -154,5 +160,6 @@ export async function fetchNativeScheduleAdminAux(): Promise<NativeAdminAux> {
     autoConfirmEnabled: settingsMap[AUTO_CONFIRM_ENABLED_KEY] === "true",
     autoConfirmMinAvailable:
       settingsMap[AUTO_CONFIRM_MIN_AVAILABLE_KEY] ?? "8",
+    recurringDows: settingsMap[NATIVE_RECURRING_DOWS_KEY] ?? null,
   };
 }

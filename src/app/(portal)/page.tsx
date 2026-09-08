@@ -29,6 +29,7 @@ import {
   parseMaintenanceWindows,
 } from "@/lib/maintenance-schedule";
 import { jstTodayStartMs } from "@/lib/schedule/jst-cutoff";
+import { NATIVE_RECURRING_DOWS_KEY } from "@/lib/schedule/recurring-frames";
 import { fetchCategories } from "@/lib/supabase/categories";
 import { fetchRecruitmentTemplatesServer } from "@/lib/supabase/recruitment-templates";
 import {
@@ -222,6 +223,8 @@ export default async function SchedulePage() {
     const defaults = {
       startTime: settings[NATIVE_DEFAULT_START_TIME_KEY],
       endTime: settings[NATIVE_DEFAULT_END_TIME_KEY],
+      // W-15 (2026-09-08): 定期枠が設定されていればその曜日だけ敷設する。
+      recurringDows: settings[NATIVE_RECURRING_DOWS_KEY],
     };
     let result = await fetchNativeSchedule(defaults);
     const hasUpcoming =
@@ -301,6 +304,9 @@ export default async function SchedulePage() {
       isAdmin={isAdmin}
       nativeDefaultStartTime={appSettings[NATIVE_DEFAULT_START_TIME_KEY]}
       nativeDefaultEndTime={appSettings[NATIVE_DEFAULT_END_TIME_KEY]}
+      // W-15 (2026-09-08): 定期枠の曜日。予定表の「臨時 / 今回だけ」
+      // バッジと、候補日ダイアログの既定選択に使う。
+      nativeRecurringDows={appSettings[NATIVE_RECURRING_DOWS_KEY]}
     />
   );
 }

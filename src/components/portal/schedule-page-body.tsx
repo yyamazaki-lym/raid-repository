@@ -125,6 +125,12 @@ type Props = {
    */
   nativeDefaultStartTime?: string | null;
   nativeDefaultEndTime?: string | null;
+  /**
+   * W-15 (2026-09-08): 定期枠の曜日 CSV
+   * (`app_settings.native_schedule_recurring_dows`)。候補日ダイアログの
+   * 「繰り返し」の既定選択と、予定表の「臨時 / 今回だけ」バッジに使う。
+   */
+  nativeRecurringDows?: string | null;
 };
 
 export function SchedulePageBody({
@@ -148,6 +154,7 @@ export function SchedulePageBody({
   isAdmin = false,
   nativeDefaultStartTime = null,
   nativeDefaultEndTime = null,
+  nativeRecurringDows = null,
 }: Props) {
   const m = useMessages();
   // 2026-07-12 監査 C-3: recruitment_templates の realtime 購読はここで
@@ -251,6 +258,7 @@ export function SchedulePageBody({
             <CandidateDateDialog
               defaultStartTime={nativeDefaultStartTime}
               defaultEndTime={nativeDefaultEndTime}
+              recurringDows={nativeRecurringDows}
             />
           )}
           <RecruitmentTemplatesButton
@@ -330,6 +338,7 @@ export function SchedulePageBody({
         mode={mode}
         currentDiscordId={currentDiscordId}
         isAdmin={isAdmin}
+        recurringDows={nativeRecurringDows}
       />
     </div>
   );

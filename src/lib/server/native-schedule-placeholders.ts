@@ -7,6 +7,7 @@ import {
   NATIVE_DEFAULT_END_TIME_KEY,
   NATIVE_DEFAULT_START_TIME_KEY,
 } from "@/lib/schedule/native-defaults";
+import { isRecurringDow, parseRecurringDows } from "@/lib/schedule/recurring-frames";
 
 // 2.6 (2026-06-10): 純粋な定数は server / client 両方の境界から import 可能な
 // `src/lib/schedule/native-defaults.ts` に切り出し、ここでは re-export のみ
@@ -66,6 +67,13 @@ const TIME_RE = /^([01]?\d|2[0-3]):([0-5]\d)$/;
 type DefaultsInput = {
   startTime?: string | null;
   endTime?: string | null;
+  /**
+   * W-15 (2026-09-08): 定期枠の曜日 CSV
+   * (`app_settings.native_schedule_recurring_dows`)。設定されていれば
+   * **その曜日だけ** placeholder を作る。未設定 / 空なら従来どおり全日
+   * (既存デプロイの挙動を変えない — 判断は `recurring-frames.ts`)。
+   */
+  recurringDows?: string | null;
 };
 
 export async function ensureNativeMonthlyPlaceholders(
@@ -115,6 +123,17 @@ export async function ensureNativeMonthlyPlaceholders(
       candidates.push({ y: nextYear, m: nextMonth, d });
     }
   }
+
+  // W-15 (2026-09-08): 定期枠が設定されていれば、その曜日だけに絞る。
+  // 週 3 日の固定で当月全 30 日を並べると、7 割が無関係な行になり
+  // 「次にどこを埋めればいいか」が読みにくくなっていた。
+  const recurringDows = parseRecurringDows(defaults?.recurringDows);
+  const targeted = candidates.filter((c) =>
+    // 曜日は候補日の組み立て (下の rawDate) と同じ local-TZ Date で見る。
+    isRecurringDow(recurringDows, new Date(c.y, c.m, c.d).getDay()),
+  );
+  candidates.length = 0;
+  candidates.push(...targeted);
 
   if (candidates.length === 0) return;
 
