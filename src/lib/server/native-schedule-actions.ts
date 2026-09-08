@@ -26,7 +26,6 @@ import {
 import {
   expandRecurringDates,
   NATIVE_RECURRING_DOWS_KEY,
-  RECURRING_MAX_DATES,
   serializeRecurringDows,
 } from "@/lib/schedule/recurring-frames";
 
@@ -1174,5 +1173,3 @@ export async function createNativeScheduleSessionsBulkAction(
   return { ok: true, created: fresh.length, skipped, truncated };
 }
 
-/** 一括生成の上限 (UI の説明文で参照する)。 */
-export const BULK_CANDIDATE_MAX = RECURRING_MAX_DATES;

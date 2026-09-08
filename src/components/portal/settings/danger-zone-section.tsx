@@ -10,6 +10,7 @@ import type { DataInitResult } from "@/lib/server/admin-actions";
 import { clearAllFflogsLinks } from "@/lib/server/categories-actions";
 import { DataInitConfirmDialog } from "../data-init-confirm-dialog";
 import { useMessages } from "@/lib/i18n/client";
+import { CollapsibleSection } from "./collapsible-section";
 
 /**
  * TODO #66 (2026-05-02): settings-dialog.tsx 分割の一部。
@@ -20,8 +21,10 @@ import { useMessages } from "@/lib/i18n/client";
  * 2026-07-01: 破壊的リセット操作を 1 箇所へ集約する要望に合わせ、
  * FflogsSyncSection にあった「全 logs URL クリア」もここへ移設
  * (全データ初期化ほど破壊的ではないので上段に軽めの扱いで配置)。
- * さらに誤操作防止のため、セクション全体を折りたたみ (native <details>、
- * 既定は畳んだ状態) にして FFLogs OAuth / Session Cookie 節と流儀を揃える。
+ * さらに誤操作防止のため、セクション全体を折りたたみ (既定は畳んだ状態) に
+ * して FFLogs OAuth / Session Cookie 節と流儀を揃える。2026-09-08 に畳める
+ * 節を設定全体へ広げたので、折りたたみ自体は共通の `CollapsibleSection`
+ * に寄せた (開閉が localStorage に残るようになったのが差分)。
  *
  * onComplete は親 (settings-dialog) が ok 時に dialog 自体を閉じて
  * router.refresh() を発火するため。
@@ -39,87 +42,80 @@ export function DangerZoneSection({
 
   return (
     <>
-      <section>
-        <details className="group/danger flex flex-col gap-3">
-          <summary className="cursor-pointer list-none [&::-webkit-details-marker]:hidden">
-            <h3 className="flex items-center gap-2 border-b border-border/30 pb-2 font-mono text-[11px] tracking-[0.22em] text-rose-300 uppercase transition-colors hover:text-rose-200">
-              <span className="text-rose-300/80 transition-transform group-open/danger:rotate-90">
-                ▸
-              </span>
-              <AlertTriangle className="h-3.5 w-3.5" aria-hidden />
-              Danger Zone
-            </h3>
-          </summary>
-
-          {/* 全 logs URL クリア — FflogsSyncSection から集約 (2026-07-01)。
-              全データ初期化ほど破壊的ではないので outline ボタンで軽めに。 */}
-          <div className="flex flex-col gap-2.5 rounded-md border border-rose-400/30 bg-rose-400/5 p-3">
-            <p className="text-[12px] leading-relaxed text-rose-100/90">
-              {m.dangerZone.clearLogsDescription}
-            </p>
-            <div>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={async () => {
-                  const ok = await confirm({
-                    title: m.dangerZone.confirmClearTitle,
-                    description: m.dangerZone.confirmClearDescription,
-                    confirmText: m.common.clear,
-                    destructive: true,
-                  });
-                  if (!ok) return;
-                  startClearLogs(async () => {
-                    const r = await clearAllFflogsLinks();
-                    if (!r.ok) {
-                      toast.error(
-                        m.dangerZone.toastClearFailed(
-                          r.reason ?? m.dangerZone.unknownReason,
-                        ),
-                      );
-                      return;
-                    }
-                    toast.success(
-                      m.dangerZone.toastCleared(r.videosCleared, r.sessionsCleared),
+      <CollapsibleSection
+        id="danger-zone"
+        tone="danger"
+        icon={<AlertTriangle className="h-3.5 w-3.5" aria-hidden />}
+        title="Danger Zone"
+      >
+        {/* 全 logs URL クリア — FflogsSyncSection から集約 (2026-07-01)。
+            全データ初期化ほど破壊的ではないので outline ボタンで軽めに。 */}
+        <div className="flex flex-col gap-2.5 rounded-md border border-rose-400/30 bg-rose-400/5 p-3">
+          <p className="text-[12px] leading-relaxed text-rose-100/90">
+            {m.dangerZone.clearLogsDescription}
+          </p>
+          <div>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={async () => {
+                const ok = await confirm({
+                  title: m.dangerZone.confirmClearTitle,
+                  description: m.dangerZone.confirmClearDescription,
+                  confirmText: m.common.clear,
+                  destructive: true,
+                });
+                if (!ok) return;
+                startClearLogs(async () => {
+                  const r = await clearAllFflogsLinks();
+                  if (!r.ok) {
+                    toast.error(
+                      m.dangerZone.toastClearFailed(
+                        r.reason ?? m.dangerZone.unknownReason,
+                      ),
                     );
-                    router.refresh();
-                  });
-                }}
-                disabled={clearingLogs}
-                className="gap-1.5 text-[11px] tracking-normal text-rose-200"
-                title={m.dangerZone.clearLogsTitle}
-              >
-                {clearingLogs ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
-                ) : (
-                  <X className="h-3.5 w-3.5" aria-hidden />
-                )}
-                {clearingLogs
-                  ? m.dangerZone.clearing
-                  : m.dangerZone.clearLogsButton}
-              </Button>
-            </div>
+                    return;
+                  }
+                  toast.success(
+                    m.dangerZone.toastCleared(r.videosCleared, r.sessionsCleared),
+                  );
+                  router.refresh();
+                });
+              }}
+              disabled={clearingLogs}
+              className="gap-1.5 text-[11px] tracking-normal text-rose-200"
+              title={m.dangerZone.clearLogsTitle}
+            >
+              {clearingLogs ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+              ) : (
+                <X className="h-3.5 w-3.5" aria-hidden />
+              )}
+              {clearingLogs
+                ? m.dangerZone.clearing
+                : m.dangerZone.clearLogsButton}
+            </Button>
           </div>
+        </div>
 
-          <div className="flex flex-col gap-2.5 rounded-md border border-rose-400/30 bg-rose-400/5 p-3">
-            <p className="text-[12px] leading-relaxed text-rose-100/90">
-              {m.dangerZone.initDescription}
-            </p>
-            <div>
-              <Button
-                type="button"
-                size="sm"
-                onClick={() => setShowDataInitDialog(true)}
-                className="gap-1.5 border border-rose-400/50 bg-rose-500/20 text-[11px] tracking-normal text-rose-100 hover:bg-rose-500/30"
-              >
-                <AlertTriangle className="h-3.5 w-3.5" aria-hidden />
-                {m.dangerZone.initButton}
-              </Button>
-            </div>
+        <div className="flex flex-col gap-2.5 rounded-md border border-rose-400/30 bg-rose-400/5 p-3">
+          <p className="text-[12px] leading-relaxed text-rose-100/90">
+            {m.dangerZone.initDescription}
+          </p>
+          <div>
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => setShowDataInitDialog(true)}
+              className="gap-1.5 border border-rose-400/50 bg-rose-500/20 text-[11px] tracking-normal text-rose-100 hover:bg-rose-500/30"
+            >
+              <AlertTriangle className="h-3.5 w-3.5" aria-hidden />
+              {m.dangerZone.initButton}
+            </Button>
           </div>
-        </details>
-      </section>
+        </div>
+      </CollapsibleSection>
       <DataInitConfirmDialog
         open={showDataInitDialog}
         onOpenChange={setShowDataInitDialog}

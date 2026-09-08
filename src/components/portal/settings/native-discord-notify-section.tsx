@@ -17,6 +17,10 @@ import {
 } from "@/lib/server/native-schedule-actions";
 import { NATIVE_DISCORD_DEFAULT_TEMPLATE } from "@/lib/schedule/native-discord-template";
 import { useMessages } from "@/lib/i18n/client";
+import {
+  CollapsibleSection,
+  SectionBadge,
+} from "./collapsible-section";
 
 /**
  * TODO #2 phase 3 + phase 4 (2026-05-08): native スケジュール Discord 通知設定。
@@ -199,13 +203,18 @@ export function NativeDiscordNotifySection({
   };
 
   return (
-    <section className="flex flex-col gap-3">
-      <header className="flex items-center gap-2 border-b border-border/30 pb-2">
-        <Bell className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
-        <span className="font-mono text-[11px] tracking-[0.22em] text-muted-foreground uppercase">
-          Native Schedule Discord Notify
-        </span>
-      </header>
+    <CollapsibleSection
+      id="native-discord-notify"
+      icon={<Bell className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />}
+      title="Native Schedule Discord Notify"
+      // 畳んだままでも「毎日の通知を送っているか」が読めるようにする。
+      // これは開かずに知りたい情報 (出欠の催促と同じ扱い)。
+      badge={
+        <SectionBadge state={!loaded ? "loading" : enabled ? "on" : "off"}>
+          {!loaded ? "…" : enabled ? "ON" : "OFF"}
+        </SectionBadge>
+      }
+    >
 
       <p className="text-[12px] leading-relaxed text-muted-foreground">
         {m.nativeDiscordNotify.description}
@@ -432,6 +441,6 @@ export function NativeDiscordNotifySection({
           )}
         </div>
       </div>
-    </section>
+    </CollapsibleSection>
   );
 }

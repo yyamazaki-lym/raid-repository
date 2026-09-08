@@ -22,10 +22,12 @@ import { fetchAppSettings } from "@/lib/supabase/app-settings";
 import { FFLOGS_GUILD_ID_KEY } from "@/lib/fflogs-guild-keys";
 import {
   AUTO_DISCOVERY_LIMIT,
+  autoDiscoveryLimitPerRoute,
   FFLOGS_REPORT_SOURCE_KEY,
   parseFflogsReportSource,
   reportSourceReadiness,
   usesAutoDiscovery,
+  type FflogsAutoRoute,
 } from "@/lib/fflogs-report-source";
 import { jstYmdString } from "@/lib/jst-date";
 import {
@@ -148,7 +150,7 @@ export type FflogsFightsSyncResult =
       videoOffsetsSeeded: number;
       /**
        * W-5 (2026-09-07): 自動発見でこの回に新しく見つかった report 数
-       * (`fflogs_report_source` が guild / user のときだけ 0 以外)。
+       * (`fflogs_report_source` に経路が入っているときだけ 0 以外)。
        * 「設定したのに増えない」を画面で切り分けられるようにするため、
        * 発見できなかった理由は `discoveryNote` に入れる。
        */
@@ -157,6 +159,18 @@ export type FflogsFightsSyncResult =
       discoveryNote: string | null;
     }
   | { ok: false; reason: string };
+
+/**
+ * 自動発見の経路の表示名 (同期結果のトースト用)。
+ *
+ * 画面の設定 UI 側は i18n 辞書 (`logsNotify.routeLabels`) を使う。ここは
+ * 同期の結果文を組む場所で、辞書を import できない (server 側 / locale を
+ * 持たない) ため別に持つ。**表記は辞書の ja 側と揃えること。**
+ */
+const AUTO_ROUTE_LABEL: Record<FflogsAutoRoute, string> = {
+  guild: "guild から自動",
+  user: "自分のアカウントから自動",
+};
 
 type ReportRef = {
   code: string;
@@ -249,10 +263,11 @@ export async function syncFflogsFights(opts?: {
     // private レポートの fallback 用 (fflogs.ts の scrape と同じ保管場所)。
     getSecretValue("fflogs_session_cookie").catch(() => null),
   ]);
-  // (W-5, 2026-09-07) 自動発見。既定 (`links`) では何もしない。
-  // URL が貼られるまで portal がレポートを知れなかった状態を、guild または
+  // 自動発見 (W-5, 2026-09-07 / 経路ごとの ON/OFF は L-4, 2026-09-08)。
+  // URL が貼られるまで portal がレポートを知れなかった状態を、guild と
   // 接続アカウントのレポート一覧で埋める。どこを見るかは固定の運用で
   // 変わるので設定で選ぶ (`src/lib/fflogs-report-source.ts`)。
+  // 経路が 1 本も ON でなければ何もしない (= 従来の「貼られた URL のみ」)。
   let discovered = 0;
   let discoveryNote: string | null = null;
   {
@@ -260,54 +275,76 @@ export async function syncFflogsFights(opts?: {
       FFLOGS_REPORT_SOURCE_KEY,
       FFLOGS_GUILD_ID_KEY,
     ]);
-    const source = parseFflogsReportSource(settings[FFLOGS_REPORT_SOURCE_KEY]);
-    if (usesAutoDiscovery(source)) {
+    const routes = parseFflogsReportSource(settings[FFLOGS_REPORT_SOURCE_KEY]);
+    if (usesAutoDiscovery(routes)) {
+      const guildId = (settings[FFLOGS_GUILD_ID_KEY] ?? "").trim();
       // ここまで来ている = token があるので OAuth は接続済み。
-      const readiness = reportSourceReadiness({
-        source,
-        guildId: settings[FFLOGS_GUILD_ID_KEY],
+      const { usable, blocked } = reportSourceReadiness({
+        routes,
+        guildId,
         oauthConnected: true,
       });
-      if (!readiness.ready) {
-        discoveryNote =
-          readiness.missing === "guildId"
-            ? "guild ID が未設定です"
-            : "FFLogs OAuth が未接続です";
-      } else {
-        const found =
-          source === "guild"
-            ? await fetchFflogsGuildReports(
-                token,
-                (settings[FFLOGS_GUILD_ID_KEY] ?? "").trim(),
-                AUTO_DISCOVERY_LIMIT,
-              )
-            : await fetchFflogsRecentOwnReports(token, AUTO_DISCOVERY_LIMIT);
-        if (!found.ok) {
-          discoveryNote = found.reason;
-        } else {
-          // 除外したレポートを再び入れない。collectReportRefs は自前で
-          // blocklist を見ているので、発見側でも同じ表を引く (小さい表で、
-          // ここを省くと「誤取り込みで消したのに毎回復活する」になる)。
-          const { data: blocked } = await db
-            .from("fflogs_report_blocklist")
-            .select("report_code");
-          const blockedCodes = new Set(
-            ((blocked ?? []) as Array<{ report_code: string }>).map(
-              (r) => r.report_code,
-            ),
-          );
+      // 経路ごとの結果を 1 本の文にまとめる (呼び出し側はトースト 1 個で
+      // 出すため)。どの経路が詰まっているかを名指しできないと、両方 ON の
+      // ときに「どちらの設定を直せばいいか」が画面から分からない。
+      const notes: string[] = [];
+      for (const b of blocked) {
+        notes.push(
+          `${AUTO_ROUTE_LABEL[b.route]}: ` +
+            (b.missing === "guildId"
+              ? "guild ID が未設定です"
+              : "FFLogs OAuth が未接続です"),
+        );
+      }
+      if (usable.length > 0) {
+        // 1 回の発見枠を経路で分け合う。片方の一覧だけで枠を埋めると、
+        // もう片方が毎回 0 件になる。
+        const perRoute = autoDiscoveryLimitPerRoute(usable.length);
+        // 除外したレポートを再び入れない。collectReportRefs は自前で
+        // blocklist を見ているので、発見側でも同じ表を引く (小さい表で、
+        // ここを省くと「誤取り込みで消したのに毎回復活する」になる)。
+        // 経路ごとには引かない — 同じ表を 2 回読む意味が無い。
+        const { data: blockedRows } = await db
+          .from("fflogs_report_blocklist")
+          .select("report_code");
+        const blockedCodes = new Set(
+          ((blockedRows ?? []) as Array<{ report_code: string }>).map(
+            (r) => r.report_code,
+          ),
+        );
+        for (const route of usable) {
+          if (discovered >= AUTO_DISCOVERY_LIMIT) {
+            notes.push(
+              `${AUTO_ROUTE_LABEL[route]}: 今回の発見枠が埋まったので次回に回します`,
+            );
+            continue;
+          }
+          const found =
+            route === "guild"
+              ? await fetchFflogsGuildReports(token, guildId, perRoute)
+              : await fetchFflogsRecentOwnReports(token, perRoute);
+          if (!found.ok) {
+            notes.push(`${AUTO_ROUTE_LABEL[route]}: ${found.reason}`);
+            continue;
+          }
           for (const r of found.reports) {
+            if (discovered >= AUTO_DISCOVERY_LIMIT) break;
+            // 経路をまたいだ重複はここで落ちる: guild で見つけた分は
+            // 既に refs に入っているので user 側では弾かれる。
             if (!r.id || blockedCodes.has(r.id) || refs.has(r.id)) continue;
             // カテゴリと日付は付けない。zone / encounter からの振り分けは
             // 既存の取り込み処理が行う (URL 貼り付けと同じ扱い)。
             refs.set(r.id, { code: r.id, categoryId: null, sessionDate: null });
             discovered += 1;
           }
-          if (discovered === 0) {
-            discoveryNote = "新しいレポートはありませんでした";
-          }
         }
       }
+      // 「0 件」は他に言うことが無いときだけ出す。詰まっている経路がある
+      // なら、そちらを直すのが先なので前に出す。
+      if (discovered === 0 && notes.length === 0) {
+        notes.push("新しいレポートはありませんでした");
+      }
+      discoveryNote = notes.length > 0 ? notes.join(" / ") : null;
     }
   }
 

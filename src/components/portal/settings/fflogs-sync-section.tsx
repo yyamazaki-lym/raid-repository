@@ -28,6 +28,7 @@ import {
 } from "@/lib/server/categories-actions";
 import { getFflogsUsername } from "@/lib/schedule-url-store";
 import { useMessages } from "@/lib/i18n/client";
+import { CollapsibleSection } from "./collapsible-section";
 
 /**
  * TODO #68 (2026-05-02): 詳細診断パネル (~190 行) を別 chunk に分離。
@@ -248,13 +249,11 @@ export function FflogsSyncSection({
   };
 
   return (
-    <section className="flex flex-col gap-3">
-      <header className="flex items-center gap-2 border-b border-border/30 pb-2">
-        <BarChart3 className="h-3.5 w-3.5 text-amber-300" aria-hidden />
-        <span className="font-mono text-[11px] tracking-[0.22em] text-muted-foreground uppercase">
-          FFLogs Sync
-        </span>
-      </header>
+    <CollapsibleSection
+      id="fflogs-sync"
+      icon={<BarChart3 className="h-3.5 w-3.5 text-amber-300" aria-hidden />}
+      title="FFLogs Sync"
+    >
 
       {canEdit && (
         <>
@@ -936,6 +935,6 @@ export function FflogsSyncSection({
           </div>
         </>
       )}
-    </section>
+    </CollapsibleSection>
   );
 }
