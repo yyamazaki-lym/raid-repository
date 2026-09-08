@@ -58,6 +58,11 @@ export type NativeMemberRowFull = {
    * enum にしない。列が無い DB では undefined。
    */
   data_center?: string | null;
+  /**
+   * W-6 (2026-09-08): 出席の自動突合に使う FFLogs のキャラクター名。
+   * 未設定 (null) なら表示名での一致だけを試す。列が無い DB では undefined。
+   */
+  fflogs_character_name?: string | null;
 };
 
 export type NativeCancelledSessionRow = {
@@ -103,7 +108,10 @@ export async function fetchNativeScheduleAdminAux(): Promise<NativeAdminAux> {
   const [membersRes, cancelledRes, settingsRes] = await Promise.all([
     supabase
       .from("native_schedule_members")
-      .select("discord_user_id, display_name, sort_order, is_active, data_center")
+      .select(
+        // W-6 (2026-09-08): fflogs_character_name を追加 (出席突合の対応表)。
+        "discord_user_id, display_name, sort_order, is_active, data_center, fflogs_character_name",
+      )
       .order("sort_order", { ascending: true })
       .order("display_name", { ascending: true }),
     supabase

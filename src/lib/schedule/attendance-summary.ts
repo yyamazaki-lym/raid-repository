@@ -70,6 +70,36 @@ const UNDECIDED_SYMBOLS = new Set(["△"]);
 const NO_SYMBOLS = new Set(["×"]);
 
 /**
+ * 記号 1 個の分類 (W-6、2026-09-08 に切り出し)。
+ *
+ * `summarizeAttendance` の内訳計算と、出席の突合 (`attendance-actuals.ts`)
+ * の「回答は参加だったのか」判定が**同じ辞書**を通るようにするための関数。
+ * 分類の方針は上の docstring のとおりで、辞書外は `other` に落とす
+ * (知らない記号を参加可に寄せない)。
+ */
+export type AttendanceSymbolKind =
+  | "unanswered"
+  | "ok"
+  | "late"
+  | "partial"
+  | "undecided"
+  | "no"
+  | "other";
+
+export function classifyAttendanceSymbol(
+  raw: string | null | undefined,
+): AttendanceSymbolKind {
+  if (isUnanswered(raw)) return "unanswered";
+  const symbol = (raw ?? "").trim();
+  if (OK_SYMBOLS.has(symbol)) return "ok";
+  if (LATE_SYMBOLS.has(symbol)) return "late";
+  if (PARTIAL_SYMBOLS.has(symbol)) return "partial";
+  if (UNDECIDED_SYMBOLS.has(symbol)) return "undecided";
+  if (NO_SYMBOLS.has(symbol)) return "no";
+  return "other";
+}
+
+/**
  * 1 セッションの内訳を数える。
  *
  * `members` は表に出ている人の一覧 (`userId` と表示名)。`attendances` は
@@ -93,20 +123,14 @@ export function summarizeAttendance(
     unansweredNames: [],
   };
   for (const member of members) {
-    const raw = attendances[member.userId];
-    if (isUnanswered(raw)) {
+    const kind = classifyAttendanceSymbol(attendances[member.userId]);
+    if (kind === "unanswered") {
       out.unanswered += 1;
       out.unansweredNames.push(member.name);
       continue;
     }
-    const symbol = (raw ?? "").trim();
     out.answered += 1;
-    if (OK_SYMBOLS.has(symbol)) out.ok += 1;
-    else if (LATE_SYMBOLS.has(symbol)) out.late += 1;
-    else if (PARTIAL_SYMBOLS.has(symbol)) out.partial += 1;
-    else if (UNDECIDED_SYMBOLS.has(symbol)) out.undecided += 1;
-    else if (NO_SYMBOLS.has(symbol)) out.no += 1;
-    else out.other += 1;
+    out[kind] += 1;
   }
   return out;
 }

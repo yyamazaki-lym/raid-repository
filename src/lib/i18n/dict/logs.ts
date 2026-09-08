@@ -195,6 +195,11 @@ export const ja = {
     // W-5 (2026-09-07): 自動発見の結果。
     discovered: (n: number): string => `自動発見: 新しいレポート ${n} 件を候補に追加しました`,
     discoveryNote: (reason: string): string => `自動発見: ${reason}`,
+    // W-6 (2026-09-08): 出席の自動突合。
+    attendanceMatched: (rows: number): string =>
+      `出席の突合: ${rows} 件をメンバーに紐づけました`,
+    attendanceUnresolved: (rows: number, names: string): string =>
+      `出席の突合: ${rows} 件を紐づけ / 対応表に無い名前: ${names} — 設定のメンバー一覧で「ログ名」に入れてください`,
     failuresTitle: (n: number) =>
       `今回の同期で取得できなかったレポート (${n} 件)`,
     // レポート削除
@@ -586,6 +591,9 @@ export const en: LogsMessages = {
       ` — ${n} report(s) left for next time; press "Sync logs" again to continue`,
     discovered: (n) => `Auto-discovery: added ${n} new report(s) as candidates`,
     discoveryNote: (reason) => `Auto-discovery: ${reason}`,
+    attendanceMatched: (rows) => `Attendance: linked ${rows} row(s) to members`,
+    attendanceUnresolved: (rows, names) =>
+      `Attendance: linked ${rows} row(s) / unmapped names: ${names} — add them as "Log name" in the member list`,
     failuresTitle: (n) => `Reports that failed in this sync (${n})`,
     deleteConfirmTitle: (code) => `Remove report ${code} from practice logs?`,
     deleteConfirmDescription:

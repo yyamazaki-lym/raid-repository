@@ -158,6 +158,11 @@ export const ja = {
     /** W-33 ③ (2026-09-07): データセンター表記 (クロスプレイ前提)。 */
     dcLabel: "DC",
     dcPlaceholder: "例: Elemental",
+    // W-6 (2026-09-08): 出席の自動突合の対応表。
+    charNameLabel: "ログ名",
+    charNamePlaceholder: "ログ名 (例: Taro Yamada)",
+    charNameHint:
+      "FFLogs のログに出るキャラクター名。表示名と同じなら空のままで構いません (表示名でも一致を試します)。出席の自動突合にだけ使います。",
     sortLabel: "並び",
     sortPlaceholder: "並び",
     active: "有効",
@@ -913,6 +918,10 @@ export const en: SettingsMessages = {
     displayNamePlaceholder: "Display name",
     dcLabel: "DC",
     dcPlaceholder: "e.g. Elemental",
+    charNameLabel: "Log name",
+    charNamePlaceholder: "Log name (e.g. Taro Yamada)",
+    charNameHint:
+      "The character name that appears in FFLogs. Leave it empty when it matches the display name (that is tried too). Used only for attendance reconciliation.",
     sortLabel: "Sort",
     sortPlaceholder: "Sort",
     active: "Active",

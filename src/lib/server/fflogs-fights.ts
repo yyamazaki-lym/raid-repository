@@ -45,11 +45,16 @@ import {
 } from "@/lib/fflogs-sync-reason";
 import {
   extractDeathEvents,
+  extractPlayerNames,
   normalizePhaseTransitions,
   type StoredDeathEvent,
   type StoredPhaseTransition,
 } from "@/lib/fflogs-fight-detail";
 import { attachJapaneseAbilityNames } from "./xivapi-action-names";
+import {
+  recordAttendanceActuals,
+  type ReportParticipants,
+} from "./attendance-actuals";
 
 /**
  * FFLogs の pull 単位データ (fights) を portal に materialize する
@@ -157,6 +162,18 @@ export type FflogsFightsSyncResult =
       discovered: number;
       /** 自動発見が動かなかった / 失敗した理由 (動いたときは null)。 */
       discoveryNote: string | null;
+      /**
+       * W-6 (2026-09-08): 出席の自動突合。ログの参加者名をメンバーに解決
+       * できた (レポート × 人) の行数と、解決できなかった名前。
+       *
+       * 画面に出す理由: 参加者名が Summary table のどの項目に入るかは
+       * **実データでしか確かめられない**ため、0 件のまま黙って動かない状態を
+       * 見分けられる必要がある (0 / 0 なら対応表ではなく取得側の問題)。
+       */
+      attendanceMatched: number;
+      attendanceUnresolved: number;
+      /** 対応表に無かった名前 (最大 12 件、admin にそのまま見せる)。 */
+      attendanceUnresolvedNames: string[];
     }
   | { ok: false; reason: string };
 
@@ -210,6 +227,19 @@ export type FightDetail = {
    * プレイヤー名は含めない。deathEvents が無ければ null。
    */
   deathEvents: StoredDeathEvent[] | null;
+  /**
+   * W-6 (2026-09-08): この pull に映っていたプレイヤー名。
+   *
+   * ⚠ **DB には保存しない。** 同期処理のメモリ内で対応表に解決し、
+   * `(JST 暦日, メンバーキー, pull 数)` にしてから
+   * `fflogs_attendance_actuals` へ書く (名前を pull 行の隣に置くと
+   * `death_events` と結合して「誰が落ちたか」を復元できてしまう。
+   * 詳細は schema.sql 6b-9 節)。
+   *
+   * 取れなかった場合は null。`baseRow` / `detailedRows` の payload に
+   * この項目を**足さないこと**。
+   */
+  players: string[] | null;
 };
 
 /**
@@ -368,6 +398,9 @@ export async function syncFflogsFights(opts?: {
       // 「guild ID が未設定」などの理由が要る (2026-09-07 マージ前レビュー)。
       discovered,
       discoveryNote,
+      attendanceMatched: 0,
+      attendanceUnresolved: 0,
+      attendanceUnresolvedNames: [],
     };
   }
 
@@ -500,6 +533,10 @@ export async function syncFflogsFights(opts?: {
   // 通知の「新レポート N 件」と、ベスト更新 / 初討伐の判定対象になる。
   const newReportsByCategory = new Map<string, number>();
   let failed = 0;
+  // W-6 (2026-09-08): 出席の自動突合。レポートごとの参加者名を集め、
+  // ループの後で 1 回だけメンバーキーに解決して保存する
+  // (名前はここから DB へ行かない。詳細は ./attendance-actuals.ts)。
+  const attendanceReports: ReportParticipants[] = [];
   const failures: Array<{ reportCode: string; reason: string }> = [];
   let truncated = targets.length > sliced.length;
 
@@ -674,6 +711,26 @@ export async function syncFflogsFights(opts?: {
       const plainRows = acceptedFights
         .filter((f) => !details.has(f.id))
         .map(baseRow);
+      // W-6 (2026-09-08): このレポートに映っていた人を pull 数で数える。
+      // `players` は DB へ行かない (FightDetail の docstring 参照)。
+      if (details.size > 0) {
+        const pullsByName = new Map<string, number>();
+        for (const d of details.values()) {
+          for (const name of d.players ?? []) {
+            pullsByName.set(name, (pullsByName.get(name) ?? 0) + 1);
+          }
+        }
+        if (pullsByName.size > 0) {
+          attendanceReports.push({
+            reportCode: ref.code,
+            sessionDate,
+            participants: [...pullsByName.entries()].map(([name, pulls]) => ({
+              name,
+              pulls,
+            })),
+          });
+        }
+      }
       let upsertOk = false;
       for (const rows of [detailedRows, plainRows]) {
         if (rows.length === 0) continue;
@@ -876,10 +933,17 @@ export async function syncFflogsFights(opts?: {
     console.warn("[fflogs-fights] logs notify failed:", e);
   }
 
+  // (f) W-6 (2026-09-08): 出席の自動突合。参加者名をメンバーキーに解決して
+  //     保存する。同期本体は成功しているので、ここが落ちても同期は成功扱い。
+  const attendance = await recordAttendanceActuals(attendanceReports);
+
   return {
     ok: true,
     notified,
     videoOffsetsSeeded,
+    attendanceMatched: attendance.matched,
+    attendanceUnresolved: attendance.unresolved,
+    attendanceUnresolvedNames: attendance.unresolvedNames,
     discovered,
     discoveryNote,
     reportsKnown: refs.size,
@@ -1592,6 +1656,12 @@ export function parseSummaryTable(
   const deathEvents = Array.isArray(data["deathEvents"])
     ? (data["deathEvents"] as unknown[])
     : null;
+  // W-6 (2026-09-08): 参加者名。Summary table の `composition` が PT 構成の
+  // 配列で、無い実装 / 版でも `damageDone` の各行が名前を持つのでそちらを
+  // 代替に使う (どちらの形で返ってくるかは実データでしか確かめられない
+  // ため、両方を見る)。名前は呼び出し側のメモリから出ない。
+  const players =
+    extractPlayerNames(data["composition"]) ?? extractPlayerNames(damageDone);
   if (!damageDone && !deathEvents) return null;
 
   let partyDps: number | null = null;
@@ -1614,8 +1684,10 @@ export function parseSummaryTable(
     partyDps,
     deaths: deathEvents ? deathEvents.length : null,
     deathEvents: storedDeaths,
+    players,
   };
 }
+
 
 async function postGraphql(
   token: string,

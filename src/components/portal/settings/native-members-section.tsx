@@ -45,7 +45,12 @@ const generateLocalKey = () =>
 
 type DraftMap = Record<
   string,
-  { displayName: string; sortOrder: string; dataCenter: string }
+  {
+    displayName: string;
+    sortOrder: string;
+    dataCenter: string;
+    characterName: string;
+  }
 >;
 
 export function NativeMembersSection({
@@ -73,6 +78,7 @@ export function NativeMembersSection({
       displayName: mem.display_name,
       sortOrder: String(mem.sort_order),
       dataCenter: mem.data_center ?? "",
+      characterName: mem.fflogs_character_name ?? "",
     };
 
   const setDraft = (
@@ -81,6 +87,7 @@ export function NativeMembersSection({
       displayName: string;
       sortOrder: string;
       dataCenter: string;
+      characterName: string;
     }>,
   ) => {
     setDrafts((prev) => {
@@ -92,8 +99,14 @@ export function NativeMembersSection({
               displayName: mem.display_name,
               sortOrder: String(mem.sort_order),
               dataCenter: mem.data_center ?? "",
+              characterName: mem.fflogs_character_name ?? "",
             }
-          : { displayName: "", sortOrder: "0", dataCenter: "" });
+          : {
+              displayName: "",
+              sortOrder: "0",
+              dataCenter: "",
+              characterName: "",
+            });
       return { ...prev, [id]: { ...cur, ...patch } };
     });
   };
@@ -147,6 +160,7 @@ export function NativeMembersSection({
       displayName?: string;
       sortOrder?: number;
       dataCenter?: string | null;
+      fflogsCharacterName?: string | null;
     } = {};
     if (draft.displayName.trim() !== mem.display_name) {
       const v = draft.displayName.trim();
@@ -168,6 +182,10 @@ export function NativeMembersSection({
     // 現在値が null のときだけ「変更なし」と見なす。
     if (draft.dataCenter.trim() !== (mem.data_center ?? "")) {
       patch.dataCenter = draft.dataCenter.trim();
+    }
+    // W-6 (2026-09-08): 出席突合の対応表。DC と同じく空文字列 = 未設定に戻す。
+    if (draft.characterName.trim() !== (mem.fflogs_character_name ?? "")) {
+      patch.fflogsCharacterName = draft.characterName.trim();
     }
     if (Object.keys(patch).length === 0) {
       clearDraft(mem.discord_user_id);
@@ -265,7 +283,8 @@ export function NativeMembersSection({
             const dirty =
               draft.displayName !== mem.display_name ||
               draft.sortOrder !== String(mem.sort_order) ||
-              draft.dataCenter.trim() !== (mem.data_center ?? "");
+              draft.dataCenter.trim() !== (mem.data_center ?? "") ||
+              draft.characterName.trim() !== (mem.fflogs_character_name ?? "");
             return (
               <li
                 key={mem.discord_user_id}
@@ -295,6 +314,28 @@ export function NativeMembersSection({
                     }
                     disabled={!canEdit || pending}
                     placeholder={m.nativeMembers.displayNamePlaceholder}
+                    className="h-7 text-xs"
+                  />
+                  {/* W-6 (2026-09-08): 出席の自動突合の対応表。FFLogs のログに
+                      出る名前と表示名が違う人だけ入れればよい (空なら表示名で
+                      一致を試す)。名前はこの列にだけ保存され、突合結果の表は
+                      名前を持たない (schema.sql 6b-9 節)。
+                      ⚠ 独立した列にすると行が横に溢れる (実測: 1440px 幅でも
+                      ダイアログに横スクロールが出た) ので、**表示名の下に積む**。
+                      ラベルは placeholder に含めて 1 行に収めている。 */}
+                  <Input
+                    type="text"
+                    value={draft.characterName}
+                    maxLength={64}
+                    onChange={(e) =>
+                      setDraft(mem.discord_user_id, {
+                        characterName: e.target.value,
+                      })
+                    }
+                    disabled={!canEdit || pending}
+                    placeholder={m.nativeMembers.charNamePlaceholder}
+                    title={m.nativeMembers.charNameHint}
+                    aria-label={m.nativeMembers.charNameLabel}
                     className="h-7 text-xs"
                   />
                 </div>

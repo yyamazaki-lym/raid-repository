@@ -192,6 +192,42 @@ export function extractDeathEvents(
 }
 
 /**
+ * Summary table の配列 (`composition` or `damageDone`) から参加者名を拾う
+ * (W-6、2026-09-08)。
+ *
+ * ⚠ **この名前は DB に保存しない。** 同期処理のメモリ内で対応表に解決し、
+ * `(JST 暦日, メンバーキー, pull 数)` にしてから保存する
+ * (詳細は `schema.sql` 6b-9 節と `schedule/attendance-actuals.ts`)。
+ *
+ * `composition` (PT 構成の配列) と `damageDone` (個人別の内訳) のどちらが
+ * 名前を持つかは**実データでしか確かめられない**ので、呼び出し側が両方を
+ * 順に試せる形にしてある。名前が 1 つも取れなければ `null` — 「0 人だった」
+ * (= その日は誰も映っていない、異常) と「そもそも名前を持たない形だった」
+ * (= 機能が使えない) を呼び出し側で区別するため。
+ *
+ * ペット / NPC 行 (`type: "Pet"` / `"NPC"`) は落とす。FFXIV ではジョブ名が
+ * `type` に入るので、その 2 語以外は素通しでよい。
+ */
+export function extractPlayerNames(rows: unknown): string[] | null {
+  if (!Array.isArray(rows)) return null;
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const row of rows) {
+    if (!row || typeof row !== "object") continue;
+    const r = row as Record<string, unknown>;
+    const type = stringOrNull(r["type"]) ?? "";
+    if (type === "Pet" || type === "NPC") continue;
+    const name = (stringOrNull(r["name"]) ?? "").trim();
+    // 64 字超はキャラ名ではない (FFXIV の上限は 20 字程度)。制御文字入りも落とす。
+    if (!name || name.length > 64 || /[\u0000-\u001f\u007f]/.test(name)) continue;
+    if (seen.has(name)) continue;
+    seen.add(name);
+    out.push(name);
+  }
+  return out.length > 0 ? out : null;
+}
+
+/**
  * fights の `phaseTransitions` を保存形に変換する。
  * - 時刻は pull 相対に直し、昇順に並べる
  * - 同じ ID が連続する遷移は 1 つに畳む
