@@ -1,8 +1,9 @@
 /**
- * セッションサマリー (W-3) とチーム実績バッジ (W-31)。2026-09-07。
+ * セッションサマリー (W-3) / チーム実績バッジ (W-31) / 層ごとの初討伐 (L-1)。
+ * 2026-09-07〜08。
  *
- * どちらも `fflogs_fights` に既に入っている列 (start_ms / end_ms / kill /
- * deaths) の集計だけで、新しい取得は要らない。
+ * どれも `fflogs_fights` に既に入っている列 (start_ms / end_ms / kill /
+ * deaths / encounter_id) の集計だけで、新しい取得は要らない。
  *
  * ## W-3 セッションサマリー
  *
@@ -19,6 +20,13 @@
  * **個人ではなくチームの実績**だけを出す (個人 DPS / 出席率のランキングを
  * 作らないという方針と整合)。種類は 4 つに絞る — バッジを乱発すると
  * 陳腐化して誰も見なくなる (調査ノートのデメリット欄)。
+ *
+ * ## L-1 層ごとの初討伐
+ *
+ * W-31 の「初討伐」はティア全体で 1 つだけなので、零式では「3 層をいつ
+ * 抜けたか」が残らない。層ごとに初討伐の日時 / pull 数 / 所要時間を出す
+ * (絶の「各フェーズへの初到達」= `firstPhaseReaches` の層版)。詳細は
+ * `floorFirstClears` の docstring。
  *
  * 検証: `node scripts/check-fflogs-session.mjs`
  */
@@ -188,4 +196,96 @@ export function teamBadgeToneClass(kind: TeamBadgeKind): string {
     case "clears":
       return "border-violet-400/45 bg-violet-400/10 text-violet-200";
   }
+}
+
+/**
+ * 層ごとの初討伐に必要な最小の pull 情報 (L-1、2026-09-08)。
+ *
+ * 層 index は呼び出し側が `FloorMap.byEncounter` で解決して渡す — ここで
+ * `fflogs-progress.ts` の型を引くと、単体コンパイルで検証する方針
+ * (`scripts/check-fflogs-session.mjs`) が崩れるため。層クラスタ外の pull は
+ * 呼び出し側で除外済みとする (`filterToFloorCluster`)。
+ */
+export type FloorClearFight = {
+  startMs: number;
+  endMs: number;
+  kill: boolean;
+  /** 層 index (1 始まり)。前半 / 後半に分かれる層は別 index。 */
+  floorIndex: number;
+  /** JST 暦日 `YYYY-MM-DD`。無ければ null (表示側が startMs で補う)。 */
+  sessionDate?: string | null;
+};
+
+/** 表示用: ある層を初めて討伐した時点 (L-1、2026-09-08)。 */
+export type FloorFirstClear = {
+  /** 層 index (1 始まり)。表示ラベルは呼び出し側が `floorLabel` で引く。 */
+  index: number;
+  /**
+   * **その層の**累計戦闘時間 (ms、討伐した pull 自身を含む)。絶の
+   * 「初到達まで」と同じ意味の値だが、母数がフェーズではなく層になる。
+   */
+  ms: number;
+  /** その層で何本目の pull だったか (1 始まり)。 */
+  pulls: number;
+  /** ティア全体で何本目の pull だったか (1 始まり)。層を行き来する零式向け。 */
+  overallPulls: number;
+  /** 初討伐の日 (`YYYY-MM-DD`)。取れなければ null。 */
+  date: string | null;
+  /** 初討伐 pull の開始時刻 (ms)。hover に実時刻を出すのに使う。 */
+  startMs: number;
+};
+
+/**
+ * 層ごとの初討伐 (L-1、2026-09-08 実機要望)。
+ *
+ * 絶には「各フェーズへの初到達」(`firstPhaseReaches`) があるのに、零式には
+ * 層ごとの節目が無く、チーム実績バッジの「初討伐」もティア全体で 1 つだけ
+ * だった。層フィルタがあるのだから層ごとに出す、というのがこの関数。
+ *
+ * ## pull 数を 2 つ返す理由
+ *
+ * 零式は**層を行き来する** (4 層で詰まっている間に 1〜3 層を消化で回す) ので、
+ * 「その層に何本かけたか」(`pulls`) が実態に合う。一方で絶の「初到達まで」は
+ * ティア開始からの通し番号なので、一貫性のために通算 (`overallPulls`) も返す。
+ * どちらを前に出すかは表示側の判断 (`floor-clear-card.tsx`)。
+ *
+ * ## 数え方
+ *
+ * 入力は順不同で良い (ここで開始時刻の昇順に並べ替える)。討伐した pull 自身を
+ * 含めて数える (絶の `firstPhaseReaches` と同じ)。同じ層の 2 回目以降の討伐は
+ * 無視する。討伐が 1 度も無い層は返さない — 「未討伐」の行を並べても
+ * 「まだ倒していない」以上の情報が無く、層フィルタのチップで足りる。
+ */
+export function floorFirstClears(
+  fights: ReadonlyArray<FloorClearFight>,
+): FloorFirstClear[] {
+  const sorted = [...fights]
+    .filter(
+      (f) =>
+        Number.isFinite(f.startMs) &&
+        Number.isFinite(f.endMs) &&
+        Number.isFinite(f.floorIndex),
+    )
+    .sort((a, b) => a.startMs - b.startMs);
+  const out = new Map<number, FloorFirstClear>();
+  const perFloorMs = new Map<number, number>();
+  const perFloorPulls = new Map<number, number>();
+  let overall = 0;
+  for (const f of sorted) {
+    overall += 1;
+    const ms = (perFloorMs.get(f.floorIndex) ?? 0) + Math.max(0, f.endMs - f.startMs);
+    const pulls = (perFloorPulls.get(f.floorIndex) ?? 0) + 1;
+    perFloorMs.set(f.floorIndex, ms);
+    perFloorPulls.set(f.floorIndex, pulls);
+    if (!f.kill || out.has(f.floorIndex)) continue;
+    out.set(f.floorIndex, {
+      index: f.floorIndex,
+      ms,
+      pulls,
+      overallPulls: overall,
+      date: f.sessionDate ?? null,
+      startMs: f.startMs,
+    });
+  }
+  return [...out.values()].sort((a, b) => a.index - b.index);
 }

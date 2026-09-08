@@ -986,12 +986,22 @@ function SessionRow({
               (1.9.27). */}
           {/* UI-9 (2026-09-07): 行の出欠内訳。8 列を目で追わずに
               「何人 OK / 未回答何人」が分かるようにする。内訳と未回答者の
-              名前は hover に入れる (常時見せると監視感が出る)。 */}
-          <AttendanceSummaryChip
-            users={users}
-            attendances={session.attendances}
-            reserveSpace
-          />
+              名前は hover に入れる (常時見せると監視感が出る)。
+
+              L-2 (2026-09-08): 過去行 (`isPast`) には出さない。チップの価値は
+              「まだ埋まっていない予定の成立判断と催促」にあり、回答が確定した
+              過去行では同じ行に 1 人 1 列で並ぶ記号と情報が重複して幅だけを
+              食う。PAST 詳細ログは upcoming とは別 table なので、
+              `reserveSpace` のプレースホルダごと落として構わない
+              (縦揃えは table 単位でしか要らない。理由は
+              `attendance-summary-chip.tsx` の docstring)。 */}
+          {!isPast && (
+            <AttendanceSummaryChip
+              users={users}
+              attendances={session.attendances}
+              reserveSpace
+            />
+          )}
           <SessionMemoDot
             count={memos.length}
             reserveSpace={slots.memo}

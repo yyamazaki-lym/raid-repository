@@ -22,6 +22,7 @@
 | `stat-card.tsx` | 上部サマリのタイル (`StatCard`) と総 pull の内訳チップ (`PullBreakdownChips`) |
 | `wipe-causes-card.tsx` | ワイプ原因の内訳カード (W-1) |
 | `phase-time-card.tsx` | フェーズ滞在時間 + 各フェーズへの初到達 (W-2、絶のみ) |
+| `floor-clear-card.tsx` | 各層の初討伐 (L-1、零式のみ。絶の「初到達まで」の層版) |
 | `phase-span-bar.tsx` | 1 pull のフェーズ滞在バー (`pull-row.tsx` が使う) |
 | `day-row.tsx` | 日ごとの行 (見出し + 開いたときの pull 一覧 + 管理バー) |
 | `pull-row.tsx` | pull 1 本の行 (時刻 / 層・フェーズ / 結果 / PT 指標 / 各種リンク) |
@@ -37,8 +38,8 @@
 
 ```
 logs-view.tsx
-  ├── stat-card / wipe-causes-card / phase-time-card / team-badges-card
-  │   / trend-card / failed-list
+  ├── stat-card / wipe-causes-card / phase-time-card / floor-clear-card
+  │   / team-badges-card / trend-card / failed-list
   ├── offset-dialog
   │     └── video-sync-panel
   └── day-row
@@ -62,6 +63,12 @@ logs-view.tsx
   `video-sync-panel.tsx` は外部プレーヤーと `postMessage` するだけで、
   保存はしません (オフセットの値を `offset-dialog` に返すところまで)。同期・取り込み・
   診断・再分類は `logs-view.tsx` 側です。
+- **絶と零式で同じ枠に同じ性質の情報を置く** (2026-09-08、L-1)。
+  ワイプ原因の右隣 (`sm:grid-cols-2` の 2 枠目) は、絶では
+  `phase-time-card`、零式では `floor-clear-card` が占めます。どちらも
+  「区間ごとの節目」で、コンテンツ種別が変わっても目の行き先が変わりません。
+  幅の実測値と、値を足すときに何を hover へ退避するかは
+  `floor-clear-card.tsx` の docstring にあります。
 - **グラフライブラリを入れない**。`trend-card.tsx` の折れ線はインライン SVG
   (座標は `@/lib/fflogs-trend` の `sparklinePath()` が組む純関数)。
   recharts / chart.js は 50〜200 KB の client bundle が乗るので、折れ線 1 枚

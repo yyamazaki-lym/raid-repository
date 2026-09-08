@@ -219,6 +219,9 @@ export const RELEASES: ReleaseEntry[] = [
       {
         title: "🔎 レポートの自動発見を追加 (貼られた URL のみ / guild から / 自分のアカウントから の 3 択)",
       },
+      {
+        title: "🏁 練習ログ: 零式の層ごとに「初討伐」を表示 (その層の pull 数 + 通算 / 所要時間 / 日時)",
+      },
     ],
   },
 ];
