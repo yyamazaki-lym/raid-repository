@@ -203,19 +203,18 @@ export function NativeDiscordNotifySection({
   };
 
   return (
+    // badge は「畳んだままでも毎日の通知を送っているかが読める」ようにする
+    // ためのもの。これは開かずに知りたい情報 (出欠の催促と同じ扱い)。
     <CollapsibleSection
       id="native-discord-notify"
       icon={<Bell className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />}
       title="Native Schedule Discord Notify"
-      // 畳んだままでも「毎日の通知を送っているか」が読めるようにする。
-      // これは開かずに知りたい情報 (出欠の催促と同じ扱い)。
       badge={
         <SectionBadge state={!loaded ? "loading" : enabled ? "on" : "off"}>
           {!loaded ? "…" : enabled ? "ON" : "OFF"}
         </SectionBadge>
       }
     >
-
       <p className="text-[12px] leading-relaxed text-muted-foreground">
         {m.nativeDiscordNotify.description}
       </p>

@@ -254,7 +254,6 @@ export function FflogsSyncSection({
       icon={<BarChart3 className="h-3.5 w-3.5 text-amber-300" aria-hidden />}
       title="FFLogs Sync"
     >
-
       {canEdit && (
         <>
           {/* v1 表示名 (基本) — Public レポートを取得する最も簡単な

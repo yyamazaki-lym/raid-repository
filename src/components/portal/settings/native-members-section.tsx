@@ -240,7 +240,6 @@ export function NativeMembersSection({
       icon={<Users className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />}
       title="Native Schedule Members"
     >
-
       <p className="text-[12px] leading-relaxed text-muted-foreground">
         {m.nativeMembers.description}
         <br />

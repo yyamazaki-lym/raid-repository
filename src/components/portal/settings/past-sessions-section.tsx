@@ -250,7 +250,6 @@ export function PastSessionsSection({
       }
       title="Past Sessions from Discord"
     >
-
       <div className="flex flex-col gap-2">
         <Label
           htmlFor="discord-schedule-channel"

@@ -108,7 +108,6 @@ export function NativeChoiceValuesSection({
       }
       title="Native Schedule Choice Values"
     >
-
       <p className="text-[12px] leading-relaxed text-muted-foreground">
         {m.nativeChoices.description}
       </p>

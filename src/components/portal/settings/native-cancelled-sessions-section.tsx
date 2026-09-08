@@ -98,7 +98,6 @@ export function NativeCancelledSessionsSection({
       }
       title="Native Schedule Cancelled Sessions"
     >
-
       <p className="text-[12px] leading-relaxed text-muted-foreground">
         {m.nativeCancelled.description}
       </p>
