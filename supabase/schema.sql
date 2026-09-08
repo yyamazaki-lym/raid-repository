@@ -2323,6 +2323,165 @@ REVOKE EXECUTE ON FUNCTION public.practice_seconds_by_category() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.practice_seconds_by_category()
   TO anon, authenticated;
 
+-- ---- 13c-3. per-day progress aggregate RPC (UI-2、2026-09-08) ---------
+-- /category 一覧のカードに「日別の到達度スパークライン」を出すための集計
+-- (調査ノート第 4 回 8-3 UI-2「今どこまで来たか がタブを開かずカードで
+-- 分かる」)。
+--
+-- ## なぜ DB 側でやるか
+--
+-- 到達度の計算 (`progressValue` / `progressTimeline`) は「突破済み区間数 +
+-- 現在区間の削り」なので **ティア全体の区間数**が要る。区間数は全期間の
+-- encounter を見ないと決まらないのに、カードに出したいのは直近数週間だけ。
+-- JS 側で出そうとすると全 pull を /category に転送することになる
+-- (13c-2 と同じ問題)。ここで「日 × カテゴリ」の数十行に縮約する。
+--
+-- ## 区間の決め方
+--
+-- 1. カテゴリの distinct encounter_id が 2 つ以上 → **層モデル**。
+--    区間 index は encounter_id の dense_rank、区間数はその総数。
+--    ⚠ 同じレポートに混ざった別コンテンツ (エキスパート等) を除くため、
+--      **pull 数が最大の encounter から ±7 の範囲**だけをティアとみなす。
+--      TS 側 `buildFloorMap` の「幅 8 の窓で pull 数最大のクラスタ」の
+--      近似で、FFLogs のティア encounter が連番であることに依存している。
+--      厳密な判定は従来どおり練習ログ画面が行う (カードは要約)。
+-- 2. encounter が 1 つだけ (絶 / 討滅) → **フェーズモデル**。
+--    区間 index は last_phase、区間数はカテゴリ全期間の max(last_phase)。
+-- 3. どちらも決まらなければ segment_count = NULL を返し、呼び出し側は
+--    「100 − 残 HP%」に倒す (`progressValue` と同じ分岐)。
+--
+-- 残 HP% は **その日の最深区間の中**で最小を採る。層を跨いで最小を採ると
+-- 消化で下層を倒した日が必ず「残 0%」になる (2026-08-28 実機報告と同じ罠)。
+--
+-- STABLE read-only。fflogs_fights の SELECT は RLS `USING (true)` で anon に
+-- 全開なので DEFINER でも露出は増えない (13c-2 と同方針)。
+CREATE OR REPLACE FUNCTION public.category_progress_by_day(p_days integer DEFAULT 56)
+RETURNS TABLE (
+  category_id      uuid,
+  day              text,
+  pulls            integer,
+  segment          integer,
+  segment_count    integer,
+  best_percentage  numeric,
+  has_clear        boolean
+)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  WITH bounds AS (
+    SELECT (EXTRACT(EPOCH FROM now()) * 1000)::bigint
+             - (LEAST(GREATEST(COALESCE(p_days, 56), 1), 365)::bigint * 86400000)
+           AS from_ms
+  ),
+  -- カテゴリごとの encounter 別 pull 数 (全期間)。区間数の母数になる。
+  enc AS (
+    SELECT f.category_id, f.encounter_id, COUNT(*)::bigint AS pulls
+      FROM public.fflogs_fights f
+     WHERE f.category_id IS NOT NULL AND f.encounter_id IS NOT NULL
+     GROUP BY f.category_id, f.encounter_id
+  ),
+  -- pull 数が最大の encounter (= ティアの錨)。
+  anchor AS (
+    SELECT DISTINCT ON (e.category_id) e.category_id, e.encounter_id
+      FROM enc e
+     ORDER BY e.category_id, e.pulls DESC, e.encounter_id
+  ),
+  -- 錨から ±7 に収まる encounter だけをティアとみなす (docstring 参照)。
+  tier AS (
+    SELECT e.category_id,
+           e.encounter_id,
+           DENSE_RANK() OVER (
+             PARTITION BY e.category_id ORDER BY e.encounter_id
+           )::integer AS segment_index
+      FROM enc e
+      JOIN anchor a ON a.category_id = e.category_id
+     WHERE e.encounter_id BETWEEN a.encounter_id - 7 AND a.encounter_id + 7
+  ),
+  tier_meta AS (
+    SELECT t.category_id,
+           MAX(t.segment_index)::integer AS floor_count,
+           MAX(t.encounter_id)::integer  AS final_encounter_id
+      FROM tier t
+     GROUP BY t.category_id
+  ),
+  -- 絶 / 討滅 (encounter 1 つ) 用のフェーズ数。
+  phase_meta AS (
+    SELECT f.category_id, MAX(f.last_phase)::integer AS phase_count
+      FROM public.fflogs_fights f
+     WHERE f.category_id IS NOT NULL AND f.last_phase IS NOT NULL
+     GROUP BY f.category_id
+  ),
+  -- 直近ぶんの pull に、区間 index と区間数を付ける。
+  recent AS (
+    SELECT f.category_id,
+           COALESCE(
+             f.session_date,
+             to_char(
+               to_timestamp(f.start_ms / 1000.0) AT TIME ZONE 'Asia/Tokyo',
+               'YYYY-MM-DD'
+             )
+           ) AS day,
+           f.kill,
+           f.fight_percentage,
+           f.encounter_id,
+           CASE
+             WHEN COALESCE(tm.floor_count, 0) > 1 THEN t.segment_index
+             ELSE f.last_phase
+           END AS segment_index,
+           CASE
+             WHEN COALESCE(tm.floor_count, 0) > 1 THEN tm.floor_count
+             ELSE pm.phase_count
+           END AS segment_count,
+           tm.final_encounter_id
+      FROM public.fflogs_fights f
+      CROSS JOIN bounds b
+      LEFT JOIN tier_meta  tm ON tm.category_id = f.category_id
+      LEFT JOIN phase_meta pm ON pm.category_id = f.category_id
+      LEFT JOIN tier t
+             ON t.category_id = f.category_id
+            AND t.encounter_id = f.encounter_id
+     WHERE f.category_id IS NOT NULL
+       AND f.start_ms >= b.from_ms
+       -- 層モデルのカテゴリでは、ティア外 (別コンテンツの混入) を集計から
+       -- 除く。TS 側 `filterToFloorCluster` と同じ扱い。
+       AND (COALESCE(tm.floor_count, 0) <= 1 OR t.encounter_id IS NOT NULL)
+  ),
+  per_day AS (
+    SELECT r.category_id,
+           r.day,
+           COUNT(*)::integer AS pulls,
+           MAX(r.segment_index)::integer AS segment,
+           MAX(r.segment_count)::integer AS segment_count,
+           -- クリア = 最終区間の討伐。層モデルでは最終 encounter の kill、
+           -- 単一 encounter では素の kill (TS の `isClearFight` と同じ)。
+           BOOL_OR(
+             r.kill AND (
+               r.final_encounter_id IS NULL
+               OR r.encounter_id = r.final_encounter_id
+             )
+           ) AS has_clear
+      FROM recent r
+     GROUP BY r.category_id, r.day
+  )
+  SELECT d.category_id,
+         d.day,
+         d.pulls,
+         d.segment,
+         d.segment_count,
+         -- 残 HP% はその日の最深区間の中でだけ最小を採る (docstring)。
+         (SELECT MIN(CASE WHEN r2.kill THEN 0 ELSE r2.fight_percentage END)
+            FROM recent r2
+           WHERE r2.category_id = d.category_id
+             AND r2.day = d.day
+             AND (d.segment IS NULL OR r2.segment_index = d.segment)
+         ) AS best_percentage,
+         d.has_clear
+    FROM per_day d
+   ORDER BY d.category_id, d.day
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.category_progress_by_day(integer) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.category_progress_by_day(integer)
+  TO anon, authenticated;
+
 -- ---- 13d. native placeholder raid time retro-update RPC (TODO #85) ----
 -- 2.6 (2026-06-10): TODO #81 follow-up。`ensureNativeMonthlyPlaceholders()`
 -- が auto-insert する placeholder 行は raw_date (`YYYY/MM/DD(曜) HH:MM~HH:MM`)

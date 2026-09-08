@@ -1487,6 +1487,7 @@ export function LogsView({
               showPhase={showPhase}
               reserveDeaths={anyDeaths}
               floors={floors}
+              segmentCount={segmentCount}
               firstPullStartByReport={firstPullStartByReport}
               onEditOffset={(reportCode, videoId) => {
                 const existing =

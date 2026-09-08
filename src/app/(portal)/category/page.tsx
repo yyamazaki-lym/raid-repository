@@ -12,6 +12,7 @@ import {
   fetchRecentImportCountsByCategory,
   fetchTimeToClearByCategory,
 } from "@/lib/server/categories-actions";
+import { fetchProgressSparklinesByCategory } from "@/lib/server/category-progress";
 import {
   getAuthorizedUserRoles,
   userIsAdmin,
@@ -37,13 +38,23 @@ export default async function CategoryIndexPage() {
   // SSR Promise.all に戻す。Server Action timeout 問題は import 並列化
   // (discord-import.ts) と 3-button 分割 (maintenance-menu.tsx) で別途
   // 解消済みなので、SSR が多少重くても支障は無いと判断。
-  const [result, userRoles, recentCounts, practiceSeconds, timeToClear] =
-    await Promise.all([
+  const [
+    result,
+    userRoles,
+    recentCounts,
+    practiceSeconds,
+    timeToClear,
+    // UI-2 (2026-09-08): カードの日別到達度スパークライン。DB 側 RPC が
+    // 日 × カテゴリの数十行に縮約するので、他の集計と並列で足しても
+    // /category の描画時間には効かない。RPC が無い DB では空が返る。
+    progressSparks,
+  ] = await Promise.all([
       fetchCategories(),
       getAuthorizedUserRoles(),
       fetchRecentImportCountsByCategory(7),
       fetchPracticeSecondsByCategory(),
       fetchTimeToClearByCategory(),
+      fetchProgressSparklinesByCategory(),
     ]);
   // 2.0 (2026-04-29): /category index は管理ビューとして全件表示する。
   // 直前 PR (#3) ではここでもフィルタしていたが、ロール制限を付けた
@@ -107,6 +118,7 @@ export default async function CategoryIndexPage() {
         recentImportCounts={recentCounts}
         practiceSecondsByCategory={practiceSeconds}
         timeToClearByCategory={timeToClear}
+        progressSparksByCategory={progressSparks}
       />
     </div>
   );

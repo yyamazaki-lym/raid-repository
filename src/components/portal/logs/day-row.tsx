@@ -25,7 +25,8 @@ import {
 import { useLocale, useMessages } from "@/lib/i18n/client";
 import { PERF_TEXT } from "@/lib/perf-tone";
 import { type ReportVideoLink } from "@/lib/supabase/fflogs-fights";
-import { PullRow } from "./pull-row";
+import { PullBoxRow } from "./pull-box-row";
+import { PullRow, pullAnchorId } from "./pull-row";
 import { formatSignedOffset, videoName } from "./video-link";
 
 export function DayRow({
@@ -38,6 +39,7 @@ export function DayRow({
   showPhase,
   reserveDeaths,
   floors,
+  segmentCount,
   firstPullStartByReport,
   onEditOffset,
 }: {
@@ -56,6 +58,11 @@ export function DayRow({
   /** カテゴリ全体で死亡数が 1 つでも取得済みか (見出しの列幅の確保用)。 */
   reserveDeaths: boolean;
   floors: FloorMap;
+  /**
+   * 区間の総数 (層数 / フェーズ数)。UI-1 のプル・ボックス列の色と略号に使う。
+   * null なら箱列を出さない (`pull-box-row.tsx` の docstring 参照)。
+   */
+  segmentCount: number | null;
   firstPullStartByReport: Map<string, number>;
   /** videoId=null で「この report に動画を追加」、非 null でその行の編集。 */
   onEditOffset: (reportCode: string, videoId: string | null) => void;
@@ -217,6 +224,29 @@ export function DayRow({
           )}
         </span>
       </button>
+
+      {/* UI-1 (2026-09-08): プル・ボックス列。**日を開かなくても**見えるので
+          見出しの直下に置く (開閉ボタンの外 — 箱自体が押せるボタンなので、
+          ボタンの入れ子にはできない)。箱を押すとその日を開いて該当 pull まで
+          スクロールする。 */}
+      <PullBoxRow
+        fights={day.fights}
+        floors={floors}
+        segmentCount={segmentCount}
+        showPhase={showPhase}
+        onPick={(reportCode, fightId) => {
+          setOpen(true);
+          // 展開後にレイアウトが決まってからスクロールする
+          // (`logs-view.tsx` の日付ジャンプと同じ 2 段 rAF)。
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              document
+                .getElementById(pullAnchorId(reportCode, fightId))
+                ?.scrollIntoView({ behavior: "smooth", block: "center" });
+            });
+          });
+        }}
+      />
 
       {open && (
         <div className="flex flex-col gap-2 border-t border-border/30 px-3 py-2">

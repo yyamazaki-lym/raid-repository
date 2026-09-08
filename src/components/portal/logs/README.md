@@ -24,6 +24,8 @@
 | `phase-time-card.tsx` | フェーズ滞在時間 + 各フェーズへの初到達 (W-2、絶のみ) |
 | `floor-clear-card.tsx` | 各層の初討伐 (L-1、零式のみ。絶の「初到達まで」の層版) |
 | `phase-span-bar.tsx` | 1 pull のフェーズ滞在バー (`pull-row.tsx` が使う) |
+| `pull-box-row.tsx` | プル・ボックス列 (UI-1。1 pull = 1 小箱、日を開かずに俯瞰) |
+| `segment-filter.tsx` | 層 / フェーズの絞り込みセグメント (UI-5。選択は URL に載る) |
 | `day-row.tsx` | 日ごとの行 (見出し + 開いたときの pull 一覧 + 管理バー) |
 | `pull-row.tsx` | pull 1 本の行 (時刻 / 層・フェーズ / 結果 / PT 指標 / 各種リンク) |
 | `failed-list.tsx` | 取り込めなかったレポートの一覧 |
@@ -39,11 +41,12 @@
 ```
 logs-view.tsx
   ├── stat-card / wipe-causes-card / phase-time-card / floor-clear-card
-  │   / team-badges-card / trend-card / failed-list
+  │   / team-badges-card / trend-card / failed-list / segment-filter
   ├── offset-dialog
   │     └── video-sync-panel
   └── day-row
         ├── session-summary-row
+        ├── pull-box-row
         └── pull-row
               └── phase-span-bar
   (day-row と pull-row は video-link を共有)
@@ -69,6 +72,11 @@ logs-view.tsx
   「区間ごとの節目」で、コンテンツ種別が変わっても目の行き先が変わりません。
   幅の実測値と、値を足すときに何を hover へ退避するかは
   `floor-clear-card.tsx` の docstring にあります。
+- **到達度の計算式は 1 つ** (2026-09-08、UI-1 / UI-2)。日ごとのバー・進行
+  トレンド・プル箱・コンテンツカードのスパークラインは全部
+  `@/lib/fflogs-progress` の `progressValue()` を通ります。式が分かれると
+  同じ日のバーと箱の色が食い違うためです (`scripts/check-fflogs-progress.mjs`
+  が境界を固定)。
 - **グラフライブラリを入れない**。`trend-card.tsx` の折れ線はインライン SVG
   (座標は `@/lib/fflogs-trend` の `sparklinePath()` が組む純関数)。
   recharts / chart.js は 50〜200 KB の client bundle が乗るので、折れ線 1 枚

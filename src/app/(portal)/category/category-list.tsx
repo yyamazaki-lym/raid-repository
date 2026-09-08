@@ -56,6 +56,14 @@ import type { Category, CategoryStatus } from "@/lib/supabase/types";
 import { isOptimizableImageHost, isSafeUrl } from "@/lib/url-safe";
 import { cn } from "@/lib/utils";
 import { useLocale, useMessages } from "@/lib/i18n/client";
+import {
+  ProgressSparkline,
+  type ProgressSparkPoint,
+} from "@/components/portal/progress-sparkline";
+
+// 既定値を毎レンダー新しい配列で作らないための共有の空配列
+// (props の identity が変わると子が無駄に再描画される)。
+const EMPTY_SPARK: ProgressSparkPoint[] = [];
 
 type Props = {
   initialCategories: Category[];
@@ -81,6 +89,11 @@ type Props = {
    * without a clear date.
    */
   timeToClearByCategory?: Record<string, number>;
+  /**
+   * UI-2 (2026-09-08): category.id → 日別の到達度 (古い順)。カードの
+   * スパークラインに使う。RPC が無い DB では空 (= 線を出さない)。
+   */
+  progressSparksByCategory?: Record<string, ProgressSparkPoint[]>;
 };
 
 export function CategoryList({
@@ -90,6 +103,7 @@ export function CategoryList({
   recentImportCounts = {},
   practiceSecondsByCategory = {},
   timeToClearByCategory = {},
+  progressSparksByCategory = {},
 }: Props) {
   const router = useRouter();
   const m = useMessages();
@@ -198,6 +212,7 @@ export function CategoryList({
                 recentImports={recentImportCounts[cat.id] ?? 0}
                 practiceSeconds={practiceSecondsByCategory[cat.id] ?? 0}
                 timeToClearSeconds={timeToClearByCategory[cat.id] ?? 0}
+                progressSpark={progressSparksByCategory[cat.id] ?? EMPTY_SPARK}
                 onChangeStatus={(s) => onChangeStatus(cat.id, s)}
                 onEdit={() => setEditTarget(cat)}
                 onDelete={() => onDelete(cat)}
@@ -229,6 +244,7 @@ function SortableCategoryCard({
   recentImports,
   practiceSeconds,
   timeToClearSeconds,
+  progressSpark,
   onChangeStatus,
   onEdit,
   onDelete,
@@ -246,6 +262,8 @@ function SortableCategoryCard({
   recentImports: number;
   practiceSeconds: number;
   timeToClearSeconds: number;
+  /** UI-2 (2026-09-08): 日別の到達度 (古い順)。2 日未満なら線を出さない。 */
+  progressSpark: ProgressSparkPoint[];
   onChangeStatus: (s: CategoryStatus) => void;
   onEdit: () => void;
   onDelete: () => void;
@@ -380,6 +398,12 @@ function SortableCategoryCard({
             <p className="mt-1 font-mono break-all text-[11px] tracking-[0.18em] text-muted-foreground uppercase">
               /{category.slug}
             </p>
+            {/* UI-2 (2026-09-08): 日別の到達度スパークライン。「今どこまで
+                来たか」をタブを開かずに出す。2 日未満のカテゴリでは
+                `ProgressSparkline` 側が何も描かない (プレースホルダも
+                置かない — 中央列は可変高なので、右カラムのバッジ列とは
+                違って高さを揃える必要が無い)。 */}
+            <ProgressSparkline points={progressSpark} />
             {/* 2.1 (2026-04-29): Timer (累計練習時間) は card 上に出さない
                 方針 (ユーザー要望)。Trophy + Hourglass のみ右カラムで表示。 */}
           </Link>

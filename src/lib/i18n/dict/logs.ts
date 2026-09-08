@@ -66,6 +66,21 @@ export const ja = {
     recordAria: "自己ベスト更新",
     showRecentOnly: "直近 10 日だけ表示",
     showRemainingDays: (n: number) => `残り ${n} 日を表示`,
+    // UI-1 (2026-09-08): プル・ボックス列 (1 pull = 1 小箱)。
+    pullBoxAria: "この日の pull を 1 つずつ並べた列",
+    pullBoxLegendFloor: "数字 = 層 / ✓ = 討伐",
+    pullBoxLegendPhase: "数字 = フェーズ / ✓ = 討伐",
+    pullBoxUnknownSegment: "区間不明",
+    pullBoxTitle: (o: {
+      index: number;
+      clock: string;
+      segment: string;
+      result: string;
+      duration: string;
+      deaths: number | null;
+    }) =>
+      `${o.index} 本目 ${o.clock} / ${o.segment} / ${o.result} / 戦闘 ${o.duration}` +
+      (o.deaths === null ? "" : ` / 死亡 ${o.deaths}`),
     // セッション振り返り
     sessionsTitle: "セッション振り返り",
     allFloors: "全層",
@@ -391,6 +406,11 @@ export const ja = {
       `初クリア: ${date} (クリックでクリア日の動画へジャンプ)`,
     manualSuffix: " (手動入力)",
     recentImportsTitle: (n: number) => `過去7日で Discord から ${n} 件取り込み`,
+    // UI-2 (2026-09-08): カードの日別到達度スパークライン。
+    sparkCleared: "討伐",
+    sparkBest: (pct: number) => `最高 ${pct}%`,
+    sparkTitle: (days: number, pulls: number, best: string) =>
+      `直近 ${days} 日の到達度の推移 (${pulls} pull / ${best})`,
     shortcutsAria: "サブページへのショートカット",
     menuAria: "コンテンツメニュー",
   },
@@ -443,6 +463,13 @@ export const en: LogsMessages = {
     recordAria: "New personal best",
     showRecentOnly: "Show only the last 10 days",
     showRemainingDays: (n) => `Show ${n} more ${plural(n, "day", "days")}`,
+    pullBoxAria: "Every pull of this day as one box each",
+    pullBoxLegendFloor: "number = floor / ✓ = clear",
+    pullBoxLegendPhase: "number = phase / ✓ = clear",
+    pullBoxUnknownSegment: "unknown",
+    pullBoxTitle: (o) =>
+      `Pull ${o.index} ${o.clock} / ${o.segment} / ${o.result} / fight ${o.duration}` +
+      (o.deaths === null ? "" : ` / ${o.deaths} ${plural(o.deaths, "death", "deaths")}`),
     sessionsTitle: "Session review",
     allFloors: "All floors",
     floorFilterTitle: (floor) => `Show only ${floor} pulls`,
@@ -748,6 +775,10 @@ export const en: LogsMessages = {
     firstClearTitle: (date) =>
       `First clear: ${date} (click to jump to the clear-day videos)`,
     manualSuffix: " (manual)",
+    sparkCleared: "Cleared",
+    sparkBest: (pct) => `best ${pct}%`,
+    sparkTitle: (days, pulls, best) =>
+      `Progress over the last ${days} ${plural(days, "day", "days")} (${pulls} ${plural(pulls, "pull", "pulls")} / ${best})`,
     recentImportsTitle: (n) =>
       `${n} ${plural(n, "link", "links")} imported from Discord in the last 7 days`,
     shortcutsAria: "Sub-page shortcuts",
