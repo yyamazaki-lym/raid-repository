@@ -24,6 +24,7 @@ Gebaut nach dem Prinzip „eine Gruppe = ein Deployment“: eine Single-Tenant-A
 ### Terminplan
 - Drei Quellmodi: **Sync** (Import von character-sheets), **Nativ** (Kandidatentage, Anwesenheit ○ × △ und Bestätigung direkt im Portal, mit FFLogs-Verknüpfung und Discord-Benachrichtigungen), **Aus**
 - Die bestätigte Sitzung wird als **nächster Termin** hervorgehoben (am Tag selbst mit Countdown „beginnt in N h M min“)
+- **Feste Wochentage** („jeden Di / Do / Sa“): Kandidatentage werden nur noch an diesen Tagen automatisch angelegt, und der Dialog erzeugt sie per **Zeitraum × Wochentag** auf einmal. Tage außerhalb des Rasters tragen die Hinweise „Extra“ / „Nur diesmal“
 - Im nativen Modus können Mitglieder zusätzlich **verspätete Ankunft / frühes Gehen** als Uhrzeit (HH:MM) eintragen; sie erscheint neben dem Symbol (`21:30〜`) und im Discord-Bestätigungspost neben dem Namen
 - Discord-Vorlagen unterstützen `{discord_relative}` / `{discord_time}` (Discord rendert sie in der Zeitzone des Lesers, z. B. „in 3 Stunden“)
 - Automatische Erinnerung per @mention an Mitglieder ohne Antwort; optional automatische Bestätigung, wenn alle geantwortet haben
@@ -31,12 +32,13 @@ Gebaut nach dem Prinzip „eine Gruppe = ein Deployment“: eine Single-Tenant-A
 
 ### Inhalte (Kategorien)
 - Pro Raid-Inhalt ein **Status** (Nicht begonnen / In Arbeit / Geschafft / Pausiert), Drag-and-Drop-Sortierung, Bearbeitungsdialog, Echtzeit-Sync über Supabase Realtime
+- Jede Karte zeigt eine **Fortschritts-Sparkline der letzten 8 Wochen** — man sieht ohne Tab-Wechsel, wie weit die Gruppe ist
 
 ### Unter-Tabs pro Inhalt
 - **Mitigation / Loot**: bestehende Google-Sheets als iframe; **auf dem Handy eine schreibgeschützte Kartenansicht** (Sheet als CSV geladen, Karten pro Phase, Filter „nur meine Spalte“). Der Loot-Tab ergänzt den **wöchentlichen Abhol-Check** (Reset Dienstag 17:00 JST) und **BiS-Links** (XivGear-Einbettung)
 - **Guides**: Linkliste mit automatischem Titel; **Videos**: YouTube-Vorschau mit Lazy-Embed, optional FFLogs-/XIVAnalysis-Link
 - **Makros**: Spielmakros mit Ein-Klick-Kopie; dazu **Waymark-Presets** (markercode) und **Strategy-Board-Share-Codes**
-- **Übungs-Log**: Pull-für-Pull-Daten aus FFLogs — Gesamt-Pulls, Übungstage, tiefster Fortschritt, Clears; Fortschrittsbalken pro Tag; pro Pull ein Klick zu FFLogs / XIVAnalysis / dem Moment im Video; **Wipe-Ursache** pro Pull (Job, der zuerst starb ← tödliche Fähigkeit, Tode innerhalb 10 s) und Auswertung, welche Mechanik die Gruppe bricht; bei Ultimates **Zeit pro Phase**. Individuelle DPS werden weder gespeichert noch angezeigt; Tode ohne Spielernamen (nur Job + Fähigkeit)
+- **Übungs-Log**: Pull-für-Pull-Daten aus FFLogs — Gesamt-Pulls, Übungstage, tiefster Fortschritt, Clears; Fortschrittsbalken pro Tag; pro Pull ein Klick zu FFLogs / XIVAnalysis / dem Moment im Video; **Wipe-Ursache** pro Pull (Job, der zuerst starb ← tödliche Fähigkeit, Tode innerhalb 10 s) und Auswertung, welche Mechanik die Gruppe bricht; bei Ultimates **Zeit pro Phase** und **erstes Erreichen jeder Phase**, bei Savage **erster Clear pro Ebene**. Pro Tag eine **Pull-Box-Reihe** (1 Pull = 1 Kästchen mit Abschnittsnummer, `✓` beim Clear); der Filter nach Ebene / Phase steht als Segment-Steuerung im URL (`?floor=4b` / `?phase=2`). Individuelle DPS werden weder gespeichert noch angezeigt; Tode ohne Spielernamen (nur Job + Fähigkeit)
 
 ### Discord-Auto-Import
 - Pro Inhalt ein Guide- und ein Video-Kanal; Vercel Cron holt täglich um 01:00 JST die letzten 100 Nachrichten, extrahiert URLs, entfernt Duplikate und legt sie im passenden Tab ab. Manueller Sofort-Import per Button
