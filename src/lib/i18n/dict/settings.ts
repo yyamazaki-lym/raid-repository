@@ -307,7 +307,10 @@ export const ja = {
       `設定を読み込めませんでした (${reason})。表示は既定値です — 保存する前に読み直してください。`,
     reload: "読み直す",
     // W-5 (2026-09-07) / L-4 (2026-09-08): レポートの発見元。
-    sourceLabel: "レポートの発見元",
+    // 2026-09-08: 発見元は FFLogs Sync 節へ移した。通知節に行き先を残す。
+    sourceMovedHint:
+      "「レポートの発見元」(貼られた URL のほかに guild や自分のアカウントも見るか) は、下の FFLogs Sync に移動しました。",
+    sourceLabel: "レポートの自動発見",
     sourceAlwaysOn:
       "貼られた URL からは常に取り込みます (動画や日付メモの FFLogs URL)。これは切れません — portal の土台の経路です。下の 2 つは、URL が貼られていないレポートも自動で探しに行くかどうかです。",
     routeLabels: {
@@ -318,7 +321,7 @@ export const ja = {
       guild:
         "FFLogs 上の static (guild) のレポート一覧も見ます。⚠ 前提が 2 つあります: (1) レポートが guild に属していること — 所属はアップロード時に決まるので、Uploader で guild を選んでいないレポートは 0 件です (既存の履歴は後から移せません)。(2) 一覧が Unlisted を返すかは未確認です (API の一覧には可視性の引数が無く、実測できている経路はすべて Public のみでした)。guild ID の入力が必要です。",
       user:
-        "接続した FFLogs アカウントが上げたレポート一覧も見ます。guild を作っていない固定 (計測担当が個人アカウントで上げている) 向けです。API の仕様で Public のレポートしか返らないため、Unlisted 運用では拾えません。",
+        "接続した FFLogs アカウントが上げたレポート一覧も見ます。⚠ 上の連動 (OAuth / 表示名) と**同じ一覧を見る**ので、取れるレポートの範囲は変わりません。違うのは取り込み方だけです — 連動は「動画や日付メモの日付と合うレポート」だけを紐づけますが、これを ON にすると**日付が合う先が無いレポートも台帳に未分類として入ります**。guild を作っていない固定 (計測担当が個人アカウントで上げている) の拾い漏れ対策です。API の仕様で Public のレポートしか返らないため、Unlisted 運用では拾えません。",
     },
     sourceUnlistedWarning:
       "⚠ Unlisted のレポートは、どちらの一覧にも出てきません。Unlisted 運用のままだと ON にしても 0 件です (確実なのは URL の貼り付け — 設定の FFLogs 節にレポート一覧から URL をまとめて拾うブックマークレットがあります)。",
@@ -1047,7 +1050,9 @@ export const en: SettingsMessages = {
     loadFailed: (reason) =>
       `Could not load these settings (${reason}). The values shown are defaults — reload before saving.`,
     reload: "Reload",
-    sourceLabel: "Report discovery",
+    sourceMovedHint:
+      "“Report discovery” (whether the guild or your own account is read in addition to pasted URLs) moved to FFLogs Sync below.",
+    sourceLabel: "Automatic report discovery",
     sourceAlwaysOn:
       "Pasted URLs are always imported (FFLogs URLs on videos or date notes). That cannot be turned off — it is the portal's baseline path. The two options below decide whether reports with no pasted URL are also looked up automatically.",
     routeLabels: {
@@ -1058,7 +1063,7 @@ export const en: SettingsMessages = {
       guild:
         "Also reads the report list of your static (guild) on FFLogs. ⚠ Two preconditions: (1) the reports must belong to the guild — membership is decided at upload time, so reports uploaded to personal logs return nothing (existing history cannot be moved). (2) Whether the list returns Unlisted reports is unverified (the list field takes no visibility argument, and every path we measured returned Public only). Requires the guild ID.",
       user:
-        "Also reads the report list of the connected FFLogs account. For groups without a guild (the log runner uploads from a personal account). The API only returns Public reports, so Unlisted uploads are not picked up.",
+        "Also reads the report list of the connected FFLogs account. ⚠ This reads the **same listing** as the sync above (OAuth / display name), so it does not widen which reports can be fetched — only what happens to them. The sync only links reports whose date matches a video or date note; turning this on also files reports with **no matching date** into the ledger as unclassified. Meant as a safety net for groups without a guild (the log runner uploads from a personal account). The API only returns Public reports, so Unlisted uploads are not picked up.",
     },
     sourceUnlistedWarning:
       "⚠ Unlisted reports do not appear in either listing. While you keep uploading as Unlisted, turning these on still finds nothing — pasting URLs is the reliable path (the FFLogs section has a bookmarklet that collects URLs from a report list).",

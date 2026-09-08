@@ -44,6 +44,34 @@ export const PERF_CHIP: Record<PerfLevel, string> = {
   neutral: "border-border/50 bg-secondary/30 text-muted-foreground",
 };
 
+/**
+ * 箱を大量に並べるとき用のチップ (2026-09-08 実機報告、L-5 ①)。
+ *
+ * `PERF_CHIP` をプル・ボックス列 (`pull-box-row.tsx`) にそのまま使ったところ、
+ * **「層の識別色が強すぎる」**という報告が出た。チップ 1 個ぶんの彩度は
+ * 適切でも、**横に 30 個並ぶと総量が違う** — 画面がその色で埋まり、日の
+ * 見出しや残 HP% より箱の方が目立ってしまう。
+ *
+ * そこで箱専用に、同じ 5 段階のまま彩度と明度だけ落としたトーンを持つ:
+ *
+ *   - 背景 `/10` → `/5` (面積が 30 倍になるぶんを引く)
+ *   - 文字 `-200` → `-300/80` (箱の中の 11px は数字 1 文字なので、
+ *     コントラストは -300 でも 4.5:1 を満たす)
+ *   - 枠 `/45` → `/35`
+ *
+ * ⚠ **5 段階の意味が読める範囲に留めること** (この module の原則)。
+ * これ以上薄くすると emerald と lime、amber と orange の差が消え、
+ * 「色だけで意味を伝えない」の担保 (箱の中の区間番号) しか残らなくなる。
+ */
+export const PERF_BOX: Record<PerfLevel, string> = {
+  best: "border-emerald-400/35 bg-emerald-400/5 text-emerald-300/80",
+  good: "border-lime-400/35 bg-lime-400/5 text-lime-300/80",
+  mid: "border-amber-400/35 bg-amber-400/5 text-amber-300/80",
+  warn: "border-orange-400/35 bg-orange-400/5 text-orange-300/80",
+  bad: "border-rose-400/35 bg-rose-400/5 text-rose-300/80",
+  neutral: "border-border/40 bg-secondary/20 text-muted-foreground/80",
+};
+
 /** バー / 帯の塗り。 */
 export const PERF_BAR: Record<PerfLevel, string> = {
   best: "bg-emerald-400/75",

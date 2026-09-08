@@ -29,6 +29,32 @@
  * 24px の円が他の目標と重ならずに収まる」なら例外に該当するので、この対に
  * している。箱を 24px にすると 1 日 30 pull がスマホで 4 行になり、
  * 「1 行で俯瞰」という狙いが消える。**大きさと間隔は対で変えること。**
+ *
+ * ## 2026-09-08 の実機報告 3 点 (L-5)
+ *
+ *   1. **色が強すぎた。** `PERF_CHIP` をそのまま使っていたが、チップ 1 個の
+ *      彩度が適切でも 30 個並ぶと総量が違う。箱専用の `PERF_BOX` に替えた
+ *      (`perf-tone.ts` 参照)。
+ *   2. **`✓` が中央より下に出た。** 原因は実測で確定した (2026-09-08):
+ *      **U+2713 は JetBrains Mono に無く、OS のフォールバックフォントが
+ *      描いていた**。同フォントの advance を測ると数字 / 英字は 60 単位で
+ *      揃うのに `✓` だけ 68.3 単位 = 等幅の枠に収まっておらず、別フォント
+ *      由来だと分かる (`document.fonts.check` は family がロード済みなら
+ *      true を返すので判定に使えない)。
+ *
+ *      フォールバック先は OS ごとに違う (Windows なら Segoe UI Symbol 系)
+ *      ため、**縦位置が閲覧環境ごとに変わる**。Chromium での実測では箱の
+ *      中心から 0.13px 上 (数字は 0.06px 上) で目視できない差だったが、
+ *      報告環境では下にずれて見えていた。`place-items-center` では直らない
+ *      — グリッドが中央に置くのは字形ではなく行ボックスで、その中の字形の
+ *      位置はフォントの ascent/descent が決める。
+ *
+ *      そこで **SVG のチェックに差し替えた**。実測で箱の中心との差が
+ *      0.00px になり、**環境によって変わる余地が無くなる**。
+ *      ⚠ 文字の `✓` に戻すと、この「環境依存」がそのまま戻る。
+ *   3. **飛んだ先が分からなかった。** 30 行の中へスクロールしても、どれに
+ *      来たのかが見えない。押した pull を短くハイライトする
+ *      (`day-row.tsx` → `pull-row.tsx` の `flashNonce`)。
  */
 "use client";
 
@@ -40,7 +66,7 @@ import {
   type FightRow,
   type FloorMap,
 } from "@/lib/fflogs-progress";
-import { PERF_CHIP, perfForProgress } from "@/lib/perf-tone";
+import { PERF_BOX, perfForProgress } from "@/lib/perf-tone";
 import { useLocale, useMessages } from "@/lib/i18n/client";
 
 export function PullBoxRow({
@@ -71,7 +97,7 @@ export function PullBoxRow({
     >
       {fights.map((f, i) => {
         const progress = pullProgress(f, floors, segmentCount);
-        const tone = PERF_CHIP[perfForProgress(progress)];
+        const tone = PERF_BOX[perfForProgress(progress)];
         const floorIndex =
           floors && f.encounterId !== null
             ? (floors.byEncounter.get(f.encounterId) ?? null)
@@ -124,7 +150,27 @@ export function PullBoxRow({
                 (f.kill ? " ring-1 ring-emerald-300/70" : "")
               }
             >
-              {f.kill ? "✓" : segmentLabel}
+              {f.kill ? (
+                // 討伐は SVG のチェック。文字の `✓` (U+2713) は JetBrains Mono
+                // に無く OS のフォールバックが描くため、縦位置が閲覧環境ごとに
+                // 変わる (2026-09-08 実機報告 + 実測。docstring 参照)。
+                // SVG なら箱の中心に対して対称に置けるので、どの環境でも
+                // **数字の箱と縦が揃う**。
+                <svg
+                  viewBox="0 0 12 12"
+                  className="h-3 w-3"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden
+                >
+                  <path d="M2.5 6.5 5 9l4.5-5.5" />
+                </svg>
+              ) : (
+                segmentLabel
+              )}
             </button>
           </li>
         );

@@ -10,7 +10,10 @@ import {
 } from "@/lib/server/loot-window-actions";
 import { LOOT_WINDOW_WEEKS_DEFAULT } from "@/lib/loot-window-keys";
 import { useMessages } from "@/lib/i18n/client";
-import { CollapsibleSection } from "./collapsible-section";
+import {
+  CollapsibleSection,
+  SectionBadge,
+} from "./collapsible-section";
 
 /**
  * 週制限の消化ウィンドウ設定 (W-33 ②、2026-09-07)。
@@ -74,6 +77,18 @@ export function LootWindowSection({
         <CalendarRange className="h-3.5 w-3.5 text-amber-300" aria-hidden />
       }
       title={m.lootWindow.title}
+      // 2026-09-08 実機要望「右端にも現状の設定を表示してほしい」。
+      // 「今週だけ / 今週 + 前週」は**開かずに知りたい運用状態**で、
+      // ロット画面で前週の行が出るかどうかがこれで決まる。
+      badge={
+        <SectionBadge state={!loaded ? "loading" : weeks > 1 ? "on" : "off"}>
+          {!loaded
+            ? "…"
+            : weeks === 1
+              ? m.lootWindow.oneWeek
+              : m.lootWindow.twoWeeks}
+        </SectionBadge>
+      }
     >
       <p className="text-[11px] leading-relaxed text-muted-foreground">
         {m.lootWindow.description}
