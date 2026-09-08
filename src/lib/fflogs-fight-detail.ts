@@ -192,6 +192,50 @@ export function extractDeathEvents(
 }
 
 /**
+ * jsonb `death_events` の防御的パース (UI-14 で純モジュールへ移設、
+ * 2026-09-08)。要素の形が違えば捨てる。配列でなければ null
+ * (= 「未取得」と「0 件だった」を呼び出し側で区別できるようにする)。
+ *
+ * 元は `supabase/fflogs-fights.ts` の private 関数だったが、pull 詳細の
+ * Server Action (`server/pull-detail-actions.ts`) からも同じ形で読む
+ * 必要が出たので、保存形を定義しているこのファイルへ寄せた。
+ */
+export function asDeathEvents(v: unknown): StoredDeathEvent[] | null {
+  if (!Array.isArray(v)) return null;
+  const out: StoredDeathEvent[] = [];
+  for (const e of v) {
+    if (!e || typeof e !== "object") continue;
+    const o = e as Record<string, unknown>;
+    const t = numberOrNull(o.t);
+    if (t === null) continue;
+    const id = numberOrNull(o.id);
+    out.push({
+      t,
+      job: typeof o.job === "string" ? o.job : null,
+      ability: typeof o.ability === "string" ? o.ability : null,
+      ...(id !== null ? { id } : {}),
+      ...(typeof o.ja === "string" && o.ja !== "" ? { ja: o.ja } : {}),
+    });
+  }
+  return out;
+}
+
+/** jsonb `phase_transitions` の防御的パース (0 件は null)。 */
+export function asPhaseTransitions(v: unknown): StoredPhaseTransition[] | null {
+  if (!Array.isArray(v)) return null;
+  const out: StoredPhaseTransition[] = [];
+  for (const e of v) {
+    if (!e || typeof e !== "object") continue;
+    const o = e as Record<string, unknown>;
+    const id = numberOrNull(o.id);
+    const t = numberOrNull(o.t);
+    if (id === null || t === null) continue;
+    out.push({ id, t });
+  }
+  return out.length > 0 ? out : null;
+}
+
+/**
  * Summary table の配列 (`composition` or `damageDone`) から参加者名を拾う
  * (W-6、2026-09-08)。
  *

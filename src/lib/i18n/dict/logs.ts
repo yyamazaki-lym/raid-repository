@@ -111,7 +111,14 @@ export const ja = {
       "この日の wipe で最初に落ちた人の致命の一撃 (技名) を数えたもの",
     wipeCauses: "ワイプ原因",
     // pull 行
-    pullIndexTitle: (n: number) => `この日の ${n} 番目の pull`,
+    // UI-14 (2026-09-08): pull の構造化リキャップ (展開パネル)。
+    pullDetailToggleNth: (n: number): string =>
+      `この日の ${n} 番目の pull — 押すと死亡の一覧を開く`,
+    pullDetailNoDeaths: "この pull に死亡はありません",
+    pullDetailMissing:
+      "この pull の死亡イベントは取得できていません (代替経路で取り込んだレポート、または同期の時間切れ)。同期をもう一度実行すると入ることがあります。",
+    pullDetailUnknownAbility: "技名不明",
+    pullDetailSincePrev: (sec: number): string => `+${sec}s`,
     startTimeTitle: "戦闘開始時刻 (JST)",
     durationTitle: "戦闘時間",
     partyDpsTitle: "PT 合計 DPS (個人の内訳は保存していません)",
@@ -516,7 +523,13 @@ export const en: LogsMessages = {
     dayWipeCausesTitle:
       "Counts the killing blow (ability) on the first death of each wipe that day",
     wipeCauses: "Wipe causes",
-    pullIndexTitle: (n) => `Pull #${n} of the day`,
+    pullDetailToggleNth: (n) =>
+      `Pull #${n} of the day — click to list its deaths`,
+    pullDetailNoDeaths: "No deaths in this pull",
+    pullDetailMissing:
+      "Death events were not captured for this pull (imported through a fallback route, or the sync ran out of time). Running the sync again may fill it in.",
+    pullDetailUnknownAbility: "Unknown ability",
+    pullDetailSincePrev: (sec) => `+${sec}s`,
     startTimeTitle: "Start time (JST)",
     durationTitle: "Combat time",
     partyDpsTitle: "Party DPS (individual breakdown is not stored)",

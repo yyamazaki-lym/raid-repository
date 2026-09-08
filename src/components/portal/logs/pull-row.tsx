@@ -25,11 +25,21 @@
  *
  * ⚠ 死亡数は練習 pull でも意味がある (何人落ちたか) ので残す。DPS だけを
  * 出し分けている。
+ *
+ * ## 詳細は下へ展開する (UI-14、2026-09-08)
+ *
+ * 構造化リキャップ (死亡イベントの一覧) を**行に足すことはできない** —
+ * L-6 で 1 行に収めたばかりで、可変列も技名の 1 つで使い切っている。
+ * 行の右端に開閉ボタンだけを置き、中身は `w-full` の子として下の行に
+ * 展開する (`flex-wrap` の折り返しをそのまま使うので、レイアウトの
+ * 仕組みを増やさない)。取得は開いたときだけ (`pull-detail-panel.tsx`)。
  */
 "use client";
 
+import { useState } from "react";
 import {
   BarChart3,
+  ChevronDown,
   Film,
   Microscope,
   ShieldAlert,
@@ -61,6 +71,7 @@ import { useLocale, useMessages } from "@/lib/i18n/client";
 import { PERF_CHIP, PERF_TEXT, perfForDeaths } from "@/lib/perf-tone";
 import { type ReportVideoLink } from "@/lib/supabase/fflogs-fights";
 import { PhaseSpanBar } from "./phase-span-bar";
+import { PullDetailPanel } from "./pull-detail-panel";
 import { videoName } from "./video-link";
 
 /**
@@ -116,6 +127,9 @@ export function PullRow({
 }) {
   const m = useMessages();
   const locale = useLocale();
+  // UI-14 (2026-09-08): 詳細の開閉。開いたことがある pull は state を
+  // 持ったままにする (閉じて開き直しても再取得しない)。
+  const [detailOpen, setDetailOpen] = useState(false);
   const durationSec = Math.max(0, Math.round((fight.endMs - fight.startMs) / 1000));
   // 日付のグルーピングが JST 基準なので時刻も JST に固定する
   // (閲覧者のタイムゾーンに依存すると日付と時刻がずれて見える)。
@@ -175,12 +189,35 @@ export function PullRow({
           CLEAR の emerald と近づく)、列の区別がテーマ依存になるため。
           層 / 熱量色を全テーマ共通の固定色にしているのと同じ理由。
           桁数で列がずれないよう数値列は右寄せ + tabular-nums。 */}
-      <span
-        className="w-8 shrink-0 text-right font-mono text-[11px] text-cyan-300/80 tabular-nums"
-        title={m.logs.pullIndexTitle(index)}
+      {/* UI-14 (2026-09-08): 詳細 (構造化リキャップ) の開閉は **#回数の列を
+          そのままボタンにする**。独立したボタンを右端に足すと行幅が
+          +22px 増え、L-6 で下げた折り返しの閾値 (実データで約 670px) が
+          押し戻される (実測でそうなった)。`#` の記号は意味を持たないので、
+          そこを開閉の矢印に差し替えれば **幅は 1px も増えない**。
+          死亡が 0 件の pull (kill / 未取得) でも押せるままにする —
+          「取得できていない」と分かること自体に意味がある。 */}
+      <button
+        type="button"
+        onClick={() => setDetailOpen((v) => !v)}
+        aria-expanded={detailOpen}
+        aria-label={m.logs.pullDetailToggleNth(index)}
+        title={m.logs.pullDetailToggleNth(index)}
+        className={
+          "inline-flex w-8 shrink-0 items-center justify-end gap-0.5 font-mono text-[11px] tabular-nums transition-colors " +
+          (detailOpen
+            ? "text-[var(--neon-cyan)]"
+            : "text-cyan-300/80 hover:text-[var(--neon-cyan)]")
+        }
       >
-        #{index}
-      </span>
+        <ChevronDown
+          className={
+            "h-2.5 w-2.5 shrink-0 transition-transform " +
+            (detailOpen ? "" : "-rotate-90")
+          }
+          aria-hidden
+        />
+        {index}
+      </button>
       <span
         className="w-9 shrink-0 font-mono text-[11px] text-slate-400 tabular-nums"
         title={m.logs.startTimeTitle}
@@ -464,6 +501,14 @@ export function PullRow({
           );
         })()}
       </span>
+      {/* UI-14: 展開パネル。`w-full` なので flex-wrap の折り返しで行の
+          下に落ちる (追加のレイアウト機構は要らない)。 */}
+      {detailOpen && (
+        <PullDetailPanel
+          reportCode={fight.reportCode}
+          fightId={fight.fightId}
+        />
+      )}
     </li>
   );
 }
