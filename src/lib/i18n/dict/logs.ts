@@ -117,6 +117,18 @@ export const ja = {
     pullDetailNoDeaths: "この pull に死亡はありません",
     pullDetailMissing:
       "この pull の死亡イベントは取得できていません (代替経路で取り込んだレポート、または同期の時間切れ)。同期をもう一度実行すると入ることがあります。",
+    // W-8 (2026-09-08): 死亡の直前 (FFLogs から押されたときだけ取る)。
+    leadUpLoad: "死亡の直前を読む",
+    leadUpHint:
+      "FFLogs から、それぞれの死亡時点の HP / シールド / かかっていた効果を取ります (押したときだけ取得。保存はしません)",
+    leadUpLoading: "FFLogs から取得中…",
+    leadUpEmpty: "死亡時点の情報は取れませんでした",
+    leadUpHp: (hp: string): string => `HP ${hp}`,
+    leadUpShield: (n: number): string => `シールド ${n}`,
+    leadUpDamageDown: "ダメージダウン",
+    leadUpAuras: (names: string): string => `効果: ${names}`,
+    leadUpNote:
+      "軽減率の計算はしていません (パッチごとに変わるため)。かかっていた効果をそのまま並べています。",
     // W-7 (2026-09-08): ミス注釈 (pull ごとの「なぜ崩れたか」)。
     pullNoteEmpty: "注釈なし",
     pullNoteAdd: "注釈",
@@ -560,6 +572,17 @@ export const en: LogsMessages = {
     pullDetailNoDeaths: "No deaths in this pull",
     pullDetailMissing:
       "Death events were not captured for this pull (imported through a fallback route, or the sync ran out of time). Running the sync again may fill it in.",
+    leadUpLoad: "Read the moment of death",
+    leadUpHint:
+      "Fetches HP / shield / active effects at each death from FFLogs (only when you click; nothing is stored)",
+    leadUpLoading: "Fetching from FFLogs…",
+    leadUpEmpty: "Could not read the state at death",
+    leadUpHp: (hp) => `HP ${hp}`,
+    leadUpShield: (n) => `Shield ${n}`,
+    leadUpDamageDown: "Damage down",
+    leadUpAuras: (names) => `Effects: ${names}`,
+    leadUpNote:
+      "Mitigation percentages are not computed (they change every patch). The active effects are listed as-is.",
     pullNoteEmpty: "No notes",
     pullNoteAdd: "Note",
     pullNoteDelete: "Delete this note",
