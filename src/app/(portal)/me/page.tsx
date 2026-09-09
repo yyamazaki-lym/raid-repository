@@ -51,6 +51,14 @@ export default async function MePage() {
         </span>
       </div>
 
+      {/* L-9 (2026-09-09): 何のページで、ここで何ができるのかを最初に言う。
+          実機報告「どのように使うのかも分かりにくい」への対応。節ごとの
+          説明は各 section の見出し直下に置く (空のときは既存の空状態
+          メッセージが同じ役目をするので出さない)。 */}
+      <p className="px-1 text-[12px] leading-relaxed text-muted-foreground">
+        {m.mePage.lead}
+      </p>
+
       {/* ---- 自分の情報 ---- */}
       <section className="flex flex-col gap-2 rounded-md border border-border/40 bg-secondary/15 px-3 py-2.5">
         <div className="flex flex-wrap items-center gap-2">
@@ -116,6 +124,10 @@ export default async function MePage() {
             {m.mePage.bisEmpty}
           </p>
         ) : (
+          <>
+          <p className="text-[11px] leading-snug text-muted-foreground/85">
+            {m.mePage.bisLead}
+          </p>
           <ul className="flex flex-col gap-1.5">
             {bis.map((b) => (
               <li key={`${b.categorySlug}:${b.label}`} className="flex flex-col gap-0.5">
@@ -146,6 +158,7 @@ export default async function MePage() {
               </li>
             ))}
           </ul>
+          </>
         )}
       </section>
 
@@ -165,6 +178,10 @@ export default async function MePage() {
             {m.mePage.onboardingEmpty}
           </p>
         ) : (
+          <>
+          <p className="text-[11px] leading-snug text-muted-foreground/85">
+            {m.mePage.onboardingLead}
+          </p>
           <ul className="flex flex-col gap-1">
             {onboarding.map((o) => (
               <li key={o.categorySlug} className="flex flex-wrap items-baseline gap-x-2">
@@ -186,6 +203,7 @@ export default async function MePage() {
               </li>
             ))}
           </ul>
+          </>
         )}
       </section>
 
