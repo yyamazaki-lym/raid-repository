@@ -86,11 +86,17 @@ export const ja = {
     deployTitle:
       "デプロイ識別色: 当日の最新コミットから派生 (7 色サイクル)。日付が変わったら default の cyan にリセット",
     themeAria: "テーマを切り替え",
+    // L-9 (2026-09-09): /me はコマンドパレットからしか行けず、
+    // 存在に気付けなかった。ヘッダーに常時見える導線を置く。
+    myPageAria: "自分のページ",
   },
   nav: {
     mainAria: "メインナビゲーション",
     subAria: "コンテンツ内ナビゲーション",
     schedule: "スケジュール",
+    // L-9 (2026-09-09): スマホではヘッダーに 6 個目が入らない
+    // (実測 375px で 33px はみ出す) ので、ナビ行に置く。
+    myPage: "自分のページ",
   },
   /** 日付メモの重要度 (UI-3、2026-09-07)。 */
   memoSeverity: {
@@ -267,6 +273,10 @@ export const ja = {
   // B-5 (2026-09-08): 個人ページ /me。
   mePage: {
     title: "自分のページ",
+    // L-9 (2026-09-09): 何のページなのかを最初に言う。実機報告
+    // 「どのように使うのかも分かりにくい」への対応。
+    lead:
+      "あなた専用のページです。ここで設定したジョブは軽減表の絞り込みに使われます。表示される内容はすべてあなたの行だけで、ほかの人のものは出ません。",
     profileTitle: "自分の情報",
     name: "表示名",
     role: "ロール",
@@ -277,10 +287,14 @@ export const ja = {
     notRegistered:
       "メンバー一覧にあなたの行がありません。設定のメンバー一覧に Discord ID を登録すると、出席や BiS の残りがここに出ます。",
     bisTitle: "残り BiS",
+    bisLead:
+      "攻略情報タブの「最適装備 (BiS)」で所有者があなたになっているものを集めています。数字は 取得済 / 全部位。",
     bisEmpty:
       "あなたの BiS が見つかりません。攻略情報タブの「最適装備 (BiS)」に、所有者をあなたの表示名にして登録すると出ます。",
     bisRemaining: (slots: string): string => `残り: ${slots}`,
     onboardingTitle: "学習パス",
+    onboardingLead:
+      "コンテンツごとのチェックリストの進み具合。コンテンツ名を押すとその攻略情報タブへ移動します。",
     onboardingEmpty:
       "まだチェックがありません。コンテンツの攻略情報タブに順序付きのチェックリストがあります。",
     onboardingNext: (step: string): string => `次: ${step}`,
@@ -721,11 +735,13 @@ export const en: CoreMessages = {
     deployTitle:
       "Deploy color: derived from today's latest commit (7-color cycle). Resets to the default cyan the next day",
     themeAria: "Switch theme",
+    myPageAria: "My page",
   },
   nav: {
     mainAria: "Main navigation",
     subAria: "Section navigation",
     schedule: "Schedule",
+    myPage: "My page",
   },
   memoSeverity: {
     labels: {
@@ -891,6 +907,8 @@ export const en: CoreMessages = {
   },
   mePage: {
     title: "My page",
+    lead:
+      "This page is yours alone. The job you set here is what the mitigation table filters by. Everything shown is your own row — nobody else's.",
     profileTitle: "About you",
     name: "Display name",
     role: "Role",
@@ -901,10 +919,14 @@ export const en: CoreMessages = {
     notRegistered:
       "You are not in the member list. Register your Discord ID in the settings member list and your attendance and BiS progress will show up here.",
     bisTitle: "BiS remaining",
+    bisLead:
+      'Collected from "Best in slot" entries on strategy tabs where you are the owner. The numbers are obtained / total slots.',
     bisEmpty:
       "No BiS set found for you. Add one under \"Best in slot\" on a content's strategy tab with your display name as the owner.",
     bisRemaining: (slots) => `Remaining: ${slots}`,
     onboardingTitle: "Learning path",
+    onboardingLead:
+      "How far you are through each content's checklist. Click a content name to jump to its strategy tab.",
     onboardingEmpty:
       "No checks yet. Each content's strategy tab has an ordered checklist.",
     onboardingNext: (step) => `Next: ${step}`,

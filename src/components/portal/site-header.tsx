@@ -1,5 +1,6 @@
 import Link from "next/link";
 import Image from "next/image";
+import { UserRound } from "lucide-react";
 import { ThemeSwitcher } from "./theme-switcher";
 import { LocaleSwitcher } from "./locale-switcher";
 // 1.9 (2026-04-28) TODO #11: SettingsDialog (~1601 行 + MaintenanceMenu
@@ -182,6 +183,24 @@ export async function SiteHeader({
         </Link>
 
         <div className="ml-auto flex items-center gap-2">
+          {/* L-9 (2026-09-09): 自分のページ (/me) への導線。実機報告
+              「自分のページへの導線がわかりにくい」への対応 — これまでは
+              コマンドパレット (Ctrl+K) からしか到達できず、パレット自体を
+              知らないと存在に気付けなかった。Server Component の素の
+              `<Link>` なので client bundle は 1 バイトも増えない。
+              ⚠ スマホ (375px) では 6 個目が入らない — 実測でヘッダー行が
+              33px はみ出した (ロゴのバージョン表記が 3 行に折り返した上で
+              なお溢れる) ため、`sm` 未満では出さず `MainTabs` のナビ行に
+              置く (あちらは overflow-x-auto なので溢れない)。 */}
+          <Link
+            href="/me"
+            prefetch={false}
+            aria-label={m.header.myPageAria}
+            title={m.header.myPageAria}
+            className="hidden items-center rounded-md sm:flex border border-border/40 bg-background/30 px-2.5 py-1.5 text-muted-foreground transition-colors hover:border-[var(--neon-cyan)]/40 hover:text-foreground"
+          >
+            <UserRound className="h-3.5 w-3.5" aria-hidden />
+          </Link>
           {/* 2026-09-07: 表示言語 (国旗)。設定ダイアログから移動。 */}
           <LocaleSwitcher />
           <ThemeSwitcher />

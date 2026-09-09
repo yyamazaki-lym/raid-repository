@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { CalendarDays } from "lucide-react";
+import { CalendarDays, UserRound } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
 import { cn } from "@/lib/utils";
 import { CategorySwitcher } from "./category-switcher";
@@ -37,6 +37,7 @@ export function MainTabs({
   const pathname = usePathname();
   const m = useMessages();
   const scheduleActive = pathname === "/";
+  const mePageActive = pathname === "/me";
   const showScheduleTab = scheduleSourceMode !== "disabled";
   // F-2: prefers-reduced-motion 時は underline の spring を即時化する。
   const reduceMotion = useReducedMotion();
@@ -96,6 +97,44 @@ export function MainTabs({
                 initialCategories={initialCategories}
                 userRoleIds={userRoleIds}
               />
+            </li>
+
+            {/* L-9 (2026-09-09): 自分のページ (/me) への導線のスマホ版。
+                ヘッダー右側は 375px で 6 個目が入らない (実測で 33px
+                はみ出す) ので、`sm` 未満だけここに出す。`sm` 以上は
+                `site-header.tsx` の人型アイコンが同じ役目をするため、
+                両方が同時に出ることはない。 */}
+            <li className="shrink-0 sm:hidden">
+              <Link
+                href="/me"
+                data-active={mePageActive}
+                className={cn(
+                  "neon-edge group relative flex items-center gap-2 rounded-md border border-transparent px-4 py-2 text-[12px] font-medium tracking-normal transition-colors",
+                  mePageActive
+                    ? "text-foreground"
+                    : "text-muted-foreground hover:text-foreground/90",
+                )}
+                aria-current={mePageActive ? "page" : undefined}
+              >
+                <UserRound
+                  className={cn(
+                    "h-3.5 w-3.5 transition-colors",
+                    mePageActive
+                      ? "text-[var(--neon-cyan)]"
+                      : "text-muted-foreground group-hover:text-foreground/80",
+                  )}
+                  aria-hidden
+                />
+                <span>{m.nav.myPage}</span>
+                <LinkPendingIndicator className="absolute top-1/2 right-1.5 -translate-y-1/2 text-[var(--neon-cyan)]" />
+                {mePageActive && (
+                  <motion.span
+                    layoutId="main-tab-underline"
+                    transition={underlineTransition}
+                    className="absolute right-2 -bottom-px left-2 h-px bg-[var(--neon-cyan)] shadow-[0_0_10px_var(--neon-cyan)]"
+                  />
+                )}
+              </Link>
             </li>
           </ul>
           {/* TODO #58 part2: /category 一覧の Maintenance + 追加ボタンが
