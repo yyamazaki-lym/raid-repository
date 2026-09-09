@@ -18,7 +18,7 @@ import { MitigationSheetTabsDialog } from "@/components/portal/mitigation-sheet-
 import { notFound } from "next/navigation";
 import { findCategoryBySlug } from "@/lib/supabase/categories";
 import { fetchMemberRoleByName } from "@/lib/supabase/member-roles";
-import { fetchMyMember } from "@/lib/server/my-member";
+import { fetchMyJobs, resolveMyJobsFor } from "@/lib/server/my-jobs";
 import { buildColumnJobs } from "@/lib/jobs";
 import { getCurrentUserCanEdit } from "@/lib/server/auth";
 import { getMessages } from "@/lib/i18n/server";
@@ -40,7 +40,7 @@ export default async function MitigationPage({
   searchParams: Promise<{ gid?: string }>;
 }) {
   const [{ slug }, { gid: rawGid }] = await Promise.all([params, searchParams]);
-  const [category, canEdit, m, memberRoles, myMember] = await Promise.all([
+  const [category, canEdit, m, memberRoles, myJobs] = await Promise.all([
     findCategoryBySlug(slug),
     getCurrentUserCanEdit(),
     getMessages(),
@@ -49,7 +49,8 @@ export default async function MitigationPage({
     fetchMemberRoleByName(),
     // L-8 (2026-09-08): 自分のジョブ。軽減表の列は**ジョブ名**で担当を
     // 書くので、列に当てるキーはこれ (表示名では当たらない)。
-    fetchMyMember(),
+    // L-10 (2026-09-09): 既定 + コンテンツ別の上書きを両方引く。
+    fetchMyJobs(),
   ]);
   const title = m.categoryTab.titles.mitigation;
 
@@ -174,6 +175,12 @@ export default async function MitigationPage({
   //   見ると、admin が名前を直した列で当たらなくなる)。
   const columnJobs = buildColumnJobs(columnLabels);
 
+  // L-10 (2026-09-09): このコンテンツで使う自分のジョブを解決する。
+  // ⚠ **上書きがあれば既定と合併しない** (`jobsForCategory`)。編集 UI が
+  // どちらの範囲に効くかを画面に出すため、上書きかどうかも渡す。
+  const myJobsHere = resolveMyJobsFor(myJobs, category.id).jobs;
+  const myJobsAreOverride = (myJobs.byCategory[category.id]?.length ?? 0) > 0;
+
   const columnsEditor =
     canEdit && table.ok ? (
       <MitigationColumnsDialog
@@ -267,8 +274,12 @@ export default async function MitigationPage({
               // L-8 (2026-09-08): ジョブで列に当てる + この画面でジョブを
               // 設定できるようにする (設定ダイアログの奥だと見つからない)。
               columnJobs={columnJobs}
-              myJob={myMember.job}
-              myRegistered={myMember.registered}
+              // L-10 (2026-09-09): このコンテンツで使うジョブに解決済み。
+              // 上書きがあればそれだけ、無ければ既定 (合併しない)。
+              myJobs={myJobsHere}
+              myJobsAreOverride={myJobsAreOverride}
+              categoryId={category.id}
+              myRegistered={myJobs.registered}
             />
           }
           iframe={

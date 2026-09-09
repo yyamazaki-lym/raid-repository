@@ -131,6 +131,56 @@ try {
     { 3: "RedMage", 7: "DarkKnight" },
   );
   check("空 / null", [m.buildColumnJobs({}), m.buildColumnJobs(null)], [{}, {}]);
+
+  // ---- L-10 (2026-09-09): 複数ジョブ + コンテンツ別の上書き ----
+  console.log("\n[ジョブ集合 -> ロール]");
+  check(
+    "重複を畳み tank -> healer -> dps の順に固定",
+    m.rolesOfJobs(["WhiteMage", "DarkKnight", "Sage", "Samurai"]),
+    ["tank", "healer", "dps"],
+  );
+  check("同ロールだけなら 1 件", m.rolesOfJobs(["Samurai", "RedMage"]), ["dps"]);
+  check(
+    "未知のジョブは落とす (混ぜても壊れない)",
+    m.rolesOfJobs(["Samurai", "NotAJob", null, undefined, ""]),
+    ["dps"],
+  );
+  check("空なら空", m.rolesOfJobs([]), []);
+
+  console.log("\n[コンテンツごとのジョブ]");
+  const assigned = {
+    defaults: ["RedMage", "Samurai"],
+    byCategory: { "cat-1": ["DarkKnight"], "cat-empty": [] },
+  };
+  check(
+    "上書きがあるコンテンツでは上書きだけ (既定と合併しない)",
+    m.jobsForCategory(assigned, "cat-1"),
+    ["DarkKnight"],
+  );
+  check(
+    "上書きが無いコンテンツは既定",
+    m.jobsForCategory(assigned, "cat-2"),
+    ["RedMage", "Samurai"],
+  );
+  check(
+    "空配列の上書きは「無い」と同じ (既定に落ちる)",
+    m.jobsForCategory(assigned, "cat-empty"),
+    ["RedMage", "Samurai"],
+  );
+  check(
+    "categoryId が null / undefined なら既定",
+    [m.jobsForCategory(assigned, null), m.jobsForCategory(assigned, undefined)],
+    [["RedMage", "Samurai"], ["RedMage", "Samurai"]],
+  );
+  check(
+    "返す配列は複製 (呼び出し側の書き換えが割り当てに漏れない)",
+    (() => {
+      const got = m.jobsForCategory(assigned, "cat-2");
+      got.push("Astrologian");
+      return assigned.defaults;
+    })(),
+    ["RedMage", "Samurai"],
+  );
 } finally {
   // outDir は tmp なので残しても害は無いが、他の検査と同じく片付ける。
   const { rmSync } = await import("node:fs");

@@ -5,8 +5,8 @@ import { requireDiscordMember } from "./auth";
 import { userIsAdmin } from "./admin-roles";
 import { bisProgress } from "@/lib/bis-slots";
 import { normalizeName } from "@/lib/schedule/attendance-reminder-core";
-import { isMemberRole, type MemberRole } from "@/lib/member-roles";
-import { roleOfJob } from "@/lib/jobs";
+import type { MemberRole } from "@/lib/member-roles";
+import { fetchMyJobs, resolveMyJobsFor } from "./my-jobs";
 import {
   buildOnboardingProgress,
   isOnboardingStepId,
@@ -59,11 +59,17 @@ export type MyProfile = {
   discordId: string;
   displayName: string | null;
   /**
-   * ジョブ (L-8、2026-09-08)。`native_schedule_members.job`。
-   * ここから `role` を導出する。
+   * ジョブ (L-8 2026-09-08 / L-10 2026-09-09)。
+   * `native_schedule_member_jobs` の割り当て。`defaults` が既定で、
+   * `byCategory` はコンテンツ別の上書き (既定と合併しない —
+   * `lib/jobs.ts` の `jobsForCategory` が正)。ロールはここから導出する。
    */
-  job: string | null;
-  role: MemberRole | null;
+  jobs: { defaults: string[]; byCategory: Record<string, string[]> };
+  /**
+   * 既定のジョブから導いたロール (複数あり得る)。ジョブが 1 つも無ければ
+   * 手動指定の `native_schedule_members.role` 1 件に落ちる。
+   */
+  roles: MemberRole[];
   characterName: string | null;
   isAdmin: boolean;
   /** メンバー一覧に自分の行があるか (無いと出席も BiS も引けない)。 */
@@ -74,6 +80,11 @@ export type MyDashboard = {
   profile: MyProfile;
   bis: MyBisRow[];
   onboarding: MyOnboardingRow[];
+  /**
+   * L-10 (2026-09-09): ジョブの上書き先を選ぶための一覧。閲覧できる
+   * コンテンツだけ (`categories` の読み取りに RLS が効く)。
+   */
+  categories: { id: string; name: string }[];
 };
 
 /**
@@ -88,35 +99,32 @@ export async function fetchMyDashboard(): Promise<MyDashboard> {
   const profile: MyProfile = {
     discordId: user.discordId,
     displayName: null,
-    job: null,
-    role: null,
+    jobs: { defaults: [], byCategory: {} },
+    roles: [],
     characterName: null,
     isAdmin: userIsAdmin(user.roles),
     registered: false,
   };
-  const empty: MyDashboard = { profile, bis: [], onboarding: [] };
+  const empty: MyDashboard = {
+    profile,
+    bis: [],
+    onboarding: [],
+    categories: [],
+  };
 
   try {
     const db = createSupabaseServiceRoleClient();
-    const { data: memberRow } = await db
-      .from("native_schedule_members")
-      .select("display_name, role, job, fflogs_character_name")
-      .eq("discord_user_id", user.discordId)
-      .maybeSingle();
-    if (memberRow) {
-      const r = memberRow as {
-        display_name?: string | null;
-        role?: string | null;
-        job?: string | null;
-        fflogs_character_name?: string | null;
-      };
-      profile.displayName = r.display_name ?? null;
-      profile.job = r.job ?? null;
-      // L-8: ロールは**ジョブから導出**したものを優先し、ジョブ未設定なら
-      // 手動指定の `role` に落ちる (ジョブを入れる前の固定を壊さない)。
-      profile.role =
-        roleOfJob(r.job) ?? (isMemberRole(r.role) ? r.role : null);
-      profile.characterName = r.fflogs_character_name ?? null;
+    // L-10 (2026-09-09): メンバー行とジョブ割り当ての読み取りは
+    // `fetchMyJobs` に集約した (既定 / コンテンツ別の解決と、旧 `job` 列への
+    // fallback を 2 箇所に書かないため)。中では 2 本を Promise.all で引く。
+    const myJobs = await fetchMyJobs();
+    if (myJobs.registered) {
+      profile.displayName = myJobs.displayName;
+      profile.jobs = { defaults: myJobs.defaults, byCategory: myJobs.byCategory };
+      // ロールは**ジョブから導出**したものを優先し、ジョブ未設定なら手動
+      // 指定の `role` に落ちる (ジョブを入れる前の固定を壊さない)。
+      profile.roles = resolveMyJobsFor(myJobs, null).roles;
+      profile.characterName = myJobs.characterName;
       profile.registered = true;
     }
 
@@ -221,7 +229,15 @@ export async function fetchMyDashboard(): Promise<MyDashboard> {
       .filter((r) => r.categorySlug !== "")
       .sort((a, b) => a.categoryName.localeCompare(b.categoryName, "ja"));
 
-    return { profile, bis, onboarding };
+    return {
+      profile,
+      bis,
+      onboarding,
+      // L-10: 上書き先を選ぶための一覧 (名前順)。
+      categories: [...cats.entries()]
+        .map(([id, c]) => ({ id, name: c.name }))
+        .sort((a, b) => a.name.localeCompare(b.name, "ja")),
+    };
   } catch (e) {
     console.warn("[me-page] failed:", e);
     return empty;

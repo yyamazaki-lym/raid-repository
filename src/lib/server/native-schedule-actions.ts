@@ -21,6 +21,7 @@ import {
 import { NATIVE_CHOICE_VALUES_KEY } from "@/lib/schedule/settings-keys";
 import { isMemberRole } from "@/lib/member-roles";
 import { isJobKey } from "@/lib/jobs";
+import { replaceMemberJobs } from "./member-jobs-write";
 import {
   normalizeAttendanceTime,
   symbolAllowsTimes,
@@ -503,14 +504,21 @@ export async function updateNativeScheduleMemberAction(
     }
     update.fflogs_character_name = v || null;
   }
+  // L-10 (2026-09-09): ジョブは `native_schedule_member_jobs` (割り当て表) が
+  // 正になった。この経路は 1 ジョブの `<select>` なので「そのメンバーの
+  // **既定**を、選んだ 1 件だけに置き換える」意味で扱う (本人が /me で入れた
+  // 複数指定は、admin がここを触ると 1 件に上書きされる)。列への
+  // ミラーは `replaceMemberJobs` がまとめて行うので、ここで update に
+  // 積まない。
+  let jobToApply: string | null | undefined;
   if (patch.job !== undefined) {
-    // L-8 (2026-09-08): ジョブ。妥当性は `isJobKey` (schema は長さと文字種
-    // だけを見る — 拡張でジョブが増えるたびの migration を避けるため)。
+    // 妥当性は `isJobKey` (schema は長さと文字種だけを見る — 拡張で
+    // ジョブが増えるたびの migration を避けるため)。
     const v = (patch.job ?? "").trim();
     if (v !== "" && !isJobKey(v)) {
       return { ok: false, reason: "ジョブの指定が不正です" };
     }
-    update.job = v || null;
+    jobToApply = v || null;
   }
   if (patch.role !== undefined) {
     const v = (patch.role ?? "").trim();
@@ -519,16 +527,28 @@ export async function updateNativeScheduleMemberAction(
     }
     update.role = v || null;
   }
-  if (Object.keys(update).length === 0) {
+  if (Object.keys(update).length === 0 && jobToApply === undefined) {
     return { ok: false, reason: "更新項目がありません" };
   }
 
   const supabase = await createClient();
-  const { error } = await supabase
-    .from("native_schedule_members")
-    .update(update)
-    .eq("discord_user_id", id);
-  if (error) return { ok: false, reason: dbError("メンバー更新", error) };
+  if (Object.keys(update).length > 0) {
+    const { error } = await supabase
+      .from("native_schedule_members")
+      .update(update)
+      .eq("discord_user_id", id);
+    if (error) return { ok: false, reason: dbError("メンバー更新", error) };
+  }
+  if (jobToApply !== undefined) {
+    // 割り当て表は RLS policy 0 本 (service role のみ) なので、
+    // ここだけ service role で書く。admin gate は上で通過済み。
+    const r = await replaceMemberJobs(createSupabaseServiceRoleClient(), {
+      discordUserId: id,
+      categoryId: null,
+      jobs: jobToApply === null ? [] : [jobToApply],
+    });
+    if (!r.ok) return { ok: false, reason: r.reason };
+  }
   try {
     revalidatePath("/");
   } catch {
