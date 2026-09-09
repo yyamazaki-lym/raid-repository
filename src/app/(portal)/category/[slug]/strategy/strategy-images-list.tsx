@@ -1,13 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import Image from "next/image";
 import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   ExternalLink,
   GripVertical,
+  ImageOff,
   ImagePlus,
   Loader2,
   RefreshCw,
@@ -36,6 +36,7 @@ import { Card } from "@/components/ui/card";
 // アルバム所属分のみアルバム単位でセクション分け、それ以外は image と
 // 同じ「ばら」grid に並ぶ。
 import { ImageFormDialog } from "@/components/portal/image-form-dialog-lazy";
+import { ImageWithFallback } from "@/components/portal/image-with-fallback";
 import { LinkCardMenu } from "@/components/portal/link-card-menu-lazy";
 import { ActionSlot } from "@/components/portal/action-slot";
 import {
@@ -327,10 +328,11 @@ function SortableImageCard({
               aria-label={m.images.zoomAria(link.title)}
               className="relative block aspect-video overflow-hidden bg-secondary/30 cursor-zoom-in"
             >
-              <Image
+              {/* L-19 (2026-09-09): 実体が取れない画像 (消した / 403 /
+                  共有期限切れ) は壊れた img ではなく代替表示に落とす。 */}
+              <ImageWithFallback
                 src={src}
                 alt={link.title}
-                fill
                 sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
                 className="object-cover transition-transform group-hover:scale-105"
                 loading="lazy"
@@ -393,7 +395,13 @@ function ImageLightbox({
     : -1;
   const open = currentId !== null && idx >= 0;
   const link = open ? links[idx] : null;
-  const src = link ? safeHref(link.url) : undefined;
+  const rawSrc = link ? safeHref(link.url) : undefined;
+  // L-19 (2026-09-09): 拡大表示でも「実体が取れない」を出す。URL の形式が
+  // 正しくても 404 / 403 なら壊れた img が出るだけだったので、失敗した URL
+  // を覚えて下の代替表示 (アイコン + 文言) に落とす。boolean ではなく URL を
+  // 持つのは、前後送りで別の画像に移った時に自動で復帰させるため。
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
+  const src = rawSrc && rawSrc !== failedSrc ? rawSrc : undefined;
   const hasMultiple = links.length > 1;
 
   const close = () => onCurrentIdChange(null);
@@ -502,6 +510,7 @@ function ImageLightbox({
                 else goNext();
               }}
               draggable={false}
+              onError={() => setFailedSrc(rawSrc ?? null)}
             />
             {hasMultiple && (
               <>
@@ -538,9 +547,10 @@ function ImageLightbox({
           </div>
         ) : (
           <div
-            className="flex items-center justify-center text-sm text-white/70"
+            className="flex flex-col items-center justify-center gap-2 text-sm text-white/70"
             onClick={close}
           >
+            <ImageOff className="h-8 w-8 opacity-70" aria-hidden />
             {m.images.loadFailed}
           </div>
         )}
@@ -745,10 +755,9 @@ function AlbumImageCard({
             aria-label={m.images.zoomAria(link.title)}
             className="relative block aspect-video overflow-hidden bg-secondary/30 cursor-zoom-in"
           >
-            <Image
+            <ImageWithFallback
               src={src}
               alt={link.title}
-              fill
               sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
               className="object-cover transition-transform group-hover:scale-105"
               loading="lazy"

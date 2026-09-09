@@ -268,7 +268,7 @@ export function SchedulePageBody({
               集計は native_schedule_* と練習ログの突合で、sync (外部シート)
               モードでは対応表が無い。可視範囲 (幹部=全員 / 本人=自分だけ) は
               Server Action 側で決める。 */}
-          {/* L-14 (2026-09-09): 同期式でも出す。回答は
+          {/* L-18 (2026-09-09): 同期式でも出す。回答は
               `schedule_past_sessions.attendances` (スナップショット) から
               引く (詳細は `server/attendance-summary-actions.ts`)。
               `disabled` のときだけ出さない。 */}
@@ -330,6 +330,11 @@ export function SchedulePageBody({
           sessionVideoLinks={sessionVideoLinks}
           sessionLogsByDate={sessionLogsByDate}
           initialMemosByDate={initialMemosByDate}
+          // L-18 (2026-09-09): メモの編集・削除ボタンの表示判定に要る。
+          // TODO #92 でこの 2 つを渡し忘れていて、過去チップの popover
+          // だけ **admin でもボタンが出ない** 状態だった。
+          currentDiscordId={currentDiscordId}
+          isAdmin={isAdmin}
         />
       )}
 

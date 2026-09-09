@@ -36,6 +36,7 @@ import {
   getAuthorizedUserRoles,
   requireDiscordMember,
   userIsAdmin,
+  type AuthorizedUser,
 } from "@/lib/server/auth";
 import { filterVisibleCategories } from "@/lib/category-visibility";
 import { getMessages } from "@/lib/i18n/server";
@@ -72,6 +73,18 @@ export const runtime = "nodejs";
  * (遅延 500ms ぶん一時消灯)」のチラつきが出るため、境界は loading.tsx の
  * 1 枚に集約する。
  */
+/**
+ * メモの編集・削除ボタンの表示判定に渡す「見ている人の ID」。
+ *
+ * demo のゲストは `discordId` を持つ (`public-demo-mode-guest`) が anon key
+ * で動くので RLS には必ず弾かれる。そのまま渡すと「押せるのに失敗する」
+ * ゴミ箱が出る (所有者不明のメモは誰でも消せる規則のため)。
+ * `category-link-reads.ts` の `me` と同じ正規化。
+ */
+function memoViewerId(member: AuthorizedUser): string | null {
+  return member.isDemoGuest ? null : member.discordId;
+}
+
 export default async function SchedulePage() {
   // TODO #2 phase 1 (2026-05-07): スケジュールソースモードで分岐。
   // - sync     → 既存の character-sheets fetch + parse path
@@ -125,7 +138,7 @@ export default async function SchedulePage() {
       holidays,
       recruitmentTemplates,
       categoriesResult,
-      userRoles,
+      member,
       sessionLogsByDate,
       appSettings,
       initialMemosByDate,
@@ -135,7 +148,11 @@ export default async function SchedulePage() {
       fetchJapaneseHolidays(),
       fetchRecruitmentTemplatesServer(),
       fetchCategories(),
-      getAuthorizedUserRoles(),
+      // L-18 (2026-09-09): roles だけでなく **本人の Discord ID** も要る
+      // (メモの編集・削除ボタンの表示判定)。`requireDiscordMember` は
+      // React cache() でリクエスト単位 dedupe されるので、
+      // `getAuthorizedUserRoles()` から差し替えても往復は増えない。
+      requireDiscordMember(),
       fetchSessionLogsByDate(),
       // A-2 (2026-07-12): mode / url / top_text は fetchPortalSettings() の
       // 一括 SELECT を共有 — このリクエストでは getScheduleSourceMode 解決時に
@@ -146,6 +163,7 @@ export default async function SchedulePage() {
         r.ok ? buildSessionVideoLinkMap(r.data.sessions) : {},
       ),
     ]);
+    const userRoles = member.roles;
     const topTextOverride = appSettings[SCHEDULE_TOP_TEXT_OVERRIDE_KEY] ?? null;
     const visibleCategories = categoriesResult.ok
       ? filterVisibleCategories(categoriesResult.categories, userRoles)
@@ -181,6 +199,11 @@ export default async function SchedulePage() {
           appSettings[MAINTENANCE_WINDOWS_KEY],
         )}
         initialMemosByDate={initialMemosByDate}
+        // L-18 (2026-09-09): sync mode でも本人 ID を渡す。TODO #92 で
+        // メモの編集・削除を所有者ベースにしたとき native 分岐にしか
+        // 渡しておらず、**既定モード (sync) では誰も自分のメモを編集
+        // できない** 状態になっていた。
+        currentDiscordId={memoViewerId(member)}
         // 2.9 (2026-08-24): sync mode でも admin 判定を渡す。過去詳細表の
         // 「実施しなかった日を消す」ゴミ箱アイコンの表示判定に使う
         // (schedule-list の他の isAdmin 用途はすべて mode === "native"
@@ -300,7 +323,7 @@ export default async function SchedulePage() {
         appSettings[MAINTENANCE_WINDOWS_KEY],
       )}
       initialMemosByDate={initialMemosByDate}
-      currentDiscordId={member.discordId}
+      currentDiscordId={memoViewerId(member)}
       isAdmin={isAdmin}
       nativeDefaultStartTime={appSettings[NATIVE_DEFAULT_START_TIME_KEY]}
       nativeDefaultEndTime={appSettings[NATIVE_DEFAULT_END_TIME_KEY]}

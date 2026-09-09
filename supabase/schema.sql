@@ -567,9 +567,10 @@ CREATE INDEX IF NOT EXISTS schedule_session_memos_date_idx
 ALTER TABLE public.schedule_session_memos
   ADD COLUMN IF NOT EXISTS author_user_id text
   DEFAULT (auth.jwt() -> 'app_metadata' ->> 'discord_id');
--- ⚠ **既存行は NULL のまま**。移行期は admin だけが触れる (誰の物か
--- 分からない行を他人に消させない)。埋め戻しはしない — `author_name` から
--- 推測すると別人の物を渡す危険がある。
+-- ⚠ **既存行は NULL のまま**。埋め戻しはしない — `author_name` から
+-- 推測すると別人の物を渡す危険がある。NULL の行は **編集は admin だけ**
+-- (文面のすり替えを防ぐ) / **削除はログイン済みメンバーなら誰でも**
+-- (L-18、2026-09-09 のユーザー決定。下の 7a-2 の DELETE ポリシー参照)。
 CREATE INDEX IF NOT EXISTS schedule_session_memos_author_idx
   ON public.schedule_session_memos(author_user_id);
 
@@ -2201,8 +2202,9 @@ END $$;
 -- ⚠ SELECT の対象ロールは 7-0 と同じ分岐 (公開デモのみ anon を含める)。
 -- ここを固定値にすると demo のゲストがメモを読めなくなる。
 --
--- ⚠ **既存行は `author_user_id IS NULL`** なので、移行期は admin だけが
--- 触れる。これは意図した状態 (誰の物か分からない行を他人に消させない)。
+-- ⚠ **既存行は `author_user_id IS NULL`**。編集 (INSERT/UPDATE) は admin
+-- だけ、削除はログイン済みメンバーなら誰でも (L-18、2026-09-09 のユーザー
+-- 決定)。UI 側の同じ規則は `src/lib/memo-permissions.ts` にある。
 DO $$
 DECLARE
   select_roles text := CASE
@@ -2247,8 +2249,20 @@ BEGIN
     'CREATE POLICY schedule_session_memos_owner_update ON public.schedule_session_memos FOR UPDATE TO authenticated USING %s WITH CHECK %s',
     owner_or_admin, owner_or_admin
   );
+  -- DELETE だけ **所有者不明の行 (author_user_id IS NULL)** も許す
+  -- (L-18、2026-09-09 のユーザー決定)。`author_user_id` は 2026-09-09 に
+  -- 足した列なので **それ以前のメモは全部 NULL** で、admin 以外は自分が
+  -- 書いた古いメモすら片付けられなかった。
+  --
+  -- ⚠ 開けるのは **DELETE だけ**。UPDATE を開けると、誰の物か分からない
+  -- 行の文面を別人が書き換えられる (履歴が黙ってすり替わる)。
+  -- ⚠ 引き換えに「非 admin メンバー 1 人が PostgREST 直叩きで
+  -- **所有者不明のメモを一括削除できる**」余地が戻る (7a-2 冒頭の
+  -- `USING (true)` で塞いだ穴のうち、旧行に限った再開放)。所有者つきの
+  -- 行 (2026-09-09 以降に投稿されたもの) は他人には消せないままなので、
+  -- 影響範囲は移行前の行と匿名投稿に閉じる。
   EXECUTE format(
-    'CREATE POLICY schedule_session_memos_owner_delete ON public.schedule_session_memos FOR DELETE TO authenticated USING %s',
+    'CREATE POLICY schedule_session_memos_owner_delete ON public.schedule_session_memos FOR DELETE TO authenticated USING (%s OR author_user_id IS NULL)',
     owner_or_admin
   );
 END $$;
