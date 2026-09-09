@@ -178,7 +178,18 @@ export type Category = {
    * Phase 17 (2026-05-13): SubTabs の表示 ON/OFF とラベル上書き。
    * key 未指定なら「enabled=true, label はデフォルト」を意味する。
    */
-  tabConfig: Record<string, { enabled?: boolean; label?: string | null }>;
+  /**
+   * サブタブごとの設定 (表示 ON/OFF・ラベル上書き)。
+   *
+   * L-15 (2026-09-09): `loot` タブだけ `wantMatrix` を持つ。
+   * 「欲しい人」行列を**そのコンテンツで出すか**の指定で、既定は出す
+   * (`!== false` で判定)。零式と絶では取得する装備が違うため、絶では
+   * 使わない固定がある (実機報告)。
+   */
+  tabConfig: Record<
+    string,
+    { enabled?: boolean; label?: string | null; wantMatrix?: boolean }
+  >;
   /**
    * W-33 ① (2026-09-07): 表示用の難易度ラベル (自由記述、24 文字)。
    * null / 空なら名前から推測する (`resolveDifficultyLabel`)。8.0 の

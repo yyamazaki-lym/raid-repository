@@ -624,6 +624,8 @@ export const ja = {
     defaultTabHelp:
       "コンテンツカードをクリックしたときの遷移先。非表示タブを既定にすると、 保存時に表示されているタブの先頭にフォールバックします。",
     tabVisibilityLabel: "各タブの表示 ON/OFF と名前",
+    // L-15 (2026-09-09): ロットタブの「欲しい人」行列を出すか。
+    lootWantMatrixLabel: "欲しい人",
     tabRenamePlaceholder: (def: string) => `名前を変更（空欄＝既定「${def}」）`,
     mitigationUrlLabel: "軽減表URL（任意）",
     mitigationUrlHelp: "軽減表サブタブで iframe 埋め込み表示されます。",
@@ -726,6 +728,8 @@ export const ja = {
   },
   // W-24 + W-25 (2026-09-08): ロットの「欲しい人」行列 + 優先度の提案。
   lootWant: {
+    // L-15 (2026-09-09): 畳んでいるときの説明。
+    collapsedHint: "閉じています (押すと開きます)",
     title: "欲しい人",
     subtitle: "BiS の「取得済」から自動で作った提案です (確定はしません)",
     allDone: "登録されている BiS はすべて揃っています。",
@@ -1472,6 +1476,7 @@ Lines only in the one in use: ${removed}`,
     defaultTabHelp:
       "Where the content card leads. If the default tab is hidden, it falls back to the first visible tab on save.",
     tabVisibilityLabel: "Tab visibility and names",
+    lootWantMatrixLabel: "Want matrix",
     tabRenamePlaceholder: (def) => `Rename (empty = default "${def}")`,
     mitigationUrlLabel: "Mitigation URL (optional)",
     mitigationUrlHelp: "Embedded as an iframe on the Mitigation tab.",
@@ -1570,6 +1575,7 @@ Lines only in the one in use: ${removed}`,
     },
   },
   lootWant: {
+    collapsedHint: "Collapsed (click to open)",
     title: "Who wants it",
     subtitle: "Suggested from the BiS obtained checks (nothing is decided here)",
     allDone: "Every registered BiS set is complete.",
