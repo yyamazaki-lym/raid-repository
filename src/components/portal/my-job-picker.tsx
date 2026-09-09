@@ -130,7 +130,7 @@ export function MyJobPicker({
         >
           <option value="">{m.myJob.add}</option>
           {(["tank", "healer", "dps"] as const).map((r) => (
-            <optgroup key={r} label={m.nativeMembers.roleNames[r]}>
+            <optgroup key={r} label={m.roles[r]}>
               {JOBS.filter((j) => j.role === r && !current.includes(j.key)).map(
                 (j) => (
                   <option key={j.key} value={j.key}>
@@ -145,7 +145,7 @@ export function MyJobPicker({
         {roles.length > 0 && (
           <span className="font-mono text-[11px] tracking-[0.08em] text-muted-foreground">
             {m.myJob.rolesAre(
-              roles.map((r) => m.nativeMembers.roleNames[r]).join(" / "),
+              roles.map((r) => m.roles[r]).join(" / "),
             )}
           </span>
         )}

@@ -289,7 +289,7 @@ export function SheetCards({
                         // (「自分のロール」だけでは何が残るか分からない)。
                         // L-10: 複数ロールなら全部並べる。
                         `${m.sheetCards.filterRole} (${myRoles
-                          .map((r) => m.nativeMembers.roleNames[r])
+                          .map((r) => m.roles[r])
                           .join(" / ")})`,
                       ],
                     ] as const)
@@ -391,7 +391,7 @@ export function SheetCards({
                 className={"inline-block h-2.5 w-2.5 rounded-sm border " + ROLE_TONE[r]}
                 aria-hidden
               />
-              {m.nativeMembers.roleNames[r]}
+              {m.roles[r]}
             </span>
           ))}
         </p>
