@@ -57,10 +57,7 @@ export default async function PortalLayout({
   return (
     <ConfirmProvider>
       <ChunkErrorHandler />
-      <SiteHeader
-        categories={visible}
-        scheduleSourceMode={scheduleSourceMode}
-      />
+      <SiteHeader />
       {/* TODO #58 part2: /category 一覧の Maintenance + 追加ボタンを MainTabs
           右端 portal target へ追従表示するための context。MainTabs と children
           を一緒に包み、子側 <MainActionSlot> が stuck 状態を push、MainTabs 側

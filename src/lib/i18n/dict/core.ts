@@ -99,9 +99,6 @@ export const ja = {
     mainAria: "メインナビゲーション",
     subAria: "コンテンツ内ナビゲーション",
     schedule: "スケジュール",
-    // L-9 (2026-09-09): スマホではヘッダーに 6 個目が入らない
-    // (実測 375px で 33px はみ出す) ので、ナビ行に置く。
-    myPage: "自分のページ",
   },
   /** 日付メモの重要度 (UI-3、2026-09-07)。 */
   memoSeverity: {
@@ -764,7 +761,6 @@ export const en: CoreMessages = {
     mainAria: "Main navigation",
     subAria: "Section navigation",
     schedule: "Schedule",
-    myPage: "My page",
   },
   memoSeverity: {
     labels: {
