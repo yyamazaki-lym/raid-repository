@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { fetchCategoryPullNotes } from "@/lib/server/pull-notes-read";
 import { findCategoryBySlug } from "@/lib/supabase/categories";
 import { getCurrentUserCanEdit } from "@/lib/server/auth";
 import {
@@ -86,9 +87,13 @@ export default async function LogsPage({
     ultimate,
   });
   const codes = Array.from(new Set(fights.map((f) => f.reportCode)));
-  const [videoLinks, failedSyncs] = await Promise.all([
+  const [videoLinks, failedSyncs, pullNotes] = await Promise.all([
     fetchReportVideoLinks(codes),
     fetchFailedReportSyncs(category.id),
+    // perf (2026-09-09): 注釈の初期値はここで読む。以前はカードが mount 後に
+    // Server Action を呼んでいたので、注釈が 0 件の固定でも練習ログを開く
+    // たびに往復 1 本が余計に走っていた。
+    fetchCategoryPullNotes(category.id),
     // L-7: 同期より前に取り込んだ pull は技名がクライアント言語のままなので、
     // 足りているものは触らず、欠けている ID だけ表示言語で埋める (in place)。
     localizeWipeAbilities(
@@ -106,6 +111,7 @@ export default async function LogsPage({
       totalPulls={totalPulls}
       totalClears={totalClears}
       truncated={truncated}
+      initialPullNotes={pullNotes.ok ? pullNotes : null}
       progressModel={category.progressModel}
       difficultyLabel={category.difficultyLabel}
       initialFloorParam={firstParam(sp.floor)}

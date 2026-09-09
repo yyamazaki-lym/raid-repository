@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
+import type { PullNote } from "@/lib/logs/pull-note-tags";
 import { useRouter } from "next/navigation";
 import {
   Activity,
@@ -123,6 +124,7 @@ import { PullNotesCard } from "@/components/portal/logs/pull-notes-card";
 export function LogsView({
   categoryId,
   categoryName,
+  initialPullNotes,
   minDifficulty,
   fights,
   totalPulls,
@@ -139,6 +141,8 @@ export function LogsView({
 }: {
   categoryId: string;
   categoryName: string;
+  /** W-7 の注釈の初期値 (サーバーで読む)。失敗時は null。 */
+  initialPullNotes: { notes: PullNote[]; truncated: boolean } | null;
   /** 取り込み難易度の下限 (null = 制限なし)。 */
   minDifficulty: number | null;
   /**
@@ -1276,7 +1280,10 @@ export function LogsView({
           注釈が 1 件も無い固定ではカードごと出ない (自前で消える)。
           ワイプ原因カード (致命技ベース) と同じ問いに人の判断で答える
           位置づけなので、その直前に置く。 */}
-      <PullNotesCard categoryId={categoryId} categoryName={categoryName} />
+      <PullNotesCard
+        categoryName={categoryName}
+        initial={initialPullNotes}
+      />
 
       {(wipeCauses.length > 0 ||
         phaseTotals.length > 1 ||
