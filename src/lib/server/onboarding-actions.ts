@@ -1,10 +1,15 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { requireDiscordMember } from "./auth";
-import { userIsAdmin } from "./admin-roles";
 import { isOnboardingStepId } from "@/lib/onboarding-steps";
+// 読み取りは素のモジュール側にある (攻略情報タブの Server Component が
+// 初期値を直接読むため)。型もそちらが正。
+import {
+  fetchOnboardingState,
+  type OnboardingStateOk,
+  type OnboardingStateResult,
+} from "./onboarding-state";
 
 /**
  * 学習パスの進捗 (B-3、2026-09-08) の読み書き。
@@ -26,50 +31,10 @@ import { isOnboardingStepId } from "@/lib/onboarding-steps";
  * 列挙されると「進んでいない人」の可視化になる。
  */
 
-export type OnboardingStateResult =
-  | {
-      ok: true;
-      /** 自分が済にした手順 id。 */
-      mine: string[];
-      /** 手順 id → 済にしたメンバーの人数 (admin のみ。非 admin は空)。 */
-      counts: Record<string, number>;
-      isAdmin: boolean;
-    }
-  | { ok: false; reason: string };
-
 export async function fetchOnboardingStateAction(
   categoryId: string,
 ): Promise<OnboardingStateResult> {
-  const user = await requireDiscordMember();
-  const isAdmin = userIsAdmin(user.roles);
-  if (!/^[0-9a-f-]{36}$/i.test(categoryId ?? "")) {
-    return { ok: false, reason: "コンテンツの指定が不正です" };
-  }
-  try {
-    const db = createSupabaseServiceRoleClient();
-    const { data, error } = await db
-      .from("category_onboarding_steps")
-      .select("discord_user_id, step")
-      .eq("category_id", categoryId);
-    if (error) return { ok: false, reason: "進捗を取得できませんでした" };
-    const rows = (data ?? []) as Array<{
-      discord_user_id: string;
-      step: string;
-    }>;
-    const mine = rows
-      .filter((r) => r.discord_user_id === user.discordId)
-      .map((r) => r.step);
-    const counts: Record<string, number> = {};
-    if (isAdmin) {
-      for (const r of rows) {
-        counts[r.step] = (counts[r.step] ?? 0) + 1;
-      }
-    }
-    return { ok: true, mine, counts, isAdmin };
-  } catch (e) {
-    console.warn("[onboarding] fetch failed:", e);
-    return { ok: false, reason: "進捗を取得できませんでした" };
-  }
+  return fetchOnboardingState(categoryId);
 }
 
 /**
@@ -78,11 +43,15 @@ export async function fetchOnboardingStateAction(
  * ⚠ **相手は引数で受け取らない。** 呼び出した本人の ID で書くので、
  * 他人の進捗を触る経路が存在しない (W-7 の個人タグと同じ形)。
  */
+export type SetOnboardingStepResult =
+  | { ok: true; state: OnboardingStateOk | null }
+  | { ok: false; reason: string };
+
 export async function setOnboardingStepAction(input: {
   categoryId: string;
   step: string;
   done: boolean;
-}): Promise<{ ok: true } | { ok: false; reason: string }> {
+}): Promise<SetOnboardingStepResult> {
   const user = await requireDiscordMember();
   // 公開デモの匿名ゲストは共有 ID を持つので、service role 経路で
   // 書けてしまわないよう弾く (他の service role Server Action と同じ扱い)。
@@ -116,12 +85,22 @@ export async function setOnboardingStepAction(input: {
         .eq("step", input.step);
       if (error) return { ok: false, reason: "進捗を保存できませんでした" };
     }
-    try {
-      revalidatePath("/");
-    } catch {
-      // best-effort
-    }
-    return { ok: true };
+    // ⚠ **`revalidatePath("/")` は呼ばない** (2026-09-09)。
+    //   * 学習パスが出るのは `/category/[slug]/strategy` と `/me` で、
+    //     `revalidatePath("/")` が作るタグ (`_N_T_/` / `_N_T_/index`) は
+    //     **どちらにも当たらない** — 狙った無効化はできていなかった
+    //   * portal の全ルートは動的 (認証で cookie を読む) なのでページ HTML の
+    //     キャッシュは無く、無効化する対象も無い。一方で Server Action が
+    //     revalidate すると**そのページの RSC が再描画されてレスポンスに
+    //     同梱される** (攻略情報タブの 11 本のクエリが再実行される)
+    // 画面は下の `state` を受け取って即座に追いつく。
+    //
+    // 保存後の状態をここで返す (2026-09-09)。以前は画面側が
+    // `setOnboardingStepAction` の完了を待ってから
+    // `fetchOnboardingStateAction` を呼んでいて、**チェック 1 回で往復 2 本**
+    // 直列になっていた。
+    const state = await fetchOnboardingState(input.categoryId);
+    return { ok: true, state: state.ok ? state : null };
   } catch (e) {
     console.warn("[onboarding] write failed:", e);
     return { ok: false, reason: "進捗を保存できませんでした" };

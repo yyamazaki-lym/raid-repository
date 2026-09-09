@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import Link from "next/link";
 import { Check, GraduationCap, Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -10,10 +10,7 @@ import {
   ONBOARDING_STEP_SEGMENT,
   type OnboardingStepId,
 } from "@/lib/onboarding-steps";
-import {
-  fetchOnboardingStateAction,
-  setOnboardingStepAction,
-} from "@/lib/server/onboarding-actions";
+import { setOnboardingStepAction } from "@/lib/server/onboarding-actions";
 import { useMessages } from "@/lib/i18n/client";
 
 /**
@@ -42,30 +39,31 @@ export function OnboardingPathCard({
   categoryId,
   categorySlug,
   availability,
+  initial,
 }: {
   categoryId: string;
   categorySlug: string;
   /** 手順 → 中身があるか (無い手順は出さない)。 */
   availability: Partial<Record<OnboardingStepId, boolean>>;
+  /**
+   * サーバーで読んだ初期値 (2026-09-09)。⚠ 以前は mount 後に
+   * `fetchOnboardingStateAction` を呼んでいたので、**攻略情報タブを開くたびに
+   * 往復 1 本**余計に走り、カードの描画も 1 フレーム遅れていた。
+   * 読み取りに失敗した場合だけ null (カードを出さない)。
+   */
+  initial: {
+    mine: string[];
+    counts: Record<string, number>;
+    isAdmin: boolean;
+  } | null;
 }) {
   const m = useMessages();
   const [state, setState] = useState<{
     mine: string[];
     counts: Record<string, number>;
     isAdmin: boolean;
-  } | null>(null);
+  } | null>(initial);
   const [busy, startTransition] = useTransition();
-
-  useEffect(() => {
-    let alive = true;
-    void fetchOnboardingStateAction(categoryId).then((r) => {
-      if (!alive || !r.ok) return;
-      setState({ mine: r.mine, counts: r.counts, isAdmin: r.isAdmin });
-    });
-    return () => {
-      alive = false;
-    };
-  }, [categoryId]);
 
   if (!state) return null;
   const progress = buildOnboardingProgress({
@@ -88,12 +86,14 @@ export function OnboardingPathCard({
         toast.error(r.reason);
         return;
       }
-      const again = await fetchOnboardingStateAction(categoryId);
-      if (again.ok) {
+      // 保存後の状態は Server Action の戻り値に載っている (2026-09-09)。
+      // ⚠ 以前はここで `fetchOnboardingStateAction` を**待ってから**呼んで
+      // いたので、チェック 1 回で往復 2 本が直列になっていた。
+      if (r.state) {
         setState({
-          mine: again.mine,
-          counts: again.counts,
-          isAdmin: again.isAdmin,
+          mine: r.state.mine,
+          counts: r.state.counts,
+          isAdmin: r.state.isAdmin,
         });
       }
     });
