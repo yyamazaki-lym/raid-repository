@@ -70,19 +70,23 @@ export default async function LootPage({
   // 2026-08-30: BiS リンクは攻略情報タブ (LINKS の上) へ移動 (ユーザー要望)。
   // W-33 ② (2026-09-07): 開いている週は 1 週 (既定 / 7.x) か 2 週 (8.0 の
   // トームストーン 2 週管理)。設定値で切り替える (コードに日付を焼かない)。
-  const windowWeeks = parseLootWindowWeeks(
-    await fetchAppSetting(LOOT_WINDOW_WEEKS_KEY),
-  );
+  // ⚠ 2026-09-09: ここは 4 段の直列だった (設定値 → 週ごとの消化 →
+  // BiS リンク → BiS の取得済)。3 段目は `category.id` しか要らないのに
+  // 1・2 段目の完了を待たされていたので、依存だけを見て 2 段に畳んだ
+  // (Supabase の RTT が 2 本ぶん減る)。
+  const [windowWeeksRaw, bisLinks] = await Promise.all([
+    fetchAppSetting(LOOT_WINDOW_WEEKS_KEY),
+    // W-24 + W-25 (2026-09-08): 「欲しい人」行列。BiS の「取得済」だけを根拠に
+    // 部位 × メンバーで並べ、取得済の少ない人を先に提案する (確定はしない)。
+    // BiS リンクが 0 本の固定では行列そのものを出さない。
+    fetchCategoryBisLinks(category.id),
+  ]);
+  const windowWeeks = parseLootWindowWeeks(windowWeeksRaw);
   const weeks = openWeekStarts(new Date(), windowWeeks);
-  const weeklyRowsByWeek = await Promise.all(
-    weeks.map((w) => fetchLootWeekly(category.id, w, viewer.discordId)),
-  );
-
-  // W-24 + W-25 (2026-09-08): 「欲しい人」行列。BiS の「取得済」だけを根拠に
-  // 部位 × メンバーで並べ、取得済の少ない人を先に提案する (確定はしない)。
-  // BiS リンクが 0 本の固定では行列そのものを出さない。
-  const bisLinks = await fetchCategoryBisLinks(category.id);
-  const bisSlots = await fetchCategoryBisSlots(bisLinks.map((l) => l.id));
+  const [weeklyRowsByWeek, bisSlots] = await Promise.all([
+    Promise.all(weeks.map((w) => fetchLootWeekly(category.id, w, viewer.discordId))),
+    fetchCategoryBisSlots(bisLinks.map((l) => l.id)),
+  ]);
   const wantMembers = bisLinks.map((l) => ({
     bisLinkId: l.id,
     // 列見出しは「誰の BiS か」が分かる方を優先する (owner_name が正)。

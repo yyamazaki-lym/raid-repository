@@ -12,6 +12,7 @@ import {
 } from "@/lib/supabase/loot-extras";
 import { BisLinksPanel } from "@/components/portal/loot-extras";
 import { OnboardingPathCard } from "@/components/portal/onboarding-path-card";
+import { fetchOnboardingState } from "@/lib/server/onboarding-state";
 import { fetchCategoryMacros } from "@/lib/supabase/category-macros";
 import { fetchCategoryWaymarks } from "@/lib/supabase/category-waymarks";
 import { getCurrentUserCanEdit } from "@/lib/server/auth";
@@ -67,7 +68,15 @@ export default async function StrategyPage({
   // 既読は canEdit で「未読メンバーの名前を含めるか」が変わるため、
   // canEdit を解決してから呼ぶ (だからこの Promise.all には入れられない)。
   const linkIds = links.map((l) => l.id);
-  const [linkReads, linkTags, bisSlots, videoLinks, macros, waymarks] =
+  const [
+    linkReads,
+    linkTags,
+    bisSlots,
+    videoLinks,
+    macros,
+    waymarks,
+    onboardingState,
+  ] =
     await Promise.all([
       fetchCategoryLinkReads(linkIds, canEdit),
       fetchCategoryLinkTags(linkIds),
@@ -78,6 +87,10 @@ export default async function StrategyPage({
       fetchCategoryLinks(category.id, "video"),
       fetchCategoryMacros(category.id),
       fetchCategoryWaymarks(category.id),
+      // B-3 / perf (2026-09-09): 学習パスの初期値はここで読む。以前はカードが
+      // mount 後に Server Action を呼んでいたので、タブを開くたびに往復 1 本
+      // 余計に走っていた。
+      fetchOnboardingState(category.id),
     ]);
   return (
     <div className="flex flex-col gap-6">
@@ -85,6 +98,7 @@ export default async function StrategyPage({
           「このコンテンツをどう覚えるか」を探しに来る場所だから。
           全部済んだ人には 1 行に縮む (カード自身が畳む)。 */}
       <OnboardingPathCard
+        initial={onboardingState.ok ? onboardingState : null}
         categoryId={category.id}
         categorySlug={category.slug}
         availability={{
