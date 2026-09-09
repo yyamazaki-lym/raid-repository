@@ -1,6 +1,10 @@
 "use server";
 
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
+import {
+  fetchAttendanceActualsByReports,
+  type ActualRow,
+} from "@/lib/schedule/attendance-actuals-paging";
 import { requireDiscordMember } from "./auth";
 import { userIsAdmin } from "./admin-roles";
 import { jstYmdString } from "@/lib/jst-date";
@@ -41,7 +45,6 @@ import {
 const WINDOW_DAYS = 90;
 /** ズレ一覧の表示上限 (多すぎると読まれない)。 */
 const MISMATCH_LIMIT = 40;
-
 export type AttendanceSummaryResult =
   | {
       ok: true;
@@ -75,11 +78,14 @@ export async function fetchAttendanceSummaryAction(): Promise<AttendanceSummaryR
         .select("discord_user_id, display_name, sort_order, is_active")
         .eq("is_active", true)
         .order("sort_order", { ascending: true }),
-      // 期間内の pull。report_code → JST 暦日 と、日ごとの pull 数に使う。
-      db
-        .from("fflogs_fights")
-        .select("report_code, start_ms")
-        .gte("start_ms", cutoffMs),
+      // 期間内の pull を **レポート単位に畳んで** 引く (2026-09-09)。
+      // ⚠ 以前は `fflogs_fights` の生行を `.select("report_code, start_ms")`
+      // で読んでいたが、**PostgREST の既定 1000 行上限**に当たっていた
+      // (90 日 = 週 3 日 × 40 pull で約 1,540 行。`order` も無かったので
+      // どの 1000 行が返るかも不定)。切れた行の pull は突合から落ちるので、
+      // 出席が静かに間違う。返る行数を数十に落とす RPC に置き換えた
+      // (schema.sql 13c-4 節)。
+      db.rpc("fflogs_report_days", { p_from_ms: cutoffMs }),
     ]);
 
     // ⚠ **読み取りの失敗を「不在」として扱わない。** PostgREST は失敗を
@@ -121,15 +127,21 @@ export async function fetchAttendanceSummaryAction(): Promise<AttendanceSummaryR
     }
 
     // レポート → JST 暦日 / 暦日 → pull 数。
+    // ⚠ 暦日は **レポート内の最初の pull** で決める。以前は生行を回して
+    // 「行ごとの暦日」で数えていたため、日を跨いだレポートの pull が
+    // `dayOfReport` の指す日とは別の日に積まれ、**その日の総 pull 数
+    // (`dayPulls`) とメンバー別の pull 数 (`pullsBy`、レポート経由で
+    // 日に結ぶ) が食い違っていた**。レポート単位に揃える。
     const dayOfReport = new Map<string, string>();
     const pullsPerDay = new Map<string, number>();
     for (const f of (fightsRes.data ?? []) as Array<{
       report_code: string;
-      start_ms: number;
+      first_start_ms: number;
+      pulls: number;
     }>) {
-      const day = jstYmdString(new Date(Number(f.start_ms)));
+      const day = jstYmdString(new Date(Number(f.first_start_ms)));
       dayOfReport.set(f.report_code, day);
-      pullsPerDay.set(day, (pullsPerDay.get(day) ?? 0) + 1);
+      pullsPerDay.set(day, (pullsPerDay.get(day) ?? 0) + (Number(f.pulls) || 0));
     }
 
     const codes = [...dayOfReport.keys()];
@@ -141,12 +153,23 @@ export async function fetchAttendanceSummaryAction(): Promise<AttendanceSummaryR
           "session_id",
           sessionRows.map((s) => s.id),
         ),
-      codes.length > 0
-        ? db
+      // 出席実績は上限で切れないよう塊 + ページで取り切る (2026-09-09)。
+      // ⚠ **order を外さないこと** — 順序なしの range() は行の重複 / 抜けを
+      // 生む。順序が付いているかは check-attendance-actuals-paging.mjs が
+      // このファイルを見て確かめる。
+      fetchAttendanceActualsByReports(
+        async ({ codes: chunk, from, to }) => {
+          const { data, error } = await db
             .from("fflogs_attendance_actuals")
             .select("report_code, discord_user_id, pulls")
-            .in("report_code", codes.slice(0, 300))
-        : Promise.resolve({ data: [] as never[], error: null }),
+            .in("report_code", chunk)
+            .order("report_code", { ascending: true })
+            .order("discord_user_id", { ascending: true })
+            .range(from, to);
+          return { rows: data as ActualRow[] | null, error };
+        },
+        codes,
+      ),
     ]);
 
     // 同じ理由 (上のコメント参照) で、出席と回答の読み取り失敗もエラーにする。
@@ -168,11 +191,7 @@ export async function fetchAttendanceSummaryAction(): Promise<AttendanceSummaryR
     }
 
     const pullsByDay = new Map<string, Record<string, number>>();
-    for (const r of (actualsRes.data ?? []) as Array<{
-      report_code: string;
-      discord_user_id: string;
-      pulls: number;
-    }>) {
+    for (const r of actualsRes.rows) {
       const day = dayOfReport.get(r.report_code);
       if (!day) continue;
       const bag = pullsByDay.get(day) ?? {};
