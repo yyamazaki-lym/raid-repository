@@ -2071,7 +2071,10 @@ BEGIN
     'mitigation_phases','mitigation_entries',
     'strategy_docs','tags',
     'native_schedule_sessions','native_schedule_members',
-    'native_schedule_attendances',
+    -- ⚠ native_schedule_attendances は **このループに載せない**
+    -- (2026-09-09)。admin と本人の 2 本が OR 評価で並び、Supabase lint
+    -- `multiple_permissive_policies` に当たっていた。7a で 1 アクション
+    -- 1 ポリシー (admin OR 本人) にまとめた。
     'native_schedule_session_logs',
     -- TODO #94 (2026-08-28): 6b 章の追加テーブル。いずれも既定の
     -- 「SELECT 開放 / 書き込みは admin」で足りる。loot_weekly_checks の
@@ -2126,56 +2129,64 @@ BEGIN
   END LOOP;
 END $$;
 
--- ---- 7a. native_schedule_attendances 本人 row 例外 (TODO #2 phase 2-A) ---
--- 上の 7 章ループは admin-only policy を生成するが、出欠入力は本人が
--- 自分の行を編集する設計のため、attendances のみ self-row insert/update/
--- delete を別名 policy で許可する。複数 policy は OR 評価されるので admin
--- (上のループ生成) と self-row (ここで生成) のどちらか TRUE で許可される。
+-- ---- 7a. native_schedule_attendances は admin または本人 (TODO #2 phase 2-A) --
+-- 出欠入力は**本人が自分の行を編集する**設計。以前は 7 章ループの admin-only
+-- policy と self-row policy の 2 本を OR 評価させていたが、Supabase lint
+-- `multiple_permissive_policies` に当たる (1 クエリで 2 本走る) ため、
+-- **1 アクション 1 ポリシー (admin OR 本人)** にまとめてループから外した。
 --
--- 2.9 follow-up (2026-06-12): self-row delete を追加。旧コメント「本人
--- delete は不要 — symbol 変更で表現」は実装と食い違っていた —
--- `upsertNativeScheduleAttendanceAction` は「未回答に戻す」(UI の未回答
--- radio) を空 symbol → 本人 row DELETE で表現しており、delete policy が
--- admin-only のままだと非 admin メンバーの操作が 0 行 DELETE + ok:true +
--- 成功 toast の silent fail になっていた (#176 と同クラスの RLS silent
--- fail、2026-06-12 の RLS 監査で検出)。app 実装に合わせて self-delete を
--- 許可する。
+-- 2.9 follow-up (2026-06-12): 本人 delete が必要。
+-- `upsertNativeScheduleAttendanceAction` は「未回答に戻す」を空 symbol →
+-- 本人 row DELETE で表現しており、delete が admin-only のままだと非 admin の
+-- 操作が 0 行 DELETE + ok:true + 成功 toast の silent fail になっていた
+-- (#176 と同クラス、2026-06-12 の RLS 監査で検出)。
 --
--- マッチ条件: `auth.jwt() -> 'app_metadata' ->> 'discord_id' = discord_user_id`
--- discord_id claim は OAuth callback で書き込まれる (Phase 1 と同じ経路)。
--- 2026-07-12 監査 B-3: claim 抽出を `(SELECT ...)` に包んで per-statement
--- 評価 (initPlan)。列比較 (`= discord_user_id`) 自体は行ごとに評価される
--- (self-row 判定なので当然)。意味は等価。
+-- ⚠ SELECT の対象ロールは 7-0 と同じ分岐 (公開デモのみ anon を含める)。
+-- 固定値にすると demo のゲストが予定表を読めなくなる。
+DO $$
+DECLARE
+  select_roles text := CASE
+    WHEN coalesce(current_setting('app.public_demo', true), '') = 'true'
+      THEN 'anon, authenticated'
+    ELSE 'authenticated'
+  END;
+  -- admin または本人。`(SELECT auth.jwt())` の形は lint auth_rls_initplan の
+  -- 案内どおり (per-statement 1 回評価)。
+  admin_or_self text :=
+    $expr$(
+      ((SELECT auth.jwt()) -> 'app_metadata' ->> 'is_admin') = 'true'
+      OR ((SELECT auth.jwt()) -> 'app_metadata' ->> 'discord_id') = discord_user_id
+    )$expr$;
+BEGIN
+  DROP POLICY IF EXISTS native_schedule_attendances_anon_select ON public.native_schedule_attendances;
+  DROP POLICY IF EXISTS native_schedule_attendances_anon_insert ON public.native_schedule_attendances;
+  DROP POLICY IF EXISTS native_schedule_attendances_anon_update ON public.native_schedule_attendances;
+  DROP POLICY IF EXISTS native_schedule_attendances_anon_delete ON public.native_schedule_attendances;
+  DROP POLICY IF EXISTS native_schedule_attendances_self_insert ON public.native_schedule_attendances;
+  DROP POLICY IF EXISTS native_schedule_attendances_self_update ON public.native_schedule_attendances;
+  DROP POLICY IF EXISTS native_schedule_attendances_self_delete ON public.native_schedule_attendances;
+  DROP POLICY IF EXISTS native_schedule_attendances_read ON public.native_schedule_attendances;
+  DROP POLICY IF EXISTS native_schedule_attendances_write_insert ON public.native_schedule_attendances;
+  DROP POLICY IF EXISTS native_schedule_attendances_write_update ON public.native_schedule_attendances;
+  DROP POLICY IF EXISTS native_schedule_attendances_write_delete ON public.native_schedule_attendances;
 
-DROP POLICY IF EXISTS native_schedule_attendances_self_insert
-  ON public.native_schedule_attendances;
-CREATE POLICY native_schedule_attendances_self_insert
-  ON public.native_schedule_attendances
-  FOR INSERT TO authenticated
-  WITH CHECK (
-    ((SELECT auth.jwt()) -> 'app_metadata' ->> 'discord_id') = discord_user_id
+  EXECUTE format(
+    'CREATE POLICY native_schedule_attendances_read ON public.native_schedule_attendances FOR SELECT TO %s USING (true)',
+    select_roles
   );
-
-DROP POLICY IF EXISTS native_schedule_attendances_self_update
-  ON public.native_schedule_attendances;
-CREATE POLICY native_schedule_attendances_self_update
-  ON public.native_schedule_attendances
-  FOR UPDATE TO authenticated
-  USING (
-    ((SELECT auth.jwt()) -> 'app_metadata' ->> 'discord_id') = discord_user_id
-  )
-  WITH CHECK (
-    ((SELECT auth.jwt()) -> 'app_metadata' ->> 'discord_id') = discord_user_id
+  EXECUTE format(
+    'CREATE POLICY native_schedule_attendances_write_insert ON public.native_schedule_attendances FOR INSERT TO authenticated WITH CHECK %s',
+    admin_or_self
   );
-
-DROP POLICY IF EXISTS native_schedule_attendances_self_delete
-  ON public.native_schedule_attendances;
-CREATE POLICY native_schedule_attendances_self_delete
-  ON public.native_schedule_attendances
-  FOR DELETE TO authenticated
-  USING (
-    ((SELECT auth.jwt()) -> 'app_metadata' ->> 'discord_id') = discord_user_id
+  EXECUTE format(
+    'CREATE POLICY native_schedule_attendances_write_update ON public.native_schedule_attendances FOR UPDATE TO authenticated USING %s WITH CHECK %s',
+    admin_or_self, admin_or_self
   );
+  EXECUTE format(
+    'CREATE POLICY native_schedule_attendances_write_delete ON public.native_schedule_attendances FOR DELETE TO authenticated USING %s',
+    admin_or_self
+  );
+END $$;
 
 -- ---- 7a-2. schedule_session_memos は所有者ベース (TODO #92、2026-09-09) -----
 -- 以前は「ログイン済みメンバーなら誰でも共有メモを編集可」で、書き込みは
@@ -2451,9 +2462,19 @@ DROP POLICY IF EXISTS "category-backgrounds anon delete"          ON storage.obj
 DROP POLICY IF EXISTS "category-backgrounds authenticated insert" ON storage.objects;
 DROP POLICY IF EXISTS "category-backgrounds authenticated delete" ON storage.objects;
 
-CREATE POLICY "category-backgrounds public read"
-  ON storage.objects FOR SELECT
-  USING (bucket_id = 'category-backgrounds');
+-- ⚠ **`category-backgrounds public read` (SELECT) は作らない** (2026-09-09、
+-- Supabase lint `public_bucket_allows_listing`)。
+--
+-- 公開バケットの**表示**は `/storage/v1/object/public/<bucket>/<path>` で
+-- 行われ、この経路は `storage.objects` の RLS を見ない (`getPublicUrl` が
+-- 作る URL)。つまり SELECT ポリシーが効くのは **一覧列挙 (`list()`)** と
+-- 署名 URL 発行だけで、アプリはどちらも使っていない
+-- (`grep '\.storage\.from('` の全件が `upload` / `remove` のみ)。
+-- 張ったままだと**アップロード済みファイルを誰でも列挙できる**ので外す。
+--
+-- ⚠ 戻すときは下の DROP の直後にこの SELECT ポリシーを再作成する:
+--   CREATE POLICY "category-backgrounds public read" ON storage.objects
+--     FOR SELECT USING (bucket_id = 'category-backgrounds');
 
 -- TODO #36 phase 1 (2.1, 2026-04-29): INSERT は authenticated のみ。
 -- TODO #36 phase 2 (2.1, 2026-04-29): さらに is_admin claim も要求。
@@ -2507,9 +2528,19 @@ DROP POLICY IF EXISTS "category-strategy-images public read"          ON storage
 DROP POLICY IF EXISTS "category-strategy-images authenticated insert" ON storage.objects;
 DROP POLICY IF EXISTS "category-strategy-images authenticated delete" ON storage.objects;
 
-CREATE POLICY "category-strategy-images public read"
-  ON storage.objects FOR SELECT
-  USING (bucket_id = 'category-strategy-images');
+-- ⚠ **`category-strategy-images public read` (SELECT) は作らない** (2026-09-09、
+-- Supabase lint `public_bucket_allows_listing`)。
+--
+-- 公開バケットの**表示**は `/storage/v1/object/public/<bucket>/<path>` で
+-- 行われ、この経路は `storage.objects` の RLS を見ない (`getPublicUrl` が
+-- 作る URL)。つまり SELECT ポリシーが効くのは **一覧列挙 (`list()`)** と
+-- 署名 URL 発行だけで、アプリはどちらも使っていない
+-- (`grep '\.storage\.from('` の全件が `upload` / `remove` のみ)。
+-- 張ったままだと**アップロード済みファイルを誰でも列挙できる**ので外す。
+--
+-- ⚠ 戻すときは下の DROP の直後にこの SELECT ポリシーを再作成する:
+--   CREATE POLICY "category-strategy-images public read" ON storage.objects
+--     FOR SELECT USING (bucket_id = 'category-strategy-images');
 
 CREATE POLICY "category-strategy-images authenticated insert"
   ON storage.objects FOR INSERT
@@ -3279,4 +3310,45 @@ BEGIN
     EXECUTE format('REVOKE EXECUTE ON FUNCTION %s FROM PUBLIC, anon, authenticated', fn);
     EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO %s', fn, exec_roles);
   END LOOP;
+END $$;
+
+-- ---- 16. pg_net の応答テーブルを溜めない ---------------------------------
+-- 2026-09-09: Supabase の advisor が `net._http_response` の
+-- `table_bloat` を上げてきた。13 章の毎時 cron が `net.http_get` で Vercel の
+-- route を叩くたび、pg_net は**応答を `net._http_response` に積む**。
+-- 誰も `net.http_collect_response()` で回収しないので、pg_net の TTL 掃除に
+-- 任せきりになっていた。
+--
+-- ⚠ **放置すると容量を食い続ける**。毎時 1 行でも年 8,760 行、しかも
+-- 応答本文つき。ここで**日次の掃除ジョブ**を登録して上限を切る。
+--
+-- ⚠ **VACUUM はここでは実行できない。** 既に膨らんだ物理サイズを縮めるには
+-- `VACUUM FULL net._http_response` が要るが、VACUUM はトランザクション内で
+-- 走らせられず (この schema は `--single-transaction` で適用する)、排他ロックも
+-- 取る。**1 回だけ手動で**実行してもらう:
+--   SQL Editor で `VACUUM (FULL, ANALYZE) net._http_response;`
+-- 以後はこのジョブが行数を抑えるので再発しない。
+--
+-- ⚠ 消すのは**応答だけ**。`net.http_request_queue` は pg_net 自身が処理後に
+-- 削除するので触らない。
+DO $$
+DECLARE
+  existing_jobid bigint;
+  c_schedule constant text := '17 4 * * *';  -- 毎日 04:17 UTC (JST 13:17)
+  c_command constant text :=
+    $cmd$DELETE FROM net._http_response WHERE created < now() - interval '2 days'$cmd$;
+BEGIN
+  SELECT jobid INTO existing_jobid
+    FROM cron.job WHERE jobname = 'purge-pg-net-responses';
+  IF existing_jobid IS NULL THEN
+    PERFORM cron.schedule('purge-pg-net-responses', c_schedule, c_command);
+    RAISE NOTICE '[cron] purge-pg-net-responses を登録しました';
+  ELSE
+    PERFORM cron.alter_job(
+      job_id := existing_jobid,
+      schedule := c_schedule,
+      command := c_command
+    );
+    RAISE NOTICE '[cron] purge-pg-net-responses を更新しました (jobid=%)', existing_jobid;
+  END IF;
 END $$;
