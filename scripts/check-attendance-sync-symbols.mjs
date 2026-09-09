@@ -143,6 +143,38 @@ try {
   rmSync(outDir, { recursive: true, force: true });
 }
 
+/**
+ * 呼び出し側 (`server/attendance-summary-actions.ts`) が **同期式では
+ * `native_schedule_attendances` を読まない**ことを、コードを見て確かめる
+ * (L-20、2026-09-09)。
+ *
+ * 同期式のセッション行は `schedule_past_sessions` 由来で `id` を持たない。
+ * そのまま `.in("session_id", rows.map(s => s.id))` すると `undefined` が
+ * 送られ **`invalid input syntax for type uuid: "undefined"`** で読み取りが
+ * 3 本まとめて失敗し、画面は「出席サマリーの取得に失敗しました」になる
+ * (本番で実際に発生)。純関数側では捕まえられないので構造検査で固定する。
+ */
+console.log("\n呼び出し側 (同期式では native の出欠表を読まない)");
+const caller = readFileSync(
+  "src/lib/server/attendance-summary-actions.ts",
+  "utf8",
+);
+check(
+  "session_id の in に生の s.id を渡していない",
+  /\.in\(\s*["']session_id["'],\s*\n?\s*sessionRows\.map/.test(caller),
+  false,
+);
+check(
+  "同期式では session id を空にしている",
+  /syncMode\s*\?\s*\[\]/.test(caller),
+  true,
+);
+check(
+  "undefined を除いてから渡している",
+  /filter\(\(id\): id is string => typeof id === "string"\)/.test(caller),
+  true,
+);
+
 if (failures > 0) {
   console.error(`\n${failures} check(s) failed`);
   process.exit(1);
