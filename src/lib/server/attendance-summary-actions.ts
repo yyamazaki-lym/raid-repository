@@ -188,14 +188,26 @@ export async function fetchAttendanceSummaryAction(): Promise<AttendanceSummaryR
     }
 
     const codes = [...dayOfReport.keys()];
+    // L-20 (2026-09-09 実機報告「出席サマリーは取得不可」): **同期式では
+    // この表を読まない。** 同期式のセッション行は `schedule_past_sessions`
+    // 由来で `id` を持たないため、`.in("session_id", [undefined, ...])` が
+    // そのまま送られ **`invalid input syntax for type uuid: "undefined"`**
+    // で 3 本まとめて失敗し、画面は「取得に失敗しました」になっていた
+    // (本番の runtime log で確認)。同期式の記号は下の
+    // `syncSymbolsFromSnapshot` が `attendances` から作るので、そもそも
+    // この読み取りは要らない。
+    const nativeSessionIds = syncMode
+      ? []
+      : sessionRows
+          .map((s) => s.id)
+          .filter((id): id is string => typeof id === "string");
     const [attendancesRes, actualsRes] = await Promise.all([
-      db
-        .from("native_schedule_attendances")
-        .select("session_id, discord_user_id, symbol")
-        .in(
-          "session_id",
-          sessionRows.map((s) => s.id),
-        ),
+      nativeSessionIds.length > 0
+        ? db
+            .from("native_schedule_attendances")
+            .select("session_id, discord_user_id, symbol")
+            .in("session_id", nativeSessionIds)
+        : Promise.resolve({ data: [], error: null }),
       // 出席実績は上限で切れないよう塊 + ページで取り切る (2026-09-09)。
       // ⚠ **order を外さないこと** — 順序なしの range() は行の重複 / 抜けを
       // 生む。順序が付いているかは check-attendance-actuals-paging.mjs が
