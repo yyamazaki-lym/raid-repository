@@ -24,6 +24,14 @@ export type ScheduleSessionMemo = {
   rawDate: string;
   body: string;
   authorName: string;
+  /**
+   * 所有者の Discord ID (TODO #92、2026-09-09)。
+   *
+   * ⚠ `authorName` は localStorage 由来の表示名で**所有者ではない**
+   * (誰でも好きな名前を書ける)。編集・削除の可否はこちらで判定する。
+   * 移行前に作られた行は null で、admin だけが触れる。
+   */
+  authorUserId: string | null;
   /** 重要度 (UI-3、2026-09-07)。既定は "none" = 未設定。 */
   severity: MemoSeverity;
   createdAt: string;
@@ -34,6 +42,7 @@ type ScheduleSessionMemoRow = {
   id: string;
   raw_date: string;
   body: string;
+  author_user_id?: string | null;
   author_name: string;
   severity?: string | null;
   created_at: string;
@@ -46,6 +55,8 @@ function rowToMemo(row: ScheduleSessionMemoRow): ScheduleSessionMemo {
     rawDate: row.raw_date,
     body: row.body,
     authorName: row.author_name ?? "",
+    // schema 適用前 (列が無い) の応答では null に倒す = admin のみ編集可。
+    authorUserId: row.author_user_id ?? null,
     // schema 適用前 (列が無い) の応答でも落ちないよう既定へ倒す。
     severity: parseMemoSeverity(row.severity),
     createdAt: row.created_at,
