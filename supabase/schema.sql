@@ -2853,6 +2853,41 @@ REVOKE EXECUTE ON FUNCTION public.category_progress_by_day(integer) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.category_progress_by_day(integer)
   TO authenticated;
 
+-- ---- 13c-4. fflogs_report_days (出席サマリーの日付突合、2026-09-09) -------
+-- W-19 の出席サマリーは「report_code -> JST 暦日」と「暦日ごとの pull 数」の
+-- 2 つだけが欲しいのに、`fflogs_fights` の生行を期間で読んでいた。
+--
+-- ⚠ **PostgREST は既定で 1000 行が上限** (6b-4 の PAGE_SIZE コメントに実測が
+-- ある)。90 日ぶんは週 3 日 × 40 pull で約 1,540 行に達するので、
+-- **上限で黙って切れて出席の突合が静かに間違う**状態だった (`order` も
+-- 付いていなかったのでどの 1000 行が返るかも不定)。#328 で直した
+-- 「明細が 1000 件で頭打ち」と同じクラスの穴が別経路に残っていたもの。
+--
+-- レポート単位に畳めば返るのは 90 日で数十行なので、上限に当たらない。
+--
+-- ⚠ **SECURITY DEFINER にしない。** 呼ぶのは service role だけで、RLS を
+-- bypass する必要が無い。DEFINER にすると 15 章で塞いだ「anon から
+-- DEFINER 関数経由で RLS を迂回する」経路をまた作ることになる。
+--
+-- ⚠ **JST 暦日はここで計算しない。** 日付の正規化は `lib/jst-date.ts` に
+-- 集約する方針なので、返すのはレポート内の最小 start_ms (epoch ミリ秒) で、
+-- 暦日への変換は TS 側の `jstYmdString` が行う。
+CREATE OR REPLACE FUNCTION public.fflogs_report_days(p_from_ms bigint)
+RETURNS TABLE (report_code text, first_start_ms bigint, pulls integer)
+LANGUAGE sql STABLE SET search_path = public AS $$
+  SELECT f.report_code,
+         min(f.start_ms)::bigint AS first_start_ms,
+         count(*)::integer       AS pulls
+    FROM public.fflogs_fights f
+   WHERE f.start_ms >= p_from_ms
+     AND f.report_code IS NOT NULL
+   GROUP BY f.report_code
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.fflogs_report_days(bigint) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.fflogs_report_days(bigint)
+  TO authenticated, service_role;
+
 -- ---- 13d. native placeholder raid time retro-update RPC (TODO #85) ----
 -- 2.6 (2026-06-10): TODO #81 follow-up。`ensureNativeMonthlyPlaceholders()`
 -- が auto-insert する placeholder 行は raw_date (`YYYY/MM/DD(曜) HH:MM~HH:MM`)
