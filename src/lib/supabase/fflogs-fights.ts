@@ -1,5 +1,9 @@
 import { createClient } from "./server";
 import {
+  phaseTotalsFromRows,
+  type PhaseTotalsResult,
+} from "@/lib/fflogs-phase-totals";
+import {
   buildFloorMap,
   normalizePercentage,
   type FightRow,
@@ -9,11 +13,6 @@ import {
   asPhaseTransitions,
   phaseSpans,
   summarizeWipe,
-  phaseTimeTotals,
-  type PhaseSpan,
-  type PhaseTimeTotal,
-  firstPhaseReaches,
-  type PhaseFirstReach,
 } from "@/lib/fflogs-fight-detail";
 
 /**
@@ -136,6 +135,12 @@ export type CategoryFights = {
   totalClears: number;
   /** 明細が MAX_FIGHTS で打ち切られたか。 */
   truncated: boolean;
+  /**
+   * 全 pull のフェーズ滞在時間 (2026-09-09)。`includePhaseTotals` を付けた
+   * ときだけ入る。⚠ **同じ行から集計する** — 以前は同じ表を 2 回
+   * フルスキャンしていた (`phaseTotalsFromRows` の docstring 参照)。
+   */
+  phaseTotals: PhaseTotalsResult | null;
 };
 
 export async function fetchCategoryFights(
@@ -154,6 +159,11 @@ export async function fetchCategoryFights(
      * 「最終層以外」として数から落ちる。
      */
     ultimate?: boolean;
+    /**
+     * フェーズ滞在時間の全件集計を**同じ行から**返すか (2026-09-09)。
+     * 絶のページだけ true。false のときは集計しない (零式では表示しない)。
+     */
+    includePhaseTotals?: boolean;
   },
 ): Promise<CategoryFights> {
   const empty: CategoryFights = {
@@ -161,6 +171,7 @@ export async function fetchCategoryFights(
     totalPulls: 0,
     totalClears: 0,
     truncated: false,
+    phaseTotals: null,
   };
   try {
     const supabase = await createClient();
@@ -222,6 +233,9 @@ export async function fetchCategoryFights(
       totalPulls,
       totalClears: clearRes.count ?? 0,
       truncated: totalPulls > fights.length,
+      // ⚠ 読み取りを増やさない — 上で取った `data` から集計する。
+      phaseTotals:
+        opts?.includePhaseTotals === true ? phaseTotalsFromRows(data) : null,
     };
   } catch (err) {
     rethrowNextSentinel(err);
@@ -341,79 +355,4 @@ function rethrowNextSentinel(err: unknown): void {
   }
 }
 
-/**
- * カテゴリの **全 pull** のフェーズ滞在時間 (2026-09-07)。
- *
- * 練習ログの「フェーズ滞在時間」カードは、明細が MAX_FIGHTS で打ち切られる
- * カテゴリでは表示中の pull だけの合計になっていた (実機: 絶竜詩 1047 pull
- * で「表示中の分」)。ここでは軽い列 (開始 / 終了 / フェーズ遷移 jsonb) だけを
- * 1000 件ずつ全件読み、`phaseSpans` → `phaseTimeTotals` で合計する。
- * 絶 (フェーズ管理コンテンツ) のページからだけ呼ぶ。
- *
- * 戻り値の `pulls` は区間が取れた pull 数 (= 合計の母数)。フェーズ遷移が
- * 保存されていない pull (古い同期分) は数えない。
- *
- * 2026-09-07: あわせて「各フェーズへの初到達」(`firstReach`) も返す。こちらは
- * フェーズ遷移が無い pull でも `last_phase` があれば数えられるので、全 pull を
- * 対象にする (pull 数がフェーズ滞在時間の母数とは一致しない)。
- */
-export async function fetchCategoryPhaseTotals(categoryId: string): Promise<{
-  totals: PhaseTimeTotal[];
-  pulls: number;
-  firstReach: PhaseFirstReach[];
-} | null> {
-  const supabase = await createClient();
-  const spansList: Array<PhaseSpan[] | null> = [];
-  const reaches: Array<{
-    startMs: number;
-    durationMs: number;
-    reachedPhase: number | null;
-    date: string | null;
-  }> = [];
-  try {
-    // 明細と同じ並列ページングで全 pull を取る (2026-09-07)。以前は直列
-    // 20 ページのループを自前で持っていたが、上限の管理が 2 箇所に分かれて
-    // いると片方だけ古い値のまま残る (実際 1200 と 20000 でずれていた)。
-    const paged = await fetchAllCategoryFightRows(
-      supabase,
-      "start_ms, end_ms, phase_transitions, last_phase, session_date",
-      categoryId,
-    );
-    if (!paged) return null;
-    for (const r of paged.rows) {
-      const startMs = Number(r.start_ms);
-      const endMs = Number(r.end_ms);
-      if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) continue;
-      const durationMs = Math.max(0, endMs - startMs);
-      const transitions = asPhaseTransitions(r.phase_transitions);
-      if (transitions !== null) spansList.push(phaseSpans(transitions, durationMs));
-      // 到達フェーズ: last_phase が基本。遷移が取れていればその最大 ID とも
-      // 突き合わせる (片方しか無いレポートがあるため)。
-      const lastPhase = numberOrNull(r.last_phase);
-      const maxTransition =
-        transitions && transitions.length > 0
-          ? Math.max(...transitions.map((t) => t.id))
-          : null;
-      const reachedPhase =
-        lastPhase === null && maxTransition === null
-          ? null
-          : Math.max(lastPhase ?? 0, maxTransition ?? 0);
-      reaches.push({
-        startMs,
-        durationMs,
-        reachedPhase,
-        date: typeof r.session_date === "string" ? r.session_date : null,
-      });
-    }
-  } catch (e) {
-    console.warn("[fflogs-fights] phase totals fetch threw:", e);
-    return null;
-  }
-  const totals = phaseTimeTotals(spansList);
-  if (totals.length === 0) return null;
-  return {
-    totals,
-    pulls: spansList.filter((s) => s !== null).length,
-    firstReach: firstPhaseReaches(reaches),
-  };
-}
+
