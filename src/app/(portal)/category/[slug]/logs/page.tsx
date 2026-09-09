@@ -5,7 +5,6 @@ import {
   fetchCategoryFights,
   fetchFailedReportSyncs,
   fetchReportVideoLinks,
-  fetchCategoryPhaseTotals,
 } from "@/lib/supabase/fflogs-fights";
 import { resolveProgressModel } from "@/lib/content-model";
 import { getLocale, getMessages } from "@/lib/i18n/server";
@@ -69,16 +68,23 @@ export default async function LogsPage({
   // 頼りきらず人が指定できる経路を残す。
   const ultimate =
     resolveProgressModel(category.progressModel, category.name) === "phases";
-  // フェーズ滞在時間の全件集計 (2026-09-07) は明細と独立なので並列に取る。
-  const [{ fights, totalPulls, totalClears, truncated }, phaseTotalsAll] =
-    await Promise.all([
-      fetchCategoryFights(category.id, {
-        // フェーズ滞在区間は絶 (フェーズ管理コンテンツ) だけ表示に使う。
-        includePhases: ultimate,
-        ultimate,
-      }),
-      ultimate ? fetchCategoryPhaseTotals(category.id) : Promise.resolve(null),
-    ]);
+  // フェーズ滞在時間の全件集計は **明細と同じ行から** 出す (2026-09-09)。
+  // ⚠ 以前は `fetchCategoryPhaseTotals` を並列に呼んでいたが、あちらは同じ
+  // category_id / 同じ並び / 同じページングで `fflogs_fights` をもう一度
+  // フルスキャンしていた (集計が使う列は明細側の列に完全に含まれる)。
+  // 実機の絶竜詩 1047 pull で 4 クエリ / 約 2,100 行の転送になっていた。
+  const {
+    fights,
+    totalPulls,
+    totalClears,
+    truncated,
+    phaseTotals: phaseTotalsAll,
+  } = await fetchCategoryFights(category.id, {
+    // フェーズ滞在区間は絶 (フェーズ管理コンテンツ) だけ表示に使う。
+    includePhases: ultimate,
+    includePhaseTotals: ultimate,
+    ultimate,
+  });
   const codes = Array.from(new Set(fights.map((f) => f.reportCode)));
   const [videoLinks, failedSyncs] = await Promise.all([
     fetchReportVideoLinks(codes),
