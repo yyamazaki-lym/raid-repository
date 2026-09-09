@@ -68,6 +68,17 @@ const EMPTY_SESSION_LOGS: SessionLogEntry[] = [];
  */
 
 type Props = {
+  /**
+   * 見ている人の Discord ID (TODO #92、2026-09-09)。
+   *
+   * ⚠ **編集・削除ボタンの表示判定に使う。** 実際の可否は RLS
+   * (`schedule_session_memos_owner_*`) が決めるので、ここを偽っても
+   * 他人のメモは触れない。押せるのに失敗する状態を作らないための表示制御。
+   * demo のゲストなど本人が分からない場合は null。
+   */
+  viewerId?: string | null;
+  /** admin は代理で直せる (運用でメモを整える経路を残す)。 */
+  viewerIsAdmin?: boolean;
   rawDate: string;
   /** What date label to show in the popover header. */
   displayDate: string;
@@ -117,6 +128,8 @@ export type SessionMemoPopoverHandle = {
 };
 
 export function SessionMemoPopover({
+  viewerId = null,
+  viewerIsAdmin = false,
   rawDate,
   displayDate,
   memos,
@@ -313,6 +326,8 @@ export function SessionMemoPopover({
             </header>
             <div className="flex-1 overflow-y-auto px-3 py-3">
               <MemoList
+                viewerId={viewerId}
+                viewerIsAdmin={viewerIsAdmin}
                 rawDate={rawDate}
                 memos={memos}
                 onRefresh={onRefresh}
@@ -330,12 +345,17 @@ export function SessionMemoPopover({
 // SessionMemoDot は C-5 で `@/components/portal/schedule/session-memo-dot` に移動。
 
 function MemoList({
+  viewerId,
+  viewerIsAdmin,
   rawDate,
   memos,
   onRefresh,
   sessionLogs,
   sessionDetails,
 }: {
+  /** TODO #92: 編集・削除ボタンの表示判定 (可否は RLS が決める)。 */
+  viewerId: string | null;
+  viewerIsAdmin: boolean;
   rawDate: string;
   memos: ScheduleSessionMemo[];
   onRefresh?: () => Promise<void>;
@@ -666,6 +686,11 @@ function MemoList({
                       </span>
                       <MemoSeverityBadge severity={m.severity} />
                     </div>
+                    {/* TODO #92 (2026-09-09): 自分のメモ (と admin) だけ
+                        編集・削除できる。移行前の行は所有者が分からないので
+                        admin のみ。押せるのに RLS で失敗する状態を作らない。 */}
+                    {(viewerIsAdmin ||
+                      (m.authorUserId !== null && m.authorUserId === viewerId)) && (
                     <span className="flex shrink-0 items-center gap-0.5 opacity-60 transition-opacity group-hover:opacity-100">
                       <button
                         type="button"
@@ -686,6 +711,7 @@ function MemoList({
                         <Trash2 className="h-3 w-3" aria-hidden />
                       </button>
                     </span>
+                    )}
                   </div>
                   <p className="text-[12px] leading-relaxed whitespace-pre-wrap break-words text-foreground/90">
                     {m.body}

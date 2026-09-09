@@ -22,6 +22,8 @@ type ScheduleSessionMemoRow = {
   raw_date: string;
   body: string;
   author_name: string;
+  /** TODO #92 (2026-09-09): 所有者の Discord ID。schema 適用前は無い。 */
+  author_user_id?: string | null;
   severity?: string | null;
   created_at: string;
   updated_at: string;
@@ -33,6 +35,8 @@ function rowToMemo(row: ScheduleSessionMemoRow): ScheduleSessionMemo {
     rawDate: row.raw_date,
     body: row.body,
     authorName: row.author_name ?? "",
+    // 列が無い応答では null = admin のみ編集可に倒す (TODO #92)。
+    authorUserId: row.author_user_id ?? null,
     // UI-3 (2026-09-07)。schema 適用前の応答でも落ちないよう既定へ倒す。
     severity: parseMemoSeverity(row.severity),
     createdAt: row.created_at,

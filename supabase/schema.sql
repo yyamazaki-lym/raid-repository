@@ -545,6 +545,34 @@ CREATE TABLE IF NOT EXISTS public.schedule_session_memos (
 CREATE INDEX IF NOT EXISTS schedule_session_memos_date_idx
   ON public.schedule_session_memos(raw_date, created_at);
 
+-- TODO #92 / 2026-08-05 監査 M-1 (2026-09-09 にユーザー決定で保留解除):
+-- **メモに所有者を持たせる。**
+--
+-- それまでは 7a-2 の member policy が `USING (true)` で、**非 admin メンバー
+-- 1 人が PostgREST 直叩き 1 リクエストで全メモを削除・改竄できた**
+-- (`DELETE /rest/v1/schedule_session_memos?id=neq.<uuid>`。ローカル PG16 で
+-- 3 件全消しを実測再現)。UI は 1 件ずつしか消せないので誰がやったかも残らない。
+-- Supabase の advisor も同じ箇所を `rls_policy_always_true` として警告した。
+--
+-- ⚠ **`author_name` は所有者ではない。** あれは localStorage 由来の表示名で、
+-- 誰でも好きな名前を書ける。所有者判定に使ってはいけない。
+--
+-- ⚠ 値は **Discord ID** (`app_metadata.discord_id`)。この repo の本人判定は
+-- 全部これで、7a の出欠 self-row policy と同じキーになる。
+--
+-- ⚠ DEFAULT に **subquery は書けない**ので `auth.jwt()` を直接呼ぶ
+-- (ポリシー側は `(SELECT auth.jwt())` に包む — lint auth_rls_initplan)。
+-- これで client は列を送らなくても自分の ID が入る。送ってきた場合も
+-- INSERT の WITH CHECK が自分の ID 以外を弾く。
+ALTER TABLE public.schedule_session_memos
+  ADD COLUMN IF NOT EXISTS author_user_id text
+  DEFAULT (auth.jwt() -> 'app_metadata' ->> 'discord_id');
+-- ⚠ **既存行は NULL のまま**。移行期は admin だけが触れる (誰の物か
+-- 分からない行を他人に消させない)。埋め戻しはしない — `author_name` から
+-- 推測すると別人の物を渡す危険がある。
+CREATE INDEX IF NOT EXISTS schedule_session_memos_author_idx
+  ON public.schedule_session_memos(author_user_id);
+
 -- 2026-07-12 監査 B-5: 本テーブルは 7a-2 の member policy で **非 admin の
 -- authenticated 全員が INSERT/UPDATE 可能** なのに length CHECK が無く、
 -- PostgREST 直叩きで巨大 body / 異常 author_name を注入できた
@@ -2034,7 +2062,11 @@ BEGIN
     'categories','category_links','category_gphoto_albums',
     'app_settings','schedule_past_sessions',
     'schedule_past_session_logs',
-    'recruitment_templates','category_macros','schedule_session_memos',
+    'recruitment_templates','category_macros',
+    -- ⚠ schedule_session_memos は **このループに載せない** (2026-09-09、
+    -- TODO #92)。所有者ベースの明示ポリシー (7a-2) に移した。ループの
+    -- admin-only policy と OR 評価にすると 1 アクションに 2 本並び、
+    -- Supabase lint `multiple_permissive_policies` にも当たる。
     'loot_items','loot_entries',
     'mitigation_phases','mitigation_entries',
     'strategy_docs','tags',
@@ -2145,36 +2177,70 @@ CREATE POLICY native_schedule_attendances_self_delete
     ((SELECT auth.jwt()) -> 'app_metadata' ->> 'discord_id') = discord_user_id
   );
 
--- ---- 7a-2. schedule_session_memos メンバー書込 (総合レビュー A-4) -----------
--- 5c-2 のコメント設計どおり「ログイン済みメンバーなら誰でも共有メモを編集可」
--- にする。汎用ループ (7 章) が生成する admin-only policy と OR 評価され、admin
--- か authenticated のどちらかが TRUE なら許可される。所有者カラムが無い
--- (author_name は情報用のみ) ため self-row ではなく authenticated 全体に開放
--- する。信頼境界は「ログイン済み guild メンバー = 本サイトの読み書きスコープ」。
--- anon は read-only のまま (公開インターネットからの vandalism 防止)。
--- 本番は proxy で全 viewer が認証済みメンバーに限定されるので実質「全員編集可」、
--- demo は実セッション owner のみ書込可・guest (anon key) は RLS で block。
-DROP POLICY IF EXISTS schedule_session_memos_member_insert
-  ON public.schedule_session_memos;
-CREATE POLICY schedule_session_memos_member_insert
-  ON public.schedule_session_memos
-  FOR INSERT TO authenticated
-  WITH CHECK (true);
+-- ---- 7a-2. schedule_session_memos は所有者ベース (TODO #92、2026-09-09) -----
+-- 以前は「ログイン済みメンバーなら誰でも共有メモを編集可」で、書き込みは
+-- `USING (true)` だった。2026-09-09 のユーザー決定で **所有者概念を入れる**
+-- ことにしたので、insert / update / delete を **所有者 または admin** に限る。
+--
+-- ⚠ **1 アクション 1 ポリシーにする。** 汎用ループ (7 章) の admin-only policy と
+-- 併存させると OR 評価で 2 本走り、Supabase lint
+-- `multiple_permissive_policies` にも当たる。そのためこの表はループから外し、
+-- SELECT も含めて 4 本ここで作る。
+--
+-- ⚠ SELECT の対象ロールは 7-0 と同じ分岐 (公開デモのみ anon を含める)。
+-- ここを固定値にすると demo のゲストがメモを読めなくなる。
+--
+-- ⚠ **既存行は `author_user_id IS NULL`** なので、移行期は admin だけが
+-- 触れる。これは意図した状態 (誰の物か分からない行を他人に消させない)。
+DO $$
+DECLARE
+  select_roles text := CASE
+    WHEN coalesce(current_setting('app.public_demo', true), '') = 'true'
+      THEN 'anon, authenticated'
+    ELSE 'authenticated'
+  END;
+  -- 所有者 または admin。`(SELECT auth.jwt())` の形は lint
+  -- auth_rls_initplan の案内どおり (per-statement 1 回評価)。
+  owner_or_admin text :=
+    $expr$(
+      ((SELECT auth.jwt()) -> 'app_metadata' ->> 'is_admin') = 'true'
+      OR (
+        author_user_id IS NOT NULL
+        AND author_user_id = ((SELECT auth.jwt()) -> 'app_metadata' ->> 'discord_id')
+      )
+    )$expr$;
+BEGIN
+  DROP POLICY IF EXISTS schedule_session_memos_anon_select ON public.schedule_session_memos;
+  DROP POLICY IF EXISTS schedule_session_memos_anon_insert ON public.schedule_session_memos;
+  DROP POLICY IF EXISTS schedule_session_memos_anon_update ON public.schedule_session_memos;
+  DROP POLICY IF EXISTS schedule_session_memos_anon_delete ON public.schedule_session_memos;
+  DROP POLICY IF EXISTS schedule_session_memos_member_insert ON public.schedule_session_memos;
+  DROP POLICY IF EXISTS schedule_session_memos_member_update ON public.schedule_session_memos;
+  DROP POLICY IF EXISTS schedule_session_memos_member_delete ON public.schedule_session_memos;
+  DROP POLICY IF EXISTS schedule_session_memos_read ON public.schedule_session_memos;
+  DROP POLICY IF EXISTS schedule_session_memos_owner_insert ON public.schedule_session_memos;
+  DROP POLICY IF EXISTS schedule_session_memos_owner_update ON public.schedule_session_memos;
+  DROP POLICY IF EXISTS schedule_session_memos_owner_delete ON public.schedule_session_memos;
 
-DROP POLICY IF EXISTS schedule_session_memos_member_update
-  ON public.schedule_session_memos;
-CREATE POLICY schedule_session_memos_member_update
-  ON public.schedule_session_memos
-  FOR UPDATE TO authenticated
-  USING (true)
-  WITH CHECK (true);
-
-DROP POLICY IF EXISTS schedule_session_memos_member_delete
-  ON public.schedule_session_memos;
-CREATE POLICY schedule_session_memos_member_delete
-  ON public.schedule_session_memos
-  FOR DELETE TO authenticated
-  USING (true);
+  EXECUTE format(
+    'CREATE POLICY schedule_session_memos_read ON public.schedule_session_memos FOR SELECT TO %s USING (true)',
+    select_roles
+  );
+  -- INSERT: 自分の ID でしか作れない (列を送らなければ DEFAULT で入る)。
+  -- admin は代理で作れる (運用でメモを整える経路を残す)。
+  EXECUTE format(
+    'CREATE POLICY schedule_session_memos_owner_insert ON public.schedule_session_memos FOR INSERT TO authenticated WITH CHECK %s',
+    owner_or_admin
+  );
+  EXECUTE format(
+    'CREATE POLICY schedule_session_memos_owner_update ON public.schedule_session_memos FOR UPDATE TO authenticated USING %s WITH CHECK %s',
+    owner_or_admin, owner_or_admin
+  );
+  EXECUTE format(
+    'CREATE POLICY schedule_session_memos_owner_delete ON public.schedule_session_memos FOR DELETE TO authenticated USING %s',
+    owner_or_admin
+  );
+END $$;
 
 -- ---- 7b. Realtime: REPLICA IDENTITY FULL ------------------------------
 -- Without this, Supabase Realtime DELETE events only carry the primary

@@ -996,8 +996,13 @@ function SessionRow({
                 3. default → foreground
               Wrapped in a memo popover so any user can leave shared
               notes for this session by clicking the date. */}
+          {/* TODO #92 (2026-09-09): viewerId / viewerIsAdmin は「自分のメモ
+              だけ編集・削除ボタンを出す」表示判定に使う。可否は RLS
+              (schedule_session_memos_owner_*) が決める。 */}
           <SessionMemoPopover
             ref={popoverRef}
+            viewerId={currentDiscordId}
+            viewerIsAdmin={isAdmin}
             rawDate={session.rawDate}
             displayDate={session.rawDate.split(" ")[0] ?? session.rawDate}
             memos={memos}
