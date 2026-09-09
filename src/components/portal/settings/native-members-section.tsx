@@ -383,7 +383,7 @@ export function NativeMembersSection({
                     <option value="">{m.nativeMembers.roleUnset}</option>
                     {MEMBER_ROLES.map((r) => (
                       <option key={r} value={r}>
-                        {m.nativeMembers.roleNames[r]}
+                        {m.roles[r]}
                       </option>
                     ))}
                   </select>
@@ -408,7 +408,7 @@ export function NativeMembersSection({
                   >
                     <option value="">{m.myJob.unset}</option>
                     {MEMBER_ROLES.map((r) => (
-                      <optgroup key={r} label={m.nativeMembers.roleNames[r]}>
+                      <optgroup key={r} label={m.roles[r]}>
                         {JOBS.filter((j) => j.role === r).map((j) => (
                           <option key={j.key} value={j.key}>
                             {jobLabel(j.key, locale)} ({j.abbr})

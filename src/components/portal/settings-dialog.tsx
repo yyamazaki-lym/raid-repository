@@ -49,6 +49,7 @@ import { FflogsSyncSection } from "./settings/fflogs-sync-section";
 import { ChangelogFooter } from "./settings/changelog-footer";
 import { DangerZoneSection } from "./settings/danger-zone-section";
 import { useMessages } from "@/lib/i18n/client";
+import { SettingsMessagesProvider } from "./settings/settings-messages";
 
 /**
  * Settings dialog: shared global configuration that all members see
@@ -76,7 +77,33 @@ import { useMessages } from "@/lib/i18n/client";
  * モードの選択 (これを畳むと下の節が出る理由が読めなくなる) / URL /
  * 既定時刻 / 定期枠 / 自動成立 / 更新履歴のフッタ。
  */
-export function SettingsDialog({
+/**
+ * 設定ダイアログ。
+ *
+ * ⚠ **本体は `SettingsMessagesProvider` の中に置く** (2026-09-09)。設定辞書は
+ * この chunk にしか載せない構成にしたので、`useMessages()` で設定セクション
+ * (`m.settings` / `m.nativeMembers` / …) を読めるのは Provider の内側だけ。
+ * トリガーボタンの aria も設定辞書なので、**分割した本体ごと**包む必要がある
+ * (Provider を本体の JSX の中に置くと、本体自身の `useMessages()` は
+ * Provider の外側になり `undefined` を読む)。理由は
+ * `lib/i18n/messages.ts` の docstring を参照。
+ */
+export function SettingsDialog(props: SettingsDialogProps) {
+  return (
+    <SettingsMessagesProvider>
+      <SettingsDialogBody {...props} />
+    </SettingsMessagesProvider>
+  );
+}
+
+type SettingsDialogProps = {
+  canEdit: boolean;
+  showSignIn?: boolean;
+  defaultOpen?: boolean;
+  defaultSection?: string;
+};
+
+function SettingsDialogBody({
   canEdit,
   showSignIn = false,
   defaultOpen = false,

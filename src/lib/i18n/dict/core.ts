@@ -90,6 +90,11 @@ export const ja = {
     // 存在に気付けなかった。ヘッダーに常時見える導線を置く。
     myPageAria: "自分のページ",
   },
+  // 2026-09-09: ロール名は設定辞書 (`nativeMembers.roleNames`) にしか
+  // 無かったが、軽減表と /me という**常時読み込みの画面**からも使う。
+  // 設定辞書は設定ダイアログの lazy chunk に移したので、共有の 3 語は
+  // こちらに置く (`messages.ts` の docstring 参照)。
+  roles: { tank: "タンク", healer: "ヒーラー", dps: "DPS" },
   nav: {
     mainAria: "メインナビゲーション",
     subAria: "コンテンツ内ナビゲーション",
@@ -754,6 +759,7 @@ export const en: CoreMessages = {
     themeAria: "Switch theme",
     myPageAria: "My page",
   },
+  roles: { tank: "Tank", healer: "Healer", dps: "DPS" },
   nav: {
     mainAria: "Main navigation",
     subAria: "Section navigation",
