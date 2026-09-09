@@ -7,72 +7,139 @@
 
 # Raid Repository
 
-语言：[日本語](README.md) | [English](README.en.md) | [Deutsch](README.de.md) | [Français](README.fr.md) | **简体中文** | [한국어](README.ko.md)
+阅读语言: [日本語](README.md) | [English](README.en.md) | [Deutsch](README.de.md) | [Français](README.fr.md) | **简体中文** | [한국어](README.ko.md)
 
-> 本页为功能与部署的简要说明。完整的分步教程（环境变量、故障排查）以[英文](README.en.md)和[日文](README.md)维护。
+> 本文是精简版。逐屏的安装指引与故障排查以[英文](docs/setup.en.md)和[日文](docs/setup.md)维护。
 
-面向《最终幻想 XIV》固定队（开荒队）的门户站点：日程、减伤表、装备分配、攻略链接、视频与练习记录集中在一处。
+面向《最终幻想 XIV》固定队的门户站 —— 把**日程、减伤表、装备分配、攻略链接、视频、练习记录**放在一处。
 
-以「一个队伍 = 一个部署」为前提设计：fork 到自己的账号、为自己的固定队单独运行的单租户应用。
+按「一个队伍 = 一次部署」设计的单租户应用，**fork 后为自己的固定队运行**。入口由 Discord 服务器成员身份把守，只有该服务器的成员才能登录。
 
-## 在线演示
+🔗 **演示站（只读）: https://demo-raid-repository.vercel.app**
+可以直接点开体验。**你不需要自己搭一个演示站。**
 
-公开的只读演示站：🔗 **https://demo-raid-repository.vercel.app**
+---
 
 ## 功能
 
 ### 日程
-- 三种来源模式：**同步**（从 character-sheets 导入）、**自建**（在门户内添加候选日期、填写出勤 ○ × △、确认开团，支持 FFLogs 关联与 Discord 通知）、**关闭**
-- 已确认的场次高亮为**下次开团**（当天显示「距开始 N 小时 M 分」倒计时）
-- **固定周期**（「每周二 / 四 / 六」）：候选日期只在这些星期自动生成，对话框还能按**期间 × 星期**批量创建。不在周期内的日子会带上「临时」「仅此次」标记
-- 自建模式下，成员可额外填写**迟到到达时间 / 早退时间**（HH:MM），显示在符号旁（`21:30〜`），Discord 确认通知中也会出现在名字旁
-- Discord 通知模板支持 `{discord_relative}` / `{discord_time}`（按阅读者时区渲染为「3 小时后」等）
-- 对未填写出勤的成员自动 @提醒；可选「全员填写后自动确认」
-- 悬停 / 点按成员名查看其留言；每场次提供 Google 日历链接
+
+- **三种模式**：**自建**（在门户内完成候选日添加 → 出勤 ○ × △ → 确定开团）/ **同步**（从 character-sheets 导入）/ **关闭**
+- 已确定的场次会作为**下次开团**高亮（当天显示「距开始还有 N 小时 M 分」）
+- 设定**固定星期**后，候选日只在这些星期自动生成；对话框还能**按时间段 × 星期批量生成**。不在固定星期的日子会带「临时」「仅此一次」标记
+- 除 ○ × △ 外，成员可自行填写**迟到的预计到达时间 / 早退时间**（在符号旁显示 `21:30〜`）
+- 对未填写的成员**自动催填**、全员填写后**自动确定**（可选）
+- Discord 通知模板支持 `{discord_relative}` / `{discord_time}`，按阅读者所在时区渲染
+- 按日期的**备忘**（带重要度）。作者与管理员可编辑；没有记录作者的旧备忘任何成员都可清理
+- **出勤汇总** —— 把回答（○ × △）与练习记录中的实际参与做近 90 天的比对并列出偏差。两种模式都可用
 
 ### 内容（分类）
-- 每个副本一个**状态**（未开始 / 练习中 / 已通关 / 暂停），拖拽排序，编辑对话框，通过 Supabase Realtime 实时同步
-- 每张卡片显示**最近 8 周的进度迷你折线**，不打开标签也能看出练到哪了
 
-### 每个内容的子标签
-- **减伤表 / 装备分配**：以 iframe 嵌入现有 Google 表格；**手机端提供只读卡片视图**（以 CSV 读取表格、按阶段重组为卡片、可只看「自己的列」）。分配标签附带**每周消化检查**（周二 17:00 JST 重置）与 **BiS 链接**（XivGear 嵌入）
-- **攻略**：链接列表，自动抓取标题；**视频**：YouTube 缩略图点击播放（懒加载），可附 FFLogs / XIVAnalysis 链接
-- **宏**：游戏内宏一键复制；同页保存**场地标点预设**（markercode）与**战术板分享码**
-- **练习记录**：从 FFLogs 导入逐次拉取数据——总次数、练习天数、最深进度、通关次数；每日进度条；每次拉取一键跳转 FFLogs / XIVAnalysis / 视频对应时刻；每次拉取显示**灭团原因**（最先倒下的职业 ← 致命技能、10 秒内死亡人数），并统计最常导致灭团的机制；绝境战显示**各阶段停留时间**与**首次抵达各阶段**，零式显示**各层首杀**。每天还有一行**拉取方块**（1 次拉取 = 1 个写着区段编号的小方块，通关为 `✓`）；层 / 阶段筛选为分段控件，选择会写进 URL（`?floor=4b` / `?phase=2`）。不存储、不显示个人 DPS；死亡记录不含玩家名（仅职业 + 技能）
+- 按副本设置**状态**（未开始 / 练习中 / 已通关 / 暂停）、拖拽排序、Realtime 即时同步
+- 每张卡片带**近 8 周进度迷你折线**
+- **难度标签**与**进度模型**（层 / 阶段）按副本设置 —— 即使新难度名称尚未公布也能运行
+- 可设置卡片背景图，并指定**显示图片的哪一部分**
 
-### Discord 自动导入
-- 每个内容可设置「攻略频道 ID」「视频频道 ID」；Vercel Cron 每天 01:00 JST 拉取各频道最近 100 条消息，提取 URL、去重后放入对应标签。也可按钮手动立即导入
+### 每个副本的子标签
 
-### 主题与颜色
-- 七个版本主题（2.0 至 Evercold），各有专属背景效果
-- **五级颜色语义**（`src/lib/perf-tone.ts`）：好 = emerald → lime → amber → orange → rose = 差，统一用于剩余 HP%、死亡数、进度条、出勤符号与每周检查。数字与符号始终并列显示，不单靠颜色传达含义
+| 标签 | 内容 |
+|---|---|
+| **减伤表** | 直接嵌入现有 Google 表格。**手机上重排为只读卡片**，可筛选「我的职能」「只看我负责的」 |
+| **装备分配** | 同样嵌入表格，另有**本周消耗勾选**（周二 17:00 JST 重置）与 **BiS**（XivGear 嵌入）。「想要的人」矩阵可折叠 |
+| **攻略** | 链接列表（自动取标题、标签、已读）。Google 文档 / 表格显示为可辨类型的卡片 |
+| **视频** | YouTube 缩略图 + 点击播放，可跳转 FFLogs / XIVAnalysis |
+| **宏** | 一键复制游戏内宏，同一标签还放**场景标记预设**与**战术板分享码** |
+| **练习记录** | 见下 |
+
+### 练习记录
+
+从 FFLogs 按每次尝试（pull）导入。
+
+- 总次数 / 练习天数 / 最高进度 / 通关次数，以及按日进度条
+- 从任一次尝试一键跳到 FFLogs / XIVAnalysis / 视频的**对应时刻**
+- **团灭原因**（最先阵亡的职业 ← 致命技能）与卡在哪个机制的统计，还能看**阵亡前发生了什么**
+- 绝本显示**各阶段停留时间**与首次到达，零式显示**各层首次通关**
+- 一天用**一排方块**表示（一个方块 = 一次尝试，通关为 `✓`）
+- 每次尝试可事后补写**失误备注**
+- ⚠ **不保存也不显示个人 DPS。** 阵亡记录只到「职业 + 技能」，不含玩家名
+
+### 我的页面 (`/me`)
+
+从页眉的人形图标打开，**只显示你自己的内容**（管理员也看不到别人的行）。
+
+- 我的职业设置（默认值 + 按副本覆盖），用于减伤表筛选
+- **剩余 BiS** 与**学习路径**进度条
+- 出勤汇总入口
+
+### 其他
+
+- **命令面板**（Ctrl+K）—— 跨副本、标签与操作搜索
+- **Discord 自动导入** —— 为副本登记攻略 / 视频频道 ID 后，每天 01:00 JST 从最近 100 条消息中提取 URL 并归档（也可按钮即时执行）
+- **学习路径** —— 给新成员的有序清单：视频 → 站位图 → 宏 → 减伤表
+- **主题** —— 7 个资料片主题与各自的背景效果
+- **统一的 5 级配色**（`src/lib/perf-tone.ts`）—— 好 = emerald → lime → amber → orange → rose = 差。⚠ **不靠颜色单独传达含义**（始终并列数字与符号）
+
+---
 
 ## 技术
 
-Next.js 16 + React 19 + Tailwind CSS v4 · Supabase（Postgres + Realtime、RLS）· shadcn/ui + Base UI · Vercel（`main` 自动部署、Cron Jobs）。四层防护：代理层的 Discord OAuth 门禁、按页面的角色限制、每个 Server Action 的管理员校验、数据库 RLS。FFLogs 令牌以 AES-256-GCM 加密保存。
+Next.js 16 + React 19 + Tailwind CSS v4 · Supabase（Postgres + Realtime + RLS）· shadcn/ui + Base UI · Vercel（`main` 自动部署、Cron）。
 
-## 部署（简版，30–60 分钟）
+**四层防护**：① 代理层的 Discord OAuth 门禁 ② 页面级角色限制 ③ 每个 Server Action 的管理员校验 ④ 数据库 RLS。FFLogs 令牌以 AES-256-GCM 加密保存。
 
-需要 GitHub、Supabase（免费）、Vercel（Hobby）与 Discord Developer Portal 账号。
+---
 
-1. **Fork** 本仓库——务必修改仓库名（如 `pandora-raid`）
-2. **创建 Supabase 项目**，在 SQL Editor 中执行 `supabase/schema.sql`，记录 Project URL / anon key / service_role key
-3. **创建 Discord Application + Bot**：Client ID / Client Secret、Bot Token（开启 SERVER MEMBERS INTENT 与 MESSAGE CONTENT INTENT）、服务器 ID（Guild ID）
-4. **连接 Discord ↔ Supabase**：在 Discord 添加 redirect `https://<项目>.supabase.co/auth/v1/callback`，在 Supabase 启用 Discord provider 并填入 Client ID / Secret
-5. **部署到 Vercel**，设置环境变量 `NEXT_PUBLIC_SUPABASE_URL`、`NEXT_PUBLIC_SUPABASE_ANON_KEY`、`SUPABASE_SERVICE_ROLE_KEY`、`DISCORD_BOT_TOKEN`、`DISCORD_GUILD_ID`（可选：`DISCORD_ADMIN_ROLE_IDS`、`CRON_SECRET`、`FFLOGS_API_KEY`、FFLogs OAuth、`SECRET_ENCRYPTION_KEY`、`YOUTUBE_API_KEY`）
-6. **邀请 Bot** 加入服务器（scope `bot`，权限 View Channels、Read Message History）
-7. **Supabase URL Configuration**：Site URL = Vercel 域名，Redirect URLs 加入 `https://<域名>/auth/callback` 与 `http://localhost:3000/auth/callback`
-8. **初始设置**：选择日程来源、添加内容、填写表格 URL
-9. *（可选）* 填写 Discord 导入的频道 ID，并为 Bot 逐频道授予读取权限
-10. *（可选）* 设置 GitHub Secret `SUPABASE_DB_URL`（Session pooler），由 GitHub Actions 自动应用 `schema.sql`
+## 安装（摘要，20–40 分钟）
 
-各步骤详情、故障排查与架构更新：[英文指南](README.en.md#setup-for-your-raid-group)。
+**需要手动收集的值只有 5 个**。逐屏说明见[英文指南](docs/setup.en.md)。
+
+> ⚠ fork 时**务必修改仓库名**（如 `pandora-raid`）。保留默认名会与其他队伍的 fork 无法区分。
+
+### 1. 收集 5 个值（浏览器）
+
+| # | 值 | 位置 |
+|---|---|---|
+| 1–3 | Supabase 的 **Project URL** / **anon** / **service_role** | 在 [Supabase](https://supabase.com) 建项目 → Settings → API |
+| 4 | Discord **Bot 令牌** | [Developer Portal](https://discord.com/developers/applications) → Bot → Reset Token（**打开 SERVER MEMBERS INTENT**） |
+| 5 | Discord **服务器 ID** | Discord（开发者模式）→ 右键服务器 |
+
+浏览器里还有两件事：
+
+- 在 Discord **OAuth2 → Redirects** 添加 `https://<project ref>.supabase.co/auth/v1/callback`
+- 在 Supabase **Authentication → Providers → Discord** 打开并粘贴 Client ID / Secret
+
+### 2. 配置与数据库（一条命令）
+
+```bash
+npm install
+npm run setup
+```
+
+它会边校验边写入 `.env.local`，自动生成只需随机的值，引导你**创建数据表**，最后运行诊断。
+
+### 3. 部署并登记回跳地址
+
+部署到 Vercel 后，在 **Supabase → Authentication → URL Configuration** 填写 Site URL 与 Redirect URLs（`https://<域名>/auth/callback` 和 `http://localhost:3000/auth/callback`）。**漏掉这一步，登录后就回不来。**
+
+```bash
+npm run doctor -- --url https://<你的域名>
+```
+
+### 出问题时
+
+```bash
+npm run doctor
+```
+
+它会实际调用接口，检查环境变量、Supabase 连通性、schema 是否已应用、Discord 登录是否启用、Bot 令牌与是否在服务器内、以及 **SERVER MEMBERS INTENT**，并对每个 `❌` 给出修复方法。
+
+---
 
 ## 本地开发
 
 ```bash
 npm install
-cp .env.local.example .env.local  # 填入 Supabase 密钥
+npm run setup   # 首次（生成 .env.local）
 npm run dev
 ```
 

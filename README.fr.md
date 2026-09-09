@@ -9,70 +9,137 @@
 
 Lire en : [日本語](README.md) | [English](README.en.md) | [Deutsch](README.de.md) | **Français** | [简体中文](README.zh-CN.md) | [한국어](README.ko.md)
 
-> Cette page résume les fonctionnalités et l'installation. Le guide complet pas à pas (variables d'environnement, dépannage) est maintenu en [anglais](README.en.md) et en [japonais](README.md).
+> Cette page est la version courte. Le guide d'installation détaillé et le dépannage sont maintenus en [anglais](docs/setup.en.md) et en [japonais](docs/setup.md).
 
-Un portail pour les statics de FINAL FANTASY XIV : planning, tableau de mitigation, gestion du loot, guides, vidéos et journal d'entraînement au même endroit.
+Un portail pour les statiques de FINAL FANTASY XIV : **planning, tableau de mitigation, butin, guides, vidéos et journaux d'entraînement** au même endroit.
 
-Conçu sur le principe « un groupe = un déploiement » : une application mono-locataire que vous forkez et hébergez pour votre propre static.
+Une application mono-locataire pensée pour « une équipe = un déploiement » — **vous la forkez pour votre propre statique**. La porte d'entrée est votre serveur Discord : seuls ses membres peuvent se connecter.
 
-## Démo
+🔗 **Démo (lecture seule) : https://demo-raid-repository.vercel.app**
+À parcourir librement. **Vous n'avez pas besoin de créer votre propre démo.**
 
-Site de démonstration public en lecture seule : 🔗 **https://demo-raid-repository.vercel.app**
+---
 
 ## Fonctionnalités
 
 ### Planning
-- Trois modes de source : **Synchronisé** (import depuis character-sheets), **Natif** (dates candidates, présence ○ × △ et confirmation dans le portail, avec liaison FFLogs et notifications Discord), **Désactivé**
-- La session confirmée est mise en avant comme **prochaine session** (le jour même, avec un compte à rebours « commence dans N h M min »)
-- **Créneau récurrent** (« tous les mardis / jeudis / samedis ») : les dates candidates ne sont créées automatiquement que ces jours-là, et le dialogue les génère en lot par **période × jours de la semaine**. Les jours hors créneau portent les mentions « Extra » / « Ponctuel »
-- En mode natif, chaque membre peut indiquer une **heure d'arrivée tardive / de départ anticipé** (HH:MM), affichée à côté du symbole (`21:30〜`) et à côté du nom dans la confirmation Discord
-- Les modèles Discord acceptent `{discord_relative}` / `{discord_time}` (rendus dans le fuseau du lecteur, par ex. « dans 3 heures »)
-- Rappel automatique par @mention aux membres sans réponse ; confirmation automatique optionnelle quand tout le monde a répondu
-- Commentaire par membre au survol / à la pression ; lien Google Agenda par session
+
+- **Trois modes** : **natif** (dates candidates, présences ○ × △ et confirmation entièrement dans le portail) / **synchronisé** (import depuis character-sheets) / **désactivé**
+- La séance confirmée est mise en avant comme **prochaine session** (le jour même avec un compte à rebours « début dans N h M min »)
+- En fixant des **jours réguliers**, les dates candidates ne sont créées que ces jours-là ; la boîte de dialogue permet aussi une **génération en lot par période × jours**. Les dates hors cadre reçoivent la mention « exceptionnel » / « juste cette fois »
+- En plus de ○ × △, chacun peut indiquer **une heure d'arrivée en cas de retard ou de départ anticipé** (affichée `21:30〜` à côté du symbole)
+- **Relance automatique** des personnes sans réponse, et **confirmation automatique** une fois tout le monde inscrit (optionnel)
+- Les modèles de notification Discord acceptent `{discord_relative}` / `{discord_time}`, rendus dans le fuseau horaire de chaque lecteur
+- **Notes par date** avec niveau d'importance. L'auteur et les administrateurs peuvent les modifier ; les anciennes notes sans auteur enregistré peuvent être supprimées par n'importe quel membre
+- **Récapitulatif de présence** — confronte les réponses (○ × △) aux journaux d'entraînement réels sur 90 jours et liste les écarts. Fonctionne dans les deux modes
 
 ### Contenus (catégories)
-- Par contenu de raid, un **statut** (Non commencé / En cours / Terminé / En pause), tri par glisser-déposer, dialogue d'édition, synchronisation temps réel via Supabase Realtime
-- Chaque carte affiche une **sparkline de progression sur les 8 dernières semaines** : on voit où en est le groupe sans ouvrir l'onglet
 
-### Sous-onglets par contenu
-- **Mitigation / Loot** : vos Google Sheets existants en iframe ; **sur mobile, une vue en cartes en lecture seule** (feuille chargée en CSV, une carte par phase, filtre « ma colonne seulement »). L'onglet loot ajoute le **suivi hebdomadaire** (réinitialisation le mardi 17:00 JST) et les **liens BiS** (intégration XivGear)
-- **Guides** : liste de liens avec titre automatique ; **Vidéos** : aperçu YouTube en lazy-embed, lien FFLogs / XIVAnalysis optionnel
-- **Macros** : macros du jeu avec copie en un clic ; plus les **presets de waymarks** (markercode) et les **codes de partage du Strategy Board**
-- **Journal d'entraînement** : données pull par pull importées de FFLogs — total de pulls, jours d'entraînement, progression maximale, clears ; barre de progression par jour ; depuis chaque pull, un clic vers FFLogs / XIVAnalysis / l'instant dans la vidéo ; **cause du wipe** par pull (job mort en premier ← compétence fatale, morts dans les 10 s) et comptage des mécaniques qui font tomber le groupe ; pour les Ultimates, **temps passé par phase** et **première arrivée dans chaque phase** ; pour les Savage, **premier clear par étage**. Chaque jour affiche une **rangée de boîtes de pulls** (1 pull = 1 case portant le numéro de segment, `✓` pour un clear) ; le filtre étage / phase est un contrôle segmenté dont la sélection tient dans l'URL (`?floor=4b` / `?phase=2`). Les DPS individuels ne sont ni stockés ni affichés ; les morts sont enregistrées sans nom de joueur (job + compétence seulement)
+- Un **statut** par contenu (pas commencé / en cours / réussi / en pause), tri par glisser-déposer, synchronisation instantanée via Realtime
+- Chaque carte affiche une **sparkline de progression sur 8 semaines**
+- **Libellé de difficulté** et **modèle de progression** (étages / phases) réglables par contenu — utilisable avant même l'annonce des noms d'un nouveau palier
+- Image de fond possible, avec le choix de **la zone affichée**
 
-### Import automatique depuis Discord
-- Par contenu, un canal « guides » et un canal « vidéos » ; Vercel Cron récupère chaque jour à 01:00 JST les 100 derniers messages, extrait les URL, dédoublonne et les range dans l'onglet correspondant. Import immédiat par bouton
+### Onglets par contenu
 
-### Thèmes et couleurs
-- Sept thèmes d'extension (ARR à Evercold) avec leurs effets d'arrière-plan
-- **Sémantique des couleurs en cinq niveaux** (`src/lib/perf-tone.ts`) : bon = emerald → lime → amber → orange → rose = mauvais, appliquée aux HP restants, aux morts, aux barres de progression, aux symboles de présence et au suivi hebdomadaire. Les chiffres et symboles sont toujours affichés à côté
+| Onglet | Contenu |
+|---|---|
+| **Mitigation** | Votre feuille Google existante, intégrée. **Sur mobile, une vue en cartes en lecture seule**, filtrable sur « mon rôle » / « mes assignations » |
+| **Butin** | La même intégration, plus la **checklist hebdomadaire** (réinitialisation mardi 17:00 JST) et le **BiS** (intégration XivGear). La matrice « qui veut quoi » se replie |
+| **Guides** | Liste de liens (titre récupéré automatiquement, tags, lu/non lu). Les Google Docs/Sheets s'affichent en carte typée |
+| **Vidéos** | Miniatures YouTube avec lecture au clic, liens vers FFLogs / XIVAnalysis |
+| **Macros** | Copie en un clic des macros du jeu ; le même onglet héberge les **repères (waymarks)** et les **codes de partage de plans** |
+| **Journaux** | voir ci-dessous |
+
+### Journaux d'entraînement
+
+Données FFLogs importées pull par pull.
+
+- Total de pulls / jours d'entraînement / meilleure phase atteinte / clears, avec une barre de progression par jour
+- Depuis n'importe quel pull, un clic mène **au moment correspondant** dans FFLogs, XIVAnalysis ou la vidéo
+- **Causes de wipe** (le premier job tombé ← la capacité fatale) et sur quelle mécanique ça casse ; on voit aussi **ce qui s'est passé juste avant la mort**
+- Les ultimes affichent le **temps passé par phase** et la première arrivée, les savages la **première clear par étage**
+- Une journée est dessinée comme une **rangée de cases** (une case = un pull, `✓` pour une clear)
+- Des **notes d'erreur** par pull peuvent être ajoutées après coup
+- ⚠ **Le DPS individuel n'est ni stocké ni affiché.** Les morts s'arrêtent à « job + capacité », sans nom de joueur
+
+### Votre page (`/me`)
+
+Accessible par l'icône de personne dans l'en-tête. Elle n'affiche **que vos propres données** (même les administrateurs n'y voient pas les lignes des autres).
+
+- Vos jobs (valeur par défaut plus surcharge par contenu) — c'est ce qui alimente les filtres du tableau de mitigation
+- **BiS restant** et **parcours d'apprentissage** sous forme de barres
+- Un accès au récapitulatif de présence
+
+### Et aussi
+
+- **Palette de commandes** (Ctrl+K) — recherche transversale des contenus, onglets et actions
+- **Import Discord automatique** — avec les identifiants de salon enregistrés, une tâche quotidienne à 01:00 JST extrait les URL des 100 derniers messages vers le bon onglet (également déclenchable par un bouton)
+- **Parcours d'apprentissage** — checklist ordonnée pour les nouveaux : vidéo → placements → macro → mitigation
+- **Thèmes** — sept thèmes d'extension, chacun avec son fond
+- **Une seule échelle de cinq couleurs partout** (`src/lib/perf-tone.ts`) — bon = emerald → lime → amber → orange → rose = mauvais. ⚠ **La couleur ne porte jamais le sens à elle seule** (un chiffre ou un symbole l'accompagne toujours)
+
+---
 
 ## Technique
 
-Next.js 16 + React 19 + Tailwind CSS v4 · Supabase (Postgres + Realtime, RLS) · shadcn/ui + Base UI · Vercel (déploiement auto depuis `main`, Cron Jobs). Quatre couches de sécurité : porte OAuth Discord dans le proxy, restriction par rôle par page, contrôle admin dans chaque Server Action, RLS en base. Les jetons FFLogs sont chiffrés en AES-256-GCM.
+Next.js 16 + React 19 + Tailwind CSS v4 · Supabase (Postgres + Realtime + RLS) · shadcn/ui + Base UI · Vercel (déploiement auto depuis `main`, Cron Jobs).
 
-## Installation (résumé, 30–60 minutes)
+**Quatre couches de défense** : ① porte OAuth Discord dans le proxy ② visibilité par rôle sur chaque page ③ vérification admin dans chaque Server Action ④ RLS côté base. Les jetons FFLogs sont chiffrés en AES-256-GCM.
 
-Il vous faut des comptes GitHub, Supabase (gratuit), Vercel (Hobby) et Discord Developer Portal.
+---
 
-1. **Forkez** ce dépôt — changez impérativement le nom du dépôt (par ex. `pandora-raid`)
-2. **Projet Supabase** : exécutez `supabase/schema.sql` dans le SQL Editor, notez Project URL / anon key / service_role key
-3. **Application + Bot Discord** : Client ID / Client Secret, Bot Token (avec SERVER MEMBERS INTENT et MESSAGE CONTENT INTENT), ID du serveur (Guild ID)
-4. **Liaison Discord ↔ Supabase** : redirect `https://<projet>.supabase.co/auth/v1/callback` côté Discord, fournisseur Discord activé dans Supabase avec Client ID / Secret
-5. **Déploiement Vercel** avec les variables `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `DISCORD_BOT_TOKEN`, `DISCORD_GUILD_ID` (optionnel : `DISCORD_ADMIN_ROLE_IDS`, `CRON_SECRET`, `FFLOGS_API_KEY`, OAuth FFLogs, `SECRET_ENCRYPTION_KEY`, `YOUTUBE_API_KEY`)
-6. **Invitez le bot** (scope `bot`, permissions « View Channels » et « Read Message History »)
-7. **Supabase URL Configuration** : Site URL = domaine Vercel, Redirect URLs `https://<domaine>/auth/callback` et `http://localhost:3000/auth/callback`
-8. **Première configuration** dans le portail : source du planning, contenus, URL des feuilles
-9. *(Optionnel)* ID des canaux pour l'import Discord et droits de lecture du bot par canal
-10. *(Optionnel)* secret GitHub `SUPABASE_DB_URL` (Session pooler) pour déployer `schema.sql` automatiquement via GitHub Actions
+## Installation (résumé, 20–40 minutes)
 
-Détails de chaque étape, dépannage et mises à jour du schéma : [guide anglais](README.en.md#setup-for-your-raid-group).
+**Vous ne collectez que cinq valeurs à la main.** Le détail écran par écran est dans le [guide anglais](docs/setup.en.md).
+
+> ⚠ Au moment du fork, **changez le nom du dépôt** (par ex. `pandora-raid`). Avec le nom par défaut, votre fork est impossible à distinguer des autres.
+
+### 1. Collecter cinq valeurs (dans le navigateur)
+
+| # | Valeur | Où |
+|---|---|---|
+| 1–3 | **Project URL** / **anon** / **service_role** Supabase | Créer un projet sur [Supabase](https://supabase.com) → Settings → API |
+| 4 | **Jeton du bot** Discord | [Developer Portal](https://discord.com/developers/applications) → Bot → Reset Token (**activer SERVER MEMBERS INTENT**) |
+| 5 | **ID du serveur** Discord | Discord (mode développeur) → clic droit sur le serveur |
+
+Deux choses de plus dans le navigateur :
+
+- Ajouter `https://<project ref>.supabase.co/auth/v1/callback` dans Discord **OAuth2 → Redirects**
+- Activer **Authentication → Providers → Discord** dans Supabase et y coller le Client ID / Secret
+
+### 2. Configuration et base de données (une commande)
+
+```bash
+npm install
+npm run setup
+```
+
+Le script valide chaque valeur à la saisie, écrit `.env.local`, **génère** les valeurs qui n'ont besoin que d'être aléatoires, guide la **création des tables**, puis lance le diagnostic.
+
+### 3. Déployer, puis enregistrer l'URL de retour
+
+Une fois déployé sur Vercel, renseignez dans **Supabase → Authentication → URL Configuration** la Site URL et les Redirect URLs (`https://<votre domaine>/auth/callback` et `http://localhost:3000/auth/callback`). **Sans cette étape, la connexion ne revient pas sur le site.**
+
+```bash
+npm run doctor -- --url https://<votre domaine>
+```
+
+### En cas de problème
+
+```bash
+npm run doctor
+```
+
+Il appelle réellement les API pour vérifier : variables d'environnement, accès à Supabase, application du schéma, activation de la connexion Discord, validité du jeton et présence du bot sur le serveur, et si **SERVER MEMBERS INTENT** est bien actif — avec la correction à faire pour chaque `❌`.
+
+---
 
 ## Développement local
 
 ```bash
 npm install
-cp .env.local.example .env.local  # renseigner les clés Supabase
+npm run setup   # la première fois (crée .env.local)
 npm run dev
 ```
 

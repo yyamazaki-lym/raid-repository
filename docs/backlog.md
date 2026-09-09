@@ -101,6 +101,43 @@ backfill では og:image を保存しない。⚠ `drive.google.com` は含め�
 進捗バーを足した。⚠ 色だけで意味を持たせない (数字は隣に残し、バーは
 `aria-hidden`)。表示する情報は増減なし。
 
+### L-23. README の最新化 / デモの分離 / セットアップの自動化 — 2026-09-09 実装
+
+**要望**: 「README などを最新に更新。各言語版ももう少し分かりやすく。モック
+サイトに関する情報は Live demo のみで README からは分離させる (使用者はデモ
+サイトを作る必要性がない)。使用開始までの手順をもう少し簡単に、出来れば
+自動化できないか」。
+
+**やったこと**:
+
+- **`npm run setup`** (`scripts/setup.mjs`) — 対話式。値を検証しながら
+  `.env.local` を書き、ランダムでよい値を生成し、スキーマ適用を案内して、
+  最後に診断まで走る。⚠ 既存ファイルは上書き前に `.bak` を取り、**表に無い
+  変数 (`PUBLIC_DEMO_MODE` 等) も引き継ぐ**
+- **`npm run doctor`** (`scripts/doctor.mjs`) — 環境変数 / Supabase 到達 /
+  スキーマ適用 / Discord ログイン有効化 / Bot トークン / Bot の在籍 /
+  SERVER MEMBERS INTENT を**実際に叩いて**判定し、❌ に直し方を出す
+- 表は `scripts/setup-env-spec.mjs` に一本化し、`.env.local.example` との
+  ズレを `check-setup-env.mjs` が CI で検出する (実際に
+  `NEXT_PUBLIC_SPLASH_SW` のズレを検出した)
+- README は 578 行 → 193 行。手順は `docs/setup.md` (日) /
+  `docs/setup.en.md` (英) に分離
+- **デモの話は README から抜いた** — 残したのは Live demo のリンク 1 つだけで、
+  作り方は `docs/demo-site.md` (upstream の管理者向け) に移した
+- 各言語版 (de / fr / ko / zh-CN) を 81 行 → 148 行に増やし、2.17 までの機能
+  (自分のページ / 出席サマリー / メモ / コマンドパレット / 学習パス) と
+  新しい手順を反映
+
+**⚠ 自動化できないもの** (画面にも明記した): Supabase プロジェクトの作成 /
+Discord アプリの作成 / Supabase の Authentication 設定。Web ダッシュボードに
+しか操作口が無い。
+
+**実測**: 使い捨てのサンドボックスで対話パスを最後まで流し、`.env.local` が
+コメントごと正しく生成されること / 既存値が Enter で維持されること /
+上書き前に `.bak` が残ること / 未知の変数が消えないことを確認。doctor は
+実在の Supabase プロジェクトに対して緑になるまで直した (`/rest/v1/` は anon で
+401 になるため `/auth/v1/settings` で見る、を実測で確定)。
+
 ---
 
 ## 実機報告 (2026-09-08)
