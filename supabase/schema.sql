@@ -978,6 +978,64 @@ CREATE TRIGGER set_updated_at_native_schedule_members
   BEFORE UPDATE ON public.native_schedule_members
   FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
+-- ---- 5e-2. native_schedule_member_jobs (L-10: ジョブを複数 + コンテンツ別) --
+-- 2026-09-09 実機報告「ロールは複数変わることもあるので、コンテンツごとに
+-- 変更できたり複数指定できるようにしたい」への対応。
+--
+-- L-8 (2026-09-08) で入れた `native_schedule_members.job` は **1 人 1 ジョブ**
+-- で、固定の実態 (層ごとにジョブを変える / サブジョブも触る) を表せなかった。
+--
+-- ## 形
+--
+-- 1 行 = 「この人が、このコンテンツで、このジョブ」。`category_id` が NULL の
+-- 行が**既定** (どのコンテンツでも使う) で、あるコンテンツに行があれば
+-- **そのコンテンツではそちらだけ**を使う (既定との合併はしない — 「4 層では
+-- 暗黒騎士だけ」と言えないと上書きの意味が無い)。
+--
+-- ⚠ **CHECK でジョブ名を列挙しない。** `native_schedule_members.job` と同じ
+-- 理由 (拡張でジョブが増えるたびに schema 変更が要るのを避ける)。妥当性は
+-- アプリ側の `isJobKey` で見て、ここは長さと文字種だけを見る。
+--
+-- ⚠ **一意制約は COALESCE の式インデックスで張る。** 素の
+-- `UNIQUE (discord_user_id, category_id, job)` では Postgres が NULL を
+-- 互いに異なる値として扱うため、**既定の行だけ重複して入る**。
+-- `UNIQUE NULLS NOT DISTINCT` は PG15 以降でしか使えないので、どのバージョン
+-- でも同じ意味になる式インデックスにする (NULL を固定の zero UUID に畳む)。
+CREATE TABLE IF NOT EXISTS public.native_schedule_member_jobs (
+  discord_user_id text NOT NULL
+                  REFERENCES public.native_schedule_members(discord_user_id) ON DELETE CASCADE,
+  -- NULL = 既定 (どのコンテンツでも)。
+  category_id     uuid REFERENCES public.categories(id) ON DELETE CASCADE,
+  job             text NOT NULL,
+  created_at      timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.native_schedule_member_jobs
+  DROP CONSTRAINT IF EXISTS native_schedule_member_jobs_job_sane;
+ALTER TABLE public.native_schedule_member_jobs
+  ADD CONSTRAINT native_schedule_member_jobs_job_sane
+  CHECK (char_length(job) <= 32 AND job ~ '^[A-Za-z]+$') NOT VALID;
+CREATE UNIQUE INDEX IF NOT EXISTS native_schedule_member_jobs_uniq
+  ON public.native_schedule_member_jobs (
+    discord_user_id,
+    coalesce(category_id, '00000000-0000-0000-0000-000000000000'::uuid),
+    job
+  );
+-- 読み取りは「この人の全行」(既定 + 上書きをまとめて 1 回で引く) なので、
+-- discord_user_id の単独 index は上の一意インデックスの先頭列で足りる。
+-- コンテンツ削除時の CASCADE のために category_id 側だけ張る。
+CREATE INDEX IF NOT EXISTS native_schedule_member_jobs_category_idx
+  ON public.native_schedule_member_jobs (category_id);
+
+-- 移行 (idempotent): L-8 の単一 `job` 列に入っている値を既定の行として
+-- 取り込む。⚠ **列は残す** — この節が適用されていないデプロイでも
+-- `fetchMyJobs` が列の値に落ちて動くようにしてある (下の fallback)。
+-- 二重に入らないよう ON CONFLICT DO NOTHING。
+INSERT INTO public.native_schedule_member_jobs (discord_user_id, category_id, job)
+  SELECT discord_user_id, NULL, job
+    FROM public.native_schedule_members
+   WHERE job IS NOT NULL AND job ~ '^[A-Za-z]+$'
+ON CONFLICT DO NOTHING;
+
 CREATE TABLE IF NOT EXISTS public.native_schedule_attendances (
   session_id      uuid NOT NULL
                   REFERENCES public.native_schedule_sessions(id) ON DELETE CASCADE,
@@ -1864,6 +1922,11 @@ ALTER TABLE public.fflogs_pull_notes            ENABLE ROW LEVEL SECURITY;
 -- 見たかを公開 anon key で列挙されると「進んでいない人」の可視化になる。
 -- 読み書きは Server Action が本人 (と集計) だけを通す。
 ALTER TABLE public.category_onboarding_steps    ENABLE ROW LEVEL SECURITY;
+-- L-10 (2026-09-09): ジョブの割り当ても **policy を張らない**。
+-- 読み書きは Server Action が本人 (と admin) だけを通す service role 経路
+-- だけで、クライアントから直接引く用途が無い。7-0 の汎用ループにも
+-- 入れていないので、SELECT を開けたい場合はここを変えること。
+ALTER TABLE public.native_schedule_member_jobs  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.fflogs_attendance_unresolved ENABLE ROW LEVEL SECURITY;
 -- W-35 (2026-09-07): fflogs_notify_state も **policy を張らない**。
 -- 同期 (cron / admin の手動同期) だけが service role で読み書きする内部

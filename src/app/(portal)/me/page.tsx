@@ -5,7 +5,7 @@ import { AttendanceSummaryDialog } from "@/components/portal/schedule/attendance
 import { bisSlotLabel } from "@/lib/bis-slots";
 import { getMessages } from "@/lib/i18n/server";
 import { getLocale } from "@/lib/i18n/server";
-import { MyJobPicker } from "@/components/portal/my-job-picker";
+import { MyJobScopes } from "@/components/portal/my-job-scopes";
 import { jobLabel } from "@/lib/jobs";
 
 /**
@@ -32,7 +32,7 @@ export async function generateMetadata() {
 }
 
 export default async function MePage() {
-  const [{ profile, bis, onboarding }, m, locale] = await Promise.all([
+  const [{ profile, bis, onboarding, categories }, m, locale] = await Promise.all([
     fetchMyDashboard(),
     getMessages(),
     getLocale(),
@@ -79,16 +79,21 @@ export default async function MePage() {
             <div className="flex gap-2">
               <dt className="text-muted-foreground">{m.mePage.role}</dt>
               <dd className="text-foreground">
-                {profile.role
-                  ? m.mePage.roleNames[profile.role]
+                {profile.roles.length > 0
+                  ? profile.roles.map((r) => m.mePage.roleNames[r]).join(" / ")
                   : m.mePage.unset}
               </dd>
             </div>
-            {/* L-8 (2026-09-08): ジョブも出す (ロールの導出元)。 */}
+            {/* L-8 (2026-09-08): ジョブも出す (ロールの導出元)。
+                L-10 (2026-09-09): 既定が複数になり得るので並べる。 */}
             <div className="flex gap-2">
               <dt className="text-muted-foreground">{m.myJob.label}</dt>
               <dd className="text-foreground">
-                {jobLabel(profile.job, locale) ?? m.myJob.unset}
+                {profile.jobs.defaults.length > 0
+                  ? profile.jobs.defaults
+                      .map((j) => jobLabel(j, locale) ?? j)
+                      .join(" / ")
+                  : m.myJob.unset}
               </dd>
             </div>
             <div className="flex gap-2">
@@ -104,8 +109,16 @@ export default async function MePage() {
           </p>
         )}
         {/* L-8 (2026-09-08): ジョブは**本人が**ここで設定できる。ロールは
-            ジョブから決まるので、選ばせるのはジョブだけ。 */}
-        <MyJobPicker job={profile.job} registered={profile.registered} />
+            ジョブから決まるので、選ばせるのはジョブだけ。
+            L-10 (2026-09-09): 既定の複数指定と、コンテンツごとの上書きを
+            まとめて出すのはこのページだけ (軽減表タブ側は今開いている
+            コンテンツ 1 つしか出さない)。 */}
+        <MyJobScopes
+          defaults={profile.jobs.defaults}
+          byCategory={profile.jobs.byCategory}
+          categories={categories}
+          registered={profile.registered}
+        />
         <p className="text-[11px] leading-snug text-muted-foreground/85">
           {m.myJob.hint}
         </p>

@@ -21,7 +21,7 @@ import {
   type MemberRole,
   type RoleByName,
 } from "@/lib/member-roles";
-import { jobFromColumnLabel, roleOfJob } from "@/lib/jobs";
+import { jobFromColumnLabel, roleOfJob, rolesOfJobs } from "@/lib/jobs";
 import { MyJobPicker } from "./my-job-picker";
 
 /**
@@ -77,7 +77,9 @@ export function SheetCards({
   ignoreRows,
   memberRoles,
   columnJobs,
-  myJob = null,
+  myJobs = [],
+  myJobsAreOverride = false,
+  categoryId = null,
   myRegistered = false,
 }: {
   table: SheetTable;
@@ -107,8 +109,18 @@ export function SheetCards({
    * 入っていない。
    */
   columnJobs?: Record<number, string>;
-  /** L-8: 本人のジョブ (`native_schedule_members.job`)。未設定は null。 */
-  myJob?: string | null;
+  /**
+   * L-8 / L-10: このコンテンツで使う本人のジョブ。既定またはコンテンツ別の
+   * 上書きを **ページ側で解決済み** の配列 (`resolveMyJobsFor`)。
+   */
+  myJobs?: string[];
+  /**
+   * L-10 (2026-09-09): `myJobs` がこのコンテンツ専用の上書きか
+   * (= 既定ではないか)。編集がどちらの範囲に効くかを画面に出すために使う。
+   */
+  myJobsAreOverride?: boolean;
+  /** L-10: このコンテンツの ID (上書きの保存先)。 */
+  categoryId?: string | null;
   /** L-8: メンバー一覧に本人の行があるか (無いとジョブを保存できない)。 */
   myRegistered?: boolean;
 }) {
@@ -135,27 +147,33 @@ export function SheetCards({
   );
 
   // L-8: ジョブの設定はこの画面から変えられるので、保存後の値を持つ。
-  const [jobDraft, setJobDraft] = useState<string | null>(null);
-  const job = jobDraft ?? myJob;
+  const [jobsDraft, setJobsDraft] = useState<string[] | null>(null);
+  const jobs = jobsDraft ?? myJobs;
 
-  // L-8: 自分のジョブに当たる列 (シートのジョブ名の行から解決済み)。
+  // L-8 / L-10: 自分のジョブに当たる列 (シートのジョブ名の行から解決済み)。
+  // 複数ジョブのときは **どれかに当たる列すべて** (和集合)。
   const myJobColumns = useMemo(() => {
-    if (!job || !columnJobs) return [] as number[];
+    if (jobs.length === 0 || !columnJobs) return [] as number[];
+    const mine = new Set(jobs);
     return Object.entries(columnJobs)
-      .filter(([, v]) => v === job)
+      .filter(([, v]) => mine.has(v))
       .map(([k]) => Number(k))
       .sort((a, b) => a - b);
-  }, [columnJobs, job]);
+  }, [columnJobs, jobs]);
 
   /** 「自分の担当だけ」に絞れるか (ジョブ優先、無ければ表示名)。 */
   const hasMine = myJobColumns.length > 0 || myColumn !== null;
 
   // 自分のロール。**ジョブから導出したものを優先**し、無ければ表示名で
   // メンバー一覧を引く (ジョブを入れる前の固定を壊さない)。
-  const myRole: MemberRole | null = useMemo(
-    () => roleOfJob(job) ?? (memberRoles ? roleOfName(memberRoles, name) : null),
-    [job, memberRoles, name],
-  );
+  // L-10: ジョブが複数なら**ロールも複数**になり得る (層で暗黒騎士、絶で
+  // 白魔道士など)。「自分のロール」の絞り込みはその和集合で見る。
+  const myRoles: MemberRole[] = useMemo(() => {
+    const fromJobs = rolesOfJobs(jobs);
+    if (fromJobs.length > 0) return fromJobs;
+    const byName = memberRoles ? roleOfName(memberRoles, name) : null;
+    return byName ? [byName] : [];
+  }, [jobs, memberRoles, name]);
 
   /** 列のロール (ジョブから解決できた列だけ)。 */
   const roleOfColumn = useMemo(() => {
@@ -177,11 +195,14 @@ export function SheetCards({
       if (myJobColumns.length > 0) return myJobColumns;
       if (myColumn !== null) return [myColumn];
     }
-    if (filterMode === "role" && myRole !== null) {
+    if (filterMode === "role" && myRoles.length > 0) {
       // ジョブで解決できた列が 1 つでもあれば**そちらで絞る**
       // (シートの構造から読めているので確度が高い)。
       if (roleOfColumn.size > 0) {
-        return all.slice(1).filter((i) => roleOfColumn.get(i) === myRole);
+        return all.slice(1).filter((i) => {
+          const r = roleOfColumn.get(i);
+          return r !== undefined && myRoles.includes(r);
+        });
       }
       if (memberRoles) {
         return all
@@ -202,7 +223,7 @@ export function SheetCards({
     myColumn,
     myJobColumns,
     memberRoles,
-    myRole,
+    myRoles,
     roleOfColumn,
     name,
   ]);
@@ -260,13 +281,16 @@ export function SheetCards({
             {(
               [
                 ["all", m.sheetCards.filterAll],
-                ...(myRole !== null
+                ...(myRoles.length > 0
                   ? ([
                       [
                         "role",
                         // L-8: どのロールで絞るのかを名前で出す
                         // (「自分のロール」だけでは何が残るか分からない)。
-                        `${m.sheetCards.filterRole} (${m.nativeMembers.roleNames[myRole]})`,
+                        // L-10: 複数ロールなら全部並べる。
+                        `${m.sheetCards.filterRole} (${myRoles
+                          .map((r) => m.nativeMembers.roleNames[r])
+                          .join(" / ")})`,
                       ],
                     ] as const)
                   : []),
@@ -347,9 +371,13 @@ export function SheetCards({
           「ロール設定が分かりにくい」の実体だった。 */}
       {variant === "mitigation" && (
         <MyJobPicker
-          job={job}
+          jobs={jobs}
+          categoryId={myJobsAreOverride ? categoryId : null}
           registered={myRegistered}
-          onChanged={setJobDraft}
+          label={
+            myJobsAreOverride ? m.myJob.overrideActive : m.myJob.scopeDefault
+          }
+          onChanged={setJobsDraft}
         />
       )}
 

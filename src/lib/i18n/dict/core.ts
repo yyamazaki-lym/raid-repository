@@ -269,6 +269,23 @@ export const ja = {
     notRegistered:
       "メンバー一覧にあなたの行がないため保存できません。幹部に追加を依頼してください。",
     hint: "ジョブを設定すると、軽減表を「自分のロール」「自分の担当だけ」に絞れます。",
+    // L-10 (2026-09-09): 複数指定 + コンテンツごとの上書き。
+    rolesAre: (roles: string): string => `ロール: ${roles}`,
+    add: "ジョブを追加",
+    remove: (job: string): string => `${job} を外す`,
+    none: "未設定",
+    scopeDefault: "既定 (すべてのコンテンツ)",
+    scopeCategory: (name: string): string => `${name} だけ`,
+    scopeLabel: "どこで使うジョブか",
+    perCategoryTitle: "コンテンツごとの上書き",
+    perCategoryEmpty:
+      "上書きはありません。どのコンテンツでも既定のジョブを使います。",
+    addOverride: "上書きするコンテンツを選ぶ",
+    usingDefault: "既定のジョブを使用中",
+    overrideActive: "このコンテンツだけの設定",
+    clearOverride: "上書きを消して既定に戻す",
+    multiHint:
+      "複数選べます。層ごとにジョブを変える場合は、そのコンテンツだけの上書きを足してください (上書きがあるコンテンツでは既定は使いません)。",
   },
   // B-5 (2026-09-08): 個人ページ /me。
   mePage: {
@@ -899,11 +916,27 @@ export const en: CoreMessages = {
   myJob: {
     label: "My job",
     unset: "Not set",
-    roleIs: (role: string): string => `Role: ${role}`,
+    roleIs: (role) => `Role: ${role}`,
     saved: "Saved",
     notRegistered:
       "You have no row in the member list, so this cannot be saved. Ask an officer to add you.",
     hint: 'Set your job to filter the mitigation table by "My role" or "Only mine".',
+    rolesAre: (roles) => `Roles: ${roles}`,
+    add: "Add a job",
+    remove: (job) => `Remove ${job}`,
+    none: "Not set",
+    scopeDefault: "Default (all contents)",
+    scopeCategory: (name) => `${name} only`,
+    scopeLabel: "Where this job applies",
+    perCategoryTitle: "Per-content overrides",
+    perCategoryEmpty:
+      "No overrides. Your default jobs are used for every content.",
+    addOverride: "Pick a content to override",
+    usingDefault: "Using your default jobs",
+    overrideActive: "Set for this content only",
+    clearOverride: "Remove the override and use the default",
+    multiHint:
+      "You can pick more than one. To play something else in a specific content, add an override for it (a content with an override does not use your defaults).",
   },
   mePage: {
     title: "My page",

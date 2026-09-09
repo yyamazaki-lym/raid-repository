@@ -99,6 +99,44 @@ export function roleOfJob(key: string | null | undefined): MemberRole | null {
   return jobInfo(key)?.role ?? null;
 }
 
+/**
+ * ジョブ集合のロール (L-10、2026-09-09)。
+ *
+ * 複数ジョブを持てるようになったので、ロールも複数になり得る (層で
+ * 暗黒騎士、絶で白魔道士など)。⚠ **重複は畳み、未知のジョブは落とす**
+ * (未知を混ぜると「ロール不明」で絞り込みが空になる)。並びは
+ * tank → healer → dps に固定して、表示が入力順で揺れないようにする。
+ */
+export function rolesOfJobs(
+  keys: readonly (string | null | undefined)[],
+): MemberRole[] {
+  const order: MemberRole[] = ["tank", "healer", "dps"];
+  const found = new Set<MemberRole>();
+  for (const k of keys) {
+    const r = roleOfJob(k);
+    if (r) found.add(r);
+  }
+  return order.filter((r) => found.has(r));
+}
+
+/**
+ * そのコンテンツで使うジョブを決める (L-10、2026-09-09)。
+ *
+ * ⚠ **上書きがあれば既定と合併しない。** コンテンツ別の行が 1 つでも
+ * あれば、そのコンテンツではそれだけを使う。合併すると「4 層では暗黒騎士
+ * だけ」と言えず、上書きの意味が無くなる。
+ */
+export function jobsForCategory(
+  jobs: { defaults: readonly string[]; byCategory: Record<string, string[]> },
+  categoryId: string | null | undefined,
+): string[] {
+  if (categoryId) {
+    const over = jobs.byCategory[categoryId];
+    if (over && over.length > 0) return [...over];
+  }
+  return [...jobs.defaults];
+}
+
 /** 表示名 (表示言語に合わせる。略称は言語共通)。 */
 export function jobLabel(
   key: string | null | undefined,
