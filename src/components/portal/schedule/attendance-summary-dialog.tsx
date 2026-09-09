@@ -218,6 +218,14 @@ export function AttendanceSummaryDialog() {
                   {m.attendanceHistory.excludedNote(h.excluded)}
                 </p>
               )}
+              {/* L-14 (2026-09-09): 同期式で回答のスナップショットが無い日。
+                  「全員不在」にはせず、外した数を出して母数を黙って
+                  減らさない。 */}
+              {h.noAttendanceData > 0 && (
+                <p className="text-[11px] leading-snug text-muted-foreground/85">
+                  {m.attendanceHistory.noAttendanceDataNote(h.noAttendanceData)}
+                </p>
+              )}
             </>
           )}
         </div>

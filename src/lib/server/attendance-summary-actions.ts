@@ -8,6 +8,12 @@ import {
 import { requireDiscordMember } from "./auth";
 import { userIsAdmin } from "./admin-roles";
 import { jstYmdString } from "@/lib/jst-date";
+import { getScheduleSourceMode } from "@/lib/schedule/source-mode";
+// L-14: 同期式のスナップショット (名前 → 記号) をメンバーキーに直す層。
+import {
+  buildMemberKeyByName,
+  syncSymbolsFromSnapshot,
+} from "@/lib/schedule/attendance-sync-symbols";
 import {
   summarizeAttendanceHistory,
   type AttendanceHistory,
@@ -31,6 +37,24 @@ import {
  * `fflogs_attendance_actuals` は RLS 有効 + policy 0 本 (schema.sql 6b-9 /
  * 7 章) で、anon / authenticated からは 1 行も読めない。可視範囲の適用を
  * この関数に集約するための設計なので、読み出しは service role で行う。
+ *
+ * ## 同期式でも使える (L-14、2026-09-09 実機報告「出席サマリーは同期式の
+ * 場合使えないか」)
+ *
+ * 自前作成式は `native_schedule_sessions` + `native_schedule_attendances`
+ * (メンバーキー → 記号) を持つが、同期式にはそれが無い。代わりに
+ * `schedule_past_sessions.attendances` (`{"名前": "◯", ...}`) がある。
+ *
+ * ⚠ **持っているのは character-sheets のスナップショット由来の日だけ。**
+ * Discord の投稿だけから作られた日は `attendances` が NULL で、回答が
+ * 分からない。**「全員不在」にはしない** — 集計から外して
+ * `noAttendanceData` として数を出す (黙って母数を減らさない)。
+ *
+ * ⚠ **回答の主キーが名前**なので、メンバー一覧の表示名と突き合わせる
+ * (`normalizeName`)。同じキーに 2 人当たったらどちらにも解決しない
+ * (取り違えるより未解決の方がまし — W-6 と同じ方針)。実績側 (pull) は
+ * メンバーキーなので、`native_schedule_members` が空の固定では
+ * 突合そのものができない。
  *
  * ## 日付の突き合わせ
  *
@@ -66,13 +90,27 @@ export async function fetchAttendanceSummaryAction(): Promise<AttendanceSummaryR
     const cutoffMs = Date.now() - WINDOW_DAYS * 24 * 60 * 60 * 1000;
     const cutoffIso = new Date(cutoffMs).toISOString();
 
+    // L-14: 同期式は `schedule_past_sessions` (スナップショットの回答) から作る。
+    const sourceMode = await getScheduleSourceMode();
+    if (sourceMode === "disabled") {
+      return { ok: false, reason: "スケジュール機能が無効です" };
+    }
+    const syncMode = sourceMode === "sync";
+
     const [sessionsRes, membersRes, fightsRes] = await Promise.all([
-      db
-        .from("native_schedule_sessions")
-        .select("id, raw_date, parsed_date, status, is_optional")
-        .gte("parsed_date", cutoffIso)
-        .lte("parsed_date", new Date().toISOString())
-        .order("parsed_date", { ascending: false }),
+      syncMode
+        ? db
+            .from("schedule_past_sessions")
+            .select("raw_date, parsed_date, attendances")
+            .gte("parsed_date", cutoffIso)
+            .lte("parsed_date", new Date().toISOString())
+            .order("parsed_date", { ascending: false })
+        : db
+            .from("native_schedule_sessions")
+            .select("id, raw_date, parsed_date, status, is_optional")
+            .gte("parsed_date", cutoffIso)
+            .lte("parsed_date", new Date().toISOString())
+            .order("parsed_date", { ascending: false }),
       db
         .from("native_schedule_members")
         .select("discord_user_id, display_name, sort_order, is_active")
@@ -100,11 +138,15 @@ export async function fetchAttendanceSummaryAction(): Promise<AttendanceSummaryR
     }
 
     const sessionRows = (sessionsRes.data ?? []) as Array<{
-      id: string;
+      /** 自前作成式のみ。 */
+      id?: string;
       raw_date: string;
       parsed_date: string;
-      status: "CANDIDATE" | "DECISION" | "CANCELLED";
+      /** 自前作成式のみ (同期式の過去日は確定済みとして扱う)。 */
+      status?: "CANDIDATE" | "DECISION" | "CANCELLED";
       is_optional?: boolean;
+      /** 同期式のみ: `{"名前": "◯", ...}`。Discord 由来の日は null。 */
+      attendances?: Record<string, string> | null;
     }>;
     const memberRows = (membersRes.data ?? []) as Array<{
       discord_user_id: string;
@@ -122,6 +164,7 @@ export async function fetchAttendanceSummaryAction(): Promise<AttendanceSummaryR
           noLog: sessionRows.length,
           unmatched: 0,
           excluded: 0,
+          noAttendanceData: 0,
         },
       };
     }
@@ -200,18 +243,45 @@ export async function fetchAttendanceSummaryAction(): Promise<AttendanceSummaryR
       pullsByDay.set(day, bag);
     }
 
-    const sessions: HistorySessionInput[] = sessionRows.map((s) => {
+    // L-14: 同期式は回答が**名前**キーなので、メンバーの表示名から引く
+    // (対応表の作り方と未解決の扱いは `attendance-sync-symbols.ts`)。
+    const keyByName = syncMode
+      ? buildMemberKeyByName(
+          memberRows.map((mem) => ({
+            discordUserId: mem.discord_user_id,
+            displayName: mem.display_name ?? null,
+          })),
+        )
+      : new Map<string, string | null>();
+
+    /** 同期式で回答スナップショットが無く、集計に入れられなかった日の数。 */
+    let noAttendanceData = 0;
+    const sessions: HistorySessionInput[] = [];
+    for (const s of sessionRows) {
       const day = jstYmdString(new Date(s.parsed_date));
-      return {
+      let symbols: Record<string, string | undefined>;
+      if (syncMode) {
+        const mapped = syncSymbolsFromSnapshot(s.attendances, keyByName);
+        if (mapped === null) {
+          // Discord の投稿だけから作られた日。回答が分からないので外す。
+          noAttendanceData += 1;
+          continue;
+        }
+        symbols = mapped;
+      } else {
+        symbols = symbolsBySession.get(s.id ?? "") ?? {};
+      }
+      sessions.push({
         sessionDate: day,
         rawDate: s.raw_date,
-        status: s.status,
+        // 同期式の過去日は確定済みとして扱う (候補 / 中止の概念が無い)。
+        status: s.status ?? "DECISION",
         isOptional: s.is_optional === true,
         dayPulls: pullsPerDay.get(day) ?? 0,
-        symbols: symbolsBySession.get(s.id) ?? {},
+        symbols,
         pullsBy: pullsByDay.get(day) ?? {},
-      };
-    });
+      });
+    }
 
     const members = memberRows
       .filter((mem) => isAdmin || mem.discord_user_id === user.discordId)
@@ -227,6 +297,7 @@ export async function fetchAttendanceSummaryAction(): Promise<AttendanceSummaryR
       windowDays: WINDOW_DAYS,
       history: {
         ...history,
+        noAttendanceData,
         mismatches: history.mismatches.slice(0, MISMATCH_LIMIT),
       },
     };
