@@ -37,12 +37,77 @@ try {
   check("アルバム共有リンク", m.detectLinkSite("https://photos.google.com/share/AF1Qip..."), "googlephotos");
   check("実体 URL (usercontent)", m.detectLinkSite("https://lh3.photos.googleusercontent.com/x"), "googlephotos");
   check("coarse では動画扱い", m.coarseSite("googlephotos"), "video");
+
+  console.log("\nGoogle ドキュメント系 (L-21)");
+  check(
+    "スプレッドシート",
+    m.detectLinkSite("https://docs.google.com/spreadsheets/d/abc123/edit?usp=sharing"),
+    "googlesheets",
+  );
+  check(
+    "ドキュメント",
+    m.detectLinkSite("https://docs.google.com/document/d/abc123/edit"),
+    "googledocs",
+  );
+  check(
+    "スライド",
+    m.detectLinkSite("https://docs.google.com/presentation/d/abc123/edit"),
+    "googleslides",
+  );
+  check(
+    "その他の docs.google.com は googledocs に倒す",
+    m.detectLinkSite("https://docs.google.com/forms/d/abc123/viewform"),
+    "googledocs",
+  );
+  check(
+    "drive.google.com は含めない (中身が分からない)",
+    m.detectLinkSite("https://drive.google.com/file/d/abc123/view"),
+    "web",
+  );
+  check(
+    "Google フォトは巻き込まない",
+    m.detectLinkSite("https://photos.google.com/share/AF1Qip"),
+    "googlephotos",
+  );
+  check(
+    "サムネを出さない対象",
+    [
+      m.isGoogleDocsSite("googlesheets"),
+      m.isGoogleDocsSite("googledocs"),
+      m.isGoogleDocsSite("googleslides"),
+      m.isGoogleDocsSite("googlephotos"),
+      m.isGoogleDocsSite("web"),
+    ],
+    [true, true, true, false, false],
+  );
+  check(
+    "coarse では web 扱い (動画ではない)",
+    [
+      m.coarseSite("googlesheets"),
+      m.coarseSite("googledocs"),
+      m.coarseSite("googleslides"),
+    ],
+    ["web", "web", "web"],
+  );
+  check(
+    "Google ドキュメント系のラベル ja / en",
+    [
+      m.linkSiteLabel("googlesheets"),
+      m.linkSiteLabel("googlesheets", "en"),
+      m.linkSiteLabel("googledocs", "en"),
+      m.linkSiteLabel("googleslides", "en"),
+    ],
+    ["Google スプレッドシート", "Google Sheets", "Google Docs", "Google Slides"],
+  );
   check("ラベル ja / en", [m.linkSiteLabel("googlephotos"), m.linkSiteLabel("googlephotos", "en")], ["Google フォト", "Google Photos"]);
-  check("Google の他サービスは巻き込まない", [
+  // L-21 (2026-09-09) で docs.google.com は googlesheets 等になった。
+  // ここで見たいのは「**Google フォトの判定が**他の Google を巻き込まない」
+  // ことなので、期待値を新しい契約に合わせる (photos でなければよい)。
+  check("Google フォトの判定が他の Google サービスを巻き込まない", [
     m.detectLinkSite("https://drive.google.com/file/d/x"),
     m.detectLinkSite("https://docs.google.com/spreadsheets/d/x"),
     m.detectLinkSite("https://www.google.com/"),
-  ], ["web", "web", "web"]);
+  ], ["web", "googlesheets", "web"]);
 
   console.log("\n[既存の判定を壊さない]");
   check("YouTube", [m.detectLinkSite("https://www.youtube.com/watch?v=x"), m.detectLinkSite("https://youtu.be/x")], ["youtube", "youtube"]);

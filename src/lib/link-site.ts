@@ -14,6 +14,13 @@ export type LinkSite =
   | "twitch"
   | "niconico"
   | "googlephotos"
+  // L-21 (2026-09-09 実機報告): Google ドキュメント系。攻略リンクとして
+  // 貼られる固定管理シートがこれで、**og:image が使い物にならない**
+  // (`lh7-*.googleusercontent.com/docs/<署名>` は時間が経つと 404)。
+  // サムネの代わりに種別を出すため、種類まで見分ける。
+  | "googlesheets"
+  | "googledocs"
+  | "googleslides"
   | "x"
   | "web";
 
@@ -59,8 +66,33 @@ export function detectLinkSite(url: string): LinkSite {
   ) {
     return "googlephotos";
   }
+  // L-21: docs.google.com はパスで種類が決まる (spreadsheets / document /
+  // presentation)。それ以外の docs.google.com (forms 等) は googledocs に倒す。
+  // ⚠ `drive.google.com` は含めない — 中身が何か URL からは分からない。
+  if (hostMatches(host, ["docs.google.com"])) {
+    const path = pathOf(url);
+    if (path.startsWith("/spreadsheets")) return "googlesheets";
+    if (path.startsWith("/presentation")) return "googleslides";
+    return "googledocs";
+  }
   if (hostMatches(host, ["twitter.com", "x.com"])) return "x";
   return "web";
+}
+
+/** URL のパス部分 (parse できなければ空文字)。 */
+function pathOf(url: string): string {
+  try {
+    return new URL(url).pathname.toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
+/** Google ドキュメント系か (サムネの代わりに種別カードを出す対象)。 */
+export function isGoogleDocsSite(site: LinkSite): boolean {
+  return (
+    site === "googlesheets" || site === "googledocs" || site === "googleslides"
+  );
 }
 
 /** fine な LinkSite を coarse バケットに丸める (攻略リンクの 3 区分用) */
@@ -86,6 +118,9 @@ export const LINK_SITE_LABEL: Record<LinkSite, string> = {
   twitch: "Twitch",
   niconico: "ニコニコ動画",
   googlephotos: "Google フォト",
+  googlesheets: "Google スプレッドシート",
+  googledocs: "Google ドキュメント",
+  googleslides: "Google スライド",
   x: "X (Twitter)",
   web: "Web",
 };
@@ -103,6 +138,9 @@ export function linkSiteLabel(
 ): string {
   if (locale === "en" && site === "niconico") return "Niconico";
   if (locale === "en" && site === "googlephotos") return "Google Photos";
+  if (locale === "en" && site === "googlesheets") return "Google Sheets";
+  if (locale === "en" && site === "googledocs") return "Google Docs";
+  if (locale === "en" && site === "googleslides") return "Google Slides";
   return LINK_SITE_LABEL[site];
 }
 

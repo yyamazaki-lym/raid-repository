@@ -11,7 +11,7 @@
  * アイコンで代用。
  */
 
-import { Globe, Video } from "lucide-react";
+import { FileSpreadsheet, FileText, Globe, Presentation, Video } from "lucide-react";
 import {
   coarseSite,
   coarseSiteLabel,
@@ -66,6 +66,11 @@ const FINE_COLOR: Record<LinkSite, string> = {
   niconico: "text-orange-300",
   // 風車マーク側がブランド 4 色を持つので、色クラスは使わない (型の穴埋め)。
   googlephotos: "text-foreground",
+  // L-21 (2026-09-09): Google ドキュメント系。ブランド色に寄せる
+  // (スプレッドシート=緑 / ドキュメント=青 / スライド=黄)。
+  googlesheets: "text-emerald-400",
+  googledocs: "text-sky-400",
+  googleslides: "text-amber-400",
   x: "text-foreground",
   web: "text-[var(--neon-magenta)]",
 };
@@ -95,6 +100,26 @@ export function LinkSiteIcon({ url, variant = "coarse", className }: Props) {
         <span aria-label={label} title={label} className={className}>
           <GooglePhotosGlyph className="h-full w-full" />
         </span>
+      );
+    }
+    if (
+      fine === "googlesheets" ||
+      fine === "googledocs" ||
+      fine === "googleslides"
+    ) {
+      // L-21: lucide にブランドアイコンが無いので、種類が分かる書類
+      // アイコンで代用する (色も種類ごとに変える)。
+      const DocIcon =
+        fine === "googlesheets"
+          ? FileSpreadsheet
+          : fine === "googleslides"
+            ? Presentation
+            : FileText;
+      return (
+        <DocIcon
+          aria-label={label}
+          className={`${className ?? ""} ${color}`}
+        />
       );
     }
     if (fine === "web") {

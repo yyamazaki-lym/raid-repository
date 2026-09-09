@@ -71,7 +71,7 @@ const BASELINE = [
   ["src/lib/schedule/attendance-ui.ts", 22, "B", "記号キーは character-sheets 側の値。ラベルは ATT_LABEL_DICT_EN と getAttendanceLabel(locale) で切替"],
   ["src/lib/schedule/attendance-summary.ts", 4, "A", "character-sheets の凡例の記号 (全 / 昼 / 夜 / 早) との突き合わせ。attendance-ui.ts の ATT_LABEL_DICT と同じキー"],
   ["src/lib/sub-tab-defs.ts", 6, "B", "SUB_TAB_DEFS.label は DB の custom label と突き合わせる既定値。表示は getSubTabDefs(locale)"],
-  ["src/lib/link-site.ts", 10, "B", "LINK_SITE_LABEL / FF14_RESOURCE_LABEL は ja が正。表示は linkSiteLabel(locale) / *_EN"],
+  ["src/lib/link-site.ts", 13, "B", "LINK_SITE_LABEL / FF14_RESOURCE_LABEL は ja が正。表示は linkSiteLabel(locale) / *_EN (L-21 で Google ドキュメント系 3 件を追加)"],
 
   // ── C. Discord に送る文 ─────────────────────────────────────────────
   ["src/lib/logs-notify.ts", 6, "C", "練習ログのイベント通知。送信先は日本語コミュニティの Discord"],
