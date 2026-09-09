@@ -8,11 +8,6 @@ import { LocaleSwitcher } from "./locale-switcher";
 // した lazy ラッパー (`settings-dialog-lazy.tsx`) を使う。初期ページ
 // ロードの client bundle から外して reload を軽くする。
 import { SettingsDialog } from "./settings-dialog-lazy";
-// UI-8 (2026-09-08): コマンドパレット。trigger をヘッダーに置くため、
-// 候補の素 (カテゴリ一覧 / スケジュールの mode) を layout から受け取る。
-import { CommandPalette } from "./command-palette";
-import type { Category } from "@/lib/supabase/types";
-import type { ScheduleSourceMode } from "@/lib/schedule/source-mode";
 import { DeployColorBadge } from "./deploy-color-badge";
 import { OnlinePresenceIndicator } from "./online-presence-indicator";
 import { LATEST_RELEASE_META } from "@/lib/changelog-meta";
@@ -118,14 +113,7 @@ function pickInitialColor(): string {
   return today === APP_DATE ? HASH_COLOR : DEFAULT_COLOR;
 }
 
-export async function SiteHeader({
-  categories = [],
-  scheduleSourceMode = "sync",
-}: {
-  /** UI-8: パレットのジャンプ候補 (layout が閲覧可否で絞ったもの)。 */
-  categories?: Category[];
-  scheduleSourceMode?: ScheduleSourceMode;
-} = {}) {
+export async function SiteHeader() {
   // ADMIN ロールでなければ設定ダイアログ内の書き込み系 UI は非表示
   // (TODO #21 follow-up)。Server Action 側でも assertAdminResult で
   // 二重に守るが、UI が露出していると non-admin が触って失敗 toast を
@@ -188,29 +176,22 @@ export async function SiteHeader({
               コマンドパレット (Ctrl+K) からしか到達できず、パレット自体を
               知らないと存在に気付けなかった。Server Component の素の
               `<Link>` なので client bundle は 1 バイトも増えない。
-              ⚠ スマホ (375px) では 6 個目が入らない — 実測でヘッダー行が
-              33px はみ出した (ロゴのバージョン表記が 3 行に折り返した上で
-              なお溢れる) ため、`sm` 未満では出さず `MainTabs` のナビ行に
-              置く (あちらは overflow-x-auto なので溢れない)。 */}
+              L-17 (2026-09-09): コマンドパレットをナビ行へ移したので、
+              ここは**どの幅でも出す** (以前はスマホで 6 個目が入らず
+              実測 33px はみ出したため `sm` 以上限定にしていた。
+              パレットが抜けた分でちょうど収まる)。 */}
           <Link
             href="/me"
             prefetch={false}
             aria-label={m.header.myPageAria}
             title={m.header.myPageAria}
-            className="hidden items-center rounded-md sm:flex border border-border/40 bg-background/30 px-2.5 py-1.5 text-muted-foreground transition-colors hover:border-[var(--neon-cyan)]/40 hover:text-foreground"
+            className="flex items-center rounded-md border border-border/40 bg-background/30 px-2.5 py-1.5 text-muted-foreground transition-colors hover:border-[var(--neon-cyan)]/40 hover:text-foreground"
           >
             <UserRound className="h-3.5 w-3.5" aria-hidden />
           </Link>
           {/* 2026-09-07: 表示言語 (国旗)。設定ダイアログから移動。 */}
           <LocaleSwitcher />
           <ThemeSwitcher />
-          {/* UI-8 (2026-09-08): コマンドパレット。虫眼鏡ボタンも置くのは、
-              キーボード近道だけでは存在に気付けないため (発見性の課題への
-              回答が発見できない機能では意味がない)。 */}
-          <CommandPalette
-            categories={categories}
-            scheduleSourceMode={scheduleSourceMode}
-          />
           {/* サインアウトは設定ダイアログ内に移設 (2.1 2026-04-29)。 */}
           <SettingsDialog canEdit={canEdit} showSignIn={isDemoGuest} />
           <OnlinePresenceIndicator selfKey={presenceKey} isDemoGuest={isDemoGuest} />
