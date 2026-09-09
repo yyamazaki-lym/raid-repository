@@ -376,7 +376,7 @@ export const ja = {
       "ログに映っていたかだけを見ています。別アカウントでの参加や、ログ担当が録り忘れた日はズレとして出ます。",
     excludedNote: (n: number): string =>
       `有志練習 / 中止の ${n} 日は集計から外しています。`,
-    // L-14 (2026-09-09): 同期式で回答のスナップショットが無い日。
+    // L-18 (2026-09-09): 同期式で回答のスナップショットが無い日。
     noAttendanceDataNote: (n: number): string =>
       `${n} 日は出欠の記録が残っていないため集計から外しています (Discord の投稿だけから作られた日)。`,
     kindAbsentThoughYes: "参加と回答したが不在",
@@ -504,6 +504,10 @@ export const ja = {
     bodyAria: "メモ本文",
     bodyPlaceholder: "メモ内容…",
     anonymous: "匿名",
+    // L-18 (2026-09-09): 所有者が記録されていない行 (2026-09-09 より前の
+    // メモ) は編集できないが削除はできる。ゴミ箱だけが出ている理由を
+    // tooltip で説明する (「なぜ鉛筆が無いのか」を黙らせない)。
+    deleteOrphanTitle: "削除（投稿者が記録されていないメモ・編集は不可）",
     newMemo: "新規メモ",
     post: "投稿",
     errBodyRequired: "メモ本文を入力してください",
@@ -1138,6 +1142,7 @@ export const en: CoreMessages = {
     bodyAria: "Memo body",
     bodyPlaceholder: "Memo…",
     anonymous: "Anonymous",
+    deleteOrphanTitle: "Delete (no author recorded — cannot be edited)",
     newMemo: "New memo",
     post: "Post",
     errBodyRequired: "Enter the memo text",

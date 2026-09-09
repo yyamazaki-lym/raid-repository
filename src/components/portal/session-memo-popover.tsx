@@ -36,6 +36,11 @@ import {
 } from "@/lib/server/categories-actions";
 import type { SessionLogEntry } from "@/lib/schedule/session-logs";
 import { fflogsLogDedupeKey } from "@/lib/fflogs-url";
+import {
+  canDeleteMemo,
+  canEditMemo,
+  type MemoViewer,
+} from "@/lib/memo-permissions";
 import { useDismissablePopup } from "@/lib/use-dismissable-popup";
 import { safeHref } from "@/lib/url-safe";
 import { DeleteConfirmModal } from "./schedule/session-memo-delete-modal";
@@ -369,6 +374,12 @@ function MemoList({
 }) {
   const msg = useMessages();
   const locale = useLocale();
+  // 判定は `memo-permissions.ts` の純関数に渡すだけにする (RLS 7a-2 と
+  // 同じ規則を UI に 2 重実装しない)。
+  const viewer: MemoViewer = useMemo(
+    () => ({ id: viewerId, isAdmin: viewerIsAdmin }),
+    [viewerId, viewerIsAdmin],
+  );
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingBody, setEditingBody] = useState("");
   const [editingAuthor, setEditingAuthor] = useState("");
@@ -686,12 +697,14 @@ function MemoList({
                       </span>
                       <MemoSeverityBadge severity={m.severity} />
                     </div>
-                    {/* TODO #92 (2026-09-09): 自分のメモ (と admin) だけ
-                        編集・削除できる。移行前の行は所有者が分からないので
-                        admin のみ。押せるのに RLS で失敗する状態を作らない。 */}
-                    {(viewerIsAdmin ||
-                      (m.authorUserId !== null && m.authorUserId === viewerId)) && (
+                    {/* TODO #92 (2026-09-09) + L-18 (2026-09-09): 規則は
+                        `memo-permissions.ts` に集約 (RLS 7a-2 と同じ規則)。
+                        編集 = 自分のメモ or admin。削除 = それに加えて
+                        所有者不明の行。押せるのに RLS で失敗する状態を
+                        作らないため、ボタンを 1 つずつ分けて出す。 */}
+                    {(canEditMemo(m, viewer) || canDeleteMemo(m, viewer)) && (
                     <span className="flex shrink-0 items-center gap-0.5 opacity-60 transition-opacity group-hover:opacity-100">
+                      {canEditMemo(m, viewer) && (
                       <button
                         type="button"
                         onClick={() => startEdit(m)}
@@ -701,15 +714,22 @@ function MemoList({
                       >
                         <Pencil className="h-3 w-3" aria-hidden />
                       </button>
+                      )}
+                      {canDeleteMemo(m, viewer) && (
                       <button
                         type="button"
                         onClick={() => requestDelete(m)}
                         aria-label={msg.common.delete}
-                        title={msg.common.delete}
+                        title={
+                          canEditMemo(m, viewer)
+                            ? msg.common.delete
+                            : msg.memo.deleteOrphanTitle
+                        }
                         className="inline-flex h-5 w-5 items-center justify-center rounded text-rose-300/80 transition-colors hover:bg-rose-500/15 hover:text-rose-200"
                       >
                         <Trash2 className="h-3 w-3" aria-hidden />
                       </button>
+                      )}
                     </span>
                     )}
                   </div>

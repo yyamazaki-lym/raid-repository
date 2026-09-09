@@ -55,6 +55,8 @@ export function SchedulePastSimple({
   sessionVideoLinks,
   sessionLogsByDate,
   initialMemosByDate = {},
+  currentDiscordId = null,
+  isAdmin = false,
 }: {
   sessions: ScheduleSession[];
   holidays?: JapaneseHolidaysMap;
@@ -67,6 +69,13 @@ export function SchedulePastSimple({
   sessionLogsByDate?: Record<string, SessionLogEntry[]>;
   /** TODO #11: server prefetched memos (rawDate → memos[]) */
   initialMemosByDate?: Record<string, ScheduleSessionMemo[]>;
+  /**
+   * 見ている人の Discord ID (L-18、2026-09-09)。メモの編集・削除ボタンの
+   * 表示判定にだけ使う (可否は RLS が決める)。demo のゲストは null。
+   */
+  currentDiscordId?: string | null;
+  /** admin は他人のメモも直せる (L-18)。 */
+  isAdmin?: boolean;
 }) {
   const m = useMessages();
   // TODO #11 phase 7: 親で 1 channel だけ subscribe (旧: 各 DateChip が個別)。
@@ -119,6 +128,8 @@ export function SchedulePastSimple({
             sessionLogs={sessionLogsByDate?.[s.rawDate] ?? EMPTY_SESSION_LOGS}
             memos={memosByDate[s.rawDate] ?? EMPTY_MEMOS}
             onRefreshMemos={refetchMemos}
+            currentDiscordId={currentDiscordId}
+            isAdmin={isAdmin}
           />
         ))}
       </ul>
@@ -133,6 +144,8 @@ function DateChip({
   sessionLogs,
   memos,
   onRefreshMemos,
+  currentDiscordId,
+  isAdmin,
 }: {
   session: ScheduleSession;
   holidays?: JapaneseHolidaysMap;
@@ -152,6 +165,9 @@ function DateChip({
   memos: ScheduleSessionMemo[];
   /** Server-action 後の保険 refetch (旧 useRealtimeScheduleMemos の refetch 互換)。 */
   onRefreshMemos: () => Promise<void>;
+  /** L-18: メモの編集・削除ボタンの表示判定 (可否は RLS)。 */
+  currentDiscordId: string | null;
+  isAdmin: boolean;
 }) {
   const msg = useMessages();
   // Ref to the popover so the (separately-rendered) memo dot can
@@ -232,6 +248,8 @@ function DateChip({
     >
       <SessionMemoPopover
         ref={popoverRef}
+        viewerId={currentDiscordId}
+        viewerIsAdmin={isAdmin}
         rawDate={session.rawDate}
         displayDate={chipDate}
         memos={memos}

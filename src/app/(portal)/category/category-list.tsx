@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
@@ -53,6 +52,7 @@ import {
 import { useConfirm } from "@/components/portal/confirm-dialog";
 import { isCategoryVisibleToRoles } from "@/lib/category-visibility";
 import type { Category, CategoryStatus } from "@/lib/supabase/types";
+import { ImageWithFallback } from "@/components/portal/image-with-fallback";
 import { isOptimizableImageHost, isSafeUrl } from "@/lib/url-safe";
 import { cn } from "@/lib/utils";
 import { useLocale, useMessages } from "@/lib/i18n/client";
@@ -330,15 +330,18 @@ function SortableCategoryCard({
             {/* TODO #11/#17 (2.1+): next/Image fill で WebP / srcset を
                 自動配信。Supabase Storage (`*.supabase.co`) のみ最適化対象、
                 他ホスト (imgur 等) は `unoptimized` で素通し。 */}
-            <Image
+            {/* L-19 (2026-09-09): 画像が消えている / 403 で取れない時は
+                壊れた img ではなく薄いアイコン面に差し替える。文言は
+                出さない (カード名・バッジと重なって読めなくなるため)。 */}
+            <ImageWithFallback
               src={bgImageUrl}
               alt=""
-              aria-hidden
-              fill
               sizes="(min-width: 1024px) 50vw, 100vw"
               loading="lazy"
               unoptimized={!isOptimizableImageHost(bgImageUrl)}
               className="pointer-events-none rounded-xl object-cover opacity-40"
+              showLabel={false}
+              fallbackClassName="rounded-xl bg-secondary/20 opacity-40"
               // 2026-09-03 実機要望「カードに映す位置を指定できないか」。
               // カードは横長で画像は cover で切り取られるため、中央固定では
               // 出したい部分が切れる。編集ダイアログで指定した焦点を使う
