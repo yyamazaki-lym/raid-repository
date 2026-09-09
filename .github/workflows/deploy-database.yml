@@ -70,3 +70,27 @@ jobs:
             echo "::error::本番 DB で anon SELECT ポリシーが ${n} 本検出されました。app.public_demo が立っている可能性があります (RESET してください: ALTER DATABASE <db> RESET app.public_demo)。"
             exit 1
           fi
+
+      # 2026-09-09 監査 M-A の回帰ガード。
+      #
+      # 上のガードは *ポリシー* しか数えないので、`SECURITY DEFINER` 関数に
+      # anon EXECUTE が付いていると素通りする。DEFINER は定義者権限で走る =
+      # RLS を bypass するため、この 1 本で anon SELECT の締め出しが丸ごと
+      # 迂回できる (実際に category_progress_by_day がそうなっていた)。
+      - name: Assert anon EXECUTE on SECURITY DEFINER functions stays closed
+        if: steps.guard.outputs.skip == 'false'
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          rows=$(psql "$SUPABASE_DB_URL" -tAc "
+            SELECT string_agg(p.oid::regprocedure::text, ', ')
+              FROM pg_proc p
+              JOIN pg_namespace n ON n.oid = p.pronamespace
+             WHERE n.nspname = 'public'
+               AND p.prosecdef
+               AND has_function_privilege('anon', p.oid, 'EXECUTE');")
+          echo "anon EXECUTE on SECURITY DEFINER: '${rows}'"
+          if [ -n "$rows" ]; then
+            echo "::error::本番 DB で SECURITY DEFINER 関数に anon EXECUTE が付いています (${rows})。RLS を bypass するため、schema.sql 15 章の条件付き GRANT が効いているか確認してください。"
+            exit 1
+          fi

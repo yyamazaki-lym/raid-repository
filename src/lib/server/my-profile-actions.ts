@@ -40,6 +40,11 @@ export type SetMyJobResult =
 
 export async function setMyJobAction(job: string | null): Promise<SetMyJobResult> {
   const user = await requireDiscordMember();
+  // 公開デモの匿名ゲストは共有 ID を持つので、service role 経路で
+  // 書けてしまわないよう弾く (他の service role Server Action と同じ扱い)。
+  if (user.isDemoGuest) {
+    return { ok: false, reason: "デモ表示中は変更できません" };
+  }
   const value = job === null || job === "" ? null : job;
   if (value !== null && !isJobKey(value)) {
     return { ok: false, reason: "知らないジョブです" };

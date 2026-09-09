@@ -84,6 +84,11 @@ export async function setOnboardingStepAction(input: {
   done: boolean;
 }): Promise<{ ok: true } | { ok: false; reason: string }> {
   const user = await requireDiscordMember();
+  // 公開デモの匿名ゲストは共有 ID を持つので、service role 経路で
+  // 書けてしまわないよう弾く (他の service role Server Action と同じ扱い)。
+  if (user.isDemoGuest) {
+    return { ok: false, reason: "デモ表示中は変更できません" };
+  }
   if (!/^[0-9a-f-]{36}$/i.test(input.categoryId ?? "")) {
     return { ok: false, reason: "コンテンツの指定が不正です" };
   }
