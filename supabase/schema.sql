@@ -10,8 +10,13 @@
 
 -- ---- 1. Helpers --------------------------------------------------------
 
+-- ⚠ `SET search_path` を固定する (2026-09-09、Supabase lint
+-- `function_search_path_mutable`)。トリガー関数は呼び出し元のロールの
+-- search_path で走るため、固定しないと同名の関数・型を先に解決される
+-- (`now()` を差し替えられる) 余地が残る。この関数は SECURITY INVOKER だが、
+-- 全テーブルの updated_at を書く共通経路なので閉じておく。
 CREATE OR REPLACE FUNCTION public.set_updated_at()
-RETURNS TRIGGER LANGUAGE plpgsql AS $$
+RETURNS TRIGGER LANGUAGE plpgsql SET search_path = public AS $$
 BEGIN
   NEW.updated_at = now();
   RETURN NEW;
@@ -402,21 +407,21 @@ DROP POLICY IF EXISTS category_discord_blocklist_admin_select
 CREATE POLICY category_discord_blocklist_admin_select
   ON public.category_discord_blocklist
   FOR SELECT TO authenticated
-  USING ((SELECT auth.jwt() -> 'app_metadata' ->> 'is_admin') = 'true');
+  USING (((SELECT auth.jwt()) -> 'app_metadata' ->> 'is_admin') = 'true');
 
 DROP POLICY IF EXISTS category_discord_blocklist_admin_insert
   ON public.category_discord_blocklist;
 CREATE POLICY category_discord_blocklist_admin_insert
   ON public.category_discord_blocklist
   FOR INSERT TO authenticated
-  WITH CHECK ((SELECT auth.jwt() -> 'app_metadata' ->> 'is_admin') = 'true');
+  WITH CHECK (((SELECT auth.jwt()) -> 'app_metadata' ->> 'is_admin') = 'true');
 
 DROP POLICY IF EXISTS category_discord_blocklist_admin_delete
   ON public.category_discord_blocklist;
 CREATE POLICY category_discord_blocklist_admin_delete
   ON public.category_discord_blocklist
   FOR DELETE TO authenticated
-  USING ((SELECT auth.jwt() -> 'app_metadata' ->> 'is_admin') = 'true');
+  USING (((SELECT auth.jwt()) -> 'app_metadata' ->> 'is_admin') = 'true');
 
 -- ---- 3. loot -----------------------------------------------------------
 
@@ -1014,6 +1019,24 @@ ALTER TABLE public.native_schedule_member_jobs
 ALTER TABLE public.native_schedule_member_jobs
   ADD CONSTRAINT native_schedule_member_jobs_job_sane
   CHECK (char_length(job) <= 32 AND job ~ '^[A-Za-z]+$') NOT VALID;
+-- ⚠ **主キーを持たせる** (2026-09-09、Supabase lint `no_primary_key`)。
+-- 自然キー (本人 + コンテンツ + ジョブ) は `category_id` が NULL 可なので
+-- 主キーにできない (NULL を含む列は PK 不可) — 下の式インデックスで一意性を
+-- 守り、行の識別子は代理キーにする。
+ALTER TABLE public.native_schedule_member_jobs
+  ADD COLUMN IF NOT EXISTS id uuid NOT NULL DEFAULT gen_random_uuid();
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+     WHERE conrelid = 'public.native_schedule_member_jobs'::regclass
+       AND contype = 'p'
+  ) THEN
+    ALTER TABLE public.native_schedule_member_jobs
+      ADD CONSTRAINT native_schedule_member_jobs_pkey PRIMARY KEY (id);
+  END IF;
+END $$;
+
 CREATE UNIQUE INDEX IF NOT EXISTS native_schedule_member_jobs_uniq
   ON public.native_schedule_member_jobs (
     discord_user_id,
@@ -1050,6 +1073,13 @@ CREATE TABLE IF NOT EXISTS public.native_schedule_attendances (
 -- discord_user_id) の先頭列が包含するため冗長 — 削除 (本テーブルは最も
 -- write が多い出欠トグル先なので index 維持コスト減の実益もある)。
 DROP INDEX IF EXISTS public.native_schedule_attendances_session_idx;
+-- ⚠ **FK 側の列にインデックスを張る** (2026-09-09、Supabase lint
+-- `unindexed_foreign_keys`)。PK は (session_id, discord_user_id) なので
+-- `discord_user_id` 単独の索引が無く、**メンバー行を削除するとき**に
+-- 参照側の全走査が起きる (FK の CASCADE チェック)。出席サマリーの
+-- 「メンバー別」読み取りにも効く。
+CREATE INDEX IF NOT EXISTS native_schedule_attendances_user_idx
+  ON public.native_schedule_attendances(discord_user_id);
 
 -- 2.9 follow-up (2026-06-12): symbol の内容制約を DB 層にも追加。
 -- #177 (2.8) の Server Action 側サニタイズ (制御文字除去 + 32 字制限) は
@@ -1525,6 +1555,12 @@ CREATE TABLE IF NOT EXISTS public.fflogs_report_syncs (
   reason          text,
   synced_at       timestamptz NOT NULL DEFAULT now()
 );
+-- ⚠ **FK 側の列にインデックスを張る** (2026-09-09、Supabase lint
+-- `unindexed_foreign_keys`)。主キーは `report_code` なので `category_id` に
+-- 索引が無く、**コンテンツを削除するとき** (ON DELETE SET NULL) にこの表の
+-- 全走査が起きる。`fetchFailedReportSyncs(categoryId)` の読み取りにも効く。
+CREATE INDEX IF NOT EXISTS fflogs_report_syncs_category_idx
+  ON public.fflogs_report_syncs(category_id);
 -- 2026-08-28: zone 名を保持する。カテゴリ紐づけを後から (FFLogs を叩かずに)
 -- やり直せるようにするため — 動画リンクも zone ID も無い固定では初回同期時に
 -- カテゴリが決まらず、ログが 1 件も表示されない状態になっていた。
@@ -1621,7 +1657,7 @@ ALTER TABLE public.fflogs_report_videos
 CREATE OR REPLACE FUNCTION public.next_category_waymark_sort_order(
   p_category_id uuid
 )
-RETURNS integer LANGUAGE sql SECURITY DEFINER SET search_path = public AS $$
+RETURNS integer LANGUAGE sql SET search_path = public AS $$
   SELECT COALESCE(MAX(sort_order), -1) + 1
   FROM public.category_waymarks
   WHERE category_id = p_category_id
@@ -1630,7 +1666,7 @@ $$;
 CREATE OR REPLACE FUNCTION public.next_category_bis_link_sort_order(
   p_category_id uuid
 )
-RETURNS integer LANGUAGE sql SECURITY DEFINER SET search_path = public AS $$
+RETURNS integer LANGUAGE sql SET search_path = public AS $$
   SELECT COALESCE(MAX(sort_order), -1) + 1
   FROM public.category_bis_links
   WHERE category_id = p_category_id
@@ -2040,17 +2076,17 @@ BEGIN
         -- auth.jwt() を評価していた。意味は等価 (Supabase lint
         -- auth_rls_initplan と同型)。
         EXECUTE format(
-          $sql$CREATE POLICY %I ON public.%I FOR INSERT TO authenticated WITH CHECK ((SELECT auth.jwt() -> 'app_metadata' ->> 'is_admin') = 'true')$sql$,
+          $sql$CREATE POLICY %I ON public.%I FOR INSERT TO authenticated WITH CHECK (((SELECT auth.jwt()) -> 'app_metadata' ->> 'is_admin') = 'true')$sql$,
           policy_name, t
         );
       ELSIF op = 'update' THEN
         EXECUTE format(
-          $sql$CREATE POLICY %I ON public.%I FOR UPDATE TO authenticated USING ((SELECT auth.jwt() -> 'app_metadata' ->> 'is_admin') = 'true') WITH CHECK ((SELECT auth.jwt() -> 'app_metadata' ->> 'is_admin') = 'true')$sql$,
+          $sql$CREATE POLICY %I ON public.%I FOR UPDATE TO authenticated USING (((SELECT auth.jwt()) -> 'app_metadata' ->> 'is_admin') = 'true') WITH CHECK (((SELECT auth.jwt()) -> 'app_metadata' ->> 'is_admin') = 'true')$sql$,
           policy_name, t
         );
       ELSIF op = 'delete' THEN
         EXECUTE format(
-          $sql$CREATE POLICY %I ON public.%I FOR DELETE TO authenticated USING ((SELECT auth.jwt() -> 'app_metadata' ->> 'is_admin') = 'true')$sql$,
+          $sql$CREATE POLICY %I ON public.%I FOR DELETE TO authenticated USING (((SELECT auth.jwt()) -> 'app_metadata' ->> 'is_admin') = 'true')$sql$,
           policy_name, t
         );
       END IF;
@@ -2085,7 +2121,7 @@ CREATE POLICY native_schedule_attendances_self_insert
   ON public.native_schedule_attendances
   FOR INSERT TO authenticated
   WITH CHECK (
-    (SELECT auth.jwt() -> 'app_metadata' ->> 'discord_id') = discord_user_id
+    ((SELECT auth.jwt()) -> 'app_metadata' ->> 'discord_id') = discord_user_id
   );
 
 DROP POLICY IF EXISTS native_schedule_attendances_self_update
@@ -2094,10 +2130,10 @@ CREATE POLICY native_schedule_attendances_self_update
   ON public.native_schedule_attendances
   FOR UPDATE TO authenticated
   USING (
-    (SELECT auth.jwt() -> 'app_metadata' ->> 'discord_id') = discord_user_id
+    ((SELECT auth.jwt()) -> 'app_metadata' ->> 'discord_id') = discord_user_id
   )
   WITH CHECK (
-    (SELECT auth.jwt() -> 'app_metadata' ->> 'discord_id') = discord_user_id
+    ((SELECT auth.jwt()) -> 'app_metadata' ->> 'discord_id') = discord_user_id
   );
 
 DROP POLICY IF EXISTS native_schedule_attendances_self_delete
@@ -2106,7 +2142,7 @@ CREATE POLICY native_schedule_attendances_self_delete
   ON public.native_schedule_attendances
   FOR DELETE TO authenticated
   USING (
-    (SELECT auth.jwt() -> 'app_metadata' ->> 'discord_id') = discord_user_id
+    ((SELECT auth.jwt()) -> 'app_metadata' ->> 'discord_id') = discord_user_id
   );
 
 -- ---- 7a-2. schedule_session_memos メンバー書込 (総合レビュー A-4) -----------
@@ -2363,7 +2399,7 @@ CREATE POLICY "category-backgrounds authenticated insert"
   TO authenticated
   WITH CHECK (
     bucket_id = 'category-backgrounds'
-    AND (SELECT auth.jwt() -> 'app_metadata' ->> 'is_admin') = 'true'
+    AND ((SELECT auth.jwt()) -> 'app_metadata' ->> 'is_admin') = 'true'
   );
 
 -- 2026-07-12 監査 B-6: INSERT と対称の is_admin DELETE policy を追加
@@ -2379,7 +2415,7 @@ CREATE POLICY "category-backgrounds authenticated delete"
   TO authenticated
   USING (
     bucket_id = 'category-backgrounds'
-    AND (SELECT auth.jwt() -> 'app_metadata' ->> 'is_admin') = 'true'
+    AND ((SELECT auth.jwt()) -> 'app_metadata' ->> 'is_admin') = 'true'
   );
 
 -- ---- 10b. Storage bucket for strategy images (Phase 15, 2026-05-13) ----
@@ -2414,7 +2450,7 @@ CREATE POLICY "category-strategy-images authenticated insert"
   TO authenticated
   WITH CHECK (
     bucket_id = 'category-strategy-images'
-    AND (SELECT auth.jwt() -> 'app_metadata' ->> 'is_admin') = 'true'
+    AND ((SELECT auth.jwt()) -> 'app_metadata' ->> 'is_admin') = 'true'
   );
 
 -- 監査 P3-n (2026-06-19): admin が画像をアップロード→ダイアログをキャンセル /
@@ -2427,7 +2463,7 @@ CREATE POLICY "category-strategy-images authenticated delete"
   TO authenticated
   USING (
     bucket_id = 'category-strategy-images'
-    AND (SELECT auth.jwt() -> 'app_metadata' ->> 'is_admin') = 'true'
+    AND ((SELECT auth.jwt()) -> 'app_metadata' ->> 'is_admin') = 'true'
   );
 
 -- ============================================================================
@@ -2578,11 +2614,14 @@ END $$;
 -- 戻り値はその関数呼び出し時点で割り当てるべき次の sort_order 整数。
 -- 既存行が無い場合は 0 を返す (NOT NULL DEFAULT 0 と整合)。
 --
--- SECURITY DEFINER で RLS を bypass するが、引数だけ参照する read-only
--- 関数なので安全。anon / authenticated に EXECUTE GRANT して server
--- action から呼び出せるようにする。
+-- ⚠ **SECURITY INVOKER** (2026-09-09 に DEFINER から変更、Supabase lint
+-- `authenticated_security_definer_function_executable`)。呼ぶのは admin の
+-- 書き込み経路 (ユーザースコープのクライアント) で、対象表の SELECT は
+-- 7 章で `TO authenticated USING (true)` なので INVOKER でも同じ値が返る。
+-- DEFINER は「RLS を bypass する権限」を signed-in 全員に配ることになるので、
+-- 必要が無いなら持たせない。
 CREATE OR REPLACE FUNCTION public.next_category_sort_order()
-RETURNS integer LANGUAGE sql SECURITY DEFINER SET search_path = public AS $$
+RETURNS integer LANGUAGE sql SET search_path = public AS $$
   SELECT COALESCE(MAX(sort_order), -1) + 1 FROM public.categories
 $$;
 
@@ -2590,7 +2629,7 @@ CREATE OR REPLACE FUNCTION public.next_category_link_sort_order(
   p_category_id uuid,
   p_kind text
 )
-RETURNS integer LANGUAGE sql SECURITY DEFINER SET search_path = public AS $$
+RETURNS integer LANGUAGE sql SET search_path = public AS $$
   SELECT COALESCE(MAX(sort_order), -1) + 1
   FROM public.category_links
   WHERE category_id = p_category_id AND kind = p_kind
@@ -2611,8 +2650,8 @@ GRANT EXECUTE ON FUNCTION public.next_category_link_sort_order(uuid, text)
 -- では `SELECT sort_order ORDER BY ... LIMIT 1 → +1 → INSERT` の JS 側
 -- TOCTOU が残っていた。実害は表示順の不安定化のみで cron 並列書き込みは
 -- 無いが、admin が複数 tab で同時に「テンプレ追加」を押す経路で衝突
--- しうるため、PR #135 と同パターンの SECURITY DEFINER RPC を追加して
--- 1 round-trip 化 + RLS の影響を受けず確実に最新 max を返せる形に揃える。
+-- しうるため、PR #135 と同パターンの RPC を追加して 1 round-trip 化する。
+-- ⚠ 2026-09-09: DEFINER から **INVOKER** に変更 (上の 13c と同じ理由)。
 --
 -- スコープ外: `loot_items` / `mitigation_phases` / `mitigation_entries` /
 -- `strategy_docs` は現行 portal に対応する insert UI が存在しない
@@ -2621,14 +2660,14 @@ GRANT EXECUTE ON FUNCTION public.next_category_link_sort_order(uuid, text)
 -- RPC を追加する想定。
 
 CREATE OR REPLACE FUNCTION public.next_recruitment_template_sort_order()
-RETURNS integer LANGUAGE sql SECURITY DEFINER SET search_path = public AS $$
+RETURNS integer LANGUAGE sql SET search_path = public AS $$
   SELECT COALESCE(MAX(sort_order), -1) + 1 FROM public.recruitment_templates
 $$;
 
 CREATE OR REPLACE FUNCTION public.next_category_macro_sort_order(
   p_category_id uuid
 )
-RETURNS integer LANGUAGE sql SECURITY DEFINER SET search_path = public AS $$
+RETURNS integer LANGUAGE sql SET search_path = public AS $$
   SELECT COALESCE(MAX(sort_order), -1) + 1
   FROM public.category_macros
   WHERE category_id = p_category_id
@@ -2648,13 +2687,16 @@ GRANT EXECUTE ON FUNCTION public.next_category_macro_sort_order(uuid)
 -- 動画の累積 (日次 Discord 取込) に比例して /category 表示が線形劣化して
 -- いた。DB 側 GROUP BY でカテゴリ数行に縮約する。
 --
--- STABLE read-only。SECURITY DEFINER だが category_links の SELECT は元々
--- RLS `USING (true)` で anon に全開なので露出は増えない (13c と同方針で
--- RLS 影響を受けず確実に全行を集計するために DEFINER を採用)。
+-- STABLE read-only。⚠ **SECURITY INVOKER** (2026-09-09 に DEFINER から変更)。
+-- 旧コメントは「anon SELECT が全開なので DEFINER でも露出は増えない」と
+-- 書いていたが、その前提は 2026-08-05 監査 H-2 で SELECT を
+-- `TO authenticated` に締めた時点で偽になっていた (15 章の経緯も参照)。
+-- INVOKER なら呼び出し元の RLS がそのまま効くので、露出の判断が
+-- 1 箇所 (7 章のポリシー) に集まる。
 -- `duration_seconds > 0` は JS 実装の `sec <= 0 continue` と同じ除外。
 CREATE OR REPLACE FUNCTION public.practice_seconds_by_category()
 RETURNS TABLE (category_id uuid, total_seconds bigint)
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+LANGUAGE sql STABLE SET search_path = public AS $$
   SELECT category_id, SUM(duration_seconds)::bigint AS total_seconds
     FROM public.category_links
    WHERE kind = 'video'
@@ -2723,7 +2765,7 @@ RETURNS TABLE (
   best_percentage  numeric,
   has_clear        boolean
 )
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+LANGUAGE sql STABLE SET search_path = public AS $$
   WITH bounds AS (
     SELECT (EXTRACT(EPOCH FROM now()) * 1000)::bigint
              - (LEAST(GREATEST(COALESCE(p_days, 56), 1), 365)::bigint * 86400000)
