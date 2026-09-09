@@ -268,7 +268,11 @@ export function SchedulePageBody({
               集計は native_schedule_* と練習ログの突合で、sync (外部シート)
               モードでは対応表が無い。可視範囲 (幹部=全員 / 本人=自分だけ) は
               Server Action 側で決める。 */}
-          {mode === "native" && <AttendanceSummaryDialog />}
+          {/* L-14 (2026-09-09): 同期式でも出す。回答は
+              `schedule_past_sessions.attendances` (スナップショット) から
+              引く (詳細は `server/attendance-summary-actions.ts`)。
+              `disabled` のときだけ出さない。 */}
+          {mode !== "disabled" && <AttendanceSummaryDialog />}
           <RecruitmentTemplatesButton
             templates={liveTemplates}
             categories={recruitmentCategories}

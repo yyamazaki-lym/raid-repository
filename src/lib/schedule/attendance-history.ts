@@ -96,6 +96,17 @@ export type AttendanceHistory = {
   unmatched: number;
   /** 有志練習 / 中止で外した日の数。 */
   excluded: number;
+  /**
+   * 回答のスナップショットが無くて集計に入れられなかった日の数
+   * (L-14、2026-09-09)。
+   *
+   * 同期式のときだけ 0 より大きくなり得る。character-sheets のスナップショット
+   * から作られた日 (`schedule_past_sessions.attendances`) しか回答を持たず、
+   * Discord の投稿だけから作られた日は回答が無い。「全員不在」ではなく
+   * **分からない**ので、外した数を出して黙って母数を減らさない。
+   * この関数は該当日を受け取らないので、値は呼び出し側が入れる。
+   */
+  noAttendanceData: number;
 };
 
 /**
@@ -189,6 +200,8 @@ export function summarizeAttendanceHistory({
     rows: [...rows.values()],
     mismatches,
     sessions: counted,
+    // 呼び出し側が上書きする (この関数は該当日を受け取らない)。
+    noAttendanceData: 0,
     noLog,
     unmatched,
     excluded,

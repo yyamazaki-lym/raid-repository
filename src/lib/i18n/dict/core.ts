@@ -376,6 +376,9 @@ export const ja = {
       "ログに映っていたかだけを見ています。別アカウントでの参加や、ログ担当が録り忘れた日はズレとして出ます。",
     excludedNote: (n: number): string =>
       `有志練習 / 中止の ${n} 日は集計から外しています。`,
+    // L-14 (2026-09-09): 同期式で回答のスナップショットが無い日。
+    noAttendanceDataNote: (n: number): string =>
+      `${n} 日は出欠の記録が残っていないため集計から外しています (Discord の投稿だけから作られた日)。`,
     kindAbsentThoughYes: "参加と回答したが不在",
     kindPartialThoughYes: (pulls: number, dayPulls: number): string =>
       `参加と回答したが一部のみ (${pulls}/${dayPulls} pull)`,
@@ -1018,6 +1021,8 @@ export const en: CoreMessages = {
       "This only checks whether you appear in the logs. Joining on another account, or a night nobody recorded, shows up as a mismatch.",
     excludedNote: (n) =>
       `${n} optional/cancelled day(s) are excluded from the totals.`,
+    noAttendanceDataNote: (n) =>
+      `${n} day(s) excluded because no attendance snapshot was stored (created from Discord posts only).`,
     kindAbsentThoughYes: "said yes but absent",
     kindPartialThoughYes: (pulls, dayPulls) =>
       `said yes but only part of the night (${pulls}/${dayPulls} pulls)`,
