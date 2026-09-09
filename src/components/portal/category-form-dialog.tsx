@@ -240,7 +240,8 @@ export function CategoryFormDialog({
 
   // Phase 17 (2026-05-13): カテゴリカードから飛ぶ既定タブと、SubTabs 表示
   // 設定 (ON/OFF + ラベル上書き)。tabSettings は UI 内部用の Record。
-  type TabSetting = { enabled: boolean; label: string };
+  // L-15 (2026-09-09): `loot` タブだけ「欲しい人」行列の表示指定を持つ。
+  type TabSetting = { enabled: boolean; label: string; wantMatrix: boolean };
   const buildInitialTabSettings = (
     cfg: Category["tabConfig"] | undefined,
   ): Record<CategoryTabId, TabSetting> => {
@@ -249,6 +250,7 @@ export function CategoryFormDialog({
       const c = cfg?.[id];
       out[id] = {
         enabled: c?.enabled !== false,
+        wantMatrix: c?.wantMatrix !== false,
         label: typeof c?.label === "string" ? c.label : "",
       };
     }
@@ -465,14 +467,18 @@ export function CategoryFormDialog({
     // 見つけやすいので、デフォルト状態の key は省いて保存する。
     const tabConfigPatch: Record<
       string,
-      { enabled?: boolean; label?: string | null }
+      { enabled?: boolean; label?: string | null; wantMatrix?: boolean }
     > = {};
     for (const id of CATEGORY_TAB_IDS) {
       const s = tabSettings[id];
       const trimmedLabel = s.label.trim();
-      const isDefault = s.enabled && !trimmedLabel;
+      // 既定 (表示 ON / ラベル未指定 / 行列も ON) なら書かない。
+      const isDefault = s.enabled && !trimmedLabel && s.wantMatrix;
       if (isDefault) continue;
       tabConfigPatch[id] = {
+        // 既定値 (true) は書かず、false のときだけ持たせる
+        // (jsonb を無駄に太らせない)。
+        ...(id === "loot" && !s.wantMatrix ? { wantMatrix: false } : {}),
         enabled: s.enabled,
         label: trimmedLabel ? trimmedLabel : null,
       };
@@ -835,6 +841,31 @@ export function CategoryFormDialog({
                           className="text-[11px] tracking-normal"
                           disabled={!s.enabled}
                         />
+                        {/* L-15 (2026-09-09): ロットタブだけ「欲しい人」行列の
+                            表示指定。零式と絶では取得する装備が違うので、
+                            使わない固定では出さない (実機報告)。 */}
+                        {id === "loot" && (
+                          <label className="inline-flex shrink-0 items-center gap-1.5 text-[11px] tracking-normal">
+                            <input
+                              type="checkbox"
+                              checked={s.wantMatrix}
+                              onChange={(e) =>
+                                setTabSettings((prev) => ({
+                                  ...prev,
+                                  [id]: {
+                                    ...prev[id],
+                                    wantMatrix: e.target.checked,
+                                  },
+                                }))
+                              }
+                              disabled={!s.enabled}
+                              className="h-3.5 w-3.5 cursor-pointer accent-[var(--neon-cyan)]"
+                            />
+                            <span className="text-muted-foreground">
+                              {m.categoryForm.lootWantMatrixLabel}
+                            </span>
+                          </label>
+                        )}
                       </li>
                     );
                   })}

@@ -97,7 +97,13 @@ export default async function LootPage({
 
   const extras = (
     <div className="flex flex-col gap-3 px-3 md:px-0">
-      <LootWantMatrix members={wantMembers} />
+      {/* L-15 (2026-09-09): 「欲しい人」行列を出すかはコンテンツ設定
+          (`tabConfig.loot.wantMatrix`)。零式と絶で取得する装備が違うため、
+          使わないコンテンツでは固定全員に対して出さない。既定は出す。
+          読む人が一時的に畳むのは行列側 (localStorage に覚える)。 */}
+      {category.tabConfig?.["loot"]?.wantMatrix !== false && (
+        <LootWantMatrix members={wantMembers} storageKey={category.slug} />
+      )}
       {weeks.map((week, i) => (
         <LootWeeklyPanel
           key={week}

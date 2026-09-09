@@ -1,6 +1,7 @@
 "use client";
 
-import { Dice5 } from "lucide-react";
+import { useCallback, useSyncExternalStore } from "react";
+import { ChevronRight, Dice5 } from "lucide-react";
 import {
   buildLootWantMatrix,
   lootCellKind,
@@ -37,10 +38,68 @@ import { useLocale, useMessages } from "@/lib/i18n/client";
  *
  * 色だけで意味を伝えないよう、緑と黄には**順番の数字**を、取得済には
  * チェックを入れる (`globals.css` の色の方針)。
+ *
+ * ## 畳める (L-15、2026-09-09 実機報告)
+ *
+ * 「欲しい人の欄は閉じられるようにしたい」。開閉は**コンテンツごとに
+ * localStorage で覚える** (絶では畳んで零式では開く、が続くように)。
+ *
+ * ⚠ SSR では常に開いた状態を返す (`getServerSnapshot`)。閉じた状態を
+ * サーバーで再現できないので、hydration の後に localStorage の値へ
+ * 切り替える形にしてある (`useSyncExternalStore` の想定した使い方)。
+ *
+ * ⚠ **固定ごとに丸ごと消すのは admin 側の設定**
+ * (`tabConfig.loot.wantMatrix`)。零式と絶で取得装備が違うため、使わない
+ * コンテンツでは全員に対して出さない — こちらは「読む人が畳む」だけ。
  */
-export function LootWantMatrix({ members }: { members: LootMemberInput[] }) {
+
+const STORAGE_PREFIX = "rr_loot_want_open:";
+
+/** localStorage の変更を購読する (同じタブ内の変更も拾う)。 */
+const listeners = new Set<() => void>();
+function subscribe(cb: () => void) {
+  listeners.add(cb);
+  window.addEventListener("storage", cb);
+  return () => {
+    listeners.delete(cb);
+    window.removeEventListener("storage", cb);
+  };
+}
+function emit() {
+  for (const cb of listeners) cb();
+}
+function readOpen(key: string): boolean {
+  try {
+    // 既定は開く (今までの見た目を変えない)。"0" のときだけ閉じる。
+    return window.localStorage.getItem(STORAGE_PREFIX + key) !== "0";
+  } catch {
+    return true;
+  }
+}
+function writeOpen(key: string, open: boolean) {
+  try {
+    window.localStorage.setItem(STORAGE_PREFIX + key, open ? "1" : "0");
+  } catch {
+    // プライベートウィンドウ等では覚えられないだけ (表示は動く)。
+  }
+  emit();
+}
+export function LootWantMatrix({
+  members,
+  storageKey,
+}: {
+  members: LootMemberInput[];
+  /** 開閉を覚える単位 (コンテンツの slug)。 */
+  storageKey: string;
+}) {
   const m = useMessages();
   const locale = useLocale();
+  const open = useSyncExternalStore(
+    subscribe,
+    useCallback(() => readOpen(storageKey), [storageKey]),
+    // SSR / hydration 中は開いた状態 (上の docstring 参照)。
+    () => true,
+  );
   // BiS リンクが 1 本も無い固定では何も出さない (入れる前から表が出ると
   // 「使えない機能」に見える)。
   if (members.length === 0) return null;
@@ -48,17 +107,30 @@ export function LootWantMatrix({ members }: { members: LootMemberInput[] }) {
 
   return (
     <div className="flex flex-col gap-2 rounded-md border border-border/40 bg-secondary/15 px-3 py-2.5">
-      <div className="flex flex-wrap items-center gap-2">
+      {/* L-15: 見出しごと開閉ボタンにする (押せる範囲を広く取る)。 */}
+      <button
+        type="button"
+        onClick={() => writeOpen(storageKey, !open)}
+        aria-expanded={open}
+        className="flex flex-wrap items-center gap-2 text-left"
+      >
+        <ChevronRight
+          className={
+            "h-3 w-3 shrink-0 text-muted-foreground transition-transform " +
+            (open ? "rotate-90" : "")
+          }
+          aria-hidden
+        />
         <Dice5 className="h-3 w-3 shrink-0 text-emerald-300/80" aria-hidden />
         <span className="font-mono text-[11px] tracking-[0.18em] text-muted-foreground uppercase">
           {m.lootWant.title}
         </span>
         <span className="text-[11px] text-muted-foreground/70">
-          {m.lootWant.subtitle}
+          {open ? m.lootWant.subtitle : m.lootWant.collapsedHint}
         </span>
-      </div>
+      </button>
 
-      {matrix.allDone ? (
+      {!open ? null : matrix.allDone ? (
         <span className="text-[12px] text-muted-foreground">
           {m.lootWant.allDone}
         </span>
