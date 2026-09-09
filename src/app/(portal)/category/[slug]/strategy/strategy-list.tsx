@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Image from "next/image";
+import { ImageWithFallback } from "@/components/portal/image-with-fallback";
 import {
   BookOpen,
   ChevronDown,
@@ -13,7 +13,13 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { LinkSiteIcon } from "@/components/portal/link-site-icon";
-import { detectFf14Resource, ff14ResourceLabel } from "@/lib/link-site";
+import {
+  detectFf14Resource,
+  detectLinkSite,
+  ff14ResourceLabel,
+  isGoogleDocsSite,
+  linkSiteLabel,
+} from "@/lib/link-site";
 import { useLocale, useMessages } from "@/lib/i18n/client";
 import { DndContext, closestCenter } from "@dnd-kit/core";
 import {
@@ -389,6 +395,13 @@ function SortableStrategyCard({
   // og:image を取りに行かないので、既存リンクや og:image 未設定サイトは
   // NULL → ここで undefined → 描画しない (= 従来のテキストカードのまま)。
   const thumbHref = showThumbnail ? safeHref(link.thumbnailUrl) : undefined;
+  // L-21 (2026-09-09 実機報告「スプシなどが取り込まれた場合、このような画像に
+  // なる」): Google ドキュメント系は **og:image を当てにしない**。返ってくる
+  // のは `lh7-*.googleusercontent.com/docs/<署名>` で、**時間が経つと 404**
+  // になる (公開シートで実測)。登録直後だけ映って、後から白い箱になる。
+  // サムネの代わりに「何のファイルか」を出す方が読める。
+  const docsSite = detectLinkSite(link.url);
+  const isDocs = isGoogleDocsSite(docsSite);
   // 外部リンクの href も render 時多層防御として safeHref を通す (videos-list と
   // 同方針)。書込側 (isSafeUrl / Discord import) が http(s) を強制しているが、
   // 万一 javascript:/data: 等が混入しても安全側 (undefined=非リンク化) に倒す。
@@ -413,27 +426,46 @@ function SortableStrategyCard({
         </button>
 
         <div className="flex min-w-0 flex-1 flex-col">
-          {thumbHref && (
-            // next/image unoptimized: og:image は任意 host なので Vercel
-            // Image Optimization を通さず素通し。aspect-video で枠を確保し
-            // CLS を抑える。クリックで外部リンクへ。
+          {showThumbnail && isDocs ? (
+            // L-21: 種別カード。サムネは出さず、アイコン + 種類名を出す。
+            // `thumbnail_url` の有無に関わらず出す (新規登録では Google
+            // ドキュメント系の og:image を保存しないようにしたため)。
             <a
               href={linkHref}
               target="_blank"
               rel="noopener noreferrer"
-              className="relative block aspect-video overflow-hidden bg-secondary/30"
+              className="relative flex aspect-video items-center justify-center gap-2 overflow-hidden bg-secondary/30 transition-colors hover:bg-secondary/45"
               aria-label={m.linkCard.openNewTabAria(link.title)}
             >
-              <Image
-                src={thumbHref}
-                alt=""
-                fill
-                sizes="(min-width: 640px) 50vw, 100vw"
-                className="object-cover"
-                loading="lazy"
-                unoptimized
-              />
+              <LinkSiteIcon url={link.url} variant="fine" className="h-6 w-6" />
+              <span className="text-xs text-muted-foreground">
+                {linkSiteLabel(docsSite, locale)}
+              </span>
             </a>
+          ) : (
+            thumbHref && (
+              // next/image unoptimized: og:image は任意 host なので Vercel
+              // Image Optimization を通さず素通し。aspect-video で枠を確保し
+              // CLS を抑える。クリックで外部リンクへ。
+              // L-19: 取れなくなった og:image は壊れた img ではなく代替表示に
+              // 落とす (og:image は外部の都合でいつでも消える)。
+              <a
+                href={linkHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="relative block aspect-video overflow-hidden bg-secondary/30"
+                aria-label={m.linkCard.openNewTabAria(link.title)}
+              >
+                <ImageWithFallback
+                  src={thumbHref}
+                  alt=""
+                  sizes="(min-width: 640px) 50vw, 100vw"
+                  className="object-cover"
+                  loading="lazy"
+                  unoptimized
+                />
+              </a>
+            )
           )}
           <div className="flex items-start gap-2 px-3 pt-3 pb-1">
             <a

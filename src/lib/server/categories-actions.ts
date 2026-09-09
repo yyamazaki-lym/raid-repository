@@ -2288,8 +2288,19 @@ export async function createCategoryLinkAction(input: {
     try {
       const { fetchPageMeta } = await import("@/lib/server/page-title");
       const { isSafeUrl } = await import("@/lib/url-safe");
+      const { detectLinkSite, isGoogleDocsSite } = await import(
+        "@/lib/link-site"
+      );
       const meta = await fetchPageMeta(input.url);
-      if (meta.imageUrl && isSafeUrl(meta.imageUrl)) {
+      // L-21 (2026-09-09): Google ドキュメント系の og:image は保存しない。
+      // 返るのは `lh7-*.googleusercontent.com/docs/<署名>` で **時間が経つと
+      // 404** になる (公開シートで実測)。保存すると登録直後だけ映って、
+      // 後から白い箱になる。一覧側は種別カードを出す (strategy-list.tsx)。
+      if (
+        meta.imageUrl &&
+        isSafeUrl(meta.imageUrl) &&
+        !isGoogleDocsSite(detectLinkSite(input.url))
+      ) {
         thumbnailUrl = meta.imageUrl;
       }
     } catch {
@@ -3211,6 +3222,7 @@ export async function backfillStrategyThumbnailsChunk(opts: {
 
   const { fetchPageMeta } = await import("@/lib/server/page-title");
   const { isSafeUrl } = await import("@/lib/url-safe");
+  const { detectLinkSite, isGoogleDocsSite } = await import("@/lib/link-site");
 
   type Outcome = "filled" | "skipped" | "failed";
   const outcomes = await pmap<(typeof data)[number], Outcome>(
@@ -3218,6 +3230,11 @@ export async function backfillStrategyThumbnailsChunk(opts: {
     FETCH_CONCURRENCY,
     async (row) => {
       try {
+        // L-21 (2026-09-09): Google ドキュメント系は取りに行かない
+        // (og:image が署名つきで時間が経つと 404。登録側と同じ判断)。
+        if (isGoogleDocsSite(detectLinkSite(row.url as string))) {
+          return "skipped";
+        }
         const meta = await fetchPageMeta(row.url as string);
         if (!meta.imageUrl || !isSafeUrl(meta.imageUrl)) return "skipped";
         // force=false で既に thumbnail_url が入っている行は SELECT 時に
