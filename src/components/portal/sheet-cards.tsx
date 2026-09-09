@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { safeHref } from "@/lib/url-safe";
 import {
   buildSheetCardRows,
+  structuralColumns,
   findMemberColumn,
   type SheetTable,
 } from "@/lib/sheet-csv";
@@ -185,38 +186,70 @@ export function SheetCards({
     return out;
   }, [columnJobs]);
 
-  // 見出し列 (0 番) は常に残す。
-  //   mine … 自分の列だけ
-  //   role … 自分と同じロールの列だけ
+  /**
+   * 見出しに合成される構造列 (フェーズ / 時刻 / 技名)。L-11 (2026-09-09)。
+   * ⚠ **絞り込みでここを落とすとカードが「(無題)」になる。**
+   */
+  const structuralCols = useMemo(() => structuralColumns(table), [table]);
+
+  /** ジョブが解決できた列 = 「誰かの担当」の列。絞り込みで隠す候補。 */
+  const jobColumnSet = useMemo(
+    () => new Set(Object.keys(columnJobs ?? {}).map(Number)),
+    [columnJobs],
+  );
+
+  // 見出し列 (0 番) は常に落とす (どのモードでも同じ)。
+  //   mine … 自分以外の担当列を隠す
+  //   role … 自分と違うロールの担当列を隠す
   //   all  … 全部
+  //
+  // ⚠ **隠すのは「誰かの担当」の列だけ。** L-11 (2026-09-09) 実機報告
+  // 「自分の担当だけ / ロールだけに絞ると技名が表示されなくなる」の原因は、
+  // 絞り込みが**担当列だけを返してタイムライン列 (技名 / 時刻) ごと落として
+  // いた**こと。カードの見出しは構造列の値から作るので、見出しが空の
+  // 「(無題)」カードが並んでいた (時刻も同じ理由で消えていた =
+  // 実機報告「秒数が欲しい」)。
   const visibleColumns = useMemo(() => {
     const all = table.headers.map((_, i) => i);
+    const rest = all.slice(1);
+    /** 担当列でないもの (タイムライン等) は常に残す。 */
+    const keepNonJob = (keep: (i: number) => boolean) =>
+      rest.filter((i) => (jobColumnSet.has(i) ? keep(i) : true));
+
     if (filterMode === "mine") {
-      if (myJobColumns.length > 0) return myJobColumns;
-      if (myColumn !== null) return [myColumn];
+      if (myJobColumns.length > 0) {
+        return keepNonJob((i) => myJobColumns.includes(i));
+      }
+      if (myColumn !== null) {
+        // 表示名で当てた経路はどの列が担当列か分からないので、構造列と
+        // 自分の列だけを残す (従来の挙動 + 構造列)。
+        return [...new Set([...structuralCols.filter((i) => i > 0), myColumn])].sort(
+          (a, b) => a - b,
+        );
+      }
     }
     if (filterMode === "role" && myRoles.length > 0) {
       // ジョブで解決できた列が 1 つでもあれば**そちらで絞る**
       // (シートの構造から読めているので確度が高い)。
       if (roleOfColumn.size > 0) {
-        return all.slice(1).filter((i) => {
+        return keepNonJob((i) => {
           const r = roleOfColumn.get(i);
           return r !== undefined && myRoles.includes(r);
         });
       }
       if (memberRoles) {
-        return all
-          .slice(1)
-          .filter((i) =>
+        return rest.filter(
+          (i) =>
+            structuralCols.includes(i) ||
             isSameRoleColumn({
               roleByName: memberRoles,
               myName: name,
               columnName: table.headers[i] ?? null,
             }),
-          );
+        );
       }
     }
-    return all.slice(1);
+    return rest;
   }, [
     table.headers,
     filterMode,
@@ -226,6 +259,8 @@ export function SheetCards({
     myRoles,
     roleOfColumn,
     name,
+    structuralCols,
+    jobColumnSet,
   ]);
 
   const href = safeHref(sheetUrl);

@@ -373,6 +373,23 @@ export function isNoiseValue(v: string): boolean {
 const STRUCTURAL_HEADER_RE =
   /^(?:phase|time|action|mechanic|ability|attack|skill|フェーズ|時間|タイム|時刻|技名?|攻撃名?|ギミック|アクション|スキル)$/i;
 
+/**
+ * 見出しに合成される構造列 (フェーズ / 時刻 / 技名) の列番号 (2026-09-09)。
+ *
+ * ⚠ **絞り込みでこの列を落としてはいけない。** 実機報告 L-11「自分の担当だけ /
+ * ロールだけに絞ると技名が表示されなくなる」の原因がこれだった —
+ * カードの見出しは構造列の値から作るので、列が見えないと `headingParts` が
+ * 空になり「(無題)」だけのカードが並ぶ。時刻の列も同じ理由で消えていた
+ * (実機報告「秒数が欲しい」)。
+ */
+export function structuralColumns(table: SheetTable): number[] {
+  const out: number[] = [];
+  table.headers.forEach((h, i) => {
+    if (STRUCTURAL_HEADER_RE.test((h ?? "").trim())) out.push(i);
+  });
+  return out;
+}
+
 /** 数値 (カンマ・小数点・% 込み) だけのセル値か。 */
 function isNumericValue(v: string): boolean {
   return /^[-+]?[\d,.]+%?$/.test(v);

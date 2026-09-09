@@ -269,7 +269,14 @@ export function useRealtimeAllScheduleMemos(
         const m = rowToMemo(row);
         setMemosByDate((prev) => {
           const list = prev[m.rawDate] ?? [];
-          const merged = [...list, m].sort((a, b) =>
+          // ⚠ **id で重複を落とす** (L-13、2026-09-09 実機報告
+          // 「メモを追加すると二重になる」)。メモの追加後は
+          // `session-memo-popover` が realtime の取りこぼし対策として
+          // `refetchAll()` も走らせるので、**realtime の INSERT と全件
+          // 再取得が競合**し、同じ行が 2 回積まれていた。共通土台の
+          // `use-realtime-table.ts` は元から id で畳んでいて、この
+          // grouped-map 版 (rawDate バケット) だけが漏れていた。
+          const merged = [...list.filter((x) => x.id !== m.id), m].sort((a, b) =>
             a.createdAt.localeCompare(b.createdAt),
           );
           return { ...prev, [m.rawDate]: merged };
