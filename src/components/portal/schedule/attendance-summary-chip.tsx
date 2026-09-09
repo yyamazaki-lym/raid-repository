@@ -17,13 +17,16 @@
  *   full = 成立 / waiting = 未回答が残っている / short = 人数不足
  * 未回答が残っている間は「足りない」を赤で出さない (まだ埋まる余地がある)。
  *
- * ## スマホでは人数だけにする (2026-09-07 実機報告)
+ * ## 人数だけにする (2026-09-07 / L-16 2026-09-09 実機報告)
  *
- * 実機の指摘: 「PC なら良いがスマホだとおそらく長くなりすぎる。**参加人数と
- * 確定が分かれば良い**」。`sm` 未満では日程セルが `.sticky-col` で固定されない
- * (`globals.css` の `@media (min-width: 40rem)`) ため、チップの幅がそのまま
- * 「確定」列を画面外へ押し出す。そこで `sm` 未満は `+n?` を出さず、幅も
- * 68px → 40px に縮める (未回答が残っていることは琥珀色が示す)。
+ * 2026-09-07 の指摘: 「PC なら良いがスマホだとおそらく長くなりすぎる。
+ * **参加人数と確定が分かれば良い**」。まず `sm` 未満だけ `+n?` を外した。
+ *
+ * L-16 (2026-09-09): 「参加人数合算で未入力者は +1? のように出さなくても
+ * 良いと思う。除外。」→ **どの幅でも出さない**。未回答が残っていることは
+ * 琥珀色のトーンが示し、人数と名前は hover の `title` (と `aria-label`) に
+ * 残してあるので、情報自体は失われない。あわせて幅を詰めた
+ * (68px → 52px。`sm` 未満は 40px のまま)。
  *
  * ## 出す行 (2026-09-08、L-2)
  *
@@ -109,16 +112,13 @@ export function AttendanceSummaryChip({
       title={title}
       aria-label={title.replace(/\n/g, " ")}
       className={
-        "inline-flex w-[2.5rem] shrink-0 items-center justify-center gap-1 rounded-sm border px-1 py-0.5 font-mono text-[11px] tabular-nums sm:w-[4.25rem] " +
+        "inline-flex w-[2.5rem] shrink-0 items-center justify-center gap-1 rounded-sm border px-1 py-0.5 font-mono text-[11px] tabular-nums sm:w-[3.25rem] " +
         tone
       }
     >
+      {/* L-16 (2026-09-09): `+n?` は出さない (上の docstring 参照)。
+          未回答の人数と名前は title / aria-label に残っている。 */}
       {m.attendanceSummary.chip(availableCount(summary), required)}
-      {summary.unanswered > 0 && (
-        // スマホでは出さない (下の docstring 参照)。DOM には残すので、
-        // 親の title / aria-label が持つ「未回答 n 人 + 名前」は影響しない。
-        <span className="hidden opacity-70 sm:inline">{`+${summary.unanswered}?`}</span>
-      )}
     </span>
   );
 }
