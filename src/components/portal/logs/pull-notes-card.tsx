@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useTransition } from "react";
 import { ClipboardCopy, Loader2, Tag } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -8,7 +8,6 @@ import {
   countPullNoteTags,
   type PullNote,
 } from "@/lib/logs/pull-note-tags";
-import { fetchCategoryPullNotesAction } from "@/lib/server/pull-notes-actions";
 import { useMessages } from "@/lib/i18n/client";
 import { pullNoteTagLabel } from "./pull-detail-panel";
 
@@ -27,32 +26,29 @@ import { pullNoteTagLabel } from "./pull-detail-panel";
  *
  * ## 読み込みは lazy
  *
- * 注釈が 1 件も無い固定では何も出さない (カードごと消す)。ページ表示の
- * たびに引くのは無駄なので、mount 後に 1 回だけ取得する。
+ * 注釈が 1 件も無い固定では何も出さない (カードごと消す)。
+ * 初期値は**サーバーで読んで props で渡す** (2026-09-09) — mount 後に
+ * Server Action を投げると、開くたびに往復 1 本が余計に走る。
  */
 export function PullNotesCard({
-  categoryId,
   categoryName,
+  initial,
 }: {
-  categoryId: string;
   categoryName: string;
+  /**
+   * サーバーで読んだ初期値 (2026-09-09)。⚠ 以前は mount 後に
+   * `fetchCategoryPullNotesAction` を呼んでいたので、**注釈が 0 件の固定でも
+   * 練習ログを開くたびに往復 1 本**走っていた (カードが自分で消えるのは
+   * 応答が返ってから)。読み取りに失敗した場合だけ null。
+   */
+  initial: { notes: PullNote[]; truncated: boolean } | null;
 }) {
   const m = useMessages();
-  const [notes, setNotes] = useState<PullNote[] | null>(null);
-  const [truncated, setTruncated] = useState(false);
+  // ⚠ 状態を持たない — 初期値がそのまま表示。追加 / 削除は pull 行側で行い、
+  // ページの再描画で新しい値が来る (カードは読むだけ)。
+  const notes = initial ? initial.notes : null;
+  const truncated = initial?.truncated ?? false;
   const [copying, startCopy] = useTransition();
-
-  useEffect(() => {
-    let alive = true;
-    void fetchCategoryPullNotesAction(categoryId).then((r) => {
-      if (!alive || !r.ok) return;
-      setNotes(r.notes);
-      setTruncated(r.truncated);
-    });
-    return () => {
-      alive = false;
-    };
-  }, [categoryId]);
 
   // 読み込み中と「0 件」は同じ見た目にしない — 0 件のときは使い方を出す。
   if (notes === null) return null;
