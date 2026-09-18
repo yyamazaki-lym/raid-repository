@@ -19,6 +19,7 @@ import {
   notifyNativeScheduleSession,
 } from "./native-schedule-discord";
 import { NATIVE_CHOICE_VALUES_KEY } from "@/lib/schedule/settings-keys";
+import { getActiveNativeScheduleId } from "@/lib/schedule/native-active";
 import { isMemberRole } from "@/lib/member-roles";
 import { isJobKey } from "@/lib/jobs";
 import { replaceMemberJobs } from "./member-jobs-write";
@@ -104,6 +105,9 @@ export async function createNativeScheduleSessionAction(
   const { data, error } = await supabase
     .from("native_schedule_sessions")
     .insert({
+      // 2026-09-18 (段階 1): 追加先は常に表示中のスケジュール。UI 上も
+      // 「いま見ているスケジュールに足す」以外の操作は用意していない。
+      schedule_id: await getActiveNativeScheduleId(),
       raw_date: rawDate,
       parsed_date: parsedDate,
       start_time: startTime,
@@ -1222,9 +1226,12 @@ export async function createNativeScheduleSessionsBulkAction(
   const rangeEnd = new Date(
     Date.UTC(lastDate.y, lastDate.m - 1, lastDate.d + 1) - JST_OFFSET_MS,
   ).toISOString();
+  // 2026-09-18 (段階 1): 既存判定も追加先も表示中のスケジュール内で完結する。
+  const activeScheduleId = await getActiveNativeScheduleId();
   const { data: existing, error: existErr } = await supabase
     .from("native_schedule_sessions")
     .select("raw_date")
+    .eq("schedule_id", activeScheduleId)
     .gte("parsed_date", rangeStart)
     .lt("parsed_date", rangeEnd);
   if (existErr) {
@@ -1245,6 +1252,7 @@ export async function createNativeScheduleSessionsBulkAction(
   const { error } = await supabase.from("native_schedule_sessions").insert(
     // `datePrefix` は既存判定にしか使わない作業用フィールドなので落とす。
     fresh.map((r) => ({
+      schedule_id: activeScheduleId,
       raw_date: r.raw_date,
       parsed_date: r.parsed_date,
       start_time: r.start_time,

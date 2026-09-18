@@ -8,6 +8,7 @@ import {
 
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { fetchAppSetting } from "@/lib/supabase/app-settings";
+import { getActiveNativeScheduleId } from "@/lib/schedule/native-active";
 import {
   FALLBACK_DEFAULT_END_TIME,
   FALLBACK_DEFAULT_START_TIME,
@@ -258,6 +259,9 @@ export async function dispatchNoonNotifyForToday(): Promise<DispatchResult> {
   const { data, error } = await supabase
     .from("native_schedule_sessions")
     .select("id")
+    // 2026-09-18 (段階 1): 当日通知は表示中のスケジュールのみ。裏の
+    // スケジュールの確定日まで流すと、見ていない予定の通知が届く。
+    .eq("schedule_id", await getActiveNativeScheduleId())
     .eq("status", "DECISION")
     .gte("parsed_date", range.todayStartUtc)
     .lt("parsed_date", range.tomorrowStartUtc)

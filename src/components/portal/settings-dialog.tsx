@@ -29,6 +29,8 @@ import {
 } from "@/lib/schedule/native-admin-client";
 import { ScheduleSourceModeSection } from "./settings/schedule-source-mode-section";
 import { ScheduleSourceSection } from "./settings/schedule-source-section";
+import { NativeSchedulesSection } from "./settings/native-schedules-section";
+import { DEFAULT_NATIVE_SCHEDULE_ID } from "@/lib/schedule/settings-keys";
 import { PastSessionsSection } from "./settings/past-sessions-section";
 import { NativeMembersSection } from "./settings/native-members-section";
 import { NativeChoiceValuesSection } from "./settings/native-choice-values-section";
@@ -305,6 +307,20 @@ function SettingsDialogBody({
               open={open}
               channelId={channelId}
               onChannelIdChange={setChannelId}
+            />
+          )}
+          {/* 2026-09-18 (段階 1): どのスケジュールを見ているかが、下の節
+              (メンバー / 中止した日程 / 既定時刻…) の意味を決めるので、
+              native の節の先頭に置く。 */}
+          {mode === "native" && (
+            <NativeSchedulesSection
+              canEdit={canEdit}
+              schedules={adminAux?.schedules ?? []}
+              activeScheduleId={
+                adminAux?.activeScheduleId ?? DEFAULT_NATIVE_SCHEDULE_ID
+              }
+              loaded={adminAux !== null}
+              onChanged={() => setAdminAuxTick((t) => t + 1)}
             />
           )}
           {mode === "native" && (

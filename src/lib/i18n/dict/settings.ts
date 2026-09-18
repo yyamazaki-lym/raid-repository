@@ -79,6 +79,35 @@ export const ja = {
     delayStrong: "10 分",
     delayAfter: "遅れて反映されます。",
   },
+  // ---- native-schedules-section.tsx ----
+  nativeSchedules: {
+    description:
+      "予定と出欠はスケジュールごとに分かれます。メンバー・既定時刻・定期枠・凡例・日付メモは全スケジュール共通です。通知や催促、出席サマリーは「表示中」のスケジュールだけが対象になります。",
+    loading: "読み込み中…",
+    activeBadge: "表示中",
+    useThis: (name: string) => `${name} を表示する`,
+    addLabel: "スケジュールを追加",
+    namePlaceholder: "例: 零式固定（水金）",
+    addButton: "追加",
+    nameRequired: "名前を入力してください",
+    limitReached: (max: number) => `登録できるのは ${max} 件までです`,
+    renameLabel: "名前を編集",
+    renameSave: "名前を保存",
+    renameCancel: "編集を取り消す",
+    removeLabel: "削除",
+    activeCannotRemove: "表示中のスケジュールは削除できません",
+    defaultCannotRemove: "既定のスケジュールは削除できません",
+    deleteHint:
+      "※ 予定が残っているスケジュールは削除できません（先に予定を空にしてください）。",
+    removeConfirmTitle: "スケジュールを削除しますか？",
+    removeConfirmDescription: (name: string) =>
+      `「${name}」を削除します。予定が 1 件でも残っている場合は削除できません。`,
+    removeConfirmButton: "削除する",
+    toastAdded: "スケジュールを追加しました",
+    toastRemoved: "スケジュールを削除しました",
+    toastRenamed: "名前を変更しました",
+    toastSwitched: (name: string) => `「${name}」に切り替えました`,
+  },
   // ---- past-sessions-section.tsx ----
   pastSessions: {
     channelLabel: "スケジュール通知チャンネル ID（任意）",
@@ -751,6 +780,34 @@ export const en: SettingsMessages = {
     delayBefore: "Changes on the source site take up to",
     delayStrong: "10 minutes",
     delayAfter: "to appear.",
+  },
+  nativeSchedules: {
+    description:
+      "Sessions and attendance are per schedule. Members, default times, recurring days, the legend and date memos are shared across all schedules. Notifications, reminders and the attendance summary only cover the schedule in use.",
+    loading: "Loading…",
+    activeBadge: "In use",
+    useThis: (name) => `Show ${name}`,
+    addLabel: "Add a schedule",
+    namePlaceholder: "e.g. Savage (Wed/Fri)",
+    addButton: "Add",
+    nameRequired: "Enter a name",
+    limitReached: (max) => `You can register up to ${max} schedules`,
+    renameLabel: "Edit name",
+    renameSave: "Save name",
+    renameCancel: "Cancel editing",
+    removeLabel: "Delete",
+    activeCannotRemove: "The schedule in use cannot be deleted",
+    defaultCannotRemove: "The default schedule cannot be deleted",
+    deleteHint:
+      "A schedule that still has sessions cannot be deleted — clear its sessions first.",
+    removeConfirmTitle: "Delete this schedule?",
+    removeConfirmDescription: (name) =>
+      `Deletes "${name}". It cannot be deleted while any session remains.`,
+    removeConfirmButton: "Delete",
+    toastAdded: "Schedule added",
+    toastRemoved: "Schedule deleted",
+    toastRenamed: "Name updated",
+    toastSwitched: (name) => `Switched to "${name}"`,
   },
   pastSessions: {
     channelLabel: "Schedule notification channel ID (optional)",

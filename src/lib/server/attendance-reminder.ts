@@ -4,6 +4,7 @@ import { sessionStartUnixSeconds } from "@/lib/schedule/attendance-times";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { fetchAppSetting } from "@/lib/supabase/app-settings";
 import { getScheduleSourceMode } from "@/lib/schedule/source-mode";
+import { getActiveNativeScheduleId } from "@/lib/schedule/native-active";
 import { fetchScheduleRaw } from "@/lib/schedule/next-session";
 import {
   DISCORD_ID_RE,
@@ -251,6 +252,9 @@ async function collectFromNative(
     .select(
       "id, raw_date, parsed_date, start_time, end_time, day_of_week, status, is_optional",
     )
+    // 2026-09-18 (段階 1): 催促は表示中のスケジュールのみ。裏のスケジュール
+    // の未回答までメンションすると、見えていない予定を急かすことになる。
+    .eq("schedule_id", await getActiveNativeScheduleId())
     .neq("status", "CANCELLED");
   if (error || !sessions) return null;
   const session = (
