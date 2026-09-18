@@ -314,13 +314,21 @@ export function NativeMembersSection({
               <li
                 key={mem.discord_user_id}
                 className={
-                  "flex flex-col gap-2 rounded-md border px-3 py-2 transition-colors sm:flex-row sm:items-center " +
+                  // sm:flex-wrap (2026-09-18): 横並びの列は合計 613px あり、
+                  // 設定ダイアログの内側 (519px) には収まらない。wrap が無い
+                  // と行がはみ出してダイアログ全体に横スクロールが出ていた
+                  // (実測: 48 要素が最大 120px はみ出し)。足りない幅は折り
+                  // 返して吸収する。
+                  "flex flex-col gap-2 rounded-md border px-3 py-2 transition-colors sm:flex-row sm:flex-wrap sm:items-center " +
                   (mem.is_active
                     ? "border-border/40"
                     : "border-border/20 bg-secondary/30 opacity-70")
                 }
               >
-                <div className="flex min-w-0 flex-col gap-0.5 sm:w-1/3">
+                {/* sm:w-1/3 だと固定幅の兄弟に押し出されて **幅 0 まで潰れ**、
+                    Discord ID も表示名も見えなくなっていた (2026-09-18 実測)。
+                    下限を持たせたうえで余りを取る形にする。 */}
+                <div className="flex min-w-0 flex-col gap-0.5 sm:min-w-[11rem] sm:flex-1">
                   {/* Discord ID / local_ キーは最長 38 文字の 1 トークンで
                       折り返せないため truncate (full 値は title で参照可)。 */}
                   <span
@@ -404,7 +412,10 @@ export function NativeMembersSection({
                     }
                     disabled={!canEdit || pending}
                     aria-label={m.myJob.label}
-                    className="h-7 rounded-md border border-border/50 bg-background/60 px-1 text-xs text-foreground"
+                    // min-w-0 flex-1: ジョブ名は選択肢が長く (「暗黒騎士 (DRK)」)
+                    // select の内容幅が親の枠を 29px 超えていた (2026-09-18 実測)。
+                    // 枠に収めて、あふれる分は select 自身の省略表示に任せる。
+                    className="h-7 min-w-0 flex-1 rounded-md border border-border/50 bg-background/60 px-1 text-xs text-foreground"
                   >
                     <option value="">{m.myJob.unset}</option>
                     {MEMBER_ROLES.map((r) => (
