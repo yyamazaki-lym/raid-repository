@@ -37,6 +37,9 @@ export const ja = {
     urlLabel: "スケジュールを追加",
     listLabel: "登録済みスケジュール",
     loading: "読み込み中…",
+    refreshingNames: "名前を確認中…",
+    toastNamesRefreshed: (count: number) =>
+      `スケジュール名を ${count} 件更新しました`,
     emptyHint:
       "まだ登録がありません。下の欄にスケジュールページの URL を貼って追加してください。",
     unnamed: "（名前なし）",
@@ -708,6 +711,8 @@ export const en: SettingsMessages = {
     urlLabel: "Add a schedule",
     listLabel: "Registered schedules",
     loading: "Loading…",
+    refreshingNames: "Checking names…",
+    toastNamesRefreshed: (count) => `Updated ${count} schedule name(s)`,
     emptyHint:
       "Nothing registered yet. Paste a schedule page URL below to add one.",
     unnamed: "(no name)",

@@ -2178,19 +2178,19 @@ const SCHEDULE_NAME_FETCH_TIMEOUT_MS = 8_000;
  * status だけでは判定できない (`isMissingSchedulePage` で本文を見る)。
  * 名前が取れないだけなら成功扱いで null を返し、UI は URL の key を出す。
  */
-export async function fetchScheduleNameAction(
-  rawUrl: string,
-): Promise<
+type ScheduleNameResult =
   | { ok: true; name: string | null }
   // notFound は「key が存在しないページだった」と判定できたときだけ true。
   // 呼び出し側 (登録フォーム) はこのときだけ登録を止め、一時的な取得失敗
   // では名前なしで登録を通す。
-  | { ok: false; reason: string; notFound: boolean }
-> {
-  const auth = await assertAdminResult();
-  if (!auth.ok) {
-    return { ok: false, reason: "ADMIN ロールが必要です", notFound: false };
-  }
+  | { ok: false; reason: string; notFound: boolean };
+
+/**
+ * 名前取得の実体。**admin gate は呼び出し側の責務** (この関数は export
+ * しないので、外から直接叩かれることはない)。1 件取得と一括取り直しの
+ * 両方から使う。
+ */
+async function fetchScheduleNameRaw(rawUrl: string): Promise<ScheduleNameResult> {
   const url = typeof rawUrl === "string" ? rawUrl.trim() : "";
   if (!/^https?:\/\//i.test(url)) {
     return {
@@ -2242,6 +2242,78 @@ export async function fetchScheduleNameAction(
     ok: true,
     name: name ? name.slice(0, MAX_SCHEDULE_NAME_LENGTH) : null,
   };
+}
+
+/**
+ * 登録用に、スケジュールページから **名前**を取得する (2026-09-18)。
+ *
+ * 無効な key でも character-sheets は HTTP 200 のエラーページを返すので、
+ * status だけでは判定できない (`isMissingSchedulePage` で本文を見る)。
+ * 名前が取れないだけなら成功扱いで null を返し、UI は URL の key を出す。
+ */
+export async function fetchScheduleNameAction(
+  rawUrl: string,
+): Promise<ScheduleNameResult> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) {
+    return { ok: false, reason: "ADMIN ロールが必要です", notFound: false };
+  }
+  return fetchScheduleNameRaw(rawUrl);
+}
+
+/** 名前の一括取り直しで同時に投げる外部 fetch の数。 */
+const SCHEDULE_NAME_REFRESH_CONCURRENCY = 4;
+
+/**
+ * 登録済みスケジュールの名前を **元ページから一括で取り直す** (2026-09-18)。
+ *
+ * 設定ダイアログを開いたときに 1 回だけ走らせる用途。元ページ側で名前を
+ * 変えても、ポータルが古い名前を出したままになるのを防ぐ。
+ *
+ * - 取得に失敗した行は **既存の名前をそのまま残す** (外部サイトが落ちている
+ *   間に、付けてあった名前が消えるのは困る)
+ * - 名前が 1 つも変わらなければ DB に書かない (開いただけで共有設定の
+ *   updated_at が動かないように)
+ * - 手で付けた名前も上書きの対象。元ページの名前を正とする方が「追従」の
+ *   語義に合うため (手入力を残したい場合は、取り直した後にもう一度直す)
+ *
+ * cron を増やしていないのは、Vercel Hobby の cron 枠 (既に 3 本) を
+ * 「表示名の鮮度」に使う価値が薄いため。admin が設定を開いた時で足りる。
+ */
+export async function refreshRegisteredScheduleNamesAction(): Promise<
+  | { ok: true; list: RegisteredSchedule[]; changed: number }
+  | { ok: false; reason: string }
+> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
+  const list = parseRegisteredSchedules(await fetchAppSetting(SCHEDULE_URLS_KEY));
+  if (list.length === 0) return { ok: true, list, changed: 0 };
+
+  const fetched = await pmap(
+    list,
+    SCHEDULE_NAME_REFRESH_CONCURRENCY,
+    async (entry) => fetchScheduleNameRaw(entry.url),
+  );
+  const next = list.map((entry, i) => {
+    const r = fetched[i]!;
+    // 取得できなかった / 名前が読めなかったときは現状維持。
+    if (!r.ok || !r.name) return entry;
+    return { ...entry, name: r.name };
+  });
+  const changed = next.filter((e, i) => e.name !== list[i]!.name).length;
+  if (changed === 0) return { ok: true, list, changed: 0 };
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("app_settings")
+    .upsert(
+      { key: SCHEDULE_URLS_KEY, value: serializeRegisteredSchedules(next) },
+      { onConflict: "key" },
+    );
+  if (error) {
+    return { ok: false, reason: dbError("スケジュール名の更新", error) };
+  }
+  return { ok: true, list: next, changed };
 }
 
 export async function setDiscordScheduleChannelIdAction(
