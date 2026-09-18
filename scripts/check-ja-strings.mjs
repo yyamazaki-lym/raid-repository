@@ -64,6 +64,7 @@ const BASELINE = [
   ["src/lib/clear-detection.ts", 5, "A", "シートのタイトル / 層名の解析パターン"],
   ["src/lib/sheet-csv.ts", 5, "A", "Google Sheets の列見出しとの突き合わせ"],
   ["src/lib/schedule/parse.ts", 3, "A", "character-sheets の出力書式の解析 ('■コメント' 等)"],
+  ["src/lib/schedule/source-title.ts", 7, "A", "character-sheets のエラーページ / サービス名の文言。スケジュール名として採用しない値との突き合わせ"],
   ["src/components/portal/native-schedule/candidate-date-dialog.tsx", 8, "A", "sync 互換の rawDate 書式 'yyyy/MM/dd(曜) HH:MM~HH:MM' を組む"],
   ["src/lib/link-tags.ts", 7, "A", "DB に保存するタグ label の候補 (既存タグと一致させる必要がある)"],
 

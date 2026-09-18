@@ -16,3 +16,12 @@ export const SCHEDULE_URL_KEY = "schedule_url";
 
 /** 凡例 (出欠選択肢) マスターの CSV。native モードのみ参照。 */
 export const NATIVE_CHOICE_VALUES_KEY = "native_schedule_choice_values";
+
+/**
+ * 同期式スケジュールの登録リスト (JSON)。2026-09-18 の複数スケジュール
+ * 切替で追加。選択中の URL は従来どおり `SCHEDULE_URL_KEY` に置き、
+ * ここはリスト (id / url / 表示名) だけを持つ。描画パスでは参照しない
+ * ので `fetchPortalSettings()` の一括 SELECT には載せない。
+ * 形式は `@/lib/schedule/registered-schedules` を参照。
+ */
+export const SCHEDULE_URLS_KEY = "schedule_urls";
