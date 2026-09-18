@@ -25,3 +25,37 @@ export const NATIVE_CHOICE_VALUES_KEY = "native_schedule_choice_values";
  * 形式は `@/lib/schedule/registered-schedules` を参照。
  */
 export const SCHEDULE_URLS_KEY = "schedule_urls";
+
+/**
+ * native モードで **表示中のスケジュール** の id (2026-09-18 段階 1)。
+ *
+ * 同期式の `SCHEDULE_URL_KEY` と同じ役割で、切替はこの 1 キーの差し替え。
+ * 一覧は `native_schedules` テーブルが持つ。未設定 / 不正値のときは
+ * `DEFAULT_NATIVE_SCHEDULE_ID` にフォールバックする (schema が既定行を
+ * この固定 id で作る)。TOP 描画パスが読むので `fetchPortalSettings()` の
+ * 一括 SELECT に載せる。
+ */
+export const NATIVE_ACTIVE_SCHEDULE_ID_KEY = "native_schedule_active_id";
+
+/**
+ * 既定スケジュールの固定 id。`supabase/schema.sql` 5e 章が同じ値で 1 行
+ * 作り、既存セッションをこの id に寄せる。**両者は必ず一致させる。**
+ */
+export const DEFAULT_NATIVE_SCHEDULE_ID =
+  "00000000-0000-0000-0000-0000000005e1";
+
+/** スケジュール名の上限。`schema.sql` の CHECK (1..60) と揃える。 */
+export const NATIVE_SCHEDULE_NAME_MAX = 60;
+
+/** 登録できるスケジュールの数。同期式 (20) と揃える。 */
+export const MAX_NATIVE_SCHEDULES = 20;
+
+/** id が uuid の形をしているか (app_settings の値を信用しないための門番)。 */
+export function isNativeScheduleId(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+      value.trim(),
+    )
+  );
+}

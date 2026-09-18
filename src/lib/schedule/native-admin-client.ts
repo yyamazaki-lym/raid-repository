@@ -1,6 +1,11 @@
 "use client";
 
 import { createClient } from "@/lib/supabase/client";
+import {
+  DEFAULT_NATIVE_SCHEDULE_ID,
+  NATIVE_ACTIVE_SCHEDULE_ID_KEY,
+  isNativeScheduleId,
+} from "./settings-keys";
 
 /**
  * TODO #2 phase 2-C (2026-05-07): settings-dialog の admin section 用に
@@ -89,9 +94,21 @@ export type NativeCancelledSessionRow = {
   note: string | null;
 };
 
+/** 2026-09-18 (段階 1): 自前スケジュールの一覧 1 行。 */
+export type NativeScheduleRow = {
+  id: string;
+  name: string;
+  sort_order: number;
+};
+
 export type NativeAdminAux = {
   allMembers: NativeMemberRowFull[];
+  /** 中止した日程。**表示中のスケジュールのぶんだけ**に絞ってある。 */
   cancelledSessions: NativeCancelledSessionRow[];
+  /** 2026-09-18 (段階 1): 登録済みスケジュール (sort_order 昇順)。 */
+  schedules: NativeScheduleRow[];
+  /** 2026-09-18 (段階 1): 表示中のスケジュール id。 */
+  activeScheduleId: string;
   currentChoiceCsv: string | null;
   /** TODO #2 phase 4: cron auto-notify ON/OFF (default = true)。 */
   discordNotifyEnabled: boolean;
@@ -119,7 +136,7 @@ export type NativeAdminAux = {
 
 export async function fetchNativeScheduleAdminAux(): Promise<NativeAdminAux> {
   const supabase = createClient();
-  const [membersRes, cancelledRes, settingsRes] = await Promise.all([
+  const [membersRes, cancelledRes, settingsRes, schedulesRes] = await Promise.all([
     supabase
       .from("native_schedule_members")
       .select(
@@ -132,8 +149,10 @@ export async function fetchNativeScheduleAdminAux(): Promise<NativeAdminAux> {
       .order("display_name", { ascending: true }),
     supabase
       .from("native_schedule_sessions")
+      // 2026-09-18 (段階 1): schedule_id も取り、表示中のぶんだけ残す
+      // (別スケジュールの中止日が混ざると、復帰させた先が分からない)。
       .select(
-        "id, raw_date, parsed_date, start_time, end_time, day_of_week, note",
+        "id, schedule_id, raw_date, parsed_date, start_time, end_time, day_of_week, note",
       )
       .eq("status", "CANCELLED")
       .order("parsed_date", { ascending: false }),
@@ -153,7 +172,13 @@ export async function fetchNativeScheduleAdminAux(): Promise<NativeAdminAux> {
         AUTO_CONFIRM_ENABLED_KEY,
         AUTO_CONFIRM_MIN_AVAILABLE_KEY,
         NATIVE_RECURRING_DOWS_KEY,
+        NATIVE_ACTIVE_SCHEDULE_ID_KEY,
       ]),
+    supabase
+      .from("native_schedules")
+      .select("id, name, sort_order")
+      .order("sort_order", { ascending: true })
+      .order("created_at", { ascending: true }),
   ]);
 
   const settingsMap: Record<string, string | null> = {};
@@ -164,9 +189,20 @@ export async function fetchNativeScheduleAdminAux(): Promise<NativeAdminAux> {
     settingsMap[row.key] = row.value ?? null;
   }
 
+  const activeScheduleIdRaw = settingsMap[NATIVE_ACTIVE_SCHEDULE_ID_KEY];
+  const activeScheduleId = isNativeScheduleId(activeScheduleIdRaw)
+    ? activeScheduleIdRaw.trim()
+    : DEFAULT_NATIVE_SCHEDULE_ID;
+
   return {
     allMembers: (membersRes.data ?? []) as NativeMemberRowFull[],
-    cancelledSessions: (cancelledRes.data ?? []) as NativeCancelledSessionRow[],
+    cancelledSessions: (
+      (cancelledRes.data ?? []) as Array<
+        NativeCancelledSessionRow & { schedule_id?: string | null }
+      >
+    ).filter((s) => (s.schedule_id ?? DEFAULT_NATIVE_SCHEDULE_ID) === activeScheduleId),
+    schedules: (schedulesRes.data ?? []) as NativeScheduleRow[],
+    activeScheduleId,
     currentChoiceCsv: settingsMap[NATIVE_CHOICE_VALUES_KEY] ?? null,
     discordNotifyEnabled:
       (settingsMap[NATIVE_DISCORD_NOTIFY_ENABLED_KEY] ?? "true") !== "false",

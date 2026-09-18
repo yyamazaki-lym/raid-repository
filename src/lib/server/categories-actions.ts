@@ -96,6 +96,7 @@ import {
   SCHEDULE_URLS_KEY,
 } from "@/lib/schedule/settings-keys";
 import { extractScheduleName, isMissingSchedulePage } from "@/lib/schedule/source-title";
+import { getActiveNativeScheduleId } from "@/lib/schedule/native-active";
 import { isPublicHttpUrl } from "@/lib/url-safe";
 import {
   DIFFICULTY_LABEL_MAX_LENGTH,
@@ -1920,6 +1921,10 @@ export async function excludePastSessionAction(input: {
     const { data: updated, error } = await supabase
       .from("native_schedule_sessions")
       .update({ status: "CANCELLED" })
+      // 2026-09-18 (段階 1): raw_date は **スケジュール内でのみ一意**に
+      // なったので、表示中のスケジュールに絞らないと別スケジュールの
+      // 同じ日時を巻き込む (maybeSingle が複数行で失敗もする)。
+      .eq("schedule_id", await getActiveNativeScheduleId())
       .eq("raw_date", rawDate)
       .select("id")
       .maybeSingle();

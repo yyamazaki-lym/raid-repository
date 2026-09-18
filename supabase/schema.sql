@@ -845,6 +845,44 @@ ALTER TABLE public.schedule_past_sessions
 --   portal 内発番は導入しない (= 二重管理の罠を避ける)。
 -- - phase 1 では SELECT skeleton のみ実装、INSERT/UPDATE は phase 2 以降。
 
+-- 2026-09-18 (段階 1): 自前スケジュールを **複数持てる**ようにする。
+--
+-- 段階 1 の切り分け:
+--   - セッションと出欠だけスケジュール別 (出欠は session_id 経由で自動的に
+--     分かれる)
+--   - メンバー / 既定時刻 / 定期枠 / 凡例 / 日付メモ / FFLogs 紐づけ /
+--     過去ログは **全スケジュール共通のまま** (日付に紐づくものは共有)
+--   - 通知 / 自動確定 / 催促 / 出席サマリーは **表示中のスケジュールのみ**
+--     を対象にする (`app_settings.native_schedule_active_id`)
+--
+-- ⚠ 段階 1 では日付メモが日付単位のままなので、同じ日を 2 つのスケジュール
+--    が持つと両方に同じメモが出る。分離は段階 2 の課題。
+CREATE TABLE IF NOT EXISTS public.native_schedules (
+  id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name       text NOT NULL,
+  sort_order integer NOT NULL DEFAULT 0,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.native_schedules
+  DROP CONSTRAINT IF EXISTS native_schedules_name_sane;
+ALTER TABLE public.native_schedules
+  ADD CONSTRAINT native_schedules_name_sane
+  CHECK (char_length(name) BETWEEN 1 AND 60 AND name !~ '[[:cntrl:]]') NOT VALID;
+
+DROP TRIGGER IF EXISTS set_updated_at_native_schedules
+  ON public.native_schedules;
+CREATE TRIGGER set_updated_at_native_schedules
+  BEFORE UPDATE ON public.native_schedules
+  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+-- 既存データの受け皿。**固定 UUID** にしてあるのは、この後の
+-- 「既存セッションを寄せる」UPDATE と、app_settings の既定値
+-- (`native_schedule_active_id`) が同じ値を指せるようにするため。
+INSERT INTO public.native_schedules (id, name, sort_order)
+VALUES ('00000000-0000-0000-0000-0000000005e1', 'メインスケジュール', 0)
+ON CONFLICT (id) DO NOTHING;
+
 CREATE TABLE IF NOT EXISTS public.native_schedule_sessions (
   id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   raw_date      text NOT NULL UNIQUE,
@@ -897,6 +935,40 @@ ALTER TABLE public.native_schedule_sessions
 -- 既存行は false (= 従来の本活動) なので、未使用のデプロイは挙動が変わらない。
 ALTER TABLE public.native_schedule_sessions
   ADD COLUMN IF NOT EXISTS is_optional boolean NOT NULL DEFAULT false;
+
+-- 2026-09-18 (段階 1): 所属スケジュール。
+--
+-- 手順を 3 つに割っているのは、**既存 DB を壊さずに NOT NULL へ寄せる**ため:
+--   1. nullable で列を足す (既存行は NULL)
+--   2. 既存行を既定スケジュールへ寄せる (新規デプロイでは 0 行)
+--   3. NOT NULL + FK を付ける
+-- 何度流しても同じ結果になる (IF NOT EXISTS / DROP ... IF EXISTS)。
+ALTER TABLE public.native_schedule_sessions
+  ADD COLUMN IF NOT EXISTS schedule_id uuid;
+UPDATE public.native_schedule_sessions
+   SET schedule_id = '00000000-0000-0000-0000-0000000005e1'
+ WHERE schedule_id IS NULL;
+ALTER TABLE public.native_schedule_sessions
+  ALTER COLUMN schedule_id SET DEFAULT '00000000-0000-0000-0000-0000000005e1';
+ALTER TABLE public.native_schedule_sessions
+  ALTER COLUMN schedule_id SET NOT NULL;
+ALTER TABLE public.native_schedule_sessions
+  DROP CONSTRAINT IF EXISTS native_schedule_sessions_schedule_fk;
+ALTER TABLE public.native_schedule_sessions
+  ADD CONSTRAINT native_schedule_sessions_schedule_fk
+  FOREIGN KEY (schedule_id) REFERENCES public.native_schedules(id)
+  ON DELETE CASCADE;
+
+-- raw_date の一意性は **スケジュール内**で持つ。別スケジュールが同じ日時を
+-- 持つのは正常な状態なので、元の全体 UNIQUE のままだと候補日を追加できない。
+-- ⚠ 制約名は CREATE TABLE の `raw_date text NOT NULL UNIQUE` が自動で付けた
+--    もの。既に張り替え済みの DB では DROP は no-op。
+ALTER TABLE public.native_schedule_sessions
+  DROP CONSTRAINT IF EXISTS native_schedule_sessions_raw_date_key;
+-- FK 側の索引 (Supabase lint `unindexed_foreign_keys`) もこの index が兼ねる
+-- (先頭列が schedule_id)。
+CREATE UNIQUE INDEX IF NOT EXISTS native_schedule_sessions_schedule_raw_date_key
+  ON public.native_schedule_sessions(schedule_id, raw_date);
 
 DROP TRIGGER IF EXISTS set_updated_at_native_schedule_sessions
   ON public.native_schedule_sessions;
@@ -1936,6 +2008,7 @@ ALTER TABLE public.mitigation_phases             ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.mitigation_entries            ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.strategy_docs                 ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.tags                          ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.native_schedules              ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.native_schedule_sessions      ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.native_schedule_members       ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.native_schedule_attendances   ENABLE ROW LEVEL SECURITY;
@@ -2071,6 +2144,9 @@ BEGIN
     'loot_items','loot_entries',
     'mitigation_phases','mitigation_entries',
     'strategy_docs','tags',
+    -- 2026-09-18 (段階 1): スケジュール一覧。SELECT は開放 (全員が名前を
+    -- 見る)、書き込みは admin。既定の「SELECT 開放 / 書き込み admin」で足りる。
+    'native_schedules',
     'native_schedule_sessions','native_schedule_members',
     -- ⚠ native_schedule_attendances は **このループに載せない**
     -- (2026-09-09)。admin と本人の 2 本が OR 評価で並び、Supabase lint
@@ -2306,6 +2382,7 @@ ALTER TABLE public.mitigation_phases             REPLICA IDENTITY DEFAULT;
 ALTER TABLE public.mitigation_entries            REPLICA IDENTITY DEFAULT;
 ALTER TABLE public.strategy_docs                 REPLICA IDENTITY DEFAULT;
 ALTER TABLE public.tags                          REPLICA IDENTITY DEFAULT;
+ALTER TABLE public.native_schedules              REPLICA IDENTITY DEFAULT;
 ALTER TABLE public.native_schedule_sessions      REPLICA IDENTITY DEFAULT;
 ALTER TABLE public.native_schedule_members       REPLICA IDENTITY DEFAULT;
 ALTER TABLE public.native_schedule_attendances   REPLICA IDENTITY DEFAULT;
@@ -2359,6 +2436,7 @@ BEGIN
     'loot_items','loot_entries',
     'mitigation_phases','mitigation_entries',
     'strategy_docs','tags',
+    'native_schedules',
     'native_schedule_sessions','native_schedule_members',
     'native_schedule_attendances','native_schedule_session_logs',
     'category_bis_links','loot_weekly_checks',

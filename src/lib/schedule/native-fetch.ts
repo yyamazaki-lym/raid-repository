@@ -11,6 +11,7 @@ import {
   FALLBACK_DEFAULT_START_TIME,
 } from "@/lib/server/native-schedule-placeholders";
 import { NATIVE_CHOICE_VALUES_KEY } from "./settings-keys";
+import { getActiveNativeScheduleId } from "./native-active";
 
 import type {
   Attendance,
@@ -99,6 +100,9 @@ export async function fetchNativeSchedule(
       : FALLBACK_DEFAULT_END_TIME;
 
   const supabase = await createClient();
+  // 2026-09-18 (段階 1): 表示中のスケジュールだけを読む。メンバーは
+  // 全スケジュール共通なので絞らない。
+  const activeScheduleId = await getActiveNativeScheduleId();
 
   const [membersRes, sessionsRes, choiceCsv] = await Promise.all([
     supabase
@@ -114,6 +118,7 @@ export async function fetchNativeSchedule(
         // W-18 (2026-09-08): is_optional を追加 (有志練習バッジ + 除外判定)。
         "id, raw_date, parsed_date, start_time, end_time, day_of_week, status, created_by_id, note, is_optional",
       )
+      .eq("schedule_id", activeScheduleId)
       .neq("status", "CANCELLED")
       .order("parsed_date", { ascending: false }),
     // A-2: fetchPortalSettings() の一括 SELECT に相乗り (page.tsx が先に

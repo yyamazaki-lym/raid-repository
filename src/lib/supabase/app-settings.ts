@@ -9,6 +9,7 @@ import {
 import { MAINTENANCE_WINDOWS_KEY } from "@/lib/maintenance-schedule";
 import { NATIVE_RECURRING_DOWS_KEY } from "@/lib/schedule/recurring-frames";
 import {
+  NATIVE_ACTIVE_SCHEDULE_ID_KEY,
   NATIVE_CHOICE_VALUES_KEY,
   SCHEDULE_SOURCE_MODE_KEY,
   SCHEDULE_URL_KEY,
@@ -112,6 +113,9 @@ const PORTAL_SETTING_KEYS: string[] = [
   // W-15 (2026-09-08): 定期枠の曜日。placeholder 敷設と予定表の「臨時 /
   // 今回だけ」バッジの両方が見るので、TOP 描画パスの一括 SELECT に載せる。
   NATIVE_RECURRING_DOWS_KEY,
+  // 2026-09-18 (段階 1): native で表示中のスケジュール id。予定表の描画が
+  // 毎回引くので一括 SELECT に載せる。
+  NATIVE_ACTIVE_SCHEDULE_ID_KEY,
 ];
 
 /**

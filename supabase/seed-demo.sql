@@ -811,7 +811,8 @@ BEGIN
         CASE WHEN v_sess % 9 = 0 THEN 'CANCELLED' ELSE 'DECISION' END,
         CASE WHEN v_sess % 9 = 0 THEN '人数が揃わず中止' ELSE NULL END
       )
-      ON CONFLICT (raw_date) DO NOTHING
+      -- 2026-09-18 (段階 1): 一意制約は (schedule_id, raw_date)。
+      ON CONFLICT (schedule_id, raw_date) DO NOTHING
       RETURNING id INTO v_sid;
 
       IF v_sid IS NULL THEN
@@ -868,7 +869,9 @@ BEGIN
       (ARRAY['月','火','水','木','金','土','日'])[EXTRACT(ISODOW FROM v_day)::integer],
       CASE WHEN v_sess = 1 THEN 'DECISION' ELSE 'CANDIDATE' END
     )
-    ON CONFLICT (raw_date) DO UPDATE SET status = EXCLUDED.status
+    -- 2026-09-18 (段階 1): 一意制約は (schedule_id, raw_date) に張り替えた。
+    -- schedule_id は列の DEFAULT (既定スケジュール) が入る。
+    ON CONFLICT (schedule_id, raw_date) DO UPDATE SET status = EXCLUDED.status
     RETURNING id INTO v_sid;
 
     CONTINUE WHEN v_sid IS NULL;

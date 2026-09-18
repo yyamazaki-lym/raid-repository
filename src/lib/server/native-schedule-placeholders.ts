@@ -8,6 +8,7 @@ import {
   NATIVE_DEFAULT_START_TIME_KEY,
 } from "@/lib/schedule/native-defaults";
 import { isRecurringDow, parseRecurringDows } from "@/lib/schedule/recurring-frames";
+import { getActiveNativeScheduleId } from "@/lib/schedule/native-active";
 
 // 2.6 (2026-06-10): 純粋な定数は server / client 両方の境界から import 可能な
 // `src/lib/schedule/native-defaults.ts` に切り出し、ここでは re-export のみ
@@ -140,6 +141,10 @@ export async function ensureNativeMonthlyPlaceholders(
   // 6. rawDate / parsedDate / day_of_week 組立 (CandidateDateDialog 同式)。
   const pad = (n: number) => String(n).padStart(2, "0");
   const [sh, sm] = startTime.split(":").map(Number);
+  // 2026-09-18 (段階 1): 候補日は **表示中のスケジュール**にだけ敷く。
+  // 裏のスケジュールに勝手に候補日が増えると、切り替えた瞬間に身に覚えの
+  // ない予定が並ぶことになる。
+  const activeScheduleId = await getActiveNativeScheduleId();
   const rows = candidates.map((c) => {
     // 曜日: local-TZ Date でその日付の getDay() (CandidateDateDialog と同じ)。
     const dow = DOW_LABELS[new Date(c.y, c.m, c.d).getDay()] ?? "日";
@@ -149,6 +154,7 @@ export async function ensureNativeMonthlyPlaceholders(
       Date.UTC(c.y, c.m, c.d, sh, sm, 0, 0) - JST_OFFSET_MS,
     ).toISOString();
     return {
+      schedule_id: activeScheduleId,
       raw_date: rawDate,
       parsed_date: parsedDate,
       // 2.1 (2026-05-12): start_time / end_time は NULL を入れて
@@ -195,6 +201,7 @@ export async function ensureNativeMonthlyPlaceholders(
     const { data: existingRows, error: existErr } = await supabase
       .from("native_schedule_sessions")
       .select("raw_date")
+      .eq("schedule_id", activeScheduleId)
       .gte("parsed_date", new Date(rangeStartUtcMs).toISOString())
       .lt("parsed_date", new Date(rangeEndUtcMs).toISOString());
     if (existErr) {
@@ -226,7 +233,9 @@ export async function ensureNativeMonthlyPlaceholders(
     const { error } = await supabase
       .from("native_schedule_sessions")
       .upsert(filteredRows, {
-        onConflict: "raw_date",
+        // 2026-09-18 (段階 1): UNIQUE は (schedule_id, raw_date) に張り替えた。
+        // ここを raw_date のままにすると衝突検出が効かず重複 row ができる。
+        onConflict: "schedule_id,raw_date",
         ignoreDuplicates: true,
       });
     if (error) {
