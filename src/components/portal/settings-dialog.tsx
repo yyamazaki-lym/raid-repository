@@ -20,12 +20,8 @@ import {
 import {
   getDiscordScheduleChannelId,
   getScheduleSourceModeFromDb,
-  getScheduleUrlFromDb,
 } from "@/lib/schedule-url-store";
-import {
-  setDiscordScheduleChannelIdAction,
-  setScheduleUrlAction,
-} from "@/lib/server/categories-actions";
+import { setDiscordScheduleChannelIdAction } from "@/lib/server/categories-actions";
 import type { ScheduleSourceMode } from "@/lib/schedule/source-mode";
 import {
   fetchNativeScheduleAdminAux,
@@ -56,12 +52,13 @@ import { SettingsMessagesProvider } from "./settings/settings-messages";
  * once any one of them saves.
  *
  * TODO #66 (2026-05-02): 1,723 行 / 88 KB の単一ファイルから 5 つの
- * sub-component に分割。本体はシェル (Dialog 制御 + 共通 url/channelId
+ * sub-component に分割。本体はシェル (Dialog 制御 + 共通 channelId
  * state + 保存ボタン) のみ保持。各 section 固有の state は section
  * 内部で完結。
  *
  * Sections:
- *   - ScheduleSourceSection: character-sheets URL (canEdit only)
+ *   - ScheduleSourceSection: character-sheets スケジュールの登録 / 切替
+ *     (canEdit only、2026-09-18 に複数登録化して節内で即時保存)
  *   - PastSessionsSection: Discord channel ID + 取り込み / snapshot (canEdit only)
  *   - FflogsSyncSection: v1 username + v2 OAuth + Cookie + 連動実行
  *   - ChangelogFooter: 更新履歴 + GitHub / Lodestone / Sign out
@@ -128,7 +125,6 @@ function SettingsDialogBody({
   const router = useRouter();
   const m = useMessages();
   const [open, setOpen] = useState(defaultOpen);
-  const [url, setUrl] = useState("");
   const [channelId, setChannelId] = useState("");
   const [busy, setBusy] = useState(false);
   // TODO #2 phase 1 (2026-05-07): mode で sync 専用セクションの表示を
@@ -198,20 +194,21 @@ function SettingsDialogBody({
     if (defaultSection) openSettingsSection(defaultSection);
   }, [defaultSection]);
 
-  // Initial fetch of url + channelId + mode on open. URL / channelId は
-  // sync mode の Save ボタン経由で永続化、mode は ScheduleSourceModeSection
-  // 内で即時保存。ここでは現在値を読み出して表示制御に使うのみ。
+  // Initial fetch of channelId + mode on open. channelId は Save ボタン
+  // 経由で永続化、mode は ScheduleSourceModeSection 内で即時保存。ここでは
+  // 現在値を読み出して表示制御に使うのみ。
+  //
+  // 2026-09-18: スケジュール URL は複数登録 + 切替になり、読み書きとも
+  // ScheduleSourceSection の中で完結するので、ここでは扱わない。
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
     void (async () => {
-      const [currentUrl, currentChannel, currentMode] = await Promise.all([
-        getScheduleUrlFromDb(),
+      const [currentChannel, currentMode] = await Promise.all([
         getDiscordScheduleChannelId(),
         getScheduleSourceModeFromDb(),
       ]);
       if (!cancelled) {
-        setUrl(currentUrl ?? "");
         setChannelId(currentChannel ?? "");
         if (
           currentMode === "native" ||
@@ -249,13 +246,8 @@ function SettingsDialogBody({
 
   const onSave = async () => {
     setBusy(true);
-    // Save URL first; if URL save fails, don't bother with the rest.
-    const urlResult = await setScheduleUrlAction(url);
-    if (!urlResult.ok) {
-      setBusy(false);
-      toast.error(m.settingsDialog.toastUrlError(urlResult.reason));
-      return;
-    }
+    // スケジュール URL の登録・切替は ScheduleSourceSection 内で即時保存
+    // されるので、この保存ボタンが持つのは Discord チャンネル ID だけ。
     const channelResult = await setDiscordScheduleChannelIdAction(channelId);
     setBusy(false);
     if (!channelResult.ok) {
@@ -306,7 +298,7 @@ function SettingsDialogBody({
             onModeChange={setMode}
           />
           {canEdit && mode === "sync" && (
-            <ScheduleSourceSection url={url} onUrlChange={setUrl} />
+            <ScheduleSourceSection open={open} canEdit={canEdit} />
           )}
           {canEdit && mode === "sync" && (
             <PastSessionsSection

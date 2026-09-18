@@ -84,6 +84,20 @@ import {
 import { assertAdminResult } from "./auth";
 import { dbError } from "./db-error";
 import {
+  MAX_REGISTERED_SCHEDULES,
+  MAX_SCHEDULE_NAME_LENGTH,
+  newScheduleId,
+  parseRegisteredSchedules,
+  serializeRegisteredSchedules,
+  type RegisteredSchedule,
+} from "@/lib/schedule/registered-schedules";
+import {
+  SCHEDULE_URL_KEY,
+  SCHEDULE_URLS_KEY,
+} from "@/lib/schedule/settings-keys";
+import { extractScheduleName, isMissingSchedulePage } from "@/lib/schedule/source-title";
+import { isPublicHttpUrl } from "@/lib/url-safe";
+import {
   DIFFICULTY_LABEL_MAX_LENGTH,
   isProgressModel,
 } from "@/lib/content-model";
@@ -2050,14 +2064,184 @@ export async function setScheduleUrlAction(
   const supabase = await createClient();
   const { error } = await supabase
     .from("app_settings")
-    .upsert({ key: "schedule_url", value: url }, { onConflict: "key" });
+    .upsert({ key: SCHEDULE_URL_KEY, value: url }, { onConflict: "key" });
   if (error) return { ok: false, reason: dbError("URL 保存", error) };
+  // 登録リストに無ければ足す (2026-09-18)。オンボーディングカードや
+  // 旧 UI から登録された URL も切替リストに並ぶようにするため。
+  // リスト保存の失敗は致命的でない (選択中 URL の保存は済んでいる) ので
+  // best-effort。
+  const known = parseRegisteredSchedules(await fetchAppSetting(SCHEDULE_URLS_KEY));
+  if (
+    !known.some((s) => s.url === url) &&
+    known.length < MAX_REGISTERED_SCHEDULES
+  ) {
+    const appended: RegisteredSchedule[] = [
+      ...known,
+      { id: newScheduleId(), url, name: null },
+    ];
+    const { error: listError } = await supabase
+      .from("app_settings")
+      .upsert(
+        { key: SCHEDULE_URLS_KEY, value: serializeRegisteredSchedules(appended) },
+        { onConflict: "key" },
+      );
+    if (listError) {
+      console.warn("[schedule] 登録リスト追記に失敗:", listError.message);
+    }
+  }
   try {
     revalidatePath("/");
   } catch {
     // best-effort
   }
   return { ok: true };
+}
+
+/**
+ * 同期式スケジュールの **登録リスト**を保存する (2026-09-18)。
+ *
+ * 選択中 (`schedule_url`) はここでは変えない。切替は
+ * `selectScheduleUrlAction` の役目で、「登録の編集」と「今どれを見るか」
+ * を分けておくと、名前の付け替え中に全員の表示が動かない。
+ *
+ * 入力の正規化・重複除去・上限は `parseRegisteredSchedules` に委ねる
+ * (client 側と同じ規則になるよう、あえて同じ関数を通す)。
+ */
+export async function saveRegisteredSchedulesAction(
+  entries: ReadonlyArray<{ id?: string; url: string; name?: string | null }>,
+): Promise<
+  { ok: true; list: RegisteredSchedule[] } | { ok: false; reason: string }
+> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
+  if (!Array.isArray(entries)) {
+    return { ok: false, reason: "入力の形式が正しくありません" };
+  }
+  if (entries.length > MAX_REGISTERED_SCHEDULES) {
+    return {
+      ok: false,
+      reason: `登録できるのは ${MAX_REGISTERED_SCHEDULES} 件までです`,
+    };
+  }
+  const list = parseRegisteredSchedules(JSON.stringify(entries));
+  if (entries.length > 0 && list.length === 0) {
+    return { ok: false, reason: "登録できる URL がありませんでした" };
+  }
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("app_settings")
+    .upsert(
+      { key: SCHEDULE_URLS_KEY, value: serializeRegisteredSchedules(list) },
+      { onConflict: "key" },
+    );
+  if (error) return { ok: false, reason: dbError("スケジュール一覧の保存", error) };
+  return { ok: true, list };
+}
+
+/**
+ * 表示するスケジュールを切り替える (2026-09-18)。
+ *
+ * 登録済みの URL だけを受け付ける。実体は従来キー `schedule_url` の
+ * 差し替えなので、TOP 描画も cron も snapshot も追加改修なしで追従する。
+ */
+export async function selectScheduleUrlAction(
+  rawUrl: string,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
+  const url = typeof rawUrl === "string" ? rawUrl.trim() : "";
+  if (!url) return { ok: false, reason: "URL を指定してください" };
+  const list = parseRegisteredSchedules(await fetchAppSetting(SCHEDULE_URLS_KEY));
+  if (!list.some((s) => s.url === url)) {
+    return { ok: false, reason: "先に一覧へ登録してください" };
+  }
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("app_settings")
+    .upsert({ key: SCHEDULE_URL_KEY, value: url }, { onConflict: "key" });
+  if (error) return { ok: false, reason: dbError("表示スケジュールの切替", error) };
+  try {
+    revalidatePath("/");
+  } catch {
+    // best-effort
+  }
+  return { ok: true };
+}
+
+/** 名前取得の待ち上限。TOP 描画の fetch (8s) と揃える。 */
+const SCHEDULE_NAME_FETCH_TIMEOUT_MS = 8_000;
+
+/**
+ * 登録用に、スケジュールページから **名前**を取得する (2026-09-18)。
+ *
+ * 無効な key でも character-sheets は HTTP 200 のエラーページを返すので、
+ * status だけでは判定できない (`isMissingSchedulePage` で本文を見る)。
+ * 名前が取れないだけなら成功扱いで null を返し、UI は URL の key を出す。
+ */
+export async function fetchScheduleNameAction(
+  rawUrl: string,
+): Promise<
+  | { ok: true; name: string | null }
+  // notFound は「key が存在しないページだった」と判定できたときだけ true。
+  // 呼び出し側 (登録フォーム) はこのときだけ登録を止め、一時的な取得失敗
+  // では名前なしで登録を通す。
+  | { ok: false; reason: string; notFound: boolean }
+> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) {
+    return { ok: false, reason: "ADMIN ロールが必要です", notFound: false };
+  }
+  const url = typeof rawUrl === "string" ? rawUrl.trim() : "";
+  if (!/^https?:\/\//i.test(url)) {
+    return {
+      ok: false,
+      reason: "http:// または https:// で始めてください",
+      notFound: false,
+    };
+  }
+  // SSRF 防御: admin しか到達しないが、内部 IP / loopback への fetch は弾く
+  // (同期式 fetch 本体と同じガード)。
+  if (!isPublicHttpUrl(url)) {
+    return {
+      ok: false,
+      reason: "このアドレスへは接続できません",
+      notFound: false,
+    };
+  }
+  let html: string;
+  try {
+    const res = await fetch(url, {
+      cache: "no-store",
+      headers: { "User-Agent": "RaidRepository/0.1" },
+      signal: AbortSignal.timeout(SCHEDULE_NAME_FETCH_TIMEOUT_MS),
+    });
+    if (!res.ok) {
+      return {
+        ok: false,
+        reason: `取得に失敗しました (HTTP ${res.status})`,
+        notFound: false,
+      };
+    }
+    html = await res.text();
+  } catch {
+    return {
+      ok: false,
+      reason: "ページを取得できませんでした",
+      notFound: false,
+    };
+  }
+  if (isMissingSchedulePage(html)) {
+    return {
+      ok: false,
+      reason: "スケジュールが見つかりません (URL を確認してください)",
+      notFound: true,
+    };
+  }
+  const name = extractScheduleName(html);
+  return {
+    ok: true,
+    name: name ? name.slice(0, MAX_SCHEDULE_NAME_LENGTH) : null,
+  };
 }
 
 export async function setDiscordScheduleChannelIdAction(

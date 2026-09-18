@@ -1,6 +1,11 @@
 "use client";
 
 import { createClient } from "@/lib/supabase/client";
+import {
+  parseRegisteredSchedules,
+  type RegisteredSchedule,
+} from "@/lib/schedule/registered-schedules";
+import { SCHEDULE_URLS_KEY } from "@/lib/schedule/settings-keys";
 
 /**
  * Client-side READERS for shared `app_settings` (schedule URL, Discord
@@ -64,4 +69,25 @@ export async function getScheduleSourceModeFromDb(): Promise<string | null> {
     .eq("key", SCHEDULE_SOURCE_MODE_KEY)
     .maybeSingle();
   return (data?.value as string | null | undefined) ?? null;
+}
+
+/**
+ * 登録済みスケジュール一覧 (2026-09-18 の複数スケジュール切替)。
+ *
+ * 設定ダイアログの一覧表示用。書き込みは server action 側
+ * (`saveRegisteredSchedulesAction` / `selectScheduleUrlAction`) が
+ * admin gate 付きで行う。
+ */
+export async function getRegisteredSchedulesFromDb(): Promise<
+  RegisteredSchedule[]
+> {
+  const supabase = createClient();
+  const { data } = await supabase
+    .from("app_settings")
+    .select("value")
+    .eq("key", SCHEDULE_URLS_KEY)
+    .maybeSingle();
+  return parseRegisteredSchedules(
+    (data?.value as string | null | undefined) ?? null,
+  );
 }

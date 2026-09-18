@@ -226,6 +226,11 @@ A fresh deployment is **an empty portal**. Everything below is behind the ⚙️
 For sync mode, put your `https://character-sheets.appspot.com/schedule/list?key=...`
 URL into **Schedule Source**. It is stored in the database and **shared by everyone**.
 
+You can register **several schedules**. Each one is listed with the name read from
+its source page (use the pencil button to set your own when no name can be read),
+and the radio button on the left picks the one to display. Switching applies to
+everyone, including the notification and snapshot jobs.
+
 ### 7-2. Add your encounters
 
 **Content** tab → **+ add**.
