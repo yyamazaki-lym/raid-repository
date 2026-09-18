@@ -30,6 +30,7 @@ import {
 } from "@/lib/schedule/registered-schedules";
 import {
   fetchScheduleNameAction,
+  refreshRegisteredScheduleNamesAction,
   saveRegisteredSchedulesAction,
   selectScheduleUrlAction,
 } from "@/lib/server/categories-actions";
@@ -70,10 +71,16 @@ export function ScheduleSourceSection({
   const [fieldError, setFieldError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
+  const [refreshing, setRefreshing] = useState(false);
 
   // 開いた時に一覧 + 表示中 URL を読む。旧構成 (schedule_url だけ) の固定
   // では一覧が空なので、表示中 URL を先頭に補って出す (DB へはこの時点で
   // は書かない — 開いただけで共有設定が変わらないように)。
+  //
+  // 読み終えたら、admin のときだけ **名前を元ページから取り直す**
+  // (2026-09-18)。元ページ側で名前を変えてもポータルが古い名前を出したまま
+  // になるため。取得は server action 内で並列化してあり、変化が無ければ DB
+  // には書かない。失敗した行は既存の名前を保つ。
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
@@ -86,11 +93,20 @@ export function ScheduleSourceSection({
       setEntries(withActiveSchedule(list, current));
       setActiveUrl(current);
       setLoaded(true);
+      if (!canEdit || list.length === 0) return;
+      setRefreshing(true);
+      const refreshed = await refreshRegisteredScheduleNamesAction();
+      if (cancelled) return;
+      setRefreshing(false);
+      if (refreshed.ok && refreshed.changed > 0) {
+        setEntries(withActiveSchedule(refreshed.list, current));
+        toast.success(m.scheduleSource.toastNamesRefreshed(refreshed.changed));
+      }
     })();
     return () => {
       cancelled = true;
     };
-  }, [open]);
+  }, [open, canEdit, m]);
 
   /** 一覧を保存し、server が正規化した結果で state を置き換える。 */
   const persist = async (next: RegisteredSchedule[]): Promise<boolean> => {
@@ -242,8 +258,14 @@ export function ScheduleSourceSection({
 
       <div className="flex flex-col gap-2">
         <div className="flex items-baseline justify-between gap-2">
-          <span className="text-xs text-foreground/80">
+          <span className="flex items-center gap-1.5 text-xs text-foreground/80">
             {m.scheduleSource.listLabel}
+            {refreshing && (
+              <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground/70">
+                <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
+                {m.scheduleSource.refreshingNames}
+              </span>
+            )}
           </span>
           <a
             href="https://character-sheets.appspot.com/schedule/"
