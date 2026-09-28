@@ -490,6 +490,9 @@ export const ja = {
     toastAdded: "Logs URL を追加しました",
     toastAddedBridged: (n: number) =>
       `Logs URL を追加しました (同日の動画 ${n} 件にバッジ表示)`,
+    importing: "練習ログに取り込み中…",
+    imported: (fights: number) => `練習ログに取り込みました (pull ${fights} 件)`,
+    importFailed: (reason: string) => `練習ログへの取り込み失敗: ${reason}`,
     toastDeleted: "Logs URL を削除しました",
     toastDeletedUnbridged: (n: number) =>
       `Logs URL を削除しました (同日の動画 ${n} 件のバッジも解除)`,
@@ -1128,6 +1131,9 @@ export const en: CoreMessages = {
     toastAdded: "Logs URL added",
     toastAddedBridged: (n) =>
       `Logs URL added (badge shown on ${n} video${n === 1 ? "" : "s"} from the same day)`,
+    importing: "Importing into the practice log…",
+    imported: (fights) => `Imported into the practice log (${fights} pulls)`,
+    importFailed: (reason) => `Practice log import failed: ${reason}`,
     toastDeleted: "Logs URL deleted",
     toastDeletedUnbridged: (n) =>
       `Logs URL deleted (badge removed from ${n} video${n === 1 ? "" : "s"} from the same day)`,

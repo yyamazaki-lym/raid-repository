@@ -46,6 +46,7 @@ import { safeHref } from "@/lib/url-safe";
 import { DeleteConfirmModal } from "./schedule/session-memo-delete-modal";
 import { formatRelativeTime } from "@/lib/schedule/time-formatters";
 import { useLocale, useMessages } from "@/lib/i18n/client";
+import { importRegisteredLogs } from "@/lib/logs-import-after-register";
 import {
   MemoSeverityBadge,
   MemoSeverityPicker,
@@ -476,6 +477,7 @@ function MemoList({
         ? msg.fflogsLink.toastAddedBridged(r.bridgedVideos)
         : msg.fflogsLink.toastAdded,
     );
+    if (r.logsAutoSync) void importRegisteredLogs(value, msg.fflogsLink);
     // Reconciliation happens when `sessionLogs` prop updates from the
     // server's `revalidatePath('/')` re-render — the useEffect above
     // drops the matching optimistic row.
