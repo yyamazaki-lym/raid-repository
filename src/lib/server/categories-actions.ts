@@ -1163,7 +1163,7 @@ export async function addSessionLogsUrl(
     dayOfWeek: string;
   },
 ): Promise<
-  | { ok: true; id: string; bridgedVideos?: number }
+  | { ok: true; id: string; bridgedVideos?: number; logsAutoSync?: boolean }
   | { ok: false; reason: string }
 > {
   const auth = await assertAdminResult();
@@ -1303,7 +1303,13 @@ export async function addSessionLogsUrl(
   } catch {
     // best-effort
   }
-  return { ok: true, id: inserted.id as string, bridgedVideos };
+  // 2026-09-28: 画面側が続けて練習ログへ取り込むか (日次自動連動トグルに従う)。
+  return {
+    ok: true,
+    id: inserted.id as string,
+    bridgedVideos,
+    logsAutoSync: await isLogsAutoSyncEnabled(),
+  };
 }
 
 /**
@@ -1385,7 +1391,7 @@ export async function addNativeSessionLogsUrl(
   nativeSessionId: string,
   logsUrl: string,
 ): Promise<
-  | { ok: true; id: string; bridgedVideos?: number }
+  | { ok: true; id: string; bridgedVideos?: number; logsAutoSync?: boolean }
   | { ok: false; reason: string }
 > {
   const auth = await assertAdminResult();
@@ -1472,7 +1478,12 @@ export async function addNativeSessionLogsUrl(
   } catch {
     // best-effort
   }
-  return { ok: true, id: data.id as string, bridgedVideos };
+  return {
+    ok: true,
+    id: data.id as string,
+    bridgedVideos,
+    logsAutoSync: await isLogsAutoSyncEnabled(),
+  };
 }
 
 /**

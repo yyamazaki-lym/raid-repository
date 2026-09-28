@@ -23,6 +23,7 @@ import { fflogsLogDedupeKey } from "@/lib/fflogs-url";
 import { safeHref } from "@/lib/url-safe";
 import { useConfirm } from "@/components/portal/confirm-dialog";
 import { useMessages } from "@/lib/i18n/client";
+import { importRegisteredLogs } from "@/lib/logs-import-after-register";
 
 /**
  * 2.9 (2026-06-10) TODO #73 follow-up: native スケジュール版の FFLogs URL
@@ -156,6 +157,7 @@ export function NativeFflogsLinkPopover({
         ? m.fflogsLink.toastAddedBridged(r.bridgedVideos)
         : m.fflogsLink.toastAdded,
     );
+    if (r.logsAutoSync) void importRegisteredLogs(value, m.fflogsLink);
   };
 
   const handleDeleteLogs = async (id: string) => {

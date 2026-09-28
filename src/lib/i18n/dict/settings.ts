@@ -561,7 +561,7 @@ export const ja = {
     toastCookieDeleted: "Cookie を削除しました",
     cookieDeleteNow: "今すぐ削除",
     cronLabel: "日次自動連動 (cron)",
-    cronOn: "ON (毎日 04:00 JST と、Discord 取り込みで動画が入った直後に自動で連動を実行)",
+    cronOn: "ON (毎日 04:00 JST と、Discord 取り込みで動画が入った直後・日付に Logs を登録した直後に自動で連動を実行)",
     cronOff: "OFF (cron は何もせず skip)",
     linkTitleNeedSource:
       "先に「FFLogs 表示名」を保存するか「OAuth 接続」を実行してください",
@@ -1232,7 +1232,7 @@ export const en: SettingsMessages = {
     toastCookieDeleted: "Cookie deleted",
     cookieDeleteNow: "Delete now",
     cronLabel: "Daily auto-sync (cron)",
-    cronOn: "ON (runs daily at 04:00 JST and right after a Discord import adds videos)",
+    cronOn: "ON (runs daily at 04:00 JST, right after a Discord import adds videos, and right after Logs are registered on a date)",
     cronOff: "OFF (cron skips)",
     linkTitleNeedSource:
       "Save an FFLogs display name or connect via OAuth first",
