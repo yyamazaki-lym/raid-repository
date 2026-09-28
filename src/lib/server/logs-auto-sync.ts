@@ -50,9 +50,14 @@ export type LogsSyncTrigger =
 /**
  * `/api/cron/fflogs-sync` を別の実行として起動する (cron 取り込み用)。
  *
- * 宛先は Host ヘッダ由来の origin ではなく、Vercel が注入する本番ドメインを
- * 優先する (CRON_SECRET を載せるので、宛先はリクエスト内容に依らず固定する)。
- * 本番ドメインが無い環境 (ローカル等) だけ `fallbackOrigin` を使う。
+ * CRON_SECRET を載せるので、宛先はリクエスト内容 (Host ヘッダ) に依らず固定する:
+ *   - Vercel 上: Vercel が注入する本番ドメイン (`VERCEL_PROJECT_PRODUCTION_URL`)
+ *     だけを使う。取れない / ホスト名の形でないときは起動しない
+ *     (`not-configured`)。取りこぼしは JST 04:00 の同期 cron が拾う
+ *   - Vercel 外 (ローカルの next dev 等): `fallbackOrigin` を使う
+ *
+ * リダイレクトは追わない (`redirect: "error"`)。ドメイン移行などで 3xx が
+ * 挟まっても、Authorization を持ったまま別の宛先へ転送させないため。
  */
 export async function triggerFflogsSyncRoute(
   fallbackOrigin: string,
@@ -60,14 +65,27 @@ export async function triggerFflogsSyncRoute(
   const secret = process.env.CRON_SECRET?.trim();
   if (!secret) return "not-configured";
 
-  const prodHost = process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim();
-  const origin = prodHost ? `https://${prodHost}` : fallbackOrigin;
+  let origin: string;
+  if (process.env.VERCEL) {
+    const prodHost = process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim() ?? "";
+    // ホスト名 (+ 任意のポート) だけを許す。スキーム・パス・userinfo 混入を弾く。
+    if (!/^[a-z0-9.-]+(:\d+)?$/i.test(prodHost)) {
+      console.warn(
+        "[logs-auto-sync] VERCEL_PROJECT_PRODUCTION_URL unavailable; skip trigger",
+      );
+      return "not-configured";
+    }
+    origin = `https://${prodHost}`;
+  } else {
+    origin = fallbackOrigin;
+  }
   const url = `${origin}/api/cron/fflogs-sync`;
 
   try {
     const res = await fetch(url, {
       headers: { Authorization: `Bearer ${secret}` },
       cache: "no-store",
+      redirect: "error",
       signal: AbortSignal.timeout(TRIGGER_TIMEOUT_MS),
     });
     if (!res.ok) {
