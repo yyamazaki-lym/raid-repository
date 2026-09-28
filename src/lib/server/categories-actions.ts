@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { runDiscordImport } from "./discord-import";
+import { countInsertedVideos, isLogsAutoSyncEnabled } from "./logs-auto-sync";
 import {
   bridgeLogsUrlToSameDayVideos,
   unbridgeLogsUrlFromSameDayVideos,
@@ -531,6 +532,11 @@ export type ImportNowItem = {
  * detailed per-(category, kind) breakdown so the UI can show exactly
  * what happened — useful when scanned=0 hints at bot permission issues
  * vs duplicates>0/inserted=0 hints at idempotent re-runs.
+ *
+ * 2026-09-28: `logsAutoSync` が true のとき、画面側は続けて Logs 同期
+ * (`linkFflogsReports` → `syncFflogsFightsAfterImportAction`) を呼ぶ。
+ * 同じ Server Action 内で続けると 300s を超えるので、別の呼び出しに分ける
+ * (`src/lib/server/logs-auto-sync.ts`)。
  */
 export async function importDiscordNow(): Promise<{
   ok: boolean;
@@ -539,6 +545,8 @@ export async function importDiscordNow(): Promise<{
   totalInserted: number;
   totalFailed: number;
   items: ImportNowItem[];
+  /** 動画が 1 件以上入り、日次自動連動トグルが OFF でない。 */
+  logsAutoSync?: boolean;
 }> {
   const auth = await assertAdminResult();
   if (!auth.ok) {
@@ -584,7 +592,16 @@ export async function importDiscordNow(): Promise<{
       titleFetchedCount: r.titleFetchedCount,
     });
   }
-  return { ok: true, totalScanned, totalInserted, totalFailed, items };
+  const logsAutoSync =
+    countInsertedVideos(result.results) > 0 && (await isLogsAutoSyncEnabled());
+  return {
+    ok: true,
+    totalScanned,
+    totalInserted,
+    totalFailed,
+    items,
+    logsAutoSync,
+  };
 }
 
 export type BackfillResult = {
