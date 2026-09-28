@@ -2,6 +2,12 @@ import "server-only";
 import { NextResponse, type NextRequest } from "next/server";
 import { runDiscordImport } from "@/lib/server/discord-import";
 import { assertCronAuth } from "@/lib/server/cron-auth";
+import {
+  countInsertedVideos,
+  isLogsAutoSyncEnabled,
+  triggerFflogsSyncRoute,
+  type LogsSyncTrigger,
+} from "@/lib/server/logs-auto-sync";
 
 /**
  * Vercel Cron entrypoint — daily import of strategy / video URLs from
@@ -20,6 +26,11 @@ import { assertCronAuth } from "@/lib/server/cron-auth";
  * 5 ページの message fetch (15s timeout) × per-URL enrichment で 60s を
  * 超えるケースがあり、全カテゴリの insert がロールバックされるリスクが
  * あった。Vercel 標準 default (300s) に揃える。
+ *
+ * 2026-09-28: 動画が 1 件以上入ったら、Logs 同期 (`/api/cron/fflogs-sync`)
+ * を別の実行として起動する。同じ実行で続けると 300s を超えるため
+ * (`src/lib/server/logs-auto-sync.ts`)。JST 04:00 の同期 cron は取りこぼし
+ * 拾いとして残す。
  */
 
 export const runtime = "nodejs";
@@ -37,5 +48,12 @@ export async function GET(req: NextRequest) {
       { status: 503 },
     );
   }
-  return NextResponse.json({ ok: true, results: result.results });
+
+  let logsSync: LogsSyncTrigger = "no-new-videos";
+  if (countInsertedVideos(result.results) > 0) {
+    logsSync = (await isLogsAutoSyncEnabled())
+      ? await triggerFflogsSyncRoute(req.nextUrl.origin)
+      : "disabled";
+  }
+  return NextResponse.json({ ok: true, results: result.results, logsSync });
 }

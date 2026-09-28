@@ -25,11 +25,13 @@ import {
   backfillStrategyThumbnailsChunk,
   backfillVideoDurationsChunk,
   importDiscordNow,
+  linkFflogsReports,
   type BackfillResult,
   type DurationBackfillResult,
   type ImportNowItem,
   type StrategyThumbnailBackfillResult,
 } from "@/lib/server/categories-actions";
+import { syncFflogsFightsAfterImportAction } from "@/lib/server/fflogs-fights-actions";
 import { DiscordPanel } from "@/components/portal/maintenance/discord-panel";
 import { VideoMetaPanel } from "@/components/portal/maintenance/video-meta-panel";
 import { FirstClearPanel } from "@/components/portal/maintenance/first-clear-panel";
@@ -289,6 +291,40 @@ export function MaintenanceMenu() {
     };
   };
 
+  /**
+   * Discord 取り込みで動画が入った直後の Logs 同期 (2026-09-28)。
+   * リンク → pull 取り込みを別の Server Action として順に呼ぶ (1 回の
+   * 呼び出しにまとめると 300s を超えるため)。失敗しても取り込み自体は
+   * 成功扱いのまま、トーストで理由だけ出す。
+   */
+  const runLogsSyncAfterImport = async () => {
+    const id = toast.loading(m.maintenance.logsSyncing);
+    try {
+      const link = await linkFflogsReports();
+      if (!link.ok) {
+        toast.error(
+          m.maintenance.toastLogsSyncFailed(
+            link.reason ?? m.maintenance.unknownReason,
+          ),
+          { id },
+        );
+        return;
+      }
+      const fights = await syncFflogsFightsAfterImportAction();
+      if (!fights.ok) {
+        toast.error(m.maintenance.toastLogsSyncFailed(fights.reason), { id });
+        return;
+      }
+      const linked =
+        link.matched + link.sessionsMatched + (link.manualLogsBridged ?? 0);
+      toast.success(m.maintenance.logsSynced(linked, fights.fightsUpserted), {
+        id,
+      });
+    } catch (err) {
+      toast.error(m.maintenance.toastLogsSyncFailed(String(err)), { id });
+    }
+  };
+
   const run = async (kind: ActionKind) => {
     // 強制再取得系は確認を transition の外で取る (ダイアログ表示中に
     // pending スピナーが先行点灯しないように)。
@@ -332,6 +368,7 @@ export function MaintenanceMenu() {
                   : m.maintenance.discordNoUrls;
           toast.success(summary);
           setResult({ kind: "discord", data: { items: r.items } });
+          if (r.logsAutoSync) await runLogsSyncAfterImport();
           router.refresh();
           return;
         }

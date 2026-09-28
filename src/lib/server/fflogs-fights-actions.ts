@@ -68,6 +68,22 @@ export async function syncFflogsFightsAction(): Promise<
 }
 
 /**
+ * Discord 取り込み直後の自動同期 (2026-09-28)。手動の「ログを同期」と違い
+ * cron と同じ条件で走らせる — 恒久失敗は再試行しない (取り込みのたびに
+ * 結果の変わらない失敗で取得枠を食わないため)。画面に出すのは件数だけ。
+ */
+export async function syncFflogsFightsAfterImportAction(): Promise<
+  { ok: true; fightsUpserted: number } | { ok: false; reason: string }
+> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
+  const result = await syncFflogsFights();
+  if (!result.ok) return { ok: false, reason: result.reason };
+  revalidateQuietly();
+  return { ok: true, fightsUpserted: result.fightsUpserted };
+}
+
+/**
  * URL 貼り付けインポート (2026-08-28)。
  *
  * unlisted レポートは一覧 API に出ない (発見できない) が、code さえ
