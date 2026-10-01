@@ -758,7 +758,7 @@ export const ja = {
     badgeStale: (n: number): string => `${n} 件止まっている?`,
     badgeOk: "正常",
     badgeEmpty: "記録なし",
-    loadFailed: (reason: string): string => `読み込めませんでした (${reason})`,
+    loadFailed: "読み込めませんでした。「読み直す」で取り直してください。",
     reload: "読み直す",
   },
   // ---- maintenance-menu.tsx ----
@@ -1476,7 +1476,7 @@ export const en: SettingsMessages = {
     badgeStale: (n) => `${n} stopped?`,
     badgeOk: "OK",
     badgeEmpty: "No records",
-    loadFailed: (reason) => `Could not load (${reason})`,
+    loadFailed: "Could not load. Press Reload to try again.",
     reload: "Reload",
   },
 };

@@ -34,7 +34,9 @@ export function CronStatusSection({
   const m = useMessages();
   const [pending, startTransition] = useTransition();
   const [loaded, setLoaded] = useState(false);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  // 読めなかったことだけを画面に出し、理由はトーストで出す (トーストは
+  // 表示言語に訳される — 2026-10-01 監査 U-6)。
+  const [loadFailed, setLoadFailed] = useState(false);
   const [jobs, setJobs] = useState<Array<{ job: CronJob; status: CronStatus | null }>>([]);
   const [alertEnabled, setAlertEnabled] = useState(false);
   const [alertChannelSet, setAlertChannelSet] = useState(true);
@@ -48,10 +50,11 @@ export function CronStatusSection({
         if (cancelled) return;
         setLoaded(true);
         if (!r.ok) {
-          setLoadError(r.reason);
+          setLoadFailed(true);
+          toast.error(r.reason);
           return;
         }
-        setLoadError(null);
+        setLoadFailed(false);
         setJobs(r.jobs);
         setAlertEnabled(r.alertEnabled);
         setAlertChannelSet(r.alertChannelSet);
@@ -60,7 +63,8 @@ export function CronStatusSection({
       .catch((e: unknown) => {
         if (cancelled) return;
         setLoaded(true);
-        setLoadError(e instanceof Error ? e.message : String(e));
+        setLoadFailed(true);
+        toast.error(e instanceof Error ? e.message : String(e));
       });
     return () => {
       cancelled = true;
@@ -119,10 +123,10 @@ export function CronStatusSection({
         {m.cronStatus.description}
       </p>
 
-      {loadError !== null ? (
+      {loadFailed ? (
         <div className="flex flex-col gap-2 rounded-md border border-rose-400/40 bg-rose-400/5 px-3 py-2">
           <p className="text-[12px] leading-relaxed text-rose-100/90">
-            {m.cronStatus.loadFailed(loadError)}
+            {m.cronStatus.loadFailed}
           </p>
         </div>
       ) : null}
@@ -199,7 +203,7 @@ export function CronStatusSection({
           type="checkbox"
           className="h-4 w-4 shrink-0 accent-[var(--neon-cyan)]"
           checked={alertEnabled}
-          disabled={pending || !loaded || loadError !== null}
+          disabled={pending || !loaded || loadFailed}
           onChange={(e) => toggleAlert(e.target.checked)}
           aria-label={m.cronStatus.alertLabel}
         />
@@ -212,7 +216,7 @@ export function CronStatusSection({
           variant="outline"
           disabled={pending || !loaded}
           onClick={() => {
-            setLoadError(null);
+            setLoadFailed(false);
             setLoaded(false);
           }}
           className="gap-1.5 text-[11px] tracking-normal"
