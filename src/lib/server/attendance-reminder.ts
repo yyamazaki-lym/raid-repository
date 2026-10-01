@@ -1,4 +1,5 @@
 import "server-only";
+import { discordFetch } from "@/lib/server/discord-api";
 import { sessionStartUnixSeconds } from "@/lib/schedule/attendance-times";
 
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
@@ -544,7 +545,9 @@ async function postToDiscord(input: {
   userIds: string[];
 }): Promise<{ ok: true } | { ok: false; reason: string }> {
   try {
-    const res = await fetch(
+    // 2026-10-01 監査 C-9: 429 は retry_after だけ待って 1 回だけ送り直す
+    // (429 は未処理の意味なので二重投稿にはならない)。
+    const res = await discordFetch(
       `https://discord.com/api/v10/channels/${input.channelId}/messages`,
       {
         method: "POST",
@@ -559,7 +562,7 @@ async function postToDiscord(input: {
           // (@everyone / role は絶対に飛ばさない)。
           allowed_mentions: { parse: [], users: input.userIds.slice(0, 50) },
         }),
-        signal: AbortSignal.timeout(15000),
+        timeoutMs: 15000,
       },
     );
     if (!res.ok) {

@@ -1,4 +1,5 @@
 import "server-only";
+import { discordFetch } from "@/lib/server/discord-api";
 import {
   discordTimestamp,
   formatAttendanceTimesHint,
@@ -510,7 +511,9 @@ async function postToDiscord(input: {
   roleId: string | null;
 }): Promise<{ ok: true } | { ok: false; reason: string }> {
   try {
-    const res = await fetch(
+    // 2026-10-01 監査 C-9: 429 は retry_after だけ待って 1 回だけ送り直す
+    // (429 は未処理の意味なので二重投稿にはならない)。
+    const res = await discordFetch(
       `https://discord.com/api/v10/channels/${input.channelId}/messages`,
       {
         method: "POST",
@@ -525,7 +528,7 @@ async function postToDiscord(input: {
             ? { roles: [input.roleId] }
             : { parse: [] },
         }),
-        signal: AbortSignal.timeout(15000),
+        timeoutMs: 15000,
       },
     );
     if (!res.ok) {
