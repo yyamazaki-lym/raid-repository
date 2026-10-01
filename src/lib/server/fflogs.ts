@@ -11,6 +11,7 @@ import { bridgeAllManualSessionLogsToVideos } from "./session-logs-video-bridge"
 import { getValidFflogsOAuthToken } from "./fflogs-oauth";
 import { parseFflogsReportCode } from "@/lib/fflogs-url";
 import { jstYmdKey, resolveVideoJstYmd } from "@/lib/video-jst-date";
+import { fetchAllPages } from "@/lib/fetch-all-pages";
 import {
   buildFflogsReportsListUrl,
   buildFflogsScrapeHeaders,
@@ -1861,13 +1862,29 @@ async function linkReportsToVideos(
 
   // Pull category info alongside each video so we can do
   // content-match (raid-name) checks during scoring.
-  const { data: videos } = await supabase
-    .from("category_links")
-    .select(
-      "id, title, posted_at, created_at, logs_url, category:categories(id, name, fflogs_match_keywords)",
-    )
-    .eq("kind", "video")
-    .is("logs_url", null);
+  //
+  // C-2 (2026-10-01 監査): 直前の auto wipe で auto リンクは全部 NULL に
+  // 戻るので、ここは「ほぼ全動画」を読む。1 リクエスト 1000 行の上限で
+  // 黙って切れると、残りの動画が毎晩 wipe されたまま再リンクされない。
+  // id 順でページを繰って取り切る。
+  const videosRes = await fetchAllPages(async (from, to) => {
+    const { data, error } = await supabase
+      .from("category_links")
+      .select(
+        "id, title, posted_at, created_at, logs_url, category:categories(id, name, fflogs_match_keywords)",
+      )
+      .eq("kind", "video")
+      .is("logs_url", null)
+      .order("id", { ascending: true })
+      .range(from, to);
+    return { data, error };
+  });
+  if (videosRes.error) {
+    console.warn("[fflogs] video candidates fetch failed:", videosRes.error.message);
+  }
+  // 読み取りに失敗したら候補 0 件として扱う (従来どおり。部分結果で
+  // リンクすると、読めなかった動画が「候補に無い」のと区別できない)。
+  const videos = videosRes.error ? null : videosRes.rows;
   if (!videos || videos.length === 0) {
     return {
       scanned: 0,

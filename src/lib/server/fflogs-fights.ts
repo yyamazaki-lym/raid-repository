@@ -30,6 +30,7 @@ import {
   type FflogsAutoRoute,
 } from "@/lib/fflogs-report-source";
 import { jstYmdString } from "@/lib/jst-date";
+import { fetchAllPages } from "@/lib/fetch-all-pages";
 import {
   type CategoryRef,
   consensusCategory,
@@ -420,9 +421,22 @@ export async function syncFflogsFights(opts?: {
   }
 
   // 既存の同期台帳を読み、再取得が要るものだけに絞る。
-  const { data: ledger } = await db
-    .from("fflogs_report_syncs")
-    .select("report_code, ok, synced_at, session_date, category_id, zone_name, reason");
+  // C-2 (2026-10-01 監査): 台帳は 1 レポート 1 行で増え続ける。1000 行の
+  // 上限で切れると古いレポートが「未同期」に見え、毎回の取得枠を食う。
+  // report_code (主キー) 順でページを繰って取り切る。読めなかった分は
+  // 従来どおり未同期扱い (取り直しは upsert なので壊れない)。
+  const ledgerRes = await fetchAllPages(async (from, to) => {
+    const { data, error } = await db
+      .from("fflogs_report_syncs")
+      .select("report_code, ok, synced_at, session_date, category_id, zone_name, reason")
+      .order("report_code", { ascending: true })
+      .range(from, to);
+    return { data, error };
+  });
+  if (ledgerRes.error) {
+    console.warn("[fflogs-fights] ledger fetch failed:", ledgerRes.error.message);
+  }
+  const ledger = ledgerRes.rows;
   const ledgerMap = new Map<
     string,
     {
