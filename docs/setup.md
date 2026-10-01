@@ -313,6 +313,38 @@ SQL Editor で新しい `schema.sql` を貼り直してください。
 
 ---
 
+## 10. (任意) 開催確定の通知・出欠催促を毎時動かす
+
+自前作成式の「開催確定の 12 時通知」と「出欠の催促」は、Supabase の pg_cron が
+**毎時あなたの本番 URL を叩いて**動きます (Vercel Hobby の cron は 1 日 1 回まで
+なので、毎時の分は DB 側で起動します)。叩く先は自分で 1 回だけ教える必要があります。
+
+1. **CRON_SECRET を Supabase に預ける**: SQL Editor で 1 回だけ実行
+   ```sql
+   SELECT vault.create_secret('<.env.local の CRON_SECRET>', 'cron_notify_native_schedule_bearer');
+   ```
+2. **叩く先を渡してスキーマを流し直す** (手順 6 で決まった本番 URL。パスは付けない)
+   - 手順 9 を設定済み: GitHub → **Settings → Secrets and variables → Actions →
+     Variables** → **New repository variable** → Name `CRON_BASE_URL` /
+     Value `https://<project>.vercel.app` → Actions タブで
+     "Deploy Database (Production)" を **Run workflow**
+   - 手動運用: SQL Editor で `schema.sql` の**先頭に 1 行**足して流す
+     ```sql
+     SET app.cron_base_url = 'https://<project>.vercel.app';
+     ```
+3. **確認**: SQL Editor で `SELECT jobname, command FROM cron.job;` を流し、
+   `notify-native-schedule-hourly` / `attendance-reminder-hourly` /
+   `warmup-portal-function` の 3 本が**自分の URL** を向いていれば完了
+
+一度登録すれば、以後スキーマを流し直しても宛先は引き継がれます (変えたいときだけ
+2 をやり直す)。叩く先を渡さずに流すと、ジョブは登録されません (NOTICE に理由が出ます)。
+
+> ⚠ **2026-10-01 より前にスキーマを流した fork** は、ジョブが**上流のサイト**を
+> 向いたままです (通知・催促が一度も動かず、CRON_SECRET を上流へ送っています)。
+> 上の 2 をやり直してください。
+
+---
+
 ## 困ったとき
 
 まず **`npm run doctor`**。以下は doctor が出す指摘と対応の一覧です。

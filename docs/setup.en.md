@@ -306,6 +306,39 @@ Re-running it never destroys existing data.
 
 ---
 
+## 10. (Optional) Run the hourly session notice and attendance reminder
+
+The "session confirmed" notice (native schedules) and the attendance reminder run
+because Supabase pg_cron **calls your production URL every hour** (Vercel Hobby
+crons run at most once a day, so the hourly part is started from the database).
+You have to tell it where to call, once.
+
+1. **Hand CRON_SECRET to Supabase**: run once in the SQL Editor
+   ```sql
+   SELECT vault.create_secret('<CRON_SECRET from .env.local>', 'cron_notify_native_schedule_bearer');
+   ```
+2. **Re-apply the schema with the target URL** (your production URL from step 6, no path)
+   - With step 9 set up: GitHub → **Settings → Secrets and variables → Actions →
+     Variables** → **New repository variable** → Name `CRON_BASE_URL` /
+     Value `https://<project>.vercel.app` → in the Actions tab, **Run workflow** on
+     "Deploy Database (Production)"
+   - By hand: add **one line at the top** of `schema.sql` in the SQL Editor and run it
+     ```sql
+     SET app.cron_base_url = 'https://<project>.vercel.app';
+     ```
+3. **Check**: run `SELECT jobname, command FROM cron.job;` — the three jobs
+   `notify-native-schedule-hourly` / `attendance-reminder-hourly` /
+   `warmup-portal-function` should point at **your** URL
+
+Once registered, later schema runs keep the target (repeat step 2 only to change it).
+Without a target the jobs are not registered (a NOTICE explains why).
+
+> ⚠ **Forks that applied the schema before 2026-10-01** still have jobs pointing at
+> the **upstream site** (the notice and reminder never ran, and your CRON_SECRET was
+> sent upstream). Redo step 2.
+
+---
+
 ## Troubleshooting
 
 Start with **`npm run doctor`**.
