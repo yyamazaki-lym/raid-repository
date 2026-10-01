@@ -35,6 +35,7 @@ import {
   selectScheduleUrlAction,
 } from "@/lib/server/categories-actions";
 import { httpUrlError } from "@/lib/url-validation";
+import { useServerText } from "@/lib/i18n/use-server-text";
 import { useMessages } from "@/lib/i18n/client";
 
 /**
@@ -60,6 +61,7 @@ export function ScheduleSourceSection({
   open: boolean;
   canEdit: boolean;
 }) {
+  const sr = useServerText();
   const m = useMessages();
   const router = useRouter();
   const confirm = useConfirm();
@@ -141,7 +143,7 @@ export function ScheduleSourceSection({
       // できたときだけ登録前に止める。
       const named = await fetchScheduleNameAction(url);
       if (!named.ok && named.notFound) {
-        setFieldError(named.reason);
+        setFieldError(sr(named.reason));
         return;
       }
       const next: RegisteredSchedule[] = [

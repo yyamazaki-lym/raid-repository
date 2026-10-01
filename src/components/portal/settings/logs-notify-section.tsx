@@ -9,6 +9,7 @@ import {
 } from "@/lib/server/logs-notify-actions";
 import { LOGS_NOTIFY_KINDS, type LogsNotifyKind } from "@/lib/logs-notify";
 import { Button } from "@/components/ui/button";
+import { useServerText } from "@/lib/i18n/use-server-text";
 import { useMessages } from "@/lib/i18n/client";
 import { CollapsibleSection, SectionBadge } from "./collapsible-section";
 
@@ -60,6 +61,7 @@ export function LogsNotifySection({
   open: boolean;
   canEdit: boolean;
 }) {
+  const sr = useServerText();
   const m = useMessages();
   const [pending, startTransition] = useTransition();
   const [loaded, setLoaded] = useState(false);
@@ -147,7 +149,7 @@ export function LogsNotifySection({
       {loadError !== null ? (
         <div className="flex flex-col gap-2 rounded-md border border-rose-400/40 bg-rose-400/5 px-3 py-2">
           <p className="text-[12px] leading-relaxed text-rose-100/90">
-            {m.logsNotify.loadFailed(loadError)}
+            {m.logsNotify.loadFailed(sr(loadError))}
           </p>
           <div>
             <Button

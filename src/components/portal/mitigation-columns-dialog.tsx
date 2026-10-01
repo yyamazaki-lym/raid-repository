@@ -26,6 +26,7 @@ import {
   setMitigationColumnLabelsAction,
 } from "@/lib/server/categories-actions";
 import type { SheetColumnDiagnostic } from "@/lib/sheet-csv";
+import { useServerText } from "@/lib/i18n/use-server-text";
 import { useMessages } from "@/lib/i18n/client";
 
 /**
@@ -84,6 +85,7 @@ export function MitigationColumnsDialog({
   autoLabels: Record<number, { name: string; job: string | null }>;
 }) {
   const router = useRouter();
+  const sr = useServerText();
   const m = useMessages();
   const [open, setOpen] = useState(false);
   const [labels, setLabels] = useState<Record<string, string>>(() =>
@@ -151,7 +153,7 @@ export function MitigationColumnsDialog({
       );
       setDetectLog(r.diagnostics);
       if (!r.ok) {
-        setDetectNote(r.reason);
+        setDetectNote(sr(r.reason));
         setCandidates([]);
         toast.error(m.mitigationColumns.detectFailed);
         return;

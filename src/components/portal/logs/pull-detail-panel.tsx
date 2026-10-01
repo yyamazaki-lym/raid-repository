@@ -25,6 +25,7 @@ import {
   type LeadUpDeath,
 } from "@/lib/logs/death-leadup";
 import { formatMs, jobAbbr } from "@/lib/fflogs-fight-detail";
+import { useServerText } from "@/lib/i18n/use-server-text";
 import { useMessages } from "@/lib/i18n/client";
 import type { Messages } from "@/lib/i18n/messages";
 
@@ -82,6 +83,7 @@ export function PullDetailPanel({
   categoryId: string | null;
   clusterMs?: number;
 }) {
+  const sr = useServerText();
   const m = useMessages();
   const confirm = useConfirm();
   const [state, setState] = useState<
@@ -143,7 +145,7 @@ export function PullDetailPanel({
         </span>
       ) : state.kind === "error" ? (
         <span className="text-[11px] text-destructive-foreground/90">
-          {state.reason}
+          {sr(state.reason)}
         </span>
       ) : state.deaths.length === 0 ? (
         <span className="text-[11px] text-muted-foreground">
@@ -203,7 +205,7 @@ export function PullDetailPanel({
           onLoad={() => {
             setLeadUp({ kind: "loading" });
             void fetchDeathLeadUpAction(reportCode, fightId).then((r) => {
-              if (!r.ok) setLeadUp({ kind: "error", reason: r.reason });
+              if (!r.ok) setLeadUp({ kind: "error", reason: sr(r.reason) });
               else setLeadUp({ kind: "ready", deaths: r.deaths });
             });
           }}
