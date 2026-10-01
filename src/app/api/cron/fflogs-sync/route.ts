@@ -4,6 +4,7 @@ import { linkFflogsReportsToVideos } from "@/lib/server/fflogs";
 import { syncFflogsFights } from "@/lib/server/fflogs-fights";
 import { assertCronAuth } from "@/lib/server/cron-auth";
 import { fetchAppSetting } from "@/lib/supabase/app-settings";
+import { FFLOGS_SYNC_ROUTE_FETCH_BUDGET_MS } from "@/lib/fflogs-sync-budget";
 
 /**
  * FFLogs ⇔ 動画 / 確定スケジュール (sync + native) を auto link する
@@ -37,6 +38,12 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 export async function GET(req: NextRequest) {
+  // C-1 (2026-10-01 監査): 2 段 (リンク → pull 取り込み) で 1 つの期限を
+  // 共有する。段ごとに予算を数えると 240s + 120s で maxDuration (300s) を
+  // 超え、wipe 後・再リンク前に kill され得た。内訳は fflogs-sync-budget.ts。
+  // 認証より前に切るのは、ここからが関数の実行時間だから。
+  const deadlineAtMs = Date.now() + FFLOGS_SYNC_ROUTE_FETCH_BUDGET_MS;
+
   const denied = assertCronAuth(req, "cron/fflogs-sync");
   if (denied) return denied;
 
@@ -49,7 +56,10 @@ export async function GET(req: NextRequest) {
   // なるため、cookie ベースのクライアントだと RLS の admin write ポリシーで
   // 全書き込みが silent に 0 行更新される (2.8 follow-up で修正)。CRON_SECRET
   // 認証 (上の assertCronAuth) 済みの経路なので service role で書き込む。
-  const result = await linkFflogsReportsToVideos({ useServiceRole: true });
+  const result = await linkFflogsReportsToVideos({
+    useServiceRole: true,
+    deadlineAtMs,
+  });
   if (!result.ok) {
     console.warn(
       "[cron/fflogs-sync] linkFflogsReportsToVideos failed:",
@@ -67,7 +77,18 @@ export async function GET(req: NextRequest) {
   // 直前の link 処理が更新した既存資産をそのまま読むので、この順序で走らせる。
   // OAuth 未接続などで取れない場合も link 結果は返したいので、失敗は握って
   // レスポンスに理由だけ載せる (cron の retry ループを避ける既存方針と同じ)。
-  const fights = await syncFflogsFights({ useServiceRole: true });
+  //
+  // C-1: リンク段が期限を使い切っていたら pull 取り込みは始めない (次の
+  // 同期 — 翌日の cron か画面のボタン — が台帳の未取得分から続ける)。
+  // 取り込みの中の自動発見や後処理も外部 / DB を叩くので、段ごと飛ばす。
+  const fights =
+    Date.now() < deadlineAtMs
+      ? await syncFflogsFights({ useServiceRole: true, deadlineAtMs })
+      : ({
+          ok: false,
+          // 応答 JSON の他の skipped 値 (disabled / link-failed) と同じ英語コード。
+          reason: "deadline-exhausted",
+        } as const);
   if (!fights.ok) {
     console.warn("[cron/fflogs-sync] syncFflogsFights failed:", fights.reason);
   }
