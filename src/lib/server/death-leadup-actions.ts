@@ -1,7 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
-import { requireDiscordMember } from "./auth";
+import { guardExternalFetch } from "./external-fetch-guard";
 import { getValidFflogsOAuthToken } from "./fflogs-oauth";
 import {
   parseDeathLeadUp,
@@ -46,7 +46,12 @@ export async function fetchDeathLeadUpAction(
   reportCode: string,
   fightId: number,
 ): Promise<DeathLeadUpResult> {
-  await requireDiscordMember();
+  // 2026-10-01 監査 S-1: 固定運用の FFLogs OAuth トークンでポイントを使う
+  // ので、公開デモのゲストは弾き、メンバーも回数を絞る。
+  const guard = await guardExternalFetch("fflogs-death-leadup", {
+    allowDemoGuest: false,
+  });
+  if (!guard.ok) return guard;
   const code = (reportCode ?? "").trim();
   if (!/^[A-Za-z0-9]{8,64}$/.test(code) || !Number.isInteger(fightId)) {
     return { ok: false, reason: "pull の指定が不正です" };

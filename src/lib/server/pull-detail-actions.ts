@@ -1,7 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
-import { requireDiscordMember } from "./auth";
+import { guardExternalFetch } from "./external-fetch-guard";
 import {
   asDeathEvents,
   asPhaseTransitions,
@@ -70,7 +70,10 @@ export async function fetchPullDetailAction(
   fightId: number,
 ): Promise<PullDetailResult> {
   // 閲覧はメンバー限定 (練習ログ自体と同じ)。書き込みは無いので admin は不要。
-  await requireDiscordMember();
+  // 2026-10-01 監査 S-1: 技名が保存に無い pull は XIVAPI を叩くので回数を
+  // 絞る。公開デモでも見せる機能なので、ゲストは弾かず IP ごとに絞る。
+  const guard = await guardExternalFetch("pull-detail", { allowDemoGuest: true });
+  if (!guard.ok) return guard;
   const code = (reportCode ?? "").trim();
   if (!/^[A-Za-z0-9]{8,64}$/.test(code)) {
     return { ok: false, reason: "レポートコードが不正です" };
