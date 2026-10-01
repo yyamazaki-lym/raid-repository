@@ -44,6 +44,7 @@ import { LootWindowSection } from "./settings/loot-window-section";
 import { MaintenanceSection } from "./settings/maintenance-section";
 import { LogsNotifySection } from "./settings/logs-notify-section";
 import { FflogsSyncSection } from "./settings/fflogs-sync-section";
+import { CronStatusSection } from "./settings/cron-status-section";
 import { ChangelogFooter } from "./settings/changelog-footer";
 import { DangerZoneSection } from "./settings/danger-zone-section";
 import { DataExportSection } from "./settings/data-export-section";
@@ -411,6 +412,8 @@ function SettingsDialogBody({
               投稿先は上の Discord 通知と同じチャンネル設定を使う。 */}
           <LogsNotifySection open={open} canEdit={canEdit} />
           <FflogsSyncSection open={open} canEdit={canEdit} />
+          {/* 2026-10-01 監査 F-2: 自動処理の最終実行と成否。 */}
+          <CronStatusSection open={open} canEdit={canEdit} />
           <ChangelogFooter showSignIn={showSignIn} />
           {/* 2026-10-01 監査 F-3: 全データ初期化の直前に、消す前に書き出す経路。 */}
           <DataExportSection canEdit={canEdit} />

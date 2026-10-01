@@ -78,6 +78,7 @@ import { type ReportVideoLink } from "@/lib/supabase/fflogs-fights";
 import { PhaseSpanBar } from "./phase-span-bar";
 import { PullDetailPanel } from "./pull-detail-panel";
 import { videoName } from "./video-link";
+import { APP_TIME_ZONE } from "@/lib/app-timezone";
 
 /**
  * pull 行の DOM id (UI-1、2026-09-08)。プル・ボックス列 (`pull-box-row.tsx`)
@@ -144,7 +145,7 @@ export function PullRow({
   const clock = new Date(fight.startMs).toLocaleTimeString("ja-JP", {
     hour: "2-digit",
     minute: "2-digit",
-    timeZone: "Asia/Tokyo",
+    timeZone: APP_TIME_ZONE,
   });
 
   // A-2 の肝: 「最初の pull の戦闘開始」からの相対位置 + オフセットで

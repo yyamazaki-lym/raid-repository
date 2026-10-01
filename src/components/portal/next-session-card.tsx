@@ -9,13 +9,21 @@ import {
   overlappingMaintenance,
   type MaintenanceWindow,
 } from "@/lib/maintenance-schedule";
+import { APP_UTC_OFFSET_MS } from "@/lib/app-timezone";
+import { useHydrationSafeNow } from "@/lib/use-hydration-safe-now";
 
 export function NextSessionCard({
   result,
   recruitmentTopButton = null,
   maintenanceWindows = [],
+  renderedAtMs,
 }: {
   result: NextSessionResult;
+  /**
+   * サーバー描画の時刻 (page が 1 回だけ読む)。「本日 / 明日」「挑戦中」の
+   * 判定を hydration でも同じ時刻で行うため (2026-10-01 監査 U-14)。
+   */
+  renderedAtMs: number;
   /**
    * Optional inline button(s) rendered between the date/time text and
    * the right-aligned 確定 badge. The schedule page passes a
@@ -31,6 +39,7 @@ export function NextSessionCard({
 }) {
   const m = useMessages();
   const locale = useLocale();
+  const nowMs = useHydrationSafeNow(renderedAtMs);
   if (!result.ok) {
     return (
       <Frame tone="warn" icon={<AlertTriangle className="h-4 w-4" aria-hidden />}>
@@ -60,10 +69,9 @@ export function NextSessionCard({
   const { rawDate, startTime, endTime, date } = result.session;
   // Compare day numbers in JST (UTC+9) so the "today / 明日 / あと N 日" label
   // is correct regardless of where the server runs (Vercel = UTC).
-  const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
   const jstDayNumber = (utcMs: number) =>
-    Math.floor((utcMs + JST_OFFSET_MS) / 86400000);
-  const dayDiff = jstDayNumber(date.getTime()) - jstDayNumber(Date.now());
+    Math.floor((utcMs + APP_UTC_OFFSET_MS) / 86400000);
+  const dayDiff = jstDayNumber(date.getTime()) - jstDayNumber(nowMs);
   const isToday = dayDiff === 0;
 
   // TODO #39 (2.1, 2026-04-29): 開催時間中は「挑戦中」表記 + 色を amber に
@@ -99,8 +107,7 @@ export function NextSessionCard({
 
   const inSession = (() => {
     if (!isToday || !range) return false;
-    const now = Date.now();
-    return now >= range.startMs && now < range.endMs;
+    return nowMs >= range.startMs && nowMs < range.endMs;
   })();
 
   // W-30 (2026-09-07): この開催予定と重なるメンテ枠。
@@ -178,7 +185,7 @@ export function NextSessionCard({
           rel="noopener noreferrer"
           aria-label={m.schedule.calendarAria}
           title={m.schedule.calendarTitle}
-          className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground"
+          className="inline-flex tap-target relative h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground"
         >
           <CalendarPlus className="h-3.5 w-3.5" aria-hidden />
         </a>

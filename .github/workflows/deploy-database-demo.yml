@@ -86,6 +86,23 @@ jobs:
             exit 1
           fi
 
+      # 2026-10-01 監査 C-3 の回帰ガード。公開デモ DB は HTTP を叩く pg_cron
+      # ジョブを持たない (以前は本番の route を毎時・5 分毎に叩いていた)。
+      # schema.sql 13-0 が app.public_demo を見て外すので、残っていたら落とす。
+      - name: Verify demo has no HTTP cron jobs
+        if: steps.guard.outputs.skip == 'false'
+        env:
+          SUPABASE_DB_URL_DEMO: ${{ secrets.SUPABASE_DB_URL_DEMO }}
+        run: |
+          jobs=$(psql "$SUPABASE_DB_URL_DEMO" -tAc "
+            SELECT coalesce(string_agg(jobname, ', '), '') FROM cron.job
+            WHERE command ILIKE '%net.http_get%';")
+          echo "HTTP cron jobs on demo: '${jobs}'"
+          if [ -n "$jobs" ]; then
+            echo "::error::公開デモ DB に本番を叩く pg_cron ジョブが残っています (${jobs})。"
+            exit 1
+          fi
+
       - name: Apply supabase/seed-demo.sql
         if: steps.guard.outputs.skip == 'false'
         env:

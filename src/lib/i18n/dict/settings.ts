@@ -206,6 +206,32 @@ export const ja = {
       `関連する出欠データも一緒に削除されます (元に戻せません)。\n` +
       `よろしいですか？`,
     toastDeleted: (name: string) => `「${name}」を削除しました`,
+    // 2026-10-01 監査 F-4: 削除のとき、残る関連データを整理するかの 2 段目。
+    purgeConfirmTitle: "この人の個人データも消しますか？",
+    purgeConfirmDescription: (name: string, lines: string) =>
+      `「${name}」はこのあと削除します。次のデータは、消さなければ DB に残ります。\n` +
+      `${lines}\n` +
+      `チームの注釈と日付メモは消さず、書いた人の ID だけ外します (日付メモは名前が残ります)。` +
+      `消したデータは元に戻せません。`,
+    purgeItem: (id: string, n: number): string =>
+      `・${
+        id === "linkReads"
+          ? "リンクの既読"
+          : id === "lootWeekly"
+            ? "週制限の消化チェック"
+            : id === "onboarding"
+              ? "はじめての手順の進み具合"
+              : id === "attendanceActuals"
+                ? "ログからの出席の実績"
+                : id === "selfNotes"
+                  ? "自分用のミス注釈"
+                  : id === "teamNotesAuthor"
+                    ? "チームのミス注釈 (書いた人の ID を外す)"
+                    : "日付メモ (書いた人の ID を外す)"
+      } ${n} 件`,
+    purgeConfirmButton: "個人データも消す",
+    purgeKeepButton: "残す",
+    toastPurged: (n: number) => `関連データ ${n} 件を整理しました`,
     description:
       "スケジュール表に出欠列として表示するメンバー。Discord ID またはローカルキーで識別し、並び順 (昇順) で左から並びます。無効化されたメンバーはスケジュール表に出ませんが、過去の出欠履歴は DB に残ります。",
     descriptionOtherModes:
@@ -734,6 +760,58 @@ export const ja = {
     commitLogTitle: "これ以前の commit log は GitHub で確認",
     commitLog: "↗ commit log を GitHub で見る",
   },
+  /** 2026-10-01 監査 F-2: 自動処理 (cron) の最終実行と成否。 */
+  cronStatus: {
+    title: "自動処理",
+    description:
+      "毎日・毎時に動く自動処理の、最後の実行と結果です。失敗が続いていないか、止まっていないかをここで確かめられます (この機能を入れた後の実行から記録します)。",
+    job: (job: string): string =>
+      job === "import-discord"
+        ? "Discord 取り込み"
+        : job === "fflogs-sync"
+          ? "FFLogs 同期"
+          : job === "snapshot-schedule"
+            ? "スケジュールのスナップショット"
+            : job === "attendance-reminder"
+              ? "出欠の催促"
+              : "開催確定の通知",
+    schedule: (job: string): string =>
+      job === "import-discord"
+        ? "毎日 01:00"
+        : job === "fflogs-sync"
+          ? "毎日 04:00"
+          : job === "snapshot-schedule"
+            ? "毎日 21:50"
+            : "毎時",
+    never: "まだ記録がありません",
+    lastRun: (at: string): string => `最終実行 ${at}`,
+    outcome: (o: string): string =>
+      o === "ok"
+        ? "成功"
+        : o === "partial"
+          ? "一部 (残りは次回)"
+          : o === "skipped"
+            ? "何もせず終了"
+            : "失敗",
+    lastError: (at: string, reason: string): string =>
+      `最後の失敗 ${at}${reason ? ` — ${reason}` : ""}`,
+    consecutive: (n: number): string => `${n} 回続けて失敗`,
+    stale:
+      "予定の間隔を過ぎても実行されていません。呼び出し側 (Vercel Cron / pg_cron) が止まっている可能性があります。",
+    alertLabel: "失敗したら Discord に知らせる",
+    alertHint:
+      "失敗に変わった最初の 1 回だけ、Discord 通知と同じチャンネルに投稿します。同じ失敗が続く間は再通知しません。",
+    alertNoChannel:
+      "Discord 通知のチャンネルが未設定なので、ON にしても投稿されません。",
+    toastAlertOn: "失敗の通知を ON にしました",
+    toastAlertOff: "失敗の通知を OFF にしました",
+    badgeError: (n: number): string => `${n} 件失敗`,
+    badgeStale: (n: number): string => `${n} 件止まっている?`,
+    badgeOk: "正常",
+    badgeEmpty: "記録なし",
+    loadFailed: "読み込めませんでした。「読み直す」で取り直してください。",
+    reload: "読み直す",
+  },
   // ---- maintenance-menu.tsx ----
   // ---- confirm-dialog.tsx (既定ラベル) ----
   // ---- maintenance/*-panel.tsx (メンテナンス結果パネル) ----
@@ -926,6 +1004,31 @@ export const en: SettingsMessages = {
       `Their attendance data is deleted as well (cannot be undone).\n` +
       `Continue?`,
     toastDeleted: (name) => `Deleted “${name}”`,
+    purgeConfirmTitle: "Also remove this person's personal data?",
+    purgeConfirmDescription: (name, lines) =>
+      `“${name}” will be deleted next. The following data stays in the DB unless you remove it.\n` +
+      `${lines}\n` +
+      `Team notes and date memos are kept; only the author ID is removed (date memos keep the name). ` +
+      `Removed data cannot be restored.`,
+    purgeItem: (id, n) =>
+      `- ${
+        id === "linkReads"
+          ? "Link read marks"
+          : id === "lootWeekly"
+            ? "Weekly loot checks"
+            : id === "onboarding"
+              ? "Getting-started progress"
+              : id === "attendanceActuals"
+                ? "Attendance from logs"
+                : id === "selfNotes"
+                  ? "Personal pull notes"
+                  : id === "teamNotesAuthor"
+                    ? "Team pull notes (author ID removed)"
+                    : "Date memos (author ID removed)"
+      }: ${n}`,
+    purgeConfirmButton: "Remove personal data too",
+    purgeKeepButton: "Keep it",
+    toastPurged: (n) => `Cleaned up ${n} related rows`,
     description:
       "Members shown as attendance columns in the schedule table. Identified by Discord ID or a local key and ordered left to right by sort order (ascending). Disabled members disappear from the table, but their attendance history stays in the DB.",
     descriptionOtherModes:
@@ -1425,5 +1528,55 @@ export const en: SettingsMessages = {
     loadArchive: "↓ Show older release notes",
     commitLogTitle: "Older commit history is on GitHub",
     commitLog: "↗ View the commit log on GitHub",
+  },
+  cronStatus: {
+    title: "Automation",
+    description:
+      "The last run and result of each daily / hourly automated job. Check here whether a job keeps failing or has stopped running (runs are recorded from the release that added this).",
+    job: (job) =>
+      job === "import-discord"
+        ? "Discord import"
+        : job === "fflogs-sync"
+          ? "FFLogs sync"
+          : job === "snapshot-schedule"
+            ? "Schedule snapshot"
+            : job === "attendance-reminder"
+              ? "Attendance reminder"
+              : "Session confirmed notice",
+    schedule: (job) =>
+      job === "import-discord"
+        ? "Daily 01:00 JST"
+        : job === "fflogs-sync"
+          ? "Daily 04:00 JST"
+          : job === "snapshot-schedule"
+            ? "Daily 21:50 JST"
+            : "Hourly",
+    never: "No runs recorded yet",
+    lastRun: (at) => `Last run ${at}`,
+    outcome: (o) =>
+      o === "ok"
+        ? "Succeeded"
+        : o === "partial"
+          ? "Partly done (rest next run)"
+          : o === "skipped"
+            ? "Nothing to do"
+            : "Failed",
+    lastError: (at, reason) => `Last failure ${at}${reason ? ` — ${reason}` : ""}`,
+    consecutive: (n) => `Failed ${n} times in a row`,
+    stale:
+      "It has not run within its expected interval. The caller (Vercel Cron / pg_cron) may have stopped.",
+    alertLabel: "Notify Discord on failure",
+    alertHint:
+      "Posts once, to the same channel as the Discord notifications, when a job starts failing. It does not repeat while the same failure continues.",
+    alertNoChannel:
+      "The Discord notification channel is not set, so nothing will be posted even when this is on.",
+    toastAlertOn: "Failure notifications turned on",
+    toastAlertOff: "Failure notifications turned off",
+    badgeError: (n) => `${n} failing`,
+    badgeStale: (n) => `${n} stopped?`,
+    badgeOk: "OK",
+    badgeEmpty: "No records",
+    loadFailed: "Could not load. Press Reload to try again.",
+    reload: "Reload",
   },
 };

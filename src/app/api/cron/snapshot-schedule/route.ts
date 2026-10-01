@@ -10,6 +10,7 @@ import {
   NATIVE_DEFAULT_START_TIME_KEY,
 } from "@/lib/server/native-schedule-placeholders";
 import { assertCronAuth } from "@/lib/server/cron-auth";
+import { recordCronRun } from "@/lib/server/cron-status";
 
 /**
  * Vercel Cron: snapshot character-sheets attendance into
@@ -48,19 +49,23 @@ export async function GET(req: NextRequest) {
       // W-15 (2026-09-08): 定期枠が設定されていればその曜日だけ敷設する。
       recurringDows: settings[NATIVE_RECURRING_DOWS_KEY],
     });
+    await recordCronRun("snapshot-schedule", "ok", "native: ensured");
     return NextResponse.json({ ok: true, mode: "native", ensured: true });
   }
   if (mode !== "sync") {
+    await recordCronRun("snapshot-schedule", "skipped", "mode not sync");
     return NextResponse.json({ ok: true, skipped: "mode not sync" });
   }
 
   const result = await runScheduleSnapshot();
   if (!result.ok) {
+    await recordCronRun("snapshot-schedule", "error", result.reason ?? "snapshot failed");
     return NextResponse.json(
       { error: result.reason ?? "snapshot failed" },
       { status: 503 },
     );
   }
+  await recordCronRun("snapshot-schedule", "ok");
   return NextResponse.json({
     ok: true,
     scanned: result.scanned,

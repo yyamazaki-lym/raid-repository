@@ -56,6 +56,7 @@ import { floorTextToneClass } from "@/lib/fflogs-progress";
 import type { FloorFirstClear } from "@/lib/fflogs-session";
 import { useMessages } from "@/lib/i18n/client";
 import { jstYmdString } from "@/lib/jst-date";
+import { APP_TIME_ZONE } from "@/lib/app-timezone";
 
 export type FloorClearItem = FloorFirstClear & {
   /** 表示ラベル (例: "3層" / "4層後半")。`floorLabel` で引いたもの。 */
@@ -97,7 +98,7 @@ export function FloorClearCard({ clears }: { clears: FloorClearItem[] }) {
               new Date(c.startMs).toLocaleTimeString("ja-JP", {
                 hour: "2-digit",
                 minute: "2-digit",
-                timeZone: "Asia/Tokyo",
+                timeZone: APP_TIME_ZONE,
               }),
               c.overallPulls,
             )}

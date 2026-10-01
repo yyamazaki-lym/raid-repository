@@ -67,6 +67,7 @@ import {
   type FloorMap,
 } from "@/lib/fflogs-progress";
 import { PERF_BOX, perfForProgress } from "@/lib/perf-tone";
+import { APP_TIME_ZONE } from "@/lib/app-timezone";
 import { useLocale, useMessages } from "@/lib/i18n/client";
 
 export function PullBoxRow({
@@ -120,7 +121,7 @@ export function PullBoxRow({
         const clock = new Date(f.startMs).toLocaleTimeString("ja-JP", {
           hour: "2-digit",
           minute: "2-digit",
-          timeZone: "Asia/Tokyo",
+          timeZone: APP_TIME_ZONE,
         });
         const title = m.logs.pullBoxTitle({
           index: i + 1,

@@ -398,7 +398,7 @@ function SortableWaymarkRow({
             role="presentation"
             aria-label={m.crud.dragHandleAria(name)}
             onClick={(e) => e.stopPropagation()}
-            className="inline-flex h-6 w-6 shrink-0 cursor-grab items-center justify-center rounded text-muted-foreground hover:bg-secondary/60 hover:text-foreground active:cursor-grabbing"
+            className="inline-flex tap-target relative h-6 w-6 shrink-0 cursor-grab items-center justify-center rounded text-muted-foreground hover:bg-secondary/60 hover:text-foreground active:cursor-grabbing"
             title={m.crud.dragToReorder}
           >
             <GripVertical className="h-3.5 w-3.5" aria-hidden />
@@ -460,7 +460,7 @@ function SortableWaymarkRow({
               rel="noopener noreferrer"
               aria-label={m.waymarks.studioAria(name)}
               title={m.waymarks.studioTitle}
-              className="inline-flex h-7 w-7 items-center justify-center rounded text-[var(--neon-violet)] hover:bg-[var(--neon-violet)]/15"
+              className="inline-flex tap-target relative h-7 w-7 items-center justify-center rounded text-[var(--neon-violet)] hover:bg-[var(--neon-violet)]/15"
             >
               <ExternalLink className="h-3.5 w-3.5" aria-hidden />
             </a>
@@ -470,7 +470,7 @@ function SortableWaymarkRow({
             onClick={onCopy}
             aria-label={m.waymarks.copyAria(name, bodyLabel)}
             title={m.waymarks.copyTitle(bodyLabel)}
-            className="inline-flex h-7 w-7 items-center justify-center rounded text-[var(--neon-cyan)] hover:bg-[var(--neon-cyan)]/15"
+            className="inline-flex tap-target relative h-7 w-7 items-center justify-center rounded text-[var(--neon-cyan)] hover:bg-[var(--neon-cyan)]/15"
           >
             <ClipboardCopy className="h-3.5 w-3.5" aria-hidden />
           </button>
@@ -479,7 +479,7 @@ function SortableWaymarkRow({
             onClick={onEdit}
             aria-label={m.crud.editAria(name)}
             title={m.common.edit}
-            className="inline-flex h-7 w-7 items-center justify-center rounded text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
+            className="inline-flex tap-target relative h-7 w-7 items-center justify-center rounded text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
           >
             <Pencil className="h-3.5 w-3.5" aria-hidden />
           </button>
@@ -488,7 +488,7 @@ function SortableWaymarkRow({
             onClick={onDelete}
             aria-label={m.crud.deleteAria(name)}
             title={m.common.delete}
-            className="inline-flex h-7 w-7 items-center justify-center rounded text-rose-300 hover:bg-rose-500/15 hover:text-rose-200"
+            className="inline-flex tap-target relative h-7 w-7 items-center justify-center rounded text-rose-300 hover:bg-rose-500/15 hover:text-rose-200"
           >
             <Trash2 className="h-3.5 w-3.5" aria-hidden />
           </button>

@@ -20,6 +20,7 @@ import {
   renameNativeScheduleAction,
   selectNativeScheduleAction,
 } from "@/lib/server/native-schedules-actions";
+import { useServerText } from "@/lib/i18n/use-server-text";
 import { useMessages } from "@/lib/i18n/client";
 
 /**
@@ -50,6 +51,7 @@ export function NativeSchedulesSection({
   loaded: boolean;
   onChanged: () => void;
 }) {
+  const sr = useServerText();
   const m = useMessages();
   const router = useRouter();
   const confirm = useConfirm();
@@ -78,7 +80,7 @@ export function NativeSchedulesSection({
     startTransition(async () => {
       const r = await createNativeScheduleAction(name);
       if (!r.ok) {
-        setFieldError(r.reason);
+        setFieldError(sr(r.reason));
         return;
       }
       setNewName("");
@@ -207,7 +209,7 @@ export function NativeSchedulesSection({
                       type="button"
                       size="icon"
                       variant="ghost"
-                      className="h-7 w-7 shrink-0"
+                      className="tap-target relative h-7 w-7 shrink-0"
                       onClick={() => onCommitRename(row)}
                       title={m.nativeSchedules.renameSave}
                       aria-label={m.nativeSchedules.renameSave}
@@ -218,7 +220,7 @@ export function NativeSchedulesSection({
                       type="button"
                       size="icon"
                       variant="ghost"
-                      className="h-7 w-7 shrink-0"
+                      className="tap-target relative h-7 w-7 shrink-0"
                       onClick={() => setEditingId(null)}
                       title={m.nativeSchedules.renameCancel}
                       aria-label={m.nativeSchedules.renameCancel}
@@ -244,7 +246,7 @@ export function NativeSchedulesSection({
                       type="button"
                       size="icon"
                       variant="ghost"
-                      className="h-7 w-7"
+                      className="tap-target relative h-7 w-7"
                       disabled={pending}
                       onClick={() => {
                         setEditingId(row.id);
@@ -259,7 +261,7 @@ export function NativeSchedulesSection({
                       type="button"
                       size="icon"
                       variant="ghost"
-                      className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                      className="tap-target relative h-7 w-7 text-muted-foreground hover:text-destructive"
                       disabled={
                         pending ||
                         isActive ||
