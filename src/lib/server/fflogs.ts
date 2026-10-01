@@ -11,6 +11,7 @@ import { bridgeAllManualSessionLogsToVideos } from "./session-logs-video-bridge"
 import { getValidFflogsOAuthToken } from "./fflogs-oauth";
 import { parseFflogsReportCode } from "@/lib/fflogs-url";
 import { jstYmdKey, resolveVideoJstYmd } from "@/lib/video-jst-date";
+import { resolveSyncDeadline } from "@/lib/fflogs-sync-budget";
 import {
   buildFflogsReportsListUrl,
   buildFflogsScrapeHeaders,
@@ -1215,6 +1216,12 @@ export async function linkFflogsReportsToVideos(opts?: {
    * CRON_SECRET 認証 (assertCronAuth) を済ませていることが前提。
    */
   useServiceRole?: boolean;
+  /**
+   * 呼び出し側 (cron route) が切った「新しい外部取得を始めてよい期限」。
+   * 後段の pull 取り込みと共有する (2026-10-01 監査 C-1)。省略時は
+   * この関数の予算 (240s) だけで動く。
+   */
+  deadlineAtMs?: number;
 }): Promise<FflogsLinkResult> {
   const newWriteClient = async () =>
     opts?.useServiceRole
@@ -1222,7 +1229,12 @@ export async function linkFflogsReportsToVideos(opts?: {
       : await createClient();
   // D-3 (2026-07-12 監査): 実行全体の時間予算。各フェッチャーはページ取得の
   // 前に残余を確認し、超過時は部分結果 + truncated で戻る。
-  const deadlineAtMs = Date.now() + FFLOGS_SYNC_TIME_BUDGET_MS;
+  // C-1 (2026-10-01): route から共有期限が来ていれば早い方を使う。
+  const deadlineAtMs = resolveSyncDeadline(
+    Date.now(),
+    FFLOGS_SYNC_TIME_BUDGET_MS,
+    opts?.deadlineAtMs,
+  );
   // 1.9.11: ONE-TIME BOOTSTRAP for `category_links.logs_url_source`. The
   // 1.9.10 schema added the column with `NOT NULL DEFAULT 'manual'`, so
   // every pre-existing logs_url row got tagged 'manual'. Flip them to
