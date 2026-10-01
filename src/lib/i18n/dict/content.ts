@@ -863,6 +863,11 @@ export const ja = {
       `scanned ${scanned}, 失敗 ${failed}${reason}`,
     discordInserted: (inserted: number, dup: number) => `+${inserted} 件 (重複 ${dup})`,
     discordAllDup: (dup: number) => `すべて重複 (${dup})`,
+    discordDeferred: (n: number) => ` ・残り ${n} 件は次回`,
+    discordDeadline: (n: number) =>
+      n > 0
+        ? `時間切れのため次回へ (${n} 件)`
+        : "時間切れのため次回へ",
     videoMetaTitle: "動画メタデータ — 取得結果",
     fetched: "取得",
     count: "件",
@@ -1706,6 +1711,9 @@ Lines only in the one in use: ${removed}`,
       `scanned ${scanned}, failed ${failed}${reason}`,
     discordInserted: (inserted, dup) => `+${inserted} (duplicates ${dup})`,
     discordAllDup: (dup) => `All duplicates (${dup})`,
+    discordDeferred: (n) => ` · ${n} more next run`,
+    discordDeadline: (n) =>
+      n > 0 ? `Out of time — ${n} left for the next run` : "Out of time — left for the next run",
     videoMetaTitle: "Video metadata — results",
     fetched: "Fetched",
     count: "",

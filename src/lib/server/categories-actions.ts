@@ -509,7 +509,12 @@ export type ImportNowItem = {
   inserted: number;
   failed: number;
   reason?: string;
-  skipped?: "disabled";
+  skipped?: "disabled" | "deadline";
+  /**
+   * 2026-10-01 監査 C-6: 1 チャンネルの上限か持ち時間のせいで今回は取り込まず
+   * 次回へ回した新規 URL の件数 (`ImportResult.deferred`)。
+   */
+  deferred?: number;
   /**
    * Phase 13.1 (2.1, 2026-05-13): フィルタ判定前にメッセージから抽出された
    * ユニーク URL 数。フィルタ未設定カテゴリでは scanned と同値。フィルタ設定済で
@@ -590,6 +595,7 @@ export async function importDiscordNow(): Promise<{
       skipped: r.skipped,
       prefilteredCount: r.prefilteredCount,
       titleFetchedCount: r.titleFetchedCount,
+      deferred: r.deferred,
     });
   }
   const logsAutoSync =
