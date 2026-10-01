@@ -67,18 +67,8 @@
       "count": 1
     }
   },
-  "src/components/portal/next-session-card.tsx": {
-    "react-hooks/purity": {
-      "count": 2
-    }
-  },
   "src/components/portal/recruitment-templates-popover-body.tsx": {
     "react-hooks/set-state-in-effect": {
-      "count": 1
-    }
-  },
-  "src/components/portal/schedule-list.tsx": {
-    "react-hooks/purity": {
       "count": 1
     }
   },

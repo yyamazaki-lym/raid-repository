@@ -19,6 +19,7 @@ import {
   normalizeAttendanceTime,
   symbolAllowsTimes,
 } from "@/lib/schedule/attendance-times";
+import { useServerText } from "@/lib/i18n/use-server-text";
 import { useMessages } from "@/lib/i18n/client";
 
 /**
@@ -80,6 +81,7 @@ export function NativeAttendancePopover({
   displayDate,
   currentTimes = null,
 }: Props) {
+  const sr = useServerText();
   const m = useMessages();
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -123,7 +125,7 @@ export function NativeAttendancePopover({
         leaveAt: keepTimes ? leaveDraft || null : null,
       });
       if (!result.ok) {
-        setError(result.reason);
+        setError(sr(result.reason));
         setPendingSymbol(null);
         return;
       }
@@ -168,7 +170,7 @@ export function NativeAttendancePopover({
         leaveAt: nextLeave,
       });
       if (!result.ok) {
-        setError(result.reason);
+        setError(sr(result.reason));
         return;
       }
       const hint = formatAttendanceTimesHint({

@@ -32,6 +32,7 @@ import { Label } from "@/components/ui/label";
 import { formatClock } from "@/lib/fflogs-url";
 import { useMessages } from "@/lib/i18n/client";
 import { parseYouTubeId } from "@/lib/youtube";
+import { APP_TIME_ZONE } from "@/lib/app-timezone";
 import {
   isYoutubePlayerOrigin,
   offsetFromVideoSeconds,
@@ -324,6 +325,6 @@ function clockOf(ms: number): string {
   return new Date(ms).toLocaleTimeString("ja-JP", {
     hour: "2-digit",
     minute: "2-digit",
-    timeZone: "Asia/Tokyo",
+    timeZone: APP_TIME_ZONE,
   });
 }

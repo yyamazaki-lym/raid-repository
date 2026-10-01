@@ -9,6 +9,7 @@ import {
 } from "@/lib/schedule/native-defaults";
 import { isRecurringDow, parseRecurringDows } from "@/lib/schedule/recurring-frames";
 import { getActiveNativeScheduleId } from "@/lib/schedule/native-active";
+import { APP_UTC_OFFSET_MS } from "@/lib/app-timezone";
 
 // 2.6 (2026-06-10): 純粋な定数は server / client 両方の境界から import 可能な
 // `src/lib/schedule/native-defaults.ts` に切り出し、ここでは re-export のみ
@@ -56,7 +57,7 @@ export {
  *   と同パターン)。
  */
 
-const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
+const JST_OFFSET_MS = APP_UTC_OFFSET_MS;
 
 const DOW_LABELS = ["日", "月", "火", "水", "木", "金", "土"] as const;
 

@@ -11,6 +11,7 @@ import { SettingsDialog } from "./settings-dialog-lazy";
 import { DeployColorBadge } from "./deploy-color-badge";
 import { OnlinePresenceIndicator } from "./online-presence-indicator";
 import { LATEST_RELEASE_META } from "@/lib/changelog-meta";
+import { APP_TIME_ZONE } from "@/lib/app-timezone";
 import { getMessages } from "@/lib/i18n/server";
 import {
   getCurrentUserCanEdit,
@@ -105,7 +106,7 @@ const DEFAULT_COLOR = DEPLOY_COLORS[0]!;
  */
 function pickInitialColor(): string {
   const today = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Tokyo",
+    timeZone: APP_TIME_ZONE,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -160,9 +161,11 @@ export async function SiteHeader() {
               releaseDate={APP_DATE}
               initialColor={pickInitialColor()}
             >
-              <span>
+              {/* 2026-10-01 監査 U-2: 375px では「v2.18 (2026-09-28) · BETA」が
+                  3 行に折り返していた。日付は sm 以上だけ出し、折り返さない。 */}
+              <span className="whitespace-nowrap">
                 v{APP_VERSION}
-                {` (${APP_DATE})`}
+                <span className="hidden sm:inline">{` (${APP_DATE})`}</span>
               </span>
               <span aria-hidden className="opacity-50">·</span>
               <span className="tracking-[0.22em]">{APP_STAGE}</span>

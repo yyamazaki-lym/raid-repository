@@ -17,6 +17,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { updateNativeScheduleMemberCommentAction } from "@/lib/server/native-schedule-actions";
+import { useServerText } from "@/lib/i18n/use-server-text";
 import { useMessages } from "@/lib/i18n/client";
 
 /**
@@ -64,6 +65,7 @@ export function NativeMemberCommentPopover({
   open: openProp,
   onOpenChange,
 }: Props) {
+  const sr = useServerText();
   const m = useMessages();
   const router = useRouter();
   const [openInner, setOpenInner] = useState(false);
@@ -138,7 +140,7 @@ export function NativeMemberCommentPopover({
         comment: trimmed || null,
       });
       if (!result.ok) {
-        setError(result.reason);
+        setError(sr(result.reason));
         return;
       }
       toast.success(trimmed ? m.comment.toastSaved : m.comment.toastDeleted);

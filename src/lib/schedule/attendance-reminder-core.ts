@@ -1,4 +1,5 @@
 import { discordTimestamp } from "./attendance-times";
+import { APP_UTC_OFFSET_MS } from "../app-timezone";
 /**
  * 出欠催促の純粋ロジック (2026-08-30)。
  *
@@ -8,7 +9,7 @@ import { discordTimestamp } from "./attendance-times";
  * しておく (scripts/check-attendance-reminder.mjs が本モジュールを叩く)。
  */
 
-export const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
+export const JST_OFFSET_MS = APP_UTC_OFFSET_MS;
 
 /**
  * 未回答を表す記号。character-sheets は全角ハイフン「－」(U+FF0D) を

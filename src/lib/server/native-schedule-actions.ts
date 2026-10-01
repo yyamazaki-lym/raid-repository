@@ -32,6 +32,7 @@ import {
   NATIVE_RECURRING_DOWS_KEY,
   serializeRecurringDows,
 } from "@/lib/schedule/recurring-frames";
+import { APP_UTC_OFFSET_MS } from "@/lib/app-timezone";
 
 /**
  * TODO #2 phase 2-A (2026-05-07): native スケジュール用 Server Actions。
@@ -1190,7 +1191,7 @@ export async function createNativeScheduleSessionsBulkAction(
   const DOW_LABELS = ["日", "月", "火", "水", "木", "金", "土"] as const;
   const pad = (n: number) => String(n).padStart(2, "0");
   const [sh, sm] = startTime.split(":").map(Number);
-  const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
+  const JST_OFFSET_MS = APP_UTC_OFFSET_MS;
   const rows = dates.map((c) => {
     const dow = DOW_LABELS[c.dow] ?? "日";
     return {

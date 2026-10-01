@@ -939,7 +939,7 @@ function BisRow({
                 aria-label={m.bis.previewAria(link.label)}
                 title={m.bis.previewTitle}
                 className={
-                  "inline-flex h-6 w-6 shrink-0 items-center justify-center rounded transition-colors " +
+                  "inline-flex tap-target relative h-6 w-6 shrink-0 items-center justify-center rounded transition-colors " +
                   (previewActive
                     ? "bg-[var(--neon-violet)]/20 text-[var(--neon-violet)]"
                     : "text-muted-foreground hover:bg-secondary/60 hover:text-foreground")
@@ -955,7 +955,7 @@ function BisRow({
                   onClick={onEdit}
                   aria-label={m.crud.editAria(link.label)}
                   title={m.common.edit}
-                  className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
+                  className="inline-flex tap-target relative h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
                 >
                   <Pencil className="h-3 w-3" aria-hidden />
                 </button>
@@ -964,7 +964,7 @@ function BisRow({
                   onClick={onDelete}
                   aria-label={m.crud.deleteAria(link.label)}
                   title={m.common.delete}
-                  className="inline-flex h-6 w-6 items-center justify-center rounded text-rose-300 hover:bg-rose-500/15 hover:text-rose-200"
+                  className="inline-flex tap-target relative h-6 w-6 items-center justify-center rounded text-rose-300 hover:bg-rose-500/15 hover:text-rose-200"
                 >
                   <Trash2 className="h-3 w-3" aria-hidden />
                 </button>

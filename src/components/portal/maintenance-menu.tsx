@@ -659,7 +659,7 @@ export function MaintenanceMenu() {
             type="button"
             onClick={() => setResult(null)}
             aria-label={m.maintenance.closeResultAria}
-            className="absolute top-1.5 right-1.5 inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground"
+            className="absolute top-1.5 right-1.5 inline-flex tap-target h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground"
           >
             <X className="h-3.5 w-3.5" aria-hidden />
           </button>

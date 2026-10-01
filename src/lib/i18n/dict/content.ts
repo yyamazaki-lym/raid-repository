@@ -626,6 +626,7 @@ export const ja = {
     tabVisibilityLabel: "各タブの表示 ON/OFF と名前",
     // L-15 (2026-09-09): ロットタブの「欲しい人」行列を出すか。
     lootWantMatrixLabel: "欲しい人",
+    lootWeeklyLabel: "週制限",
     tabRenamePlaceholder: (def: string) => `名前を変更（空欄＝既定「${def}」）`,
     mitigationUrlLabel: "軽減表URL（任意）",
     mitigationUrlHelp: "軽減表サブタブで iframe 埋め込み表示されます。",
@@ -863,6 +864,11 @@ export const ja = {
       `scanned ${scanned}, 失敗 ${failed}${reason}`,
     discordInserted: (inserted: number, dup: number) => `+${inserted} 件 (重複 ${dup})`,
     discordAllDup: (dup: number) => `すべて重複 (${dup})`,
+    discordDeferred: (n: number) => ` ・残り ${n} 件は次回`,
+    discordDeadline: (n: number) =>
+      n > 0
+        ? `時間切れのため次回へ (${n} 件)`
+        : "時間切れのため次回へ",
     videoMetaTitle: "動画メタデータ — 取得結果",
     fetched: "取得",
     count: "件",
@@ -1481,6 +1487,7 @@ Lines only in the one in use: ${removed}`,
       "Where the content card leads. If the default tab is hidden, it falls back to the first visible tab on save.",
     tabVisibilityLabel: "Tab visibility and names",
     lootWantMatrixLabel: "Want matrix",
+    lootWeeklyLabel: "Weekly",
     tabRenamePlaceholder: (def) => `Rename (empty = default "${def}")`,
     mitigationUrlLabel: "Mitigation URL (optional)",
     mitigationUrlHelp: "Embedded as an iframe on the Mitigation tab.",
@@ -1706,6 +1713,9 @@ Lines only in the one in use: ${removed}`,
       `scanned ${scanned}, failed ${failed}${reason}`,
     discordInserted: (inserted, dup) => `+${inserted} (duplicates ${dup})`,
     discordAllDup: (dup) => `All duplicates (${dup})`,
+    discordDeferred: (n) => ` · ${n} more next run`,
+    discordDeadline: (n) =>
+      n > 0 ? `Out of time — ${n} left for the next run` : "Out of time — left for the next run",
     videoMetaTitle: "Video metadata — results",
     fetched: "Fetched",
     count: "",

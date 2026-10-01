@@ -30,7 +30,9 @@ import {
   FALLBACK_DEFAULT_END_TIME,
   FALLBACK_DEFAULT_START_TIME,
 } from "@/lib/schedule/native-defaults";
+import { useServerText } from "@/lib/i18n/use-server-text";
 import { useMessages } from "@/lib/i18n/client";
+import { APP_UTC_OFFSET_MS } from "@/lib/app-timezone";
 
 /**
  * TODO #2 phase 2-B: admin が native スケジュールに候補日を追加する dialog。
@@ -66,7 +68,7 @@ import { useMessages } from "@/lib/i18n/client";
 
 const DOW_LABELS = ["日", "月", "火", "水", "木", "金", "土"] as const;
 
-const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
+const JST_OFFSET_MS = APP_UTC_OFFSET_MS;
 
 const TIME_RE = /^([01]?\d|2[0-3]):([0-5]\d)$/;
 
@@ -106,6 +108,7 @@ export function CandidateDateDialog({
   const initialStart = normalizeTime(defaultStartTime, FALLBACK_DEFAULT_START_TIME);
   const initialEnd = normalizeTime(defaultEndTime, FALLBACK_DEFAULT_END_TIME);
 
+  const sr = useServerText();
   const m = useMessages();
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -177,7 +180,7 @@ export function CandidateDateDialog({
         note: note.trim() || undefined,
       });
       if (!result.ok) {
-        setError(result.reason);
+        setError(sr(result.reason));
         return;
       }
       toast.success(
@@ -244,7 +247,7 @@ export function CandidateDateDialog({
         note: note.trim() || undefined,
       });
       if (!result.ok) {
-        setError(result.reason);
+        setError(sr(result.reason));
         return;
       }
       toast.success(m.candidateDate.toastAdded(rawDate));
