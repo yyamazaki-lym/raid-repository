@@ -273,6 +273,11 @@ export function useRealtimeAllScheduleMemos(
     onSubscribeError: () => {
       void refetchAll();
     },
+    // U-5 (2026-10-01): 背面 / スリープ / 回線断から戻ったら取り直す
+    // (Realtime は切れている間の変更を再送しない)。
+    onResume: () => {
+      void refetchAll();
+    },
     onChange: (payload) => {
       if (payload.eventType === "INSERT") {
         const row = payload.new as ScheduleSessionMemoRow | null;
