@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { linkFflogsReportsToVideos } from "@/lib/server/fflogs";
 import { syncFflogsFights } from "@/lib/server/fflogs-fights";
 import { assertCronAuth } from "@/lib/server/cron-auth";
+import { recordCronRun } from "@/lib/server/cron-status";
 import { fetchAppSetting } from "@/lib/supabase/app-settings";
 import { FFLOGS_SYNC_ROUTE_FETCH_BUDGET_MS } from "@/lib/fflogs-sync-budget";
 
@@ -49,6 +50,7 @@ export async function GET(req: NextRequest) {
 
   const enabled = await fetchAppSetting("fflogs_cron_enabled");
   if (enabled === "false") {
+    await recordCronRun("fflogs-sync", "skipped", "disabled");
     return NextResponse.json({ ok: true, skipped: "disabled" });
   }
 
@@ -65,6 +67,7 @@ export async function GET(req: NextRequest) {
       "[cron/fflogs-sync] linkFflogsReportsToVideos failed:",
       result.reason,
     );
+    await recordCronRun("fflogs-sync", "error", `link: ${result.reason}`);
     return NextResponse.json({
       ok: true,
       skipped: "link-failed",
@@ -92,6 +95,23 @@ export async function GET(req: NextRequest) {
   if (!fights.ok) {
     console.warn("[cron/fflogs-sync] syncFflogsFights failed:", fights.reason);
   }
+  // 2026-10-01 監査 F-2: 期限切れで pull 取り込みを回した / 打ち切った回は
+  // 「一部」、取り込み自体の失敗 (OAuth 未接続など) は「失敗」として記録する。
+  await recordCronRun(
+    "fflogs-sync",
+    !fights.ok
+      ? fights.reason === "deadline-exhausted"
+        ? "partial"
+        : "error"
+      : result.truncated || fights.truncated
+        ? "partial"
+        : "ok",
+    !fights.ok
+      ? `fights: ${fights.reason}`
+      : result.truncated || fights.truncated
+        ? "truncated"
+        : null,
+  );
 
   return NextResponse.json({
     ok: true,
