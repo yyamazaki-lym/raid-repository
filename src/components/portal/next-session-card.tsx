@@ -185,7 +185,7 @@ export function NextSessionCard({
           rel="noopener noreferrer"
           aria-label={m.schedule.calendarAria}
           title={m.schedule.calendarTitle}
-          className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground"
+          className="inline-flex tap-target relative h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground"
         >
           <CalendarPlus className="h-3.5 w-3.5" aria-hidden />
         </a>

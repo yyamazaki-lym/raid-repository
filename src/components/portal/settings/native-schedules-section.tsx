@@ -207,7 +207,7 @@ export function NativeSchedulesSection({
                       type="button"
                       size="icon"
                       variant="ghost"
-                      className="h-7 w-7 shrink-0"
+                      className="tap-target relative h-7 w-7 shrink-0"
                       onClick={() => onCommitRename(row)}
                       title={m.nativeSchedules.renameSave}
                       aria-label={m.nativeSchedules.renameSave}
@@ -218,7 +218,7 @@ export function NativeSchedulesSection({
                       type="button"
                       size="icon"
                       variant="ghost"
-                      className="h-7 w-7 shrink-0"
+                      className="tap-target relative h-7 w-7 shrink-0"
                       onClick={() => setEditingId(null)}
                       title={m.nativeSchedules.renameCancel}
                       aria-label={m.nativeSchedules.renameCancel}
@@ -244,7 +244,7 @@ export function NativeSchedulesSection({
                       type="button"
                       size="icon"
                       variant="ghost"
-                      className="h-7 w-7"
+                      className="tap-target relative h-7 w-7"
                       disabled={pending}
                       onClick={() => {
                         setEditingId(row.id);
@@ -259,7 +259,7 @@ export function NativeSchedulesSection({
                       type="button"
                       size="icon"
                       variant="ghost"
-                      className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                      className="tap-target relative h-7 w-7 text-muted-foreground hover:text-destructive"
                       disabled={
                         pending ||
                         isActive ||

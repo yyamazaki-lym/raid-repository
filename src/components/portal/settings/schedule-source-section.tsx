@@ -333,7 +333,7 @@ export function ScheduleSourceSection({
                           type="button"
                           size="icon"
                           variant="ghost"
-                          className="h-7 w-7 shrink-0"
+                          className="tap-target relative h-7 w-7 shrink-0"
                           onClick={() => onCommitRename(entry)}
                           title={m.scheduleSource.renameSave}
                           aria-label={m.scheduleSource.renameSave}
@@ -344,7 +344,7 @@ export function ScheduleSourceSection({
                           type="button"
                           size="icon"
                           variant="ghost"
-                          className="h-7 w-7 shrink-0"
+                          className="tap-target relative h-7 w-7 shrink-0"
                           onClick={() => setEditingId(null)}
                           title={m.scheduleSource.renameCancel}
                           aria-label={m.scheduleSource.renameCancel}
@@ -380,7 +380,7 @@ export function ScheduleSourceSection({
                         type="button"
                         size="icon"
                         variant="ghost"
-                        className="h-7 w-7"
+                        className="tap-target relative h-7 w-7"
                         disabled={pending}
                         onClick={() => onStartRename(entry)}
                         title={m.scheduleSource.renameLabel}
@@ -392,7 +392,7 @@ export function ScheduleSourceSection({
                         type="button"
                         size="icon"
                         variant="ghost"
-                        className="h-7 w-7"
+                        className="tap-target relative h-7 w-7"
                         disabled={pending}
                         onClick={() => onRefetchName(entry)}
                         title={m.scheduleSource.refetchName}
@@ -404,7 +404,7 @@ export function ScheduleSourceSection({
                         type="button"
                         size="icon"
                         variant="ghost"
-                        className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                        className="tap-target relative h-7 w-7 text-muted-foreground hover:text-destructive"
                         disabled={pending || isActive}
                         onClick={() => void onRemove(entry)}
                         title={

@@ -512,7 +512,7 @@ export function NativeMembersSection({
                     disabled={!canEdit || pending}
                     onClick={() => onDelete(mem)}
                     aria-label={m.nativeMembers.deleteAria(mem.display_name)}
-                    className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                    className="tap-target relative h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
                   >
                     <Trash2 className="h-3.5 w-3.5" aria-hidden />
                   </Button>
@@ -546,7 +546,7 @@ export function NativeMembersSection({
                 onClick={() => setNewDiscordId(generateLocalKey())}
                 aria-label={m.nativeMembers.generateKeyAria}
                 title={m.nativeMembers.generateKeyTitle}
-                className="h-7 w-7 shrink-0 p-0 text-muted-foreground hover:text-foreground"
+                className="tap-target relative h-7 w-7 shrink-0 p-0 text-muted-foreground hover:text-foreground"
               >
                 <Wand2 className="h-3.5 w-3.5" aria-hidden />
               </Button>

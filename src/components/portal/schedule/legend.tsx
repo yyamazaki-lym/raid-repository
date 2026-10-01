@@ -358,7 +358,7 @@ export function Legend({
                           }}
                           aria-label={m.legend.clearAria}
                           title={m.legend.clearTitle}
-                          className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-rose-300/40 text-rose-300 transition-colors hover:bg-rose-500/15 hover:text-rose-200"
+                          className="inline-flex tap-target relative h-6 w-6 items-center justify-center rounded-md border border-rose-300/40 text-rose-300 transition-colors hover:bg-rose-500/15 hover:text-rose-200"
                         >
                           <RotateCcw className="h-3 w-3" aria-hidden />
                         </button>
@@ -444,7 +444,7 @@ export function Legend({
             disabled={refreshing}
             aria-label={m.legend.refreshLabel}
             title={m.legend.refreshLabel}
-            className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-border/50 bg-background/30 text-muted-foreground transition-all hover:border-[var(--neon-cyan)]/60 hover:bg-[var(--neon-cyan)]/8 hover:text-[var(--neon-cyan)] disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex tap-target relative h-6 w-6 items-center justify-center rounded-md border border-border/50 bg-background/30 text-muted-foreground transition-all hover:border-[var(--neon-cyan)]/60 hover:bg-[var(--neon-cyan)]/8 hover:text-[var(--neon-cyan)] disabled:cursor-not-allowed disabled:opacity-60"
           >
             {refreshing ? (
               <Loader2 className="h-3 w-3 animate-spin" aria-hidden />

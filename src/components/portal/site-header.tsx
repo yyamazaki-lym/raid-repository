@@ -161,9 +161,11 @@ export async function SiteHeader() {
               releaseDate={APP_DATE}
               initialColor={pickInitialColor()}
             >
-              <span>
+              {/* 2026-10-01 監査 U-2: 375px では「v2.18 (2026-09-28) · BETA」が
+                  3 行に折り返していた。日付は sm 以上だけ出し、折り返さない。 */}
+              <span className="whitespace-nowrap">
                 v{APP_VERSION}
-                {` (${APP_DATE})`}
+                <span className="hidden sm:inline">{` (${APP_DATE})`}</span>
               </span>
               <span aria-hidden className="opacity-50">·</span>
               <span className="tracking-[0.22em]">{APP_STAGE}</span>
