@@ -434,7 +434,7 @@ function SortableMacroRow({
             role="presentation"
             aria-label={m.crud.dragHandleAria(name)}
             onClick={(e) => e.stopPropagation()}
-            className="inline-flex h-6 w-6 shrink-0 cursor-grab items-center justify-center rounded text-muted-foreground hover:bg-secondary/60 hover:text-foreground active:cursor-grabbing"
+            className="inline-flex tap-target relative h-6 w-6 shrink-0 cursor-grab items-center justify-center rounded text-muted-foreground hover:bg-secondary/60 hover:text-foreground active:cursor-grabbing"
             title={m.crud.dragToReorder}
           >
             <GripVertical className="h-3.5 w-3.5" aria-hidden />
@@ -477,7 +477,7 @@ function SortableMacroRow({
               aria-label={m.macros.setCurrentAria(name, macro.isCurrent)}
               title={m.macros.setCurrentAria(name, macro.isCurrent)}
               className={
-                "inline-flex h-7 w-7 items-center justify-center rounded " +
+                "inline-flex tap-target relative h-7 w-7 items-center justify-center rounded " +
                 (macro.isCurrent
                   ? "text-[var(--neon-cyan)] hover:bg-[var(--neon-cyan)]/15"
                   : "text-muted-foreground hover:bg-secondary/60 hover:text-foreground")
@@ -494,7 +494,7 @@ function SortableMacroRow({
             onClick={onCopy}
             aria-label={m.macros.copyBodyAria(name)}
             title={m.macros.copyBodyTitle}
-            className="inline-flex h-7 w-7 items-center justify-center rounded text-[var(--neon-cyan)] hover:bg-[var(--neon-cyan)]/15"
+            className="inline-flex tap-target relative h-7 w-7 items-center justify-center rounded text-[var(--neon-cyan)] hover:bg-[var(--neon-cyan)]/15"
           >
             <ClipboardCopy className="h-3.5 w-3.5" aria-hidden />
           </button>
@@ -503,7 +503,7 @@ function SortableMacroRow({
             onClick={onEdit}
             aria-label={m.crud.editAria(name)}
             title={m.common.edit}
-            className="inline-flex h-7 w-7 items-center justify-center rounded text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
+            className="inline-flex tap-target relative h-7 w-7 items-center justify-center rounded text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
           >
             <Pencil className="h-3.5 w-3.5" aria-hidden />
           </button>
@@ -512,7 +512,7 @@ function SortableMacroRow({
             onClick={onDelete}
             aria-label={m.crud.deleteAria(name)}
             title={m.common.delete}
-            className="inline-flex h-7 w-7 items-center justify-center rounded text-rose-300 hover:bg-rose-500/15 hover:text-rose-200"
+            className="inline-flex tap-target relative h-7 w-7 items-center justify-center rounded text-rose-300 hover:bg-rose-500/15 hover:text-rose-200"
           >
             <Trash2 className="h-3.5 w-3.5" aria-hidden />
           </button>
@@ -812,7 +812,7 @@ function SortableTemplateRow({
           {...listeners}
           aria-label={m.crud.dragHandleAria(heading)}
           title={m.macros.templateHandleTitle}
-          className="inline-flex h-6 w-6 shrink-0 cursor-grab items-center justify-center rounded text-muted-foreground hover:bg-secondary/60 hover:text-foreground active:cursor-grabbing"
+          className="inline-flex tap-target relative h-6 w-6 shrink-0 cursor-grab items-center justify-center rounded text-muted-foreground hover:bg-secondary/60 hover:text-foreground active:cursor-grabbing"
         >
           <GripVertical className="h-3.5 w-3.5" aria-hidden />
         </button>
@@ -855,7 +855,7 @@ function SortableTemplateRow({
             onClick={onCopy}
             aria-label={m.macros.copyBodyAria(template.label || fallbackLabel)}
             title={m.macros.copyBodyTitle}
-            className="inline-flex h-7 w-7 items-center justify-center rounded text-[var(--neon-cyan)] hover:bg-[var(--neon-cyan)]/15"
+            className="inline-flex tap-target relative h-7 w-7 items-center justify-center rounded text-[var(--neon-cyan)] hover:bg-[var(--neon-cyan)]/15"
           >
             <ClipboardCopy className="h-3.5 w-3.5" aria-hidden />
           </button>
@@ -864,7 +864,7 @@ function SortableTemplateRow({
             onClick={onEdit}
             aria-label={m.crud.editAria(heading)}
             title={m.common.edit}
-            className="inline-flex h-7 w-7 items-center justify-center rounded text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
+            className="inline-flex tap-target relative h-7 w-7 items-center justify-center rounded text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
           >
             <Pencil className="h-3.5 w-3.5" aria-hidden />
           </button>
@@ -873,7 +873,7 @@ function SortableTemplateRow({
             onClick={onDelete}
             aria-label={m.crud.deleteAria(heading)}
             title={m.common.delete}
-            className="inline-flex h-7 w-7 items-center justify-center rounded text-rose-300 hover:bg-rose-500/15 hover:text-rose-200"
+            className="inline-flex tap-target relative h-7 w-7 items-center justify-center rounded text-rose-300 hover:bg-rose-500/15 hover:text-rose-200"
           >
             <Trash2 className="h-3.5 w-3.5" aria-hidden />
           </button>

@@ -27,6 +27,14 @@ type WriteResult = { ok: true } | { ok: false; reason: string };
 const NOTE_MAX = 200;
 const NAME_MAX = 100;
 
+const UUID_RE =
+  /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+
+/** 制御文字を除去 + 長さ制限 (表示名用。空なら空文字)。 */
+function sanitizeName(name: string | null | undefined): string {
+  return (name ?? "").replace(/[\u0000-\u001F\u007F]/g, "").trim().slice(0, NAME_MAX);
+}
+
 /** DB の CHECK (loot_weekly_checks_text_sane) と同じく制御文字を除去 + 長さ制限。 */
 function sanitizeNote(note: string | null | undefined): string | null {
   if (note == null) return null;
@@ -49,6 +57,11 @@ export async function setMyLootWeeklyStatusAction(input: {
   if (member.isDemoGuest) {
     return { ok: false, reason: "デモ表示中は変更できません" };
   }
+  // 2026-10-01 監査 S-8: 形の検査が無く、不正な文字列が service role の
+  // upsert まで届いていた (FK で弾かれるがエラー文が出る)。
+  if (!UUID_RE.test(input.categoryId ?? "")) {
+    return { ok: false, reason: "コンテンツの指定が不正です" };
+  }
   if (!isWeekStartString(input.weekStart)) {
     return { ok: false, reason: "週の指定が不正です" };
   }
@@ -56,8 +69,20 @@ export async function setMyLootWeeklyStatusAction(input: {
     return { ok: false, reason: "状態の指定が不正です" };
   }
 
-  const displayName = (input.displayName ?? "").trim().slice(0, NAME_MAX);
   const supabase = createSupabaseServiceRoleClient();
+  // 2026-10-01 監査 S-8: 表示名は以前は client の値をそのまま保存しており、
+  // 他のメンバーの名前を名乗った行を作れた (表示側もこの列を優先していた)。
+  // メンバー一覧に本人の行があればその表示名を server 側で使い、client の
+  // 値はメンバー一覧に居ない人 (旧メンバー / 未登録) のときだけ使う。
+  const { data: rosterRow } = await supabase
+    .from("native_schedule_members")
+    .select("display_name")
+    .eq("discord_user_id", member.discordId)
+    .maybeSingle();
+  const rosterName = sanitizeName(
+    (rosterRow as { display_name?: string } | null)?.display_name,
+  );
+  const displayName = rosterName || sanitizeName(input.displayName);
   const { error } = await supabase.from("loot_weekly_checks").upsert(
     {
       category_id: input.categoryId,

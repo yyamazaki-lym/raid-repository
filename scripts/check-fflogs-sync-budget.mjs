@@ -148,7 +148,7 @@ try {
   console.log("構造 (各段)");
   const link = sliceFrom(
     readFileSync("src/lib/server/fflogs.ts", "utf8"),
-    "export async function linkFflogsReportsToVideos(",
+    "async function linkFflogsReportsToVideosUnlocked(",
   );
   check(
     "リンク段が共有期限を resolveSyncDeadline で受ける",
@@ -164,7 +164,7 @@ try {
   );
   const fights = sliceFrom(
     readFileSync("src/lib/server/fflogs-fights.ts", "utf8"),
-    "export async function syncFflogsFights(",
+    "async function syncFflogsFightsUnlocked(",
   );
   check(
     "取り込み段が共有期限を resolveSyncDeadline で受ける",

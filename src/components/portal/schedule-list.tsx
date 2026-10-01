@@ -14,6 +14,7 @@ import { SessionMemoDot } from "./schedule/session-memo-dot";
 import { AttendanceSummaryChip } from "@/components/portal/schedule/attendance-summary-chip";
 import { FrameDeviationBadge } from "@/components/portal/native-schedule/frame-deviation-badge";
 import { ScheduleAgendaList } from "@/components/portal/schedule/agenda-list";
+import { HolidayMark } from "@/components/portal/schedule/holiday-mark";
 import { OptionalSessionBadge } from "@/components/portal/native-schedule/optional-session-badge";
 import {
   dowIndexFromLabel,
@@ -45,6 +46,7 @@ import {
   ATT_TONE_FALLBACK,
 } from "@/lib/schedule/attendance-ui";
 import { DECISION_BADGE_CLASS } from "@/lib/schedule/status-ui";
+import { useHydrationSafeNow } from "@/lib/use-hydration-safe-now";
 import {
   buildEditUrl,
   groupCommentsByAuthor,
@@ -100,6 +102,11 @@ const ICON_GROUP_CLASS = "mx-auto flex items-center gap-1 pl-2";
 
 type Props = {
   result: ScheduleFetchResult;
+  /**
+   * サーバー描画の時刻。過去 / 予定の境界と「最近の過去」の折りたたみを
+   * hydration でも同じ時刻で判定するため (2026-10-01 監査 U-14)。
+   */
+  renderedAtMs: number;
   /**
    * W-15 (2026-09-08): 定期枠の曜日 CSV。設定されている行だけ「臨時 /
    * 今回だけ」バッジを出す (未設定なら 1 つも出ない = 従来の見た目)。
@@ -184,8 +191,10 @@ export function ScheduleList({
   currentDiscordId = null,
   isAdmin = false,
   recurringDows = null,
+  renderedAtMs,
 }: Props) {
   const m = useMessages();
+  const nowMs = useHydrationSafeNow(renderedAtMs);
   // W-15 (2026-09-08): 定期枠の曜日。未設定なら空配列 =「例外」の概念なし。
   const frameDows = parseRecurringDows(recurringDows);
   // TODO #11 phase 7: 全 memo を 1 channel で監視し、各 SessionRow には
@@ -367,16 +376,17 @@ export function ScheduleList({
     });
   };
 
-  const { upcoming, past } = splitSessions(sessions, limit);
+  const { upcoming, past } = splitSessions(sessions, limit, nowMs);
   // Past sessions newest-first (already sorted by splitSessions). The
   // most-recent past sits at the top of the detail table — reads as
   // "what happened most recently" first.
   const renderedPast = showDetailedPast ? past : [];
   // 2.1 (2026-04-29): split into "recent" (≤ 60 days ago) and "older"
-  // for the fold UX. cutoff は描画時点の Date.now なので、ページが
-  // 長時間開きっぱなしでも問題なし (再 render で更新される)。
+  // for the fold UX. cutoff は useHydrationSafeNow の時刻 (hydration までは
+  // サーバー描画の時刻、そのあと 30 秒刻みの実時刻) なので、ページが
+  // 長時間開きっぱなしでも追従する。
   const PAST_FOLD_THRESHOLD_MS = 60 * 24 * 60 * 60 * 1000;
-  const pastCutoffMs = Date.now() - PAST_FOLD_THRESHOLD_MS;
+  const pastCutoffMs = nowMs - PAST_FOLD_THRESHOLD_MS;
   const recentPast = renderedPast.filter(
     (s) => s.date.getTime() >= pastCutoffMs,
   );
@@ -578,6 +588,15 @@ export function ScheduleList({
                 : m.schedule.countRecent(recentPast.length, renderedPast.length)}
             </span>
           </header>
+          {/* 2026-10-01 監査 U-10: 375px では表が横スクロール前提 (min-w 640px)
+              なのに、そうと分かる手掛かりが無かった。上段の予定表 (UI-10) の
+              ようにアジェンダへ差し替えはしない — この表は利用者が「詳細」を
+              選んで開くもので、メンバーごとの記号・メモ / 動画 / Logs・管理者の
+              「過去ログから消す」はここにしか無い (スマホ向けの軽い表示は
+              日付チップの簡易表示が担う)。md 未満でだけ一言添える。 */}
+          <p className="border-b border-border/40 px-3 py-1.5 text-[11px] text-muted-foreground md:hidden">
+            {m.schedule.pastTableScrollHint}
+          </p>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[640px] border-collapse text-left text-sm">
               {tableHead(false, false)}
@@ -825,6 +844,7 @@ function DateLabel({
   return (
     <span className={colorClass} title={holidayName ?? undefined}>
       {text}
+      {holiday && <HolidayMark name={holidayName} />}
     </span>
   );
 }

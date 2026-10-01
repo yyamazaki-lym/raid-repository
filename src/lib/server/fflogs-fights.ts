@@ -13,6 +13,7 @@ import { buildFflogsReportUrl } from "@/lib/fflogs-url";
 import { getSecretValue } from "./secret-store";
 import { fetchAllPages } from "@/lib/fetch-all-pages";
 import { buildFflogsXhrHeaders } from "./fflogs-scrape-request";
+import { fetchErrorReason } from "@/lib/fetch-error-reason";
 import { parseFflogsReportCode } from "@/lib/fflogs-url";
 import { notifyLogsEvents } from "./logs-notify";
 import {
@@ -31,6 +32,12 @@ import {
   type FflogsAutoRoute,
 } from "@/lib/fflogs-report-source";
 import { jstYmdString } from "@/lib/jst-date";
+import { FFLOGS_FIGHTS_LEASE_KEY, withSyncLease } from "./sync-lease-db";
+import {
+  reportLimitForBudget,
+  remainingRatio,
+  type RateLimitBudget,
+} from "@/lib/fflogs-rate-budget";
 import { resolveSyncDeadline } from "@/lib/fflogs-sync-budget";
 import {
   type CategoryRef,
@@ -53,6 +60,7 @@ import {
   type StoredPhaseTransition,
 } from "@/lib/fflogs-fight-detail";
 import { attachBothAbilityNames } from "./xivapi-action-names";
+import { APP_UTC_OFFSET_ISO } from "@/lib/app-timezone";
 import {
   recordAttendanceActuals,
   type ReportParticipants,
@@ -134,6 +142,13 @@ export type FflogsFightsSyncResult =
        * 画面で示すため。
        */
       remaining: number;
+      /**
+       * 2026-10-01 監査 C-7: FFLogs のレート制限 (429) に当たって今回の同期を
+       * 打ち切った。残りは台帳に未取得のまま残り、次回の同期が続ける。
+       */
+      rateLimited?: boolean;
+      /** 同期の開始時点の FFLogs ポイントの残り割合 (0〜1、取れなければ null)。 */
+      pointsRemainingRatio?: number | null;
       /** v2 (OAuth) で読めたレポート数 = フェーズ遷移 / 死亡イベントが取れた分。 */
       fetchedViaV2: number;
       /** v1 / cookie の代替経路で読めたレポート数 (fights の骨格のみ)。 */
@@ -251,7 +266,33 @@ export type FightDetail = {
  */
 const DETAIL_BATCH_SIZE = 8;
 
-export async function syncFflogsFights(opts?: {
+/**
+ * pull 取り込み (下の `syncFflogsFightsUnlocked`) を、同時に 2 本走らないよう
+ * ロックを取ってから実行する (2026-10-01 監査 C-5、`sync-lease-db.ts`)。
+ *
+ * 日付に Logs を登録した直後の 1 件取り込み (`onlyCodes`) はロックを取らない
+ * — 利用者の操作を、裏で走っている日次同期の終わりまで待たせないため
+ * (対象のレポートが決まっていて軽い)。
+ */
+export async function syncFflogsFights(
+  opts?: Parameters<typeof syncFflogsFightsUnlocked>[0],
+): Promise<FflogsFightsSyncResult> {
+  if (opts?.onlyCodes) return syncFflogsFightsUnlocked(opts);
+  const client = opts?.useServiceRole
+    ? createSupabaseServiceRoleClient()
+    : await createClient();
+  return withSyncLease(
+    client,
+    FFLOGS_FIGHTS_LEASE_KEY,
+    () => syncFflogsFightsUnlocked(opts),
+    () => ({
+      ok: false,
+      reason: "別の FFLogs 同期が実行中です — 数分後にもう一度実行してください",
+    }),
+  );
+}
+
+async function syncFflogsFightsUnlocked(opts?: {
   useServiceRole?: boolean;
   limit?: number;
   /**
@@ -545,7 +586,13 @@ export async function syncFflogsFights(opts?: {
         a.effectiveDate ?? "9999-99-99",
       ),
   );
-  const limit = opts?.limit ?? DEFAULT_REPORT_LIMIT;
+  // C-7 (2026-10-01 監査): FFLogs v2 はポイント制。残りが少なければ今回の枠を
+  // 絞り (残りは台帳に未取得のまま次回へ)、ほぼ尽きていれば取りに行かない。
+  const rateBudget = targets.length > 0 ? await fetchRateLimitBudget(token) : null;
+  const limit = reportLimitForBudget(
+    opts?.limit ?? DEFAULT_REPORT_LIMIT,
+    rateBudget,
+  );
   const sliced = targets.slice(0, limit);
 
   let fetched = 0;
@@ -565,6 +612,8 @@ export async function syncFflogsFights(opts?: {
   const attendanceReports: ReportParticipants[] = [];
   const failures: Array<{ reportCode: string; reason: string }> = [];
   let truncated = targets.length > sliced.length;
+  // C-7: 429 を受けたら立てる。以後のレポートは取りに行かない。
+  let rateLimited = false;
 
   /**
    * 1 レポート分の取得と保存。並列ワーカーから呼ばれる。
@@ -578,6 +627,15 @@ export async function syncFflogsFights(opts?: {
   ): Promise<void> => {
     let res = await fetchReportFights(token, ref.code);
     fetched += 1;
+    // C-7: レート制限 (429)。このレポートは台帳に書かず (次回に取り直す)、
+    // 今回の同期はここで打ち切る。以前は残りのレポートも引き続けて全部 429 に
+    // していた。
+    if (!res.ok && res.rateLimited) {
+      fetched -= 1;
+      rateLimited = true;
+      truncated = true;
+      return;
+    }
     // PT 指標 (Summary table) は v2 token で読めたレポートだけ取りに行く。
     // v1 / cookie fallback で取れたレポート (権限なし) は table も読めない
     // ので、無駄な 1 往復と権限エラーの warn を出さないためのフラグ。
@@ -828,6 +886,10 @@ export async function syncFflogsFights(opts?: {
       const index = cursor;
       cursor += 1;
       if (index >= sliced.length) return;
+      if (rateLimited) {
+        truncated = true;
+        return;
+      }
       // 時間予算の判定は「まだ処理していないレポートが残っている」ときだけ
       // truncated を立てる。全件を処理し終えた直後に予算を超えていても、
       // 取り残しは無いので打ち切り扱いにしない (旧実装は最後の 1 件の
@@ -987,6 +1049,8 @@ export async function syncFflogsFights(opts?: {
     truncated,
     // 取りに行った件数 (fetched) を全候補から引く = 枠に入らなかった件数。
     remaining: Math.max(0, targets.length - fetched),
+    rateLimited,
+    pointsRemainingRatio: remainingRatio(rateBudget),
     fetchedViaV2,
     fetchedViaFallback,
     reattributed,
@@ -1069,7 +1133,7 @@ export async function bridgeSyncedReportsToVideos(db: Db): Promise<number> {
 
 function isRecent(date: string | null): boolean {
   if (!date) return true; // 日付不明は毎回取り直す (件数は少ない)
-  const t = Date.parse(`${date}T00:00:00+09:00`);
+  const t = Date.parse(`${date}T00:00:00${APP_UTC_OFFSET_ISO}`);
   if (!Number.isFinite(t)) return true;
   return Date.now() - t < REFRESH_WINDOW_DAYS * 24 * 60 * 60 * 1000;
 }
@@ -1180,7 +1244,8 @@ type ReportFightsResult =
       startMs: number;
       fights: FightPayload[];
     }
-  | { ok: false; reason: string };
+  // rateLimited: FFLogs v2 が 429 を返した (C-7)。
+  | { ok: false; reason: string; rateLimited?: boolean };
 
 /**
  * 1 レポート分の fights を取得する。
@@ -1260,7 +1325,11 @@ async function fetchReportFights(
   // GraphQL エラーのときだけ「フィールド名の不一致かもしれない」と解釈して
   // 段階的に項目を落として再試行する。HTTP エラー (401 / 5xx) は再試行しない。
   if (withPhasesRes.kind !== "graphql") {
-    return { ok: false, reason: withPhasesRes.reason };
+    return {
+      ok: false,
+      reason: withPhasesRes.reason,
+      rateLimited: withPhasesRes.kind === "rate",
+    };
   }
   console.warn(
     "[fflogs-fights] phase query rejected, retrying without phases:",
@@ -1268,14 +1337,57 @@ async function fetchReportFights(
   );
   const first = await postGraphql(token, full, code);
   if (first.ok) return first;
-  if (first.kind !== "graphql") return { ok: false, reason: first.reason };
+  if (first.kind !== "graphql") {
+    return { ok: false, reason: first.reason, rateLimited: first.kind === "rate" };
+  }
   console.warn(
     "[fflogs-fights] full query rejected, retrying minimal:",
     first.reason,
   );
   const second = await postGraphql(token, minimal, code);
   if (second.ok) return second;
-  return { ok: false, reason: second.reason };
+  return { ok: false, reason: second.reason, rateLimited: second.kind === "rate" };
+}
+
+/**
+ * FFLogs v2 のポイント残量 (2026-10-01 監査 C-7)。取れなければ null —
+ * 照会の失敗で同期を止めない (`reportLimitForBudget` は null なら枠を変えない)。
+ */
+async function fetchRateLimitBudget(token: string): Promise<RateLimitBudget | null> {
+  try {
+    const res = await fetch(FFLOGS_GRAPHQL_URL, {
+      method: "POST",
+      cache: "no-store",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({
+        query: "query { rateLimitData { limitPerHour pointsSpentThisHour pointsResetIn } }",
+      }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) return null;
+    const json = (await res.json()) as {
+      data?: { rateLimitData?: Partial<RateLimitBudget> | null };
+    };
+    const r = json.data?.rateLimitData;
+    if (
+      !r ||
+      typeof r.limitPerHour !== "number" ||
+      typeof r.pointsSpentThisHour !== "number"
+    ) {
+      return null;
+    }
+    return {
+      limitPerHour: r.limitPerHour,
+      pointsSpentThisHour: r.pointsSpentThisHour,
+      pointsResetIn: typeof r.pointsResetIn === "number" ? r.pointsResetIn : 0,
+    };
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -1477,6 +1589,9 @@ async function fetchFightsJsonViaEdgeProxy(
       body: JSON.stringify({ reportCode: code, sessionCookie }),
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS + 5_000),
       cache: "no-store",
+      // 2026-10-01 監査 S-7: CRON_SECRET (と session cookie) を載せるので、
+      // 3xx で別の宛先へ転送させない (logs-auto-sync.ts の #397 と同じ)。
+      redirect: "error",
     });
     if (res.status === 429) {
       return {
@@ -1540,10 +1655,9 @@ async function fetchFightsJsonDirect(
     }
     return { ok: true, text: await res.text() };
   } catch (e) {
-    return {
-      ok: false,
-      reason: e instanceof Error ? e.message : "fetch failed",
-    };
+    // ⚠ e.message を使わない: ヘッダ値が不正だと cookie がそのまま載り、
+    // fflogs_report_syncs.reason (メンバー全員が読める) に残る。
+    return { ok: false, reason: fetchErrorReason(e) };
   }
 }
 
@@ -1731,7 +1845,7 @@ async function postGraphql(
   code: string,
 ): Promise<
   | (ReportFightsResult & { ok: true })
-  | { ok: false; reason: string; kind: "http" | "graphql" | "empty" }
+  | { ok: false; reason: string; kind: "http" | "graphql" | "empty" | "rate" }
 > {
   try {
     const res = await fetch(FFLOGS_GRAPHQL_URL, {
@@ -1745,6 +1859,9 @@ async function postGraphql(
       body: JSON.stringify({ query, variables: { code } }),
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });
+    if (res.status === 429) {
+      return { ok: false, kind: "rate", reason: "FFLogs のレート制限 (429)" };
+    }
     if (!res.ok) {
       const text = await res.text().catch(() => "");
       return {

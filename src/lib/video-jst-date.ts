@@ -1,4 +1,5 @@
 import { extractDateFromTitle } from "@/lib/title-date";
+import { APP_UTC_OFFSET_MS } from "@/lib/app-timezone";
 
 /**
  * 動画 (category_links kind='video') の「JST 暦日」解決を一元化する
@@ -17,7 +18,7 @@ import { extractDateFromTitle } from "@/lib/title-date";
 
 export type JstYmd = { y: number; m: number; d: number };
 
-const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
+const JST_OFFSET_MS = APP_UTC_OFFSET_MS;
 
 /**
  * posted_at プリフィルタの緩衝幅 (TODO #55)。セッション/対象日の

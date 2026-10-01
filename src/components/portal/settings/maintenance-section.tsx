@@ -146,7 +146,7 @@ export function MaintenanceSection({
                 onClick={() => remove(i)}
                 disabled={pending}
                 aria-label={m.maintenanceSchedule.removeAria}
-                className="ml-auto grid h-7 w-7 shrink-0 place-items-center rounded text-rose-300/80 transition-colors hover:bg-rose-500/15 hover:text-rose-200 disabled:opacity-40"
+                className="ml-auto grid tap-target relative h-7 w-7 shrink-0 place-items-center rounded text-rose-300/80 transition-colors hover:bg-rose-500/15 hover:text-rose-200 disabled:opacity-40"
               >
                 <Trash2 className="h-3.5 w-3.5" aria-hidden />
               </button>

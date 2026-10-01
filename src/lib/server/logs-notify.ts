@@ -1,4 +1,5 @@
 import "server-only";
+import { discordFetch } from "@/lib/server/discord-api";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { fetchAppSettings } from "@/lib/supabase/app-settings";
 import {
@@ -264,7 +265,9 @@ async function postToDiscord(input: {
   content: string;
 }): Promise<{ ok: true } | { ok: false; reason: string }> {
   try {
-    const res = await fetch(
+    // 2026-10-01 監査 C-9: 429 は retry_after だけ待って 1 回だけ送り直す
+    // (429 は未処理の意味なので二重投稿にはならない)。
+    const res = await discordFetch(
       `https://discord.com/api/v10/channels/${input.channelId}/messages`,
       {
         method: "POST",
@@ -277,7 +280,7 @@ async function postToDiscord(input: {
           content: input.content,
           allowed_mentions: { parse: [] },
         }),
-        signal: AbortSignal.timeout(15000),
+        timeoutMs: 15000,
       },
     );
     if (!res.ok) {

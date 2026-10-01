@@ -59,6 +59,8 @@ export async function GET(req: NextRequest) {
   const result = await linkFflogsReportsToVideos({
     useServiceRole: true,
     deadlineAtMs,
+    // 設定画面の診断表示 (GraphQL introspection 3 回) は cron では要らない。
+    diagnostics: false,
   });
   if (!result.ok) {
     console.warn(
@@ -116,6 +118,9 @@ export async function GET(req: NextRequest) {
           fightsUpserted: fights.fightsUpserted,
           failed: fights.failed,
           truncated: fights.truncated,
+          // C-7 (2026-10-01): レート制限での打ち切りとポイント残量。
+          rateLimited: fights.rateLimited ?? false,
+          pointsRemainingRatio: fights.pointsRemainingRatio ?? null,
         }
       : { skipped: fights.reason },
   });

@@ -1033,7 +1033,7 @@ export function VideosList({
                 setSelectedIds(new Set());
                 setSelectMode(false);
               }}
-              className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border/40 bg-background/30 text-muted-foreground transition-colors hover:text-foreground"
+              className="inline-flex tap-target relative h-7 w-7 items-center justify-center rounded-md border border-border/40 bg-background/30 text-muted-foreground transition-colors hover:text-foreground"
               title={m.videos.exitSelectMode}
               aria-label={m.videos.exitSelectMode}
             >
@@ -1277,7 +1277,7 @@ const VideoCard = memo(function VideoCard({
             type="button"
             {...dragListeners}
             aria-label={m.crud.sortHandleAria(video.title)}
-            className="absolute top-2 left-2 inline-flex h-7 w-7 cursor-grab items-center justify-center rounded-md bg-black/60 text-white/80 backdrop-blur-sm transition-colors hover:bg-black/80 hover:text-white active:cursor-grabbing"
+            className="absolute top-2 left-2 inline-flex tap-target h-7 w-7 cursor-grab items-center justify-center rounded-md bg-black/60 text-white/80 backdrop-blur-sm transition-colors hover:bg-black/80 hover:text-white active:cursor-grabbing"
             onClick={(e) => e.stopPropagation()}
           >
             <GripVertical className="h-3.5 w-3.5" aria-hidden />
@@ -1323,7 +1323,7 @@ const VideoCard = memo(function VideoCard({
           }
           title={video.isFavorite ? m.videos.unfavTitle : m.videos.favTitle}
           className={
-            "flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-colors " +
+            "flex tap-target relative h-7 w-7 shrink-0 items-center justify-center rounded-md transition-colors " +
             (video.isFavorite
               ? "text-amber-300 hover:text-amber-200"
               : "text-muted-foreground/60 hover:text-amber-300")

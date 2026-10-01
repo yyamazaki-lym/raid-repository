@@ -1,6 +1,19 @@
 import "server-only";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { dbError } from "@/lib/server/db-error";
+import { discordFetch, sleep } from "@/lib/server/discord-api";
+import {
+  DISCORD_PREEMPTIVE_WAIT_CAP_MS,
+  preemptiveWaitMs,
+} from "@/lib/discord-rate-limit";
+import {
+  DISCORD_IMPORT_BUDGET_MS,
+  DISCORD_IMPORT_ENRICH_CONCURRENCY,
+  DISCORD_IMPORT_MAX_NEW_URLS_PER_CHANNEL,
+  createLimiter,
+  isPastDeadline,
+  takeNewest,
+} from "@/lib/discord-import-budget";
 import { fetchPageTitle } from "@/lib/server/page-title";
 import {
   fetchYouTubeMeta,
@@ -69,14 +82,39 @@ export type ImportResult = {
   /** Set when the most-recent insert failure produced an error message. */
   failReason?: string;
   reason?: string;
-  skipped?: "disabled";
+  /**
+   * `disabled`: カテゴリで取り込みを止めている。
+   * `deadline`: 実行の持ち時間 (DISCORD_IMPORT_BUDGET_MS) を使い切ったため、
+   * このチャンネルは手を付けずに (または enrichment に入れずに) 次回へ回した。
+   */
+  skipped?: "disabled" | "deadline";
+  /**
+   * 2026-10-01 監査 C-6: 新規 URL のうち、1 チャンネルの上限
+   * (DISCORD_IMPORT_MAX_NEW_URLS_PER_CHANNEL) か持ち時間のせいで今回は
+   * 取り込まず次回へ回した件数。DB には入れていないので、次の実行で
+   * もう一度「新規」として拾われる。
+   */
+  deferred?: number;
 };
 
-export async function runDiscordImport(): Promise<{
+/** 実行全体で共有する締切と enrichment の同時数 (2026-10-01 監査 C-6)。 */
+type ImportContext = {
+  deadlineAt: number;
+  limit: <T>(task: () => Promise<T>) => Promise<T>;
+};
+
+export async function runDiscordImport(opts?: {
+  /**
+   * 取り込みの締切 (epoch ms)。cron route は自分の開始時刻から数えて渡す。
+   * 省略時はこの関数の開始から DISCORD_IMPORT_BUDGET_MS。
+   */
+  deadlineAt?: number;
+}): Promise<{
   ok: boolean;
   reason?: string;
   results: ImportResult[];
 }> {
+  const deadlineAt = opts?.deadlineAt ?? Date.now() + DISCORD_IMPORT_BUDGET_MS;
   const botToken = process.env.DISCORD_BOT_TOKEN;
   if (!botToken) {
     return {
@@ -102,6 +140,12 @@ export async function runDiscordImport(): Promise<{
   }
 
   const categories = (rows ?? []).map((r) => rowToCategory(r as CategoryRow));
+  // 2026-10-01 監査 C-6: カテゴリは並列のまま、締切と enrichment の同時数
+  // (カテゴリ横断で 8) だけを全チャンネルで共有する。
+  const ctx: ImportContext = {
+    deadlineAt,
+    limit: createLimiter(DISCORD_IMPORT_ENRICH_CONCURRENCY),
+  };
 
   // 2.1 (2026-04-29) v5: カテゴリ間を並列処理化。Hobby plan の Edge
   // function 上限 (25s) に N カテゴリ × (Discord 100 件 fetch + URL
@@ -138,6 +182,7 @@ export async function runDiscordImport(): Promise<{
           cat.discordStrategyChannelId,
           "strategy",
           botToken,
+          ctx,
         ),
       );
     }
@@ -148,6 +193,7 @@ export async function runDiscordImport(): Promise<{
           cat.discordVideoChannelId,
           "video",
           botToken,
+          ctx,
         ),
       );
     }
@@ -177,6 +223,7 @@ async function importChannel(
   channelId: string,
   kind: CategoryLinkKind,
   botToken: string,
+  ctx: ImportContext,
 ): Promise<ImportResult> {
   // 1. Fetch Discord messages with pagination.
   // Phase 13.4 (2.1, 2026-05-13): 旧実装は最新 100 件のみ。Pandæmonium 辺獄編
@@ -191,18 +238,29 @@ async function importChannel(
     const all: DiscordMessage[] = [];
     let beforeId: string | undefined = undefined;
     for (let page = 0; page < MAX_MESSAGE_PAGES; page++) {
+      // 2026-10-01 監査 C-6: 持ち時間を使い切ったら新しいページを取りに
+      // 行かない (取れた分だけで続ける)。1 ページ目すら取りに行けない
+      // チャンネルは「次回へ回した」と返す。
+      if (isPastDeadline(ctx.deadlineAt, Date.now())) {
+        if (page === 0) {
+          return { category: cat.slug, kind, ok: true, skipped: "deadline" };
+        }
+        break;
+      }
       const params = new URLSearchParams({ limit: "100" });
       if (beforeId) params.set("before", beforeId);
-      const res = await fetch(
+      // 2026-10-01 監査 C-9: 429 は retry_after だけ待って 1 回だけ送り直す
+      // (これまではそのチャンネルを失敗で終えていた)。
+      const res = await discordFetch(
         `https://discord.com/api/v10/channels/${channelId}/messages?${params.toString()}`,
         {
-          cache: "no-store",
           headers: {
             Authorization: `Bot ${botToken}`,
             // Generic UA — fork deployments shouldn't all impersonate one URL.
             "User-Agent": "RaidRepositoryBot/0.1",
           },
-          signal: AbortSignal.timeout(15000),
+          timeoutMs: 15000,
+          deadlineAt: ctx.deadlineAt,
         },
       );
       if (!res.ok) {
@@ -233,6 +291,17 @@ async function importChannel(
       // 次ページの `before` に渡せばそれより古いメッセージを遡って取得できる。
       if (batch.length < 100) break;
       beforeId = batch[batch.length - 1].id;
+      // 2026-10-01 監査 C-9: このチャンネルのバケット (5 回 / 5 秒) を
+      // 使い切ったら、次のページの前に空くまで待つ (上限 5 秒)。cron と
+      // 手動の「今すぐ取り込み」が重なったときに 429 を踏まないため。
+      if (page + 1 < MAX_MESSAGE_PAGES) {
+        const waitMs = preemptiveWaitMs(
+          res.headers.get("x-ratelimit-remaining"),
+          res.headers.get("x-ratelimit-reset-after"),
+          DISCORD_PREEMPTIVE_WAIT_CAP_MS,
+        );
+        if (waitMs > 0) await sleep(waitMs);
+      }
     }
     messages = all;
   } catch (err) {
@@ -345,22 +414,57 @@ async function importChannel(
   // 「タイトル取得失敗 → title === URL」となり、URL haystack と区別がつかなく
   // なってフィルタが事実上無効になる。フォールバックは rowsToInsert 直前まで
   // 遅らせ、フィルタ判定では `null = タイトル取得失敗 = マッチ不可` として扱う。
-  const enriched = await pmap(fresh, FETCH_CONCURRENCY, async (c) => {
-    const [title, meta] = await Promise.all([
-      fetchPageTitle(c.url),
-      kind === "video"
-        ? fetchYouTubeMeta(c.url)
-        : Promise.resolve({ durationSeconds: null, uploadDate: null }),
-    ]);
+  //
+  // 2026-10-01 監査 C-6: enrichment するのは新しい方から上限件数まで
+  // (古い方を残すと、フィルタで弾かれ続ける古い URL が毎回枠を食って新しい
+  // 投稿に届かなくなる)。各 URL はチャンネル内 6 並列のうえで実行全体の
+  // 共有 limiter (同時 8) も通し、順番が来た時点で持ち時間を使い切って
+  // いれば手を付けずに持ち越す (null)。持ち越した URL は DB に入れないので
+  // 次回また新規として拾われる。⚠ 一度に上限を超えた初回取り込みでは、
+  // 後の回で入る古い URL の方が sort_order が大きくなる (posted_at は正しい)。
+  const { kept, deferred: deferredByCap } = takeNewest(
+    fresh,
+    DISCORD_IMPORT_MAX_NEW_URLS_PER_CHANNEL,
+  );
+  const enrichedOrSkipped = await pmap(kept, FETCH_CONCURRENCY, (c) =>
+    ctx.limit(async () => {
+      if (isPastDeadline(ctx.deadlineAt, Date.now())) return null;
+      const [title, meta] = await Promise.all([
+        fetchPageTitle(c.url),
+        kind === "video"
+          ? fetchYouTubeMeta(c.url)
+          : Promise.resolve({ durationSeconds: null, uploadDate: null }),
+      ]);
+      return {
+        url: c.url,
+        postedBy: c.postedBy,
+        postedAt: c.postedAt,
+        messageContent: c.messageContent,
+        title,
+        durationSeconds: meta.durationSeconds,
+      };
+    }),
+  );
+  const enriched = enrichedOrSkipped.filter(
+    (e): e is NonNullable<typeof e> => e !== null,
+  );
+  const deferred =
+    deferredByCap + (enrichedOrSkipped.length - enriched.length);
+  if (enriched.length === 0) {
+    // 1 件も enrichment に入れなかった = 持ち時間切れ。
     return {
-      url: c.url,
-      postedBy: c.postedBy,
-      postedAt: c.postedAt,
-      messageContent: c.messageContent,
-      title,
-      durationSeconds: meta.durationSeconds,
+      category: cat.slug,
+      kind,
+      ok: true,
+      skipped: "deadline",
+      scanned: 0,
+      duplicates,
+      inserted: 0,
+      failed: 0,
+      prefilteredCount,
+      deferred,
     };
-  });
+  }
 
   // Phase 13.2 (2.1, 2026-05-13): enrichment 後にフィルタ判定。
   // 「本文 OR URL OR タイトル」のいずれかが、kind 別フィルタワードのいずれかに
@@ -430,6 +534,7 @@ async function importChannel(
       failed: 0,
       prefilteredCount,
       titleFetchedCount,
+      deferred,
     };
   }
 
@@ -548,6 +653,7 @@ async function importChannel(
     failReason: lastFailReason,
     prefilteredCount,
     titleFetchedCount,
+    deferred,
   };
 }
 

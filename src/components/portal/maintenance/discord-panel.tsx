@@ -41,6 +41,8 @@ function DiscordIcon({ item }: { item: ImportNowItem }) {
     return <XCircle className="mt-0.5 h-3 w-3 shrink-0 text-rose-400" aria-hidden />;
   if (item.skipped === "disabled")
     return <Info className="mt-0.5 h-3 w-3 shrink-0 text-zinc-400" aria-hidden />;
+  if (item.skipped === "deadline")
+    return <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0 text-amber-400" aria-hidden />;
   if (item.failed > 0)
     return <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0 text-amber-400" aria-hidden />;
   if (item.inserted > 0)
@@ -52,6 +54,16 @@ function describeDiscord(it: ImportNowItem, m: Messages): string {
   const t = m.maintenancePanels;
   if (!it.ok) return t.discordError(it.reason ?? t.discordUnknownReason);
   if (it.skipped === "disabled") return t.discordPaused;
+  // 2026-10-01 監査 C-6: 持ち時間切れ・1 チャンネルの上限で次回へ回した分を
+  // 書き添える (書かないと「+50 件」で全部入ったように見える)。
+  if (it.skipped === "deadline") return t.discordDeadline(it.deferred ?? 0);
+  const deferred = it.deferred ?? 0;
+  const base = describeDiscordBase(it, m);
+  return deferred > 0 ? base + t.discordDeferred(deferred) : base;
+}
+
+function describeDiscordBase(it: ImportNowItem, m: Messages): string {
+  const t = m.maintenancePanels;
   if (it.scanned === 0) {
     // Phase 13.1: フィルタ判定前に URL は見つかっていたが全件フィルタで弾かれた
     // ケースを「Bot 権限不足」と誤判定しない。prefilteredCount > 0 なら原因は

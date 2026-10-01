@@ -39,15 +39,29 @@ jobs:
             echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
 
+      # 2026-10-01 監査 C-3 / F-5: pg_cron が叩く本番 URL は schema.sql に
+      # 直書きしない。repository variable `CRON_BASE_URL`
+      # (例 https://<project>.vercel.app) があれば app.cron_base_url として
+      # 同一セッションで渡す。無ければ schema.sql 13-0 が既存ジョブの宛先を
+      # 引き継ぐ (上流の本番はこちら)。fork は初回に必ず設定する
+      # (docs/setup.md の手順 10)。
       - name: Apply supabase/schema.sql
         if: steps.guard.outputs.skip == 'false'
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          CRON_BASE_URL: ${{ vars.CRON_BASE_URL }}
         run: |
-          psql "$SUPABASE_DB_URL" \
-            -v ON_ERROR_STOP=1 \
-            --single-transaction \
-            -f supabase/schema.sql
+          set -- -v ON_ERROR_STOP=1 --single-transaction
+          if [ -n "$CRON_BASE_URL" ]; then
+            # SQL に埋め込むので、引用符を含み得ない形だけを通す。
+            if ! printf '%s' "$CRON_BASE_URL" | grep -Eq '^https://[A-Za-z0-9.-]+(:[0-9]+)?/?$'; then
+              echo "::error::CRON_BASE_URL は https://<ホスト名> の形で設定してください (パスは付けない)。"
+              exit 1
+            fi
+            echo "app.cron_base_url = ${CRON_BASE_URL}"
+            set -- "$@" -c "SET app.cron_base_url = '${CRON_BASE_URL}';"
+          fi
+          psql "$SUPABASE_DB_URL" "$@" -f supabase/schema.sql
 
       # 2026-08-05 セキュリティ監査 H-2 の回帰ガード。
       #
