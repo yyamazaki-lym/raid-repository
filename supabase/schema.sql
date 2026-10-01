@@ -299,6 +299,37 @@ CREATE INDEX IF NOT EXISTS category_links_category_kind_idx
 -- BitmapOr で範囲枝 / NULL 枝の両方に本 index が使える。
 CREATE INDEX IF NOT EXISTS category_links_kind_posted_at_idx
   ON public.category_links(kind, posted_at);
+-- 2026-10-01 監査 (cron / DB の Low): FFLogs 同期のリンク段は毎回
+-- 「auto で付いた logs_url を消す」UPDATE (`logs_url_source = 'auto' AND
+-- logs_url IS NOT NULL`) を走らせ、毎晩この表を全件走査していた。対象行
+-- だけの部分索引にする (manual / 未リンクの行は載らないので小さい)。
+CREATE INDEX IF NOT EXISTS category_links_auto_logs_idx
+  ON public.category_links(id)
+  WHERE logs_url_source = 'auto' AND logs_url IS NOT NULL;
+
+-- 2026-10-01 監査 U-7: コンテンツとリンクの文字列に上限を付ける。画面の
+-- maxLength・Server Action の検査・DB の CHECK の三層とも上限が無く、巨大な
+-- 貼り付けで一覧の行・RSC の転送量・Realtime の配信が膨らんだ。値は
+-- `src/lib/text-limits.ts` と同じ (`scripts/check-text-limits.mjs` が突き合わせる)。
+-- 自動取り込み (Discord / Google フォト) は保存前に切り詰める。
+-- NOT VALID なので既存行は検査しない (書き換えもしない)。
+ALTER TABLE public.categories
+  DROP CONSTRAINT IF EXISTS categories_text_sane;
+ALTER TABLE public.categories
+  ADD CONSTRAINT categories_text_sane
+  CHECK (
+    char_length(name) <= 200
+    AND (description IS NULL OR char_length(description) <= 4000)
+  ) NOT VALID;
+ALTER TABLE public.category_links
+  DROP CONSTRAINT IF EXISTS category_links_text_sane;
+ALTER TABLE public.category_links
+  ADD CONSTRAINT category_links_text_sane
+  CHECK (
+    char_length(title) <= 1000
+    AND char_length(url) <= 4096
+    AND (description IS NULL OR char_length(description) <= 4000)
+  ) NOT VALID;
 
 -- A-5.1 (2026-06-13): (category_id, kind, url) の UNIQUE 制約。
 -- Discord cron 取り込みの dedupe が SELECT→INSERT で非原子的なため、
@@ -528,11 +559,13 @@ CREATE TRIGGER set_updated_at_app_settings
 -- Free-form notes attached to a particular session (keyed by rawDate
 -- so the same key joins both live character-sheets data and the
 -- snapshot table). Multiple memos per date, all visible to every
--- viewer (read は anon 含め全員)。
--- 書込は「ログイン済みメンバーなら誰でも」(admin 限定ではない): 汎用ループの
--- admin policy に加えて 7a-2 で authenticated 全体に INSERT/UPDATE/DELETE を
--- 開放している (所有者カラムを持たない共有メモ。総合レビュー A-4)。anon は
--- read-only。本番は proxy で全 viewer が認証済みメンバー = 実質「全員編集可」。
+-- viewer (read は authenticated 全員。公開デモのみ anon も)。
+-- 書込は所有者モデル (2026-09-09、7a-2): 非 admin は `author_user_id` が
+-- 自分の行だけを INSERT / UPDATE / DELETE でき、admin は全行を触れる。
+-- 例外として所有者不明 (`author_user_id IS NULL`、2026-09-09 より前の行) は
+-- メンバー全員が DELETE だけできる (L-18 のユーザー決定)。
+-- 2026-10-01: 以前ここに残っていた「所有者カラムを持たない共有メモ /
+-- 全員編集可」は 7a-2 の所有者化より前の説明だった (監査 Info-1)。
 
 CREATE TABLE IF NOT EXISTS public.schedule_session_memos (
   id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -595,12 +628,21 @@ UPDATE public.schedule_session_memos
  WHERE char_length(author_name) > 100 OR author_name ~ '[[:cntrl:]]';
 ALTER TABLE public.schedule_session_memos
   DROP CONSTRAINT IF EXISTS schedule_session_memos_text_sane;
+-- 2026-10-01 監査 S-3: raw_date にも長さと制御文字の制約を足す。非 admin
+-- メンバーが自分名義で INSERT できる列なのに制約が無く、数 MB の raw_date を
+-- 入れると全員の TOP (SSR の全件取得) と Realtime の配信が膨らんだ。
+-- 実際の値は `YYYY/MM/DD(曜) HH:MM~HH:MM` で 30 字弱。
+-- ⚠ body / author_name と違って既存行を切り詰めない — raw_date は日程と
+-- メモを結ぶキーで、切ると結び付きが外れる。NOT VALID なので既存行は
+-- そのまま残り、新しい書き込みだけを検査する。
 ALTER TABLE public.schedule_session_memos
   ADD CONSTRAINT schedule_session_memos_text_sane
   CHECK (
     char_length(body) <= 4000
     AND char_length(author_name) <= 100
     AND author_name !~ '[[:cntrl:]]'
+    AND char_length(raw_date) <= 64
+    AND raw_date !~ '[[:cntrl:]]'
   ) NOT VALID;
 
 -- 2026-09-07 (UI-3): 重要度。日付メモが平坦な時系列で「今夜必ず直すこと」と
@@ -1609,6 +1651,12 @@ CREATE INDEX IF NOT EXISTS fflogs_fights_category_idx
   ON public.fflogs_fights(category_id, start_ms);
 CREATE INDEX IF NOT EXISTS fflogs_fights_session_idx
   ON public.fflogs_fights(session_date);
+-- 2026-10-01 監査 (cron / DB の Low): pull 取り込みの後処理が毎回 Trash Fight
+-- (`encounter_id = 0` / `IS NULL`) を DELETE しており、全件走査になっていた。
+-- 取り込み側で既に弾いているので普段は 0 行 = 索引も空に近い。
+CREATE INDEX IF NOT EXISTS fflogs_fights_trash_idx
+  ON public.fflogs_fights(report_code)
+  WHERE encounter_id IS NULL OR encounter_id = 0;
 -- 2026-09-03: pull ごとの PT 合計 DPS と死亡数 (セッション振り返りの
 -- 残 HP% の横に出す)。FFLogs の Summary table から **PT の合計値だけ** を
 -- 計算して保存する。個人ごとの値は保存も表示もしない (調査ノート §1-F:
@@ -2487,7 +2535,12 @@ WHERE slug IN ('arc-heavy','arc-cruiser','arc-lightheavy')
 -- このテーブルは RLS で anon を完全 deny にし、書き込みは service
 -- role 経由 (server-side) のみ。SELECT も service role 必須なので、
 -- ブラウザ JS から ciphertext すら触れない設計。
-CREATE TABLE IF NOT EXISTS secrets (
+--
+-- 2026-10-01 監査 S-9: 表名に `public.` を付けた (他の表と揃える)。付いて
+-- いないと `scripts/check-rls-enabled.mjs` (CREATE TABLE public.<name> を
+-- 拾う) の対象から外れ、下の ENABLE ROW LEVEL SECURITY を消しても CI が
+-- 通っていた。適用時の search_path は public なので、指す表は変わらない。
+CREATE TABLE IF NOT EXISTS public.secrets (
   key text PRIMARY KEY,
   -- ciphertext は base64 + IV + auth tag を `iv:tag:ciphertext` 形式
   -- (各 base64) で連結したものを保存。アプリ側で解釈する。
@@ -2495,14 +2548,14 @@ CREATE TABLE IF NOT EXISTS secrets (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
-ALTER TABLE secrets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.secrets ENABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS "secrets deny all anon" ON secrets;
+DROP POLICY IF EXISTS "secrets deny all anon" ON public.secrets;
 -- anon (含 authenticated 一般) を完全に拒否。service role はそもそも
 -- RLS をバイパスする (Postgres superuser 相当) ので server からは
 -- 読み書き可能。
 CREATE POLICY "secrets deny all anon"
-  ON secrets FOR ALL
+  ON public.secrets FOR ALL
   TO anon, authenticated
   USING (false)
   WITH CHECK (false);
@@ -2981,8 +3034,9 @@ GRANT EXECUTE ON FUNCTION public.practice_seconds_by_category()
 -- 残 HP% は **その日の最深区間の中**で最小を採る。層を跨いで最小を採ると
 -- 消化で下層を倒した日が必ず「残 0%」になる (2026-08-28 実機報告と同じ罠)。
 --
--- STABLE read-only。fflogs_fights の SELECT は RLS `USING (true)` で anon に
--- 全開なので DEFINER でも露出は増えない (13c-2 と同方針)。
+-- STABLE read-only。2026-09-09 (#384) に DEFINER から INVOKER へ変えたので、
+-- 呼び出し元の RLS がそのまま効く (fflogs_fights の SELECT は authenticated。
+-- 公開デモのみ anon も)。EXECUTE の付与は 15 章 (監査 Info-1 でコメントを更新)。
 --
 -- 検証 (2026-09-08): ローカルの Postgres 16 に本関数だけを載せ、合成データで
 -- 実行して TS 側と突き合わせた。
@@ -3473,5 +3527,37 @@ BEGIN
       command := c_command
     );
     RAISE NOTICE '[cron] purge-pg-net-responses を更新しました (jobid=%)', existing_jobid;
+  END IF;
+END $$;
+
+-- ---- 16b. pg_cron の実行履歴を溜めない (2026-10-01 監査 C-8) ----------
+-- pg_cron は実行のたびに `cron.job_run_details` へ 1 行書き、自分では
+-- 消さない (Supabase のドキュメントも定期削除を推奨している)。この DB では
+-- warmup (5 分毎) と毎時のジョブ 2 本で 1 日 336 行前後増える。
+-- 16 章と同じ形で日次の掃除ジョブを登録し、7 日より古い行を消す。
+-- 観察 SQL (`cron.job_run_details` を jobname 単位で数える、HANDOFF 参照) が
+-- 直近 1 週間を見られれば足りるので 7 日。
+--
+-- ⚠ 公開デモ DB でも登録する (13-0 の HTTP ジョブと違い、この DB 自身の
+-- 掃除なので本番へは何も飛ばない)。
+DO $$
+DECLARE
+  existing_jobid bigint;
+  c_schedule constant text := '27 4 * * *';  -- 毎日 04:27 UTC (JST 13:27)。16 章の 10 分後
+  c_command constant text :=
+    $cmd$DELETE FROM cron.job_run_details WHERE end_time < now() - interval '7 days'$cmd$;
+BEGIN
+  SELECT jobid INTO existing_jobid
+    FROM cron.job WHERE jobname = 'purge-cron-run-details';
+  IF existing_jobid IS NULL THEN
+    PERFORM cron.schedule('purge-cron-run-details', c_schedule, c_command);
+    RAISE NOTICE '[cron] purge-cron-run-details を登録しました';
+  ELSE
+    PERFORM cron.alter_job(
+      job_id := existing_jobid,
+      schedule := c_schedule,
+      command := c_command
+    );
+    RAISE NOTICE '[cron] purge-cron-run-details を更新しました (jobid=%)', existing_jobid;
   END IF;
 END $$;

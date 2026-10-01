@@ -1,5 +1,9 @@
 "use client";
 
+import {
+  CATEGORY_DESCRIPTION_MAX,
+  CATEGORY_NAME_MAX,
+} from "@/lib/text-limits";
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
@@ -643,6 +647,7 @@ export function CategoryFormDialog({
             <Input
               id="category-name"
               value={name}
+              maxLength={CATEGORY_NAME_MAX}
               onChange={(e) => setName(e.target.value)}
               placeholder={m.categoryForm.namePlaceholder}
               autoFocus
@@ -677,6 +682,7 @@ export function CategoryFormDialog({
             <Textarea
               id="category-description"
               value={description}
+              maxLength={CATEGORY_DESCRIPTION_MAX}
               onChange={(e) => setDescription(e.target.value)}
               placeholder={m.categoryForm.descriptionPlaceholder}
               rows={2}

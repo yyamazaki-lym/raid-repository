@@ -135,6 +135,27 @@ console.log("\n[汎用ポリシーループの名指し]");
   }
 }
 
+console.log("\n[書き込みポリシーに USING (true) / WITH CHECK (true) が無い]");
+{
+  // 2026-10-01 監査 S-9: 「誰でも書ける」ポリシーを機械的に止める。今は
+  // `USING (true)` は SELECT ポリシーにしか無い (読み取りは authenticated
+  // 全員に開ける設計)。書き込みで使うと、PostgREST 直叩きで全行を書き換え
+  // られる (2026-08-05 監査 M-1 の元の形)。ポリシーは DO ブロックの
+  // format() 文字列で組むことが多いので、コメントを除いた行単位で見る。
+  const offenders = [];
+  src.split(/\r?\n/).forEach((line, i) => {
+    const code = line.replace(/--.*$/, "");
+    if (!/(USING|WITH CHECK)\s*\(\s*true\s*\)/i.test(code)) return;
+    if (/FOR SELECT/i.test(code)) return;
+    offenders.push(`${SCHEMA}:${i + 1}: ${code.trim().slice(0, 100)}`);
+  });
+  if (offenders.length === 0) {
+    ok("書き込み (INSERT / UPDATE / DELETE / ALL) で true を使うポリシーは 0 本");
+  } else {
+    for (const o of offenders) fail(`SELECT 以外で true を使っている — ${o}`);
+  }
+}
+
 if (failures > 0) {
   console.error(`\n${failures} check(s) failed`);
   process.exit(1);

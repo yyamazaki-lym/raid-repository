@@ -1,5 +1,10 @@
 "use client";
 
+import {
+  LINK_DESCRIPTION_MAX,
+  LINK_TITLE_MAX,
+  LINK_URL_MAX,
+} from "@/lib/text-limits";
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import {
@@ -300,6 +305,7 @@ export function ImageFormDialog({
                 type="url"
                 inputMode="url"
                 value={url}
+                maxLength={LINK_URL_MAX}
                 onChange={(e) => setUrl(e.target.value)}
                 placeholder={m.imageForm.urlPlaceholder}
                 className="font-mono text-[12px]"
@@ -360,6 +366,7 @@ export function ImageFormDialog({
             <Input
               id="image-title"
               value={title}
+              maxLength={LINK_TITLE_MAX}
               onChange={(e) => setTitle(e.target.value)}
               placeholder={m.imageForm.titlePlaceholder(DEFAULT_TITLE)}
               spellCheck={false}
@@ -373,6 +380,7 @@ export function ImageFormDialog({
             <Textarea
               id="image-desc"
               value={description}
+              maxLength={LINK_DESCRIPTION_MAX}
               onChange={(e) => setDescription(e.target.value)}
               placeholder={m.imageForm.memoPlaceholder}
               rows={3}
