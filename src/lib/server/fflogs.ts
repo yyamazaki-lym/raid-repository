@@ -11,6 +11,7 @@ import type { SessionLogEntry } from "@/lib/schedule/session-logs";
 import { bridgeAllManualSessionLogsToVideos } from "./session-logs-video-bridge";
 import { getValidFflogsOAuthToken } from "./fflogs-oauth";
 import { parseFflogsReportCode } from "@/lib/fflogs-url";
+import { parseEnglishVisibleDate } from "@/lib/fflogs-scrape-date";
 import { jstYmdKey, resolveVideoJstYmd } from "@/lib/video-jst-date";
 import { resolveSyncDeadline } from "@/lib/fflogs-sync-budget";
 import {
@@ -757,14 +758,18 @@ function extractTimestampMs(
       candidates.push({ pos: m.index!, ms: t, priority: 1 });
   }
 
-  // 2. English: April 17, 2026 [12:33 AM] OR Sat Mar 21 2026 (no
-  //    comma — this is the FFLogs "Created by" line format)
+  // 2. English: April 17, 2026 [12:33 AM]
+  //    (「Created by NAME on Sat Mar 21 2026」のようなカンマ無しの形は
+  //    この正規表現に当たらない — アップロード時刻なので当たらなくてよい)
+  //    2026-10-01: 解釈は parseEnglishVisibleDate に明示的に任せる。以前の
+  //    `Date.parse(text + " +0900")` は時刻の無い形で NaN を返し、時刻の
+  //    無い英語の日付が黙って候補から落ちていた。
   for (const m of ctx.matchAll(
     /([A-Z][a-z]+\s+\d{1,2},\s+\d{4}(?:\s+\d{1,2}:\d{2}\s*(?:AM|PM)?)?)/g,
   )) {
     if (isUploadMetadataAt(m.index!)) continue;
-    const t = Date.parse(m[0] + " +0900");
-    if (Number.isFinite(t))
+    const t = parseEnglishVisibleDate(m[0], "+09:00");
+    if (t !== null)
       candidates.push({ pos: m.index!, ms: t, priority: 2 });
   }
 
