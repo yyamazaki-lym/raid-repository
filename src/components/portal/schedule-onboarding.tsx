@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { setScheduleUrlAction } from "@/lib/server/categories-actions";
 import { httpUrlError } from "@/lib/url-validation";
+import { useServerText } from "@/lib/i18n/use-server-text";
 import { useMessages } from "@/lib/i18n/client";
 
 /**
@@ -18,6 +19,7 @@ import { useMessages } from "@/lib/i18n/client";
  * resolve the missing config without opening the gear menu.
  */
 export function ScheduleOnboarding() {
+  const sr = useServerText();
   const m = useMessages();
   const router = useRouter();
   const [url, setUrl] = useState("");
@@ -39,7 +41,7 @@ export function ScheduleOnboarding() {
     const result = await setScheduleUrlAction(url);
     setBusy(false);
     if (!result.ok) {
-      setError(result.reason ?? m.onboarding.saveFailed);
+      setError(result.reason ? sr(result.reason) : m.onboarding.saveFailed);
       return;
     }
     toast.success(m.onboarding.toastSaved);

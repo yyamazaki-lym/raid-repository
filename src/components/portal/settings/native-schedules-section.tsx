@@ -20,6 +20,7 @@ import {
   renameNativeScheduleAction,
   selectNativeScheduleAction,
 } from "@/lib/server/native-schedules-actions";
+import { useServerText } from "@/lib/i18n/use-server-text";
 import { useMessages } from "@/lib/i18n/client";
 
 /**
@@ -50,6 +51,7 @@ export function NativeSchedulesSection({
   loaded: boolean;
   onChanged: () => void;
 }) {
+  const sr = useServerText();
   const m = useMessages();
   const router = useRouter();
   const confirm = useConfirm();
@@ -78,7 +80,7 @@ export function NativeSchedulesSection({
     startTransition(async () => {
       const r = await createNativeScheduleAction(name);
       if (!r.ok) {
-        setFieldError(r.reason);
+        setFieldError(sr(r.reason));
         return;
       }
       setNewName("");
