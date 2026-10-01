@@ -4,6 +4,7 @@ import {
   createSupabaseServiceRoleClient,
 } from "@/lib/supabase/server";
 import { fetchAppSetting } from "@/lib/supabase/app-settings";
+import { fetchAllPages } from "@/lib/fetch-all-pages";
 import { findContentGroups } from "@/lib/content-groups";
 import { extractDateFromTitle } from "@/lib/title-date";
 import type { SessionLogEntry } from "@/lib/schedule/session-logs";
@@ -11,7 +12,6 @@ import { bridgeAllManualSessionLogsToVideos } from "./session-logs-video-bridge"
 import { getValidFflogsOAuthToken } from "./fflogs-oauth";
 import { parseFflogsReportCode } from "@/lib/fflogs-url";
 import { jstYmdKey, resolveVideoJstYmd } from "@/lib/video-jst-date";
-import { fetchAllPages } from "@/lib/fetch-all-pages";
 import {
   buildFflogsReportsListUrl,
   buildFflogsScrapeHeaders,

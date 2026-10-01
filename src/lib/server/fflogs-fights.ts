@@ -11,6 +11,7 @@ import {
 } from "@/lib/video-jst-date";
 import { buildFflogsReportUrl } from "@/lib/fflogs-url";
 import { getSecretValue } from "./secret-store";
+import { fetchAllPages } from "@/lib/fetch-all-pages";
 import { buildFflogsXhrHeaders } from "./fflogs-scrape-request";
 import { parseFflogsReportCode } from "@/lib/fflogs-url";
 import { notifyLogsEvents } from "./logs-notify";
@@ -30,7 +31,6 @@ import {
   type FflogsAutoRoute,
 } from "@/lib/fflogs-report-source";
 import { jstYmdString } from "@/lib/jst-date";
-import { fetchAllPages } from "@/lib/fetch-all-pages";
 import {
   type CategoryRef,
   consensusCategory,
