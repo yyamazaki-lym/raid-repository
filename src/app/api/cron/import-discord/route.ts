@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { runDiscordImport } from "@/lib/server/discord-import";
 import { DISCORD_IMPORT_BUDGET_MS } from "@/lib/discord-import-budget";
 import { assertCronAuth } from "@/lib/server/cron-auth";
+import { recordCronRun } from "@/lib/server/cron-status";
 import {
   countInsertedVideos,
   isLogsAutoSyncEnabled,
@@ -52,6 +53,8 @@ export async function GET(req: NextRequest) {
     deadlineAt: startedAt + DISCORD_IMPORT_BUDGET_MS,
   });
   if (!result.ok) {
+    // 2026-10-01 監査 F-2: 自動処理の最終実行として記録する。
+    await recordCronRun("import-discord", "error", result.reason ?? "import failed");
     return NextResponse.json(
       { error: result.reason ?? "import failed" },
       { status: 503 },
@@ -64,5 +67,15 @@ export async function GET(req: NextRequest) {
       ? await triggerFflogsSyncRoute(req.nextUrl.origin)
       : "disabled";
   }
+  // 2026-10-01 監査 F-2: チャンネル単位の失敗が 1 つでもあれば失敗として
+  // 記録する (どのチャンネルかは最初の 1 つだけ理由に載せる)。
+  const failedChannels = result.results.filter((r) => !r.ok);
+  await recordCronRun(
+    "import-discord",
+    failedChannels.length > 0 ? "error" : "ok",
+    failedChannels.length > 0
+      ? `${failedChannels.length} channel(s) failed: ${failedChannels[0]!.category}/${failedChannels[0]!.kind} ${failedChannels[0]!.reason ?? ""}`
+      : null,
+  );
   return NextResponse.json({ ok: true, results: result.results, logsSync });
 }
