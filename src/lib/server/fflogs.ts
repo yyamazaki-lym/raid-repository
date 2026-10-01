@@ -4,6 +4,7 @@ import {
   createSupabaseServiceRoleClient,
 } from "@/lib/supabase/server";
 import { fetchAppSetting } from "@/lib/supabase/app-settings";
+import { FFLOGS_LINK_LEASE_KEY, withSyncLease } from "./sync-lease-db";
 import { fetchAllPages } from "@/lib/fetch-all-pages";
 import { findContentGroups } from "@/lib/content-groups";
 import { extractDateFromTitle } from "@/lib/title-date";
@@ -1213,7 +1214,41 @@ export type FflogsLinkResult = {
  * service role で書き込む。手動 button 経路 (`linkFflogsReports`、
  * `assertAdminResult` 済み) は従来どおり cookie クライアントで RLS を通す。
  */
-export async function linkFflogsReportsToVideos(opts?: {
+/** 同期が重なったときの文言 (C-5)。 */
+export const FFLOGS_SYNC_BUSY_REASON =
+  "別の FFLogs 同期が実行中です — 数分後にもう一度実行してください";
+
+/**
+ * FFLogs ⇔ 動画 / 日程のリンク (下の `linkFflogsReportsToVideosUnlocked`) を、
+ * 同じ段が同時に 2 本走らないようロックを取ってから実行する
+ * (2026-10-01 監査 C-5、`sync-lease-db.ts`)。
+ */
+export async function linkFflogsReportsToVideos(
+  opts?: Parameters<typeof linkFflogsReportsToVideosUnlocked>[0],
+): Promise<FflogsLinkResult> {
+  const client = opts?.useServiceRole
+    ? createSupabaseServiceRoleClient()
+    : await createClient();
+  return withSyncLease(
+    client,
+    FFLOGS_LINK_LEASE_KEY,
+    () => linkFflogsReportsToVideosUnlocked(opts),
+    () => ({
+      ok: false,
+      reason: FFLOGS_SYNC_BUSY_REASON,
+      reportsScanned: 0,
+      videosScanned: 0,
+      matched: 0,
+      sessionsScanned: 0,
+      sessionsMatched: 0,
+      nativeSessionsScanned: 0,
+      nativeSessionsMatched: 0,
+      details: [],
+    }),
+  );
+}
+
+async function linkFflogsReportsToVideosUnlocked(opts?: {
   /**
    * true でテーブル書き込みに service role クライアントを使う (RLS バイパス)。
    * セッション cookie を持たない cron entrypoint 専用。呼び出し元で
@@ -1226,6 +1261,11 @@ export async function linkFflogsReportsToVideos(opts?: {
    * この関数の予算 (240s) だけで動く。
    */
   deadlineAtMs?: number;
+  /**
+   * false で設定画面の診断用の取得 (GraphQL スキーマの introspection 3 回) を
+   * 省く (2026-10-01 監査、cron / 自動起動は画面に出さないので不要)。
+   */
+  diagnostics?: boolean;
 }): Promise<FflogsLinkResult> {
   const newWriteClient = async () =>
     opts?.useServiceRole
@@ -1327,8 +1367,12 @@ export async function linkFflogsReportsToVideos(opts?: {
 
   // Run v2 OAuth if connected.
   if (oauthToken) {
-    schemaIntrospect = await introspectFflogsSchema(oauthToken);
-    userTypeFields = schemaIntrospect.user;
+    // 2026-10-01 監査: introspection は設定画面の診断表示にしか使わないので、
+    // cron / 自動起動 (diagnostics: false) では引かない (毎回 3 クエリだった)。
+    if (opts?.diagnostics !== false) {
+      schemaIntrospect = await introspectFflogsSchema(oauthToken);
+      userTypeFields = schemaIntrospect.user;
+    }
     v2Result = await fetchFflogsReportsV2(oauthToken, deadlineAtMs);
   }
   const v2Reports = v2Result && v2Result.ok ? v2Result.reports : [];
@@ -1354,7 +1398,12 @@ export async function linkFflogsReportsToVideos(opts?: {
   cookieUsed = Boolean(sessionCookie?.trim());
   let scrapeTruncated = false;
   if (oauthToken) {
-    const me = await fetchCurrentUser(oauthToken);
+    // 2026-10-01 監査: v2 の一覧取得が既に自分の user を引いているので使い回す
+    // (以前は同じ currentUser クエリを 2 回引いていた)。
+    const me =
+      v2Result && v2Result.ok
+        ? { ok: true as const, id: v2Result.me.id, name: v2Result.me.name }
+        : await fetchCurrentUser(oauthToken);
     if (me.ok) {
       const scrapeResult = await fetchFflogsReportsHtmlScrape(
         me.id,
