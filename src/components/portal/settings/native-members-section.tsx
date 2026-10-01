@@ -17,6 +17,7 @@ import { useLocale, useMessages } from "@/lib/i18n/client";
 import { CollapsibleSection } from "./collapsible-section";
 import { MEMBER_ROLES } from "@/lib/member-roles";
 import { JOBS, jobLabel } from "@/lib/jobs";
+import type { ScheduleSourceMode } from "@/lib/schedule/source-mode";
 
 /**
  * TODO #2 phase 2-C (2026-05-07): native スケジュール member CRUD section。
@@ -59,11 +60,19 @@ type DraftMap = Record<
 
 export function NativeMembersSection({
   canEdit,
+  mode,
   members,
   loaded,
   onChanged,
 }: {
   canEdit: boolean;
+  /**
+   * 2026-10-01 監査 F-1: どのモードでも出すようになったので、説明文を
+   * 切り替える。自前作成式ではスケジュール表の出欠列そのもの、それ以外では
+   * 本人判定 (自分のページ / BiS / 欲しい人行列 / 軽減表 / 出席サマリー) の
+   * 表としてだけ使う。
+   */
+  mode: ScheduleSourceMode;
   members: NativeMemberRowFull[];
   loaded: boolean;
   onChanged: () => void;
@@ -280,16 +289,22 @@ export function NativeMembersSection({
     <CollapsibleSection
       id="native-members"
       icon={<Users className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />}
-      title="Native Schedule Members"
+      title="Members"
     >
       <p className="text-[12px] leading-relaxed text-muted-foreground">
-        {m.nativeMembers.description}
-        <br />
-        <span className="text-muted-foreground/80">
-          {m.nativeMembers.localKeyNoteBefore}
-          <code className="font-mono">local_*</code>
-          {m.nativeMembers.localKeyNoteAfter}
-        </span>
+        {mode === "native"
+          ? m.nativeMembers.description
+          : m.nativeMembers.descriptionOtherModes}
+        {mode === "native" && (
+          <>
+            <br />
+            <span className="text-muted-foreground/80">
+              {m.nativeMembers.localKeyNoteBefore}
+              <code className="font-mono">local_*</code>
+              {m.nativeMembers.localKeyNoteAfter}
+            </span>
+          </>
+        )}
       </p>
 
       {!loaded ? (
