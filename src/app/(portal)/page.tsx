@@ -91,6 +91,12 @@ export default async function SchedulePage() {
   // - native   → 自前テーブル fetch (phase 1 では空 skeleton)
   // - disabled → 機能停止 notice のみ
   const mode = await getScheduleSourceMode();
+  // 2026-10-01 監査 U-14: 「今」の判定 (本日 / 明日・挑戦中・過去の境界) は
+  // この 1 回だけ読んだ時刻を client に渡し、サーバー描画と hydration で
+  // 同じ値を使う。client の描画中に Date.now() を読むと 0:00 や開始時刻を
+  // またいだ瞬間に文言が食い違い、hydration エラーになる。
+  // eslint-disable-next-line react-hooks/purity -- server component はリクエストごとに 1 回だけ描画され、この値を client に渡して固定するのが目的
+  const renderedAtMs = Date.now();
 
   if (mode === "disabled") {
     // TODO #79: スケジュール機能 OFF の portal ではコンテンツページを実質の
@@ -198,6 +204,7 @@ export default async function SchedulePage() {
         maintenanceWindows={parseMaintenanceWindows(
           appSettings[MAINTENANCE_WINDOWS_KEY],
         )}
+        renderedAtMs={renderedAtMs}
         initialMemosByDate={initialMemosByDate}
         // L-18 (2026-09-09): sync mode でも本人 ID を渡す。TODO #92 で
         // メモの編集・削除を所有者ベースにしたとき native 分岐にしか
@@ -322,6 +329,7 @@ export default async function SchedulePage() {
       maintenanceWindows={parseMaintenanceWindows(
         appSettings[MAINTENANCE_WINDOWS_KEY],
       )}
+      renderedAtMs={renderedAtMs}
       initialMemosByDate={initialMemosByDate}
       currentDiscordId={memoViewerId(member)}
       isAdmin={isAdmin}

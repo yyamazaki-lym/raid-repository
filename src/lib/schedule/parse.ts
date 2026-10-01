@@ -14,6 +14,7 @@
  * its appearance based on dateStatus client-side), so it can't be the marker.
  */
 import { decodeHtmlEntities } from "@/lib/html-entities";
+import { APP_UTC_OFFSET_MS } from "@/lib/app-timezone";
 
 /**
  * 出欠記号。標準セットは「◯ / ⏰ / △ / × / －」だが、character-sheets
@@ -472,7 +473,7 @@ export function attachUsersToSessions(parsed: ParsedSchedule): ParsedSchedule {
 }
 
 /** JST has no DST so a fixed offset is always correct. */
-const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
+const JST_OFFSET_MS = APP_UTC_OFFSET_MS;
 
 function parseRawDate(raw: string): {
   date: Date;

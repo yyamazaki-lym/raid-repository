@@ -33,6 +33,7 @@ import {
   type VideoSyncAnchor,
 } from "@/lib/video-sync";
 import { formatClock } from "@/lib/fflogs-url";
+import { APP_TIME_ZONE } from "@/lib/app-timezone";
 import { type OffsetTarget } from "./video-link";
 import { OffsetNudge, VideoSyncPanel } from "./video-sync-panel";
 
@@ -267,7 +268,7 @@ function OffsetExplain({
     new Date(ms).toLocaleTimeString("ja-JP", {
       hour: "2-digit",
       minute: "2-digit",
-      timeZone: "Asia/Tokyo",
+      timeZone: APP_TIME_ZONE,
     });
   const missing = info.firstPullVideoSeconds < 0;
   return (

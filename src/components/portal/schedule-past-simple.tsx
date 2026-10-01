@@ -12,6 +12,7 @@ import {
   type ScheduleSessionMemo,
 } from "@/lib/schedule-memos-client";
 import { jstTodayStartMs } from "@/lib/schedule/jst-cutoff";
+import { useHydrationSafeNow } from "@/lib/use-hydration-safe-now";
 import type { ScheduleSession } from "@/lib/schedule/next-session";
 import type { SessionLogEntry } from "@/lib/schedule/session-logs";
 import type { SessionVideoLink } from "@/lib/server/session-video-link";
@@ -57,8 +58,11 @@ export function SchedulePastSimple({
   initialMemosByDate = {},
   currentDiscordId = null,
   isAdmin = false,
+  renderedAtMs,
 }: {
   sessions: ScheduleSession[];
+  /** サーバー描画の時刻 (過去判定を hydration と揃える、監査 U-14)。 */
+  renderedAtMs: number;
   holidays?: JapaneseHolidaysMap;
   sessionVideoLinks?: Record<string, SessionVideoLink[]>;
   /**
@@ -81,6 +85,7 @@ export function SchedulePastSimple({
   // TODO #11 phase 7: 親で 1 channel だけ subscribe (旧: 各 DateChip が個別)。
   const { memosByDate, refetchAll: refetchMemos } =
     useRealtimeAllScheduleMemos(initialMemosByDate);
+  const nowMs = useHydrationSafeNow(renderedAtMs);
 
   // 過去判定の cutoff は詳細テーブル (schedule-list.tsx の splitSessions)
   // と同じ「JST 今日 0:00」に統一 (2.7, 2026-06-11)。旧実装は
@@ -90,7 +95,7 @@ export function SchedulePastSimple({
   // NextSessionCard (6h グレースで前日分を「次回」に残す) とこのチップ
   // の両方に同じ日程が出るが、詳細テーブルが元々持っていた重複と同じ
   // 挙動であり許容する。
-  const cutoff = jstTodayStartMs();
+  const cutoff = jstTodayStartMs(nowMs);
   // 過去側は「開催確定 (DECISION)」のみ表示。◯ は『参加可投票』であって
   // 実際に開催された記録ではないので fallback シグナルに使えない (流れ
   // た候補日でも投票だけ残るため、◯ 1 名以上を許可するとノイズが増える)。

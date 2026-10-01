@@ -92,6 +92,7 @@ import {
   type FloorClearItem,
 } from "@/components/portal/logs/floor-clear-card";
 import { PhaseTimeCard } from "@/components/portal/logs/phase-time-card";
+import { APP_TIME_ZONE } from "@/lib/app-timezone";
 import { SegmentFilter } from "@/components/portal/logs/segment-filter";
 import { PullBreakdownChips, StatCard } from "@/components/portal/logs/stat-card";
 import type { OffsetTarget } from "@/components/portal/logs/video-link";
@@ -1252,7 +1253,7 @@ export function LogsView({
                 ? m.logs.firstClear(
                     new Date(summary.firstKill.startMs).toLocaleDateString(
                       locale === "en" ? "en-US" : "ja-JP",
-                      { timeZone: "Asia/Tokyo" },
+                      { timeZone: APP_TIME_ZONE },
                     ),
                   )
                 : undefined
