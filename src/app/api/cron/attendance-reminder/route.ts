@@ -2,6 +2,7 @@ import "server-only";
 import { NextResponse, type NextRequest } from "next/server";
 import { dispatchAttendanceReminder } from "@/lib/server/attendance-reminder";
 import { assertCronAuth } from "@/lib/server/cron-auth";
+import { recordCronRun } from "@/lib/server/cron-status";
 
 /**
  * 出欠未入力者への催促メンション cron (2026-08-30)。
@@ -29,8 +30,15 @@ export async function GET(req: NextRequest) {
     respectHour: true,
   });
   if (!result.ok) {
+    await recordCronRun("attendance-reminder", "error", result.reason);
     return NextResponse.json({ error: result.reason }, { status: 503 });
   }
+  // 毎時呼ばれ、ほとんどの回は「目標時刻前」で何もしない (= skipped)。
+  await recordCronRun(
+    "attendance-reminder",
+    result.posted > 0 ? "ok" : "skipped",
+    result.reason ?? null,
+  );
   return NextResponse.json({
     ok: true,
     posted: result.posted,

@@ -4,6 +4,7 @@ import { useMemo, useState, useTransition } from "react";
 import { Swords, X } from "lucide-react";
 import { JOBS, jobLabel, rolesOfJobs } from "@/lib/jobs";
 import { setMyJobsAction } from "@/lib/server/my-profile-actions";
+import { useServerText } from "@/lib/i18n/use-server-text";
 import { useLocale, useMessages } from "@/lib/i18n/client";
 import { cn } from "@/lib/utils";
 
@@ -48,6 +49,7 @@ export function MyJobPicker({
   label?: string;
   onChanged?: (jobs: string[]) => void;
 }) {
+  const sr = useServerText();
   const m = useMessages();
   const locale = useLocale();
   const [pending, startTransition] = useTransition();
@@ -68,7 +70,7 @@ export function MyJobPicker({
       const res = await setMyJobsAction({ categoryId, jobs: next });
       if (!res.ok) {
         setDraft(before);
-        setError(res.reason);
+        setError(sr(res.reason));
         return;
       }
       onChanged?.(next);

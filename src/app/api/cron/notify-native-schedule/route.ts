@@ -2,6 +2,7 @@ import "server-only";
 import { NextResponse, type NextRequest } from "next/server";
 import { dispatchNoonNotifyForToday } from "@/lib/server/native-schedule-discord";
 import { assertCronAuth } from "@/lib/server/cron-auth";
+import { recordCronRun } from "@/lib/server/cron-status";
 
 /**
  * native スケジュールの DECISION セッションを Discord 通知する route
@@ -37,8 +38,11 @@ export async function GET(req: NextRequest) {
 
   const result = await dispatchNoonNotifyForToday();
   if (!result.ok) {
+    await recordCronRun("notify-native-schedule", "error", result.reason);
     return NextResponse.json({ error: result.reason }, { status: 503 });
   }
+  // 毎時呼ばれ、通知時刻以外の回は投稿 0 (= skipped)。
+  await recordCronRun("notify-native-schedule", result.posted > 0 ? "ok" : "skipped");
   return NextResponse.json({
     ok: true,
     posted: result.posted,
