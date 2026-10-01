@@ -8,12 +8,23 @@ import { useRealtimeChannel } from "@/lib/use-realtime-table";
 
 /**
  * CRUD + Realtime hook for `schedule_session_memos` — per-date shared
- * notes. **Read は anon 含め全員**、**書込はログイン済みメンバーなら誰でも**
- * (admin 限定ではない: schema 7a-2 で authenticated 全体に INSERT/UPDATE/DELETE
- * を開放。総合レビュー A-4)。所有者カラムを持たない共有メモなので、ログイン
- * メンバーは誰のメモでも編集できる。`author_name` は情報表示用のみ。anon
- * (未ログイン) の書込は RLS で弾かれ `{ok:false}` を返す (本番は proxy で全
- * viewer が認証済みメンバーのため通常は到達しない / demo guest のみ該当)。
+ * notes.
+ *
+ * 権限 (schema 7a-2、TODO #92 / L-18 の所有者モデル。2026-10-01 監査で
+ * 古い説明を訂正):
+ *
+ * - **読み取り**: ログイン済みメンバー全員 (公開デモだけ anon も)
+ * - **作成**: ログイン済みメンバー。`author_user_id` は DEFAULT で自分の
+ *   Discord ID が入る (他人の ID では作れない。admin は代理で作れる)
+ * - **編集**: 所有者か admin。所有者不明 (`author_user_id IS NULL`、
+ *   2026-09-09 より前のメモ) は admin だけ
+ * - **削除**: 所有者か admin。所有者不明の行だけはログイン済みなら誰でも
+ *   (L-18 のユーザー決定。閉じ方は backlog「S-10」)
+ *
+ * `author_name` は表示用の名前で、権限には使わない。権限の判定は
+ * `memo-permissions.ts` と RLS の両方にある。anon (未ログイン) の書込は RLS で
+ * 弾かれ `{ok:false}` を返す (本番は proxy で全 viewer が認証済みメンバーの
+ * ため通常は到達しない / demo guest のみ該当)。
  *
  * Author name is persisted to localStorage so a returning user
  * doesn't have to re-type their name every memo session.
