@@ -10,6 +10,7 @@ import {
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { fetchAppSetting } from "@/lib/supabase/app-settings";
 import { getActiveNativeScheduleId } from "@/lib/schedule/native-active";
+import { APP_UTC_OFFSET_MS } from "@/lib/app-timezone";
 import {
   FALLBACK_DEFAULT_END_TIME,
   FALLBACK_DEFAULT_START_TIME,
@@ -41,7 +42,7 @@ const NOTIFY_HOUR_KEY = "native_schedule_discord_notify_hour";
 // 2.1 (2026-05-12) PR3-A: 通知 message template (placeholder 置換式)。
 const NOTIFY_TEMPLATE_KEY = "native_schedule_discord_notify_template";
 
-const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
+const JST_OFFSET_MS = APP_UTC_OFFSET_MS;
 const DEFAULT_NOTIFY_HOUR = 12;
 
 export type DispatchResult =

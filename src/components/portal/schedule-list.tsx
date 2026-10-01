@@ -45,6 +45,7 @@ import {
   ATT_TONE_FALLBACK,
 } from "@/lib/schedule/attendance-ui";
 import { DECISION_BADGE_CLASS } from "@/lib/schedule/status-ui";
+import { useHydrationSafeNow } from "@/lib/use-hydration-safe-now";
 import {
   buildEditUrl,
   groupCommentsByAuthor,
@@ -100,6 +101,11 @@ const ICON_GROUP_CLASS = "mx-auto flex items-center gap-1 pl-2";
 
 type Props = {
   result: ScheduleFetchResult;
+  /**
+   * サーバー描画の時刻。過去 / 予定の境界と「最近の過去」の折りたたみを
+   * hydration でも同じ時刻で判定するため (2026-10-01 監査 U-14)。
+   */
+  renderedAtMs: number;
   /**
    * W-15 (2026-09-08): 定期枠の曜日 CSV。設定されている行だけ「臨時 /
    * 今回だけ」バッジを出す (未設定なら 1 つも出ない = 従来の見た目)。
@@ -184,8 +190,10 @@ export function ScheduleList({
   currentDiscordId = null,
   isAdmin = false,
   recurringDows = null,
+  renderedAtMs,
 }: Props) {
   const m = useMessages();
+  const nowMs = useHydrationSafeNow(renderedAtMs);
   // W-15 (2026-09-08): 定期枠の曜日。未設定なら空配列 =「例外」の概念なし。
   const frameDows = parseRecurringDows(recurringDows);
   // TODO #11 phase 7: 全 memo を 1 channel で監視し、各 SessionRow には
@@ -367,16 +375,17 @@ export function ScheduleList({
     });
   };
 
-  const { upcoming, past } = splitSessions(sessions, limit);
+  const { upcoming, past } = splitSessions(sessions, limit, nowMs);
   // Past sessions newest-first (already sorted by splitSessions). The
   // most-recent past sits at the top of the detail table — reads as
   // "what happened most recently" first.
   const renderedPast = showDetailedPast ? past : [];
   // 2.1 (2026-04-29): split into "recent" (≤ 60 days ago) and "older"
-  // for the fold UX. cutoff は描画時点の Date.now なので、ページが
-  // 長時間開きっぱなしでも問題なし (再 render で更新される)。
+  // for the fold UX. cutoff は useHydrationSafeNow の時刻 (hydration までは
+  // サーバー描画の時刻、そのあと 30 秒刻みの実時刻) なので、ページが
+  // 長時間開きっぱなしでも追従する。
   const PAST_FOLD_THRESHOLD_MS = 60 * 24 * 60 * 60 * 1000;
-  const pastCutoffMs = Date.now() - PAST_FOLD_THRESHOLD_MS;
+  const pastCutoffMs = nowMs - PAST_FOLD_THRESHOLD_MS;
   const recentPast = renderedPast.filter(
     (s) => s.date.getTime() >= pastCutoffMs,
   );

@@ -40,6 +40,7 @@ try {
       "node_modules/typescript/bin/tsc",
       "src/lib/schedule/attendance-history.ts",
       "--outDir", outDir,
+      "--rootDir", "src/lib",
       "--target", "es2022",
       "--module", "es2022",
       "--moduleResolution", "bundler",
@@ -47,14 +48,17 @@ try {
     ],
     { stdio: "inherit" },
   );
-  for (const f of readdirSync(outDir)) {
+  // 2026-10-01 (監査 U-9): schedule/ の純モジュールが ../app-timezone を
+  // 読むようになったので、出力は src/lib を根に schedule/ 以下へ出る
+  // (--rootDir で固定)。相対 import の .js 付与も再帰で行う。
+  for (const f of readdirSync(outDir, { recursive: true })) {
     if (!f.endsWith(".js")) continue;
     const fp = join(outDir, f);
     writeFileSync(fp, readFileSync(fp, "utf8").replace(
       /(from\s+["'])(\.\.?\/[^"']+?)(?<!\.js)(["'])/g, "$1$2.js$3"));
   }
   const { summarizeAttendanceHistory } = await import(
-    pathToFileURL(join(outDir, "attendance-history.js")).href
+    pathToFileURL(join(outDir, "schedule", "attendance-history.js")).href
   );
 
   const members = [

@@ -16,6 +16,11 @@ import { fetchErrorReason } from "@/lib/fetch-error-reason";
 import { jstYmdKey, resolveVideoJstYmd } from "@/lib/video-jst-date";
 import { resolveSyncDeadline } from "@/lib/fflogs-sync-budget";
 import {
+  APP_UTC_OFFSET_ISO,
+  APP_UTC_OFFSET_MS,
+} from "@/lib/app-timezone";
+import { jstYmdString } from "@/lib/jst-date";
+import {
   buildFflogsReportsListUrl,
   buildFflogsScrapeHeaders,
   FFLOGS_SCRAPE_MAX_PAGES,
@@ -753,7 +758,7 @@ function extractTimestampMs(
     const t = Date.parse(
       `${m[1]}-${pad(m[2]!)}-${pad(m[3]!)}T${pad(m[4] ?? "0")}:${pad(
         m[5] ?? "0",
-      )}:00+09:00`,
+      )}:00${APP_UTC_OFFSET_ISO}`,
     );
     if (Number.isFinite(t))
       candidates.push({ pos: m.index!, ms: t, priority: 1 });
@@ -765,7 +770,7 @@ function extractTimestampMs(
     /([A-Z][a-z]+\s+\d{1,2},\s+\d{4}(?:\s+\d{1,2}:\d{2}\s*(?:AM|PM)?)?)/g,
   )) {
     if (isUploadMetadataAt(m.index!)) continue;
-    const t = Date.parse(m[0] + " +0900");
+    const t = Date.parse(m[0] + " " + APP_UTC_OFFSET_ISO.replace(":", ""));
     if (Number.isFinite(t))
       candidates.push({ pos: m.index!, ms: t, priority: 2 });
   }
@@ -778,7 +783,7 @@ function extractTimestampMs(
     const t = Date.parse(
       `${m[1]}-${pad(m[2]!)}-${pad(m[3]!)}T${pad(m[4] ?? "0")}:${pad(
         m[5] ?? "0",
-      )}:00+09:00`,
+      )}:00${APP_UTC_OFFSET_ISO}`,
     );
     if (Number.isFinite(t))
       candidates.push({ pos: m.index!, ms: t, priority: 3 });
@@ -1611,7 +1616,7 @@ async function linkFflogsReportsToVideosUnlocked(opts?: {
     .sort((a, b) => b.startMs - a.startMs)
     .slice(0, 10)
     .map((r) => ({
-      date: new Date(r.startMs).toISOString().slice(0, 10),
+      date: jstYmdString(new Date(r.startMs)),
       title: r.title || "(無題のレポート)",
       url: `https://www.fflogs.com/reports/${r.id}`,
     }));
@@ -1784,8 +1789,7 @@ async function fetchExistingLogCodesByDay(supabase: SupabaseLike): Promise<{
 
 /** Convert a Unix ms epoch to a JST calendar date. */
 function jstCalendarDate(ms: number): { y: number; m: number; d: number } {
-  const JST_OFFSET = 9 * 60 * 60 * 1000;
-  const dt = new Date(ms + JST_OFFSET);
+  const dt = new Date(ms + APP_UTC_OFFSET_MS);
   return {
     y: dt.getUTCFullYear(),
     m: dt.getUTCMonth() + 1,
@@ -1983,10 +1987,9 @@ async function linkReportsToVideos(
         postedAt && Number.isFinite(new Date(postedAt).getTime())
           ? new Date(postedAt).getTime()
           : null;
-      const fallbackYear =
-        postedTMs !== null
-          ? new Date(postedTMs).getUTCFullYear()
-          : new Date().getUTCFullYear();
+      // 2026-10-01 監査 U-11: 年ヒントは UTC ではなくアプリの TZ の年
+      // (1/1 00:00〜09:00 JST の投稿が前年に解決されていた)。
+      const fallbackYear = jstCalendarDate(postedTMs ?? Date.now()).y;
       const vTitle = (v as { title?: string | null }).title ?? null;
       const titleDate = extractDateFromTitle(vTitle, fallbackYear);
       if (titleDate) {
@@ -2041,7 +2044,6 @@ async function linkReportsToVideos(
   // 「クリア / ふくしゅう / れんしゅう」と分けて投稿) では同日複数
   // 動画から同一 Logs URL に飛ばしたいケースが多い、というユーザー
   // 指示。各動画は依然 1 レポートにしか紐づかない (`usedVideos`)。
-  const HOUR_MS = 60 * 60 * 1000;
   const sameJstDay = (
     a: { y: number; m: number; d: number },
     b: { y: number; m: number; d: number },
@@ -2135,7 +2137,7 @@ async function linkReportsToVideos(
       d ? `${d.y}-${String(d.m).padStart(2, "0")}-${String(d.d).padStart(2, "0")}` : undefined;
     // Format report.startMs in JST (YYYY-MM-DD HH:mm).
     const formatJst = (ms: number) => {
-      const dt = new Date(ms + 9 * HOUR_MS);
+      const dt = new Date(ms + APP_UTC_OFFSET_MS);
       const Y = dt.getUTCFullYear();
       const M = String(dt.getUTCMonth() + 1).padStart(2, "0");
       const D = String(dt.getUTCDate()).padStart(2, "0");
@@ -2151,7 +2153,7 @@ async function linkReportsToVideos(
       videoDate: videoTitleDate
         ? fmt(videoTitleDate)
         : pair.video.tMs !== null
-          ? new Date(pair.video.tMs).toISOString().slice(0, 10) +
+          ? jstYmdString(new Date(pair.video.tMs)) +
             " (posted_at)"
           : undefined,
       reportDate: fmt(reportJst),
@@ -2272,9 +2274,8 @@ function buildSessionLinkDetail<T extends string>(
   const reportJst = jstCalendarDate(pair.report.startMs);
   const fmt = (d: { y: number; m: number; d: number }) =>
     `${d.y}-${String(d.m).padStart(2, "0")}-${String(d.d).padStart(2, "0")}`;
-  const HOUR_MS_LOCAL = 60 * 60 * 1000;
   const formatJstSession = (ms: number) => {
-    const dt = new Date(ms + 9 * HOUR_MS_LOCAL);
+    const dt = new Date(ms + APP_UTC_OFFSET_MS);
     const Y = dt.getUTCFullYear();
     const M = String(dt.getUTCMonth() + 1).padStart(2, "0");
     const D = String(dt.getUTCDate()).padStart(2, "0");

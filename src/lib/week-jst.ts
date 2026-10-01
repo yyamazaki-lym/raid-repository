@@ -10,11 +10,13 @@
  * DB では `loot_weekly_checks.week_start date` に入る。
  */
 
+import { APP_UTC_OFFSET_MS } from "./app-timezone";
+
 /** 週制限のリセットは毎週火曜 08:00 UTC (JST 17:00)。DST は無い。 */
 const RESET_WEEKDAY_UTC = 2; // 0=Sun … 2=Tue
 const RESET_HOUR_UTC = 8;
 
-const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
+const JST_OFFSET_MS = APP_UTC_OFFSET_MS;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 function ymdString(utcMs: number): string {

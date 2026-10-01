@@ -69,10 +69,15 @@ function resolvePostedAt(
 ): string | null {
   // Year-less タイトル ("4/1" 等) のための fallbackYear: YouTube 値があれば
   // それ、無ければ既存 posted_at の年。
+  // 2026-10-01 監査 U-11: 年はアプリの TZ (JST) で読む。UTC 年だと
+  // 1/1 00:00〜09:00 JST の投稿が前年に解決され、TOP の表示
+  // (video-jst-date.ts) と食い違っていた。
   const youtubeYear = meta.uploadDate
-    ? new Date(meta.uploadDate).getUTCFullYear()
+    ? toJstYmd(new Date(meta.uploadDate).getTime()).y
     : null;
-  const existingYear = existing ? new Date(existing).getUTCFullYear() : null;
+  const existingYear = existing
+    ? toJstYmd(new Date(existing).getTime()).y
+    : null;
   const fallbackYear = youtubeYear ?? existingYear ?? undefined;
   const titleIso = titleDateToIso(title, fallbackYear);
   if (titleIso) return titleIso;
@@ -833,9 +838,10 @@ export async function backfillFirstClearFromExistingVideos(
     const annotated: SortedVideo[] = inCategory.map((v) => {
       const postedAt = (v.posted_at as string | null) ?? null;
       const createdAt = v.created_at as string;
-      const fallbackYear = postedAt
-        ? new Date(postedAt).getUTCFullYear()
-        : new Date(createdAt).getUTCFullYear();
+      // 2026-10-01 監査 U-11: 年ヒントはアプリの TZ (JST) の年。
+      const fallbackYear = toJstYmd(
+        new Date(postedAt ?? createdAt).getTime(),
+      ).y;
       const titleD = extractDateFromTitle(v.title as string, fallbackYear);
       if (titleD) {
         // 22:00 JST = 13:00 UTC — pick a stable raid-hour so two
@@ -3759,9 +3765,10 @@ export async function fetchTimeToClearByCategory(): Promise<
   const annotated = videos.map((v) => {
     const postedAt = (v.posted_at as string | null) ?? null;
     const createdAt = v.created_at as string;
-    const fallbackYear = postedAt
-      ? new Date(postedAt).getUTCFullYear()
-      : new Date(createdAt).getUTCFullYear();
+    // 2026-10-01 監査 U-11: 年ヒントはアプリの TZ (JST) の年。
+    const fallbackYear = toJstYmd(
+      new Date(postedAt ?? createdAt).getTime(),
+    ).y;
     const titleD = extractDateFromTitle(v.title as string, fallbackYear);
     const effectiveIso = titleD
       ? new Date(

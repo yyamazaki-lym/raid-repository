@@ -47,6 +47,8 @@ try {
       "src/lib/schedule/attendance-reminder-keys.ts",
       "--outDir",
       outDir,
+      "--rootDir",
+      "src/lib",
       "--target",
       "es2022",
       "--module",
@@ -61,7 +63,10 @@ try {
   // Discord 相対時刻)。tsc は拡張子なしのまま出力し Node の ESM は解決できない
   // ため、出力された相対 import に `.js` を付ける (tsc は依存も同じ outDir に
   // 一緒に出力している)。
-  for (const f of readdirSync(outDir)) {
+  // 2026-10-01 (監査 U-9): schedule/ の純モジュールが ../app-timezone を
+  // 読むようになったので、出力は src/lib を根に schedule/ 以下へ出る
+  // (--rootDir で固定)。相対 import の .js 付与も再帰で行う。
+  for (const f of readdirSync(outDir, { recursive: true })) {
     if (!f.endsWith(".js")) continue;
     const fp = join(outDir, f);
     writeFileSync(
@@ -73,7 +78,7 @@ try {
     );
   }
   const mod = await import(
-    pathToFileURL(join(outDir, "attendance-reminder-core.js")).href
+    pathToFileURL(join(outDir, "schedule", "attendance-reminder-core.js")).href
   );
 
   console.log("\n[未回答の判定]");
@@ -191,7 +196,7 @@ try {
 
   console.log("\n[W-20 (2026-09-07) 催促の頻度]");
   const keys = await import(
-    pathToFileURL(join(outDir, "attendance-reminder-keys.js")).href
+    pathToFileURL(join(outDir, "schedule", "attendance-reminder-keys.js")).href
   );
   const {
     parseReminderCadence,

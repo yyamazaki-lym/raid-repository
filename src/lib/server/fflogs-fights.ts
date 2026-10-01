@@ -60,6 +60,7 @@ import {
   type StoredPhaseTransition,
 } from "@/lib/fflogs-fight-detail";
 import { attachBothAbilityNames } from "./xivapi-action-names";
+import { APP_UTC_OFFSET_ISO } from "@/lib/app-timezone";
 import {
   recordAttendanceActuals,
   type ReportParticipants,
@@ -1132,7 +1133,7 @@ export async function bridgeSyncedReportsToVideos(db: Db): Promise<number> {
 
 function isRecent(date: string | null): boolean {
   if (!date) return true; // 日付不明は毎回取り直す (件数は少ない)
-  const t = Date.parse(`${date}T00:00:00+09:00`);
+  const t = Date.parse(`${date}T00:00:00${APP_UTC_OFFSET_ISO}`);
   if (!Number.isFinite(t)) return true;
   return Date.now() - t < REFRESH_WINDOW_DAYS * 24 * 60 * 60 * 1000;
 }

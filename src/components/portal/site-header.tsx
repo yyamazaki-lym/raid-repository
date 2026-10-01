@@ -11,6 +11,7 @@ import { SettingsDialog } from "./settings-dialog-lazy";
 import { DeployColorBadge } from "./deploy-color-badge";
 import { OnlinePresenceIndicator } from "./online-presence-indicator";
 import { LATEST_RELEASE_META } from "@/lib/changelog-meta";
+import { APP_TIME_ZONE } from "@/lib/app-timezone";
 import { getMessages } from "@/lib/i18n/server";
 import {
   getCurrentUserCanEdit,
@@ -105,7 +106,7 @@ const DEFAULT_COLOR = DEPLOY_COLORS[0]!;
  */
 function pickInitialColor(): string {
   const today = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Tokyo",
+    timeZone: APP_TIME_ZONE,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",

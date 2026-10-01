@@ -13,11 +13,13 @@
  * `Intl(Asia/Tokyo)` は固定 +9h と常に一致する。
  */
 
-const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
+import { APP_TIME_ZONE, APP_UTC_OFFSET_MS } from "./app-timezone";
+
+const JST_OFFSET_MS = APP_UTC_OFFSET_MS;
 
 // 1 つの formatter を使い回す (生成コスト回避)。各関数は必要な part のみ読む。
 const JST_PARTS = new Intl.DateTimeFormat("en-CA", {
-  timeZone: "Asia/Tokyo",
+  timeZone: APP_TIME_ZONE,
   year: "numeric",
   month: "2-digit",
   day: "2-digit",
