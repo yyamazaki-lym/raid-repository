@@ -224,6 +224,22 @@ try {
       }
     }
     check("日時の toLocale*String は timeZone つき", noTz, []);
+    // 端末の TZ で暦日・時刻を読む getter (getFullYear / getMonth / getDate /
+    // getDay / getHours / getMinutes) は使わない。例外は「年月日から作った
+    // Date の曜日を読む」形 (`new Date(y, m, d).getDay()`) で、作るのも読む
+    // のも同じ TZ なので、どの TZ でも正しい曜日になる。
+    const localGetters = [];
+    for (const file of walk("src")) {
+      const lines = stripComments(readFileSync(file, "utf8")).split("\n");
+      lines.forEach((line, i) => {
+        for (const m of line.matchAll(/\.get(FullYear|Month|Date|Day|Hours|Minutes)\(\)/g)) {
+          const before = line.slice(0, m.index);
+          if (/new Date\([^()]*,[^()]*\)$/.test(before)) continue;
+          localGetters.push(`${relative(".", file).replace(/\\/g, "/")}:${i + 1} ${m[0]}`);
+        }
+      });
+    }
+    check("端末の TZ で読む getter を使わない", localGetters, []);
   }
 
   console.log("6. U-14 描画中の Date.now() をやめる");

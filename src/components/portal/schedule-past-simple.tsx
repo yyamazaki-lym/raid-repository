@@ -13,6 +13,7 @@ import {
 } from "@/lib/schedule-memos-client";
 import { jstTodayStartMs } from "@/lib/schedule/jst-cutoff";
 import { useHydrationSafeNow } from "@/lib/use-hydration-safe-now";
+import { jstYmd } from "@/lib/jst-date";
 import type { ScheduleSession } from "@/lib/schedule/next-session";
 import type { SessionLogEntry } from "@/lib/schedule/session-logs";
 import type { SessionVideoLink } from "@/lib/server/session-video-link";
@@ -197,9 +198,11 @@ function DateChip({
         parseInt(m[3]!, 10),
         session.dayOfWeek,
       )
-    : msg.pastSimple.chipDate(
-        session.date.getMonth() + 1,
-        session.date.getDate(),
+    : // 2026-10-01 監査 U-13 と同じ理由で、予備経路も端末の TZ ではなく
+      // アプリの TZ (JST) の暦日で出す。
+      msg.pastSimple.chipDate(
+        jstYmd(session.date).m,
+        jstYmd(session.date).d,
         session.dayOfWeek,
       );
 
