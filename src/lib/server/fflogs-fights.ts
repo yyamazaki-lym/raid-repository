@@ -1477,6 +1477,9 @@ async function fetchFightsJsonViaEdgeProxy(
       body: JSON.stringify({ reportCode: code, sessionCookie }),
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS + 5_000),
       cache: "no-store",
+      // 2026-10-01 監査 S-7: CRON_SECRET (と session cookie) を載せるので、
+      // 3xx で別の宛先へ転送させない (logs-auto-sync.ts の #397 と同じ)。
+      redirect: "error",
     });
     if (res.status === 429) {
       return {

@@ -23,6 +23,7 @@ import {
 import { getScheduleSourceUrl } from "./source-url";
 import { fetchStoredPastSessions } from "@/lib/server/discord-schedule";
 import { isPublicHttpUrl } from "@/lib/url-safe";
+import { assertPublicResolution } from "@/lib/server/safe-fetch";
 
 export type {
   ScheduleSession,
@@ -97,6 +98,9 @@ function deriveEditUrl(listUrl: string): string | null {
   }
 }
 
+/** リダイレクトを手で辿る最大段数 (http → https の 1 段 + 余裕)。 */
+const SCHEDULE_MAX_REDIRECT_HOPS = 3;
+
 async function fetchHtmlOrNull(target: string): Promise<string | null> {
   // SSRF defense-in-depth: schedule_url は admin が設定する DB 値だが、
   // 内部 IP / loopback / link-local への fetch を明示的に弾く。
@@ -105,20 +109,42 @@ async function fetchHtmlOrNull(target: string): Promise<string | null> {
     return null;
   }
   try {
-    // `signal` 付き fetch は request memoization の対象外になる (Next.js 16
-    // fetch docs) が、fetchSchedule の呼び出しは page.tsx の 1 箇所のみで
-    // 同一 render 内の重複 fetch が無く、Data Cache (revalidate/tags) は
-    // signal の有無に関係なく効くため実害なし。
-    const res = await fetch(target, {
-      next: { revalidate: 60, tags: [SCHEDULE_CACHE_TAG] },
-      headers: { "User-Agent": "RaidRepository/0.1" },
-      signal: AbortSignal.timeout(SCHEDULE_FETCH_TIMEOUT_MS),
-    });
-    if (!res.ok) {
-      console.warn("[schedule] non-OK response:", res.status, target);
-      return null;
+    // 2026-10-01 監査 S-2: `isPublicHttpUrl` は IP リテラルしか見ないので、
+    // 内部 IP に解決するホスト名 (`127.0.0.1.nip.io` 等) を素通りしていた。
+    // Data Cache (`next.tags` + `updateTag` の即時無効化) を保つため `fetch`
+    // は替えず、接続前に解決先を検査する (`assertPublicResolution`)。
+    // リダイレクトも自動では辿らず、行き先を同じ検査にかけてから辿る。
+    let current = target;
+    for (let hop = 0; hop < SCHEDULE_MAX_REDIRECT_HOPS; hop++) {
+      await assertPublicResolution(current);
+      // `signal` 付き fetch は request memoization の対象外になる (Next.js 16
+      // fetch docs) が、fetchSchedule の呼び出しは page.tsx の 1 箇所のみで
+      // 同一 render 内の重複 fetch が無く、Data Cache (revalidate/tags) は
+      // signal の有無に関係なく効くため実害なし。
+      const res = await fetch(current, {
+        next: { revalidate: 60, tags: [SCHEDULE_CACHE_TAG] },
+        headers: { "User-Agent": "RaidRepository/0.1" },
+        signal: AbortSignal.timeout(SCHEDULE_FETCH_TIMEOUT_MS),
+        redirect: "manual",
+      });
+      if (res.status >= 300 && res.status < 400) {
+        const loc = res.headers.get("location");
+        const next = loc ? new URL(loc, current).toString() : null;
+        if (!next || !isPublicHttpUrl(next)) {
+          console.warn("[schedule] blocked redirect:", res.status, current);
+          return null;
+        }
+        current = next;
+        continue;
+      }
+      if (!res.ok) {
+        console.warn("[schedule] non-OK response:", res.status, target);
+        return null;
+      }
+      return await res.text();
     }
-    return await res.text();
+    console.warn("[schedule] too many redirects:", target);
+    return null;
   } catch (err) {
     console.warn("[schedule] fetch error:", err, target);
     return null;

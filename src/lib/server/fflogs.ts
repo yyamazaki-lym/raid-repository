@@ -910,6 +910,9 @@ async function fetchScrapePageViaEdgeProxy(
       // proxy 側の fflogs fetch タイムアウト (20s) + 中継マージン
       signal: AbortSignal.timeout(FFLOGS_SCRAPE_TIMEOUT_MS + 5_000),
       cache: "no-store",
+      // 2026-10-01 監査 S-7: CRON_SECRET を載せるので、3xx で別の宛先へ
+      // Authorization ごと転送させない (logs-auto-sync.ts の #397 と同じ)。
+      redirect: "error",
     });
     // 2.9 follow-up (2026-06-12): 429 は proxy.ts 前段の rate limit
     // (60 req/60s)。直接 fetch に fallback しても Node IP の恒常 403 で
@@ -1273,16 +1276,20 @@ export async function linkFflogsReportsToVideos(opts?: {
   }
 
   // Read all sources' configuration.
-  // session cookie は secrets テーブル (暗号化) を優先、無ければ
-  // 旧 app_settings の plaintext fallback (TODO #35 移行期)。
+  // session cookie は secrets テーブル (暗号化) だけから読む。
+  //
+  // 2026-10-01 監査 S-6: 以前は旧 app_settings の plaintext に fallback して
+  // いた (TODO #35 の移行期)。app_settings は authenticated 全員が SELECT
+  // できるので、万一 plaintext 行が作られると全メンバーに cookie が見える
+  // 構造だった。書き込み側 (`setFflogsSessionCookie`) は secrets にしか
+  // 書かず、schema 14 章が適用のたびに plaintext 行を消すので、fallback は
+  // もう値を返さない死んだ経路だった。
   const { getSecretValue } = await import("./secret-store");
-  const [username, oauthToken, encryptedCookie] = await Promise.all([
+  const [username, oauthToken, sessionCookie] = await Promise.all([
     fetchAppSetting("fflogs_username"),
     getValidFflogsOAuthToken(),
     getSecretValue("fflogs_session_cookie"),
   ]);
-  const sessionCookie =
-    encryptedCookie ?? (await fetchAppSetting("fflogs_session_cookie"));
 
   // At least one source must be configured.
   if (!username && !oauthToken) {
