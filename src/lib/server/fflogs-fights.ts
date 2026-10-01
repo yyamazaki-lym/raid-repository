@@ -13,6 +13,7 @@ import { buildFflogsReportUrl } from "@/lib/fflogs-url";
 import { getSecretValue } from "./secret-store";
 import { fetchAllPages } from "@/lib/fetch-all-pages";
 import { buildFflogsXhrHeaders } from "./fflogs-scrape-request";
+import { fetchErrorReason } from "@/lib/fetch-error-reason";
 import { parseFflogsReportCode } from "@/lib/fflogs-url";
 import { notifyLogsEvents } from "./logs-notify";
 import {
@@ -1540,10 +1541,9 @@ async function fetchFightsJsonDirect(
     }
     return { ok: true, text: await res.text() };
   } catch (e) {
-    return {
-      ok: false,
-      reason: e instanceof Error ? e.message : "fetch failed",
-    };
+    // ⚠ e.message を使わない: ヘッダ値が不正だと cookie がそのまま載り、
+    // fflogs_report_syncs.reason (メンバー全員が読める) に残る。
+    return { ok: false, reason: fetchErrorReason(e) };
   }
 }
 

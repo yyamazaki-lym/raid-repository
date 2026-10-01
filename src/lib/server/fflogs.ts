@@ -11,6 +11,7 @@ import type { SessionLogEntry } from "@/lib/schedule/session-logs";
 import { bridgeAllManualSessionLogsToVideos } from "./session-logs-video-bridge";
 import { getValidFflogsOAuthToken } from "./fflogs-oauth";
 import { parseFflogsReportCode } from "@/lib/fflogs-url";
+import { fetchErrorReason } from "@/lib/fetch-error-reason";
 import { jstYmdKey, resolveVideoJstYmd } from "@/lib/video-jst-date";
 import { resolveSyncDeadline } from "@/lib/fflogs-sync-budget";
 import {
@@ -974,7 +975,8 @@ async function fetchScrapePageDirect(
     }
     return { ok: true, html: await res.text() };
   } catch (e) {
-    return { ok: false, reason: "HTML scrape fetch error: " + String(e) };
+    // ⚠ String(e) を使わない: ヘッダ値が不正だと cookie がそのまま載る。
+    return { ok: false, reason: "HTML scrape fetch error: " + fetchErrorReason(e) };
   }
 }
 
