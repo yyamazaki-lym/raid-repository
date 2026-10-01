@@ -378,6 +378,11 @@ export const SERVER_TEXT_EN: ServerTextDictRaw = {
       "The notification hour must be an integer from 0 to 23",
     "週の指定が不正です":
       "Invalid week",
+    // #399 (pg_cron の催促を claim 先行に) が足す理由。
+    "送信済み":
+      "Already sent",
+    "送信済みの印を確認できませんでした":
+      "Could not check the sent marker",
     "進捗を保存できませんでした":
       "Could not save the progress",
     "進捗を取得できませんでした":
