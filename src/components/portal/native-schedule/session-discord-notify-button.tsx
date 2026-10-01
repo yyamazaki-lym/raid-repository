@@ -61,7 +61,7 @@ export function SessionDiscordNotifyButton({
       onClick={handleClick}
       aria-label={m.discordNotify.ariaLabel(displayDate)}
       title={m.discordNotify.title}
-      className="ml-1 inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground/70 transition hover:scale-110 hover:text-[var(--neon-cyan)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--neon-cyan)]/60 active:scale-95 disabled:opacity-50"
+      className="ml-1 inline-flex tap-target relative h-6 w-6 items-center justify-center rounded-md text-muted-foreground/70 transition hover:scale-110 hover:text-[var(--neon-cyan)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--neon-cyan)]/60 active:scale-95 disabled:opacity-50"
     >
       {busy ? (
         <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />

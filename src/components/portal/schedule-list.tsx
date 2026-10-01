@@ -578,6 +578,15 @@ export function ScheduleList({
                 : m.schedule.countRecent(recentPast.length, renderedPast.length)}
             </span>
           </header>
+          {/* 2026-10-01 監査 U-10: 375px では表が横スクロール前提 (min-w 640px)
+              なのに、そうと分かる手掛かりが無かった。上段の予定表 (UI-10) の
+              ようにアジェンダへ差し替えはしない — この表は利用者が「詳細」を
+              選んで開くもので、メンバーごとの記号・メモ / 動画 / Logs・管理者の
+              「過去ログから消す」はここにしか無い (スマホ向けの軽い表示は
+              日付チップの簡易表示が担う)。md 未満でだけ一言添える。 */}
+          <p className="border-b border-border/40 px-3 py-1.5 text-[11px] text-muted-foreground md:hidden">
+            {m.schedule.pastTableScrollHint}
+          </p>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[640px] border-collapse text-left text-sm">
               {tableHead(false, false)}

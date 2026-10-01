@@ -1073,7 +1073,7 @@ export function LogsView({
   if (fights.length === 0) {
     return (
       <div className="flex flex-col gap-3 p-3">
-        <div className="flex justify-end gap-2">
+        <div className="flex flex-wrap justify-end gap-2">
           {importButton}
           {syncButton}
         </div>
@@ -1173,7 +1173,9 @@ export function LogsView({
             );
           })()}
         </div>
-        <span className="flex items-center gap-2">
+        {/* 2026-10-01 監査 U-3: 375px で右端の「ログを同期」が切れていた
+            (header は折り返すが、この 3 つの並びは折り返さなかった)。 */}
+        <span className="flex flex-wrap items-center justify-end gap-2">
           {difficultyButton}
           {importButton}
           {syncButton}
