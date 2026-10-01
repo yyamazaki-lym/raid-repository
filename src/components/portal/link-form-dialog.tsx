@@ -1,5 +1,10 @@
 "use client";
 
+import {
+  LINK_DESCRIPTION_MAX,
+  LINK_TITLE_MAX,
+  LINK_URL_MAX,
+} from "@/lib/text-limits";
 import { useEffect, useState } from "react";
 import { Plus, Save, AlertTriangle, Pencil, Wand2, Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -245,6 +250,7 @@ export function LinkFormDialog({
               type="url"
               inputMode="url"
               value={url}
+              maxLength={LINK_URL_MAX}
               onChange={(e) => {
                 setUrl(e.target.value);
                 if (urlFieldError) setUrlFieldError(null);
@@ -292,6 +298,7 @@ export function LinkFormDialog({
             <Input
               id="link-title"
               value={title}
+              maxLength={LINK_TITLE_MAX}
               onChange={(e) => setTitle(e.target.value)}
               placeholder={
                 kind === "video"
@@ -312,6 +319,7 @@ export function LinkFormDialog({
             <Textarea
               id="link-desc"
               value={description}
+              maxLength={LINK_DESCRIPTION_MAX}
               onChange={(e) => setDescription(e.target.value)}
               placeholder={
                 kind === "video"

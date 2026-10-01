@@ -19,13 +19,24 @@
  */
 
 /** 上限を持つ入力欄。DB のカラム名ではなく「画面上の欄」の単位。 */
-export type TextLengthField = "body" | "label" | "note" | "name";
+export type TextLengthField =
+  | "body"
+  | "label"
+  | "note"
+  | "name"
+  // 2026-10-01 監査 U-7: コンテンツとリンクの入口検証用。
+  | "title"
+  | "url"
+  | "description";
 
 const FIELD_JA: Record<TextLengthField, string> = {
   body: "本文",
   label: "ラベル",
   note: "メモ",
   name: "名前",
+  title: "タイトル",
+  url: "URL",
+  description: "説明",
 };
 
 const FIELD_EN: Record<TextLengthField, string> = {
@@ -33,6 +44,9 @@ const FIELD_EN: Record<TextLengthField, string> = {
   label: "Label",
   note: "Note",
   name: "Name",
+  title: "Title",
+  url: "URL",
+  description: "Description",
 };
 
 export type TextLengthCheck = {

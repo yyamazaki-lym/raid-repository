@@ -7,6 +7,7 @@ import {
   pmap,
 } from "@/lib/server/youtube-duration";
 import { isClearTitleForCategory } from "@/lib/clear-detection";
+import { LINK_TITLE_MAX, LINK_URL_MAX, clampText } from "@/lib/text-limits";
 import {
   rowToCategory,
   type Category,
@@ -436,13 +437,18 @@ async function importChannel(
   // Allocate sort_orders deterministically so chronological insertion
   // order is preserved even though fetches finished out-of-order.
   const startSortOrder = nextOrder;
-  const rowsToInsert = filtered.map((e, i) => ({
+  // 2026-10-01 監査 U-7: DB の category_links_text_sane (URL 4096 字) を超える
+  // URL は保存できないので取り込まない (1 行でも混ざると bulk upsert ごと
+  // 失敗して per-row に落ちる)。タイトルは切り詰めて保存する。
+  const rowsToInsert = filtered
+    .filter((e) => e.url.length <= LINK_URL_MAX)
+    .map((e, i) => ({
     category_id: cat.id,
     kind,
     // Phase 13.3: タイトル取得失敗 (null) のときだけ URL 文字列で埋める
     // フォールバック。フィルタ判定はもう終わっているので URL ↔ タイトル混同の
     // 心配なし。DB の title カラムは NOT NULL のためフォールバック必要。
-    title: e.title ?? e.url,
+    title: clampText(e.title ?? e.url, LINK_TITLE_MAX),
     url: e.url,
     description: `Discord 取り込み (by ${e.postedBy})`,
     sort_order: startSortOrder + i,

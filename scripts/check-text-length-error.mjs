@@ -106,6 +106,9 @@ try {
     ["label", "ラベル"],
     ["note", "メモ"],
     ["name", "名前"],
+    ["title", "タイトル"],
+    ["url", "URL"],
+    ["description", "説明"],
   ]) {
     check(
       `${field} → ${label}`,

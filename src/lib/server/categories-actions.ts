@@ -38,6 +38,15 @@ import {
   isFirstFloorPracticeTitle,
 } from "@/lib/clear-detection";
 import { videoBelongsToCategory } from "@/lib/content-groups";
+import { textLengthError } from "@/lib/text-length-error";
+import {
+  CATEGORY_DESCRIPTION_MAX,
+  CATEGORY_NAME_MAX,
+  LINK_DESCRIPTION_MAX,
+  LINK_TITLE_MAX,
+  LINK_URL_MAX,
+  clampText,
+} from "@/lib/text-limits";
 import { extractDateFromTitle, titleDateToIso } from "@/lib/title-date";
 import {
   createClient,
@@ -249,6 +258,11 @@ export async function createCategoryAction(
 > {
   const auth = await assertAdminResult();
   if (!auth.ok) return { ok: false, reason: auth.reason };
+  // 2026-10-01 監査 U-7: 長さの上限 (DB の categories_text_sane と同じ値)。
+  const tooLong = textLengthError([
+    { field: "name", value: input.name, max: CATEGORY_NAME_MAX },
+  ]);
+  if (tooLong) return { ok: false, reason: tooLong };
 
   const supabase = await createClient();
   // 2.x (2026-06-09) TODO #10: sort_order は schema 側 RPC
@@ -287,6 +301,12 @@ export async function updateCategoryAction(
 ): Promise<CategoryWriteResult> {
   const auth = await assertAdminResult();
   if (!auth.ok) return { ok: false, reason: auth.reason };
+  // 2026-10-01 監査 U-7: 長さの上限 (DB の categories_text_sane と同じ値)。
+  const tooLong = textLengthError([
+    { field: "name", value: patch?.name, max: CATEGORY_NAME_MAX },
+    { field: "description", value: patch?.description, max: CATEGORY_DESCRIPTION_MAX },
+  ]);
+  if (tooLong) return { ok: false, reason: tooLong };
 
   // W-33 ① (2026-09-07): 難易度 / 進行モデルは自由記述と 3 値なので、
   // DB の CHECK に頼る前にここで正規化する (client からの直呼びもあり得る)。
@@ -2520,6 +2540,13 @@ export async function createCategoryLinkAction(input: {
 }): Promise<{ ok: true; linkId: string } | { ok: false; reason: string }> {
   const auth = await assertAdminResult();
   if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
+  // 2026-10-01 監査 U-7: 長さの上限 (DB の category_links_text_sane と同じ値)。
+  const tooLong = textLengthError([
+    { field: "title", value: input.title, max: LINK_TITLE_MAX },
+    { field: "url", value: input.url, max: LINK_URL_MAX },
+    { field: "description", value: input.description, max: LINK_DESCRIPTION_MAX },
+  ]);
+  if (tooLong) return { ok: false, reason: tooLong };
   const { isSafeUrl } = await import("@/lib/url-safe");
   if (!isSafeUrl(input.url)) {
     return {
@@ -2651,6 +2678,13 @@ export async function updateCategoryLinkAction(
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
   const auth = await assertAdminResult();
   if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
+  // 2026-10-01 監査 U-7: 長さの上限 (DB の category_links_text_sane と同じ値)。
+  const tooLong = textLengthError([
+    { field: "title", value: patch.title, max: LINK_TITLE_MAX },
+    { field: "url", value: patch.url, max: LINK_URL_MAX },
+    { field: "description", value: patch.description, max: LINK_DESCRIPTION_MAX },
+  ]);
+  if (tooLong) return { ok: false, reason: tooLong };
   const { isSafeUrl } = await import("@/lib/url-safe");
   if (patch.url !== undefined && !isSafeUrl(patch.url)) {
     return {
@@ -3907,7 +3941,8 @@ export async function createGphotoEntryAction(input: {
   const rows = album.imageUrls.map((u, i) => ({
     category_id: input.categoryId,
     kind: "gphoto" as const,
-    title: album.title ?? GPHOTO_DEFAULT_TITLE,
+    // 2026-10-01 監査 U-7: アルバム名は取得元のままなので、DB の上限で切る。
+    title: clampText(album.title ?? GPHOTO_DEFAULT_TITLE, LINK_TITLE_MAX),
     url: u,
     description: null,
     sort_order: baseOrder + i,
@@ -4009,7 +4044,11 @@ export async function syncGphotoAlbumAction(albumId: string): Promise<
     const rows = toAdd.map((u, i) => ({
       category_id: albumRow.category_id as string,
       kind: "gphoto" as const,
-      title: (album.title ?? albumRow.title ?? GPHOTO_DEFAULT_TITLE) as string,
+      // 2026-10-01 監査 U-7: アルバム名は取得元のままなので、DB の上限で切る。
+      title: clampText(
+        (album.title ?? albumRow.title ?? GPHOTO_DEFAULT_TITLE) as string,
+        LINK_TITLE_MAX,
+      ),
       url: u,
       description: null,
       sort_order: baseOrder + i,
