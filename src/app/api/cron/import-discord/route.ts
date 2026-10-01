@@ -1,6 +1,7 @@
 import "server-only";
 import { NextResponse, type NextRequest } from "next/server";
 import { runDiscordImport } from "@/lib/server/discord-import";
+import { DISCORD_IMPORT_BUDGET_MS } from "@/lib/discord-import-budget";
 import { assertCronAuth } from "@/lib/server/cron-auth";
 import { recordCronRun } from "@/lib/server/cron-status";
 import {
@@ -32,6 +33,11 @@ import {
  * を別の実行として起動する。同じ実行で続けると 300s を超えるため
  * (`src/lib/server/logs-auto-sync.ts`)。JST 04:00 の同期 cron は取りこぼし
  * 拾いとして残す。
+ *
+ * 2026-10-01 監査 C-6: 取り込みに持ち時間 (DISCORD_IMPORT_BUDGET_MS = 220s)
+ * を渡す。これを過ぎたら新しいページ取得・新しい URL の enrichment を始めず
+ * 次回へ回すので、300s で関数ごと打ち切られて挿入が丸ごと失われることが
+ * なくなる。残りの 80s は締切直前に始まった処理・upsert・Logs 同期の起動用。
  */
 
 export const runtime = "nodejs";
@@ -39,10 +45,13 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 export async function GET(req: NextRequest) {
+  const startedAt = Date.now();
   const denied = assertCronAuth(req, "cron/discord");
   if (denied) return denied;
 
-  const result = await runDiscordImport();
+  const result = await runDiscordImport({
+    deadlineAt: startedAt + DISCORD_IMPORT_BUDGET_MS,
+  });
   if (!result.ok) {
     // 2026-10-01 監査 F-2: 自動処理の最終実行として記録する。
     await recordCronRun("import-discord", "error", result.reason ?? "import failed");

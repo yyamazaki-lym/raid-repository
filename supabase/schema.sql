@@ -2692,26 +2692,98 @@ CREATE POLICY "category-strategy-images authenticated delete"
 --   1. Supabase Dashboard → SQL Editor で
 --      `SELECT vault.create_secret('<CRON_SECRET 値>', 'cron_notify_native_schedule_bearer');`
 --      を 1 回だけ実行 (本セクション反映の前後どちらでも OK)
---   2. 本セクション反映で extension 自動 enable + cron job 自動登録
---   3. 確認: `SELECT * FROM cron.job WHERE jobname = 'notify-native-schedule-hourly';`
+--   2. 叩く先 (自分の本番 URL) を `app.cron_base_url` で渡して本 schema を流す
+--      (下の 13-0。2 回目以降は既存ジョブの宛先を引き継ぐので不要)
+--   3. 確認: `SELECT jobname, command FROM cron.job;`
 
 CREATE EXTENSION IF NOT EXISTS pg_cron;
 CREATE EXTENSION IF NOT EXISTS pg_net;
 
+-- ---- 13-0. HTTP を叩く pg_cron ジョブの登録 (2026-10-01 監査 C-3 / F-5) ----
+-- 13 / 13a-2 / 13e の 3 ジョブ (通知・催促・warmup) はどれも「Vercel の route を
+-- pg_net で GET する」同じ形なので、登録をこの一時関数 1 本に集める。
+--
+-- 直した問題:
+--   * **公開デモ DB も本番を叩いていた。** この schema は本番と demo の両方に
+--     自動適用され、宛先は本番 URL の直書きだった。本番の runtime logs で
+--     /login が 24 回/時 (5 分毎 × 2)、毎時の 2 route が各 2 回/時と実測した。
+--     毎時の 2 route が同じ分に 2 回届くので、出欠催促の dedup (送信後に印を
+--     書く順) は二重メンションになり得た (催促側も 2026-10-01 に先取りへ変更)
+--   * **fork が上流の本番を叩いていた。** 直書きの URL は fork でもそのまま
+--     登録され、fork の通知・催促は 1 回も発火せず (上流で 401)、しかも fork の
+--     CRON_SECRET を上流へ送り続けていた
+--
+-- 決め方:
+--   1. 公開デモ (`app.public_demo` = 'true') では登録しない。既にあれば外す
+--      (§7-0 / §15 と同じフラグ。deploy-database-demo.yml が同一セッションで立てる)
+--   2. 宛先は `app.cron_base_url` (例 'https://<project>.vercel.app')。
+--      未指定なら**既存ジョブの宛先を引き継ぐ** (本番の自動デプロイが毎回
+--      URL を渡さなくても今の登録のまま動く)
+--   3. どちらも無ければ登録しない (NOTICE で設定方法を出す)。fork が初めて
+--      流したときに上流を叩くジョブができない
+--
+-- 渡し方 (同一セッションで schema より先に流す):
+--   psql "$URL" --single-transaction -c "SET app.cron_base_url = 'https://<自分の本番>';" -f supabase/schema.sql
+--   SQL Editor なら schema.sql の先頭に `SET app.cron_base_url = '…';` を 1 行足して流す。
+--   GitHub Actions (deploy-database.yml) は repository variable `CRON_BASE_URL` を渡す。
+--
+-- ⚠ 一時関数 (pg_temp) にしているのは、PostgREST から RPC として呼べる
+--   public の関数を増やさないため。schema の適用セッションが終われば消える。
+--
 -- 初回は cron.schedule、既存時は cron.alter_job で更新 (jobid 安定化、2.4 2026-06-10)。
 -- 旧実装は毎回 cron.unschedule + cron.schedule で再登録していたが、GitHub Actions の
 -- schema 自動再 deploy (PR #86) で main push 毎に新規 jobid が採番される副作用が判明
 -- (TODO #2 24h 観察 follow-up、1 ヶ月で jobid=1→4→...→15 と 12 回切替を観測)。
 -- alter_job は jobid を維持したまま schedule/command を上書きするため、観察 SQL を
 -- 固定 jobid で書ける + 再 deploy 切替窓の発火欠落 (累計 6 hour 程度) も解消。
--- 毎時 0 分 UTC = JST 毎時 0 分 (JST/UTC は分単位ずれなし)。
-DO $$
+CREATE OR REPLACE FUNCTION pg_temp.raid_upsert_http_cron(
+  p_jobname    text,
+  p_schedule   text,
+  p_path       text,
+  p_bearer     boolean,
+  p_timeout_ms integer
+) RETURNS void
+LANGUAGE plpgsql
+AS $fn$
 DECLARE
-  existing_jobid bigint;
-  c_schedule constant text := '0 * * * *';
-  c_command constant text := $cmd$
-    SELECT net.http_get(
-      url := 'https://yurutto-raid-repository.vercel.app/api/cron/notify-native-schedule',
+  v_jobid   bigint;
+  v_command text;
+  v_base    text := nullif(btrim(coalesce(current_setting('app.cron_base_url', true), '')), '');
+  v_source  text := 'app.cron_base_url';
+  v_headers text := '';
+BEGIN
+  SELECT jobid, command INTO v_jobid, v_command
+    FROM cron.job
+   WHERE jobname = p_jobname;
+
+  -- 1. 公開デモ DB には置かない (本番の route を叩かせない)。
+  IF coalesce(current_setting('app.public_demo', true), '') = 'true' THEN
+    IF v_jobid IS NOT NULL THEN
+      PERFORM cron.unschedule(v_jobid);
+      RAISE NOTICE '[cron] % を外しました (公開デモ DB では HTTP ジョブを持たない)', p_jobname;
+    END IF;
+    RETURN;
+  END IF;
+
+  -- 2. 宛先: 指定 → 既存ジョブの宛先。
+  IF v_base IS NULL AND v_command IS NOT NULL THEN
+    v_base := substring(v_command from 'url := ''(https://[^/'']+)');
+    v_source := '既存ジョブの宛先';
+  END IF;
+  v_base := rtrim(v_base, '/');
+
+  -- 3. 決まらなければ登録しない。
+  IF v_base IS NULL THEN
+    RAISE NOTICE '[cron] % は登録しません — 叩く先が未設定です。schema より先に SET app.cron_base_url = ''https://<自分の本番>''; を流してください', p_jobname;
+    RETURN;
+  END IF;
+  IF v_base !~ '^https://[A-Za-z0-9.-]+(:[0-9]+)?$' THEN
+    RAISE WARNING '[cron] % は更新しません — % (%) が https://<ホスト名> の形ではありません', p_jobname, v_base, v_source;
+    RETURN;
+  END IF;
+
+  IF p_bearer THEN
+    v_headers := $h$
       headers := jsonb_build_object(
         'Authorization',
         'Bearer ' || (
@@ -2720,29 +2792,42 @@ DECLARE
           WHERE name = 'cron_notify_native_schedule_bearer'
           LIMIT 1
         )
-      ),
-      timeout_milliseconds := 60000
-    );
-  $cmd$;
-BEGIN
-  SELECT jobid INTO existing_jobid
-  FROM cron.job
-  WHERE jobname = 'notify-native-schedule-hourly';
+      ),$h$;
+  END IF;
 
-  IF existing_jobid IS NULL THEN
-    PERFORM cron.schedule(
-      'notify-native-schedule-hourly',
-      c_schedule,
-      c_command
+  v_command := format(
+    $c$
+    SELECT net.http_get(
+      url := %L,%s
+      timeout_milliseconds := %s
     );
+  $c$,
+    v_base || p_path,
+    v_headers,
+    p_timeout_ms
+  );
+
+  IF v_jobid IS NULL THEN
+    PERFORM cron.schedule(p_jobname, p_schedule, v_command);
+    RAISE NOTICE '[cron] % を登録しました (宛先 %)', p_jobname, v_base;
   ELSE
     PERFORM cron.alter_job(
-      job_id := existing_jobid,
-      schedule := c_schedule,
-      command := c_command
+      job_id := v_jobid,
+      schedule := p_schedule,
+      command := v_command
     );
   END IF;
-END $$;
+END
+$fn$;
+
+-- 毎時 0 分 UTC = JST 毎時 0 分 (JST/UTC は分単位ずれなし)。
+SELECT pg_temp.raid_upsert_http_cron(
+  'notify-native-schedule-hourly',
+  '0 * * * *',
+  '/api/cron/notify-native-schedule',
+  true,
+  60000
+);
 
 -- ---- 13a-2. Hourly cron for attendance reminder (2026-08-30) -----------
 -- 出欠未入力者への催促メンション。13 と同じ pg_cron + pg_net + vault の
@@ -2753,46 +2838,14 @@ END $$;
 -- を判定するため、毎時叩いても実送信は 1 開催日につき 1 回。
 --
 -- 運用前提: 13 と同じ CRON_SECRET を使うので vault secret は使い回す
--- (`cron_notify_native_schedule_bearer`)。別 secret に分けたい場合は
--- 下の name を変更して `vault.create_secret` を追加登録する。
-DO $$
-DECLARE
-  existing_jobid bigint;
-  c_schedule constant text := '0 * * * *';
-  c_command constant text := $cmd$
-    SELECT net.http_get(
-      url := 'https://yurutto-raid-repository.vercel.app/api/cron/attendance-reminder',
-      headers := jsonb_build_object(
-        'Authorization',
-        'Bearer ' || (
-          SELECT decrypted_secret
-          FROM vault.decrypted_secrets
-          WHERE name = 'cron_notify_native_schedule_bearer'
-          LIMIT 1
-        )
-      ),
-      timeout_milliseconds := 60000
-    );
-  $cmd$;
-BEGIN
-  SELECT jobid INTO existing_jobid
-  FROM cron.job
-  WHERE jobname = 'attendance-reminder-hourly';
-
-  IF existing_jobid IS NULL THEN
-    PERFORM cron.schedule(
-      'attendance-reminder-hourly',
-      c_schedule,
-      c_command
-    );
-  ELSE
-    PERFORM cron.alter_job(
-      job_id := existing_jobid,
-      schedule := c_schedule,
-      command := c_command
-    );
-  END IF;
-END $$;
+-- (`cron_notify_native_schedule_bearer`)。登録と宛先の決め方は 13-0。
+SELECT pg_temp.raid_upsert_http_cron(
+  'attendance-reminder-hourly',
+  '0 * * * *',
+  '/api/cron/attendance-reminder',
+  true,
+  60000
+);
 
 -- ---- 13b. Atomic sort_order allocator RPCs (TODO #10, 2.x) ------------
 -- 2.x (2026-06-09): SELECT max(sort_order)+1 → INSERT の TOCTOU で
@@ -3297,43 +3350,21 @@ GRANT EXECUTE ON FUNCTION
 --   * 過去に撤廃した warmup (/api/health、58432aa) は全ページ Edge runtime
 --     時代のもの — Node 関数を温めてもユーザーが踏むのは Edge だったため無意味
 --     だった。現在はページ自体が Node なので温め先 = ユーザーが踏む関数
---   * demo Supabase にも本 schema が自動 deploy されるため、demo 側 pg_cron も
---     本番 URL を ping する (§13 の notify cron と同じ割り切り)。本番が 5 分間隔
---     ×2 系統で温まるだけで実害なし。demo 自体は温まらないが mock site なので不要
+--   * 公開デモ DB には登録しない (2026-10-01 監査 C-3)。以前は demo 側の
+--     pg_cron も本番 URL を ping しており、同じ分に 2 回届くだけで温まる間隔は
+--     変わらなかった。登録と宛先の決め方は 13-0
 --   * デプロイ直後の最初の 1 アクセス (ping 間隔の隙間) には効かない — そこは
 --     デプロイ完了 (deployment_status success) をトリガーに数回 ping する
 --     GitHub Actions (.github/workflows/warmup-after-deploy.yml, 2026-07-22)
 --     が埋める。Cache Components (PPR) の静的シェル化は白画面そのものの
 --     構造的対策として引き続き別途調査
-DO $$
-DECLARE
-  existing_jobid bigint;
-  c_schedule constant text := '*/5 * * * *';
-  c_command constant text := $cmd$
-    SELECT net.http_get(
-      url := 'https://yurutto-raid-repository.vercel.app/login',
-      timeout_milliseconds := 30000
-    );
-  $cmd$;
-BEGIN
-  SELECT jobid INTO existing_jobid
-  FROM cron.job
-  WHERE jobname = 'warmup-portal-function';
-
-  IF existing_jobid IS NULL THEN
-    PERFORM cron.schedule(
-      'warmup-portal-function',
-      c_schedule,
-      c_command
-    );
-  ELSE
-    PERFORM cron.alter_job(
-      job_id := existing_jobid,
-      schedule := c_schedule,
-      command := c_command
-    );
-  END IF;
-END $$;
+SELECT pg_temp.raid_upsert_http_cron(
+  'warmup-portal-function',
+  '*/5 * * * *',
+  '/login',
+  false,
+  30000
+);
 
 -- ---- 14. Migration: 旧 plaintext FFLogs token / OAuth state を一掃 -----
 -- 2.x (2026-06-09): `fflogs-oauth.ts` の app_settings 平文 fallback と

@@ -16,7 +16,9 @@
  * `isJapaneseHoliday(date, holidays?)` to color rows.
  */
 
-const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
+import { APP_UTC_OFFSET_MS } from "./app-timezone";
+
+const JST_OFFSET_MS = APP_UTC_OFFSET_MS;
 
 /**
  * Hardcoded fallback table — `YYYY-MM-DD` (JST) → Japanese holiday name.

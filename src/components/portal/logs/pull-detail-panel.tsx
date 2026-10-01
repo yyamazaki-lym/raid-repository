@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState, useTransition } from "react";
 import { HeartPulse, Loader2, Plus, Skull, Tag, X } from "lucide-react";
 import { toast } from "sonner";
+import { useConfirm } from "@/components/portal/confirm-dialog";
 import {
   fetchPullDetailAction,
   type PullDetailDeath,
@@ -24,6 +25,7 @@ import {
   type LeadUpDeath,
 } from "@/lib/logs/death-leadup";
 import { formatMs, jobAbbr } from "@/lib/fflogs-fight-detail";
+import { useServerText } from "@/lib/i18n/use-server-text";
 import { useMessages } from "@/lib/i18n/client";
 import type { Messages } from "@/lib/i18n/messages";
 
@@ -81,7 +83,9 @@ export function PullDetailPanel({
   categoryId: string | null;
   clusterMs?: number;
 }) {
+  const sr = useServerText();
   const m = useMessages();
+  const confirm = useConfirm();
   const [state, setState] = useState<
     | { kind: "loading" }
     | { kind: "error"; reason: string }
@@ -141,7 +145,7 @@ export function PullDetailPanel({
         </span>
       ) : state.kind === "error" ? (
         <span className="text-[11px] text-destructive-foreground/90">
-          {state.reason}
+          {sr(state.reason)}
         </span>
       ) : state.deaths.length === 0 ? (
         <span className="text-[11px] text-muted-foreground">
@@ -201,7 +205,7 @@ export function PullDetailPanel({
           onLoad={() => {
             setLeadUp({ kind: "loading" });
             void fetchDeathLeadUpAction(reportCode, fightId).then((r) => {
-              if (!r.ok) setLeadUp({ kind: "error", reason: r.reason });
+              if (!r.ok) setLeadUp({ kind: "error", reason: sr(r.reason) });
               else setLeadUp({ kind: "ready", deaths: r.deaths });
             });
           }}
@@ -239,7 +243,16 @@ export function PullDetailPanel({
             await reloadNotes();
           })
         }
-        onDelete={(id) =>
+        onDelete={async (id) => {
+          // 2026-10-01 監査 U-16: 一言メモは消すと戻せないので確かめる
+          // (ほかの削除 11 箇所と同じ useConfirm)。
+          const ok = await confirm({
+            title: m.logs.pullNoteDeleteConfirmTitle,
+            description: m.logs.pullNoteDeleteConfirmDescription,
+            confirmText: m.common.delete,
+            destructive: true,
+          });
+          if (!ok) return;
           startTransition(async () => {
             const r = await deletePullNoteAction(id);
             if (!r.ok) {
@@ -247,8 +260,8 @@ export function PullDetailPanel({
               return;
             }
             await reloadNotes();
-          })
-        }
+          });
+        }}
       />
     </div>
   );

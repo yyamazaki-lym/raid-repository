@@ -1,4 +1,5 @@
 import "server-only";
+import { discordFetch } from "@/lib/server/discord-api";
 import { sessionStartUnixSeconds } from "@/lib/schedule/attendance-times";
 
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
@@ -6,6 +7,7 @@ import { fetchAppSetting } from "@/lib/supabase/app-settings";
 import { getScheduleSourceMode } from "@/lib/schedule/source-mode";
 import { getActiveNativeScheduleId } from "@/lib/schedule/native-active";
 import { fetchScheduleRaw } from "@/lib/schedule/next-session";
+import { claimMarker, type MarkerClaimOps } from "@/lib/schedule/marker-claim";
 import {
   DISCORD_ID_RE,
   getJstHour,
@@ -425,29 +427,115 @@ export async function dispatchAttendanceReminder(input: {
     .map((t) => t.discordUserId)
     .filter((id): id is string => id !== null);
 
+  const supabase = createSupabaseServiceRoleClient();
+
+  // C-4 (2026-10-01 監査): cron (respectDedup) は**印を先に取れた実行だけが
+  // 送る**。以前は「印を読む → 送る → 印を書く」の順で、同じ分に 2 回起動
+  // されると両方が古い印を読んで二重にメンションした。開催確定の通知
+  // (native-schedule-discord.ts の A-5.2) と同じ先取り方式。
+  if (input.respectDedup) {
+    let claimed: boolean;
+    try {
+      claimed = await claimMarker(reminderMarkerOps(supabase, marker));
+    } catch (e) {
+      // 取れたか分からないまま送ると二重送信に戻るので、送らない。
+      // 次の毎時 cron が取り直す。
+      console.warn("[attendance-reminder] dedup marker claim failed:", e);
+      return { ok: false, reason: "送信済みの印を確認できませんでした" };
+    }
+    if (!claimed) {
+      return { ok: true, posted: 0, skipped: 1, reason: "送信済み" };
+    }
+  }
+
   const posted = await postToDiscord({
     botToken,
     channelId,
     content,
     userIds: mentionIds,
   });
-  if (!posted.ok) return { ok: false, reason: posted.reason };
+  if (!posted.ok) {
+    if (input.respectDedup) {
+      // 送れなかったので印を戻し、次の毎時 cron で送り直せるようにする。
+      // 戻すのは「自分が書いた印のまま」の場合だけ (別の実行が後から
+      // 書いた印は消さない)。
+      const { error: rbErr } = await supabase
+        .from("app_settings")
+        .update({ value: lastSent || null })
+        .eq("key", REMINDER_LAST_SENT_KEY)
+        .eq("value", marker);
+      if (rbErr) {
+        console.warn(
+          "[attendance-reminder] dedup marker rollback failed:",
+          rbErr.message,
+        );
+      }
+    }
+    return { ok: false, reason: posted.reason };
+  }
 
-  // 送信できた後に dedup マーカーを更新 (失敗しても次回 cron が再送する
-  // 方が「催促が飛ばない」より軽微、という判断)。
-  try {
-    const supabase = createSupabaseServiceRoleClient();
-    await supabase
+  // 手動の「今すぐ送る」(respectDedup=false) は意図的に毎回送るので、
+  // 従来どおり送った後に印を書く (次の cron が同じ日に重ねて送らないように)。
+  if (!input.respectDedup) {
+    const { error: markErr } = await supabase
       .from("app_settings")
       .upsert(
         { key: REMINDER_LAST_SENT_KEY, value: marker },
         { onConflict: "key" },
       );
-  } catch (e) {
-    console.warn("[attendance-reminder] dedup marker update failed:", e);
+    if (markErr) {
+      console.warn(
+        "[attendance-reminder] dedup marker update failed:",
+        markErr.message,
+      );
+    }
   }
 
   return { ok: true, posted: 1, skipped: 0 };
+}
+
+/**
+ * `claimMarker` に渡す 3 段の条件付き書き込み (`app_settings` の 1 行)。
+ * どの段も「条件に合う行を印に書き換え、書き換えた行を返す」1 文。
+ */
+function reminderMarkerOps(
+  supabase: ReturnType<typeof createSupabaseServiceRoleClient>,
+  marker: string,
+): MarkerClaimOps {
+  const touched = (res: { data: unknown[] | null; error: { message: string } | null }) => {
+    if (res.error) throw new Error(res.error.message);
+    return (res.data?.length ?? 0) > 0;
+  };
+  return {
+    replaceDifferent: async () =>
+      touched(
+        await supabase
+          .from("app_settings")
+          .update({ value: marker })
+          .eq("key", REMINDER_LAST_SENT_KEY)
+          .neq("value", marker)
+          .select("key"),
+      ),
+    replaceNull: async () =>
+      touched(
+        await supabase
+          .from("app_settings")
+          .update({ value: marker })
+          .eq("key", REMINDER_LAST_SENT_KEY)
+          .is("value", null)
+          .select("key"),
+      ),
+    insertIfAbsent: async () =>
+      touched(
+        await supabase
+          .from("app_settings")
+          .upsert(
+            { key: REMINDER_LAST_SENT_KEY, value: marker },
+            { onConflict: "key", ignoreDuplicates: true },
+          )
+          .select("key"),
+      ),
+  };
 }
 
 async function postToDiscord(input: {
@@ -457,7 +545,9 @@ async function postToDiscord(input: {
   userIds: string[];
 }): Promise<{ ok: true } | { ok: false; reason: string }> {
   try {
-    const res = await fetch(
+    // 2026-10-01 監査 C-9: 429 は retry_after だけ待って 1 回だけ送り直す
+    // (429 は未処理の意味なので二重投稿にはならない)。
+    const res = await discordFetch(
       `https://discord.com/api/v10/channels/${input.channelId}/messages`,
       {
         method: "POST",
@@ -472,7 +562,7 @@ async function postToDiscord(input: {
           // (@everyone / role は絶対に飛ばさない)。
           allowed_mentions: { parse: [], users: input.userIds.slice(0, 50) },
         }),
-        signal: AbortSignal.timeout(15000),
+        timeoutMs: 15000,
       },
     );
     if (!res.ok) {

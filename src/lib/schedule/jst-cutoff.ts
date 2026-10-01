@@ -13,14 +13,20 @@
  * 「JST 今日 0:00 より前を past とする」をそのまま踏襲。
  * JST は DST が無いので固定 9h オフセットで常に正しい。
  */
-const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
+import { APP_UTC_OFFSET_MS } from "../app-timezone";
 
-export function jstTodayStartMs(): number {
+const JST_OFFSET_MS = APP_UTC_OFFSET_MS;
+
+/**
+ * `nowMs` を渡すと、その時刻から見た「今日 0:00」を返す (描画では
+ * hydration と同じ時刻を使うため、2026-10-01 監査 U-14)。
+ */
+export function jstTodayStartMs(nowMs: number = Date.now()): number {
   // `Date.now() + 9h` の UTC フィールドが「JST の壁時計」を表すので、
   // その年月日で UTC 0:00 を組み立ててから 9h 戻すと「JST 今日 0:00 の
   // UTC instant」になる。サーバ (Vercel = UTC) / ローカル (Asia/Tokyo)
   // どちらで実行しても同じ値を返す。
-  const nowJst = new Date(Date.now() + JST_OFFSET_MS);
+  const nowJst = new Date(nowMs + JST_OFFSET_MS);
   return (
     Date.UTC(
       nowJst.getUTCFullYear(),

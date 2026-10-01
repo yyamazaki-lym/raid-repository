@@ -19,6 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { updateCategory } from "@/lib/categories-client";
 import { httpUrlError } from "@/lib/url-validation";
+import { useServerText } from "@/lib/i18n/use-server-text";
 import { useLocale, useMessages } from "@/lib/i18n/client";
 
 type Kind = "mitigation" | "loot";
@@ -64,6 +65,7 @@ export function SheetUrlOnboarding({
   kind: Kind;
 }) {
   const router = useRouter();
+  const sr = useServerText();
   const m = useMessages();
   const locale = useLocale();
   const [url, setUrl] = useState("");
@@ -92,7 +94,7 @@ export function SheetUrlOnboarding({
     });
     setBusy(false);
     if (!result.ok) {
-      setError(m.crud.saveFailed(result.reason));
+      setError(m.crud.saveFailed(sr(result.reason)));
       return;
     }
     toast.success(m.sheetOnboarding.registered(label));
