@@ -18,6 +18,7 @@ import {
 } from "./discord-schedule";
 import { getScheduleSourceMode } from "@/lib/schedule/source-mode";
 import { runScheduleSnapshot } from "./schedule-snapshot";
+import { fetchWithSafeRedirect, readBodyWithLimit } from "./page-title";
 import {
   fetchVideoLogCodesByDay,
   linkFflogsReportsToVideos,
@@ -281,6 +282,55 @@ export async function createCategoryAction(
   return { ok: true, category: rowToCategory(data as CategoryRow) };
 }
 
+/**
+ * `updateCategoryAction` が UPDATE に流してよい列 (2026-10-01 監査 S-5)。
+ * `CategoryUpdatePatch` のキーと過不足なく一致することを下の型検査が保証する
+ * (型に列を足してここに足し忘れると tsc が落ちる)。
+ */
+const CATEGORY_UPDATE_KEYS = [
+  "name",
+  "slug",
+  "status",
+  "loot_sheet_url",
+  "mitigation_sheet_url",
+  "discord_strategy_channel_id",
+  "discord_video_channel_id",
+  "discord_import_enabled",
+  "first_clear_at",
+  "background_image_url",
+  "background_pos_x",
+  "background_pos_y",
+  "required_role_ids",
+  "description",
+  "manual_time_to_clear_seconds",
+  "fflogs_match_keywords",
+  "discord_video_filter_keywords",
+  "discord_strategy_filter_keywords",
+  "show_strategy_thumbnails",
+  "default_tab",
+  "tab_config",
+  "difficulty_label",
+  "progress_model",
+] as const satisfies readonly (keyof CategoryUpdatePatch)[];
+type CategoryUpdateKeysMissing = Exclude<
+  keyof CategoryUpdatePatch,
+  (typeof CATEGORY_UPDATE_KEYS)[number]
+>;
+const categoryUpdateKeysComplete: [CategoryUpdateKeysMissing] extends [never]
+  ? true
+  : CategoryUpdateKeysMissing = true;
+void categoryUpdateKeysComplete;
+
+/** 宣言済みの列だけを写す (存在しないキー・宣言外のキーは落とす)。 */
+function pickCategoryUpdatePatch(patch: CategoryUpdatePatch): CategoryUpdatePatch {
+  const src = (patch ?? {}) as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  for (const key of CATEGORY_UPDATE_KEYS) {
+    if (Object.prototype.hasOwnProperty.call(src, key)) out[key] = src[key];
+  }
+  return out as CategoryUpdatePatch;
+}
+
 export async function updateCategoryAction(
   id: string,
   patch: CategoryUpdatePatch,
@@ -290,7 +340,12 @@ export async function updateCategoryAction(
 
   // W-33 ① (2026-09-07): 難易度 / 進行モデルは自由記述と 3 値なので、
   // DB の CHECK に頼る前にここで正規化する (client からの直呼びもあり得る)。
-  const normalized: CategoryUpdatePatch = { ...patch };
+  //
+  // 2026-10-01 監査 S-5: 以前は `{ ...patch }` で受けた全キーを UPDATE に
+  // 流していた。型は実行時に消えるので、Server Action を直接呼べば宣言外の
+  // 列 (`id` / `created_at` / 今後足す列) も書けた。宣言済みのキーだけを
+  // 写す (2026-08-05 L-12 で他の action に入れたのと同じ allow-list)。
+  const normalized = pickCategoryUpdatePatch(patch);
   if (normalized.difficulty_label !== undefined) {
     const v = (normalized.difficulty_label ?? "").trim();
     if (v.length > DIFFICULTY_LABEL_MAX_LENGTH) {
@@ -2203,6 +2258,8 @@ export async function selectScheduleUrlAction(
 
 /** 名前取得の待ち上限。TOP 描画の fetch (8s) と揃える。 */
 const SCHEDULE_NAME_FETCH_TIMEOUT_MS = 8_000;
+/** 名前取得で読む本文の上限 (スケジュール表のページは出欠表ごと返る)。 */
+const SCHEDULE_NAME_MAX_HTML_BYTES = 4 * 1024 * 1024;
 
 /**
  * 登録用に、スケジュールページから **名前**を取得する (2026-09-18)。
@@ -2243,11 +2300,21 @@ async function fetchScheduleNameRaw(rawUrl: string): Promise<ScheduleNameResult>
   }
   let html: string;
   try {
-    const res = await fetch(url, {
-      cache: "no-store",
+    // 2026-10-01 監査 S-2: 素の `fetch` は内部 IP に解決するホスト名
+    // (`127.0.0.1.nip.io` 等) とリダイレクト先を検査していなかった (2026-08-05
+    // の H-3 と同型)。他の外部取得と同じく、解決先を検査してピン留めする
+    // `fetchWithSafeRedirect` と、本文の上限つき読み取りに揃える。
+    const res = await fetchWithSafeRedirect(url, {
       headers: { "User-Agent": "RaidRepository/0.1" },
       signal: AbortSignal.timeout(SCHEDULE_NAME_FETCH_TIMEOUT_MS),
     });
+    if (!res) {
+      return {
+        ok: false,
+        reason: "このアドレスへは接続できません",
+        notFound: false,
+      };
+    }
     if (!res.ok) {
       return {
         ok: false,
@@ -2255,7 +2322,15 @@ async function fetchScheduleNameRaw(rawUrl: string): Promise<ScheduleNameResult>
         notFound: false,
       };
     }
-    html = await res.text();
+    const body = await readBodyWithLimit(res, SCHEDULE_NAME_MAX_HTML_BYTES);
+    if (body === null) {
+      return {
+        ok: false,
+        reason: "ページが大きすぎます",
+        notFound: false,
+      };
+    }
+    html = body;
   } catch {
     return {
       ok: false,
