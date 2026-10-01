@@ -206,6 +206,32 @@ export const ja = {
       `関連する出欠データも一緒に削除されます (元に戻せません)。\n` +
       `よろしいですか？`,
     toastDeleted: (name: string) => `「${name}」を削除しました`,
+    // 2026-10-01 監査 F-4: 削除のとき、残る関連データを整理するかの 2 段目。
+    purgeConfirmTitle: "この人の個人データも消しますか？",
+    purgeConfirmDescription: (name: string, lines: string) =>
+      `「${name}」はこのあと削除します。次のデータは、消さなければ DB に残ります。\n` +
+      `${lines}\n` +
+      `チームの注釈と日付メモは消さず、書いた人の ID だけ外します (日付メモは名前が残ります)。` +
+      `消したデータは元に戻せません。`,
+    purgeItem: (id: string, n: number): string =>
+      `・${
+        id === "linkReads"
+          ? "リンクの既読"
+          : id === "lootWeekly"
+            ? "週制限の消化チェック"
+            : id === "onboarding"
+              ? "はじめての手順の進み具合"
+              : id === "attendanceActuals"
+                ? "ログからの出席の実績"
+                : id === "selfNotes"
+                  ? "自分用のミス注釈"
+                  : id === "teamNotesAuthor"
+                    ? "チームのミス注釈 (書いた人の ID を外す)"
+                    : "日付メモ (書いた人の ID を外す)"
+      } ${n} 件`,
+    purgeConfirmButton: "個人データも消す",
+    purgeKeepButton: "残す",
+    toastPurged: (n: number) => `関連データ ${n} 件を整理しました`,
     description:
       "スケジュール表に出欠列として表示するメンバー。Discord ID またはローカルキーで識別し、並び順 (昇順) で左から並びます。無効化されたメンバーはスケジュール表に出ませんが、過去の出欠履歴は DB に残ります。",
     descriptionOtherModes:
@@ -953,6 +979,31 @@ export const en: SettingsMessages = {
       `Their attendance data is deleted as well (cannot be undone).\n` +
       `Continue?`,
     toastDeleted: (name) => `Deleted “${name}”`,
+    purgeConfirmTitle: "Also remove this person's personal data?",
+    purgeConfirmDescription: (name, lines) =>
+      `“${name}” will be deleted next. The following data stays in the DB unless you remove it.\n` +
+      `${lines}\n` +
+      `Team notes and date memos are kept; only the author ID is removed (date memos keep the name). ` +
+      `Removed data cannot be restored.`,
+    purgeItem: (id, n) =>
+      `- ${
+        id === "linkReads"
+          ? "Link read marks"
+          : id === "lootWeekly"
+            ? "Weekly loot checks"
+            : id === "onboarding"
+              ? "Getting-started progress"
+              : id === "attendanceActuals"
+                ? "Attendance from logs"
+                : id === "selfNotes"
+                  ? "Personal pull notes"
+                  : id === "teamNotesAuthor"
+                    ? "Team pull notes (author ID removed)"
+                    : "Date memos (author ID removed)"
+      }: ${n}`,
+    purgeConfirmButton: "Remove personal data too",
+    purgeKeepButton: "Keep it",
+    toastPurged: (n) => `Cleaned up ${n} related rows`,
     description:
       "Members shown as attendance columns in the schedule table. Identified by Discord ID or a local key and ordered left to right by sort order (ascending). Disabled members disappear from the table, but their attendance history stays in the DB.",
     descriptionOtherModes:
