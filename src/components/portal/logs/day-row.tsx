@@ -145,8 +145,16 @@ export function DayRow({
             日付は表記がデータ由来で長さが揃わない (「2026-09-01」のことも
             「2026/09/01(火) 22:00-2:00」のこともある) ため、日付列に余りを
             吸わせ (flex-1)、以降の列は固定幅にして行ごとに同じ位置で始める。 */}
-        <span className="min-w-0 flex-1 truncate font-display text-sm tabular-nums">
-          {day.date}
+        {/* 2026-10-01 監査 U-1: スマホ幅 (375px) では日付列が 69px まで
+            縮められ「2026-…」と省略されて、どの日の行か分からなかった
+            (日付はこの行の唯一の識別子)。縮めずに、狭い幅では同じページの
+            「日ごとの到達度」と同じ月日 (09-04) を出す。読み上げには常に
+            年付きを渡す。 */}
+        <span className="flex-1 shrink-0 font-display text-sm whitespace-nowrap tabular-nums">
+          <span aria-hidden className="sm:hidden">
+            {day.date.slice(5)}
+          </span>
+          <span className="sr-only sm:not-sr-only">{day.date}</span>
         </span>
         <span className="flex shrink-0 items-center gap-2 font-mono text-[11px] whitespace-nowrap text-muted-foreground tabular-nums">
           {/* 「12 pull」を右寄せで固定幅に入れると、数字の右端も単位も揃う。 */}

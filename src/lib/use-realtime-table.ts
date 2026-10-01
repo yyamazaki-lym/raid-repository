@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
+import { shouldRefetchOnVisible } from "@/lib/realtime-resume";
 
 /**
  * Supabase Realtime 購読フックの共通土台 (総合レビュー C-4)。
@@ -43,6 +44,12 @@ export function useRealtimeChannel(opts: {
   filter?: string;
   onChange: (payload: RealtimeChangePayload) => void;
   onSubscribeError?: (status: string, err: Error) => void;
+  /**
+   * 回線が戻ったとき / 一定時間隠れていたタブが見えるようになったときに
+   * 呼ぶ (2026-10-01 監査 U-5)。Realtime は切れている間の変更を再送しない
+   * ので、呼び出し側はここで取り直す。判定は `realtime-resume.ts`。
+   */
+  onResume?: () => void;
 }): void {
   const id = useId();
   // 最新の onChange / onSubscribeError を async コールバックから参照するための
@@ -88,6 +95,31 @@ export function useRealtimeChannel(opts: {
       }
     };
   }, [id, channelPrefix, table, filter]);
+
+  // U-5 (2026-10-01): 切れている間に取りこぼした変更を、戻ったときに
+  // 取り直す。channel の貼り直しとは独立 (mount 中ずっと 1 組だけ)。
+  useEffect(() => {
+    let hiddenAt: number | null =
+      document.visibilityState === "hidden" ? Date.now() : null;
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") {
+        hiddenAt = Date.now();
+        return;
+      }
+      const resume = shouldRefetchOnVisible(hiddenAt, Date.now());
+      hiddenAt = null;
+      if (resume) optsRef.current.onResume?.();
+    };
+    const onOnline = () => {
+      optsRef.current.onResume?.();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("online", onOnline);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("online", onOnline);
+    };
+  }, []);
 }
 
 /**
@@ -210,6 +242,11 @@ export function useRealtimeTable<Row, T extends { id: string }>(opts: {
     onSubscribeError: (status, err) => {
       console.warn(`[realtime:${opts.table}] subscribe error:`, status, err);
       if (optsRef.current.refetchOnSubscribeError) void refetch();
+    },
+    // U-5: 切れている間の変更は届かないので、戻ったら必ず取り直す
+    // (refetch / incremental どちらのモードでも)。
+    onResume: () => {
+      void refetch();
     },
   });
 
