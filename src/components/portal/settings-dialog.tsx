@@ -228,11 +228,16 @@ function SettingsDialogBody({
     };
   }, [open]);
 
-  // TODO #2 phase 2-C: native mode のときだけ admin aux (全 member /
-  // CANCELLED 行 / 凡例 CSV) を fetch。CRUD 後は section から `onChanged`
-  // で `adminAuxTick` を bump → このフックが再走して最新値を反映。
+  // TODO #2 phase 2-C: admin aux (全 member / CANCELLED 行 / 凡例 CSV) を
+  // fetch。CRUD 後は section から `onChanged` で `adminAuxTick` を bump →
+  // このフックが再走して最新値を反映。
+  //
+  // 2026-10-01 監査 F-1: 以前は native mode のときだけ読んでいたが、メンバー
+  // 一覧は自分のページ・BiS・欲しい人行列・軽減表の「自分のロール」・出席
+  // サマリーが全モードでキーにしている。既定の同期式では登録する入口が
+  // 無く、これらが黙って空になっていたので、どのモードでも読む。
   useEffect(() => {
-    if (!open || mode !== "native") {
+    if (!open) {
       setAdminAux(null);
       return;
     }
@@ -323,14 +328,16 @@ function SettingsDialogBody({
               onChanged={() => setAdminAuxTick((t) => t + 1)}
             />
           )}
-          {mode === "native" && (
-            <NativeMembersSection
-              canEdit={canEdit}
-              members={adminAux?.allMembers ?? []}
-              loaded={adminAux !== null}
-              onChanged={() => setAdminAuxTick((t) => t + 1)}
-            />
-          )}
+          {/* 2026-10-01 監査 F-1: メンバーはスケジュールの方式に関係なく
+              使うので、どのモードでも出す (同期式では出欠列には出ない —
+              節の説明文で区別する)。 */}
+          <NativeMembersSection
+            canEdit={canEdit}
+            mode={mode}
+            members={adminAux?.allMembers ?? []}
+            loaded={adminAux !== null}
+            onChanged={() => setAdminAuxTick((t) => t + 1)}
+          />
           {mode === "native" && (
             <NativeChoiceValuesSection
               canEdit={canEdit}

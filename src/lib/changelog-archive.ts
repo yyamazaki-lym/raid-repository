@@ -26,6 +26,20 @@ import type { ReleaseEntry } from "./changelog";
 export const RELEASES_ARCHIVE: ReleaseEntry[] = [
   {
     version: "2.18",
+    date: "2026-09-28",
+    parts: [
+      {
+        title:
+          "🔁 Discord 取り込みで動画が入ったら、Logs 同期も続けて自動で実行するように (翌朝 04:00 を待たずにログが付く)",
+      },
+      {
+        title:
+          "📥 日付に Logs を登録したら、そのレポートを練習ログにもすぐ取り込むように (翌朝の同期を待たずに pull が並ぶ)",
+      },
+    ],
+  },
+  {
+    version: "2.18",
     date: "2026-09-18",
     parts: [
       {

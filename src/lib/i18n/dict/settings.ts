@@ -208,6 +208,8 @@ export const ja = {
     toastDeleted: (name: string) => `「${name}」を削除しました`,
     description:
       "スケジュール表に出欠列として表示するメンバー。Discord ID またはローカルキーで識別し、並び順 (昇順) で左から並びます。無効化されたメンバーはスケジュール表に出ませんが、過去の出欠履歴は DB に残ります。",
+    descriptionOtherModes:
+      "固定のメンバー一覧です。自分のページ・BiS・欲しい人行列・軽減表の「自分のロール」・出席サマリーが、誰の行かをここで判定します。Discord ID で登録してください (出席サマリーの突合にはログ名も)。スケジュール表の出欠列は外部シートのままで、ここで登録しても変わりません。",
     localKeyNoteBefore: "※ ローカルキー (",
     localKeyNoteAfter:
       ") で登録したメンバーは本人として出欠入力できません (admin が代理運用)。",
@@ -901,6 +903,8 @@ export const en: SettingsMessages = {
     toastDeleted: (name) => `Deleted “${name}”`,
     description:
       "Members shown as attendance columns in the schedule table. Identified by Discord ID or a local key and ordered left to right by sort order (ascending). Disabled members disappear from the table, but their attendance history stays in the DB.",
+    descriptionOtherModes:
+      "Your static's member list. My page, BiS, the who-wants-what matrix, “my role” in mitigation tables and the attendance summary use it to decide whose row is whose. Register members by Discord ID (add their log name for attendance matching). The schedule table's attendance columns still come from the external sheet and are not affected by this list.",
     localKeyNoteBefore: "Members registered with a local key (",
     localKeyNoteAfter:
       ") cannot enter their own attendance (an admin enters it for them).",

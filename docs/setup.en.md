@@ -252,11 +252,14 @@ Any of these Google Sheets URL shapes work:
 | Embed | `.../e/.../pubhtml?widget=true` | same |
 | Normal share link | `.../edit#...` | only if "anyone with the link can view" |
 
-### 7-3. Register members (native mode)
+### 7-3. Register members
 
 Settings → **Members**. The Discord IDs you enter here are what identify "you" in
-the attendance table, the attendance summary, BiS ownership, and the mitigation
-sheet's "my assignments" filter.
+my page, the attendance summary, BiS ownership, the who-wants-what matrix, and the
+mitigation sheet's "my assignments" filter. **Register them in sync mode too** — in
+sync mode the schedule table's attendance columns still come from the external sheet,
+and this list is used only to identify members. Add each member's log name for
+attendance matching.
 
 ---
 
