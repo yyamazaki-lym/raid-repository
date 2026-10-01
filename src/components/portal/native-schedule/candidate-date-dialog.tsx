@@ -31,6 +31,7 @@ import {
   FALLBACK_DEFAULT_START_TIME,
 } from "@/lib/schedule/native-defaults";
 import { useMessages } from "@/lib/i18n/client";
+import { APP_UTC_OFFSET_MS } from "@/lib/app-timezone";
 
 /**
  * TODO #2 phase 2-B: admin が native スケジュールに候補日を追加する dialog。
@@ -66,7 +67,7 @@ import { useMessages } from "@/lib/i18n/client";
 
 const DOW_LABELS = ["日", "月", "火", "水", "木", "金", "土"] as const;
 
-const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
+const JST_OFFSET_MS = APP_UTC_OFFSET_MS;
 
 const TIME_RE = /^([01]?\d|2[0-3]):([0-5]\d)$/;
 

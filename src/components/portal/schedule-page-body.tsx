@@ -101,6 +101,12 @@ type Props = {
    */
   maintenanceWindows?: ReadonlyArray<MaintenanceWindow>;
   /**
+   * サーバー描画の時刻 (page が `Date.now()` を 1 回だけ読んで渡す)。
+   * 次回開催カード・予定表・過去チップが「今」を判定するときに、
+   * サーバー描画と hydration で同じ値を使うため (2026-10-01 監査 U-14)。
+   */
+  renderedAtMs: number;
+  /**
    * TODO #11: server で一括 prefetch した memos (rawDate → memos[])。
    * 各 chip / row が個別 SELECT をかけずにここから初期表示できるので
    * メモバッジが即時に表示される。realtime subscription は live 更新
@@ -149,6 +155,7 @@ export function SchedulePageBody({
   hasUltimateClear = false,
   topTextOverride = null,
   maintenanceWindows = [],
+  renderedAtMs,
   initialMemosByDate = {},
   // Phase 2-B (2026-05-07): native UI 第 1 弾で実利用開始。
   // - currentDiscordId: ScheduleList → SessionRow に drill、本人 cell 判定で popover trigger 化に使う。
@@ -295,6 +302,7 @@ export function SchedulePageBody({
       <NextSessionCard
         result={nextResult}
         maintenanceWindows={maintenanceWindows}
+        renderedAtMs={renderedAtMs}
         recruitmentTopButton={
           liveTemplates.length > 0 ? (
             <RecruitmentTopCopyButton
@@ -326,6 +334,7 @@ export function SchedulePageBody({
       {pinnedSimple && result.ok && (
         <SchedulePastSimple
           sessions={result.data.sessions}
+          renderedAtMs={renderedAtMs}
           holidays={holidays}
           sessionVideoLinks={sessionVideoLinks}
           sessionLogsByDate={sessionLogsByDate}
@@ -344,6 +353,7 @@ export function SchedulePageBody({
           の出欠 popover) を出し分ける。 */}
       <ScheduleList
         result={result}
+        renderedAtMs={renderedAtMs}
         showDetailedPast={showDetail}
         scheduleUrl={scheduleUrl}
         holidays={holidays}

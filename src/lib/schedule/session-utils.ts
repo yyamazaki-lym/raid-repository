@@ -74,11 +74,13 @@ export function groupCommentsByAuthor(
 export function splitSessions(
   sessions: ScheduleSession[],
   limit?: number,
+  /** 境界の基準時刻。描画では hydration と同じ値を渡す (監査 U-14)。 */
+  nowMs: number = Date.now(),
 ): { upcoming: ScheduleSession[]; past: ScheduleSession[] } {
   // JST 今日 0:00 (UTC ms)。計算は jst-cutoff.ts に一本化 — 過去簡易
   // チップ (schedule-past-simple.tsx) と同じ cutoff を共有し、片方だけ
   // 変更されて past 判定が食い違うのを防ぐ (2.7, 2026-06-11)。
-  const cutoff = jstTodayStartMs();
+  const cutoff = jstTodayStartMs(nowMs);
   const upcoming: ScheduleSession[] = [];
   const past: ScheduleSession[] = [];
   for (const s of sessions) {

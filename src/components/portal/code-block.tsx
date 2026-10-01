@@ -77,7 +77,7 @@ export function CodeBlock({
             onClick={onCopy}
             aria-label={copyAriaLabel ?? m.codeBlock.copyAria}
             title={copyAriaLabel ?? m.codeBlock.copyAria}
-            className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground"
+            className="inline-flex tap-target relative h-6 w-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground"
           >
             <ClipboardCopy className="h-3.5 w-3.5" aria-hidden />
           </button>

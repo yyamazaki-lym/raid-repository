@@ -170,7 +170,7 @@ export function LinkCardFooter({
               onClick={() => addTag(draft)}
               disabled={pending || !draft.trim()}
               aria-label={m.linkCard.addTag}
-              className="grid h-7 w-7 shrink-0 place-items-center rounded-sm border border-border/60 text-muted-foreground transition-colors hover:text-foreground disabled:opacity-40"
+              className="grid tap-target relative h-7 w-7 shrink-0 place-items-center rounded-sm border border-border/60 text-muted-foreground transition-colors hover:text-foreground disabled:opacity-40"
             >
               <Plus className="h-3.5 w-3.5" aria-hidden />
             </button>
@@ -181,7 +181,7 @@ export function LinkCardFooter({
                 setDraft("");
               }}
               aria-label={m.common.cancel}
-              className="grid h-7 w-7 shrink-0 place-items-center rounded-sm text-muted-foreground transition-colors hover:text-foreground"
+              className="grid tap-target relative h-7 w-7 shrink-0 place-items-center rounded-sm text-muted-foreground transition-colors hover:text-foreground"
             >
               <X className="h-3.5 w-3.5" aria-hidden />
             </button>

@@ -1,6 +1,10 @@
 import "server-only";
 import { Agent, fetch as undiciFetch, type RequestInit as UndiciRequestInit } from "undici";
-import { lookup as dnsLookup, type LookupAddress } from "node:dns";
+import {
+  lookup as dnsLookup,
+  promises as dnsPromises,
+  type LookupAddress,
+} from "node:dns";
 import { isBlockedIpLiteral } from "@/lib/url-safe";
 
 /**
@@ -101,4 +105,37 @@ export async function safeFetch(
     dispatcher: safeAgent,
   });
   return res as unknown as Response;
+}
+
+/** `assertPublicResolution` が「公開アドレスだった」と覚えておく時間。 */
+const RESOLUTION_OK_TTL_MS = 10 * 60 * 1000;
+/** ホスト名 → 確認済みの期限。描画のたびに DNS を引かないため。 */
+const resolutionOk = new Map<string, number>();
+
+/**
+ * URL のホスト名が**公開アドレスにしか解決しない**ことを確かめる
+ * (2026-10-01 監査 S-2)。内部アドレスが 1 つでも混ざれば
+ * `BlockedAddressError` を投げる。
+ *
+ * `safeFetch` を使えない経路のためのもの。TOP のスケジュール取得は
+ * Next.js の Data Cache (`fetch` の `next.tags` + `updateTag`) に乗っており、
+ * undici を直接使う `safeFetch` に替えるとキャッシュと即時無効化が外れる。
+ * そこで接続前にこの関数で解決先を検査し、`fetch` 自体はそのまま使う。
+ *
+ * ⚠ 検査と接続で 2 回解決するので、`safeFetch` (検査した IP にピン留め) と
+ * 違い DNS rebinding の窓は残る。塞げるのは「公開 DNS が静的に内部 IP を
+ * 返すホスト名」(`127.0.0.1.nip.io` 等、H-3 の本体) まで。新しい経路では
+ * `safeFetch` を使うこと。
+ */
+export async function assertPublicResolution(url: string): Promise<void> {
+  const host = new URL(url).hostname.replace(/^\[|\]$/g, "");
+  if (isBlockedIpLiteral(host)) throw new BlockedAddressError(host, host);
+  const okUntil = resolutionOk.get(host);
+  if (okUntil !== undefined && okUntil > Date.now()) return;
+  const list = await dnsPromises.lookup(host, { all: true });
+  if (list.length === 0) throw new BlockedAddressError(host, "(no address)");
+  const blocked = list.find((a) => isBlockedIpLiteral(a.address));
+  if (blocked) throw new BlockedAddressError(host, blocked.address);
+  if (resolutionOk.size > 256) resolutionOk.clear();
+  resolutionOk.set(host, Date.now() + RESOLUTION_OK_TTL_MS);
 }

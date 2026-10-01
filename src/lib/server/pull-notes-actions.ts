@@ -13,6 +13,7 @@ import {
 // 読み取りと共有ヘルパは素のモジュール側 (Server Component から直接呼ぶため)。
 import {
   fetchCategoryPullNotes,
+  redactPullNotesForGuest,
   toPullNote,
   type CategoryPullNotesResult,
   type NoteRow,
@@ -69,9 +70,11 @@ export async function fetchPullNotesAction(
       .eq("fight_id", fightId)
       .order("created_at", { ascending: true });
     if (error) return { ok: false, reason: "注釈を取得できませんでした" };
+    const notes = ((data ?? []) as NoteRow[]).map(toPullNote);
     return {
       ok: true,
-      notes: ((data ?? []) as NoteRow[]).map(toPullNote),
+      // 2026-10-01 監査 S-4: 公開デモのゲストには ID を伏せて返す。
+      notes: user.isDemoGuest ? redactPullNotesForGuest(notes) : notes,
       viewerId: user.discordId,
       isAdmin: userIsAdmin(user.roles),
     };

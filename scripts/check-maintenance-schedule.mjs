@@ -7,7 +7,7 @@
  * 併せて衝突判定の境界 (半開区間) と JST 換算を固定する。
  */
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -34,6 +34,14 @@ try {
      "--moduleResolution", "bundler", "--strict"],
     { stdio: "inherit" },
   );
+  // 2026-10-01 (監査 U-9): ./app-timezone を読むようになったので、相対
+  // import に .js を付ける (tsc は拡張子なしで出力し、Node の ESM は必須)。
+  for (const f of readdirSync(outDir)) {
+    if (!f.endsWith(".js")) continue;
+    const fp = join(outDir, f);
+    writeFileSync(fp, readFileSync(fp, "utf8").replace(
+      /(from\s+["'])(\.\.?\/[^"']+?)(?<!\.js)(["'])/g, "$1$2.js$3"));
+  }
   const {
     isMaintenanceDateTime,
     maintenanceMs,
