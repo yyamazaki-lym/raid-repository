@@ -11,6 +11,7 @@ import {
 } from "@/lib/video-jst-date";
 import { buildFflogsReportUrl } from "@/lib/fflogs-url";
 import { getSecretValue } from "./secret-store";
+import { fetchAllPages } from "@/lib/fetch-all-pages";
 import { buildFflogsXhrHeaders } from "./fflogs-scrape-request";
 import { parseFflogsReportCode } from "@/lib/fflogs-url";
 import { notifyLogsEvents } from "./logs-notify";
@@ -30,6 +31,7 @@ import {
   type FflogsAutoRoute,
 } from "@/lib/fflogs-report-source";
 import { jstYmdString } from "@/lib/jst-date";
+import { resolveSyncDeadline } from "@/lib/fflogs-sync-budget";
 import {
   type CategoryRef,
   consensusCategory,
@@ -272,6 +274,12 @@ export async function syncFflogsFights(opts?: {
    * 取り込む (実機: Ultimates (Legacy) の絶オメガが未分類のまま残った)。
    */
   importCategoryId?: string | null;
+  /**
+   * 呼び出し側 (cron route) が切った「新しい外部取得を始めてよい期限」。
+   * 前段のリンク処理と共有する (2026-10-01 監査 C-1)。省略時は
+   * この関数の予算 (120s) だけで動く。
+   */
+  deadlineAtMs?: number;
 }): Promise<FflogsFightsSyncResult> {
   const token = await getValidFflogsOAuthToken();
   if (!token) {
@@ -285,7 +293,12 @@ export async function syncFflogsFights(opts?: {
   const db = opts?.useServiceRole
     ? createSupabaseServiceRoleClient()
     : await createClient();
-  const deadlineAtMs = Date.now() + TIME_BUDGET_MS;
+  // C-1 (2026-10-01): route から共有期限が来ていれば早い方を使う。
+  const deadlineAtMs = resolveSyncDeadline(
+    Date.now(),
+    TIME_BUDGET_MS,
+    opts?.deadlineAtMs,
+  );
 
   const [refs, categories, sessionCookie] = await Promise.all([
     collectReportRefs(db),
@@ -420,9 +433,22 @@ export async function syncFflogsFights(opts?: {
   }
 
   // 既存の同期台帳を読み、再取得が要るものだけに絞る。
-  const { data: ledger } = await db
-    .from("fflogs_report_syncs")
-    .select("report_code, ok, synced_at, session_date, category_id, zone_name, reason");
+  // C-2 (2026-10-01 監査): 台帳は 1 レポート 1 行で増え続ける。1000 行の
+  // 上限で切れると古いレポートが「未同期」に見え、毎回の取得枠を食う。
+  // report_code (主キー) 順でページを繰って取り切る。読めなかった分は
+  // 従来どおり未同期扱い (取り直しは upsert なので壊れない)。
+  const ledgerRes = await fetchAllPages(async (from, to) => {
+    const { data, error } = await db
+      .from("fflogs_report_syncs")
+      .select("report_code, ok, synced_at, session_date, category_id, zone_name, reason")
+      .order("report_code", { ascending: true })
+      .range(from, to);
+    return { data, error };
+  });
+  if (ledgerRes.error) {
+    console.warn("[fflogs-fights] ledger fetch failed:", ledgerRes.error.message);
+  }
+  const ledger = ledgerRes.rows;
   const ledgerMap = new Map<
     string,
     {
@@ -563,6 +589,14 @@ export async function syncFflogsFights(opts?: {
     // なかったため。次の報告で原因が一意に定まるようにする)。
     let failureReason = res.ok ? null : res.reason;
     if (!res.ok && PERMISSION_ERROR_RE.test(res.reason)) {
+      // C-1 (2026-10-01): 期限を過ぎていたら v1 / cookie の fallback 連鎖
+      // (最大 20s + 25s) を始めない。台帳にも書かず、取らなかった扱いで
+      // 次回の同期に回す (`remaining` が正しく数えられるよう fetched も戻す)。
+      if (Date.now() > deadlineAtMs) {
+        fetched -= 1;
+        truncated = true;
+        return;
+      }
       const attempts: string[] = ["v2: 権限なし"];
       // unlisted: v1 API は code 直指定なら読める (xivanalysis と同じ経路)。
       const viaV1 = await fetchReportFightsViaV1(ref.code);

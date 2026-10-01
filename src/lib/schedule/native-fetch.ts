@@ -12,6 +12,7 @@ import {
 } from "@/lib/server/native-schedule-placeholders";
 import { NATIVE_CHOICE_VALUES_KEY } from "./settings-keys";
 import { getActiveNativeScheduleId } from "./native-active";
+import { chunk, fetchAllPages } from "@/lib/fetch-all-pages";
 
 import type {
   Attendance,
@@ -111,16 +112,23 @@ export async function fetchNativeSchedule(
       .eq("is_active", true)
       .order("sort_order", { ascending: true })
       .order("display_name", { ascending: true }),
-    supabase
-      .from("native_schedule_sessions")
-      .select(
-        // 2.8 (2026-06-10): created_by_id / note を追加 (auto 生成判定 + note 編集 popover の初期値)。
-        // W-18 (2026-09-08): is_optional を追加 (有志練習バッジ + 除外判定)。
-        "id, raw_date, parsed_date, start_time, end_time, day_of_week, status, created_by_id, note, is_optional",
-      )
-      .eq("schedule_id", activeScheduleId)
-      .neq("status", "CANCELLED")
-      .order("parsed_date", { ascending: false }),
+    // C-2 (2026-10-01 監査): 1 リクエスト 1000 行の上限で黙って切れない
+    // ようページを繰って取り切る。第 2 キー (id) で順序を一意にする。
+    fetchAllPages(async (from, to) => {
+      const { data, error } = await supabase
+        .from("native_schedule_sessions")
+        .select(
+          // 2.8 (2026-06-10): created_by_id / note を追加 (auto 生成判定 + note 編集 popover の初期値)。
+          // W-18 (2026-09-08): is_optional を追加 (有志練習バッジ + 除外判定)。
+          "id, raw_date, parsed_date, start_time, end_time, day_of_week, status, created_by_id, note, is_optional",
+        )
+        .eq("schedule_id", activeScheduleId)
+        .neq("status", "CANCELLED")
+        .order("parsed_date", { ascending: false })
+        .order("id", { ascending: true })
+        .range(from, to);
+      return { data: data as NativeSessionRow[] | null, error };
+    }),
     // A-2: fetchPortalSettings() の一括 SELECT に相乗り (page.tsx が先に
     // 解決済みのため実質キャッシュヒット)。
     getPortalSetting(NATIVE_CHOICE_VALUES_KEY),
@@ -136,7 +144,7 @@ export async function fetchNativeSchedule(
   }
 
   const members = (membersRes.data ?? []) as NativeMemberRow[];
-  const sessionRows = (sessionsRes.data ?? []) as NativeSessionRow[];
+  const sessionRows = sessionsRes.rows;
 
   const users: ScheduleUser[] = members.map((m) => ({
     userId: m.discord_user_id,
@@ -152,16 +160,30 @@ export async function fetchNativeSchedule(
     Record<string, AttendanceTimes>
   >();
   if (sessionRows.length > 0) {
-    const sessionIds = sessionRows.map((s) => s.id);
-    const { data: attData, error: attErr } = await supabase
-      .from("native_schedule_attendances")
-      .select("session_id, discord_user_id, symbol, arrive_at, leave_at")
-      .in("session_id", sessionIds);
+    // C-2 (2026-10-01 監査): 出欠はセッション × 人数で増えるので、8 人なら
+    // 125 セッション前後で 1000 行の上限に届き、直近の出欠が黙って欠けた。
+    // セッション ID を塊に割り (`.in()` の URL 長を抑える)、各塊を主キー順に
+    // ページを繰って取り切る。塊どうしは並列。
+    const chunks = await Promise.all(
+      chunk(sessionRows.map((s) => s.id)).map((ids) =>
+        fetchAllPages(async (from, to) => {
+          const { data, error } = await supabase
+            .from("native_schedule_attendances")
+            .select("session_id, discord_user_id, symbol, arrive_at, leave_at")
+            .in("session_id", ids)
+            .order("session_id", { ascending: true })
+            .order("discord_user_id", { ascending: true })
+            .range(from, to);
+          return { data: data as NativeAttendanceRow[] | null, error };
+        }),
+      ),
+    );
+    const attErr = chunks.find((c) => c.error)?.error;
     if (attErr) {
       console.warn("[native-schedule] attendances fetch error:", attErr);
       return { ok: false, reason: "fetch-failed" };
     }
-    for (const row of (attData ?? []) as NativeAttendanceRow[]) {
+    for (const row of chunks.flatMap((c) => c.rows)) {
       const map = attendancesBySession.get(row.session_id) ?? {};
       map[row.discord_user_id] = row.symbol;
       attendancesBySession.set(row.session_id, map);

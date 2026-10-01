@@ -4,6 +4,7 @@ import {
   createSupabaseServiceRoleClient,
 } from "@/lib/supabase/server";
 import { fetchAppSetting } from "@/lib/supabase/app-settings";
+import { fetchAllPages } from "@/lib/fetch-all-pages";
 import { findContentGroups } from "@/lib/content-groups";
 import { extractDateFromTitle } from "@/lib/title-date";
 import type { SessionLogEntry } from "@/lib/schedule/session-logs";
@@ -11,6 +12,7 @@ import { bridgeAllManualSessionLogsToVideos } from "./session-logs-video-bridge"
 import { getValidFflogsOAuthToken } from "./fflogs-oauth";
 import { parseFflogsReportCode } from "@/lib/fflogs-url";
 import { jstYmdKey, resolveVideoJstYmd } from "@/lib/video-jst-date";
+import { resolveSyncDeadline } from "@/lib/fflogs-sync-budget";
 import {
   buildFflogsReportsListUrl,
   buildFflogsScrapeHeaders,
@@ -1215,6 +1217,12 @@ export async function linkFflogsReportsToVideos(opts?: {
    * CRON_SECRET 認証 (assertCronAuth) を済ませていることが前提。
    */
   useServiceRole?: boolean;
+  /**
+   * 呼び出し側 (cron route) が切った「新しい外部取得を始めてよい期限」。
+   * 後段の pull 取り込みと共有する (2026-10-01 監査 C-1)。省略時は
+   * この関数の予算 (240s) だけで動く。
+   */
+  deadlineAtMs?: number;
 }): Promise<FflogsLinkResult> {
   const newWriteClient = async () =>
     opts?.useServiceRole
@@ -1222,7 +1230,12 @@ export async function linkFflogsReportsToVideos(opts?: {
       : await createClient();
   // D-3 (2026-07-12 監査): 実行全体の時間予算。各フェッチャーはページ取得の
   // 前に残余を確認し、超過時は部分結果 + truncated で戻る。
-  const deadlineAtMs = Date.now() + FFLOGS_SYNC_TIME_BUDGET_MS;
+  // C-1 (2026-10-01): route から共有期限が来ていれば早い方を使う。
+  const deadlineAtMs = resolveSyncDeadline(
+    Date.now(),
+    FFLOGS_SYNC_TIME_BUDGET_MS,
+    opts?.deadlineAtMs,
+  );
   // 1.9.11: ONE-TIME BOOTSTRAP for `category_links.logs_url_source`. The
   // 1.9.10 schema added the column with `NOT NULL DEFAULT 'manual'`, so
   // every pre-existing logs_url row got tagged 'manual'. Flip them to
@@ -1861,13 +1874,29 @@ async function linkReportsToVideos(
 
   // Pull category info alongside each video so we can do
   // content-match (raid-name) checks during scoring.
-  const { data: videos } = await supabase
-    .from("category_links")
-    .select(
-      "id, title, posted_at, created_at, logs_url, category:categories(id, name, fflogs_match_keywords)",
-    )
-    .eq("kind", "video")
-    .is("logs_url", null);
+  //
+  // C-2 (2026-10-01 監査): 直前の auto wipe で auto リンクは全部 NULL に
+  // 戻るので、ここは「ほぼ全動画」を読む。1 リクエスト 1000 行の上限で
+  // 黙って切れると、残りの動画が毎晩 wipe されたまま再リンクされない。
+  // id 順でページを繰って取り切る。
+  const videosRes = await fetchAllPages(async (from, to) => {
+    const { data, error } = await supabase
+      .from("category_links")
+      .select(
+        "id, title, posted_at, created_at, logs_url, category:categories(id, name, fflogs_match_keywords)",
+      )
+      .eq("kind", "video")
+      .is("logs_url", null)
+      .order("id", { ascending: true })
+      .range(from, to);
+    return { data, error };
+  });
+  if (videosRes.error) {
+    console.warn("[fflogs] video candidates fetch failed:", videosRes.error.message);
+  }
+  // 読み取りに失敗したら候補 0 件として扱う (従来どおり。部分結果で
+  // リンクすると、読めなかった動画が「候補に無い」のと区別できない)。
+  const videos = videosRes.error ? null : videosRes.rows;
   if (!videos || videos.length === 0) {
     return {
       scanned: 0,
