@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useMessages } from "@/lib/i18n/client";
+import { APP_TIME_ZONE } from "@/lib/app-timezone";
 
 /**
  * ヘッダーの「v1.9 (date) · BETA」バッジ。色は 2 ルート:
@@ -39,7 +40,7 @@ function jstDateString(): string {
   const now = new Date();
   // toLocaleString は server timezone と独立に Asia/Tokyo 表示を返す
   const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Tokyo",
+    timeZone: APP_TIME_ZONE,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",

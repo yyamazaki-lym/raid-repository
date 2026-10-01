@@ -39,6 +39,8 @@ export const ja = {
     description:
       "FF14レイド固定向けポータル — スケジュール、ロット管理、軽減表、攻略情報を一箇所に。",
     pageErrorText: "ページの描画でエラーが発生しました。リトライしてください。",
+    pageErrorTitle: "ページを表示できませんでした",
+    retry: "もう一度読み込む",
     categoriesLoadingAria: "コンテンツ一覧を読み込み中",
     editFrameDescription: "編集後はそのままダイアログを閉じればスケジュールに戻れます",
     editFrameNewTabTitle: "埋め込みが表示されない場合は新しいタブで開いてください",
@@ -149,6 +151,7 @@ export const ja = {
     emptyDescription: "表示できる予定が見つかりませんでした。",
     colDate: "日程",
     noUpcoming: "今後の予定はありません",
+    pastTableScrollHint: "表は横にスクロールできます →",
     pastDetailSub: "· 詳細ログ (出欠表)",
     countAll: (n: number) => `${n} 件`,
     countRecent: (recent: number, all: number) => `直近 ${recent} 件 / 全 ${all} 件`,
@@ -286,6 +289,7 @@ export const ja = {
     usingDefault: "既定のジョブを使用中",
     overrideActive: "このコンテンツだけの設定",
     clearOverride: "上書きを消して既定に戻す",
+    clearOverrideFailed: (reason: string) => `上書きを消せませんでした: ${reason}`,
     multiHint:
       "複数選べます。層ごとにジョブを変える場合は、そのコンテンツだけの上書きを足してください (上書きがあるコンテンツでは既定は使いません)。",
   },
@@ -544,6 +548,10 @@ export const ja = {
     dedupeNoneRemaining: (n: number) =>
       `削除対象はありませんでした (要確認の競合が ${n} 日分)`,
     dedupeNone: "重複 Logs はありませんでした",
+    dedupeConfirmTitle: "重複している Logs を整理しますか？",
+    dedupeConfirmDescription:
+      "同じレポートの表記違いの重複と、同じ日の動画と食い違う自動取り込みの行を削除します。削除した行は元に戻せません。",
+    dedupeConfirmButton: "整理する",
     rulesAria: "運用ルール / 注意事項を表示",
     rulesTitle: "運用ルール / 注意事項",
     rulesButton: "ルール",
@@ -604,6 +612,8 @@ export const ja = {
       `${month}月${day}日（${dow}）`,
     tipDecided: " · 確定",
     tipHoliday: " · 祝日",
+    holidayMark: "祝",
+    holidayFallback: "祝日",
     tipVideos: (n: number) => ` · 動画 ${n} 件`,
   },
   onboarding: {
@@ -717,6 +727,8 @@ export const en: CoreMessages = {
     description:
       "A portal for FFXIV raid statics — schedule, loot, mitigation sheets and guides in one place.",
     pageErrorText: "Something went wrong while rendering this page. Please retry.",
+    pageErrorTitle: "Page could not be shown",
+    retry: "Retry",
     categoriesLoadingAria: "Loading contents",
     editFrameDescription: "Close this dialog when you are done editing to return to the schedule",
     editFrameNewTabTitle: "If the embed does not show, open it in a new tab",
@@ -817,6 +829,7 @@ export const en: CoreMessages = {
     emptyDescription: "There are no sessions to show.",
     colDate: "Date",
     noUpcoming: "No upcoming sessions",
+    pastTableScrollHint: "Scroll the table sideways →",
     pastDetailSub: "· attendance table",
     countAll: (n) => `${n} session${n === 1 ? "" : "s"}`,
     countRecent: (recent, all) => `recent ${recent} / all ${all}`,
@@ -947,6 +960,7 @@ export const en: CoreMessages = {
     usingDefault: "Using your default jobs",
     overrideActive: "Set for this content only",
     clearOverride: "Remove the override and use the default",
+    clearOverrideFailed: (reason) => `Could not remove the override: ${reason}`,
     multiHint:
       "You can pick more than one. To play something else in a specific content, add an override for it (a content with an override does not use your defaults).",
   },
@@ -1180,6 +1194,10 @@ export const en: CoreMessages = {
     dedupeNoneRemaining: (n) =>
       `Nothing to remove (${n} day${n === 1 ? "" : "s"} with conflicts need review)`,
     dedupeNone: "No duplicate Logs found",
+    dedupeConfirmTitle: "Clean up duplicate Logs?",
+    dedupeConfirmDescription:
+      "Removes duplicates of the same report and auto-imported rows that disagree with that day's video. Removed rows cannot be restored.",
+    dedupeConfirmButton: "Clean up",
     rulesAria: "Show the rules / notes",
     rulesTitle: "Rules / notes",
     rulesButton: "Rules",
@@ -1236,6 +1254,8 @@ export const en: CoreMessages = {
     chipDate: (month, day, dow) => `${month}/${day} (${DOW_EN[dow] ?? dow})`,
     tipDecided: " · decided",
     tipHoliday: " · holiday",
+    holidayMark: "Hol",
+    holidayFallback: "Holiday",
     tipVideos: (n) => ` · ${n} video${n === 1 ? "" : "s"}`,
   },
   onboarding: {

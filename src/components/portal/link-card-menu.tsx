@@ -76,7 +76,7 @@ export function LinkCardMenu({
     >
       <DropdownMenu>
         <DropdownMenuTrigger
-          className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-all hover:bg-secondary/60 hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 active:scale-95"
+          className="flex tap-target relative h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-all hover:bg-secondary/60 hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 active:scale-95"
           aria-label={m.linkMenu.menuAria}
         >
           <MoreVertical className="h-3.5 w-3.5" aria-hidden />

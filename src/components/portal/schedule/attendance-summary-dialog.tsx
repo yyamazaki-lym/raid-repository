@@ -13,6 +13,7 @@ import {
 import { fetchAttendanceSummaryAction } from "@/lib/server/attendance-summary-actions";
 import type { AttendanceHistory } from "@/lib/schedule/attendance-history";
 import type { AttendanceMismatch } from "@/lib/schedule/attendance-actuals";
+import { useServerText } from "@/lib/i18n/use-server-text";
 import { useMessages } from "@/lib/i18n/client";
 
 /**
@@ -33,6 +34,7 @@ import { useMessages } from "@/lib/i18n/client";
  * 引くのは無駄が大きい。
  */
 export function AttendanceSummaryDialog() {
+  const sr = useServerText();
   const m = useMessages();
   const [open, setOpen] = useState(false);
   const [pending, start] = useTransition();
@@ -50,7 +52,7 @@ export function AttendanceSummaryDialog() {
     start(async () => {
       const r = await fetchAttendanceSummaryAction();
       if (!r.ok) {
-        setError(r.reason);
+        setError(sr(r.reason));
         setData(null);
         return;
       }

@@ -9,6 +9,7 @@ import {
   type BossDamageRow,
 } from "@/lib/logs/boss-damage-timeline";
 import { fetchBossDamageTimelineAction } from "@/lib/server/boss-damage-actions";
+import { useServerText } from "@/lib/i18n/use-server-text";
 import { useMessages } from "@/lib/i18n/client";
 
 /**
@@ -42,6 +43,7 @@ export function MitigationDraftPanel({
   reportCode: string;
   fightId: number;
 }) {
+  const sr = useServerText();
   const m = useMessages();
   const [state, setState] = useState<
     | { kind: "idle" }
@@ -57,7 +59,7 @@ export function MitigationDraftPanel({
         onClick={() => {
           setState({ kind: "loading" });
           void fetchBossDamageTimelineAction(reportCode, fightId).then((r) => {
-            if (!r.ok) setState({ kind: "error", reason: r.reason });
+            if (!r.ok) setState({ kind: "error", reason: sr(r.reason) });
             else setState({ kind: "ready", rows: r.rows, truncated: r.truncated });
           });
         }}

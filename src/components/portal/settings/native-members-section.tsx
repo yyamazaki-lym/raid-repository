@@ -11,6 +11,11 @@ import {
   updateNativeScheduleMemberAction,
   deleteNativeScheduleMemberAction,
 } from "@/lib/server/native-schedule-actions";
+import {
+  getMemberDataCountsAction,
+  purgeMemberPersonalDataAction,
+} from "@/lib/server/member-data-actions";
+import { MEMBER_DATA_TARGETS, memberDataTotal } from "@/lib/member-data";
 import type { NativeMemberRowFull } from "@/lib/schedule/native-admin-client";
 import { useConfirm } from "@/components/portal/confirm-dialog";
 import { useLocale, useMessages } from "@/lib/i18n/client";
@@ -272,7 +277,38 @@ export function NativeMembersSection({
       }))
     )
       return;
+    // 2026-10-01 監査 F-4: FK の無い表に残る関連データの件数を見せ、
+    // 消すかどうかを選んでもらう (既定 = 「残す」、schema の設計どおり)。
+    // 件数が読めなければ削除しない (何が残るか分からないまま消さない)。
+    const counts = await getMemberDataCountsAction(mem.discord_user_id);
+    if (!counts.ok) {
+      toast.error(counts.reason);
+      return;
+    }
+    let purge = false;
+    if (memberDataTotal(counts.counts) > 0) {
+      const lines = MEMBER_DATA_TARGETS.filter((t) => counts.counts[t.id] > 0)
+        .map((t) => m.nativeMembers.purgeItem(t.id, counts.counts[t.id]))
+        .join("\n");
+      purge = await confirm({
+        title: m.nativeMembers.purgeConfirmTitle,
+        description: m.nativeMembers.purgeConfirmDescription(mem.display_name, lines),
+        confirmText: m.nativeMembers.purgeConfirmButton,
+        cancelText: m.nativeMembers.purgeKeepButton,
+        destructive: true,
+      });
+    }
     startTransition(async () => {
+      if (purge) {
+        // メンバー行より先に消す (途中で失敗しても、メンバーが残っていれば
+        // もう一度削除からやり直せる)。
+        const p = await purgeMemberPersonalDataAction(mem.discord_user_id);
+        if (!p.ok) {
+          toast.error(p.reason);
+          return;
+        }
+        toast.success(m.nativeMembers.toastPurged(p.affected));
+      }
       const r = await deleteNativeScheduleMemberAction(mem.discord_user_id);
       if (!r.ok) {
         toast.error(r.reason);
@@ -512,7 +548,7 @@ export function NativeMembersSection({
                     disabled={!canEdit || pending}
                     onClick={() => onDelete(mem)}
                     aria-label={m.nativeMembers.deleteAria(mem.display_name)}
-                    className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                    className="tap-target relative h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
                   >
                     <Trash2 className="h-3.5 w-3.5" aria-hidden />
                   </Button>
@@ -546,7 +582,7 @@ export function NativeMembersSection({
                 onClick={() => setNewDiscordId(generateLocalKey())}
                 aria-label={m.nativeMembers.generateKeyAria}
                 title={m.nativeMembers.generateKeyTitle}
-                className="h-7 w-7 shrink-0 p-0 text-muted-foreground hover:text-foreground"
+                className="tap-target relative h-7 w-7 shrink-0 p-0 text-muted-foreground hover:text-foreground"
               >
                 <Wand2 className="h-3.5 w-3.5" aria-hidden />
               </Button>

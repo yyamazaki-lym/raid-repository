@@ -185,10 +185,21 @@ export type Category = {
    * 「欲しい人」行列を**そのコンテンツで出すか**の指定で、既定は出す
    * (`!== false` で判定)。零式と絶では取得する装備が違うため、絶では
    * 使わない固定がある (実機報告)。
+   *
+   * 2026-10-01 監査 F-8: `loot` タブは `weekly` も持つ。週制限の消化チェックを
+   * **そのコンテンツで出すか**の指定で、既定は出す (`!== false`)。週制限の
+   * 無い / 使わないコンテンツで、固定全員に毎週の入力を求めないため。
+   * コンテンツの種類 (絶 / 極) から自動で決めないのは、週制限の有無が
+   * パッチで変わり得るため (固定ごとに決める)。
    */
   tabConfig: Record<
     string,
-    { enabled?: boolean; label?: string | null; wantMatrix?: boolean }
+    {
+      enabled?: boolean;
+      label?: string | null;
+      wantMatrix?: boolean;
+      weekly?: boolean;
+    }
   >;
   /**
    * W-33 ① (2026-09-07): 表示用の難易度ラベル (自由記述、24 文字)。

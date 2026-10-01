@@ -4,6 +4,7 @@ import {
   createSupabaseServiceRoleClient,
 } from "@/lib/supabase/server";
 import { fetchAppSetting } from "@/lib/supabase/app-settings";
+import { FFLOGS_LINK_LEASE_KEY, withSyncLease } from "./sync-lease-db";
 import { fetchAllPages } from "@/lib/fetch-all-pages";
 import { findContentGroups } from "@/lib/content-groups";
 import { extractDateFromTitle } from "@/lib/title-date";
@@ -11,8 +12,15 @@ import type { SessionLogEntry } from "@/lib/schedule/session-logs";
 import { bridgeAllManualSessionLogsToVideos } from "./session-logs-video-bridge";
 import { getValidFflogsOAuthToken } from "./fflogs-oauth";
 import { parseFflogsReportCode } from "@/lib/fflogs-url";
+import { parseEnglishVisibleDate } from "@/lib/fflogs-scrape-date";
+import { fetchErrorReason } from "@/lib/fetch-error-reason";
 import { jstYmdKey, resolveVideoJstYmd } from "@/lib/video-jst-date";
 import { resolveSyncDeadline } from "@/lib/fflogs-sync-budget";
+import {
+  APP_UTC_OFFSET_ISO,
+  APP_UTC_OFFSET_MS,
+} from "@/lib/app-timezone";
+import { jstYmdString } from "@/lib/jst-date";
 import {
   buildFflogsReportsListUrl,
   buildFflogsScrapeHeaders,
@@ -751,20 +759,24 @@ function extractTimestampMs(
     const t = Date.parse(
       `${m[1]}-${pad(m[2]!)}-${pad(m[3]!)}T${pad(m[4] ?? "0")}:${pad(
         m[5] ?? "0",
-      )}:00+09:00`,
+      )}:00${APP_UTC_OFFSET_ISO}`,
     );
     if (Number.isFinite(t))
       candidates.push({ pos: m.index!, ms: t, priority: 1 });
   }
 
-  // 2. English: April 17, 2026 [12:33 AM] OR Sat Mar 21 2026 (no
-  //    comma — this is the FFLogs "Created by" line format)
+  // 2. English: April 17, 2026 [12:33 AM]
+  //    (「Created by NAME on Sat Mar 21 2026」のようなカンマ無しの形は
+  //    この正規表現に当たらない — アップロード時刻なので当たらなくてよい)
+  //    2026-10-01: 解釈は parseEnglishVisibleDate に明示的に任せる。以前の
+  //    `Date.parse(text + " +0900")` は時刻の無い形で NaN を返し、時刻の
+  //    無い英語の日付が黙って候補から落ちていた。
   for (const m of ctx.matchAll(
     /([A-Z][a-z]+\s+\d{1,2},\s+\d{4}(?:\s+\d{1,2}:\d{2}\s*(?:AM|PM)?)?)/g,
   )) {
     if (isUploadMetadataAt(m.index!)) continue;
-    const t = Date.parse(m[0] + " +0900");
-    if (Number.isFinite(t))
+    const t = parseEnglishVisibleDate(m[0], APP_UTC_OFFSET_ISO);
+    if (t !== null)
       candidates.push({ pos: m.index!, ms: t, priority: 2 });
   }
 
@@ -776,7 +788,7 @@ function extractTimestampMs(
     const t = Date.parse(
       `${m[1]}-${pad(m[2]!)}-${pad(m[3]!)}T${pad(m[4] ?? "0")}:${pad(
         m[5] ?? "0",
-      )}:00+09:00`,
+      )}:00${APP_UTC_OFFSET_ISO}`,
     );
     if (Number.isFinite(t))
       candidates.push({ pos: m.index!, ms: t, priority: 3 });
@@ -910,6 +922,9 @@ async function fetchScrapePageViaEdgeProxy(
       // proxy 側の fflogs fetch タイムアウト (20s) + 中継マージン
       signal: AbortSignal.timeout(FFLOGS_SCRAPE_TIMEOUT_MS + 5_000),
       cache: "no-store",
+      // 2026-10-01 監査 S-7: CRON_SECRET を載せるので、3xx で別の宛先へ
+      // Authorization ごと転送させない (logs-auto-sync.ts の #397 と同じ)。
+      redirect: "error",
     });
     // 2.9 follow-up (2026-06-12): 429 は proxy.ts 前段の rate limit
     // (60 req/60s)。直接 fetch に fallback しても Node IP の恒常 403 で
@@ -974,7 +989,8 @@ async function fetchScrapePageDirect(
     }
     return { ok: true, html: await res.text() };
   } catch (e) {
-    return { ok: false, reason: "HTML scrape fetch error: " + String(e) };
+    // ⚠ String(e) を使わない: ヘッダ値が不正だと cookie がそのまま載る。
+    return { ok: false, reason: "HTML scrape fetch error: " + fetchErrorReason(e) };
   }
 }
 
@@ -1210,7 +1226,41 @@ export type FflogsLinkResult = {
  * service role で書き込む。手動 button 経路 (`linkFflogsReports`、
  * `assertAdminResult` 済み) は従来どおり cookie クライアントで RLS を通す。
  */
-export async function linkFflogsReportsToVideos(opts?: {
+/** 同期が重なったときの文言 (C-5)。 */
+export const FFLOGS_SYNC_BUSY_REASON =
+  "別の FFLogs 同期が実行中です — 数分後にもう一度実行してください";
+
+/**
+ * FFLogs ⇔ 動画 / 日程のリンク (下の `linkFflogsReportsToVideosUnlocked`) を、
+ * 同じ段が同時に 2 本走らないようロックを取ってから実行する
+ * (2026-10-01 監査 C-5、`sync-lease-db.ts`)。
+ */
+export async function linkFflogsReportsToVideos(
+  opts?: Parameters<typeof linkFflogsReportsToVideosUnlocked>[0],
+): Promise<FflogsLinkResult> {
+  const client = opts?.useServiceRole
+    ? createSupabaseServiceRoleClient()
+    : await createClient();
+  return withSyncLease(
+    client,
+    FFLOGS_LINK_LEASE_KEY,
+    () => linkFflogsReportsToVideosUnlocked(opts),
+    () => ({
+      ok: false,
+      reason: FFLOGS_SYNC_BUSY_REASON,
+      reportsScanned: 0,
+      videosScanned: 0,
+      matched: 0,
+      sessionsScanned: 0,
+      sessionsMatched: 0,
+      nativeSessionsScanned: 0,
+      nativeSessionsMatched: 0,
+      details: [],
+    }),
+  );
+}
+
+async function linkFflogsReportsToVideosUnlocked(opts?: {
   /**
    * true でテーブル書き込みに service role クライアントを使う (RLS バイパス)。
    * セッション cookie を持たない cron entrypoint 専用。呼び出し元で
@@ -1223,6 +1273,11 @@ export async function linkFflogsReportsToVideos(opts?: {
    * この関数の予算 (240s) だけで動く。
    */
   deadlineAtMs?: number;
+  /**
+   * false で設定画面の診断用の取得 (GraphQL スキーマの introspection 3 回) を
+   * 省く (2026-10-01 監査、cron / 自動起動は画面に出さないので不要)。
+   */
+  diagnostics?: boolean;
 }): Promise<FflogsLinkResult> {
   const newWriteClient = async () =>
     opts?.useServiceRole
@@ -1273,16 +1328,20 @@ export async function linkFflogsReportsToVideos(opts?: {
   }
 
   // Read all sources' configuration.
-  // session cookie は secrets テーブル (暗号化) を優先、無ければ
-  // 旧 app_settings の plaintext fallback (TODO #35 移行期)。
+  // session cookie は secrets テーブル (暗号化) だけから読む。
+  //
+  // 2026-10-01 監査 S-6: 以前は旧 app_settings の plaintext に fallback して
+  // いた (TODO #35 の移行期)。app_settings は authenticated 全員が SELECT
+  // できるので、万一 plaintext 行が作られると全メンバーに cookie が見える
+  // 構造だった。書き込み側 (`setFflogsSessionCookie`) は secrets にしか
+  // 書かず、schema 14 章が適用のたびに plaintext 行を消すので、fallback は
+  // もう値を返さない死んだ経路だった。
   const { getSecretValue } = await import("./secret-store");
-  const [username, oauthToken, encryptedCookie] = await Promise.all([
+  const [username, oauthToken, sessionCookie] = await Promise.all([
     fetchAppSetting("fflogs_username"),
     getValidFflogsOAuthToken(),
     getSecretValue("fflogs_session_cookie"),
   ]);
-  const sessionCookie =
-    encryptedCookie ?? (await fetchAppSetting("fflogs_session_cookie"));
 
   // At least one source must be configured.
   if (!username && !oauthToken) {
@@ -1320,8 +1379,12 @@ export async function linkFflogsReportsToVideos(opts?: {
 
   // Run v2 OAuth if connected.
   if (oauthToken) {
-    schemaIntrospect = await introspectFflogsSchema(oauthToken);
-    userTypeFields = schemaIntrospect.user;
+    // 2026-10-01 監査: introspection は設定画面の診断表示にしか使わないので、
+    // cron / 自動起動 (diagnostics: false) では引かない (毎回 3 クエリだった)。
+    if (opts?.diagnostics !== false) {
+      schemaIntrospect = await introspectFflogsSchema(oauthToken);
+      userTypeFields = schemaIntrospect.user;
+    }
     v2Result = await fetchFflogsReportsV2(oauthToken, deadlineAtMs);
   }
   const v2Reports = v2Result && v2Result.ok ? v2Result.reports : [];
@@ -1347,7 +1410,12 @@ export async function linkFflogsReportsToVideos(opts?: {
   cookieUsed = Boolean(sessionCookie?.trim());
   let scrapeTruncated = false;
   if (oauthToken) {
-    const me = await fetchCurrentUser(oauthToken);
+    // 2026-10-01 監査: v2 の一覧取得が既に自分の user を引いているので使い回す
+    // (以前は同じ currentUser クエリを 2 回引いていた)。
+    const me =
+      v2Result && v2Result.ok
+        ? { ok: true as const, id: v2Result.me.id, name: v2Result.me.name }
+        : await fetchCurrentUser(oauthToken);
     if (me.ok) {
       const scrapeResult = await fetchFflogsReportsHtmlScrape(
         me.id,
@@ -1553,7 +1621,7 @@ export async function linkFflogsReportsToVideos(opts?: {
     .sort((a, b) => b.startMs - a.startMs)
     .slice(0, 10)
     .map((r) => ({
-      date: new Date(r.startMs).toISOString().slice(0, 10),
+      date: jstYmdString(new Date(r.startMs)),
       title: r.title || "(無題のレポート)",
       url: `https://www.fflogs.com/reports/${r.id}`,
     }));
@@ -1726,8 +1794,7 @@ async function fetchExistingLogCodesByDay(supabase: SupabaseLike): Promise<{
 
 /** Convert a Unix ms epoch to a JST calendar date. */
 function jstCalendarDate(ms: number): { y: number; m: number; d: number } {
-  const JST_OFFSET = 9 * 60 * 60 * 1000;
-  const dt = new Date(ms + JST_OFFSET);
+  const dt = new Date(ms + APP_UTC_OFFSET_MS);
   return {
     y: dt.getUTCFullYear(),
     m: dt.getUTCMonth() + 1,
@@ -1925,10 +1992,9 @@ async function linkReportsToVideos(
         postedAt && Number.isFinite(new Date(postedAt).getTime())
           ? new Date(postedAt).getTime()
           : null;
-      const fallbackYear =
-        postedTMs !== null
-          ? new Date(postedTMs).getUTCFullYear()
-          : new Date().getUTCFullYear();
+      // 2026-10-01 監査 U-11: 年ヒントは UTC ではなくアプリの TZ の年
+      // (1/1 00:00〜09:00 JST の投稿が前年に解決されていた)。
+      const fallbackYear = jstCalendarDate(postedTMs ?? Date.now()).y;
       const vTitle = (v as { title?: string | null }).title ?? null;
       const titleDate = extractDateFromTitle(vTitle, fallbackYear);
       if (titleDate) {
@@ -1983,7 +2049,6 @@ async function linkReportsToVideos(
   // 「クリア / ふくしゅう / れんしゅう」と分けて投稿) では同日複数
   // 動画から同一 Logs URL に飛ばしたいケースが多い、というユーザー
   // 指示。各動画は依然 1 レポートにしか紐づかない (`usedVideos`)。
-  const HOUR_MS = 60 * 60 * 1000;
   const sameJstDay = (
     a: { y: number; m: number; d: number },
     b: { y: number; m: number; d: number },
@@ -2077,7 +2142,7 @@ async function linkReportsToVideos(
       d ? `${d.y}-${String(d.m).padStart(2, "0")}-${String(d.d).padStart(2, "0")}` : undefined;
     // Format report.startMs in JST (YYYY-MM-DD HH:mm).
     const formatJst = (ms: number) => {
-      const dt = new Date(ms + 9 * HOUR_MS);
+      const dt = new Date(ms + APP_UTC_OFFSET_MS);
       const Y = dt.getUTCFullYear();
       const M = String(dt.getUTCMonth() + 1).padStart(2, "0");
       const D = String(dt.getUTCDate()).padStart(2, "0");
@@ -2093,7 +2158,7 @@ async function linkReportsToVideos(
       videoDate: videoTitleDate
         ? fmt(videoTitleDate)
         : pair.video.tMs !== null
-          ? new Date(pair.video.tMs).toISOString().slice(0, 10) +
+          ? jstYmdString(new Date(pair.video.tMs)) +
             " (posted_at)"
           : undefined,
       reportDate: fmt(reportJst),
@@ -2214,9 +2279,8 @@ function buildSessionLinkDetail<T extends string>(
   const reportJst = jstCalendarDate(pair.report.startMs);
   const fmt = (d: { y: number; m: number; d: number }) =>
     `${d.y}-${String(d.m).padStart(2, "0")}-${String(d.d).padStart(2, "0")}`;
-  const HOUR_MS_LOCAL = 60 * 60 * 1000;
   const formatJstSession = (ms: number) => {
-    const dt = new Date(ms + 9 * HOUR_MS_LOCAL);
+    const dt = new Date(ms + APP_UTC_OFFSET_MS);
     const Y = dt.getUTCFullYear();
     const M = String(dt.getUTCMonth() + 1).padStart(2, "0");
     const D = String(dt.getUTCDate()).padStart(2, "0");

@@ -37,6 +37,7 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import { classifyGphotoInput } from "@/lib/google-photos-classify";
 import type { CategoryLink } from "@/lib/supabase/types";
+import { useServerText } from "@/lib/i18n/use-server-text";
 import { useMessages } from "@/lib/i18n/client";
 
 /**
@@ -74,6 +75,7 @@ export function ImageFormDialog({
   open: controlledOpen,
   onOpenChange: controlledOnOpenChange,
 }: Props) {
+  const sr = useServerText();
   const m = useMessages();
   const DEFAULT_TITLE = m.imageForm.defaultTitle;
   const isEdit = !!link;
@@ -209,7 +211,7 @@ export function ImageFormDialog({
         });
         setBusy(false);
         if (!gphotoResult.ok) {
-          setError(m.crud.saveFailed(gphotoResult.reason));
+          setError(m.crud.saveFailed(sr(gphotoResult.reason)));
           return;
         }
         if (gphotoResult.kind === "album") {
@@ -244,7 +246,7 @@ export function ImageFormDialog({
     setBusy(false);
 
     if (!result.ok) {
-      setError(m.crud.saveFailed(result.reason));
+      setError(m.crud.saveFailed(sr(result.reason)));
       return;
     }
 

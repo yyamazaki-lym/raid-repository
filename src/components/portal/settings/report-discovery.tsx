@@ -18,6 +18,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useServerText } from "@/lib/i18n/use-server-text";
 import { useMessages } from "@/lib/i18n/client";
 
 /**
@@ -74,6 +75,7 @@ export function ReportDiscovery({
   open: boolean;
   canEdit: boolean;
 }) {
+  const sr = useServerText();
   const m = useMessages();
   const [pending, startTransition] = useTransition();
   const [loaded, setLoaded] = useState(false);
@@ -151,7 +153,7 @@ export function ReportDiscovery({
       {loadError !== null ? (
         <div className="flex flex-col gap-2 rounded-md border border-rose-400/40 bg-rose-400/5 px-3 py-2">
           <p className="text-[12px] leading-relaxed text-rose-100/90">
-            {m.logsNotify.loadFailed(loadError)}
+            {m.logsNotify.loadFailed(sr(loadError))}
           </p>
           <div>
             <Button

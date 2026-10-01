@@ -30,6 +30,7 @@ import type {
   CategoryLink,
   CategoryLinkKind,
 } from "@/lib/supabase/types";
+import { useServerText } from "@/lib/i18n/use-server-text";
 import { useLocale, useMessages } from "@/lib/i18n/client";
 
 // Phase 15: kind=image は ImageFormDialog 担当。LinkFormDialog は
@@ -62,6 +63,7 @@ export function LinkFormDialog({
   open: controlledOpen,
   onOpenChange: controlledOnOpenChange,
 }: Props) {
+  const sr = useServerText();
   const m = useMessages();
   const locale = useLocale();
   const kindLabel = m.linkForm.kindLabel[kind];
@@ -196,7 +198,7 @@ export function LinkFormDialog({
     setBusy(false);
 
     if (!result.ok) {
-      setError(m.crud.saveFailed(result.reason));
+      setError(m.crud.saveFailed(sr(result.reason)));
       return;
     }
 

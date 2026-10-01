@@ -22,6 +22,7 @@
 **TODO #2 close 後の本番運用観察 + Vercel deploy 障害復旧** (2026-05-08):
 
 1. ⏳ Discord 通知 ON/OFF トグル **現在 OFF**、手動 Bell button で初期検証中。問題なければ ON に戻す。**24h 観察 (項目 2-iv) 期間中も OFF 維持**: ユーザー判断 (2026-05-08) で「Discord 投稿到達確認は 24h 観察と切離し、ON 切替は別タイミング」。24h 観察の検収条件は `cron.job_run_details` に毎時発火 24 行が `status='succeeded'` で並ぶことのみ
+   - **2026-10-01 (監査 F-10)**: 2026-05-08 から OFF のまま約 5 か月。ON に戻すか、OFF (手動 Bell のみ) を正式な運用にするかの判断待ち
 2. ✅ **完了 (2026-06-10 観察結果確定)** 候補 B 本対応 ([PR #71](https://github.com/yyamazaki-lym/raid-repository/pull/71) — 案 D: Supabase pg_cron): Vercel Hobby cron sub-daily 制約 (PR #69 で daily 暫定 revert 済) を回避するため、毎時 trigger を Supabase pg_cron + pg_net に移管。当初検討した案 C (GitHub Actions hourly cron) は通常 5–15 min 遅延・ピーク 1h+ で精度不足のため却下、pg_cron は DB 内 scheduler で秒単位精度。**Supabase Dashboard 手動操作が必要だった経路**:
    1. ✅ **完了**: SQL Editor で `SELECT vault.create_secret('<Vercel Env の CRON_SECRET と同値>', 'cron_notify_native_schedule_bearer');` を 1 回実行 (vault `secret_len=48` 確認済)
    2. ✅ **完了**: SQL Editor で `supabase/schema.sql` の追記された **13 章「Hourly cron for native schedule Discord notify」** (extensions + DO block + cron.schedule) を実行
@@ -48,6 +49,7 @@
      なるため移行期は admin のみ操作可。UI 側 (`session-memo-delete-modal.tsx` /
      `schedule-memos-client.ts`) で「自分のメモだけ編集ボタンを出す」対応も併せて必要。
    - **判断待ち**: 共有編集を維持するか (現状維持 = リスク受容)、所有者限定に変えるか。
+   - **2026-10-01 (監査 F-10)**: この判断は 2026-09-09 に**所有者限定で決定・実装済み** (`docs/backlog.md` L-18、`author_user_id` と schema 7a-2 のポリシー)。この項目を閉じてよいかはユーザー判断 (Claude からは閉じない)。所有者不明の行の扱いは backlog「S-10」
 
 (項目 1 (Discord 通知 ON 切替) + 項目 4 (TODO #92 判断) 完了でこの節を `_(現在なし)_` に戻す)
 

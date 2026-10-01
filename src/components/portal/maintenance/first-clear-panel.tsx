@@ -4,6 +4,7 @@ import { Trophy } from "lucide-react";
 import { type BackfillResult } from "@/lib/server/categories-actions";
 import { useLocale, useMessages } from "@/lib/i18n/client";
 import type { Messages } from "@/lib/i18n/messages";
+import { jstWeekday, jstYmdString } from "@/lib/jst-date";
 
 /** クリア日時 / クリア時間 backfill の結果パネル (maintenance-menu から分離、C-5)。 */
 export function FirstClearPanel({
@@ -175,12 +176,12 @@ function formatHM(seconds: number): string {
 const DOW_JA = ["日", "月", "火", "水", "木", "金", "土"];
 const DOW_EN = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
+// 2026-10-01 監査 U-13: 閲覧端末の TZ (getFullYear / getDate / getDay) では
+// なくアプリの TZ (JST) の暦日・曜日で出す。UTC+11 以東の端末で翌日に
+// なっていた。
 function formatLong(iso: string, locale: "ja" | "en"): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  const wd = (locale === "en" ? DOW_EN : DOW_JA)[d.getDay()];
-  return `${y}-${m}-${day} (${wd})`;
+  const wd = (locale === "en" ? DOW_EN : DOW_JA)[jstWeekday(d)];
+  return `${jstYmdString(d)} (${wd})`;
 }

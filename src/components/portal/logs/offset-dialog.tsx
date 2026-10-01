@@ -9,6 +9,7 @@
 import { useState } from "react";
 import { Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { useConfirm } from "@/components/portal/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -33,6 +34,7 @@ import {
   type VideoSyncAnchor,
 } from "@/lib/video-sync";
 import { formatClock } from "@/lib/fflogs-url";
+import { APP_TIME_ZONE } from "@/lib/app-timezone";
 import { type OffsetTarget } from "./video-link";
 import { OffsetNudge, VideoSyncPanel } from "./video-sync-panel";
 
@@ -52,6 +54,7 @@ export function OffsetDialog({
   onSaved: () => void;
 }) {
   const m = useMessages();
+  const confirm = useConfirm();
   const [busy, setBusy] = useState(false);
 
   const save = async () => {
@@ -82,6 +85,15 @@ export function OffsetDialog({
   /** 紐づけを 1 本だけ外す。pull 側のログはそのまま残る。 */
   const remove = async () => {
     if (!target?.id) return;
+    // 2026-10-01 監査 U-16: 紐づけ直しはできるが、開始位置の調整は消えるので
+    // 確かめる。
+    const ok = await confirm({
+      title: m.logsOffset.deleteVideoConfirmTitle,
+      description: m.logsOffset.deleteVideoConfirmDescription,
+      confirmText: m.logsOffset.deleteVideo,
+      destructive: true,
+    });
+    if (!ok) return;
     setBusy(true);
     const result = await deleteReportVideoAction(target.id);
     setBusy(false);
@@ -267,7 +279,7 @@ function OffsetExplain({
     new Date(ms).toLocaleTimeString("ja-JP", {
       hour: "2-digit",
       minute: "2-digit",
-      timeZone: "Asia/Tokyo",
+      timeZone: APP_TIME_ZONE,
     });
   const missing = info.firstPullVideoSeconds < 0;
   return (

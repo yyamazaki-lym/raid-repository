@@ -152,6 +152,8 @@ export const ja = {
     pullNoteEmpty: "注釈なし",
     pullNoteAdd: "注釈",
     pullNoteDelete: "この注釈を削除",
+    pullNoteDeleteConfirmTitle: "この注釈を削除しますか？",
+    pullNoteDeleteConfirmDescription: "削除した注釈は元に戻せません。",
     pullNoteScopeTeam: "チーム",
     pullNoteScopeSelf: "自分",
     pullNoteSelfMark: "●",
@@ -432,6 +434,9 @@ export const ja = {
     labelLabel: "表示名（任意）",
     labelPlaceholder: "例: 前半 / ヒラ視点",
     deleteVideo: "この動画を外す",
+    deleteVideoConfirmTitle: "この動画の紐づけを外しますか？",
+    deleteVideoConfirmDescription:
+      "pull 側のログはそのまま残ります。開始位置の調整は消えるので、あとで紐づけ直すときは合わせ直しになります。",
     toastDeleted: "動画の紐づけを外しました",
     // W-11 動画で合わせる (2026-09-07)。
     syncTitle: "動画を見ながら合わせる",
@@ -622,6 +627,8 @@ export const en: LogsMessages = {
     pullNoteEmpty: "No notes",
     pullNoteAdd: "Note",
     pullNoteDelete: "Delete this note",
+    pullNoteDeleteConfirmTitle: "Delete this note?",
+    pullNoteDeleteConfirmDescription: "A deleted note cannot be restored.",
     pullNoteScopeTeam: "Team",
     pullNoteScopeSelf: "Me",
     pullNoteSelfMark: "●",
@@ -881,6 +888,9 @@ export const en: LogsMessages = {
     labelLabel: "Display name (optional)",
     labelPlaceholder: "e.g. Part 1 / Healer POV",
     deleteVideo: "Unlink this video",
+    deleteVideoConfirmTitle: "Unlink this video?",
+    deleteVideoConfirmDescription:
+      "The pull logs stay. The start offset is removed, so you will need to set it again if you re-link the video.",
     toastDeleted: "Unlinked the video",
     syncTitle: "Set it while watching",
     syncHint:

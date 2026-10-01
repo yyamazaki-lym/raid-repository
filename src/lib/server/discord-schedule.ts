@@ -2,6 +2,7 @@ import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { dbError } from "@/lib/server/db-error";
 import { fetchAppSetting } from "@/lib/supabase/app-settings";
+import { APP_UTC_OFFSET_MS } from "@/lib/app-timezone";
 
 /**
  * Imports past raid-session dates from a Discord notification channel.
@@ -33,7 +34,7 @@ type DiscordMessage = {
 const SCHEDULE_LINE_RE =
   /本日\s*(\d{4})\/(\d{1,2})\/(\d{1,2})\(([日月火水木金土])\)\s*(\d{1,2}):(\d{2})\s*[~〜]\s*(\d{1,2}):(\d{2})/;
 
-const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
+const JST_OFFSET_MS = APP_UTC_OFFSET_MS;
 
 export type ScheduleHistoryImportResult = {
   ok: boolean;

@@ -4,6 +4,7 @@ import { Geist, JetBrains_Mono, Orbitron } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { DynamicToaster } from "@/components/ui/toaster-dynamic";
+import { ServerTextLocalizer } from "@/components/server-text-localizer";
 import { SplashSwRegistrar } from "@/components/splash-sw-registrar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { CSP_NONCE_HEADER } from "@/lib/csp";
@@ -111,6 +112,9 @@ export default async function RootLayout({
           </TooltipProvider>
         </LocaleProvider>
         <DynamicToaster richColors position="top-center" theme="dark" />
+        {/* 2026-10-01 監査 U-6: 英語表示のとき、トーストに出る Server Action の
+            日本語の失敗理由を訳す。 */}
+        <ServerTextLocalizer locale={locale} />
         {/*
           Vercel Speed Insights — Core Web Vitals (TTFB / LCP / FCP / CLS / INP) の RUM。
           Vercel Analytics — ページビュー / referrer / device 内訳。

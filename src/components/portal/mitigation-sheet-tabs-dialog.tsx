@@ -143,7 +143,7 @@ export function MitigationSheetTabsDialog({
                   }
                   aria-label={m.mitigationTabs.removeRowAria}
                   title={m.common.delete}
-                  className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded text-rose-300 hover:bg-rose-500/15"
+                  className="inline-flex tap-target relative h-7 w-7 shrink-0 items-center justify-center rounded text-rose-300 hover:bg-rose-500/15"
                 >
                   <Trash2 className="h-3.5 w-3.5" aria-hidden />
                 </button>

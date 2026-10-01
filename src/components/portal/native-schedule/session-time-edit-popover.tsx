@@ -17,6 +17,7 @@ import {
   updateNativeScheduleSessionOptionalAction,
   updateNativeScheduleSessionTimeAction,
 } from "@/lib/server/native-schedule-actions";
+import { useServerText } from "@/lib/i18n/use-server-text";
 import { useMessages } from "@/lib/i18n/client";
 
 /**
@@ -83,6 +84,7 @@ export function SessionTimeEditPopover({
   isOptional = false,
   triggerClass = "",
 }: Props) {
+  const sr = useServerText();
   const m = useMessages();
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -173,7 +175,7 @@ export function SessionTimeEditPopover({
           endTime: draftEnd,
         });
         if (!r.ok) {
-          setError(r.reason);
+          setError(sr(r.reason));
           return;
         }
       }
@@ -183,7 +185,7 @@ export function SessionTimeEditPopover({
           note: nextNote,
         });
         if (!r.ok) {
-          setError(r.reason);
+          setError(sr(r.reason));
           return;
         }
       }
@@ -193,7 +195,7 @@ export function SessionTimeEditPopover({
           isOptional: draftOptional,
         });
         if (!r.ok) {
-          setError(r.reason);
+          setError(sr(r.reason));
           return;
         }
       }
@@ -231,7 +233,7 @@ export function SessionTimeEditPopover({
         endTime: null,
       });
       if (!r.ok) {
-        setError(r.reason);
+        setError(sr(r.reason));
         return;
       }
       toast.success(m.sessionTime.toastReset(displayDate));

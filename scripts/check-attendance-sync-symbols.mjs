@@ -56,6 +56,8 @@ try {
       "src/lib/schedule/attendance-sync-symbols.ts",
       "--outDir",
       outDir,
+      "--rootDir",
+      "src/lib",
       "--target",
       "es2022",
       "--module",
@@ -84,7 +86,7 @@ try {
   fix(outDir);
 
   const m = await import(
-    pathToFileURL(join(outDir, "attendance-sync-symbols.js")).href
+    pathToFileURL(join(outDir, "schedule", "attendance-sync-symbols.js")).href
   );
 
   const members = [
