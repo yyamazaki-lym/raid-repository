@@ -124,6 +124,15 @@ export function Legend({
   // 重複 Logs の整理 (設定ダイアログと同じ server action)。結果は toast
   // だけに出し、詳細な競合一覧が要る場合は設定画面へ誘導する。
   const runDedupeLogs = async () => {
+    // 2026-10-01 監査 U-16: ワンクリックで行を消していた。消した行は戻せない
+    // ので確かめる (設定画面の同じボタンも同様)。
+    const ok = await confirm({
+      title: m.legend.dedupeConfirmTitle,
+      description: m.legend.dedupeConfirmDescription,
+      confirmText: m.legend.dedupeConfirmButton,
+      destructive: true,
+    });
+    if (!ok) return;
     setDedupingLogs(true);
     const r = await dedupeSessionLogs();
     setDedupingLogs(false);

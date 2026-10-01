@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
+import { useConfirm } from "@/components/portal/confirm-dialog";
 import {
   dedupeSessionLogs,
   disconnectFflogsOAuthAction,
@@ -117,6 +118,7 @@ export function FflogsSyncSection({
 }) {
   const router = useRouter();
   const m = useMessages();
+  const confirm = useConfirm();
   const [fflogsUsername, setFflogsUsernameState] = useState("");
   const [savingUsername, startSaveUsername] = useTransition();
   const [linkingLogs, startLinkLogs] = useTransition();
@@ -225,7 +227,15 @@ export function FflogsSyncSection({
     });
   };
 
-  const onDedupeLogs = () => {
+  const onDedupeLogs = async () => {
+    // 2026-10-01 監査 U-16: 消した行は戻せないので確かめる。
+    const ok = await confirm({
+      title: m.legend.dedupeConfirmTitle,
+      description: m.legend.dedupeConfirmDescription,
+      confirmText: m.legend.dedupeConfirmButton,
+      destructive: true,
+    });
+    if (!ok) return;
     setDedupeConflicts(null);
     startDedupeLogs(async () => {
       const r = await dedupeSessionLogs();
