@@ -33,8 +33,11 @@ export default function PortalError({
         <AlertTriangle className="h-5 w-5" aria-hidden />
       </span>
       <div className="flex flex-col gap-1">
+        {/* 2026-10-01 監査 U-18: 見出しの英字は飾り (他の見出しと同じ大文字
+            英字の意匠) なので読み上げから外し、表示言語の文言を読ませる。 */}
         <h1 className="font-display text-lg tracking-[0.16em] uppercase">
-          Page Error
+          <span aria-hidden>Page Error</span>
+          <span className="sr-only">{m.app.pageErrorTitle}</span>
         </h1>
         <p className="text-sm text-muted-foreground">
           {m.app.pageErrorText}
@@ -50,6 +53,7 @@ export default function PortalError({
         type="button"
         size="sm"
         onClick={reset}
+        aria-label={m.app.retry}
         className="gap-1.5 font-mono text-[11px] tracking-[0.18em] uppercase"
       >
         <RotateCcw className="h-3.5 w-3.5" aria-hidden />

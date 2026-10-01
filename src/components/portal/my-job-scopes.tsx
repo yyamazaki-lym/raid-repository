@@ -5,6 +5,7 @@ import { Trash2 } from "lucide-react";
 import { MyJobPicker } from "./my-job-picker";
 import { setMyJobsAction } from "@/lib/server/my-profile-actions";
 import { useMessages } from "@/lib/i18n/client";
+import { toast } from "sonner";
 
 /**
  * ジョブの範囲ごとの設定 (`/me` 用、L-10 2026-09-09)。
@@ -53,7 +54,13 @@ export function MyJobScopes({
   const clear = (categoryId: string) => {
     startTransition(async () => {
       // 空で保存する = その範囲の行を消す = 既定に戻る。
-      await setMyJobsAction({ categoryId, jobs: [] });
+      // 2026-10-01 監査 U-15: 結果を捨てて無条件に一覧から外していた。
+      // 失敗したら行は DB に残るので、画面からも外さずに知らせる。
+      const res = await setMyJobsAction({ categoryId, jobs: [] });
+      if (!res.ok) {
+        toast.error(m.myJob.clearOverrideFailed(res.reason));
+        return;
+      }
       setOpenIds((prev) => prev.filter((id) => id !== categoryId));
     });
   };

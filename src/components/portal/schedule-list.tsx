@@ -14,6 +14,7 @@ import { SessionMemoDot } from "./schedule/session-memo-dot";
 import { AttendanceSummaryChip } from "@/components/portal/schedule/attendance-summary-chip";
 import { FrameDeviationBadge } from "@/components/portal/native-schedule/frame-deviation-badge";
 import { ScheduleAgendaList } from "@/components/portal/schedule/agenda-list";
+import { HolidayMark } from "@/components/portal/schedule/holiday-mark";
 import { OptionalSessionBadge } from "@/components/portal/native-schedule/optional-session-badge";
 import {
   dowIndexFromLabel,
@@ -825,6 +826,7 @@ function DateLabel({
   return (
     <span className={colorClass} title={holidayName ?? undefined}>
       {text}
+      {holiday && <HolidayMark name={holidayName} />}
     </span>
   );
 }

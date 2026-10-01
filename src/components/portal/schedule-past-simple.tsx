@@ -17,6 +17,7 @@ import type { SessionLogEntry } from "@/lib/schedule/session-logs";
 import type { SessionVideoLink } from "@/lib/server/session-video-link";
 import { SessionActionIcons } from "./schedule/session-action-icons";
 import { SessionMemoDot } from "./schedule/session-memo-dot";
+import { HolidayMark } from "./schedule/holiday-mark";
 import {
   SessionMemoPopover,
   type SessionMemoPopoverHandle,
@@ -264,6 +265,7 @@ function DateChip({
       >
         <span className="tabular-nums">{chipDate}</span>
       </SessionMemoPopover>
+      {holiday && <HolidayMark name={holidayName} />}
       {/* TODO #65: chip と詳細テーブルで同じ 0/1/2+ 分岐を共有。
           chip 用に `size="compact"` (h-4/h-2.5) + `placeholder={false}`
           (空 slot は描画せずに chip 幅を可変) で呼び出す。 */}
