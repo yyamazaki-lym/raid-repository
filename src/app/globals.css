@@ -1270,3 +1270,19 @@
 .dark.theme-evercold .bg-grid-animate {
   animation: ec-snow-big 38s linear infinite;
 }
+
+/*
+ * 2026-10-01 監査 U-8: 小さなアイコンボタン (h-6 / h-7 = 24 / 28px) の当たり
+ * 判定を、**タッチ端末でだけ** 中心から 40px 四方に広げる。見た目の大きさと
+ * 並びは変えない。付ける要素は position を持つこと (`relative` か `absolute`)。
+ * 隣のボタンとの間隔が狭いと広げた範囲が少し重なり、後ろのボタンが優先される
+ * (gap-1 = 4px なら 28px ボタンで端の 2px)。`overflow: hidden` の親の外へは
+ * 広がらない。`scripts/check-tap-targets.mjs` が付け忘れを止める。
+ */
+@media (pointer: coarse) {
+  .tap-target::after {
+    content: "";
+    position: absolute;
+    inset: min(0px, calc((100% - 40px) / 2));
+  }
+}

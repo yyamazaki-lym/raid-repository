@@ -12,11 +12,14 @@ import {
   type ScheduleSessionMemo,
 } from "@/lib/schedule-memos-client";
 import { jstTodayStartMs } from "@/lib/schedule/jst-cutoff";
+import { useHydrationSafeNow } from "@/lib/use-hydration-safe-now";
+import { jstYmd } from "@/lib/jst-date";
 import type { ScheduleSession } from "@/lib/schedule/next-session";
 import type { SessionLogEntry } from "@/lib/schedule/session-logs";
 import type { SessionVideoLink } from "@/lib/server/session-video-link";
 import { SessionActionIcons } from "./schedule/session-action-icons";
 import { SessionMemoDot } from "./schedule/session-memo-dot";
+import { HolidayMark } from "./schedule/holiday-mark";
 import {
   SessionMemoPopover,
   type SessionMemoPopoverHandle,
@@ -57,8 +60,11 @@ export function SchedulePastSimple({
   initialMemosByDate = {},
   currentDiscordId = null,
   isAdmin = false,
+  renderedAtMs,
 }: {
   sessions: ScheduleSession[];
+  /** サーバー描画の時刻 (過去判定を hydration と揃える、監査 U-14)。 */
+  renderedAtMs: number;
   holidays?: JapaneseHolidaysMap;
   sessionVideoLinks?: Record<string, SessionVideoLink[]>;
   /**
@@ -81,6 +87,7 @@ export function SchedulePastSimple({
   // TODO #11 phase 7: 親で 1 channel だけ subscribe (旧: 各 DateChip が個別)。
   const { memosByDate, refetchAll: refetchMemos } =
     useRealtimeAllScheduleMemos(initialMemosByDate);
+  const nowMs = useHydrationSafeNow(renderedAtMs);
 
   // 過去判定の cutoff は詳細テーブル (schedule-list.tsx の splitSessions)
   // と同じ「JST 今日 0:00」に統一 (2.7, 2026-06-11)。旧実装は
@@ -90,7 +97,7 @@ export function SchedulePastSimple({
   // NextSessionCard (6h グレースで前日分を「次回」に残す) とこのチップ
   // の両方に同じ日程が出るが、詳細テーブルが元々持っていた重複と同じ
   // 挙動であり許容する。
-  const cutoff = jstTodayStartMs();
+  const cutoff = jstTodayStartMs(nowMs);
   // 過去側は「開催確定 (DECISION)」のみ表示。◯ は『参加可投票』であって
   // 実際に開催された記録ではないので fallback シグナルに使えない (流れ
   // た候補日でも投票だけ残るため、◯ 1 名以上を許可するとノイズが増える)。
@@ -192,9 +199,11 @@ function DateChip({
         parseInt(m[3]!, 10),
         session.dayOfWeek,
       )
-    : msg.pastSimple.chipDate(
-        session.date.getMonth() + 1,
-        session.date.getDate(),
+    : // 2026-10-01 監査 U-13 と同じ理由で、予備経路も端末の TZ ではなく
+      // アプリの TZ (JST) の暦日で出す。
+      msg.pastSimple.chipDate(
+        jstYmd(session.date).m,
+        jstYmd(session.date).d,
         session.dayOfWeek,
       );
 
@@ -264,6 +273,7 @@ function DateChip({
       >
         <span className="tabular-nums">{chipDate}</span>
       </SessionMemoPopover>
+      {holiday && <HolidayMark name={holidayName} />}
       {/* TODO #65: chip と詳細テーブルで同じ 0/1/2+ 分岐を共有。
           chip 用に `size="compact"` (h-4/h-2.5) + `placeholder={false}`
           (空 slot は描画せずに chip 幅を可変) で呼び出す。 */}

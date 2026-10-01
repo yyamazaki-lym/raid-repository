@@ -27,6 +27,22 @@ export type NoteRow = {
   created_at: string;
 };
 
+/**
+ * 公開デモの匿名ゲストに返す形 (2026-10-01 監査 S-4)。
+ *
+ * この表を policy 0 本 + service role に集めたのは、「誰がどの pull に何の
+ * タグを付けたか」を公開 anon key で列挙されると個人責任の可視化になる
+ * ため (上の docstring)。ところが読み取りの 2 本はゲストを区別せず、
+ * Discord ID ごと返していた。デモの見本 (W-7) は見せたいので注釈そのもの
+ * は返し、**本人限定 (scope=self) の注釈は除き、作成者と対象者の ID を
+ * 伏せる**。
+ */
+export function redactPullNotesForGuest(notes: PullNote[]): PullNote[] {
+  return notes
+    .filter((n) => n.scope !== "self")
+    .map((n) => ({ ...n, discordUserId: null, createdById: null }));
+}
+
 export function toPullNote(r: NoteRow): PullNote {
   return {
     id: r.id,
@@ -54,7 +70,7 @@ export type CategoryPullNotesResult =
 export async function fetchCategoryPullNotes(
   categoryId: string,
 ): Promise<CategoryPullNotesResult> {
-  await requireDiscordMember();
+  const user = await requireDiscordMember();
   if (!/^[0-9a-f-]{36}$/i.test(categoryId ?? "")) {
     return { ok: false, reason: "コンテンツの指定が不正です" };
   }
@@ -70,9 +86,10 @@ export async function fetchCategoryPullNotes(
       .limit(PULL_NOTES_LIMIT + 1);
     if (error) return { ok: false, reason: "注釈を取得できませんでした" };
     const rows = (data ?? []) as NoteRow[];
+    const notes = rows.slice(0, PULL_NOTES_LIMIT).map(toPullNote);
     return {
       ok: true,
-      notes: rows.slice(0, PULL_NOTES_LIMIT).map(toPullNote),
+      notes: user.isDemoGuest ? redactPullNotesForGuest(notes) : notes,
       truncated: rows.length > PULL_NOTES_LIMIT,
     };
   } catch (e) {

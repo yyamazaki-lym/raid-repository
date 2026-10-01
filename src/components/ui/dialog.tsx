@@ -6,6 +6,7 @@ import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { XIcon } from "lucide-react"
+import { useMessages } from "@/lib/i18n/client"
 
 function Dialog({ ...props }: DialogPrimitive.Root.Props) {
   return <DialogPrimitive.Root data-slot="dialog" {...props} />
@@ -47,6 +48,7 @@ function DialogContent({
 }: DialogPrimitive.Popup.Props & {
   showCloseButton?: boolean
 }) {
+  const m = useMessages()
   return (
     <DialogPortal>
       <DialogOverlay />
@@ -72,7 +74,8 @@ function DialogContent({
           >
             <XIcon
             />
-            <span className="sr-only">Close</span>
+            {/* 2026-10-01 監査 U-18: 英語固定だった読み上げを表示言語に */}
+            <span className="sr-only">{m.common.close}</span>
           </DialogPrimitive.Close>
         )}
       </DialogPrimitive.Popup>

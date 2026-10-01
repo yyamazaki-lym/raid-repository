@@ -12,6 +12,8 @@
  * 検証: `node scripts/check-maintenance-schedule.mjs`
  */
 
+import { APP_UTC_OFFSET_MS } from "./app-timezone";
+
 /** `app_settings` のキー。値は `MaintenanceWindow[]` の JSON。 */
 export const MAINTENANCE_WINDOWS_KEY = "maintenance_windows";
 
@@ -57,7 +59,7 @@ export function maintenanceMs(local: string): number | null {
   const [, y, mo, d, h, mi] = m;
   return (
     Date.UTC(Number(y), Number(mo) - 1, Number(d), Number(h), Number(mi)) -
-    9 * 60 * 60 * 1000
+    APP_UTC_OFFSET_MS
   );
 }
 

@@ -82,7 +82,10 @@ export default async function LootPage({
     fetchCategoryBisLinks(category.id),
   ]);
   const windowWeeks = parseLootWindowWeeks(windowWeeksRaw);
-  const weeks = openWeekStarts(new Date(), windowWeeks);
+  // 2026-10-01 監査 F-8: 週制限の消化チェックを出さないコンテンツでは
+  // 週ごとの読み込みもしない。
+  const weeklyEnabled = category.tabConfig?.["loot"]?.weekly !== false;
+  const weeks = weeklyEnabled ? openWeekStarts(new Date(), windowWeeks) : [];
   const [weeklyRowsByWeek, bisSlots] = await Promise.all([
     Promise.all(weeks.map((w) => fetchLootWeekly(category.id, w, viewer.discordId))),
     fetchCategoryBisSlots(bisLinks.map((l) => l.id)),
@@ -104,6 +107,9 @@ export default async function LootPage({
       {category.tabConfig?.["loot"]?.wantMatrix !== false && (
         <LootWantMatrix members={wantMembers} storageKey={category.slug} />
       )}
+      {/* 2026-10-01 監査 F-8: 週制限の消化チェックもコンテンツ設定
+          (`tabConfig.loot.weekly`) で出し分ける。既定は出す。出さない
+          コンテンツでは `weeks` が空なので、ここは何も描かない。 */}
       {weeks.map((week, i) => (
         <LootWeeklyPanel
           key={week}

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState, useTransition } from "react";
 import { HeartPulse, Loader2, Plus, Skull, Tag, X } from "lucide-react";
 import { toast } from "sonner";
+import { useConfirm } from "@/components/portal/confirm-dialog";
 import {
   fetchPullDetailAction,
   type PullDetailDeath,
@@ -84,6 +85,7 @@ export function PullDetailPanel({
 }) {
   const sr = useServerText();
   const m = useMessages();
+  const confirm = useConfirm();
   const [state, setState] = useState<
     | { kind: "loading" }
     | { kind: "error"; reason: string }
@@ -241,7 +243,16 @@ export function PullDetailPanel({
             await reloadNotes();
           })
         }
-        onDelete={(id) =>
+        onDelete={async (id) => {
+          // 2026-10-01 監査 U-16: 一言メモは消すと戻せないので確かめる
+          // (ほかの削除 11 箇所と同じ useConfirm)。
+          const ok = await confirm({
+            title: m.logs.pullNoteDeleteConfirmTitle,
+            description: m.logs.pullNoteDeleteConfirmDescription,
+            confirmText: m.common.delete,
+            destructive: true,
+          });
+          if (!ok) return;
           startTransition(async () => {
             const r = await deletePullNoteAction(id);
             if (!r.ok) {
@@ -249,8 +260,8 @@ export function PullDetailPanel({
               return;
             }
             await reloadNotes();
-          })
-        }
+          });
+        }}
       />
     </div>
   );

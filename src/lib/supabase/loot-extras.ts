@@ -129,7 +129,9 @@ export async function fetchLootWeekly(
       const hit = checks.get(did);
       out.push({
         id: hit?.id ?? `roster:${did}`,
-        displayName: hit?.displayName || ((m.display_name as string) ?? ""),
+        // 2026-10-01 監査 S-8: メンバー一覧の名前を優先する (行側の
+        // display_name は本人が書いた値なので、他人の名前を名乗れる)。
+        displayName: ((m.display_name as string) ?? "") || hit?.displayName || "",
         status: hit?.status ?? "未消化",
         note: hit?.note ?? null,
         isMe: did === viewerDiscordId,

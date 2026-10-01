@@ -32,15 +32,25 @@ export const fetchGuildRoles = cache(async (): Promise<DiscordGuildRole[]> => {
   const guildId = process.env.DISCORD_GUILD_ID?.trim();
   if (!botToken || !guildId) return [];
 
-  const res = await fetch(`${DISCORD_API}/guilds/${guildId}/roles`, {
-    headers: { Authorization: `Bot ${botToken}` },
-    cache: "no-store",
-  });
-  if (!res.ok) {
-    console.warn("[discord-roles] fetch failed", res.status);
+  // 2026-10-01 監査 Low: timeout が無く、Discord が詰まると編集ダイアログの
+  // ロール一覧が開きっぱなしで待ち続けた。10 秒で諦めて空配列 (= ロール欄を
+  // 出さない、上の docstring どおりの劣化) にする。
+  let data: DiscordGuildRole[];
+  try {
+    const res = await fetch(`${DISCORD_API}/guilds/${guildId}/roles`, {
+      headers: { Authorization: `Bot ${botToken}` },
+      cache: "no-store",
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) {
+      console.warn("[discord-roles] fetch failed", res.status);
+      return [];
+    }
+    data = (await res.json()) as DiscordGuildRole[];
+  } catch (err) {
+    console.warn("[discord-roles] fetch error", String(err));
     return [];
   }
-  const data = (await res.json()) as DiscordGuildRole[];
   return data
     .filter((r) => r.id !== guildId)
     .sort((a, b) => b.position - a.position);

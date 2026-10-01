@@ -352,7 +352,7 @@ function SortableCategorySection({
             href={`/category/${slug}/macros`}
             title={m.recruitmentBody.openMacrosTitle(displayName)}
             aria-label={m.recruitmentBody.openMacrosAria(displayName)}
-            className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-secondary/60 hover:text-[var(--neon-cyan)]"
+            className="inline-flex tap-target relative h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-secondary/60 hover:text-[var(--neon-cyan)]"
             onClick={(e) => e.stopPropagation()}
           >
             <ExternalLink className="h-3 w-3" aria-hidden />
