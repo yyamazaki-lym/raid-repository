@@ -350,6 +350,31 @@ export const ja = {
   // ---- native-auto-confirm-section.tsx ----
   /** W-33 ② (2026-09-07): 週制限の消化ウィンドウ (8.0 の 2 週管理対応)。 */
   /** W-30 公式メンテ / パッチ日程 (2026-09-07)。 */
+  /** 2026-10-01 監査 F-3: データの書き出し (バックアップ)。 */
+  dataExport: {
+    title: "データの書き出し",
+    description:
+      "固定のデータを JSON でダウンロードします。種類ごとに 1 ファイルです。Private / Unlisted の FFLogs レポートや出席の実績・ミス注釈は作り直せないので、「全データ初期化」の前や、節目ごとに保存しておくと安全です。",
+    partLabel: (id: string): string =>
+      id === "schedule"
+        ? "予定・出欠・メンバー・日付メモ"
+        : id === "logs"
+          ? "練習ログの台帳・動画・注釈・出席の実績"
+          : id === "fights"
+            ? "練習ログの明細 (pull ごと)"
+            : id === "loot"
+              ? "ロット・週制限チェック・BiS"
+              : id === "content"
+                ? "コンテンツ・リンク・軽減表・攻略・マクロ"
+                : "設定値",
+    partHint: (id: string): string =>
+      id === "fights"
+        ? "pull 数に比例して大きくなります (数千 pull で数 MB〜数十 MB)"
+        : id === "settings"
+          ? "token / cookie などの秘密は含みません"
+          : "",
+    note: "書き出しには token や cookie などの秘密を含めません (FFLogs 連携などは書き戻した後に設定し直してください)。書き戻す機能はまだありません。",
+  },
   /** W-35 練習ログのイベント通知 (2026-09-07)。既定はすべて OFF。 */
   logsNotify: {
     title: "練習ログの通知",
@@ -1110,6 +1135,30 @@ export const en: SettingsMessages = {
     fillDefaultTitle: "Fill the textarea with the default template (not saved yet)",
     fillDefault: "Fill with default",
     clearTitle: "Clear the textarea (saving removes it from the DB and restores the default)",
+  },
+  dataExport: {
+    title: "Export data",
+    description:
+      "Download your static's data as JSON, one file per kind. Private / Unlisted FFLogs reports, attendance from logs and pull notes cannot be rebuilt, so keep a copy before \"Reset all data\" and at milestones.",
+    partLabel: (id) =>
+      id === "schedule"
+        ? "Schedule, attendance, members, date memos"
+        : id === "logs"
+          ? "Practice log ledger, videos, notes, attendance from logs"
+          : id === "fights"
+            ? "Practice log pulls"
+            : id === "loot"
+              ? "Loot, weekly checks, BiS"
+              : id === "content"
+                ? "Content, links, mitigation, strategy, macros"
+                : "Settings",
+    partHint: (id) =>
+      id === "fights"
+        ? "Grows with the number of pulls (several MB to tens of MB for thousands of pulls)"
+        : id === "settings"
+          ? "Secrets such as tokens and cookies are not included"
+          : "",
+    note: "Exports never include secrets such as tokens or cookies (set up FFLogs and similar integrations again after restoring). There is no import yet.",
   },
   logsNotify: {
     title: "Practice log notifications",
