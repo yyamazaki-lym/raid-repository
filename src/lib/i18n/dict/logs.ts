@@ -462,6 +462,18 @@ export const ja = {
     syncNudgeMinus: "1 秒戻す",
     syncNudgePlus: "1 秒進める",
     syncPicked: (seconds: number): string => `オフセットを ${seconds} 秒にしました`,
+    // 2026-10-02: タイトルが録画開始の時刻 (録画ソフトのファイル名) の動画から秒数を出す。
+    fromTitle: "タイトルの録画時刻から計算",
+    fromTitleHelp:
+      "動画のタイトルが録画を始めた時刻 (例: 2025 05 27 22 00 57) なら、最初の pull との差を秒数にします。入れるだけなので、確かめてから保存してください",
+    titleNoPulls: "このレポートの pull が無いので計算できません",
+    titleNotFound: "この動画のタイトルが動画タブに見つかりません",
+    titleNoTime: (title: string): string =>
+      `タイトルに録画開始の時刻 (年 月 日 時 分 秒) がありません: ${title}`,
+    titleTimeMismatch: (title: string): string =>
+      `タイトルの時刻がこのレポートの pull と合いません (別の日の動画かもしれません): ${title}`,
+    titlePicked: (seconds: number): string =>
+      `タイトルの録画時刻からオフセットを ${seconds} 秒にしました (保存で確定)`,
     // 2026-09-07 実機: 数字だけでは正しいか判断できず、基準の pull を
     // 取り違えたまま保存されていた。意味を実時刻で言い直す。
     explainFirst: (clock: string, videoClock: string): string =>
@@ -915,6 +927,17 @@ export const en: LogsMessages = {
     syncNudgeMinus: "Back 1 second",
     syncNudgePlus: "Forward 1 second",
     syncPicked: (seconds: number): string => `Offset set to ${seconds}s`,
+    fromTitle: "Calculate from the title's recording time",
+    fromTitleHelp:
+      "If the video title is the time recording started (e.g. 2025 05 27 22 00 57), the offset becomes its difference from the first pull. It only fills the field — check it, then save",
+    titleNoPulls: "This report has no pulls to calculate from",
+    titleNotFound: "This video's title was not found in the Videos tab",
+    titleNoTime: (title: string): string =>
+      `The title has no recording start time (year month day hour minute second): ${title}`,
+    titleTimeMismatch: (title: string): string =>
+      `The title's time doesn't match this report's pulls (it may be a video from another day): ${title}`,
+    titlePicked: (seconds: number): string =>
+      `Offset set to ${seconds}s from the title's recording time (save to apply)`,
     explainFirst: (clock: string, videoClock: string): string =>
       `This means “the first pull (${clock}) is at ${videoClock} in the video”`,
     explainFirstMissing: (clock: string, gap: string): string =>

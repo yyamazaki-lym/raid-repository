@@ -24,6 +24,7 @@ import { Label } from "@/components/ui/label";
 import { useMessages } from "@/lib/i18n/client";
 import {
   deleteReportVideoAction,
+  fetchVideoTitleAction,
   setReportVideoAction,
   suggestVideoForReportAction,
 } from "@/lib/server/fflogs-fights-actions";
@@ -31,10 +32,12 @@ import {
   clampOffsetSeconds,
   explainOffset,
   nudgeOffset,
+  offsetFromRecordingStart,
+  parseRecordingStartFromTitle,
   type VideoSyncAnchor,
 } from "@/lib/video-sync";
 import { formatClock } from "@/lib/fflogs-url";
-import { APP_TIME_ZONE } from "@/lib/app-timezone";
+import { APP_TIME_ZONE, APP_UTC_OFFSET_ISO } from "@/lib/app-timezone";
 import { type OffsetTarget } from "./video-link";
 import { OffsetNudge, VideoSyncPanel } from "./video-sync-panel";
 
@@ -119,6 +122,49 @@ export function OffsetDialog({
     onChange({ ...target, videoUrl: result.videoUrl });
   };
 
+  /**
+   * 2026-10-02: 動画のタイトルが録画開始の時刻 (録画ソフトのファイル名) なら、
+   * pull #1 の戦闘開始との差を秒数にする。pull #1 と最後の pull は画面と同じ
+   * 定義 (`firstPullStartMs` / `anchors` = 層クラスタ内の pull)。入れるだけで、
+   * 保存は人が押す (既存の秒数を勝手に書き換えない)。
+   */
+  const fromTitle = async () => {
+    if (!target) return;
+    if (firstPullStartMs === null || anchors.length === 0) {
+      toast.error(m.logsOffset.titleNoPulls);
+      return;
+    }
+    const result = await fetchVideoTitleAction(target.videoUrl);
+    if (!result.ok) {
+      toast.error(result.reason);
+      return;
+    }
+    if (!result.title) {
+      toast.error(m.logsOffset.titleNotFound);
+      return;
+    }
+    const recordingStartMs = parseRecordingStartFromTitle(
+      result.title,
+      APP_UTC_OFFSET_ISO,
+    );
+    if (recordingStartMs === null) {
+      toast.error(m.logsOffset.titleNoTime(result.title));
+      return;
+    }
+    const lastPullStartMs = Math.max(...anchors.map((a) => a.startMs));
+    const seconds = offsetFromRecordingStart(
+      recordingStartMs,
+      firstPullStartMs,
+      lastPullStartMs,
+    );
+    if (seconds === null) {
+      toast.error(m.logsOffset.titleTimeMismatch(result.title));
+      return;
+    }
+    onChange({ ...target, offset: String(seconds) });
+    toast.success(m.logsOffset.titlePicked(seconds));
+  };
+
   return (
     <Dialog
       open={target !== null}
@@ -182,6 +228,18 @@ export function OffsetDialog({
                 }}
               />
             </div>
+            {/* 2026-10-02: タイトルが録画開始の時刻の動画は、そこから秒数を出す。 */}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={fromTitle}
+              disabled={!target?.videoUrl.trim()}
+              title={m.logsOffset.fromTitleHelp}
+              className="self-start text-[11px]"
+            >
+              {m.logsOffset.fromTitle}
+            </Button>
           </div>
           {/* 2026-09-07 実機: 数字だけでは正しいか判断できず、基準の pull を
               取り違えた 22 秒がそのまま保存されていた (その動画は最初の pull が

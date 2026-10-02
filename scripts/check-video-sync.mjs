@@ -71,6 +71,9 @@ try {
     parseYoutubePlayerTime,
     explainOffset,
     isBeforeVideoStart,
+    parseRecordingStartFromTitle,
+    offsetFromRecordingStart,
+    RECORDING_LEAD_MAX_SECONDS,
     OFFSET_LIMIT_SECONDS,
   } = v;
 
@@ -186,6 +189,62 @@ try {
       firstNotOutside?.fightId ?? null,
     );
   }
+
+  console.log("\nタイトルの録画開始の時刻 (2026-10-02)");
+  const JST = "+09:00";
+  const at = (iso) => Date.parse(iso);
+  check("実データの形 (空白区切り)", parseRecordingStartFromTitle("2025 05 27 22 00 57", JST), at("2025-05-27T22:00:57+09:00"));
+  check("OBS の既定", parseRecordingStartFromTitle("2025-05-27 22-00-57", JST), at("2025-05-27T22:00:57+09:00"));
+  check("NVIDIA (秒の後ろは捨てる)", parseRecordingStartFromTitle("Final Fantasy XIV 2025.05.27 - 22.00.57.02.DVR", JST), at("2025-05-27T22:00:57+09:00"));
+  check("アンダースコア", parseRecordingStartFromTitle("2025-05-27_22-00-57", JST), at("2025-05-27T22:00:57+09:00"));
+  check("ISO 風", parseRecordingStartFromTitle("rec 2025-05-27T22:00:57", JST), at("2025-05-27T22:00:57+09:00"));
+  check("前後に文字があっても読む", parseRecordingStartFromTitle("【練習】2025 05 27 22 00 57 4層", JST), at("2025-05-27T22:00:57+09:00"));
+  check("日付だけのタイトルは null", parseRecordingStartFromTitle("2026 04 01 4層クリア", JST), null);
+  check("時刻が分までは null", parseRecordingStartFromTitle("2025-05-27 22:00", JST), null);
+  check("存在しない日付は null", parseRecordingStartFromTitle("2025 02 30 22 00 57", JST), null);
+  check("24 時は null", parseRecordingStartFromTitle("2025 05 27 24 00 00", JST), null);
+  check("60 分は null", parseRecordingStartFromTitle("2025 05 27 22 60 00", JST), null);
+  check("数字の続きの一部は読まない", parseRecordingStartFromTitle("12025 05 27 22 00 57", JST), null);
+  check("ID 通しのタイトルは null", parseRecordingStartFromTitle("ID通しtest", JST), null);
+  check("タイムゾーンの形が違えば null", parseRecordingStartFromTitle("2025 05 27 22 00 57", "JST"), null);
+  check("UTC の指定", parseRecordingStartFromTitle("2025 05 27 22 00 57", "+00:00"), at("2025-05-27T22:00:57Z"));
+  check("マイナスの時差 (符号を見る)", parseRecordingStartFromTitle("2025 05 27 22 00 57", "-05:00"), at("2025-05-27T22:00:57-05:00"));
+  check("分のある時差", parseRecordingStartFromTitle("2025 05 27 22 00 57", "+05:30"), at("2025-05-27T22:00:57+05:30"));
+
+  console.log("\n録画開始 → オフセット");
+  const rec = at("2025-05-27T22:00:57+09:00");
+  const p1 = at("2025-05-27T22:03:10.400+09:00");
+  const pLast = at("2025-05-28T00:10:00+09:00");
+  check("録画開始が pull #1 の 133.4 秒前 → 133 (四捨五入)", offsetFromRecordingStart(rec, p1, pLast), 133);
+  check("0.5 秒は切り上げ", offsetFromRecordingStart(rec, rec + 500, pLast), 1);
+  check("録画開始が pull #1 より後 → 負 (前半が映っていない)", offsetFromRecordingStart(p1 + 600_000, p1, pLast), -600);
+  check("録画開始 = 最後の pull はぎりぎり映る", offsetFromRecordingStart(pLast, p1, pLast), -Math.round((pLast - p1) / 1000));
+  check("録画開始が最後の pull より後 → null", offsetFromRecordingStart(pLast + 1000, p1, pLast), null);
+  check("6 時間ちょうど前は通す", offsetFromRecordingStart(p1 - RECORDING_LEAD_MAX_SECONDS * 1000, p1, pLast), RECORDING_LEAD_MAX_SECONDS);
+  check("6 時間より前 → null (別の日の動画)", offsetFromRecordingStart(p1 - (RECORDING_LEAD_MAX_SECONDS + 1) * 1000, p1, pLast), null);
+  check("前の日の動画 → null", offsetFromRecordingStart(rec - 86_400_000, p1, pLast), null);
+  check("数でなければ null", offsetFromRecordingStart(Number.NaN, p1, pLast), null);
+  check("上限の範囲に収まる", Math.abs(offsetFromRecordingStart(rec, p1, pLast)) <= OFFSET_LIMIT_SECONDS, true);
+  check(
+    "出したオフセットで pull #1 を引くと、録画開始からの経過になる (順算と往復)",
+    videoSecondsForPull(offsetFromRecordingStart(rec, p1, pLast), p1, p1),
+    133,
+  );
+
+  console.log("\nタイトルの録画時刻の配線 (画面とサーバーで同じ定義)");
+  const seed = readFileSync("src/lib/server/fflogs-fights.ts", "utf8").replace(/\r\n/g, "\n");
+  const seedFnAt = seed.indexOf("async function offsetsFromRecordingTitles(");
+  const seedFn = seedFnAt < 0 ? "" : seed.slice(seedFnAt, seed.indexOf("\n}\n", seedFnAt));
+  check("サーバー: タイトルを parseRecordingStartFromTitle で読む", /parseRecordingStartFromTitle\(v\.title, APP_UTC_OFFSET_ISO\)/.test(seedFn), true);
+  check("サーバー: 絶は絞らず、零式は層クラスタで絞る (画面と同じ)", /const phases = resolveProgressModel\(model, [^\n]*\) === "phases";\s*const tier = phases \? fights : filterToFloorCluster\(fights, buildFloorMap\(fights\)\);/.test(seedFn), true);
+  check("サーバー: 画面と同じ範囲 (新しい順に MAX_FIGHTS 件) を読む", /\.order\("start_ms", \{ ascending: false \}\)\s*\.order\("fight_id", \{ ascending: false \}\)[\s\S]*?\}, MAX_FIGHTS\);/.test(seedFn), true);
+  check("サーバー: pullSpanByReport と offsetFromRecordingStart で出す", seedFn.includes("pullSpanByReport(tier)") && seedFn.includes("offsetFromRecordingStart("), true);
+  check("サーバー: 出せなければ従来どおり 0", /offset_seconds: offsets\.get\(report_code\) \?\? 0,/.test(seed), true);
+  const view = readFileSync("src/app/(portal)/category/[slug]/logs/logs-view.tsx", "utf8").replace(/\r\n/g, "\n");
+  check("画面: pull #1 も pullSpanByReport (tierFights) から", /for \(const \[code, span\] of pullSpanByReport\(tierFights\)\)/.test(view), true);
+  check("画面: tierFights は filterToFloorCluster で絞る", /const tierFights = useMemo\(\s*\(\) => filterToFloorCluster\(fights, floors\),/.test(view), true);
+  const dialog = readFileSync("src/components/portal/logs/offset-dialog.tsx", "utf8").replace(/\r\n/g, "\n");
+  check("設定画面: 同じ 2 関数で出し、欄に入れるだけ (保存は人)", dialog.includes("parseRecordingStartFromTitle(") && dialog.includes("offsetFromRecordingStart(") && /onChange\(\{ \.\.\.target, offset: String\(seconds\) \}\);/.test(dialog), true);
 
   console.log("\npull 行の配線 (同じ式・同じ判定を使う)");
   const pullRow = readFileSync(

@@ -28,6 +28,7 @@ import { MirrorActionSlot } from "@/components/portal/action-slot";
 import {
   buildFloorMap,
   filterToFloorCluster,
+  pullSpanByReport,
   floorHalf,
   floorLabel,
   floorTextToneClass,
@@ -374,11 +375,12 @@ export function LogsView({
   // 旧基準は「レポート開始時刻」だったが、ユーザーが動画で見つけて合わせる
   // のは pull #1 の開始なので、レポート開始〜初 pull の準備時間分 (実機で
   // +40 秒) が必ずずれた (2026-08-28 報告)。基準を操作と一致させる。
+  // 2026-10-02: オフセットの基準 (pull #1) は、タイトルの録画時刻から秒数を
+  // 出すサーバー側と同じ関数で求める (`pullSpanByReport` の docstring)。
   const firstPullStartByReport = useMemo(() => {
     const m = new Map<string, number>();
-    for (const f of tierFights) {
-      const cur = m.get(f.reportCode);
-      if (cur === undefined || f.startMs < cur) m.set(f.reportCode, f.startMs);
+    for (const [code, span] of pullSpanByReport(tierFights)) {
+      m.set(code, span.firstStartMs);
     }
     return m;
   }, [tierFights]);

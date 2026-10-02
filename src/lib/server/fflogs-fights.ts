@@ -62,6 +62,17 @@ import {
 import { attachBothAbilityNames } from "./xivapi-action-names";
 import { APP_UTC_OFFSET_ISO } from "@/lib/app-timezone";
 import {
+  buildFloorMap,
+  filterToFloorCluster,
+  pullSpanByReport,
+} from "@/lib/fflogs-progress";
+import { isProgressModel, resolveProgressModel } from "@/lib/content-model";
+import {
+  offsetFromRecordingStart,
+  parseRecordingStartFromTitle,
+} from "@/lib/video-sync";
+import { MAX_FIGHTS } from "@/lib/supabase/fflogs-fights";
+import {
   recordAttendanceActuals,
   type ReportParticipants,
 } from "./attendance-actuals";
@@ -1001,8 +1012,9 @@ async function syncFflogsFightsUnlocked(opts?: {
   }
 
   // (d) Logs に紐づいた動画を、動画オフセット行として自動登録する
-  //     (2026-08-30 実機要望)。秒数は人が後から入れる前提なので
-  //     `offset_seconds` は 0 のまま、**video_url だけ**先に埋める。
+  //     (2026-08-30 実機要望)。秒数は人が後から入れる前提で 0 にするが、
+  //     2026-10-02 からはタイトルに録画開始の時刻がある動画だけ秒数も
+  //     入れる (`offsetsFromRecordingTitles`)。
   //     既存行 (人が入力済み) は絶対に上書きしない。
   let videoOffsetsSeeded = 0;
   try {
@@ -1929,10 +1941,14 @@ async function postGraphql(
  * を自動作成する (2026-08-30 実機要望)。
  *
  * 「動画は紐づいているのに、オフセット設定を開いて毎回『自動入力』を押す」
- * 手間を消すのが目的。**入れるのは video_url だけ**で、`offset_seconds` は
- * 0 のまま — 動画のどこで pull #1 が始まるかは映像を見ないと分からず、
- * 機械的に決めると誤った時刻へ飛ぶ導線を量産してしまう (ユーザーも
- * 「秒数は後で手動編集」との認識)。
+ * 手間を消すのが目的。`offset_seconds` は原則 0 — 動画のどこで pull #1 が
+ * 始まるかは映像を見ないと分からず、機械的に決めると誤った時刻へ飛ぶ導線を
+ * 量産してしまう (ユーザーも「秒数は後で手動編集」との認識)。
+ *
+ * 2026-10-02: 例外として、**タイトルが録画開始の時刻** (録画ソフトのファイル
+ * 名。「2025 05 27 22 00 57」など) の動画は、その時刻と pull #1 の戦闘開始の
+ * 差を秒数にする (実機要望)。時刻が読めない・取り違えの検査
+ * (`offsetFromRecordingStart`) に通らない動画は従来どおり 0。
  *
  * 既存行は一切触らない (人が入れた秒数を壊さない)。**すでに 1 行でもある
  * report は候補から外す** — 2026-09-07 に 1 レポート N 動画へ移行したが、
@@ -1943,7 +1959,7 @@ export async function seedReportVideosFromLinks(db: Db): Promise<number> {
   const [videosRes, existingRes] = await Promise.all([
     db
       .from("category_links")
-      .select("url, logs_url")
+      .select("url, logs_url, title, category_id")
       .eq("kind", "video")
       .not("logs_url", "is", null)
       .not("url", "is", null),
@@ -1955,23 +1971,40 @@ export async function seedReportVideosFromLinks(db: Db): Promise<number> {
     ),
   );
 
-  // report code → 動画 URL。既に行がある report は候補から外す。
-  const byCode = new Map<string, string>();
+  // report code → 動画。既に行がある report は候補から外す。
+  const byCode = new Map<
+    string,
+    { url: string; title: string | null; categoryId: string | null }
+  >();
   for (const row of (videosRes.data ?? []) as Array<{
     url: string | null;
     logs_url: string | null;
+    title: string | null;
+    category_id: string | null;
   }>) {
     const code = parseFflogsReportCode(row.logs_url);
     if (!code || !row.url) continue;
     if (already.has(code) || byCode.has(code)) continue;
-    byCode.set(code, row.url);
+    byCode.set(code, {
+      url: row.url,
+      title: row.title ?? null,
+      categoryId: row.category_id ?? null,
+    });
   }
   if (byCode.size === 0) return 0;
 
-  const rows = [...byCode.entries()].map(([report_code, video_url]) => ({
+  // 2026-10-02: タイトルに録画開始の時刻がある動画は秒数も入れる。
+  let offsets = new Map<string, number>();
+  try {
+    offsets = await offsetsFromRecordingTitles(db, byCode);
+  } catch (e) {
+    // 秒数は補助。出せなくても行は従来どおり 0 で作る。
+    console.warn("[fflogs-fights] offset from title failed:", e);
+  }
+  const rows = [...byCode.entries()].map(([report_code, v]) => ({
     report_code,
-    video_url,
-    offset_seconds: 0,
+    video_url: v.url,
+    offset_seconds: offsets.get(report_code) ?? 0,
     sort_order: 0,
   }));
   // ignoreDuplicates: 取得と書き込みの間に人が登録した行を上書きしない。
@@ -1985,4 +2018,80 @@ export async function seedReportVideosFromLinks(db: Db): Promise<number> {
     return 0;
   }
   return data?.length ?? 0;
+}
+
+/**
+ * タイトルにある録画開始の時刻から、レポートごとのオフセットを出す
+ * (2026-10-02)。出せなかったレポートは Map に載らない (呼び出し側は 0)。
+ *
+ * pull #1 は練習ログ画面と **同じ定義** にする — 層クラスタ内の最も早い
+ * pull (絶はフェーズ管理なので絞らない)。画面と同じ範囲 (カテゴリの pull を
+ * 新しい順に `MAX_FIGHTS` 件) を読み、同じ関数 (`buildFloorMap` →
+ * `filterToFloorCluster` → `pullSpanByReport`) に通す。同じレポートに別の
+ * コンテンツの戦闘が先に入っていても、画面のリンクと秒数がずれない。
+ */
+async function offsetsFromRecordingTitles(
+  db: Db,
+  byCode: ReadonlyMap<
+    string,
+    { title: string | null; categoryId: string | null }
+  >,
+): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  // カテゴリ → (report code, 録画開始)。時刻の読めない動画はここで落とす。
+  const pending = new Map<string, Array<{ code: string; recordingStartMs: number }>>();
+  for (const [code, v] of byCode) {
+    if (!v.categoryId || !v.title) continue;
+    const recordingStartMs = parseRecordingStartFromTitle(v.title, APP_UTC_OFFSET_ISO);
+    if (recordingStartMs === null) continue;
+    const list = pending.get(v.categoryId) ?? [];
+    list.push({ code, recordingStartMs });
+    pending.set(v.categoryId, list);
+  }
+
+  for (const [categoryId, targets] of pending) {
+    const { data: cat, error: catErr } = await db
+      .from("categories")
+      .select("name, progress_model")
+      .eq("id", categoryId)
+      .maybeSingle();
+    if (catErr || !cat) continue;
+    const page = await fetchAllPages(async (from, to) => {
+      const { data, error } = await db
+        .from("fflogs_fights")
+        .select("report_code, encounter_id, start_ms")
+        .eq("category_id", categoryId)
+        .order("start_ms", { ascending: false })
+        .order("fight_id", { ascending: false })
+        .range(from, to);
+      return { data, error };
+    }, MAX_FIGHTS);
+    if (page.error) continue;
+    const fights = (
+      page.rows as Array<{
+        report_code: string;
+        encounter_id: number | string | null;
+        start_ms: number | string;
+      }>
+    ).map((r) => ({
+      reportCode: r.report_code,
+      encounterId: r.encounter_id === null ? null : Number(r.encounter_id),
+      startMs: Number(r.start_ms),
+    }));
+    const model = isProgressModel(cat.progress_model) ? cat.progress_model : null;
+    const phases = resolveProgressModel(model, (cat.name as string) ?? "") === "phases";
+    const tier = phases ? fights : filterToFloorCluster(fights, buildFloorMap(fights));
+    const spans = pullSpanByReport(tier);
+    for (const t of targets) {
+      const span = spans.get(t.code);
+      if (!span) continue;
+      const seconds = offsetFromRecordingStart(
+        t.recordingStartMs,
+        span.firstStartMs,
+        span.lastStartMs,
+      );
+      if (seconds !== null) out.set(t.code, seconds);
+    }
+  }
+  return out;
 }

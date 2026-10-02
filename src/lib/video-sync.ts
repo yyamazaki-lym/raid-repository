@@ -88,6 +88,89 @@ export function isBeforeVideoStart(videoSeconds: number): boolean {
 }
 
 /**
+ * 録画開始が pull #1 より前に何秒まで離れていてよいか (2026-10-02)。
+ * これより前に始まった録画は、別の日 (または別のセッション) の動画を
+ * 取り違えたとみなしてオフセットを出さない。1 回の練習 (3〜4 時間) に
+ * 待ち時間を足しても収まる幅にしてある。
+ */
+export const RECORDING_LEAD_MAX_SECONDS = 6 * 3600;
+
+/**
+ * 動画タイトルにある **録画開始の時刻** を読む (2026-10-02 実機要望)。
+ *
+ * 録画ソフトが付けるファイル名をそのままタイトルにしている動画では、
+ * タイトルが録画を始めた時刻になっている。実データ (限定公開の再生リスト
+ * 11 本) は「2025 05 27 22 00 57」の形だった。受け付ける形:
+ *
+ *   - `2025 05 27 22 00 57`
+ *   - `2025-05-27 22-00-57` (OBS の既定のファイル名)
+ *   - `2025.05.27 - 22.00.57.02` (NVIDIA の録画。秒の後ろは捨てる)
+ *   - `2025-05-27_22-00-57` / `2025-05-27T22:00:57`
+ *
+ * **秒まである形だけ** を読む (「2025 05 27 4層クリア」のような日付だけの
+ * タイトルでは null)。時刻は録画した人の時計 = アプリのタイムゾーン
+ * (`offsetIso`、`APP_UTC_OFFSET_ISO`) とみなす。存在しない日付・時刻は null。
+ */
+export function parseRecordingStartFromTitle(
+  title: string,
+  offsetIso: string,
+): number | null {
+  const off = /^([+-])(\d{2}):(\d{2})$/.exec(offsetIso);
+  if (!off) return null;
+  const m =
+    /(?<!\d)(\d{4})[ ._-](\d{2})[ ._-](\d{2})(?:\s*-\s*|[ _T]+)(\d{2})[ .:_-](\d{2})[ .:_-](\d{2})(?!\d)/.exec(
+      title,
+    );
+  if (!m) return null;
+  const [y, mo, d, h, mi, sec] = m.slice(1, 7).map(Number) as [
+    number, number, number, number, number, number,
+  ];
+  if (h > 23 || mi > 59 || sec > 59) return null;
+  const local = Date.UTC(y, mo - 1, d, h, mi, sec);
+  const back = new Date(local);
+  // 2 月 30 日などは Date.UTC が翌月へ繰り越すので、往復で一致しなければ捨てる。
+  if (
+    back.getUTCFullYear() !== y ||
+    back.getUTCMonth() !== mo - 1 ||
+    back.getUTCDate() !== d
+  ) {
+    return null;
+  }
+  const sign = off[1] === "-" ? -1 : 1;
+  const offsetMs = sign * (Number(off[2]) * 60 + Number(off[3])) * 60_000;
+  return local - offsetMs;
+}
+
+/**
+ * 録画開始の時刻からオフセット (動画上で pull #1 の戦闘開始が何秒か) を
+ * 出す (2026-10-02)。四捨五入して整数秒にする (`offsetFromVideoSeconds` と
+ * 同じ丸め)。
+ *
+ * 取り違えの検査:
+ *   - 録画開始が pull #1 の `RECORDING_LEAD_MAX_SECONDS` より前 → null
+ *   - 録画開始が **最後の pull の開始より後** → null (どの pull も映らない)
+ *
+ * 負の値は正常 (録画開始が pull #1 より後 = 前半が映っていない動画)。
+ */
+export function offsetFromRecordingStart(
+  recordingStartMs: number,
+  firstPullStartMs: number,
+  lastPullStartMs: number,
+): number | null {
+  if (
+    !Number.isFinite(recordingStartMs) ||
+    !Number.isFinite(firstPullStartMs) ||
+    !Number.isFinite(lastPullStartMs)
+  ) {
+    return null;
+  }
+  const seconds = Math.round((firstPullStartMs - recordingStartMs) / 1000);
+  if (seconds > RECORDING_LEAD_MAX_SECONDS) return null;
+  if (recordingStartMs > lastPullStartMs) return null;
+  return clampOffsetSeconds(seconds);
+}
+
+/**
  * 「いま動画は `videoSeconds` 秒で、ここが `anchor` の戦闘開始」から
  * オフセットを逆算する。
  *
