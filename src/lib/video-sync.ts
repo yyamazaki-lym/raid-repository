@@ -73,6 +73,21 @@ export function videoSecondsForPull(
 }
 
 /**
+ * pull の戦闘開始が動画に映っていない (録画開始より前) か。
+ *
+ * 動画上の秒が負 = 録画が始まる前に戦闘が始まっている。リンクは
+ * `buildVideoTimestampUrl` で 0 秒に丸まるので、その pull の開始の場面には
+ * 飛べない (動画の先頭が開くだけ)。0 秒ちょうどは映っている扱い。
+ *
+ * オフセット設定の「動画に最初に映る pull」(`explainOffset`) と、pull 行の
+ * 動画チップの色分け (2026-10-02 実機要望) で同じ判定を使うため、ここに置く。
+ * 片方だけ境界を変えると「設定画面では映っているのに行では灰色」が起きる。
+ */
+export function isBeforeVideoStart(videoSeconds: number): boolean {
+  return videoSeconds < 0;
+}
+
+/**
  * 「いま動画は `videoSeconds` 秒で、ここが `anchor` の戦闘開始」から
  * オフセットを逆算する。
  *
@@ -146,7 +161,7 @@ export function explainOffset(
   const at = (a: VideoSyncAnchor) =>
     videoSecondsForPull(offsetSeconds, a.startMs, firstPullStartMs);
   // 0 秒以降に映る最初の pull。負の pull は録画開始より前なので映っていない。
-  const visible = anchors.find((a) => at(a) >= 0) ?? null;
+  const visible = anchors.find((a) => !isBeforeVideoStart(at(a))) ?? null;
   return {
     firstPullVideoSeconds: offsetSeconds,
     firstPullStartMs,

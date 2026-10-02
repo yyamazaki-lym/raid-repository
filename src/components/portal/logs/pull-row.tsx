@@ -33,6 +33,17 @@
  * 行の右端に開閉ボタンだけを置き、中身は `w-full` の子として下の行に
  * 展開する (`flex-wrap` の折り返しをそのまま使うので、レイアウトの
  * 仕組みを増やさない)。取得は開いたときだけ (`pull-detail-panel.tsx`)。
+ *
+ * ## 動画に映っていない pull の色分け (2026-10-02 実機要望)
+ *
+ * オフセットが負の動画 (録画開始が pull #1 より後) では、録画開始より前に
+ * 始まった pull の動画上の秒が負になる。リンクは 0 秒に丸まるので、押しても
+ * その pull ではなく動画の先頭が開く — 見た目が他の番号と同じで区別できな
+ * かった。判定は `isBeforeVideoStart` (オフセット設定の「動画に最初に映る
+ * pull」と同じ関数) で、該当する番号だけを灰色 + 取り消し線にする。色だけに
+ * 頼らないよう取り消し線を併用する。その pull の動画が全部映っていなければ、
+ * チップの枠とマークも灰色にして行単位で見分けられるようにする。
+ * リンク自体は残す (動画を開く手段としては使える)。説明は title に出す。
  */
 "use client";
 
@@ -75,6 +86,7 @@ import {
 import { useLocale, useMessages } from "@/lib/i18n/client";
 import { PERF_CHIP, PERF_TEXT, perfForDeaths } from "@/lib/perf-tone";
 import { type ReportVideoLink } from "@/lib/supabase/fflogs-fights";
+import { isBeforeVideoStart, videoSecondsForPull } from "@/lib/video-sync";
 import { PhaseSpanBar } from "./phase-span-bar";
 import { PullDetailPanel } from "./pull-detail-panel";
 import { videoName } from "./video-link";
@@ -157,11 +169,23 @@ export function PullRow({
       ? []
       : videos.flatMap((v, i) => {
           if (!v.videoUrl) return [];
-          const seconds = v.offsetSeconds + (fight.startMs - firstPullStartMs) / 1000;
+          const seconds = videoSecondsForPull(v.offsetSeconds, fight.startMs, firstPullStartMs);
           const href = buildVideoTimestampUrl(v.videoUrl, seconds);
           if (!href) return [];
-          return [{ id: v.id, href, seconds, name: videoName(v, m.logs.videoNth(i + 1)) }];
+          return [
+            {
+              id: v.id,
+              href,
+              seconds,
+              // 2026-10-02: 録画開始より前に始まった pull (動画上の秒が負)。
+              outside: isBeforeVideoStart(seconds),
+              name: videoName(v, m.logs.videoNth(i + 1)),
+            },
+          ];
         });
+  // その pull の動画が全部「映っていない」なら、チップ全体を灰色にする。
+  const allVideosOutside =
+    videoJumps.length > 0 && videoJumps.every((j) => j.outside);
 
   return (
     <li
@@ -481,34 +505,52 @@ export function PullRow({
               style={{ width: reservedWidth }}
             >
               {videoJumps.length > 0 && (
-                <span className="inline-flex h-full items-stretch overflow-hidden rounded-sm border border-violet-400/45 bg-violet-400/10">
+                <span
+                  className={
+                    "inline-flex h-full items-stretch overflow-hidden rounded-sm border " +
+                    (allVideosOutside
+                      ? "border-slate-500/40 bg-slate-500/10"
+                      : "border-violet-400/45 bg-violet-400/10")
+                  }
+                >
                   {/* マークは 1 個だけ。押せないので aria からも外す
                       (すぐ右の番号リンクが動画 1 本ずつに対応する)。 */}
                   <span
-                    className="inline-flex w-5 shrink-0 items-center justify-center text-violet-200/70"
+                    className={
+                      "inline-flex w-5 shrink-0 items-center justify-center " +
+                      (allVideosOutside ? "text-slate-500" : "text-violet-200/70")
+                    }
                     aria-hidden
                   >
                     <Film className="h-2.5 w-2.5" aria-hidden />
                   </span>
-                  {videoJumps.map((j, i) => (
-                    <a
-                      key={j.id}
-                      href={j.href}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      title={m.logs.videoMomentTitleNamedAt(
-                        j.name,
-                        formatClock(j.seconds),
-                      )}
-                      aria-label={m.logs.videoMomentTitleNamedAt(
-                        j.name,
-                        formatClock(j.seconds),
-                      )}
-                      className="inline-flex w-5 items-center justify-center border-l border-violet-400/35 py-0.5 font-mono text-[11px] text-violet-200 tabular-nums transition-colors hover:bg-violet-400/20"
-                    >
-                      {i + 1}
-                    </a>
-                  ))}
+                  {videoJumps.map((j, i) => {
+                    // 2026-10-02: 映っていない番号は灰色 + 取り消し線。説明には
+                    // 「録画開始の何秒前に始まったか」を出す (formatClock は負を
+                    // 0 に丸めるので絶対値で渡す。1 秒未満の差が「0:00 前」に
+                    // ならないよう切り上げる)。
+                    const label = j.outside
+                      ? m.logs.videoMomentOutsideTitle(j.name, formatClock(Math.ceil(-j.seconds)))
+                      : m.logs.videoMomentTitleNamedAt(j.name, formatClock(j.seconds));
+                    return (
+                      <a
+                        key={j.id}
+                        href={j.href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title={label}
+                        aria-label={label}
+                        className={
+                          "inline-flex w-5 items-center justify-center border-l py-0.5 font-mono text-[11px] tabular-nums transition-colors " +
+                          (j.outside
+                            ? "border-slate-500/35 text-slate-500 line-through decoration-slate-500/80 hover:bg-slate-500/15"
+                            : "border-violet-400/35 text-violet-200 hover:bg-violet-400/20")
+                        }
+                      >
+                        {i + 1}
+                      </a>
+                    );
+                  })}
                 </span>
               )}
             </span>
