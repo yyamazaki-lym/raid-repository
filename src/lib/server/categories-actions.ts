@@ -2,6 +2,11 @@
 
 import { revalidatePath } from "next/cache";
 import { runDiscordImport } from "./discord-import";
+import {
+  runYoutubePlaylistImport,
+  type PlaylistImportResult,
+} from "./youtube-playlist-import";
+import { YOUTUBE_PLAYLIST_MAX, parsePlaylistId } from "@/lib/youtube-playlist";
 import { countInsertedVideos, isLogsAutoSyncEnabled } from "./logs-auto-sync";
 import {
   bridgeLogsUrlToSameDayVideos,
@@ -175,6 +180,8 @@ export type CategoryUpdatePatch = Partial<{
   discord_strategy_channel_id: string | null;
   discord_video_channel_id: string | null;
   discord_import_enabled: boolean;
+  /** 2026-10-02: 動画を取り込む YouTube の再生リスト ID。NULL = 取り込まない。 */
+  youtube_playlist_ids: string[] | null;
   first_clear_at: string | null;
   background_image_url: string | null;
   /**
@@ -315,6 +322,7 @@ const CATEGORY_UPDATE_KEYS = [
   "discord_strategy_channel_id",
   "discord_video_channel_id",
   "discord_import_enabled",
+  "youtube_playlist_ids",
   "first_clear_at",
   "background_image_url",
   "background_pos_x",
@@ -385,6 +393,24 @@ export async function updateCategoryAction(
     if (!isProgressModel(normalized.progress_model)) {
       return { ok: false, reason: "進行モデルの指定が不正です" };
     }
+  }
+  // 2026-10-02: 再生リスト ID は YouTube Data API のクエリに入るので、形を
+  // 検査して ID の形に揃える (client からの直呼びもあり得る)。
+  if (normalized.youtube_playlist_ids !== undefined) {
+    const raw: unknown = normalized.youtube_playlist_ids ?? [];
+    if (!Array.isArray(raw)) {
+      return { ok: false, reason: "再生リストの指定が不正です" };
+    }
+    const ids: string[] = [];
+    for (const v of raw) {
+      const id = typeof v === "string" ? parsePlaylistId(v) : null;
+      if (!id) return { ok: false, reason: "再生リストの指定が不正です" };
+      if (!ids.includes(id)) ids.push(id);
+    }
+    if (ids.length > YOUTUBE_PLAYLIST_MAX) {
+      return { ok: false, reason: "登録できる再生リストの数を超えています" };
+    }
+    normalized.youtube_playlist_ids = ids.length > 0 ? ids : null;
   }
 
   const supabase = await createClient();
@@ -686,6 +712,62 @@ export async function importDiscordNow(): Promise<{
     totalInserted,
     totalFailed,
     items,
+    logsAutoSync,
+  };
+}
+
+/** 2026-10-02: 「YouTube 再生リストから取り込む」の結果 1 行 (再生リスト 1 本)。 */
+export type PlaylistImportNowItem = PlaylistImportResult;
+
+/**
+ * Server Action: YouTube の再生リストからの取り込みを今すぐ実行する
+ * (2026-10-02)。毎晩の cron でも Discord 取り込みと並べて走る
+ * (`/api/cron/import-discord`)。
+ *
+ * 動画が入ったら、Discord の「今すぐ取り込む」と同じく画面側が続けて
+ * Logs 同期を呼ぶ (`logsAutoSync`、同じ呼び出しで続けると 300s を超え得る)。
+ */
+export async function importYoutubePlaylistsNow(): Promise<{
+  ok: boolean;
+  reason?: string;
+  totalInserted: number;
+  totalFailed: number;
+  items: PlaylistImportNowItem[];
+  /** 動画が 1 件以上入り、日次自動連動トグルが OFF でない。 */
+  logsAutoSync?: boolean;
+}> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) {
+    return {
+      ok: false,
+      reason: "ADMIN ロールが必要です",
+      totalInserted: 0,
+      totalFailed: 0,
+      items: [],
+    };
+  }
+  const result = await runYoutubePlaylistImport();
+  if (!result.ok) {
+    return {
+      ok: false,
+      reason: result.reason,
+      totalInserted: 0,
+      totalFailed: 0,
+      items: [],
+    };
+  }
+  let totalInserted = 0;
+  let totalFailed = 0;
+  for (const r of result.results) {
+    if (r.ok) totalInserted += r.inserted ?? 0;
+    totalFailed += r.failed ?? 0;
+  }
+  const logsAutoSync = totalInserted > 0 && (await isLogsAutoSyncEnabled());
+  return {
+    ok: true,
+    totalInserted,
+    totalFailed,
+    items: result.results,
     logsAutoSync,
   };
 }
@@ -2899,15 +2981,16 @@ export async function addCategoryDiscordBlocklistAction(
   if (blockErr && (blockErr as { code?: string }).code !== "23505") {
     return { ok: false, reason: dbError("除外 URL 登録", blockErr) };
   }
-  // 2. 同 URL の Discord 取り込み分 (source='discord') リンクを削除 = 除外で即消える。
-  //    手動追加分 (source='manual') は対象外。削除失敗でも除外登録は成立済みなので
-  //    ok 扱い (次回取り込みからは確実に skip される)。
+  // 2. 同 URL の取り込み分 (Discord と、2026-10-02 からは YouTube 再生リスト)
+  //    のリンクを削除 = 除外で即消える。手動追加分 (source='manual') は対象外。
+  //    削除失敗でも除外登録は成立済みなので ok 扱い (次回取り込みからは確実に
+  //    skip される。再生リストの取り込みは除外を動画 ID で照合する)。
   const { error: delErr } = await supabase
     .from("category_links")
     .delete()
     .eq("category_id", categoryId)
     .eq("url", t)
-    .eq("source", "discord");
+    .in("source", ["discord", "youtube"]);
   if (delErr) {
     console.warn(
       "[blocklist] 除外登録は成立、リンク削除に失敗:",

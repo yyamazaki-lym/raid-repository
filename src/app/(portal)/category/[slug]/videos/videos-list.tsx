@@ -11,6 +11,7 @@ import {
   MessageCircle,
   Calendar,
   ListOrdered,
+  ListVideo,
   BarChart3,
   Timer,
   Trophy,
@@ -1302,6 +1303,16 @@ const VideoCard = memo(function VideoCard({
             className="grid h-5 w-5 shrink-0 place-items-center rounded-sm border border-indigo-400/40 bg-indigo-400/10 text-indigo-300"
           >
             <MessageCircle className="h-2.5 w-2.5" aria-hidden />
+          </span>
+        )}
+        {/* 2026-10-02: YouTube の再生リストから取り込んだ動画の印。 */}
+        {video.source === "youtube" && (
+          <span
+            title={m.linkCard.playlistTitle}
+            aria-label={m.linkCard.playlistAria}
+            className="grid h-5 w-5 shrink-0 place-items-center rounded-sm border border-rose-400/40 bg-rose-400/10 text-rose-300"
+          >
+            <ListVideo className="h-2.5 w-2.5" aria-hidden />
           </span>
         )}
         {/* TODO #47 (2.1, 2026-04-30): お気に入りトグル。アイコンのみ表示で

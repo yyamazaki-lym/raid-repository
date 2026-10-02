@@ -213,7 +213,16 @@ try {
   }
   const route = readFileSync("src/app/api/cron/import-discord/route.ts", "utf8");
   check("route: 開始時刻を認証より前に取る", route.indexOf("const startedAt = Date.now();") > 0 && route.indexOf("const startedAt = Date.now();") < route.indexOf("assertCronAuth(req"), true);
-  check("route: 開始時刻から締切を渡す", /runDiscordImport\(\{\s*deadlineAt: startedAt \+ DISCORD_IMPORT_BUDGET_MS,?\s*\}\)/.test(route), true);
+  // 2026-10-02: 再生リストの取り込みにも同じ締切を渡すため、締切を変数に
+  // 出した形 (`const deadlineAt = startedAt + …` → `runDiscordImport({ deadlineAt })`)
+  // も受け付ける。
+  check(
+    "route: 開始時刻から締切を渡す",
+    /runDiscordImport\(\{\s*deadlineAt: startedAt \+ DISCORD_IMPORT_BUDGET_MS,?\s*\}\)/.test(route) ||
+      (/const deadlineAt = startedAt \+ DISCORD_IMPORT_BUDGET_MS;/.test(route) &&
+        /runDiscordImport\(\{\s*deadlineAt\s*\}\)/.test(route)),
+    true,
+  );
   check("route: maxDuration は 300 のまま", /export const maxDuration = 300;/.test(route), true);
   const roles = readFileSync("src/lib/server/discord-roles.ts", "utf8");
   check("ロール取得に timeout", /signal: AbortSignal\.timeout\(10_000\)/.test(roles), true);

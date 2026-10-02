@@ -78,6 +78,9 @@ export const ja = {
   linkCard: {
     discordTitle: "Discord から自動取り込み",
     discordAria: "Discord 由来",
+    // 2026-10-02: YouTube の再生リストから取り込んだ動画の印。
+    playlistTitle: "YouTube の再生リストから自動取り込み",
+    playlistAria: "YouTube 再生リスト由来",
     openNewTabAria: (title: string) => `${title} を新規タブで開く`,
     // W-27 攻略リンクの既読 (2026-09-07)。
     markRead: "既読にする",
@@ -650,9 +653,15 @@ export const ja = {
     discordEnabledLabel: "Discord 取り込みを有効化",
     discordEnabledHelp:
       "OFF にすると、このコンテンツは毎日の自動取り込みをスキップします。 チャンネルID は保存されたままなので、再 ON で即再開可能。",
+    // 2026-10-02: 限定公開の動画はチャンネルの一覧に出ないので再生リストで指定する。
+    playlistLabel: "YouTube 再生リスト（任意）",
+    playlistHelp: (max: number) =>
+      `再生リストの URL を 1 行に 1 本 (最大 ${max} 本)。毎日 1 回、再生リストの動画を動画タブに取り込みます。限定公開の動画はチャンネルの一覧に出ないので、再生リスト (公開か限定公開) に入れて指定してください。非公開の動画は取り込みません。`,
+    playlistInvalid: (input: string) => `再生リストの URL として読めません: ${input}`,
+    playlistTooMany: (max: number) => `再生リストは ${max} 本までです`,
     blocklistSummary: "取り込み除外 URL",
     blocklistHelp:
-      "登録した URL は Discord 自動取り込みで今後取り込まれません。動画 / 攻略の ⋮ メニュー「今後取り込まない」で登録されます。「解除」で再び取り込み対象に戻ります。",
+      "登録した URL は Discord / YouTube 再生リストの自動取り込みで今後取り込まれません。動画 / 攻略の ⋮ メニュー「今後取り込まない」で登録されます。「解除」で再び取り込み対象に戻ります。",
     unblock: "解除",
     blocklistEmpty: "除外 URL はありません",
     bgLabel: "背景画像（任意）",
@@ -817,6 +826,12 @@ export const ja = {
     triggerTitle: "Discord 取り込み / 動画メタ / クリア再計算",
     discordItem: "① Discord 取り込み",
     discordItemDesc: "攻略情報 / 動画チャンネルから新着 URL を取り込み",
+    // 2026-10-02: YouTube の再生リストからの取り込み (毎晩の取り込みと同じ処理)。
+    playlistItem: "⑤ YouTube 再生リスト取り込み",
+    playlistItemDesc: "登録した再生リストから新着の動画を取り込み",
+    playlistImporting: "⑤ 再生リスト取り込み中…",
+    toastPlaylistFailed: (reason: string) => `再生リストの取り込み失敗: ${reason}`,
+    playlistNone: "再生リストが登録されていません",
     videoMetaItem: "② 動画メタ取得",
     videoMetaItemDesc: "YouTube 再生時間 + Discord 投稿日時",
     firstClearItem: "③ クリア再計算",
@@ -869,6 +884,16 @@ export const ja = {
       n > 0
         ? `時間切れのため次回へ (${n} 件)`
         : "時間切れのため次回へ",
+    // 2026-10-02: YouTube 再生リスト取り込みの結果 (再生リスト 1 本 = 1 行)。
+    playlistTitle: "YouTube 再生リスト取り込み結果",
+    playlistNone: "再生リストが登録されていません",
+    playlistError: (reason: string) => `エラー: ${reason}`,
+    playlistResult: (found: number, inserted: number, dup: number) =>
+      `動画 ${found} 本 → +${inserted} 件 (既存 ${dup})`,
+    playlistBlocked: (n: number) => ` ・除外 ${n}`,
+    playlistFailed: (n: number) => ` ・失敗 ${n}`,
+    playlistTruncated: " ・上限まで読んで打ち切り",
+    playlistDeadline: "時間切れのため次回へ",
     videoMetaTitle: "動画メタデータ — 取得結果",
     fetched: "取得",
     count: "件",
@@ -949,6 +974,8 @@ export const en: ContentMessages = {
   linkCard: {
     discordTitle: "Auto-imported from Discord",
     discordAria: "From Discord",
+    playlistTitle: "Auto-imported from a YouTube playlist",
+    playlistAria: "From a YouTube playlist",
     openNewTabAria: (title) => `Open ${title} in a new tab`,
     markRead: "Mark read",
     read: "Read",
@@ -1511,9 +1538,14 @@ Lines only in the one in use: ${removed}`,
     discordEnabledLabel: "Enable Discord import",
     discordEnabledHelp:
       "When off, this content is skipped by the daily import. Channel IDs are kept, so turning it back on resumes immediately.",
+    playlistLabel: "YouTube playlists (optional)",
+    playlistHelp: (max) =>
+      `One playlist URL per line (up to ${max}). Videos in these playlists are imported into the Videos tab once a day. Unlisted videos don't appear in a channel's list, so add them to a playlist (public or unlisted) and enter it here. Private videos are not imported.`,
+    playlistInvalid: (input) => `Not a playlist URL: ${input}`,
+    playlistTooMany: (max) => `Up to ${max} playlists`,
     blocklistSummary: "Excluded import URLs",
     blocklistHelp:
-      'Registered URLs are no longer imported from Discord. Add them via "Don\'t import again" in the ⋮ menu of a video / link. "Remove" makes them importable again.',
+      `Registered URLs are no longer imported from Discord or YouTube playlists. Add them via "Don't import again" in the ⋮ menu of a video / link. "Remove" makes them importable again.`,
     unblock: "Remove",
     blocklistEmpty: "No excluded URLs",
     bgLabel: "Background image (optional)",
@@ -1666,6 +1698,11 @@ Lines only in the one in use: ${removed}`,
     triggerTitle: "Discord import / video metadata / clear recompute",
     discordItem: "① Discord import",
     discordItemDesc: "Import new URLs from the guide / video channels",
+    playlistItem: "⑤ YouTube playlist import",
+    playlistItemDesc: "Import new videos from the registered playlists",
+    playlistImporting: "⑤ Importing from playlists…",
+    toastPlaylistFailed: (reason) => `Playlist import failed: ${reason}`,
+    playlistNone: "No playlists registered",
     videoMetaItem: "② Video metadata",
     videoMetaItemDesc: "YouTube duration + Discord posted-at",
     firstClearItem: "③ Recompute clears",
@@ -1716,6 +1753,15 @@ Lines only in the one in use: ${removed}`,
     discordDeferred: (n) => ` · ${n} more next run`,
     discordDeadline: (n) =>
       n > 0 ? `Out of time — ${n} left for the next run` : "Out of time — left for the next run",
+    playlistTitle: "YouTube playlist import results",
+    playlistNone: "No playlists registered",
+    playlistError: (reason) => `Error: ${reason}`,
+    playlistResult: (found, inserted, dup) =>
+      `${found} videos → +${inserted} (existing ${dup})`,
+    playlistBlocked: (n) => ` · excluded ${n}`,
+    playlistFailed: (n) => ` · failed ${n}`,
+    playlistTruncated: " · stopped at the read limit",
+    playlistDeadline: "Out of time — left for the next run",
     videoMetaTitle: "Video metadata — results",
     fetched: "Fetched",
     count: "",

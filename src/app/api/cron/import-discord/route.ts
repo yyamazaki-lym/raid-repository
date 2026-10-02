@@ -1,6 +1,10 @@
 import "server-only";
 import { NextResponse, type NextRequest } from "next/server";
 import { runDiscordImport } from "@/lib/server/discord-import";
+import {
+  countPlaylistInsertedVideos,
+  runYoutubePlaylistImport,
+} from "@/lib/server/youtube-playlist-import";
 import { DISCORD_IMPORT_BUDGET_MS } from "@/lib/discord-import-budget";
 import { assertCronAuth } from "@/lib/server/cron-auth";
 import { recordCronRun } from "@/lib/server/cron-status";
@@ -38,6 +42,12 @@ import {
  * を渡す。これを過ぎたら新しいページ取得・新しい URL の enrichment を始めず
  * 次回へ回すので、300s で関数ごと打ち切られて挿入が丸ごと失われることが
  * なくなる。残りの 80s は締切直前に始まった処理・upsert・Logs 同期の起動用。
+ *
+ * 2026-10-02: YouTube の再生リストからの取り込み
+ * (`src/lib/server/youtube-playlist-import.ts`) を Discord 取り込みと並べて
+ * 走らせる。別の cron にしないのは、Logs 同期の起動を 1 回にまとめるため
+ * (どちらかで動画が入れば起動する)。締切は同じ値を渡す。片方が全体で
+ * 失敗しても、もう片方の結果は活かす。
  */
 
 export const runtime = "nodejs";
@@ -49,33 +59,47 @@ export async function GET(req: NextRequest) {
   const denied = assertCronAuth(req, "cron/discord");
   if (denied) return denied;
 
-  const result = await runDiscordImport({
-    deadlineAt: startedAt + DISCORD_IMPORT_BUDGET_MS,
-  });
-  if (!result.ok) {
+  const deadlineAt = startedAt + DISCORD_IMPORT_BUDGET_MS;
+  const [result, playlists] = await Promise.all([
+    runDiscordImport({ deadlineAt }),
+    runYoutubePlaylistImport({ deadlineAt }),
+  ]);
+  if (!result.ok && !playlists.ok) {
     // 2026-10-01 監査 F-2: 自動処理の最終実行として記録する。
-    await recordCronRun("import-discord", "error", result.reason ?? "import failed");
-    return NextResponse.json(
-      { error: result.reason ?? "import failed" },
-      { status: 503 },
-    );
+    const reason = `${result.reason ?? "import failed"} / playlists: ${playlists.reason ?? "failed"}`;
+    await recordCronRun("import-discord", "error", reason);
+    return NextResponse.json({ error: reason }, { status: 503 });
   }
 
   let logsSync: LogsSyncTrigger = "no-new-videos";
-  if (countInsertedVideos(result.results) > 0) {
+  const insertedVideos =
+    (result.ok ? countInsertedVideos(result.results) : 0) +
+    (playlists.ok ? countPlaylistInsertedVideos(playlists.results) : 0);
+  if (insertedVideos > 0) {
     logsSync = (await isLogsAutoSyncEnabled())
       ? await triggerFflogsSyncRoute(req.nextUrl.origin)
       : "disabled";
   }
-  // 2026-10-01 監査 F-2: チャンネル単位の失敗が 1 つでもあれば失敗として
-  // 記録する (どのチャンネルかは最初の 1 つだけ理由に載せる)。
-  const failedChannels = result.results.filter((r) => !r.ok);
+  // 2026-10-01 監査 F-2: チャンネル / 再生リスト単位の失敗が 1 つでもあれば
+  // 失敗として記録する (理由は最初の 1 つだけ載せる)。
+  const failures: string[] = [];
+  if (!result.ok) failures.push(`discord: ${result.reason ?? "import failed"}`);
+  for (const r of result.results) {
+    if (!r.ok) failures.push(`${r.category}/${r.kind} ${r.reason ?? ""}`);
+  }
+  if (!playlists.ok) failures.push(`playlists: ${playlists.reason ?? "failed"}`);
+  for (const r of playlists.results) {
+    if (!r.ok) failures.push(`${r.category}/playlist ${r.playlistId} ${r.reason ?? ""}`);
+  }
   await recordCronRun(
     "import-discord",
-    failedChannels.length > 0 ? "error" : "ok",
-    failedChannels.length > 0
-      ? `${failedChannels.length} channel(s) failed: ${failedChannels[0]!.category}/${failedChannels[0]!.kind} ${failedChannels[0]!.reason ?? ""}`
-      : null,
+    failures.length > 0 ? "error" : "ok",
+    failures.length > 0 ? `${failures.length} failed: ${failures[0]}` : null,
   );
-  return NextResponse.json({ ok: true, results: result.results, logsSync });
+  return NextResponse.json({
+    ok: true,
+    results: result.results,
+    playlists: playlists.results,
+    logsSync,
+  });
 }

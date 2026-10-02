@@ -9,6 +9,7 @@ import {
   X,
   ChevronDown,
   Image as ImageIcon,
+  ListVideo,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useConfirm } from "@/components/portal/confirm-dialog";
@@ -25,14 +26,17 @@ import {
   backfillStrategyThumbnailsChunk,
   backfillVideoDurationsChunk,
   importDiscordNow,
+  importYoutubePlaylistsNow,
   linkFflogsReports,
   type BackfillResult,
   type DurationBackfillResult,
   type ImportNowItem,
+  type PlaylistImportNowItem,
   type StrategyThumbnailBackfillResult,
 } from "@/lib/server/categories-actions";
 import { syncFflogsFightsAfterImportAction } from "@/lib/server/fflogs-fights-actions";
 import { DiscordPanel } from "@/components/portal/maintenance/discord-panel";
+import { PlaylistPanel } from "@/components/portal/maintenance/playlist-panel";
 import { VideoMetaPanel } from "@/components/portal/maintenance/video-meta-panel";
 import { FirstClearPanel } from "@/components/portal/maintenance/first-clear-panel";
 import { StrategyThumbPanel } from "@/components/portal/maintenance/strategy-thumb-panel";
@@ -57,6 +61,7 @@ import { useMessages } from "@/lib/i18n/client";
 // 後数秒、メタデータは chunked、firstClear は数秒)。
 type ActionKind =
   | "discord"
+  | "playlist"
   | "videoMeta"
   | "videoMetaForceRefresh"
   | "firstClearForce"
@@ -65,6 +70,7 @@ type ActionKind =
 
 type Result =
   | { kind: "discord"; data: { items: ImportNowItem[] } }
+  | { kind: "playlist"; data: { items: PlaylistImportNowItem[] } }
   | {
       kind: "videoMeta";
       data: {
@@ -372,6 +378,32 @@ export function MaintenanceMenu() {
           router.refresh();
           return;
         }
+        // 2026-10-02: YouTube 再生リストからの取り込み。動画が入ったら
+        // Discord と同じく続けて Logs 同期を呼ぶ。
+        if (kind === "playlist") {
+          const r = await importYoutubePlaylistsNow();
+          if (!r.ok) {
+            toast.error(
+              m.maintenance.toastPlaylistFailed(
+                r.reason ?? m.maintenance.unknownReason,
+              ),
+            );
+            return;
+          }
+          toast.success(
+            r.items.length === 0
+              ? m.maintenance.playlistNone
+              : r.totalInserted > 0
+                ? m.maintenance.discordInserted(r.totalInserted)
+                : r.totalFailed > 0
+                  ? m.maintenance.discordFailedCount(r.totalFailed)
+                  : m.maintenance.discordDuplicates,
+          );
+          setResult({ kind: "playlist", data: { items: r.items } });
+          if (r.logsAutoSync) await runLogsSyncAfterImport();
+          router.refresh();
+          return;
+        }
         if (kind === "videoMeta" || kind === "videoMetaForceRefresh") {
           const force = kind === "videoMetaForceRefresh";
           const { durations: dur, postedAt: posted } =
@@ -516,6 +548,7 @@ export function MaintenanceMenu() {
   const triggerLabel = (() => {
     if (!pending) return m.maintenance.trigger;
     if (pendingKind === "discord") return m.maintenance.discordImporting;
+    if (pendingKind === "playlist") return m.maintenance.playlistImporting;
     if (pendingKind === "firstClearForce") return m.maintenance.firstClearRunning;
     if (
       pendingKind === "videoMeta" ||
@@ -644,6 +677,25 @@ export function MaintenanceMenu() {
               {m.maintenance.thumbForceItemDesc}
             </span>
           </DropdownMenuItem>
+          {/* 2026-10-02: YouTube の再生リストから取り込む (毎晩の取り込みと
+              同じ処理を今すぐ走らせる)。 */}
+          <DropdownMenuItem
+            onClick={() => run("playlist")}
+            disabled={pending}
+            className="flex flex-col items-start gap-0.5"
+          >
+            <span className="flex items-center gap-1.5 text-[12px]">
+              {isThisPending("playlist") ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+              ) : (
+                <ListVideo className="h-3.5 w-3.5 text-rose-300" aria-hidden />
+              )}
+              {m.maintenance.playlistItem}
+            </span>
+            <span className="pl-5 text-[12px] text-muted-foreground whitespace-nowrap">
+              {m.maintenance.playlistItemDesc}
+            </span>
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
 
@@ -666,6 +718,9 @@ export function MaintenanceMenu() {
 
           {result.kind === "discord" && (
             <DiscordPanel items={result.data.items} />
+          )}
+          {result.kind === "playlist" && (
+            <PlaylistPanel items={result.data.items} />
           )}
           {result.kind === "videoMeta" && (
             <VideoMetaPanel
