@@ -701,9 +701,10 @@ function MemoList({
                     </div>
                     {/* TODO #92 (2026-09-09) + L-18 (2026-09-09): 規則は
                         `memo-permissions.ts` に集約 (RLS 7a-2 と同じ規則)。
-                        編集 = 自分のメモ or admin。削除 = それに加えて
-                        所有者不明の行。押せるのに RLS で失敗する状態を
-                        作らないため、ボタンを 1 つずつ分けて出す。 */}
+                        編集 = 自分のメモ or admin。削除も同じ (2026-10-02 に
+                        所有者不明の行の削除開放を閉じた。S-10)。押せるのに
+                        RLS で失敗する状態を作らないため、ボタンを 1 つずつ
+                        分けて出す。 */}
                     {(canEditMemo(m, viewer) || canDeleteMemo(m, viewer)) && (
                     <span className="flex shrink-0 items-center gap-0.5 opacity-60 transition-opacity group-hover:opacity-100">
                       {canEditMemo(m, viewer) && (

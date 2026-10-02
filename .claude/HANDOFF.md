@@ -19,45 +19,9 @@
 
 ## 🔄 保留オペレーション
 
-**TODO #2 close 後の本番運用観察 + Vercel deploy 障害復旧** (2026-05-08):
+_(現在なし)_
 
-1. ⏳ Discord 通知 ON/OFF トグル **現在 OFF**、手動 Bell button で初期検証中。問題なければ ON に戻す。**24h 観察 (項目 2-iv) 期間中も OFF 維持**: ユーザー判断 (2026-05-08) で「Discord 投稿到達確認は 24h 観察と切離し、ON 切替は別タイミング」。24h 観察の検収条件は `cron.job_run_details` に毎時発火 24 行が `status='succeeded'` で並ぶことのみ
-   - **2026-10-01 (監査 F-10)**: 2026-05-08 から OFF のまま約 5 か月。ON に戻すか、OFF (手動 Bell のみ) を正式な運用にするかの判断待ち
-2. ✅ **完了 (2026-06-10 観察結果確定)** 候補 B 本対応 ([PR #71](https://github.com/yyamazaki-lym/raid-repository/pull/71) — 案 D: Supabase pg_cron): Vercel Hobby cron sub-daily 制約 (PR #69 で daily 暫定 revert 済) を回避するため、毎時 trigger を Supabase pg_cron + pg_net に移管。当初検討した案 C (GitHub Actions hourly cron) は通常 5–15 min 遅延・ピーク 1h+ で精度不足のため却下、pg_cron は DB 内 scheduler で秒単位精度。**Supabase Dashboard 手動操作が必要だった経路**:
-   1. ✅ **完了**: SQL Editor で `SELECT vault.create_secret('<Vercel Env の CRON_SECRET と同値>', 'cron_notify_native_schedule_bearer');` を 1 回実行 (vault `secret_len=48` 確認済)
-   2. ✅ **完了**: SQL Editor で `supabase/schema.sql` の追記された **13 章「Hourly cron for native schedule Discord notify」** (extensions + DO block + cron.schedule) を実行
-   3. ✅ **完了 (2026-05-08)**: `SELECT * FROM cron.job WHERE jobname = 'notify-native-schedule-hourly';` で `jobid=1 / schedule='0 * * * *' / active=true` 確認、手動 trigger 200 OK 確認済
-   4. ✅ **完了 (2026-06-10 確認)**: jobname='notify-native-schedule-hourly' 全 jobid 跨ぎ集計で **累計 786 succeeded / 0 failed** (2026-05-08 06:00 UTC 〜 2026-06-09 23:00 UTC、期待値 24 × 33 ≈ 792 に対し ~99% カバレッジ)。観察 24h ウィンドウ (2026-05-08 06:00〜2026-05-09 06:00 UTC) 内も jobid={1,4,5,6} の 4 jobid 跨ぎで **24 succeeded / 0 failed** で検収条件 (23–25 succeeded / 0 failed) 満たす。現行 `jobid=15 / active=true` で直近 24h も連続 succeeded、健全運転中
-      - **⚠ 観察 SQL 注意 (将来の確認時)**: `supabase/schema.sql` 13 章の `cron.unschedule` + `cron.schedule` パターンが **schema 再 deploy 毎に新規 jobid を採番** する (jobid=1 → 4 → 5 → 6 → 7 → 8 → 9 → 11 → 12 → 13 → 14 → 15 と 1 ヶ月で 12 回切替)。初回 plan の固定 `jobid=1` 観察は 2 件しか拾えなかった (再 deploy で jobid が変わるため)。今後の観察は `jobname` 単位 (`SELECT ... FROM cron.job_run_details jrd JOIN ... ON jobname = ...` または `WHERE start_time >= '<起点>'` で jobid 跨ぎ累計) で集計する。再 deploy 切替窓 (unschedule → schedule 間の数秒) で 1〜2 hour 単位の発火欠落が累計 6 hour 程度発生したが、failed ではなく未発火扱いで運用影響なし
-
-**FFLogs cron scrape の Edge proxy 化後の初回観察** (2026-06-11、PR #182):
-
-3. ✅ **完了 (2026-06-12 DB 実測確認)** cron (/api/cron/fflogs-sync) の Edge proxy 経由 scrape の初回発火を確認 — 2026-06-11 19:58 UTC (= JST 04:58。Vercel Hobby の cron は指定時刻から 1h 以内に発火する仕様で、19:00 指定に対し +58 分は正常) に auto 紐づけが再生成された (`schedule_past_session_logs` source='auto' 10 件 + `native_schedule_session_logs` source='auto' 1 件、created_at が同時刻で揃う)。直近セッションへの紐づけには Private/Unlisted レポート (scrape でしか取得不可、v2 API の公開レポートは 2017-2022 の stale 12 件のみ) が必要なため、Edge proxy 経由 cron scrape の end-to-end 成功の実証になる。TODO #86 の「UTC 19:00 自動発火確認」もこれで完了
-
-**セキュリティ監査 (2026-08-05) の保留 1 件** (`docs/security-audit-2026-08-05.md`):
-
-4. ⏳ **TODO #92 — 日付メモ (`schedule_session_memos`) の所有者概念**: 監査 M-1。非 admin メンバー
-   1 人が PostgREST 直叩き 1 リクエストで**全メモを削除・改竄できる**
-   (`DELETE /rest/v1/schedule_session_memos?id=neq.<uuid>`)。ローカル PG16 で 3 件全消しを実測再現済。
-   UI は 1 件ずつしか削除できないので**誰がやったかも残らない**。UPDATE も `USING (true)` なので同様。
-   - **保留の理由**: 修正には「メンバー全員が誰のメモでも編集できる」という**意図的な製品仕様**を
-     変える判断が要る (`schema.sql` 5c-2 / 7a-2 のコメントが所有者カラムを持たない共有メモとして
-     明示設計、`author_name` も localStorage 由来の表示名にすぎない)。RLS では「1 文あたりの行数」を
-     制限できないため、所有者概念を入れる以外に手がない。
-   - **適用する場合**: `author_user_id uuid DEFAULT auth.uid()` を追加し insert/update/delete を
-     owner または admin に限定 (SQL 全文は監査レポートに記載)。既存行は `author_user_id IS NULL` に
-     なるため移行期は admin のみ操作可。UI 側 (`session-memo-delete-modal.tsx` /
-     `schedule-memos-client.ts`) で「自分のメモだけ編集ボタンを出す」対応も併せて必要。
-   - **判断待ち**: 共有編集を維持するか (現状維持 = リスク受容)、所有者限定に変えるか。
-   - **2026-10-01 (監査 F-10)**: この判断は 2026-09-09 に**所有者限定で決定・実装済み** (`docs/backlog.md` L-18、`author_user_id` と schema 7a-2 のポリシー)。この項目を閉じてよいかはユーザー判断 (Claude からは閉じない)。所有者不明の行の扱いは backlog「S-10」
-
-(項目 1 (Discord 通知 ON 切替) + 項目 4 (TODO #92 判断) 完了でこの節を `_(現在なし)_` に戻す)
-
-**Pre-check 結果サマリ (2026-05-08 14:25 JST 実行)** [historical]:
-- `cron.job`: jobid=1, jobname='notify-native-schedule-hourly', schedule='0 * * * *', active=true
-- `app_settings`: enabled='false' / channel_id='924575227306975232' / role_id='1497960832284360706' / hour 未 seed (route 側 default=12)
-- `vault.decrypted_secrets`: cron_notify_native_schedule_bearer 登録済 (secret_len=48)
-- `cron.job_run_details`: 0 行 (自動発火未到来)
+(2026-10-02: 残っていた 2 項目をユーザー決定で閉じた — ① Discord 通知トグルは OFF のまま。固定の Discord 運用は別の方法で行っているので、OFF を正式な運用にもしない ② TODO #92 (日付メモの所有者) は 2026-09-09 に所有者限定で決着済み。あわせて所有者不明の行の削除開放 (S-10) と admin の代理作成 (S-11) も閉じ、1 人 1 日付 10 件の上限 (S-3) を入れた。旧い記述 (pg_cron 移管の観察記録・2026-05-08 の pre-check) は git 履歴を参照)
 
 ## 📌 次回の作業優先度
 
