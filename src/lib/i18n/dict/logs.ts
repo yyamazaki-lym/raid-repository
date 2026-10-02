@@ -209,6 +209,10 @@ export const ja = {
     // 番号しか出ない。時刻は title 側に入れる。
     videoMomentTitleNamedAt: (name: string, clock: string) =>
       `${name} の ${clock} から再生 (この pull の開始)`,
+    // 2026-10-02: 録画開始より前に始まった pull (動画上の秒が負)。リンクは
+    // 動画の先頭に丸まるので、押しても開始の場面には飛べないことを書く。
+    videoMomentOutsideTitle: (name: string, gap: string) =>
+      `${name} に開始の場面は映っていません (この pull は録画開始の ${gap} 前に始まっています)。押すと動画の先頭を開きます`,
     video: "動画",
     // 総 pull の内訳チップ
     breakdownAria: "pull 数の内訳",
@@ -680,6 +684,8 @@ export const en: LogsMessages = {
     videoMomentTitleNamed: (name) => `Play ${name} from this moment`,
     videoMomentTitleNamedAt: (name, clock) =>
       `Play ${name} from ${clock} (start of this pull)`,
+    videoMomentOutsideTitle: (name, gap) =>
+      `The start of this pull is not in ${name} (it began ${gap} before the recording). Opens the start of the video`,
     video: "Video",
     breakdownAria: "Pull breakdown",
     breakdownTitleTruncated:

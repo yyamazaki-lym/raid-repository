@@ -10,6 +10,10 @@
  * プレーヤーからの postMessage の解釈も検証する。ここは YouTube 側の
  * 仕様に依存するので、壊れたときに「黙って 0 秒」にならないこと
  * (取れないものは必ず null) を固定するのが目的。
+ *
+ * 2026-10-02: 動画に映っていない pull (動画上の秒が負) の色分けを足した。
+ * pull 行とオフセット設定の「動画に最初に映る pull」が同じ境界
+ * (`isBeforeVideoStart`) を使っていることも、ここで固定する。
  */
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -66,6 +70,7 @@ try {
     youtubeCommandMessage,
     parseYoutubePlayerTime,
     explainOffset,
+    isBeforeVideoStart,
     OFFSET_LIMIT_SECONDS,
   } = v;
 
@@ -150,6 +155,62 @@ try {
     "0 秒ちょうどは映っている扱い",
     explainOffset(0, anchors, first).firstVisible.index,
     1,
+  );
+
+  console.log("\n動画に映っていない pull の判定 (2026-10-02、pull 行の色分け)");
+  check("負の秒は映っていない", isBeforeVideoStart(-82), true);
+  check("わずかに負 (-0.001 秒) も映っていない", isBeforeVideoStart(-0.001), true);
+  check("0 秒ちょうどは映っている", isBeforeVideoStart(0), false);
+  check("正の秒は映っている", isBeforeVideoStart(21), false);
+  // 実機に近い例: オフセット -82 で #1 だけが映っていない
+  check(
+    "オフセット -82: #1 は映っていない",
+    isBeforeVideoStart(videoSecondsForPull(-82, anchors[0].startMs, first)),
+    true,
+  );
+  check(
+    "オフセット -82: #2 は映っている",
+    isBeforeVideoStart(videoSecondsForPull(-82, anchors[1].startMs, first)),
+    false,
+  );
+  // 設定画面の「最初に映る pull」は、行で灰色にならない最初の pull と一致する
+  for (const o of [22, -82, -103, -104, -3387, -99999, 0]) {
+    const ex = explainOffset(o, anchors, first);
+    const firstNotOutside =
+      anchors.find(
+        (a) => !isBeforeVideoStart(videoSecondsForPull(o, a.startMs, first)),
+      ) ?? null;
+    check(
+      `offset=${o}: 最初に映る pull と行の判定が一致`,
+      ex.firstVisible?.fightId ?? null,
+      firstNotOutside?.fightId ?? null,
+    );
+  }
+
+  console.log("\npull 行の配線 (同じ式・同じ判定を使う)");
+  const pullRow = readFileSync(
+    "src/components/portal/logs/pull-row.tsx",
+    "utf8",
+  ).replace(/\r\n/g, "\n");
+  check(
+    "pull 行は video-sync から videoSecondsForPull と isBeforeVideoStart を読む",
+    /import\s*\{[^}]*\bisBeforeVideoStart\b[^}]*\bvideoSecondsForPull\b[^}]*\}\s*from\s*"@\/lib\/video-sync"/.test(pullRow),
+    true,
+  );
+  check(
+    "pull 行に式の手書きの写しが残っていない",
+    /offsetSeconds\s*\+\s*\(\s*fight\.startMs\s*-\s*firstPullStartMs\s*\)/.test(pullRow),
+    false,
+  );
+  check(
+    "pull 行は判定の結果で色を分ける",
+    /outside:\s*isBeforeVideoStart\(seconds\)/.test(pullRow),
+    true,
+  );
+  check(
+    "映っていない番号の説明は専用の文言を使う",
+    pullRow.includes("m.logs.videoMomentOutsideTitle("),
+    true,
   );
 
   console.log("\nプレーヤーの origin 検証 (完全一致)");
