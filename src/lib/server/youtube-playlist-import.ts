@@ -11,7 +11,10 @@ import {
   selectNewCandidates,
   toPlaylistCandidates,
   type PlaylistApiItem,
+  type PlaylistImportResult,
 } from "@/lib/youtube-playlist";
+
+export type { PlaylistImportResult };
 
 /**
  * YouTube の再生リストから動画を取り込む (2026-10-02 実機要望)。
@@ -42,26 +45,6 @@ const MAX_PAGES = 20;
 const REQUEST_TIMEOUT_MS = 10_000;
 /** 締切を渡されなかったとき (手動の「今すぐ取り込む」) の持ち時間。 */
 const DEFAULT_BUDGET_MS = 120_000;
-
-export type PlaylistImportResult = {
-  /** コンテンツの slug。 */
-  category: string;
-  playlistId: string;
-  ok: boolean;
-  /** 再生リストにあった取り込める動画の数 (非公開・削除済みを除く)。 */
-  found?: number;
-  /** 既に入っていた (動画 ID が一致した) 数。 */
-  duplicates?: number;
-  /** 取り込み除外リストに入っていて入れなかった数。 */
-  blocked?: number;
-  inserted?: number;
-  failed?: number;
-  /** ページの上限で最後まで読めなかった (1000 本を超える再生リスト)。 */
-  truncated?: boolean;
-  /** 持ち時間を使い切ったため、この再生リストは次回へ回した。 */
-  skipped?: "deadline";
-  reason?: string;
-};
 
 /** cron の Logs 同期の連動 (`logs-auto-sync.ts`) が数える「入った動画」の数。 */
 export function countPlaylistInsertedVideos(

@@ -5,7 +5,14 @@ import {
   countPlaylistInsertedVideos,
   runYoutubePlaylistImport,
 } from "@/lib/server/youtube-playlist-import";
-import { DISCORD_IMPORT_BUDGET_MS } from "@/lib/discord-import-budget";
+import {
+  DISCORD_IMPORT_BUDGET_MS,
+  summarizeDiscordImportRun,
+} from "@/lib/discord-import-budget";
+import {
+  mergeImportRunSummaries,
+  summarizePlaylistImportRun,
+} from "@/lib/youtube-playlist";
 import { assertCronAuth } from "@/lib/server/cron-auth";
 import { recordCronRun } from "@/lib/server/cron-status";
 import {
@@ -66,7 +73,7 @@ export async function GET(req: NextRequest) {
   ]);
   if (!result.ok && !playlists.ok) {
     // 2026-10-01 監査 F-2: 自動処理の最終実行として記録する。
-    const reason = `${result.reason ?? "import failed"} / playlists: ${playlists.reason ?? "failed"}`;
+    const reason = `${result.reason ?? "import failed"}; playlists: ${playlists.reason ?? "failed"}`;
     await recordCronRun("import-discord", "error", reason);
     return NextResponse.json({ error: reason }, { status: 503 });
   }
@@ -80,22 +87,19 @@ export async function GET(req: NextRequest) {
       ? await triggerFflogsSyncRoute(req.nextUrl.origin)
       : "disabled";
   }
-  // 2026-10-01 監査 F-2: チャンネル / 再生リスト単位の失敗が 1 つでもあれば
-  // 失敗として記録する (理由は最初の 1 つだけ載せる)。
-  const failures: string[] = [];
-  if (!result.ok) failures.push(`discord: ${result.reason ?? "import failed"}`);
-  for (const r of result.results) {
-    if (!r.ok) failures.push(`${r.category}/${r.kind} ${r.reason ?? ""}`);
-  }
-  if (!playlists.ok) failures.push(`playlists: ${playlists.reason ?? "failed"}`);
-  for (const r of playlists.results) {
-    if (!r.ok) failures.push(`${r.category}/playlist ${r.playlistId} ${r.reason ?? ""}`);
-  }
-  await recordCronRun(
-    "import-discord",
-    failures.length > 0 ? "error" : "ok",
-    failures.length > 0 ? `${failures.length} failed: ${failures[0]}` : null,
+  // 2026-10-01 監査 F-2: チャンネル単位の失敗が 1 つでもあれば失敗として
+  // 記録する (どのチャンネルかは最初の 1 つだけ理由に載せる)。2026-10-02:
+  // 次回へ回した件数と持ち時間切れも理由に載せ、その回は「一部」にする
+  // (応答 JSON にしか出ず、runtime logs は 1 時間で消えるため)。
+  // 再生リストの取り込みも同じ規則で要約し、悪い方の成否で 1 件にまとめる。
+  const discordRun = result.ok
+    ? summarizeDiscordImportRun(result.results)
+    : { outcome: "error" as const, reason: `discord: ${result.reason ?? "import failed"}` };
+  const run = mergeImportRunSummaries(
+    discordRun,
+    summarizePlaylistImportRun(playlists),
   );
+  await recordCronRun("import-discord", run.outcome, run.reason);
   return NextResponse.json({
     ok: true,
     results: result.results,

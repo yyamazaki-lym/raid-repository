@@ -143,6 +143,83 @@ export function toPlaylistCandidates(
   return out;
 }
 
+/** 取り込みの結果 (再生リスト 1 本)。取り込み本体と画面・cron で共有する。 */
+export type PlaylistImportResult = {
+  /** コンテンツの slug。 */
+  category: string;
+  playlistId: string;
+  ok: boolean;
+  /** 再生リストにあった取り込める動画の数 (非公開・削除済みを除く)。 */
+  found?: number;
+  /** 既に入っていた (動画 ID が一致した) 数。 */
+  duplicates?: number;
+  /** 取り込み除外リストに入っていて入れなかった数。 */
+  blocked?: number;
+  inserted?: number;
+  failed?: number;
+  /** ページの上限 (または持ち時間) で最後まで読めなかった。 */
+  truncated?: boolean;
+  /** 持ち時間を使い切ったため、この再生リストは次回へ回した。 */
+  skipped?: "deadline";
+  reason?: string;
+};
+
+export type ImportRunSummary = {
+  outcome: "ok" | "partial" | "error";
+  reason: string | null;
+};
+
+/**
+ * 1 回の再生リスト取り込みを、自動処理の記録 (`cron_status:import-discord`)
+ * に載せる成否と理由にまとめる。Discord 側の `summarizeDiscordImportRun`
+ * (`discord-import-budget.ts`) と同じ規則:
+ *
+ * - 全体の失敗 (キー未設定・DB) か、再生リスト単位の失敗があれば `error`
+ *   (理由は最初の 1 つ)
+ * - 失敗が無く、持ち時間切れ・読み取り上限で途中までの再生リストがあれば
+ *   `partial`
+ * - どちらも無ければ `ok`
+ *
+ * 理由は英語のコード (画面はそのまま出す。秘密は入れない)。
+ */
+export function summarizePlaylistImportRun(run: {
+  ok: boolean;
+  reason?: string;
+  results: ReadonlyArray<PlaylistImportResult>;
+}): ImportRunSummary {
+  if (!run.ok) {
+    return { outcome: "error", reason: `playlists: ${run.reason ?? "failed"}` };
+  }
+  const carried: string[] = [];
+  const deadline = run.results.filter((r) => r.skipped === "deadline").length;
+  const truncated = run.results.filter((r) => r.ok && r.truncated).length;
+  if (deadline > 0) carried.push(`${deadline} playlist(s) stopped at the deadline`);
+  if (truncated > 0) carried.push(`${truncated} playlist(s) not read to the end`);
+  const failed = run.results.filter((r) => !r.ok);
+  if (failed.length > 0) {
+    const first = failed[0]!;
+    const head =
+      `${failed.length} playlist(s) failed: ${first.category}/${first.playlistId} ${first.reason ?? ""}`.trimEnd();
+    return { outcome: "error", reason: [head, ...carried].join("; ") };
+  }
+  if (carried.length > 0) return { outcome: "partial", reason: carried.join("; ") };
+  return { outcome: "ok", reason: null };
+}
+
+/**
+ * Discord 取り込みと再生リスト取り込みの要約を、自動処理の記録 1 件に
+ * まとめる。成否は悪い方 (error > partial > ok)、理由は両方をつなぐ。
+ */
+export function mergeImportRunSummaries(
+  a: ImportRunSummary,
+  b: ImportRunSummary,
+): ImportRunSummary {
+  const rank = { ok: 0, partial: 1, error: 2 } as const;
+  const outcome = rank[a.outcome] >= rank[b.outcome] ? a.outcome : b.outcome;
+  const reasons = [a.reason, b.reason].filter((r): r is string => !!r);
+  return { outcome, reason: reasons.length > 0 ? reasons.join("; ") : null };
+}
+
 /**
  * まだ入っていない候補だけを残す。照合は **動画 ID** で行う — Discord に
  * `https://youtu.be/<id>` で貼られて既に入っている動画を、再生リストから

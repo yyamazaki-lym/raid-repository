@@ -67,6 +67,8 @@ try {
     canonicalVideoUrl,
     toPlaylistCandidates,
     selectNewCandidates,
+    summarizePlaylistImportRun,
+    mergeImportRunSummaries,
   } = p;
 
   // 2026-10-02 に実測した再生リスト (限定公開 11 本)。
@@ -135,6 +137,41 @@ try {
   check("残るのは新しい 1 本", sel.fresh.map((c) => c.videoId), ["BJB14iu9P7c"]);
   check("保存する URL の形", canonicalVideoUrl("BJB14iu9P7c"), "https://www.youtube.com/watch?v=BJB14iu9P7c");
 
+  console.log("\n   自動処理の記録 (Discord 側の summarizeDiscordImportRun と同じ規則)");
+  const r = (o) => ({ category: "c", playlistId: "PLx", ok: true, ...o });
+  check("空なら ok", summarizePlaylistImportRun({ ok: true, results: [] }), { outcome: "ok", reason: null });
+  check("取り込めた回は ok", summarizePlaylistImportRun({ ok: true, results: [r({ inserted: 3 })] }), { outcome: "ok", reason: null });
+  check(
+    "全体の失敗は error",
+    summarizePlaylistImportRun({ ok: false, reason: "YOUTUBE_API_KEY not configured", results: [] }),
+    { outcome: "error", reason: "playlists: YOUTUBE_API_KEY not configured" },
+  );
+  check(
+    "時間切れ・読み切れないのは partial",
+    summarizePlaylistImportRun({ ok: true, results: [r({ skipped: "deadline" }), r({ truncated: true })] }),
+    { outcome: "partial", reason: "1 playlist(s) stopped at the deadline; 1 playlist(s) not read to the end" },
+  );
+  check(
+    "失敗は error で最初の 1 つ",
+    summarizePlaylistImportRun({ ok: true, results: [r({ ok: false, playlistId: "PLa", reason: "youtube api 404: playlistNotFound" }), r({ ok: false })] }),
+    { outcome: "error", reason: "2 playlist(s) failed: c/PLa youtube api 404: playlistNotFound" },
+  );
+  check(
+    "合成: 悪い方の成否・理由はつなぐ",
+    mergeImportRunSummaries({ outcome: "partial", reason: "deferred 3 new URL(s)" }, { outcome: "error", reason: "playlists: x" }),
+    { outcome: "error", reason: "deferred 3 new URL(s); playlists: x" },
+  );
+  check(
+    "合成: 両方 ok なら理由なし",
+    mergeImportRunSummaries({ outcome: "ok", reason: null }, { outcome: "ok", reason: null }),
+    { outcome: "ok", reason: null },
+  );
+  check(
+    "合成: 一部と成功は一部",
+    mergeImportRunSummaries({ outcome: "ok", reason: null }, { outcome: "partial", reason: "p" }),
+    { outcome: "partial", reason: "p" },
+  );
+
   console.log("\n3. 配線");
   const schema = read("supabase/schema.sql");
   check("schema: 列を足す", /ADD COLUMN IF NOT EXISTS youtube_playlist_ids text\[\];/.test(schema), true);
@@ -175,6 +212,7 @@ try {
   check("cron: 再生リストの取り込みにも同じ締切を渡す", /runYoutubePlaylistImport\(\{\s*deadlineAt\s*\}\)/.test(route), true);
   check("cron: Discord 取り込みと並べて走らせる", /Promise\.all\(\[\s*runDiscordImport\(/.test(route), true);
   check("cron: 入った動画の数に再生リストの分も足す", route.includes("countPlaylistInsertedVideos(playlists.results)"), true);
+  check("cron: 記録は再生リスト側の要約と合わせる", /mergeImportRunSummaries\(\s*discordRun,\s*summarizePlaylistImportRun\(playlists\),?\s*\)/.test(route), true);
 
   const server = read("src/lib/server/youtube-playlist-import.ts");
   check("取り込み: source は youtube", /source: "youtube" as const,/.test(server), true);

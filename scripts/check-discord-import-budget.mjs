@@ -5,13 +5,15 @@
  *
  *   1. 純関数 (src/lib/discord-import-budget.ts / discord-rate-limit.ts) の
  *      境界: 新しい方を残す上限、締切ちょうど、limiter の同時数と失敗の扱い、
- *      retry_after の読み取りと再試行の可否、バケット残り 0 の待ち
+ *      retry_after の読み取りと再試行の可否、バケット残り 0 の待ち、
+ *      自動処理の記録に載せる成否と理由 (次回へ回した件数・持ち時間切れ)
  *   2. 締切 220s が maxDuration 300s に対して余裕を持つこと (根拠の数字)
  *   3. 呼び出し側の配線 (ソースを読んで確かめる):
  *      - 取り込みはページ取得の前と enrichment の前で締切を見る
  *      - enrichment は takeNewest で上限を掛け、共有 limiter を通す
  *      - Discord への fetch は 4 本とも discordFetch 経由 (429 再試行)
- *      - cron route は自分の開始時刻から締切を数えて渡す
+ *      - cron route は自分の開始時刻から締切を数えて渡し、記録の成否と
+ *        理由は summarizeDiscordImportRun で作る
  *      - ギルドのロール取得に timeout がある
  */
 import { execFileSync } from "node:child_process";
@@ -183,6 +185,26 @@ try {
   check("ヘッダが無ければ待たない", rl.preemptiveWaitMs(null, null, CAP), 0);
   check("reset-after が読めなければ待たない", rl.preemptiveWaitMs("0", "x", CAP), 0);
 
+  console.log("summarizeDiscordImportRun (自動処理の記録)");
+  const sum = budget.summarizeDiscordImportRun;
+  const ch = (o) => ({ category: "c", kind: "video", ok: true, ...o });
+  check("空なら ok・理由なし", sum([]), { outcome: "ok", reason: null });
+  check("取り込みと停止中だけなら ok", sum([ch({ inserted: 3 }), ch({ skipped: "disabled" })]), { outcome: "ok", reason: null });
+  check("deferred 0 は数えない", sum([ch({ deferred: 0 })]), { outcome: "ok", reason: null });
+  check("次回へ回した件数は合計して一部", sum([ch({ deferred: 4 }), ch({ deferred: 8 })]), { outcome: "partial", reason: "deferred 12 new URL(s)" });
+  check("持ち時間切れのチャンネルも一部", sum([ch({ skipped: "deadline" })]), { outcome: "partial", reason: "1 channel(s) stopped at the deadline" });
+  check("件数と持ち時間切れを両方書く", sum([ch({ skipped: "deadline" }), ch({ skipped: "deadline", deferred: 5 })]), { outcome: "partial", reason: "deferred 5 new URL(s); 2 channel(s) stopped at the deadline" });
+  check(
+    "失敗は error で、最初の 1 つと次回へ回した件数",
+    sum([
+      ch({ deferred: 3 }),
+      { category: "a", kind: "strategy", ok: false, reason: "discord api 403 (page 1)" },
+      { category: "b", kind: "video", ok: false, reason: "x" },
+    ]),
+    { outcome: "error", reason: "2 channel(s) failed: a/strategy discord api 403 (page 1); deferred 3 new URL(s)" },
+  );
+  check("失敗の理由が無くても末尾に空白を残さない", sum([{ category: "a", kind: "video", ok: false }]), { outcome: "error", reason: "1 channel(s) failed: a/video" });
+
   console.log("呼び出し側: discord-import.ts");
   const imp = readFileSync("src/lib/server/discord-import.ts", "utf8");
   const loopAt = imp.indexOf("for (let page = 0; page < MAX_MESSAGE_PAGES; page++)");
@@ -224,6 +246,18 @@ try {
     true,
   );
   check("route: maxDuration は 300 のまま", /export const maxDuration = 300;/.test(route), true);
+  // 2026-10-02: 再生リストの取り込み (#421) を並べて走らせるので、Discord 側の
+  // 要約を再生リスト側の要約と合わせてから記録する形も受け付ける。どちらでも
+  // Discord 側の成否は summarizeDiscordImportRun が作る。
+  check(
+    "route: 次回へ回した分を含めて記録する",
+    /const run = summarizeDiscordImportRun\(result\.results\);\s*await recordCronRun\("import-discord", run\.outcome, run\.reason\);/.test(route) ||
+      (/\? summarizeDiscordImportRun\(result\.results\)/.test(route) &&
+        /const run = mergeImportRunSummaries\(\s*discordRun,/.test(route) &&
+        /await recordCronRun\("import-discord", run\.outcome, run\.reason\);/.test(route)),
+    true,
+  );
+  check("route: 成否を route で組み立て直していない", /recordCronRun\(\s*"import-discord",\s*failed/.test(route), false);
   const roles = readFileSync("src/lib/server/discord-roles.ts", "utf8");
   check("ロール取得に timeout", /signal: AbortSignal\.timeout\(10_000\)/.test(roles), true);
   check("ロール取得の失敗は空配列", /catch \(err\) \{\s*console\.warn\("\[discord-roles\] fetch error", String\(err\)\);\s*return \[\];/.test(roles), true);
