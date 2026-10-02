@@ -540,6 +540,9 @@ export const SERVER_TEXT_EN: ServerTextDictRaw = {
       "delete the content",
     "カテゴリ取得":
       "load the content",
+    // 2026-10-02: オフセットをタイトルの録画時刻から出す (`fetchVideoTitleAction`)。
+    "動画のタイトル取得":
+      "load the video title",
     // 2026-10-02: YouTube 再生リストの取り込み (`youtube-playlist-import.ts`)。
     "取り込み除外の取得":
       "load the import exclusions",

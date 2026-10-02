@@ -130,7 +130,9 @@ export function floorLabel(
  * 戦闘は層判定 (と練習ログの集計) から除外する。
  */
 export function buildFloorMap(
-  fights: FightRow[],
+  // 2026-10-02: 読むのは encounterId だけ。サーバー側で列を絞って読んだ行
+  // (タイトルの録画時刻からのオフセット計算) も同じ関数に通せるようにする。
+  fights: ReadonlyArray<Pick<FightRow, "encounterId">>,
   /**
    * コンテンツ種別から分かる期待層数 (零式 = 4)。クラスタの encounter 数が
    * 期待 + 1 のときは「最終層が前半/後半に分かれるティア」とみなし、
@@ -214,14 +216,41 @@ export function buildFloorMap(
  * 層クラスタが決まっているとき、クラスタ外 (別コンテンツ) の戦闘を
  * 練習ログの集計・表示から除外する。
  */
-export function filterToFloorCluster(
-  fights: FightRow[],
+export function filterToFloorCluster<T extends Pick<FightRow, "encounterId">>(
+  fights: T[],
   floors: FloorMap,
-): FightRow[] {
+): T[] {
   if (!floors) return fights;
   return fights.filter(
     (f) => f.encounterId !== null && floors.byEncounter.has(f.encounterId),
   );
+}
+
+/**
+ * レポートごとの最初と最後の pull の戦闘開始 (2026-10-02)。
+ *
+ * 動画オフセット (「動画上で pull #1 の戦闘開始が何秒か」) の pull #1 は、
+ * 練習ログ画面と同じく **層クラスタ内の pull** (`filterToFloorCluster` の後。
+ * 絶はフェーズ管理なので絞らない) のうち最も早いもの。画面
+ * (`logs-view.tsx` の `firstPullStartByReport`) と、タイトルの録画時刻から
+ * オフセットを出すサーバー側 (`seedReportVideosFromLinks`) で同じ関数を
+ * 使う — 片方だけ基準がずれると、自動で入れた秒数が画面のリンクと合わない。
+ */
+export function pullSpanByReport(
+  fights: ReadonlyArray<Pick<FightRow, "reportCode" | "startMs">>,
+): Map<string, { firstStartMs: number; lastStartMs: number }> {
+  const out = new Map<string, { firstStartMs: number; lastStartMs: number }>();
+  for (const f of fights) {
+    if (!Number.isFinite(f.startMs)) continue;
+    const cur = out.get(f.reportCode);
+    if (!cur) {
+      out.set(f.reportCode, { firstStartMs: f.startMs, lastStartMs: f.startMs });
+      continue;
+    }
+    if (f.startMs < cur.firstStartMs) cur.firstStartMs = f.startMs;
+    if (f.startMs > cur.lastStartMs) cur.lastStartMs = f.startMs;
+  }
+  return out;
 }
 
 /**

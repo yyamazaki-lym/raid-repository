@@ -7,6 +7,7 @@ import { dbError } from "./db-error";
 import { syncFflogsFights } from "./fflogs-fights";
 import { deleteAttendanceActualsForReport } from "./attendance-actuals";
 import { httpUrlError } from "@/lib/url-validation";
+import { parseYouTubeId } from "@/lib/youtube";
 import {
   extractFflogsReportCodes,
   parseFflogsReportCode,
@@ -294,6 +295,40 @@ export async function suggestVideoForReportAction(
     return { ok: true, videoUrl: url };
   }
   return { ok: true, videoUrl: null };
+}
+
+/**
+ * 動画のタイトルを返す (2026-10-02)。オフセット設定の「タイトルの録画時刻
+ * から計算」用。動画タブに入っている同じ動画のタイトルを探す — YouTube は
+ * 動画 ID で照合する (Discord の `youtu.be/…` と再生リストの `watch?v=…` を
+ * 同じ動画として扱う)。見つからなければ null。外部には取りに行かない。
+ *
+ * 秒数の計算は画面側で行う (pull #1 は画面が持っている定義をそのまま使う)。
+ */
+export async function fetchVideoTitleAction(
+  videoUrl: string,
+): Promise<{ ok: true; title: string | null } | { ok: false; reason: string }> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
+  const url = (videoUrl ?? "").trim();
+  if (!url) return { ok: true, title: null };
+  const id = parseYouTubeId(url);
+  const supabase = await createClient();
+  const base = supabase
+    .from("category_links")
+    .select("url, title")
+    .eq("kind", "video")
+    .limit(50);
+  // ID は [A-Za-z0-9_-] なので `%` は入らない。`_` は LIKE の 1 文字に当たって
+  // 広めに拾うが、下で動画 ID の一致を確かめる。
+  const { data, error } = await (id ? base.ilike("url", `%${id}%`) : base.eq("url", url));
+  if (error) return { ok: false, reason: dbError("動画のタイトル取得", error) };
+  for (const row of (data ?? []) as Array<{ url: string; title: string | null }>) {
+    const same = id ? parseYouTubeId(row.url) === id : row.url === url;
+    const title = row.title?.trim();
+    if (same && title) return { ok: true, title };
+  }
+  return { ok: true, title: null };
 }
 
 function revalidateQuietly() {

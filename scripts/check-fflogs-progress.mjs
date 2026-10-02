@@ -71,7 +71,14 @@ try {
   const mod = await import(
     pathToFileURL(join(outDir, "fflogs-progress.js")).href
   );
-  const { progressValue, pullProgress, buildFloorMap, isClearFight } = mod;
+  const {
+    progressValue,
+    pullProgress,
+    buildFloorMap,
+    isClearFight,
+    filterToFloorCluster,
+    pullSpanByReport,
+  } = mod;
 
   console.log("到達度の計算式 (progressValue)");
   check(
@@ -262,6 +269,26 @@ try {
     pullProgress(fight({ enc: null, phase: 7, kill: true }), null, 7),
     100,
   );
+
+  console.log("\nレポートごとの最初と最後の pull (pullSpanByReport、2026-10-02)");
+  // 動画オフセットの基準 (pull #1)。画面とサーバー (タイトルの録画時刻から
+  // 秒数を出す) で同じ関数を使う。
+  const p = (reportCode, startMs, encounterId) => ({ reportCode, startMs, encounterId });
+  const spans = pullSpanByReport([p("A", 300, 1), p("A", 100, 1), p("B", 50, 1), p("A", 200, 1)]);
+  check("A の最初", spans.get("A")?.firstStartMs, 100);
+  check("A の最後", spans.get("A")?.lastStartMs, 300);
+  check("B は 1 本なら最初 = 最後", spans.get("B"), { firstStartMs: 50, lastStartMs: 50 });
+  check("無いレポート", spans.get("C"), undefined);
+  check("開始が数でない行は無視", pullSpanByReport([p("A", Number.NaN, 1), p("A", 7, 1)]).get("A"), { firstStartMs: 7, lastStartMs: 7 });
+  // 同じレポートの先頭に別コンテンツ (層クラスタ外) の戦闘が混ざっていても、
+  // クラスタで絞った後の最初の pull が基準になる (画面と同じ)。
+  const mixed = [
+    p("R", 1000, 9001), // 別コンテンツ (クラスタ外) が先
+    p("R", 2000, 93), p("R", 3000, 94), p("S", 500, 93), p("S", 600, 95), p("T", 700, 96),
+  ];
+  const tier = filterToFloorCluster(mixed, buildFloorMap(mixed));
+  check("クラスタで絞ると R の最初は 2000", pullSpanByReport(tier).get("R")?.firstStartMs, 2000);
+  check("絞らなければ 1000 (= 絞らないと秒数がずれる)", pullSpanByReport(mixed).get("R")?.firstStartMs, 1000);
 } finally {
   rmSync(outDir, { recursive: true, force: true });
 }
