@@ -1,7 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { noPermissionError, textLengthError } from "@/lib/text-length-error";
+import {
+  memoLimitError,
+  noPermissionError,
+  textLengthError,
+} from "@/lib/text-length-error";
+import { MEMO_PER_DATE_LIMIT } from "@/lib/memo-permissions";
 import { parseMemoSeverity, type MemoSeverity } from "@/lib/memo-severity";
 import { createClient } from "@/lib/supabase/client";
 import { useRealtimeChannel } from "@/lib/use-realtime-table";
@@ -15,11 +20,13 @@ import { useRealtimeChannel } from "@/lib/use-realtime-table";
  *
  * - **読み取り**: ログイン済みメンバー全員 (公開デモだけ anon も)
  * - **作成**: ログイン済みメンバー。`author_user_id` は DEFAULT で自分の
- *   Discord ID が入る (他人の ID では作れない。admin は代理で作れる)
+ *   Discord ID が入る (他人の ID では作れない。2026-10-02 から admin の代理
+ *   作成も無し = S-11)。1 人が 1 つの日付に作れるのは `MEMO_PER_DATE_LIMIT`
+ *   件まで (DB のトリガーが弾く。S-3)
  * - **編集**: 所有者か admin。所有者不明 (`author_user_id IS NULL`、
  *   2026-09-09 より前のメモ) は admin だけ
- * - **削除**: 所有者か admin。所有者不明の行だけはログイン済みなら誰でも
- *   (L-18 のユーザー決定。閉じ方は backlog「S-10」)
+ * - **削除**: 編集と同じ (所有者か admin)。2026-10-02 に所有者不明の行の
+ *   削除開放 (L-18) を閉じた (S-10)
  *
  * `author_name` は表示用の名前で、権限には使わない。権限の判定は
  * `memo-permissions.ts` と RLS の両方にある。anon (未ログイン) の書込は RLS で
@@ -161,6 +168,10 @@ export async function createScheduleMemo(
     })
     .select("*")
     .single();
+  // 2026-10-02 (S-3): 件数上限のトリガーの語を見分けて、説明に置き換える。
+  if (error?.message?.includes("memo_limit_per_date")) {
+    return { ok: false, reason: memoLimitError(MEMO_PER_DATE_LIMIT, locale) };
+  }
   if (error || !data) return { ok: false, reason: error?.message ?? "unknown" };
   return { ok: true, memo: rowToMemo(data as ScheduleSessionMemoRow) };
 }

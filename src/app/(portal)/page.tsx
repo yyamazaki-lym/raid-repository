@@ -78,7 +78,9 @@ export const runtime = "nodejs";
  *
  * demo のゲストは `discordId` を持つ (`public-demo-mode-guest`) が anon key
  * で動くので RLS には必ず弾かれる。そのまま渡すと「押せるのに失敗する」
- * ゴミ箱が出る (所有者不明のメモは誰でも消せる規則のため)。
+ * ボタンが出る (2026-10-02 までは所有者不明のメモを誰でも消せる規則
+ * だったので特に目立った。今は自分のメモ / admin だけだが、ゲストが
+ * 自分名義に見える行を作れない前提を保つため null のままにする)。
  * `category-link-reads.ts` の `me` と同じ正規化。
  */
 function memoViewerId(member: AuthorizedUser): string | null {

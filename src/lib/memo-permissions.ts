@@ -11,13 +11,16 @@
  * |---|---|---|
  * | 自分のメモ (`authorUserId === viewerId`) | ○ | ○ |
  * | admin | ○ | ○ |
- * | 所有者不明 (`authorUserId === null`) | ✕ | ○ (ログイン済みメンバー) |
+ * | 所有者不明 (`authorUserId === null`) | ✕ | ✕ |
  * | 他人のメモ | ✕ | ✕ |
  *
- * **所有者不明の行を「削除だけ」開けるのは 2026-09-09 のユーザー決定。**
- * `author_user_id` は 2026-09-09 に足した列なので、それ以前のメモは全部
- * NULL で、admin 以外は片付けられなかった。誰の物か分からない行は
- * **書き換えさせない (履歴が別人の文面にすり替わる)** が、**消すのは許す**。
+ * 2026-09-09 (L-18) は所有者不明の行を「削除だけ」ログイン済みメンバーに
+ * 開けていたが、**2026-10-02 のユーザー決定で閉じた** (監査 S-10)。開けて
+ * いる間は、非 admin メンバー 1 人が PostgREST 直叩きで所有者不明のメモを
+ * 一括削除できた。所有者不明の行の片付けは admin が行う。
+ *
+ * 作成は本人の ID でだけ (admin の代理作成も 2026-10-02 にやめた。S-11)。
+ * 1 人が 1 つの日付に作れるのは `MEMO_PER_DATE_LIMIT` 件まで (S-3)。
  *
  * ⚠ `authorName` は所有者ではない。localStorage 由来の表示名で誰でも
  * 好きな名前を書けるので、判定に使ってはいけない (schema 7a-2 と同じ注意)。
@@ -28,6 +31,13 @@
  *
  * 検証: `node scripts/check-memo-permissions.mjs`
  */
+
+/**
+ * 1 人が 1 つの日付に作れるメモの数 (2026-10-02 のユーザー決定、監査 S-3)。
+ * DB 側は schema のトリガー `schedule_session_memos_enforce_limit` が同じ値で
+ * 弾く (`scripts/check-memo-permissions.mjs` が突き合わせる)。
+ */
+export const MEMO_PER_DATE_LIMIT = 10;
 
 /** 判定に要る最小の形 (`ScheduleSessionMemo` の部分集合)。 */
 export type MemoOwnership = {
@@ -61,13 +71,12 @@ export function canEditMemo(memo: MemoOwnership, viewer: MemoViewer): boolean {
 }
 
 /**
- * 削除できるか。編集できる人に加えて、**所有者不明の行はログイン済み
- * メンバーなら誰でも**消せる。
+ * 削除できるか。編集と同じ (自分のメモ か admin)。2026-10-02 (S-10) に
+ * 所有者不明の行の削除開放を閉じたので、編集と削除の規則は同じになった。
  */
 export function canDeleteMemo(
   memo: MemoOwnership,
   viewer: MemoViewer,
 ): boolean {
-  if (canEditMemo(memo, viewer)) return true;
-  return isOrphanMemo(memo) && viewer.id !== null;
+  return canEditMemo(memo, viewer);
 }

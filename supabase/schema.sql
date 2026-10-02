@@ -649,9 +649,9 @@ ALTER TABLE public.schedule_session_memos
   ADD COLUMN IF NOT EXISTS author_user_id text
   DEFAULT (auth.jwt() -> 'app_metadata' ->> 'discord_id');
 -- ⚠ **既存行は NULL のまま**。埋め戻しはしない — `author_name` から
--- 推測すると別人の物を渡す危険がある。NULL の行は **編集は admin だけ**
--- (文面のすり替えを防ぐ) / **削除はログイン済みメンバーなら誰でも**
--- (L-18、2026-09-09 のユーザー決定。下の 7a-2 の DELETE ポリシー参照)。
+-- 推測すると別人の物を渡す危険がある。NULL の行は **編集も削除も admin
+-- だけ** (2026-10-02 のユーザー決定で、L-18 で開けていた「削除はログイン
+-- 済みメンバーなら誰でも」を閉じた。監査 S-10。下の 7a-2 参照)。
 CREATE INDEX IF NOT EXISTS schedule_session_memos_author_idx
   ON public.schedule_session_memos(author_user_id);
 
@@ -718,6 +718,53 @@ DROP TRIGGER IF EXISTS set_updated_at_schedule_session_memos
 CREATE TRIGGER set_updated_at_schedule_session_memos
   BEFORE UPDATE ON public.schedule_session_memos
   FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+-- 2026-10-02 監査 S-3 の残り: **1 人が 1 つの日付に作れるメモは 10 件まで**
+-- (ユーザー決定)。非 admin メンバーが自分名義で INSERT できる表なので、
+-- 1 人が大量に入れると全員の TOP (SSR の全件取得) と Realtime の配信が
+-- 膨らむ。RLS では行数を縛れないのでトリガーで弾く。値は
+-- `src/lib/memo-permissions.ts` の `MEMO_PER_DATE_LIMIT` と同じ
+-- (`scripts/check-memo-permissions.mjs` が突き合わせる)。
+--
+-- - **作るときだけ** 数える。日付の付け替え (`update_native_placeholder_raid_times`
+--   が予定の日時の変更に合わせて raw_date をまとめて書き換える) を止めない
+-- - 所有者不明の行 (author_user_id IS NULL。移行前の行・seed・メンバー削除で
+--   外した行) は数えない
+-- - 同時に投げられた INSERT で 1 件越えないよう、同じ人・同じ日付の作成は
+--   トランザクションの間だけ 1 件ずつにする (advisory lock)
+-- - 弾くときは `memo_limit_per_date` を返す。画面はこの語で見分けて説明を
+--   出す (`schedule-memos-client.ts`)
+CREATE OR REPLACE FUNCTION public.schedule_session_memos_enforce_limit()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public, pg_temp
+AS $fn$
+DECLARE
+  n integer;
+BEGIN
+  IF NEW.author_user_id IS NULL THEN
+    RETURN NEW;
+  END IF;
+  PERFORM pg_advisory_xact_lock(
+    hashtextextended('schedule_session_memos:' || NEW.author_user_id || ':' || NEW.raw_date, 0)
+  );
+  SELECT count(*) INTO n
+    FROM public.schedule_session_memos
+   WHERE author_user_id = NEW.author_user_id
+     AND raw_date = NEW.raw_date;
+  IF n >= 10 THEN
+    RAISE EXCEPTION 'memo_limit_per_date'
+      USING ERRCODE = 'check_violation', DETAIL = 'limit=10';
+  END IF;
+  RETURN NEW;
+END
+$fn$;
+
+DROP TRIGGER IF EXISTS schedule_session_memos_limit
+  ON public.schedule_session_memos;
+CREATE TRIGGER schedule_session_memos_limit
+  BEFORE INSERT ON public.schedule_session_memos
+  FOR EACH ROW EXECUTE FUNCTION public.schedule_session_memos_enforce_limit();
 
 -- ---- 5d-pre. category_macros (in-game text macros per category) ------
 -- FF14 chat-window macros (`/p ...` / `/say ...` style payloads) that
@@ -2374,9 +2421,14 @@ END $$;
 -- ⚠ SELECT の対象ロールは 7-0 と同じ分岐 (公開デモのみ anon を含める)。
 -- ここを固定値にすると demo のゲストがメモを読めなくなる。
 --
--- ⚠ **既存行は `author_user_id IS NULL`**。編集 (INSERT/UPDATE) は admin
--- だけ、削除はログイン済みメンバーなら誰でも (L-18、2026-09-09 のユーザー
--- 決定)。UI 側の同じ規則は `src/lib/memo-permissions.ts` にある。
+-- ⚠ **既存行は `author_user_id IS NULL`**。編集・削除とも admin だけ
+-- (2026-10-02 のユーザー決定で L-18 の削除開放を閉じた。監査 S-10)。
+-- UI 側の同じ規則は `src/lib/memo-permissions.ts` にある。
+--
+-- 2026-10-02 監査 S-11: **INSERT は本人の ID でだけ** 作れる (admin の代理
+-- 作成をやめた。ユーザー決定「残さない」)。admin が任意の作成者 ID で
+-- 作れると、別人のメモとして残り、その人の権限で編集・削除できてしまう。
+-- 監査ログも無かった。UPDATE / DELETE は従来どおり所有者 または admin。
 DO $$
 DECLARE
   select_roles text := CASE
@@ -2393,6 +2445,12 @@ DECLARE
         author_user_id IS NOT NULL
         AND author_user_id = ((SELECT auth.jwt()) -> 'app_metadata' ->> 'discord_id')
       )
+    )$expr$;
+  -- 2026-10-02 (S-11): 本人だけ。admin でも他人の ID / NULL では作れない。
+  owner_only text :=
+    $expr$(
+      author_user_id IS NOT NULL
+      AND author_user_id = ((SELECT auth.jwt()) -> 'app_metadata' ->> 'discord_id')
     )$expr$;
 BEGIN
   DROP POLICY IF EXISTS schedule_session_memos_anon_select ON public.schedule_session_memos;
@@ -2412,29 +2470,23 @@ BEGIN
     select_roles
   );
   -- INSERT: 自分の ID でしか作れない (列を送らなければ DEFAULT で入る)。
-  -- admin は代理で作れる (運用でメモを整える経路を残す)。
+  -- 2026-10-02 (S-11): admin の代理作成もやめた。
   EXECUTE format(
     'CREATE POLICY schedule_session_memos_owner_insert ON public.schedule_session_memos FOR INSERT TO authenticated WITH CHECK %s',
-    owner_or_admin
+    owner_only
   );
   EXECUTE format(
     'CREATE POLICY schedule_session_memos_owner_update ON public.schedule_session_memos FOR UPDATE TO authenticated USING %s WITH CHECK %s',
     owner_or_admin, owner_or_admin
   );
-  -- DELETE だけ **所有者不明の行 (author_user_id IS NULL)** も許す
-  -- (L-18、2026-09-09 のユーザー決定)。`author_user_id` は 2026-09-09 に
-  -- 足した列なので **それ以前のメモは全部 NULL** で、admin 以外は自分が
-  -- 書いた古いメモすら片付けられなかった。
-  --
-  -- ⚠ 開けるのは **DELETE だけ**。UPDATE を開けると、誰の物か分からない
-  -- 行の文面を別人が書き換えられる (履歴が黙ってすり替わる)。
-  -- ⚠ 引き換えに「非 admin メンバー 1 人が PostgREST 直叩きで
-  -- **所有者不明のメモを一括削除できる**」余地が戻る (7a-2 冒頭の
-  -- `USING (true)` で塞いだ穴のうち、旧行に限った再開放)。所有者つきの
-  -- 行 (2026-09-09 以降に投稿されたもの) は他人には消せないままなので、
-  -- 影響範囲は移行前の行と匿名投稿に閉じる。
+  -- DELETE: 所有者 または admin。
+  -- 2026-10-02 (S-10): L-18 (2026-09-09) で開けていた「所有者不明の行
+  -- (author_user_id IS NULL) はログイン済みメンバーなら誰でも削除できる」
+  -- を閉じた (ユーザー決定)。開けている間は、非 admin メンバー 1 人が
+  -- PostgREST 直叩きで所有者不明のメモを一括削除できた。所有者不明の行の
+  -- 片付けは admin が行う。
   EXECUTE format(
-    'CREATE POLICY schedule_session_memos_owner_delete ON public.schedule_session_memos FOR DELETE TO authenticated USING (%s OR author_user_id IS NULL)',
+    'CREATE POLICY schedule_session_memos_owner_delete ON public.schedule_session_memos FOR DELETE TO authenticated USING %s',
     owner_or_admin
   );
 END $$;

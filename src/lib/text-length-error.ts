@@ -89,6 +89,16 @@ export function textLengthError(
  * 扱う必要がある。原因は権限のことがほとんどだが、他人が同時に消した
  * 場合も同じ形になるため断定しない文言にしている。
  */
+/**
+ * 日付メモの件数上限に当たったときの説明 (2026-10-02、監査 S-3)。DB の
+ * トリガーは `memo_limit_per_date` を返すので、それを見分けて出す。
+ */
+export function memoLimitError(limit: number, locale: "ja" | "en" = "ja"): string {
+  return locale === "en"
+    ? `You can add up to ${limit} memos per date`
+    : `メモは 1 つの日付に 1 人 ${limit} 件までです`;
+}
+
 export function noPermissionError(
   action: "update" | "delete",
   locale: "ja" | "en" = "ja",

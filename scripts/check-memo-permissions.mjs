@@ -7,9 +7,11 @@
  * 「消せるのに出ないボタン」になるので、真理値表に加えて schema 側の
  * ポリシー本文も突き合わせる。
  *
- * 特に固定したいのは次の 2 点:
- *   - 所有者不明 (author_user_id IS NULL) は **削除だけ** 開ける。UPDATE を
- *     開けると、誰の物か分からない行の文面を別人が書き換えられる
+ * 特に固定したいのは次の点:
+ *   - 所有者不明 (author_user_id IS NULL) は編集も削除も admin だけ
+ *     (2026-10-02 のユーザー決定で L-18 の削除開放を閉じた。監査 S-10)
+ *   - 作成は本人の ID でだけ (admin の代理作成もやめた。S-11)
+ *   - 1 人 1 日付の件数上限が schema と UI で同じ値 (S-3)
  *   - demo のゲスト (viewer.id = null) には何も開けない。anon key なので
  *     RLS に必ず弾かれる = 押せるのに失敗するボタンになる
  */
@@ -54,8 +56,9 @@ try {
     writeFileSync(fp, readFileSync(fp, "utf8").replace(
       /(from\s+["'])(\.\.?\/[^"']+?)(?<!\.js)(["'])/g, "$1$2.js$3"));
   }
-  const { canEditMemo, canDeleteMemo, isOwnMemo, isOrphanMemo } =
+  const { canEditMemo, canDeleteMemo, isOwnMemo, isOrphanMemo, MEMO_PER_DATE_LIMIT } =
     await import(pathToFileURL(join(outDir, "memo-permissions.js")).href);
+  globalThis.__memoLimit = MEMO_PER_DATE_LIMIT;
 
   console.log("所有者の判定");
   check("自分のメモ", isOwnMemo(mine, member), true);
@@ -75,10 +78,10 @@ try {
   check("ゲストは自分名義に見える行でも編集できない",
     canEditMemo({ authorUserId: null }, { id: null, isAdmin: false }), false);
 
-  console.log("\n削除 (編集できる人 + 所有者不明はログイン済みなら誰でも)");
+  console.log("\n削除 (編集と同じ。所有者不明は admin だけ — 2026-10-02 S-10)");
   check("自分のメモは削除できる", canDeleteMemo(mine, member), true);
   check("他人のメモは削除できない", canDeleteMemo(others, member), false);
-  check("所有者不明はログイン済みメンバーなら削除できる", canDeleteMemo(orphan, member), true);
+  check("所有者不明は一般メンバーには削除させない", canDeleteMemo(orphan, member), false);
   check("admin はどれでも削除できる",
     [canDeleteMemo(mine, admin), canDeleteMemo(others, admin), canDeleteMemo(orphan, admin)],
     [true, true, true]);
@@ -87,16 +90,16 @@ try {
   check("ゲストは何も削除できない",
     [canDeleteMemo(mine, guest), canDeleteMemo(others, guest)], [false, false]);
 
-  console.log("\n編集より削除のほうが広い (逆転していない)");
+  console.log("\n編集と削除は同じ規則 (2026-10-02 S-10 以降)");
   for (const [label, memo] of [["自分", mine], ["他人", others], ["所有者不明", orphan]]) {
     for (const [who, viewer] of [["メンバー", member], ["admin", admin], ["ゲスト", guest]]) {
-      if (canEditMemo(memo, viewer) && !canDeleteMemo(memo, viewer)) {
+      if (canEditMemo(memo, viewer) !== canDeleteMemo(memo, viewer)) {
         failures += 1;
-        console.log(`  FAIL ${label} × ${who}: 編集できるのに削除できない`);
+        console.log(`  FAIL ${label} × ${who}: 編集と削除の可否が食い違う`);
       }
     }
   }
-  console.log("  ok   編集できる組み合わせは必ず削除もできる");
+  console.log("  ok   全組み合わせで編集と削除の可否が一致");
 } finally {
   rmSync(outDir, { recursive: true, force: true });
 }
@@ -111,12 +114,35 @@ const policyLine = (action) => {
   return m ? m[0] : "";
 };
 check("DELETE ポリシーがある", policyLine("delete") !== "", true);
-check("DELETE は所有者不明も許す",
-  /author_user_id IS NULL/.test(policyLine("delete")), true);
+check("DELETE は所有者不明を許さない (S-10)",
+  /author_user_id IS NULL/.test(policyLine("delete")), false);
+check("DELETE は所有者 または admin",
+  /USING %s',\s*owner_or_admin\s*\);/.test(policyLine("delete") + schema.slice(schema.indexOf(policyLine("delete")) + policyLine("delete").length, schema.indexOf(policyLine("delete")) + policyLine("delete").length + 40)), true);
 check("UPDATE は所有者不明を許さない",
   /author_user_id IS NULL/.test(policyLine("update")), false);
 check("INSERT は所有者不明を許さない",
   /author_user_id IS NULL/.test(policyLine("insert")), false);
+const insertAt = schema.indexOf(policyLine("insert"));
+check("INSERT は本人だけ (admin の代理作成なし、S-11)",
+  /WITH CHECK %s',\s*owner_only\s*\);/.test(schema.slice(insertAt, insertAt + policyLine("insert").length + 40)), true);
+const ownerOnly = schema.match(/owner_only text :=\s*\$expr\$\(([\s\S]*?)\)\$expr\$;/);
+check("owner_only に is_admin の分岐が無い",
+  ownerOnly !== null && !/is_admin/.test(ownerOnly[1]), true);
+
+console.log("\n1 人 1 日付の件数上限 (S-3)");
+const trig = schema.match(/CREATE OR REPLACE FUNCTION public\.schedule_session_memos_enforce_limit\(\)[\s\S]*?\$fn\$;/);
+const trigBody = trig ? trig[0] : "";
+const limitInSchema = trigBody.match(/IF n >= (\d+) THEN/);
+check("schema の上限 = MEMO_PER_DATE_LIMIT", limitInSchema ? Number(limitInSchema[1]) : null, globalThis.__memoLimit);
+check("上限は 10 (ユーザー決定)", globalThis.__memoLimit, 10);
+check("所有者不明の行は数えない", /IF NEW\.author_user_id IS NULL THEN\s*RETURN NEW;/.test(trigBody), true);
+check("同じ人・同じ日付で数える", /WHERE author_user_id = NEW\.author_user_id\s*AND raw_date = NEW\.raw_date;/.test(trigBody), true);
+check("同時の INSERT を 1 件ずつにする", /pg_advisory_xact_lock\(/.test(trigBody), true);
+check("作るときだけ (日付の付け替えを止めない)",
+  /CREATE TRIGGER schedule_session_memos_limit\s*BEFORE INSERT ON public\.schedule_session_memos/.test(schema), true);
+const client = readFileSync("src/lib/schedule-memos-client.ts", "utf8");
+check("画面はトリガーの語を見分けて説明を出す",
+  /error\?\.message\?\.includes\("memo_limit_per_date"\)/.test(client) && /memoLimitError\(MEMO_PER_DATE_LIMIT, locale\)/.test(client), true);
 
 console.log("\nUI が判定を再実装していないか");
 const popover = readFileSync("src/components/portal/session-memo-popover.tsx", "utf8");
