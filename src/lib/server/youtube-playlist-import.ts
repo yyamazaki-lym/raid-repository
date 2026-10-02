@@ -7,6 +7,7 @@ import { LINK_TITLE_MAX, clampText } from "@/lib/text-limits";
 import {
   YOUTUBE_PLAYLIST_MAX,
   canonicalVideoUrl,
+  earliestClearIso,
   parsePlaylistId,
   selectNewCandidates,
   toPlaylistCandidates,
@@ -55,7 +56,15 @@ export function countPlaylistInsertedVideos(
   return n;
 }
 
-type Target = { id: string; slug: string; playlistIds: string[] };
+type Target = {
+  id: string;
+  slug: string;
+  /** 初クリア日の判定に使う (零式は最終層 + クリアの語)。 */
+  name: string;
+  /** 既に入っていれば初クリア日は触らない。 */
+  firstClearAt: string | null;
+  playlistIds: string[];
+};
 type Db = ReturnType<typeof createSupabaseServiceRoleClient>;
 
 export async function runYoutubePlaylistImport(opts?: {
@@ -66,7 +75,7 @@ export async function runYoutubePlaylistImport(opts?: {
   const db = createSupabaseServiceRoleClient();
   const { data: rows, error } = await db
     .from("categories")
-    .select("id, slug, youtube_playlist_ids")
+    .select("id, slug, name, first_clear_at, youtube_playlist_ids")
     .not("youtube_playlist_ids", "is", null);
   if (error) {
     return { ok: false, reason: dbError("カテゴリ取得", error), results: [] };
@@ -75,6 +84,8 @@ export async function runYoutubePlaylistImport(opts?: {
   for (const r of (rows ?? []) as Array<{
     id: string;
     slug: string;
+    name: string | null;
+    first_clear_at: string | null;
     youtube_playlist_ids: string[] | null;
   }>) {
     // 保存側でも検査しているが、DB を直接書き換えた値で API のクエリを
@@ -83,7 +94,15 @@ export async function runYoutubePlaylistImport(opts?: {
       .map((v) => parsePlaylistId(v))
       .filter((v): v is string => v !== null)
       .slice(0, YOUTUBE_PLAYLIST_MAX);
-    if (ids.length > 0) targets.push({ id: r.id, slug: r.slug, playlistIds: ids });
+    if (ids.length > 0) {
+      targets.push({
+        id: r.id,
+        slug: r.slug,
+        name: r.name ?? "",
+        firstClearAt: r.first_clear_at ?? null,
+        playlistIds: ids,
+      });
+    }
   }
   if (targets.length === 0) return { ok: true, results: [] };
 
@@ -235,6 +254,28 @@ async function importPlaylist(
     }
   } else {
     inserted = insertedRows?.length ?? 0;
+  }
+
+  // 6. 初クリア日 (2026-10-02)。Discord 取り込みと同じく、まだ空なら、入れた
+  //    動画のうちクリアに当たる最も早い日時で埋める (`earliestClearIso`)。
+  //    UPDATE は IS NULL で守る (手で入れた値・同時に走った取り込みを上書き
+  //    しない)。失敗しても取り込みの結果は変えない。
+  if (inserted > 0 && !cat.firstClearAt) {
+    const clearIso = earliestClearIso(fresh, cat.name);
+    if (clearIso) {
+      const { error: clearErr } = await db
+        .from("categories")
+        .update({ first_clear_at: clearIso })
+        .eq("id", cat.id)
+        .is("first_clear_at", null);
+      if (clearErr) {
+        console.warn(
+          "[youtube-playlist-import] first_clear_at update failed",
+          cat.slug,
+          clearErr.message,
+        );
+      }
+    }
   }
   return {
     ...base,
