@@ -2,9 +2,17 @@ import "server-only";
 import { NextResponse, type NextRequest } from "next/server";
 import { runDiscordImport } from "@/lib/server/discord-import";
 import {
+  countPlaylistInsertedVideos,
+  runYoutubePlaylistImport,
+} from "@/lib/server/youtube-playlist-import";
+import {
   DISCORD_IMPORT_BUDGET_MS,
   summarizeDiscordImportRun,
 } from "@/lib/discord-import-budget";
+import {
+  mergeImportRunSummaries,
+  summarizePlaylistImportRun,
+} from "@/lib/youtube-playlist";
 import { assertCronAuth } from "@/lib/server/cron-auth";
 import { recordCronRun } from "@/lib/server/cron-status";
 import {
@@ -41,6 +49,12 @@ import {
  * を渡す。これを過ぎたら新しいページ取得・新しい URL の enrichment を始めず
  * 次回へ回すので、300s で関数ごと打ち切られて挿入が丸ごと失われることが
  * なくなる。残りの 80s は締切直前に始まった処理・upsert・Logs 同期の起動用。
+ *
+ * 2026-10-02: YouTube の再生リストからの取り込み
+ * (`src/lib/server/youtube-playlist-import.ts`) を Discord 取り込みと並べて
+ * 走らせる。別の cron にしないのは、Logs 同期の起動を 1 回にまとめるため
+ * (どちらかで動画が入れば起動する)。締切は同じ値を渡す。片方が全体で
+ * 失敗しても、もう片方の結果は活かす。
  */
 
 export const runtime = "nodejs";
@@ -52,20 +66,23 @@ export async function GET(req: NextRequest) {
   const denied = assertCronAuth(req, "cron/discord");
   if (denied) return denied;
 
-  const result = await runDiscordImport({
-    deadlineAt: startedAt + DISCORD_IMPORT_BUDGET_MS,
-  });
-  if (!result.ok) {
+  const deadlineAt = startedAt + DISCORD_IMPORT_BUDGET_MS;
+  const [result, playlists] = await Promise.all([
+    runDiscordImport({ deadlineAt }),
+    runYoutubePlaylistImport({ deadlineAt }),
+  ]);
+  if (!result.ok && !playlists.ok) {
     // 2026-10-01 監査 F-2: 自動処理の最終実行として記録する。
-    await recordCronRun("import-discord", "error", result.reason ?? "import failed");
-    return NextResponse.json(
-      { error: result.reason ?? "import failed" },
-      { status: 503 },
-    );
+    const reason = `${result.reason ?? "import failed"}; playlists: ${playlists.reason ?? "failed"}`;
+    await recordCronRun("import-discord", "error", reason);
+    return NextResponse.json({ error: reason }, { status: 503 });
   }
 
   let logsSync: LogsSyncTrigger = "no-new-videos";
-  if (countInsertedVideos(result.results) > 0) {
+  const insertedVideos =
+    (result.ok ? countInsertedVideos(result.results) : 0) +
+    (playlists.ok ? countPlaylistInsertedVideos(playlists.results) : 0);
+  if (insertedVideos > 0) {
     logsSync = (await isLogsAutoSyncEnabled())
       ? await triggerFflogsSyncRoute(req.nextUrl.origin)
       : "disabled";
@@ -74,7 +91,19 @@ export async function GET(req: NextRequest) {
   // 記録する (どのチャンネルかは最初の 1 つだけ理由に載せる)。2026-10-02:
   // 次回へ回した件数と持ち時間切れも理由に載せ、その回は「一部」にする
   // (応答 JSON にしか出ず、runtime logs は 1 時間で消えるため)。
-  const run = summarizeDiscordImportRun(result.results);
+  // 再生リストの取り込みも同じ規則で要約し、悪い方の成否で 1 件にまとめる。
+  const discordRun = result.ok
+    ? summarizeDiscordImportRun(result.results)
+    : { outcome: "error" as const, reason: `discord: ${result.reason ?? "import failed"}` };
+  const run = mergeImportRunSummaries(
+    discordRun,
+    summarizePlaylistImportRun(playlists),
+  );
   await recordCronRun("import-discord", run.outcome, run.reason);
-  return NextResponse.json({ ok: true, results: result.results, logsSync });
+  return NextResponse.json({
+    ok: true,
+    results: result.results,
+    playlists: playlists.results,
+    logsSync,
+  });
 }

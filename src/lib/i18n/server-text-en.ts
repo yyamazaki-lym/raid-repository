@@ -389,6 +389,11 @@ export const SERVER_TEXT_EN: ServerTextDictRaw = {
       "Could not load the progress",
     "進行モデルの指定が不正です":
       "Invalid progression model",
+    // 2026-10-02: YouTube 再生リストの取り込み (`updateCategoryAction`)。
+    "再生リストの指定が不正です":
+      "Invalid playlist",
+    "登録できる再生リストの数を超えています":
+      "Too many playlists",
     "部位の指定が不正です":
       "Invalid gear slot",
     "開始と終了が同じ時刻です":
@@ -535,6 +540,11 @@ export const SERVER_TEXT_EN: ServerTextDictRaw = {
       "delete the content",
     "カテゴリ取得":
       "load the content",
+    // 2026-10-02: YouTube 再生リストの取り込み (`youtube-playlist-import.ts`)。
+    "取り込み除外の取得":
+      "load the import exclusions",
+    "既存の動画の取得":
+      "load the existing videos",
     "カテゴリ更新":
       "update the content",
     "クリア日更新":

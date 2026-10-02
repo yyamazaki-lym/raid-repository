@@ -128,7 +128,7 @@ export const OPTIONAL = [
   {
     key: "YOUTUBE_API_KEY",
     label: "YouTube Data API v3 のキー",
-    hint: "限定公開動画の長さ・投稿日を取るのに使います",
+    hint: "限定公開動画の長さ・投稿日の取得と、YouTube 再生リストからの動画の取り込みに使います",
     where: "Google Cloud Console → API とサービス",
     secret: true,
   },

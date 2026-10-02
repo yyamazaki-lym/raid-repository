@@ -235,9 +235,28 @@ try {
   }
   const route = readFileSync("src/app/api/cron/import-discord/route.ts", "utf8");
   check("route: 開始時刻を認証より前に取る", route.indexOf("const startedAt = Date.now();") > 0 && route.indexOf("const startedAt = Date.now();") < route.indexOf("assertCronAuth(req"), true);
-  check("route: 開始時刻から締切を渡す", /runDiscordImport\(\{\s*deadlineAt: startedAt \+ DISCORD_IMPORT_BUDGET_MS,?\s*\}\)/.test(route), true);
+  // 2026-10-02: 再生リストの取り込みにも同じ締切を渡すため、締切を変数に
+  // 出した形 (`const deadlineAt = startedAt + …` → `runDiscordImport({ deadlineAt })`)
+  // も受け付ける。
+  check(
+    "route: 開始時刻から締切を渡す",
+    /runDiscordImport\(\{\s*deadlineAt: startedAt \+ DISCORD_IMPORT_BUDGET_MS,?\s*\}\)/.test(route) ||
+      (/const deadlineAt = startedAt \+ DISCORD_IMPORT_BUDGET_MS;/.test(route) &&
+        /runDiscordImport\(\{\s*deadlineAt\s*\}\)/.test(route)),
+    true,
+  );
   check("route: maxDuration は 300 のまま", /export const maxDuration = 300;/.test(route), true);
-  check("route: 次回へ回した分を含めて記録する", /const run = summarizeDiscordImportRun\(result\.results\);\s*await recordCronRun\("import-discord", run\.outcome, run\.reason\);/.test(route), true);
+  // 2026-10-02: 再生リストの取り込み (#421) を並べて走らせるので、Discord 側の
+  // 要約を再生リスト側の要約と合わせてから記録する形も受け付ける。どちらでも
+  // Discord 側の成否は summarizeDiscordImportRun が作る。
+  check(
+    "route: 次回へ回した分を含めて記録する",
+    /const run = summarizeDiscordImportRun\(result\.results\);\s*await recordCronRun\("import-discord", run\.outcome, run\.reason\);/.test(route) ||
+      (/\? summarizeDiscordImportRun\(result\.results\)/.test(route) &&
+        /const run = mergeImportRunSummaries\(\s*discordRun,/.test(route) &&
+        /await recordCronRun\("import-discord", run\.outcome, run\.reason\);/.test(route)),
+    true,
+  );
   check("route: 成否を route で組み立て直していない", /recordCronRun\(\s*"import-discord",\s*failed/.test(route), false);
   const roles = readFileSync("src/lib/server/discord-roles.ts", "utf8");
   check("ロール取得に timeout", /signal: AbortSignal\.timeout\(10_000\)/.test(roles), true);

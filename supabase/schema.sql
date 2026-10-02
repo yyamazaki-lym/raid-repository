@@ -199,6 +199,26 @@ ALTER TABLE public.categories
     AND (background_pos_y IS NULL OR background_pos_y BETWEEN 0 AND 100)
   ) NOT VALID;
 
+-- 2026-10-02: 動画を取り込む YouTube の再生リスト (実機要望)。
+-- 限定公開の動画はチャンネルの動画一覧・検索に出ない (YouTube ヘルプの公開
+-- 設定の表) が、再生リストには載る。admin が登録した再生リストを毎晩の
+-- 取り込み (Discord 取り込みと同じ cron) と設定の「今すぐ取り込む」で
+-- YouTube Data API から読む (`src/lib/server/youtube-playlist-import.ts`、
+-- `YOUTUBE_API_KEY`)。値は再生リスト ID (`PL…`) の配列で、URL からの
+-- 切り出しと形の検査は `src/lib/youtube-playlist.ts`。NULL = 取り込まない。
+-- 上限の 10 は `YOUTUBE_PLAYLIST_MAX` と同じ値。
+ALTER TABLE public.categories
+  ADD COLUMN IF NOT EXISTS youtube_playlist_ids text[];
+
+ALTER TABLE public.categories
+  DROP CONSTRAINT IF EXISTS categories_youtube_playlist_ids_sane;
+ALTER TABLE public.categories
+  ADD CONSTRAINT categories_youtube_playlist_ids_sane
+  CHECK (
+    youtube_playlist_ids IS NULL
+    OR cardinality(youtube_playlist_ids) <= 10
+  ) NOT VALID;
+
 -- NOTE: category_links / schedule_past_sessions の logs_url_source ALTER
 -- は、それぞれ該当 CREATE TABLE 直後に移動済 (新規 fork で table 未作成
 -- 時に ALTER が失敗するのを回避、TODO #8 fix, 2.1 (2026-05-01))。
@@ -229,6 +249,34 @@ CREATE TABLE IF NOT EXISTS public.category_links (
 ALTER TABLE public.category_links
   ADD COLUMN IF NOT EXISTS source text NOT NULL DEFAULT 'manual'
     CHECK (source IN ('manual','discord'));
+
+-- 2026-10-02: YouTube の再生リストから取り込んだ動画は source = 'youtube'。
+-- 上の列の CHECK は列と一緒に作られた名前の無い制約なので、名前を決め打ち
+-- せずに「source 列だけを参照する CHECK」を pg_constraint の conkey (参照
+-- している列の番号) で探して外し、名前を付けて足し直す。本番 / demo / fork
+-- で自動の名前が違っていても、制約の書き出し形に関係なく置き換わる。
+-- `logs_url_source` は別の列なので巻き込まない。
+DO $$
+DECLARE
+  c record;
+BEGIN
+  FOR c IN
+    SELECT con.conname
+      FROM pg_constraint con
+      JOIN pg_attribute att
+        ON att.attrelid = con.conrelid
+       AND att.attnum = ANY (con.conkey)
+     WHERE con.conrelid = 'public.category_links'::regclass
+       AND con.contype = 'c'
+       AND att.attname = 'source'
+       AND cardinality(con.conkey) = 1
+  LOOP
+    EXECUTE format('ALTER TABLE public.category_links DROP CONSTRAINT %I', c.conname);
+  END LOOP;
+END $$;
+ALTER TABLE public.category_links
+  ADD CONSTRAINT category_links_source_check
+  CHECK (source IN ('manual','discord','youtube'));
 
 -- Phase 4.3: optional secondary URL — used by videos to link to the
 -- corresponding FFLogs report (or any related external page).

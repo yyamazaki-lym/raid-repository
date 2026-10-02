@@ -90,7 +90,9 @@ export function LinkCardMenu({
             <span className="text-sm">{m.common.edit}</span>
           </DropdownMenuItem>
           <DropdownMenuSeparator />
-          {link.source === "discord" && (
+          {/* 2026-10-02: 再生リストから取り込んだ動画も、消しただけでは次の
+              取り込みで戻るので同じ除外を出す。 */}
+          {link.source !== "manual" && (
             <DropdownMenuItem
               onClick={onExclude}
               className="flex cursor-pointer items-center gap-2 text-amber-300 focus:text-amber-200"

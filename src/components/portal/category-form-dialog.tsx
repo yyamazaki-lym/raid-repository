@@ -55,6 +55,11 @@ import { fetchAvailableGuildRoles } from "@/lib/server/categories-actions";
 import type { DiscordGuildRole } from "@/lib/server/discord-roles";
 import { isOptimizableImageHost } from "@/lib/url-safe";
 import { jstMidnightIso, jstYmdString } from "@/lib/jst-date";
+import {
+  YOUTUBE_PLAYLIST_MAX,
+  parsePlaylistInput,
+  playlistUrl,
+} from "@/lib/youtube-playlist";
 import { cn } from "@/lib/utils";
 import {
   DIFFICULTY_LABEL_MAX_LENGTH,
@@ -145,6 +150,10 @@ export function CategoryFormDialog({
   );
   const [discordEnabled, setDiscordEnabled] = useState(
     category?.discordImportEnabled ?? true,
+  );
+  // 2026-10-02: 動画を取り込む YouTube の再生リスト。1 行に 1 本の URL。
+  const [playlistInput, setPlaylistInput] = useState(
+    (category?.youtubePlaylistIds ?? []).map(playlistUrl).join("\n"),
   );
   // Manual override for the first-clear date. Stored on `categories` as
   // `timestamptz`. UI is `<input type="date">` so the user only deals with
@@ -339,6 +348,9 @@ export function CategoryFormDialog({
       setDiscordStrategy(category?.discordStrategyChannelId ?? "");
       setDiscordVideo(category?.discordVideoChannelId ?? "");
       setDiscordEnabled(category?.discordImportEnabled ?? true);
+      setPlaylistInput(
+        (category?.youtubePlaylistIds ?? []).map(playlistUrl).join("\n"),
+      );
       setFirstClearDate(isoToDateInput(category?.firstClearAt ?? null));
       setBackgroundImageUrl(category?.backgroundImageUrl ?? "");
       setBgPos({
@@ -448,6 +460,17 @@ export function CategoryFormDialog({
     if (trimmedDiscordVideo && !SNOWFLAKE_RE.test(trimmedDiscordVideo)) {
       return setError(m.categoryForm.videoChannelInvalid);
     }
+    // 2026-10-02: 再生リスト。読めなかった入力は 1 つ目を見せて止める
+    // (保存側 `updateCategoryAction` でも同じ検査をする)。
+    const parsedPlaylists = parsePlaylistInput(playlistInput);
+    if (parsedPlaylists.invalid.length > 0) {
+      return setError(
+        m.categoryForm.playlistInvalid(parsedPlaylists.invalid[0]!),
+      );
+    }
+    if (parsedPlaylists.ids.length > YOUTUBE_PLAYLIST_MAX) {
+      return setError(m.categoryForm.playlistTooMany(YOUTUBE_PLAYLIST_MAX));
+    }
 
     setBusy(true);
     const firstClearIso = dateInputToIso(firstClearDate);
@@ -528,6 +551,8 @@ export function CategoryFormDialog({
       discord_strategy_channel_id: trimmedDiscordStrategy || null,
       discord_video_channel_id: trimmedDiscordVideo || null,
       discord_import_enabled: discordEnabled,
+      youtube_playlist_ids:
+        parsedPlaylists.ids.length > 0 ? parsedPlaylists.ids : null,
       first_clear_at: firstClearIso,
       background_image_url: trimmedBackgroundImage || null,
       // 中央 (50/50) は「未設定」と同義なので NULL で保存して行を汚さない。
@@ -575,6 +600,8 @@ export function CategoryFormDialog({
             followUp.discord_video_filter_keywords = parsedVideoFilter;
           if (parsedStrategyFilter.length > 0)
             followUp.discord_strategy_filter_keywords = parsedStrategyFilter;
+          if (parsedPlaylists.ids.length > 0)
+            followUp.youtube_playlist_ids = parsedPlaylists.ids;
           if (Object.keys(followUp).length > 0) {
             await updateCategory(r.category.id, followUp);
           }
@@ -1059,6 +1086,31 @@ export function CategoryFormDialog({
               </p>
             </div>
           </label>
+
+          {/* 2026-10-02: 限定公開の動画はチャンネルの一覧に出ないので、
+              再生リストで指定する。Discord の取り込みとは別に毎晩読む
+              (上の ON/OFF は Discord だけに効く。止めるときは欄を空にする)。 */}
+          <div className="flex flex-col gap-1.5">
+            <Label
+              htmlFor="youtube-playlists"
+              className="text-xs text-foreground/80"
+            >
+              {m.categoryForm.playlistLabel}
+            </Label>
+            <Textarea
+              id="youtube-playlists"
+              value={playlistInput}
+              onChange={(e) => setPlaylistInput(e.target.value)}
+              placeholder="https://www.youtube.com/playlist?list=PL..."
+              rows={2}
+              className="font-mono text-[12px]"
+              autoComplete="off"
+              spellCheck={false}
+            />
+            <p className="text-muted-foreground text-[11px] leading-relaxed">
+              {m.categoryForm.playlistHelp(YOUTUBE_PLAYLIST_MAX)}
+            </p>
+          </div>
 
           {isEdit && (
             <details

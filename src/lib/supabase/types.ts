@@ -43,6 +43,12 @@ export type CategoryRow = {
   discord_strategy_channel_id: string | null;
   discord_video_channel_id: string | null;
   discord_import_enabled: boolean;
+  /**
+   * 2026-10-02: 動画を取り込む YouTube の再生リスト ID (`PL…`)。限定公開の
+   * 動画はチャンネルの一覧に出ないため再生リストで指定する
+   * (`src/lib/youtube-playlist.ts`)。列の無い DB では undefined。
+   */
+  youtube_playlist_ids?: string[] | null;
   /** ISO timestamp of the group's first clear of this content. Nullable. */
   first_clear_at: string | null;
   /** FFLogs zone IDs that this content corresponds to. When set, the
@@ -125,6 +131,8 @@ export type Category = {
   discordStrategyChannelId: string | null;
   discordVideoChannelId: string | null;
   discordImportEnabled: boolean;
+  /** 動画を取り込む YouTube の再生リスト ID (2026-10-02)。未設定は []。 */
+  youtubePlaylistIds: string[];
   /** ISO timestamp (or null). Manually-set or auto-detected on first clear video. */
   firstClearAt: string | null;
   /** FFLogs zone IDs (e.g. [65, 66]) that this content is. Empty array = unset. */
@@ -260,6 +268,7 @@ export function rowToCategory(row: CategoryRow): Category {
     discordStrategyChannelId: row.discord_strategy_channel_id ?? null,
     discordVideoChannelId: row.discord_video_channel_id ?? null,
     discordImportEnabled: row.discord_import_enabled ?? true,
+    youtubePlaylistIds: row.youtube_playlist_ids ?? [],
     firstClearAt: row.first_clear_at ?? null,
     expectedFflogsZoneIds: row.expected_fflogs_zone_ids ?? [],
     backgroundImageUrl: row.background_image_url ?? null,
@@ -297,7 +306,9 @@ export function rowToCategory(row: CategoryRow): Category {
 // 行、もしくは直リンクを直接貼った単独行。アルバム所属の場合は
 // gphoto_album_id で category_gphoto_albums を参照する。
 export type CategoryLinkKind = "strategy" | "video" | "image" | "gphoto";
-export type CategoryLinkSource = "manual" | "discord";
+// 2026-10-02: "youtube" = YouTube の再生リストから取り込んだ動画
+// (`src/lib/server/youtube-playlist-import.ts`)。
+export type CategoryLinkSource = "manual" | "discord" | "youtube";
 
 export type CategoryLinkRow = {
   id: string;

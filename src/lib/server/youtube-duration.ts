@@ -96,7 +96,7 @@ export type YouTubeMetaDebug = {
  * Returns null on malformed input. Used by both the JSON-LD path and
  * the `<meta itemprop="duration">` path.
  */
-function parseIsoDuration(raw: string): number | null {
+export function parseIsoDuration(raw: string): number | null {
   const m = raw.match(/^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/);
   if (!m) return null;
   const h = m[1] ? parseInt(m[1], 10) : 0;
