@@ -272,13 +272,19 @@ export async function fetchStoredPastSessions(opts?: {
     attendances: Record<string, string> | null;
     /** Ordered list of participant names from when the snapshot was taken. */
     userNames: string[] | null;
+    /**
+     * 2026-10-05: 同じ日の重複をまとめるとき残す行の判定に使う
+     * (`src/lib/schedule/past-session-dedup.ts`)。
+     */
+    source: string | null;
+    createdAt: string | null;
   }>
 > {
   const supabase = await createClient();
   let query = supabase
     .from("schedule_past_sessions")
     .select(
-      "raw_date, parsed_date, start_time, end_time, day_of_week, attendances, user_names",
+      "raw_date, parsed_date, start_time, end_time, day_of_week, attendances, user_names, source, created_at",
     )
     // 2.9 (2026-08-24): admin が「実施しなかった日」として過去ログから除外した
     // 行は読み飛ばす。除外は行削除ではなく `excluded_at` マーカーなので、
@@ -300,6 +306,8 @@ export async function fetchStoredPastSessions(opts?: {
     dayOfWeek: r.day_of_week as string,
     attendances: (r.attendances as Record<string, string> | null) ?? null,
     userNames: (r.user_names as string[] | null) ?? null,
+    source: (r.source as string | null) ?? null,
+    createdAt: (r.created_at as string | null) ?? null,
   }));
 }
 

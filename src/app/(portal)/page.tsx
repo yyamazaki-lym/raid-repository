@@ -22,6 +22,7 @@ import {
   NATIVE_DEFAULT_START_TIME_KEY,
 } from "@/lib/server/native-schedule-placeholders";
 import { fetchScheduleMemosByDateBulk } from "@/lib/server/schedule-memos-fetch";
+import { foldAliasedKeys } from "@/lib/schedule/past-session-dedup";
 import { buildSessionVideoLinkMap } from "@/lib/server/session-video-link";
 import { fetchPortalSettings } from "@/lib/supabase/app-settings";
 import {
@@ -147,9 +148,9 @@ export default async function SchedulePage() {
       recruitmentTemplates,
       categoriesResult,
       member,
-      sessionLogsByDate,
+      rawSessionLogsByDate,
       appSettings,
-      initialMemosByDate,
+      rawInitialMemosByDate,
       sessionVideoLinks,
     ] = await Promise.all([
       schedulePromise,
@@ -172,6 +173,12 @@ export default async function SchedulePage() {
       ),
     ]);
     const userRoles = member.roles;
+    // 2026-10-05: 同じ日の同じ開催をまとめた rawDate (時刻違いの重複) に付いて
+    // いた Logs・メモを、残した行に寄せる (`past-session-dedup.ts`)。動画は
+    // まとめた後の行から日付で引くので寄せなくてよい。
+    const aliases = result.ok ? (result.data.rawDateAliases ?? {}) : {};
+    const sessionLogsByDate = foldAliasedKeys(rawSessionLogsByDate, aliases, (e) => e.url);
+    const initialMemosByDate = foldAliasedKeys(rawInitialMemosByDate, aliases, (m) => m.id);
     const topTextOverride = appSettings[SCHEDULE_TOP_TEXT_OVERRIDE_KEY] ?? null;
     const visibleCategories = categoriesResult.ok
       ? filterVisibleCategories(categoriesResult.categories, userRoles)

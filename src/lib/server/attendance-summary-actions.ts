@@ -8,6 +8,7 @@ import {
 import { requireDiscordMember } from "./auth";
 import { userIsAdmin } from "./admin-roles";
 import { jstYmdString } from "@/lib/jst-date";
+import { planPastSessionMerge } from "@/lib/schedule/past-session-dedup";
 import { getScheduleSourceMode } from "@/lib/schedule/source-mode";
 // L-14: 同期式のスナップショット (名前 → 記号) をメンバーキーに直す層。
 import {
@@ -101,7 +102,10 @@ export async function fetchAttendanceSummaryAction(): Promise<AttendanceSummaryR
       syncMode
         ? db
             .from("schedule_past_sessions")
-            .select("raw_date, parsed_date, attendances")
+            // 2026-10-05: 同じ日の重複をまとめるのに時間帯・出どころ・作成日時を
+            // 読む。除外した日 (実施しなかった日) は表示と同じく数えない。
+            .select("raw_date, parsed_date, attendances, start_time, end_time, source, created_at")
+            .is("excluded_at", null)
             .gte("parsed_date", cutoffIso)
             .lte("parsed_date", new Date().toISOString())
             .order("parsed_date", { ascending: false })
@@ -141,7 +145,7 @@ export async function fetchAttendanceSummaryAction(): Promise<AttendanceSummaryR
       return { ok: false, reason: "出席サマリーの取得に失敗しました" };
     }
 
-    const sessionRows = (sessionsRes.data ?? []) as Array<{
+    const sessionRowsRaw = (sessionsRes.data ?? []) as Array<{
       /** 自前作成式のみ。 */
       id?: string;
       raw_date: string;
@@ -151,7 +155,34 @@ export async function fetchAttendanceSummaryAction(): Promise<AttendanceSummaryR
       is_optional?: boolean;
       /** 同期式のみ: `{"名前": "◯", ...}`。Discord 由来の日は null。 */
       attendances?: Record<string, string> | null;
+      /** 同期式のみ (同じ日の重複をまとめる判定)。 */
+      start_time?: string;
+      end_time?: string;
+      source?: string | null;
+      created_at?: string | null;
     }>;
+    // 2026-10-05: 同期式では、開催時刻を後から変えた日が時刻違いの 2 行になって
+    // いる (本番の 10/02・10/04)。表示 (`mergeStoredPastSessions`) と同じく同じ
+    // 開催を 1 つにまとめる — まとめないと開催日を 2 回数え、出席率が下がる。
+    const sessionRows = syncMode
+      ? (() => {
+          const keep = new Set(
+            planPastSessionMerge({
+              sheet: [],
+              stored: sessionRowsRaw.map((r) => ({
+                rawDate: r.raw_date,
+                startMs: new Date(r.parsed_date).getTime(),
+                startTime: r.start_time ?? "",
+                endTime: r.end_time ?? "",
+                hasAttendances: !!r.attendances && Object.keys(r.attendances).length > 0,
+                createdAt: r.created_at ?? null,
+                source: r.source ?? null,
+              })),
+            }).additions.map((c) => c.rawDate),
+          );
+          return sessionRowsRaw.filter((r) => keep.has(r.raw_date));
+        })()
+      : sessionRowsRaw;
     const memberRows = (membersRes.data ?? []) as Array<{
       discord_user_id: string;
       display_name: string;

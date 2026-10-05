@@ -156,6 +156,12 @@ export type ParsedSchedule = {
    * 詳細は `NativeScheduleMeta`。
    */
   nativeMeta?: NativeScheduleMeta;
+  /**
+   * 2026-10-05: 同じ日の同じ開催としてまとめた rawDate → 残した rawDate
+   * (`mergeStoredPastSessions`、`past-session-dedup.ts`)。Logs・メモの付け先を
+   * 残した行に寄せるのに使う。まとめが無ければ undefined か空。
+   */
+  rawDateAliases?: Record<string, string>;
 };
 
 const NAMELINK_USER_RE =
