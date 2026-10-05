@@ -1,3 +1,4 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "./server";
 import {
   phaseTotalsFromRows,
@@ -72,9 +73,13 @@ const PAGE_SIZE = 1000;
  * 戻り値の `count` はカテゴリ全体の pull 数 (打ち切りに影響されない)。
  * 1 ページ目が失敗したら null、2 ページ目以降が失敗したらそこまでの
  * 部分結果を返す (呼び出し側が `truncated` を立てる)。
+ *
+ * 2026-10-05: 週のまとめ (`src/lib/server/logs-weekly-summary.ts`) が cron から
+ * service role の client で同じ取り切り方を使うので export し、client の型を
+ * 広げた。
  */
-async function fetchAllCategoryFightRows(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+export async function fetchAllCategoryFightRows(
+  supabase: SupabaseClient,
   columns: string,
   categoryId: string,
 ): Promise<{ rows: Array<Record<string, unknown>>; count: number | null } | null> {

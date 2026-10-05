@@ -376,6 +376,8 @@ export const SERVER_TEXT_EN: ServerTextDictRaw = {
       "The notification channel ID is not set",
     "通知時刻は 0〜23 の整数です":
       "The notification hour must be an integer from 0 to 23",
+    "週のまとめを作れませんでした":
+      "Could not build the weekly summary",
     "週の指定が不正です":
       "Invalid week",
     // #399 (pg_cron の催促を claim 先行に) が足す理由。

@@ -4,6 +4,8 @@ import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { fetchAppSettings } from "@/lib/supabase/app-settings";
 import { assertAdminResult } from "./auth";
 import { dbError } from "./db-error";
+import { previewWeeklyLogsSummary } from "./logs-weekly-summary";
+import { formatMonthDay } from "@/lib/logs-weekly-summary";
 import {
   LOGS_NOTIFY_KINDS,
   isLogsNotifyKind,
@@ -37,6 +39,37 @@ export async function getLogsNotifySettingsAction(): Promise<
     ]),
   ) as Record<LogsNotifyKind, boolean>;
   return { ok: true, enabled };
+}
+
+/**
+ * 週のまとめ (C-4、2026-10-05) のプレビュー。直近に終わった週の文面を作る
+ * だけで、送った印も Discord も触らない (ON/OFF に関係なく作れる)。
+ */
+export async function previewWeeklyLogsSummaryAction(): Promise<
+  | {
+      ok: true;
+      /** 週の範囲の表示 (`9/29(火)〜10/5(月)`)。 */
+      range: string;
+      messages: Array<{ categoryName: string; content: string }>;
+    }
+  | { ok: false; reason: string }
+> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
+  try {
+    const { week, messages } = await previewWeeklyLogsSummary({
+      now: new Date(),
+      baseUrl: process.env.NEXT_PUBLIC_SITE_URL ?? null,
+    });
+    return {
+      ok: true,
+      range: `${formatMonthDay(week.start)}〜${formatMonthDay(week.end)}`,
+      messages: messages.map((x) => ({ categoryName: x.categoryName, content: x.content })),
+    };
+  } catch (e) {
+    console.warn("[logs-notify-actions] weekly preview failed:", e);
+    return { ok: false, reason: "週のまとめを作れませんでした" };
+  }
 }
 
 export async function setLogsNotifyEnabledAction(

@@ -3,7 +3,7 @@ import { discordFetch } from "@/lib/server/discord-api";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { fetchAppSettings } from "@/lib/supabase/app-settings";
 import {
-  LOGS_NOTIFY_KINDS,
+  LOGS_EVENT_KINDS,
   detectLogsEvents,
   formatLogsNotifyMessage,
   logsNotifyKey,
@@ -58,10 +58,11 @@ export async function notifyLogsEvents(input: {
   if (input.newReportsByCategory.size === 0) return result;
 
   // 種類ごとの ON/OFF を 1 回で読む。全部 OFF なら DB も Discord も触らない。
-  const keys = LOGS_NOTIFY_KINDS.map(logsNotifyKey);
+  // 2026-10-05: 週のまとめ (週 1 回の別の流れ) は見ない (`LOGS_EVENT_KINDS`)。
+  const keys = LOGS_EVENT_KINDS.map(logsNotifyKey);
   const settings = await fetchAppSettings([...keys, NOTIFY_CHANNEL_KEY]);
   const enabled = new Map<LogsNotifyKind, boolean>(
-    LOGS_NOTIFY_KINDS.map((k) => [
+    LOGS_EVENT_KINDS.map((k) => [
       k,
       parseLogsNotifyEnabled(settings[logsNotifyKey(k)]),
     ]),
