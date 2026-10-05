@@ -354,7 +354,7 @@ export const ja = {
   /** W-30 公式メンテ / パッチ日程 (2026-09-07)。 */
   /** 2026-10-01 監査 F-3: データの書き出し (バックアップ)。 */
   dataExport: {
-    title: "データの書き出し",
+    title: "データの書き出し・取り込み",
     description:
       "固定のデータを JSON でダウンロードします。種類ごとに 1 ファイルです。Private / Unlisted の FFLogs レポートや出席の実績・ミス注釈は作り直せないので、「全データ初期化」の前や、節目ごとに保存しておくと安全です。",
     partLabel: (id: string): string =>
@@ -375,7 +375,48 @@ export const ja = {
         : id === "settings"
           ? "token / cookie などの秘密は含みません"
           : "",
-    note: "書き出しには token や cookie などの秘密を含めません (FFLogs 連携などは書き戻した後に設定し直してください)。書き戻す機能はまだありません。",
+    note: "書き出しには token や cookie などの秘密を含めません (FFLogs 連携などは書き戻した後に設定し直してください)。書き戻すには下の「データの取り込み」を使います。",
+  },
+  /** 2026-10-05 (監査 F-3 の残り): 書き出したファイルからの取り込み直し。 */
+  dataImport: {
+    heading: "データの取り込み (書き出したファイルから復元)",
+    description:
+      "書き出した JSON を選ぶと、同じ ID の行は上書きし、無い行は足します。ファイルに無い行は消しません。書き込む前に「件数を確認」で、表ごとの追加と上書きの件数を見られます。",
+    orderHint: (order: string): string =>
+      `表どうしに参照があるので、${order} の順に取り込んでください。`,
+    chooseFile: "ファイルを選ぶ",
+    invalidJson: "JSON として読めませんでした",
+    invalidFile: (reason: string): string =>
+      reason === "version"
+        ? "書き出しの形式の版が違います"
+        : reason === "part"
+          ? "知らない種類のファイルです"
+          : "このアプリの書き出しのファイルではありません",
+    exportedAt: (when: string): string => `(書き出し ${when} JST)`,
+    exportErrors: (tables: string): string =>
+      `書き出しのときに読めなかった表があります: ${tables}`,
+    ignoredTables: (tables: string): string =>
+      `この種類に含まれない表は読みません: ${tables}`,
+    rows: (n: number): string => `${n} 行`,
+    skipped: (n: number): string => `飛ばす ${n} 行`,
+    counts: (add: number, overwrite: number): string =>
+      `→ 追加 ${add} / 上書き ${overwrite}`,
+    resultOk: (n: number): string => `取り込み ${n} 行`,
+    resultFailed: (written: number, failed: number, reason: string): string =>
+      `取り込み ${written} 行・失敗 ${failed} 塊 (${reason})`,
+    progress: (done: number, total: number): string => `${done} / ${total}`,
+    checkButton: "件数を確認 (書き込みません)",
+    importButton: "上書きして取り込む",
+    importNeedsCheck: "先に「件数を確認」を押してください",
+    checkFailed: (table: string, reason: string): string =>
+      `${table} の確認に失敗: ${reason}`,
+    confirmTitle: "データを取り込みますか？",
+    confirmDescription: (part: string, add: number, overwrite: number): string =>
+      `「${part}」を取り込みます。追加 ${add} 行・上書き ${overwrite} 行。上書きした行は元に戻せません (先に今のデータを書き出しておくと安全です)。`,
+    confirmButton: "上書きして取り込む",
+    importDone: "取り込みました",
+    importPartial: "一部の取り込みに失敗しました (結果を確認してください)",
+    note: "token や cookie などの秘密はファイルに含まれないので、FFLogs 連携などは取り込んだ後に設定し直してください。日付メモは 1 人 1 日付 10 件の上限が取り込みにも効きます。",
   },
   /** W-35 練習ログのイベント通知 (2026-09-07)。既定はすべて OFF。 */
   logsNotify: {
@@ -1141,7 +1182,7 @@ export const en: SettingsMessages = {
     clearTitle: "Clear the textarea (saving removes it from the DB and restores the default)",
   },
   dataExport: {
-    title: "Export data",
+    title: "Export and import data",
     description:
       "Download your static's data as JSON, one file per kind. Private / Unlisted FFLogs reports, attendance from logs and pull notes cannot be rebuilt, so keep a copy before \"Reset all data\" and at milestones.",
     partLabel: (id) =>
@@ -1162,7 +1203,42 @@ export const en: SettingsMessages = {
         : id === "settings"
           ? "Secrets such as tokens and cookies are not included"
           : "",
-    note: "Exports never include secrets such as tokens or cookies (set up FFLogs and similar integrations again after restoring). There is no import yet.",
+    note: "Exports never include secrets such as tokens or cookies (set up FFLogs and similar integrations again after restoring). To restore, use “Import data” below.",
+  },
+  dataImport: {
+    heading: "Import data (restore from an export)",
+    description:
+      "Choose an exported JSON file: rows with the same ID are overwritten and missing rows are added. Rows not in the file are never deleted. Before writing, “Check counts” shows how many rows each table will add and overwrite.",
+    orderHint: (order) => `Tables reference each other, so import in this order: ${order}.`,
+    chooseFile: "Choose file",
+    invalidJson: "The file could not be read as JSON",
+    invalidFile: (reason) =>
+      reason === "version"
+        ? "The export format version is different"
+        : reason === "part"
+          ? "Unknown kind of export"
+          : "This is not an export from this app",
+    exportedAt: (when) => `(exported ${when} JST)`,
+    exportErrors: (tables) => `Some tables could not be read when exporting: ${tables}`,
+    ignoredTables: (tables) => `Tables outside this kind are not read: ${tables}`,
+    rows: (n) => `${n} rows`,
+    skipped: (n) => `${n} skipped`,
+    counts: (add, overwrite) => `→ add ${add} / overwrite ${overwrite}`,
+    resultOk: (n) => `imported ${n}`,
+    resultFailed: (written, failed, reason) =>
+      `imported ${written}, ${failed} batch(es) failed (${reason})`,
+    progress: (done, total) => `${done} / ${total}`,
+    checkButton: "Check counts (no writes)",
+    importButton: "Overwrite and import",
+    importNeedsCheck: "Press “Check counts” first",
+    checkFailed: (table, reason) => `Checking ${table} failed: ${reason}`,
+    confirmTitle: "Import this data?",
+    confirmDescription: (part, add, overwrite) =>
+      `Import “${part}”: add ${add} rows and overwrite ${overwrite} rows. Overwritten rows cannot be restored (export the current data first to be safe).`,
+    confirmButton: "Overwrite and import",
+    importDone: "Imported",
+    importPartial: "Some batches failed to import (check the results)",
+    note: "Secrets such as tokens and cookies are not in the file, so set up FFLogs and similar integrations again after importing. The date memo limit (10 per person per date) also applies to imports.",
   },
   logsNotify: {
     title: "Practice log notifications",
