@@ -251,6 +251,103 @@ try {
       reminderDedupMarker("daily", "2026-09-10", "2026-09-10"),
     true,
   );
+
+  console.log("\n[2026-10-02 複数スケジュールの段階 2: 予定の印]");
+  const {
+    reminderSessionKey,
+    joinReminderMarkers,
+    parseReminderMarkers,
+    pickReminderBatch,
+    REMINDER_DEFAULT_TEMPLATE,
+  } = keys;
+  const RAW = "2026/10/09(金) 21:00~24:00";
+  check("スケジュールが 1 つなら従来どおり rawDate (更新直後に二重送信しない)", reminderSessionKey(RAW, null), RAW);
+  check("2 つ以上なら ID を添える", reminderSessionKey(RAW, "sch-ult"), `${RAW}@sch-ult`);
+  check("印の組は並べ替え・重複を除いて改行でつなぐ", joinReminderMarkers(["b", "a", "b", ""]), "a\nb");
+  check("以前の 1 件だけの印もそのまま読める", parseReminderMarkers(RAW), [RAW]);
+  check("空 / null は空", [parseReminderMarkers(""), parseReminderMarkers(null)], [[], []]);
+  check("往復", parseReminderMarkers(joinReminderMarkers(["x", "y"])), ["x", "y"]);
+
+  console.log("\n[送る予定の選び方 (pickReminderBatch)]");
+  const c = (lead, marker) => ({ lead, marker });
+  const order = [2, 1, 0];
+  const A = c(2, "A"), B = c(1, "B"), C2 = c(2, "C");
+  let r = pickReminderBatch([A, B], order, new Set(), true);
+  check("期限が遠い日 (2 日前) を先に送る", r.picked.map((x) => x.marker), ["A"]);
+  check("印は A", r.marker, "A");
+  r = pickReminderBatch([A, B], order, new Set(parseReminderMarkers(r.marker)), true);
+  check("次の実行は B (A は送信済み)", r.picked.map((x) => x.marker), ["B"]);
+  check("印は A と B の組 (A を落とさない)", r.marker, "A\nB");
+  r = pickReminderBatch([A, B], order, new Set(parseReminderMarkers(r.marker)), true);
+  check("その次は何も送らない (以前は A と B を交互に送り直していた)", r.picked, []);
+  check("印はそのまま", r.marker, "A\nB");
+  r = pickReminderBatch([A, C2, B], order, new Set(), true);
+  check("同じ日の 2 つのスケジュールはまとめて 1 通", r.picked.map((x) => x.marker), ["A", "C"]);
+  r = pickReminderBatch([B], order, new Set(["A", "B"]), true);
+  check("範囲から外れた古い印は落ちる", r.marker, "B");
+  r = pickReminderBatch([A, B], order, new Set(["A"]), false);
+  check("手動 (respectDedup=false) は送信済みでも選ぶ", r.picked.map((x) => x.marker), ["A"]);
+  check("手動でも範囲内の送信済みの印は残る", r.marker, "A");
+  check("候補が無ければ何も選ばない", pickReminderBatch([], order, new Set(), true), { picked: [], marker: "" });
+
+  console.log("\n[本文のスケジュール名]");
+  const base = {
+    targets: [{ name: "Lym", discordUserId: "123456789012345678" }],
+    rawDate: RAW, dayOfWeek: "金", startTime: "21:00", endTime: "24:00",
+    answered: 3, total: 4, siteUrl: "",
+  };
+  check("既定テンプレートに {schedule_block}", REMINDER_DEFAULT_TEMPLATE.includes("{schedule_block}"), true);
+  check(
+    "スケジュールが 1 つ (名前なし) なら従来どおり",
+    mod.renderReminderTemplate(REMINDER_DEFAULT_TEMPLATE, base).includes("⏰ 2026/10/09(金) 21:00~24:00 (金)"),
+    true,
+  );
+  check(
+    "名前があれば【名前】",
+    mod.renderReminderTemplate(REMINDER_DEFAULT_TEMPLATE, { ...base, scheduleName: "絶PT" }).includes("⏰ 【絶PT】2026/10/09"),
+    true,
+  );
+  check("{schedule} は名前だけ", mod.renderReminderTemplate("{schedule}|{date}", { ...base, scheduleName: "絶PT" }), `絶PT|${RAW}`);
+  check(
+    "自作テンプレートに差し込みが無ければ先頭に付く",
+    mod.renderReminderTemplate("{mentions} 未入力です", { ...base, scheduleName: "絶PT" }).startsWith("【絶PT】\n"),
+    true,
+  );
+  check(
+    "名前が無ければ先頭に何も付かない",
+    mod.renderReminderTemplate("{mentions} 未入力です", base),
+    "<@123456789012345678> 未入力です",
+  );
+  check(
+    "名前の @everyone も崩す",
+    mod.renderReminderTemplate("{schedule}", { ...base, scheduleName: "@everyone" }) !== "@everyone",
+    true,
+  );
+
+  console.log("\n[Discord の本文の上限]");
+  check("上限以下はそのまま", mod.clampDiscordContent("abc", 5), "abc");
+  check("超えたら末尾を切って …", mod.clampDiscordContent("abcdef", 5), "abcd…");
+  check("既定の上限は 2000", Array.from(mod.clampDiscordContent("あ".repeat(2500))).length, 2000);
+  check("サロゲートペアを割らない", mod.clampDiscordContent("😀😀😀", 2), "😀…");
+
+  console.log("\n[配線: 表示中のスケジュールで絞らない (段階 2)]");
+  const readSrc = (f) => readFileSync(f, "utf8").replace(/\r\n/g, "\n");
+  const reminderSrc = readSrc("src/lib/server/attendance-reminder.ts");
+  const notifySrc = readSrc("src/lib/server/native-schedule-discord.ts");
+  const summarySrc = readSrc("src/lib/server/attendance-summary-actions.ts");
+  for (const [label, src] of [["催促", reminderSrc], ["開催確定の通知", notifySrc], ["出席サマリー", summarySrc]]) {
+    check(`${label}: 表示中のスケジュールの ID を読まない`, /getActiveNativeScheduleId/.test(src), false);
+  }
+  check("催促: 送る予定は pickReminderBatch で選ぶ", /pickReminderBatch\(\s*candidates,/.test(reminderSrc), true);
+  check("催促: 予定の印は reminderSessionKey (スケジュール ID 付き)", /reminderSessionKey\(p\.rawDate, p\.scheduleId\)/.test(reminderSrc), true);
+  check("催促: 本文は上限に収める", /clampDiscordContent\(/.test(reminderSrc), true);
+  check("催促: 送信済みの印は手動でも読む (範囲内の印を落とさない)", /const lastSent = \(await fetchAppSetting\(REMINDER_LAST_SENT_KEY\)\) \?\? "";/.test(reminderSrc), true);
+  check("通知: スケジュールが 2 つ以上のときだけ名前", /schedules\.length > 1/.test(notifySrc), true);
+  check("通知: {schedule} / {schedule_block} を置き換える", /\|schedule_block\|schedule\)\\\}/.test(notifySrc), true);
+  check("通知: 自作テンプレートに差し込みが無ければ先頭に付ける", /scheduleBlock && !\/\\\{schedule\(\?:_block\)\?\\\}\/\.test\(template\)/.test(notifySrc), true);
+  check("通知: 既定の書式の 1 行目にも名前", /\$\{mentionPrefix\}\$\{scheduleBlock\}本日の固定活動予定日です/.test(notifySrc), true);
+  const tplSrc = readSrc("src/lib/schedule/native-discord-template.ts");
+  check("通知の既定テンプレートに {schedule_block}", /"\{mention\}\{schedule_block\}本日の固定活動予定日です"/.test(tplSrc), true);
 } finally {
   rmSync(outDir, { recursive: true, force: true });
 }

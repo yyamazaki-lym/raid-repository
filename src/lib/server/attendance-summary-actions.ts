@@ -9,7 +9,6 @@ import { requireDiscordMember } from "./auth";
 import { userIsAdmin } from "./admin-roles";
 import { jstYmdString } from "@/lib/jst-date";
 import { getScheduleSourceMode } from "@/lib/schedule/source-mode";
-import { getActiveNativeScheduleId } from "@/lib/schedule/native-active";
 // L-14: 同期式のスナップショット (名前 → 記号) をメンバーキーに直す層。
 import {
   buildMemberKeyByName,
@@ -97,8 +96,6 @@ export async function fetchAttendanceSummaryAction(): Promise<AttendanceSummaryR
       return { ok: false, reason: "スケジュール機能が無効です" };
     }
     const syncMode = sourceMode === "sync";
-    // 2026-09-18 (段階 1): 自前作成式は表示中のスケジュールだけを集計する。
-    const activeNativeScheduleId = await getActiveNativeScheduleId();
 
     const [sessionsRes, membersRes, fightsRes] = await Promise.all([
       syncMode
@@ -111,9 +108,10 @@ export async function fetchAttendanceSummaryAction(): Promise<AttendanceSummaryR
         : db
             .from("native_schedule_sessions")
             .select("id, raw_date, parsed_date, status, is_optional")
-            // 2026-09-18 (段階 1): 集計は表示中のスケジュールのみ。別PT の
-            // 開催日を母数に混ぜると「休んだ人」に見えてしまう。
-            .eq("schedule_id", activeNativeScheduleId)
+            // 2026-10-02 (複数スケジュールの段階 2): **全スケジュール** の開催日を
+            // 母数にする。段階 1 は表示中のスケジュールだけだった。メンバーは
+            // 全スケジュール共通 (ADR-002 の前提「スケジュールが違ってもメンバーは
+            // おおむね同じ」) なので、別のスケジュールの開催日に出た人も出席に数える。
             .gte("parsed_date", cutoffIso)
             .lte("parsed_date", new Date().toISOString())
             .order("parsed_date", { ascending: false }),

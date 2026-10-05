@@ -176,8 +176,16 @@ export function renderReminderTemplate(
     siteUrl: string;
     /** 開始時刻の UNIX 秒 (W-14)。null なら Discord 時刻の placeholder は空。 */
     startUnix?: number | null;
+    /**
+     * スケジュール名 (2026-10-02、複数スケジュールの段階 2)。スケジュールが
+     * 2 つ以上あるときだけ渡す。null / 省略なら `{schedule}` 系は空。
+     */
+    scheduleName?: string | null;
   },
 ): string {
+  const scheduleName = values.scheduleName?.trim()
+    ? neutralizeMentions(values.scheduleName.trim())
+    : "";
   const mentions = values.targets
     .map((t) =>
       t.discordUserId ? `<@${t.discordUserId}>` : neutralizeMentions(t.name),
@@ -197,9 +205,35 @@ export function renderReminderTemplate(
     "{site_url}": values.siteUrl,
     "{discord_time}": discordTimestamp(values.startUnix ?? null, "F"),
     "{discord_relative}": discordTimestamp(values.startUnix ?? null, "R"),
+    "{schedule}": scheduleName,
+    "{schedule_block}": scheduleName ? `【${scheduleName}】` : "",
   };
-  return template.replace(
-    /\{(mentions|names|date|day|time_start|time_end|count|answered|total|site_url|discord_time|discord_relative)\}/g,
+  const body = template.replace(
+    /\{(mentions|names|date|day|time_start|time_end|count|answered|total|site_url|discord_time|discord_relative|schedule_block|schedule)\}/g,
     (m) => replacements[m] ?? m,
   );
+  // 2026-10-02: スケジュールが 2 つ以上あるのに、自分で作ったテンプレートに
+  // スケジュール名の差し込みが無いときは、先頭に付ける (どの予定の催促か
+  // 分からなくなるのを防ぐ)。
+  if (scheduleName && !/\{schedule(?:_block)?\}/.test(template)) {
+    return `【${scheduleName}】\n${body}`;
+  }
+  return body;
+}
+
+/** Discord の本文の上限 (文字数)。 */
+export const DISCORD_CONTENT_MAX = 2000;
+
+/**
+ * Discord の本文を上限に収める (2026-10-02)。催促は複数のスケジュールの
+ * 予定を 1 通にまとめるので長くなり得る。上限を超えると送信が 400 で
+ * 失敗するので、末尾を切って `…` を付ける (文字はコードポイントで数える)。
+ */
+export function clampDiscordContent(
+  text: string,
+  max: number = DISCORD_CONTENT_MAX,
+): string {
+  const chars = Array.from(text);
+  if (chars.length <= max) return text;
+  return chars.slice(0, Math.max(0, max - 1)).join("") + "…";
 }
