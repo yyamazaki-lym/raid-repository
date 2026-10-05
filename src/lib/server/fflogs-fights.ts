@@ -15,6 +15,10 @@ import { fetchAllPages } from "@/lib/fetch-all-pages";
 import { buildFflogsXhrHeaders } from "./fflogs-scrape-request";
 import { fetchErrorReason } from "@/lib/fetch-error-reason";
 import { parseFflogsReportCode } from "@/lib/fflogs-url";
+import {
+  detailsMissingReason,
+  shouldRetryMissingDetails,
+} from "@/lib/fflogs-detail-retry";
 import { notifyLogsEvents } from "./logs-notify";
 import {
   fetchFflogsGuildReports,
@@ -202,6 +206,12 @@ export type FflogsFightsSyncResult =
       attendanceUnresolved: number;
       /** 対応表に無かった名前 (最大 12 件、admin にそのまま見せる)。 */
       attendanceUnresolvedNames: string[];
+      /**
+       * 2026-10-05: 詳細 (PT DPS・死亡数・ワイプ原因) を取れなかった pull の数。
+       * そのレポートは台帳に印を付け、次の同期で日付に関係なく取り直す
+       * (`fflogs-detail-retry.ts`、最大 3 回)。
+       */
+      detailsMissing: number;
     }
   | { ok: false; reason: string };
 
@@ -466,6 +476,7 @@ async function syncFflogsFightsUnlocked(opts?: {
       attendanceMatched: 0,
       attendanceUnresolved: 0,
       attendanceUnresolvedNames: [],
+      detailsMissing: 0,
     };
   }
 
@@ -584,6 +595,13 @@ async function syncFflogsFightsUnlocked(opts?: {
       targets.push({ ...withDate, priority: 1 });
       continue;
     }
+    // 2026-10-05: 詳細が取れなかったレポートは、日付に関係なく取り直す
+    // (上限の回数まで)。以前は 14 日を過ぎると二度と取り直さず、死亡数・
+    // ワイプ原因が空のまま残った。
+    if (shouldRetryMissingDetails(prev.reason)) {
+      targets.push({ ...withDate, priority: 1 });
+      continue;
+    }
     // 直近のセッションはまだ pull が増えるので取り直す。
     if (isRecent(effectiveDate)) targets.push(withDate);
   }
@@ -617,6 +635,8 @@ async function syncFflogsFightsUnlocked(opts?: {
   // 通知の「新レポート N 件」と、ベスト更新 / 初討伐の判定対象になる。
   const newReportsByCategory = new Map<string, number>();
   let failed = 0;
+  // 2026-10-05: 詳細を取れなかった pull の数 (結果に載せる)。
+  let detailsMissing = 0;
   // W-6 (2026-09-08): 出席の自動突合。レポートごとの参加者名を集め、
   // ループの後で 1 回だけメンバーキーに解決して保存する
   // (名前はここから DB へ行かない。詳細は ./attendance-actuals.ts)。
@@ -762,6 +782,9 @@ async function syncFflogsFightsUnlocked(opts?: {
       );
     });
 
+    // 2026-10-05: 詳細を取れなかった pull の数 (v2 で読めたレポートだけ。代替経路は
+    // そもそも詳細を取らない)。台帳の印と結果に使う。
+    let missingDetails = 0;
     if (acceptedFights.length > 0) {
       // 2026-09-03: pull ごとの PT 合計 DPS / 死亡数。best-effort で、
       // 取れなかった pull は列を **payload に含めない** (upsert は payload
@@ -814,6 +837,10 @@ async function syncFflogsFightsUnlocked(opts?: {
       const plainRows = acceptedFights
         .filter((f) => !details.has(f.id))
         .map(baseRow);
+      if (fromV2) {
+        missingDetails = plainRows.length;
+        detailsMissing += missingDetails;
+      }
       // W-6 (2026-09-08): このレポートに映っていた人を pull 数で数える。
       // `players` は DB へ行かない (FightDetail の docstring 参照)。
       if (details.size > 0) {
@@ -843,6 +870,8 @@ async function syncFflogsFightsUnlocked(opts?: {
         if (error) {
           failed += 1;
           console.warn("[fflogs-fights] upsert failed:", error.message);
+          // 2026-10-05: 画面の「理由は下に表示」に出す (以前は件数だけで理由が無かった)。
+          failures.push({ reportCode: ref.code, reason: `pull の保存に失敗: ${error.message}`.slice(0, 200) });
         } else {
           upserted += rows.length;
           upsertOk = true;
@@ -874,7 +903,10 @@ async function syncFflogsFightsUnlocked(opts?: {
         report_start_ms: res.startMs,
         fight_count: res.fights.length,
         ok: true,
-        reason: null,
+        // 2026-10-05: 詳細を取れなかった pull があれば印を付ける (次の同期で取り直す)。
+        reason: fromV2
+          ? detailsMissingReason(missingDetails, ledgerMap.get(ref.code)?.reason)
+          : null,
         synced_at: new Date().toISOString(),
       },
       { onConflict: "report_code" },
@@ -1068,6 +1100,7 @@ async function syncFflogsFightsUnlocked(opts?: {
     reattributed,
     failures,
     videosBridged,
+    detailsMissing,
   };
 }
 

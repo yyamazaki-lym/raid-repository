@@ -7,7 +7,12 @@ import {
   getCronStatusAction,
   setCronAlertEnabledAction,
 } from "@/lib/server/cron-status-actions";
-import { isCronStale, type CronJob, type CronStatus } from "@/lib/cron-status";
+import {
+  isCronDisabledBySetting,
+  isCronStale,
+  type CronJob,
+  type CronStatus,
+} from "@/lib/cron-status";
 import { jstDateTimeString } from "@/lib/jst-date";
 import { Button } from "@/components/ui/button";
 import { useMessages } from "@/lib/i18n/client";
@@ -75,6 +80,8 @@ export function CronStatusSection({
 
   const failing = jobs.filter((j) => j.status?.outcome === "error").length;
   const stale = jobs.filter((j) => isCronStale(j.job, j.status, nowMs)).length;
+  // 2026-10-05: 設定で止めている (既定 ON の) 処理。正常に見せない。
+  const disabled = jobs.filter((j) => isCronDisabledBySetting(j.job, j.status)).length;
   const recorded = jobs.filter((j) => j.status !== null).length;
 
   const toggleAlert = (next: boolean) => {
@@ -104,7 +111,13 @@ export function CronStatusSection({
       badge={
         <SectionBadge
           state={
-            !loaded ? "loading" : failing > 0 || stale > 0 ? "off" : recorded > 0 ? "on" : "off"
+            !loaded
+              ? "loading"
+              : failing > 0 || stale > 0 || disabled > 0
+                ? "off"
+                : recorded > 0
+                  ? "on"
+                  : "off"
           }
         >
           {!loaded
@@ -113,7 +126,9 @@ export function CronStatusSection({
               ? m.cronStatus.badgeError(failing)
               : stale > 0
                 ? m.cronStatus.badgeStale(stale)
-                : recorded > 0
+                : disabled > 0
+                  ? m.cronStatus.badgeDisabled(disabled)
+                  : recorded > 0
                   ? m.cronStatus.badgeOk
                   : m.cronStatus.badgeEmpty}
         </SectionBadge>
@@ -134,10 +149,11 @@ export function CronStatusSection({
       <ul className="flex flex-col gap-1.5">
         {jobs.map(({ job, status }) => {
           const isStale = isCronStale(job, status, nowMs);
+          const isDisabled = isCronDisabledBySetting(job, status);
           const tone =
             status?.outcome === "error"
               ? "border-rose-400/40 bg-rose-400/5"
-              : isStale
+              : isStale || isDisabled
                 ? "border-amber-400/40 bg-amber-400/5"
                 : "border-border/40 bg-secondary/15";
           return (
@@ -179,6 +195,11 @@ export function CronStatusSection({
                   ) : null}
                   {isStale ? (
                     <span className="text-[12px] text-amber-300">{m.cronStatus.stale}</span>
+                  ) : null}
+                  {isDisabled ? (
+                    <span className="text-[12px] text-amber-300">
+                      {m.cronStatus.disabledBySetting}
+                    </span>
                   ) : null}
                 </>
               )}

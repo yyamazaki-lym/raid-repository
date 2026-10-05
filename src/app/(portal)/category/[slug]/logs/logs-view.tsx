@@ -655,6 +655,11 @@ export function LogsView({
           (result.reattributed > 0 ? m.logsSync.reattributed(result.reattributed) : "") +
           (result.videosBridged > 0 ? m.logsSync.videosBridged(result.videosBridged) : "") +
           (result.failed > 0 ? m.logsSync.failedSuffix(result.failed) : "") +
+          // 2026-10-05: 詳細 (死亡数・ワイプ原因) を取れなかった pull があれば出す
+          // (以前は黙って「同期済み」になり、解析が空のまま残った)。
+          (result.detailsMissing > 0
+            ? m.logsSync.detailsMissingSuffix(result.detailsMissing)
+            : "") +
           // 2026-09-07: 代替経路 (v1 / cookie) で取れたレポートにはフェーズ遷移 /
           // 死亡イベントが入らない。理由が見えるように内訳を出す。
           (result.fetchedViaFallback > 0

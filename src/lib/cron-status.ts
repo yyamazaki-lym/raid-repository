@@ -148,6 +148,16 @@ export function shouldAlertCron(next: CronStatus): boolean {
   return next.outcome === "error" && next.consecutiveErrors === 1;
 }
 
+/**
+ * 設定で止めているので何もせず終わった (2026-10-05)。既定 ON の FFLogs 同期だけを
+ * 見る — OFF だと FFLogs の紐づけ・pull の取り込み・解析・通知・週のまとめが
+ * すべて止まるのに、以前は「何もせず終了」を正常として扱い、気づけなかった
+ * (本番で実際に止まっていた)。出欠の催促のような既定 OFF の処理は警告しない。
+ */
+export function isCronDisabledBySetting(job: CronJob, status: CronStatus | null): boolean {
+  return job === "fflogs-sync" && status?.outcome === "skipped" && status.reason === "disabled";
+}
+
 /** 最終実行が古すぎる (= 呼ばれていないかもしれない)。未実行は判定しない。 */
 export function isCronStale(
   job: CronJob,

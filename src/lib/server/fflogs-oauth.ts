@@ -312,15 +312,10 @@ export async function getFflogsOAuthStatus(): Promise<{
   userName: string | null;
   expiresAt: string | null;
 }> {
-  // Idempotent cleanup of legacy v1 setting — removed in 1.7.3 but
-  // existing deployments may still have the row. Drops it on every
-  // settings-dialog open until gone.
-  try {
-    const supabase = await createClient();
-    await supabase.from("app_settings").delete().eq("key", "fflogs_username");
-  } catch {
-    // best-effort
-  }
+  // 2026-10-05: 以前はここで `fflogs_username` を「v1 の古い設定の掃除」として
+  // 設定画面を開くたびに消していた。だが同じキーは今も設定の「FFLogs 表示名
+  // (基本)」で保存し、リンク (OAuth 未接続のときの v1 経路) が読む現役の設定で、
+  // 保存しても開くたびに消えていた。掃除をやめる。
   const [accessToken, userName, expiresAt] = await Promise.all([
     getSecretValue(KEY_ACCESS),
     fetchAppSetting(KEY_USER_NAME),

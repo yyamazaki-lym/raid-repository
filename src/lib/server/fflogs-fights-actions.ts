@@ -56,6 +56,8 @@ export async function syncFflogsFightsAction(): Promise<
       attendanceMatched: number;
       attendanceUnresolved: number;
       attendanceUnresolvedNames: string[];
+      /** 2026-10-05: 詳細を取れなかった pull の数 (次の同期で取り直す)。 */
+      detailsMissing: number;
     }
   | { ok: false; reason: string }
 > {
