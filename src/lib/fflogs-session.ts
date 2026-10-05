@@ -136,12 +136,23 @@ export type TeamBadge = {
  *
  * `flawless` は **deaths を取得できている kill のみ**を見る。未取得
  * (null) を 0 と見なすと、古い pull が全部「ノーデス討伐」になってしまう。
+ *
+ * ## 何を「討伐」と数えるか (2026-10-05)
+ *
+ * `isClear` で決める (既定は kill = 絶など区間の無いコンテンツ向け)。零式では
+ * 練習ログの画面が **最終層の kill** (`isClearFight(f, floors)`) を渡す。以前は
+ * kill をそのまま数えていたため、零式では 1〜3 層の討伐が「初討伐」「最速討伐」
+ * 「討伐回数」に入り、初討伐が下の層を初めて倒した日になっていた (demo: バッジは
+ * 7/22、最終層の初討伐は 9/3)。サマリーのクリア数 (`summarize` / `totalClears`) と
+ * 同じ数え方にそろえる。層ごとの節目は L-1 (`floorFirstClears`) が別に出す。
+ * このファイルは `fflogs-progress.ts` の型を引かない方針なので、判定は関数で受ける。
  */
-export function teamBadges(
-  fights: ReadonlyArray<SessionFight>,
+export function teamBadges<T extends SessionFight>(
+  fights: ReadonlyArray<T>,
+  isClear: (f: T) => boolean = (f) => f.kill,
 ): TeamBadge[] {
   const kills = fights
-    .filter((f) => f.kill && Number.isFinite(f.startMs) && Number.isFinite(f.endMs))
+    .filter((f) => isClear(f) && Number.isFinite(f.startMs) && Number.isFinite(f.endMs))
     .sort((a, b) => a.startMs - b.startMs);
   if (kills.length === 0) return [];
 
