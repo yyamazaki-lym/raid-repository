@@ -515,6 +515,14 @@ export const ja = {
   attendanceReminder: {
     toastOn: "催促を ON にしました",
     toastOff: "催促を OFF にしました",
+    // W-21 (2026-10-05): Discord のボタンで回答。
+    buttonsLabel: "Discord のボタンで回答 (自前作成式のみ)",
+    buttonsHint:
+      "催促メッセージに予定ごとの回答ボタン (出欠の選択肢、未回答の印を除いて 5 つまで) を付けます。押すとその人の出欠がポータルに入り、押した本人にだけ結果が返ります。Discord Developer Portal で Bot のアプリに Interactions Endpoint URL (…/api/discord/interactions) を設定し、サーバーに DISCORD_PUBLIC_KEY を入れてから ON にしてください。",
+    buttonsNotReady:
+      "サーバーに DISCORD_PUBLIC_KEY が設定されていないため、ON にしてもボタンは付きません。",
+    buttonsToastOn: "回答ボタンを ON にしました",
+    buttonsToastOff: "回答ボタンを OFF にしました",
     toastBasicsSaved: "送信設定を保存しました",
     // W-20 (2026-09-07): 催促の頻度。
     cadenceLabel: "催促の頻度",
@@ -1337,6 +1345,13 @@ export const en: SettingsMessages = {
   attendanceReminder: {
     toastOn: "Reminders turned ON",
     toastOff: "Reminders turned OFF",
+    buttonsLabel: "Answer with Discord buttons (self-hosted schedule only)",
+    buttonsHint:
+      "Adds answer buttons for each event to the reminder (your attendance choices, up to 5, excluding the unanswered mark). Pressing one records that person's attendance in the portal and replies only to them. Set the Bot application's Interactions Endpoint URL (…/api/discord/interactions) in the Discord Developer Portal and put DISCORD_PUBLIC_KEY on the server before turning this on.",
+    buttonsNotReady:
+      "DISCORD_PUBLIC_KEY is not set on the server, so no buttons are added even when this is on.",
+    buttonsToastOn: "Answer buttons turned on",
+    buttonsToastOff: "Answer buttons turned off",
     toastBasicsSaved: "Sending settings saved",
     cadenceLabel: "Reminder frequency",
     cadenceOption: (cadence) =>

@@ -11,6 +11,7 @@ import {
   getAttendanceReminderSettingsAction,
   previewAttendanceReminderAction,
   sendAttendanceReminderNowAction,
+  setAttendanceReminderButtonsAction,
   setAttendanceReminderChannelAction,
   setAttendanceReminderEnabledAction,
   setAttendanceReminderExcludedAction,
@@ -132,6 +133,21 @@ export function AttendanceReminderSection({
         next ? m.attendanceReminder.toastOn : m.attendanceReminder.toastOff,
       );
       router.refresh();
+    });
+  };
+
+  // W-21 (2026-10-05): 回答ボタン。押した時点で保存する (ON/OFF と同じ)。
+  const onToggleButtons = (next: boolean) => {
+    startTransition(async () => {
+      const r = await setAttendanceReminderButtonsAction(next);
+      if (!r.ok) {
+        toast.error(r.reason);
+        return;
+      }
+      setSettings((s) => (s ? { ...s, buttonsEnabled: next } : s));
+      toast.success(
+        next ? m.attendanceReminder.buttonsToastOn : m.attendanceReminder.buttonsToastOff,
+      );
     });
   };
 
@@ -263,6 +279,30 @@ export function AttendanceReminderSection({
             aria-label={m.attendanceReminder.toggleAria}
           />
         </label>
+      </div>
+
+      {/* W-21 (2026-10-05): 回答ボタン。Discord 側の設定 (Endpoint URL) と
+          サーバーの公開鍵が要るので、鍵が無い間はそう表示する。 */}
+      <div className="flex flex-col gap-1 rounded-md border border-border/40 bg-secondary/15 px-3 py-2">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-xs">{m.attendanceReminder.buttonsLabel}</span>
+          <input
+            type="checkbox"
+            className="h-4 w-4 shrink-0 accent-[var(--neon-violet)]"
+            checked={settings?.buttonsEnabled ?? false}
+            disabled={pending || !loaded}
+            onChange={(e) => onToggleButtons(e.target.checked)}
+            aria-label={m.attendanceReminder.buttonsLabel}
+          />
+        </div>
+        <p className="text-[12px] leading-relaxed text-muted-foreground/80">
+          {m.attendanceReminder.buttonsHint}
+        </p>
+        {loaded && settings && !settings.buttonsReady ? (
+          <p className="text-[12px] leading-relaxed text-amber-200/90">
+            {m.attendanceReminder.buttonsNotReady}
+          </p>
+        ) : null}
       </div>
 
       {/* 送信設定 */}
