@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { assertAdminResult } from "./auth";
 import { dbError } from "./db-error";
 import {
-  buildReminderPreview,
+  buildReminderPreviews,
   dispatchAttendanceReminder,
   fetchAttendanceReminderSettings,
   type ReminderPreview,
@@ -176,15 +176,18 @@ export async function getAttendanceReminderSettingsAction(): Promise<
 /**
  * 設定画面用のプレビュー。「今の設定なら誰に飛ぶか」を送信前に確認できる
  * ようにする (メンションは取り消せないので、空撃ちを防ぐ意味が大きい)。
+ *
+ * 2026-10-02 (複数スケジュールの段階 2): 対象日の予定が全スケジュール分に
+ * なったので、予定ごとに返す (空配列 = 対象の予定なし)。
  */
 export async function previewAttendanceReminderAction(): Promise<
-  { ok: true; preview: ReminderPreview | null } | { ok: false; reason: string }
+  { ok: true; previews: ReminderPreview[] } | { ok: false; reason: string }
 > {
   const auth = await assertAdminResult();
   if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
   try {
-    const preview = await buildReminderPreview();
-    return { ok: true, preview };
+    const previews = await buildReminderPreviews();
+    return { ok: true, previews };
   } catch (e) {
     return { ok: false, reason: `プレビュー失敗: ${String(e)}` };
   }

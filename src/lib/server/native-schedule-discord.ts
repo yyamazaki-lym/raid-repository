@@ -9,7 +9,6 @@ import {
 
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { fetchAppSetting } from "@/lib/supabase/app-settings";
-import { getActiveNativeScheduleId } from "@/lib/schedule/native-active";
 import { APP_UTC_OFFSET_MS } from "@/lib/app-timezone";
 import {
   FALLBACK_DEFAULT_END_TIME,
@@ -68,6 +67,8 @@ type SessionRow = {
   status: "CANDIDATE" | "DECISION" | "CANCELLED";
   note: string | null;
   last_notified_at: string | null;
+  /** 2026-10-02 (複数スケジュールの段階 2): 文面にスケジュール名を入れるため。 */
+  schedule_id: string | null;
 };
 
 const TIME_RE = /^([01]?\d|2[0-3]):([0-5]\d)$/;
@@ -130,7 +131,7 @@ export async function notifyNativeScheduleSession(
   const { data: sessionData, error: sessionErr } = await supabase
     .from("native_schedule_sessions")
     .select(
-      "id, raw_date, parsed_date, start_time, end_time, day_of_week, status, note, last_notified_at",
+      "id, raw_date, parsed_date, start_time, end_time, day_of_week, status, note, last_notified_at, schedule_id",
     )
     .eq("id", input.sessionId)
     .maybeSingle();
@@ -261,9 +262,10 @@ export async function dispatchNoonNotifyForToday(): Promise<DispatchResult> {
   const { data, error } = await supabase
     .from("native_schedule_sessions")
     .select("id")
-    // 2026-09-18 (段階 1): 当日通知は表示中のスケジュールのみ。裏の
-    // スケジュールの確定日まで流すと、見ていない予定の通知が届く。
-    .eq("schedule_id", await getActiveNativeScheduleId())
+    // 2026-10-02 (複数スケジュールの段階 2): **全スケジュール** の当日の確定日
+    // を通知する。段階 1 は表示中のスケジュールだけで、零式を表示中の間は
+    // 絶の日の確定通知が飛ばなかった。どのスケジュールの予定かは文面に入れる
+    // (`buildMessage` の `{schedule_block}`)。
     .eq("status", "DECISION")
     .gte("parsed_date", range.todayStartUtc)
     .lt("parsed_date", range.tomorrowStartUtc)
@@ -370,7 +372,7 @@ async function buildMessage(
   session: SessionRow,
   roleId: string | null,
 ): Promise<string> {
-  const [membersRes, attendancesRes, timeDefaults, templateRaw] =
+  const [membersRes, attendancesRes, timeDefaults, templateRaw, schedulesRes] =
     await Promise.all([
       supabase
         .from("native_schedule_members")
@@ -384,7 +386,18 @@ async function buildMessage(
         .eq("session_id", session.id),
       fetchTimeDefaults(),
       fetchAppSetting(NOTIFY_TEMPLATE_KEY),
+      supabase.from("native_schedules").select("id, name"),
     ]);
+  // 2026-10-02 (複数スケジュールの段階 2): スケジュールが 2 つ以上あるときだけ
+  // 名前を出す (1 つなら文面は従来どおり)。
+  const schedules = (schedulesRes.data ?? []) as Array<{ id: string; name: string }>;
+  const scheduleName =
+    schedules.length > 1
+      ? neutralizeMentions(
+          schedules.find((sc) => sc.id === session.schedule_id)?.name?.trim() ?? "",
+        )
+      : "";
+  const scheduleBlock = scheduleName ? `【${scheduleName}】` : "";
 
   const members = (membersRes.data ?? []) as MemberRow[];
   const attendances = (attendancesRes.data ?? []) as AttendanceRow[];
@@ -468,19 +481,27 @@ async function buildMessage(
       "{discord_relative}": discordRelative,
       // 括弧付きの相対表記。解釈できないときは括弧ごと消える。
       "{discord_relative_block}": discordRelative ? ` (${discordRelative})` : "",
+      // 2026-10-02: スケジュール名 (2 つ以上あるときだけ。1 つなら空)。
+      "{schedule}": scheduleName,
+      "{schedule_block}": scheduleBlock,
     };
-    return template
+    const rendered = template
       .replace(
-        /\{(mention|date|day|time_start|time_end|note|note_block|attendance|site_url|discord_time|discord_relative|discord_relative_block)\}/g,
+        /\{(mention|date|day|time_start|time_end|note|note_block|attendance|site_url|discord_time|discord_relative|discord_relative_block|schedule_block|schedule)\}/g,
         (m) => replacements[m] ?? "",
       )
       // placeholder が空になった行末の空白を落とす (見た目の揺れ防止)。
       .replace(/[ \t]+$/gm, "");
+    // スケジュールが 2 つ以上あるのに、自分で作ったテンプレートに名前の差し込み
+    // が無いときは先頭に付ける (どの予定の通知か分からなくなるのを防ぐ)。
+    return scheduleBlock && !/\{schedule(?:_block)?\}/.test(template)
+      ? `${scheduleBlock}\n${rendered}`
+      : rendered;
   }
 
   // 既定 (現行) hardcode フォーマット。
   const lines: string[] = [];
-  lines.push(`${mentionPrefix}本日の固定活動予定日です`);
+  lines.push(`${mentionPrefix}${scheduleBlock}本日の固定活動予定日です`);
   lines.push("");
   lines.push(`📅 ${session.raw_date} (${session.day_of_week})`);
   lines.push(

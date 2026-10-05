@@ -5,7 +5,6 @@ import { sessionStartUnixSeconds } from "@/lib/schedule/attendance-times";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { fetchAppSetting } from "@/lib/supabase/app-settings";
 import { getScheduleSourceMode } from "@/lib/schedule/source-mode";
-import { getActiveNativeScheduleId } from "@/lib/schedule/native-active";
 import { fetchScheduleRaw } from "@/lib/schedule/next-session";
 import { claimMarker, type MarkerClaimOps } from "@/lib/schedule/marker-claim";
 import {
@@ -16,6 +15,7 @@ import {
   parseIntSetting,
   parseJsonRecord,
   parseJsonStringArray,
+  clampDiscordContent,
   renderReminderTemplate,
   selectReminderAudience,
   type CollectedMember,
@@ -33,7 +33,10 @@ import {
   REMINDER_LEAD_DAYS_KEY,
   REMINDER_CADENCE_KEY,
   parseReminderCadence,
+  parseReminderMarkers,
+  pickReminderBatch,
   reminderDedupMarker,
+  reminderSessionKey,
   reminderLeadDaysToTry,
   type ReminderCadence,
   REMINDER_MEMBER_MAP_KEY,
@@ -82,6 +85,13 @@ export type ReminderPreview = {
   /** 回答済み人数 / 対象人数 (除外を除く)。 */
   answered: number;
   total: number;
+  /**
+   * 予定のスケジュール (2026-10-02、複数スケジュールの段階 2)。スケジュールが
+   * 2 つ以上あるときだけ入る。1 つのとき・同期式では null (表示も送信の印も
+   * 従来どおり)。
+   */
+  scheduleId: string | null;
+  scheduleName: string | null;
 };
 
 export type ReminderResult =
@@ -164,12 +174,16 @@ async function fetchMemberNames(): Promise<string[]> {
 
 /**
  * 催促対象を算出する (送信はしない)。設定 UI のプレビューと cron の
- * 両方から使う。`null` = 対象セッションが無い (催促する理由が無い)。
+ * 両方から使う。空配列 = 対象の予定が無い (催促する理由が無い)。
+ *
+ * 2026-10-02 (複数スケジュールの段階 2): 自前作成式では **全スケジュールの**
+ * 対象日の予定を集めるので、1 日に複数件になり得る (零式と絶を同じ日に
+ * 回すなど)。同期式は従来どおり 0〜1 件。
  */
-export async function buildReminderPreview(opts?: {
+export async function buildReminderPreviews(opts?: {
   /** 何日前を見るか。省略時は設定値。 */
   leadDays?: number;
-}): Promise<ReminderPreview | null> {
+}): Promise<ReminderPreview[]> {
   const [leadRaw, mapRaw, excludedRaw] = await Promise.all([
     fetchAppSetting(REMINDER_LEAD_DAYS_KEY),
     fetchAppSetting(REMINDER_MEMBER_MAP_KEY),
@@ -189,24 +203,23 @@ export async function buildReminderPreview(opts?: {
       ? await collectFromNative(targetDayKey)
       : mode === "sync"
         ? await collectFromSync(targetDayKey)
-        : null;
-  if (!collected) return null;
+        : [];
 
   // 誰に飛ぶかの決定は純粋関数 (attendance-reminder-core) に委譲する。
   // メンションは取り消せないので、この判定だけは単体で検証できる形に保つ。
-  const audience = selectReminderAudience({
-    members: collected.members,
-    memberMap,
-    excluded: excludedNames,
-  });
-
-  return {
-    rawDate: collected.rawDate,
-    dayOfWeek: collected.dayOfWeek,
-    startTime: collected.startTime,
-    endTime: collected.endTime,
-    ...audience,
-  };
+  return collected.map((c) => ({
+    rawDate: c.rawDate,
+    dayOfWeek: c.dayOfWeek,
+    startTime: c.startTime,
+    endTime: c.endTime,
+    scheduleId: c.scheduleId,
+    scheduleName: c.scheduleName,
+    ...selectReminderAudience({
+      members: c.members,
+      memberMap,
+      excluded: excludedNames,
+    }),
+  }));
 }
 
 type Collected = {
@@ -215,53 +228,76 @@ type Collected = {
   startTime: string;
   endTime: string;
   members: CollectedMember[];
+  /** スケジュールが 2 つ以上あるときだけ入る (`ReminderPreview` と同じ)。 */
+  scheduleId: string | null;
+  scheduleName: string | null;
 };
 
 
 /** sync モード (character-sheets) から対象日の出欠を集める。 */
-async function collectFromSync(targetDayKey: string): Promise<Collected | null> {
+async function collectFromSync(targetDayKey: string): Promise<Collected[]> {
   const result = await fetchScheduleRaw();
-  if (!result.ok) return null;
+  if (!result.ok) return [];
   const { users, sessions } = result.data;
   // 対象日 (JST 暦日) の候補行。確定 (DECISION) / 候補 (CANDIDATE) の
   // どちらも催促対象にする — 候補日こそ入力が要るため。
   const session = sessions.find(
     (s) => jstDayKey(s.date.getTime()) === targetDayKey,
   );
-  if (!session) return null;
-  return {
-    rawDate: session.rawDate,
-    dayOfWeek: session.dayOfWeek,
-    startTime: session.startTime,
-    endTime: session.endTime,
-    members: users.map((u) => ({
-      name: u.name,
-      answered: !isUnanswered(session.attendances[u.userId]),
-      // sync には Discord ID が無い。対応表だけが頼り。
-      discordUserId: null,
-    })),
-  };
+  if (!session) return [];
+  return [
+    {
+      rawDate: session.rawDate,
+      dayOfWeek: session.dayOfWeek,
+      startTime: session.startTime,
+      endTime: session.endTime,
+      members: users.map((u) => ({
+        name: u.name,
+        answered: !isUnanswered(session.attendances[u.userId]),
+        // sync には Discord ID が無い。対応表だけが頼り。
+        discordUserId: null,
+      })),
+      // 同期式はスケジュールが 1 つ (表示中のシート) だけ。
+      scheduleId: null,
+      scheduleName: null,
+    },
+  ];
 }
 
-/** native モードから対象日の出欠を集める。 */
-async function collectFromNative(
-  targetDayKey: string,
-): Promise<Collected | null> {
+/**
+ * native モードから対象日の出欠を集める。
+ *
+ * 2026-10-02 (複数スケジュールの段階 2): 段階 1 は表示中のスケジュールだけを
+ * 見ていたが、**全スケジュール** の対象日の予定を集める (零式を表示中の間も
+ * 絶の日に催促が飛ぶように)。メンバーは全スケジュール共通のまま (ADR-002 の
+ * 前提)。スケジュールが 2 つ以上あるときだけ、予定にスケジュールの ID と名前を
+ * 付ける (本文の見出しと送信の印に使う)。
+ */
+async function collectFromNative(targetDayKey: string): Promise<Collected[]> {
   const supabase = createSupabaseServiceRoleClient();
-  const { data: sessions, error } = await supabase
-    .from("native_schedule_sessions")
-    // W-18 (2026-09-08): is_optional を追加 (有志練習は催促しない)。
-    .select(
-      "id, raw_date, parsed_date, start_time, end_time, day_of_week, status, is_optional",
-    )
-    // 2026-09-18 (段階 1): 催促は表示中のスケジュールのみ。裏のスケジュール
-    // の未回答までメンションすると、見えていない予定を急かすことになる。
-    .eq("schedule_id", await getActiveNativeScheduleId())
-    .neq("status", "CANCELLED");
-  if (error || !sessions) return null;
-  const session = (
-    sessions as Array<{
+  const [sessionsRes, schedulesRes] = await Promise.all([
+    supabase
+      .from("native_schedule_sessions")
+      // W-18 (2026-09-08): is_optional を追加 (有志練習は催促しない)。
+      .select(
+        "id, schedule_id, raw_date, parsed_date, start_time, end_time, day_of_week, status, is_optional",
+      )
+      .neq("status", "CANCELLED"),
+    supabase
+      .from("native_schedules")
+      .select("id, name, sort_order")
+      .order("sort_order", { ascending: true }),
+  ]);
+  if (sessionsRes.error || !sessionsRes.data) return [];
+  const schedules = (schedulesRes.data ?? []) as Array<{ id: string; name: string }>;
+  const multi = schedules.length > 1;
+  const scheduleOrder = new Map(schedules.map((sc, i) => [sc.id, i]));
+  const scheduleName = new Map(schedules.map((sc) => [sc.id, sc.name]));
+
+  const sessions = (
+    sessionsRes.data as Array<{
       id: string;
+      schedule_id: string | null;
       raw_date: string;
       parsed_date: string;
       start_time: string | null;
@@ -269,14 +305,22 @@ async function collectFromNative(
       day_of_week: string;
       is_optional?: boolean;
     }>
-  ).find((s) => {
-    const ms = new Date(s.parsed_date).getTime();
-    return Number.isFinite(ms) && jstDayKey(ms) === targetDayKey;
-  });
-  if (!session) return null;
-  // W-18 (2026-09-08): 有志練習 (任意参加) の日は催促しない。「参加できる人
-  // だけ」の日に未回答メンションを飛ばすのは矛盾していて、催促圧だけが残る。
-  if (session.is_optional === true) return null;
+  )
+    .filter((s) => {
+      const ms = new Date(s.parsed_date).getTime();
+      return Number.isFinite(ms) && jstDayKey(ms) === targetDayKey;
+    })
+    // W-18 (2026-09-08): 有志練習 (任意参加) の日は催促しない。「参加できる人
+    // だけ」の日に未回答メンションを飛ばすのは矛盾していて、催促圧だけが残る。
+    .filter((s) => s.is_optional !== true)
+    // 並びはスケジュールの並び順 → 開始時刻 (本文に並べる順)。
+    .sort(
+      (a, b) =>
+        (scheduleOrder.get(a.schedule_id ?? "") ?? 0) -
+          (scheduleOrder.get(b.schedule_id ?? "") ?? 0) ||
+        a.parsed_date.localeCompare(b.parsed_date),
+    );
+  if (sessions.length === 0) return [];
 
   const [membersRes, attendancesRes] = await Promise.all([
     supabase
@@ -286,36 +330,46 @@ async function collectFromNative(
       .order("sort_order", { ascending: true }),
     supabase
       .from("native_schedule_attendances")
-      .select("discord_user_id, symbol")
-      .eq("session_id", session.id),
+      .select("session_id, discord_user_id, symbol")
+      .in(
+        "session_id",
+        sessions.map((s) => s.id),
+      ),
   ]);
-  const symbolBy = new Map<string, string>();
+  const symbolBy = new Map<string, Map<string, string>>();
   for (const a of (attendancesRes.data ?? []) as Array<{
+    session_id: string;
     discord_user_id: string;
     symbol: string;
   }>) {
-    symbolBy.set(a.discord_user_id, a.symbol);
+    const bySession = symbolBy.get(a.session_id) ?? new Map<string, string>();
+    bySession.set(a.discord_user_id, a.symbol);
+    symbolBy.set(a.session_id, bySession);
   }
-  const members = (
-    (membersRes.data ?? []) as Array<{
-      discord_user_id: string;
-      display_name: string;
-    }>
-  ).map((m) => ({
-    name: m.display_name,
-    answered: !isUnanswered(symbolBy.get(m.discord_user_id)),
-    discordUserId: DISCORD_ID_RE.test(m.discord_user_id)
-      ? m.discord_user_id
-      : null,
-  }));
+  const members = (membersRes.data ?? []) as Array<{
+    discord_user_id: string;
+    display_name: string;
+  }>;
 
-  return {
-    rawDate: session.raw_date,
-    dayOfWeek: session.day_of_week,
-    startTime: session.start_time ?? "",
-    endTime: session.end_time ?? "",
-    members,
-  };
+  return sessions.map((session) => {
+    const symbols = symbolBy.get(session.id) ?? new Map<string, string>();
+    const id = multi ? session.schedule_id : null;
+    return {
+      rawDate: session.raw_date,
+      dayOfWeek: session.day_of_week,
+      startTime: session.start_time ?? "",
+      endTime: session.end_time ?? "",
+      members: members.map((m) => ({
+        name: m.display_name,
+        answered: !isUnanswered(symbols.get(m.discord_user_id)),
+        discordUserId: DISCORD_ID_RE.test(m.discord_user_id)
+          ? m.discord_user_id
+          : null,
+      })),
+      scheduleId: id,
+      scheduleName: id ? (scheduleName.get(id) ?? null) : null,
+    };
+  });
 }
 
 /** プレビューから Discord 本文を組み立てる。 */
@@ -334,6 +388,7 @@ export async function buildReminderMessage(
     total: preview.total,
     siteUrl: process.env.NEXT_PUBLIC_SITE_URL?.trim() ?? "",
     startUnix: sessionStartUnixSeconds(preview.rawDate, preview.startTime),
+    scheduleName: preview.scheduleName,
   });
 }
 
@@ -385,34 +440,43 @@ export async function dispatchAttendanceReminder(input: {
     14,
   );
   const todayKey = jstDayKey(Date.now());
-  const lastSent = input.respectDedup
-    ? ((await fetchAppSetting(REMINDER_LAST_SENT_KEY)) ?? "")
-    : "";
+  // 送信済みの印は手動送信でも読む (印を書き換えるときに、範囲内の送信済みの
+  // 予定を落とさないため)。送らない判定に使うのは cron (respectDedup) だけ。
+  const lastSent = (await fetchAppSetting(REMINDER_LAST_SENT_KEY)) ?? "";
+  const sentMarkers = new Set(parseReminderMarkers(lastSent));
 
-  let preview: ReminderPreview | null = null;
-  let marker = "";
+  // 2026-10-02 (複数スケジュールの段階 2): 1 つの日に複数のスケジュールの
+  // 予定があり得るので、試す日ごとに予定を全部集める。
+  type Candidate = { lead: number; preview: ReminderPreview; marker: string };
+  const candidates: Candidate[] = [];
   let lastReason = "対象の開催予定なし";
   for (const lead of reminderLeadDaysToTry(cadence, leadDays)) {
-    const candidate = await buildReminderPreview({ leadDays: lead });
-    if (!candidate) continue;
-    if (candidate.targets.length === 0) {
-      lastReason = "未入力者なし";
-      continue;
+    for (const p of await buildReminderPreviews({ leadDays: lead })) {
+      if (p.targets.length === 0) {
+        lastReason = "未入力者なし";
+        continue;
+      }
+      candidates.push({
+        lead,
+        preview: p,
+        marker: reminderDedupMarker(
+          cadence,
+          reminderSessionKey(p.rawDate, p.scheduleId),
+          todayKey,
+        ),
+      });
     }
-    const candidateMarker = reminderDedupMarker(
-      cadence,
-      candidate.rawDate,
-      todayKey,
-    );
-    if (input.respectDedup && lastSent === candidateMarker) {
-      lastReason = "送信済み";
-      continue;
-    }
-    preview = candidate;
-    marker = candidateMarker;
-    break;
   }
-  if (!preview) {
+  // 期限が遠い日から順に、まだ送っていない予定がある最初の日の予定をまとめて
+  // 1 通にする。印は「今の範囲の送信済み + 今回送るもの」(`pickReminderBatch`)。
+  const { picked, marker } = pickReminderBatch(
+    candidates,
+    reminderLeadDaysToTry(cadence, leadDays),
+    sentMarkers,
+    input.respectDedup,
+  );
+  if (picked.length === 0) {
+    if (candidates.length > 0) lastReason = "送信済み";
     return { ok: true, posted: 0, skipped: 1, reason: lastReason };
   }
 
@@ -422,10 +486,20 @@ export async function dispatchAttendanceReminder(input: {
     "";
   if (!channelId) return { ok: false, reason: "投稿先チャンネル ID 未設定" };
 
-  const content = await buildReminderMessage(preview);
-  const mentionIds = preview.targets
-    .map((t) => t.discordUserId)
-    .filter((id): id is string => id !== null);
+  const content = clampDiscordContent(
+    (await Promise.all(picked.map((c) => buildReminderMessage(c.preview)))).join(
+      "\n\n",
+    ),
+  );
+  const mentionIds = [
+    ...new Set(
+      picked.flatMap((c) =>
+        c.preview.targets
+          .map((t) => t.discordUserId)
+          .filter((id): id is string => id !== null),
+      ),
+    ),
+  ];
 
   const supabase = createSupabaseServiceRoleClient();
 

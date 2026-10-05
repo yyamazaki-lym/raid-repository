@@ -25,9 +25,14 @@
  *   {discord_relative_block} : ` ({discord_relative})` — 相対表記を括弧付きで、
  *                        解釈できないときは行ごと空 (括弧だけ残らない。
  *                        {note_block} と同じ「有無で出現/省略」型)
+ *   {schedule}       : スケジュール名 (2026-10-02、複数スケジュールの段階 2)。
+ *                      スケジュールが 1 つのときは空文字
+ *   {schedule_block} : `【スケジュール名】` (1 つのときは空文字)。テンプレートに
+ *                      どちらも無く、スケジュールが 2 つ以上あるときは、本文の
+ *                      先頭に `【スケジュール名】` の行が付く
  */
 export const NATIVE_DISCORD_DEFAULT_TEMPLATE = [
-  "{mention}本日の固定活動予定日です",
+  "{mention}{schedule_block}本日の固定活動予定日です",
   "",
   "📅 {date} ({day})",
   "🕘 {time_start} 〜 {time_end}{discord_relative_block}",

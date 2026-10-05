@@ -82,7 +82,7 @@ export const ja = {
   // ---- native-schedules-section.tsx ----
   nativeSchedules: {
     description:
-      "予定と出欠はスケジュールごとに分かれます。メンバー・既定時刻・定期枠・凡例・日付メモは全スケジュール共通です。通知や催促、出席サマリーは「表示中」のスケジュールだけが対象になります。",
+      "予定と出欠はスケジュールごとに分かれます。メンバー・既定時刻・定期枠・凡例・日付メモは全スケジュール共通です。通知や催促、出席サマリーは全スケジュールの予定が対象で、通知と催促にはスケジュール名が入ります。",
     loading: "読み込み中…",
     activeBadge: "表示中",
     useThis: (name: string) => `${name} を表示する`,
@@ -343,6 +343,8 @@ export const ja = {
       "は括弧付きの相対表記で、日付が読めないときは括弧ごと省略されます。",
     placeholderNote3: "空欄で保存すると既定 (現行の hardcode フォーマット) に戻ります。",
     placeholderNote4: "は note 有無で自動的に行ごと出現/省略します。",
+    placeholderNoteSchedule:
+      "はスケジュールが 2 つ以上あるとき「【スケジュール名】」になります (1 つなら空)。どの予定の通知か分かるよう、テンプレートに {schedule} も {schedule_block} も無いときは先頭に自動で付きます。",
     fillDefaultTitle: "既定テンプレートを textarea に流し込む (保存はまだしない)",
     fillDefault: "既定を流し込む",
     clearTitle: "textarea をクリア (保存すると DB から削除、既定に戻る)",
@@ -888,7 +890,7 @@ export const en: SettingsMessages = {
   },
   nativeSchedules: {
     description:
-      "Sessions and attendance are per schedule. Members, default times, recurring days, the legend and date memos are shared across all schedules. Notifications, reminders and the attendance summary only cover the schedule in use.",
+      "Sessions and attendance are per schedule. Members, default times, recurring days, the legend and date memos are shared across all schedules. Notifications, reminders and the attendance summary cover every schedule, and notifications and reminders include the schedule name.",
     loading: "Loading…",
     activeBadge: "In use",
     useThis: (name) => `Show ${name}`,
@@ -1132,6 +1134,8 @@ export const en: SettingsMessages = {
       "is the relative form in parentheses; the parentheses are dropped when the date cannot be read.",
     placeholderNote3: "Saving an empty template restores the built-in default format.",
     placeholderNote4: "appears or disappears as a whole line depending on whether a note exists.",
+    placeholderNoteSchedule:
+      "becomes “【schedule name】” when there are two or more schedules (empty with one). If the template has neither {schedule} nor {schedule_block}, it is added at the top automatically so you can tell which schedule a notification is for.",
     fillDefaultTitle: "Fill the textarea with the default template (not saved yet)",
     fillDefault: "Fill with default",
     clearTitle: "Clear the textarea (saving removes it from the DB and restores the default)",

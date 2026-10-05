@@ -382,7 +382,9 @@ export function NativeDiscordNotifySection({
           <code className="ml-1 font-mono">{`{site_url}`}</code>,
           <code className="ml-1 font-mono">{`{discord_time}`}</code>,
           <code className="ml-1 font-mono">{`{discord_relative}`}</code>,
-          <code className="ml-1 font-mono">{`{discord_relative_block}`}</code>
+          <code className="ml-1 font-mono">{`{discord_relative_block}`}</code>,
+          <code className="ml-1 font-mono">{`{schedule}`}</code>,
+          <code className="ml-1 font-mono">{`{schedule_block}`}</code>
           <br />
           <code className="font-mono">{`{discord_time}`}</code> /
           <code className="ml-1 font-mono">{`{discord_relative}`}</code>{" "}
@@ -394,6 +396,10 @@ export function NativeDiscordNotifySection({
           {m.nativeDiscordNotify.placeholderNote3}
           <code className="font-mono">{`{note_block}`}</code>{" "}
           {m.nativeDiscordNotify.placeholderNote4}
+          <br />
+          {/* 2026-10-02 (複数スケジュールの段階 2) */}
+          <code className="font-mono">{`{schedule_block}`}</code>{" "}
+          {m.nativeDiscordNotify.placeholderNoteSchedule}
         </p>
         <div className="flex flex-wrap items-center gap-1.5">
           {canEdit && (

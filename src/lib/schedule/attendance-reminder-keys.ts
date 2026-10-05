@@ -124,12 +124,74 @@ export function reminderDedupMarker(
 }
 
 /**
+ * 催促の対象 1 件 (予定 1 つ) の識別子 (2026-10-02、複数スケジュールの段階 2)。
+ *
+ * スケジュールが 1 つのとき (`scheduleId` が null) は **従来どおり rawDate**
+ * にする — 印の形が変わらないので、更新した直後に同じ催促が二重に飛ばない。
+ * 2 つ以上のときは、別のスケジュールの同じ日時を区別するために ID を添える。
+ */
+export function reminderSessionKey(
+  rawDate: string,
+  scheduleId: string | null,
+): string {
+  return scheduleId ? `${rawDate}@${scheduleId}` : rawDate;
+}
+
+/**
+ * 送った予定の組の印 (2026-10-02)。予定ごとの印 (`reminderDedupMarker`) を
+ * 重複を除いて並べ替え、改行でつなぐ。並びを固定するので、同時に動いた
+ * 2 つの実行は同じ文字列を作る (`claimMarker` は同じ印を 2 回取らない)。
+ */
+export function joinReminderMarkers(markers: readonly string[]): string {
+  return [...new Set(markers.filter((m) => m.length > 0))].sort().join("\n");
+}
+
+/**
+ * 1 回の実行で送る予定を選び、送った後に保存する印を組み立てる (2026-10-02)。
+ *
+ * - `leadOrder` (期限が遠い順) に見て、まだ送っていない予定がある最初の日を
+ *   選び、**その日の未送信の予定をまとめて** 返す (1 回の実行で 1 通)
+ * - 印 = 今の範囲 (`candidates`) にある予定のうち送信済みのもの + 今回送るもの。
+ *   範囲から外れた古い印は落ちる。以前は「最後に送った 1 件」だけを覚えて
+ *   いたので、2 つの日に未入力があると毎時 2 つの催促を交互に送り直していた
+ * - `respectDedup` が false (手動の「今すぐ送る」) は送信済みでも選ぶ
+ */
+export function pickReminderBatch<T extends { lead: number; marker: string }>(
+  candidates: readonly T[],
+  leadOrder: readonly number[],
+  sent: ReadonlySet<string>,
+  respectDedup: boolean,
+): { picked: T[]; marker: string } {
+  let picked: T[] = [];
+  for (const lead of leadOrder) {
+    const unsent = candidates.filter(
+      (c) => c.lead === lead && !(respectDedup && sent.has(c.marker)),
+    );
+    if (unsent.length > 0) {
+      picked = unsent;
+      break;
+    }
+  }
+  const marker = joinReminderMarkers([
+    ...candidates.filter((c) => sent.has(c.marker)).map((c) => c.marker),
+    ...picked.map((c) => c.marker),
+  ]);
+  return { picked, marker };
+}
+
+/** 保存されている印を予定ごとの印に戻す。以前の 1 件だけの印もそのまま 1 件になる。 */
+export function parseReminderMarkers(stored: string | null | undefined): string[] {
+  return (stored ?? "").split("\n").filter((m) => m.length > 0);
+}
+
+/**
  * 既定テンプレート。`{mentions}` は未入力者のメンション列、`{names}` は
  * 表示名だけの列、`{date}` `{day}` `{time_start}` `{time_end}` は対象日、
- * `{site_url}` は portal の URL。
+ * `{site_url}` は portal の URL。`{schedule_block}` はスケジュールが 2 つ以上
+ * あるときだけ `【スケジュール名】` (2026-10-02)。
  */
 export const REMINDER_DEFAULT_TEMPLATE = `{mentions}
-⏰ {date} ({day}) の出欠が未入力です
+⏰ {schedule_block}{date} ({day}) の出欠が未入力です
 
 🕘 {time_start} 〜 {time_end}
 {site_url}`;

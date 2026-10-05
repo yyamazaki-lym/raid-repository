@@ -59,7 +59,8 @@ export function AttendanceReminderSection({
   const [settings, setSettings] = useState<AttendanceReminderSettings | null>(
     null,
   );
-  const [preview, setPreview] = useState<ReminderPreview | null>(null);
+  // 2026-10-02: 対象日の予定が全スケジュール分になったので予定ごとに持つ。
+  const [previews, setPreviews] = useState<ReminderPreview[]>([]);
   const [previewChecked, setPreviewChecked] = useState(false);
   const [previewing, startPreview] = useTransition();
   const [sending, startSend] = useTransition();
@@ -185,10 +186,10 @@ export function AttendanceReminderSection({
       setPreviewChecked(true);
       if (!r.ok) {
         toast.error(r.reason);
-        setPreview(null);
+        setPreviews([]);
         return;
       }
-      setPreview(r.preview);
+      setPreviews(r.previews);
     });
   };
 
@@ -464,12 +465,22 @@ export function AttendanceReminderSection({
 
       {previewChecked && (
         <div className="rounded-sm border border-border/40 bg-secondary/20 px-2.5 py-1.5 text-[11px] leading-relaxed">
-          {!preview ? (
+          {previews.length === 0 ? (
             <p className="text-muted-foreground">
               {m.attendanceReminder.previewEmpty(leadDraft)}
             </p>
           ) : (
-            <>
+            previews.map((preview, pi) => (
+            <div
+              key={`${preview.scheduleId ?? ""}|${preview.rawDate}`}
+              className={pi > 0 ? "mt-1.5 border-t border-border/30 pt-1.5" : undefined}
+            >
+              {/* 2026-10-02: スケジュールが 2 つ以上あるときだけ名前が入る。 */}
+              {preview.scheduleName && (
+                <p className="font-medium text-foreground/90">
+                  【{preview.scheduleName}】
+                </p>
+              )}
               <p>
                 <strong>{preview.rawDate}</strong> ({preview.dayOfWeek}){" "}
                 {m.attendanceReminder.previewAnswered(
@@ -514,7 +525,8 @@ export function AttendanceReminderSection({
                   )}
                 </p>
               )}
-            </>
+            </div>
+            ))
           )}
         </div>
       )}
