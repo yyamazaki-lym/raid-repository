@@ -54,6 +54,14 @@ export const REMINDER_LAST_SENT_KEY = "attendance_reminder_last_sent_date";
 /** 送信本文テンプレート (空なら既定フォーマット)。 */
 export const REMINDER_TEMPLATE_KEY = "attendance_reminder_template";
 
+/**
+ * 催促に回答ボタンを付けるか (W-21、2026-10-05)。'true' / 'false'、既定 false。
+ * 付くのは自前作成式の予定だけで、さらにサーバーに `DISCORD_PUBLIC_KEY` が
+ * あるときだけ (Endpoint を用意していないのにボタンを出すと、押しても
+ * Discord が「インタラクションに失敗しました」を出すだけになる)。
+ */
+export const REMINDER_BUTTONS_KEY = "attendance_reminder_buttons_enabled";
+
 export const REMINDER_DEFAULT_HOUR = 21;
 export const REMINDER_DEFAULT_LEAD_DAYS = 1;
 

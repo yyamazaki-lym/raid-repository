@@ -77,6 +77,8 @@ const BASELINE = [
   // ── C. Discord に送る文 ─────────────────────────────────────────────
   ["src/lib/logs-notify.ts", 6, "C", "練習ログのイベント通知。送信先は日本語コミュニティの Discord"],
   ["src/lib/logs-weekly-summary.ts", 27, "C", "練習ログの週のまとめ (C-4)。Discord 投稿は日本語固定の運用 (cron-status.ts と同じ)。設定のプレビューも同じ文面を見せる"],
+  ["src/app/api/discord/interactions/route.ts", 3, "C", "Discord の回答ボタン (W-21) を押した本人への返事。Discord 投稿は日本語固定の運用"],
+  ["src/lib/discord-interactions.ts", 1, "A", "出欠の記号 '〇' (○ の異体)。ボタンの色を決める突き合わせ"],
   ["src/lib/schedule/attendance-reminder-keys.ts", 1, "C", "出欠催促テンプレの既定文 (管理者が編集可能)"],
   ["src/lib/schedule/native-discord-template.ts", 1, "C", "活動予定通知テンプレの既定文 (管理者が編集可能)"],
 

@@ -11,6 +11,7 @@ import {
   type ReminderPreview,
 } from "./attendance-reminder";
 import {
+  REMINDER_BUTTONS_KEY,
   REMINDER_CHANNEL_KEY,
   REMINDER_ENABLED_KEY,
   REMINDER_EXCLUDED_KEY,
@@ -52,6 +53,16 @@ export async function setAttendanceReminderEnabledAction(
   enabled: boolean,
 ): Promise<WriteResult> {
   return saveSetting(REMINDER_ENABLED_KEY, enabled ? "true" : "false");
+}
+
+/**
+ * 回答ボタン (W-21、2026-10-05)。ON でも、サーバーに DISCORD_PUBLIC_KEY が無い
+ * 間・同期式の間は付かない (`reminderButtons`)。
+ */
+export async function setAttendanceReminderButtonsAction(
+  enabled: boolean,
+): Promise<WriteResult> {
+  return saveSetting(REMINDER_BUTTONS_KEY, enabled ? "true" : "false");
 }
 
 export async function setAttendanceReminderChannelAction(
@@ -154,6 +165,10 @@ export type AttendanceReminderSettings = {
    * 取得できないときは空 = 手入力にフォールバック。
    */
   memberNames: string[];
+  /** W-21 (2026-10-05): 回答ボタンを付けるか。 */
+  buttonsEnabled: boolean;
+  /** サーバーに DISCORD_PUBLIC_KEY があるか。 */
+  buttonsReady: boolean;
 };
 
 /**

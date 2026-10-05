@@ -42,6 +42,10 @@ const PUBLIC_PATHS = new Set<string>([
   // login redirect から除外し、認証は route 内の CRON_SECRET (Bearer) で
   // 完結させる (/api/cron/ と同じパターン)。
   "/api/fflogs/scrape-proxy",
+  // 2026-10-05 (W-21): Discord の Interactions Endpoint (出欠の回答ボタン)。
+  // 呼ぶのは Discord のサーバーで cookie を持たない。認証は route 内の
+  // Ed25519 署名の検証 (DISCORD_PUBLIC_KEY、未設定なら 401) で完結させる。
+  "/api/discord/interactions",
   // 2.9 (2026-07-22): cold start スプラッシュ SW 用の静的アセット。
   // matcher は .js / .html を除外していないため proxy を通り、未追加だと
   // 未ログイン時 (および SW install 時の fetch) に /login へリダイレクト
@@ -123,6 +127,16 @@ const RATE_LIMIT_RULES: RateLimitRule[] = [
   {
     scope: "api-fflogs-scrape-proxy",
     match: (p) => p === "/api/fflogs/scrape-proxy",
+    limit: 60,
+    windowMs: 60_000,
+  },
+  // 2026-10-05 (W-21): Discord の Interactions Endpoint。署名の無い連打を
+  // 署名の検証より前で抑える。正規の要求は Discord のサーバーから来るので
+  // 送り元は少数の IP にまとまる — 固定の全員 (8〜10 人) が同時に押しても
+  // 収まるよう、cron 系より広く取る。
+  {
+    scope: "api-discord-interactions",
+    match: (p) => p === "/api/discord/interactions",
     limit: 60,
     windowMs: 60_000,
   },

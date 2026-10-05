@@ -7,6 +7,14 @@ import { fetchAppSetting } from "@/lib/supabase/app-settings";
 import { getScheduleSourceMode } from "@/lib/schedule/source-mode";
 import { fetchScheduleRaw } from "@/lib/schedule/next-session";
 import { claimMarker, type MarkerClaimOps } from "@/lib/schedule/marker-claim";
+import { parseChoiceValues } from "@/lib/schedule/native-fetch";
+import { NATIVE_CHOICE_VALUES_KEY } from "@/lib/schedule/settings-keys";
+import {
+  attendanceButtonChoices,
+  attendanceComponents,
+  sessionButtonLabel,
+  type ActionRow,
+} from "@/lib/discord-interactions";
 import {
   DISCORD_ID_RE,
   getJstHour,
@@ -22,6 +30,7 @@ import {
   type ReminderTarget,
 } from "@/lib/schedule/attendance-reminder-core";
 import {
+  REMINDER_BUTTONS_KEY,
   REMINDER_CHANNEL_KEY,
   REMINDER_DEFAULT_HOUR,
   REMINDER_DEFAULT_LEAD_DAYS,
@@ -92,6 +101,11 @@ export type ReminderPreview = {
    */
   scheduleId: string | null;
   scheduleName: string | null;
+  /**
+   * 自前作成式の予定の ID (W-21、2026-10-05)。回答ボタンの宛先に使う。
+   * 同期式では null (外部シートの出欠はポータルから書けないのでボタンを付けない)。
+   */
+  sessionId: string | null;
 };
 
 export type ReminderResult =
@@ -114,6 +128,10 @@ export async function fetchAttendanceReminderSettings(): Promise<{
   excluded: string[];
   template: string;
   memberNames: string[];
+  /** W-21 (2026-10-05): 回答ボタンを付けるか。既定 false。 */
+  buttonsEnabled: boolean;
+  /** サーバーに DISCORD_PUBLIC_KEY があるか (無ければ ON でもボタンは付かない)。 */
+  buttonsReady: boolean;
 }> {
   const [
     enabledRaw,
@@ -124,6 +142,7 @@ export async function fetchAttendanceReminderSettings(): Promise<{
     excludedRaw,
     templateRaw,
     cadenceRaw,
+    buttonsRaw,
   ] = await Promise.all([
     fetchAppSetting(REMINDER_ENABLED_KEY),
     fetchAppSetting(REMINDER_CHANNEL_KEY),
@@ -133,6 +152,7 @@ export async function fetchAttendanceReminderSettings(): Promise<{
     fetchAppSetting(REMINDER_EXCLUDED_KEY),
     fetchAppSetting(REMINDER_TEMPLATE_KEY),
     fetchAppSetting(REMINDER_CADENCE_KEY),
+    fetchAppSetting(REMINDER_BUTTONS_KEY),
   ]);
   return {
     enabled: enabledRaw === "true",
@@ -144,6 +164,8 @@ export async function fetchAttendanceReminderSettings(): Promise<{
     excluded: parseJsonStringArray(excludedRaw),
     template: templateRaw ?? "",
     memberNames: await fetchMemberNames(),
+    buttonsEnabled: buttonsRaw === "true",
+    buttonsReady: Boolean(process.env.DISCORD_PUBLIC_KEY?.trim()),
   };
 }
 
@@ -214,6 +236,7 @@ export async function buildReminderPreviews(opts?: {
     endTime: c.endTime,
     scheduleId: c.scheduleId,
     scheduleName: c.scheduleName,
+    sessionId: c.sessionId,
     ...selectReminderAudience({
       members: c.members,
       memberMap,
@@ -231,6 +254,8 @@ type Collected = {
   /** スケジュールが 2 つ以上あるときだけ入る (`ReminderPreview` と同じ)。 */
   scheduleId: string | null;
   scheduleName: string | null;
+  /** 自前作成式の予定の ID (`ReminderPreview` と同じ)。 */
+  sessionId: string | null;
 };
 
 
@@ -260,6 +285,7 @@ async function collectFromSync(targetDayKey: string): Promise<Collected[]> {
       // 同期式はスケジュールが 1 つ (表示中のシート) だけ。
       scheduleId: null,
       scheduleName: null,
+      sessionId: null,
     },
   ];
 }
@@ -368,6 +394,7 @@ async function collectFromNative(targetDayKey: string): Promise<Collected[]> {
       })),
       scheduleId: id,
       scheduleName: id ? (scheduleName.get(id) ?? null) : null,
+      sessionId: session.id,
     };
   });
 }
@@ -501,6 +528,8 @@ export async function dispatchAttendanceReminder(input: {
     ),
   ];
 
+  const components = await reminderButtons(picked.map((c) => c.preview));
+
   const supabase = createSupabaseServiceRoleClient();
 
   // C-4 (2026-10-01 監査): cron (respectDedup) は**印を先に取れた実行だけが
@@ -527,6 +556,7 @@ export async function dispatchAttendanceReminder(input: {
     channelId,
     content,
     userIds: mentionIds,
+    components,
   });
   if (!posted.ok) {
     if (input.respectDedup) {
@@ -566,6 +596,32 @@ export async function dispatchAttendanceReminder(input: {
   }
 
   return { ok: true, posted: 1, skipped: 0 };
+}
+
+/**
+ * 回答ボタン (W-21、2026-10-05)。設定が ON で、サーバーに `DISCORD_PUBLIC_KEY` が
+ * あり、自前作成式の予定 (`sessionId` がある) のときだけ付ける。どれかが欠けたら
+ * 空 = 従来どおりボタン無しで送る (ボタンが付かないことで催促が止まらないように)。
+ */
+async function reminderButtons(
+  previews: ReadonlyArray<ReminderPreview>,
+): Promise<ActionRow[]> {
+  if (!process.env.DISCORD_PUBLIC_KEY?.trim()) return [];
+  const [enabled, choicesCsv] = await Promise.all([
+    fetchAppSetting(REMINDER_BUTTONS_KEY),
+    fetchAppSetting(NATIVE_CHOICE_VALUES_KEY),
+  ]);
+  if (enabled !== "true") return [];
+  const sessions = previews.flatMap((p) =>
+    p.sessionId
+      ? [{ sessionId: p.sessionId, label: sessionButtonLabel(p.rawDate, p.scheduleName) }]
+      : [],
+  );
+  if (sessions.length === 0) return [];
+  return attendanceComponents(
+    sessions,
+    attendanceButtonChoices(parseChoiceValues(choicesCsv).values),
+  );
 }
 
 /**
@@ -617,6 +673,8 @@ async function postToDiscord(input: {
   channelId: string;
   content: string;
   userIds: string[];
+  /** 回答ボタン (W-21)。空なら付けない。 */
+  components: ActionRow[];
 }): Promise<{ ok: true } | { ok: false; reason: string }> {
   try {
     // 2026-10-01 監査 C-9: 429 は retry_after だけ待って 1 回だけ送り直す
@@ -635,6 +693,7 @@ async function postToDiscord(input: {
           // 催促の本体はメンションなので users だけ明示的に許可する
           // (@everyone / role は絶対に飛ばさない)。
           allowed_mentions: { parse: [], users: input.userIds.slice(0, 50) },
+          ...(input.components.length > 0 ? { components: input.components } : {}),
         }),
         timeoutMs: 15000,
       },

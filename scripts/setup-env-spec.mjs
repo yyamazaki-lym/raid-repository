@@ -53,6 +53,13 @@ function validateRoleIds(v) {
   return bad.length > 0 ? `ロール ID の形ではない値: ${bad.join(", ")}` : null;
 }
 
+/** Discord アプリの公開鍵は 64 桁の 16 進 (Ed25519 の 32 バイト)。空文字は許可。 */
+function validatePublicKey(v) {
+  if (v.trim() === "") return null;
+  if (!/^[0-9a-f]{64}$/i.test(v.trim())) return "公開鍵は 64 桁の 16 進数です";
+  return null;
+}
+
 /** 必須 5 つ。これが揃っていないとログインすら通らない。 */
 /** @type {EnvVar[]} */
 export const REQUIRED = [
@@ -106,6 +113,13 @@ export const OPTIONAL = [
     hint: "未設定だと**メンバー全員が編集できます**。幹部だけに絞るなら入れてください",
     where: "Discord → サーバー設定 → ロール → 右クリック → ロール ID をコピー",
     validate: validateRoleIds,
+  },
+  {
+    key: "DISCORD_PUBLIC_KEY",
+    label: "Discord アプリの公開鍵 (PUBLIC KEY)",
+    hint: "出欠の催促を Discord のボタンで回答できるようにするときだけ (W-21)。入れた後に Developer Portal で Interactions Endpoint URL を設定します。⚠ その Bot のボタン・スラッシュコマンドはすべてポータルに届くようになるので、ポータル専用の Bot で",
+    where: "Discord Developer Portal → アプリ → General Information → PUBLIC KEY",
+    validate: validatePublicKey,
   },
   {
     key: "CRON_SECRET",

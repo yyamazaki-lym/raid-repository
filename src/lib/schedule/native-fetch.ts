@@ -271,7 +271,12 @@ export async function fetchNativeSchedule(
   return { ok: true, data };
 }
 
-function parseChoiceValues(csv: string | null): {
+/**
+ * 出欠の選択肢 (`native_schedule_choice_values` の CSV、未設定なら既定)。
+ * 2026-10-05: Discord のボタンで回答する経路 (`discord-attendance.ts`) も同じ
+ * 選択肢を見るので export した。
+ */
+export function parseChoiceValues(csv: string | null): {
   values: string[];
   source: "edit-page" | "fallback-from-list";
 } {
