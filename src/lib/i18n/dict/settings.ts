@@ -428,13 +428,22 @@ export const ja = {
         ? "新しいレポートの取り込み"
         : kind === "bestUpdate"
           ? "ベスト到達の更新"
-          : "初討伐",
+          : kind === "weeklySummary"
+            ? "週のまとめ"
+            : "初討伐",
     hint: (kind: string): string =>
       kind === "newReport"
         ? "同期で新しいレポートが入ったときに件数を投稿します (最も頻度が高い通知です)"
         : kind === "bestUpdate"
           ? "到達フェーズが進んだとき、または同じフェーズで残 HP% が下がったときに投稿します"
-          : "そのコンテンツを初めて討伐したときに 1 回だけ投稿します",
+          : kind === "weeklySummary"
+            ? "火曜の朝 (04:00 の同期のあと) に、前の週 (練習日の火〜月) の練習量・最高到達・初突破・討伐をコンテンツごとに 1 通ずつ投稿します。練習の無かったコンテンツには送りません"
+            : "そのコンテンツを初めて討伐したときに 1 回だけ投稿します",
+    // 2026-10-05 (C-4): 週のまとめのプレビュー (送らない)。
+    weeklyPreview: "週のまとめをプレビュー (送りません)",
+    weeklyPreviewLoading: "作成中…",
+    weeklyPreviewWeek: (range: string): string => `${range} の週 (直近に終わった週)`,
+    weeklyPreviewEmpty: "この週は練習ログがありません (送るものはありません)",
     channelHint:
       "投稿先はスケジュール通知と同じ Discord チャンネルです (上の「Discord 通知」で設定したチャンネル)。メンションは付けません。",
     toastOn: (label: string) => `${label} の通知を ON にしました`,
@@ -1249,13 +1258,21 @@ export const en: SettingsMessages = {
         ? "New reports imported"
         : kind === "bestUpdate"
           ? "Best progress updated"
-          : "First kill",
+          : kind === "weeklySummary"
+            ? "Weekly summary"
+            : "First kill",
     hint: (kind) =>
       kind === "newReport"
         ? "Posts the count when a sync imports new reports (the most frequent notification)"
         : kind === "bestUpdate"
           ? "Posts when the reached phase advances, or when HP left drops within the same phase"
-          : "Posts once, the first time the content is killed",
+          : kind === "weeklySummary"
+            ? "On Tuesday morning (after the 04:00 sync), posts last week's practice (Tue–Mon practice days): volume, best progress, new floors / phases and kills — one message per content. Contents with no practice get nothing. The message is in Japanese"
+            : "Posts once, the first time the content is killed",
+    weeklyPreview: "Preview the weekly summary (does not post)",
+    weeklyPreviewLoading: "Building…",
+    weeklyPreviewWeek: (range) => `Week of ${range} (the latest finished week)`,
+    weeklyPreviewEmpty: "No practice logs that week (nothing to post)",
     channelHint:
       "Posts to the same Discord channel as the schedule notifications (set above). No mentions are used.",
     toastOn: (label) => `Turned on notifications for ${label}`,

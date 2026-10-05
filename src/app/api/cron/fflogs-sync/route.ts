@@ -5,7 +5,18 @@ import { syncFflogsFights } from "@/lib/server/fflogs-fights";
 import { assertCronAuth } from "@/lib/server/cron-auth";
 import { recordCronRun } from "@/lib/server/cron-status";
 import { fetchAppSetting } from "@/lib/supabase/app-settings";
-import { FFLOGS_SYNC_ROUTE_FETCH_BUDGET_MS } from "@/lib/fflogs-sync-budget";
+import {
+  FFLOGS_SYNC_ROUTE_FETCH_BUDGET_MS,
+  FFLOGS_SYNC_ROUTE_MAX_DURATION_SEC,
+} from "@/lib/fflogs-sync-budget";
+import { runWeeklyLogsSummary } from "@/lib/server/logs-weekly-summary";
+
+/**
+ * 週のまとめ (C-4、2026-10-05) が新しい読み取り・投稿を始めてよい期限
+ * (route 開始から)。maxDuration の 45s 手前 — 期限直前に始めた 1 カテゴリ
+ * (明細の読み取り + Discord への投稿 15s + 429 の待ち) を受ける余白。
+ */
+const WEEKLY_SUMMARY_TAIL_MS = 45_000;
 
 /**
  * FFLogs ⇔ 動画 / 確定スケジュール (sync + native) を auto link する
@@ -43,7 +54,8 @@ export async function GET(req: NextRequest) {
   // 共有する。段ごとに予算を数えると 240s + 120s で maxDuration (300s) を
   // 超え、wipe 後・再リンク前に kill され得た。内訳は fflogs-sync-budget.ts。
   // 認証より前に切るのは、ここからが関数の実行時間だから。
-  const deadlineAtMs = Date.now() + FFLOGS_SYNC_ROUTE_FETCH_BUDGET_MS;
+  const routeStartMs = Date.now();
+  const deadlineAtMs = routeStartMs + FFLOGS_SYNC_ROUTE_FETCH_BUDGET_MS;
 
   const denied = assertCronAuth(req, "cron/fflogs-sync");
   if (denied) return denied;
@@ -97,6 +109,24 @@ export async function GET(req: NextRequest) {
   if (!fights.ok) {
     console.warn("[cron/fflogs-sync] syncFflogsFights failed:", fights.reason);
   }
+
+  // 2026-10-05 (C-4): 週のまとめ。取り込みが最後まで済んだ回だけ送る
+  // (月曜の夜の練習が欠けたまとめを送らない)。送ってよい日は火〜木なので、
+  // 火曜に同期が途中で終わっても水・木の同期で送り直せる。
+  const syncComplete = fights.ok && !fights.truncated && !result.truncated;
+  const weeklySummary = syncComplete
+    ? await runWeeklyLogsSummary({
+        now: new Date(),
+        baseUrl: process.env.NEXT_PUBLIC_SITE_URL ?? null,
+        deadlineAtMs:
+          routeStartMs + FFLOGS_SYNC_ROUTE_MAX_DURATION_SEC * 1000 - WEEKLY_SUMMARY_TAIL_MS,
+      })
+    : ({ sent: false, skipped: "sync-incomplete" } as const);
+  if (weeklySummary.sent && weeklySummary.failed > 0) {
+    console.warn("[cron/fflogs-sync] weekly summary partly failed:", weeklySummary.reason);
+  } else if (!weeklySummary.sent && weeklySummary.skipped === "error") {
+    console.warn("[cron/fflogs-sync] weekly summary failed:", weeklySummary.reason);
+  }
   // 2026-10-01 監査 F-2: 期限切れで pull 取り込みを回した / 打ち切った回は
   // 「一部」、取り込み自体の失敗 (OAuth 未接続など) は「失敗」として記録する。
   await recordCronRun(
@@ -143,5 +173,7 @@ export async function GET(req: NextRequest) {
           pointsRemainingRatio: fights.pointsRemainingRatio ?? null,
         }
       : { skipped: fights.reason },
+    // C-4 (2026-10-05): 週のまとめの結果 (送った数 / 送らなかった理由)。
+    weeklySummary,
   });
 }

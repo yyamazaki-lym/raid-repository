@@ -123,11 +123,19 @@ try {
     Number(maxDuration),
     FFLOGS_SYNC_ROUTE_MAX_DURATION_SEC,
   );
+  // 2026-10-05: 週のまとめ (C-4) も route の開始時刻から期限を出すので、
+  // 開始時刻を `routeStartMs` に取ってから足す形も受ける (共有期限は 1 つのまま)。
   check(
     "route が共有期限を 1 つだけ切る",
-    (route.match(/Date\.now\(\) \+ FFLOGS_SYNC_ROUTE_FETCH_BUDGET_MS/g) ?? [])
+    (route.match(/(?:Date\.now\(\)|routeStartMs) \+ FFLOGS_SYNC_ROUTE_FETCH_BUDGET_MS/g) ?? [])
       .length,
     1,
+  );
+  check(
+    "共有期限の起点は route の開始時刻",
+    /const deadlineAtMs = Date\.now\(\) \+ FFLOGS_SYNC_ROUTE_FETCH_BUDGET_MS;/.test(route) ||
+      /const routeStartMs = Date\.now\(\);\s*const deadlineAtMs = routeStartMs \+ FFLOGS_SYNC_ROUTE_FETCH_BUDGET_MS;/.test(route),
+    true,
   );
   check(
     "リンク段に共有期限を渡す",

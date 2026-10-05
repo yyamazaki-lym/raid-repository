@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
-import { BellRing, RefreshCw } from "lucide-react";
+import { BellRing, Eye, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import {
   getLogsNotifySettingsAction,
+  previewWeeklyLogsSummaryAction,
   setLogsNotifyEnabledAction,
 } from "@/lib/server/logs-notify-actions";
 import { LOGS_NOTIFY_KINDS, type LogsNotifyKind } from "@/lib/logs-notify";
@@ -71,7 +72,14 @@ export function LogsNotifySection({
     newReport: false,
     bestUpdate: false,
     firstClear: false,
+    weeklySummary: false,
   });
+  /** 週のまとめのプレビュー (C-4、2026-10-05)。送らずに文面だけ見る。 */
+  const [preview, setPreview] = useState<{
+    range: string;
+    messages: Array<{ categoryName: string; content: string }>;
+  } | null>(null);
+  const [previewing, setPreviewing] = useState(false);
 
   useEffect(() => {
     if (!open || !canEdit || loaded) return;
@@ -122,6 +130,22 @@ export function LogsNotifySection({
   };
 
   const onCount = LOGS_NOTIFY_KINDS.filter((k) => enabled[k]).length;
+
+  const runPreview = async () => {
+    setPreviewing(true);
+    try {
+      const r = await previewWeeklyLogsSummaryAction();
+      if (!r.ok) {
+        toast.error(sr(r.reason));
+        return;
+      }
+      setPreview({ range: r.range, messages: r.messages });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e));
+    } finally {
+      setPreviewing(false);
+    }
+  };
 
   return (
     <CollapsibleSection
@@ -193,6 +217,44 @@ export function LogsNotifySection({
             />
           </label>
         ))}
+      </div>
+      {/* 2026-10-05 (C-4): 週のまとめは週 1 回なので、ON にする前に中身を
+          見られるようにする。文面を作るだけで、Discord にも送った印にも触らない。 */}
+      <div className="flex flex-col gap-2">
+        <div>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={previewing || !loaded}
+            onClick={() => void runPreview()}
+            className="gap-1.5 text-[11px] tracking-normal"
+          >
+            <Eye className="h-3 w-3" aria-hidden />
+            {previewing ? m.logsNotify.weeklyPreviewLoading : m.logsNotify.weeklyPreview}
+          </Button>
+        </div>
+        {preview ? (
+          <div className="flex flex-col gap-1.5">
+            <p className="text-[12px] text-muted-foreground">
+              {m.logsNotify.weeklyPreviewWeek(preview.range)}
+            </p>
+            {preview.messages.length === 0 ? (
+              <p className="text-[12px] text-muted-foreground/80">
+                {m.logsNotify.weeklyPreviewEmpty}
+              </p>
+            ) : (
+              preview.messages.map((x) => (
+                <pre
+                  key={x.categoryName}
+                  className="overflow-x-auto rounded-md border border-border/40 bg-secondary/15 px-3 py-2 font-sans text-[12px] leading-relaxed whitespace-pre-wrap break-words"
+                >
+                  {x.content}
+                </pre>
+              ))
+            )}
+          </div>
+        ) : null}
       </div>
       <p className="text-[12px] leading-relaxed text-muted-foreground/80">
         {m.logsNotify.channelHint}

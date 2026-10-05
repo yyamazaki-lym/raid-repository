@@ -29,8 +29,31 @@ export const LOGS_NOTIFY_KINDS = [
   "bestUpdate",
   /** 初討伐。 */
   "firstClear",
+  /**
+   * 週のまとめ (2026-10-05、C-4)。同期ごとのイベントではなく週 1 回
+   * (`logs-weekly-summary.ts`)。設定の並びと ON/OFF だけを共有する。
+   */
+  "weeklySummary",
 ] as const;
 export type LogsNotifyKind = (typeof LOGS_NOTIFY_KINDS)[number];
+
+/**
+ * 同期のたびに判定するイベントの種類 (`detectLogsEvents` が出すもの)。
+ * 週のまとめは含めない — 含めると、週のまとめだけ ON のときに同期のたびに
+ * 到達度の読み取りと状態の書き込みが走る。
+ */
+export const LOGS_EVENT_KINDS = [
+  "newReport",
+  "bestUpdate",
+  "firstClear",
+] as const satisfies ReadonlyArray<LogsNotifyKind>;
+
+const LOGS_NOTIFY_KEY_SUFFIX: Record<LogsNotifyKind, string> = {
+  newReport: "new_report",
+  bestUpdate: "best_update",
+  firstClear: "first_clear",
+  weeklySummary: "weekly_summary",
+};
 
 export function isLogsNotifyKind(v: unknown): v is LogsNotifyKind {
   return (
@@ -43,7 +66,7 @@ export function isLogsNotifyKind(v: unknown): v is LogsNotifyKind {
  * 値は `"true"` / `"false"` で、**未設定は false (OFF)**。
  */
 export function logsNotifyKey(kind: LogsNotifyKind): string {
-  return `logs_notify_${kind === "newReport" ? "new_report" : kind === "bestUpdate" ? "best_update" : "first_clear"}`;
+  return `logs_notify_${LOGS_NOTIFY_KEY_SUFFIX[kind]}`;
 }
 
 /** 未設定 / 不正値は OFF に倒す (通知は「明示的に ON」だけで飛ばす)。 */

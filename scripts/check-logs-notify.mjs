@@ -52,6 +52,7 @@ try {
   );
   const {
     LOGS_NOTIFY_KINDS,
+    LOGS_EVENT_KINDS,
     isLogsNotifyKind,
     logsNotifyKey,
     parseLogsNotifyEnabled,
@@ -60,12 +61,16 @@ try {
   } = await import(pathToFileURL(join(outDir, "logs-notify.js")).href);
 
   console.log("種類と設定キー");
-  check("種類は 3 つ", LOGS_NOTIFY_KINDS.length, 3);
+  // 2026-10-05 (C-4): 4 つ目に週のまとめ。同期ごとのイベントは 3 つのまま。
+  check("種類は 4 つ", LOGS_NOTIFY_KINDS.length, 4);
+  check("同期ごとのイベントは 3 つ (週のまとめを含めない)", [...LOGS_EVENT_KINDS], ["newReport", "bestUpdate", "firstClear"]);
   check("newReport は有効", isLogsNotifyKind("newReport"), true);
+  check("weeklySummary は有効", isLogsNotifyKind("weeklySummary"), true);
   check("未知の種類は無効", isLogsNotifyKind("macroUpdate"), false);
   check("設定キー (newReport)", logsNotifyKey("newReport"), "logs_notify_new_report");
   check("設定キー (bestUpdate)", logsNotifyKey("bestUpdate"), "logs_notify_best_update");
   check("設定キー (firstClear)", logsNotifyKey("firstClear"), "logs_notify_first_clear");
+  check("設定キー (weeklySummary)", logsNotifyKey("weeklySummary"), "logs_notify_weekly_summary");
 
   console.log("\n通知は既定 OFF");
   check("未設定は OFF", parseLogsNotifyEnabled(null), false);
