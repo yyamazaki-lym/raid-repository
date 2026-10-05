@@ -94,6 +94,7 @@ check("フック: 表を max-content にして測り、元に戻す", /table\.st
 check("フック: 測る間は最低幅を 0、名前を既定の上限にする", /setProperty\(MEMBER_COL_MIN_VAR, "0px"\)[\s\S]*setProperty\(MEMBER_NAME_MAX_VAR, `\$\{MEMBER_NAME_PREFERRED_PX\}px`\)/.test(hook), true);
 check("フック: 決めた 2 つの値を入れる", /setProperty\(MEMBER_COL_MIN_VAR, `\$\{fit\.minWidth\}px`\)/.test(hook) && /setProperty\(MEMBER_NAME_MAX_VAR, `\$\{fit\.nameMax\}px`\)/.test(hook), true);
 check("フック: 付いた時点でその場で 1 回測る", /\n    measure\(\);\n/.test(hook), true);
+check("フック: フォントの読み込みが終わったら測り直す (外れた後は測らない)", /document\.fonts\?\.ready\.then\(\(\) => \{\s*if \(!disposed\) measure\(\);/.test(hook) && /disposed = true;/.test(hook), true);
 check("フック: 入れ物と表の大きさの変化で測り直す", /ro\.observe\(wrap\);[\s\S]*ro\.observe\(table\)/.test(hook), true);
 check("フック: 非表示 (幅 0) は測らない", /wrap\.clientWidth === 0\) return;/.test(hook), true);
 check("フック: 小数の丸めで 1px はみ出さないよう 1px 余らせる", /available: wrap\.clientWidth - 1,/.test(hook), true);
