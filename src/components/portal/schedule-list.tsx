@@ -11,6 +11,7 @@ import { EmptyState } from "@/components/portal/empty-state";
 import { CommentPopover } from "./comment-popover-lazy";
 import { ScheduleEditFrameDialog } from "./schedule-edit-frame-dialog-lazy";
 import { SessionMemoDot } from "./schedule/session-memo-dot";
+import { useFitMemberColumns } from "./schedule/use-fit-member-columns";
 import { AttendanceSummaryChip } from "@/components/portal/schedule/attendance-summary-chip";
 import { FrameDeviationBadge } from "@/components/portal/native-schedule/frame-deviation-badge";
 import { ScheduleAgendaList } from "@/components/portal/schedule/agenda-list";
@@ -195,6 +196,9 @@ export function ScheduleList({
 }: Props) {
   const m = useMessages();
   const nowMs = useHydrationSafeNow(renderedAtMs);
+  // 2026-10-05: 予定の表と過去の表で、メンバー列を入れ物に収まるよう詰める。
+  const fitUpcomingRef = useFitMemberColumns<HTMLDivElement>();
+  const fitPastRef = useFitMemberColumns<HTMLDivElement>();
   // W-15 (2026-09-08): 定期枠の曜日。未設定なら空配列 =「例外」の概念なし。
   const frameDows = parseRecurringDows(recurringDows);
   // TODO #11 phase 7: 全 memo を 1 channel で監視し、各 SessionRow には
@@ -509,7 +513,10 @@ export function ScheduleList({
             optionalByRawDate={nativeMeta?.optionalByRawDate}
           />
         </div>
-        <div className="hidden overflow-x-auto md:block">
+        {/* 2026-10-05: メンバー列の最低幅を入れ物に収まるよう自動で詰める
+            (`useFitMemberColumns`)。数 px のはみ出しで横スクロールバーが
+            出ていた (実機報告)。 */}
+        <div ref={fitUpcomingRef} className="hidden overflow-x-auto md:block">
           <table className="w-full min-w-[640px] border-collapse text-left text-sm">
             {tableHead(true)}
             <tbody>
@@ -597,7 +604,7 @@ export function ScheduleList({
           <p className="border-b border-border/40 px-3 py-1.5 text-[11px] text-muted-foreground md:hidden">
             {m.schedule.pastTableScrollHint}
           </p>
-          <div className="overflow-x-auto">
+          <div ref={fitPastRef} className="overflow-x-auto">
             <table className="w-full min-w-[640px] border-collapse text-left text-sm">
               {tableHead(false, false)}
               <tbody>
@@ -756,18 +763,22 @@ function UserHeaderCell({
   // 非 clickable のときは underline / hover を消して「リンク風」の見た目を
   // 落とす — 押せそうに見えてしまうのを避ける。
   const nameClass = clickable
-    ? "inline-block max-w-[7rem] truncate align-bottom underline decoration-dotted decoration-[var(--neon-cyan)]/60 underline-offset-4 transition-colors hover:decoration-[var(--neon-cyan)] hover:text-[var(--neon-cyan)]"
-    : "inline-block max-w-[7rem] truncate align-bottom";
+    ? "inline-block max-w-[var(--member-name-max,7rem)] truncate align-bottom underline decoration-dotted decoration-[var(--neon-cyan)]/60 underline-offset-4 transition-colors hover:decoration-[var(--neon-cyan)] hover:text-[var(--neon-cyan)]"
+    : "inline-block max-w-[var(--member-name-max,7rem)] truncate align-bottom";
 
   // 2.1 (2026-05-12) PR3-D follow-up #2: native では名前 click も popover open
   // のトリガーにする (要望「名前・アイコンクリックでも開くようにして欲しい」)。
   // sync 経路では従来通り character-sheets 編集 iframe を開く。
+  // 2026-10-05: 名前の要素には `data-member-name` を付ける。表が入れ物に
+  // 収まらないとき `useFitMemberColumns` が名前の幅を測り、省略の上限
+  // (`--member-name-max`、未設定は 7rem) を下げる。
   const nameNode = nativeCommentTarget ? (
     <button
       type="button"
+      data-member-name=""
       onClick={() => setNativeCommentOpen(true)}
       className={
-        "inline-block max-w-[7rem] truncate align-bottom underline decoration-dotted decoration-[var(--neon-cyan)]/60 underline-offset-4 transition-colors hover:decoration-[var(--neon-cyan)] hover:text-[var(--neon-cyan)]"
+        "inline-block max-w-[var(--member-name-max,7rem)] truncate align-bottom underline decoration-dotted decoration-[var(--neon-cyan)]/60 underline-offset-4 transition-colors hover:decoration-[var(--neon-cyan)] hover:text-[var(--neon-cyan)]"
       }
       title={
         isOwnUser
@@ -780,6 +791,7 @@ function UserHeaderCell({
   ) : clickable && editUrl ? (
     <button
       type="button"
+      data-member-name=""
       onClick={() =>
         onOpenEditFrame(editUrl, m.schedule.editAttendanceDialog(user.name))
       }
@@ -789,7 +801,7 @@ function UserHeaderCell({
       {user.name}
     </button>
   ) : (
-    <span className={nameClass} title={user.name}>
+    <span data-member-name="" className={nameClass} title={user.name}>
       {user.name}
     </span>
   );
@@ -801,7 +813,10 @@ function UserHeaderCell({
       // to the 日程 column. min-w-[5rem] still stabilizes per-column
       // width; max-w on the name (above) caps long names so they
       // ellipsize instead of pushing other columns offscreen.
-      className="min-w-[5rem] px-1.5 py-2 text-center font-mono whitespace-nowrap"
+      // 2026-10-05: 最低幅は入れ物に収まる範囲で自動で詰める
+      // (`useFitMemberColumns` が `--member-col-min` を入れる。未設定は 5rem)。
+      data-member-col=""
+      className="min-w-[var(--member-col-min,5rem)] px-1.5 py-2 text-center font-mono whitespace-nowrap"
     >
       <span className="inline-flex items-center gap-1">
         {nameNode}
