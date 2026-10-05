@@ -6,8 +6,11 @@
  */
 "use client";
 
-import { useState } from "react";
-import { ChevronDown, Plus, Skull, Trash2, Trophy, Video } from "lucide-react";
+import { Fragment, useState } from "react";
+import { ChevronDown, ListOrdered, Plus, Skull, Trash2, Trophy, Video } from "lucide-react";
+import { toast } from "sonner";
+import { buildYoutubeChapters, chapterPullLabel } from "@/lib/video-chapters";
+import { parseYouTubeId } from "@/lib/youtube";
 import { wipeCauseCounts } from "@/lib/fflogs-fight-detail";
 import { sessionSummary } from "@/lib/fflogs-session";
 import { SessionSummaryRow } from "./session-summary-row";
@@ -72,6 +75,36 @@ export function DayRow({
 }) {
   const m = useMessages();
   const locale = useLocale();
+
+  /**
+   * 2026-10-05 (F-6 の C-2): その動画の YouTube のチャプターをコピーする。
+   * そのレポートの pull を日の行と同じ番号で並べ、動画の時刻は pull 行の
+   * リンクと同じ式で出す (`src/lib/video-chapters.ts`)。
+   */
+  const copyChapters = async (code: string, video: ReportVideoLink) => {
+    const first = firstPullStartByReport.get(code);
+    const pulls = day.fights
+      .map((f, i) => ({ f, index: i + 1 }))
+      .filter((x) => x.f.reportCode === code)
+      .map(({ f, index }) => ({
+        startMs: f.startMs,
+        label: chapterPullLabel(f, index, floors, showPhase, locale),
+      }));
+    const lines =
+      first === undefined
+        ? null
+        : buildYoutubeChapters(pulls, video.offsetSeconds, first, m.logs.chaptersIntro);
+    if (!lines) {
+      toast.error(m.logs.chaptersNone);
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(lines.join("\n"));
+      toast.success(m.logs.chaptersCopied(lines.length));
+    } catch {
+      toast.error(m.logs.chaptersCopyFailed);
+    }
+  };
   const [open, setOpen] = useState(false);
   // jumpNonce の変化で開く。effect で setState するとカスケードレンダー
   // (react-hooks/set-state-in-effect) になるため、React 公式の
@@ -296,26 +329,45 @@ export function DayRow({
                     <span className="font-mono text-[12px] text-muted-foreground/70">
                       {code.slice(0, 6)}
                     </span>
-                    {links.map((v, i) => (
-                      <button
-                        key={v.id}
-                        type="button"
-                        onClick={() => onEditOffset(code, v.id)}
-                        className={
-                          "inline-flex items-center gap-1 rounded-sm border px-1.5 py-0.5 font-mono text-[11px] transition-colors " +
-                          (v.videoUrl
-                            ? "border-violet-400/45 bg-violet-400/10 text-violet-200 hover:bg-violet-400/20"
-                            : "border-border/50 text-muted-foreground hover:text-foreground")
-                        }
-                        title={m.logs.editVideoTitle}
-                      >
-                        <Video className="h-3 w-3 shrink-0" aria-hidden />
-                        {videoName(v, m.logs.videoNth(i + 1))}
-                        <span className="text-muted-foreground tabular-nums">
-                          {formatSignedOffset(v.offsetSeconds)}
-                        </span>
-                      </button>
-                    ))}
+                    {links.map((v, i) => {
+                      const name = videoName(v, m.logs.videoNth(i + 1));
+                      return (
+                        <Fragment key={v.id}>
+                          <button
+                            type="button"
+                            onClick={() => onEditOffset(code, v.id)}
+                            className={
+                              "inline-flex items-center gap-1 rounded-sm border px-1.5 py-0.5 font-mono text-[11px] transition-colors " +
+                              (v.videoUrl
+                                ? "border-violet-400/45 bg-violet-400/10 text-violet-200 hover:bg-violet-400/20"
+                                : "border-border/50 text-muted-foreground hover:text-foreground")
+                            }
+                            title={m.logs.editVideoTitle}
+                          >
+                            <Video className="h-3 w-3 shrink-0" aria-hidden />
+                            {name}
+                            <span className="text-muted-foreground tabular-nums">
+                              {formatSignedOffset(v.offsetSeconds)}
+                            </span>
+                          </button>
+                          {/* 2026-10-05 (F-6 の C-2): YouTube のチャプターをコピー。
+                              オフセットが動画ごとに違うので、YouTube の動画チップの
+                              すぐ右に 1 つずつ置く (どの動画のものか見て分かるように)。 */}
+                          {v.videoUrl && parseYouTubeId(v.videoUrl) && (
+                            <button
+                              type="button"
+                              onClick={() => void copyChapters(code, v)}
+                              title={m.logs.chaptersTitle(name)}
+                              aria-label={m.logs.chaptersTitle(name)}
+                              className="-ml-1 inline-flex items-center gap-1 rounded-sm border border-violet-400/30 px-1.5 py-0.5 font-mono text-[11px] text-violet-200/80 transition-colors hover:bg-violet-400/15"
+                            >
+                              <ListOrdered className="h-3 w-3 shrink-0" aria-hidden />
+                              {m.logs.chapters}
+                            </button>
+                          )}
+                        </Fragment>
+                      );
+                    })}
                     <button
                       type="button"
                       onClick={() => onEditOffset(code, null)}

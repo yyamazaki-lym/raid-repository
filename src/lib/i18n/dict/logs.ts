@@ -101,6 +101,15 @@ export const ja = {
     videoOffset: "動画オフセット",
     setVideoOffsetTitle: "この report の動画とオフセットを設定",
     editVideoTitle: "この動画の URL とオフセットを編集",
+    // 2026-10-05 (F-6 の C-2): YouTube のチャプター。
+    chapters: "チャプター",
+    chaptersTitle: (name: string): string =>
+      `${name} の YouTube チャプターをコピー (説明欄に貼るとチャプターになります)`,
+    chaptersIntro: "開始前",
+    chaptersNone:
+      "チャプターを作れません (動画に映っている pull が足りないか、オフセットが合っていません)",
+    chaptersCopied: (n: number): string => `チャプターをコピーしました (${n} 件)`,
+    chaptersCopyFailed: "コピーできませんでした (ブラウザがクリップボードを許可していません)",
     addVideo: "動画を追加",
     addVideoTitle: "この report にもう 1 本の動画を紐づける (オフセットは動画ごと)",
     videoNth: (n: number) => `動画 ${n}`,
@@ -596,6 +605,14 @@ export const en: LogsMessages = {
     videoOffset: "Video offset",
     setVideoOffsetTitle: "Set the video and offset for this report",
     editVideoTitle: "Edit this video's URL and offset",
+    chapters: "Chapters",
+    chaptersTitle: (name: string): string =>
+      `Copy YouTube chapters for ${name} (paste them into the description)`,
+    chaptersIntro: "Before the first pull",
+    chaptersNone:
+      "Cannot make chapters (too few pulls appear in the video, or the offset is off)",
+    chaptersCopied: (n: number): string => `Copied ${n} chapters`,
+    chaptersCopyFailed: "Could not copy (the browser did not allow clipboard access)",
     addVideo: "Add video",
     addVideoTitle:
       "Link another video to this report (each video keeps its own offset)",
