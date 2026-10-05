@@ -389,6 +389,11 @@ export const SERVER_TEXT_EN: ServerTextDictRaw = {
       "Could not load the progress",
     "進行モデルの指定が不正です":
       "Invalid progression model",
+    // 2026-10-05: データの取り込み (`data-import-actions.ts`)。
+    "取り込みの指定が不正です":
+      "Invalid import request",
+    "取り込めない表です":
+      "This table cannot be imported",
     // 2026-10-02: YouTube 再生リストの取り込み (`updateCategoryAction`)。
     "再生リストの指定が不正です":
       "Invalid playlist",
@@ -540,6 +545,10 @@ export const SERVER_TEXT_EN: ServerTextDictRaw = {
       "delete the content",
     "カテゴリ取得":
       "load the content",
+    "取り込みの確認":
+      "check the import",
+    "取り込み":
+      "import the data",
     // 2026-10-02: オフセットをタイトルの録画時刻から出す (`fetchVideoTitleAction`)。
     "動画のタイトル取得":
       "load the video title",

@@ -4,6 +4,7 @@ import { Download } from "lucide-react";
 import { EXPORT_PARTS } from "@/lib/data-export";
 import { useMessages } from "@/lib/i18n/client";
 import { CollapsibleSection } from "./collapsible-section";
+import { DataImportPanel } from "./data-import-panel";
 
 /**
  * データの書き出し (2026-10-01 監査 F-3)。admin のみ。
@@ -47,6 +48,8 @@ export function DataExportSection({ canEdit }: { canEdit: boolean }) {
       <p className="text-[12px] leading-relaxed text-muted-foreground/80">
         {m.dataExport.note}
       </p>
+      {/* 2026-10-05 (監査 F-3 の残り): 書き出したファイルからの取り込み直し。 */}
+      <DataImportPanel />
     </CollapsibleSection>
   );
 }
