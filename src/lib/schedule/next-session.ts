@@ -14,6 +14,7 @@
  * character-sheets 直接編集) は最大 60s lag。
  */
 
+import { unstable_rethrow } from "next/navigation";
 import {
   parseSchedule,
   attachUsersToSessions,
@@ -185,6 +186,8 @@ export async function fetchSchedule(): Promise<ScheduleFetchResult> {
     const merged = await mergeStoredPastSessions(result.data);
     return { ok: true, data: merged };
   } catch (err) {
+    // 2026-10-05: Next.js の合図は投げ直す (mergeStoredPastSessions の catch を参照)。
+    unstable_rethrow(err);
     console.warn("[schedule] merge error:", err);
     return result; // best-effort: live data alone is still useful
   }
@@ -216,7 +219,10 @@ async function mergeStoredPastSessions(
     const since = new Date();
     since.setUTCMonth(since.getUTCMonth() - PAST_MERGE_WINDOW_MONTHS);
     stored = await fetchStoredPastSessions({ sinceIso: since.toISOString() });
-  } catch {
+  } catch (e) {
+    // 2026-10-05: ビルド時の静的描画の試行で cookies() が投げる Next.js の合図
+    // (DYNAMIC_SERVER_USAGE) は握らずに投げ直す。DB の失敗だけを best-effort で吸う。
+    unstable_rethrow(e);
     return parsed; // best-effort merge — return raw on DB failure
   }
 

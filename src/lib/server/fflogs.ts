@@ -1,4 +1,5 @@
 import "server-only";
+import { unstable_rethrow } from "next/navigation";
 import {
   createClient,
   createSupabaseServiceRoleClient,
@@ -2527,6 +2528,8 @@ export async function fetchSessionLogsByDate(): Promise<
     }
     return out;
   } catch (e) {
+    // 2026-10-05: Next.js の合図は投げ直す (下の native 版の catch を参照)。
+    unstable_rethrow(e);
     console.warn("[fflogs] fetchSessionLogsByDate error:", e);
     return {};
   }
@@ -2576,6 +2579,11 @@ export async function fetchNativeSessionLogsByDate(): Promise<
     }
     return out;
   } catch (e) {
+    // 2026-10-05: ビルド時の静的描画の試行で cookies() が投げる Next.js の合図
+    // (DYNAMIC_SERVER_USAGE) を握りつぶさない。握るとビルドのログに
+    // 「fetchNativeSessionLogsByDate error: Dynamic server usage」が出る。
+    // 他の読み取り (categories など) と同じく投げ直す。
+    unstable_rethrow(e);
     console.warn("[fflogs] fetchNativeSessionLogsByDate error:", e);
     return {};
   }
