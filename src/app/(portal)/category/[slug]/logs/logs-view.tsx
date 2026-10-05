@@ -35,6 +35,7 @@ import {
   floorToneClass,
   formatFightDuration,
   formatPercentage,
+  isClearFight,
   observedPhaseCount,
   percentageToneClass,
   phaseTextToneClass,
@@ -320,7 +321,13 @@ export function LogsView({
   // 除いた pull を対象にする — 混ざった別コンテンツの kill が「初討伐」に
   // なると日付が狂う。明細が打ち切られている場合は「登録ログのうち」の
   // 実績になるので、バッジの title でそう明示している。
-  const badges = useMemo(() => teamBadges(tierFights), [tierFights]);
+  // 2026-10-05: 零式は最終層の kill だけを「討伐」と数える (サマリーのクリア数と
+  // 同じ `isClearFight`)。下の層の討伐が「初討伐」になっていた。絶は floors が
+  // null なので kill のまま。
+  const badges = useMemo(
+    () => teamBadges(tierFights, (f) => isClearFight(f, floors)),
+    [tierFights, floors],
+  );
   // バーを区切る区間数 = 層数 (零式) / フェーズ数 (絶)。
   const segmentCount = floors ? floors.floorCount : phaseCount;
   // 死亡数の列を確保するか (1 pull も取得できていないカテゴリでは幅を取らない)。

@@ -14,7 +14,7 @@
  *     (零式は層を行き来するので、ここが同じ値になったら数え方が壊れている)
  */
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -163,6 +163,29 @@ try {
     ["firstClear", "fastestClear"],
   );
 
+  // 2026-10-05: 零式は最終層の kill だけを「討伐」と数える (`isClear` を渡す)。
+  // 以前は kill をそのまま数え、1 層の討伐 (7/22) が「初討伐」になっていた。
+  const savageTier = [
+    { ...pull(0, 4, { kill: true, deaths: 0, date: "2026-07-22" }), floor: 1 },
+    { ...pull(10, 12, { date: "2026-09-02" }), floor: 4 },
+    { ...pull(30, 7, { kill: true, deaths: 2, date: "2026-09-03" }), floor: 4 },
+    { ...pull(50, 6, { kill: true, deaths: 1, date: "2026-09-04" }), floor: 4 },
+  ];
+  const finalOnly = teamBadges(savageTier, (f) => f.kill && f.floor === 4);
+  check(
+    "最終層だけ: 下の層のノーデス討伐はバッジにしない",
+    finalOnly.map((b) => b.kind),
+    ["firstClear", "fastestClear", "clears"],
+  );
+  check("最終層だけ: 初討伐は最終層を初めて倒した日", finalOnly[0].date, "2026-09-03");
+  check("最終層だけ: 最速は最終層の中で (6 分)", finalOnly[1].value, 6 * 60);
+  check("最終層だけ: 回数は最終層の討伐だけ", finalOnly[2].value, 2);
+  check(
+    "判定を渡さなければ kill をそのまま数える (絶など区間の無いコンテンツ)",
+    [teamBadges(savageTier)[0].date, teamBadges(savageTier).map((b) => b.kind).includes("flawless")],
+    ["2026-07-22", true],
+  );
+
   console.log("\nバッジの色");
   check(
     "初討伐は emerald",
@@ -264,6 +287,15 @@ try {
 } finally {
   rmSync(outDir, { recursive: true, force: true });
 }
+
+console.log("\n配線");
+const logsView = readFileSync("src/app/(portal)/category/[slug]/logs/logs-view.tsx", "utf8").replace(/\r\n/g, "\n");
+// 2026-10-05: 練習ログの画面はサマリーのクリア数と同じ判定 (最終層の kill) を渡す。
+check(
+  "練習ログ: バッジは最終層の kill で数える (isClearFight)",
+  /teamBadges\(tierFights, \(f\) => isClearFight\(f, floors\)\)/.test(logsView),
+  true,
+);
 
 console.log(failures === 0 ? "\nall checks passed" : `\n${failures} check(s) failed`);
 process.exit(failures === 0 ? 0 : 1);
