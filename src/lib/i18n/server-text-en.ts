@@ -447,6 +447,8 @@ export const SERVER_TEXT_EN: ServerTextDictRaw = {
       "Up to {0} tags per link",
     "プレビュー失敗: ${String(e)}":
       "Preview failed: {0}",
+    "pull の保存に失敗: ${error.message}":
+      "Failed to save pulls: {0}",
     "ユーザー「${username}」が見つかりません":
       "User \"{0}\" was not found",
     "一言は ${NOTE_MAX} 文字以内で入力してください":

@@ -675,7 +675,8 @@ export const ja = {
     cookieDeleteNow: "今すぐ削除",
     cronLabel: "日次自動連動 (cron)",
     cronOn: "ON (毎日 04:00 JST と、Discord 取り込みで動画が入った直後・日付に Logs を登録した直後に自動で連動を実行)",
-    cronOff: "OFF (cron は何もせず skip)",
+    cronOff:
+      "OFF — 毎朝 04:00 の同期も、Discord 取り込み・日付への Logs 登録の直後の自動連動も止まります (FFLogs の紐づけ・pull の取り込み・解析・通知・週のまとめが動きません)。手動では「FFLogs と動画を連動」→ 練習ログの「ログを同期」の順に押すと補えます",
     linkTitleNeedSource:
       "先に「FFLogs 表示名」を保存するか「OAuth 接続」を実行してください",
     linkTitle: "FFLogs レポートを動画 / 過去予定に自動紐づけ",
@@ -867,6 +868,10 @@ export const ja = {
     toastAlertOff: "失敗の通知を OFF にしました",
     badgeError: (n: number): string => `${n} 件失敗`,
     badgeStale: (n: number): string => `${n} 件止まっている?`,
+    // 2026-10-05: 設定で止めている自動処理 (既定 ON のもの)。
+    badgeDisabled: (n: number): string => `${n} 件停止中`,
+    disabledBySetting:
+      "設定で止まっています (FFLogs Sync の「日次自動連動 (cron)」が OFF)。FFLogs の紐づけ・pull の取り込み・解析・通知・週のまとめが動きません。",
     badgeOk: "正常",
     badgeEmpty: "記録なし",
     loadFailed: "読み込めませんでした。「読み直す」で取り直してください。",
@@ -1501,7 +1506,8 @@ export const en: SettingsMessages = {
     cookieDeleteNow: "Delete now",
     cronLabel: "Daily auto-sync (cron)",
     cronOn: "ON (runs daily at 04:00 JST, right after a Discord import adds videos, and right after Logs are registered on a date)",
-    cronOff: "OFF (cron skips)",
+    cronOff:
+      "OFF — stops the 04:00 daily sync and the automatic sync right after Discord imports and Logs registration (FFLogs linking, pull import, analysis, notifications and the weekly summary do not run). To catch up by hand, press “Link FFLogs to videos”, then “Sync logs” on the practice log",
     linkTitleNeedSource:
       "Save an FFLogs display name or connect via OAuth first",
     linkTitle: "Link FFLogs reports to videos / past sessions automatically",
@@ -1686,6 +1692,9 @@ export const en: SettingsMessages = {
     toastAlertOff: "Failure notifications turned off",
     badgeError: (n) => `${n} failing`,
     badgeStale: (n) => `${n} stopped?`,
+    badgeDisabled: (n) => `${n} turned off`,
+    disabledBySetting:
+      "Turned off in settings (“Daily auto-sync (cron)” under FFLogs Sync is OFF). FFLogs linking, pull import, analysis, notifications and the weekly summary do not run.",
     badgeOk: "OK",
     badgeEmpty: "No records",
     loadFailed: "Could not load. Press Reload to try again.",
