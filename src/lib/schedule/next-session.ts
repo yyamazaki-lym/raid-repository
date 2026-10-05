@@ -23,6 +23,7 @@ import {
 } from "./parse";
 import { getScheduleSourceUrl } from "./source-url";
 import { fetchStoredPastSessions } from "@/lib/server/discord-schedule";
+import { planPastSessionMerge } from "./past-session-dedup";
 import { isPublicHttpUrl } from "@/lib/url-safe";
 import { assertPublicResolution } from "@/lib/server/safe-fetch";
 
@@ -210,6 +211,12 @@ export async function fetchSchedule(): Promise<ScheduleFetchResult> {
  *   rawDate が一致した場合は char-sheets の attendance データを保持
  *   (出欠記号が live data の方が正確) しつつ「verified by import」と
  *   して past に残す。
+ *
+ * 2026-10-05: 「一致」を rawDate の完全一致から **同じ JST 暦日で時間帯が
+ * 重なる** に広げた (`planPastSessionMerge`)。開催時刻を後から変える
+ * (22:00 → 21:30) と、スナップショット / Discord 取り込みの古い時刻の行が
+ * 残り、同じ日が 2 行並んでいた (本番の 10/02・10/04)。まとめた rawDate は
+ * `rawDateAliases` で返し、Logs・メモの付け先を残した行に寄せる。
  */
 async function mergeStoredPastSessions(
   parsed: ParsedSchedule,
@@ -242,18 +249,37 @@ async function mergeStoredPastSessions(
     const dateMs = new Date(s.parsedDate).getTime();
     return Number.isFinite(dateMs) && dateMs <= nowMs;
   });
-  const verifiedRawDates = new Set(validStored.map((s) => s.rawDate));
+  const toCandidate = (x: {
+    rawDate: string;
+    startMs: number;
+    startTime: string;
+    endTime: string;
+  }) => ({ rawDate: x.rawDate, startMs: x.startMs, startTime: x.startTime, endTime: x.endTime });
+  // 同じ開催 (同じ JST 暦日 + 時間帯が重なる) を 1 つにまとめる計画。char-sheets
+  // の行が残す側の最優先 (未来の行も含めて渡す — 未来の行に重なる stored の
+  // スナップショット行を、表示に二重に足さないため)。
+  const plan = planPastSessionMerge({
+    sheet: parsed.sessions.map((s) =>
+      toCandidate({ ...s, startMs: s.date.getTime() }),
+    ),
+    stored: validStored.map((s) => ({
+      ...toCandidate({ ...s, startMs: new Date(s.parsedDate).getTime() }),
+      hasAttendances: s.attendances !== null && Object.keys(s.attendances).length > 0,
+      createdAt: s.createdAt,
+      source: s.source,
+    })),
+  });
 
-  // char-sheets セッション: 未来はそのまま、過去は verified だった
-  // ら DECISION 扱いで残す (出欠記号は char-sheets 側の方が新しい /
-  // 正確なので維持)、verified でなければ past から除外。
+  // char-sheets セッション: 未来はそのまま、過去は同じ開催の stored 行が
+  // あれば DECISION 扱いで残す (出欠記号は char-sheets 側の方が新しい /
+  // 正確なので維持)、無ければ past から除外。
   const charSheetsKept: ScheduleSession[] = [];
   for (const s of parsed.sessions) {
     if (s.date.getTime() >= cutoffMs) {
       charSheetsKept.push(s);
       continue;
     }
-    if (verifiedRawDates.has(s.rawDate)) {
+    if (plan.verifiedSheetRawDates.has(s.rawDate)) {
       // Live char-sheets row backed by Discord/snapshot evidence — keep
       // attendances but force DECISION (aged out rows lose dateStatus).
       charSheetsKept.push({ ...s, status: "DECISION" });
@@ -261,20 +287,15 @@ async function mergeStoredPastSessions(
     // それ以外の char-sheets 過去行は捨てる。
   }
 
-  // stored 行のうち char-sheets で既出ではないものを additions として
-  // 追加 (char-sheets と一致するものは上で残しているので skip)。
-  //
-  // 不変条件: validStored の past 判定 (dateMs <= nowMs) と charSheetsKept の
-  // past 判定 (date >= nowMs-6h) は 6h ずれているが、dedup キー
-  // charSheetsRawDates は cutoff に依存せず parsed.sessions 全件から構築し、
-  // rawDate 一致行を無条件 skip する。よって 2 つの cutoff がどうずれても
-  // 同一 rawDate の重複追加は起きない (cutoff は「past として残すか」だけを
-  // 決め、「重複するか」は rawDate 一致のみで決まる)。将来 cutoff を統一/変更
-  // する際もこの dedup が効いている限り重複しない。
-  const charSheetsRawDates = new Set(parsed.sessions.map((s) => s.rawDate));
+  // stored 行のうち char-sheets のどの行とも同じ開催でないものを、開催 1 つに
+  // つき 1 行だけ additions として足す (`plan.additions`)。char-sheets と同じ
+  // 開催の stored 行は、未来・過去の cutoff に関係なく足さない (旧実装の
+  // 「rawDate 一致行は無条件 skip」と同じ不変条件を、同じ開催の単位で保つ)。
+  const storedByRawDate = new Map(validStored.map((s) => [s.rawDate, s]));
   const additions: ScheduleSession[] = [];
-  for (const s of validStored) {
-    if (charSheetsRawDates.has(s.rawDate)) continue;
+  for (const c of plan.additions) {
+    const s = storedByRawDate.get(c.rawDate);
+    if (!s) continue;
 
     // Convert snapshot attendances (name-keyed) to userId-keyed for the
     // live render. Names not in the current user list are skipped.
@@ -307,6 +328,7 @@ async function mergeStoredPastSessions(
   return {
     ...parsed,
     sessions: [...charSheetsKept, ...additions],
+    rawDateAliases: plan.aliasOf,
   };
 }
 
