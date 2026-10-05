@@ -2107,6 +2107,57 @@ CREATE TRIGGER set_updated_at_fflogs_attendance_unresolved
   BEFORE UPDATE ON public.fflogs_attendance_unresolved
   FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
+-- ---- 6b-12. 練習ログの「日」を YYYY-MM-DD にそろえる (2026-10-05) -------
+-- 日程の Logs (schedule_past_session_logs / native_schedule_session_logs) から
+-- 付いたレポートは、日程の rawDate (`2026/10/04(日) 21:30~0:00`) がそのまま
+-- session_date に入っていた (それ以外は `2026-10-04`)。形が混ざると:
+--   - 出席の自動突合の保存が上の CHECK (20 文字以内) に当たって丸ごと失敗する
+--   - 取り直しの判定が日付を読めず、毎回取り直す
+--   - 練習ログの日が割れ、並び順・トレンド・週のまとめの範囲がずれる
+-- 書き込みはアプリ側 (`src/lib/session-date.ts`) でそろえたので、既存の行を
+-- ここで一度だけ書き換える。rawDate の先頭の日付は開催日なので意味は変わらない。
+--
+-- 冪等: rawDate の形 (`YYYY/M/D…`) の行だけを対象にし、書き換えた後は対象外になる。
+-- **日付として読めない行が 1 行あってもデプロイ全体を止めない**よう、行ごとに
+-- 例外を受けて飛ばす (NOTICE に残す。その行は読み取り側 `fightDate` が開始時刻の
+-- JST 暦日で補う)。
+DO $$
+DECLARE
+  t record;
+  r record;
+BEGIN
+  FOR t IN
+    SELECT * FROM (VALUES
+      ('fflogs_fights', 'session_date'),
+      ('fflogs_report_syncs', 'session_date'),
+      ('fflogs_attendance_actuals', 'session_date'),
+      ('fflogs_attendance_unresolved', 'last_session_date')
+    ) AS v(tbl, col)
+  LOOP
+    FOR r IN EXECUTE format(
+      'SELECT ctid AS row_id, %I AS val FROM public.%I WHERE %I ~ %L',
+      t.col, t.tbl, t.col, '^\d{4}/\d{1,2}/\d{1,2}'
+    )
+    LOOP
+      BEGIN
+        EXECUTE format('UPDATE public.%I SET %I = $1 WHERE ctid = $2', t.tbl, t.col)
+          USING to_char(
+                  make_date(
+                    (regexp_match(r.val, '^(\d{4})/(\d{1,2})/(\d{1,2})'))[1]::int,
+                    (regexp_match(r.val, '^(\d{4})/(\d{1,2})/(\d{1,2})'))[2]::int,
+                    (regexp_match(r.val, '^(\d{4})/(\d{1,2})/(\d{1,2})'))[3]::int
+                  ),
+                  'YYYY-MM-DD'
+                ),
+                r.row_id;
+      EXCEPTION WHEN others THEN
+        RAISE NOTICE '[session_date] %.% の % を書き換えられませんでした: %',
+          t.tbl, t.col, r.val, SQLERRM;
+      END;
+    END LOOP;
+  END LOOP;
+END $$;
+
 -- ---- 7. RLS — SELECT 解放 / 書き込みは admin (is_admin claim) のみ ----
 -- TODO #36 phase 1 (2.1, 2026-04-29): 書き込みを `TO authenticated` に。
 -- TODO #36 phase 2 (2.1, 2026-04-29): さらに `auth.jwt()->>is_admin` を

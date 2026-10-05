@@ -146,6 +146,14 @@ try {
     ].join("\n"),
   );
   check("その週に pull が無ければ送らない", summarizeWeek(savage, { start: "2026-09-08", end: "2026-09-14" }, floors, false, "ja"), null);
+  // 2026-10-05: 日程の Logs から付いたレポートは session_date が rawDate の形
+  // (`2026/09/29(火) 21:30~0:00`) で入っていた。fightDate がそろえるので週に入る。
+  const rawShaped = savage.map((f) => ({
+    ...f,
+    sessionDate: f.sessionDate.replace(/^(\d{4})-(\d{2})-(\d{2})$/, "$1/$2/$3(曜) 21:30~0:00"),
+  }));
+  const sRaw = summarizeWeek(rawShaped, W, floors, false, "ja");
+  check("日付が rawDate の形でも週に入る (同じ集計になる)", [sRaw?.days, sRaw?.pulls, sRaw?.firstClearDate], [2, 5, "2026-10-01"]);
 
   console.log("\n消化の時期 (前の週までに討伐済み)");
   const farm = [

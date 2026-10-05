@@ -9,6 +9,7 @@
  */
 
 import { jstYmdString } from "./jst-date";
+import { normalizeSessionDate } from "./session-date";
 import type { PhaseSpan, WipeSummary } from "./fflogs-fight-detail";
 import { PERF_TEXT, perfForRemainingPercent } from "./perf-tone";
 
@@ -297,9 +298,13 @@ export type ProgressSummary = {
   days: DaySummary[];
 };
 
-/** fight の属する日 (session_date があればそれ、無ければ JST 暦日)。 */
+/**
+ * fight の属する日 (session_date があればそれ、無ければ JST 暦日)。
+ * 2026-10-05: session_date は `YYYY-MM-DD` にそろえて読む (日程の rawDate の
+ * まま入っていた行への保険。書き込み側と schema の書き換えでそろえてある)。
+ */
 export function fightDate(f: FightRow): string {
-  return f.sessionDate ?? jstYmdString(new Date(f.startMs));
+  return normalizeSessionDate(f.sessionDate) ?? jstYmdString(new Date(f.startMs));
 }
 
 export function summarize(

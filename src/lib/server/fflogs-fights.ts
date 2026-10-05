@@ -32,6 +32,7 @@ import {
   type FflogsAutoRoute,
 } from "@/lib/fflogs-report-source";
 import { jstYmdString } from "@/lib/jst-date";
+import { normalizeSessionDate } from "@/lib/session-date";
 import { FFLOGS_FIGHTS_LEASE_KEY, withSyncLease } from "./sync-lease-db";
 import {
   reportLimitForBudget,
@@ -516,7 +517,9 @@ async function syncFflogsFightsUnlocked(opts?: {
     ledgerMap.set(row.report_code as string, {
       ok: (row.ok as boolean) ?? false,
       syncedAt: (row.synced_at as string | null) ?? null,
-      sessionDate: (row.session_date as string | null) ?? null,
+      // 2026-10-05: 書き換え前の台帳の rawDate も `YYYY-MM-DD` として読む
+      // (取り直しの判定 `isRecent` が日付を読めず、毎回取り直していた)。
+      sessionDate: normalizeSessionDate(row.session_date as string | null),
       categoryId: (row.category_id as string | null) ?? null,
       zoneName: (row.zone_name as string | null) ?? null,
       reason: (row.reason as string | null) ?? null,
@@ -1206,11 +1209,13 @@ async function collectReportRefs(db: Db): Promise<Map<string, ReportRef>> {
       null,
     );
   }
+  // 2026-10-05: 日程の rawDate (`2026/10/04(日) 21:30~0:00`) をそのまま
+  // session_date に入れていた。`YYYY-MM-DD` にそろえる (`session-date.ts`)。
   for (const r of pastLogs.data ?? []) {
     put(
       (r as { url: string | null }).url,
       null,
-      (r as { raw_date: string | null }).raw_date,
+      normalizeSessionDate((r as { raw_date: string | null }).raw_date),
     );
   }
   for (const r of nativeLogs.data ?? []) {
@@ -1225,7 +1230,7 @@ async function collectReportRefs(db: Db): Promise<Map<string, ReportRef>> {
     const rawDate = Array.isArray(joined)
       ? (joined[0]?.raw_date ?? null)
       : (joined?.raw_date ?? null);
-    put((r as { url: string | null }).url, null, rawDate);
+    put((r as { url: string | null }).url, null, normalizeSessionDate(rawDate));
   }
   return out;
 }
