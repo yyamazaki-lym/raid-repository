@@ -16,6 +16,9 @@
  * しない)。
  */
 import { parseYouTubeId } from "./youtube";
+import { isClearTitleForCategory } from "./clear-detection";
+import { titleDateToIso } from "./title-date";
+import { jstYmd } from "./jst-date";
 
 /** 1 コンテンツに登録できる再生リストの数 (DB の CHECK と同じ値)。 */
 export const YOUTUBE_PLAYLIST_MAX = 10;
@@ -218,6 +221,35 @@ export function mergeImportRunSummaries(
   const outcome = rank[a.outcome] >= rank[b.outcome] ? a.outcome : b.outcome;
   const reasons = [a.reason, b.reason].filter((r): r is string => !!r);
   return { outcome, reason: reasons.length > 0 ? reasons.join("; ") : null };
+}
+
+/**
+ * 入れた動画のうち、そのコンテンツの **クリア** に当たる最も早い日時
+ * (2026-10-02)。まだ空の `categories.first_clear_at` を埋めるのに使う。
+ *
+ * - クリアの判定は Discord 取り込み・「クリア再計算」と同じ
+ *   `isClearTitleForCategory` (零式は最終層 + クリアの語が要る)
+ * - 日時は「クリア再計算」(`backfillFirstClearFromExistingVideos`) と同じく
+ *   **タイトルの日付 (22:00 JST) を優先** し、無ければ動画の公開日時。
+ *   再生リストは公開日時がまとめて上げた日になりがち (実データで 11 本中
+ *   10 本が同じ日) なので、Discord 取り込み (メッセージの時刻だけ) ではなく
+ *   再計算の選び方に揃える。タイトルの年が無い形は公開日時の年 (JST) で補う
+ */
+export function earliestClearIso(
+  videos: ReadonlyArray<{ title: string; publishedAt: string }>,
+  categoryName: string,
+): string | null {
+  let best: string | null = null;
+  for (const v of videos) {
+    if (!isClearTitleForCategory(v.title, categoryName)) continue;
+    const t = Date.parse(v.publishedAt);
+    const year = Number.isFinite(t) ? jstYmd(new Date(t)).y : undefined;
+    const iso =
+      titleDateToIso(v.title, year) ??
+      (Number.isFinite(t) ? new Date(t).toISOString() : null);
+    if (iso !== null && (best === null || iso < best)) best = iso;
+  }
+  return best;
 }
 
 /**

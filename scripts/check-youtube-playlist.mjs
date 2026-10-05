@@ -69,6 +69,7 @@ try {
     selectNewCandidates,
     summarizePlaylistImportRun,
     mergeImportRunSummaries,
+    earliestClearIso,
   } = p;
 
   // 2026-10-02 に実測した再生リスト (限定公開 11 本)。
@@ -172,6 +173,34 @@ try {
     { outcome: "partial", reason: "p" },
   );
 
+  console.log("\n   初クリア日 (2026-10-02、「クリア再計算」と同じ選び方)");
+  const SAVAGE = "至天の座アルカディア零式：ヘビー級";
+  const ULT = "絶もうひとつの未来";
+  const v = (title, publishedAt) => ({ title, publishedAt });
+  check("録画時刻だけのタイトルはクリアに当たらない", earliestClearIso([v("2025 05 27 22 00 57", "2025-06-03T06:40:44Z")], SAVAGE), null);
+  check("零式は最終層 + クリアが要る (1層クリアは当たらない)", earliestClearIso([v("【2025 05 20】1層クリア", "2025-06-03T06:00:00Z")], SAVAGE), null);
+  check(
+    "タイトルの日付を優先 (22:00 JST = 13:00 UTC)",
+    earliestClearIso([v("【2025 05 27】4層クリア", "2025-06-03T06:40:44Z")], SAVAGE),
+    "2025-05-27T13:00:00.000Z",
+  );
+  check(
+    "タイトルに日付が無ければ公開日時",
+    earliestClearIso([v("4層クリア!", "2025-06-03T06:40:44Z")], SAVAGE),
+    "2025-06-03T06:40:44.000Z",
+  );
+  check(
+    "複数あれば最も早いもの (公開日時の順ではなく実際の日付で)",
+    earliestClearIso(
+      [v("【2025 05 30】4層クリア 2回目", "2025-06-01T00:00:00Z"), v("【2025 05 27】4層クリア", "2025-06-03T00:00:00Z")],
+      SAVAGE,
+    ),
+    "2025-05-27T13:00:00.000Z",
+  );
+  check("絶はクリアの語だけでよい", earliestClearIso([v("初クリア", "2025-06-03T06:40:44Z")], ULT), "2025-06-03T06:40:44.000Z");
+  check("公開日時が壊れていてタイトルにも日付が無ければ null", earliestClearIso([v("初クリア", "not a date")], ULT), null);
+  check("空", earliestClearIso([], SAVAGE), null);
+
   console.log("\n3. 配線");
   const schema = read("supabase/schema.sql");
   check("schema: 列を足す", /ADD COLUMN IF NOT EXISTS youtube_playlist_ids text\[\];/.test(schema), true);
@@ -216,6 +245,12 @@ try {
 
   const server = read("src/lib/server/youtube-playlist-import.ts");
   check("取り込み: source は youtube", /source: "youtube" as const,/.test(server), true);
+  check(
+    "取り込み: 初クリア日はまだ空のときだけ、IS NULL で守って入れる",
+    /if \(inserted > 0 && !cat\.firstClearAt\) \{\s*const clearIso = earliestClearIso\(fresh, cat\.name\);/.test(server) &&
+      /\.update\(\{ first_clear_at: clearIso \}\)\s*\.eq\("id", cat\.id\)\s*\.is\("first_clear_at", null\);/.test(server),
+    true,
+  );
   check("取り込み: 例外の理由は種類だけ (URL を含む message を出さない)", /e instanceof Error \? e\.name : "fetch failed"/.test(server), true);
   check("取り込み: 理由に apiKey / URL を埋め込まない", /reason: [^\n]*(apiKey|pathAndQuery|API_BASE)/.test(server), false);
   check("取り込み: DB の値もクエリに使う前に parsePlaylistId を通す", /\.map\(\(v\) => parsePlaylistId\(v\)\)/.test(server), true);
