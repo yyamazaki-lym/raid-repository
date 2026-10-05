@@ -79,7 +79,16 @@ export function useFitMemberColumns<T extends HTMLElement>() {
     // 付いた時点で 1 回その場で測る (描画前に正しい幅にする。裏のタブでは
     // requestAnimationFrame が止まるので、それを待たない)。
     measure();
+    // 2026-10-05: フォントの読み込みが終わったらもう一度測る。付いた時点は
+    // フォントの読み込み前のことがあり (本番で実測: 読み込み前の幅で 80px の
+    // まま収まると判定し、読み込み後に 2px はみ出していた)、裏のタブでは
+    // 大きさの変化を受けた requestAnimationFrame も止まっている。
+    let disposed = false;
+    void document.fonts?.ready.then(() => {
+      if (!disposed) measure();
+    });
     cleanupRef.current = () => {
+      disposed = true;
       ro.disconnect();
       if (raf) cancelAnimationFrame(raf);
     };
