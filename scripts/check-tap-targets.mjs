@@ -125,7 +125,8 @@ console.log("5. U-10 過去詳細表");
   const at = src.indexOf("m.schedule.pastTableScrollHint");
   check("md 未満でだけ一言", at > 0 && /className="[^"]*\bmd:hidden"[^>]*>\s*\{$/.test(src.slice(0, at)), true);
   const after = src.slice(at, at + 400);
-  check("表は全幅で残す (md:block に限定しない)", /<div className="overflow-x-auto">\s*<table className="w-full min-w-\[640px\]/.test(after), true);
+  // 2026-10-05: 入れ物にメンバー列を詰めるフックの ref が付いた (`useFitMemberColumns`)。
+  check("表は全幅で残す (md:block に限定しない)", /<div (?:ref=\{\w+\} )?className="overflow-x-auto">\s*<table className="w-full min-w-\[640px\]/.test(after), true);
   const core = readFileSync("src/lib/i18n/dict/core.ts", "utf8");
   check("ja / en の文言", (core.match(/pastTableScrollHint:/g) ?? []).length, 2);
 }
