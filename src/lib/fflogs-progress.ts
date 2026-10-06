@@ -280,9 +280,16 @@ export const MAX_LOG_LEAD_MS = 30 * 60 * 1000;
  *   何度も起きている。v2.10 / v2.16 のリリースノート)。ACT の 1 日分の
  *   ファイルを上げた場合も同じ。準備・集合の時間は入れ、混ざる時間は最大
  *   30 分に抑える (PR のレビューで検出)
+ * - ⚠ **区間は「レポート × 練習日 (`fightDate`)」ごとに作る (2026-10-07)。**
+ *   1 本のレポートに複数日の練習が入っている (複数日分のログを 1 本で上げた)
+ *   と、レポート単位の区間では夜をまたぐ空き時間 (約 1 日) まで数えてしまう。
+ *   2 日目以降の区間の開始も上の上限 (最初の pull の 30 分前) で抑えられる。
+ *   区間の和集合を取るので、同じ日を二重には数えない
  */
 export function totalLogMs(
-  fights: ReadonlyArray<Pick<FightRow, "reportCode" | "startMs" | "endMs" | "reportStartMs">>,
+  fights: ReadonlyArray<
+    Pick<FightRow, "reportCode" | "sessionDate" | "startMs" | "endMs" | "reportStartMs">
+  >,
 ): number {
   const perReport = new Map<
     string,
@@ -295,9 +302,11 @@ export function totalLogMs(
         ? f.reportStartMs
         : null;
     const end = Math.max(f.startMs, f.endMs);
-    const cur = perReport.get(f.reportCode);
+    // レポート × 練習日 (コードに空白は入らない)。
+    const key = `${f.reportCode} ${fightDate(f)}`;
+    const cur = perReport.get(key);
     if (!cur) {
-      perReport.set(f.reportCode, { firstStart: f.startMs, end, reportStart });
+      perReport.set(key, { firstStart: f.startMs, end, reportStart });
       continue;
     }
     if (f.startMs < cur.firstStart) cur.firstStart = f.startMs;
@@ -382,7 +391,7 @@ export type ProgressSummary = {
  * 2026-10-05: session_date は `YYYY-MM-DD` にそろえて読む (日程の rawDate の
  * まま入っていた行への保険。書き込み側と schema の書き換えでそろえてある)。
  */
-export function fightDate(f: FightRow): string {
+export function fightDate(f: Pick<FightRow, "sessionDate" | "startMs">): string {
   return normalizeSessionDate(f.sessionDate) ?? jstYmdString(new Date(f.startMs));
 }
 

@@ -221,8 +221,9 @@ async function categoriesPracticedIn(db: Db, week: RaidWeek): Promise<CategoryMe
 }
 
 /** 集計に要る列だけ読む (明細の表示用の重い列は読まない)。 */
+// 2026-10-07: report_start_ms を追加 (ログ合計 `totalLogMs` がログの開始を使う)。
 const FIGHT_COLUMNS =
-  "report_code, fight_id, session_date, kill, fight_percentage, last_phase, encounter_id, deaths, start_ms, end_ms";
+  "report_code, fight_id, session_date, kill, fight_percentage, last_phase, encounter_id, deaths, start_ms, end_ms, report_start_ms";
 
 async function buildCategoryMessage(
   db: Db,
@@ -248,7 +249,7 @@ async function buildCategoryMessage(
     phases: null,
     startMs: Number(r.start_ms),
     endMs: Number(r.end_ms),
-    reportStartMs: null,
+    reportStartMs: numberOrNull(r.report_start_ms),
   }));
   // 練習ログの画面 (`logs-view.tsx`) と同じ層 / フェーズの決め方。
   const model = isProgressModel(category.progressModel) ? category.progressModel : "auto";

@@ -125,7 +125,16 @@ try {
   const floors = prog.buildFloorMap(savage, 4, "ja");
   const s1 = summarizeWeek(savage, W, floors, false, "ja");
   check("練習日と pull (週より後を数えない)", [s1.days, s1.pulls], [2, 5]);
-  check("実戦闘と拘束 (日ごとの和)", [s1.fightMs, s1.spanMs], [1500000, 3600000]);
+  // ログ合計 (2026-10-07): 材料は全部同じレポート「R」で日をまたぐ。レポート単位の
+  // 区間だと 9/29 22:00 〜 10/1 22:37 (約 2 日) になるところ、練習日ごとに切るので
+  // 23 分 + 37 分。ログの開始が無いので最初の pull から。
+  check("戦闘とログ合計 (1 本のレポートが日をまたいでも夜を数えない)", [s1.fightMs, s1.logMs], [1500000, 3600000]);
+  const withStart = savage.map((f) => ({ ...f, reportStartMs: Date.parse("2026-09-29T21:50:00+09:00") }));
+  check(
+    "ログの開始 (最初の pull の 10 分前) を入れる。2 日目は 30 分前までしか遡らない",
+    summarizeWeek(withStart, W, floors, false, "ja").logMs,
+    (10 + 23 + 30 + 37) * 60000,
+  );
   check("最高到達は最も深い層で見る", s1.best, r(4, 0, true));
   check("前の週まで", s1.bestBefore, r(2, 0, true));
   check("更新した", s1.improved, true);
@@ -137,7 +146,7 @@ try {
     formatWeeklySummaryMessage({ categoryName: "天獄編零式", summary: s1, floors, phaseModel: false, url: "https://example.com/category/x/logs" }),
     [
       "📅 **週のまとめ** 9/29(火)〜10/5(月)",
-      "**天獄編零式** — 練習 2 日 / 5 pull / 実戦闘 25分 (戦闘外 58%)",
+      "**天獄編零式** — 練習 2 日 / 5 pull / ログ合計 1時間0分 (うち戦闘 25分)",
       "・最高到達: 4層 CLEAR (前の週までの 2層 CLEAR から更新)",
       "・初突破: 3層 (9/29(火))",
       "・🏆 初討伐 (10/1(木))",
@@ -198,7 +207,7 @@ try {
     formatWeeklySummaryMessage({ categoryName: "絶オメガ", summary: s3, floors: null, phaseModel: true }),
     [
       "📅 **週のまとめ** 9/29(火)〜10/5(月)",
-      "**絶オメガ** — 練習 1 日 / 3 pull / 実戦闘 28分 (戦闘外 29%)",
+      "**絶オメガ** — 練習 1 日 / 3 pull / ログ合計 40分 (うち戦闘 28分)",
       "・最高到達: P5 残23.4% (前の週までの P3 残40.0% から更新)",
       "・初到達: P4 (9/30(水)) / P5 (9/30(水))",
     ].join("\n"),
@@ -228,6 +237,7 @@ check("印は送った週の開始日", /WEEKLY_SUMMARY_LAST_SENT_KEY = "logs_we
 check("メンションを飛ばさない", /allowed_mentions: \{ parse: \[\] \}/.test(server), true);
 const preview = fnBody(server, "previewWeeklyLogsSummary");
 check("プレビューは印も投稿も触らない", preview.length > 0 && !/claimMarker|postToDiscord|update\(|upsert\(/.test(preview), true);
+check("ログ合計のためにログの開始を読む (読まないと最初の pull から数えて短くなる)", /const FIGHT_COLUMNS =\s*"[^"]*\breport_start_ms\b[^"]*";/.test(server) && /reportStartMs: numberOrNull\(r\.report_start_ms\),/.test(server), true);
 check("層 / フェーズの決め方は練習ログの画面と同じ", /buildFloorMap\(fights, resolveFloorCount\(model, category\.name\), "ja"\)/.test(server) && /filterToFloorCluster\(fights, floors\)/.test(server), true);
 const route = read("src/app/api/cron/fflogs-sync/route.ts");
 check("cron: 取り込みが最後まで済んだ回だけ", /const syncComplete = fights\.ok && !fights\.truncated && !result\.truncated;\s*const weeklySummary = syncComplete\s*\?\s*await runWeeklyLogsSummary/.test(route), true);

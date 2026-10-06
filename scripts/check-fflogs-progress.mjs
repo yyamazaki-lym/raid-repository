@@ -366,6 +366,29 @@ try {
     totalLogMs([lf("A", t0, t0 + 60 * MIN, t0 - 120 * MIN), lf("A", t0 + 70 * MIN, t0 + 80 * MIN, t0 - 120 * MIN)]),
     110 * MIN,
   );
+  // ⚠ 1 本のレポートに複数日の練習が入っていても、夜をまたぐ空き時間を数えない
+  // (区間は「レポート × 練習日」ごと。2026-10-07)。
+  const ld = (date, startMs, endMs, reportStartMs = null) => ({
+    reportCode: "A", sessionDate: date, startMs, endMs, reportStartMs,
+  });
+  check(
+    "同じレポートでも練習日が違えば別の区間 (夜を数えない)",
+    totalLogMs([ld("2026-10-01", t0, t0 + 60 * MIN), ld("2026-10-02", t0 + 24 * 60 * MIN, t0 + 25 * 60 * MIN)]),
+    120 * MIN,
+  );
+  check(
+    "2 日目の区間の開始も 30 分前までしか遡らない (ログの開始は 1 日目の前)",
+    totalLogMs([
+      ld("2026-10-01", t0, t0 + 60 * MIN, t0 - 10 * MIN),
+      ld("2026-10-02", t0 + 24 * 60 * MIN, t0 + 25 * 60 * MIN, t0 - 10 * MIN),
+    ]),
+    (10 + 60 + 30 + 60) * MIN,
+  );
+  check(
+    "練習日が無い行は JST の暦日で分ける",
+    totalLogMs([lf("A", t0, t0 + 60 * MIN), lf("A", t0 + 24 * 60 * MIN, t0 + 25 * 60 * MIN)]),
+    120 * MIN,
+  );
   check(
     "上限は最初の pull から数える (後の pull の前に遡らない)",
     totalLogMs([lf("A", t0 + 70 * MIN, t0 + 80 * MIN, t0 - 120 * MIN), lf("A", t0, t0 + 60 * MIN, t0 - 120 * MIN)]),
