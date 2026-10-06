@@ -252,6 +252,17 @@ export const ja = {
     charNamePlaceholder: "ログ名 (例: Taro Yamada)",
     charNameHint:
       "FFLogs のログに出るキャラクター名。表示名と同じなら空のままで構いません (表示名でも一致を試します)。出席の自動突合にだけ使います。",
+    // 2026-10-06: 同期式のシートでの旧名 (名前が変わる前の日の回答を結びつける)。
+    aliasLabel: "シートでの旧名",
+    aliasPlaceholder: "シートでの旧名 (例: Lym, makiton)",
+    aliasHint:
+      "スケジュールのシートで以前使っていた名前 (カンマ区切りで 5 つまで)。シートを切り替えたり名前を変えたりした前の日の回答を、過去ログと出席サマリーでこのメンバーに結びつけます。名前を変えていなければ空のままで構いません。",
+    aliasError: (code: "too-long" | "control" | "too-many"): string =>
+      code === "too-long"
+        ? "旧名は 1 つ 40 文字以内です"
+        : code === "control"
+          ? "旧名に使えない文字が含まれています"
+          : "旧名は 5 つまでです",
     sortLabel: "並び",
     sortPlaceholder: "並び",
     active: "有効",
@@ -1119,6 +1130,16 @@ export const en: SettingsMessages = {
     charNamePlaceholder: "Log name (e.g. Taro Yamada)",
     charNameHint:
       "The character name that appears in FFLogs. Leave it empty when it matches the display name (that is tried too). Used only for attendance reconciliation.",
+    aliasLabel: "Former names on the sheet",
+    aliasPlaceholder: "Former names on the sheet (e.g. Lym, makiton)",
+    aliasHint:
+      "Names this member used before on the schedule sheet (comma separated, up to 5). Answers saved before a sheet switch or rename are linked to this member in past logs and the attendance summary. Leave empty if the name never changed.",
+    aliasError: (code) =>
+      code === "too-long"
+        ? "Each former name must be 40 characters or fewer"
+        : code === "control"
+          ? "A former name contains characters that cannot be used"
+          : "Up to 5 former names",
     sortLabel: "Sort",
     sortPlaceholder: "Sort",
     active: "Active",

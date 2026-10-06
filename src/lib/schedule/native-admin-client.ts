@@ -69,6 +69,11 @@ export type NativeMemberRowFull = {
    */
   fflogs_character_name?: string | null;
   /**
+   * 2026-10-06: 同期式のシートでの旧名 (名前が変わる前の日の回答を結びつける)。
+   * 列が無い DB では undefined。
+   */
+  schedule_aliases?: string[] | null;
+  /**
    * UI-4 (2026-09-08): ロール (`tank` / `healer` / `dps`)。軽減表の
    * 「自分のロールだけ」に使う。列が無い DB では undefined。
    *
@@ -143,7 +148,8 @@ export async function fetchNativeScheduleAdminAux(): Promise<NativeAdminAux> {
         // W-6 (2026-09-08): fflogs_character_name を追加 (出席突合の対応表)。
         // UI-4 (2026-09-08): role を追加 (軽減表のロール別フィルタ)。
         // L-8 (2026-09-08): job を追加 (ロールの導出元 / 軽減表の列の突合)。
-        "discord_user_id, display_name, sort_order, is_active, data_center, fflogs_character_name, role, job",
+        // 2026-10-06: schedule_aliases を追加 (シートでの旧名)。
+        "discord_user_id, display_name, sort_order, is_active, data_center, fflogs_character_name, schedule_aliases, role, job",
       )
       .order("sort_order", { ascending: true })
       .order("display_name", { ascending: true }),

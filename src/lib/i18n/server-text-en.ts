@@ -320,6 +320,14 @@ export const SERVER_TEXT_EN: ServerTextDictRaw = {
       "Enter your display name, not the numeric ID",
     "既定のスケジュールは削除できません":
       "The default schedule cannot be deleted",
+    "旧名に使えない文字が含まれています":
+      "A former name contains characters that cannot be used",
+    "旧名の指定が不正です":
+      "Invalid former names",
+    "旧名は 1 つ 40 文字以内です":
+      "Each former name must be 40 characters or fewer",
+    "旧名は 5 つまでです":
+      "Up to 5 former names",
     "日付が空です":
       "The date is empty",
     "日数は 0〜14 で指定してください":

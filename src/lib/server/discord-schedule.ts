@@ -355,3 +355,26 @@ export async function fetchExcludedPastSessions(opts?: {
     excludedAt: r.excluded_at as string,
   }));
 }
+
+/**
+ * 2026-10-06: メンバーの表示名とシートでの旧名 (`schedule_aliases`)。
+ *
+ * 過去ログの表示 (`mergeStoredPastSessions`) が、名前が変わる前に保存した
+ * 回答 (スナップショットの鍵) を今のシートの人に結びつけるのに使う。
+ * 読めなければ空 (旧名を使わない従来の照合になる)。
+ */
+export async function fetchMemberNameAliases(): Promise<
+  Array<{ displayName: string; scheduleAliases: string[] }>
+> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("native_schedule_members")
+    .select("display_name, schedule_aliases");
+  if (error || !data) return [];
+  return data.map((r) => ({
+    displayName: (r.display_name as string | null) ?? "",
+    scheduleAliases: Array.isArray(r.schedule_aliases)
+      ? (r.schedule_aliases as unknown[]).filter((a): a is string => typeof a === "string")
+      : [],
+  }));
+}

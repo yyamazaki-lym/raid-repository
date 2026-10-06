@@ -24,6 +24,10 @@ import { UnresolvedLogNames } from "./unresolved-log-names";
 import { MEMBER_ROLES } from "@/lib/member-roles";
 import { JOBS, jobLabel } from "@/lib/jobs";
 import type { ScheduleSourceMode } from "@/lib/schedule/source-mode";
+import {
+  normalizeScheduleAliases,
+  splitScheduleAliasInput,
+} from "@/lib/schedule/attendance-sync-symbols";
 
 /**
  * TODO #2 phase 2-C (2026-05-07): native スケジュール member CRUD section。
@@ -59,10 +63,19 @@ type DraftMap = Record<
     sortOrder: string;
     dataCenter: string;
     characterName: string;
+    /** 2026-10-06: シートでの旧名 (カンマ区切りの入力のまま持つ)。 */
+    scheduleAliases: string;
     role: string;
     job: string;
   }
 >;
+
+/** 旧名の入力を比べるための鍵 (区切り・空白の違いを無視する)。 */
+const aliasesKey = (text: string) =>
+  splitScheduleAliasInput(text)
+    .map((a) => a.trim())
+    .filter(Boolean)
+    .join("\n");
 
 export function NativeMembersSection({
   canEdit,
@@ -99,6 +112,7 @@ export function NativeMembersSection({
       sortOrder: String(mem.sort_order),
       dataCenter: mem.data_center ?? "",
       characterName: mem.fflogs_character_name ?? "",
+      scheduleAliases: (mem.schedule_aliases ?? []).join(", "),
       role: mem.role ?? "",
       job: mem.job ?? "",
     };
@@ -110,6 +124,7 @@ export function NativeMembersSection({
       sortOrder: string;
       dataCenter: string;
       characterName: string;
+      scheduleAliases: string;
       role: string;
       job: string;
     }>,
@@ -124,6 +139,7 @@ export function NativeMembersSection({
               sortOrder: String(mem.sort_order),
               dataCenter: mem.data_center ?? "",
               characterName: mem.fflogs_character_name ?? "",
+              scheduleAliases: (mem.schedule_aliases ?? []).join(", "),
               role: mem.role ?? "",
               job: mem.job ?? "",
             }
@@ -132,6 +148,7 @@ export function NativeMembersSection({
               sortOrder: "0",
               dataCenter: "",
               characterName: "",
+              scheduleAliases: "",
               role: "",
               job: "",
             });
@@ -189,6 +206,7 @@ export function NativeMembersSection({
       sortOrder?: number;
       dataCenter?: string | null;
       fflogsCharacterName?: string | null;
+      scheduleAliases?: string[];
       role?: string | null;
       job?: string | null;
     } = {};
@@ -216,6 +234,16 @@ export function NativeMembersSection({
     // W-6 (2026-09-08): 出席突合の対応表。DC と同じく空文字列 = 未設定に戻す。
     if (draft.characterName.trim() !== (mem.fflogs_character_name ?? "")) {
       patch.fflogsCharacterName = draft.characterName.trim();
+    }
+    // 2026-10-06: シートでの旧名。空にすると全部消す。数・長さはここでも
+    // 確かめてから送る (Server Action も同じ規則で確かめる)。
+    if (aliasesKey(draft.scheduleAliases) !== aliasesKey((mem.schedule_aliases ?? []).join(","))) {
+      const r = normalizeScheduleAliases(splitScheduleAliasInput(draft.scheduleAliases));
+      if (!r.ok) {
+        toast.error(m.nativeMembers.aliasError(r.error));
+        return;
+      }
+      patch.scheduleAliases = r.aliases;
     }
     // UI-4 (2026-09-08): ロール。空文字は「未設定に戻す」。
     if (draft.role !== (mem.role ?? "")) {
@@ -361,6 +389,8 @@ export function NativeMembersSection({
               draft.sortOrder !== String(mem.sort_order) ||
               draft.dataCenter.trim() !== (mem.data_center ?? "") ||
               draft.characterName.trim() !== (mem.fflogs_character_name ?? "") ||
+              aliasesKey(draft.scheduleAliases) !==
+                aliasesKey((mem.schedule_aliases ?? []).join(",")) ||
               draft.role !== (mem.role ?? "");
             return (
               <li
@@ -421,6 +451,24 @@ export function NativeMembersSection({
                     placeholder={m.nativeMembers.charNamePlaceholder}
                     title={m.nativeMembers.charNameHint}
                     aria-label={m.nativeMembers.charNameLabel}
+                    className="h-7 text-xs"
+                  />
+                  {/* 2026-10-06: シートでの旧名。名前が変わる前の日の回答を、
+                      過去ログの表示と出席サマリーで今のメンバーに結びつける。
+                      ログ名と同じく表示名の下に積む (行を横に溢れさせない)。 */}
+                  <Input
+                    type="text"
+                    value={draft.scheduleAliases}
+                    maxLength={220}
+                    onChange={(e) =>
+                      setDraft(mem.discord_user_id, {
+                        scheduleAliases: e.target.value,
+                      })
+                    }
+                    disabled={!canEdit || pending}
+                    placeholder={m.nativeMembers.aliasPlaceholder}
+                    title={m.nativeMembers.aliasHint}
+                    aria-label={m.nativeMembers.aliasLabel}
                     className="h-7 text-xs"
                   />
                 </div>

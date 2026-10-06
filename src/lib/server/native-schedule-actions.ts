@@ -22,6 +22,7 @@ import { NATIVE_CHOICE_VALUES_KEY } from "@/lib/schedule/settings-keys";
 import { getActiveNativeScheduleId } from "@/lib/schedule/native-active";
 import { isMemberRole } from "@/lib/member-roles";
 import { isJobKey } from "@/lib/jobs";
+import { normalizeScheduleAliases } from "@/lib/schedule/attendance-sync-symbols";
 import { replaceMemberJobs } from "./member-jobs-write";
 import {
   normalizeAttendanceTime,
@@ -467,6 +468,12 @@ export type UpdateNativeScheduleMemberPatch = {
    * 行では `role` は使われない。
    */
   job?: string | null;
+  /**
+   * 2026-10-06: 同期式のシートでの旧名 (最大 5 つ、各 40 文字)。名前が変わる
+   * 前の日の回答を、過去ログの表示と出席サマリーで今のメンバーに結びつける。
+   * 空の配列で全部消す。
+   */
+  scheduleAliases?: string[];
 };
 
 export async function updateNativeScheduleMemberAction(
@@ -508,6 +515,28 @@ export async function updateNativeScheduleMemberAction(
       return { ok: false, reason: "キャラクター名は 64 文字以内です" };
     }
     update.fflogs_character_name = v || null;
+  }
+  if (patch.scheduleAliases !== undefined) {
+    // client からの値なので、配列で中身が文字列のときだけ受け取る。
+    if (
+      !Array.isArray(patch.scheduleAliases) ||
+      patch.scheduleAliases.some((a) => typeof a !== "string")
+    ) {
+      return { ok: false, reason: "旧名の指定が不正です" };
+    }
+    const r = normalizeScheduleAliases(patch.scheduleAliases);
+    if (!r.ok) {
+      return {
+        ok: false,
+        reason:
+          r.error === "too-long"
+            ? "旧名は 1 つ 40 文字以内です"
+            : r.error === "control"
+              ? "旧名に使えない文字が含まれています"
+              : "旧名は 5 つまでです",
+      };
+    }
+    update.schedule_aliases = r.aliases;
   }
   // L-10 (2026-09-09): ジョブは `native_schedule_member_jobs` (割り当て表) が
   // 正になった。この経路は 1 ジョブの `<select>` なので「そのメンバーの

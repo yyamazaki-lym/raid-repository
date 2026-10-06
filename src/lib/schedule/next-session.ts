@@ -24,8 +24,10 @@ import {
 import { getScheduleSourceUrl } from "./source-url";
 import {
   fetchExcludedPastSessions,
+  fetchMemberNameAliases,
   fetchStoredPastSessions,
 } from "@/lib/server/discord-schedule";
+import { buildSheetAttendanceMapper } from "./attendance-sync-symbols";
 import { planPastSessionMerge } from "./past-session-dedup";
 import { isPublicHttpUrl } from "@/lib/url-safe";
 import { assertPublicResolution } from "@/lib/server/safe-fetch";
@@ -226,15 +228,18 @@ async function mergeStoredPastSessions(
 ): Promise<ParsedSchedule> {
   let stored: Awaited<ReturnType<typeof fetchStoredPastSessions>>;
   let excluded: Awaited<ReturnType<typeof fetchExcludedPastSessions>>;
+  let memberAliases: Awaited<ReturnType<typeof fetchMemberNameAliases>>;
   try {
     const since = new Date();
     since.setUTCMonth(since.getUTCMonth() - PAST_MERGE_WINDOW_MONTHS);
     // 2026-10-06: 除外した行も読む。除外した行と同じ開催 (時刻違いの重複) も
     // 表示から外すため (`planPastSessionMerge` の `excluded`)。読めなければ
     // 空として扱う (従来どおり除外した rawDate の行だけが消える)。
-    [stored, excluded] = await Promise.all([
+    // メンバーのシートでの旧名も読む (名前が変わる前の日の回答を結びつける)。
+    [stored, excluded, memberAliases] = await Promise.all([
       fetchStoredPastSessions({ sinceIso: since.toISOString() }),
       fetchExcludedPastSessions({ sinceIso: since.toISOString() }),
+      fetchMemberNameAliases(),
     ]);
   } catch (e) {
     // 2026-10-05: ビルド時の静的描画の試行で cookies() が投げる Next.js の合図
@@ -246,7 +251,11 @@ async function mergeStoredPastSessions(
   // Index current users by name so snapshot attendance (which is
   // name-keyed for stability across userId changes) can be mapped
   // into the parsed user table.
-  const userIdByName = new Map(parsed.users.map((u) => [u.name, u.userId]));
+  // 2026-10-06: 今のシートの名前と一致しなければ、メンバーのシートでの旧名で
+  // 引く (9/11 まで「Lym」、9/18 から「Lym.sln」のように名前が変わった場合)。
+  // 今のシートの名前と完全一致した回答が優先 (旧名の回答は、その人の回答が
+  // 無いときだけ使う)。
+  const mapSheetAttendances = buildSheetAttendanceMapper(parsed.users, memberAliases);
 
   const nowMs = Date.now();
   const cutoffMs = nowMs - 6 * 60 * 60 * 1000;
@@ -312,13 +321,9 @@ async function mergeStoredPastSessions(
 
     // Convert snapshot attendances (name-keyed) to userId-keyed for the
     // live render. Names not in the current user list are skipped.
-    const attendances: Record<string, string> = {};
-    if (s.attendances) {
-      for (const [name, sym] of Object.entries(s.attendances)) {
-        const uid = userIdByName.get(name);
-        if (uid) attendances[uid] = sym;
-      }
-    }
+    const attendances: Record<string, string> = s.attendances
+      ? mapSheetAttendances(s.attendances)
+      : {};
 
     additions.push({
       rawDate: s.rawDate,
