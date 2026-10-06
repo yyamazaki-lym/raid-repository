@@ -418,6 +418,22 @@ console.log("\n練習日数のタイルの配線");
     /const logTotalMs = useMemo\(\(\) => totalLogMs\(tierFights\), \[tierFights\]\);/.test(view),
     true,
   );
+  // 2026-10-07: 説明 (ja / en) の 30 分・3 時間が実装の定数と一致すること
+  // (数え方を変えて説明が古いまま残っていたのを PR のレビューで検出)。
+  const dict = readFileSync("src/lib/i18n/dict/logs.ts", "utf8").replace(/\r\n/g, "\n");
+  const prog = readFileSync("src/lib/fflogs-progress.ts", "utf8").replace(/\r\n/g, "\n");
+  const titles = [...dict.matchAll(/statLogTotalTitle:\s*\n\s*"([^"]+)"/g)].map((mm) => mm[1]);
+  check(
+    "ログ合計の説明 (ja / en) が実装の 30 分・3 時間と一致",
+    [
+      titles.length,
+      /export const MAX_LOG_LEAD_MS = 30 \* 60 \* 1000;/.test(prog),
+      /export const LOG_GAP_SPLIT_MS = 3 \* 60 \* 60 \* 1000;/.test(prog),
+      titles[0]?.includes("30 分前") && titles[0]?.includes("3 時間以上"),
+      titles[1]?.includes("30 minutes") && titles[1]?.includes("3 hours or more"),
+    ],
+    [2, true, true, true, true],
+  );
   check(
     "打ち切り時は shownOnly を添える",
     /m\.logs\.statLogTotal\(formatMs\(logTotalMs\)\) \+\s*\(truncated \? m\.logs\.shownOnly : ""\)/.test(view),

@@ -260,7 +260,9 @@ export const MAX_LOG_LEAD_MS = 30 * 60 * 1000;
 /**
  * 1 本のレポートの中で、pull の間がこれ以上空いたら別の練習として区間を切る
  * (`totalLogMs`、2026-10-07)。練習中の休憩 (食事・作戦会議) より長く、
- * 夜をまたぐ空き (半日以上) より短い値。
+ * 夜をまたぐ空き (半日以上) より短い値。⚠ 変えたら練習ログの説明
+ * (`statLogTotalTitle`、ja / en) の「3 時間」も直す (`MAX_LOG_LEAD_MS` の
+ * 「30 分」も同じ。check-fflogs-progress.mjs が突き合わせる)。
  */
 export const LOG_GAP_SPLIT_MS = 3 * 60 * 60 * 1000;
 

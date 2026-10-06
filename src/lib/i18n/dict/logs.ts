@@ -33,9 +33,10 @@ export const ja = {
     statPracticeDays: "練習日数",
     daysValue: (n: number) => `${n} 日`,
     // 2026-10-06: 練習日数の下にログの合計時間 (戦闘時間ではない)。
+    // ⚠ 数え方 (`totalLogMs`) の 30 分・3 時間を変えたら、この説明 (ja / en) も直す。
     statLogTotal: (dur: string): string => `ログ合計 ${dur}`,
     statLogTotalTitle:
-      "各ログの開始から最後の pull の終わりまでの合計 (pull の間の休憩を含む。ログの開始は最初の pull の 30 分前まで数える。同じ時間帯に重なるログは 1 回だけ数える)",
+      "各ログの開始から最後の pull の終わりまでの合計 (pull の間の休憩を含む。ログの開始は最初の pull の 30 分前まで数える。pull の間が 3 時間以上空いたら別の練習として、その間は数えない。同じ時間帯に重なるログは 1 回だけ数える)",
     statBest: "最深到達",
     kill: "討伐",
     hpLeft: (pct: string) => `残 ${pct}`,
@@ -576,7 +577,7 @@ export const en: LogsMessages = {
     daysValue: (n) => `${n} ${plural(n, "day", "days")}`,
     statLogTotal: (dur) => `Logs total ${dur}`,
     statLogTotalTitle:
-      "Sum of each log from its start to the end of its last pull (includes breaks between pulls; the log start counts up to 30 minutes before the first pull; overlapping logs are counted once)",
+      "Sum of each log from its start to the end of its last pull (includes breaks between pulls; the log start counts up to 30 minutes before the first pull; a gap of 3 hours or more between pulls starts a new session and is not counted; overlapping logs are counted once)",
     statBest: "Best progress",
     kill: "Kill",
     hpLeft: (pct) => `HP ${pct}`,
