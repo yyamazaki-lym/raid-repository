@@ -90,8 +90,9 @@ const EMPTY_VIDEO_LINKS: SessionVideoLink[] = [];
 const EMPTY_SESSION_LOGS: SessionLogEntry[] = [];
 
 // SessionRow の `slots` 既定値 (= 1.9.27 の全枠確保と同じ挙動)。表側から
-// `reserveSlotsFor()` の結果を渡さない呼び出し元の後方互換用。
-const DEFAULT_ROW_SLOTS = { video: true, logs: true, memo: true } as const;
+// `reserveSlotsFor()` の結果を渡さない呼び出し元の後方互換用。祝日の枠は
+// 2026-10-06 に足したもので、従来の行は確保していなかったので false。
+const DEFAULT_ROW_SLOTS = { video: true, logs: true, memo: true, holiday: false } as const;
 
 // 日程セルで日付 / 時刻の右に続く chip + アイコン群のクラス。
 // `gap-1` のままだと時刻との間隔が日付↔時刻と同じ 4px で、アイコンが時刻の
@@ -403,19 +404,25 @@ export function ScheduleList({
   // そのまま死んだ余白になり、日付と確定列の間が大きく空いて見えていた。
   // 表単位で「1 行でも使っているか」を数えて、使っていない枠は確保しない
   // (使っている表では従来どおり縦に揃う)。
+  //
+  // 2026-10-06: 祝日の印 (「祝」) も同じ扱いにする。印のぶん日付が広がり、
+  // 祝日の行だけ時刻と出欠のチップ (8/8) が右へずれていた。表に祝日が
+  // 1 日でもあれば、他の行にも同じ幅の見えない枠を置く。
   const reserveSlotsFor = (list: ScheduleSession[]) => {
     let video = false;
     let logs = false;
     let memo = false;
+    let holiday = false;
     for (const s of list) {
       if (!video && lookupVideoLinks(s, sessionVideoLinks).length > 0) video = true;
       if (!logs && (sessionLogsByDate?.[s.rawDate]?.length ?? 0) > 0) logs = true;
       if (!memo && (memosByDate[s.rawDate]?.length ?? 0) > 0) memo = true;
-      if (video && logs && memo) break;
+      if (!holiday && isJapaneseHoliday(s.date, holidays)) holiday = true;
+      if (video && logs && memo && holiday) break;
     }
     // 動画リンクは自身の logsUrl も Logs 候補になるため、動画がある表では
     // Logs 枠も確保しておく (行ごとに片方だけ出ると横位置がずれる)。
-    return { video, logs: logs || video, memo };
+    return { video, logs: logs || video, memo, holiday };
   };
   const upcomingSlots = reserveSlotsFor(upcoming);
   const pastSlots = reserveSlotsFor(renderedPast);
@@ -845,11 +852,14 @@ function DateLabel({
   holiday,
   decided,
   holidayName,
+  reserveHoliday = false,
 }: {
   text: string;
   holiday: boolean;
   decided: boolean;
   holidayName: string | null;
+  /** 表に祝日があるとき、祝日でない行にも印と同じ幅の枠を置く (`reserveSlotsFor`)。 */
+  reserveHoliday?: boolean;
 }) {
   const colorClass = holiday
     ? "font-bold text-rose-400 drop-shadow-[0_0_4px_color-mix(in_oklch,oklch(0.65_0.22_25)_40%,transparent)]"
@@ -859,7 +869,11 @@ function DateLabel({
   return (
     <span className={colorClass} title={holidayName ?? undefined}>
       {text}
-      {holiday && <HolidayMark name={holidayName} />}
+      {holiday ? (
+        <HolidayMark name={holidayName} />
+      ) : reserveHoliday ? (
+        <HolidayMark name={null} placeholder />
+      ) : null}
     </span>
   );
 }
@@ -974,7 +988,7 @@ function SessionRow({
    * 日程セルのアイコン枠を確保するか (表単位で算出、`reserveSlotsFor`)。
    * 使っていない枠を確保しないことで日付〜確定列の余白を詰める。
    */
-  slots?: { video: boolean; logs: boolean; memo: boolean };
+  slots?: { video: boolean; logs: boolean; memo: boolean; holiday?: boolean };
 }) {
   const m = useMessages();
   const locale = useLocale();
@@ -1055,6 +1069,7 @@ function SessionRow({
               holiday={holiday}
               decided={decided}
               holidayName={holidayName}
+              reserveHoliday={slots.holiday === true}
             />
           </SessionMemoPopover>
           {(session.startTime || session.endTime) && (
