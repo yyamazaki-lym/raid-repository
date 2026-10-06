@@ -347,8 +347,49 @@ try {
     totalLogMs([lf("A", 1000, 500, 0)]),
     1000,
   );
+  // ⚠ 1 本のログに別コンテンツが先に入っている (ログの開始が最初の pull の
+  // ずっと前) とき、その時間を入れない。準備の時間は 30 分まで入れる。
+  const MIN = 60 * 1000;
+  const t0 = 1_000_000_000;
+  check(
+    "ログの開始が最初の pull の 10 分前なら全部入れる (準備の時間)",
+    totalLogMs([lf("A", t0, t0 + 60 * MIN, t0 - 10 * MIN)]),
+    70 * MIN,
+  );
+  check(
+    "ちょうど 30 分前までは全部入れる",
+    totalLogMs([lf("A", t0, t0 + 60 * MIN, t0 - 30 * MIN)]),
+    90 * MIN,
+  );
+  check(
+    "2 時間前に始まったログ (先に別コンテンツ) は 30 分前から数える",
+    totalLogMs([lf("A", t0, t0 + 60 * MIN, t0 - 120 * MIN), lf("A", t0 + 70 * MIN, t0 + 80 * MIN, t0 - 120 * MIN)]),
+    110 * MIN,
+  );
+  check(
+    "上限は最初の pull から数える (後の pull の前に遡らない)",
+    totalLogMs([lf("A", t0 + 70 * MIN, t0 + 80 * MIN, t0 - 120 * MIN), lf("A", t0, t0 + 60 * MIN, t0 - 120 * MIN)]),
+    110 * MIN,
+  );
 } finally {
   rmSync(outDir, { recursive: true, force: true });
+}
+
+// 2026-10-06: 練習日数のタイルの配線 (ログの合計時間)。数える pull は練習日数と
+// 同じ tierFights で、明細が打ち切られていれば他のカードと同じ注記を添える。
+console.log("\n練習日数のタイルの配線");
+{
+  const view = readFileSync("src/app/(portal)/category/[slug]/logs/logs-view.tsx", "utf8").replace(/\r\n/g, "\n");
+  check(
+    "合計は練習日数と同じ tierFights から",
+    /const logTotalMs = useMemo\(\(\) => totalLogMs\(tierFights\), \[tierFights\]\);/.test(view),
+    true,
+  );
+  check(
+    "打ち切り時は shownOnly を添える",
+    /m\.logs\.statLogTotal\(formatMs\(logTotalMs\)\) \+\s*\(truncated \? m\.logs\.shownOnly : ""\)/.test(view),
+    true,
+  );
 }
 
 console.log(failures === 0 ? "\nall checks passed" : `\n${failures} check(s) failed`);

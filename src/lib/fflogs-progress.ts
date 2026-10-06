@@ -254,6 +254,9 @@ export function pullSpanByReport(
   return out;
 }
 
+/** ログの開始を最初の pull より前へ遡らせる上限 (`totalLogMs`)。 */
+export const MAX_LOG_LEAD_MS = 30 * 60 * 1000;
+
 /**
  * ログの合計時間 (ms、2026-10-06 実機要望「練習日数に戦闘時間でなく Logs の
  * 総合計時間を入れたい」)。
@@ -270,27 +273,47 @@ export function pullSpanByReport(
  *   開始を使う
  * - 入力は呼び出し側の絞り込みのまま (練習日数と同じ `tierFights`)。区間の
  *   終わりは**渡された pull の**最後なので、層クラスタ外の戦闘は数えない
+ * - ⚠ **ログの開始は最初の pull の `MAX_LOG_LEAD_MS` 前までしか遡らない。**
+ *   `reportStartMs` はレポート全体の開始で、1 本のログに別コンテンツ (同じ日の
+ *   ダンジョン・別の零式や絶) が先に入っていると、その時間と空き時間がこの
+ *   コンテンツの合計に入ってしまう (1 本に複数コンテンツが混ざるのは実機で
+ *   何度も起きている。v2.10 / v2.16 のリリースノート)。ACT の 1 日分の
+ *   ファイルを上げた場合も同じ。準備・集合の時間は入れ、混ざる時間は最大
+ *   30 分に抑える (PR のレビューで検出)
  */
 export function totalLogMs(
   fights: ReadonlyArray<Pick<FightRow, "reportCode" | "startMs" | "endMs" | "reportStartMs">>,
 ): number {
-  const spans = new Map<string, { start: number; end: number }>();
+  const perReport = new Map<
+    string,
+    { firstStart: number; end: number; reportStart: number | null }
+  >();
   for (const f of fights) {
     if (!Number.isFinite(f.startMs) || !Number.isFinite(f.endMs)) continue;
     const reportStart =
       f.reportStartMs !== null && Number.isFinite(f.reportStartMs)
-        ? Math.min(f.reportStartMs, f.startMs)
-        : f.startMs;
+        ? f.reportStartMs
+        : null;
     const end = Math.max(f.startMs, f.endMs);
-    const cur = spans.get(f.reportCode);
+    const cur = perReport.get(f.reportCode);
     if (!cur) {
-      spans.set(f.reportCode, { start: reportStart, end });
+      perReport.set(f.reportCode, { firstStart: f.startMs, end, reportStart });
       continue;
     }
-    if (reportStart < cur.start) cur.start = reportStart;
+    if (f.startMs < cur.firstStart) cur.firstStart = f.startMs;
     if (end > cur.end) cur.end = end;
+    if (reportStart !== null && (cur.reportStart === null || reportStart < cur.reportStart)) {
+      cur.reportStart = reportStart;
+    }
   }
-  const sorted = [...spans.values()].sort((a, b) => a.start - b.start);
+  const spans = [...perReport.values()].map((r) => ({
+    start:
+      r.reportStart === null
+        ? r.firstStart
+        : Math.max(Math.min(r.reportStart, r.firstStart), r.firstStart - MAX_LOG_LEAD_MS),
+    end: r.end,
+  }));
+  const sorted = spans.sort((a, b) => a.start - b.start);
   let total = 0;
   let curStart = Number.NaN;
   let curEnd = Number.NaN;

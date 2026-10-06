@@ -1246,7 +1246,8 @@ export function LogsView({
           // 打ち切られているときは「表示中の分」と添える。
           sub={
             logTotalMs > 0
-              ? m.logs.statLogTotal(formatMs(logTotalMs), truncated)
+              ? m.logs.statLogTotal(formatMs(logTotalMs)) +
+                (truncated ? m.logs.shownOnly : "")
               : undefined
           }
           title={logTotalMs > 0 ? m.logs.statLogTotalTitle : undefined}
