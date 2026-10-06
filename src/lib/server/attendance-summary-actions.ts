@@ -407,10 +407,17 @@ export type RefetchUnmatchedResult =
  * (`onlyCodes`) で取り直す。取り直しは「新しいレポート」の通知に数えない
  * (`fflogs-fights.ts` の台帳判定)。分類 (カテゴリ)・日付・台帳の ok は変えない
  * (`preserveExisting`、URL 取り込みで選んだコンテンツや手動の割り当てを消さない)。
+ *
+ * `includeMatched` (2026-10-06): 突合の行があるレポートも取り直す。一部の
+ * メンバーだけ「ログ名」を後から入れた場合に、その人の古い日を数え直す。
  */
-export async function refetchUnmatchedAttendanceAction(): Promise<RefetchUnmatchedResult> {
+export async function refetchUnmatchedAttendanceAction(input?: {
+  includeMatched?: boolean;
+}): Promise<RefetchUnmatchedResult> {
   const auth = await assertAdminResult();
   if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
+  // client からの値なので、boolean 以外は false として扱う。
+  const includeMatched = input?.includeMatched === true;
   try {
     const db = createSupabaseServiceRoleClient();
     const nowMs = Date.now();
@@ -476,6 +483,7 @@ export async function refetchUnmatchedAttendanceAction(): Promise<RefetchUnmatch
       ledger,
       nowMs,
       limit: REFETCH_LIMIT,
+      includeMatched,
     });
     if (targets.codes.length === 0) {
       return emptyRefetchResult();

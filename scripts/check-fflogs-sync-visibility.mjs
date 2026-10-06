@@ -88,6 +88,23 @@ try {
   check("全部取れたら印を消す (保管扱いでも)", [r.detailsLedgerReason(0, "details-archived:3", true), r.detailsLedgerReason(0, null, false)], [null, null]);
   check("保管扱いの印は取り直さない", r.shouldRetryMissingDetails(r.detailsLedgerReason(30, null, true)), false);
 
+  // 2026-10-06: 出席の突合の取り直しで使う台帳の印。
+  console.log("\n1c. 代替経路の印・取り直しの失敗の回数");
+  check("代替経路の印", r.VIA_FALLBACK_MARK, "via-fallback");
+  check("代替経路の印は詳細の取り直しに使わない", r.shouldRetryMissingDetails(r.VIA_FALLBACK_MARK), false);
+  check("失敗の回数を読む", [r.refetchFailureCount("refetch-failed:2"), r.refetchFailureCount(null), r.refetchFailureCount("details-missing:3:1")], [2, 0, 0]);
+  check(
+    "失敗したら回数を足す (空か同じ印のときだけ)",
+    [r.nextRefetchFailedReason(null), r.nextRefetchFailedReason(""), r.nextRefetchFailedReason("refetch-failed:1")],
+    ["refetch-failed:1", "refetch-failed:1", "refetch-failed:2"],
+  );
+  check(
+    "他の印は上書きしない",
+    [r.nextRefetchFailedReason("details-missing:3:1"), r.nextRefetchFailedReason("details-archived:30"), r.nextRefetchFailedReason("via-fallback")],
+    [null, null, null],
+  );
+  check("上限は 3 回", r.MAX_REFETCH_FAILURES, 3);
+
   console.log("\n3. 自動処理の停止の警告");
   const st = (outcome, reason) => ({ at: "2026-10-05T19:56:00Z", outcome, reason, lastOkAt: null, lastErrorAt: null, lastErrorReason: null, consecutiveErrors: 0 });
   check("FFLogs 同期が設定で止まっている", c.isCronDisabledBySetting("fflogs-sync", st("skipped", "disabled")), true);
@@ -112,8 +129,8 @@ check(
   true,
 );
 check(
-  "台帳: v2 のときだけ印を書く (前回の印から回数を数える・保管扱いは別の印)",
-  /reason: fromV2\s*\? detailsLedgerReason\(\s*missingDetails,\s*ledgerMap\.get\(ref\.code\)\?\.reason,\s*detailsArchivedHere,\s*\)\s*: null,/.test(sync),
+  "台帳: v2 のときは詳細の印 (前回の印から回数を数える・保管扱いは別の印)、代替経路のときは via-fallback",
+  /reason: fromV2\s*\? detailsLedgerReason\(\s*missingDetails,\s*ledgerMap\.get\(ref\.code\)\?\.reason,\s*detailsArchivedHere,\s*\)\s*: VIA_FALLBACK_MARK,/.test(sync),
   true,
 );
 check("結果: 件数を返す", /videosBridged,\s*detailsMissing,\s*detailsArchived,\s*\};/.test(sync), true);

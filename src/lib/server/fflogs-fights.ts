@@ -18,7 +18,9 @@ import { parseFflogsReportCode } from "@/lib/fflogs-url";
 import {
   detailsLedgerReason,
   isArchivedReportError,
+  nextRefetchFailedReason,
   shouldRetryMissingDetails,
+  VIA_FALLBACK_MARK,
 } from "@/lib/fflogs-detail-retry";
 import { notifyLogsEvents } from "./logs-notify";
 import {
@@ -825,6 +827,18 @@ async function syncFflogsFightsUnlocked(opts?: {
           ref.code,
           savedReason,
         );
+        // 2026-10-06: 取り込み済み (ok) の行には失敗の回数だけを残す (ok・日付・
+        // 分類は変えない)。回数の多いものは次の取り直しで後回しにし、3 回で
+        // 外す (削除済みなどで毎回選ばれて枠を使っていた)。他の印は上書きしない。
+        if (prevLedger?.ok) {
+          const mark = nextRefetchFailedReason(prevLedger.reason);
+          if (mark) {
+            await db
+              .from("fflogs_report_syncs")
+              .update({ reason: mark })
+              .eq("report_code", ref.code);
+          }
+        }
         return;
       }
       await db.from("fflogs_report_syncs").upsert(
@@ -1083,13 +1097,15 @@ async function syncFflogsFightsUnlocked(opts?: {
         ok: true,
         // 2026-10-05: 詳細を取れなかった pull があれば印を付ける (次の同期で取り直す)。
         // 2026-10-06: FFLogs が保管扱いで断ったときは取り直さない印にする。
+        // 2026-10-06: 代替経路 (v1 / cookie) で読めたレポートには印を付ける
+        // (参加者名を取れないので、出席の突合の取り直しの対象から外す)。
         reason: fromV2
           ? detailsLedgerReason(
               missingDetails,
               ledgerMap.get(ref.code)?.reason,
               detailsArchivedHere,
             )
-          : null,
+          : VIA_FALLBACK_MARK,
         synced_at: new Date().toISOString(),
       },
       { onConflict: "report_code" },
