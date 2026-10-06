@@ -32,11 +32,12 @@ import {
   formatPercentage,
   isClearFight,
   totalLogMs,
+  unionLengthMs,
   type FightRow,
   type FloorMap,
   type ProgressLocale,
 } from "./fflogs-progress";
-import { floorFirstClears, sessionSummary } from "./fflogs-session";
+import { floorFirstClears } from "./fflogs-session";
 
 /** 送ってよい日の数 (火曜から数えて。火・水・木)。 */
 export const WEEKLY_SUMMARY_DUE_DAYS = 3;
@@ -86,7 +87,10 @@ export type WeeklySummary = {
   week: RaidWeek;
   days: number;
   pulls: number;
-  /** 実戦闘時間の合計 (ms)。 */
+  /**
+   * 実戦闘時間 (ms)。pull の区間の和集合 (同じ時間帯の pull を 2 本のログで
+   * 上げても 1 回)。`logMs` を超えない。
+   */
   fightMs: number;
   /**
    * ログ合計 (ms、2026-10-07)。練習ログの「練習日数」の欄と同じ `totalLogMs`
@@ -176,10 +180,10 @@ export function summarizeWeek(
     const d = fightDate(f);
     byDay.set(d, [...(byDay.get(d) ?? []), f]);
   }
-  let fightMs = 0;
-  for (const list of byDay.values()) {
-    fightMs += sessionSummary(list).fightMs;
-  }
+  // 2026-10-07: 戦闘時間も pull の区間の和集合で出す。同じ夜を 2 人がログに
+  // 取ると pull が 2 本ずつ入り、単純に足すと「ログ合計 (和集合)」より
+  // 「うち戦闘」が長くなって文面が矛盾する (PR のレビューで検出)。
+  const fightMs = unionLengthMs(inWeek.map((f) => ({ start: f.startMs, end: f.endMs })));
   // 週の pull をまとめて渡す (日ごとに出して足すと、日をまたいだログの開始が
   // 両方の日に入って二重になる)。
   const logMs = totalLogMs(inWeek);

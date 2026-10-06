@@ -367,27 +367,37 @@ try {
     110 * MIN,
   );
   // ⚠ 1 本のレポートに複数日の練習が入っていても、夜をまたぐ空き時間を数えない
-  // (区間は「レポート × 練習日」ごと。2026-10-07)。
-  const ld = (date, startMs, endMs, reportStartMs = null) => ({
-    reportCode: "A", sessionDate: date, startMs, endMs, reportStartMs,
+  // (2026-10-07)。本番の行の session_date はレポートにつき 1 つ (fflogs-fights.ts
+  // がレポート単位で決めて全 pull に書く) なので、材料も同じ形にする — pull ごとに
+  // 日付を変えた材料だと、日付で切る誤った実装でも通ってしまう (実際に通った)。
+  const ld = (startMs, endMs, reportStartMs = null) => ({
+    reportCode: "A", sessionDate: "2026-10-01", startMs, endMs, reportStartMs,
   });
+  const HOUR = 60 * MIN;
   check(
-    "同じレポートでも練習日が違えば別の区間 (夜を数えない)",
-    totalLogMs([ld("2026-10-01", t0, t0 + 60 * MIN), ld("2026-10-02", t0 + 24 * 60 * MIN, t0 + 25 * 60 * MIN)]),
-    120 * MIN,
+    "1 本のレポートに 2 日分 (練習日は 1 つ = 本番の形) でも夜を数えない",
+    totalLogMs([ld(t0, t0 + HOUR), ld(t0 + 24 * HOUR, t0 + 25 * HOUR)]),
+    2 * HOUR,
   );
   check(
-    "2 日目の区間の開始も 30 分前までしか遡らない (ログの開始は 1 日目の前)",
-    totalLogMs([
-      ld("2026-10-01", t0, t0 + 60 * MIN, t0 - 10 * MIN),
-      ld("2026-10-02", t0 + 24 * 60 * MIN, t0 + 25 * 60 * MIN, t0 - 10 * MIN),
-    ]),
-    (10 + 60 + 30 + 60) * MIN,
+    "2 つ目の区間はその最初の pull から (ログの開始の分は最初の区間だけ)",
+    totalLogMs([ld(t0, t0 + HOUR, t0 - 10 * MIN), ld(t0 + 24 * HOUR, t0 + 25 * HOUR, t0 - 10 * MIN)]),
+    10 * MIN + 2 * HOUR,
   );
   check(
-    "練習日が無い行は JST の暦日で分ける",
-    totalLogMs([lf("A", t0, t0 + 60 * MIN), lf("A", t0 + 24 * 60 * MIN, t0 + 25 * 60 * MIN)]),
-    120 * MIN,
+    "3 時間未満の休憩は切らない (0 時をまたぐ 1 回の練習の休憩を落とさない)",
+    totalLogMs([ld(t0, t0 + HOUR), ld(t0 + HOUR + 170 * MIN, t0 + 5 * HOUR)]),
+    5 * HOUR,
+  );
+  check(
+    "ちょうど 3 時間空いたら切る",
+    totalLogMs([ld(t0, t0 + HOUR), ld(t0 + 4 * HOUR, t0 + 5 * HOUR)]),
+    2 * HOUR,
+  );
+  check(
+    "pull の並び順によらない (後の日の pull が先に来ても)",
+    totalLogMs([ld(t0 + 24 * HOUR, t0 + 25 * HOUR, t0 - 10 * MIN), ld(t0, t0 + HOUR, t0 - 10 * MIN)]),
+    10 * MIN + 2 * HOUR,
   );
   check(
     "上限は最初の pull から数える (後の pull の前に遡らない)",
