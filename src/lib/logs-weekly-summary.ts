@@ -3,7 +3,8 @@
  *
  * 1 週間の練習を 1 通に束ねて Discord に流す。中身は既存の集計の組み合わせ:
  *
- *   - 練習量 (W-3 セッションサマリー): 練習日数 / pull 数 / 実戦闘時間 / 戦闘外の割合
+ *   - 練習量: 練習日数 / pull 数 / ログ合計 (うち戦闘)。2026-10-07 に「実戦闘 (戦闘外 N%)」
+ *     から変えた (実機要望。ログ合計は練習ログの「練習日数」の欄と同じ `totalLogMs`)
  *   - 到達 (W-4 進行トレンド): その週の最高到達と、前の週までの最高からの更新
  *   - 節目 (W-31 チーム実績 / L-1 層ごとの初討伐 / 絶の各フェーズへの初到達):
  *     その週に起きたものだけ
@@ -30,11 +31,13 @@ import {
   floorLabel,
   formatPercentage,
   isClearFight,
+  totalLogMs,
+  unionLengthMs,
   type FightRow,
   type FloorMap,
   type ProgressLocale,
 } from "./fflogs-progress";
-import { floorFirstClears, sessionSummary } from "./fflogs-session";
+import { floorFirstClears } from "./fflogs-session";
 
 /** 送ってよい日の数 (火曜から数えて。火・水・木)。 */
 export const WEEKLY_SUMMARY_DUE_DAYS = 3;
@@ -84,10 +87,17 @@ export type WeeklySummary = {
   week: RaidWeek;
   days: number;
   pulls: number;
-  /** 実戦闘時間の合計 (ms)。 */
+  /**
+   * 実戦闘時間 (ms)。pull の区間の和集合 (同じ時間帯の pull を 2 本のログで
+   * 上げても 1 回)。`logMs` を超えない。
+   */
   fightMs: number;
-  /** 拘束時間の合計 (ms、日ごとの「最初の pull の開始 〜 最後の pull の終了」の和)。 */
-  spanMs: number;
+  /**
+   * ログ合計 (ms、2026-10-07)。練習ログの「練習日数」の欄と同じ `totalLogMs`
+   * (各ログの開始 (最初の pull の 30 分前まで) 〜 最後の pull の終わり、重なりは
+   * 1 回)。pull の間の休憩を含む。
+   */
+  logMs: number;
   /** その週の最高到達。 */
   best: WeeklyReach | null;
   /** 前の週までの最高到達 (前の週までに pull が無ければ null)。 */
@@ -170,13 +180,13 @@ export function summarizeWeek(
     const d = fightDate(f);
     byDay.set(d, [...(byDay.get(d) ?? []), f]);
   }
-  let fightMs = 0;
-  let spanMs = 0;
-  for (const list of byDay.values()) {
-    const s = sessionSummary(list);
-    fightMs += s.fightMs;
-    spanMs += s.spanMs;
-  }
+  // 2026-10-07: 戦闘時間も pull の区間の和集合で出す。同じ夜を 2 人がログに
+  // 取ると pull が 2 本ずつ入り、単純に足すと「ログ合計 (和集合)」より
+  // 「うち戦闘」が長くなって文面が矛盾する (PR のレビューで検出)。
+  const fightMs = unionLengthMs(inWeek.map((f) => ({ start: f.startMs, end: f.endMs })));
+  // 週の pull をまとめて渡す (日ごとに出して足すと、日をまたいだログの開始が
+  // 両方の日に入って二重になる)。
+  const logMs = totalLogMs(inWeek);
 
   const best = bestReach(inWeek, floors, phaseModel);
   const bestBefore = bestReach(before, floors, phaseModel);
@@ -220,7 +230,7 @@ export function summarizeWeek(
     days: byDay.size,
     pulls: inWeek.length,
     fightMs,
-    spanMs,
+    logMs,
     best,
     bestBefore,
     improved: best !== null && bestBefore !== null && isReachAhead(best, bestBefore),
@@ -273,11 +283,11 @@ export function formatWeeklySummaryMessage(input: {
   url?: string | null;
 }): string {
   const { summary: s, floors, phaseModel } = input;
-  const downtime = s.spanMs > 0 ? Math.round(((s.spanMs - s.fightMs) / s.spanMs) * 100) : null;
   const lines = [
     `📅 **週のまとめ** ${formatMonthDay(s.week.start)}〜${formatMonthDay(s.week.end)}`,
-    `**${input.categoryName}** — 練習 ${s.days} 日 / ${s.pulls} pull / 実戦闘 ${formatHoursMinutes(s.fightMs)}` +
-      (downtime !== null ? ` (戦闘外 ${Math.max(0, downtime)}%)` : ""),
+    // 2026-10-07: 「実戦闘 (戦闘外 N%)」から「ログ合計 (うち戦闘)」へ (実機要望)。
+    `**${input.categoryName}** — 練習 ${s.days} 日 / ${s.pulls} pull / ログ合計 ${formatHoursMinutes(s.logMs)}` +
+      ` (うち戦闘 ${formatHoursMinutes(s.fightMs)})`,
   ];
   // 消化の時期 (前の週までに討伐済み) は到達が毎週「CLEAR」で情報にならない。
   if (!s.clearedBefore && s.best) {

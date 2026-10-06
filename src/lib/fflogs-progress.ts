@@ -258,6 +258,42 @@ export function pullSpanByReport(
 export const MAX_LOG_LEAD_MS = 30 * 60 * 1000;
 
 /**
+ * 1 本のレポートの中で、pull の間がこれ以上空いたら別の練習として区間を切る
+ * (`totalLogMs`、2026-10-07)。練習中の休憩 (食事・作戦会議) より長く、
+ * 夜をまたぐ空き (半日以上) より短い値。⚠ 変えたら練習ログの説明
+ * (`statLogTotalTitle`、ja / en) の「3 時間」も直す (`MAX_LOG_LEAD_MS` の
+ * 「30 分」も同じ。check-fflogs-progress.mjs が突き合わせる)。
+ */
+export const LOG_GAP_SPLIT_MS = 3 * 60 * 60 * 1000;
+
+/** 区間の和集合の長さ (重なる区間・接する区間は 1 回だけ数える)。 */
+export function unionLengthMs(
+  spans: ReadonlyArray<{ start: number; end: number }>,
+): number {
+  const sorted = [...spans]
+    .filter((s) => Number.isFinite(s.start) && Number.isFinite(s.end))
+    .sort((a, b) => a.start - b.start);
+  let total = 0;
+  let curStart = Number.NaN;
+  let curEnd = Number.NaN;
+  for (const s of sorted) {
+    const end = Math.max(s.start, s.end);
+    if (Number.isNaN(curStart)) {
+      curStart = s.start;
+      curEnd = end;
+    } else if (s.start <= curEnd) {
+      if (end > curEnd) curEnd = end;
+    } else {
+      total += curEnd - curStart;
+      curStart = s.start;
+      curEnd = end;
+    }
+  }
+  if (!Number.isNaN(curStart)) total += curEnd - curStart;
+  return total;
+}
+
+/**
  * ログの合計時間 (ms、2026-10-06 実機要望「練習日数に戦闘時間でなく Logs の
  * 総合計時間を入れたい」)。
  *
@@ -280,13 +316,22 @@ export const MAX_LOG_LEAD_MS = 30 * 60 * 1000;
  *   何度も起きている。v2.10 / v2.16 のリリースノート)。ACT の 1 日分の
  *   ファイルを上げた場合も同じ。準備・集合の時間は入れ、混ざる時間は最大
  *   30 分に抑える (PR のレビューで検出)
+ * - ⚠ **1 本のレポートの中でも、pull の間が `LOG_GAP_SPLIT_MS` (3 時間) 以上
+ *   空いたら区間を切る (2026-10-07)。** 複数日の練習が 1 本のレポートに入って
+ *   いる (複数日分のログを 1 本で上げた) と、レポート単位の区間では夜をまたぐ
+ *   空き時間 (約 1 日) まで数えてしまう。練習日 (`session_date`) では切れない —
+ *   **本番の行の `session_date` はレポートにつき 1 つ** (`fflogs-fights.ts` が
+ *   レポート単位で決めて全 pull に書く) なので、日付で分けても区間は 1 本の
+ *   まま (PR のレビューで検出)。間隔で切れば、0 時をまたぐ 1 回の練習の休憩も
+ *   落とさない。2 つ目以降の区間は、その区間の最初の pull から数える (ログは
+ *   夜の間も続いていたので「ログの開始」が無い)
  */
 export function totalLogMs(
   fights: ReadonlyArray<Pick<FightRow, "reportCode" | "startMs" | "endMs" | "reportStartMs">>,
 ): number {
-  const perReport = new Map<
+  const byReport = new Map<
     string,
-    { firstStart: number; end: number; reportStart: number | null }
+    { pulls: Array<{ start: number; end: number }>; reportStart: number | null }
   >();
   for (const f of fights) {
     if (!Number.isFinite(f.startMs) || !Number.isFinite(f.endMs)) continue;
@@ -294,43 +339,37 @@ export function totalLogMs(
       f.reportStartMs !== null && Number.isFinite(f.reportStartMs)
         ? f.reportStartMs
         : null;
-    const end = Math.max(f.startMs, f.endMs);
-    const cur = perReport.get(f.reportCode);
+    const pull = { start: f.startMs, end: Math.max(f.startMs, f.endMs) };
+    const cur = byReport.get(f.reportCode);
     if (!cur) {
-      perReport.set(f.reportCode, { firstStart: f.startMs, end, reportStart });
+      byReport.set(f.reportCode, { pulls: [pull], reportStart });
       continue;
     }
-    if (f.startMs < cur.firstStart) cur.firstStart = f.startMs;
-    if (end > cur.end) cur.end = end;
+    cur.pulls.push(pull);
     if (reportStart !== null && (cur.reportStart === null || reportStart < cur.reportStart)) {
       cur.reportStart = reportStart;
     }
   }
-  const spans = [...perReport.values()].map((r) => ({
-    start:
-      r.reportStart === null
-        ? r.firstStart
-        : Math.max(Math.min(r.reportStart, r.firstStart), r.firstStart - MAX_LOG_LEAD_MS),
-    end: r.end,
-  }));
-  const sorted = spans.sort((a, b) => a.start - b.start);
-  let total = 0;
-  let curStart = Number.NaN;
-  let curEnd = Number.NaN;
-  for (const s of sorted) {
-    if (Number.isNaN(curStart)) {
-      curStart = s.start;
-      curEnd = s.end;
-    } else if (s.start <= curEnd) {
-      if (s.end > curEnd) curEnd = s.end;
-    } else {
-      total += curEnd - curStart;
-      curStart = s.start;
-      curEnd = s.end;
+  const spans: Array<{ start: number; end: number }> = [];
+  for (const r of byReport.values()) {
+    const pulls = r.pulls.sort((a, b) => a.start - b.start);
+    let seg: { start: number; end: number } | null = null;
+    for (const p of pulls) {
+      if (seg && p.start - seg.end < LOG_GAP_SPLIT_MS) {
+        if (p.end > seg.end) seg.end = p.end;
+        continue;
+      }
+      // 新しい区間。レポートの最初の区間だけ、ログの開始 (30 分前まで) から数える。
+      const start: number =
+        seg === null && r.reportStart !== null
+          ? Math.max(Math.min(r.reportStart, p.start), p.start - MAX_LOG_LEAD_MS)
+          : p.start;
+      if (seg) spans.push(seg);
+      seg = { start, end: p.end };
     }
+    if (seg) spans.push(seg);
   }
-  if (!Number.isNaN(curStart)) total += curEnd - curStart;
-  return total;
+  return unionLengthMs(spans);
 }
 
 /**

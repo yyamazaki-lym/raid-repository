@@ -366,6 +366,39 @@ try {
     totalLogMs([lf("A", t0, t0 + 60 * MIN, t0 - 120 * MIN), lf("A", t0 + 70 * MIN, t0 + 80 * MIN, t0 - 120 * MIN)]),
     110 * MIN,
   );
+  // ⚠ 1 本のレポートに複数日の練習が入っていても、夜をまたぐ空き時間を数えない
+  // (2026-10-07)。本番の行の session_date はレポートにつき 1 つ (fflogs-fights.ts
+  // がレポート単位で決めて全 pull に書く) なので、材料も同じ形にする — pull ごとに
+  // 日付を変えた材料だと、日付で切る誤った実装でも通ってしまう (実際に通った)。
+  const ld = (startMs, endMs, reportStartMs = null) => ({
+    reportCode: "A", sessionDate: "2026-10-01", startMs, endMs, reportStartMs,
+  });
+  const HOUR = 60 * MIN;
+  check(
+    "1 本のレポートに 2 日分 (練習日は 1 つ = 本番の形) でも夜を数えない",
+    totalLogMs([ld(t0, t0 + HOUR), ld(t0 + 24 * HOUR, t0 + 25 * HOUR)]),
+    2 * HOUR,
+  );
+  check(
+    "2 つ目の区間はその最初の pull から (ログの開始の分は最初の区間だけ)",
+    totalLogMs([ld(t0, t0 + HOUR, t0 - 10 * MIN), ld(t0 + 24 * HOUR, t0 + 25 * HOUR, t0 - 10 * MIN)]),
+    10 * MIN + 2 * HOUR,
+  );
+  check(
+    "3 時間未満の休憩は切らない (0 時をまたぐ 1 回の練習の休憩を落とさない)",
+    totalLogMs([ld(t0, t0 + HOUR), ld(t0 + HOUR + 170 * MIN, t0 + 5 * HOUR)]),
+    5 * HOUR,
+  );
+  check(
+    "ちょうど 3 時間空いたら切る",
+    totalLogMs([ld(t0, t0 + HOUR), ld(t0 + 4 * HOUR, t0 + 5 * HOUR)]),
+    2 * HOUR,
+  );
+  check(
+    "pull の並び順によらない (後の日の pull が先に来ても)",
+    totalLogMs([ld(t0 + 24 * HOUR, t0 + 25 * HOUR, t0 - 10 * MIN), ld(t0, t0 + HOUR, t0 - 10 * MIN)]),
+    10 * MIN + 2 * HOUR,
+  );
   check(
     "上限は最初の pull から数える (後の pull の前に遡らない)",
     totalLogMs([lf("A", t0 + 70 * MIN, t0 + 80 * MIN, t0 - 120 * MIN), lf("A", t0, t0 + 60 * MIN, t0 - 120 * MIN)]),
@@ -384,6 +417,22 @@ console.log("\n練習日数のタイルの配線");
     "合計は練習日数と同じ tierFights から",
     /const logTotalMs = useMemo\(\(\) => totalLogMs\(tierFights\), \[tierFights\]\);/.test(view),
     true,
+  );
+  // 2026-10-07: 説明 (ja / en) の 30 分・3 時間が実装の定数と一致すること
+  // (数え方を変えて説明が古いまま残っていたのを PR のレビューで検出)。
+  const dict = readFileSync("src/lib/i18n/dict/logs.ts", "utf8").replace(/\r\n/g, "\n");
+  const prog = readFileSync("src/lib/fflogs-progress.ts", "utf8").replace(/\r\n/g, "\n");
+  const titles = [...dict.matchAll(/statLogTotalTitle:\s*\n\s*"([^"]+)"/g)].map((mm) => mm[1]);
+  check(
+    "ログ合計の説明 (ja / en) が実装の 30 分・3 時間と一致",
+    [
+      titles.length,
+      /export const MAX_LOG_LEAD_MS = 30 \* 60 \* 1000;/.test(prog),
+      /export const LOG_GAP_SPLIT_MS = 3 \* 60 \* 60 \* 1000;/.test(prog),
+      titles[0]?.includes("30 分前") && titles[0]?.includes("3 時間以上"),
+      titles[1]?.includes("30 minutes") && titles[1]?.includes("3 hours or more"),
+    ],
+    [2, true, true, true, true],
   );
   check(
     "打ち切り時は shownOnly を添える",
