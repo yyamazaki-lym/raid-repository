@@ -137,12 +137,12 @@ check("結果: 件数を返す", /videosBridged,\s*detailsMissing,\s*detailsArch
 check(
   "詳細の取得: 保管扱いのエラーで印を立てて打ち切る",
   /if \(isArchivedReportError\(message\)\) \{[\s\S]{0,200}?archived = true;[\s\S]{0,200}?break;\s*\}/.test(sync) &&
-    /return \{ details: out, archived \};/.test(sync),
+    /return \{ details: out, archived, truncated \};/.test(sync),
   true,
 );
 check(
   "詳細の取得結果を受け取る (v1 / cookie 経路は保管扱いにしない)",
-  /: \{ details: new Map<number, FightDetail>\(\), archived: false \};\s*const details = fetchedDetails\.details;\s*detailsArchivedHere = fetchedDetails\.archived;/.test(sync),
+  /: \{ details: new Map<number, FightDetail>\(\), archived: false, truncated: false \};\s*const details = fetchedDetails\.details;\s*detailsArchivedHere = fetchedDetails\.archived;/.test(sync),
   true,
 );
 check("2. pull の保存失敗の理由を一覧に出す", /console\.warn\("\[fflogs-fights\] upsert failed:", error\.message\);\s*\/\/[^\n]*\n\s*failures\.push\(\{ reportCode: ref\.code/.test(sync), true);

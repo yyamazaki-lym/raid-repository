@@ -181,7 +181,31 @@ check(
   const syncSrc = read("src/lib/server/fflogs-fights.ts");
   check(
     "取り直しの失敗: 取り込み済み (ok) の行に回数の印だけを書く (他の印は上書きしない)",
-    /if \(prevLedger\?\.ok\) \{\s*const mark = nextRefetchFailedReason\(prevLedger\.reason\);\s*if \(mark\) \{\s*await db\s*\.from\("fflogs_report_syncs"\)\s*\.update\(\{ reason: mark \}\)\s*\.eq\("report_code", ref\.code\);/.test(syncSrc),
+    /if \(prevLedger\?\.ok && reportSpecificFailure\) \{\s*const mark = nextRefetchFailedReason\(prevLedger\.reason\);\s*if \(mark\) \{\s*await db\s*\.from\("fflogs_report_syncs"\)\s*\.update\(\{ reason: mark \}\)\s*\.eq\("report_code", ref\.code\);/.test(syncSrc),
+    true,
+  );
+  // マージ前レビュー: 全体の障害 (401・5xx・タイムアウト・429) や限定公開の代替経路の
+  // 連鎖を数えると、障害中に押した回数でレポートが対象から外れたままになる。
+  check(
+    "取り直しの失敗に数えるのは、そのレポート固有の失敗だけ (最初の v2 の応答で判定)",
+    /let res = await fetchReportFights\(token, ref\.code\);\s*fetched \+= 1;[\s\S]{0,600}?const reportSpecificFailure =\s*!res\.ok && res\.reportSpecific === true && !PERMISSION_ERROR_RE\.test\(res\.reason\);/.test(syncSrc),
+    true,
+  );
+  check(
+    "レポート固有の失敗は GraphQL の拒否・空の応答だけ (http / rate は含めない)",
+    /reportSpecific: withPhasesRes\.kind === "empty",/.test(syncSrc) &&
+      /reportSpecific: first\.kind === "empty",/.test(syncSrc) &&
+      /reportSpecific: second\.kind === "graphql" \|\| second\.kind === "empty",/.test(syncSrc),
+    true,
+  );
+  // マージ前レビュー: 詳細を途中で打ち切ったレポートの参加者を記録すると、
+  // 既存の正しい出席の行を少ない pull 数で上書きしていた。
+  check(
+    "詳細の打ち切り: 問い合わせを終えた pull の数で判定し、打ち切ったレポートの出席は記録しない",
+    /fetchedUpTo = i \+ batch\.length;/.test(syncSrc) &&
+      /const truncated = fetchedUpTo < fights\.length;/.test(syncSrc) &&
+      /detailsTruncatedHere = fetchedDetails\.truncated;/.test(syncSrc) &&
+      /if \(details\.size > 0 && !detailsTruncatedHere\) \{/.test(syncSrc),
     true,
   );
 }
