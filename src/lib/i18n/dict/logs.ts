@@ -291,6 +291,9 @@ export const ja = {
       `出席の突合: ${rows} 件をメンバーに紐づけました`,
     attendanceUnresolved: (rows: number, names: string): string =>
       `出席の突合: ${rows} 件を紐づけ / 対応表に無い名前: ${names} — 設定のメンバー一覧で「ログ名」に入れてください`,
+    // 2026-10-06: 詳細は取れたのに参加者名を 1 人も読めなかった (取得側の問題)。
+    attendanceNoNames: (reports: number): string =>
+      `出席の突合: ${reports} 件のレポートで参加者名を読めませんでした (FFLogs の応答の形が変わった可能性。ログ名の設定では直りません)`,
     failuresTitle: (n: number) =>
       `今回の同期で取得できなかったレポート (${n} 件)`,
     // レポート削除
@@ -780,6 +783,8 @@ export const en: LogsMessages = {
     attendanceMatched: (rows) => `Attendance: linked ${rows} row(s) to members`,
     attendanceUnresolved: (rows, names) =>
       `Attendance: linked ${rows} row(s) / unmapped names: ${names} — add them as "Log name" in the member list`,
+    attendanceNoNames: (reports) =>
+      `Attendance: could not read participant names in ${reports} report(s) (the FFLogs response may have changed; "Log name" will not fix this)`,
     failuresTitle: (n) => `Reports that failed in this sync (${n})`,
     deleteConfirmTitle: (code) => `Remove report ${code} from practice logs?`,
     deleteConfirmDescription:

@@ -209,6 +209,12 @@ export type FflogsFightsSyncResult =
       /** 対応表に無かった名前 (最大 12 件、admin にそのまま見せる)。 */
       attendanceUnresolvedNames: string[];
       /**
+       * 2026-10-06: 詳細は取れたのに参加者名を 1 人も読めなかったレポートの数。
+       * 上の 2 つが 0 / 0 でも「取り直したレポートが無い」のか「名前を
+       * 読めていない」のかを画面で分ける (後者は対応表では直らない)。
+       */
+      attendanceNoNameReports: number;
+      /**
        * 2026-10-05: 詳細 (PT DPS・死亡数・ワイプ原因) を取れなかった pull の数。
        * そのレポートは台帳に印を付け、次の同期で日付に関係なく取り直す
        * (`fflogs-detail-retry.ts`、最大 3 回)。
@@ -483,6 +489,7 @@ async function syncFflogsFightsUnlocked(opts?: {
       attendanceMatched: 0,
       attendanceUnresolved: 0,
       attendanceUnresolvedNames: [],
+      attendanceNoNameReports: 0,
       detailsMissing: 0,
       detailsArchived: 0,
     };
@@ -653,6 +660,8 @@ async function syncFflogsFightsUnlocked(opts?: {
   // ループの後で 1 回だけメンバーキーに解決して保存する
   // (名前はここから DB へ行かない。詳細は ./attendance-actuals.ts)。
   const attendanceReports: ReportParticipants[] = [];
+  // 2026-10-06: 詳細は取れたのに参加者名が 1 つも無かったレポート。
+  const attendanceNoNameCodes: string[] = [];
   const failures: Array<{ reportCode: string; reason: string }> = [];
   let truncated = targets.length > sliced.length;
   // C-7: 429 を受けたら立てる。以後のレポートは取りに行かない。
@@ -876,6 +885,11 @@ async function syncFflogsFightsUnlocked(opts?: {
               pulls,
             })),
           });
+        } else {
+          // 2026-10-06: 以前はここで黙って何もしなかったため、突合が 0 件の
+          // ときに「名前を読めていない」のか「対応表に無い」のかを画面で
+          // 分けられなかった (実機: 出席サマリーが 0 日のまま原因が分からない)。
+          attendanceNoNameCodes.push(ref.code);
         }
       }
       let upsertOk = false;
@@ -1098,6 +1112,12 @@ async function syncFflogsFightsUnlocked(opts?: {
   // (f) W-6 (2026-09-08): 出席の自動突合。参加者名をメンバーキーに解決して
   //     保存する。同期本体は成功しているので、ここが落ちても同期は成功扱い。
   const attendance = await recordAttendanceActuals(attendanceReports);
+  if (attendanceNoNameCodes.length > 0) {
+    console.warn(
+      `[fflogs-fights] 詳細はあるのに参加者名が 0 件のレポート ${attendanceNoNameCodes.length} 件: ` +
+        attendanceNoNameCodes.slice(0, 5).join(", "),
+    );
+  }
 
   return {
     ok: true,
@@ -1106,6 +1126,7 @@ async function syncFflogsFightsUnlocked(opts?: {
     attendanceMatched: attendance.matched,
     attendanceUnresolved: attendance.unresolved,
     attendanceUnresolvedNames: attendance.unresolvedNames,
+    attendanceNoNameReports: attendanceNoNameCodes.length,
     discovered,
     discoveryNote,
     reportsKnown: refs.size,

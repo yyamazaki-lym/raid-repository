@@ -650,6 +650,12 @@ export function LogsView({
       } else if (result.attendanceMatched > 0) {
         toast.success(m.logsSync.attendanceMatched(result.attendanceMatched));
       }
+      // 2026-10-06: 上のコメントの「0 / 0 のときも出す」は実装されておらず、
+      // 名前を 1 つも読めなかったときは何も出ていなかった。取得側の問題は
+      // 対応表 (ログ名) では直らないので、別の知らせとして出す。
+      if (result.attendanceNoNameReports > 0) {
+        toast.warning(m.logsSync.attendanceNoNames(result.attendanceNoNameReports));
+      }
       toast.success(
         m.logsSync.toastDone(result.reportsFetched, result.fightsUpserted) +
           (result.reattributed > 0 ? m.logsSync.reattributed(result.reattributed) : "") +

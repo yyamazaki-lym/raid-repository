@@ -20,6 +20,7 @@ import type { NativeMemberRowFull } from "@/lib/schedule/native-admin-client";
 import { useConfirm } from "@/components/portal/confirm-dialog";
 import { useLocale, useMessages } from "@/lib/i18n/client";
 import { CollapsibleSection } from "./collapsible-section";
+import { UnresolvedLogNames } from "./unresolved-log-names";
 import { MEMBER_ROLES } from "@/lib/member-roles";
 import { JOBS, jobLabel } from "@/lib/jobs";
 import type { ScheduleSourceMode } from "@/lib/schedule/source-mode";
@@ -557,6 +558,16 @@ export function NativeMembersSection({
             );
           })}
         </ul>
+      )}
+
+      {/* 2026-10-06: ログに出たがどのメンバーにも一致しなかった名前。選ぶと
+          そのメンバーの「ログ名」の下書きに入る (保存は行の「保存」)。 */}
+      {canEdit && loaded && members.length > 0 && (
+        <UnresolvedLogNames
+          members={members}
+          disabled={pending}
+          onAssign={(id, name) => setDraft(id, { characterName: name })}
+        />
       )}
 
       {canEdit && (
