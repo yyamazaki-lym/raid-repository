@@ -22,7 +22,10 @@ import {
   type ScheduleSession,
 } from "./parse";
 import { getScheduleSourceUrl } from "./source-url";
-import { fetchStoredPastSessions } from "@/lib/server/discord-schedule";
+import {
+  fetchExcludedPastSessions,
+  fetchStoredPastSessions,
+} from "@/lib/server/discord-schedule";
 import { planPastSessionMerge } from "./past-session-dedup";
 import { isPublicHttpUrl } from "@/lib/url-safe";
 import { assertPublicResolution } from "@/lib/server/safe-fetch";
@@ -222,10 +225,17 @@ async function mergeStoredPastSessions(
   parsed: ParsedSchedule,
 ): Promise<ParsedSchedule> {
   let stored: Awaited<ReturnType<typeof fetchStoredPastSessions>>;
+  let excluded: Awaited<ReturnType<typeof fetchExcludedPastSessions>>;
   try {
     const since = new Date();
     since.setUTCMonth(since.getUTCMonth() - PAST_MERGE_WINDOW_MONTHS);
-    stored = await fetchStoredPastSessions({ sinceIso: since.toISOString() });
+    // 2026-10-06: 除外した行も読む。除外した行と同じ開催 (時刻違いの重複) も
+    // 表示から外すため (`planPastSessionMerge` の `excluded`)。読めなければ
+    // 空として扱う (従来どおり除外した rawDate の行だけが消える)。
+    [stored, excluded] = await Promise.all([
+      fetchStoredPastSessions({ sinceIso: since.toISOString() }),
+      fetchExcludedPastSessions({ sinceIso: since.toISOString() }),
+    ]);
   } catch (e) {
     // 2026-10-05: ビルド時の静的描画の試行で cookies() が投げる Next.js の合図
     // (DYNAMIC_SERVER_USAGE) は握らずに投げ直す。DB の失敗だけを best-effort で吸う。
@@ -268,6 +278,9 @@ async function mergeStoredPastSessions(
       createdAt: s.createdAt,
       source: s.source,
     })),
+    excluded: excluded.map((e) =>
+      toCandidate({ ...e, startMs: new Date(e.parsedDate).getTime() }),
+    ),
   });
 
   // char-sheets セッション: 未来はそのまま、過去は同じ開催の stored 行が

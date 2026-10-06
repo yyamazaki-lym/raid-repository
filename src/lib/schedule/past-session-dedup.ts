@@ -119,18 +119,30 @@ export type PastSessionMergePlan = {
 /**
  * デイコードの行 (`sheet`) と保存済みの過去の行 (`stored`) を、同じ開催ごとに
  * 1 つにまとめる計画を立てる。
+ *
+ * `excluded` (2026-10-06): 過去ログから除外した行 (`excluded_at` あり)。
+ * **除外した行と同じ開催の行も**表示に出さない (実開催の証拠にも数えない)。
+ * 除外は rawDate 1 行にしか印を付けないので、時刻違いで重複していたもう一方の
+ * 行 (本番の 10/02: 21:30 を除外 → 22:00 が代わりに出た) が残っていた。
  */
 export function planPastSessionMerge(input: {
   sheet: ReadonlyArray<SameDayCandidate>;
   stored: ReadonlyArray<StoredCandidate>;
+  excluded?: ReadonlyArray<SameDayCandidate>;
 }): PastSessionMergePlan {
   const verifiedSheetRawDates = new Set<string>();
   const aliasOf: Record<string, string> = {};
   const rest: StoredCandidate[] = [];
+  const excluded = input.excluded ?? [];
+  const isExcluded = (c: SameDayCandidate) =>
+    excluded.some((e) => e.rawDate === c.rawDate || isSameSession(e, c));
+  // 0. 除外した開催の行は、保存済みの行も、それを証拠にするデイコードの行も外す。
+  const stored = input.stored.filter((r) => !isExcluded(r));
+  const sheet = input.sheet.filter((s) => !isExcluded(s));
 
   // 1. デイコードの行に重なる保存済みの行は、デイコードの行にまとめる。
-  for (const r of input.stored) {
-    const matches = input.sheet.filter((s) => s.rawDate === r.rawDate || isSameSession(s, r));
+  for (const r of stored) {
+    const matches = sheet.filter((s) => s.rawDate === r.rawDate || isSameSession(s, r));
     if (matches.length === 0) {
       rest.push(r);
       continue;

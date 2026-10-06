@@ -318,24 +318,39 @@ export async function fetchStoredPastSessions(opts?: {
  * (`fetchStoredPastSessions`) はこれらを読み飛ばすため、除外した日は
  * この getter からしか見えない。
  */
-export async function fetchExcludedPastSessions(): Promise<
+export async function fetchExcludedPastSessions(opts?: {
+  /** この UTC ISO 以降 (`parsed_date >= sinceIso`) の行のみ返す。 */
+  sinceIso?: string;
+}): Promise<
   Array<{
     rawDate: string;
     parsedDate: string;
+    /**
+     * 2026-10-06: 除外した行と同じ開催 (時刻違いの重複) も表示から外すのに
+     * 使う (`planPastSessionMerge` の `excluded`)。
+     */
+    startTime: string;
+    endTime: string;
     source: string | null;
     excludedAt: string;
   }>
 > {
   const supabase = await createClient();
-  const { data, error } = await supabase
+  let query = supabase
     .from("schedule_past_sessions")
-    .select("raw_date, parsed_date, source, excluded_at")
+    .select("raw_date, parsed_date, start_time, end_time, source, excluded_at")
     .not("excluded_at", "is", null)
     .order("parsed_date", { ascending: false });
+  if (opts?.sinceIso) {
+    query = query.gte("parsed_date", opts.sinceIso);
+  }
+  const { data, error } = await query;
   if (error || !data) return [];
   return data.map((r) => ({
     rawDate: r.raw_date as string,
     parsedDate: r.parsed_date as string,
+    startTime: (r.start_time as string | null) ?? "",
+    endTime: (r.end_time as string | null) ?? "",
     source: (r.source as string | null) ?? null,
     excludedAt: r.excluded_at as string,
   }));
