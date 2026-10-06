@@ -365,7 +365,7 @@ const REFETCH_LIMIT = 25;
 export type RefetchUnmatchedResult =
   | {
       ok: true;
-      /** 今回取り直したレポート数。 */
+      /** 今回実際に取りに行ったレポート数 (失敗を含む)。 */
       requested: number;
       /** 枠に入らず残したレポート数 (もう一度押すと続きを取り直す)。 */
       remaining: number;
@@ -387,7 +387,8 @@ export type RefetchUnmatchedResult =
  * 「紐づけられなかった日」のまま残っていた。窓の中で突合の行が 1 つも無い
  * レポートを選んで (`selectRefetchTargets`)、URL を貼る取り込みと同じ経路
  * (`onlyCodes`) で取り直す。取り直しは「新しいレポート」の通知に数えない
- * (`fflogs-fights.ts` の台帳判定)。
+ * (`fflogs-fights.ts` の台帳判定)。分類 (カテゴリ)・日付・台帳の ok は変えない
+ * (`preserveExisting`、URL 取り込みで選んだコンテンツや手動の割り当てを消さない)。
  */
 export async function refetchUnmatchedAttendanceAction(): Promise<RefetchUnmatchedResult> {
   const auth = await assertAdminResult();
@@ -462,11 +463,16 @@ export async function refetchUnmatchedAttendanceAction(): Promise<RefetchUnmatch
       return emptyRefetchResult();
     }
 
-    const result = await syncFflogsFights({ onlyCodes: targets.codes });
+    // 分類・日付は変えず、参加者名と詳細だけを取り直す (`preserveExisting`)。
+    const result = await syncFflogsFights({
+      onlyCodes: targets.codes,
+      preserveExisting: true,
+    });
     if (!result.ok) return { ok: false, reason: result.reason };
     return {
       ok: true,
-      requested: targets.codes.length,
+      // 実際に取りに行った件数 (ポイント不足・時間切れで止まった分は残りに入る)。
+      requested: result.reportsFetched,
       // 時間切れで取り切れなかった分も「残り」に足す (もう一度押せば取る)。
       remaining: targets.remaining + result.remaining,
       failed: result.failed,

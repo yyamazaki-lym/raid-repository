@@ -455,6 +455,8 @@ export const SERVER_TEXT_EN: ServerTextDictRaw = {
       "Preview failed: {0}",
     "pull の保存に失敗: ${error.message}":
       "Failed to save pulls: {0}",
+    "保存済みの pull を読めませんでした: ${existingError.message}":
+      "Could not read the saved pulls: {0}",
     "ユーザー「${username}」が見つかりません":
       "User \"{0}\" was not found",
     "一言は ${NOTE_MAX} 文字以内で入力してください":

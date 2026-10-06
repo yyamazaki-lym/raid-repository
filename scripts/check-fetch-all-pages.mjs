@@ -143,7 +143,8 @@ try {
 
   const ledger = window(
     "src/lib/server/fflogs-fights.ts",
-    '"report_code, ok, synced_at, session_date, category_id, zone_name, reason"',
+    // 2026-10-06: 「新しいレポート」の判定に fight_count も読む。
+    '"report_code, ok, synced_at, session_date, category_id, zone_name, reason, fight_count"',
   );
   check("同期台帳: 順序付きでページを繰る", paged(ledger), true);
   check("  └ 順序は report_code (主キー)", /\.order\("report_code"/.test(ledger), true);

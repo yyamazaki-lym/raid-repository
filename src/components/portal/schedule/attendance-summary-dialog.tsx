@@ -84,7 +84,13 @@ export function AttendanceSummaryDialog() {
         return;
       }
       if (r.requested === 0) {
-        toast.info(m.attendanceHistory.refetchNothing);
+        // 対象はあるのに 1 件も取りに行けなかった (FFLogs の取得枠・時間切れ)
+        // ときに「取り直すレポートはありません」と出さない。
+        if (r.remaining > 0) {
+          toast.warning(m.attendanceHistory.refetchStalled(r.remaining));
+        } else {
+          toast.info(m.attendanceHistory.refetchNothing);
+        }
         return;
       }
       toast.success(

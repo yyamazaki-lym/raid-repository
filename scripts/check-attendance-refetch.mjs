@@ -59,6 +59,7 @@ try {
     { reportCode: "B_sep24", firstStartMs: day("09-24") },
     { reportCode: "C_matched", firstStartMs: day("10-01") },
     { reportCode: "D_private", firstStartMs: day("09-27") },
+    { reportCode: "D2_transient", firstStartMs: day("09-26") },
     { reportCode: "E_archived", firstStartMs: day("08-20") },
     { reportCode: "F_justnow", firstStartMs: day("10-04") },
     { reportCode: "G_noledger", firstStartMs: day("08-10") },
@@ -68,7 +69,10 @@ try {
     ["A_sep18", { ok: true, reason: null, syncedAt: ago(60 * 24 * 10) }],
     ["B_sep24", { ok: true, reason: "details-missing:3:1", syncedAt: ago(60 * 24) }],
     ["C_matched", { ok: true, reason: null, syncedAt: ago(60 * 24) }],
-    ["D_private", { ok: false, reason: "private", syncedAt: ago(60 * 24) }],
+    // 恒久失敗 (private) は外す。一時的な失敗は残す (通常の同期は紐づけの無い
+    // レポートを再試行しないので、ここで外すと二度と取り直されない)。
+    ["D_private", { ok: false, reason: "You do not have permission to view this report.", syncedAt: ago(60 * 24) }],
+    ["D2_transient", { ok: false, reason: "fflogs v2 5xx: 502 Bad Gateway", syncedAt: ago(60 * 24) }],
     ["E_archived", { ok: true, reason: "details-archived:30", syncedAt: ago(60 * 24) }],
     ["F_justnow", { ok: true, reason: null, syncedAt: ago(29) }],
     ["H_older", { ok: true, reason: null, syncedAt: ago(31) }],
@@ -76,19 +80,19 @@ try {
   const base = { reports, matchedCodes: new Set(["C_matched"]), ledger, nowMs: now, limit: 25 };
   const all = selectRefetchTargets(base);
   check(
-    "突合の行があるもの・取得失敗・保管扱い・30 分以内に取り直したものを外し、新しい順",
+    "突合の行があるもの・恒久失敗・保管扱い・30 分以内に取り直したものを外し、新しい順 (一時的な失敗は残す)",
     all.codes,
-    ["H_older", "B_sep24", "A_sep18", "G_noledger"],
+    ["H_older", "D2_transient", "B_sep24", "A_sep18", "G_noledger"],
   );
   check("全部入れば残りは 0", all.remaining, 0);
   check("直前とみなす時間は 30 分", RECENT_REFETCH_MS, 30 * 60 * 1000);
   const two = selectRefetchTargets({ ...base, limit: 2 });
-  check("上限で切って残りを数える", [two.codes, two.remaining], [["H_older", "B_sep24"], 2]);
-  check("上限 0 なら何も取らない", selectRefetchTargets({ ...base, limit: 0 }), { codes: [], remaining: 4 });
+  check("上限で切って残りを数える", [two.codes, two.remaining], [["H_older", "D2_transient"], 3]);
+  check("上限 0 なら何も取らない", selectRefetchTargets({ ...base, limit: 0 }), { codes: [], remaining: 5 });
   check(
     "同じレポートが 2 回来ても 1 回だけ",
     selectRefetchTargets({ ...base, reports: [...reports, { reportCode: "A_sep18", firstStartMs: day("09-18") }] }).codes,
-    ["H_older", "B_sep24", "A_sep18", "G_noledger"],
+    ["H_older", "D2_transient", "B_sep24", "A_sep18", "G_noledger"],
   );
   check(
     "台帳の時刻が読めなければ直前扱いにしない",
@@ -115,7 +119,12 @@ check(
   true,
 );
 check("窓は出席サマリーと同じ", /const cutoffMs = nowMs - WINDOW_DAYS \* 24 \* 60 \* 60 \* 1000;/.test(body), true);
-check("選んだレポートだけを URL 取り込みと同じ経路で取り直す", /await syncFflogsFights\(\{ onlyCodes: targets\.codes \}\)/.test(body), true);
+check(
+  "選んだレポートだけを、分類と日付を変えずに取り直す",
+  /await syncFflogsFights\(\{\s*onlyCodes: targets\.codes,\s*preserveExisting: true,\s*\}\)/.test(body),
+  true,
+);
+check("取り直した件数は実際に取りに行った数", /requested: result\.reportsFetched,/.test(body), true);
 check("時間切れで残った分も残りに足す", /remaining: targets\.remaining \+ result\.remaining,/.test(body), true);
 check("突合の行の読み取りは order 付き", /\.order\("report_code", \{ ascending: true \}\)\s*\.order\("discord_user_id", \{ ascending: true \}\)\s*\.range\(from, to\)/.test(body), true);
 
@@ -128,12 +137,50 @@ check(
 );
 check("ダイアログ: 取り直したら集計を読み直す", /setError\(null\);\s*await load\(\);\s*\}\);\s*\};/.test(dialog), true);
 check("ダイアログ: 対応表に無い名前・名前 0 件も知らせる", /m\.logsSync\.attendanceUnresolved\(/.test(dialog) && /m\.logsSync\.attendanceNoNames\(r\.attendanceNoNameReports\)/.test(dialog), true);
+check(
+  "ダイアログ: 対象があるのに 1 件も取れなかったときは「ありません」と出さない",
+  /if \(r\.requested === 0\) \{[\s\S]{0,300}?if \(r\.remaining > 0\) \{\s*toast\.warning\(m\.attendanceHistory\.refetchStalled\(r\.remaining\)\);\s*\} else \{\s*toast\.info\(m\.attendanceHistory\.refetchNothing\);/.test(dialog),
+  true,
+);
+
+console.log("\n2b. 取り直しで分類・日付・台帳を壊さない (preserveExisting)");
+const syncSrc = read("src/lib/server/fflogs-fights.ts");
+check(
+  "URL 指定: カテゴリは リンク → 貼ったコンテンツ → 台帳 の順",
+  /categoryId:\s*ref\.categoryId \?\? opts\?\.importCategoryId \?\? prev\?\.categoryId \?\? null,/.test(syncSrc),
+  true,
+);
+check(
+  "失敗: 「既存を保つ」で ok だった台帳は書き換えない",
+  /if \(opts\?\.preserveExisting && prevLedger\?\.ok\) return;\s*await db\.from\("fflogs_report_syncs"\)\.upsert\(/.test(syncSrc),
+  true,
+);
+check(
+  "失敗: 分かっているカテゴリと日付を null で潰さない",
+  /category_id: ref\.categoryId \?\? prevLedger\?\.categoryId \?\? null,\s*session_date: ref\.sessionDate \?\? prevLedger\?\.sessionDate \?\? null,\s*ok: false,/.test(syncSrc),
+  true,
+);
+check(
+  "保存済みの pull のカテゴリを使う (読めなければ書かない)",
+  /const keepExisting = opts\?\.preserveExisting === true && prevLedger\?\.ok === true;/.test(syncSrc) &&
+    /if \(existingError\) \{[\s\S]{0,400}?return;\s*\}/.test(syncSrc) &&
+    /existingCategoryOf\.get\(f\.id\) \?\?\s*resolveFightCategory\(/.test(syncSrc),
+  true,
+);
+check(
+  "台帳のカテゴリと日付は台帳の値を優先する",
+  /\(keepExisting \? prevLedger\?\.categoryId : null\) \?\?\s*consensusCategory\(/.test(syncSrc) &&
+    /ref\.sessionDate \?\?\s*\(keepExisting \? prevLedger\?\.sessionDate : null\) \?\?\s*jstYmdString\(/.test(syncSrc),
+  true,
+);
 
 console.log("\n3. 取り直しを「新しいレポート」に数えない");
 const sync = read("src/lib/server/fflogs-fights.ts");
 check(
-  "台帳に ok の行が無いレポートだけを数える",
-  /const isNewReport = !\(ledgerMap\.get\(ref\.code\)\?\.ok \?\? false\);/.test(sync),
+  "前回取り込めていなかった (または pull 0 件だった) レポートだけを数える",
+  /const isNewReport = !prevLedger\?\.ok \|\| prevLedger\.fightCount === 0;/.test(sync) &&
+    /fightCount:\s*typeof row\.fight_count === "number"/.test(sync) &&
+    /reason, fight_count",/.test(sync),
   true,
 );
 check(

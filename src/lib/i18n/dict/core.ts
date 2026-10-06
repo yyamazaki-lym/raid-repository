@@ -399,6 +399,8 @@ export const ja = {
       ` (残り ${n} 件 — もう一度押すと続きを取り直します)`,
     refetchNothing:
       "取り直すレポートはありません (30 分以内に取り直したレポートは選びません)",
+    refetchStalled: (n: number): string =>
+      `FFLogs の取得枠か時間が足りず、今回は取り直せませんでした (残り ${n} 件 — 時間をおいてもう一度押してください)`,
   },
   // W-18 (2026-09-08): 有志練習 (任意参加) の印。
   optionalBadge: {
@@ -1069,6 +1071,8 @@ export const en: CoreMessages = {
     refetchRemaining: (n) => ` (${n} left — press again to continue)`,
     refetchNothing:
       "Nothing to refetch (reports refetched within the last 30 minutes are skipped)",
+    refetchStalled: (n) =>
+      `Could not refetch this time (FFLogs quota or time ran out; ${n} left — try again later)`,
   },
   optionalBadge: {
     label: "Optional",

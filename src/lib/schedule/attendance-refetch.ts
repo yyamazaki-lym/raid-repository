@@ -1,4 +1,5 @@
 import { DETAILS_ARCHIVED_PREFIX } from "../fflogs-detail-retry";
+import { isPermanentSyncFailure } from "../fflogs-sync-reason";
 
 /**
  * 出席の突合のための取り直し (2026-10-06) で、どのレポートを取り直すかを
@@ -15,8 +16,10 @@ import { DETAILS_ARCHIVED_PREFIX } from "../fflogs-detail-retry";
  * ## 選び方
  *
  * - 窓の中のレポートで、突合の行 (`fflogs_attendance_actuals`) が 1 つも無いもの
- * - 取得に失敗している (台帳 `ok = false`、private など) レポートは外す —
- *   取り直しても読めない。通常の同期の再試行に任せる
+ * - **恒久的な**取得失敗 (private など、`isPermanentSyncFailure`) は外す —
+ *   取り直しても読めない。一時的な失敗 (5xx・タイムアウト) は残す: 動画や
+ *   日程に紐づかないレポートは通常の同期が再試行しないので、ここで外すと
+ *   二度と取り直されない (マージ前レビュー)
  * - FFLogs の保管扱い (`details-archived`) は参加者名も返らないので外す
  * - **直前に取り直したばかり** (`RECENT_REFETCH_MS` 以内) のレポートは外す。
  *   固定外の人しか映っていないレポートなど、取り直しても紐づかないものが
@@ -53,7 +56,7 @@ export function selectRefetchTargets(input: {
       if (input.matchedCodes.has(r.reportCode)) return false;
       const row = input.ledger.get(r.reportCode);
       if (!row) return true;
-      if (!row.ok) return false;
+      if (!row.ok && isPermanentSyncFailure(row.reason)) return false;
       if ((row.reason ?? "").startsWith(DETAILS_ARCHIVED_PREFIX)) return false;
       const syncedMs = row.syncedAt ? Date.parse(row.syncedAt) : NaN;
       if (Number.isFinite(syncedMs) && input.nowMs - syncedMs < RECENT_REFETCH_MS) {
