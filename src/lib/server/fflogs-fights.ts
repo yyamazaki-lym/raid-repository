@@ -592,11 +592,10 @@ async function syncFflogsFightsUnlocked(opts?: {
         ...ref,
         // 貼ったコンテンツを既定のカテゴリにする (動画リンク由来があればそれを優先、
         // fight 名で別コンテンツと分かる pull は processReport 側でそちらへ)。
-        // 2026-10-06: どちらも無ければ台帳のカテゴリ (前に貼ったコンテンツや
-        // 手動の割り当て) を既定にする。以前は null になり、分類器で決まらない
-        // レポートを貼り直す・取り直すと未分類に落ちていた。
-        categoryId:
-          ref.categoryId ?? opts?.importCategoryId ?? prev?.categoryId ?? null,
+        // ⚠ 台帳のカテゴリ (多数決) を既定にしないこと。分類できない pull が
+        // 多数派のコンテンツへ流れ込む (2026-10-06 マージ前レビュー)。取り直しで
+        // 分類を保つのは `preserveExisting` の pull 単位の読み直しで行う。
+        categoryId: ref.categoryId ?? opts?.importCategoryId ?? null,
         effectiveDate: ref.sessionDate ?? prev?.sessionDate ?? null,
         priority: 0,
       });
@@ -772,7 +771,15 @@ async function syncFflogsFightsUnlocked(opts?: {
       // 2026-10-06: 取り込み済みのレポートを「既存を保つ」で取り直したときは、
       // 一時的な失敗 (5xx・タイムアウト) で ok の台帳を失敗に書き換えない。
       // 書き換えると、以後の取り直しからも外れていた (マージ前レビュー)。
-      if (opts?.preserveExisting && prevLedger?.ok) return;
+      // 恒久的な失敗 (後から private にされた等) は書く — 書かないと取り直しの
+      // たびに選ばれ続ける。
+      if (
+        opts?.preserveExisting &&
+        prevLedger?.ok &&
+        !isPermanentSyncFailure(savedReason)
+      ) {
+        return;
+      }
       await db.from("fflogs_report_syncs").upsert(
         {
           report_code: ref.code,
@@ -800,9 +807,10 @@ async function syncFflogsFightsUnlocked(opts?: {
     const reportCategoryId = ref.categoryId ?? zoneCategoryId;
     // 2026-10-06: 「既存を保つ」取り直しでは、保存済みの pull のカテゴリを
     // そのまま使う (URL 取り込みで選んだコンテンツ・手動の割り当てを消さない)。
+    // **未分類 (null) もそのまま** — 分類し直すと多数派のコンテンツへ流れ込む。
     // 読めなければ今回は書かない — 分類を壊すより取り直さない方がよい。
     const keepExisting = opts?.preserveExisting === true && prevLedger?.ok === true;
-    const existingCategoryOf = new Map<number, string>();
+    const existingCategoryOf = new Map<number, string | null>();
     if (keepExisting) {
       const { data: existingRows, error: existingError } = await db
         .from("fflogs_fights")
@@ -822,7 +830,7 @@ async function syncFflogsFightsUnlocked(opts?: {
         fight_id: number;
         category_id: string | null;
       }>) {
-        if (r.category_id) existingCategoryOf.set(Number(r.fight_id), r.category_id);
+        existingCategoryOf.set(Number(r.fight_id), r.category_id ?? null);
       }
     }
     // 2026-09-06: fight ごとのカテゴリ。拡張をまたいだ絶は "Ultimates (Legacy)"
@@ -832,12 +840,13 @@ async function syncFflogsFightsUnlocked(opts?: {
     const categoryOf = new Map<number, string | null>(
       res.fights.map((f) => [
         f.id,
-        existingCategoryOf.get(f.id) ??
-          resolveFightCategory(categories, f.name, reportCategoryId, {
-            encounterId: f.encounterID ?? null,
-            zoneName: res.zoneName,
-            zoneCategoryId,
-          }),
+        existingCategoryOf.has(f.id)
+          ? (existingCategoryOf.get(f.id) ?? null)
+          : resolveFightCategory(categories, f.name, reportCategoryId, {
+              encounterId: f.encounterID ?? null,
+              zoneName: res.zoneName,
+              zoneCategoryId,
+            }),
       ]),
     );
     // 台帳の代表カテゴリ (動画への橋渡し / 未確定判定に使う) は fight の最多。
@@ -984,10 +993,12 @@ async function syncFflogsFightsUnlocked(opts?: {
       // 0 件でも map に載せる — ベスト更新 / 初討伐の判定は map にある
       // カテゴリだけを見るので、取り直しで増えた pull の更新を落とさない。
       if (upsertOk) {
-        // 前回 ok でも pull が 0 件だった取り込み (アップロードの途中で先に
-        // 同期した等) は、まだ新しいレポートとして数える。台帳の fight 数が
-        // 不明 (null) の古い行は数えない。
-        const isNewReport = !prevLedger?.ok || prevLedger.fightCount === 0;
+        // 取り込み済みかどうかは台帳の fight 数で見る (`NOT NULL DEFAULT 0`)。
+        // ok / 失敗では見ない — 取り込み済みのレポートが一時的な失敗で
+        // ok=false に書き換わっても fight 数は残るので、次に成功したときに
+        // 「新しい」と数え直さない。失敗しかしていない・pull 0 件で取り込んだ
+        // (アップロードの途中で先に同期した等) レポートは 0 なので新しい。
+        const isNewReport = (prevLedger?.fightCount ?? 0) === 0;
         const touched = new Set<string>();
         for (const f of acceptedFights) {
           const cid = categoryOf.get(f.id) ?? null;

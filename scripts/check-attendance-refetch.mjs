@@ -146,13 +146,14 @@ check(
 console.log("\n2b. 取り直しで分類・日付・台帳を壊さない (preserveExisting)");
 const syncSrc = read("src/lib/server/fflogs-fights.ts");
 check(
-  "URL 指定: カテゴリは リンク → 貼ったコンテンツ → 台帳 の順",
-  /categoryId:\s*ref\.categoryId \?\? opts\?\.importCategoryId \?\? prev\?\.categoryId \?\? null,/.test(syncSrc),
+  "URL 指定: カテゴリは リンク → 貼ったコンテンツ (台帳の多数決を既定にしない — 未分類の pull が流れ込む)",
+  /categoryId: ref\.categoryId \?\? opts\?\.importCategoryId \?\? null,/.test(syncSrc) &&
+    !/importCategoryId \?\? prev\?\.categoryId/.test(syncSrc),
   true,
 );
 check(
-  "失敗: 「既存を保つ」で ok だった台帳は書き換えない",
-  /if \(opts\?\.preserveExisting && prevLedger\?\.ok\) return;\s*await db\.from\("fflogs_report_syncs"\)\.upsert\(/.test(syncSrc),
+  "失敗: 「既存を保つ」で ok だった台帳は、一時的な失敗なら書き換えない (恒久失敗は書く)",
+  /if \(\s*opts\?\.preserveExisting &&\s*prevLedger\?\.ok &&\s*!isPermanentSyncFailure\(savedReason\)\s*\) \{\s*return;\s*\}\s*await db\.from\("fflogs_report_syncs"\)\.upsert\(/.test(syncSrc),
   true,
 );
 check(
@@ -161,10 +162,11 @@ check(
   true,
 );
 check(
-  "保存済みの pull のカテゴリを使う (読めなければ書かない)",
+  "保存済みの pull のカテゴリを使う (未分類もそのまま・読めなければ書かない)",
   /const keepExisting = opts\?\.preserveExisting === true && prevLedger\?\.ok === true;/.test(syncSrc) &&
     /if \(existingError\) \{[\s\S]{0,400}?return;\s*\}/.test(syncSrc) &&
-    /existingCategoryOf\.get\(f\.id\) \?\?\s*resolveFightCategory\(/.test(syncSrc),
+    /existingCategoryOf\.set\(Number\(r\.fight_id\), r\.category_id \?\? null\);/.test(syncSrc) &&
+    /existingCategoryOf\.has\(f\.id\)\s*\?\s*\(existingCategoryOf\.get\(f\.id\) \?\? null\)\s*:\s*resolveFightCategory\(/.test(syncSrc),
   true,
 );
 check(
@@ -177,8 +179,8 @@ check(
 console.log("\n3. 取り直しを「新しいレポート」に数えない");
 const sync = read("src/lib/server/fflogs-fights.ts");
 check(
-  "前回取り込めていなかった (または pull 0 件だった) レポートだけを数える",
-  /const isNewReport = !prevLedger\?\.ok \|\| prevLedger\.fightCount === 0;/.test(sync) &&
+  "台帳の fight 数が 0 (まだ pull を取り込めていない) レポートだけを数える (一時的な失敗を挟んでも数え直さない)",
+  /const isNewReport = \(prevLedger\?\.fightCount \?\? 0\) === 0;/.test(sync) &&
     /fightCount:\s*typeof row\.fight_count === "number"/.test(sync) &&
     /reason, fight_count",/.test(sync),
   true,
