@@ -78,6 +78,7 @@ try {
     isClearFight,
     filterToFloorCluster,
     pullSpanByReport,
+    totalLogMs,
   } = mod;
 
   console.log("到達度の計算式 (progressValue)");
@@ -289,8 +290,106 @@ try {
   const tier = filterToFloorCluster(mixed, buildFloorMap(mixed));
   check("クラスタで絞ると R の最初は 2000", pullSpanByReport(tier).get("R")?.firstStartMs, 2000);
   check("絞らなければ 1000 (= 絞らないと秒数がずれる)", pullSpanByReport(mixed).get("R")?.firstStartMs, 1000);
+
+  // 2026-10-06: 練習日数の下に出すログの合計時間。
+  console.log("\nログの合計時間 (totalLogMs)");
+  const lf = (reportCode, startMs, endMs, reportStartMs = null) => ({
+    reportCode, startMs, endMs, reportStartMs,
+  });
+  check("0 件は 0", totalLogMs([]), 0);
+  check(
+    "ログの開始〜最後の pull の終わり (pull の間の休憩を含む)",
+    totalLogMs([lf("A", 1000, 2000, 0), lf("A", 5000, 6000, 0)]),
+    6000,
+  );
+  check(
+    "別の時間帯のログは足す",
+    totalLogMs([lf("A", 1000, 2000, 0), lf("B", 11000, 12000, 10000)]),
+    2000 + 2000,
+  );
+  check(
+    "重なるログは 1 回だけ数える (同じ時間帯を 2 人が上げた)",
+    totalLogMs([lf("A", 1000, 5000, 0), lf("B", 2000, 8000, 1500)]),
+    8000,
+  );
+  check(
+    "片方がもう片方に含まれても 1 回",
+    totalLogMs([lf("A", 1000, 9000, 0), lf("B", 3000, 4000, 2000)]),
+    9000,
+  );
+  check(
+    "ちょうど接するログはつなげる (二重にも欠けにもしない)",
+    totalLogMs([lf("A", 500, 1000, 0), lf("B", 1500, 2000, 1000)]),
+    2000,
+  );
+  check(
+    "渡す順によらない",
+    totalLogMs([lf("B", 11000, 12000, 10000), lf("A", 5000, 6000, 0), lf("A", 1000, 2000, 0)]),
+    6000 + 2000,
+  );
+  check(
+    "ログの開始が無ければ最初の pull の開始から",
+    totalLogMs([lf("A", 1000, 2000), lf("A", 3000, 4000)]),
+    3000,
+  );
+  check(
+    "ログの開始が最初の pull より後ならその pull から (壊れた値で縮めない)",
+    totalLogMs([lf("A", 1000, 2000, 1500), lf("A", 3000, 4000, 1500)]),
+    3000,
+  );
+  check(
+    "時刻が数でない行は無視",
+    totalLogMs([lf("A", Number.NaN, 2000, 0), lf("A", 1000, 2000, 0)]),
+    2000,
+  );
+  check(
+    "終わりが開始より前の行で区間を逆にしない",
+    totalLogMs([lf("A", 1000, 500, 0)]),
+    1000,
+  );
+  // ⚠ 1 本のログに別コンテンツが先に入っている (ログの開始が最初の pull の
+  // ずっと前) とき、その時間を入れない。準備の時間は 30 分まで入れる。
+  const MIN = 60 * 1000;
+  const t0 = 1_000_000_000;
+  check(
+    "ログの開始が最初の pull の 10 分前なら全部入れる (準備の時間)",
+    totalLogMs([lf("A", t0, t0 + 60 * MIN, t0 - 10 * MIN)]),
+    70 * MIN,
+  );
+  check(
+    "ちょうど 30 分前までは全部入れる",
+    totalLogMs([lf("A", t0, t0 + 60 * MIN, t0 - 30 * MIN)]),
+    90 * MIN,
+  );
+  check(
+    "2 時間前に始まったログ (先に別コンテンツ) は 30 分前から数える",
+    totalLogMs([lf("A", t0, t0 + 60 * MIN, t0 - 120 * MIN), lf("A", t0 + 70 * MIN, t0 + 80 * MIN, t0 - 120 * MIN)]),
+    110 * MIN,
+  );
+  check(
+    "上限は最初の pull から数える (後の pull の前に遡らない)",
+    totalLogMs([lf("A", t0 + 70 * MIN, t0 + 80 * MIN, t0 - 120 * MIN), lf("A", t0, t0 + 60 * MIN, t0 - 120 * MIN)]),
+    110 * MIN,
+  );
 } finally {
   rmSync(outDir, { recursive: true, force: true });
+}
+
+// 2026-10-06: 練習日数のタイルの配線 (ログの合計時間)。数える pull は練習日数と
+// 同じ tierFights で、明細が打ち切られていれば他のカードと同じ注記を添える。
+console.log("\n練習日数のタイルの配線");
+{
+  const view = readFileSync("src/app/(portal)/category/[slug]/logs/logs-view.tsx", "utf8").replace(/\r\n/g, "\n");
+  check(
+    "合計は練習日数と同じ tierFights から",
+    /const logTotalMs = useMemo\(\(\) => totalLogMs\(tierFights\), \[tierFights\]\);/.test(view),
+    true,
+  );
+  check(
+    "打ち切り時は shownOnly を添える",
+    /m\.logs\.statLogTotal\(formatMs\(logTotalMs\)\) \+\s*\(truncated \? m\.logs\.shownOnly : ""\)/.test(view),
+    true,
+  );
 }
 
 console.log(failures === 0 ? "\nall checks passed" : `\n${failures} check(s) failed`);

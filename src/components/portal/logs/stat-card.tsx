@@ -22,6 +22,7 @@ export function StatCard({
   sub,
   detail,
   highlight,
+  title,
 }: {
   label: string;
   value: string;
@@ -29,9 +30,12 @@ export function StatCard({
   /** value / sub の下に出す補足 (内訳チップなど)。 */
   detail?: ReactNode;
   highlight?: boolean;
+  /** タイルの hover (値の定義の説明など。2026-10-06)。 */
+  title?: string;
 }) {
   return (
     <li
+      title={title}
       className={
         "flex flex-col gap-0.5 rounded-md border px-3 py-2 " +
         (highlight
@@ -44,8 +48,11 @@ export function StatCard({
       </span>
       {/* 2026-08-30: PC では一回り大きく (実機報告「PC から見ると小さい」)。 */}
       <span className="font-display text-lg tabular-nums sm:text-xl">{value}</span>
+      {/* 2026-10-06: 切らずに折り返す。375px 幅でタイルの内側は 130px しか
+          なく、「ログ合計 128:45:01 (表示中の分)」のように長い値が末尾で
+          「…」に切れて、時間や注記が読めなくなるため。 */}
       {sub && (
-        <span className="truncate text-[11px] text-muted-foreground sm:text-[11px]">
+        <span className="text-[11px] leading-snug break-words text-muted-foreground">
           {sub}
         </span>
       )}

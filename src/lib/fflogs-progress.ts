@@ -254,6 +254,85 @@ export function pullSpanByReport(
   return out;
 }
 
+/** ログの開始を最初の pull より前へ遡らせる上限 (`totalLogMs`)。 */
+export const MAX_LOG_LEAD_MS = 30 * 60 * 1000;
+
+/**
+ * ログの合計時間 (ms、2026-10-06 実機要望「練習日数に戦闘時間でなく Logs の
+ * 総合計時間を入れたい」)。
+ *
+ * 1 つのレポートを「ログの開始 (`reportStartMs`) 〜 最後の pull の終わり」の
+ * 区間とし、**重なる区間は 1 回だけ数えて**合計する (同じ時間帯を 2 人が
+ * 上げたログ・分割したログを二重に数えない)。日ごとに出して足し合わせない
+ * のは、日をまたいだレポートの開始が両方の日に入って二重になるため。
+ *
+ * - FFLogs のレポートの長さ (endTime − startTime) とほぼ同じ。違いは最後の
+ *   pull の後にログを止めるまでの数分だけ (終了時刻は保存していない)
+ * - 戦闘時間 (`DaySummary.fightSeconds`) と違い、pull の間の休憩・作戦会議を含む
+ * - `reportStartMs` が無い (古い行) か最初の pull より後なら、最初の pull の
+ *   開始を使う
+ * - 入力は呼び出し側の絞り込みのまま (練習日数と同じ `tierFights`)。区間の
+ *   終わりは**渡された pull の**最後なので、層クラスタ外の戦闘は数えない
+ * - ⚠ **ログの開始は最初の pull の `MAX_LOG_LEAD_MS` 前までしか遡らない。**
+ *   `reportStartMs` はレポート全体の開始で、1 本のログに別コンテンツ (同じ日の
+ *   ダンジョン・別の零式や絶) が先に入っていると、その時間と空き時間がこの
+ *   コンテンツの合計に入ってしまう (1 本に複数コンテンツが混ざるのは実機で
+ *   何度も起きている。v2.10 / v2.16 のリリースノート)。ACT の 1 日分の
+ *   ファイルを上げた場合も同じ。準備・集合の時間は入れ、混ざる時間は最大
+ *   30 分に抑える (PR のレビューで検出)
+ */
+export function totalLogMs(
+  fights: ReadonlyArray<Pick<FightRow, "reportCode" | "startMs" | "endMs" | "reportStartMs">>,
+): number {
+  const perReport = new Map<
+    string,
+    { firstStart: number; end: number; reportStart: number | null }
+  >();
+  for (const f of fights) {
+    if (!Number.isFinite(f.startMs) || !Number.isFinite(f.endMs)) continue;
+    const reportStart =
+      f.reportStartMs !== null && Number.isFinite(f.reportStartMs)
+        ? f.reportStartMs
+        : null;
+    const end = Math.max(f.startMs, f.endMs);
+    const cur = perReport.get(f.reportCode);
+    if (!cur) {
+      perReport.set(f.reportCode, { firstStart: f.startMs, end, reportStart });
+      continue;
+    }
+    if (f.startMs < cur.firstStart) cur.firstStart = f.startMs;
+    if (end > cur.end) cur.end = end;
+    if (reportStart !== null && (cur.reportStart === null || reportStart < cur.reportStart)) {
+      cur.reportStart = reportStart;
+    }
+  }
+  const spans = [...perReport.values()].map((r) => ({
+    start:
+      r.reportStart === null
+        ? r.firstStart
+        : Math.max(Math.min(r.reportStart, r.firstStart), r.firstStart - MAX_LOG_LEAD_MS),
+    end: r.end,
+  }));
+  const sorted = spans.sort((a, b) => a.start - b.start);
+  let total = 0;
+  let curStart = Number.NaN;
+  let curEnd = Number.NaN;
+  for (const s of sorted) {
+    if (Number.isNaN(curStart)) {
+      curStart = s.start;
+      curEnd = s.end;
+    } else if (s.start <= curEnd) {
+      if (s.end > curEnd) curEnd = s.end;
+    } else {
+      total += curEnd - curStart;
+      curStart = s.start;
+      curEnd = s.end;
+    }
+  }
+  if (!Number.isNaN(curStart)) total += curEnd - curStart;
+  return total;
+}
+
 /**
  * 「クリア」の判定 (2026-08-28 実機フィードバック)。
  * 零式ティアでは消化で全層の kill が付き「討伐」バッジが情報にならない。
