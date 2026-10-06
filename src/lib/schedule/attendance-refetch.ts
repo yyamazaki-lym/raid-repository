@@ -1,4 +1,9 @@
-import { DETAILS_ARCHIVED_PREFIX } from "../fflogs-detail-retry";
+import {
+  DETAILS_ARCHIVED_PREFIX,
+  MAX_REFETCH_FAILURES,
+  VIA_FALLBACK_MARK,
+  refetchFailureCount,
+} from "../fflogs-detail-retry";
 import { isPermanentSyncFailure } from "../fflogs-sync-reason";
 
 /**
@@ -25,6 +30,17 @@ import { isPermanentSyncFailure } from "../fflogs-sync-reason";
  *   固定外の人しか映っていないレポートなど、取り直しても紐づかないものが
  *   新しい順の先頭に居座ると、何度押しても古い日に届かないため
  * - 新しい順に `limit` 件。残りは件数だけ返す (もう一度押すと続きを取る)
+ *
+ * ## 2026-10-06 の追加
+ *
+ * - `includeMatched`: 突合の行があるレポートも選ぶ。一部のメンバーだけ
+ *   「ログ名」を後から入れた場合、他の人が紐づいている日は上の条件では
+ *   選ばれず、その人の古い日が数え直されなかった。30 分の間隔があるので、
+ *   押すたびに次の 25 件へ進む
+ * - 代替経路 (v1 / cookie) でしか読めなかったレポート (`via-fallback`) は外す。
+ *   参加者名を取れないので、取り直しても紐づかない
+ * - 取り直しの一時的な失敗が続いたレポート (`refetch-failed:<回数>`) は後回しに
+ *   し、`MAX_REFETCH_FAILURES` 回で外す (削除済みなどで毎回選ばれて枠を使うため)
  */
 
 /** 直前に取り直したとみなす時間。この間に取り直したレポートは選ばない。 */
@@ -50,14 +66,20 @@ export function selectRefetchTargets(input: {
   ledger: ReadonlyMap<string, RefetchLedgerRow>;
   nowMs: number;
   limit: number;
+  /** 突合の行があるレポートも選ぶ (一部の人のログ名を後から入れたとき)。 */
+  includeMatched?: boolean;
 }): { codes: string[]; remaining: number } {
+  const failuresOf = (code: string) =>
+    refetchFailureCount(input.ledger.get(code)?.reason);
   const candidates = input.reports
     .filter((r) => {
-      if (input.matchedCodes.has(r.reportCode)) return false;
+      if (!input.includeMatched && input.matchedCodes.has(r.reportCode)) return false;
       const row = input.ledger.get(r.reportCode);
       if (!row) return true;
       if (!row.ok && isPermanentSyncFailure(row.reason)) return false;
       if ((row.reason ?? "").startsWith(DETAILS_ARCHIVED_PREFIX)) return false;
+      if (row.reason === VIA_FALLBACK_MARK) return false;
+      if (refetchFailureCount(row.reason) >= MAX_REFETCH_FAILURES) return false;
       const syncedMs = row.syncedAt ? Date.parse(row.syncedAt) : NaN;
       if (Number.isFinite(syncedMs) && input.nowMs - syncedMs < RECENT_REFETCH_MS) {
         return false;
@@ -66,7 +88,12 @@ export function selectRefetchTargets(input: {
     })
     // 同じレポートが 2 回来ても 1 回だけ取り直す。
     .filter((r, i, all) => all.findIndex((x) => x.reportCode === r.reportCode) === i)
-    .sort((a, b) => b.firstStartMs - a.firstStartMs);
+    // 失敗が続いたものを後回しにし、同じ回数どうしは新しい順。
+    .sort(
+      (a, b) =>
+        failuresOf(a.reportCode) - failuresOf(b.reportCode) ||
+        b.firstStartMs - a.firstStartMs,
+    );
   const limit = Math.max(0, Math.trunc(input.limit));
   const codes = candidates.slice(0, limit).map((r) => r.reportCode);
   return { codes, remaining: candidates.length - codes.length };

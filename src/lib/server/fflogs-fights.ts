@@ -18,7 +18,9 @@ import { parseFflogsReportCode } from "@/lib/fflogs-url";
 import {
   detailsLedgerReason,
   isArchivedReportError,
+  nextRefetchFailedReason,
   shouldRetryMissingDetails,
+  VIA_FALLBACK_MARK,
 } from "@/lib/fflogs-detail-retry";
 import { notifyLogsEvents } from "./logs-notify";
 import {
@@ -747,6 +749,12 @@ async function syncFflogsFightsUnlocked(opts?: {
     const prevLedger = ledgerMap.get(ref.code);
     let res = await fetchReportFights(token, ref.code);
     fetched += 1;
+    // 2026-10-06: 取り直しの失敗の回数 (refetch-failed) に数えてよいのは、
+    // そのレポート固有の失敗だけ (存在しない・空の応答)。通信・認証 (401)・5xx・
+    // 429 のような全体の障害や、限定公開の代替経路の連鎖は数えない —
+    // 障害中に押した回数でレポートが取り直しの対象から外れたままになる。
+    const reportSpecificFailure =
+      !res.ok && res.reportSpecific === true && !PERMISSION_ERROR_RE.test(res.reason);
     // C-7: レート制限 (429)。このレポートは台帳に書かず (次回に取り直す)、
     // 今回の同期はここで打ち切る。以前は残りのレポートも引き続けて全部 429 に
     // していた。
@@ -825,6 +833,18 @@ async function syncFflogsFightsUnlocked(opts?: {
           ref.code,
           savedReason,
         );
+        // 2026-10-06: 取り込み済み (ok) の行には失敗の回数だけを残す (ok・日付・
+        // 分類は変えない)。回数の多いものは次の取り直しで後回しにし、3 回で
+        // 外す (削除済みなどで毎回選ばれて枠を使っていた)。他の印は上書きしない。
+        if (prevLedger?.ok && reportSpecificFailure) {
+          const mark = nextRefetchFailedReason(prevLedger.reason);
+          if (mark) {
+            await db
+              .from("fflogs_report_syncs")
+              .update({ reason: mark })
+              .eq("report_code", ref.code);
+          }
+        }
         return;
       }
       await db.from("fflogs_report_syncs").upsert(
@@ -930,15 +950,18 @@ async function syncFflogsFightsUnlocked(opts?: {
     let missingDetails = 0;
     // 2026-10-06: FFLogs が保管扱いで詳細を断ったか (台帳の印を分ける)。
     let detailsArchivedHere = false;
+    // 2026-10-06: 詳細を途中のバッチで打ち切ったか (出席を記録しない判定)。
+    let detailsTruncatedHere = false;
     if (acceptedFights.length > 0) {
       // 2026-09-03: pull ごとの PT 合計 DPS / 死亡数。best-effort で、
       // 取れなかった pull は列を **payload に含めない** (upsert は payload
       // にある列しか更新しないので、前回の同期で入った値を null で潰さない)。
       const fetchedDetails = fromV2
         ? await fetchFightDetails(token, ref.code, acceptedFights, deadlineAtMs)
-        : { details: new Map<number, FightDetail>(), archived: false };
+        : { details: new Map<number, FightDetail>(), archived: false, truncated: false };
       const details = fetchedDetails.details;
       detailsArchivedHere = fetchedDetails.archived;
+      detailsTruncatedHere = fetchedDetails.truncated;
       const reportStartMs = res.startMs;
       // 2026-09-06 W-2: フェーズ遷移はクエリに含められた時だけ列を送る。
       // PostgREST の一括 upsert は全行で同じキー集合を要求するので、
@@ -991,7 +1014,12 @@ async function syncFflogsFightsUnlocked(opts?: {
       }
       // W-6 (2026-09-08): このレポートに映っていた人を pull 数で数える。
       // `players` は DB へ行かない (FightDetail の docstring 参照)。
-      if (details.size > 0) {
+      // 2026-10-06: 詳細を途中で打ち切ったレポートは記録しない。出席の行は
+      // (レポート, 人) で上書きするので、途中までの pull 数で既存の正しい
+      // 行を小さく書き換え、全部に出た人に「ごく一部しか映っていない」の
+      // ズレが付いていた (マージ前レビュー)。台帳の details-missing の印で
+      // 次の同期・取り直しが全部取れたときに記録される。
+      if (details.size > 0 && !detailsTruncatedHere) {
         const pullsByName = new Map<string, number>();
         for (const d of details.values()) {
           for (const name of d.players ?? []) {
@@ -1083,13 +1111,15 @@ async function syncFflogsFightsUnlocked(opts?: {
         ok: true,
         // 2026-10-05: 詳細を取れなかった pull があれば印を付ける (次の同期で取り直す)。
         // 2026-10-06: FFLogs が保管扱いで断ったときは取り直さない印にする。
+        // 2026-10-06: 代替経路 (v1 / cookie) で読めたレポートには印を付ける
+        // (参加者名を取れないので、出席の突合の取り直しの対象から外す)。
         reason: fromV2
           ? detailsLedgerReason(
               missingDetails,
               ledgerMap.get(ref.code)?.reason,
               detailsArchivedHere,
             )
-          : null,
+          : VIA_FALLBACK_MARK,
         synced_at: new Date().toISOString(),
       },
       { onConflict: "report_code" },
@@ -1483,7 +1513,9 @@ type ReportFightsResult =
       fights: FightPayload[];
     }
   // rateLimited: FFLogs v2 が 429 を返した (C-7)。
-  | { ok: false; reason: string; rateLimited?: boolean };
+  // reportSpecific (2026-10-06): そのレポート固有の失敗 (GraphQL の拒否・空の応答)。
+  // 通信・認証 (401)・5xx・429 は false (全体の障害で、レポートのせいではない)。
+  | { ok: false; reason: string; rateLimited?: boolean; reportSpecific?: boolean };
 
 /**
  * 1 レポート分の fights を取得する。
@@ -1567,6 +1599,7 @@ async function fetchReportFights(
       ok: false,
       reason: withPhasesRes.reason,
       rateLimited: withPhasesRes.kind === "rate",
+      reportSpecific: withPhasesRes.kind === "empty",
     };
   }
   console.warn(
@@ -1576,7 +1609,12 @@ async function fetchReportFights(
   const first = await postGraphql(token, full, code);
   if (first.ok) return first;
   if (first.kind !== "graphql") {
-    return { ok: false, reason: first.reason, rateLimited: first.kind === "rate" };
+    return {
+      ok: false,
+      reason: first.reason,
+      rateLimited: first.kind === "rate",
+      reportSpecific: first.kind === "empty",
+    };
   }
   console.warn(
     "[fflogs-fights] full query rejected, retrying minimal:",
@@ -1584,7 +1622,12 @@ async function fetchReportFights(
   );
   const second = await postGraphql(token, minimal, code);
   if (second.ok) return second;
-  return { ok: false, reason: second.reason, rateLimited: second.kind === "rate" };
+  return {
+    ok: false,
+    reason: second.reason,
+    rateLimited: second.kind === "rate",
+    reportSpecific: second.kind === "graphql" || second.kind === "empty",
+  };
 }
 
 /**
@@ -1933,9 +1976,16 @@ async function fetchFightDetails(
   code: string,
   fights: FightPayload[],
   deadlineAtMs: number,
-): Promise<{ details: Map<number, FightDetail>; archived: boolean }> {
+): Promise<{
+  details: Map<number, FightDetail>;
+  archived: boolean;
+  /** 途中のバッチで打ち切った (全部の pull を問い合わせられなかった)。 */
+  truncated: boolean;
+}> {
   const out = new Map<number, FightDetail>();
   let archived = false;
+  // 問い合わせを終えた pull の数 (打ち切りの判定)。
+  let fetchedUpTo = 0;
   for (let i = 0; i < fights.length; i += DETAIL_BATCH_SIZE) {
     if (Date.now() > deadlineAtMs) break;
     const batch = fights.slice(i, i + DETAIL_BATCH_SIZE);
@@ -2005,11 +2055,15 @@ async function fetchFightDetails(
         );
         if (detail) out.set(f.id, detail);
       }
+      fetchedUpTo = i + batch.length;
     } catch (e) {
       console.warn(`[fflogs-fights] summary table fetch failed for ${code}:`, e);
       break;
     }
   }
+  // 2026-10-06: 期限・HTTP・GraphQL・例外で途中のバッチで打ち切ったか。
+  // pull ごとに詳細が無い (parseSummaryTable が null) のは打ち切りではない。
+  const truncated = fetchedUpTo < fights.length;
   // 2026-09-06: 致命技の名前を XIVAPI で解決する (ワイプ原因の表示 / 集計)。
   // L-7 (2026-09-08): **ja と en の両方**を入れる — 表示言語を切り替えた
   // ときに片方の言語しか無いと、もう片方で元の名前 (FFLogs のクライアント
@@ -2020,7 +2074,7 @@ async function fetchFightDetails(
       deadlineAtMs,
     );
   }
-  return { details: out, archived };
+  return { details: out, archived, truncated };
 }
 
 /**

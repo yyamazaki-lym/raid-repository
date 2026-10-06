@@ -56,6 +56,8 @@ export function AttendanceSummaryDialog() {
   const [refetchFailures, setRefetchFailures] = useState<
     Array<{ reportCode: string; reason: string }>
   >([]);
+  // どちらのボタンで取り直し中か (押した方だけに「取り直しています…」を出す)。
+  const [refetchMode, setRefetchMode] = useState<"unmatched" | "all" | null>(null);
 
   const load = async () => {
     const r = await fetchAttendanceSummaryAction();
@@ -82,9 +84,13 @@ export function AttendanceSummaryDialog() {
   // 保存しないので、「ログ名」を後から入れた日はレポートを取り直さないと
   // 数え直せない (詳細は `refetchUnmatchedAttendanceAction`)。終わったら
   // 集計を読み直して、紐づいた日を画面に反映する。
-  const onRefetch = () => {
+  //
+  // `includeMatched` (2026-10-06): 紐づいている日も含めて取り直す。一部の人の
+  // 「ログ名」を後から入れたとき、その人の古い日を数え直すため。
+  const onRefetch = (includeMatched: boolean) => {
+    setRefetchMode(includeMatched ? "all" : "unmatched");
     startRefetch(async () => {
-      const r = await refetchUnmatchedAttendanceAction();
+      const r = await refetchUnmatchedAttendanceAction({ includeMatched });
       if (!r.ok) {
         toast.error(sr(r.reason));
         return;
@@ -124,31 +130,62 @@ export function AttendanceSummaryDialog() {
   };
 
   const h = data?.history;
-  // 取り直しは幹部だけ (Server Action 側でも確かめる)。突合できなかった日が
-  // ある時だけ出す (取り直しの失敗の理由が残っている間も出す)。
+  // 取り直しは幹部だけ (Server Action 側でも確かめる)。「突合できなかった日」の
+  // ボタンはそういう日がある時だけ、「紐づいている日も含めて」は突合できた日が
+  // ある時に出す (取り直しの失敗の理由が残っている間も出す)。
   const refetchBlock =
-    h && !data!.selfOnly && (h.unmatched > 0 || refetchFailures.length > 0) ? (
+    h &&
+    !data!.selfOnly &&
+    (h.unmatched > 0 || h.sessions > 0 || refetchFailures.length > 0) ? (
       <div className="flex flex-col gap-1.5 rounded-md border border-border/40 bg-secondary/10 px-3 py-2">
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={refetching}
-          onClick={onRefetch}
-          className="h-8 gap-1.5 self-start px-3 text-[12px] tracking-normal"
-        >
-          {refetching ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
-          ) : (
-            <RefreshCw className="h-3.5 w-3.5" aria-hidden />
-          )}
-          {refetching
-            ? m.attendanceHistory.refetchRunning
-            : m.attendanceHistory.refetchButton}
-        </Button>
-        <p className="text-[11px] leading-snug text-muted-foreground/85">
-          {m.attendanceHistory.refetchHint}
-        </p>
+        {h.unmatched > 0 && (
+          <>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={refetching}
+              onClick={() => onRefetch(false)}
+              className="h-8 gap-1.5 self-start px-3 text-[12px] tracking-normal"
+            >
+              {refetching && refetchMode === "unmatched" ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+              ) : (
+                <RefreshCw className="h-3.5 w-3.5" aria-hidden />
+              )}
+              {refetching && refetchMode === "unmatched"
+                ? m.attendanceHistory.refetchRunning
+                : m.attendanceHistory.refetchButton}
+            </Button>
+            <p className="text-[11px] leading-snug text-muted-foreground/85">
+              {m.attendanceHistory.refetchHint}
+            </p>
+          </>
+        )}
+        {h.sessions > 0 && (
+          <>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={refetching}
+              onClick={() => onRefetch(true)}
+              className="h-8 gap-1.5 self-start px-3 text-[12px] tracking-normal text-muted-foreground"
+            >
+              {refetching && refetchMode === "all" ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+              ) : (
+                <RefreshCw className="h-3.5 w-3.5" aria-hidden />
+              )}
+              {refetching && refetchMode === "all"
+                ? m.attendanceHistory.refetchRunning
+                : m.attendanceHistory.refetchAllButton}
+            </Button>
+            <p className="text-[11px] leading-snug text-muted-foreground/85">
+              {m.attendanceHistory.refetchAllHint}
+            </p>
+          </>
+        )}
         {refetchFailures.length > 0 && (
           <div data-refetch-failures className="flex flex-col gap-1">
             <span className="text-[11px] text-amber-200">

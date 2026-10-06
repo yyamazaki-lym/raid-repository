@@ -80,3 +80,38 @@ export function detailsLedgerReason(
   if (archived) return `${DETAILS_ARCHIVED_PREFIX}:${missing}`;
   return detailsMissingReason(missing, prevReason);
 }
+
+/**
+ * 代替経路 (v1 / cookie) でしか読めなかったレポートの印 (2026-10-06)。
+ *
+ * 代替経路では pull の詳細 (参加者名を含む) を取らないので、出席の突合の
+ * 取り直しを何度しても紐づかない。印を付けて取り直しの対象から外す
+ * (`selectRefetchTargets`)。v2 で読めた同期で印は消える (詳細の印で上書き)。
+ */
+export const VIA_FALLBACK_MARK = "via-fallback";
+
+/**
+ * 出席の突合の取り直し (`preserveExisting`) で、一時的な失敗が続いた回数の印
+ * (2026-10-06)。取り直しの失敗は台帳の ok / 日付を書き換えないので、回数だけを
+ * 取り込み済み (ok) の行の reason に `refetch-failed:<回数>` で残す。
+ * 回数の多いものほど後回しにし、`MAX_REFETCH_FAILURES` 回で対象から外す。
+ * 取り込みに成功した同期で reason は書き直されるので印は消える。
+ */
+export const REFETCH_FAILED_PREFIX = "refetch-failed";
+export const MAX_REFETCH_FAILURES = 3;
+
+/** reason から取り直しの失敗回数を読む。印でなければ 0。 */
+export function refetchFailureCount(reason: string | null | undefined): number {
+  const m = /^refetch-failed:(\d+)$/.exec(reason ?? "");
+  return m ? Number(m[1]) : 0;
+}
+
+/**
+ * 取り直しに失敗したときに書く reason。前の reason が空か同じ印のときだけ
+ * 回数を足す。他の印 (details-missing / details-archived / via-fallback) は
+ * 上書きしない (null を返す = 書かない)。
+ */
+export function nextRefetchFailedReason(prevReason: string | null | undefined): string | null {
+  if (prevReason && refetchFailureCount(prevReason) === 0) return null;
+  return `${REFETCH_FAILED_PREFIX}:${refetchFailureCount(prevReason) + 1}`;
+}

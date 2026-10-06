@@ -99,6 +99,36 @@ try {
     selectRefetchTargets({ ...base, reports: [reports[0]], ledger: new Map([["A_sep18", { ok: true, reason: null, syncedAt: "bad" }]]) }).codes,
     ["A_sep18"],
   );
+
+  // 2026-10-06: 一部の人のログ名を後から入れたとき (紐づいている日も含める)。
+  check(
+    "紐づいている日も含めると、突合の行があるレポートも選ぶ",
+    selectRefetchTargets({ ...base, includeMatched: true }).codes,
+    ["C_matched", "H_older", "D2_transient", "B_sep24", "A_sep18", "G_noledger"],
+  );
+  check("紐づいている日も含めても、30 分以内に取り直したものは飛ばす (押すたびに先へ進む)",
+    selectRefetchTargets({ ...base, includeMatched: true }).codes.includes("F_justnow"), false);
+
+  // 代替経路で読めたレポートは参加者名を取れないので選ばない。失敗が続いたものは後回し・3 回で外す。
+  const ledger2 = new Map([
+    ["P_fallback", { ok: true, reason: "via-fallback", syncedAt: ago(60 * 24) }],
+    ["Q_failed1", { ok: true, reason: "refetch-failed:1", syncedAt: ago(60 * 24) }],
+    ["R_failed2", { ok: true, reason: "refetch-failed:2", syncedAt: ago(60 * 24) }],
+    ["S_failed3", { ok: true, reason: "refetch-failed:3", syncedAt: ago(60 * 24) }],
+    ["T_fresh", { ok: true, reason: null, syncedAt: ago(60 * 24) }],
+  ]);
+  const reports2 = [
+    { reportCode: "P_fallback", firstStartMs: day("10-05") },
+    { reportCode: "Q_failed1", firstStartMs: day("10-04") },
+    { reportCode: "R_failed2", firstStartMs: day("10-03") },
+    { reportCode: "S_failed3", firstStartMs: day("10-02") },
+    { reportCode: "T_fresh", firstStartMs: day("08-01") },
+  ];
+  check(
+    "代替経路の印は外し、失敗が続いたものは後回し (3 回で外す)",
+    selectRefetchTargets({ reports: reports2, matchedCodes: new Set(), ledger: ledger2, nowMs: now, limit: 25 }).codes,
+    ["T_fresh", "Q_failed1", "R_failed2"],
+  );
 } finally {
   rmSync(outDir, { recursive: true, force: true });
 }
@@ -109,7 +139,8 @@ const start = action.indexOf("export async function refetchUnmatchedAttendanceAc
 const body = start >= 0 ? action.slice(start, action.indexOf("\nfunction emptyRefetchResult", start)) : "";
 check(
   "幹部でなければ DB に触る前に返す",
-  /const auth = await assertAdminResult\(\);\s*if \(!auth\.ok\) return \{ ok: false, reason: "ADMIN ロールが必要です" \};\s*try \{\s*const db = createSupabaseServiceRoleClient\(\);/.test(body),
+  // 間に入ってよいのは入力の読み取り (DB に触らない) だけ。
+  /const auth = await assertAdminResult\(\);\s*if \(!auth\.ok\) return \{ ok: false, reason: "ADMIN ロールが必要です" \};\s*(?:\/\/[^\n]*\n\s*)*const includeMatched = input\?\.includeMatched === true;\s*try \{\s*const db = createSupabaseServiceRoleClient\(\);/.test(body),
   true,
 );
 check(
@@ -130,10 +161,54 @@ check("突合の行の読み取りは order 付き", /\.order\("report_code", \{
 
 const dialog = read("src/components/portal/schedule/attendance-summary-dialog.tsx");
 check(
-  "ダイアログ: 幹部で、突合できなかった日がある (または失敗の理由が残っている) ときだけボタン",
-  /h && !data!\.selfOnly && \(h\.unmatched > 0 \|\| refetchFailures\.length > 0\) \? \(/.test(dialog),
+  "ダイアログ: 幹部だけ。突合できなかった日・突合できた日・失敗の理由のどれかがあるときに出す",
+  /h &&\s*!data!\.selfOnly &&\s*\(h\.unmatched > 0 \|\| h\.sessions > 0 \|\| refetchFailures\.length > 0\) \? \(/.test(dialog),
   true,
 );
+check(
+  "ダイアログ: 「突合できなかった日」は該当する日があるときだけ、「紐づいている日も含めて」は突合できた日があるとき",
+  /\{h\.unmatched > 0 && \([\s\S]{0,300}?onClick=\{\(\) => onRefetch\(false\)\}/.test(dialog) &&
+    /\{h\.sessions > 0 && \([\s\S]{0,300}?onClick=\{\(\) => onRefetch\(true\)\}/.test(dialog),
+  true,
+);
+check("ダイアログ: 押した方を Server Action に渡す", /refetchUnmatchedAttendanceAction\(\{ includeMatched \}\)/.test(dialog), true);
+check(
+  "Server Action: client の値は true のときだけ紐づいている日も含める",
+  /const includeMatched = input\?\.includeMatched === true;/.test(body) && /limit: REFETCH_LIMIT,\s*includeMatched,/.test(body),
+  true,
+);
+{
+  const syncSrc = read("src/lib/server/fflogs-fights.ts");
+  check(
+    "取り直しの失敗: 取り込み済み (ok) の行に回数の印だけを書く (他の印は上書きしない)",
+    /if \(prevLedger\?\.ok && reportSpecificFailure\) \{\s*const mark = nextRefetchFailedReason\(prevLedger\.reason\);\s*if \(mark\) \{\s*await db\s*\.from\("fflogs_report_syncs"\)\s*\.update\(\{ reason: mark \}\)\s*\.eq\("report_code", ref\.code\);/.test(syncSrc),
+    true,
+  );
+  // マージ前レビュー: 全体の障害 (401・5xx・タイムアウト・429) や限定公開の代替経路の
+  // 連鎖を数えると、障害中に押した回数でレポートが対象から外れたままになる。
+  check(
+    "取り直しの失敗に数えるのは、そのレポート固有の失敗だけ (最初の v2 の応答で判定)",
+    /let res = await fetchReportFights\(token, ref\.code\);\s*fetched \+= 1;[\s\S]{0,600}?const reportSpecificFailure =\s*!res\.ok && res\.reportSpecific === true && !PERMISSION_ERROR_RE\.test\(res\.reason\);/.test(syncSrc),
+    true,
+  );
+  check(
+    "レポート固有の失敗は GraphQL の拒否・空の応答だけ (http / rate は含めない)",
+    /reportSpecific: withPhasesRes\.kind === "empty",/.test(syncSrc) &&
+      /reportSpecific: first\.kind === "empty",/.test(syncSrc) &&
+      /reportSpecific: second\.kind === "graphql" \|\| second\.kind === "empty",/.test(syncSrc),
+    true,
+  );
+  // マージ前レビュー: 詳細を途中で打ち切ったレポートの参加者を記録すると、
+  // 既存の正しい出席の行を少ない pull 数で上書きしていた。
+  check(
+    "詳細の打ち切り: 問い合わせを終えた pull の数で判定し、打ち切ったレポートの出席は記録しない",
+    /fetchedUpTo = i \+ batch\.length;/.test(syncSrc) &&
+      /const truncated = fetchedUpTo < fights\.length;/.test(syncSrc) &&
+      /detailsTruncatedHere = fetchedDetails\.truncated;/.test(syncSrc) &&
+      /if \(details\.size > 0 && !detailsTruncatedHere\) \{/.test(syncSrc),
+    true,
+  );
+}
 check(
   "ダイアログ: 0 日の表示と通常の表示の両方に出す",
   (dialog.match(/\{refetchBlock\}/g) ?? []).length,
@@ -168,7 +243,9 @@ check(
 );
 check(
   "失敗: 「既存を保つ」では private が確定したときだけ台帳に書く (v1 の一時的な失敗を非公開にしない)",
-  /if \(opts\?\.preserveExisting && savedReason !== CONFIRMED_PRIVATE_REASON\) \{\s*\/\/[^\n]*\n\s*console\.warn\([\s\S]{0,160}?\);\s*return;\s*\}\s*await db\.from\("fflogs_report_syncs"\)\.upsert\(/.test(syncSrc),
+  /if \(opts\?\.preserveExisting && savedReason !== CONFIRMED_PRIVATE_REASON\) \{\s*\/\/[^\n]*\n\s*console\.warn\([\s\S]{0,160}?\);[\s\S]{0,800}?\n\s{8}return;\s*\}\s*await db\.from\("fflogs_report_syncs"\)\.upsert\(/.test(syncSrc) &&
+    // 書くのは失敗の回数の印 (reason) だけで、ok は書き換えない。
+    !/if \(opts\?\.preserveExisting && savedReason !== CONFIRMED_PRIVATE_REASON\) \{[\s\S]{0,900}?ok: false[\s\S]{0,40}?\n\s{8}return;\s*\}\s*await db\.from/.test(syncSrc),
   true,
 );
 check(

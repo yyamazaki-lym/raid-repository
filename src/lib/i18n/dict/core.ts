@@ -405,6 +405,10 @@ export const ja = {
       ` / 取り直せなかったレポート ${n} 件 (理由はボタンの下)`,
     refetchFailuresTitle: (n: number): string =>
       `取り直せなかったレポート (${n} 件)`,
+    // 2026-10-06: 紐づいている日も含めて取り直す (一部の人のログ名を後から入れたとき)。
+    refetchAllButton: "紐づいている日も含めて取り直す",
+    refetchAllHint:
+      "一部のメンバーの「ログ名」を後から入れたときに押してください。直近 90 日のレポートを新しい順に最大 25 件取り直し、その人の古い日も数え直します (30 分以内に取り直したものは飛ばすので、押すたびに続きを取ります)。",
   },
   // W-18 (2026-09-08): 有志練習 (任意参加) の印。
   optionalBadge: {
@@ -1079,6 +1083,9 @@ export const en: CoreMessages = {
       `Could not refetch this time (FFLogs quota or time ran out; ${n} left — try again later)`,
     refetchFailedSuffix: (n) => ` / ${n} report(s) could not be refetched (reasons under the button)`,
     refetchFailuresTitle: (n) => `Reports that could not be refetched (${n})`,
+    refetchAllButton: "Refetch including linked days",
+    refetchAllHint:
+      "Use this after adding some members' \"Log name\" later. Refetches up to 25 reports from the last 90 days, newest first, so their older days are recounted (reports refetched within 30 minutes are skipped, so each press continues).",
   },
   optionalBadge: {
     label: "Optional",
