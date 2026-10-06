@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import {
   buildPullNotesDigest,
   countPullNoteTags,
+  fitTooltipLines,
   pullNoteDetailsByTag,
   type PullNote,
   type PullNoteDetail,
@@ -17,6 +18,22 @@ import { pullNoteTagLabel } from "./pull-detail-panel";
 
 /** 1 行の hover に出す注釈の上限 (長すぎるツールチップは読めない)。 */
 const HOVER_LIMIT = 15;
+/**
+ * hover 全体の文字数の予算。Windows の Chrome / Edge は `title` を 1024 文字で
+ * 切る (`fitTooltipLines` の docstring) ので、少し余裕を見る。
+ */
+const HOVER_CHAR_BUDGET = 1000;
+/** hover の 1 行に出す一言メモの上限 (全文は pull の展開行で見る)。 */
+const HOVER_NOTE_MAX = 40;
+
+/** 一言メモを hover 用に切る (サロゲートペアを割らないようコードポイントで数える)。 */
+function clipNote(note: string | null): string | null {
+  if (!note) return note;
+  const chars = Array.from(note);
+  return chars.length > HOVER_NOTE_MAX
+    ? chars.slice(0, HOVER_NOTE_MAX).join("") + "…"
+    : note;
+}
 
 /**
  * ミス注釈の傾向 + Discord 用の振り返り (W-7、2026-09-08)。
@@ -37,8 +54,10 @@ const HOVER_LIMIT = 15;
  * 各行の `title` に、そのタグの注釈を 1 件 1 行で出す (pull の日時・ティア
  * 通算の番号・一言メモ)。練習ログの他の hover (初討伐カード) と同じく
  * ブラウザの `title` で、書き方も `floorClearHover` に揃える。新しい pull
- * から `HOVER_LIMIT` 件まで出し、残りは件数だけ。個人タグはここにも出さない
- * (行が team だけの集計なので、明細も team だけ)。
+ * から `HOVER_LIMIT` 件まで出し、残りは件数だけ。⚠ Windows の Chrome / Edge
+ * は `title` を 1024 文字で切るので、メモは `HOVER_NOTE_MAX` 字で切り、全体を
+ * `HOVER_CHAR_BUDGET` 字に収める (出せなかった件数の行は必ず残す)。
+ * 個人タグはここにも出さない (行が team だけの集計なので、明細も team だけ)。
  *
  * ## 読み込みは lazy
  *
@@ -121,6 +140,7 @@ export function PullNotesCard({
   // セッションの日 (`session_date`) を優先する (深夜まで続いた日に翌日へ
   // ずれないように)。
   const hoverText = (details: ReadonlyArray<PullNoteDetail>) => {
+    // 整形するのは出しうる行だけ (総数は total で渡す)。
     const lines = details.slice(0, HOVER_LIMIT).map((d) =>
       m.logs.pullNoteHoverLine(
         d.startMs === null ? null : (d.date ?? jstYmdString(new Date(d.startMs))),
@@ -132,13 +152,17 @@ export function PullNotesCard({
               timeZone: APP_TIME_ZONE,
             }),
         d.overallPulls,
-        d.note,
+        clipNote(d.note),
       ),
     );
-    if (details.length > HOVER_LIMIT) {
-      lines.push(m.logs.pullNoteHoverMore(details.length - HOVER_LIMIT));
-    }
-    return lines.join("\n") || undefined;
+    return (
+      fitTooltipLines(lines, {
+        maxLines: HOVER_LIMIT,
+        maxChars: HOVER_CHAR_BUDGET,
+        more: (n) => m.logs.pullNoteHoverMore(n),
+        total: details.length,
+      }) || undefined
+    );
   };
 
   return (

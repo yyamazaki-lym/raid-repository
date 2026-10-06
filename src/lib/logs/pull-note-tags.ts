@@ -175,6 +175,40 @@ export function pullNoteDetailsByTag(
 }
 
 /**
+ * hover (`title`) に出す行を、行数と文字数の両方で切って 1 つの文字列にする
+ * (2026-10-06)。
+ *
+ * ⚠ **Windows の Chromium (Chrome / Edge) は `title` を 1024 文字 (UTF-16) で
+ * 切る** (`ui/views/corewm/tooltip_state_manager.cc` の `kMaxTooltipLength`。
+ * 他の OS は 2048)。行数だけで切ると、メモが長いときに末尾の行と
+ * 「ほか N 件」が黙って消え、何件見えていないかが分からなくなる。
+ * `maxChars` に収まる行だけを出し、出せなかった件数は必ず最後の 1 行に残す。
+ * 1 行目は長くても出す (何も出ないよりよい。呼び出し側がメモを切って
+ * 1 行を短く保つ)。`total` は全体の件数 (`lines` を上限ぶんだけ作って
+ * 渡すとき。省略すると `lines.length`)。
+ */
+export function fitTooltipLines(
+  lines: ReadonlyArray<string>,
+  opts: { maxLines: number; maxChars: number; more: (n: number) => string; total?: number },
+): string {
+  const total = Math.max(opts.total ?? lines.length, lines.length);
+  const out: string[] = [];
+  let used = 0;
+  for (const line of lines.slice(0, opts.maxLines)) {
+    const rest = total - out.length - 1;
+    // この行を入れた後に「ほか N 件」が要るなら、その分も残しておく。
+    const reserve = rest > 0 ? opts.more(rest).length + 1 : 0;
+    const next = used + (out.length > 0 ? 1 : 0) + line.length;
+    if (out.length > 0 && next + reserve > opts.maxChars) break;
+    out.push(line);
+    used = next;
+  }
+  const hidden = total - out.length;
+  if (hidden > 0) out.push(opts.more(hidden));
+  return out.join("\n");
+}
+
+/**
  * Discord に貼る振り返りの本文 (W-7 の「Discord 用サマリ生成」)。
  *
  * ⚠ **個人タグ (`self`) は本文に出さない。** 本人が自分用に付けた印を
