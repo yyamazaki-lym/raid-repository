@@ -11,6 +11,9 @@
  *   3. 本番で FFLogs 同期が設定で OFF になっていたのに「自動処理」は正常と表示
  *      → 既定 ON の FFLogs 同期が設定で止まっているときは警告する
  *   4. 設定画面を開くたびに「FFLogs 表示名 (基本)」が消えていた → 掃除をやめる
+ *
+ * 2026-10-06: FFLogs が保管扱い (archive) にした古いレポートは、詳細を何度
+ * 取り直しても返らない → 別の印にして取り直さない (1b)。
  */
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
@@ -69,6 +72,22 @@ try {
     [true, true, false, false, false],
   );
 
+  // 2026-10-06: FFLogs が保管扱いにした古いレポート (本番で 2022 年のものが 12 件)。
+  console.log("\n1b. 保管扱いのレポートは取り直さない");
+  const archivedMsg =
+    "This report has been archived. Subscribing users can access the report content via the /user API endpoint.";
+  check("FFLogs の文言を保管扱いと読む", r.isArchivedReportError(archivedMsg), true);
+  check(
+    "他のエラー・空は保管扱いにしない",
+    [r.isArchivedReportError("You do not have permission to view this report."), r.isArchivedReportError(null), r.isArchivedReportError("")],
+    [false, false, false],
+  );
+  check("保管扱いなら別の印", r.detailsLedgerReason(30, null, true), "details-archived:30");
+  check("保管扱いの印は前回の取り直し回数を引き継がない", r.detailsLedgerReason(30, "details-missing:30:2", true), "details-archived:30");
+  check("保管扱いでなければ従来の印", r.detailsLedgerReason(5, "details-missing:5:1", false), "details-missing:5:2");
+  check("全部取れたら印を消す (保管扱いでも)", [r.detailsLedgerReason(0, "details-archived:3", true), r.detailsLedgerReason(0, null, false)], [null, null]);
+  check("保管扱いの印は取り直さない", r.shouldRetryMissingDetails(r.detailsLedgerReason(30, null, true)), false);
+
   console.log("\n3. 自動処理の停止の警告");
   const st = (outcome, reason) => ({ at: "2026-10-05T19:56:00Z", outcome, reason, lastOkAt: null, lastErrorAt: null, lastErrorReason: null, consecutiveErrors: 0 });
   check("FFLogs 同期が設定で止まっている", c.isCronDisabledBySetting("fflogs-sync", st("skipped", "disabled")), true);
@@ -87,14 +106,34 @@ check(
   /if \(shouldRetryMissingDetails\(prev\.reason\)\) \{\s*targets\.push\(\{ \.\.\.withDate, priority: 1 \}\);\s*continue;\s*\}\s*\/\/ 直近のセッションはまだ pull が増えるので取り直す。\s*if \(isRecent\(effectiveDate\)\)/.test(sync),
   true,
 );
-check("数え方: v2 で読めたレポートの、詳細なしで保存した pull", /if \(fromV2\) \{\s*missingDetails = plainRows\.length;\s*detailsMissing \+= missingDetails;/.test(sync), true);
-check("台帳: v2 のときだけ印を書く (前回の印から回数を数える)", /reason: fromV2\s*\? detailsMissingReason\(missingDetails, ledgerMap\.get\(ref\.code\)\?\.reason\)\s*: null,/.test(sync), true);
-check("結果: 件数を返す", /videosBridged,\s*detailsMissing,\s*\};/.test(sync), true);
+check(
+  "数え方: v2 で読めたレポートの、詳細なしで保存した pull (保管扱いは別に数える)",
+  /if \(fromV2\) \{\s*missingDetails = plainRows\.length;\s*if \(detailsArchivedHere\) detailsArchived \+= missingDetails;\s*else detailsMissing \+= missingDetails;/.test(sync),
+  true,
+);
+check(
+  "台帳: v2 のときだけ印を書く (前回の印から回数を数える・保管扱いは別の印)",
+  /reason: fromV2\s*\? detailsLedgerReason\(\s*missingDetails,\s*ledgerMap\.get\(ref\.code\)\?\.reason,\s*detailsArchivedHere,\s*\)\s*: null,/.test(sync),
+  true,
+);
+check("結果: 件数を返す", /videosBridged,\s*detailsMissing,\s*detailsArchived,\s*\};/.test(sync), true);
+check(
+  "詳細の取得: 保管扱いのエラーで印を立てて打ち切る",
+  /if \(isArchivedReportError\(message\)\) \{[\s\S]{0,200}?archived = true;[\s\S]{0,200}?break;\s*\}/.test(sync) &&
+    /return \{ details: out, archived \};/.test(sync),
+  true,
+);
+check(
+  "詳細の取得結果を受け取る (v1 / cookie 経路は保管扱いにしない)",
+  /: \{ details: new Map<number, FightDetail>\(\), archived: false \};\s*const details = fetchedDetails\.details;\s*detailsArchivedHere = fetchedDetails\.archived;/.test(sync),
+  true,
+);
 check("2. pull の保存失敗の理由を一覧に出す", /console\.warn\("\[fflogs-fights\] upsert failed:", error\.message\);\s*\/\/[^\n]*\n\s*failures\.push\(\{ reportCode: ref\.code/.test(sync), true);
 const view = read("src/app/(portal)/category/[slug]/logs/logs-view.tsx");
 check("トースト: 詳細を取れなかった件数を出す", /result\.detailsMissing > 0\s*\? m\.logsSync\.detailsMissingSuffix\(result\.detailsMissing\)/.test(view), true);
+check("トースト: 保管扱いの件数を別に出す", /result\.detailsArchived > 0\s*\? m\.logsSync\.detailsArchivedSuffix\(result\.detailsArchived\)/.test(view), true);
 const action = read("src/lib/server/fflogs-fights-actions.ts");
-check("Server Action の型も件数を持つ", /detailsMissing: number;/.test(action), true);
+check("Server Action の型も件数を持つ", /detailsMissing: number;/.test(action) && /detailsArchived: number;/.test(action), true);
 const section = read("src/components/portal/settings/cron-status-section.tsx");
 check("自動処理: 停止中を見出しの件数に入れる", /disabled > 0\s*\? m\.cronStatus\.badgeDisabled\(disabled\)/.test(section), true);
 check("自動処理: 停止中は正常の色にしない", /failing > 0 \|\| stale > 0 \|\| disabled > 0\s*\? "off"/.test(section), true);

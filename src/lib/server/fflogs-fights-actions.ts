@@ -58,6 +58,8 @@ export async function syncFflogsFightsAction(): Promise<
       attendanceUnresolvedNames: string[];
       /** 2026-10-05: 詳細を取れなかった pull の数 (次の同期で取り直す)。 */
       detailsMissing: number;
+      /** 2026-10-06: FFLogs の保管扱いで詳細が無い pull の数 (取り直さない)。 */
+      detailsArchived: number;
     }
   | { ok: false; reason: string }
 > {
