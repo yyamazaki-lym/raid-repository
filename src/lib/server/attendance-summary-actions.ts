@@ -109,8 +109,11 @@ export async function fetchAttendanceSummaryAction(): Promise<AttendanceSummaryR
             .from("schedule_past_sessions")
             // 2026-10-05: 同じ日の重複をまとめるのに時間帯・出どころ・作成日時を
             // 読む。除外した日 (実施しなかった日) は表示と同じく数えない。
-            .select("raw_date, parsed_date, attendances, start_time, end_time, source, created_at")
-            .is("excluded_at", null)
+            // 2026-10-06: 除外した行も読み、除外した行と同じ開催 (時刻違いの
+            // 重複) も数えない (下の planPastSessionMerge の `excluded`)。
+            .select(
+              "raw_date, parsed_date, attendances, start_time, end_time, source, created_at, excluded_at",
+            )
             .gte("parsed_date", cutoffIso)
             .lte("parsed_date", new Date().toISOString())
             .order("parsed_date", { ascending: false })
@@ -165,16 +168,26 @@ export async function fetchAttendanceSummaryAction(): Promise<AttendanceSummaryR
       end_time?: string;
       source?: string | null;
       created_at?: string | null;
+      /** 同期式のみ: 過去ログから除外した印 (除外した行は数えない)。 */
+      excluded_at?: string | null;
     }>;
     // 2026-10-05: 同期式では、開催時刻を後から変えた日が時刻違いの 2 行になって
     // いる (本番の 10/02・10/04)。表示 (`mergeStoredPastSessions`) と同じく同じ
     // 開催を 1 つにまとめる — まとめないと開催日を 2 回数え、出席率が下がる。
+    // 除外した行は数えず、除外した行と同じ開催の行も外す (2026-10-06)。
+    const excludedRows = sessionRowsRaw.filter((r) => !!r.excluded_at);
     const sessionRows = syncMode
       ? (() => {
           const keep = new Set(
             planPastSessionMerge({
               sheet: [],
-              stored: sessionRowsRaw.map((r) => ({
+              excluded: excludedRows.map((r) => ({
+                rawDate: r.raw_date,
+                startMs: new Date(r.parsed_date).getTime(),
+                startTime: r.start_time ?? "",
+                endTime: r.end_time ?? "",
+              })),
+              stored: sessionRowsRaw.filter((r) => !r.excluded_at).map((r) => ({
                 rawDate: r.raw_date,
                 startMs: new Date(r.parsed_date).getTime(),
                 startTime: r.start_time ?? "",

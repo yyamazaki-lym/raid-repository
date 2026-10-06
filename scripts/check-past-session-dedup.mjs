@@ -133,6 +133,44 @@ try {
   const pNoEvidence = d.planPastSessionMerge({ sheet, stored: [row("2026-10-03", "21:30", "0:00")] });
   check("別の日の保存済みでは証拠にならない", [[...pNoEvidence.verifiedSheetRawDates], pNoEvidence.additions.length], [[], 1]);
 
+  // 2026-10-06: 本番で 10/02 の 21:30 の行を「過去ログから消す」で除外したら、
+  // 時刻違いで重複していた 22:00 の行が代わりに出て、日付が消えなかった。
+  console.log("\n除外した開催");
+  const excl = [row("2026-10-02", "21:30", "0:00")];
+  const pEx = d.planPastSessionMerge({ sheet: [], stored: prod.filter((r) => r.rawDate !== excl[0].rawDate), excluded: excl });
+  check(
+    "除外した行と同じ開催 (時刻違いの重複) も足さない",
+    pEx.additions.map((r) => r.rawDate).sort(),
+    ["2026/09/27(日) 22:00~0:00", "2026/10/01(木) 21:30~0:00", "2026/10/04(日) 21:30~0:00"],
+  );
+  check("除外した開催の行はどこにも寄せない", Object.keys(pEx.aliasOf).includes("2026/10/02(金) 22:00~0:00"), false);
+  const pExTwo = d.planPastSessionMerge({
+    sheet: [],
+    stored: [row("2026-10-04", "13:00", "15:00")],
+    excluded: [row("2026-10-04", "21:30", "0:00")],
+  });
+  check("同じ日でも時間帯が重ならない開催は残す (昼と夜)", pExTwo.additions.map((r) => r.rawDate), ["2026/10/04(日) 13:00~15:00"]);
+  const pExSheet = d.planPastSessionMerge({
+    sheet: [row("2026-10-02", "21:30", "0:00")],
+    stored: [row("2026-10-02", "22:00", "0:00")],
+    excluded: [row("2026-10-02", "21:30", "0:00")],
+  });
+  check(
+    "除外した開催のデイコードの行は実開催の証拠を持たない (過去から消える)",
+    [[...pExSheet.verifiedSheetRawDates], pExSheet.additions.length],
+    [[], 0],
+  );
+  check("除外が無ければ従来どおり", d.planPastSessionMerge({ sheet: [], stored: prod, excluded: [] }).additions.length, 4);
+  // 除外した行 (21:30~23:00) とは重ならないが、デイコードの行 (21:30~0:00) とは
+  // 重なる保存済みの行 (23:30~1:00) があっても、除外した開催のデイコードの行は
+  // 証拠を得ない。
+  const pExThird = d.planPastSessionMerge({
+    sheet: [row("2026-10-02", "21:30", "0:00")],
+    stored: [row("2026-10-02", "23:30", "1:00")],
+    excluded: [row("2026-10-02", "21:30", "23:00")],
+  });
+  check("除外した開催のデイコードの行は、他の行からも証拠を得ない", [...pExThird.verifiedSheetRawDates], []);
+
   console.log("\nLogs・メモを寄せる");
   const logs = {
     "2026/10/04(日) 21:30~0:00": [{ id: "a", url: "https://ja.fflogs.com/reports/X" }],
@@ -163,7 +201,18 @@ const stored = read("src/lib/server/discord-schedule.ts");
 check("読み取り: 出どころと作成日時を読む", /attendances, user_names, source, created_at"/.test(stored), true);
 const summary = read("src/lib/server/attendance-summary-actions.ts");
 check("出席サマリー: 同じまとめ方で開催日を数える", /planPastSessionMerge\(\{\s*sheet: \[\],/.test(summary), true);
-check("出席サマリー: 除外した日は数えない", /\.from\("schedule_past_sessions"\)[\s\S]{0,300}\.is\("excluded_at", null\)/.test(summary), true);
+// 2026-10-06: 除外した行も読み、除外した行と同じ開催 (時刻違いの重複) も数えない。
+check(
+  "出席サマリー: 除外した日は数えない (除外した行と同じ開催も)",
+  /excluded: excludedRows\.map\(/.test(summary) && /stored: sessionRowsRaw\.filter\(\(r\) => !r\.excluded_at\)/.test(summary),
+  true,
+);
+check(
+  "表示: 除外した行も読み、同じ開催を外す",
+  /fetchExcludedPastSessions\(\{ sinceIso: since\.toISOString\(\) \}\)/.test(next) && /excluded: excluded\.map\(/.test(next),
+  true,
+);
+check("読み取り: 除外した行の時刻を読む", /"raw_date, parsed_date, start_time, end_time, source, excluded_at"/.test(stored), true);
 
 if (failures > 0) {
   console.log(`\n${failures} check(s) failed`);
