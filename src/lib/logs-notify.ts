@@ -117,6 +117,11 @@ export type LogsEvent =
  *
  * `prev` が null (初回同期) のときは **ベスト更新を出さない** — 初めて
  * 取り込んだ全ログが「更新」として一斉に飛ぶのを避ける。
+ *
+ * 2026-10-06: `prev` が null で**新しいレポートも無い**ときは何も出さない
+ * (呼び出し側が基準のスナップショットだけを書く)。取り直しや貼り直しで
+ * 古いコンテンツ (通知の記録が無い前の tier 等) に触れただけなのに、
+ * 何か月も前の討伐が「初討伐」として投稿されていた (取り消せない)。
  */
 export function detectLogsEvents(
   prev: LogsSnapshot | null,
@@ -124,6 +129,7 @@ export function detectLogsEvents(
   newReports: number,
 ): LogsEvent[] {
   const out: LogsEvent[] = [];
+  if (prev === null && newReports <= 0) return out;
 
   if (next.hasClear && !(prev?.hasClear ?? false)) {
     out.push({ kind: "firstClear" });

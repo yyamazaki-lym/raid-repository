@@ -152,8 +152,13 @@ check(
   true,
 );
 check(
-  "失敗: 「既存を保つ」で ok だった台帳は、一時的な失敗なら書き換えない (恒久失敗は書く)",
-  /if \(\s*opts\?\.preserveExisting &&\s*prevLedger\?\.ok &&\s*!isPermanentSyncFailure\(savedReason\)\s*\) \{\s*return;\s*\}\s*await db\.from\("fflogs_report_syncs"\)\.upsert\(/.test(syncSrc),
+  "失敗: 「既存を保つ」では private が確定したときだけ台帳に書く (v1 の一時的な失敗を非公開にしない)",
+  /if \(opts\?\.preserveExisting && savedReason !== CONFIRMED_PRIVATE_REASON\) \{\s*return;\s*\}\s*await db\.from\("fflogs_report_syncs"\)\.upsert\(/.test(syncSrc),
+  true,
+);
+check(
+  "台帳を読めなければ「既存を保つ」取り直しはやめる",
+  /if \(ledgerRes\.error\) \{[\s\S]{0,400}?if \(opts\?\.preserveExisting\) \{\s*return \{\s*ok: false,/.test(syncSrc),
   true,
 );
 check(
@@ -163,7 +168,7 @@ check(
 );
 check(
   "保存済みの pull のカテゴリを使う (未分類もそのまま・読めなければ書かない)",
-  /const keepExisting = opts\?\.preserveExisting === true && prevLedger\?\.ok === true;/.test(syncSrc) &&
+  /const keepExisting = opts\?\.preserveExisting === true;/.test(syncSrc) &&
     /if \(existingError\) \{[\s\S]{0,400}?return;\s*\}/.test(syncSrc) &&
     /existingCategoryOf\.set\(Number\(r\.fight_id\), r\.category_id \?\? null\);/.test(syncSrc) &&
     /existingCategoryOf\.has\(f\.id\)\s*\?\s*\(existingCategoryOf\.get\(f\.id\) \?\? null\)\s*:\s*resolveFightCategory\(/.test(syncSrc),
@@ -180,9 +185,14 @@ console.log("\n3. 取り直しを「新しいレポート」に数えない");
 const sync = read("src/lib/server/fflogs-fights.ts");
 check(
   "台帳の fight 数が 0 (まだ pull を取り込めていない) レポートだけを数える (一時的な失敗を挟んでも数え直さない)",
-  /const isNewReport = \(prevLedger\?\.fightCount \?\? 0\) === 0;/.test(sync) &&
+  /const isNewReport =\s*\(prevLedger\?\.fightCount \?\? 0\) === 0 && existingCategoryOf\.size === 0;/.test(sync) &&
     /fightCount:\s*typeof row\.fight_count === "number"/.test(sync) &&
     /reason, fight_count",/.test(sync),
+  true,
+);
+check(
+  "「既存を保つ」取り直しでは、新しく出た pull のカテゴリだけを通知の判定に渡す (古いコンテンツの初討伐を出さない)",
+  /for \(const f of acceptedFights\) \{\s*if \(keepExisting && existingCategoryOf\.has\(f\.id\)\) continue;/.test(sync),
   true,
 );
 check(

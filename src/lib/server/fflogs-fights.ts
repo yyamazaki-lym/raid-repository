@@ -541,6 +541,14 @@ async function syncFflogsFightsUnlocked(opts?: {
   });
   if (ledgerRes.error) {
     console.warn("[fflogs-fights] ledger fetch failed:", ledgerRes.error.message);
+    // 2026-10-06: 「既存を保つ」取り直しは台帳が読めないと保てない (前回の
+    // 分類・日付・取り込み済みかが分からない) ので、取りに行かずにやめる。
+    if (opts?.preserveExisting) {
+      return {
+        ok: false,
+        reason: "同期台帳を読めなかったため取り直しを中止しました — 時間をおいてもう一度押してください",
+      };
+    }
   }
   const ledger = ledgerRes.rows;
   const ledgerMap = new Map<
@@ -768,16 +776,14 @@ async function syncFflogsFightsUnlocked(opts?: {
       if (failures.length < 10) {
         failures.push({ reportCode: ref.code, reason: savedReason });
       }
-      // 2026-10-06: 取り込み済みのレポートを「既存を保つ」で取り直したときは、
-      // 一時的な失敗 (5xx・タイムアウト) で ok の台帳を失敗に書き換えない。
-      // 書き換えると、以後の取り直しからも外れていた (マージ前レビュー)。
-      // 恒久的な失敗 (後から private にされた等) は書く — 書かないと取り直しの
-      // たびに選ばれ続ける。
-      if (
-        opts?.preserveExisting &&
-        prevLedger?.ok &&
-        !isPermanentSyncFailure(savedReason)
-      ) {
+      // 2026-10-06: 「既存を保つ」取り直しでは、一時的な失敗 (5xx・タイムアウト)
+      // で台帳を書き換えない。書き換えると、以後の取り直しからも外れていた
+      // (マージ前レビュー)。書くのは **private が確定した** ときだけ (後から
+      // private にされた等。書かないと取り直しのたびに選ばれ続ける)。
+      // ⚠ `isPermanentSyncFailure` では判定しない — v2 が権限エラーで v1 が
+      // タイムアウト・5xx だっただけの「非公開の可能性」(試行の羅列) も恒久扱い
+      // になり、v1 で読めていた限定公開のレポートが非公開の失敗に化ける。
+      if (opts?.preserveExisting && savedReason !== CONFIRMED_PRIVATE_REASON) {
         return;
       }
       await db.from("fflogs_report_syncs").upsert(
@@ -809,7 +815,9 @@ async function syncFflogsFightsUnlocked(opts?: {
     // そのまま使う (URL 取り込みで選んだコンテンツ・手動の割り当てを消さない)。
     // **未分類 (null) もそのまま** — 分類し直すと多数派のコンテンツへ流れ込む。
     // 読めなければ今回は書かない — 分類を壊すより取り直さない方がよい。
-    const keepExisting = opts?.preserveExisting === true && prevLedger?.ok === true;
+    // 台帳が ok でなくても (一時的な失敗で ok=false になっていた等) 保存済みの
+    // pull は保つので、台帳の状態には依存させない。
+    const keepExisting = opts?.preserveExisting === true;
     const existingCategoryOf = new Map<number, string | null>();
     if (keepExisting) {
       const { data: existingRows, error: existingError } = await db
@@ -985,22 +993,30 @@ async function syncFflogsFightsUnlocked(opts?: {
       // 1 レポートに複数コンテンツが混ざることがあるので fight 単位の
       // カテゴリを集める。件数はレポート数なので Set で重複を除く。
       //
-      // 2026-10-06: 「新しいレポート」に数えるのは、前回までに取り込めて
-      // いなかったレポートだけ (台帳に ok の行が無い)。以前は取り直しも数えて
-      // いたため、直近 14 日のレポートを毎回取り直す日次の同期で、新しい
-      // ものが無くても「新しいレポート N 件」を投稿し得た (出席の突合の
-      // 取り直しでまとめて取り直すと、それが大量に出る)。カテゴリ自体は
-      // 0 件でも map に載せる — ベスト更新 / 初討伐の判定は map にある
-      // カテゴリだけを見るので、取り直しで増えた pull の更新を落とさない。
+      // 2026-10-06: 「新しいレポート」に数えるのは、まだ pull を取り込めて
+      // いなかったレポートだけ。以前は取り直しも数えていたため、直近 14 日の
+      // レポートを毎回取り直す日次の同期で、新しいものが無くても「新しい
+      // レポート N 件」を投稿し得た (出席の突合の取り直しでまとめて取り直すと、
+      // それが大量に出る)。カテゴリ自体は 0 件でも map に載せる — ベスト更新 /
+      // 初討伐の判定は map にあるカテゴリだけを見るので、取り直しで増えた
+      // pull の更新を落とさない。
       if (upsertOk) {
         // 取り込み済みかどうかは台帳の fight 数で見る (`NOT NULL DEFAULT 0`)。
         // ok / 失敗では見ない — 取り込み済みのレポートが一時的な失敗で
         // ok=false に書き換わっても fight 数は残るので、次に成功したときに
         // 「新しい」と数え直さない。失敗しかしていない・pull 0 件で取り込んだ
         // (アップロードの途中で先に同期した等) レポートは 0 なので新しい。
-        const isNewReport = (prevLedger?.fightCount ?? 0) === 0;
+        // 「既存を保つ」取り直しでは、保存済みの pull があれば新しくない
+        // (台帳の行が無い・読めなかったレポートでも数えない)。
+        const isNewReport =
+          (prevLedger?.fightCount ?? 0) === 0 && existingCategoryOf.size === 0;
+        // 「既存を保つ」取り直しでは、**新しく出た pull** のカテゴリだけを
+        // 通知の判定に渡す。保存済みの pull しか無いカテゴリを渡すと、通知の
+        // 記録が無い古いコンテンツ (前の tier 等) について、何か月も前の
+        // 討伐が「初討伐」として投稿されてしまう (取り消せない。マージ前レビュー)。
         const touched = new Set<string>();
         for (const f of acceptedFights) {
+          if (keepExisting && existingCategoryOf.has(f.id)) continue;
           const cid = categoryOf.get(f.id) ?? null;
           if (cid !== null) touched.add(cid);
         }

@@ -276,6 +276,8 @@ export const SERVER_TEXT_EN: ServerTextDictRaw = {
       "Invalid video ID",
     "取り直すレポートの選び出しに失敗しました":
       "Failed to pick the reports to refetch",
+    "同期台帳を読めなかったため取り直しを中止しました — 時間をおいてもう一度押してください":
+      "Stopped the refetch because the sync ledger could not be read — try again later",
     "同じ URL が既に紐付いています":
       "The same URL is already linked",
     "同じレポートの URL が既に紐付いています (#fight 等の表記違いは同一レポート扱いです)":
