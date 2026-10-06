@@ -1310,6 +1310,10 @@ export function LogsView({
       <PullNotesCard
         categoryName={categoryName}
         initial={initialPullNotes}
+        // 2026-10-06: 行の hover に注釈の pull の日時・ティア通算の番号を出す。
+        // 番号は初討伐カードと同じく、明細が打ち切られていれば出さない。
+        fights={fights}
+        numberedFights={truncated ? null : tierFights}
       />
 
       {(wipeCauses.length > 0 ||

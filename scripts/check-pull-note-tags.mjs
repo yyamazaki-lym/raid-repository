@@ -140,6 +140,57 @@ try {
       .split("\n"),
     ["H", "- なし", "self 1"],
   );
+
+  // 2026-10-06: 傾向の行の hover に出す明細。
+  console.log("\n[行の hover の明細]");
+  const fights = [
+    { reportCode: "r1", fightId: 1, sessionDate: "2026-10-04", startMs: 1000 },
+    { reportCode: "r1", fightId: 2, sessionDate: "2026-10-04", startMs: 2000 },
+    { reportCode: "r2", fightId: 1, sessionDate: "2026-10-06", startMs: 5000 },
+  ];
+  const hoverNotes = [
+    note({ reportCode: "r1", fightId: 2, tag: "position", note: " 散開が\n遅れた " }),
+    note({ reportCode: "r2", fightId: 1, tag: "position" }),
+    note({ reportCode: "gone", fightId: 9, tag: "position", note: "古い", createdAt: "2026-09-01T00:00:00Z" }),
+    note({ reportCode: "gone", fightId: 8, tag: "position", note: "新しい", createdAt: "2026-09-02T00:00:00Z" }),
+    note({ reportCode: "r1", fightId: 1, tag: " other " }),
+  ];
+  const byTag = m.pullNoteDetailsByTag(hoverNotes, fights, fights);
+  check(
+    "新しい pull が先・明細に無い注釈は後ろ (作成の新しい順)・メモの空白は 1 つに",
+    byTag.get("position"),
+    [
+      { date: "2026-10-06", startMs: 5000, overallPulls: 3, note: null },
+      { date: "2026-10-04", startMs: 2000, overallPulls: 2, note: "散開が 遅れた" },
+      { date: null, startMs: null, overallPulls: null, note: "新しい" },
+      { date: null, startMs: null, overallPulls: null, note: "古い" },
+    ],
+  );
+  check(
+    "タグは前後の空白を落とした値で振り分ける (countPullNoteTags と同じ鍵)",
+    [...byTag.keys()].sort(),
+    m.countPullNoteTags(hoverNotes).map((c) => c.tag).sort(),
+  );
+  check(
+    "各タグの明細の件数は countPullNoteTags の件数と一致",
+    m.countPullNoteTags(hoverNotes).map((c) => byTag.get(c.tag)?.length ?? 0),
+    m.countPullNoteTags(hoverNotes).map((c) => c.count),
+  );
+  check(
+    "明細が打ち切られているとき (numbered = null) は通算の番号を出さない",
+    m.pullNoteDetailsByTag(hoverNotes, fights, null).get("position").map((d) => d.overallPulls),
+    [null, null, null, null],
+  );
+  check(
+    "通算の番号は開始時刻の昇順で数える (渡す順によらない)",
+    m.pullNoteDetailsByTag(hoverNotes, fights, [...fights].reverse()).get("other")[0].overallPulls,
+    1,
+  );
+  check(
+    "ティアの明細に無い pull は日時だけ (番号なし)",
+    m.pullNoteDetailsByTag(hoverNotes, fights, fights.slice(0, 2)).get("position")[0],
+    { date: "2026-10-06", startMs: 5000, overallPulls: null, note: null },
+  );
 } finally {
   rmSync(outDir, { recursive: true, force: true });
 }
