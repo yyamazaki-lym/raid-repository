@@ -141,6 +141,57 @@ try {
     m.syncSymbolsFromSnapshot({}, keyByName),
     {},
   );
+
+  // 2026-10-06: シートでの旧名。本番で 9/11 まで「Lym」「makiton」、9/18 から
+  // 「Lym.sln」「.makiton」に変わり、古い日の回答が「未回答」になっていた。
+  console.log("\n[シートでの旧名]");
+  const withAliases = [
+    { discordUserId: "lym", displayName: "Lym.sln", scheduleAliases: ["Lym"] },
+    { discordUserId: "mak", displayName: ".makiton", scheduleAliases: ["makiton"] },
+    { discordUserId: "ene", displayName: "enero", scheduleAliases: [] },
+    // 旧名が別のメンバーの今の表示名と同じ → 旧名の方は載せない (今の名前を優先)
+    { discordUserId: "x", displayName: "X", scheduleAliases: ["enero"] },
+    // 同じ旧名が 2 人 → 未解決
+    { discordUserId: "p", displayName: "P", scheduleAliases: ["old"] },
+    { discordUserId: "q", displayName: "Q", scheduleAliases: ["OLD"] },
+  ];
+  const keyByAlias = m.buildMemberKeyByName(withAliases);
+  check(
+    "旧名で引ける (本番の Lym / makiton)",
+    m.syncSymbolsFromSnapshot({ Lym: "△", makiton: "◯", "Lym.sln": "×" }, keyByAlias),
+    { lym: "×", mak: "◯" },
+  );
+  check("今の表示名は旧名より優先 (enero は enero のまま)", keyByAlias.get("enero"), "ene");
+  check("同じ旧名が 2 人なら未解決", keyByAlias.get("old"), null);
+  check("旧名が無ければ従来どおり", m.buildMemberKeyByName(members).get("むーたん"), "u1");
+
+  const sheet = [
+    { userId: "s1", name: "enero" },
+    { userId: "s2", name: ".makiton" },
+    { userId: "s3", name: "Lym.sln" },
+  ];
+  const resolve = m.buildSheetUserResolver(sheet, withAliases);
+  check(
+    "過去ログ: 今のシートの名前は完全一致、旧名はメンバーの表示名経由でシートの人へ",
+    ["enero", "Lym", "makiton", "Lym.sln", "知らない人", "old"].map((n) => resolve(n) ?? null),
+    ["s1", "s3", "s2", "s3", null, null],
+  );
+  check(
+    "過去ログ: メンバーが空なら従来どおり完全一致だけ",
+    ["enero", "Lym"].map((n) => m.buildSheetUserResolver(sheet, [])(n) ?? null),
+    ["s1", null],
+  );
+
+  console.log("\n[旧名の入力]");
+  check(
+    "区切り (カンマ・読点・改行) で分け、空白・空・重複を除く",
+    m.normalizeScheduleAliases(m.splitScheduleAliasInput(" Lym, lym 、makiton\n\n")),
+    { ok: true, aliases: ["Lym", "makiton"] },
+  );
+  check("6 つ以上は不可", m.normalizeScheduleAliases(["a", "b", "c", "d", "e", "f"]), { ok: false, error: "too-many" });
+  check("41 文字以上は不可", m.normalizeScheduleAliases(["x".repeat(41)]), { ok: false, error: "too-long" });
+  check("制御文字は不可", m.normalizeScheduleAliases(["a\u0007b"]), { ok: false, error: "control" });
+  check("空なら空の一覧 (全部消す)", m.normalizeScheduleAliases([]), { ok: true, aliases: [] });
 } finally {
   rmSync(outDir, { recursive: true, force: true });
 }
@@ -174,6 +225,48 @@ check(
 check(
   "undefined を除いてから渡している",
   /filter\(\(id\): id is string => typeof id === "string"\)/.test(caller),
+  true,
+);
+
+// 2026-10-06: 旧名の配線。
+console.log("\n旧名の配線");
+const callerN = caller.replace(/\r\n/g, "\n");
+check(
+  "出席サマリー: メンバーの旧名を読み、対応表に載せる",
+  /\.select\("discord_user_id, display_name, sort_order, is_active, schedule_aliases"\)/.test(callerN) &&
+    /scheduleAliases: mem\.schedule_aliases \?\? \[\],/.test(callerN),
+  true,
+);
+const nextSession = readFileSync("src/lib/schedule/next-session.ts", "utf8").replace(/\r\n/g, "\n");
+check(
+  "過去ログの表示: 旧名でもシートの人に結びつける",
+  /fetchMemberNameAliases\(\),/.test(nextSession) &&
+    /const resolveSheetUser = buildSheetUserResolver\(parsed\.users, memberAliases\);/.test(nextSession) &&
+    /const uid = resolveSheetUser\(name\);/.test(nextSession),
+  true,
+);
+const actions = readFileSync("src/lib/server/native-schedule-actions.ts", "utf8").replace(/\r\n/g, "\n");
+check(
+  "Server Action: 配列で文字列のときだけ受け取り、同じ規則で確かめる",
+  /!Array\.isArray\(patch\.scheduleAliases\) \|\|\s*patch\.scheduleAliases\.some\(\(a\) => typeof a !== "string"\)/.test(actions) &&
+    /const r = normalizeScheduleAliases\(patch\.scheduleAliases\);/.test(actions) &&
+    /update\.schedule_aliases = r\.aliases;/.test(actions),
+  true,
+);
+const schema = readFileSync("supabase/schema.sql", "utf8").replace(/\r\n/g, "\n");
+check(
+  "schema: 列は空の配列が既定 (既存の行を書き換えない) で、数・長さ・制御文字を CHECK",
+  /ADD COLUMN IF NOT EXISTS schedule_aliases text\[\] NOT NULL DEFAULT '\{\}';/.test(schema) &&
+    /cardinality\(schedule_aliases\) <= 5/.test(schema) &&
+    /array_to_string\(schedule_aliases, ''\) !~ '\[\[:cntrl:\]\]'/.test(schema),
+  true,
+);
+const section = readFileSync("src/components/portal/settings/native-members-section.tsx", "utf8").replace(/\r\n/g, "\n");
+check(
+  "設定: Members に旧名の欄があり、変えたときだけ送る",
+  /aria-label=\{m\.nativeMembers\.aliasLabel\}/.test(section) &&
+    /if \(aliasesKey\(draft\.scheduleAliases\) !== aliasesKey\(\(mem\.schedule_aliases \?\? \[\]\)\.join\(","\)\)\) \{/.test(section) &&
+    /patch\.scheduleAliases = r\.aliases;/.test(section),
   true,
 );
 

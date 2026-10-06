@@ -1195,6 +1195,24 @@ ALTER TABLE public.native_schedule_members
     )
   ) NOT VALID;
 
+-- 2026-10-06: 同期式のシートでの旧名 (最大 5 つ)。スナップショットは、その日に
+-- シートにあった名前を鍵に回答を保存する (`schedule_past_sessions.attendances`)。
+-- シートの切り替えや改名で名前が変わると、変わる前の日の回答が今のメンバーに
+-- 結びつかず「未回答」になっていた (本番: 9/11 まで「Lym」「makiton」、9/18 から
+-- 「Lym.sln」「.makiton」)。過去ログの表示と出席サマリーが旧名でも照合する。
+-- 既存の行は空の配列で、データは書き換えない。
+ALTER TABLE public.native_schedule_members
+  ADD COLUMN IF NOT EXISTS schedule_aliases text[] NOT NULL DEFAULT '{}';
+ALTER TABLE public.native_schedule_members
+  DROP CONSTRAINT IF EXISTS native_schedule_members_aliases_sane;
+ALTER TABLE public.native_schedule_members
+  ADD CONSTRAINT native_schedule_members_aliases_sane
+  CHECK (
+    cardinality(schedule_aliases) <= 5
+    AND char_length(array_to_string(schedule_aliases, '')) <= 200
+    AND array_to_string(schedule_aliases, '') !~ '[[:cntrl:]]'
+  ) NOT VALID;
+
 -- 2.1 (2026-05-12) PR3-D: メンバー全体コメント (同期式準拠で 1 メンバー = 1 行)。
 -- session ごとの comment (`native_schedule_attendances.comment`) は別概念で
 -- 並存する (UI 上は本コメントを優先表示し、attendances.comment は当面 UI 露出なし)。

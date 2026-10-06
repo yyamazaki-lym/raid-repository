@@ -129,7 +129,9 @@ export async function fetchAttendanceSummaryAction(): Promise<AttendanceSummaryR
             .order("parsed_date", { ascending: false }),
       db
         .from("native_schedule_members")
-        .select("discord_user_id, display_name, sort_order, is_active")
+        // 2026-10-06: シートでの旧名も読む (同期式で、名前が変わる前の日の
+        // 回答をこのメンバーに結びつける)。
+        .select("discord_user_id, display_name, sort_order, is_active, schedule_aliases")
         .eq("is_active", true)
         .order("sort_order", { ascending: true }),
       // 期間内の pull を **レポート単位に畳んで** 引く (2026-09-09)。
@@ -204,6 +206,7 @@ export async function fetchAttendanceSummaryAction(): Promise<AttendanceSummaryR
     const memberRows = (membersRes.data ?? []) as Array<{
       discord_user_id: string;
       display_name: string;
+      schedule_aliases?: string[] | null;
     }>;
     if (sessionRows.length === 0 || memberRows.length === 0) {
       return {
@@ -315,6 +318,7 @@ export async function fetchAttendanceSummaryAction(): Promise<AttendanceSummaryR
           memberRows.map((mem) => ({
             discordUserId: mem.discord_user_id,
             displayName: mem.display_name ?? null,
+            scheduleAliases: mem.schedule_aliases ?? [],
           })),
         )
       : new Map<string, string | null>();
