@@ -97,7 +97,14 @@ console.log("3. U-17 祝日の目印");
   check("読み上げには祝日名", /<span className="sr-only">\{name \?\? m\.pastSimple\.holidayFallback\}<\/span>/.test(mark), true);
   check("11px 以上", /text-\[11px\]/.test(mark), true);
   const list = read("src/components/portal/schedule-list.tsx");
-  check("予定表の日付セルに出す", /\{text\}\s*\{holiday && <HolidayMark name=\{holidayName\} \/>\}/.test(list), true);
+  check("予定表の日付セルに出す", /\{text\}\s*\{holiday \? \(\s*<HolidayMark name=\{holidayName\} \/>/.test(list), true);
+  // 2026-10-06: 祝日の行だけ時刻・出欠のチップが右へずれていたので、表に祝日が
+  // あれば祝日でない行にも同じ幅の見えない枠を置く。枠は読み上げに出さない。
+  check("祝日でない行には見えない枠 (表に祝日があるとき)", /: reserveHoliday \? \(\s*<HolidayMark name=\{null\} placeholder \/>/.test(list), true);
+  check("表に祝日があるかを数える", /if \(!holiday && isJapaneseHoliday\(s\.date, holidays\)\) holiday = true;/.test(list), true);
+  const placeholderAt = mark.indexOf("if (placeholder)");
+  const placeholderBody = placeholderAt >= 0 ? mark.slice(placeholderAt, mark.indexOf("}", mark.indexOf("</span>", placeholderAt))) : "";
+  check("見えない枠は読み上げない", /aria-hidden/.test(placeholderBody) && /invisible/.test(placeholderBody) && !/sr-only/.test(placeholderBody), true);
   const chips = read("src/components/portal/schedule-past-simple.tsx");
   check("過去の日付チップに出す", /<\/SessionMemoPopover>\s*\{holiday && <HolidayMark name=\{holidayName\} \/>\}/.test(chips), true);
 }
