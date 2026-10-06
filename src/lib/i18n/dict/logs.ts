@@ -191,6 +191,18 @@ export const ja = {
     pullNoteDigestHeader: (name: string): string => `${name} の振り返り`,
     pullNoteDigestSelf: (n: number): string => `(個人メモ ${n} 件は本文に出していません)`,
     pullNoteDigestEmpty: "- チーム帰属の注釈はありません",
+    // 2026-10-06: 傾向の行の hover (注釈 1 件 = 1 行)。日時と通算の書き方は
+    // 初討伐カードの floorClearHover に揃える。
+    pullNoteHoverLine: (
+      date: string | null,
+      time: string | null,
+      overall: number | null,
+      note: string | null,
+    ): string =>
+      (date && time
+        ? `${date} ${time} 開始の pull` + (overall ? ` (ティア通算 ${overall} pull 目)` : "")
+        : "日時の分からない pull (明細の範囲外)") + (note ? `: ${note}` : ""),
+    pullNoteHoverMore: (n: number): string => `ほか ${n} 件`,
     pullDetailUnknownAbility: "技名不明",
     pullDetailSincePrev: (sec: number): string => `+${sec}s`,
     startTimeTitle: "戦闘開始時刻 (JST)",
@@ -698,6 +710,11 @@ export const en: LogsMessages = {
     pullNoteDigestHeader: (name) => `${name} recap`,
     pullNoteDigestSelf: (n) => `(${n} personal note(s) not included)`,
     pullNoteDigestEmpty: "- No team notes",
+    pullNoteHoverLine: (date, time, overall, note) =>
+      (date && time
+        ? `Pull started ${date} ${time} JST` + (overall ? ` (pull ${overall} of the tier)` : "")
+        : "Pull outside the loaded range (time unknown)") + (note ? `: ${note}` : ""),
+    pullNoteHoverMore: (n) => `and ${n} more`,
     pullDetailUnknownAbility: "Unknown ability",
     pullDetailSincePrev: (sec) => `+${sec}s`,
     startTimeTitle: "Start time (JST)",

@@ -95,6 +95,119 @@ export function countPullNoteTags(
     );
 }
 
+/** 傾向の行の hover に出す注釈 1 件ぶん (2026-10-06)。 */
+export type PullNoteDetail = {
+  /** pull の日 (`YYYY-MM-DD`、日ごとの行と同じセッションの日)。明細に無ければ null。 */
+  date: string | null;
+  /** pull の開始時刻 (ms)。明細に無ければ null。 */
+  startMs: number | null;
+  /** ティア通算で何本目の pull か (1 始まり)。数えられなければ null。 */
+  overallPulls: number | null;
+  /** 一言メモ (空白だけなら null)。 */
+  note: string | null;
+};
+
+/**
+ * タグごとの注釈の明細 (2026-10-06 実機要望「ミス注釈の傾向はマウスオーバー
+ * なりで見えるようにしてほしい」)。傾向の行は件数しか出さないので、
+ * 「どの pull に付いたか」と一言メモを hover で引けるようにする。
+ *
+ * - 日時は明細 (`fights`) から引く。明細が打ち切られて (`truncated`) 古い pull
+ *   が無いときは null (注釈の作成日時で代用しない — pull の日時と取り違える)
+ * - ティア通算の番号は `numbered` (ティアの明細) を開始時刻の昇順に数える。
+ *   初討伐カード (`floorFirstClears`) と同じ数え方。⚠ 明細が打ち切られている
+ *   ときは呼び出し側が null を渡す (古い pull が落ちて番号が過小になる)
+ * - 並びは新しい pull が先。日時の分からない注釈は後ろ (作成の新しい順)
+ * - 振り分けるだけで、帰属 (`scope`) では絞らない (呼び出し側が渡したものを出す)
+ */
+export function pullNoteDetailsByTag(
+  notes: ReadonlyArray<PullNote>,
+  fights: ReadonlyArray<{
+    reportCode: string;
+    fightId: number;
+    sessionDate: string | null;
+    startMs: number;
+  }>,
+  numbered: ReadonlyArray<{ reportCode: string; fightId: number; startMs: number }> | null,
+): Map<string, PullNoteDetail[]> {
+  const keyOf = (reportCode: string, fightId: number) => `${reportCode}\u0000${fightId}`;
+  const fightByKey = new Map(fights.map((f) => [keyOf(f.reportCode, f.fightId), f]));
+  const overallByKey = new Map<string, number>();
+  if (numbered) {
+    [...numbered]
+      .filter((f) => Number.isFinite(f.startMs))
+      .sort((a, b) => a.startMs - b.startMs)
+      .forEach((f, i) => overallByKey.set(keyOf(f.reportCode, f.fightId), i + 1));
+  }
+  const rows = notes
+    .filter((n) => n.tag.trim())
+    .map((n) => {
+      const key = keyOf(n.reportCode, n.fightId);
+      const fight = fightByKey.get(key);
+      const startMs = fight && Number.isFinite(fight.startMs) ? fight.startMs : null;
+      const note = (n.note ?? "").replace(/\s+/g, " ").trim();
+      return {
+        tag: n.tag.trim(),
+        createdAt: n.createdAt,
+        detail: {
+          date: fight ? fight.sessionDate : null,
+          startMs,
+          overallPulls: overallByKey.get(key) ?? null,
+          note: note || null,
+        } satisfies PullNoteDetail,
+      };
+    })
+    .sort((a, b) => {
+      const sa = a.detail.startMs;
+      const sb = b.detail.startMs;
+      if (sa !== null && sb !== null) return sb - sa;
+      if (sa !== null) return -1;
+      if (sb !== null) return 1;
+      return b.createdAt.localeCompare(a.createdAt);
+    });
+  const out = new Map<string, PullNoteDetail[]>();
+  for (const r of rows) {
+    const list = out.get(r.tag);
+    if (list) list.push(r.detail);
+    else out.set(r.tag, [r.detail]);
+  }
+  return out;
+}
+
+/**
+ * hover (`title`) に出す行を、行数と文字数の両方で切って 1 つの文字列にする
+ * (2026-10-06)。
+ *
+ * ⚠ **Windows の Chromium (Chrome / Edge) は `title` を 1024 文字 (UTF-16) で
+ * 切る** (`ui/views/corewm/tooltip_state_manager.cc` の `kMaxTooltipLength`。
+ * 他の OS は 2048)。行数だけで切ると、メモが長いときに末尾の行と
+ * 「ほか N 件」が黙って消え、何件見えていないかが分からなくなる。
+ * `maxChars` に収まる行だけを出し、出せなかった件数は必ず最後の 1 行に残す。
+ * 1 行目は長くても出す (何も出ないよりよい。呼び出し側がメモを切って
+ * 1 行を短く保つ)。`total` は全体の件数 (`lines` を上限ぶんだけ作って
+ * 渡すとき。省略すると `lines.length`)。
+ */
+export function fitTooltipLines(
+  lines: ReadonlyArray<string>,
+  opts: { maxLines: number; maxChars: number; more: (n: number) => string; total?: number },
+): string {
+  const total = Math.max(opts.total ?? lines.length, lines.length);
+  const out: string[] = [];
+  let used = 0;
+  for (const line of lines.slice(0, opts.maxLines)) {
+    const rest = total - out.length - 1;
+    // この行を入れた後に「ほか N 件」が要るなら、その分も残しておく。
+    const reserve = rest > 0 ? opts.more(rest).length + 1 : 0;
+    const next = used + (out.length > 0 ? 1 : 0) + line.length;
+    if (out.length > 0 && next + reserve > opts.maxChars) break;
+    out.push(line);
+    used = next;
+  }
+  const hidden = total - out.length;
+  if (hidden > 0) out.push(opts.more(hidden));
+  return out.join("\n");
+}
+
 /**
  * Discord に貼る振り返りの本文 (W-7 の「Discord 用サマリ生成」)。
  *
