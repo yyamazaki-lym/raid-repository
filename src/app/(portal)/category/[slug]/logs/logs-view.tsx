@@ -43,10 +43,12 @@ import {
   progressTimeline,
   pullBreakdown,
   summarize,
+  totalLogMs,
   type FightRow,
 } from "@/lib/fflogs-progress";
 import { PERF_BAR, PERF_BAR_SOFT, perfForProgress } from "@/lib/perf-tone";
 import {
+  formatMs,
   phaseTimeTotals,
   wipeCauseCounts,
   type PhaseTimeTotal,
@@ -317,6 +319,8 @@ export function LogsView({
     () => summarize(tierFights, floors, showPhase),
     [tierFights, floors, showPhase],
   );
+  // 2026-10-06: 練習日数の下に出すログの合計時間 (日数と同じ pull から)。
+  const logTotalMs = useMemo(() => totalLogMs(tierFights), [tierFights]);
   // 2026-09-07 W-31: チーム実績バッジ。層クラスタ外 (別コンテンツの混入) を
   // 除いた pull を対象にする — 混ざった別コンテンツの kill が「初討伐」に
   // なると日付が狂う。明細が打ち切られている場合は「登録ログのうち」の
@@ -1237,6 +1241,15 @@ export function LogsView({
         <StatCard
           label={m.logs.statPracticeDays}
           value={m.logs.daysValue(summary.days.length)}
+          // 2026-10-06 実機要望: 戦闘時間ではなくログの合計時間 (pull の間の
+          // 休憩を含む)。日数と同じ pull (tierFights) から出すので、明細が
+          // 打ち切られているときは「表示中の分」と添える。
+          sub={
+            logTotalMs > 0
+              ? m.logs.statLogTotal(formatMs(logTotalMs), truncated)
+              : undefined
+          }
+          title={logTotalMs > 0 ? m.logs.statLogTotalTitle : undefined}
         />
         <StatCard
           label={m.logs.statBest}

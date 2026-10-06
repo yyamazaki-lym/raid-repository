@@ -78,6 +78,7 @@ try {
     isClearFight,
     filterToFloorCluster,
     pullSpanByReport,
+    totalLogMs,
   } = mod;
 
   console.log("到達度の計算式 (progressValue)");
@@ -289,6 +290,63 @@ try {
   const tier = filterToFloorCluster(mixed, buildFloorMap(mixed));
   check("クラスタで絞ると R の最初は 2000", pullSpanByReport(tier).get("R")?.firstStartMs, 2000);
   check("絞らなければ 1000 (= 絞らないと秒数がずれる)", pullSpanByReport(mixed).get("R")?.firstStartMs, 1000);
+
+  // 2026-10-06: 練習日数の下に出すログの合計時間。
+  console.log("\nログの合計時間 (totalLogMs)");
+  const lf = (reportCode, startMs, endMs, reportStartMs = null) => ({
+    reportCode, startMs, endMs, reportStartMs,
+  });
+  check("0 件は 0", totalLogMs([]), 0);
+  check(
+    "ログの開始〜最後の pull の終わり (pull の間の休憩を含む)",
+    totalLogMs([lf("A", 1000, 2000, 0), lf("A", 5000, 6000, 0)]),
+    6000,
+  );
+  check(
+    "別の時間帯のログは足す",
+    totalLogMs([lf("A", 1000, 2000, 0), lf("B", 11000, 12000, 10000)]),
+    2000 + 2000,
+  );
+  check(
+    "重なるログは 1 回だけ数える (同じ時間帯を 2 人が上げた)",
+    totalLogMs([lf("A", 1000, 5000, 0), lf("B", 2000, 8000, 1500)]),
+    8000,
+  );
+  check(
+    "片方がもう片方に含まれても 1 回",
+    totalLogMs([lf("A", 1000, 9000, 0), lf("B", 3000, 4000, 2000)]),
+    9000,
+  );
+  check(
+    "ちょうど接するログはつなげる (二重にも欠けにもしない)",
+    totalLogMs([lf("A", 500, 1000, 0), lf("B", 1500, 2000, 1000)]),
+    2000,
+  );
+  check(
+    "渡す順によらない",
+    totalLogMs([lf("B", 11000, 12000, 10000), lf("A", 5000, 6000, 0), lf("A", 1000, 2000, 0)]),
+    6000 + 2000,
+  );
+  check(
+    "ログの開始が無ければ最初の pull の開始から",
+    totalLogMs([lf("A", 1000, 2000), lf("A", 3000, 4000)]),
+    3000,
+  );
+  check(
+    "ログの開始が最初の pull より後ならその pull から (壊れた値で縮めない)",
+    totalLogMs([lf("A", 1000, 2000, 1500), lf("A", 3000, 4000, 1500)]),
+    3000,
+  );
+  check(
+    "時刻が数でない行は無視",
+    totalLogMs([lf("A", Number.NaN, 2000, 0), lf("A", 1000, 2000, 0)]),
+    2000,
+  );
+  check(
+    "終わりが開始より前の行で区間を逆にしない",
+    totalLogMs([lf("A", 1000, 500, 0)]),
+    1000,
+  );
 } finally {
   rmSync(outDir, { recursive: true, force: true });
 }

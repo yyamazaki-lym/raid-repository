@@ -255,6 +255,62 @@ export function pullSpanByReport(
 }
 
 /**
+ * ログの合計時間 (ms、2026-10-06 実機要望「練習日数に戦闘時間でなく Logs の
+ * 総合計時間を入れたい」)。
+ *
+ * 1 つのレポートを「ログの開始 (`reportStartMs`) 〜 最後の pull の終わり」の
+ * 区間とし、**重なる区間は 1 回だけ数えて**合計する (同じ時間帯を 2 人が
+ * 上げたログ・分割したログを二重に数えない)。日ごとに出して足し合わせない
+ * のは、日をまたいだレポートの開始が両方の日に入って二重になるため。
+ *
+ * - FFLogs のレポートの長さ (endTime − startTime) とほぼ同じ。違いは最後の
+ *   pull の後にログを止めるまでの数分だけ (終了時刻は保存していない)
+ * - 戦闘時間 (`DaySummary.fightSeconds`) と違い、pull の間の休憩・作戦会議を含む
+ * - `reportStartMs` が無い (古い行) か最初の pull より後なら、最初の pull の
+ *   開始を使う
+ * - 入力は呼び出し側の絞り込みのまま (練習日数と同じ `tierFights`)。区間の
+ *   終わりは**渡された pull の**最後なので、層クラスタ外の戦闘は数えない
+ */
+export function totalLogMs(
+  fights: ReadonlyArray<Pick<FightRow, "reportCode" | "startMs" | "endMs" | "reportStartMs">>,
+): number {
+  const spans = new Map<string, { start: number; end: number }>();
+  for (const f of fights) {
+    if (!Number.isFinite(f.startMs) || !Number.isFinite(f.endMs)) continue;
+    const reportStart =
+      f.reportStartMs !== null && Number.isFinite(f.reportStartMs)
+        ? Math.min(f.reportStartMs, f.startMs)
+        : f.startMs;
+    const end = Math.max(f.startMs, f.endMs);
+    const cur = spans.get(f.reportCode);
+    if (!cur) {
+      spans.set(f.reportCode, { start: reportStart, end });
+      continue;
+    }
+    if (reportStart < cur.start) cur.start = reportStart;
+    if (end > cur.end) cur.end = end;
+  }
+  const sorted = [...spans.values()].sort((a, b) => a.start - b.start);
+  let total = 0;
+  let curStart = Number.NaN;
+  let curEnd = Number.NaN;
+  for (const s of sorted) {
+    if (Number.isNaN(curStart)) {
+      curStart = s.start;
+      curEnd = s.end;
+    } else if (s.start <= curEnd) {
+      if (s.end > curEnd) curEnd = s.end;
+    } else {
+      total += curEnd - curStart;
+      curStart = s.start;
+      curEnd = s.end;
+    }
+  }
+  if (!Number.isNaN(curStart)) total += curEnd - curStart;
+  return total;
+}
+
+/**
  * 「クリア」の判定 (2026-08-28 実機フィードバック)。
  * 零式ティアでは消化で全層の kill が付き「討伐」バッジが情報にならない。
  * 複数層のカテゴリでは **最終層の kill のみ** をクリアとして扱う。
