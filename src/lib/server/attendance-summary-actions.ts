@@ -5,8 +5,13 @@ import {
   fetchAttendanceActualsByReports,
   type ActualRow,
 } from "@/lib/schedule/attendance-actuals-paging";
-import { requireDiscordMember } from "./auth";
+import { assertAdminResult, requireDiscordMember } from "./auth";
 import { userIsAdmin } from "./admin-roles";
+import { syncFflogsFights } from "./fflogs-fights";
+import {
+  selectRefetchTargets,
+  type RefetchLedgerRow,
+} from "@/lib/schedule/attendance-refetch";
 import { jstYmdString } from "@/lib/jst-date";
 import { planPastSessionMerge } from "@/lib/schedule/past-session-dedup";
 import { getScheduleSourceMode } from "@/lib/schedule/source-mode";
@@ -352,4 +357,140 @@ export async function fetchAttendanceSummaryAction(): Promise<AttendanceSummaryR
     console.warn("[attendance-summary] failed:", e);
     return { ok: false, reason: "出席サマリーの取得に失敗しました" };
   }
+}
+
+/** 1 回の取り直しで取りに行くレポート数 (URL を貼る取り込みと同じ上限)。 */
+const REFETCH_LIMIT = 25;
+
+export type RefetchUnmatchedResult =
+  | {
+      ok: true;
+      /** 今回取り直したレポート数。 */
+      requested: number;
+      /** 枠に入らず残したレポート数 (もう一度押すと続きを取り直す)。 */
+      remaining: number;
+      /** 取得に失敗したレポート数。 */
+      failed: number;
+      attendanceMatched: number;
+      attendanceUnresolved: number;
+      attendanceUnresolvedNames: string[];
+      attendanceNoNameReports: number;
+    }
+  | { ok: false; reason: string };
+
+/**
+ * 出席の突合ができていない日のレポートを取り直す (2026-10-06、admin のみ)。
+ *
+ * 参加者名は保存しない (W-6) ので、「ログ名」を後から入れても突合は
+ * レポートを取り直さないとやり直せない。通常の同期は直近 14 日しか
+ * 取り直さないため、出席サマリーの窓 (90 日) のそれより前の日が
+ * 「紐づけられなかった日」のまま残っていた。窓の中で突合の行が 1 つも無い
+ * レポートを選んで (`selectRefetchTargets`)、URL を貼る取り込みと同じ経路
+ * (`onlyCodes`) で取り直す。取り直しは「新しいレポート」の通知に数えない
+ * (`fflogs-fights.ts` の台帳判定)。
+ */
+export async function refetchUnmatchedAttendanceAction(): Promise<RefetchUnmatchedResult> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
+  try {
+    const db = createSupabaseServiceRoleClient();
+    const nowMs = Date.now();
+    const cutoffMs = nowMs - WINDOW_DAYS * 24 * 60 * 60 * 1000;
+    const daysRes = await db.rpc("fflogs_report_days", { p_from_ms: cutoffMs });
+    if (daysRes.error) {
+      console.warn("[attendance-refetch] report days failed:", daysRes.error.message);
+      return { ok: false, reason: "取り直すレポートの選び出しに失敗しました" };
+    }
+    const reports = ((daysRes.data ?? []) as Array<{
+      report_code: string;
+      first_start_ms: number;
+    }>).map((r) => ({
+      reportCode: r.report_code,
+      firstStartMs: Number(r.first_start_ms),
+    }));
+    const codes = reports.map((r) => r.reportCode);
+    if (codes.length === 0) {
+      return emptyRefetchResult();
+    }
+
+    const [actualsRes, ledgerRes] = await Promise.all([
+      // 出席サマリーと同じ読み方 (塊 + ページ、order 必須)。
+      fetchAttendanceActualsByReports(
+        async ({ codes: chunk, from, to }) => {
+          const { data, error } = await db
+            .from("fflogs_attendance_actuals")
+            .select("report_code, discord_user_id, pulls")
+            .in("report_code", chunk)
+            .order("report_code", { ascending: true })
+            .order("discord_user_id", { ascending: true })
+            .range(from, to);
+          return { rows: data as ActualRow[] | null, error };
+        },
+        codes,
+      ),
+      db
+        .from("fflogs_report_syncs")
+        .select("report_code, ok, reason, synced_at")
+        .in("report_code", codes),
+    ]);
+    // ⚠ 読み取りの失敗を「突合の行が無い」と扱わない (全部を取り直してしまう)。
+    const readError = actualsRes.error ?? ledgerRes.error;
+    if (readError) {
+      console.warn("[attendance-refetch] read failed:", readError.message);
+      return { ok: false, reason: "取り直すレポートの選び出しに失敗しました" };
+    }
+    const matchedCodes = new Set(actualsRes.rows.map((r) => r.report_code));
+    const ledger = new Map<string, RefetchLedgerRow>(
+      ((ledgerRes.data ?? []) as Array<{
+        report_code: string;
+        ok: boolean | null;
+        reason: string | null;
+        synced_at: string | null;
+      }>).map((r) => [
+        r.report_code,
+        { ok: r.ok === true, reason: r.reason ?? null, syncedAt: r.synced_at ?? null },
+      ]),
+    );
+    const targets = selectRefetchTargets({
+      reports,
+      matchedCodes,
+      ledger,
+      nowMs,
+      limit: REFETCH_LIMIT,
+    });
+    if (targets.codes.length === 0) {
+      return emptyRefetchResult();
+    }
+
+    const result = await syncFflogsFights({ onlyCodes: targets.codes });
+    if (!result.ok) return { ok: false, reason: result.reason };
+    return {
+      ok: true,
+      requested: targets.codes.length,
+      // 時間切れで取り切れなかった分も「残り」に足す (もう一度押せば取る)。
+      remaining: targets.remaining + result.remaining,
+      failed: result.failed,
+      attendanceMatched: result.attendanceMatched,
+      attendanceUnresolved: result.attendanceUnresolved,
+      attendanceUnresolvedNames: result.attendanceUnresolvedNames,
+      attendanceNoNameReports: result.attendanceNoNameReports,
+    };
+  } catch (e) {
+    console.warn("[attendance-refetch] failed:", e);
+    return { ok: false, reason: "出席の突合の取り直しに失敗しました" };
+  }
+}
+
+/** 取り直すレポートが無かったときの結果。 */
+function emptyRefetchResult(): RefetchUnmatchedResult {
+  return {
+    ok: true,
+    requested: 0,
+    remaining: 0,
+    failed: 0,
+    attendanceMatched: 0,
+    attendanceUnresolved: 0,
+    attendanceUnresolvedNames: [],
+    attendanceNoNameReports: 0,
+  };
 }

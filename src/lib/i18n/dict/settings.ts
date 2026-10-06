@@ -262,7 +262,7 @@ export const ja = {
     // 2026-10-06: 出席の突合で、ログに出たがどのメンバーにも一致しなかった名前。
     unresolvedTitle: (n: number) => `ログに出たが対応表に無い名前 (${n})`,
     unresolvedHint:
-      "FFLogs のログに映っていたのに、どのメンバーにも一致しなかった名前です。メンバーを選ぶとその人の「ログ名」に入ります (行の「保存」で反映)。保存すると次の同期から出席に数えられます。固定外の人の名前は放っておいて構いません。",
+      "FFLogs のログに映っていたのに、どのメンバーにも一致しなかった名前です。メンバーを選ぶとその人の「ログ名」に入ります (行の「保存」で反映)。保存したら、スケジュールの出席サマリーの「取り直す」で過去の日も数え直せます。固定外の人の名前は放っておいて構いません。",
     unresolvedMeta: (pulls: number, date: string | null) =>
       date ? `${pulls} pull · 最後 ${date}` : `${pulls} pull`,
     unresolvedAssign: "メンバーに割り当て…",
@@ -1128,7 +1128,7 @@ export const en: SettingsMessages = {
     generateKeyTitle: "Generate a local key for a member without a Discord account",
     unresolvedTitle: (n) => `Names in logs that match no member (${n})`,
     unresolvedHint:
-      "These names appeared in FFLogs but did not match any member. Pick a member to put the name into their \"Log name\" (press Save on the row). After saving, the next sync counts them as attending. Names of people outside the static can be ignored.",
+      "These names appeared in FFLogs but did not match any member. Pick a member to put the name into their \"Log name\" (press Save on the row). After saving, use \"Refetch\" in the attendance summary on the schedule page to recount past days. Names of people outside the static can be ignored.",
     unresolvedMeta: (pulls, date) =>
       date ? `${pulls} pulls · last ${date}` : `${pulls} pulls`,
     unresolvedAssign: "Assign to member…",

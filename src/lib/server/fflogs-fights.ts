@@ -911,14 +911,26 @@ async function syncFflogsFightsUnlocked(opts?: {
       // W-35: このレポートが入ったカテゴリを覚えておく (通知の対象)。
       // 1 レポートに複数コンテンツが混ざることがあるので fight 単位の
       // カテゴリを集める。件数はレポート数なので Set で重複を除く。
+      //
+      // 2026-10-06: 「新しいレポート」に数えるのは、前回までに取り込めて
+      // いなかったレポートだけ (台帳に ok の行が無い)。以前は取り直しも数えて
+      // いたため、直近 14 日のレポートを毎回取り直す日次の同期で、新しい
+      // ものが無くても「新しいレポート N 件」を投稿し得た (出席の突合の
+      // 取り直しでまとめて取り直すと、それが大量に出る)。カテゴリ自体は
+      // 0 件でも map に載せる — ベスト更新 / 初討伐の判定は map にある
+      // カテゴリだけを見るので、取り直しで増えた pull の更新を落とさない。
       if (upsertOk) {
+        const isNewReport = !(ledgerMap.get(ref.code)?.ok ?? false);
         const touched = new Set<string>();
         for (const f of acceptedFights) {
           const cid = categoryOf.get(f.id) ?? null;
           if (cid !== null) touched.add(cid);
         }
         for (const cid of touched) {
-          newReportsByCategory.set(cid, (newReportsByCategory.get(cid) ?? 0) + 1);
+          newReportsByCategory.set(
+            cid,
+            (newReportsByCategory.get(cid) ?? 0) + (isNewReport ? 1 : 0),
+          );
         }
       }
     }

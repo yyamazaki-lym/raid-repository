@@ -266,12 +266,16 @@ export const SERVER_TEXT_EN: ServerTextDictRaw = {
       "The input format is not valid",
     "凡例を 1 つ以上指定してください":
       "Specify at least one legend entry",
+    "出席の突合の取り直しに失敗しました":
+      "Failed to refetch logs for attendance reconciliation",
     "出席サマリーの取得に失敗しました":
       "Failed to load the attendance summary",
     "別の FFLogs 同期が実行中です — 数分後にもう一度実行してください":
       "Another FFLogs sync is running — try again in a few minutes",
     "動画の ID が不正です":
       "Invalid video ID",
+    "取り直すレポートの選び出しに失敗しました":
+      "Failed to pick the reports to refetch",
     "同じ URL が既に紐付いています":
       "The same URL is already linked",
     "同じレポートの URL が既に紐付いています (#fight 等の表記違いは同一レポート扱いです)":
