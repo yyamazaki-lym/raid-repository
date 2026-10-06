@@ -1,7 +1,9 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { ClipboardCheck, Loader2 } from "lucide-react";
+import { ClipboardCheck, Loader2, RefreshCw } from "lucide-react";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -10,9 +12,13 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { fetchAttendanceSummaryAction } from "@/lib/server/attendance-summary-actions";
+import {
+  fetchAttendanceSummaryAction,
+  refetchUnmatchedAttendanceAction,
+} from "@/lib/server/attendance-summary-actions";
 import type { AttendanceHistory } from "@/lib/schedule/attendance-history";
 import type { AttendanceMismatch } from "@/lib/schedule/attendance-actuals";
+import { humanizeFflogsSyncReason } from "@/lib/fflogs-sync-reason";
 import { useServerText } from "@/lib/i18n/use-server-text";
 import { useMessages } from "@/lib/i18n/client";
 
@@ -44,27 +50,127 @@ export function AttendanceSummaryDialog() {
     history: AttendanceHistory;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [refetching, startRefetch] = useTransition();
+  // 取り直せなかったレポートと理由。取り直しは一時的な失敗を台帳に書かない
+  // ので、理由はここにしか出ない (次の取り直しまで残す)。
+  const [refetchFailures, setRefetchFailures] = useState<
+    Array<{ reportCode: string; reason: string }>
+  >([]);
+
+  const load = async () => {
+    const r = await fetchAttendanceSummaryAction();
+    if (!r.ok) {
+      setError(sr(r.reason));
+      setData(null);
+      return;
+    }
+    setData({
+      selfOnly: r.selfOnly,
+      windowDays: r.windowDays,
+      history: r.history,
+    });
+  };
 
   const onOpenChange = (next: boolean) => {
     setOpen(next);
     if (!next) return;
     setError(null);
-    start(async () => {
-      const r = await fetchAttendanceSummaryAction();
+    start(load);
+  };
+
+  // 2026-10-06: 突合できなかった日のレポートを取り直す (幹部のみ)。参加者名は
+  // 保存しないので、「ログ名」を後から入れた日はレポートを取り直さないと
+  // 数え直せない (詳細は `refetchUnmatchedAttendanceAction`)。終わったら
+  // 集計を読み直して、紐づいた日を画面に反映する。
+  const onRefetch = () => {
+    startRefetch(async () => {
+      const r = await refetchUnmatchedAttendanceAction();
       if (!r.ok) {
-        setError(sr(r.reason));
-        setData(null);
+        toast.error(sr(r.reason));
         return;
       }
-      setData({
-        selfOnly: r.selfOnly,
-        windowDays: r.windowDays,
-        history: r.history,
-      });
+      setRefetchFailures(r.failures);
+      if (r.requested === 0) {
+        // 対象はあるのに 1 件も取りに行けなかった (FFLogs の取得枠・時間切れ)
+        // ときに「取り直すレポートはありません」と出さない。
+        if (r.remaining > 0) {
+          toast.warning(m.attendanceHistory.refetchStalled(r.remaining));
+        } else {
+          toast.info(m.attendanceHistory.refetchNothing);
+        }
+        return;
+      }
+      toast.success(
+        m.attendanceHistory.refetchDone(r.requested, r.attendanceMatched) +
+          // ⚠ 練習ログの `logsSync.failedSuffix` (「理由は下に表示」) は使わない —
+          // この画面の一覧 (refetchFailures) を指す文言にする。
+          (r.failed > 0 ? m.attendanceHistory.refetchFailedSuffix(r.failed) : "") +
+          (r.remaining > 0 ? m.attendanceHistory.refetchRemaining(r.remaining) : ""),
+      );
+      if (r.attendanceUnresolved > 0) {
+        toast.warning(
+          m.logsSync.attendanceUnresolved(
+            r.attendanceMatched,
+            r.attendanceUnresolvedNames.join(" / "),
+          ),
+        );
+      }
+      if (r.attendanceNoNameReports > 0) {
+        toast.warning(m.logsSync.attendanceNoNames(r.attendanceNoNameReports));
+      }
+      setError(null);
+      await load();
     });
   };
 
   const h = data?.history;
+  // 取り直しは幹部だけ (Server Action 側でも確かめる)。突合できなかった日が
+  // ある時だけ出す (取り直しの失敗の理由が残っている間も出す)。
+  const refetchBlock =
+    h && !data!.selfOnly && (h.unmatched > 0 || refetchFailures.length > 0) ? (
+      <div className="flex flex-col gap-1.5 rounded-md border border-border/40 bg-secondary/10 px-3 py-2">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={refetching}
+          onClick={onRefetch}
+          className="h-8 gap-1.5 self-start px-3 text-[12px] tracking-normal"
+        >
+          {refetching ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+          ) : (
+            <RefreshCw className="h-3.5 w-3.5" aria-hidden />
+          )}
+          {refetching
+            ? m.attendanceHistory.refetchRunning
+            : m.attendanceHistory.refetchButton}
+        </Button>
+        <p className="text-[11px] leading-snug text-muted-foreground/85">
+          {m.attendanceHistory.refetchHint}
+        </p>
+        {refetchFailures.length > 0 && (
+          <div data-refetch-failures className="flex flex-col gap-1">
+            <span className="text-[11px] text-amber-200">
+              {m.attendanceHistory.refetchFailuresTitle(refetchFailures.length)}
+            </span>
+            <ul className="flex flex-col gap-0.5">
+              {refetchFailures.map((f) => (
+                <li
+                  key={f.reportCode}
+                  className="flex flex-wrap items-baseline gap-x-2 text-[11px] leading-snug"
+                >
+                  <span className="font-mono text-muted-foreground">{f.reportCode}</span>
+                  <span className="min-w-0 text-foreground/85">
+                    {sr(humanizeFflogsSyncReason(f.reason) ?? f.reason)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    ) : null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -108,14 +214,17 @@ export function AttendanceSummaryDialog() {
               {error}
             </div>
           ) : !h ? null : h.sessions === 0 ? (
-            <div className="rounded-md border border-border/40 bg-secondary/10 px-3 py-2 text-[12px] text-muted-foreground">
-              {/* ⚠ 「pull はあるのに参加者が 1 人も紐づいていない」は
-                  「全員休んだ」ではなく **突合が効いていない** サイン。
-                  ログが無いだけの場合と文言を分ける (直し方が違う)。 */}
-              {h.unmatched > 0
-                ? m.attendanceHistory.emptyUnmatched(h.unmatched)
-                : m.attendanceHistory.emptyNoLog}
-            </div>
+            <>
+              <div className="rounded-md border border-border/40 bg-secondary/10 px-3 py-2 text-[12px] text-muted-foreground">
+                {/* ⚠ 「pull はあるのに参加者が 1 人も紐づいていない」は
+                    「全員休んだ」ではなく **突合が効いていない** サイン。
+                    ログが無いだけの場合と文言を分ける (直し方が違う)。 */}
+                {h.unmatched > 0
+                  ? m.attendanceHistory.emptyUnmatched(h.unmatched)
+                  : m.attendanceHistory.emptyNoLog}
+              </div>
+              {refetchBlock}
+            </>
           ) : h.rows.length === 0 ? (
             <div className="rounded-md border border-border/40 bg-secondary/10 px-3 py-2 text-[12px] text-muted-foreground">
               {m.attendanceHistory.emptyNoMember}
@@ -215,6 +324,7 @@ export function AttendanceSummaryDialog() {
                   {m.attendanceHistory.unmatchedNote(h.unmatched)}
                 </p>
               )}
+              {refetchBlock}
               {h.excluded > 0 && (
                 <p className="text-[11px] leading-snug text-muted-foreground/85">
                   {m.attendanceHistory.excludedNote(h.excluded)}

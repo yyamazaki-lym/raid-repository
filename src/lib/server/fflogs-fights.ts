@@ -350,6 +350,20 @@ async function syncFflogsFightsUnlocked(opts?: {
    */
   importCategoryId?: string | null;
   /**
+   * 2026-10-06: 取り込み済みのレポートの分類と日付を変えずに取り直す
+   * (出席の突合のための取り直し `refetchUnmatchedAttendanceAction` 用)。
+   *
+   * 取り直しの狙いは参加者名 (突合) と詳細だけ。通常の取り直しはカテゴリと
+   * 日付を作り直すので、URL 取り込みで選んだコンテンツや手動の割り当て
+   * (`assignFflogsReportsToCategoryAction`) で入っていた古い pull が未分類に
+   * 落ちて練習ログから消え得た (マージ前レビューの指摘)。このモードでは:
+   *   - 保存済みの pull のカテゴリはそのまま (新しく出た pull だけ分類する)
+   *   - 日付と台帳のカテゴリは台帳の値を優先する
+   *   - 取得に失敗しても、ok だった台帳を失敗で上書きしない (一時的な
+   *     失敗で以後の取り直しから外れないように)
+   */
+  preserveExisting?: boolean;
+  /**
    * 呼び出し側 (cron route) が切った「新しい外部取得を始めてよい期限」。
    * 前段のリンク処理と共有する (2026-10-01 監査 C-1)。省略時は
    * この関数の予算 (120s) だけで動く。
@@ -518,13 +532,23 @@ async function syncFflogsFightsUnlocked(opts?: {
   const ledgerRes = await fetchAllPages(async (from, to) => {
     const { data, error } = await db
       .from("fflogs_report_syncs")
-      .select("report_code, ok, synced_at, session_date, category_id, zone_name, reason")
+      .select(
+        "report_code, ok, synced_at, session_date, category_id, zone_name, reason, fight_count",
+      )
       .order("report_code", { ascending: true })
       .range(from, to);
     return { data, error };
   });
   if (ledgerRes.error) {
     console.warn("[fflogs-fights] ledger fetch failed:", ledgerRes.error.message);
+    // 2026-10-06: 「既存を保つ」取り直しは台帳が読めないと保てない (前回の
+    // 分類・日付・取り込み済みかが分からない) ので、取りに行かずにやめる。
+    if (opts?.preserveExisting) {
+      return {
+        ok: false,
+        reason: "同期台帳を読めなかったため取り直しを中止しました — 時間をおいてもう一度押してください",
+      };
+    }
   }
   const ledger = ledgerRes.rows;
   const ledgerMap = new Map<
@@ -536,6 +560,8 @@ async function syncFflogsFightsUnlocked(opts?: {
       categoryId: string | null;
       zoneName: string | null;
       reason: string | null;
+      /** 前回の取り込みで FFLogs が返した fight の数 (「新しいレポート」の判定)。 */
+      fightCount: number | null;
     }
   >();
   for (const row of ledger ?? []) {
@@ -548,6 +574,8 @@ async function syncFflogsFightsUnlocked(opts?: {
       categoryId: (row.category_id as string | null) ?? null,
       zoneName: (row.zone_name as string | null) ?? null,
       reason: (row.reason as string | null) ?? null,
+      fightCount:
+        typeof row.fight_count === "number" ? (row.fight_count as number) : null,
     });
   }
 
@@ -572,6 +600,9 @@ async function syncFflogsFightsUnlocked(opts?: {
         ...ref,
         // 貼ったコンテンツを既定のカテゴリにする (動画リンク由来があればそれを優先、
         // fight 名で別コンテンツと分かる pull は processReport 側でそちらへ)。
+        // ⚠ 台帳のカテゴリ (多数決) を既定にしないこと。分類できない pull が
+        // 多数派のコンテンツへ流れ込む (2026-10-06 マージ前レビュー)。取り直しで
+        // 分類を保つのは `preserveExisting` の pull 単位の読み直しで行う。
         categoryId: ref.categoryId ?? opts?.importCategoryId ?? null,
         effectiveDate: ref.sessionDate ?? prev?.sessionDate ?? null,
         priority: 0,
@@ -677,6 +708,8 @@ async function syncFflogsFightsUnlocked(opts?: {
   const processReport = async (
     ref: ReportRef & { effectiveDate: string | null },
   ): Promise<void> => {
+    // 処理前の台帳 (取り込み済みか・前回の分類と日付)。
+    const prevLedger = ledgerMap.get(ref.code);
     let res = await fetchReportFights(token, ref.code);
     fetched += 1;
     // C-7: レート制限 (429)。このレポートは台帳に書かず (次回に取り直す)、
@@ -743,11 +776,28 @@ async function syncFflogsFightsUnlocked(opts?: {
       if (failures.length < 10) {
         failures.push({ reportCode: ref.code, reason: savedReason });
       }
+      // 2026-10-06: 「既存を保つ」取り直しでは、一時的な失敗 (5xx・タイムアウト)
+      // で台帳を書き換えない。書き換えると、以後の取り直しからも外れていた
+      // (マージ前レビュー)。書くのは **private が確定した** ときだけ (後から
+      // private にされた等。書かないと取り直しのたびに選ばれ続ける)。
+      // ⚠ `isPermanentSyncFailure` では判定しない — v2 が権限エラーで v1 が
+      // タイムアウト・5xx だっただけの「非公開の可能性」(試行の羅列) も恒久扱い
+      // になり、v1 で読めていた限定公開のレポートが非公開の失敗に化ける。
+      if (opts?.preserveExisting && savedReason !== CONFIRMED_PRIVATE_REASON) {
+        // 台帳に残らないので、runtime logs には残す (理由は画面にも返る)。
+        console.warn(
+          "[fflogs-fights] refetch failed (ledger kept):",
+          ref.code,
+          savedReason,
+        );
+        return;
+      }
       await db.from("fflogs_report_syncs").upsert(
         {
           report_code: ref.code,
-          category_id: ref.categoryId,
-          session_date: ref.sessionDate,
+          // 2026-10-06: 分かっているカテゴリと日付を null で潰さない。
+          category_id: ref.categoryId ?? prevLedger?.categoryId ?? null,
+          session_date: ref.sessionDate ?? prevLedger?.sessionDate ?? null,
           ok: false,
           reason: savedReason,
           synced_at: new Date().toISOString(),
@@ -767,6 +817,36 @@ async function syncFflogsFightsUnlocked(opts?: {
     );
     // 動画リンクで決まらなかった場合は zone ID / 内容分類で解決する。
     const reportCategoryId = ref.categoryId ?? zoneCategoryId;
+    // 2026-10-06: 「既存を保つ」取り直しでは、保存済みの pull のカテゴリを
+    // そのまま使う (URL 取り込みで選んだコンテンツ・手動の割り当てを消さない)。
+    // **未分類 (null) もそのまま** — 分類し直すと多数派のコンテンツへ流れ込む。
+    // 読めなければ今回は書かない — 分類を壊すより取り直さない方がよい。
+    // 台帳が ok でなくても (一時的な失敗で ok=false になっていた等) 保存済みの
+    // pull は保つので、台帳の状態には依存させない。
+    const keepExisting = opts?.preserveExisting === true;
+    const existingCategoryOf = new Map<number, string | null>();
+    if (keepExisting) {
+      const { data: existingRows, error: existingError } = await db
+        .from("fflogs_fights")
+        .select("fight_id, category_id")
+        .eq("report_code", ref.code);
+      if (existingError) {
+        failed += 1;
+        if (failures.length < 10) {
+          failures.push({
+            reportCode: ref.code,
+            reason: `保存済みの pull を読めませんでした: ${existingError.message}`.slice(0, 200),
+          });
+        }
+        return;
+      }
+      for (const r of (existingRows ?? []) as Array<{
+        fight_id: number;
+        category_id: string | null;
+      }>) {
+        existingCategoryOf.set(Number(r.fight_id), r.category_id ?? null);
+      }
+    }
     // 2026-09-06: fight ごとのカテゴリ。拡張をまたいだ絶は "Ultimates (Legacy)"
     // という 1 つの zone にまとめられ、レポート単位では何の絶か決められない
     // (実機: 絶オメガの 2024-07 以降が出ない)。fight の encounter 名
@@ -774,18 +854,25 @@ async function syncFflogsFightsUnlocked(opts?: {
     const categoryOf = new Map<number, string | null>(
       res.fights.map((f) => [
         f.id,
-        resolveFightCategory(categories, f.name, reportCategoryId, {
-          encounterId: f.encounterID ?? null,
-          zoneName: res.zoneName,
-          zoneCategoryId,
-        }),
+        existingCategoryOf.has(f.id)
+          ? (existingCategoryOf.get(f.id) ?? null)
+          : resolveFightCategory(categories, f.name, reportCategoryId, {
+              encounterId: f.encounterID ?? null,
+              zoneName: res.zoneName,
+              zoneCategoryId,
+            }),
       ]),
     );
     // 台帳の代表カテゴリ (動画への橋渡し / 未確定判定に使う) は fight の最多。
+    // 「既存を保つ」取り直しでは台帳の値を優先する。
     const categoryId =
-      consensusCategory([...categoryOf.values()]) ?? reportCategoryId;
+      (keepExisting ? prevLedger?.categoryId : null) ??
+      consensusCategory([...categoryOf.values()]) ??
+      reportCategoryId;
     const sessionDate =
-      ref.sessionDate ?? jstYmdString(new Date(res.startMs));
+      ref.sessionDate ??
+      (keepExisting ? prevLedger?.sessionDate : null) ??
+      jstYmdString(new Date(res.startMs));
 
     // 2026-08-30: カテゴリごとの取り込み難易度フィルタ。FFLogs の
     // difficulty はコンテンツ種別で値が変わり公開された対応表が無いため、
@@ -911,14 +998,39 @@ async function syncFflogsFightsUnlocked(opts?: {
       // W-35: このレポートが入ったカテゴリを覚えておく (通知の対象)。
       // 1 レポートに複数コンテンツが混ざることがあるので fight 単位の
       // カテゴリを集める。件数はレポート数なので Set で重複を除く。
+      //
+      // 2026-10-06: 「新しいレポート」に数えるのは、まだ pull を取り込めて
+      // いなかったレポートだけ。以前は取り直しも数えていたため、直近 14 日の
+      // レポートを毎回取り直す日次の同期で、新しいものが無くても「新しい
+      // レポート N 件」を投稿し得た (出席の突合の取り直しでまとめて取り直すと、
+      // それが大量に出る)。カテゴリ自体は 0 件でも map に載せる — ベスト更新 /
+      // 初討伐の判定は map にあるカテゴリだけを見るので、取り直しで増えた
+      // pull の更新を落とさない。
       if (upsertOk) {
+        // 取り込み済みかどうかは台帳の fight 数で見る (`NOT NULL DEFAULT 0`)。
+        // ok / 失敗では見ない — 取り込み済みのレポートが一時的な失敗で
+        // ok=false に書き換わっても fight 数は残るので、次に成功したときに
+        // 「新しい」と数え直さない。失敗しかしていない・pull 0 件で取り込んだ
+        // (アップロードの途中で先に同期した等) レポートは 0 なので新しい。
+        // 「既存を保つ」取り直しでは、保存済みの pull があれば新しくない
+        // (台帳の行が無い・読めなかったレポートでも数えない)。
+        const isNewReport =
+          (prevLedger?.fightCount ?? 0) === 0 && existingCategoryOf.size === 0;
+        // 「既存を保つ」取り直しでは、**新しく出た pull** のカテゴリだけを
+        // 通知の判定に渡す。保存済みの pull しか無いカテゴリを渡すと、通知の
+        // 記録が無い古いコンテンツ (前の tier 等) について、何か月も前の
+        // 討伐が「初討伐」として投稿されてしまう (取り消せない。マージ前レビュー)。
         const touched = new Set<string>();
         for (const f of acceptedFights) {
+          if (keepExisting && existingCategoryOf.has(f.id)) continue;
           const cid = categoryOf.get(f.id) ?? null;
           if (cid !== null) touched.add(cid);
         }
         for (const cid of touched) {
-          newReportsByCategory.set(cid, (newReportsByCategory.get(cid) ?? 0) + 1);
+          newReportsByCategory.set(
+            cid,
+            (newReportsByCategory.get(cid) ?? 0) + (isNewReport ? 1 : 0),
+          );
         }
       }
     }

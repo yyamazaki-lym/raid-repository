@@ -366,7 +366,7 @@ export const ja = {
     emptyNoLog:
       "ログのある活動日がまだありません。練習ログを取り込むと、ここに回答との突合が出ます。",
     emptyUnmatched: (n: number): string =>
-      `pull はあるのに参加者を 1 人も紐づけられなかった活動日が ${n} 日あります (突合結果が 0 件)。「全員休んだ」ではなく突合が効いていない状態です — 設定のメンバー一覧で「ログ名」を入れ、練習ログの同期をもう一度実行してください。`,
+      `pull はあるのに参加者を 1 人も紐づけられなかった活動日が ${n} 日あります (突合結果が 0 件)。「全員休んだ」ではなく突合が効いていない状態です — 設定のメンバー一覧で「ログ名」を入れてから、ログを取り直してください (幹部はこの画面の「取り直す」から)。`,
     unmatchedNote: (n: number): string =>
       `参加者を紐づけられなかった ${n} 日は集計から外しています (「全員不在」にしないため)。`,
     emptyNoMember:
@@ -388,6 +388,23 @@ export const ja = {
       `参加と回答したが一部のみ (${pulls}/${dayPulls} pull)`,
     kindPresentThoughNo: "不可と回答したが参加",
     kindPresentThoughOther: "未定 / 未回答だが参加",
+    // 2026-10-06: 突合できなかった日のレポートを取り直す (幹部のみ)。
+    refetchButton: "突合できなかった日のログを取り直す",
+    refetchHint:
+      "メンバーの「ログ名」を入れた後に押してください。直近 90 日で、まだ誰にも紐づいていないレポートを新しい順に最大 25 件取り直します (1〜2 分かかります)。",
+    refetchRunning: "取り直しています…",
+    refetchDone: (requested: number, matched: number): string =>
+      `${requested} 件のレポートを取り直し、出席を ${matched} 件紐づけました`,
+    refetchRemaining: (n: number): string =>
+      ` (残り ${n} 件 — もう一度押すと続きを取り直します)`,
+    refetchNothing:
+      "取り直すレポートはありません (30 分以内に取り直したレポートは選びません)",
+    refetchStalled: (n: number): string =>
+      `FFLogs の取得枠か時間が足りず、今回は取り直せませんでした (残り ${n} 件 — 時間をおいてもう一度押してください)`,
+    refetchFailedSuffix: (n: number): string =>
+      ` / 取り直せなかったレポート ${n} 件 (理由はボタンの下)`,
+    refetchFailuresTitle: (n: number): string =>
+      `取り直せなかったレポート (${n} 件)`,
   },
   // W-18 (2026-09-08): 有志練習 (任意参加) の印。
   optionalBadge: {
@@ -1028,7 +1045,7 @@ export const en: CoreMessages = {
     emptyNoLog:
       "No days with logs yet. Import practice logs and the reconciliation shows up here.",
     emptyUnmatched: (n) =>
-      `${n} day(s) have pulls but no participant could be linked (zero reconciled rows). That means the reconciliation is not working, not that everybody was away — fill in "Log name" in the member list and run the log sync again.`,
+      `${n} day(s) have pulls but no participant could be linked (zero reconciled rows). That means the reconciliation is not working, not that everybody was away — fill in "Log name" in the member list, then refetch the logs (leads can use "Refetch" on this screen).`,
     unmatchedNote: (n) =>
       `${n} day(s) with no linked participants are excluded (so they do not read as "everyone absent").`,
     emptyNoMember:
@@ -1049,6 +1066,19 @@ export const en: CoreMessages = {
       `said yes but only part of the night (${pulls}/${dayPulls} pulls)`,
     kindPresentThoughNo: "said no but attended",
     kindPresentThoughOther: "attended with no yes on record",
+    refetchButton: "Refetch logs for unreconciled days",
+    refetchHint:
+      "Press this after filling in members' \"Log name\". Refetches up to 25 reports from the last 90 days that are not linked to anyone yet, newest first (takes 1–2 minutes).",
+    refetchRunning: "Refetching…",
+    refetchDone: (requested, matched) =>
+      `Refetched ${requested} report(s) and linked ${matched} attendance row(s)`,
+    refetchRemaining: (n) => ` (${n} left — press again to continue)`,
+    refetchNothing:
+      "Nothing to refetch (reports refetched within the last 30 minutes are skipped)",
+    refetchStalled: (n) =>
+      `Could not refetch this time (FFLogs quota or time ran out; ${n} left — try again later)`,
+    refetchFailedSuffix: (n) => ` / ${n} report(s) could not be refetched (reasons under the button)`,
+    refetchFailuresTitle: (n) => `Reports that could not be refetched (${n})`,
   },
   optionalBadge: {
     label: "Optional",
