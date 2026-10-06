@@ -55,6 +55,7 @@ try {
     isFflogsAutoRoute, isFflogsAutoRoutes, reportSourceReadiness,
     usesAutoDiscovery, FFLOGS_AUTO_ROUTES, FFLOGS_AUTO_ROUTES_NONE,
     FFLOGS_REPORT_SOURCE_KEY, AUTO_DISCOVERY_LIMIT, autoDiscoveryLimitPerRoute,
+    sortDiscoveredReports,
   } = v;
 
   const NONE = { guild: false, user: false };
@@ -161,8 +162,71 @@ try {
   check("経路が 0 なら 0", autoDiscoveryLimitPerRoute(0), 0);
   check("経路が増えても 0 件の経路を作らない (切り上げ)",
     [autoDiscoveryLimitPerRoute(3), autoDiscoveryLimitPerRoute(26)], [9, 1]);
+
+  // 2026-10-06: 本番で同期のたびに「新しいレポート 12 件」と出ていた。
+  // 取り込み済み (台帳にある) でも動画・日程に紐づいていないだけで数えていた。
+  console.log("\n取り込み済みのレポートを「新しい」と数えない");
+  const base = {
+    foundCodes: ["NEW1", "LINKED", "LEDGER1", "BLOCKED", "NEW2", "LEDGER2", "", null, "NEW1"],
+    refCodes: new Set(["LINKED"]),
+    blockedCodes: new Set(["BLOCKED"]),
+    ledgerCodes: new Set(["LEDGER1", "LEDGER2"]),
+    freshBudget: 25,
+  };
+  check(
+    "台帳にあるものは扱うが数えない・紐づき済み / 除外 / 空 / 重複は飛ばす",
+    sortDiscoveredReports(base),
+    { add: ["NEW1", "LEDGER1", "NEW2", "LEDGER2"], fresh: ["NEW1", "NEW2"] },
+  );
+  check(
+    "本番の再現: 一覧の 12 件が全部取り込み済みなら 0 件",
+    sortDiscoveredReports({
+      ...base,
+      foundCodes: Array.from({ length: 12 }, (_, i) => `OLD${i}`),
+      ledgerCodes: new Set(Array.from({ length: 12 }, (_, i) => `OLD${i}`)),
+    }).fresh.length,
+    0,
+  );
+  check(
+    "枠は新しいものにだけ使う (取り込み済みは枠を減らさない)",
+    sortDiscoveredReports({ ...base, freshBudget: 1 }),
+    { add: ["NEW1", "LEDGER1", "LEDGER2"], fresh: ["NEW1"] },
+  );
+  check("枠 0 なら新しいものは受け取らない", sortDiscoveredReports({ ...base, freshBudget: 0 }).fresh, []);
+  check(
+    "台帳を読めなかった (空集合) ときは従来どおり全部を新しいと数える",
+    sortDiscoveredReports({ ...base, ledgerCodes: new Set() }).fresh,
+    ["NEW1", "LEDGER1", "NEW2", "LEDGER2"],
+  );
 } finally {
   rmSync(outDir, { recursive: true, force: true });
+}
+
+console.log("\n配線 (同期の自動発見)");
+{
+  const sync = readFileSync("src/lib/server/fflogs-fights.ts", "utf8").replace(/\r\n/g, "\n");
+  check(
+    "一覧に出たコードだけ台帳を引く",
+    /\.from\("fflogs_report_syncs"\)\s*\.select\("report_code"\)\s*\.in\("report_code", foundCodes\)/.test(sync),
+    true,
+  );
+  check(
+    "台帳を読めなければ従来どおり (取り込みは止めない)",
+    /if \(knownError\) \{\s*\/\/[^\n]*\n\s*console\.warn\(/.test(sync),
+    true,
+  );
+  check(
+    "分け方は純関数に任せ、新しいものだけを数える",
+    /const sorted = sortDiscoveredReports\(\{[\s\S]{0,300}?freshBudget: AUTO_DISCOVERY_LIMIT - discovered,\s*\}\);/.test(sync) &&
+      /for \(const code of sorted\.add\) \{[\s\S]{0,300}?refs\.set\(code, \{ code, categoryId: null, sessionDate: null \}\);\s*\}\s*discovered \+= sorted\.fresh\.length;/.test(sync),
+    true,
+  );
+  check("古い数え方 (紐づいていないだけで +1) が残っていない", /discovered \+= 1;/.test(sync), false);
+  check(
+    "コード指定 (URL 取り込み・取り直し) では発見しない",
+    /if \(!\(opts\?\.onlyCodes && opts\.onlyCodes\.length > 0\)\) \{\s*const settings = await fetchAppSettings\(\[\s*FFLOGS_REPORT_SOURCE_KEY,/.test(sync),
+    true,
+  );
 }
 
 if (failures > 0) {
