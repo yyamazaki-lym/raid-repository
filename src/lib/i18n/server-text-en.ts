@@ -282,6 +282,8 @@ export const SERVER_TEXT_EN: ServerTextDictRaw = {
       "A candidate date with the same date and time was just added. Please try again",
     "名前を入力してください":
       "Enter a name",
+    "対応表に無い名前の取得に失敗しました":
+      "Failed to load the names missing from the member list",
     "対象が正しくありません":
       "Invalid target",
     "対象が見つかりませんでした":

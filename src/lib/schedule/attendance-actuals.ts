@@ -95,6 +95,28 @@ export function resolveParticipants(
 }
 
 /**
+ * 未解決として控えた名前のうち、**今の対応表でもまだ一致しない**ものだけを
+ * 返す (2026-10-06、設定のメンバー一覧の下に出す一覧用)。
+ *
+ * 控え (`fflogs_attendance_unresolved`) は次の同期まで消えないので、ログ名を
+ * 保存した直後も一覧に残ってしまう。突合と同じ規則 (`resolveParticipants`)
+ * で引き直して外す。曖昧 (2 人に当たる) な名前は解決しないので残る。
+ * 空の名前は落とす。順序は入力のまま。
+ */
+export function stillUnresolvedNames<T extends { name: string }>(
+  rows: ReadonlyArray<T>,
+  members: ReadonlyArray<MemberNameRef>,
+): T[] {
+  // pull 数は判定に関係ないが、0 以下は無視される規則なので 1 で渡す。
+  const { unresolved } = resolveParticipants(
+    rows.map((r) => ({ name: r.name, pulls: 1 })),
+    members,
+  );
+  const left = new Set(unresolved.map((u) => u.name));
+  return rows.filter((r) => left.has(r.name.trim()));
+}
+
+/**
  * 回答と実績のズレ。
  *
  *   - `null`                 … ズレなし (回答どおり) / 判定できない
