@@ -784,6 +784,12 @@ async function syncFflogsFightsUnlocked(opts?: {
       // タイムアウト・5xx だっただけの「非公開の可能性」(試行の羅列) も恒久扱い
       // になり、v1 で読めていた限定公開のレポートが非公開の失敗に化ける。
       if (opts?.preserveExisting && savedReason !== CONFIRMED_PRIVATE_REASON) {
+        // 台帳に残らないので、runtime logs には残す (理由は画面にも返る)。
+        console.warn(
+          "[fflogs-fights] refetch failed (ledger kept):",
+          ref.code,
+          savedReason,
+        );
         return;
       }
       await db.from("fflogs_report_syncs").upsert(

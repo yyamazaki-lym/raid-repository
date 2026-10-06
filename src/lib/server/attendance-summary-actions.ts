@@ -375,6 +375,11 @@ export type RefetchUnmatchedResult =
       attendanceUnresolved: number;
       attendanceUnresolvedNames: string[];
       attendanceNoNameReports: number;
+      /**
+       * 取り直せなかったレポートと理由 (先頭 10 件)。取り直しでは一時的な
+       * 失敗を台帳に書かないので、理由はここでしか分からない (2026-10-06)。
+       */
+      failures: Array<{ reportCode: string; reason: string }>;
     }
   | { ok: false; reason: string };
 
@@ -480,6 +485,7 @@ export async function refetchUnmatchedAttendanceAction(): Promise<RefetchUnmatch
       attendanceUnresolved: result.attendanceUnresolved,
       attendanceUnresolvedNames: result.attendanceUnresolvedNames,
       attendanceNoNameReports: result.attendanceNoNameReports,
+      failures: result.failures.slice(0, 10),
     };
   } catch (e) {
     console.warn("[attendance-refetch] failed:", e);
@@ -498,5 +504,6 @@ function emptyRefetchResult(): RefetchUnmatchedResult {
     attendanceUnresolved: 0,
     attendanceUnresolvedNames: [],
     attendanceNoNameReports: 0,
+    failures: [],
   };
 }

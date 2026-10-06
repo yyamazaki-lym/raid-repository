@@ -118,10 +118,12 @@ export type LogsEvent =
  * `prev` が null (初回同期) のときは **ベスト更新を出さない** — 初めて
  * 取り込んだ全ログが「更新」として一斉に飛ぶのを避ける。
  *
- * 2026-10-06: `prev` が null で**新しいレポートも無い**ときは何も出さない
- * (呼び出し側が基準のスナップショットだけを書く)。取り直しや貼り直しで
- * 古いコンテンツ (通知の記録が無い前の tier 等) に触れただけなのに、
- * 何か月も前の討伐が「初討伐」として投稿されていた (取り消せない)。
+ * ⚠ `prev` が null で新しいレポートが無いときも初討伐は出す (2026-10-06 に
+ * 一度止めて戻した)。取り込み済みのレポートの pull が、後から作ったカテゴリへ
+ * 分類し直されて初めて入る場合 (新しい tier の初日のログを先に取り込んだ等)
+ * があり、止めると本物の初討伐が二度と出ない。出席の突合の取り直しで古い
+ * コンテンツに触れる問題は、呼び出し側で保存済みの pull のカテゴリを渡さない
+ * ことで防いでいる (`fflogs-fights.ts`)。
  */
 export function detectLogsEvents(
   prev: LogsSnapshot | null,
@@ -129,7 +131,6 @@ export function detectLogsEvents(
   newReports: number,
 ): LogsEvent[] {
   const out: LogsEvent[] = [];
-  if (prev === null && newReports <= 0) return out;
 
   if (next.hasClear && !(prev?.hasClear ?? false)) {
     out.push({ kind: "firstClear" });

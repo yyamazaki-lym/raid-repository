@@ -129,7 +129,11 @@ check("時間切れで残った分も残りに足す", /remaining: targets\.rema
 check("突合の行の読み取りは order 付き", /\.order\("report_code", \{ ascending: true \}\)\s*\.order\("discord_user_id", \{ ascending: true \}\)\s*\.range\(from, to\)/.test(body), true);
 
 const dialog = read("src/components/portal/schedule/attendance-summary-dialog.tsx");
-check("ダイアログ: 幹部で、突合できなかった日があるときだけボタン", /h && !data!\.selfOnly && h\.unmatched > 0 \? \(/.test(dialog), true);
+check(
+  "ダイアログ: 幹部で、突合できなかった日がある (または失敗の理由が残っている) ときだけボタン",
+  /h && !data!\.selfOnly && \(h\.unmatched > 0 \|\| refetchFailures\.length > 0\) \? \(/.test(dialog),
+  true,
+);
 check(
   "ダイアログ: 0 日の表示と通常の表示の両方に出す",
   (dialog.match(/\{refetchBlock\}/g) ?? []).length,
@@ -143,6 +147,17 @@ check(
   true,
 );
 
+check("取り直せなかったレポートと理由を返す", /failures: result\.failures\.slice\(0, 10\),/.test(body), true);
+check(
+  "ダイアログ: 失敗の理由をボタンの下に出す (練習ログの「理由は下に表示」を使わない)",
+  /setRefetchFailures\(r\.failures\);/.test(dialog) &&
+    /m\.attendanceHistory\.refetchFailedSuffix\(r\.failed\)/.test(dialog) &&
+    !/m\.logsSync\.failedSuffix\(/.test(dialog) &&
+    /\{refetchFailures\.length > 0 && \(\s*<div data-refetch-failures/.test(dialog) &&
+    /sr\(humanizeFflogsSyncReason\(f\.reason\) \?\? f\.reason\)/.test(dialog),
+  true,
+);
+
 console.log("\n2b. 取り直しで分類・日付・台帳を壊さない (preserveExisting)");
 const syncSrc = read("src/lib/server/fflogs-fights.ts");
 check(
@@ -153,7 +168,7 @@ check(
 );
 check(
   "失敗: 「既存を保つ」では private が確定したときだけ台帳に書く (v1 の一時的な失敗を非公開にしない)",
-  /if \(opts\?\.preserveExisting && savedReason !== CONFIRMED_PRIVATE_REASON\) \{\s*return;\s*\}\s*await db\.from\("fflogs_report_syncs"\)\.upsert\(/.test(syncSrc),
+  /if \(opts\?\.preserveExisting && savedReason !== CONFIRMED_PRIVATE_REASON\) \{\s*\/\/[^\n]*\n\s*console\.warn\([\s\S]{0,160}?\);\s*return;\s*\}\s*await db\.from\("fflogs_report_syncs"\)\.upsert\(/.test(syncSrc),
   true,
 );
 check(

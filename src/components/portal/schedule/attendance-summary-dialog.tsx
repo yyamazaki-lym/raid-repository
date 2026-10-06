@@ -18,6 +18,7 @@ import {
 } from "@/lib/server/attendance-summary-actions";
 import type { AttendanceHistory } from "@/lib/schedule/attendance-history";
 import type { AttendanceMismatch } from "@/lib/schedule/attendance-actuals";
+import { humanizeFflogsSyncReason } from "@/lib/fflogs-sync-reason";
 import { useServerText } from "@/lib/i18n/use-server-text";
 import { useMessages } from "@/lib/i18n/client";
 
@@ -50,6 +51,11 @@ export function AttendanceSummaryDialog() {
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refetching, startRefetch] = useTransition();
+  // 取り直せなかったレポートと理由。取り直しは一時的な失敗を台帳に書かない
+  // ので、理由はここにしか出ない (次の取り直しまで残す)。
+  const [refetchFailures, setRefetchFailures] = useState<
+    Array<{ reportCode: string; reason: string }>
+  >([]);
 
   const load = async () => {
     const r = await fetchAttendanceSummaryAction();
@@ -83,6 +89,7 @@ export function AttendanceSummaryDialog() {
         toast.error(sr(r.reason));
         return;
       }
+      setRefetchFailures(r.failures);
       if (r.requested === 0) {
         // 対象はあるのに 1 件も取りに行けなかった (FFLogs の取得枠・時間切れ)
         // ときに「取り直すレポートはありません」と出さない。
@@ -95,7 +102,9 @@ export function AttendanceSummaryDialog() {
       }
       toast.success(
         m.attendanceHistory.refetchDone(r.requested, r.attendanceMatched) +
-          (r.failed > 0 ? m.logsSync.failedSuffix(r.failed) : "") +
+          // ⚠ 練習ログの `logsSync.failedSuffix` (「理由は下に表示」) は使わない —
+          // この画面の一覧 (refetchFailures) を指す文言にする。
+          (r.failed > 0 ? m.attendanceHistory.refetchFailedSuffix(r.failed) : "") +
           (r.remaining > 0 ? m.attendanceHistory.refetchRemaining(r.remaining) : ""),
       );
       if (r.attendanceUnresolved > 0) {
@@ -116,9 +125,9 @@ export function AttendanceSummaryDialog() {
 
   const h = data?.history;
   // 取り直しは幹部だけ (Server Action 側でも確かめる)。突合できなかった日が
-  // ある時だけ出す。
+  // ある時だけ出す (取り直しの失敗の理由が残っている間も出す)。
   const refetchBlock =
-    h && !data!.selfOnly && h.unmatched > 0 ? (
+    h && !data!.selfOnly && (h.unmatched > 0 || refetchFailures.length > 0) ? (
       <div className="flex flex-col gap-1.5 rounded-md border border-border/40 bg-secondary/10 px-3 py-2">
         <Button
           type="button"
@@ -140,6 +149,26 @@ export function AttendanceSummaryDialog() {
         <p className="text-[11px] leading-snug text-muted-foreground/85">
           {m.attendanceHistory.refetchHint}
         </p>
+        {refetchFailures.length > 0 && (
+          <div data-refetch-failures className="flex flex-col gap-1">
+            <span className="text-[11px] text-amber-200">
+              {m.attendanceHistory.refetchFailuresTitle(refetchFailures.length)}
+            </span>
+            <ul className="flex flex-col gap-0.5">
+              {refetchFailures.map((f) => (
+                <li
+                  key={f.reportCode}
+                  className="flex flex-wrap items-baseline gap-x-2 text-[11px] leading-snug"
+                >
+                  <span className="font-mono text-muted-foreground">{f.reportCode}</span>
+                  <span className="min-w-0 text-foreground/85">
+                    {sr(humanizeFflogsSyncReason(f.reason) ?? f.reason)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
     ) : null;
 
