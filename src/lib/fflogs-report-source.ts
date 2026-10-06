@@ -221,3 +221,46 @@ export function autoDiscoveryLimitPerRoute(routeCount: number): number {
   if (routeCount <= 0) return 0;
   return Math.ceil(AUTO_DISCOVERY_LIMIT / routeCount);
 }
+
+/**
+ * 一覧で見つけたレポートを、今回の同期で扱うもの (`add`) と「新しく見つけた」
+ * と数えるもの (`fresh`) に分ける (2026-10-06)。
+ *
+ * 以前は「動画・日程に紐づいていない」だけで新しいと数えていた。紐づきは
+ * 台帳 (取り込み済みの一覧) を含まないので、**取り込み済みでも紐づけの無い
+ * レポートを同期のたびに「新しいレポート N 件」と数え直していた** (本番
+ * 2026-10-06: 毎回 12 件)。
+ *
+ * - 空のコード・除外したもの・既に扱っているもの (`refCodes`) は飛ばす
+ * - 台帳にあるもの (取り込み済み・失敗を含む) は扱うが数えない。扱い続けるのは、
+ *   取り込み中の直近のレポートを次の同期でも取り直すため (取り直すかは台帳の
+ *   日付で決まる。古いものは取りに行かない)
+ * - 台帳に無いものだけを数え、`freshBudget` まで受け取る。超えた分は次の同期で
+ *   また一覧に出るので、そこで拾う
+ */
+export function sortDiscoveredReports(input: {
+  foundCodes: ReadonlyArray<string | null | undefined>;
+  refCodes: ReadonlySet<string>;
+  blockedCodes: ReadonlySet<string>;
+  ledgerCodes: ReadonlySet<string>;
+  freshBudget: number;
+}): { add: string[]; fresh: string[] } {
+  const add: string[] = [];
+  const fresh: string[] = [];
+  const seen = new Set<string>();
+  const budget = Math.max(0, Math.trunc(input.freshBudget));
+  for (const raw of input.foundCodes) {
+    const code = (raw ?? "").trim();
+    if (!code || seen.has(code)) continue;
+    seen.add(code);
+    if (input.blockedCodes.has(code) || input.refCodes.has(code)) continue;
+    if (input.ledgerCodes.has(code)) {
+      add.push(code);
+      continue;
+    }
+    if (fresh.length >= budget) continue;
+    add.push(code);
+    fresh.push(code);
+  }
+  return { add, fresh };
+}

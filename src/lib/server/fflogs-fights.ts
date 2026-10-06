@@ -33,6 +33,7 @@ import {
   FFLOGS_REPORT_SOURCE_KEY,
   parseFflogsReportSource,
   reportSourceReadiness,
+  sortDiscoveredReports,
   usesAutoDiscovery,
   type FflogsAutoRoute,
 } from "@/lib/fflogs-report-source";
@@ -459,16 +460,46 @@ async function syncFflogsFightsUnlocked(opts?: {
             notes.push(`${AUTO_ROUTE_LABEL[route]}: ${found.reason}`);
             continue;
           }
-          for (const r of found.reports) {
-            if (discovered >= AUTO_DISCOVERY_LIMIT) break;
-            // 経路をまたいだ重複はここで落ちる: guild で見つけた分は
-            // 既に refs に入っているので user 側では弾かれる。
-            if (!r.id || blockedCodes.has(r.id) || refs.has(r.id)) continue;
+          // 2026-10-06: 台帳 (取り込み済み) にあるものは「新しい」と数えない。
+          // 以前は動画・日程に紐づいていないだけで数え、取り込み済みのレポートを
+          // 同期のたびに「新しいレポート N 件」と出していた (本番: 毎回 12 件)。
+          // 台帳は後で全件読むが、ここでは一覧に出たコードだけを引く (最大 25 件)。
+          const foundCodes = found.reports
+            .map((r) => r.id)
+            .filter((id): id is string => typeof id === "string" && id !== "");
+          const ledgerCodes = new Set<string>();
+          if (foundCodes.length > 0) {
+            const { data: known, error: knownError } = await db
+              .from("fflogs_report_syncs")
+              .select("report_code")
+              .in("report_code", foundCodes);
+            if (knownError) {
+              // 読めなければ従来どおり全部を新しいと数える (取り込みは止めない)。
+              console.warn(
+                "[fflogs-fights] discovery ledger lookup failed:",
+                knownError.message,
+              );
+            } else {
+              for (const k of (known ?? []) as Array<{ report_code: string }>) {
+                ledgerCodes.add(k.report_code);
+              }
+            }
+          }
+          // 経路をまたいだ重複はここで落ちる: guild で見つけた分は
+          // 既に refs に入っているので user 側では弾かれる。
+          const sorted = sortDiscoveredReports({
+            foundCodes,
+            refCodes: new Set(refs.keys()),
+            blockedCodes,
+            ledgerCodes,
+            freshBudget: AUTO_DISCOVERY_LIMIT - discovered,
+          });
+          for (const code of sorted.add) {
             // カテゴリと日付は付けない。zone / encounter からの振り分けは
             // 既存の取り込み処理が行う (URL 貼り付けと同じ扱い)。
-            refs.set(r.id, { code: r.id, categoryId: null, sessionDate: null });
-            discovered += 1;
+            refs.set(code, { code, categoryId: null, sessionDate: null });
           }
+          discovered += sorted.fresh.length;
         }
       }
       // 「0 件」は他に言うことが無いときだけ出す。詰まっている経路がある
