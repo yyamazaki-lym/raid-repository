@@ -275,6 +275,9 @@ export const ja = {
     // 2026-10-05: 詳細 (PT DPS・死亡数・ワイプ原因) を取れなかった pull。
     detailsMissingSuffix: (n: number) =>
       ` / 詳細を取れなかった pull ${n} (次の同期で取り直します)`,
+    // 2026-10-06: FFLogs が古いレポートを保管扱いにしていて詳細を返さない。
+    detailsArchivedSuffix: (n: number) =>
+      ` / FFLogs の保管扱いで詳細が無い pull ${n} (古いレポートのため取り直しません)`,
     truncatedSuffix: " ※途中まで",
     routeSuffix: (v2: number, fallback: number) =>
       ` / 経路: v2 ${v2} 件・代替 ${fallback} 件 (代替経路はフェーズ・死亡情報なし)`,
@@ -765,6 +768,8 @@ export const en: LogsMessages = {
     failedSuffix: (n) => ` (${n} failed — reasons below)`,
     detailsMissingSuffix: (n) =>
       ` / details missing for ${n} pulls (retried on the next sync)`,
+    detailsArchivedSuffix: (n) =>
+      ` / no details for ${n} pulls archived by FFLogs (old reports, not retried)`,
     truncatedSuffix: " (partial)",
     routeSuffix: (v2, fallback) =>
       ` / routes: v2 ${v2}, fallback ${fallback} (fallback route has no phase / death data)`,

@@ -660,6 +660,10 @@ export function LogsView({
           (result.detailsMissing > 0
             ? m.logsSync.detailsMissingSuffix(result.detailsMissing)
             : "") +
+          // 2026-10-06: FFLogs の保管扱い (古いレポート) は取り直さないので別に出す。
+          (result.detailsArchived > 0
+            ? m.logsSync.detailsArchivedSuffix(result.detailsArchived)
+            : "") +
           // 2026-09-07: 代替経路 (v1 / cookie) で取れたレポートにはフェーズ遷移 /
           // 死亡イベントが入らない。理由が見えるように内訳を出す。
           (result.fetchedViaFallback > 0

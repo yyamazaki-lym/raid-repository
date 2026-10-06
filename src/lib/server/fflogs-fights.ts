@@ -16,7 +16,8 @@ import { buildFflogsXhrHeaders } from "./fflogs-scrape-request";
 import { fetchErrorReason } from "@/lib/fetch-error-reason";
 import { parseFflogsReportCode } from "@/lib/fflogs-url";
 import {
-  detailsMissingReason,
+  detailsLedgerReason,
+  isArchivedReportError,
   shouldRetryMissingDetails,
 } from "@/lib/fflogs-detail-retry";
 import { notifyLogsEvents } from "./logs-notify";
@@ -213,6 +214,11 @@ export type FflogsFightsSyncResult =
        * (`fflogs-detail-retry.ts`、最大 3 回)。
        */
       detailsMissing: number;
+      /**
+       * 2026-10-06: FFLogs が保管扱い (archive) にしていて詳細を取れなかった
+       * pull の数。取り直しても変わらないので印を分け、取り直さない。
+       */
+      detailsArchived: number;
     }
   | { ok: false; reason: string };
 
@@ -478,6 +484,7 @@ async function syncFflogsFightsUnlocked(opts?: {
       attendanceUnresolved: 0,
       attendanceUnresolvedNames: [],
       detailsMissing: 0,
+      detailsArchived: 0,
     };
   }
 
@@ -640,6 +647,8 @@ async function syncFflogsFightsUnlocked(opts?: {
   let failed = 0;
   // 2026-10-05: 詳細を取れなかった pull の数 (結果に載せる)。
   let detailsMissing = 0;
+  // 2026-10-06: そのうち FFLogs が保管扱いで断った pull の数 (取り直さない)。
+  let detailsArchived = 0;
   // W-6 (2026-09-08): 出席の自動突合。レポートごとの参加者名を集め、
   // ループの後で 1 回だけメンバーキーに解決して保存する
   // (名前はここから DB へ行かない。詳細は ./attendance-actuals.ts)。
@@ -788,13 +797,17 @@ async function syncFflogsFightsUnlocked(opts?: {
     // 2026-10-05: 詳細を取れなかった pull の数 (v2 で読めたレポートだけ。代替経路は
     // そもそも詳細を取らない)。台帳の印と結果に使う。
     let missingDetails = 0;
+    // 2026-10-06: FFLogs が保管扱いで詳細を断ったか (台帳の印を分ける)。
+    let detailsArchivedHere = false;
     if (acceptedFights.length > 0) {
       // 2026-09-03: pull ごとの PT 合計 DPS / 死亡数。best-effort で、
       // 取れなかった pull は列を **payload に含めない** (upsert は payload
       // にある列しか更新しないので、前回の同期で入った値を null で潰さない)。
-      const details = fromV2
+      const fetchedDetails = fromV2
         ? await fetchFightDetails(token, ref.code, acceptedFights, deadlineAtMs)
-        : new Map<number, FightDetail>();
+        : { details: new Map<number, FightDetail>(), archived: false };
+      const details = fetchedDetails.details;
+      detailsArchivedHere = fetchedDetails.archived;
       const reportStartMs = res.startMs;
       // 2026-09-06 W-2: フェーズ遷移はクエリに含められた時だけ列を送る。
       // PostgREST の一括 upsert は全行で同じキー集合を要求するので、
@@ -842,7 +855,8 @@ async function syncFflogsFightsUnlocked(opts?: {
         .map(baseRow);
       if (fromV2) {
         missingDetails = plainRows.length;
-        detailsMissing += missingDetails;
+        if (detailsArchivedHere) detailsArchived += missingDetails;
+        else detailsMissing += missingDetails;
       }
       // W-6 (2026-09-08): このレポートに映っていた人を pull 数で数える。
       // `players` は DB へ行かない (FightDetail の docstring 参照)。
@@ -907,8 +921,13 @@ async function syncFflogsFightsUnlocked(opts?: {
         fight_count: res.fights.length,
         ok: true,
         // 2026-10-05: 詳細を取れなかった pull があれば印を付ける (次の同期で取り直す)。
+        // 2026-10-06: FFLogs が保管扱いで断ったときは取り直さない印にする。
         reason: fromV2
-          ? detailsMissingReason(missingDetails, ledgerMap.get(ref.code)?.reason)
+          ? detailsLedgerReason(
+              missingDetails,
+              ledgerMap.get(ref.code)?.reason,
+              detailsArchivedHere,
+            )
           : null,
         synced_at: new Date().toISOString(),
       },
@@ -1104,6 +1123,7 @@ async function syncFflogsFightsUnlocked(opts?: {
     failures,
     videosBridged,
     detailsMissing,
+    detailsArchived,
   };
 }
 
@@ -1736,14 +1756,18 @@ function pct100x(v: number | null): number | null {
  *
  * 取り出すのは **合計値のみ**。Summary には個人ごとの damageDone が並ぶが、
  * ここで足し合わせて捨てる (個人 DPS は DB にもログにも残さない)。
+ *
+ * `archived` (2026-10-06): FFLogs が保管扱いを理由に断ったか。呼び出し側は
+ * 台帳の印を「取り直さない」方にする (`detailsLedgerReason`)。
  */
 async function fetchFightDetails(
   token: string,
   code: string,
   fights: FightPayload[],
   deadlineAtMs: number,
-): Promise<Map<number, FightDetail>> {
+): Promise<{ details: Map<number, FightDetail>; archived: boolean }> {
   const out = new Map<number, FightDetail>();
+  let archived = false;
   for (let i = 0; i < fights.length; i += DETAIL_BATCH_SIZE) {
     if (Date.now() > deadlineAtMs) break;
     const batch = fights.slice(i, i + DETAIL_BATCH_SIZE);
@@ -1788,9 +1812,18 @@ async function fetchFightDetails(
         };
       };
       if (json.errors?.length) {
+        const message = json.errors[0]?.message;
+        if (isArchivedReportError(message)) {
+          // 古いレポート。取り直しても変わらないので印を分ける (警告ではない)。
+          archived = true;
+          console.info(
+            `[fflogs-fights] summary table archived for ${code} — 取り直しません`,
+          );
+          break;
+        }
         console.warn(
           `[fflogs-fights] summary table rejected for ${code}:`,
-          json.errors[0]?.message,
+          message,
         );
         break;
       }
@@ -1819,7 +1852,7 @@ async function fetchFightDetails(
       deadlineAtMs,
     );
   }
-  return out;
+  return { details: out, archived };
 }
 
 /**
