@@ -27,7 +27,7 @@ import {
   fetchMemberNameAliases,
   fetchStoredPastSessions,
 } from "@/lib/server/discord-schedule";
-import { buildSheetUserResolver } from "./attendance-sync-symbols";
+import { buildSheetAttendanceMapper } from "./attendance-sync-symbols";
 import { planPastSessionMerge } from "./past-session-dedup";
 import { isPublicHttpUrl } from "@/lib/url-safe";
 import { assertPublicResolution } from "@/lib/server/safe-fetch";
@@ -253,7 +253,9 @@ async function mergeStoredPastSessions(
   // into the parsed user table.
   // 2026-10-06: 今のシートの名前と一致しなければ、メンバーのシートでの旧名で
   // 引く (9/11 まで「Lym」、9/18 から「Lym.sln」のように名前が変わった場合)。
-  const resolveSheetUser = buildSheetUserResolver(parsed.users, memberAliases);
+  // 今のシートの名前と完全一致した回答が優先 (旧名の回答は、その人の回答が
+  // 無いときだけ使う)。
+  const mapSheetAttendances = buildSheetAttendanceMapper(parsed.users, memberAliases);
 
   const nowMs = Date.now();
   const cutoffMs = nowMs - 6 * 60 * 60 * 1000;
@@ -319,13 +321,9 @@ async function mergeStoredPastSessions(
 
     // Convert snapshot attendances (name-keyed) to userId-keyed for the
     // live render. Names not in the current user list are skipped.
-    const attendances: Record<string, string> = {};
-    if (s.attendances) {
-      for (const [name, sym] of Object.entries(s.attendances)) {
-        const uid = resolveSheetUser(name);
-        if (uid) attendances[uid] = sym;
-      }
-    }
+    const attendances: Record<string, string> = s.attendances
+      ? mapSheetAttendances(s.attendances)
+      : {};
 
     additions.push({
       rawDate: s.rawDate,

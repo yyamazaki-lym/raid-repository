@@ -156,10 +156,16 @@ try {
     { discordUserId: "q", displayName: "Q", scheduleAliases: ["OLD"] },
   ];
   const keyByAlias = m.buildMemberKeyByName(withAliases);
+  const aliasIdx = m.buildMemberNameIndex(withAliases);
   check(
     "旧名で引ける (本番の Lym / makiton)",
-    m.syncSymbolsFromSnapshot({ Lym: "△", makiton: "◯", "Lym.sln": "×" }, keyByAlias),
+    m.syncSymbolsFromSnapshot({ Lym: "△", makiton: "◯", "Lym.sln": "×" }, aliasIdx.keyByName, aliasIdx.aliasKeys),
     { lym: "×", mak: "◯" },
+  );
+  check(
+    "旧名でだけ載ったキーの集合 (表示名と同じ旧名・未解決の旧名を含めた対応表と一致)",
+    [...aliasIdx.aliasKeys].sort(),
+    ["lym", "makiton", "old"],
   );
   check("今の表示名は旧名より優先 (enero は enero のまま)", keyByAlias.get("enero"), "ene");
   check("同じ旧名が 2 人なら未解決", keyByAlias.get("old"), null);
@@ -180,6 +186,48 @@ try {
     "過去ログ: メンバーが空なら従来どおり完全一致だけ",
     ["enero", "Lym"].map((n) => m.buildSheetUserResolver(sheet, [])(n) ?? null),
     ["s1", null],
+  );
+  check(
+    "過去ログ: 回答を今のシートの userId に直す (本番の Lym / makiton)",
+    m.buildSheetAttendanceMapper(sheet, withAliases)({ Lym: "△", makiton: "◯", enero: "×", "知らない人": "◯" }),
+    { s1: "×", s3: "△", s2: "◯" },
+  );
+
+  // ⚠ 保存済みの jsonb はキーを「バイト長が短い順」で返す。同じ日に旧名の行
+  // (作り直す前の行など) と今の名前の行が両方あっても、どちらが残るかを名前の
+  // 長さで決めない: 今の名前で当たった回答は旧名を入れる前と同じに扱い、
+  // 旧名の回答はその人の回答が無いときだけ使う。
+  console.log("\n[今の名前の回答が旧名の回答より優先]");
+  const neko = [{ discordUserId: "a", displayName: "Neko", scheduleAliases: ["ねこまる"] }];
+  const nekoIdx = m.buildMemberNameIndex(neko);
+  const syncNeko = (snap) => m.syncSymbolsFromSnapshot(snap, nekoIdx.keyByName, nekoIdx.aliasKeys);
+  const mapNeko = m.buildSheetAttendanceMapper([{ userId: "s-neko", name: "Neko" }], neko);
+  for (const [label, snap] of [
+    ["今の名前が先", { Neko: "◯", "ねこまる": "－" }],
+    ["旧名が先", { "ねこまる": "－", Neko: "◯" }],
+  ]) {
+    check(`出席サマリー: ${label}でも今の名前の回答`, syncNeko(snap), { a: "◯" });
+    check(`過去ログ: ${label}でも今の名前の回答`, mapNeko(snap), { "s-neko": "◯" });
+  }
+  check(
+    "今の名前が未回答でも旧名の回答で上書きしない (旧名を入れる前と同じ結果)",
+    [syncNeko({ "ねこまる": "◯", Neko: "－" }), mapNeko({ "ねこまる": "◯", Neko: "－" })],
+    [{ a: "－" }, { "s-neko": "－" }],
+  );
+  check(
+    "今の名前の回答が無ければ旧名の回答",
+    [syncNeko({ "ねこまる": "△" }), mapNeko({ "ねこまる": "△" })],
+    [{ a: "△" }, { "s-neko": "△" }],
+  );
+  const twoOld = [{ discordUserId: "b", displayName: "B", scheduleAliases: ["b1", "b2"] }];
+  const twoIdx = m.buildMemberNameIndex(twoOld);
+  check(
+    "旧名どうしは回答済みを未回答より優先 (順序によらない)",
+    [
+      m.syncSymbolsFromSnapshot({ b1: "－", b2: "◯" }, twoIdx.keyByName, twoIdx.aliasKeys),
+      m.syncSymbolsFromSnapshot({ b2: "◯", b1: "－" }, twoIdx.keyByName, twoIdx.aliasKeys),
+    ],
+    [{ b: "◯" }, { b: "◯" }],
   );
 
   console.log("\n[旧名の入力]");
@@ -234,15 +282,16 @@ const callerN = caller.replace(/\r\n/g, "\n");
 check(
   "出席サマリー: メンバーの旧名を読み、対応表に載せる",
   /\.select\("discord_user_id, display_name, sort_order, is_active, schedule_aliases"\)/.test(callerN) &&
-    /scheduleAliases: mem\.schedule_aliases \?\? \[\],/.test(callerN),
+    /scheduleAliases: mem\.schedule_aliases \?\? \[\],/.test(callerN) &&
+    /syncSymbolsFromSnapshot\(s\.attendances, keyByName, aliasKeys\)/.test(callerN),
   true,
 );
 const nextSession = readFileSync("src/lib/schedule/next-session.ts", "utf8").replace(/\r\n/g, "\n");
 check(
   "過去ログの表示: 旧名でもシートの人に結びつける",
   /fetchMemberNameAliases\(\),/.test(nextSession) &&
-    /const resolveSheetUser = buildSheetUserResolver\(parsed\.users, memberAliases\);/.test(nextSession) &&
-    /const uid = resolveSheetUser\(name\);/.test(nextSession),
+    /const mapSheetAttendances = buildSheetAttendanceMapper\(parsed\.users, memberAliases\);/.test(nextSession) &&
+    /\? mapSheetAttendances\(s\.attendances\)/.test(nextSession),
   true,
 );
 const actions = readFileSync("src/lib/server/native-schedule-actions.ts", "utf8").replace(/\r\n/g, "\n");

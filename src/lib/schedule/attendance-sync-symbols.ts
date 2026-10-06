@@ -1,4 +1,4 @@
-import { normalizeName } from "./attendance-reminder-core";
+import { isUnanswered, normalizeName } from "./attendance-reminder-core";
 
 /**
  * 同期式の出欠スナップショットをメンバーキーに直す (L-14、2026-09-09)。
@@ -85,6 +85,21 @@ export function buildMemberKeyByName(
     scheduleAliases?: ReadonlyArray<string> | null;
   }>,
 ): Map<string, string | null> {
+  return buildMemberNameIndex(members).keyByName;
+}
+
+/**
+ * `buildMemberKeyByName` の対応表と、そのうち**旧名でだけ**載ったキーの集合。
+ * 出席サマリーは `aliasKeys` を `syncSymbolsFromSnapshot` に渡し、今の
+ * 表示名で当たった回答を旧名で当たった回答より優先させる。
+ */
+export function buildMemberNameIndex(
+  members: ReadonlyArray<{
+    discordUserId: string;
+    displayName: string | null;
+    scheduleAliases?: ReadonlyArray<string> | null;
+  }>,
+): { keyByName: Map<string, string | null>; aliasKeys: Set<string> } {
   const out = new Map<string, string | null>();
   for (const mem of members) {
     const key = normalizeName(mem.displayName ?? "");
@@ -92,14 +107,45 @@ export function buildMemberKeyByName(
     out.set(key, out.has(key) ? null : mem.discordUserId);
   }
   const displayKeys = new Set(out.keys());
+  const aliasKeys = new Set<string>();
   for (const mem of members) {
     for (const alias of mem.scheduleAliases ?? []) {
       const key = normalizeName(alias ?? "");
       if (!key || displayKeys.has(key)) continue;
       const prev = out.get(key);
       out.set(key, prev === undefined || prev === mem.discordUserId ? mem.discordUserId : null);
+      aliasKeys.add(key);
     }
   }
+  return { keyByName: out, aliasKeys };
+}
+
+/**
+ * 当たった回答を 1 人 1 つにまとめる。
+ *
+ * ⚠ **今の名前で当たった回答を、旧名で当たった回答より優先する。**
+ * 同じ日のシートに旧名の行 (作り直す前の行など) と今の名前の行が両方あると、
+ * 保存済みの jsonb はキーを「バイト長が短い順」で返すので、後勝ちにすると
+ * どちらが残るかが名前の長さの偶然で決まる (旧名の行の未回答「－」が今の
+ * 回答を消しうる)。今の名前で当たった回答は旧名を入れる前と同じに扱い
+ * (同じ順位どうしは従来どおり後勝ち)、旧名の回答はその人の回答が無いとき
+ * だけ使う。旧名どうしでは回答済みを未回答より優先する。
+ */
+function mergeHitsByPriority(
+  hits: ReadonlyArray<{ id: string; symbol: string; viaAlias: boolean }>,
+): Record<string, string> {
+  const merged = new Map<string, { symbol: string; viaAlias: boolean }>();
+  for (const h of hits) {
+    if (!h.viaAlias) merged.set(h.id, { symbol: h.symbol, viaAlias: false });
+  }
+  for (const h of hits) {
+    if (!h.viaAlias) continue;
+    const cur = merged.get(h.id);
+    if (cur && (!cur.viaAlias || !isUnanswered(cur.symbol) || isUnanswered(h.symbol))) continue;
+    merged.set(h.id, { symbol: h.symbol, viaAlias: true });
+  }
+  const out: Record<string, string> = {};
+  for (const [id, v] of merged) out[id] = v.symbol;
   return out;
 }
 
@@ -147,27 +193,63 @@ export function buildSheetUserResolver(
 }
 
 /**
+ * 保存済みの回答 (名前 → 記号) を今のシートの userId → 記号に直す関数
+ * (2026-10-06、過去ログの表示用)。
+ *
+ * 今のシートの名前と完全一致した回答は旧名を入れる前と同じに扱い、旧名で
+ * 当たった回答はその人の回答が無いときだけ使う (`mergeHitsByPriority`)。
+ */
+export function buildSheetAttendanceMapper(
+  sheetUsers: ReadonlyArray<{ userId: string; name: string }>,
+  members: ReadonlyArray<{
+    displayName: string | null;
+    scheduleAliases?: ReadonlyArray<string> | null;
+  }>,
+): (attendances: Readonly<Record<string, string>>) => Record<string, string> {
+  const exact = new Map(sheetUsers.map((u) => [u.name, u.userId]));
+  const resolve = buildSheetUserResolver(sheetUsers, members);
+  return (attendances) => {
+    const hits: Array<{ id: string; symbol: string; viaAlias: boolean }> = [];
+    for (const [name, symbol] of Object.entries(attendances)) {
+      const hit = exact.get(name);
+      if (hit) {
+        hits.push({ id: hit, symbol, viaAlias: false });
+        continue;
+      }
+      const id = resolve(name);
+      if (id) hits.push({ id, symbol, viaAlias: true });
+    }
+    return mergeHitsByPriority(hits);
+  };
+}
+
+/**
  * 1 日ぶんのスナップショットをメンバーキー → 記号に直す。
  *
  * スナップショットが無い (null / オブジェクトでない) 場合は `null` を返す。
  * 呼び出し側はその日を集計から外して数える。
+ *
+ * `aliasKeys` (`buildMemberNameIndex`) を渡すと、旧名で当たった回答は今の
+ * 表示名で当たった回答が無いときだけ使う (`mergeHitsByPriority`)。
  */
 export function syncSymbolsFromSnapshot(
   snapshot: unknown,
   keyByName: ReadonlyMap<string, string | null>,
+  aliasKeys?: ReadonlySet<string>,
 ): Record<string, string> | null {
   if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) {
     return null;
   }
-  const out: Record<string, string> = {};
+  const hits: Array<{ id: string; symbol: string; viaAlias: boolean }> = [];
   for (const [rawName, symbol] of Object.entries(
     snapshot as Record<string, unknown>,
   )) {
     if (typeof symbol !== "string") continue;
-    const id = keyByName.get(normalizeName(rawName));
+    const key = normalizeName(rawName);
+    const id = keyByName.get(key);
     // 未登録の名前 (退会者など) と、重複して未解決の名前は落とす。
     if (!id) continue;
-    out[id] = symbol;
+    hits.push({ id, symbol, viaAlias: aliasKeys?.has(key) ?? false });
   }
-  return out;
+  return mergeHitsByPriority(hits);
 }

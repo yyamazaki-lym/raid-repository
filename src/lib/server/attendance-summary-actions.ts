@@ -17,7 +17,7 @@ import { planPastSessionMerge } from "@/lib/schedule/past-session-dedup";
 import { getScheduleSourceMode } from "@/lib/schedule/source-mode";
 // L-14: 同期式のスナップショット (名前 → 記号) をメンバーキーに直す層。
 import {
-  buildMemberKeyByName,
+  buildMemberNameIndex,
   syncSymbolsFromSnapshot,
 } from "@/lib/schedule/attendance-sync-symbols";
 import {
@@ -313,15 +313,17 @@ export async function fetchAttendanceSummaryAction(): Promise<AttendanceSummaryR
 
     // L-14: 同期式は回答が**名前**キーなので、メンバーの表示名から引く
     // (対応表の作り方と未解決の扱いは `attendance-sync-symbols.ts`)。
-    const keyByName = syncMode
-      ? buildMemberKeyByName(
+    // 2026-10-06: 旧名でだけ載ったキー (aliasKeys) も受け取り、今の表示名で
+    // 当たった回答を優先させる。
+    const { keyByName, aliasKeys } = syncMode
+      ? buildMemberNameIndex(
           memberRows.map((mem) => ({
             discordUserId: mem.discord_user_id,
             displayName: mem.display_name ?? null,
             scheduleAliases: mem.schedule_aliases ?? [],
           })),
         )
-      : new Map<string, string | null>();
+      : { keyByName: new Map<string, string | null>(), aliasKeys: new Set<string>() };
 
     /** 同期式で回答スナップショットが無く、集計に入れられなかった日の数。 */
     let noAttendanceData = 0;
@@ -330,7 +332,7 @@ export async function fetchAttendanceSummaryAction(): Promise<AttendanceSummaryR
       const day = jstYmdString(new Date(s.parsed_date));
       let symbols: Record<string, string | undefined>;
       if (syncMode) {
-        const mapped = syncSymbolsFromSnapshot(s.attendances, keyByName);
+        const mapped = syncSymbolsFromSnapshot(s.attendances, keyByName, aliasKeys);
         if (mapped === null) {
           // Discord の投稿だけから作られた日。回答が分からないので外す。
           noAttendanceData += 1;
