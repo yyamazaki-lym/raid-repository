@@ -401,9 +401,13 @@ async function syncFflogsFightsUnlocked(opts?: {
   // 接続アカウントのレポート一覧で埋める。どこを見るかは固定の運用で
   // 変わるので設定で選ぶ (`src/lib/fflogs-report-source.ts`)。
   // 経路が 1 本も ON でなければ何もしない (= 従来の「貼られた URL のみ」)。
+  //
+  // 2026-10-06: コード指定 (URL 取り込み・出席の突合の取り直し) では発見しない。
+  // 取りに行くのは指定のコードだけで、発見した分は使わず結果も画面に出ないのに、
+  // 一覧 API (経路 1 本あたり最大 20 秒) が同期の時間予算とポイントを使っていた。
   let discovered = 0;
   let discoveryNote: string | null = null;
-  {
+  if (!(opts?.onlyCodes && opts.onlyCodes.length > 0)) {
     const settings = await fetchAppSettings([
       FFLOGS_REPORT_SOURCE_KEY,
       FFLOGS_GUILD_ID_KEY,

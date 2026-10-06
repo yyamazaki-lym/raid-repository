@@ -222,6 +222,11 @@ console.log("\n配線 (同期の自動発見)");
     true,
   );
   check("古い数え方 (紐づいていないだけで +1) が残っていない", /discovered \+= 1;/.test(sync), false);
+  check(
+    "コード指定 (URL 取り込み・取り直し) では発見しない",
+    /if \(!\(opts\?\.onlyCodes && opts\.onlyCodes\.length > 0\)\) \{\s*const settings = await fetchAppSettings\(\[\s*FFLOGS_REPORT_SOURCE_KEY,/.test(sync),
+    true,
+  );
 }
 
 if (failures > 0) {
