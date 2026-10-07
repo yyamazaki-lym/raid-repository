@@ -12,6 +12,8 @@
  * - レポートが違う (同じレポートの中で pull が重なることは無い)
  * - encounter が同じ (encounter が分からない pull は比べない)
  * - 開始と終了の差がどちらも `DUPLICATE_PULL_TOLERANCE_MS` (10 秒) 以内
+ * - 3 本以上のログでは、すでに重ねた pull とも比べる (時計のずれが 0 / +7 /
+ *   +14 秒なら、隣どうしが 10 秒以内なので 3 本とも同じ 1 本)
  *
  * ⚠ 時刻はレポートを上げた人の PC の時計なので、時計が 10 秒以上ずれている
  * PC のログは同じ pull と分からず、二重に数える (これまで通り)。連続する
@@ -25,10 +27,18 @@
  * 数える pull は同じレポートにそろう (日の行で、数える側と数えない側が pull
  * ごとに入れ替わらない)。
  *
+ * ⚠ レポートの練習日 (`session_date`) は見ない。予定に紐づいたログ (予定の
+ * 開催日) と 0 時過ぎに取り直したログ (開始の JST 暦日) のように 2 本で日付が
+ * 違うと、数えない側の日は数える pull が 0 になる。その日は行だけ出し、練習日数・
+ * 到達度の推移・週のまとめには数えない。pull の多い方が予定に紐づいていない側
+ * だと、その夜の数はそちらの日付に入る (既知の制約、2026-10-07 のレビューで確認)。
+ *
  * ## 数えないもの・数えるもの
  *
  * - ログ合計 (`totalLogMs`) は区間の和集合なので、重なった 2 本のレポートを
- *   もともと 1 回だけ数える。こちらは全 pull のまま渡す
+ *   もともと 1 回だけ数える。こちらは全 pull のまま渡す。ただし和集合で 1 回に
+ *   なるのは**同じ集計範囲の中だけ** — 週のように日付で切るときは、数える側が
+ *   範囲に入っている pull だけを渡す (`logs-weekly-summary.ts`)
  * - 動画のオフセットの基準 (レポートごとの pull #1) は、数えない側のレポートの
  *   動画にも要るので全 pull のまま
  *
@@ -82,9 +92,14 @@ export function duplicatePulls(
         (a.reportCode < b.reportCode ? -1 : a.reportCode > b.reportCode ? 1 : 0) ||
         a.startMs - b.startMs,
     );
-  // 数える側の pull を encounter と開始時刻の桶 (幅 = 許容差) で引けるようにする。
-  // 開始の差が許容差以内なら桶は隣までしか離れない。
-  const kept = new Map<string, DuplicateCheckFight[]>();
+  // 見終わった pull を encounter と開始時刻の桶 (幅 = 許容差) で引けるようにする。
+  // 開始の差が許容差以内なら桶は隣までしか離れない。`target` はその pull を
+  // 数える側 (数える pull なら自分)。
+  //
+  // 重ねた pull も桶に入れる (レビューで検出): 3 本のログで時計が 0 / +7 / +14 秒と
+  // ずれていると、3 本目は 1 本目とは 14 秒離れていて重ならないが、2 本目とは
+  // 7 秒で重なる。2 本目を通して同じ 1 本に寄せる。
+  const seen = new Map<string, Array<{ fight: DuplicateCheckFight; target: DuplicateCheckFight }>>();
   const bucketKey = (encounterId: number, bucket: number) => `${encounterId}:${bucket}`;
   // 「数える側の pull | 数えない側のレポート」— 同じレポートの 2 本を 1 本に重ねない。
   const claimed = new Set<string>();
@@ -94,15 +109,15 @@ export function duplicatePulls(
     let match: DuplicateCheckFight | null = null;
     let matchGap = Infinity;
     for (let d = -1; d <= 1; d++) {
-      for (const k of kept.get(bucketKey(encounterId, bucket + d)) ?? []) {
-        if (k.reportCode === f.reportCode) continue;
-        const ds = Math.abs(k.startMs - f.startMs);
-        const de = Math.abs(k.endMs - f.endMs);
+      for (const k of seen.get(bucketKey(encounterId, bucket + d)) ?? []) {
+        if (k.fight.reportCode === f.reportCode || k.target.reportCode === f.reportCode) continue;
+        const ds = Math.abs(k.fight.startMs - f.startMs);
+        const de = Math.abs(k.fight.endMs - f.endMs);
         if (ds > tol || de > tol) continue;
-        if (claimed.has(`${pullKey(k)}|${f.reportCode}`)) continue;
+        if (claimed.has(`${pullKey(k.target)}|${f.reportCode}`)) continue;
         // 候補が複数あるときは最も近い pull に重ねる。
         if (ds + de < matchGap) {
-          match = k;
+          match = k.target;
           matchGap = ds + de;
         }
       }
@@ -110,12 +125,12 @@ export function duplicatePulls(
     if (match) {
       out.set(pullKey(f), pullKey(match));
       claimed.add(`${pullKey(match)}|${f.reportCode}`);
-      continue;
     }
     const key = bucketKey(encounterId, bucket);
-    const list = kept.get(key);
-    if (list) list.push(f);
-    else kept.set(key, [f]);
+    const entry = { fight: f, target: match ?? f };
+    const list = seen.get(key);
+    if (list) list.push(entry);
+    else seen.set(key, [entry]);
   }
   return out;
 }

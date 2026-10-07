@@ -235,8 +235,10 @@ export function DayRow({
           {(() => {
             const chipClass =
               "w-[3.75rem] shrink-0 rounded-sm border px-1 py-0.5 text-center font-mono text-[11px] whitespace-nowrap tabular-nums ";
+            // 2026-10-07 C-3: 範囲も数える pull から (見出しの数・結果のチップと同じ。
+            // 別のログと同じ pull だけの日はチップを出さない)。
             if (floors && day.bestFloor !== null) {
-              const dayFloors = day.fights
+              const dayFloors = counted
                 .map((f) =>
                   f.encounterId !== null
                     ? (floors.byEncounter.get(f.encounterId) ?? null)
@@ -266,7 +268,7 @@ export function DayRow({
               );
             }
             if (!showPhase) return null;
-            const dayPhases = day.fights
+            const dayPhases = counted
               .map((f) => f.lastPhase)
               .filter((v): v is number => v !== null);
             if (dayPhases.length === 0) return null;

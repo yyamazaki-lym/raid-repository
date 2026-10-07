@@ -38,7 +38,7 @@ import {
   type ProgressLocale,
 } from "./fflogs-progress";
 import { floorFirstClears } from "./fflogs-session";
-import { countedPulls } from "./fflogs-duplicate-pulls";
+import { countedPulls, duplicatePulls, pullKey } from "./fflogs-duplicate-pulls";
 
 /** 送ってよい日の数 (火曜から数えて。火・水・木)。 */
 export const WEEKLY_SUMMARY_DUE_DAYS = 3;
@@ -171,16 +171,19 @@ export function summarizeWeek(
   phaseModel: boolean,
   locale: ProgressLocale = "ja",
 ): WeeklySummary | null {
-  const inWeekOf = (list: ReadonlyArray<FightRow>) =>
-    list.filter((f) => fightDate(f) >= week.start && fightDate(f) <= week.end);
   // 2026-10-07 C-3: 同じ夜を 2 人が上げたログの同じ pull は 1 回だけ数える
-  // (練習ログの画面と同じ `fflogs-duplicate-pulls.ts`)。ログ合計と戦闘時間は
-  // 区間の和集合なので全 pull のまま渡す (数えない側のレポートの開始も入れる)。
-  const counted = countedPulls(fights);
+  // (練習ログの画面と同じ `fflogs-duplicate-pulls.ts`)。
+  const duplicateOf = duplicatePulls(fights);
+  const counted = countedPulls(fights, duplicateOf);
   const upToEnd = counted.filter((f) => fightDate(f) <= week.end);
   const inWeek = upToEnd.filter((f) => fightDate(f) >= week.start);
   if (inWeek.length === 0) return null;
-  const inWeekAll = inWeekOf(fights);
+  // ログ合計と戦闘時間は区間の和集合なので、数えない側の pull も渡す (そのレポートの
+  // 開始も入れる)。ただし**数える側がこの週にある pull だけ** — 2 本で練習日の付き方が
+  // 違うと、数えない側だけが次の週に入り、前の週で数えた時間をもう一度足していた
+  // (レビューで検出)。
+  const inWeekKeys = new Set(inWeek.map(pullKey));
+  const inWeekAll = fights.filter((f) => inWeekKeys.has(duplicateOf.get(pullKey(f)) ?? pullKey(f)));
   const before = upToEnd.filter((f) => fightDate(f) < week.start);
 
   const byDay = new Map<string, FightRow[]>();

@@ -1271,7 +1271,9 @@ export function LogsView({
         />
         <StatCard
           label={m.logs.statPracticeDays}
-          value={m.logs.daysValue(summary.days.length)}
+          // 2026-10-07 C-3: 数える pull がある日だけ (別のログと同じ pull だけの日は
+          // 行は出すが数えない。到達度の推移・週のまとめと同じ)。
+          value={m.logs.daysValue(summary.days.filter((d) => d.pulls > 0).length)}
           // 2026-10-06 実機要望: 戦闘時間ではなくログの合計時間 (pull の間の
           // 休憩を含む)。日数と同じ pull (tierFights) から出すので、明細が
           // 打ち切られているときは「表示中の分」と添える。
@@ -1359,6 +1361,7 @@ export function LogsView({
         // 番号は初討伐カードと同じく、明細が打ち切られていれば出さない。
         fights={fights}
         numberedFights={truncated ? null : countedFights}
+        duplicateOf={duplicateOf}
       />
 
       {(wipeCauses.length > 0 ||

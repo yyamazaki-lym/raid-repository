@@ -119,6 +119,9 @@ export type PullNoteDetail = {
  *   ときは呼び出し側が null を渡す (古い pull が落ちて番号が過小になる)
  * - 並びは新しい pull が先。日時の分からない注釈は後ろ (作成の新しい順)
  * - 振り分けるだけで、帰属 (`scope`) では絞らない (呼び出し側が渡したものを出す)
+ * - 2026-10-07 C-3: `numbered` は別のログと同じ pull を除いた明細。数えない側の
+ *   pull に付いた注釈は、`duplicateOf` (`pullKey` 形式 `<report>:<fight>` → 数える
+ *   側の `pullKey`) で数える側の番号に読み替える (日の行の番号と同じ)
  */
 export function pullNoteDetailsByTag(
   notes: ReadonlyArray<PullNote>,
@@ -129,8 +132,11 @@ export function pullNoteDetailsByTag(
     startMs: number;
   }>,
   numbered: ReadonlyArray<{ reportCode: string; fightId: number; startMs: number }> | null,
+  duplicateOf: ReadonlyMap<string, string> = new Map(),
 ): Map<string, PullNoteDetail[]> {
-  const keyOf = (reportCode: string, fightId: number) => `${reportCode}\u0000${fightId}`;
+  // `fflogs-duplicate-pulls.ts` の `pullKey` と同じ形 (このファイルは import を持たない
+  // まま単独でコンパイルする — scripts/check-pull-note-tags.mjs)。
+  const keyOf = (reportCode: string, fightId: number) => `${reportCode}:${fightId}`;
   const fightByKey = new Map(fights.map((f) => [keyOf(f.reportCode, f.fightId), f]));
   const overallByKey = new Map<string, number>();
   if (numbered) {
@@ -152,7 +158,7 @@ export function pullNoteDetailsByTag(
         detail: {
           date: fight ? fight.sessionDate : null,
           startMs,
-          overallPulls: overallByKey.get(key) ?? null,
+          overallPulls: overallByKey.get(duplicateOf.get(key) ?? key) ?? null,
           note: note || null,
         } satisfies PullNoteDetail,
       };
