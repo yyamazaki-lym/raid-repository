@@ -145,6 +145,13 @@ import {
  * its options instead of crashing).
  */
 export async function fetchAvailableGuildRoles(): Promise<DiscordGuildRole[]> {
+  // 2026-10-07 セキュリティ精査 M-1: 認可が一切無く、メンバー (公開デモでは
+  // 匿名ゲストも) が bot token で Discord の API を回数の制限なしに叩けた
+  // (結果に guild の全ロールも返していた)。ロール欄はカテゴリの編集ダイアログ
+  // (admin 専用) にしか出ないので admin に限る。admin でなければ空配列
+  // (= ロール欄を出さない、docstring の劣化と同じ)。
+  const auth = await assertAdminResult();
+  if (!auth.ok) return [];
   return fetchGuildRoles();
 }
 

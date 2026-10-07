@@ -44,6 +44,13 @@ import {
  */
 
 const NOTE_MAX = 200;
+/**
+ * 1 人が 24 時間に付けられる注釈の数 (2026-10-07 セキュリティ精査 M-2)。
+ * 練習 1 回 (数十 pull) に全部タグを付けても届かない値。上限が無いと、
+ * fight_id を変えながら呼ぶだけで傾向カードと Discord 用の要約が偽の注釈で
+ * 埋まった。⚠ "use server" のファイルなので export しない。
+ */
+const NOTES_PER_DAY_LIMIT = 200;
 
 export type PullNotesResult =
   | { ok: true; notes: PullNote[]; viewerId: string; isAdmin: boolean }
@@ -87,6 +94,10 @@ export async function fetchPullNotesAction(
 export type AddPullNoteInput = {
   reportCode: string;
   fightId: number;
+  /**
+   * 呼び出し側が持つカテゴリ。⚠ 2026-10-07 (M-2) からは使わず、pull の行
+   * (`fflogs_fights.category_id`) から取る (言い値で別のカテゴリに付けられたため)。
+   */
   categoryId: string | null;
   tag: string;
   scope: PullNoteScope;
@@ -116,13 +127,42 @@ export async function addPullNoteAction(
   if (note.length > NOTE_MAX) {
     return { ok: false, reason: `一言は ${NOTE_MAX} 文字以内で入力してください` };
   }
-  const categoryId =
-    input.categoryId && /^[0-9a-f-]{36}$/i.test(input.categoryId)
-      ? input.categoryId
-      : null;
 
   try {
     const db = createSupabaseServiceRoleClient();
+    // 2026-10-07 セキュリティ精査 M-2: その pull が実在するかを確かめ、カテゴリは
+    // その行から取る。以前はクライアントの言い値 (`input.categoryId`) をそのまま
+    // 入れ、実在しない pull にも付けられた。
+    const { data: fight, error: fightError } = await db
+      .from("fflogs_fights")
+      .select("category_id")
+      .eq("report_code", code)
+      .eq("fight_id", input.fightId)
+      .maybeSingle();
+    if (fightError) {
+      console.warn("[pull-notes] fight lookup failed:", fightError.message);
+      return { ok: false, reason: "注釈を保存できませんでした" };
+    }
+    if (!fight) {
+      return { ok: false, reason: "その pull が見つかりません" };
+    }
+    const categoryId = (fight.category_id as string | null) ?? null;
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const { count, error: countError } = await db
+      .from("fflogs_pull_notes")
+      .select("id", { count: "exact", head: true })
+      .eq("created_by_id", user.discordId)
+      .gte("created_at", since);
+    if (countError) {
+      console.warn("[pull-notes] count failed:", countError.message);
+      return { ok: false, reason: "注釈を保存できませんでした" };
+    }
+    if ((count ?? 0) >= NOTES_PER_DAY_LIMIT) {
+      return {
+        ok: false,
+        reason: `注釈は 1 日 ${NOTES_PER_DAY_LIMIT} 件までです。時間をおいてから付けてください`,
+      };
+    }
     const { error } = await db.from("fflogs_pull_notes").insert({
       report_code: code,
       fight_id: input.fightId,

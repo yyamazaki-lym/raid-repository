@@ -139,11 +139,27 @@ check("所有者不明の行は数えない", /IF NEW\.author_user_id IS NULL TH
 check("同じ人・同じ日付で数える", /WHERE author_user_id = NEW\.author_user_id\s*AND raw_date = NEW\.raw_date\b/.test(trigBody), true);
 check("上書きになる行自身は数えない (取り込み直し)", /AND id <> NEW\.id;/.test(trigBody), true);
 check("同時の INSERT を 1 件ずつにする", /pg_advisory_xact_lock\(/.test(trigBody), true);
-check("作るときだけ (日付の付け替えを止めない)",
-  /CREATE TRIGGER schedule_session_memos_limit\s*BEFORE INSERT ON public\.schedule_session_memos/.test(schema), true);
+// 2026-10-07 (セキュリティ精査 M-3): 作成に加えて、ブラウザから直接書いた UPDATE
+// (日付・所有者・本文) も確かめる。予定の日時に合わせて日付をまとめて書き換える
+// 関数 (DEFINER) と取り込み (service role) は止めない (current_user が別)。
+check("作成と、日付・所有者・本文の書き換えで走る",
+  /CREATE TRIGGER schedule_session_memos_limit\s*BEFORE INSERT OR UPDATE OF raw_date, author_user_id, body\s*ON public\.schedule_session_memos/.test(schema), true);
+check("書き換えはブラウザから (authenticated) のときだけ確かめる (日付の付け替えの関数・取り込みは止めない)",
+  /from_client boolean := current_user = 'authenticated';/.test(trigBody) && /IF TG_OP = 'UPDATE' THEN\s*IF NOT from_client THEN\s*RETURN NEW;/.test(trigBody), true);
+check("所有者の付け替えは拒否する (S-11 の迂回)",
+  /IF NEW\.author_user_id IS DISTINCT FROM OLD\.author_user_id THEN\s*RAISE EXCEPTION 'memo_author_immutable'/.test(trigBody), true);
+check("日付を付け替えたら移った先の日付で数える",
+  /IF TG_OP = 'INSERT' OR NEW\.raw_date IS DISTINCT FROM OLD\.raw_date THEN/.test(trigBody), true);
+const totals = trigBody.match(/total_count >= (\d+)\)\s*OR total_chars \+ length\(coalesce\(NEW\.body, ''\)\) > (\d+) THEN\s*RAISE EXCEPTION 'memo_limit_total'/);
+const permSrc = readFileSync("src/lib/memo-permissions.ts", "utf8");
+const permTotal = Number(permSrc.match(/export const MEMO_TOTAL_LIMIT = (\d+);/)?.[1]);
+const permChars = Number(permSrc.match(/export const MEMO_TOTAL_CHARS_LIMIT = ([\d_]+);/)?.[1].replace(/_/g, ""));
+check("1 人の総数・合計文字数の上限は memo-permissions.ts と同じ", totals ? [Number(totals[1]), Number(totals[2])] : null, [permTotal, permChars]);
 const client = readFileSync("src/lib/schedule-memos-client.ts", "utf8");
 check("画面はトリガーの語を見分けて説明を出す",
   /error\?\.message\?\.includes\("memo_limit_per_date"\)/.test(client) && /memoLimitError\(MEMO_PER_DATE_LIMIT, locale\)/.test(client), true);
+check("画面は総数の上限の語も見分ける (作成と書き換え)",
+  (client.match(/error\?\.message\?\.includes\("memo_limit_total"\)/g) ?? []).length, 2);
 
 console.log("\nUI が判定を再実装していないか");
 const popover = readFileSync("src/components/portal/session-memo-popover.tsx", "utf8");

@@ -39,6 +39,15 @@
  */
 export const MEMO_PER_DATE_LIMIT = 10;
 
+/**
+ * 1 人が持てるメモの総数と本文の合計文字数 (2026-10-07 セキュリティ精査 M-3)。
+ * どの日程にも無い日付で 10 件ずつ作り続けると、全員の TOP (SSR の全件取得) と
+ * Realtime が膨らんだ。DB 側は同じトリガーが同じ値で弾く (ブラウザからの作成・
+ * 書き換えだけ。取り込みと予定の日時の付け替えは対象外)。
+ */
+export const MEMO_TOTAL_LIMIT = 300;
+export const MEMO_TOTAL_CHARS_LIMIT = 200_000;
+
 /** 判定に要る最小の形 (`ScheduleSessionMemo` の部分集合)。 */
 export type MemoOwnership = {
   /** 所有者の Discord ID。移行前の行と匿名投稿は null。 */

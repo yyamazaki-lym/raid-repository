@@ -815,6 +815,21 @@ CREATE TRIGGER set_updated_at_schedule_session_memos
 --   トランザクションの間だけ 1 件ずつにする (advisory lock)
 -- - 弾くときは `memo_limit_per_date` を返す。画面はこの語で見分けて説明を
 --   出す (`schedule-memos-client.ts`)
+--
+-- 2026-10-07 セキュリティ精査 M-3 / S-11 の迂回: 上の「作るときだけ」を、
+-- ブラウザから直接書いた UPDATE (PostgREST の authenticated) にも広げる。
+-- 画面は本文・表示名・重要度しか書き換えないが、REST を直接叩くと
+-- - 作ったメモの日付を付け替えて、1 つの日付に 11 件以上並べられた
+-- - どの日程にも無い日付で 10 件ずつ作り続けられ、全員の TOP が膨らんだ
+-- - admin が所有者 (author_user_id) を他人に付け替えられた (S-11 の迂回)
+-- ので、ブラウザからの書き込みに限って
+-- - 所有者の付け替えは拒否する (`memo_author_immutable`)
+-- - 日付を付け替えたら、移った先の日付で 10 件の確認をする
+-- - 1 人あたりの総数 300 件・本文の合計 20 万字を超える作成・書き換えは拒否する
+--   (`memo_limit_total`。値は `memo-permissions.ts` と同じ)
+-- 予定の日時の変更に合わせて日付をまとめて書き換える関数
+-- (`update_native_placeholder_raid_times`、SECURITY DEFINER = current_user が
+-- 関数の所有者) と、データの取り込み (service role) は従来どおり対象外。
 CREATE OR REPLACE FUNCTION public.schedule_session_memos_enforce_limit()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -822,23 +837,57 @@ SET search_path = public, pg_temp
 AS $fn$
 DECLARE
   n integer;
+  total_count integer;
+  total_chars bigint;
+  -- ブラウザから直接書いたとき。関数 (DEFINER) の中と取り込み (service role) は別のロール。
+  from_client boolean := current_user = 'authenticated';
 BEGIN
+  IF TG_OP = 'UPDATE' THEN
+    IF NOT from_client THEN
+      RETURN NEW;
+    END IF;
+    IF NEW.author_user_id IS DISTINCT FROM OLD.author_user_id THEN
+      RAISE EXCEPTION 'memo_author_immutable'
+        USING ERRCODE = 'check_violation';
+    END IF;
+    IF NEW.raw_date IS NOT DISTINCT FROM OLD.raw_date
+       AND length(coalesce(NEW.body, '')) <= length(coalesce(OLD.body, '')) THEN
+      RETURN NEW;
+    END IF;
+  END IF;
   IF NEW.author_user_id IS NULL THEN
     RETURN NEW;
   END IF;
   PERFORM pg_advisory_xact_lock(
     hashtextextended('schedule_session_memos:' || NEW.author_user_id || ':' || NEW.raw_date, 0)
   );
-  SELECT count(*) INTO n
-    FROM public.schedule_session_memos
-   WHERE author_user_id = NEW.author_user_id
-     AND raw_date = NEW.raw_date
-     -- 2026-10-07: 上書きになる行自身は数えない (取り込みの上書き付き INSERT でも
-     -- INSERT 前のトリガーが走るので、10 件ある日付の行を取り込み直すと弾いていた)。
-     AND id <> NEW.id;
-  IF n >= 10 THEN
-    RAISE EXCEPTION 'memo_limit_per_date'
-      USING ERRCODE = 'check_violation', DETAIL = 'limit=10';
+  IF TG_OP = 'INSERT' OR NEW.raw_date IS DISTINCT FROM OLD.raw_date THEN
+    SELECT count(*) INTO n
+      FROM public.schedule_session_memos
+     WHERE author_user_id = NEW.author_user_id
+       AND raw_date = NEW.raw_date
+       -- 2026-10-07: 上書きになる行自身は数えない (取り込みの上書き付き INSERT でも
+       -- INSERT 前のトリガーが走るので、10 件ある日付の行を取り込み直すと弾いていた)。
+       AND id <> NEW.id;
+    IF n >= 10 THEN
+      RAISE EXCEPTION 'memo_limit_per_date'
+        USING ERRCODE = 'check_violation', DETAIL = 'limit=10';
+    END IF;
+  END IF;
+  IF from_client THEN
+    PERFORM pg_advisory_xact_lock(
+      hashtextextended('schedule_session_memos:' || NEW.author_user_id, 0)
+    );
+    SELECT count(*), coalesce(sum(length(body)), 0)
+      INTO total_count, total_chars
+      FROM public.schedule_session_memos
+     WHERE author_user_id = NEW.author_user_id
+       AND id <> NEW.id;
+    IF (TG_OP = 'INSERT' AND total_count >= 300)
+       OR total_chars + length(coalesce(NEW.body, '')) > 200000 THEN
+      RAISE EXCEPTION 'memo_limit_total'
+        USING ERRCODE = 'check_violation', DETAIL = 'limit=300,chars=200000';
+    END IF;
   END IF;
   RETURN NEW;
 END
@@ -847,7 +896,8 @@ $fn$;
 DROP TRIGGER IF EXISTS schedule_session_memos_limit
   ON public.schedule_session_memos;
 CREATE TRIGGER schedule_session_memos_limit
-  BEFORE INSERT ON public.schedule_session_memos
+  BEFORE INSERT OR UPDATE OF raw_date, author_user_id, body
+  ON public.schedule_session_memos
   FOR EACH ROW EXECUTE FUNCTION public.schedule_session_memos_enforce_limit();
 
 -- ---- 5d-pre. category_macros (in-game text macros per category) ------

@@ -152,6 +152,8 @@ export const SERVER_TEXT_EN: ServerTextDictRaw = {
       "No check column was found in this sheet, so the icon row cannot be identified.",
     "この動画はすでに紐づいています":
       "This video is already linked",
+    "その pull が見つかりません":
+      "That pull was not found",
     "そのタグは既に付いています":
       "That tag is already attached",
     "その期間に該当する曜日がありません (期間と曜日を確認してください)":
@@ -481,6 +483,8 @@ export const SERVER_TEXT_EN: ServerTextDictRaw = {
       "Fetch failed (HTTP {0})",
     "本文が長すぎます (最大 ${MAX_TOP_TEXT_LEN} 文字)":
       "The text is too long (max {0} characters)",
+    "注釈は 1 日 ${NOTES_PER_DAY_LIMIT} 件までです。時間をおいてから付けてください":
+      "You can add up to {0} notes per day. Try again later",
     "消化ウィンドウは 1〜${LOOT_WINDOW_WEEKS_MAX} 週で指定してください":
       "The window must be 1 to {0} weeks",
     "画像 MIME (${contentType || \"unknown\"}) は許可されていません":
