@@ -184,8 +184,23 @@ try {
     110,
   );
   check(
+    "同じ投稿者が 1 本目に印を付けずに分割 (番号の語までの書き方が同じ = 同じ人)",
+    [
+      m.challengeTime([v("【2026 10 06】絶もうひとつの未来【DAY 7】", 120), v("【2026 10 06】絶もうひとつの未来【DAY 7-2】", 60)]).totalSeconds / MIN,
+      m.challengeTime([v("【2026 10 06】絶もうひとつの未来【DAY 7】", 120), v("【2026 10 06】絶もうひとつの未来【DAY 7】②", 60)]).totalSeconds / MIN,
+      m.challengeTime([v("2026 10 06 練習 7日目", 120), v("2026 10 06 練習 7日目 延長", 60)]).totalSeconds / MIN,
+      m.challengeTime([v("FINAL FANTASY XIV 絶エデン2026 10 06 PART7", 120), v("FINAL FANTASY XIV 絶エデン2026 10 06 PART7 午後", 60)]).totalSeconds / MIN,
+    ],
+    [180, 180, 180, 180],
+  );
+  check(
     "同じ日の分割 (前半 / 後半、系列違い)",
     m.challengeTime([v("【2026 10 06】絶もうひとつの未来【DAY 7】前半", 60), v("【2026 10 06】絶もうひとつの未来【DAY 7】後半", 50)]).totalSeconds / MIN,
+    110,
+  );
+  check(
+    "別の投稿者でも、片方に分割の印 (前半) があれば組にしない",
+    m.challengeTime([v("A視点 2026 10 06 DAY 7 前半", 60), v("B視点【2026 10 06】DAY 7", 50)]).totalSeconds / MIN,
     110,
   );
   check(

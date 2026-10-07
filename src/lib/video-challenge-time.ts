@@ -66,21 +66,31 @@ const SPLIT_MARKER = /前半|後半|前編|後編|続き|続編|その\d|part\s*
 const norm = (title: string | null | undefined) =>
   (title ?? "").normalize("NFKC").toLowerCase().replace(/\s+/g, " ").trim();
 
-type SessionNumber = { key: string | null; values: number[] };
+type SessionNumber = {
+  key: string | null;
+  values: number[];
+  /** 番号の語の終わりの位置 (NFKC 後の題名で。番号が無ければ 0)。 */
+  end: number;
+};
 
 function sessionNumber(title: string | null | undefined): SessionNumber {
   const t = (title ?? "").normalize("NFKC");
-  const num = (m: RegExpExecArray | null) => (m ? Number(m[1]) : null);
+  let end = 0;
+  const num = (m: RegExpExecArray | null) => {
+    if (!m) return null;
+    end = Math.max(end, m.index + m[0].length);
+    return Number(m[1]);
+  };
   const day =
     num(/(?<![a-z])day\s*[-_.#:]?\s*(\d{1,3})(?!\d)/i.exec(t)) ??
     num(/(\d{1,3})\s*日目/.exec(t));
   const part =
     num(/(?<![a-z])part\s*[-_.#:]?\s*(\d{1,3})(?!\d)/i.exec(t)) ??
     num(/パート\s*(\d{1,3})(?!\d)/.exec(t));
-  if (day !== null && part !== null) return { key: `d${day}-p${part}`, values: [day, part] };
-  if (day !== null) return { key: `n${day}`, values: [day] };
-  if (part !== null) return { key: `n${part}`, values: [part] };
-  return { key: null, values: [] };
+  if (day !== null && part !== null) return { key: `d${day}-p${part}`, values: [day, part], end };
+  if (day !== null) return { key: `n${day}`, values: [day], end };
+  if (part !== null) return { key: `n${part}`, values: [part], end };
+  return { key: null, values: [], end: 0 };
 }
 
 /**
@@ -143,6 +153,11 @@ type Item = {
   key: string | null;
   day: number | null;
   series: string;
+  /**
+   * 題名の「番号の語まで」の書き方 (数字を伏せた形)。同じなら同じ投稿者の
+   * 付け方とみなす (`sameSession`)。
+   */
+  scheme: string;
   normTitle: string;
   split: boolean;
   digits: string;
@@ -157,6 +172,7 @@ function toItem(v: ChallengeVideo): Item {
     key: sn.key,
     day: td.day,
     series: titleSeries(v.title),
+    scheme: titleSeries((v.title ?? "").normalize("NFKC").slice(0, sn.end)),
     normTitle: norm(v.title),
     split: SPLIT_MARKER.test(norm(v.title)),
     digits: otherDigits(v.title, td.fromTitle, sn.values),
@@ -168,7 +184,10 @@ const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 
 /** 番号と日付が同じ 2 本が、同じ練習か。 */
 function sameSession(a: Item, b: Item): boolean {
-  if (a.series === b.series) return a.normTitle === b.normTitle;
+  // ⚠ 系列 (題名全体) が違っても、番号の語までの書き方が同じなら同じ投稿者
+  // とみなす。1 本目に印を付けずに分割した (「【DAY 7】」と「【DAY 7-2】」)
+  // 動画を、別の人の視点と取り違えて消さないため (PR のレビューで検出)。
+  if (a.series === b.series || a.scheme === b.scheme) return a.normTitle === b.normTitle;
   if (a.split || b.split) return false;
   return a.digits === "" || b.digits === "" || a.digits === b.digits;
 }
