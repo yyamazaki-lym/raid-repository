@@ -128,6 +128,54 @@ try {
       check(`${p.id}/${t.table}: (${t.order.join(", ")}) が一意`, uniqueSets(t.table).has(norm(t.order.join(","))), true);
     }
   }
+
+  // 2026-10-07: 種類の中の表は「参照される側が先」の順で入れる (外部キー)。
+  // content で category_links (gphoto_album_id → category_gphoto_albums) が
+  // アルバムより先に並んでいて、アルバムがまだ無い DB に取り込むとアルバムに
+  // 紐づくリンクの塊が外部キーで失敗していた。schema の REFERENCES と突き合わせる。
+  console.log("\n3b. 種類の中の表の順番 (参照される側が先)");
+  function referencedTables(table) {
+    const refs = new Set();
+    const createRe = new RegExp(`CREATE TABLE IF NOT EXISTS (?:public\\.)?${table} \\(([\\s\\S]*?)\\n\\);`);
+    const m = schema.match(createRe);
+    const bodies = m ? [m[1]] : [];
+    for (const a of schema.matchAll(new RegExp(`ALTER TABLE (?:public\\.)?${table}\\b([^;]*);`, "g"))) bodies.push(a[1]);
+    for (const b of bodies) {
+      for (const r of b.matchAll(/REFERENCES\s+(?:public\.)?([a-z_][a-z0-9_]*)\s*\(/g)) {
+        if (r[1] !== table) refs.add(r[1]);
+      }
+    }
+    return refs;
+  }
+  for (const p of EXPORT_PARTS) {
+    const pos = new Map(p.tables.map((t, i) => [t.table, i]));
+    const late = [];
+    p.tables.forEach((t, i) => {
+      for (const ref of referencedTables(t.table)) {
+        if (pos.has(ref) && pos.get(ref) > i) late.push(`${t.table} → ${ref}`);
+      }
+    });
+    check(`${p.id}: 参照される表が先に並ぶ`, late, []);
+  }
+  // 種類をまたぐ参照は、取り込み順の案内 (IMPORT_PART_ORDER) で参照される側の
+  // 種類が先に来ること。
+  const partOf = new Map(EXPORT_PARTS.flatMap((p) => p.tables.map((t) => [t.table, p.id])));
+  const partPos = new Map(IMPORT_PART_ORDER.map((id, i) => [id, i]));
+  const crossLate = [];
+  for (const p of EXPORT_PARTS) {
+    for (const t of p.tables) {
+      for (const ref of referencedTables(t.table)) {
+        const rp = partOf.get(ref);
+        if (rp && rp !== p.id && partPos.get(rp) > partPos.get(p.id)) crossLate.push(`${p.id}/${t.table} → ${rp}/${ref}`);
+      }
+    }
+  }
+  check("種類をまたぐ参照は、参照される種類が案内の順で先", crossLate, []);
+  check(
+    "content: category_links はアルバム (category_gphoto_albums) を参照する (この検査が効く前提)",
+    referencedTables("category_links").has("category_gphoto_albums"),
+    true,
+  );
 } finally {
   rmSync(outDir, { recursive: true, force: true });
 }
