@@ -371,6 +371,8 @@ export const ja = {
     challengeTime: "コンテンツ挑戦時間",
     totalPractice: "累計練習時間",
     missingDurations: (n: number) => ` (${n} 件は再生時間未取得)`,
+    // 2026-10-07: 同じ練習の動画 (視点違い・上げ直し) を 1 本にまとめた数。
+    duplicatesNote: (n: number) => ` (同じ練習の動画 ${n} 本は長い方の 1 本だけ数えています)`,
     manualInput: " (手動入力)",
     firstClearTitle: (date: string) => `初クリア: ${date} (クリックで動画へジャンプ)`,
     firstClearAria: (date: string) => `${date} のクリア動画へスクロール`,
@@ -1260,6 +1262,7 @@ export const en: ContentMessages = {
     challengeTime: "Time spent",
     totalPractice: "Total practice time",
     missingDurations: (n) => ` (${n} without duration)`,
+    duplicatesNote: (n) => ` (${n} video${n === 1 ? "" : "s"} of the same session counted once, using the longest)`,
     manualInput: " (manual)",
     firstClearTitle: (date) => `First clear: ${date} (click to jump to the video)`,
     firstClearAria: (date) => `Scroll to the clear video of ${date}`,

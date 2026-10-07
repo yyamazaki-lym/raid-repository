@@ -129,6 +129,8 @@ import {
   type MitigationIconResult,
 } from "./mitigation-icons";
 import { jstYmdKey, toJstYmd } from "@/lib/video-jst-date";
+import { challengeTime } from "@/lib/video-challenge-time";
+import { fetchAllPages } from "@/lib/fetch-all-pages";
 import {
   rowToCategory,
   type Category,
@@ -901,7 +903,9 @@ export async function backfillFirstClearFromExistingVideos(
     // result panel).
     const { data: videos, error: vErr } = await supabase
       .from("category_links")
-      .select("title, posted_at, created_at, duration_seconds")
+      // 2026-10-07: id と url も読む (同じ練習の動画を 1 本にまとめる
+      // `challengeTime` が使う)。
+      .select("id, title, url, posted_at, created_at, duration_seconds")
       .eq("category_id", cat.id)
       .eq("kind", "video");
     if (vErr || !videos) {
@@ -1029,19 +1033,22 @@ export async function backfillFirstClearFromExistingVideos(
     );
     const startIso =
       firstFloorVideo?.effectiveIso ?? sorted[0]?.effectiveIso ?? iso;
-    let timeToClearSeconds = 0;
-    let videosWithoutDurationCount = 0;
-    for (const v of sorted) {
-      // Only count videos within the practice→clear window.
-      if (v.effectiveIso < startIso) continue;
-      if (v.effectiveIso > iso) continue;
-      const sec = v.duration_seconds as number | null;
-      if (typeof sec !== "number" || sec <= 0) {
-        videosWithoutDurationCount += 1;
-        continue;
-      }
-      timeToClearSeconds += sec;
-    }
+    // 2026-10-07: 同じ練習の動画 (視点違い・上げ直し) は 1 本にまとめる
+    // (`challengeTime`。一覧カード・動画タブと同じ数え方)。
+    const inWindow = sorted.filter(
+      (v) => v.effectiveIso >= startIso && v.effectiveIso <= iso,
+    );
+    const clearTime = challengeTime(
+      inWindow.map((v) => ({
+        id: v.id as string,
+        title: (v.title as string | null) ?? null,
+        url: (v.url as string | null) ?? null,
+        durationSeconds: (v.duration_seconds as number | null) ?? null,
+        postedAt: (v.posted_at as string | null) ?? (v.created_at as string),
+      })),
+    );
+    const timeToClearSeconds = clearTime.totalSeconds;
+    const videosWithoutDurationCount = clearTime.missing;
 
     filledDetails.push({
       slug: cat.slug as string,
@@ -3796,19 +3803,42 @@ export async function backfillStrategyThumbnailsChunk(opts: {
 export async function fetchPracticeSecondsByCategory(): Promise<
   Record<string, number>
 > {
+  // 2026-10-07: 同じ練習の動画 (視点違い・上げ直し) を 1 本にまとめるため、
+  // SQL の `SUM(duration_seconds)` (RPC `practice_seconds_by_category`) から
+  // 動画の行を読んで JS で集計する形に戻した。まとめる判定は題名の番号と
+  // 日付を見るので SQL では書けない (`challengeTime`)。転送は動画数に比例
+  // するが、読むのは 5 列だけ。RPC は schema に残してある (呼ばない)。
   const supabase = await createClient();
-  const { data, error } = await supabase.rpc("practice_seconds_by_category");
-  if (error || !data) return {};
+  const res = await fetchAllPages(async (from, to) => {
+    const { data, error } = await supabase
+      .from("category_links")
+      .select("id, category_id, title, url, duration_seconds, posted_at")
+      .eq("kind", "video")
+      .order("id", { ascending: true })
+      .range(from, to);
+    return { data: (data ?? null) as Array<Record<string, unknown>> | null, error };
+  });
+  // 失敗・打ち切りは従来どおり `{}` (バッジ非表示に degrade)。部分結果で
+  // 少ない時間を出さない。
+  if (res.error || res.truncated) return {};
+  const byCategory = new Map<string, Parameters<typeof challengeTime>[0][number][]>();
+  for (const r of res.rows) {
+    const cid = r.category_id as string | null;
+    if (!cid) continue;
+    const list = byCategory.get(cid) ?? [];
+    list.push({
+      id: String(r.id),
+      title: (r.title as string | null) ?? null,
+      url: (r.url as string | null) ?? null,
+      durationSeconds: (r.duration_seconds as number | null) ?? null,
+      postedAt: (r.posted_at as string | null) ?? null,
+    });
+    byCategory.set(cid, list);
+  }
   const totals: Record<string, number> = {};
-  for (const row of data as Array<{
-    category_id: string;
-    total_seconds: number | string | null;
-  }>) {
-    // bigint は PostgREST 経由で number (安全域内) or string になり得るので
-    // 両対応で正規化する。
-    const sec = Number(row.total_seconds);
-    if (!Number.isFinite(sec) || sec <= 0) continue;
-    totals[row.category_id] = sec;
+  for (const [cid, list] of byCategory) {
+    const sec = challengeTime(list).totalSeconds;
+    if (sec > 0) totals[cid] = sec;
   }
   return totals;
 }
@@ -3870,7 +3900,8 @@ export async function fetchTimeToClearByCategory(): Promise<
 
   const { data: videos, error: vErr } = await supabase
     .from("category_links")
-    .select("category_id, title, duration_seconds, posted_at, created_at")
+    // 2026-10-07: id と url も読む (`challengeTime` が使う)。
+    .select("id, category_id, title, url, duration_seconds, posted_at, created_at")
     .in("category_id", catIds)
     .eq("kind", "video")
     .or(`posted_at.lte.${postedAtCapIso},posted_at.is.null`);
@@ -3923,14 +3954,19 @@ export async function fetchTimeToClearByCategory(): Promise<
     );
     const startAt = firstFloorVideo?.effectiveIso ?? list[0]!.effectiveIso;
 
-    let total = 0;
-    for (const v of list) {
-      const sec = v.duration_seconds as number | null;
-      if (typeof sec !== "number" || sec <= 0) continue;
-      if (v.effectiveIso < startAt) continue;
-      if (v.effectiveIso > info.firstClearAt) continue;
-      total += sec;
-    }
+    // 2026-10-07: 範囲 (1 層練習〜初クリア) に入る動画のうち、同じ練習の
+    // 動画は 1 本にまとめる (`challengeTime`)。
+    const total = challengeTime(
+      list
+        .filter((v) => v.effectiveIso >= startAt && v.effectiveIso <= info.firstClearAt)
+        .map((v) => ({
+          id: v.id as string,
+          title: (v.title as string | null) ?? null,
+          url: (v.url as string | null) ?? null,
+          durationSeconds: (v.duration_seconds as number | null) ?? null,
+          postedAt: (v.posted_at as string | null) ?? (v.created_at as string),
+        })),
+    ).totalSeconds;
     if (total > 0) totals[cid] = total;
   }
   return totals;
