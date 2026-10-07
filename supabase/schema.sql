@@ -751,7 +751,10 @@ BEGIN
   SELECT count(*) INTO n
     FROM public.schedule_session_memos
    WHERE author_user_id = NEW.author_user_id
-     AND raw_date = NEW.raw_date;
+     AND raw_date = NEW.raw_date
+     -- 2026-10-07: 上書きになる行自身は数えない (取り込みの上書き付き INSERT でも
+     -- INSERT 前のトリガーが走るので、10 件ある日付の行を取り込み直すと弾いていた)。
+     AND id <> NEW.id;
   IF n >= 10 THEN
     RAISE EXCEPTION 'memo_limit_per_date'
       USING ERRCODE = 'check_violation', DETAIL = 'limit=10';
