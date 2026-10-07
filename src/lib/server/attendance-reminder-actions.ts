@@ -184,7 +184,9 @@ export async function getAttendanceReminderSettingsAction(): Promise<
     const settings = await fetchAttendanceReminderSettings();
     return { ok: true, settings };
   } catch (e) {
-    return { ok: false, reason: `設定の取得に失敗しました: ${String(e)}` };
+    // 2026-10-07 セキュリティ精査: 例外の中身 (DB のエラー文など) は返さず
+    // ログにだけ出す (dbError の方針)。
+    return { ok: false, reason: dbError("催促設定の取得", e) };
   }
 }
 
@@ -204,7 +206,7 @@ export async function previewAttendanceReminderAction(): Promise<
     const previews = await buildReminderPreviews();
     return { ok: true, previews };
   } catch (e) {
-    return { ok: false, reason: `プレビュー失敗: ${String(e)}` };
+    return { ok: false, reason: dbError("催促のプレビュー", e) };
   }
 }
 

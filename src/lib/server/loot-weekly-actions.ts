@@ -1,6 +1,5 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { requireDiscordMember } from "./auth";
 import { dbError } from "./db-error";
@@ -95,14 +94,8 @@ export async function setMyLootWeeklyStatusAction(input: {
     { onConflict: "category_id,week_start,discord_user_id" },
   );
   if (error) return { ok: false, reason: dbError("消化チェック更新", error) };
-  revalidateQuietly();
+  // 2026-10-07 セキュリティ精査: 再検証はしない。画面は `router.refresh()` で
+  // 取り直すので不要で、呼ぶとメンバーが連打するたびに Google Sheets の
+  // Data Cache を全カテゴリぶん捨てさせられた (my-profile-actions.ts と同じ)。
   return { ok: true };
-}
-
-function revalidateQuietly() {
-  try {
-    revalidatePath("/category", "layout");
-  } catch {
-    // best-effort
-  }
 }

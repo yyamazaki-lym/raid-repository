@@ -1472,6 +1472,7 @@ function YouTubePreview({
   onClose,
 }: {
   id: string;
+  /** 元の URL。href には `safeHref` を通して使う (2026-10-07、多層防御)。 */
   url: string;
   title: string;
   isActive: boolean;
@@ -1536,7 +1537,7 @@ function YouTubePreview({
            できないため、「YouTube で開く」を常に表示してユーザーが
            即座に外部タブへ逃げられるようにしておく。 */}
         <a
-          href={url}
+          href={safeHref(url)}
           target="_blank"
           rel="noopener noreferrer"
           onClick={(e) => e.stopPropagation()}
@@ -1584,7 +1585,7 @@ function YouTubePreview({
         </span>
       </span>
       <a
-        href={url}
+        href={safeHref(url)}
         target="_blank"
         rel="noopener noreferrer"
         onClick={(e) => e.stopPropagation()}

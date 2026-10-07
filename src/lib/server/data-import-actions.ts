@@ -4,6 +4,7 @@ import { assertAdminResult } from "./auth";
 import { dbError } from "./db-error";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { isSensitiveSettingKey } from "@/lib/data-export";
+import { isSafeUrl } from "@/lib/url-safe";
 import {
   IMPORT_KEY_BATCH,
   importKeyColumns,
@@ -30,6 +31,20 @@ const IMPORT_ROWS_MAX = 5000;
 const IN_CHUNK = 100;
 
 type Fail = { ok: false; reason: string };
+
+/**
+ * リンクの行の URL 列が http(s) か。`url` は必須、`thumbnail_url` /
+ * `logs_url` は空なら可 (列が無い行もそのまま通す)。
+ */
+function linkRowUrlsAreSafe(row: ImportRow): boolean {
+  if (!isSafeUrl(typeof row.url === "string" ? row.url : null)) return false;
+  for (const col of ["thumbnail_url", "logs_url"] as const) {
+    const value = row[col];
+    if (value == null || value === "") continue;
+    if (typeof value !== "string" || !isSafeUrl(value)) return false;
+  }
+  return true;
+}
 
 function checkInput(
   part: unknown,
@@ -112,6 +127,18 @@ export async function applyImportBatchAction(input: {
       ? v.rows.filter((r) => !isSensitiveSettingKey(String(r.key ?? "")))
       : v.rows;
   if (rows.length === 0) return { ok: true, written: 0 };
+  // 2026-10-07 セキュリティ精査: リンクの URL は画面で href / src になるので、
+  // 通常の登録 (Server Action の isSafeUrl) と同じく http(s) に限る。取り込みは
+  // service role で列をそのまま書くため、この確かめを迂回していた。
+  if (input.table === "category_links") {
+    const bad = rows.filter((r) => !linkRowUrlsAreSafe(r)).length;
+    if (bad > 0) {
+      return {
+        ok: false,
+        reason: `http(s) でない URL を含むリンクが ${bad} 行あります (この塊は取り込みませんでした)`,
+      };
+    }
+  }
 
   const db = createSupabaseServiceRoleClient();
   const { data, error } = await db

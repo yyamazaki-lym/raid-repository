@@ -53,10 +53,17 @@ export async function updateCategoryMacroAction(
   const auth = await assertAdminResult();
   if (!auth.ok) return { ok: false, reason: auth.reason };
 
+  // 2026-10-07 セキュリティ精査 (L-12 の回帰): 受け取った patch をそのまま
+  // update に渡すと、型に無い列 (category_id・is_current など) も書けた。
+  // 書いてよい列だけを拾う (recruitment-templates-actions.ts と同じ形)。
+  const dbPatch: Record<string, unknown> = {};
+  if (patch.label !== undefined) dbPatch.label = patch.label;
+  if (patch.body !== undefined) dbPatch.body = patch.body;
+
   const supabase = await createClient();
   const { error } = await supabase
     .from("category_macros")
-    .update(patch)
+    .update(dbPatch)
     .eq("id", id);
   if (error) return { ok: false, reason: dbError("マクロ更新", error) };
   return { ok: true };

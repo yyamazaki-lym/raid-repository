@@ -188,14 +188,18 @@ export async function recordAttendanceActuals(
  */
 export async function deleteAttendanceActualsForReport(
   reportCode: string,
-): Promise<void> {
+): Promise<{ ok: true } | { ok: false; error: unknown }> {
+  // 2026-10-07 セキュリティ精査: 以前は PostgREST の `{ error }` を見ておらず、
+  // 消せなかったときも成功扱いになって、消したレポートの出席が残った。
   try {
     const db = createSupabaseServiceRoleClient();
-    await db
+    const { error } = await db
       .from("fflogs_attendance_actuals")
       .delete()
       .eq("report_code", reportCode);
+    if (error) return { ok: false, error };
+    return { ok: true };
   } catch (e) {
-    console.warn("[attendance-actuals] delete failed:", e);
+    return { ok: false, error: e };
   }
 }

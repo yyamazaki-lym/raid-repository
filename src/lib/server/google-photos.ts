@@ -1,7 +1,22 @@
 import "server-only";
 import { decodeHtmlEntities } from "@/lib/html-entities";
 import { isPublicHttpUrl } from "@/lib/url-safe";
+import { fetchErrorReason } from "@/lib/fetch-error-reason";
 import { fetchWithSafeRedirect, readBodyWithLimit } from "./page-title";
+
+/**
+ * このモジュールが自分で投げる失敗 (文言は画面に出してよい)。それ以外の例外
+ * (通信の失敗など) の message はそのまま画面に出さない — `describeGphotoFetchError`。
+ */
+class GphotoFetchError extends Error {}
+
+/**
+ * `fetchGooglePhotosAlbum` の失敗を、admin の画面に出してよい短い文に直す
+ * (2026-10-07 セキュリティ精査: 以前は例外の message をそのまま返していた)。
+ */
+export function describeGphotoFetchError(e: unknown): string {
+  return e instanceof GphotoFetchError ? e.message : fetchErrorReason(e);
+}
 
 // アルバムページの body 読み取り上限。写真数の多い共有アルバムは埋め込み
 // JSON が数 MB になりうるので page-title の 1MB より緩めに取るが、巨大
@@ -60,7 +75,7 @@ export async function fetchGooglePhotosAlbum(
   try {
     parsed = new URL(shareUrl);
   } catch {
-    throw new Error("URL が不正です");
+    throw new GphotoFetchError("URL が不正です");
   }
 
   // SSRF defense-in-depth: 入口と各 redirect hop で公開 http(s) ホストを強制。
@@ -68,7 +83,7 @@ export async function fetchGooglePhotosAlbum(
   // loopback へ誘導するリダイレクトを遮断する (admin 操作だが多層防御)。Firebase
   // Dynamic Links は多段 redirect しうるので hop 上限は 5 まで許容。
   if (!isPublicHttpUrl(parsed.toString())) {
-    throw new Error("URL が不正です");
+    throw new GphotoFetchError("URL が不正です");
   }
 
   const res = await fetchWithSafeRedirect(
@@ -84,7 +99,7 @@ export async function fetchGooglePhotosAlbum(
     5,
   );
   if (!res || !res.ok) {
-    throw new Error(
+    throw new GphotoFetchError(
       `アルバムを取得できませんでした (HTTP ${res?.status ?? "?"})`,
     );
   }
@@ -92,11 +107,11 @@ export async function fetchGooglePhotosAlbum(
   // 未宣言でも chunked 読み取りで上限到達時に abort する (page-title と同方式)。
   const declaredLen = Number(res.headers.get("content-length") ?? "0");
   if (declaredLen > MAX_GPHOTO_HTML_BYTES) {
-    throw new Error("アルバムページが大きすぎます");
+    throw new GphotoFetchError("アルバムページが大きすぎます");
   }
   const html = await readBodyWithLimit(res, MAX_GPHOTO_HTML_BYTES);
   if (html === null) {
-    throw new Error("アルバムページが大きすぎます");
+    throw new GphotoFetchError("アルバムページが大きすぎます");
   }
 
   // タイトル抽出 (og:title 優先、`<title>` フォールバック)。

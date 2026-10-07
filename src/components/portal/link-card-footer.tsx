@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { Check, Eye, Plus, Tag, X } from "lucide-react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
@@ -37,7 +38,8 @@ import {
  * 入れられる (候補止まりで、自動では付けない)。
  *
  * 楽観更新はしない。既読も タグも server の値を単一の真実にして
- * `router.refresh()` 相当 (Server Action の `revalidatePath`) を待つ —
+ * 取り直しを待つ (既読は `router.refresh()`、タグは admin の Server Action の
+ * `revalidatePath`。既読の Action は 2026-10-07 から再検証しない) —
  * 「未読 n 人」は他人の状態を含む集計なので、client 側で正しく先読み
  * できない (自分の分だけ引いても admin 向けの名前一覧が合わなくなる)。
  */
@@ -64,6 +66,7 @@ export function LinkCardFooter({
   onToggleTagFilter: (label: string) => void;
 }) {
   const m = useMessages();
+  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState("");
@@ -73,7 +76,13 @@ export function LinkCardFooter({
   const setRead = (next: boolean) => {
     startTransition(async () => {
       const result = await setCategoryLinkReadAction(linkId, next);
-      if (!result.ok) toast.error(m.linkCard.readFailed(result.reason));
+      if (!result.ok) {
+        toast.error(m.linkCard.readFailed(result.reason));
+        return;
+      }
+      // 2026-10-07: 既読の Action は再検証しなくなった (メンバーが連打できるため)
+      // ので、ここで今のページだけを取り直す。
+      router.refresh();
     });
   };
 

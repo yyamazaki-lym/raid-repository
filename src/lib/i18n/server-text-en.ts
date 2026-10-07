@@ -226,6 +226,8 @@ export const SERVER_TEXT_EN: ServerTextDictRaw = {
       "The page is too large",
     "ページを取得できませんでした":
       "Could not fetch the page",
+    "予定の指定が不正です":
+      "Invalid session",
     "マクロの指定が不正です":
       "Invalid macro",
     "メンバーキーが不正です":
@@ -465,6 +467,8 @@ export const SERVER_TEXT_EN: ServerTextDictRaw = {
       "Up to {0} tags per link",
     "プレビュー失敗: ${String(e)}":
       "Preview failed: {0}",
+    "http(s) でない URL を含むリンクが ${bad} 行あります (この塊は取り込みませんでした)":
+      "{0} links have a non-http(s) URL (this batch was not imported)",
     "pull の保存に失敗: ${error.message}":
       "Failed to save pulls: {0}",
     "保存済みの pull を読めませんでした: ${existingError.message}":
@@ -665,8 +669,14 @@ export const SERVER_TEXT_EN: ServerTextDictRaw = {
       "add the candidate date",
     "備考更新":
       "update the note",
+    "出席の実績の削除":
+      "delete the attendance records",
+    "催促のプレビュー":
+      "preview the reminder",
     "催促設定の保存":
       "save the reminder settings",
+    "催促設定の取得":
+      "load the reminder settings",
     "凡例保存":
       "save the legend",
     "凡例削除":
@@ -681,6 +691,8 @@ export const SERVER_TEXT_EN: ServerTextDictRaw = {
       "clear the video's Logs URL",
     "動画オフセット保存":
       "save the video offset",
+    "動画リンクの取得":
+      "load the video links",
     "動画リンク削除":
       "delete the video link",
     "動画一覧取得":

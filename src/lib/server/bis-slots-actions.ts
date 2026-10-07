@@ -1,6 +1,5 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { requireDiscordMember } from "./auth";
 import { dbError } from "./db-error";
@@ -50,10 +49,9 @@ export async function setCategoryBisSlotAction(input: {
     { onConflict: "bis_link_id,slot" },
   );
   if (error) return { ok: false, reason: dbError("BiS 部位の保存", error) };
-  try {
-    revalidatePath("/category", "layout");
-  } catch {
-    // best-effort
-  }
+  // 2026-10-07 セキュリティ精査: `revalidatePath("/category", "layout")` は
+  // 呼ばない。画面は楽観反映のあと `router.refresh()` で取り直すので不要で、
+  // 呼ぶとメンバーが連打するたびに軽減表・ロットの Google Sheets の Data Cache
+  // を全カテゴリぶん捨てさせられた (my-profile-actions.ts と同じ理由)。
   return { ok: true };
 }

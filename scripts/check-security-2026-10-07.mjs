@@ -10,6 +10,9 @@
  *   M-2 ミス注釈は実在する pull にだけ付け、カテゴリは pull の行から取る。1 人 1 日の上限
  *   L   URL の値 (`/auth/denied?reason=`・`/login?error=`・`?fflogs_oauth_error=`)
  *       をそのまま画面に出さない (2026-08-05 の L-7 の残り)
+ *   L   Server Action: 更新は書いてよい列だけ (L-12 の回帰)・admin に生のエラー文を
+ *       返さない・失敗を握りつぶさない・cookie を返さない・デモの匿名ゲスト・
+ *       メンバーの Action で再検証しない・YouTube リンクと取り込みの URL は http(s)
  *
  * Discord に流す文の無害化は check-discord-text.mjs が見る。
  */
@@ -119,6 +122,82 @@ console.log("\nL URL の値をそのまま画面に出さない");
   check("FFLogs OAuth: 辞書 (ja / en) にすべてのコードの文言がある", blocks.map((b) => codes.filter((c) => !new RegExp(`^\\s*${c}: "`, "m").test(b))), [[], []]);
   const dialog = read("src/components/portal/settings-dialog.tsx");
   check("FFLogs OAuth: 画面は既知のコードだけを辞書の文言に変える", /isFflogsOauthErrorCode\(errParam\)\s*\?\s*m\.settingsDialog\.oauthErrors\[errParam\]\s*:\s*m\.settingsDialog\.oauthErrorUnknown;/.test(dialog) && !/toastOauthError\(errParam\)/.test(dialog), true);
+}
+
+console.log("\nL Server Action の入力と返す値");
+{
+  // L-12 の回帰: 受け取った patch をそのまま update に渡さない。
+  for (const [file, fn, cols] of [
+    ["src/lib/server/category-macros-actions.ts", "updateCategoryMacroAction", ["label", "body"]],
+    ["src/lib/server/category-waymarks-actions.ts", "updateCategoryWaymarkAction", ["label", "body", "note"]],
+  ]) {
+    const body = code(fnBody(read(file), fn));
+    const picked = [...body.matchAll(/if \(patch\.(\w+) !== undefined\) dbPatch\.(\w+) = patch\.\1;/g)].map((x) => x[1]);
+    check(`${fn}: 書いてよい列だけを拾う (${cols.join(" / ")})`, picked, cols);
+    check(`${fn}: update には拾った列だけを渡す`, /\.update\(dbPatch\)/.test(body) && !/\.update\(patch\)/.test(body), true);
+  }
+
+  // admin に返す失敗の理由に、例外や DB の生の文を載せない。
+  const reminder = code(read("src/lib/server/attendance-reminder-actions.ts"));
+  check("出欠催促: 例外の中身 (String(e)) を返さない", /String\(e\)/.test(reminder), false);
+  const categories = code(read("src/lib/server/categories-actions.ts"));
+  check("動画の長さの補完: DB の生のエラー文を返さない", /"video links fetch failed: " \+ msg/.test(categories), false);
+  check("Google フォト: 例外は describeGphotoFetchError で直してから返す (2 か所)", (categories.match(/const msg = describeGphotoFetchError\(err\);/g) ?? []).length, 2);
+  check("Google フォト: 例外の message をそのまま使わない", /err instanceof Error \? err\.message/.test(categories), false);
+  const gphoto = read("src/lib/server/google-photos.ts");
+  check("Google フォト: 自分で投げる失敗は GphotoFetchError (それ以外は fetchErrorReason)", !/throw new Error\(/.test(gphoto) && /e instanceof GphotoFetchError \? e\.message : fetchErrorReason\(e\)/.test(gphoto), true);
+
+  // 出席の実績の削除の失敗を握りつぶさない。
+  const actuals = read("src/lib/server/attendance-actuals.ts");
+  check("出席の実績の削除: { error } を見て失敗を返す", /const \{ error \} = await db\s*\.from\("fflogs_attendance_actuals"\)\s*\.delete\(\)/.test(actuals) && /if \(error\) return \{ ok: false, error \};/.test(actuals), true);
+  const fights = code(read("src/lib/server/fflogs-fights-actions.ts"));
+  check("レポートの削除: 出席の実績を消せなければ台帳の前で止める", /const actuals = await deleteAttendanceActualsForReport\(code\);\s*if \(!actuals\.ok\) \{\s*return \{ ok: false, reason: dbError\(/.test(fights), true);
+
+  // FFLogs の session cookie はクライアントへ一部も返さない。
+  const cookie = code(fnBody(categories, "getFflogsSessionCookieStatus"));
+  check("FFLogs cookie の状態: 有無だけを返す (先頭の文字を返さない)", /preview|\.slice\(/.test(cookie) || !/return \{ set: Boolean\(value\) \};/.test(cookie), false);
+
+  // 公開デモの匿名ゲストと、予定の ID の形。
+  const native = read("src/lib/server/native-schedule-actions.ts");
+  const upsert = code(fnBody(native, "upsertNativeScheduleAttendanceAction"));
+  check("出欠の回答: デモの匿名ゲストを先に弾く", upsert.indexOf("if (member.isDemoGuest)") > 0 && upsert.indexOf("if (member.isDemoGuest)") < upsert.indexOf("createClient()"), true);
+  check("出欠の回答: 予定の ID は UUID の形だけ", /if \(!\/\^\[0-9a-f-\]\{36\}\$\/i\.test\(sessionId\)\)/.test(upsert), true);
+
+  // メンバーが連打できる Action で再検証しない (外部取得・Data Cache を捨てさせない)。
+  const memberActions = [
+    ["src/lib/server/native-schedule-actions.ts", "upsertNativeScheduleAttendanceAction"],
+    ["src/lib/server/native-schedule-actions.ts", "updateNativeScheduleMemberCommentAction"],
+    ["src/lib/server/pull-notes-actions.ts", "addPullNoteAction"],
+    ["src/lib/server/pull-notes-actions.ts", "deletePullNoteAction"],
+    ["src/lib/server/category-link-actions.ts", "setCategoryLinkReadAction"],
+    ["src/lib/server/bis-slots-actions.ts", "setCategoryBisSlotAction"],
+    ["src/lib/server/loot-weekly-actions.ts", "setMyLootWeeklyStatusAction"],
+  ];
+  check(
+    "メンバーの Action 7 本は revalidatePath / revalidateQuietly を呼ばない",
+    memberActions.filter(([f, fn]) => {
+      const body = code(fnBody(read(f), fn));
+      return body === "" || /revalidatePath\(|revalidateQuietly\(/.test(body);
+    }).map(([, fn]) => fn),
+    [],
+  );
+  const footer = read("src/components/portal/link-card-footer.tsx");
+  check("既読の切り替え: 画面が router.refresh() で取り直す", /await setCategoryLinkReadAction\(linkId, next\);[\s\S]{0,400}router\.refresh\(\);/.test(footer), true);
+
+  // YouTube リンクは http(s) だけ。
+  const yt = read("src/lib/youtube.ts");
+  check("parseYouTubeId: http(s) 以外は ID を返さない", /if \(parsed\.protocol !== "https:" && parsed\.protocol !== "http:"\) return null;/.test(yt), true);
+  const videos = read("src/app/(portal)/category/[slug]/videos/videos-list.tsx");
+  check("動画の「YouTube で開く」: href は safeHref を通す", /href=\{url\}/.test(videos), false);
+
+  // 取り込みもリンクの URL を http(s) に限る。
+  const importer = code(read("src/lib/server/data-import-actions.ts"));
+  check(
+    "取り込み: リンクの URL 列を確かめてから書く",
+    /if \(input\.table === "category_links"\) \{\s*const bad = rows\.filter\(\(r\) => !linkRowUrlsAreSafe\(r\)\)\.length;/.test(importer) &&
+      importer.indexOf("linkRowUrlsAreSafe(r)") < importer.indexOf(".upsert(rows,"),
+    true,
+  );
 }
 
 if (failures > 0) {
