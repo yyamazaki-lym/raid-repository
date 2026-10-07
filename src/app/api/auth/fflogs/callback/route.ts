@@ -6,6 +6,7 @@ import {
   exchangeCodeForTokens,
 } from "@/lib/server/fflogs-oauth";
 import { assertAdminResult } from "@/lib/server/auth";
+import type { FflogsOauthErrorCode } from "@/lib/fflogs-oauth-error";
 
 /**
  * CSRF state (乱数トークン) の定数時間比較。`===` は先頭一致長で早期 return
@@ -39,7 +40,8 @@ function timingSafeStrEqual(a: string, b: string): boolean {
  *   state が漏れない。
  *
  * On error (state mismatch, code exchange failure, etc.) redirects
- * with an `?fflogs_oauth_error=...` query so the UI can toast.
+ * with an `?fflogs_oauth_error=<code>` query so the UI can toast
+ * (code は `fflogs-oauth-error.ts` の既知の値だけ。文は画面側の辞書)。
  */
 
 export const runtime = "nodejs";
@@ -72,37 +74,37 @@ export async function GET(req: NextRequest) {
     return response;
   }
 
+  // 2026-10-07 セキュリティ精査: 画面へ戻す URL には理由のコード
+  // (`fflogs-oauth-error.ts`) だけを載せる。文そのものを載せていた頃は、
+  // 誰でも `/?fflogs_oauth_error=<任意の文>` で正規のドメインに案内文を
+  // 出せた。詳しい理由はここでログに出す。
+  function fail(errorCode: FflogsOauthErrorCode, detail: string): NextResponse {
+    console.warn("[fflogs-oauth] callback failed:", errorCode, detail);
+    homeUrl.searchParams.set("fflogs_oauth_error", errorCode);
+    return clearStateCookie(NextResponse.redirect(homeUrl));
+  }
+
   // FFLogs may redirect back with `?error=access_denied` if the user
   // declined. Surface that to the UI rather than silently swallowing.
   if (errorParam) {
-    homeUrl.searchParams.set(
-      "fflogs_oauth_error",
-      `FFLogs から拒否されました: ${errorParam}`,
-    );
-    return clearStateCookie(NextResponse.redirect(homeUrl));
+    return fail("denied", errorParam.slice(0, 100));
   }
 
   if (!code || !state) {
-    homeUrl.searchParams.set(
-      "fflogs_oauth_error",
-      "code または state が欠落しています",
-    );
-    return clearStateCookie(NextResponse.redirect(homeUrl));
+    return fail("missing_params", "code または state が欠落しています");
   }
 
   if (!cookieState || !timingSafeStrEqual(cookieState, state)) {
-    homeUrl.searchParams.set(
-      "fflogs_oauth_error",
+    return fail(
+      "state_mismatch",
       "OAuth state が一致しません — リクエストが改ざんされたか cookie が失効した可能性",
     );
-    return clearStateCookie(NextResponse.redirect(homeUrl));
   }
 
   const redirectUri = buildRedirectUri(origin);
   const result = await exchangeCodeForTokens(code, redirectUri);
   if (!result.ok) {
-    homeUrl.searchParams.set("fflogs_oauth_error", result.reason);
-    return clearStateCookie(NextResponse.redirect(homeUrl));
+    return fail(result.code, result.reason);
   }
 
   homeUrl.searchParams.set("fflogs_oauth_connected", "1");

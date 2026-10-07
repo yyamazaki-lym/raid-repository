@@ -13,6 +13,20 @@ export const ja = {
   settingsDialog: {
     toastOauthConnected: "FFLogs OAuth 認証に成功しました",
     toastOauthError: (reason: string) => `FFLogs OAuth: ${reason}`,
+    // 2026-10-07: `?fflogs_oauth_error=<コード>` の文言 (`fflogs-oauth-error.ts`)。
+    // 詳しい理由 (HTTP status など) はサーバーのログにだけ出る。
+    oauthErrors: {
+      denied: "FFLogs 側で連携が拒否されました",
+      missing_params: "FFLogs からの戻りに必要な値がありません。もう一度接続してください",
+      state_mismatch: "確認用の値が一致しません (時間が経ちすぎたか、別の画面から戻った可能性)。もう一度接続してください",
+      not_configured: "OAuth クライアントが未設定です (Vercel の FFLOGS_OAUTH_CLIENT_ID / FFLOGS_OAUTH_CLIENT_SECRET)",
+      client_auth: "OAuth クライアントの認証に失敗しました。fflogs.com/api/clients/ の client_id / client_secret と、Public Client に印が付いていないかを確かめてください",
+      exchange_failed: "token の交換に失敗しました (詳しくは Vercel のログ)",
+      bad_response: "token の応答が想定外の形式です",
+      persist_failed: "token を暗号化して保存できませんでした (SECRET_ENCRYPTION_KEY と SUPABASE_SERVICE_ROLE_KEY を確かめてください)",
+      network: "FFLogs に接続できませんでした。時間をおいてもう一度試してください",
+    },
+    oauthErrorUnknown: "連携に失敗しました。もう一度接続してください",
     toastChannelError: (reason: string) => `チャンネルID: ${reason}`,
     toastSaved: "設定を保存しました（全員共有）",
   },
@@ -907,6 +921,18 @@ export const en: SettingsMessages = {
   settingsDialog: {
     toastOauthConnected: "FFLogs OAuth connected",
     toastOauthError: (reason) => `FFLogs OAuth: ${reason}`,
+    oauthErrors: {
+      denied: "FFLogs declined the connection",
+      missing_params: "FFLogs returned without the required values. Please connect again",
+      state_mismatch: "The verification value did not match (it may have expired, or you returned from another tab). Please connect again",
+      not_configured: "The OAuth client is not configured (FFLOGS_OAUTH_CLIENT_ID / FFLOGS_OAUTH_CLIENT_SECRET on Vercel)",
+      client_auth: "OAuth client authentication failed. Check the client_id / client_secret at fflogs.com/api/clients/ and that Public Client is not checked",
+      exchange_failed: "Token exchange failed (see the Vercel logs for details)",
+      bad_response: "The token response had an unexpected format",
+      persist_failed: "Could not store the tokens encrypted (check SECRET_ENCRYPTION_KEY and SUPABASE_SERVICE_ROLE_KEY)",
+      network: "Could not reach FFLogs. Please try again later",
+    },
+    oauthErrorUnknown: "The connection failed. Please connect again",
     toastChannelError: (reason) => `Channel ID: ${reason}`,
     toastSaved: "Settings saved (shared with everyone)",
   },

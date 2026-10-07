@@ -10,6 +10,15 @@ import {
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { fetchAppSetting } from "@/lib/supabase/app-settings";
 import { APP_UTC_OFFSET_MS } from "@/lib/app-timezone";
+// Discord mention の発火トリガーを無害化する二次防御 (2.8 follow-up)。
+// 通知本文に入るユーザー/admin 入力 (note / display_name / symbol) に適用する。
+// postToDiscord の `allowed_mentions` で ping 自体は既に抑止しているが、その
+// 単一防御が将来緩められた場合の退行に備える (2026-10-07 に共通モジュールへ)。
+import {
+  escapeDiscordMarkdown,
+  neutralizeMentions,
+  toSingleLine,
+} from "@/lib/discord-text";
 import {
   FALLBACK_DEFAULT_END_TIME,
   FALLBACK_DEFAULT_START_TIME,
@@ -334,37 +343,19 @@ export function computeJstTodayUtcRange(): {
 type SupabaseClient = ReturnType<typeof createSupabaseServiceRoleClient>;
 
 /**
- * Discord mention の発火トリガーを無害化する二次防御 (2.8 follow-up)。
- * 通知本文に入るユーザー/admin 入力 (note / display_name / symbol) に適用する。
- * postToDiscord の `allowed_mentions` で ping 自体は既に抑止しているが、その
- * 単一防御が将来緩められた場合の退行に備え、`@everyone`/`@here` とユーザー/
- * ロール/チャンネル mention 構文をゼロ幅スペースで崩す (表示はほぼ不変)。
- */
-function neutralizeMentions(s: string): string {
-  // U+200B (ゼロ幅スペース) を mention トリガー直後に挿入して構文を崩す。
-  // ソースに不可視文字を埋め込まないよう codePoint から組み立てる。
-  const zwsp = String.fromCharCode(0x200b);
-  return s
-    .replace(/@(everyone|here)/g, "@" + zwsp + "$1")
-    .replace(/<(@[!&]?|#)/g, "<" + zwsp + "$1");
-}
-
-/**
  * 2.9 follow-up (2026-06-12): symbol の read 時サニタイズ。
  * write 側 (upsertNativeScheduleAttendanceAction の制御文字除去 + 32 字制限,
  * #177) と DB の CHECK 制約 (schema.sql §5e, NOT VALID = 既存行は未検証) を
  * 迂回した legacy/直叩き行が混ざっていても、通知本文には複数行・長文が
  * 流入しないよう mention 無害化と同じ「読み出し時防御」を重ねる。
  * write 側と同一の正規化 (制御文字→空白 / 連続空白圧縮 / trim / 32 字)。
+ *
+ * 2026-10-07 セキュリティ精査: 記号はメンバーが自由に書けるので、Markdown
+ * も文字として出す (`[文](URL)` が Bot の投稿の中でリンクになっていた)。
+ * 32 字で切ってからエスケープする (切った後に `\` だけが残らないように)。
  */
 function sanitizeSymbol(s: string): string {
-  return neutralizeMentions(
-    s
-      .replace(/\p{Cc}/gu, " ")
-      .replace(/\s+/g, " ")
-      .trim()
-      .slice(0, 32),
-  );
+  return escapeDiscordMarkdown(neutralizeMentions(toSingleLine(s).slice(0, 32)));
 }
 
 async function buildMessage(

@@ -22,6 +22,10 @@
  * 検証: `node scripts/check-pull-note-tags.mjs`
  */
 
+// 相対パス: 検査 (check-pull-note-tags.mjs) が tsc でこのファイルだけを
+// 組むので、`@/` の別名は解決できない。
+import { neutralizeMentions, toSingleLine } from "../discord-text";
+
 /** タグ id (DB に入る値)。**変えると既存の注釈が「その他」に落ちる。** */
 export const PULL_NOTE_TAG_IDS = [
   "aoe-hit",
@@ -247,8 +251,11 @@ export function buildPullNotesDigest({
   }
   // 一言メモはタグの集計とは別に、そのまま並べる (人が書いた文なので
   // 要約しない)。チーム帰属のものだけ。
+  // 2026-10-07 セキュリティ精査: 貼った人の権限でメンションが飛ぶので
+  // `@everyone` やロールのメンションを崩し、改行は空白にする (偽の見出しを
+  // 作らせない)。
   for (const n of team) {
-    const note = (n.note ?? "").trim();
+    const note = neutralizeMentions(toSingleLine(n.note ?? ""));
     if (note) lines.push(`  - ${labelOf(n.tag)}: ${note}`);
   }
   if (team.length === 0) lines.push(emptyLabel);

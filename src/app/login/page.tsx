@@ -159,6 +159,8 @@ function describeError(code: string | undefined, m: Messages): string | null {
     case "exchange_failed":
       return m.login.errorExchangeFailed;
     default:
-      return m.login.errorGeneric(code);
+      // 2026-10-07 セキュリティ精査: 知らないコードは中身を出さず固定の文言に
+      // する (L-7 の残り。以前は `エラー: <コード>` で任意の文を出せた)。
+      return m.login.errorGeneric;
   }
 }

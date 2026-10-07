@@ -14,7 +14,13 @@
  *   通るので壊れていることに気付けない)。
  */
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import {
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -38,6 +44,10 @@ try {
       "node_modules/typescript/bin/tsc",
       "src/lib/logs/pull-note-tags.ts",
       "--outDir", outDir,
+      // 2026-10-07: ../discord-text を読むようになったので、出力は src/lib を
+      // 根に logs/ 以下へ出る。tsc は相対 import を拡張子なしで出し Node の
+      // ESM は解決できないので `.js` を付ける (check-attendance-reminder と同じ)。
+      "--rootDir", "src/lib",
       "--target", "es2022",
       "--module", "es2022",
       "--moduleResolution", "bundler",
@@ -45,8 +55,19 @@ try {
     ],
     { stdio: "inherit" },
   );
+  for (const f of readdirSync(outDir, { recursive: true })) {
+    if (!f.endsWith(".js")) continue;
+    const fp = join(outDir, f);
+    writeFileSync(
+      fp,
+      readFileSync(fp, "utf8").replace(
+        /(from\s+["'])(\.\.?\/[^"']+?)(?<!\.js)(["'])/g,
+        "$1$2.js$3",
+      ),
+    );
+  }
   const m = await import(
-    pathToFileURL(join(outDir, "pull-note-tags.js")).href
+    pathToFileURL(join(outDir, "logs", "pull-note-tags.js")).href
   );
 
   const note = (over) => ({
@@ -139,6 +160,24 @@ try {
       })
       .split("\n"),
     ["H", "- なし", "self 1"],
+  );
+  // 2026-10-07 セキュリティ精査: 人がコピーして貼るので、貼った人の権限で
+  // メンションが飛ぶ。一言のメンションを崩し、改行で行を増やさせない。
+  const zwsp = String.fromCharCode(0x200b);
+  const injected = m
+    .buildPullNotesDigest({
+      header: "H",
+      notes: [note({ note: "@everyone 見て\n# 偽の見出し <@&123456789012345678>" })],
+      labelOf: (t) => t,
+      selfLabel: (n) => `self ${n}`,
+      emptyLabel: "- なし",
+    })
+    .split("\n");
+  check("一言の改行は空白にする (行が増えない)", injected.length, 3);
+  check(
+    "一言のメンションを崩す",
+    injected[2],
+    `  - aoe-hit: @${zwsp}everyone 見て # 偽の見出し <${zwsp}@&123456789012345678>`,
   );
 
   // 2026-10-06: 傾向の行の hover に出す明細。

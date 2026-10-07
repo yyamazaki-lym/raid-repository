@@ -2,6 +2,7 @@ import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { dbError } from "@/lib/server/db-error";
 import { fetchAppSetting } from "@/lib/supabase/app-settings";
+import type { FflogsOauthErrorCode } from "@/lib/fflogs-oauth-error";
 import {
   deleteSecretValue,
   getSecretValue,
@@ -69,6 +70,17 @@ export type OAuthTokens = {
   expiresAt: string;
 };
 
+/**
+ * start / callback の失敗。`code` だけを画面へ戻す URL に載せ、`reason`
+ * (env 名や HTTP status を含む詳しい文) はサーバーのログに出す
+ * (2026-10-07 セキュリティ精査、`fflogs-oauth-error.ts`)。
+ */
+export type OAuthFailure = {
+  ok: false;
+  code: FflogsOauthErrorCode;
+  reason: string;
+};
+
 /** Read the OAuth client credentials from env (server-only). */
 function getOAuthClientCreds():
   | { clientId: string; clientSecret: string }
@@ -91,11 +103,12 @@ function getOAuthClientCreds():
  */
 export async function buildAuthorizeUrl(
   redirectUri: string,
-): Promise<{ ok: true; url: string; state: string } | { ok: false; reason: string }> {
+): Promise<{ ok: true; url: string; state: string } | OAuthFailure> {
   const creds = getOAuthClientCreds();
   if (!creds) {
     return {
       ok: false,
+      code: "not_configured",
       reason:
         "OAuth クライアント未設定 — fflogs.com/api/clients/ で OAuth クライアントを作成し、Vercel の環境変数 FFLOGS_OAUTH_CLIENT_ID / FFLOGS_OAUTH_CLIENT_SECRET に設定して redeploy してください",
     };
@@ -125,11 +138,12 @@ export async function buildAuthorizeUrl(
 export async function exchangeCodeForTokens(
   code: string,
   redirectUri: string,
-): Promise<{ ok: true; tokens: OAuthTokens } | { ok: false; reason: string }> {
+): Promise<{ ok: true; tokens: OAuthTokens } | OAuthFailure> {
   const creds = getOAuthClientCreds();
   if (!creds) {
     return {
       ok: false,
+      code: "not_configured",
       reason:
         "OAuth クライアント未設定 — Vercel の環境変数 FFLOGS_OAUTH_CLIENT_ID / FFLOGS_OAUTH_CLIENT_SECRET を設定して redeploy してください",
     };
@@ -169,6 +183,7 @@ export async function exchangeCodeForTokens(
       ) {
         return {
           ok: false,
+          code: "client_auth",
           reason:
             "OAuth クライアント認証失敗 — fflogs.com/api/clients/ で client_id / client_secret が正しいか、Public Client にチェックが入っていないかを確認してください",
         };
@@ -182,6 +197,7 @@ export async function exchangeCodeForTokens(
       });
       return {
         ok: false,
+        code: "exchange_failed",
         reason: `token 交換失敗 (HTTP ${res.status}) — Vercel ログで詳細を確認してください`,
       };
     }
@@ -194,6 +210,7 @@ export async function exchangeCodeForTokens(
     if (!data.access_token || !data.refresh_token || !data.expires_in) {
       return {
         ok: false,
+        code: "bad_response",
         reason: "token レスポンスが想定外の形式です",
       };
     }
@@ -207,13 +224,14 @@ export async function exchangeCodeForTokens(
     };
     const persisted = await persistTokens(tokens);
     if (!persisted.ok) {
-      return { ok: false, reason: persisted.reason };
+      return { ok: false, code: "persist_failed", reason: persisted.reason };
     }
     // Best-effort: fetch the connected user's name for the UI badge.
     await fetchAndPersistUserName(tokens.accessToken);
     return { ok: true, tokens };
   } catch (e) {
-    return { ok: false, reason: "fetch error: " + String(e) };
+    // 2026-10-07: 例外の中身は URL (画面) に載せない。callback がログに出す。
+    return { ok: false, code: "network", reason: "fetch error: " + String(e) };
   }
 }
 

@@ -9,12 +9,35 @@ export async function generateMetadata() {
 
 export const dynamic = "force-dynamic";
 
+/**
+ * 画面に出してよい reason (proxy / auth callback / requireDiscordMember など、
+ * このサイト自身が付けるもの)。2026-10-07 セキュリティ精査: 以前は `?reason=`
+ * の値をそのまま出していたため、未ログインのページに任意の案内文を出せた
+ * (2026-08-05 の L-7 と同じ型)。知らない値は出さない。
+ */
+const KNOWN_REASONS = new Set([
+  "missing_role",
+  "not_admin",
+  "no_discord_id",
+  "missing_config",
+  "not_in_guild",
+  "discord_error",
+  "metadata_write_failed",
+  "membership_stale",
+  "membership_revoked",
+  "membership_unverifiable",
+]);
+
 export default async function DeniedPage({
   searchParams,
 }: {
   searchParams: Promise<{ reason?: string }>;
 }) {
-  const { reason } = await searchParams;
+  const { reason: rawReason } = await searchParams;
+  const reason =
+    typeof rawReason === "string" && KNOWN_REASONS.has(rawReason)
+      ? rawReason
+      : undefined;
   const m = await getMessages();
   const isMissingRole = reason === "missing_role";
   const isNotAdmin = reason === "not_admin";

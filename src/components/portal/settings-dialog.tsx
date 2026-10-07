@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { Settings, Save, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { whenToasterReady } from "@/lib/toaster-ready";
+import { isFflogsOauthErrorCode } from "@/lib/fflogs-oauth-error";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -167,8 +168,13 @@ function SettingsDialogBody({
       });
       setOpen(true);
     } else if (errParam) {
+      // 2026-10-07 セキュリティ精査: URL の値はそのまま出さず、既知のコード
+      // だけを辞書の文言に変える (任意の文を出させない)。
+      const text = isFflogsOauthErrorCode(errParam)
+        ? m.settingsDialog.oauthErrors[errParam]
+        : m.settingsDialog.oauthErrorUnknown;
       void whenToasterReady().then(() => {
-        toast.error(m.settingsDialog.toastOauthError(errParam));
+        toast.error(m.settingsDialog.toastOauthError(text));
       });
       setOpen(true);
     }
