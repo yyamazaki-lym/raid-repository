@@ -90,8 +90,11 @@ export const EXPORT_PARTS: readonly ExportPart[] = [
     id: "content",
     tables: [
       { table: "categories", order: ["id"] },
-      { table: "category_links", order: ["id"] },
+      // 2026-10-07: アルバムをリンクより先に (category_links.gphoto_album_id が
+      // アルバムを参照する。取り込みはこの並びで入れるので、逆だとアルバムの
+      // 無い DB でアルバムに紐づくリンクの塊が外部キーで失敗していた)。
       { table: "category_gphoto_albums", order: ["id"] },
+      { table: "category_links", order: ["id"] },
       { table: "category_discord_blocklist", order: ["id"] },
       { table: "category_link_reads", order: ["link_id", "discord_user_id"] },
       { table: "category_onboarding_steps", order: ["category_id", "discord_user_id", "step"] },
