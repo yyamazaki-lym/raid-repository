@@ -179,6 +179,21 @@ try {
     injected[2],
     `  - aoe-hit: @${zwsp}everyone 見て # 偽の見出し <${zwsp}@&123456789012345678>`,
   );
+  // 一言のマスクリンクが、貼った人の投稿の中でリンクにならない。
+  const linked = m
+    .buildPullNotesDigest({
+      header: "H",
+      notes: [note({ note: "[公式の案内](https://evil.example/x) **重要**" })],
+      labelOf: (t) => t,
+      selfLabel: (n) => `self ${n}`,
+      emptyLabel: "- なし",
+    })
+    .split("\n");
+  check(
+    "一言の Markdown を文字として出す (マスクリンク・強調)",
+    linked[2],
+    "  - aoe-hit: \\[公式の案内\\]\\(https://evil.example/x\\) \\*\\*重要\\*\\*",
+  );
 
   // 2026-10-06: 傾向の行の hover に出す明細。
   console.log("\n[行の hover の明細]");
