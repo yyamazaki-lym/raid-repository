@@ -74,6 +74,23 @@ const securityHeaders = [
 // なので切り詰める。先頭 12 文字あれば衝突実用上 0 + 視認性◎。
 const deploymentId = process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 12);
 
+/**
+ * 画像最適化を許す Supabase のホスト = このデプロイが使う project だけ
+ * (2026-10-07 セキュリティ精査、2026-08-05 の L-3 の残り)。`*.supabase.co`
+ * のままだと、誰でも自分の project の public bucket の画像で `/_next/image`
+ * (proxy の対象外 = 未ログインで届く) を使えて、画像最適化の枠を消費させられた。
+ * ビルド時の `NEXT_PUBLIC_SUPABASE_URL` から取る (本番と demo で別の値)。
+ * 画面側の判定 `isOptimizableImageHost` (url-safe.ts) も同じ値を見る。
+ */
+function supabaseImageHost(): string | null {
+  try {
+    return new URL(process.env.NEXT_PUBLIC_SUPABASE_URL ?? "").hostname || null;
+  } catch {
+    return null;
+  }
+}
+const SUPABASE_IMAGE_HOST = supabaseImageHost();
+
 const nextConfig: NextConfig = {
   ...(deploymentId ? { deploymentId } : {}),
   images: {
@@ -81,20 +98,24 @@ const nextConfig: NextConfig = {
     // Even though we render with `unoptimized`, declaring the pattern here
     // avoids compatibility issues with future image optimization choices.
     //
-    // `*.supabase.co` は Supabase Storage public bucket
-    // (`category-backgrounds` 等) からの画像を Vercel Image Optimization
-    // で WebP 変換するために宣言。pathname を /storage/v1/object/public/**
-    // に絞って bucket 外のレスポンスを通さないようにする。
+    // Supabase Storage public bucket (`category-backgrounds` 等) からの画像を
+    // Vercel Image Optimization で WebP 変換するために宣言。ホストは自分の
+    // project だけ (上の SUPABASE_IMAGE_HOST)、pathname を
+    // /storage/v1/object/public/** に絞って bucket 外のレスポンスを通さない。
     remotePatterns: [
       {
         protocol: "https",
         hostname: "i.ytimg.com",
       },
-      {
-        protocol: "https",
-        hostname: "*.supabase.co",
-        pathname: "/storage/v1/object/public/**",
-      },
+      ...(SUPABASE_IMAGE_HOST
+        ? [
+            {
+              protocol: "https" as const,
+              hostname: SUPABASE_IMAGE_HOST,
+              pathname: "/storage/v1/object/public/**",
+            },
+          ]
+        : []),
     ],
   },
   async headers() {

@@ -100,7 +100,15 @@ try {
     check("秘密のキーを除く", /t\.table === "app_settings" && isSensitiveSettingKey\(String\(row\.key \?\? ""\)\)/.test(src), true);
     check("no-store", /"Cache-Control": "no-store"/.test(src), true);
     check("ダウンロード (attachment)", /"Content-Disposition": `attachment; filename="\$\{exportFileName\(/.test(src), true);
-    check("途中の失敗は errors に入れて JSON を閉じる", /if \(inArray\) write\("\]"\);/.test(src) && /"errors":\$\{JSON\.stringify\(errors\)\}/.test(src), true);
+    check("途中の失敗は errors に入れて JSON を閉じる", /yield `\$\{inArray \? "\]" : ""\}\},"errors":\$\{JSON\.stringify\(errors\)\}\}`;/.test(src), true);
+    // 2026-10-07 セキュリティ精査: 受け手が読んだら次のページを読む (backpressure)。
+    check(
+      "受け手が読んだ分だけ読む (pull で 1 塊ずつ・切断したら止める・start で全部読まない)",
+      /async pull\(controller\) \{\s*const \{ value, done \} = await source\.next\(\);/.test(src) &&
+        /async cancel\(\) \{[\s\S]{0,120}await source\.return\(undefined\);/.test(src) &&
+        !/async start\(/.test(src),
+      true,
+    );
     const dialog = readFileSync("src/components/portal/settings-dialog.tsx", "utf8");
     check("設定ダイアログに節がある (初期化の直前)", /<DataExportSection canEdit=\{canEdit\} \/>\s*\{canEdit && \(\s*<DangerZoneSection/.test(dialog), true);
     const sec = readFileSync("src/components/portal/settings/data-export-section.tsx", "utf8");

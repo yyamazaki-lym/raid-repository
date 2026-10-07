@@ -3,7 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { assertAdminResult } from "./auth";
 import { dbError } from "./db-error";
-import { createClient } from "@/lib/supabase/server";
+import {
+  createClient,
+  createSupabaseServiceRoleClient,
+} from "@/lib/supabase/server";
 
 export type DataInitCounts = {
   tags: number;
@@ -141,8 +144,19 @@ export async function initializeAllDataAction(): Promise<DataInitResult> {
     { table: "app_settings", pk: "key" },
   ];
 
+  // 規則 (RLS の policy) の無い service role 専用の表は service role で消す。
+  // cookie のクライアントでは 0 行で素通りしていて (件数が常に 0)、
+  // 2026-10-07 にこれらの表の anon / authenticated の権限を外したので、
+  // cookie のクライアントのままだと permission denied でここで止まる。
+  const serviceRole = createSupabaseServiceRoleClient();
+  const SERVICE_ROLE_ONLY = new Set<keyof DataInitCounts>([
+    "fflogs_notify_state",
+    "category_link_reads",
+  ]);
+
   for (const step of steps) {
-    const { data, error } = await supabase
+    const client = SERVICE_ROLE_ONLY.has(step.table) ? serviceRole : supabase;
+    const { data, error } = await client
       .from(step.table)
       .delete()
       .not(step.pk, "is", null)

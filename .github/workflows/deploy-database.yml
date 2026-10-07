@@ -166,3 +166,31 @@ jobs:
             echo "::error::本番 DB に誰でも書ける書き込みポリシーがあります (${rows})。"
             exit 1
           fi
+
+      # 2026-10-07 セキュリティ精査の回帰ガード。
+      #
+      # RLS が有効でポリシーが 0 本の表 (service role 専用) は、テーブル権限も
+      # anon / authenticated から外しておく (schema.sql 9.5 章の REVOKE)。上の
+      # ガードはポリシーしか見ないので、権限が残ったままだと、ダッシュボードで
+      # 緩いポリシーが 1 本足された瞬間に読めるようになる。今後この形の表を
+      # 足したときに REVOKE を忘れても、ここで気付く。
+      - name: Assert no client privileges on policy-less tables
+        if: steps.guard.outputs.skip == 'false'
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          rows=$(psql "$SUPABASE_DB_URL" -tAc "
+            SELECT coalesce(string_agg(c.relname || ':' || r.rolname, ', ' ORDER BY c.relname, r.rolname), '')
+              FROM pg_class c
+              JOIN pg_namespace n ON n.oid = c.relnamespace
+             CROSS JOIN (VALUES ('anon'::name), ('authenticated'::name)) AS r(rolname)
+             WHERE n.nspname = 'public'
+               AND c.relkind = 'r'
+               AND c.relrowsecurity
+               AND NOT EXISTS (SELECT 1 FROM pg_policy p WHERE p.polrelid = c.oid)
+               AND has_table_privilege(r.rolname, c.oid, 'SELECT,INSERT,UPDATE,DELETE');")
+          echo "client privileges on policy-less tables: '${rows}'"
+          if [ -n "$rows" ]; then
+            echo "::error::ポリシーの無い表に anon / authenticated の権限が残っています (${rows})。schema.sql 9.5 章の REVOKE に表を足してください。"
+            exit 1
+          fi

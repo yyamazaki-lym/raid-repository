@@ -158,7 +158,7 @@ http://localhost:3000 を開きます。
 |---|---|
 | `npm run setup` | 対話式のセットアップ (`.env.local` 作成 → スキーマ → 診断) |
 | `npm run doctor` | 設定の診断。`-- --url https://…` で公開済みサイトも見ます |
-| `npm run dev` | 開発サーバー |
+| `npm run dev` | 開発サーバー (このパソコンからだけ開ける `127.0.0.1`。`DEV_AUTH_BYPASS` で admin になるので、同じ Wi-Fi の他の端末からは開けないようにしてある) |
 | `npm run build` | 本番ビルド |
 | `npm run lint` | ESLint |
 

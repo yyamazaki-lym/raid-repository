@@ -49,56 +49,70 @@ export async function GET(req: NextRequest) {
   const supabase = createSupabaseServiceRoleClient();
   const encoder = new TextEncoder();
   const now = new Date();
+  // 下の generator (関数宣言) の中では `part` の null 除外が引き継がれないので、
+  // 確定した値を別名で持つ。
+  const exportPart = part;
 
-  const stream = new ReadableStream<Uint8Array>({
-    async start(controller) {
-      const write = (s: string) => controller.enqueue(encoder.encode(s));
-      const errors: Array<{ table: string; reason: string }> = [];
-      // 表の配列の内側にいるか (途中で落ちたときに閉じ忘れ / 二重閉じをしない)。
-      let inArray = false;
-      write(
-        `{"format":${JSON.stringify(EXPORT_FORMAT)},"version":${EXPORT_VERSION},` +
-          `"part":${JSON.stringify(part.id)},"exportedAt":${JSON.stringify(now.toISOString())},"tables":{`,
-      );
-      try {
-        for (const [ti, t] of part.tables.entries()) {
-          write(`${ti > 0 ? "," : ""}${JSON.stringify(t.table)}:[`);
-          inArray = true;
-          let first = true;
-          for (let from = 0; ; from += EXPORT_PAGE_SIZE) {
-            let q = supabase.from(t.table).select("*");
-            for (const col of t.order) q = q.order(col, { ascending: true, nullsFirst: true });
-            const { data, error } = await q.range(from, from + EXPORT_PAGE_SIZE - 1);
-            if (error) {
-              console.warn("[admin/export] read failed", t.table, error.message);
-              errors.push({ table: t.table, reason: error.message.slice(0, 200) });
-              break;
-            }
-            const rows = (data ?? []) as Array<Record<string, unknown>>;
-            for (const row of rows) {
-              if (t.table === "app_settings" && isSensitiveSettingKey(String(row.key ?? ""))) {
-                continue;
-              }
-              write(`${first ? "" : ","}${JSON.stringify(row)}`);
-              first = false;
-            }
-            if (rows.length < EXPORT_PAGE_SIZE) break;
+  // 2026-10-07 セキュリティ精査: 1 ページずつ「受け手が読んだら次を読む」形に
+  // する (`pull`)。以前は `start()` の中で全ページを読んで無条件に enqueue して
+  // いたため、受け手が遅いと読んだ分が関数のメモリに溜まり、docstring の
+  // 「全件をメモリに載せない」が成り立たなかった (dev で受け手を止めたまま
+  // 29 ページ・約 116MB を読み切ることを確認。直した後は途中のバッファ分の
+  // 5 ページで止まる)。
+  async function* chunks(): AsyncGenerator<string> {
+    const errors: Array<{ table: string; reason: string }> = [];
+    // 表の配列の内側にいるか (途中で落ちたときに閉じ忘れ / 二重閉じをしない)。
+    let inArray = false;
+    yield `{"format":${JSON.stringify(EXPORT_FORMAT)},"version":${EXPORT_VERSION},` +
+      `"part":${JSON.stringify(exportPart.id)},"exportedAt":${JSON.stringify(now.toISOString())},"tables":{`;
+    try {
+      for (const [ti, t] of exportPart.tables.entries()) {
+        yield `${ti > 0 ? "," : ""}${JSON.stringify(t.table)}:[`;
+        inArray = true;
+        let first = true;
+        for (let from = 0; ; from += EXPORT_PAGE_SIZE) {
+          let q = supabase.from(t.table).select("*");
+          for (const col of t.order) q = q.order(col, { ascending: true, nullsFirst: true });
+          const { data, error } = await q.range(from, from + EXPORT_PAGE_SIZE - 1);
+          if (error) {
+            console.warn("[admin/export] read failed", t.table, error.message);
+            errors.push({ table: t.table, reason: error.message.slice(0, 200) });
+            break;
           }
-          write("]");
-          inArray = false;
+          const rows = (data ?? []) as Array<Record<string, unknown>>;
+          let page = "";
+          for (const row of rows) {
+            if (t.table === "app_settings" && isSensitiveSettingKey(String(row.key ?? ""))) {
+              continue;
+            }
+            page += `${first ? "" : ","}${JSON.stringify(row)}`;
+            first = false;
+          }
+          // 1 ページ = 1 塊。受け手が読むまで次のページを読まない。
+          if (page) yield page;
+          if (rows.length < EXPORT_PAGE_SIZE) break;
         }
-      } catch (err) {
-        // 表の途中で落ちても JSON を閉じる。
-        console.warn("[admin/export] failed", String(err));
-        errors.push({ table: "*", reason: String(err).slice(0, 200) });
+        yield "]";
+        inArray = false;
       }
-      try {
-        if (inArray) write("]");
-        write(`},"errors":${JSON.stringify(errors)}}`);
-        controller.close();
-      } catch {
-        // 受け手が切断済み (書けない) — 何もしない
-      }
+    } catch (err) {
+      // 表の途中で落ちても JSON を閉じる。
+      console.warn("[admin/export] failed", String(err));
+      errors.push({ table: "*", reason: String(err).slice(0, 200) });
+    }
+    yield `${inArray ? "]" : ""}},"errors":${JSON.stringify(errors)}}`;
+  }
+
+  const source = chunks();
+  const stream = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      const { value, done } = await source.next();
+      if (done) controller.close();
+      else controller.enqueue(encoder.encode(value));
+    },
+    async cancel() {
+      // 受け手が切断した — 残りのページは読まない。
+      await source.return(undefined);
     },
   });
 
