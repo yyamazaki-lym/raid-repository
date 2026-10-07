@@ -143,3 +143,35 @@ export async function updateUserAppMetadata(
     );
   }
 }
+
+/**
+ * ギルドから外れていると分かったときに、RLS が見る印 (`discord_guild_member` /
+ * `is_admin`) を false に書き戻す (2026-10-07 セキュリティ精査 H-2)。
+ *
+ * それまでは `signOut()` だけで、app_metadata には `discord_guild_member: true`・
+ * `is_admin: true` が残っていた。サイトを通らずに手元の refresh token で
+ * トークンを取り直すと、古い印のまま RLS を通り続けた (kick された元 admin が
+ * 書き込める)。RLS 側も 72 時間の鮮度を要求する (schema.sql 1 章の
+ * `is_portal_member`) が、分かった時点で閉じる。
+ *
+ * **ギルドにいないと確定したとき (`not_in_guild`) だけ**呼ぶ。Discord の一時
+ * 障害で書き戻すと、本当はメンバーの人の別の端末のセッションまで止まる。
+ * 失敗しても呼び出し側の失効処理 (signOut) は続ける (best-effort。RLS の鮮度
+ * 条件が最後の砦)。
+ */
+export async function markGuildMembershipRevoked(
+  userId: string,
+  discordId: string,
+): Promise<void> {
+  try {
+    await updateUserAppMetadata(userId, {
+      discord_id: discordId,
+      discord_guild_member: false,
+      discord_roles: [],
+      discord_member_verified_at: new Date().toISOString(),
+      is_admin: false,
+    });
+  } catch (e) {
+    console.error("[membership] 失効の書き戻しに失敗", e);
+  }
+}

@@ -298,7 +298,14 @@ export async function proxy(request: NextRequest) {
   if (outcome.status === "refreshed") {
     // 新しい app_metadata を JWT に載せ直す。これで同一リクエスト中の
     // Server Component / RLS も更新後の roles・is_admin を見る。
-    await supabase.auth.refreshSession();
+    const { error: refreshError } = await supabase.auth.refreshSession();
+    if (refreshError) {
+      // 2026-10-07 (セキュリティ精査のレビュー): 失敗するとこのリクエストは
+      // 確認時刻の古い JWT のまま進み、RLS の書き込み (確認の鮮度を要求する) が
+      // 1 回だけ弾かれ得る。読み取りは鮮度を見ないので画面は出る。次のリクエスト
+      // で取り直されるので止めずに記録だけ残す。
+      console.warn("[proxy] refreshSession after revalidation failed:", refreshError.message);
+    }
     const refreshedUser = await readClaims();
     const refreshedMeta = (refreshedUser?.app_metadata ?? {}) as MembershipClaims;
     if (refreshedMeta.discord_guild_member !== true) {

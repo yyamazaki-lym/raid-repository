@@ -22,6 +22,87 @@ BEGIN
   RETURN NEW;
 END $$;
 
+-- 2026-10-07 セキュリティ精査 H-1 / H-2: RLS の「メンバーか」「admin か」。
+--
+-- それまでの RLS は「authenticated のトークンを持っていること」と、トークンの
+-- `is_admin` / `discord_id` しか見ていなかった。ギルドの確認はアプリのログイン
+-- 処理 (/auth/callback) と proxy にしか無いので、
+-- - H-1: Supabase Auth に直接ログインした人 (メールで新規登録した人・ギルド外の
+--   Discord アカウント) も authenticated になり、本番の SELECT (`USING (true)`)
+--   で全メンバーのデータを読めた
+-- - H-2: kick された人・ロールを外された元 admin は、サイトを通らずに手元の
+--   refresh token でトークンを取り直すと、古い app_metadata (is_admin: true 等)
+--   のまま RLS を通り続けた
+--
+-- そこで RLS では次を要求する。app_metadata は service role (アプリのログイン
+-- 処理と proxy の再確認) しか書けないので、本人は偽れない。
+-- - 読み取り (`is_portal_member`): `discord_guild_member` が true で `discord_id`
+--   がある (= アプリがギルドのメンバーと確かめた)。ギルド外の人は印を持たない
+-- - 書き込み (`is_portal_verified_member` / `is_portal_admin`): それに加えて
+--   `discord_member_verified_at` (最後にギルドを確かめた時刻) が 72 時間以内。
+--   サイトを通らずに手元のトークンを取り直し続ける元 admin も、72 時間で書けなく
+--   なる。72 時間はアプリの確認の上限 (`membership-revalidation.ts` の
+--   RLS_WRITE_FRESHNESS_MS。hard TTL はこれを超えないよう抑えてある) と同じ
+--
+-- ⚠ 読み取りに鮮度を求めない理由 (PR のレビューで検出): ブラウザの supabase-js
+-- はトークンを Supabase Auth から直接取り直す (proxy を通らない) ので、開いた
+-- ままのタブでは確認の時刻が更新されない。読み取りに鮮度を求めると、72 時間
+-- サイトへのリクエストが無かったタブの再取得が**エラーにならず 0 行**になり、
+-- 正規のメンバーの画面が黙って空になる。書き込みはエラーとして見えるので、
+-- 鮮度を求めてもページを開き直せば直る。
+-- 残るもの: kick された元メンバーは、サイトに来ないまま手元のトークンで読み
+-- 続けられる (サイトに来た時点で印は false に書き戻される)。
+--
+-- 失効を見つけたとき (proxy の再確認・ログイン処理) は、アプリが
+-- `discord_guild_member` / `is_admin` を false に書き戻す。
+--
+-- 時刻が壊れた値でも例外で文全体を落とさないよう plpgsql で false に倒す。
+-- ポリシーからは `(SELECT public.is_portal_member())` の形で呼ぶ (文ごとに
+-- 1 回だけ評価。lint auth_rls_initplan と同じ理由)。
+CREATE OR REPLACE FUNCTION public.is_portal_member()
+RETURNS boolean
+LANGUAGE sql STABLE SET search_path = public AS $$
+  SELECT coalesce(
+    (auth.jwt() -> 'app_metadata' ->> 'discord_guild_member') = 'true'
+      AND coalesce(auth.jwt() -> 'app_metadata' ->> 'discord_id', '') <> '',
+    false
+  )
+$$;
+
+CREATE OR REPLACE FUNCTION public.is_portal_verified_member()
+RETURNS boolean
+LANGUAGE plpgsql STABLE SET search_path = public AS $$
+DECLARE
+  verified text;
+BEGIN
+  IF NOT public.is_portal_member() THEN
+    RETURN false;
+  END IF;
+  verified := auth.jwt() -> 'app_metadata' ->> 'discord_member_verified_at';
+  IF verified IS NULL THEN
+    RETURN false;
+  END IF;
+  RETURN verified::timestamptz > now() - interval '72 hours';
+EXCEPTION WHEN others THEN
+  RETURN false;
+END $$;
+
+CREATE OR REPLACE FUNCTION public.is_portal_admin()
+RETURNS boolean
+LANGUAGE sql STABLE SET search_path = public AS $$
+  SELECT public.is_portal_verified_member()
+     AND coalesce((auth.jwt() -> 'app_metadata' ->> 'is_admin') = 'true', false)
+$$;
+
+-- ポリシーの中で authenticated が呼ぶ。anon は呼ばない (本番の anon には
+-- ポリシーが無く、公開デモの anon は USING (true) の読み取りだけ)。
+REVOKE EXECUTE ON FUNCTION public.is_portal_member() FROM PUBLIC, anon;
+REVOKE EXECUTE ON FUNCTION public.is_portal_verified_member() FROM PUBLIC, anon;
+REVOKE EXECUTE ON FUNCTION public.is_portal_admin() FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.is_portal_member() TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.is_portal_verified_member() TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.is_portal_admin() TO authenticated, service_role;
+
 -- ---- 2. categories -----------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS public.categories (
@@ -486,21 +567,21 @@ DROP POLICY IF EXISTS category_discord_blocklist_admin_select
 CREATE POLICY category_discord_blocklist_admin_select
   ON public.category_discord_blocklist
   FOR SELECT TO authenticated
-  USING (((SELECT auth.jwt()) -> 'app_metadata' ->> 'is_admin') = 'true');
+  USING ((SELECT public.is_portal_admin()));
 
 DROP POLICY IF EXISTS category_discord_blocklist_admin_insert
   ON public.category_discord_blocklist;
 CREATE POLICY category_discord_blocklist_admin_insert
   ON public.category_discord_blocklist
   FOR INSERT TO authenticated
-  WITH CHECK (((SELECT auth.jwt()) -> 'app_metadata' ->> 'is_admin') = 'true');
+  WITH CHECK ((SELECT public.is_portal_admin()));
 
 DROP POLICY IF EXISTS category_discord_blocklist_admin_delete
   ON public.category_discord_blocklist;
 CREATE POLICY category_discord_blocklist_admin_delete
   ON public.category_discord_blocklist
   FOR DELETE TO authenticated
-  USING (((SELECT auth.jwt()) -> 'app_metadata' ->> 'is_admin') = 'true');
+  USING ((SELECT public.is_portal_admin()));
 
 -- ---- 3. loot -----------------------------------------------------------
 
@@ -2346,6 +2427,13 @@ DECLARE
       THEN 'anon, authenticated'
     ELSE 'authenticated'
   END;
+  -- 2026-10-07 (セキュリティ精査 H-1): 本番の SELECT はメンバーの印を要求する
+  -- (1 章の is_portal_member)。公開デモは anon を含めて従来どおり全行。
+  select_using text := CASE
+    WHEN coalesce(current_setting('app.public_demo', true), '') = 'true'
+      THEN 'true'
+    ELSE '(SELECT public.is_portal_member())'
+  END;
 BEGIN
   FOR t IN SELECT unnest(ARRAY[
     'categories','category_links','category_gphoto_albums',
@@ -2390,8 +2478,8 @@ BEGIN
         -- subscribe はブラウザがユーザーの JWT で張るので authenticated
         -- で足りる。server-side の設定読み取りは service role へ移行済み。
         EXECUTE format(
-          'CREATE POLICY %I ON public.%I FOR SELECT TO %s USING (true)',
-          policy_name, t, select_roles
+          'CREATE POLICY %I ON public.%I FOR SELECT TO %s USING (%s)',
+          policy_name, t, select_roles, select_using
         );
       ELSIF op = 'insert' THEN
         -- 書き込みは authenticated + is_admin claim (TODO #36 phase 2)。
@@ -2403,17 +2491,17 @@ BEGIN
         -- auth.jwt() を評価していた。意味は等価 (Supabase lint
         -- auth_rls_initplan と同型)。
         EXECUTE format(
-          $sql$CREATE POLICY %I ON public.%I FOR INSERT TO authenticated WITH CHECK (((SELECT auth.jwt()) -> 'app_metadata' ->> 'is_admin') = 'true')$sql$,
+          $sql$CREATE POLICY %I ON public.%I FOR INSERT TO authenticated WITH CHECK ((SELECT public.is_portal_admin()))$sql$,
           policy_name, t
         );
       ELSIF op = 'update' THEN
         EXECUTE format(
-          $sql$CREATE POLICY %I ON public.%I FOR UPDATE TO authenticated USING (((SELECT auth.jwt()) -> 'app_metadata' ->> 'is_admin') = 'true') WITH CHECK (((SELECT auth.jwt()) -> 'app_metadata' ->> 'is_admin') = 'true')$sql$,
+          $sql$CREATE POLICY %I ON public.%I FOR UPDATE TO authenticated USING ((SELECT public.is_portal_admin())) WITH CHECK ((SELECT public.is_portal_admin()))$sql$,
           policy_name, t
         );
       ELSIF op = 'delete' THEN
         EXECUTE format(
-          $sql$CREATE POLICY %I ON public.%I FOR DELETE TO authenticated USING (((SELECT auth.jwt()) -> 'app_metadata' ->> 'is_admin') = 'true')$sql$,
+          $sql$CREATE POLICY %I ON public.%I FOR DELETE TO authenticated USING ((SELECT public.is_portal_admin()))$sql$,
           policy_name, t
         );
       END IF;
@@ -2442,12 +2530,22 @@ DECLARE
       THEN 'anon, authenticated'
     ELSE 'authenticated'
   END;
+  -- 2026-10-07 (セキュリティ精査 H-1): 本番の SELECT はメンバーの印を要求する
+  -- (1 章の is_portal_member)。公開デモは anon を含めて従来どおり全行。
+  select_using text := CASE
+    WHEN coalesce(current_setting('app.public_demo', true), '') = 'true'
+      THEN 'true'
+    ELSE '(SELECT public.is_portal_member())'
+  END;
   -- admin または本人。`(SELECT auth.jwt())` の形は lint auth_rls_initplan の
   -- 案内どおり (per-statement 1 回評価)。
   admin_or_self text :=
     $expr$(
-      ((SELECT auth.jwt()) -> 'app_metadata' ->> 'is_admin') = 'true'
-      OR ((SELECT auth.jwt()) -> 'app_metadata' ->> 'discord_id') = discord_user_id
+      (SELECT public.is_portal_admin())
+      OR (
+        (SELECT public.is_portal_verified_member())
+        AND ((SELECT auth.jwt()) -> 'app_metadata' ->> 'discord_id') = discord_user_id
+      )
     )$expr$;
 BEGIN
   DROP POLICY IF EXISTS native_schedule_attendances_anon_select ON public.native_schedule_attendances;
@@ -2463,8 +2561,8 @@ BEGIN
   DROP POLICY IF EXISTS native_schedule_attendances_write_delete ON public.native_schedule_attendances;
 
   EXECUTE format(
-    'CREATE POLICY native_schedule_attendances_read ON public.native_schedule_attendances FOR SELECT TO %s USING (true)',
-    select_roles
+    'CREATE POLICY native_schedule_attendances_read ON public.native_schedule_attendances FOR SELECT TO %s USING (%s)',
+    select_roles, select_using
   );
   EXECUTE format(
     'CREATE POLICY native_schedule_attendances_write_insert ON public.native_schedule_attendances FOR INSERT TO authenticated WITH CHECK %s',
@@ -2508,20 +2606,29 @@ DECLARE
       THEN 'anon, authenticated'
     ELSE 'authenticated'
   END;
+  -- 2026-10-07 (セキュリティ精査 H-1): 本番の SELECT はメンバーの印を要求する
+  -- (1 章の is_portal_member)。公開デモは anon を含めて従来どおり全行。
+  select_using text := CASE
+    WHEN coalesce(current_setting('app.public_demo', true), '') = 'true'
+      THEN 'true'
+    ELSE '(SELECT public.is_portal_member())'
+  END;
   -- 所有者 または admin。`(SELECT auth.jwt())` の形は lint
   -- auth_rls_initplan の案内どおり (per-statement 1 回評価)。
   owner_or_admin text :=
     $expr$(
-      ((SELECT auth.jwt()) -> 'app_metadata' ->> 'is_admin') = 'true'
+      (SELECT public.is_portal_admin())
       OR (
-        author_user_id IS NOT NULL
+        (SELECT public.is_portal_verified_member())
+        AND author_user_id IS NOT NULL
         AND author_user_id = ((SELECT auth.jwt()) -> 'app_metadata' ->> 'discord_id')
       )
     )$expr$;
   -- 2026-10-02 (S-11): 本人だけ。admin でも他人の ID / NULL では作れない。
   owner_only text :=
     $expr$(
-      author_user_id IS NOT NULL
+      (SELECT public.is_portal_verified_member())
+      AND author_user_id IS NOT NULL
       AND author_user_id = ((SELECT auth.jwt()) -> 'app_metadata' ->> 'discord_id')
     )$expr$;
 BEGIN
@@ -2538,8 +2645,8 @@ BEGIN
   DROP POLICY IF EXISTS schedule_session_memos_owner_delete ON public.schedule_session_memos;
 
   EXECUTE format(
-    'CREATE POLICY schedule_session_memos_read ON public.schedule_session_memos FOR SELECT TO %s USING (true)',
-    select_roles
+    'CREATE POLICY schedule_session_memos_read ON public.schedule_session_memos FOR SELECT TO %s USING (%s)',
+    select_roles, select_using
   );
   -- INSERT: 自分の ID でしか作れない (列を送らなければ DEFAULT で入る)。
   -- 2026-10-02 (S-11): admin の代理作成もやめた。
@@ -2803,7 +2910,7 @@ CREATE POLICY "category-backgrounds authenticated insert"
   TO authenticated
   WITH CHECK (
     bucket_id = 'category-backgrounds'
-    AND ((SELECT auth.jwt()) -> 'app_metadata' ->> 'is_admin') = 'true'
+    AND (SELECT public.is_portal_admin())
   );
 
 -- 2026-07-12 監査 B-6: INSERT と対称の is_admin DELETE policy を追加
@@ -2819,7 +2926,7 @@ CREATE POLICY "category-backgrounds authenticated delete"
   TO authenticated
   USING (
     bucket_id = 'category-backgrounds'
-    AND ((SELECT auth.jwt()) -> 'app_metadata' ->> 'is_admin') = 'true'
+    AND (SELECT public.is_portal_admin())
   );
 
 -- ---- 10b. Storage bucket for strategy images (Phase 15, 2026-05-13) ----
@@ -2864,7 +2971,7 @@ CREATE POLICY "category-strategy-images authenticated insert"
   TO authenticated
   WITH CHECK (
     bucket_id = 'category-strategy-images'
-    AND ((SELECT auth.jwt()) -> 'app_metadata' ->> 'is_admin') = 'true'
+    AND (SELECT public.is_portal_admin())
   );
 
 -- 監査 P3-n (2026-06-19): admin が画像をアップロード→ダイアログをキャンセル /
@@ -2877,7 +2984,7 @@ CREATE POLICY "category-strategy-images authenticated delete"
   TO authenticated
   USING (
     bucket_id = 'category-strategy-images'
-    AND ((SELECT auth.jwt()) -> 'app_metadata' ->> 'is_admin') = 'true'
+    AND (SELECT public.is_portal_admin())
   );
 
 -- ============================================================================
@@ -3589,7 +3696,7 @@ BEGIN
   -- 拒否する。service_role / SQL Editor 等 JWT を持たない経路は role claim が
   -- 'authenticated' にならないため従来どおり実行可 (運用 / メンテナンス用)。
   IF coalesce(auth.jwt() ->> 'role', '') = 'authenticated'
-     AND coalesce(auth.jwt() -> 'app_metadata' ->> 'is_admin', '') <> 'true' THEN
+     AND NOT public.is_portal_admin() THEN
     RAISE EXCEPTION 'update_native_placeholder_raid_times: admin only'
       USING ERRCODE = '42501';
   END IF;

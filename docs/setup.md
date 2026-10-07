@@ -135,6 +135,10 @@ https://<project ref>.supabase.co/auth/v1/callback
 2. **Authentication → Providers → Discord**
 3. **Enable** を ON
 4. 手順 3-2 の **Client ID** と **Client Secret** を貼る → **Save**
+5. 同じ画面の **Email** を開き、**Enable email provider を OFF** → **Save**
+   (このポータルは Discord のログインしか使いません。Supabase の新しい
+   プロジェクトは Email が ON で始まります。データベースの規則はサーバーの
+   メンバーと確認できた人にしか読み書きさせませんが、使わない入口は閉じておきます)
 
 > Site URL / Redirect URLs (Vercel のドメイン側) は、ドメインが決まる手順 6 で登録します。
 
