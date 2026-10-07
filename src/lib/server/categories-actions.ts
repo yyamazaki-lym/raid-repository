@@ -3791,6 +3791,13 @@ export async function backfillStrategyThumbnailsChunk(opts: {
 }
 
 /**
+ * 挑戦時間の集計で読む動画の行がこれを超えたら、サーバーのログに残す
+ * (2026-10-07)。⚠ "use server" のファイルなので export しない (非 async の
+ * export があると Server Action が全部動かなくなる)。
+ */
+const PRACTICE_SECONDS_ROWS_WARN = 5000;
+
+/**
  * Sum of `duration_seconds` per category across all video links.
  * NULL durations are ignored. Used by the category index to render the
  * "累計練習時間" badge on each card.
@@ -3821,6 +3828,15 @@ export async function fetchPracticeSecondsByCategory(): Promise<
   // 失敗・打ち切りは従来どおり `{}` (バッジ非表示に degrade)。部分結果で
   // 少ない時間を出さない。
   if (res.error || res.truncated) return {};
+  // 2026-10-07: 全行を読む方式にした (#448)。本番で測った時点 (2026-10-07) では
+  // コンテンツ一覧の応答の始まりが中央値 254ms で、ほかのページと 60ms ほどの差。
+  // 行が増えて遅くなっていないか気づけるよう、多いときはログに残す (見直すときは
+  // 集計結果を持たせて SQL で集計する。個人 ADR-016)。
+  if (res.rows.length > PRACTICE_SECONDS_ROWS_WARN) {
+    console.warn(
+      `[practice-seconds] video rows: ${res.rows.length} (> ${PRACTICE_SECONDS_ROWS_WARN})`,
+    );
+  }
   const byCategory = new Map<string, Parameters<typeof challengeTime>[0][number][]>();
   for (const r of res.rows) {
     const cid = r.category_id as string | null;

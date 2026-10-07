@@ -36,7 +36,7 @@ export const ja = {
     // ⚠ 数え方 (`totalLogMs`) の 30 分・3 時間を変えたら、この説明 (ja / en) も直す。
     statLogTotal: (dur: string): string => `ログ合計 ${dur}`,
     statLogTotalTitle:
-      "各ログの開始から最後の pull の終わりまでの合計 (pull の間の休憩を含む。ログの開始は最初の pull の 30 分前まで数える。pull の間が 3 時間以上空いたら別の練習として、その間は数えない。同じ時間帯に重なるログは 1 回だけ数える)",
+      "各ログの開始から最後の pull の終わりまでの合計 (pull の間の休憩を含む。ログの開始は最初の pull の 30 分前まで数える。pull の間の休憩は 1 回 60 分まで数える。同じ時間帯に重なるログは 1 回だけ数える)",
     statBest: "最深到達",
     kill: "討伐",
     hpLeft: (pct: string) => `残 ${pct}`,
@@ -402,7 +402,9 @@ export const ja = {
   /** W-3 セッションサマリー (2026-09-07)。 */
   sessionSummary: {
     label: "セッション",
-    title: "この日の拘束時間・実戦闘時間・平均プル長 (最初の pull の開始から最後の pull の終了まで)",
+    // 2026-10-07: 拘束は pull の時間 + 休憩 (1 回 60 分まで)。ログ合計と同じ数え方。
+    title:
+      "この日の拘束時間・実戦闘時間・平均プル長 (拘束 = pull の時間と pull の間の休憩の合計。休憩は 1 回 60 分まで数える)",
     span: (dur: string) => `拘束 ${dur}`,
     fight: (dur: string) => `戦闘 ${dur}`,
     downtime: (dur: string, pct: number) => `戦闘外 ${dur} (${pct}%)`,
@@ -577,7 +579,7 @@ export const en: LogsMessages = {
     daysValue: (n) => `${n} ${plural(n, "day", "days")}`,
     statLogTotal: (dur) => `Logs total ${dur}`,
     statLogTotalTitle:
-      "Sum of each log from its start to the end of its last pull (includes breaks between pulls; the log start counts up to 30 minutes before the first pull; a gap of 3 hours or more between pulls starts a new session and is not counted; overlapping logs are counted once)",
+      "Sum of each log from its start to the end of its last pull (includes breaks between pulls; the log start counts up to 30 minutes before the first pull; each break between pulls counts up to 60 minutes; overlapping logs are counted once)",
     statBest: "Best progress",
     kill: "Kill",
     hpLeft: (pct) => `HP ${pct}`,
@@ -895,7 +897,7 @@ export const en: LogsMessages = {
   sessionSummary: {
     label: "Session",
     title:
-      "Time on task, time in combat and average pull length for this day (from the first pull's start to the last pull's end)",
+      "Time on task, time in combat and average pull length for this day (time on task = pulls plus the breaks between them; each break counts up to 60 minutes)",
     span: (dur) => `On task ${dur}`,
     fight: (dur) => `Combat ${dur}`,
     downtime: (dur, pct) => `Out of combat ${dur} (${pct}%)`,
