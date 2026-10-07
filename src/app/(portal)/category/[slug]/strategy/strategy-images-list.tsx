@@ -345,7 +345,9 @@ function SortableImageCard({
             </div>
           )}
           <div className="flex items-start gap-2 px-3 pt-2 pb-1">
-            <span className="flex-1 break-words font-display text-sm text-foreground">
+            {/* 2026-10-07: min-w-0 が無いと長い題名が「⋮」を押し出す
+                (strategy-list.tsx と同じ)。 */}
+            <span className="min-w-0 flex-1 break-words font-display text-sm text-foreground">
               {link.title}
             </span>
             <LinkCardMenu link={link} onEdit={onEdit} />
@@ -770,7 +772,8 @@ function AlbumImageCard({
           </div>
         )}
         <div className="flex items-start gap-2 px-3 pt-2 pb-1">
-          <span className="flex-1 break-words font-display text-xs text-foreground">
+          {/* 2026-10-07: min-w-0 が無いと長い題名が「⋮」を押し出す。 */}
+          <span className="min-w-0 flex-1 break-words font-display text-xs text-foreground">
             {link.title}
           </span>
           <LinkCardMenu link={link} onEdit={onEdit} />

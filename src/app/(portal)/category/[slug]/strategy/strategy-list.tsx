@@ -468,18 +468,23 @@ function SortableStrategyCard({
             )
           )}
           <div className="flex items-start gap-2 px-3 pt-3 pb-1">
+            {/* 2026-10-07: min-w-0 が無いと、空白の無い長い題名 (スプレッド
+                シートの URL など) の幅までリンクが広がり、右の「⋮」(編集・
+                削除) をカードの外へ押し出していた (実機報告)。break-words は
+                最小幅の計算に効かないので、flex の子に min-w-0 が要る (動画
+                カードと同じ)。 */}
             <a
               href={linkHref}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex flex-1 items-start gap-2"
+              className="flex min-w-0 flex-1 items-start gap-2"
             >
               <LinkSiteIcon
                 url={link.url}
                 variant="coarse"
                 className="mt-0.5 h-3.5 w-3.5 shrink-0"
               />
-              <span className="flex-1 break-words font-display text-sm text-foreground group-hover:text-[var(--neon-cyan)]">
+              <span className="min-w-0 flex-1 break-words font-display text-sm text-foreground group-hover:text-[var(--neon-cyan)]">
                 {link.title}
                 {/* 2026-08-30: 既知の FF14 リソースは種別バッジを 1 個だけ
                     出す (攻略 / 野良主流 / ログ / 装備 / シム / 作図)。
