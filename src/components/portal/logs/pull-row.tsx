@@ -103,6 +103,7 @@ export function pullAnchorId(reportCode: string, fightId: number): string {
 
 export function PullRow({
   index,
+  duplicate = false,
   fight,
   categoryId,
   videos,
@@ -112,7 +113,16 @@ export function PullRow({
   flashNonce,
   reserve,
 }: {
-  index: number;
+  /**
+   * その日の何本目か。別のログと同じ pull は数える側と同じ番号。数える側が
+   * 別の日にあるときは null (2026-10-07 C-3、`day-row.tsx` の `numberOf`)。
+   */
+  index: number | null;
+  /**
+   * 別のログと同じ pull (集計に数えない側、2026-10-07 C-3)。行を薄くして
+   * 印を添える。リンク・動画・注釈はそのまま使える。
+   */
+  duplicate?: boolean;
   fight: FightRow;
   /** W-7 (2026-09-08): ミス注釈をコンテンツ単位で集計するための非正規化キー。 */
   categoryId: string | null;
@@ -193,7 +203,11 @@ export function PullRow({
       // 錨を付ける。report + fight ID の対はカテゴリ内で一意
       // (`fflogs_fights` の複合主キーと同じ)。
       id={pullAnchorId(fight.reportCode, fight.fightId)}
-      className="relative flex scroll-mt-24 flex-wrap items-center gap-x-2 gap-y-1 rounded-sm border border-border/30 bg-background/30 px-2 py-1"
+      className={
+        "relative flex scroll-mt-24 flex-wrap items-center gap-x-2 gap-y-1 rounded-sm border border-border/30 bg-background/30 px-2 py-1" +
+        // 2026-10-07 C-3: 数えない側は破線の枠で薄く (印は下の chip)。
+        (duplicate ? " border-dashed opacity-70" : "")
+      }
     >
       {/* L-5 ③ (2026-09-08): 箱から飛んできた行を短く光らせる。30 行の中へ
           スクロールしても「どれに来たか」が分からないという実機報告。
@@ -233,8 +247,8 @@ export function PullRow({
         type="button"
         onClick={() => setDetailOpen((v) => !v)}
         aria-expanded={detailOpen}
-        aria-label={m.logs.pullDetailToggleNth(index)}
-        title={m.logs.pullDetailToggleNth(index)}
+        aria-label={index !== null ? m.logs.pullDetailToggleNth(index) : m.logs.duplicatePull}
+        title={index !== null ? m.logs.pullDetailToggleNth(index) : m.logs.duplicatePull}
         className={
           "inline-flex w-8 shrink-0 items-center justify-end gap-0.5 font-mono text-[11px] tabular-nums transition-colors " +
           (detailOpen
@@ -249,7 +263,7 @@ export function PullRow({
           }
           aria-hidden
         />
-        {index}
+        {index ?? "—"}
       </button>
       <span
         className="w-9 shrink-0 font-mono text-[11px] text-slate-400 tabular-nums"
@@ -414,6 +428,14 @@ export function PullRow({
           </>
         );
       })()}
+      {duplicate && (
+        <span
+          className="shrink-0 rounded-sm border border-dashed border-border/60 px-1.5 py-0.5 font-mono text-[11px] whitespace-nowrap text-muted-foreground"
+          title={m.logs.duplicatePullTitle}
+        >
+          {m.logs.duplicatePull}
+        </span>
+      )}
       <span className="ml-auto flex shrink-0 items-center gap-1">
         {/* FFLogs 群: 概要 (Logs) + 死亡 + 被ダメの 3 ビュー。2026-08-30
             調査 §2 の deep link。行が伸びないよう、追加の 2 つは

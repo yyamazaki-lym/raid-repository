@@ -128,6 +128,10 @@ export const ja = {
     // UI-14 (2026-09-08): pull の構造化リキャップ (展開パネル)。
     pullDetailToggleNth: (n: number): string =>
       `この日の ${n} 番目の pull — 押すと死亡の一覧を開く`,
+    // 2026-10-07 C-3: 同じ夜を 2 人が上げたログの、数えない側の pull。
+    duplicatePull: "別のログと同じ pull (数えない)",
+    duplicatePullTitle:
+      "同じ夜を別の人も FFLogs に上げていて、この pull はもう一方のログにも入っています。pull 数・クリア数・ワイプ原因などの集計では 1 回だけ数えます (番号はもう一方の行と同じ)",
     pullDetailNoDeaths: "この pull に死亡はありません",
     pullDetailMissing:
       "この pull の死亡イベントは取得できていません (代替経路で取り込んだレポート、または同期の時間切れ)。同期をもう一度実行すると入ることがあります。",
@@ -657,6 +661,9 @@ export const en: LogsMessages = {
     wipeCauses: "Wipe causes",
     pullDetailToggleNth: (n) =>
       `Pull #${n} of the day — click to list its deaths`,
+    duplicatePull: "Same pull as another log (not counted)",
+    duplicatePullTitle:
+      "Someone else also uploaded this night to FFLogs, so this pull is in the other log too. Totals such as pulls, clears and wipe causes count it once (it shares its number with the other row)",
     pullDetailNoDeaths: "No deaths in this pull",
     pullDetailMissing:
       "Death events were not captured for this pull (imported through a fallback route, or the sync ran out of time). Running the sync again may fill it in.",

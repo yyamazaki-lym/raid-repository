@@ -43,10 +43,12 @@ export type ChapterPull = {
 /**
  * pull 1 つのチャプターの名前。`#回数 区間 結果` (例: `#3 4層後半 残23.4%` /
  * `#9 P5 CLEAR`)。回数は練習ログの日の行の番号と同じものを渡す。
+ * null なら回数を付けない (2026-10-07 C-3: 別のログと同じ pull で、数える側が
+ * 別の日にあって番号が無いとき)。
  */
 export function chapterPullLabel(
   fight: FightRow,
-  index: number,
+  index: number | null,
   floors: FloorMap,
   showPhase: boolean,
   locale: ProgressLocale = "ja",
@@ -65,7 +67,7 @@ export function chapterPullLabel(
     const pct = formatPercentage(fight.fightPercentage);
     result = locale === "en" ? `${pct} left` : `残${pct}`;
   }
-  return [`#${index}`, segment, result].filter((s) => s.length > 0).join(" ");
+  return [index === null ? "" : `#${index}`, segment, result].filter((s) => s.length > 0).join(" ");
 }
 
 /**

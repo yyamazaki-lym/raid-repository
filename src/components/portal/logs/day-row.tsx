@@ -13,9 +13,11 @@ import { buildYoutubeChapters, chapterPullLabel } from "@/lib/video-chapters";
 import { parseYouTubeId } from "@/lib/youtube";
 import { wipeCauseCounts } from "@/lib/fflogs-fight-detail";
 import { sessionSummary } from "@/lib/fflogs-session";
+import { pullKey } from "@/lib/fflogs-duplicate-pulls";
 import { SessionSummaryRow } from "./session-summary-row";
 import {
   type DaySummary,
+  type FightRow,
   type FloorMap,
   floorHalf,
   floorLabel,
@@ -77,18 +79,33 @@ export function DayRow({
   const locale = useLocale();
 
   /**
+   * 2026-10-07 C-3: pull の番号は数える pull だけに振り、別のログと同じ pull
+   * (`day.duplicateOf`) には数える側と同じ番号を出す。どちらの行を見ても
+   * 「その夜の何本目か」が分かり、見出しの pull 数と最後の番号がそろう。
+   * 数える側が別の日にある (2 本のレポートで練習日の付き方が違った) ときは
+   * 番号を出さない。
+   */
+  const pullNumbers = new Map<string, number>();
+  day.countedFights.forEach((f, i) => pullNumbers.set(pullKey(f), i + 1));
+  const numberOf = (f: FightRow): number | null => {
+    const key = pullKey(f);
+    const counted = day.duplicateOf.get(key);
+    return pullNumbers.get(counted ?? key) ?? null;
+  };
+
+  /**
    * 2026-10-05 (F-6 の C-2): その動画の YouTube のチャプターをコピーする。
    * そのレポートの pull を日の行と同じ番号で並べ、動画の時刻は pull 行の
    * リンクと同じ式で出す (`src/lib/video-chapters.ts`)。
    */
   const copyChapters = async (code: string, video: ReportVideoLink) => {
     const first = firstPullStartByReport.get(code);
+    // 番号は pull 行と同じ (別のログと同じ pull は数える側の番号)。
     const pulls = day.fights
-      .map((f, i) => ({ f, index: i + 1 }))
-      .filter((x) => x.f.reportCode === code)
-      .map(({ f, index }) => ({
+      .filter((f) => f.reportCode === code)
+      .map((f) => ({
         startMs: f.startMs,
-        label: chapterPullLabel(f, index, floors, showPhase, locale),
+        label: chapterPullLabel(f, numberOf(f), floors, showPhase, locale),
       }));
     const lines =
       first === undefined
@@ -122,8 +139,10 @@ export function DayRow({
   );
   const codes = Array.from(new Set(day.fights.map((f) => f.reportCode)));
   // その日の死亡数の合計 (2026-09-03)。1 pull も取得できていない日は出さない。
-  const dayDeaths = day.fights.some((f) => f.deaths !== null)
-    ? day.fights.reduce((acc, f) => acc + (f.deaths ?? 0), 0)
+  // 2026-10-07 C-3: 集計 (死亡数・ワイプ原因・サマリー・プル箱) は数える pull から。
+  const counted = day.countedFights;
+  const dayDeaths = counted.some((f) => f.deaths !== null)
+    ? counted.reduce((acc, f) => acc + (f.deaths ?? 0), 0)
     : null;
   // 2026-09-03 実機要望「もう少し綺麗に揃えられないか」。pull 行は列幅を
   // 固定して縦に揃えるが、**その日に 1 つも無い列は幅を取らない** (PT 指標が
@@ -152,9 +171,9 @@ export function DayRow({
       showPhase && day.fights.some((f) => f.phases !== null && f.phases.length > 1),
   };
   // 2026-09-06 W-1: この日のワイプ原因 (初死亡の技) 上位 3 つ。
-  const dayWipeCauses = wipeCauseCounts(day.fights.map((f) => f.wipe), 3, locale);
+  const dayWipeCauses = wipeCauseCounts(counted.map((f) => f.wipe), 3, locale);
   // 2026-09-07 W-3: この日の拘束 / 実戦闘 / 戦闘外 / 平均プル長。
-  const daySession = sessionSummary(day.fights);
+  const daySession = sessionSummary(counted);
 
   return (
     <li
@@ -284,7 +303,7 @@ export function DayRow({
           ボタンの入れ子にはできない)。箱を押すとその日を開いて該当 pull まで
           スクロールする。 */}
       <PullBoxRow
-        fights={day.fights}
+        fights={counted}
         floors={floors}
         segmentCount={segmentCount}
         showPhase={showPhase}
@@ -418,10 +437,11 @@ export function DayRow({
               (「この日は何をどれだけやったか」を読んでから明細に入る流れ)。 */}
           <SessionSummaryRow summary={daySession} />
           <ul className="flex flex-col gap-1">
-            {day.fights.map((f, i) => (
+            {day.fights.map((f) => (
               <PullRow
                 key={`${f.reportCode}:${f.fightId}`}
-                index={i + 1}
+                index={numberOf(f)}
+                duplicate={day.duplicateOf.has(pullKey(f))}
                 fight={f}
                 categoryId={categoryId}
                 videos={videoLinks[f.reportCode] ?? []}

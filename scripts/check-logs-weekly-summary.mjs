@@ -154,6 +154,12 @@ try {
     [sTwice.fightMs, sTwice.logMs, sTwice.fightMs <= sTwice.logMs],
     [1500000, 3600000, true],
   );
+  // 2026-10-07 C-3: pull・討伐・練習日も 1 回だけ数える (練習ログの画面と同じ)。
+  check(
+    "同じ夜のログが 2 本でも pull・討伐・練習日は 1 本分",
+    [sTwice.days, sTwice.pulls, sTwice.clears, sTwice.flawlessClears, sTwice.firstClearDate],
+    [s1.days, s1.pulls, s1.clears, s1.flawlessClears, s1.firstClearDate],
+  );
   check("最高到達は最も深い層で見る", s1.best, r(4, 0, true));
   check("前の週まで", s1.bestBefore, r(2, 0, true));
   check("更新した", s1.improved, true);

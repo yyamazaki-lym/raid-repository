@@ -9,6 +9,7 @@ import {
   normalizePercentage,
   type FightRow,
 } from "@/lib/fflogs-progress";
+import { duplicatePulls, pullKey } from "@/lib/fflogs-duplicate-pulls";
 import {
   asDeathEvents,
   asPhaseTransitions,
@@ -242,8 +243,12 @@ export async function fetchCategoryFights(
       totalClears: clearRes.count ?? 0,
       truncated: totalPulls > fights.length,
       // ⚠ 読み取りを増やさない — 上で取った `data` から集計する。
+      // 2026-10-07 C-3: 別のログと同じ pull は数えない (画面の集計と同じ)。
+      // `fights` は `data` を 1 行ずつ写したものなので添字が対応する。
       phaseTotals:
-        opts?.includePhaseTotals === true ? phaseTotalsFromRows(data) : null,
+        opts?.includePhaseTotals === true
+          ? phaseTotalsFromRows(withoutDuplicateRows(data, fights))
+          : null,
     };
   } catch (err) {
     rethrowNextSentinel(err);
@@ -347,6 +352,13 @@ function numberOrNull(v: unknown): number | null {
   if (v === null || v === undefined) return null;
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
+}
+
+/** 別のログと同じ pull の行を除く (`rows[i]` と `fights[i]` が同じ pull)。 */
+function withoutDuplicateRows<R>(rows: R[], fights: FightRow[]): R[] {
+  const duplicateOf = duplicatePulls(fights);
+  if (duplicateOf.size === 0) return rows;
+  return rows.filter((_, i) => !duplicateOf.has(pullKey(fights[i]!)));
 }
 
 function rethrowNextSentinel(err: unknown): void {

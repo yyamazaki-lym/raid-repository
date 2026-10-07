@@ -62,6 +62,7 @@ import {
   type ProgressModel,
 } from "@/lib/content-model";
 import { floorFirstClears, teamBadges } from "@/lib/fflogs-session";
+import { duplicatePulls, pullKey } from "@/lib/fflogs-duplicate-pulls";
 import {
   floorParamValue,
   parseFloorParam,
@@ -315,11 +316,25 @@ export function LogsView({
     () => (showPhase ? observedPhaseCount(tierFights) : null),
     [showPhase, tierFights],
   );
+  // 2026-10-07 C-3 (ユーザーの選択「集計だけ 1 本に」): 同じ夜を 2 人が上げた
+  // ログでは同じ pull が 2 本入る。集計 (数・クリア・ワイプ原因・バッジなど) は
+  // `countedFights` で 1 回だけ数え、日の振り返りには両方の行を出して数えない側に
+  // 印を付ける (`fflogs-duplicate-pulls.ts` の docstring)。
+  const duplicateOf = useMemo(() => duplicatePulls(tierFights), [tierFights]);
+  const countedFights = useMemo(
+    () =>
+      duplicateOf.size === 0
+        ? tierFights
+        : tierFights.filter((f) => !duplicateOf.has(pullKey(f))),
+    [tierFights, duplicateOf],
+  );
   const summary = useMemo(
-    () => summarize(tierFights, floors, showPhase),
-    [tierFights, floors, showPhase],
+    () => summarize(tierFights, floors, showPhase, duplicateOf),
+    [tierFights, floors, showPhase, duplicateOf],
   );
   // 2026-10-06: 練習日数の下に出すログの合計時間 (日数と同じ pull から)。
+  // 区間の和集合なので、同じ夜の 2 本のログはもともと 1 回だけ数える
+  // (数えない側のレポートの開始も入れるため、全 pull のまま渡す)。
   const logTotalMs = useMemo(() => totalLogMs(tierFights), [tierFights]);
   // 2026-09-07 W-31: チーム実績バッジ。層クラスタ外 (別コンテンツの混入) を
   // 除いた pull を対象にする — 混ざった別コンテンツの kill が「初討伐」に
@@ -329,8 +344,8 @@ export function LogsView({
   // 同じ `isClearFight`)。下の層の討伐が「初討伐」になっていた。絶は floors が
   // null なので kill のまま。
   const badges = useMemo(
-    () => teamBadges(tierFights, (f) => isClearFight(f, floors)),
-    [tierFights, floors],
+    () => teamBadges(countedFights, (f) => isClearFight(f, floors)),
+    [countedFights, floors],
   );
   // バーを区切る区間数 = 層数 (零式) / フェーズ数 (絶)。
   const segmentCount = floors ? floors.floorCount : phaseCount;
@@ -342,31 +357,31 @@ export function LogsView({
   // 総 pull の層 / フェーズ内訳 (2026-09-03 実機要望)。明細が打ち切られて
   // いる場合は表示中の分だけの内訳になる (タイルの sub に明記)。
   const breakdown = useMemo(
-    () => pullBreakdown(tierFights, floors, showPhase, locale),
-    [tierFights, floors, showPhase, locale],
+    () => pullBreakdown(countedFights, floors, showPhase, locale),
+    [countedFights, floors, showPhase, locale],
   );
   // 2026-09-06 W-1: ワイプ原因 (初死亡の技) の集計。個人名は持たない。
   // 明細が打ち切られている場合は表示中の分だけの集計 (sub に明記)。
   const wipeCauses = useMemo(
-    () => wipeCauseCounts(tierFights.map((f) => f.wipe), 5, locale),
-    [tierFights, locale],
+    () => wipeCauseCounts(countedFights.map((f) => f.wipe), 5, locale),
+    [countedFights, locale],
   );
   const wipeCount = useMemo(
-    () => tierFights.filter((f) => f.wipe !== null).length,
-    [tierFights],
+    () => countedFights.filter((f) => f.wipe !== null).length,
+    [countedFights],
   );
   // 絶: 初死亡が起きたフェーズの回数 (どのフェーズで崩れているか)。
   const wipePhaseCounts = useMemo(() => {
     if (!showPhase) return [] as Array<{ phase: number; count: number }>;
     const m = new Map<number, number>();
-    for (const f of tierFights) {
+    for (const f of countedFights) {
       if (f.wipe?.phase == null) continue;
       m.set(f.wipe.phase, (m.get(f.wipe.phase) ?? 0) + 1);
     }
     return [...m.entries()]
       .sort((a, b) => a[0] - b[0])
       .map(([phase, count]) => ({ phase, count }));
-  }, [tierFights, showPhase]);
+  }, [countedFights, showPhase]);
   // 2026-09-06 W-2: フェーズ滞在時間の合計 (絶のみ。零式は phases が null)。
   // 全件集計が server から来ていればそれを優先する (2026-09-07: 打ち切り
   // カテゴリで「表示中の分」だけになっていた)。
@@ -376,12 +391,27 @@ export function LogsView({
         ? []
         : phaseTotalsAll
           ? phaseTotalsAll.totals
-          : phaseTimeTotals(tierFights.map((f) => f.phases)),
-    [tierFights, showPhase, phaseTotalsAll],
+          : phaseTimeTotals(countedFights.map((f) => f.phases)),
+    [countedFights, showPhase, phaseTotalsAll],
   );
   // DB の総数にはクラスタ外の混入分も含まれるため、取得済み明細で判明した
   // 混入数だけ差し引く (未打ち切りなら tierFights.length と一致する)。
-  const shownTotalPulls = Math.max(0, totalPulls - (fights.length - tierFights.length));
+  // 2026-10-07 C-3: 別のログと同じ pull も差し引く (未打ち切りなら
+  // countedFights.length と一致する)。クリア数 (DB の count) も同じ。
+  const shownTotalPulls = Math.max(
+    0,
+    totalPulls - (fights.length - tierFights.length) - duplicateOf.size,
+  );
+  const shownTotalClears = useMemo(
+    () =>
+      Math.max(
+        0,
+        totalClears -
+          tierFights.filter((f) => duplicateOf.has(pullKey(f)) && isClearFight(f, floors))
+            .length,
+      ),
+    [totalClears, tierFights, duplicateOf, floors],
+  );
   // 動画オフセットの基準: レポートごとの「最初の pull の戦闘開始時刻」。
   // 旧基準は「レポート開始時刻」だったが、ユーザーが動画で見つけて合わせる
   // のは pull #1 の開始なので、レポート開始〜初 pull の準備時間分 (実機で
@@ -555,7 +585,7 @@ export function LogsView({
   const floorClears = useMemo<FloorClearItem[]>(() => {
     if (!floors || truncated) return [];
     const rows = floorFirstClears(
-      tierFights.flatMap((f) => {
+      countedFights.flatMap((f) => {
         const index =
           f.encounterId === null ? undefined : floors.byEncounter.get(f.encounterId);
         return index === undefined
@@ -577,7 +607,7 @@ export function LogsView({
       displayFloor: floors.displayFloorByIndex.get(c.index) ?? c.index,
       half: floorHalf(floors, c.index),
     }));
-  }, [floors, tierFights, truncated, locale]);
+  }, [floors, countedFights, truncated, locale]);
 
   // 絞り込み適用後の日リスト。pull が 1 つも残らない日は出さない
   // (その層に挑んでいない日を空行で並べても意味が無い)。
@@ -595,8 +625,9 @@ export function LogsView({
           floors.byEncounter.get(f.encounterId) === segment
         : f.lastPhase === segment,
     );
-    return summarize(kept, floors, showPhase).days;
-  }, [summary.days, tierFights, floors, floorFilter, phaseFilter, showPhase]);
+    // 別のログと同じ pull の印は絞る前の表を渡す (絞った中だけで比べ直さない)。
+    return summarize(kept, floors, showPhase, duplicateOf).days;
+  }, [summary.days, tierFights, floors, floorFilter, phaseFilter, showPhase, duplicateOf]);
 
   /** いま効いている絞り込み (層 / フェーズのどちらか)。 */
   const segmentFilter = floors ? floorFilter : phaseFilter;
@@ -1256,7 +1287,7 @@ export function LogsView({
           label={m.logs.statBest}
           value={
             // クリア済みなら「残 0%」ではなく「討伐」と言い切る。
-            totalClears > 0
+            shownTotalClears > 0
               ? m.logs.kill
               : showPhase && summary.bestPhase !== null
                 ? `P${summary.bestPhase}`
@@ -1272,7 +1303,7 @@ export function LogsView({
                     : "—"
           }
           sub={
-            totalClears > 0
+            shownTotalClears > 0
               ? undefined
               : showPhase && summary.bestPhase !== null
                 ? m.logs.hpLeft(formatPercentage(summary.bestPercentage))
@@ -1283,7 +1314,7 @@ export function LogsView({
         />
         <StatCard
           label={floors ? m.logs.statFloorClear(floors.finalFloorLabel) : m.logs.statClear}
-          value={totalClears > 0 ? m.logs.clearCount(totalClears) : "—"}
+          value={shownTotalClears > 0 ? m.logs.clearCount(shownTotalClears) : "—"}
           sub={
             // 明細が打ち切られている場合の「初クリア」は表示範囲内の最古の
             // クリアでしかないので出さない (誤情報を作らない)。
@@ -1298,7 +1329,7 @@ export function LogsView({
                   )
                 : undefined
           }
-          highlight={totalClears > 0}
+          highlight={shownTotalClears > 0}
         />
       </ul>
 
@@ -1327,7 +1358,7 @@ export function LogsView({
         // 2026-10-06: 行の hover に注釈の pull の日時・ティア通算の番号を出す。
         // 番号は初討伐カードと同じく、明細が打ち切られていれば出さない。
         fights={fights}
-        numberedFights={truncated ? null : tierFights}
+        numberedFights={truncated ? null : countedFights}
       />
 
       {(wipeCauses.length > 0 ||

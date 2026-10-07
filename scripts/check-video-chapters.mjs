@@ -58,6 +58,8 @@ try {
   check("最終層の討伐は CLEAR", chapterPullLabel(fight({ encounterId: 104, kill: true, fightPercentage: 0 }), 9, floors, false, "ja"), "#9 4層 CLEAR");
   // pull 行の結果チップと同じく、討伐は層を問わず CLEAR (残0% にしない)
   check("下の層の討伐も CLEAR", chapterPullLabel(fight({ encounterId: 102, kill: true, fightPercentage: 0 }), 2, floors, false, "ja"), "#2 2層 CLEAR");
+  // 2026-10-07 C-3: 別のログと同じ pull で番号が無い (数える側が別の日) ときは回数を付けない
+  check("番号が無ければ回数を付けない", chapterPullLabel(fight({}), null, floors, false, "ja"), "1層 残42.0%");
   // 層の名前は FloorMap を作った時の言語 (画面は表示言語で作る)
   const floorsEn = prog.buildFloorMap(tierFights, 4, "en");
   check("英語", chapterPullLabel(fight({}), 3, floorsEn, false, "en"), `#3 ${prog.floorLabel(floorsEn, 1, "en")} 42.0% left`);
@@ -115,7 +117,14 @@ const mod = read("src/lib/video-chapters.ts");
 check("時刻は pull 行のリンクと同じ式 (videoSecondsForPull)", /videoSecondsForPull\(offsetSeconds, p\.startMs, firstPullStartMs\)/.test(mod), true);
 check("映っていない判定も同じ関数 (isBeforeVideoStart)", /!isBeforeVideoStart\(p\.seconds\)/.test(mod), true);
 const day = read("src/components/portal/logs/day-row.tsx");
-check("日の行: 番号は日の行と同じ (day.fights の並び + 1)", /day\.fights\s*\.map\(\(f, i\) => \(\{ f, index: i \+ 1 \}\)\)\s*\.filter\(\(x\) => x\.f\.reportCode === code\)/.test(day), true);
+// 2026-10-07 C-3: 番号は pull 行と同じ `numberOf` (数える pull の並び + 1。別のログと
+// 同じ pull は数える側の番号)。
+check(
+  "日の行: 番号は pull 行と同じ (numberOf)",
+  /day\.fights\s*\.filter\(\(f\) => f\.reportCode === code\)\s*\.map\(\(f\) => \(\{[\s\S]*?chapterPullLabel\(f, numberOf\(f\),/.test(day) &&
+    /index=\{numberOf\(f\)\}/.test(day),
+  true,
+);
 check("日の行: pull #1 は画面と同じ (firstPullStartByReport)", /const first = firstPullStartByReport\.get\(code\);/.test(day), true);
 check("日の行: その動画のオフセットで作る", /buildYoutubeChapters\(pulls, video\.offsetSeconds, first, m\.logs\.chaptersIntro\)/.test(day), true);
 // ボタンは動画チップと同じ map の中 (チップのすぐ右) に置き、名前も同じ変数を使う
