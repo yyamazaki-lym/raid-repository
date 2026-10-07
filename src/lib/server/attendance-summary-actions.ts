@@ -13,6 +13,11 @@ import {
   type RefetchLedgerRow,
 } from "@/lib/schedule/attendance-refetch";
 import { jstYmdString } from "@/lib/jst-date";
+import {
+  countedAttendancePulls,
+  type ReportDay,
+  type ReportDuplicate,
+} from "@/lib/schedule/attendance-counted-pulls";
 import { planPastSessionMerge } from "@/lib/schedule/past-session-dedup";
 import { getScheduleSourceMode } from "@/lib/schedule/source-mode";
 // L-14: 同期式のスナップショット (名前 → 記号) をメンバーキーに直す層。
@@ -103,7 +108,7 @@ export async function fetchAttendanceSummaryAction(): Promise<AttendanceSummaryR
     }
     const syncMode = sourceMode === "sync";
 
-    const [sessionsRes, membersRes, fightsRes] = await Promise.all([
+    const [sessionsRes, membersRes, fightsRes, duplicateRes] = await Promise.all([
       syncMode
         ? db
             .from("schedule_past_sessions")
@@ -142,6 +147,9 @@ export async function fetchAttendanceSummaryAction(): Promise<AttendanceSummaryR
       // 出席が静かに間違う。返る行数を数十に落とす RPC に置き換えた
       // (schema.sql 13c-4 節)。
       db.rpc("fflogs_report_days", { p_from_ms: cutoffMs }),
+      // 2026-10-07 C-3: レポートごとの「別のログと同じ pull」の数 (schema.sql
+      // 13c-4)。同じ夜を 2 人が上げたログで pull 数が 2 倍にならないよう割り戻す。
+      db.rpc("fflogs_report_duplicate_pulls", { p_from_ms: cutoffMs }),
     ]);
 
     // ⚠ **読み取りの失敗を「不在」として扱わない。** PostgREST は失敗を
@@ -231,19 +239,35 @@ export async function fetchAttendanceSummaryAction(): Promise<AttendanceSummaryR
     // `dayOfReport` の指す日とは別の日に積まれ、**その日の総 pull 数
     // (`dayPulls`) とメンバー別の pull 数 (`pullsBy`、レポート経由で
     // 日に結ぶ) が食い違っていた**。レポート単位に揃える。
-    const dayOfReport = new Map<string, string>();
-    const pullsPerDay = new Map<string, number>();
-    for (const f of (fightsRes.data ?? []) as Array<{
+    //
+    // 2026-10-07 C-3: 別のログと同じ pull の数。⚠ **読めなくても出席サマリーは
+    // 出す** (重複を除かない従来の数に戻るだけで、「不在」には化けない)。
+    // schema の新しい関数が入る前に新しいコードが配信された間もここを通る。
+    let duplicates: ReportDuplicate[] = [];
+    if (duplicateRes.error) {
+      console.warn("[attendance-summary] duplicate pulls read failed:", duplicateRes.error.message);
+    } else {
+      duplicates = ((duplicateRes.data ?? []) as Array<{
+        report_code: string;
+        counted_report_code: string;
+        duplicate_pulls: number;
+      }>).map((d) => ({
+        reportCode: d.report_code,
+        countedReportCode: d.counted_report_code,
+        duplicatePulls: Number(d.duplicate_pulls) || 0,
+      }));
+    }
+    const reportDays: ReportDay[] = ((fightsRes.data ?? []) as Array<{
       report_code: string;
       first_start_ms: number;
       pulls: number;
-    }>) {
-      const day = jstYmdString(new Date(Number(f.first_start_ms)));
-      dayOfReport.set(f.report_code, day);
-      pullsPerDay.set(day, (pullsPerDay.get(day) ?? 0) + (Number(f.pulls) || 0));
-    }
+    }>).map((f) => ({
+      reportCode: f.report_code,
+      day: jstYmdString(new Date(Number(f.first_start_ms))),
+      pulls: Number(f.pulls) || 0,
+    }));
 
-    const codes = [...dayOfReport.keys()];
+    const codes = reportDays.map((r) => r.reportCode);
     // L-20 (2026-09-09 実機報告「出席サマリーは取得不可」): **同期式では
     // この表を読まない。** 同期式のセッション行は `schedule_past_sessions`
     // 由来で `id` を持たないため、`.in("session_id", [undefined, ...])` が
@@ -301,15 +325,17 @@ export async function fetchAttendanceSummaryAction(): Promise<AttendanceSummaryR
       symbolsBySession.set(a.session_id, bag);
     }
 
-    const pullsByDay = new Map<string, Record<string, number>>();
-    for (const r of actualsRes.rows) {
-      const day = dayOfReport.get(r.report_code);
-      if (!day) continue;
-      const bag = pullsByDay.get(day) ?? {};
-      bag[r.discord_user_id] =
-        (bag[r.discord_user_id] ?? 0) + (Number(r.pulls) || 0);
-      pullsByDay.set(day, bag);
-    }
+    // 日の pull 数とメンバーの pull 数を、別のログと同じ pull を除いた数に
+    // 割り戻す (`attendance-counted-pulls.ts` の docstring)。
+    const { dayPulls: pullsPerDay, pullsByDay } = countedAttendancePulls(
+      reportDays,
+      duplicates,
+      actualsRes.rows.map((r) => ({
+        reportCode: r.report_code,
+        discordUserId: r.discord_user_id,
+        pulls: Number(r.pulls) || 0,
+      })),
+    );
 
     // L-14: 同期式は回答が**名前**キーなので、メンバーの表示名から引く
     // (対応表の作り方と未解決の扱いは `attendance-sync-symbols.ts`)。

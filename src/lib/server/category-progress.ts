@@ -20,6 +20,8 @@ import { progressValue } from "@/lib/fflogs-progress";
  *
  * 到達度そのものの計算は **`progressValue` を通す** — 練習ログ画面の
  * バー・トレンド・プル箱と同じ関数なので、カードとタブで数字が食い違わない。
+ * 2026-10-07: 同じ夜を 2 人が上げたログの同じ pull は、RPC の側で 1 回だけ数える
+ * (schema.sql 13c-2b。判定は練習ログ画面の `fflogs-duplicate-pulls.ts` と同じ)。
  *
  * ## 失敗しても画面は出す
  *
