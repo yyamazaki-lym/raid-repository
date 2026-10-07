@@ -88,7 +88,8 @@ const BASELINE = [
 
   // ── E. 運用者 / 開発者向け ──────────────────────────────────────────
   ["src/lib/supabase/env.ts", 3, "E", "環境変数の不足 (起動失敗時のみ)"],
-  ["src/app/api/auth/fflogs/callback/route.ts", 3, "E", "OAuth 失敗 (管理者の FFLogs 連携時のみ)"],
+  // 2026-10-07: 画面へはコードだけを返すようにした (文言は辞書)。残る 2 件はログ用の詳細。
+  ["src/app/api/auth/fflogs/callback/route.ts", 2, "E", "OAuth 失敗のログ用の詳細 (画面には出さない)"],
   ["src/components/portal/confirm-dialog.tsx", 1, "E", "Provider 外使用の開発時 throw"],
 
   // ── F. 誤検出 ───────────────────────────────────────────────────────

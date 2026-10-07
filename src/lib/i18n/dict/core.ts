@@ -67,7 +67,9 @@ export const ja = {
     buttonBusy: "Discord へ移動中…",
     errorMissingCode: "認可コードが届きませんでした。もう一度お試しください。",
     errorExchangeFailed: "Supabase とのセッション交換に失敗しました。",
-    errorGeneric: (code: string) => `エラー: ${code}`,
+    // 2026-10-07 セキュリティ精査: 知らないコードを画面に出さない (URL に任意の文を
+    // 入れて案内文に見せかけられた)。
+    errorGeneric: "ログインできませんでした。もう一度お試しください。",
   },
   denied: {
     title: "アクセス権がありません",
@@ -776,7 +778,7 @@ export const en: CoreMessages = {
     buttonBusy: "Redirecting to Discord…",
     errorMissingCode: "No authorization code was received. Please try again.",
     errorExchangeFailed: "Failed to exchange the session with Supabase.",
-    errorGeneric: (code) => `Error: ${code}`,
+    errorGeneric: "Could not sign in. Please try again.",
   },
   denied: {
     title: "Access denied",

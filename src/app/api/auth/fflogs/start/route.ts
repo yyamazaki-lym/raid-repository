@@ -42,8 +42,10 @@ export async function GET(req: NextRequest) {
     // can toast the message — much friendlier than a raw JSON error
     // page when the user just clicked "FFLogs と OAuth 接続" and is
     // missing env vars.
+    // 2026-10-07: URL にはコードだけを載せる (callback と同じ。詳しい理由はログ)。
+    console.warn("[fflogs-oauth] start failed:", result.code, result.reason);
     const homeUrl = new URL("/", origin);
-    homeUrl.searchParams.set("fflogs_oauth_error", result.reason);
+    homeUrl.searchParams.set("fflogs_oauth_error", result.code);
     return NextResponse.redirect(homeUrl);
   }
   // 2.x: state を HttpOnly cookie に焼き付けて 1 ユーザー 1 state に
