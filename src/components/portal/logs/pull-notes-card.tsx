@@ -70,6 +70,7 @@ export function PullNotesCard({
   initial,
   fights,
   numberedFights,
+  duplicateOf,
 }: {
   categoryName: string;
   /**
@@ -95,6 +96,11 @@ export function PullNotesCard({
     fightId: number;
     startMs: number;
   }> | null;
+  /**
+   * 別のログと同じ pull → 数える側 (2026-10-07 C-3)。`numberedFights` は数える
+   * pull だけなので、数えない側に付いた注釈の番号はこれで数える側に読み替える。
+   */
+  duplicateOf: ReadonlyMap<string, string>;
 }) {
   const m = useMessages();
   // ⚠ 状態を持たない — 初期値がそのまま表示。追加 / 削除は pull 行側で行い、
@@ -108,8 +114,9 @@ export function PullNotesCard({
         (notes ?? []).filter((n) => n.scope === "team"),
         fights,
         numberedFights,
+        duplicateOf,
       ),
-    [notes, fights, numberedFights],
+    [notes, fights, numberedFights, duplicateOf],
   );
 
   // 読み込み中と「0 件」は同じ見た目にしない — 0 件のときは使い方を出す。

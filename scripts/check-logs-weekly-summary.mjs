@@ -154,6 +154,32 @@ try {
     [sTwice.fightMs, sTwice.logMs, sTwice.fightMs <= sTwice.logMs],
     [1500000, 3600000, true],
   );
+  // 2026-10-07 C-3: pull・討伐・練習日も 1 回だけ数える (練習ログの画面と同じ)。
+  check(
+    "同じ夜のログが 2 本でも pull・討伐・練習日は 1 本分",
+    [sTwice.days, sTwice.pulls, sTwice.clears, sTwice.flawlessClears, sTwice.firstClearDate],
+    [s1.days, s1.pulls, s1.clears, s1.flawlessClears, s1.firstClearDate],
+  );
+  // 2026-10-07 C-3 (レビューで検出): 2 本で練習日の付き方が違い (予定に紐づいたログは
+  // 月曜、0 時過ぎに取り直したログは火曜)、数えない側だけが次の週に入る。次の週の
+  // ログ合計・戦闘時間に、前の週で数えた時間を足さない。
+  {
+    const mon = ["23:00", "23:10", "23:20", "23:30"].map((at) => fight({ date: "2026-10-05", at, sec: 240, enc: 104, pct: 40 }));
+    const retaken = mon.slice(1).map((f) => ({ ...f, reportCode: "B2", sessionDate: "2026-10-06" }));
+    const next = fight({ date: "2026-10-07", at: "22:00", sec: 300, enc: 104, pct: 30 });
+    const W2 = { start: "2026-10-06", end: "2026-10-12" };
+    const pick = (s) => [s.days, s.pulls, s.fightMs, s.logMs];
+    check(
+      "数えない側だけが次の週にあっても、その週の数・時間に入れない",
+      pick(summarizeWeek([...mon, ...retaken, next], W2, floors, false, "ja")),
+      pick(summarizeWeek([...mon, next], W2, floors, false, "ja")),
+    );
+    check(
+      "数える側の週では従来通り (和集合なので 1 本分)",
+      pick(summarizeWeek([...mon, ...retaken, next], W, floors, false, "ja")),
+      pick(summarizeWeek([...mon, next], W, floors, false, "ja")),
+    );
+  }
   check("最高到達は最も深い層で見る", s1.best, r(4, 0, true));
   check("前の週まで", s1.bestBefore, r(2, 0, true));
   check("更新した", s1.improved, true);

@@ -13,6 +13,7 @@ import { normalizeSessionDate } from "./session-date";
 import type { PhaseSpan, WipeSummary } from "./fflogs-fight-detail";
 import { PERF_TEXT, perfForRemainingPercent } from "./perf-tone";
 import { BREAK_CAP_MS, cappedBreakIntervals, unionLengthMs } from "./fflogs-session";
+import { duplicatePulls, pullKey } from "./fflogs-duplicate-pulls";
 // 区間の和集合は fflogs-session.ts へ移した (拘束とログ合計で共通)。ここからも使えるよう再公開する。
 export { unionLengthMs } from "./fflogs-session";
 
@@ -358,7 +359,19 @@ export type DaySummary = {
   bestFloor: number | null;
   /** 戦闘時間の合計 (秒)。休憩は含まない = 「実戦闘時間」。 */
   fightSeconds: number;
+  /**
+   * その日の pull (時刻順)。**別のログと同じ pull も含む** (2026-10-07 C-3):
+   * 振り返りでは両方の行を出す。見出しの数・戦闘時間などはすべて
+   * `countedFights` から出している。
+   */
   fights: FightRow[];
+  /** 集計に数える pull (別のログと同じ pull を除く、時刻順)。 */
+  countedFights: FightRow[];
+  /**
+   * 別のログと同じ pull → 数える側の `pullKey` (`fflogs-duplicate-pulls.ts`)。
+   * `summarize` に渡した pull 全体の表なので、ほかの日の pull も載っている。
+   */
+  duplicateOf: ReadonlyMap<string, string>;
 };
 
 export type ProgressSummary = {
@@ -395,7 +408,15 @@ export function summarize(
    * 勝ってしまう。層モデルで最深層に絞っているのと同じ理由。
    */
   phaseModel = false,
+  /**
+   * 別のログと同じ pull (2026-10-07 C-3)。数・クリア・ベスト・戦闘時間は
+   * これを除いて数え、日の `fights` には残す。呼び出し側が全体で求めた表を
+   * 渡せる (層で絞った pull を渡すときも、絞る前の表で同じ印になる)。
+   */
+  duplicateOf: ReadonlyMap<string, string> = duplicatePulls(fights),
 ): ProgressSummary {
+  const isCounted = (f: FightRow) => !duplicateOf.has(pullKey(f));
+  const counted = duplicateOf.size === 0 ? fights : fights.filter(isCounted);
   const byDay = new Map<string, FightRow[]>();
   for (const f of fights) {
     const d = fightDate(f);
@@ -436,31 +457,34 @@ export function summarize(
   const days: DaySummary[] = [];
   for (const [date, list] of byDay) {
     const sorted = [...list].sort((a, b) => a.startMs - b.startMs);
+    const dayCounted = duplicateOf.size === 0 ? sorted : sorted.filter(isCounted);
     days.push({
       date,
-      pulls: sorted.length,
-      kills: sorted.filter((f) => f.kill).length,
-      clears: sorted.filter((f) => isClearFight(f, floors)).length,
-      bestPercentage: bestPercentageOf(sorted),
-      bestPhase: maxOrNull(sorted.map((f) => f.lastPhase)),
-      bestFloor: maxOrNull(sorted.map(floorOf)),
+      pulls: dayCounted.length,
+      kills: dayCounted.filter((f) => f.kill).length,
+      clears: dayCounted.filter((f) => isClearFight(f, floors)).length,
+      bestPercentage: bestPercentageOf(dayCounted),
+      bestPhase: maxOrNull(dayCounted.map((f) => f.lastPhase)),
+      bestFloor: maxOrNull(dayCounted.map(floorOf)),
       fightSeconds: Math.round(
-        sorted.reduce((acc, f) => acc + Math.max(0, f.endMs - f.startMs), 0) /
+        dayCounted.reduce((acc, f) => acc + Math.max(0, f.endMs - f.startMs), 0) /
           1000,
       ),
       fights: sorted,
+      countedFights: dayCounted,
+      duplicateOf,
     });
   }
   // 新しい日が上。
   days.sort((a, b) => b.date.localeCompare(a.date));
 
-  const chronological = [...fights].sort((a, b) => a.startMs - b.startMs);
-  const clears = fights.filter((f) => isClearFight(f, floors));
+  const chronological = [...counted].sort((a, b) => a.startMs - b.startMs);
+  const clears = counted.filter((f) => isClearFight(f, floors));
   return {
-    totalPulls: fights.length,
+    totalPulls: counted.length,
     totalClears: clears.length,
-    bestPercentage: bestPercentageOf(fights),
-    bestPhase: maxOrNull(fights.map((f) => f.lastPhase)),
+    bestPercentage: bestPercentageOf(counted),
+    bestPhase: maxOrNull(counted.map((f) => f.lastPhase)),
     firstKill: chronological.find((f) => isClearFight(f, floors)) ?? null,
     fastestClearSeconds:
       clears.length > 0
@@ -579,7 +603,11 @@ export function progressTimeline(
   phaseCount: number | null = null,
 ): ProgressPoint[] {
   // 古い順に走査して記録更新を判定する。
-  const asc = [...days].sort((a, b) => a.date.localeCompare(b.date));
+  // 2026-10-07 C-3: 数える pull が無い日 (別のログと同じ pull だけの日。2 本の
+  // レポートで練習日の付き方が違ったとき) は点にしない。
+  const asc = days
+    .filter((d) => d.pulls > 0)
+    .sort((a, b) => a.date.localeCompare(b.date));
   // 零式の層と絶のフェーズを同じ「区間」として扱う (以降 segment)。
   const segmentCount = floors ? floors.floorCount : phaseCount;
   const segmentOf = (d: DaySummary): number | null =>

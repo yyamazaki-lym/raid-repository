@@ -38,6 +38,7 @@ import {
   type ProgressLocale,
 } from "./fflogs-progress";
 import { floorFirstClears } from "./fflogs-session";
+import { countedPulls, duplicatePulls, pullKey } from "./fflogs-duplicate-pulls";
 
 /** 送ってよい日の数 (火曜から数えて。火・水・木)。 */
 export const WEEKLY_SUMMARY_DUE_DAYS = 3;
@@ -170,9 +171,19 @@ export function summarizeWeek(
   phaseModel: boolean,
   locale: ProgressLocale = "ja",
 ): WeeklySummary | null {
-  const upToEnd = fights.filter((f) => fightDate(f) <= week.end);
+  // 2026-10-07 C-3: 同じ夜を 2 人が上げたログの同じ pull は 1 回だけ数える
+  // (練習ログの画面と同じ `fflogs-duplicate-pulls.ts`)。
+  const duplicateOf = duplicatePulls(fights);
+  const counted = countedPulls(fights, duplicateOf);
+  const upToEnd = counted.filter((f) => fightDate(f) <= week.end);
   const inWeek = upToEnd.filter((f) => fightDate(f) >= week.start);
   if (inWeek.length === 0) return null;
+  // ログ合計と戦闘時間は区間の和集合なので、数えない側の pull も渡す (そのレポートの
+  // 開始も入れる)。ただし**数える側がこの週にある pull だけ** — 2 本で練習日の付き方が
+  // 違うと、数えない側だけが次の週に入り、前の週で数えた時間をもう一度足していた
+  // (レビューで検出)。
+  const inWeekKeys = new Set(inWeek.map(pullKey));
+  const inWeekAll = fights.filter((f) => inWeekKeys.has(duplicateOf.get(pullKey(f)) ?? pullKey(f)));
   const before = upToEnd.filter((f) => fightDate(f) < week.start);
 
   const byDay = new Map<string, FightRow[]>();
@@ -183,10 +194,10 @@ export function summarizeWeek(
   // 2026-10-07: 戦闘時間も pull の区間の和集合で出す。同じ夜を 2 人がログに
   // 取ると pull が 2 本ずつ入り、単純に足すと「ログ合計 (和集合)」より
   // 「うち戦闘」が長くなって文面が矛盾する (PR のレビューで検出)。
-  const fightMs = unionLengthMs(inWeek.map((f) => ({ start: f.startMs, end: f.endMs })));
+  const fightMs = unionLengthMs(inWeekAll.map((f) => ({ start: f.startMs, end: f.endMs })));
   // 週の pull をまとめて渡す (日ごとに出して足すと、日をまたいだログの開始が
   // 両方の日に入って二重になる)。
-  const logMs = totalLogMs(inWeek);
+  const logMs = totalLogMs(inWeekAll);
 
   const best = bestReach(inWeek, floors, phaseModel);
   const bestBefore = bestReach(before, floors, phaseModel);

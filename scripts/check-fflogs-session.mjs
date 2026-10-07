@@ -320,9 +320,10 @@ try {
 console.log("\n配線");
 const logsView = readFileSync("src/app/(portal)/category/[slug]/logs/logs-view.tsx", "utf8").replace(/\r\n/g, "\n");
 // 2026-10-05: 練習ログの画面はサマリーのクリア数と同じ判定 (最終層の kill) を渡す。
+// 2026-10-07 C-3: pull は別のログと同じ pull を除いた countedFights。
 check(
   "練習ログ: バッジは最終層の kill で数える (isClearFight)",
-  /teamBadges\(tierFights, \(f\) => isClearFight\(f, floors\)\)/.test(logsView),
+  /teamBadges\(countedFights, \(f\) => isClearFight\(f, floors\)\)/.test(logsView),
   true,
 );
 

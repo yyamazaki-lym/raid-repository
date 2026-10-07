@@ -186,6 +186,23 @@ try {
     m.pullNoteDetailsByTag(hoverNotes, fights, [...fights].reverse()).get("other")[0].overallPulls,
     1,
   );
+  // 2026-10-07 C-3 (レビューで検出): 番号は数える pull だけで数える。別のログと同じ
+  // pull (数えない側) に付いた注釈は、数える側の番号に読み替える (日の行と同じ)。
+  {
+    const dupFight = { reportCode: "r9", fightId: 7, sessionDate: "2026-10-06", startMs: 5003 };
+    const dupNotes = [note({ reportCode: "r9", fightId: 7, tag: "position" }), note({ reportCode: "r2", fightId: 1, tag: "position" })];
+    const dupOf = new Map([["r9:7", "r2:1"]]);
+    check(
+      "数えない側の注釈は数える側の番号",
+      m.pullNoteDetailsByTag(dupNotes, [...fights, dupFight], fights, dupOf).get("position").map((d) => d.overallPulls),
+      [3, 3],
+    );
+    check(
+      "表を渡さなければ数えない側は番号なし (従来通り)",
+      m.pullNoteDetailsByTag(dupNotes, [...fights, dupFight], fights).get("position").map((d) => d.overallPulls),
+      [null, 3],
+    );
+  }
   // ⚠ Windows の Chrome / Edge は title を 1024 文字で切る。行数だけで切ると、
   // メモが長いときに末尾の行と「ほか N 件」が黙って消える。
   console.log("\n[hover の行数と文字数の予算]");
