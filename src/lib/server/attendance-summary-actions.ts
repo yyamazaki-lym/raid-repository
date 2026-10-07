@@ -16,6 +16,7 @@ import { jstYmdString } from "@/lib/jst-date";
 import {
   countedAttendancePulls,
   type ReportDay,
+  type ReportDuplicate,
 } from "@/lib/schedule/attendance-counted-pulls";
 import { planPastSessionMerge } from "@/lib/schedule/past-session-dedup";
 import { getScheduleSourceMode } from "@/lib/schedule/source-mode";
@@ -242,13 +243,19 @@ export async function fetchAttendanceSummaryAction(): Promise<AttendanceSummaryR
     // 2026-10-07 C-3: 別のログと同じ pull の数。⚠ **読めなくても出席サマリーは
     // 出す** (重複を除かない従来の数に戻るだけで、「不在」には化けない)。
     // schema の新しい関数が入る前に新しいコードが配信された間もここを通る。
-    const duplicateByReport = new Map<string, number>();
+    let duplicates: ReportDuplicate[] = [];
     if (duplicateRes.error) {
       console.warn("[attendance-summary] duplicate pulls read failed:", duplicateRes.error.message);
     } else {
-      for (const d of (duplicateRes.data ?? []) as Array<{ report_code: string; duplicate_pulls: number }>) {
-        duplicateByReport.set(d.report_code, Number(d.duplicate_pulls) || 0);
-      }
+      duplicates = ((duplicateRes.data ?? []) as Array<{
+        report_code: string;
+        counted_report_code: string;
+        duplicate_pulls: number;
+      }>).map((d) => ({
+        reportCode: d.report_code,
+        countedReportCode: d.counted_report_code,
+        duplicatePulls: Number(d.duplicate_pulls) || 0,
+      }));
     }
     const reportDays: ReportDay[] = ((fightsRes.data ?? []) as Array<{
       report_code: string;
@@ -258,7 +265,6 @@ export async function fetchAttendanceSummaryAction(): Promise<AttendanceSummaryR
       reportCode: f.report_code,
       day: jstYmdString(new Date(Number(f.first_start_ms))),
       pulls: Number(f.pulls) || 0,
-      duplicatePulls: duplicateByReport.get(f.report_code) ?? 0,
     }));
 
     const codes = reportDays.map((r) => r.reportCode);
@@ -323,6 +329,7 @@ export async function fetchAttendanceSummaryAction(): Promise<AttendanceSummaryR
     // 割り戻す (`attendance-counted-pulls.ts` の docstring)。
     const { dayPulls: pullsPerDay, pullsByDay } = countedAttendancePulls(
       reportDays,
+      duplicates,
       actualsRes.rows.map((r) => ({
         reportCode: r.report_code,
         discordUserId: r.discord_user_id,

@@ -144,13 +144,19 @@ try {
     [true, true, true, true],
   );
   check(
+    "相手のレポートは順位がいちばん上のもの (TS の数える側と同じ順)",
+    /SELECT DISTINCT ON \(f\.report_code, f\.fight_id\)/.test(fn) && /ORDER BY f\.report_code, f\.fight_id, g\.n DESC, g\.report_code COLLATE "C"/.test(fn),
+    true,
+  );
+  check(
     "速さ: 桶 (自分と両隣) を列にして結合のキーに入れる (総当たりにしない)",
     /probe AS MATERIALIZED \(/.test(fn) && /AND g\.bucket = f\.probe_bucket/.test(fn),
     true,
   );
   check(
     "同じカテゴリ・同じ encounter・別のレポート",
-    [/g\.category_id = f\.category_id/.test(fn), /g\.encounter_id = f\.encounter_id/.test(fn), /g\.report_code <> f\.report_code/.test(fn), /r\.encounter_id IS NOT NULL/.test(fn)],
+    // カテゴリは「無いもの同士を同じ組」にした文字列の鍵 (cat) で比べる (出席サマリー用)
+    [/ON g\.cat = f\.cat/.test(fn) && /COALESCE\(f\.category_id::text, ''\) AS cat/.test(fn), /g\.encounter_id = f\.encounter_id/.test(fn), /g\.report_code <> f\.report_code/.test(fn), /r\.encounter_id IS NOT NULL/.test(fn)],
     [true, true, true, true],
   );
   check(

@@ -3188,45 +3188,56 @@ GRANT EXECUTE ON FUNCTION public.practice_seconds_by_category()
 -- scripts/check-fflogs-duplicate-pulls.mjs が確かめる)。数える側はレポートの
 -- pull 数が多い方、同数ならコードの昇順 (`COLLATE "C"` のバイト順で JS の文字列
 -- 比較とそろえる)。「順位が上のレポートに重なる pull があれば数えない」なので、
--- TS の「重ねた pull とも比べる」(3 本のログで時計のずれが連なる場合) と数える
--- 本数が一致する。
+-- TS の「重ねた pull とも比べる」(3 本のログで時計のずれが連なる場合) と、ふつう
+-- は同じ pull を数えない。
 --
--- ⚠ TS と違うところ: 順位に使う pull 数はカテゴリの全 pull で数える (TS は練習
--- ログの画面の層クラスタの中)。違いが出るのは 2 本の pull 数が層クラスタの外の
--- 戦闘で逆転するときの「どちらを数えるか」だけで、数えない本数は変わらない。
--- カテゴリの無い pull と encounter の無い pull は比べない。
+-- ⚠ TS とずれ得るところ (どちらも PR のレビューで実行して確認。起きるのは稀):
+-- - 順位に使う pull 数はカテゴリの全 pull で数える (TS は練習ログの画面の層
+--   クラスタの中)。2 本の pull 数が層クラスタの外の戦闘で逆転すると、どちらを
+--   数えるかが変わる。3 本の連なりと重なると数えない本数も 1 本ずれ得る
+-- - TS は「数える側の 1 本に、同じレポートからは 1 本まで」重ねる。ここは
+--   重なる相手があれば数えない。同じレポートの 2 本が開始・終了とも 10 秒以内に
+--   並ぶ (数秒で終わった pull が続く) ときだけ違う
+-- - カテゴリの無い pull は、カテゴリの無い pull どうしで比べる (出席サマリーは
+--   カテゴリを問わず数えるため。練習ログの画面・スパークラインには出ない)。
+--   encounter の無い pull は比べない
+--
+-- 返す `counted_report_code` は、重なった相手のうち順位がいちばん上のレポート。
+-- 出席サマリーは「相手が同じ日に数えられている重複」だけを割り引くのに使う
+-- (13c-4 の `fflogs_report_duplicate_pulls`)。
 --
 -- STABLE read-only の INVOKER (呼び出し元の RLS がそのまま効く)。13c-3 の中から
 -- 呼ぶので、EXECUTE は 13c-3 と同じく 15 章で配る (公開デモだけ anon にも)。
 -- 出席サマリーは service role から呼ぶので service_role にも付ける。
 CREATE OR REPLACE FUNCTION public.fflogs_duplicate_pulls(p_from_ms bigint)
-RETURNS TABLE (report_code text, fight_id integer)
+RETURNS TABLE (report_code text, fight_id integer, counted_report_code text)
 LANGUAGE sql STABLE SET search_path = public AS $$
   WITH recent AS (
-    -- 期間内の pull と、比べる相手として期間の始まりの 10 秒前から。
-    SELECT f.category_id, f.report_code, f.fight_id, f.encounter_id, f.start_ms, f.end_ms
+    -- 期間内の pull と、比べる相手として期間の始まりの 10 秒前から。カテゴリは
+    -- 無いもの同士を同じ組にする (`cat`、等号の結合に使えるよう文字列にする)。
+    SELECT COALESCE(f.category_id::text, '') AS cat, f.report_code, f.fight_id,
+           f.encounter_id, f.start_ms, f.end_ms
       FROM public.fflogs_fights f
-     WHERE f.category_id IS NOT NULL
-       AND f.start_ms >= p_from_ms - 10000
+     WHERE f.start_ms >= p_from_ms - 10000
   ),
   -- 順位はレポートの全 pull で数える (期間の境目をまたぐレポートも全部)。
   report_rank AS (
-    SELECT f.category_id, f.report_code, COUNT(*)::bigint AS n
+    SELECT COALESCE(f.category_id::text, '') AS cat, f.report_code, COUNT(*)::bigint AS n
       FROM public.fflogs_fights f
-      JOIN (SELECT DISTINCT r.category_id, r.report_code FROM recent r) r
-        ON r.category_id = f.category_id AND r.report_code = f.report_code
-     GROUP BY f.category_id, f.report_code
+      JOIN (SELECT DISTINCT r.cat, r.report_code FROM recent r) r
+        ON r.report_code = f.report_code AND r.cat = COALESCE(f.category_id::text, '')
+     GROUP BY 1, 2
   ),
   -- 開始時刻を許容差の幅の桶に分ける。開始の差が許容差以内なら桶は隣までしか
   -- 離れないので、隣の桶との等号の結合で引ける (範囲の条件で結合すると、同じ
   -- カテゴリ・encounter の pull どうしを総当たりにして遅かった: 4 万行の合成
   -- データで 121ms → 1,001ms。PGlite で実測)。
   cand AS (
-    SELECT r.category_id, r.report_code, r.fight_id, r.encounter_id,
+    SELECT r.cat, r.report_code, r.fight_id, r.encounter_id,
            r.start_ms, r.end_ms, rr.n, r.start_ms / 10000 AS bucket
       FROM recent r
       JOIN report_rank rr
-        ON rr.category_id = r.category_id AND rr.report_code = r.report_code
+        ON rr.cat = r.cat AND rr.report_code = r.report_code
      WHERE r.encounter_id IS NOT NULL
   ),
   -- 期間内の pull ごとに、引く桶 (自分と両隣) を列にしておく。式のまま結合に
@@ -3238,10 +3249,11 @@ LANGUAGE sql STABLE SET search_path = public AS $$
       CROSS JOIN (VALUES (-1), (0), (1)) AS v(d)
      WHERE f.start_ms >= p_from_ms
   )
-  SELECT DISTINCT f.report_code, f.fight_id
+  SELECT DISTINCT ON (f.report_code, f.fight_id)
+         f.report_code, f.fight_id, g.report_code AS counted_report_code
     FROM probe f
     JOIN cand g
-      ON g.category_id = f.category_id
+      ON g.cat = f.cat
      AND g.encounter_id = f.encounter_id
      AND g.bucket = f.probe_bucket
    WHERE g.report_code <> f.report_code
@@ -3251,6 +3263,7 @@ LANGUAGE sql STABLE SET search_path = public AS $$
        g.n > f.n
        OR (g.n = f.n AND g.report_code COLLATE "C" < f.report_code COLLATE "C")
      )
+   ORDER BY f.report_code, f.fight_id, g.n DESC, g.report_code COLLATE "C"
 $$;
 
 REVOKE EXECUTE ON FUNCTION public.fflogs_duplicate_pulls(bigint) FROM PUBLIC;
@@ -3491,21 +3504,23 @@ REVOKE EXECUTE ON FUNCTION public.fflogs_report_days(bigint) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.fflogs_report_days(bigint)
   TO authenticated, service_role;
 
--- 2026-10-07 C-3: レポートごとの「別のログと同じ pull」の数 (13c-2b)。出席
--- サマリーが、日の pull 数とメンバーの pull 数を数える分だけに割り戻すのに使う
--- (`src/lib/schedule/attendance-counted-pulls.ts`)。重複の無いレポートは行が
--- 無い。返る行は重複のあるレポートの数だけなので 1000 行の上限に当たらない。
+-- 2026-10-07 C-3: レポートごとの「別のログと同じ pull」の数を、重なった相手の
+-- レポート (`counted_report_code`) ごとに返す (13c-2b)。出席サマリーが、日の
+-- pull 数とメンバーの pull 数を数える分だけに割り戻すのに使う
+-- (`src/lib/schedule/attendance-counted-pulls.ts`。相手が同じ日に数えられている
+-- 重複だけを割り引く)。重複の無いレポートは行が無い。返る行は重複のあるレポート
+-- の組の数だけなので 1000 行の上限に当たらない。
 --
 -- ⚠ fflogs_report_days の戻り値に列を足さず、別の関数にした: 戻り値の型を
 -- 変えるには DROP FUNCTION が要り、この schema を毎回流し直す運用では避けたい。
 -- また、この関数が無い (schema 未適用の) 間も出席サマリーを出せるよう、呼ぶ側は
 -- 失敗を「重複なし」として扱う。
 CREATE OR REPLACE FUNCTION public.fflogs_report_duplicate_pulls(p_from_ms bigint)
-RETURNS TABLE (report_code text, duplicate_pulls integer)
+RETURNS TABLE (report_code text, counted_report_code text, duplicate_pulls integer)
 LANGUAGE sql STABLE SET search_path = public AS $$
-  SELECT d.report_code, count(*)::integer AS duplicate_pulls
+  SELECT d.report_code, d.counted_report_code, count(*)::integer AS duplicate_pulls
     FROM public.fflogs_duplicate_pulls(p_from_ms) d
-   GROUP BY d.report_code
+   GROUP BY d.report_code, d.counted_report_code
 $$;
 
 REVOKE EXECUTE ON FUNCTION public.fflogs_report_duplicate_pulls(bigint) FROM PUBLIC, anon;
