@@ -99,6 +99,20 @@ export function memoLimitError(limit: number, locale: "ja" | "en" = "ja"): strin
     : `メモは 1 つの日付に 1 人 ${limit} 件までです`;
 }
 
+/**
+ * 1 人のメモの総数・合計文字数の上限に当たったとき (2026-10-07、M-3)。DB の
+ * トリガーは `memo_limit_total` を返す。
+ */
+export function memoTotalLimitError(
+  limit: number,
+  charsLimit: number,
+  locale: "ja" | "en" = "ja",
+): string {
+  return locale === "en"
+    ? `You can keep up to ${limit} memos (${charsLimit.toLocaleString("en-US")} characters in total). Delete old memos to add more`
+    : `メモは 1 人 ${limit} 件・合計 ${charsLimit.toLocaleString("ja-JP")} 文字までです。古いメモを消してから追加してください`;
+}
+
 export function noPermissionError(
   action: "update" | "delete",
   locale: "ja" | "en" = "ja",

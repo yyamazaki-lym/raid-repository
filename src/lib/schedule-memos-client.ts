@@ -3,10 +3,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   memoLimitError,
+  memoTotalLimitError,
   noPermissionError,
   textLengthError,
 } from "@/lib/text-length-error";
-import { MEMO_PER_DATE_LIMIT } from "@/lib/memo-permissions";
+import {
+  MEMO_PER_DATE_LIMIT,
+  MEMO_TOTAL_CHARS_LIMIT,
+  MEMO_TOTAL_LIMIT,
+} from "@/lib/memo-permissions";
 import { parseMemoSeverity, type MemoSeverity } from "@/lib/memo-severity";
 import { createClient } from "@/lib/supabase/client";
 import { useRealtimeChannel } from "@/lib/use-realtime-table";
@@ -172,6 +177,13 @@ export async function createScheduleMemo(
   if (error?.message?.includes("memo_limit_per_date")) {
     return { ok: false, reason: memoLimitError(MEMO_PER_DATE_LIMIT, locale) };
   }
+  // 2026-10-07 (M-3): 1 人の総数・合計文字数の上限。
+  if (error?.message?.includes("memo_limit_total")) {
+    return {
+      ok: false,
+      reason: memoTotalLimitError(MEMO_TOTAL_LIMIT, MEMO_TOTAL_CHARS_LIMIT, locale),
+    };
+  }
   if (error || !data) return { ok: false, reason: error?.message ?? "unknown" };
   return { ok: true, memo: rowToMemo(data as ScheduleSessionMemoRow) };
 }
@@ -196,6 +208,13 @@ export async function updateScheduleMemo(
     .eq("id", id)
     .select("id")
     .maybeSingle();
+  // 2026-10-07 (M-3): 本文を長くして合計文字数の上限に当たったとき。
+  if (error?.message?.includes("memo_limit_total")) {
+    return {
+      ok: false,
+      reason: memoTotalLimitError(MEMO_TOTAL_LIMIT, MEMO_TOTAL_CHARS_LIMIT, locale),
+    };
+  }
   if (error) return { ok: false, reason: error.message };
   if (!data)
     return { ok: false, reason: noPermissionError("update", locale) };
