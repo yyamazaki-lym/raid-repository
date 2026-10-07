@@ -136,7 +136,8 @@ const limitInSchema = trigBody.match(/IF n >= (\d+) THEN/);
 check("schema の上限 = MEMO_PER_DATE_LIMIT", limitInSchema ? Number(limitInSchema[1]) : null, globalThis.__memoLimit);
 check("上限は 10 (ユーザー決定)", globalThis.__memoLimit, 10);
 check("所有者不明の行は数えない", /IF NEW\.author_user_id IS NULL THEN\s*RETURN NEW;/.test(trigBody), true);
-check("同じ人・同じ日付で数える", /WHERE author_user_id = NEW\.author_user_id\s*AND raw_date = NEW\.raw_date;/.test(trigBody), true);
+check("同じ人・同じ日付で数える", /WHERE author_user_id = NEW\.author_user_id\s*AND raw_date = NEW\.raw_date\b/.test(trigBody), true);
+check("上書きになる行自身は数えない (取り込み直し)", /AND id <> NEW\.id;/.test(trigBody), true);
 check("同時の INSERT を 1 件ずつにする", /pg_advisory_xact_lock\(/.test(trigBody), true);
 check("作るときだけ (日付の付け替えを止めない)",
   /CREATE TRIGGER schedule_session_memos_limit\s*BEFORE INSERT ON public\.schedule_session_memos/.test(schema), true);
