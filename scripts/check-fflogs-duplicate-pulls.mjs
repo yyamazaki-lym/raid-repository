@@ -122,6 +122,52 @@ try {
   check("数える pull が 0 の日も行は出す", s2.days.map((x) => [x.date, x.pulls, x.fights.length]), [["2026-10-07", 0, 3], ["2026-10-06", 4, 4]]);
   check("到達度の推移には数える pull が 0 の日を出さない", prog.progressTimeline(s2.days, floors, null).map((p) => p.date), ["2026-10-06"]);
   check("重複が無ければ従来通り", prog.summarize(A, floors, false).days[0].countedFights.length, 4);
+
+  // 2026-10-07 (C-3 の続き): DB 側 (スパークライン・出席サマリー) も同じ条件で数えない。
+  // 実行して TS と同じ結果になることは PGlite で確かめた (PR 本文)。ここでは条件の
+  // 書き方がずれていないことを固定する。
+  console.log("\n4. DB 側 (schema.sql 13c-2b)");
+  const schema = read("supabase/schema.sql");
+  const fnAt = schema.indexOf("CREATE OR REPLACE FUNCTION public.fflogs_duplicate_pulls(");
+  const fn = fnAt < 0 ? "" : schema.slice(fnAt, schema.indexOf("\n$$;", fnAt));
+  const tol = String(DUPLICATE_PULL_TOLERANCE_MS);
+  check("関数がある", fnAt >= 0, true);
+  check(
+    "開始と終了の許容差が TS の定数と同じ",
+    [
+      fn.includes(`abs(g.start_ms - f.start_ms) <= ${tol}`),
+      fn.includes(`abs(g.end_ms - f.end_ms) <= ${tol}`),
+      // 桶の幅と、期間の始まりより前に比べる相手を探す幅も同じ値
+      fn.includes(`r.start_ms / ${tol} AS bucket`),
+      fn.includes(`f.start_ms >= p_from_ms - ${tol}`),
+    ],
+    [true, true, true, true],
+  );
+  check(
+    "速さ: 桶 (自分と両隣) を列にして結合のキーに入れる (総当たりにしない)",
+    /probe AS MATERIALIZED \(/.test(fn) && /AND g\.bucket = f\.probe_bucket/.test(fn),
+    true,
+  );
+  check(
+    "同じカテゴリ・同じ encounter・別のレポート",
+    [/g\.category_id = f\.category_id/.test(fn), /g\.encounter_id = f\.encounter_id/.test(fn), /g\.report_code <> f\.report_code/.test(fn), /r\.encounter_id IS NOT NULL/.test(fn)],
+    [true, true, true, true],
+  );
+  check(
+    "順位: pull の多いレポート → コードのバイト順 (JS の比較と同じ)",
+    /g\.n > f\.n\s*OR \(g\.n = f\.n AND g\.report_code COLLATE "C" < f\.report_code COLLATE "C"\)/.test(fn),
+    true,
+  );
+  const spark = schema.slice(schema.indexOf("CREATE OR REPLACE FUNCTION public.category_progress_by_day("), schema.indexOf("\n$$;", schema.indexOf("CREATE OR REPLACE FUNCTION public.category_progress_by_day(")));
+  check("スパークライン: 直近ぶんから数えない pull を除く", /CROSS JOIN LATERAL public\.fflogs_duplicate_pulls\(b\.from_ms\) d/.test(spark) && /AND dp\.report_code IS NULL/.test(spark), true);
+  check(
+    "関数は 13c-3 より前に定義する (SQL 関数の本文は作るときに検査される)",
+    fnAt >= 0 && fnAt < schema.indexOf("CREATE OR REPLACE FUNCTION public.category_progress_by_day("),
+    true,
+  );
+  const grants = schema.slice(schema.indexOf("-- ---- 15. RPC の anon EXECUTE"));
+  check("権限: 15 章でスパークラインと同じ配り方 (デモの anon も読める)", /'public\.fflogs_duplicate_pulls\(bigint\)'/.test(grants), true);
+  check("権限: 出席サマリーの service role に配る", /GRANT EXECUTE ON FUNCTION public\.fflogs_duplicate_pulls\(bigint\) TO service_role;/.test(schema), true);
 } finally {
   rmSync(outDir, { recursive: true, force: true });
 }

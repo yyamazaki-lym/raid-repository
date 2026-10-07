@@ -3176,6 +3176,86 @@ REVOKE EXECUTE ON FUNCTION public.practice_seconds_by_category() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.practice_seconds_by_category()
   TO authenticated;
 
+-- ---- 13c-2b. 別のログと同じ pull (2026-10-07、C-3 の続き) -----------------
+-- 同じ夜を 2 人がそれぞれ FFLogs に上げると、同じ pull が 2 本のレポートに入る。
+-- 練習ログの画面と週のまとめは TS の `duplicatePulls`
+-- (src/lib/fflogs-duplicate-pulls.ts) で 1 回だけ数えている。DB 側で数えている
+-- コンテンツ一覧のスパークライン (13c-3) と出席サマリーの pull 数 (13c-4 の
+-- `fflogs_report_duplicate_pulls`) も、この関数で同じ pull を数えないようにする。
+--
+-- 条件は TS と同じ: 同じカテゴリ・別のレポート・同じ encounter・開始と終了の差が
+-- どちらも 10 秒以内 (`DUPLICATE_PULL_TOLERANCE_MS`。一致は
+-- scripts/check-fflogs-duplicate-pulls.mjs が確かめる)。数える側はレポートの
+-- pull 数が多い方、同数ならコードの昇順 (`COLLATE "C"` のバイト順で JS の文字列
+-- 比較とそろえる)。「順位が上のレポートに重なる pull があれば数えない」なので、
+-- TS の「重ねた pull とも比べる」(3 本のログで時計のずれが連なる場合) と数える
+-- 本数が一致する。
+--
+-- ⚠ TS と違うところ: 順位に使う pull 数はカテゴリの全 pull で数える (TS は練習
+-- ログの画面の層クラスタの中)。違いが出るのは 2 本の pull 数が層クラスタの外の
+-- 戦闘で逆転するときの「どちらを数えるか」だけで、数えない本数は変わらない。
+-- カテゴリの無い pull と encounter の無い pull は比べない。
+--
+-- STABLE read-only の INVOKER (呼び出し元の RLS がそのまま効く)。13c-3 の中から
+-- 呼ぶので、EXECUTE は 13c-3 と同じく 15 章で配る (公開デモだけ anon にも)。
+-- 出席サマリーは service role から呼ぶので service_role にも付ける。
+CREATE OR REPLACE FUNCTION public.fflogs_duplicate_pulls(p_from_ms bigint)
+RETURNS TABLE (report_code text, fight_id integer)
+LANGUAGE sql STABLE SET search_path = public AS $$
+  WITH recent AS (
+    -- 期間内の pull と、比べる相手として期間の始まりの 10 秒前から。
+    SELECT f.category_id, f.report_code, f.fight_id, f.encounter_id, f.start_ms, f.end_ms
+      FROM public.fflogs_fights f
+     WHERE f.category_id IS NOT NULL
+       AND f.start_ms >= p_from_ms - 10000
+  ),
+  -- 順位はレポートの全 pull で数える (期間の境目をまたぐレポートも全部)。
+  report_rank AS (
+    SELECT f.category_id, f.report_code, COUNT(*)::bigint AS n
+      FROM public.fflogs_fights f
+      JOIN (SELECT DISTINCT r.category_id, r.report_code FROM recent r) r
+        ON r.category_id = f.category_id AND r.report_code = f.report_code
+     GROUP BY f.category_id, f.report_code
+  ),
+  -- 開始時刻を許容差の幅の桶に分ける。開始の差が許容差以内なら桶は隣までしか
+  -- 離れないので、隣の桶との等号の結合で引ける (範囲の条件で結合すると、同じ
+  -- カテゴリ・encounter の pull どうしを総当たりにして遅かった: 4 万行の合成
+  -- データで 121ms → 1,001ms。PGlite で実測)。
+  cand AS (
+    SELECT r.category_id, r.report_code, r.fight_id, r.encounter_id,
+           r.start_ms, r.end_ms, rr.n, r.start_ms / 10000 AS bucket
+      FROM recent r
+      JOIN report_rank rr
+        ON rr.category_id = r.category_id AND rr.report_code = r.report_code
+     WHERE r.encounter_id IS NOT NULL
+  ),
+  -- 期間内の pull ごとに、引く桶 (自分と両隣) を列にしておく。式のまま結合に
+  -- 書くと、桶が結合のキーに入らず総当たりのままだった (EXPLAIN で確認)。
+  -- 1 回しか参照しない CTE は展開されて同じ計画に戻るので MATERIALIZED にする。
+  probe AS MATERIALIZED (
+    SELECT f.*, f.bucket + v.d AS probe_bucket
+      FROM cand f
+      CROSS JOIN (VALUES (-1), (0), (1)) AS v(d)
+     WHERE f.start_ms >= p_from_ms
+  )
+  SELECT DISTINCT f.report_code, f.fight_id
+    FROM probe f
+    JOIN cand g
+      ON g.category_id = f.category_id
+     AND g.encounter_id = f.encounter_id
+     AND g.bucket = f.probe_bucket
+   WHERE g.report_code <> f.report_code
+     AND abs(g.start_ms - f.start_ms) <= 10000
+     AND abs(g.end_ms - f.end_ms) <= 10000
+     AND (
+       g.n > f.n
+       OR (g.n = f.n AND g.report_code COLLATE "C" < f.report_code COLLATE "C")
+     )
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.fflogs_duplicate_pulls(bigint) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.fflogs_duplicate_pulls(bigint) TO service_role;
+
 -- ---- 13c-3. per-day progress aggregate RPC (UI-2、2026-09-08) ---------
 -- /category 一覧のカードに「日別の到達度スパークライン」を出すための集計
 -- (調査ノート第 4 回 8-3 UI-2「今どこまで来たか がタブを開かずカードで
@@ -3238,6 +3318,14 @@ LANGUAGE sql STABLE SET search_path = public AS $$
     SELECT (EXTRACT(EPOCH FROM now()) * 1000)::bigint
              - (LEAST(GREATEST(COALESCE(p_days, 56), 1), 365)::bigint * 86400000)
            AS from_ms
+  ),
+  -- 2026-10-07 C-3: 別のログと同じ pull (13c-2b)。直近ぶんの集計から除く
+  -- (pull 数・到達区間・残 HP% を練習ログの画面と同じく 1 回だけ数える。
+  -- 数える pull が無い日は行ごと出ない = 画面の到達度の推移と同じ)。
+  dups AS (
+    SELECT d.report_code, d.fight_id
+      FROM bounds b
+      CROSS JOIN LATERAL public.fflogs_duplicate_pulls(b.from_ms) d
   ),
   -- カテゴリごとの encounter 別 pull 数 (全期間)。区間数の母数になる。
   enc AS (
@@ -3319,11 +3407,16 @@ LANGUAGE sql STABLE SET search_path = public AS $$
       LEFT JOIN tier t
              ON t.category_id = f.category_id
             AND t.encounter_id = f.encounter_id
+      LEFT JOIN dups dp
+             ON dp.report_code = f.report_code
+            AND dp.fight_id = f.fight_id
      WHERE f.category_id IS NOT NULL
        AND f.start_ms >= b.from_ms
        -- 層モデルのカテゴリでは、ティア外 (別コンテンツの混入) を集計から
        -- 除く。TS 側 `filterToFloorCluster` と同じ扱い。
        AND (COALESCE(tm.floor_count, 0) <= 1 OR t.encounter_id IS NOT NULL)
+       -- 別のログと同じ pull は数えない (上の dups)。
+       AND dp.report_code IS NULL
   ),
   per_day AS (
     SELECT r.category_id,
@@ -3396,6 +3489,27 @@ $$;
 
 REVOKE EXECUTE ON FUNCTION public.fflogs_report_days(bigint) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.fflogs_report_days(bigint)
+  TO authenticated, service_role;
+
+-- 2026-10-07 C-3: レポートごとの「別のログと同じ pull」の数 (13c-2b)。出席
+-- サマリーが、日の pull 数とメンバーの pull 数を数える分だけに割り戻すのに使う
+-- (`src/lib/schedule/attendance-counted-pulls.ts`)。重複の無いレポートは行が
+-- 無い。返る行は重複のあるレポートの数だけなので 1000 行の上限に当たらない。
+--
+-- ⚠ fflogs_report_days の戻り値に列を足さず、別の関数にした: 戻り値の型を
+-- 変えるには DROP FUNCTION が要り、この schema を毎回流し直す運用では避けたい。
+-- また、この関数が無い (schema 未適用の) 間も出席サマリーを出せるよう、呼ぶ側は
+-- 失敗を「重複なし」として扱う。
+CREATE OR REPLACE FUNCTION public.fflogs_report_duplicate_pulls(p_from_ms bigint)
+RETURNS TABLE (report_code text, duplicate_pulls integer)
+LANGUAGE sql STABLE SET search_path = public AS $$
+  SELECT d.report_code, count(*)::integer AS duplicate_pulls
+    FROM public.fflogs_duplicate_pulls(p_from_ms) d
+   GROUP BY d.report_code
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.fflogs_report_duplicate_pulls(bigint) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.fflogs_report_duplicate_pulls(bigint)
   TO authenticated, service_role;
 
 -- ---- 13d. native placeholder raid time retro-update RPC (TODO #85) ----
@@ -3654,7 +3768,10 @@ BEGIN
     'public.next_recruitment_template_sort_order()',
     'public.next_category_macro_sort_order(uuid)',
     'public.practice_seconds_by_category()',
-    'public.category_progress_by_day(integer)'
+    'public.category_progress_by_day(integer)',
+    -- 2026-10-07: 13c-3 の中から呼ぶので同じ配り方にする (デモの anon が
+    -- スパークラインを読むときにも EXECUTE が要る)。
+    'public.fflogs_duplicate_pulls(bigint)'
   ] LOOP
     EXECUTE format('REVOKE EXECUTE ON FUNCTION %s FROM PUBLIC, anon, authenticated', fn);
     EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO %s', fn, exec_roles);
