@@ -145,7 +145,6 @@ export function FflogsSyncSection({
   const [sessionCookieInput, setSessionCookieInput] = useState("");
   const [cookieStatus, setCookieStatus] = useState<{
     set: boolean;
-    preview: string | null;
   } | null>(null);
   const [savingCookie, startSaveCookie] = useTransition();
   // TODO #68 part10: 詳細診断 details の open 状態を React state に同期。
@@ -556,7 +555,7 @@ export function FflogsSyncSection({
                         return;
                       }
                       toast.success(m.fflogsSync.toastCookieSaved);
-                      setCookieStatus({ set: true, preview: null });
+                      setCookieStatus({ set: true });
                       setSessionCookieInput("");
                     });
                   }}
@@ -581,7 +580,7 @@ export function FflogsSyncSection({
                           return;
                         }
                         toast.success(m.fflogsSync.toastCookieDeleted);
-                        setCookieStatus({ set: false, preview: null });
+                        setCookieStatus({ set: false });
                       });
                     }}
                     disabled={savingCookie}

@@ -25,6 +25,11 @@ export function parseYouTubeId(url: string): string | null {
   } catch {
     return null;
   }
+  // 2026-10-07 セキュリティ精査: http(s) に限る。以前はスキームを見ておらず、
+  // `javascript://youtube.com/watch?v=<11 字>` からも ID が取れたため、ID が
+  // 取れたことを「YouTube の URL」の印にして `url` をそのまま href に使う
+  // 画面で、危険なスキームが通り得た (React と CSP が実行は止めている)。
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return null;
   const host = parsed.hostname.replace(/^www\./, "");
   if (host === "youtu.be") {
     const id = parsed.pathname.slice(1).split("/")[0];

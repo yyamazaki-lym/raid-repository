@@ -376,7 +376,12 @@ export async function deleteFflogsReportAction(
   // W-6 (2026-09-08): 出席の突合結果も消す。この表は policy 0 本なので
   // **service role でしか消せない** (admin クライアントの DELETE は 0 行で
   // 静かに成功し、消したレポートの出席が残る)。
-  await deleteAttendanceActualsForReport(code);
+  // 2026-10-07: 消せなかったら台帳と除外登録の前で止める (台帳が残るので次の
+  // 同期で取り直されず、もう一度この操作を押せば残りを片付けられる)。
+  const actuals = await deleteAttendanceActualsForReport(code);
+  if (!actuals.ok) {
+    return { ok: false, reason: dbError("出席の実績の削除", actuals.error) };
+  }
 
   // 台帳を消してから除外登録 (順序が逆だと、間に同期が走って再取得しうる)。
   const { error: ledgerErr } = await supabase

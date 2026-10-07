@@ -626,11 +626,9 @@ export async function updateNativeScheduleMemberCommentAction(input: {
     .update({ comment: normalized })
     .eq("discord_user_id", member.discordId);
   if (error) return { ok: false, reason: dbError("コメント更新", error) };
-  try {
-    revalidatePath("/");
-  } catch {
-    // best-effort
-  }
+  // 2026-10-07 セキュリティ精査: `revalidatePath("/")` は呼ばない。画面は
+  // 保存後に `router.refresh()` で取り直すので不要で、呼ぶとメンバーが連打する
+  // たびに TOP の外部取得 (同期式のスケジュールの Data Cache) を捨てさせられた。
   return { ok: true };
 }
 
@@ -1002,8 +1000,16 @@ export async function upsertNativeScheduleAttendanceAction(
   input: UpsertNativeScheduleAttendanceInput,
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
   const member = await requireDiscordMember();
+  // 2026-10-07 セキュリティ精査: 公開デモの匿名ゲストは書けない (RLS が止めるが、
+  // 以前は 0 行の削除を成功として返し、ページの再検証も走らせていた)。
+  if (member.isDemoGuest) {
+    return { ok: false, reason: "デモ表示中は変更できません" };
+  }
   const sessionId = input.sessionId?.trim();
   if (!sessionId) return { ok: false, reason: "sessionId が空です" };
+  if (!/^[0-9a-f-]{36}$/i.test(sessionId)) {
+    return { ok: false, reason: "予定の指定が不正です" };
+  }
 
   const supabase = await createClient();
   // symbol は出欠記号 (凡例マスター由来の短い記号/ラベル)。本人 (非 admin) が
@@ -1040,11 +1046,7 @@ export async function upsertNativeScheduleAttendanceAction(
       .eq("session_id", sessionId)
       .eq("discord_user_id", member.discordId);
     if (error) return { ok: false, reason: dbError("出欠削除", error) };
-    try {
-      revalidatePath("/");
-    } catch {
-      // best-effort
-    }
+    // 下の保存と同じ理由で revalidatePath は呼ばない (2026-10-07)。
     return { ok: true };
   }
 
@@ -1067,11 +1069,9 @@ export async function upsertNativeScheduleAttendanceAction(
   // CANDIDATE → DECISION に上げる。失敗しても出欠保存は成功済みなので
   // 結果は無視する (モジュール側で warn 済み)。
   await maybeAutoConfirmSession(sessionId);
-  try {
-    revalidatePath("/");
-  } catch {
-    // best-effort
-  }
+  // 2026-10-07 セキュリティ精査: `revalidatePath("/")` は呼ばない。画面は
+  // 保存後に `router.refresh()` で取り直すので不要で、呼ぶとメンバーが連打する
+  // たびに TOP の外部取得 (同期式のスケジュールの Data Cache) を捨てさせられた。
   return { ok: true };
 }
 

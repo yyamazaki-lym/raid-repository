@@ -1,6 +1,5 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { requireDiscordMember } from "./auth";
 import { userIsAdmin } from "./admin-roles";
@@ -183,11 +182,9 @@ export async function addPullNoteAction(
       console.warn("[pull-notes] insert failed:", error.message);
       return { ok: false, reason: "注釈を保存できませんでした" };
     }
-    try {
-      revalidatePath("/");
-    } catch {
-      // best-effort
-    }
+    // 2026-10-07 セキュリティ精査: `revalidatePath("/")` は呼ばない。画面は
+    // 注釈を取り直す (`fetchPullNotesAction`) ので不要で、呼ぶとメンバーが
+    // 連打するたびに TOP の外部取得 (同期式のスケジュール) を捨てさせられた。
     return { ok: true };
   } catch (e) {
     console.warn("[pull-notes] insert failed:", e);
@@ -222,11 +219,9 @@ export async function deletePullNoteAction(
     if (!data || data.length === 0) {
       return { ok: false, reason: "自分が付けた注釈だけ削除できます" };
     }
-    try {
-      revalidatePath("/");
-    } catch {
-      // best-effort
-    }
+    // 2026-10-07 セキュリティ精査: `revalidatePath("/")` は呼ばない。画面は
+    // 注釈を取り直す (`fetchPullNotesAction`) ので不要で、呼ぶとメンバーが
+    // 連打するたびに TOP の外部取得 (同期式のスケジュール) を捨てさせられた。
     return { ok: true };
   } catch (e) {
     console.warn("[pull-notes] delete failed:", e);

@@ -1235,20 +1235,17 @@ export async function setFflogsSessionCookie(
 
 export async function getFflogsSessionCookieStatus(): Promise<{
   set: boolean;
-  preview: string | null;
 }> {
-  // admin gate: preview は cookie 先頭 40 文字を含むため非 admin に漏らさない。
   const auth = await assertAdminResult();
-  if (!auth.ok) return { set: false, preview: null };
+  if (!auth.ok) return { set: false };
   // 2.x (2026-06-09): `app_settings` 平文 fallback を撤去。`secrets`
-  // テーブル (暗号化, anon deny) のみを参照する。preview だけ返すので
-  // decrypt 結果は捨てる。
+  // テーブル (暗号化, anon deny) のみを参照する。
+  // 2026-10-07 セキュリティ精査: 以前は cookie の先頭 40 文字 (平文) も
+  // `preview` として admin のブラウザへ返していた (画面には出していない)。
+  // 秘密の一部を不要にクライアントへ出さないよう、有無だけを返す。
   const { getSecretValue } = await import("./secret-store");
-  const encrypted = await getSecretValue("fflogs_session_cookie");
-  if (!encrypted) return { set: false, preview: null };
-  const preview =
-    encrypted.length > 40 ? encrypted.slice(0, 40) + "…" : encrypted;
-  return { set: true, preview };
+  const value = await getSecretValue("fflogs_session_cookie");
+  return { set: Boolean(value) };
 }
 
 /**
@@ -3376,7 +3373,9 @@ export async function backfillVideoDurations(): Promise<DurationBackfillResult> 
         : "";
     return {
       ok: false,
-      reason: "video links fetch failed: " + msg + hint,
+      // 2026-10-07 セキュリティ精査: Postgres の生のエラー文は返さず、ログにだけ
+      // 出す (dbError の方針)。列が無いときの手当ての案内だけは残す。
+      reason: dbError("動画リンクの取得", error) + hint,
       scanned: 0,
       filled: 0,
       failed: 0,
@@ -4071,9 +4070,11 @@ export async function createGphotoEntryAction(input: {
     };
   }
 
-  const { classifyGphotoInput, fetchGooglePhotosAlbum } = await import(
-    "./google-photos"
-  );
+  const {
+    classifyGphotoInput,
+    describeGphotoFetchError,
+    fetchGooglePhotosAlbum,
+  } = await import("./google-photos");
   const classified = classifyGphotoInput(input.rawUrl);
   if (classified.kind === "invalid") {
     return {
@@ -4128,7 +4129,9 @@ export async function createGphotoEntryAction(input: {
   try {
     album = await fetchGooglePhotosAlbum(classified.canonical);
   } catch (err) {
-    const msg = err instanceof Error ? err.message : "fetch failed";
+    // 2026-10-07: 例外の message をそのまま返さない (自前の文言だけ通す)。
+    console.warn("[gphoto] album fetch failed:", err);
+    const msg = describeGphotoFetchError(err);
     return { ok: false, reason: `アルバムの取得に失敗しました: ${msg}` };
   }
   if (album.imageUrls.length === 0) {
@@ -4220,12 +4223,16 @@ export async function syncGphotoAlbumAction(albumId: string): Promise<
     return { ok: false, reason: "アルバムが見つかりません" };
   }
 
-  const { fetchGooglePhotosAlbum } = await import("./google-photos");
+  const { describeGphotoFetchError, fetchGooglePhotosAlbum } = await import(
+    "./google-photos"
+  );
   let album: { title: string | null; imageUrls: string[] };
   try {
     album = await fetchGooglePhotosAlbum(albumRow.share_url as string);
   } catch (err) {
-    const msg = err instanceof Error ? err.message : "fetch failed";
+    // 2026-10-07: 例外の message をそのまま返さない (自前の文言だけ通す)。
+    console.warn("[gphoto] album fetch failed:", err);
+    const msg = describeGphotoFetchError(err);
     return { ok: false, reason: `アルバムの取得に失敗しました: ${msg}` };
   }
   if (album.imageUrls.length === 0) {

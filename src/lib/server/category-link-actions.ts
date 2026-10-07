@@ -74,7 +74,9 @@ export async function setCategoryLinkReadAction(
       .eq("discord_user_id", member.discordId);
     if (error) return { ok: false, reason: dbError("既読の取り消し", error) };
   }
-  revalidateQuietly();
+  // 2026-10-07 セキュリティ精査: 既読はメンバーが連打できるので再検証しない
+  // (Google Sheets の Data Cache を全カテゴリぶん捨てさせられた)。画面が
+  // `router.refresh()` で取り直す (link-card-footer.tsx)。
   return { ok: true };
 }
 
