@@ -100,11 +100,56 @@ export async function safeFetch(
   url: string,
   init: RequestInit = {},
 ): Promise<Response> {
-  const res = await undiciFetch(url, {
-    ...(init as UndiciRequestInit),
-    dispatcher: safeAgent,
-  });
-  return res as unknown as Response;
+  // 2026-10-07 セキュリティ精査: redirect は undici に任せず、ここで 1 段ずつ
+  // 追う。以前は既定の `redirect: "follow"` のまま渡していたため、2 段目以降の
+  // 行き先が IP リテラル (`http://169.254.169.254/` など) だと検査を通らずに
+  // 接続した — Node の net はホストが IP リテラルだと `connect.lookup` を
+  // 呼ばないので、上の safeAgent の検査は IP リテラルには効かない。
+  // 呼び出し側が `redirect: "manual"` を渡したとき (fetchWithSafeRedirect) は
+  // 従来どおり 3xx をそのまま返す。
+  const mode = init.redirect ?? "follow";
+  const method = (init.method ?? "GET").toUpperCase();
+  let current = url;
+  for (let hop = 0; ; hop++) {
+    assertNotBlockedLiteral(current);
+    const res = (await undiciFetch(current, {
+      ...(init as UndiciRequestInit),
+      redirect: "manual",
+      dispatcher: safeAgent,
+    })) as unknown as Response;
+    const isRedirect = res.status >= 300 && res.status < 400;
+    if (!isRedirect || mode === "manual") return res;
+    if (mode === "error") {
+      await res.body?.cancel().catch(() => {});
+      throw new TypeError("unexpected redirect");
+    }
+    // 本文付きの要求 (POST など) の redirect は追わない (今の呼び出し元は
+    // すべて GET。仕様どおりに method を書き換える処理を持たないため)。
+    if (method !== "GET" && method !== "HEAD") return res;
+    const loc = res.headers.get("location");
+    if (!loc) return res;
+    await res.body?.cancel().catch(() => {});
+    if (hop >= SAFE_FETCH_MAX_REDIRECTS) {
+      throw new TypeError("too many redirects");
+    }
+    const next = new URL(loc, current);
+    if (next.protocol !== "http:" && next.protocol !== "https:") {
+      throw new TypeError("redirect to a non-http(s) URL");
+    }
+    current = next.toString();
+  }
+}
+
+/** `safeFetch` が追う redirect の上限 (fetch 既定の 20 より絞る)。 */
+const SAFE_FETCH_MAX_REDIRECTS = 5;
+
+/**
+ * 接続先が IP リテラルなら、内部アドレスかをここで確かめる。ホスト名は
+ * safeAgent の `connect.lookup` が確かめるが、IP リテラルはそこを通らない。
+ */
+function assertNotBlockedLiteral(url: string): void {
+  const host = new URL(url).hostname.replace(/^\[|\]$/g, "");
+  if (isBlockedIpLiteral(host)) throw new BlockedAddressError(host, host);
 }
 
 /** `assertPublicResolution` が「公開アドレスだった」と覚えておく時間。 */

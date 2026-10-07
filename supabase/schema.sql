@@ -2901,6 +2901,25 @@ CREATE POLICY "secrets deny all anon"
 -- バイパスするため影響しない。
 REVOKE ALL ON TABLE public.secrets FROM anon, authenticated;
 
+-- 2026-10-07 セキュリティ精査: ポリシー 0 本 (service role 専用) の 7 表も
+-- `secrets` と同じく権限を落とす。今は RLS がポリシー無しで全行を隠しているが、
+-- 守っているのは「ポリシーが無いこと」だけで、ダッシュボードで
+-- `TO authenticated USING (true)` のようなポリシーが 1 本足されても、CI
+-- (deploy-database.yml) の表明は anon の SELECT しか数えないので気付けない。
+-- どれも「誰がどの pull に何を付けたか」「誰がいつ出席したか」など、個人に
+-- 結び付く表。触るのは service role の Server Action / route / cron だけ
+-- (全データ初期化も 2026-10-07 からこの 2 表は service role で消す)。
+-- 外部キーの CASCADE は表の所有者の権限で走るので、親の削除は影響しない。
+REVOKE ALL ON TABLE
+  public.category_link_reads,
+  public.fflogs_attendance_actuals,
+  public.fflogs_pull_notes,
+  public.category_onboarding_steps,
+  public.native_schedule_member_jobs,
+  public.fflogs_attendance_unresolved,
+  public.fflogs_notify_state
+  FROM anon, authenticated;
+
 -- ---- 10. Storage bucket for category background images ---------------
 -- Phase 9 (TODO #17 follow-up, 1.9 (2026-04-28)): public bucket so the
 -- category card edit dialog can upload local images and the resulting
@@ -3657,7 +3676,11 @@ LANGUAGE sql STABLE SET search_path = public AS $$
    GROUP BY f.report_code
 $$;
 
-REVOKE EXECUTE ON FUNCTION public.fflogs_report_days(bigint) FROM PUBLIC;
+-- 2026-10-07 セキュリティ精査: anon も名指しで外す。`FROM PUBLIC` だけでは、
+-- Supabase の既定で anon に付いている EXECUTE が残っていた (INVOKER で
+-- anon は fflogs_fights を読めないので 0 行しか返らないが、15 章の
+-- 「anon の EXECUTE は公開デモだけ」の方針と揃える)。
+REVOKE EXECUTE ON FUNCTION public.fflogs_report_days(bigint) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.fflogs_report_days(bigint)
   TO authenticated, service_role;
 

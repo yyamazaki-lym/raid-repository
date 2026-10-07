@@ -87,6 +87,13 @@ export function isBlockedIpLiteral(rawHost: string): boolean {
     if (a === 172 && b >= 16 && b <= 31) return true; // private
     if (a === 192 && b === 168) return true; // private
     if (a === 100 && b >= 64 && b <= 127) return true; // CGNAT
+    // 2026-10-07 セキュリティ精査: 公開アドレス扱いになっていた予約帯 (RFC 6890)。
+    const c = octets[2]!;
+    if (a === 192 && b === 0 && c === 0) return true; // IETF protocol assignments 192.0.0.0/24
+    if (a === 192 && b === 0 && c === 2) return true; // TEST-NET-1 192.0.2.0/24
+    if (a === 198 && (b === 18 || b === 19)) return true; // benchmarking 198.18.0.0/15
+    if (a === 198 && b === 51 && c === 100) return true; // TEST-NET-2 198.51.100.0/24
+    if (a === 203 && b === 0 && c === 113) return true; // TEST-NET-3 203.0.113.0/24
     if (a >= 224) return true; // multicast (224-239) + reserved (240-254) + broadcast (255)
     return false;
   }
@@ -114,6 +121,18 @@ export function isBlockedIpLiteral(rawHost: string): boolean {
     // 例: 2002:7f00:1:: = 127.0.0.1、2002:c0a8:101:: = 192.168.1.1。実運用ほぼ
     // 廃止のため公開コンテンツが該当することはなく、全帯域ブロックの副作用は無い。
     if (/^2002:/.test(host)) return true;
+    // 2026-10-07 セキュリティ精査: 公開アドレス扱いになっていた予約帯。
+    // site-local fec0::/10 (廃止、先頭 hextet は fec0〜feff)。
+    if (/^fe[c-f][0-9a-f]?:/.test(host)) return true;
+    // マルチキャスト ff00::/8。
+    if (/^ff[0-9a-f]{0,2}:/.test(host)) return true;
+    // Teredo 2001:0::/32 (後続に IPv4 を埋め込む)。WHATWG URL は 2 つ目の
+    // hextet の 0 を `2001:0:` か、後ろの 0 と合わせて `2001::` に正規化する。
+    if (/^2001:(?:0{1,4}:|:)/.test(host)) return true;
+    // 文書用 2001:db8::/32。
+    if (/^2001:db8:/.test(host)) return true;
+    // discard-only 100::/64 (`100::` か `100:0:0:0:`)。
+    if (/^100:(?::|0{1,4}:0{1,4}:0{1,4}:)/.test(host)) return true;
     // それ以外の IPv6 (グローバル unicast 2000::/3 等) は公開アドレス扱い。
     return false;
   }
@@ -196,7 +215,20 @@ export function isOptimizableImageHost(
   } catch {
     return false;
   }
+  if (parsed.protocol !== "https:") return false;
+  if (parsed.hostname === "i.ytimg.com") return true;
+  // 2026-10-07: Supabase は自分の project のホストだけ (next.config.ts の
+  // SUPABASE_IMAGE_HOST と同じ値。`NEXT_PUBLIC_` なのでブラウザでも読める)。
+  // 他の project の画像は `unoptimized` で素通しにする。
+  let ownHost = "";
+  try {
+    ownHost = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL ?? "").hostname;
+  } catch {
+    return false;
+  }
   return (
-    parsed.hostname === "i.ytimg.com" || parsed.hostname.endsWith(".supabase.co")
+    ownHost !== "" &&
+    parsed.hostname === ownHost &&
+    parsed.pathname.startsWith("/storage/v1/object/public/")
   );
 }

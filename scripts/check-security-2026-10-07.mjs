@@ -13,6 +13,11 @@
  *   L   Server Action: 更新は書いてよい列だけ (L-12 の回帰)・admin に生のエラー文を
  *       返さない・失敗を握りつぶさない・cookie を返さない・デモの匿名ゲスト・
  *       メンバーの Action で再検証しない・YouTube リンクと取り込みの URL は http(s)
+ *   L   DB: ポリシー 0 本の表の権限を外す (デプロイ時の表明も)・fflogs_report_days の anon /
+ *       開発サーバーは 127.0.0.1 だけ
+ *
+ * URL の安全判定・safeFetch の redirect・画像最適化のホスト・cron のヘッダは
+ * check-url-safe.mjs、書き出しの backpressure は check-data-export.mjs が見る。
  *
  * Discord に流す文の無害化は check-discord-text.mjs が見る。
  */
@@ -198,6 +203,42 @@ console.log("\nL Server Action の入力と返す値");
       importer.indexOf("linkRowUrlsAreSafe(r)") < importer.indexOf(".upsert(rows,"),
     true,
   );
+}
+
+console.log("\nL DB の権限と開発サーバー");
+{
+  const schema = read("supabase/schema.sql");
+  // RLS 有効でポリシーが 0 本の表 (service role 専用) を静的に洗い出す。
+  const rls = new Set([...schema.matchAll(/ALTER TABLE (?:IF EXISTS )?public\.(\w+)\s+ENABLE ROW LEVEL SECURITY/g)].map((x) => x[1]));
+  const withPolicy = new Set([
+    ...[...schema.matchAll(/CREATE POLICY\s+(?:"[^"]+"|\w+)\s+ON\s+public\.(\w+)/g)].map((x) => x[1]),
+    ...[...schema.matchAll(/'CREATE POLICY [^']*? ON public\.(\w+)/g)].map((x) => x[1]),
+  ]);
+  // DO ブロックのループ (unnest(ARRAY[...]) / FOREACH ... IN ARRAY ARRAY[...]) で %I に入る表。
+  for (const m of schema.matchAll(/(?:unnest\(ARRAY|IN ARRAY\s+ARRAY)\[([^\]]*)\]/g)) {
+    const tail = schema.slice(m.index + m[0].length, m.index + m[0].length + 3000);
+    if (/CREATE POLICY/.test(tail)) for (const t of m[1].matchAll(/'(\w+)'/g)) withPolicy.add(t[1]);
+  }
+  const policyless = [...rls].filter((t) => !withPolicy.has(t)).sort();
+  const revokeAt = schema.indexOf("REVOKE ALL ON TABLE\n  public.category_link_reads,");
+  const revoked = new Set(
+    [...schema.slice(revokeAt, schema.indexOf("FROM anon, authenticated;", revokeAt)).matchAll(/public\.(\w+)/g)].map((x) => x[1]),
+  );
+  check("ポリシー 0 本の表を拾えている (7 表以上)", policyless.length >= 7, true);
+  check("ポリシー 0 本の表はすべて anon / authenticated の権限を外す", policyless.filter((t) => !revoked.has(t)), []);
+  check("fflogs_report_days は anon も名指しで外す", /REVOKE EXECUTE ON FUNCTION public\.fflogs_report_days\(bigint\) FROM PUBLIC, anon;/.test(schema), true);
+  const wf = read(".github/workflows/deploy-database.yml");
+  check("デプロイ時に、ポリシーの無い表に権限が残っていないことを確かめる", /name: Assert no client privileges on policy-less tables[\s\S]{0,1500}NOT EXISTS \(SELECT 1 FROM pg_policy p WHERE p\.polrelid = c\.oid\)[\s\S]{0,200}has_table_privilege\(r\.rolname, c\.oid, 'SELECT,INSERT,UPDATE,DELETE'\)/.test(wf), true);
+
+  // 全データ初期化: 権限を外した表は service role で消す (cookie のクライアントだと permission denied で止まる)。
+  const init = code(fnBody(read("src/lib/server/admin-actions.ts"), "initializeAllDataAction"));
+  const initTables = [...init.matchAll(/\{ table: "(\w+)", pk:/g)].map((x) => x[1]);
+  const viaService = [...(init.match(/const SERVICE_ROLE_ONLY = new Set<keyof DataInitCounts>\(\[([\s\S]*?)\]\);/)?.[1] ?? "").matchAll(/"(\w+)"/g)].map((x) => x[1]);
+  check("全データ初期化: 権限を外した表は service role で消す", initTables.filter((t) => revoked.has(t) && !viaService.includes(t)), []);
+  check("全データ初期化: 表ごとに client を選ぶ", /const client = SERVICE_ROLE_ONLY\.has\(step\.table\) \? serviceRole : supabase;/.test(init), true);
+
+  const pkg = JSON.parse(readFileSync("package.json", "utf8"));
+  check("開発サーバーはこのパソコンからだけ (127.0.0.1)", pkg.scripts.dev, "next dev -H 127.0.0.1");
 }
 
 if (failures > 0) {
