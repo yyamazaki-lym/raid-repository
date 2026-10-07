@@ -1,5 +1,9 @@
 import "server-only";
-import { fetchGuildMember, updateUserAppMetadata } from "./discord-membership";
+import {
+  fetchGuildMember,
+  markGuildMembershipRevoked,
+  updateUserAppMetadata,
+} from "./discord-membership";
 import { userIsAdmin } from "./admin-roles";
 
 /**
@@ -34,10 +38,29 @@ import { userIsAdmin } from "./admin-roles";
  *   (障害を装って無期限に居座られるのを防ぐ)。
  *
  * TTL は env で上書きできる。既定は soft 6h / hard 72h。
+ *
+ * ## RLS 側 (2026-10-07 セキュリティ精査 H-2)
+ *
+ * 上の 4 層のうち RLS だけは、サイトを通らない経路 (手元の refresh token で
+ * トークンを取り直す) からも使われる。そこで:
+ * - not_in_guild を見つけたら `markGuildMembershipRevoked` で
+ *   `discord_guild_member` / `is_admin` を false に書き戻す (signOut だけでは
+ *   app_metadata に true が残っていた)
+ * - RLS の書き込みは `discord_member_verified_at` が `RLS_WRITE_FRESHNESS_MS`
+ *   (72 時間) 以内であることも要求する (schema.sql 1 章の
+ *   `is_portal_verified_member`)。読み取りは印だけを見る (開いたままのタブが
+ *   黙って空にならないように)。⚠ この 72 時間は SQL に固定なので、env で TTL を
+ *   長くしても DB は 72 時間で書き込みを閉じる。アプリと DB が食い違わないよう、
+ *   hard TTL はこの値を上限に、soft TTL はその 3 分の 1 を上限に抑える
+ *   (PR のレビューで検出: soft TTL を 72 時間以上にすると、proxy が確かめ直す前に
+ *   DB が閉じる)。値を変えるときは SQL と両方を直す
+ *   (scripts/check-rls-membership.mjs が突き合わせる)
  */
 
 const DEFAULT_SOFT_TTL_MS = 6 * 60 * 60 * 1000; // 6h
 const DEFAULT_HARD_TTL_MS = 72 * 60 * 60 * 1000; // 72h
+/** RLS が書き込みに要求する確認の鮮度 (schema.sql 1 章の interval と同じ)。 */
+export const RLS_WRITE_FRESHNESS_MS = 72 * 60 * 60 * 1000; // 72h
 
 function envMs(name: string, fallback: number): number {
   const raw = process.env[name]?.trim();
@@ -47,14 +70,19 @@ function envMs(name: string, fallback: number): number {
 }
 
 export function membershipSoftTtlMs(): number {
-  return envMs("DISCORD_MEMBERSHIP_TTL_MS", DEFAULT_SOFT_TTL_MS);
+  // DB の鮮度 (72 時間) より十分前に確かめ直す (env で長くしても 24 時間まで)。
+  return Math.min(
+    envMs("DISCORD_MEMBERSHIP_TTL_MS", DEFAULT_SOFT_TTL_MS),
+    RLS_WRITE_FRESHNESS_MS / 3,
+  );
 }
 
 export function membershipHardTtlMs(): number {
   const soft = membershipSoftTtlMs();
   const hard = envMs("DISCORD_MEMBERSHIP_HARD_TTL_MS", DEFAULT_HARD_TTL_MS);
-  // hard < soft の設定ミスで常時失効しないよう下限を soft に合わせる。
-  return Math.max(hard, soft);
+  // hard < soft の設定ミスで常時失効しないよう下限を soft に合わせ、
+  // DB の鮮度を超えないよう上限を RLS_WRITE_FRESHNESS_MS に抑える。
+  return Math.min(Math.max(hard, soft), RLS_WRITE_FRESHNESS_MS);
 }
 
 export type MembershipClaims = {
@@ -106,6 +134,8 @@ export async function revalidateMembership(
 
   if (!membership.ok) {
     if (membership.reason === "not_in_guild") {
+      // RLS が見る印も閉じる (signOut だけではサイトを通らない経路が残る)。
+      await markGuildMembershipRevoked(userId, discordId);
       return { status: "revoked", reason: "not_in_guild" };
     }
     // discord_error / missing_config = 検証不能。hard TTL までは通す。

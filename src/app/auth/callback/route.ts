@@ -3,6 +3,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import {
   fetchGuildMember,
+  markGuildMembershipRevoked,
   updateUserAppMetadata,
 } from "@/lib/server/discord-membership";
 import { userIsAdmin } from "@/lib/server/auth";
@@ -68,6 +69,14 @@ export async function GET(req: NextRequest) {
 
   const membership = await fetchGuildMember(discordId);
   if (!membership.ok) {
+    // 2026-10-07 セキュリティ精査 H-2: 以前メンバーだった人 (kick 済み) の
+    // app_metadata には `discord_guild_member: true`・`is_admin` が残っている。
+    // signOut だけだと、Supabase に直接ログインし直したトークンが古い印のまま
+    // RLS を通るので、ギルドにいないと確定したときは印を閉じる。一時障害
+    // (discord_error 等) では書き戻さない (本当はメンバーの人を止めない)。
+    if (membership.reason === "not_in_guild") {
+      await markGuildMembershipRevoked(data.user.id, discordId);
+    }
     await supabase.auth.signOut();
     return redirectTo(req, "/auth/denied", { reason: membership.reason });
   }

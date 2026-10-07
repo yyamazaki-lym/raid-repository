@@ -74,14 +74,48 @@ jobs:
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
+          # 2026-10-07: TO 句の無いポリシー (roles = {public}) も anon に効くので数える
+          # (ダッシュボードのテンプレートの既定がこの形)。
           n=$(psql "$SUPABASE_DB_URL" -tAc "
             SELECT count(*) FROM pg_policies
-            WHERE schemaname='public' AND cmd='SELECT' AND 'anon' = ANY(roles);")
+            WHERE schemaname='public' AND cmd IN ('SELECT', 'ALL')
+              AND roles && '{anon,public}'::name[]
+              AND coalesce(qual, '') <> 'false';")
           flag=$(psql "$SUPABASE_DB_URL" -tAc "
             SELECT coalesce(current_setting('app.public_demo', true), '');")
           echo "anon SELECT policies: $n / app.public_demo: '${flag}'"
           if [ "$n" -ne 0 ]; then
             echo "::error::本番 DB で anon SELECT ポリシーが ${n} 本検出されました。app.public_demo が立っている可能性があります (RESET してください: ALTER DATABASE <db> RESET app.public_demo)。"
+            exit 1
+          fi
+
+      # 2026-10-07 セキュリティ精査 H-1 / H-2 の回帰ガード。
+      #
+      # 上のガードは anon しか数えない。authenticated のトークンは Supabase Auth に
+      # 直接ログインすれば誰でも (メールで新規登録した人・ギルド外の Discord
+      # アカウントでも) 取れるので、authenticated 向けのポリシーが
+      # `USING (true)` や素の `is_admin` claim だけだと、ギルド外の人が全行を
+      # 読め、kick された元 admin が書き込める。authenticated 向けのポリシーは
+      # 全部 schema.sql 1 章の `is_portal_member()` / `is_portal_verified_member()` /
+      # `is_portal_admin()` を通す (全拒否の `USING (false)` は例外)。
+      # TO 句の無いポリシー (roles = {public}) も authenticated に効くので数える。
+      # ⚠ 式に関数名が含まれるかだけを見ているので、`true OR is_portal_member()`
+      # のような式は通ってしまう (静的な検査 check-rls-membership.mjs でも見る)。
+      - name: Assert authenticated policies require guild membership
+        if: steps.guard.outputs.skip == 'false'
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          rows=$(psql "$SUPABASE_DB_URL" -tAc "
+            SELECT string_agg(tablename || '.' || policyname, ', ')
+              FROM pg_policies
+             WHERE schemaname IN ('public', 'storage')
+               AND roles && '{authenticated,public}'::name[]
+               AND coalesce(qual, '') <> 'false'
+               AND (coalesce(qual, '') || ' ' || coalesce(with_check, '')) NOT LIKE '%is_portal_%';")
+          echo "authenticated policies without membership check: '${rows}'"
+          if [ -n "$rows" ]; then
+            echo "::error::本番 DB に、ギルドのメンバー確認 (is_portal_member / is_portal_admin) を通らない authenticated 向けのポリシーがあります (${rows})。schema.sql 1 章と 7 章を確認してください。"
             exit 1
           fi
 
