@@ -366,38 +366,59 @@ try {
     totalLogMs([lf("A", t0, t0 + 60 * MIN, t0 - 120 * MIN), lf("A", t0 + 70 * MIN, t0 + 80 * MIN, t0 - 120 * MIN)]),
     110 * MIN,
   );
-  // ⚠ 1 本のレポートに複数日の練習が入っていても、夜をまたぐ空き時間を数えない
-  // (2026-10-07)。本番の行の session_date はレポートにつき 1 つ (fflogs-fights.ts
-  // がレポート単位で決めて全 pull に書く) なので、材料も同じ形にする — pull ごとに
-  // 日付を変えた材料だと、日付で切る誤った実装でも通ってしまう (実際に通った)。
+  // ⚠ pull の間の休憩は 1 回 60 分まで (2026-10-07 ユーザーの選択)。以前は
+  // 「3 時間以上空いたら区切る」で、3 時間の前後で値が約 3 時間跳ねていた。
+  // 本番の行の session_date はレポートにつき 1 つ (fflogs-fights.ts がレポート
+  // 単位で決めて全 pull に書く) なので、材料も同じ形にする。
   const ld = (startMs, endMs, reportStartMs = null) => ({
     reportCode: "A", sessionDate: "2026-10-01", startMs, endMs, reportStartMs,
   });
   const HOUR = 60 * MIN;
   check(
-    "1 本のレポートに 2 日分 (練習日は 1 つ = 本番の形) でも夜を数えない",
+    "1 本のレポートに 2 日分 (練習日は 1 つ = 本番の形) でも、夜の分は 60 分だけ",
     totalLogMs([ld(t0, t0 + HOUR), ld(t0 + 24 * HOUR, t0 + 25 * HOUR)]),
-    2 * HOUR,
+    3 * HOUR,
   );
   check(
-    "2 つ目の区間はその最初の pull から (ログの開始の分は最初の区間だけ)",
+    "ログの開始の分は最初の pull の前だけ",
     totalLogMs([ld(t0, t0 + HOUR, t0 - 10 * MIN), ld(t0 + 24 * HOUR, t0 + 25 * HOUR, t0 - 10 * MIN)]),
-    10 * MIN + 2 * HOUR,
+    10 * MIN + 3 * HOUR,
   );
   check(
-    "3 時間未満の休憩は切らない (0 時をまたぐ 1 回の練習の休憩を落とさない)",
+    "60 分以内の休憩は全部数える",
+    totalLogMs([ld(t0, t0 + HOUR), ld(t0 + 2 * HOUR, t0 + 3 * HOUR)]),
+    3 * HOUR,
+  );
+  check(
+    "60 分を超える休憩は 60 分まで (2 部制の日)",
     totalLogMs([ld(t0, t0 + HOUR), ld(t0 + HOUR + 170 * MIN, t0 + 5 * HOUR)]),
-    5 * HOUR,
+    HOUR + HOUR + 70 * MIN,
   );
   check(
-    "ちょうど 3 時間空いたら切る",
-    totalLogMs([ld(t0, t0 + HOUR), ld(t0 + 4 * HOUR, t0 + 5 * HOUR)]),
+    "休憩の長さで値が跳ねない (2 時間 50 分と 3 時間 10 分で休憩の分は同じ 60 分)",
+    [
+      totalLogMs([ld(t0, t0 + HOUR), ld(t0 + HOUR + 170 * MIN, t0 + HOUR + 170 * MIN + HOUR)]),
+      totalLogMs([ld(t0, t0 + HOUR), ld(t0 + HOUR + 190 * MIN, t0 + HOUR + 190 * MIN + HOUR)]),
+    ],
+    [3 * HOUR, 3 * HOUR],
+  );
+  check(
+    "休憩は 60 分ちょうどまで全部、61 分なら 60 分",
+    [
+      totalLogMs([ld(t0, t0 + HOUR), ld(t0 + 2 * HOUR, t0 + 3 * HOUR)]),
+      totalLogMs([ld(t0, t0 + HOUR), ld(t0 + 2 * HOUR + MIN, t0 + 3 * HOUR + MIN)]),
+    ],
+    [3 * HOUR, 3 * HOUR],
+  );
+  check(
+    "別のレポートとの間の空きは数えない (ログが動いていなかった時間)",
+    totalLogMs([lf("A", t0, t0 + HOUR), lf("B", t0 + HOUR + 20 * MIN, t0 + 2 * HOUR + 20 * MIN)]),
     2 * HOUR,
   );
   check(
     "pull の並び順によらない (後の日の pull が先に来ても)",
     totalLogMs([ld(t0 + 24 * HOUR, t0 + 25 * HOUR, t0 - 10 * MIN), ld(t0, t0 + HOUR, t0 - 10 * MIN)]),
-    10 * MIN + 2 * HOUR,
+    10 * MIN + 3 * HOUR,
   );
   check(
     "上限は最初の pull から数える (後の pull の前に遡らない)",
@@ -418,19 +439,20 @@ console.log("\n練習日数のタイルの配線");
     /const logTotalMs = useMemo\(\(\) => totalLogMs\(tierFights\), \[tierFights\]\);/.test(view),
     true,
   );
-  // 2026-10-07: 説明 (ja / en) の 30 分・3 時間が実装の定数と一致すること
+  // 2026-10-07: 説明 (ja / en) の 30 分・60 分が実装の定数と一致すること
   // (数え方を変えて説明が古いまま残っていたのを PR のレビューで検出)。
   const dict = readFileSync("src/lib/i18n/dict/logs.ts", "utf8").replace(/\r\n/g, "\n");
   const prog = readFileSync("src/lib/fflogs-progress.ts", "utf8").replace(/\r\n/g, "\n");
+  const sess = readFileSync("src/lib/fflogs-session.ts", "utf8").replace(/\r\n/g, "\n");
   const titles = [...dict.matchAll(/statLogTotalTitle:\s*\n\s*"([^"]+)"/g)].map((mm) => mm[1]);
   check(
-    "ログ合計の説明 (ja / en) が実装の 30 分・3 時間と一致",
+    "ログ合計の説明 (ja / en) が実装の 30 分・60 分と一致",
     [
       titles.length,
       /export const MAX_LOG_LEAD_MS = 30 \* 60 \* 1000;/.test(prog),
-      /export const LOG_GAP_SPLIT_MS = 3 \* 60 \* 60 \* 1000;/.test(prog),
-      titles[0]?.includes("30 分前") && titles[0]?.includes("3 時間以上"),
-      titles[1]?.includes("30 minutes") && titles[1]?.includes("3 hours or more"),
+      /export const BREAK_CAP_MS = 60 \* 60 \* 1000;/.test(sess),
+      titles[0]?.includes("30 分前") && titles[0]?.includes("1 回 60 分まで"),
+      titles[1]?.includes("30 minutes") && titles[1]?.includes("up to 60 minutes"),
     ],
     [2, true, true, true, true],
   );

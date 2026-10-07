@@ -99,7 +99,8 @@ try {
   const fight = ({ date, at, sec, enc = 101, kill = false, pct = null, deaths = null, phase = null }) => {
     const startMs = Date.parse(`${date}T${at}:00+09:00`);
     return {
-      reportCode: "R", fightId: startMs, sessionDate: date, name: null, kill,
+      // 1 日 1 本のレポート (本番の形)。
+      reportCode: `R-${date}`, fightId: startMs, sessionDate: date, name: null, kill,
       fightPercentage: pct, lastPhase: phase, encounterId: enc, difficulty: null,
       partyDps: null, deaths, wipe: null, phases: null,
       startMs, endMs: startMs + sec * 1000, reportStartMs: null,
@@ -125,27 +126,28 @@ try {
   const floors = prog.buildFloorMap(savage, 4, "ja");
   const s1 = summarizeWeek(savage, W, floors, false, "ja");
   check("練習日と pull (週より後を数えない)", [s1.days, s1.pulls], [2, 5]);
-  // ログ合計 (2026-10-07): 材料は全部同じレポート「R」で日をまたぐ。レポート単位の
-  // 区間だと 9/29 22:00 〜 10/1 22:37 (約 2 日) になるところ、pull の間が 3 時間
-  // 以上空いたら切るので 23 分 + 37 分。ログの開始が無いので最初の pull から。
-  check("戦闘とログ合計 (1 本のレポートが日をまたいでも夜を数えない)", [s1.fightMs, s1.logMs], [1500000, 3600000]);
-  const withStart = savage.map((f) => ({ ...f, reportStartMs: Date.parse("2026-09-29T21:50:00+09:00") }));
+  // ログ合計: 1 日 1 本のレポートで 23 分 + 37 分 (ログの開始が無いので最初の pull から)。
+  check("戦闘とログ合計", [s1.fightMs, s1.logMs], [1500000, 3600000]);
+  const withStart = savage.map((f) => ({
+    ...f,
+    reportStartMs: Date.parse(f.sessionDate === "2026-10-01" ? "2026-10-01T21:55:00+09:00" : "2026-09-29T21:50:00+09:00"),
+  }));
   check(
-    "ログの開始 (最初の pull の 10 分前) は最初の区間にだけ入れる",
+    "ログの開始 (各ログの最初の pull の 10 分前・5 分前) を入れる",
     summarizeWeek(withStart, W, floors, false, "ja").logMs,
-    (10 + 23 + 37) * 60000,
+    (10 + 23 + 5 + 37) * 60000,
   );
-  // 本番の形: 1 本のレポートの session_date は 1 つ (fflogs-fights.ts がレポート
-  // 単位で決める)。pull ごとに日付を変えた材料だけだと、日付で切る誤った実装でも通る。
-  const oneDate = savage.slice(3, 8).map((f) => ({ ...f, sessionDate: "2026-09-29" }));
+  // 本番の形の別の例: 複数日分を 1 本のレポートで上げた (session_date はレポートに
+  // つき 1 つ)。2026-10-07: pull の間の休憩は 1 回 60 分までなので、夜の分は 60 分だけ。
+  const oneReport = savage.slice(3, 8).map((f) => ({ ...f, reportCode: "R", sessionDate: "2026-09-29" }));
   check(
-    "本番の形 (2 日分が 1 本・練習日は 1 つ) でも夜を数えない",
-    summarizeWeek(oneDate, W, floors, false, "ja").logMs,
-    (23 + 37) * 60000,
+    "複数日分が 1 本のレポートでも、夜の分は 60 分だけ",
+    summarizeWeek(oneReport, W, floors, false, "ja").logMs,
+    (23 + 60 + 37) * 60000,
   );
   // 同じ夜を 2 人がログに取った (同じ pull が 2 本のレポートに入る)。戦闘時間を
   // 単純に足すと「ログ合計」より「うち戦闘」が長くなって文面が矛盾する。
-  const twice = [...savage, ...savage.map((f) => ({ ...f, reportCode: "R2" }))];
+  const twice = [...savage, ...savage.map((f) => ({ ...f, reportCode: `${f.reportCode}-2` }))];
   const sTwice = summarizeWeek(twice, W, floors, false, "ja");
   check(
     "同じ夜のログが 2 本でも戦闘とログ合計は 1 本分 (うち戦闘 ≤ ログ合計)",

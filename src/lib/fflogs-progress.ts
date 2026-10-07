@@ -12,6 +12,9 @@ import { jstYmdString } from "./jst-date";
 import { normalizeSessionDate } from "./session-date";
 import type { PhaseSpan, WipeSummary } from "./fflogs-fight-detail";
 import { PERF_TEXT, perfForRemainingPercent } from "./perf-tone";
+import { BREAK_CAP_MS, cappedBreakIntervals, unionLengthMs } from "./fflogs-session";
+// 区間の和集合は fflogs-session.ts へ移した (拘束とログ合計で共通)。ここからも使えるよう再公開する。
+export { unionLengthMs } from "./fflogs-session";
 
 /**
  * FFLogs の残 HP% を「0-100 のパーセント」に正規化する。
@@ -258,52 +261,18 @@ export function pullSpanByReport(
 export const MAX_LOG_LEAD_MS = 30 * 60 * 1000;
 
 /**
- * 1 本のレポートの中で、pull の間がこれ以上空いたら別の練習として区間を切る
- * (`totalLogMs`、2026-10-07)。練習中の休憩 (食事・作戦会議) より長く、
- * 夜をまたぐ空き (半日以上) より短い値。⚠ 変えたら練習ログの説明
- * (`statLogTotalTitle`、ja / en) の「3 時間」も直す (`MAX_LOG_LEAD_MS` の
- * 「30 分」も同じ。check-fflogs-progress.mjs が突き合わせる)。
- */
-export const LOG_GAP_SPLIT_MS = 3 * 60 * 60 * 1000;
-
-/** 区間の和集合の長さ (重なる区間・接する区間は 1 回だけ数える)。 */
-export function unionLengthMs(
-  spans: ReadonlyArray<{ start: number; end: number }>,
-): number {
-  const sorted = [...spans]
-    .filter((s) => Number.isFinite(s.start) && Number.isFinite(s.end))
-    .sort((a, b) => a.start - b.start);
-  let total = 0;
-  let curStart = Number.NaN;
-  let curEnd = Number.NaN;
-  for (const s of sorted) {
-    const end = Math.max(s.start, s.end);
-    if (Number.isNaN(curStart)) {
-      curStart = s.start;
-      curEnd = end;
-    } else if (s.start <= curEnd) {
-      if (end > curEnd) curEnd = end;
-    } else {
-      total += curEnd - curStart;
-      curStart = s.start;
-      curEnd = end;
-    }
-  }
-  if (!Number.isNaN(curStart)) total += curEnd - curStart;
-  return total;
-}
-
-/**
  * ログの合計時間 (ms、2026-10-06 実機要望「練習日数に戦闘時間でなく Logs の
  * 総合計時間を入れたい」)。
  *
- * 1 つのレポートを「ログの開始 (`reportStartMs`) 〜 最後の pull の終わり」の
- * 区間とし、**重なる区間は 1 回だけ数えて**合計する (同じ時間帯を 2 人が
- * 上げたログ・分割したログを二重に数えない)。日ごとに出して足し合わせない
- * のは、日をまたいだレポートの開始が両方の日に入って二重になるため。
+ * レポートごとに「ログの開始 (`reportStartMs`) 〜 最初の pull」と、pull の
+ * 時間と pull の間の休憩 (1 回 `BREAK_CAP_MS` = 60 分まで) を区間にし、
+ * **重なる区間は 1 回だけ数えて**合計する (同じ時間帯を 2 人が上げたログ・
+ * 分割したログを二重に数えない)。日ごとに出して足し合わせないのは、日を
+ * またいだレポートの開始が両方の日に入って二重になるため。
  *
- * - FFLogs のレポートの長さ (endTime − startTime) とほぼ同じ。違いは最後の
- *   pull の後にログを止めるまでの数分だけ (終了時刻は保存していない)
+ * - FFLogs のレポートの長さ (endTime − startTime) にほぼ近い。違いは最後の
+ *   pull の後にログを止めるまでの時間と、60 分を超える休憩の超えた分 (終了
+ *   時刻は保存していない)
  * - 戦闘時間 (`DaySummary.fightSeconds`) と違い、pull の間の休憩・作戦会議を含む
  * - `reportStartMs` が無い (古い行) か最初の pull より後なら、最初の pull の
  *   開始を使う
@@ -316,15 +285,12 @@ export function unionLengthMs(
  *   何度も起きている。v2.10 / v2.16 のリリースノート)。ACT の 1 日分の
  *   ファイルを上げた場合も同じ。準備・集合の時間は入れ、混ざる時間は最大
  *   30 分に抑える (PR のレビューで検出)
- * - ⚠ **1 本のレポートの中でも、pull の間が `LOG_GAP_SPLIT_MS` (3 時間) 以上
- *   空いたら区間を切る (2026-10-07)。** 複数日の練習が 1 本のレポートに入って
- *   いる (複数日分のログを 1 本で上げた) と、レポート単位の区間では夜をまたぐ
- *   空き時間 (約 1 日) まで数えてしまう。練習日 (`session_date`) では切れない —
- *   **本番の行の `session_date` はレポートにつき 1 つ** (`fflogs-fights.ts` が
- *   レポート単位で決めて全 pull に書く) なので、日付で分けても区間は 1 本の
- *   まま (PR のレビューで検出)。間隔で切れば、0 時をまたぐ 1 回の練習の休憩も
- *   落とさない。2 つ目以降の区間は、その区間の最初の pull から数える (ログは
- *   夜の間も続いていたので「ログの開始」が無い)
+ * - ⚠ **pull の間の休憩は 1 回 60 分まで** (2026-10-07 ユーザーの選択)。以前は
+ *   「3 時間以上空いたら区切る」で、休憩が 3 時間の前後で値が約 3 時間跳ねて
+ *   いた。上限で切ると跳ねず、複数日分を 1 本で上げたログ (本番の行の
+ *   `session_date` はレポートにつき 1 つなので日付では分けられない) でも夜の
+ *   分は 60 分だけ入る。休憩はレポートの中だけで数える (別のレポートとの間の
+ *   空きはログが動いていなかった時間なので数えない)
  */
 export function totalLogMs(
   fights: ReadonlyArray<Pick<FightRow, "reportCode" | "startMs" | "endMs" | "reportStartMs">>,
@@ -352,22 +318,14 @@ export function totalLogMs(
   }
   const spans: Array<{ start: number; end: number }> = [];
   for (const r of byReport.values()) {
-    const pulls = r.pulls.sort((a, b) => a.start - b.start);
-    let seg: { start: number; end: number } | null = null;
-    for (const p of pulls) {
-      if (seg && p.start - seg.end < LOG_GAP_SPLIT_MS) {
-        if (p.end > seg.end) seg.end = p.end;
-        continue;
-      }
-      // 新しい区間。レポートの最初の区間だけ、ログの開始 (30 分前まで) から数える。
-      const start: number =
-        seg === null && r.reportStart !== null
-          ? Math.max(Math.min(r.reportStart, p.start), p.start - MAX_LOG_LEAD_MS)
-          : p.start;
-      if (seg) spans.push(seg);
-      seg = { start, end: p.end };
+    const firstStart = Math.min(...r.pulls.map((p) => p.start));
+    // ログの開始 (最初の pull の 30 分前まで) 〜 最初の pull。
+    if (r.reportStart !== null) {
+      const leadStart = Math.max(Math.min(r.reportStart, firstStart), firstStart - MAX_LOG_LEAD_MS);
+      spans.push({ start: leadStart, end: firstStart });
     }
-    if (seg) spans.push(seg);
+    // pull と、pull の間の休憩 (1 回 60 分まで)。
+    spans.push(...cappedBreakIntervals(r.pulls, BREAK_CAP_MS));
   }
   return unionLengthMs(spans);
 }

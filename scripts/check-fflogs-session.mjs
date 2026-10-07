@@ -103,6 +103,35 @@ try {
   // 重なった pull (別 PT のログが混ざった等) で戦闘外が負にならないこと。
   const overlap = sessionSummary([pull(0, 10), pull(2, 10)]);
   check("重なっても戦闘外は 0 以上", overlap.downtimeMs, 0);
+
+  // 2026-10-07: 拘束の休憩は 1 回 60 分まで (ログ合計と同じ数え方)。複数日分を
+  // 1 本で上げたログでは、夜の分まで拘束に入っていた。
+  console.log("\n拘束の休憩は 1 回 60 分まで");
+  check(
+    "60 分以内の休憩は全部 (従来の「最初の開始〜最後の終了」と同じ)",
+    sessionSummary([pull(0, 30), pull(90, 30)]).spanMs,
+    120 * MIN,
+  );
+  check(
+    "60 分を超える休憩は 60 分まで (2 部制の日)",
+    sessionSummary([pull(0, 60), pull(60 + 170, 60)]).spanMs,
+    (60 + 60 + 60) * MIN,
+  );
+  check(
+    "夜をまたいでも 60 分だけ (複数日分を 1 本で上げたログ)",
+    sessionSummary([pull(0, 60), pull(24 * 60, 60)]).spanMs,
+    (60 + 60 + 60) * MIN,
+  );
+  check(
+    "長い pull の中に短い pull が重なっていても、休憩は長い pull の終わりから数える",
+    sessionSummary([pull(0, 100), pull(10, 10), pull(250, 10)]).spanMs,
+    (100 + 60 + 10) * MIN,
+  );
+  check(
+    "休憩の長さで値が跳ねない (2 時間 50 分と 3 時間 10 分で同じ)",
+    [sessionSummary([pull(0, 60), pull(60 + 170, 60)]).spanMs, sessionSummary([pull(0, 60), pull(60 + 190, 60)]).spanMs],
+    [180 * MIN, 180 * MIN],
+  );
   check("重なりでも比は 0 以上", overlap.downtimeRatio, 0);
 
   // 不正な値の pull は無視する (start/end が NaN の行が混ざり得る)。

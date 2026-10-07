@@ -42,8 +42,74 @@ export type SessionFight = {
   sessionDate?: string | null;
 };
 
+/**
+ * pull の間の休憩を数える上限 (1 回あたり、2026-10-07 ユーザーの選択)。
+ *
+ * 拘束 (`sessionSummary`) とログ合計 (`totalLogMs`) で共通。以前のログ合計は
+ * 「3 時間以上空いたら区切る」で、休憩が 3 時間の前後で値が約 3 時間跳ねて
+ * いた。上限で切れば跳ねず、2 部制の日は間の 60 分だけ、複数日分を 1 本で
+ * 上げたログでも夜の分は 60 分だけ入る。
+ */
+export const BREAK_CAP_MS = 60 * 60 * 1000;
+
+/** 区間の和集合の長さ (重なる区間・接する区間は 1 回だけ数える)。 */
+export function unionLengthMs(
+  spans: ReadonlyArray<{ start: number; end: number }>,
+): number {
+  const sorted = [...spans]
+    .filter((s) => Number.isFinite(s.start) && Number.isFinite(s.end))
+    .sort((a, b) => a.start - b.start);
+  let total = 0;
+  let curStart = Number.NaN;
+  let curEnd = Number.NaN;
+  for (const s of sorted) {
+    const end = Math.max(s.start, s.end);
+    if (Number.isNaN(curStart)) {
+      curStart = s.start;
+      curEnd = end;
+    } else if (s.start <= curEnd) {
+      if (end > curEnd) curEnd = end;
+    } else {
+      total += curEnd - curStart;
+      curStart = s.start;
+      curEnd = end;
+    }
+  }
+  if (!Number.isNaN(curStart)) total += curEnd - curStart;
+  return total;
+}
+
+/**
+ * pull の区間と、pull の間の休憩の区間 (休憩の始まりから 1 回 `capMs` まで)。
+ * 和集合の長さを取ると「pull の時間 + 休憩 (上限つき)」になる。pull が
+ * 重なっていても (同じ時間帯のログが 2 本) 休憩は重なりを除いた時間で測る。
+ */
+export function cappedBreakIntervals(
+  pulls: ReadonlyArray<{ start: number; end: number }>,
+  capMs: number = BREAK_CAP_MS,
+): Array<{ start: number; end: number }> {
+  const sorted = pulls
+    .filter((p) => Number.isFinite(p.start) && Number.isFinite(p.end))
+    .map((p) => ({ start: p.start, end: Math.max(p.start, p.end) }))
+    .sort((a, b) => a.start - b.start);
+  const out: Array<{ start: number; end: number }> = [];
+  let runEnd = Number.NaN;
+  for (const p of sorted) {
+    if (!Number.isNaN(runEnd) && p.start > runEnd) {
+      out.push({ start: runEnd, end: Math.min(p.start, runEnd + capMs) });
+    }
+    out.push(p);
+    runEnd = Number.isNaN(runEnd) ? p.end : Math.max(runEnd, p.end);
+  }
+  return out;
+}
+
 export type SessionSummary = {
-  /** 拘束時間 (ms) = 最初の pull の開始から最後の pull の終了まで。 */
+  /**
+   * 拘束時間 (ms) = pull の時間 + pull の間の休憩 (1 回 `BREAK_CAP_MS` まで)。
+   * 2026-10-07 までは「最初の pull の開始から最後の pull の終了まで」で、
+   * 複数日分を 1 本で上げたログでは夜の分まで入っていた。
+   */
   spanMs: number;
   /** 実戦闘時間 (ms) = 各 pull の戦闘時間の合計。 */
   fightMs: number;
@@ -62,11 +128,12 @@ export type SessionSummary = {
 /**
  * 1 セッション (= 1 日) のサマリー。
  *
- * 拘束時間は「最初の pull の**開始**から最後の pull の**終了**まで」。
- * 集合や休憩開始からではないので、実際の拘束よりは短く出る — pull の外は
- * ログに現れないため、これが観測できる上限。
+ * 拘束時間は「pull の時間 + pull の間の休憩 (1 回 `BREAK_CAP_MS` まで)」。
+ * 休憩が上限より短い日は、従来どおり「最初の pull の**開始**から最後の pull の
+ * **終了**まで」と同じ値。集合や休憩開始からではないので、実際の拘束よりは
+ * 短く出る — pull の外はログに現れないため、これが観測できる上限。
  *
- * pull の順序は問わない (呼び出し側の並びに依存しないよう min/max で取る)。
+ * pull の順序は問わない (並べ替えてから数える)。
  */
 export function sessionSummary(
   fights: ReadonlyArray<SessionFight>,
@@ -86,9 +153,10 @@ export function sessionSummary(
   );
   if (valid.length === 0) return empty;
 
-  const start = Math.min(...valid.map((f) => f.startMs));
-  const end = Math.max(...valid.map((f) => f.endMs));
-  const spanMs = Math.max(0, end - start);
+  // 2026-10-07: 休憩は 1 回 60 分まで (ログ合計と同じ数え方。ユーザーの選択)。
+  const spanMs = unionLengthMs(
+    cappedBreakIntervals(valid.map((f) => ({ start: f.startMs, end: f.endMs }))),
+  );
   const fightMs = valid.reduce(
     (acc, f) => acc + Math.max(0, f.endMs - f.startMs),
     0,
