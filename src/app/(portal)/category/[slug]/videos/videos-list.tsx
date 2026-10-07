@@ -551,7 +551,11 @@ export function VideosList({
       return;
     }
     const summary = formatDurationLong(total, locale);
-    const missingNote = missing > 0 ? m.videos.missingNote(missing) : "";
+    // 数えなかった本数も確認文に出す (単純な合計のつもりで少ない値を
+    // 保存しないように。保存した値は手動入力として自動の値より優先される)。
+    const missingNote =
+      (missing > 0 ? m.videos.missingNote(missing) : "") +
+      (picked.duplicates > 0 ? m.videos.duplicatesSaveNote(picked.duplicates) : "");
     const ok = await confirm({
       title: m.videos.saveClearTimeTitle,
       description: m.videos.saveClearTimeDesc(
@@ -639,30 +643,35 @@ export function VideosList({
   //
   // 2026-10-07: 同じ練習の動画 (視点違い・上げ直し) は長い方の 1 本だけ
   // 数える (`challengeTime`。一覧カードのサーバー側の集計と同じ関数)。
-  const { totalSeconds, timeToClearSeconds, missingDurationCount, duplicateCount } =
-    useMemo(() => {
-      const all = challengeTime(live.map(toChallengeVideo));
-      const clearMs = firstClearAt
-        ? new Date(firstClearAt).getTime()
-        : null;
-      const toClear =
-        clearMs === null
-          ? 0
-          : challengeTime(
-              live
-                .filter((v) => {
-                  const t = new Date(v.postedAt ?? v.createdAt).getTime();
-                  return Number.isFinite(t) && t <= clearMs;
-                })
-                .map(toChallengeVideo),
-            ).totalSeconds;
-      return {
-        totalSeconds: all.totalSeconds,
-        timeToClearSeconds: toClear,
-        missingDurationCount: all.missing,
-        duplicateCount: all.duplicates,
-      };
-    }, [live, firstClearAt]);
+  const {
+    totalSeconds,
+    timeToClearSeconds,
+    missingDurationCount,
+    duplicateCount,
+    toClearDuplicateCount,
+  } = useMemo(() => {
+    const all = challengeTime(live.map(toChallengeVideo));
+    const clearMs = firstClearAt ? new Date(firstClearAt).getTime() : null;
+    const toClear =
+      clearMs === null
+        ? null
+        : challengeTime(
+            live
+              .filter((v) => {
+                const t = new Date(v.postedAt ?? v.createdAt).getTime();
+                return Number.isFinite(t) && t <= clearMs;
+              })
+              .map(toChallengeVideo),
+          );
+    return {
+      totalSeconds: all.totalSeconds,
+      timeToClearSeconds: toClear?.totalSeconds ?? 0,
+      missingDurationCount: all.missing,
+      duplicateCount: all.duplicates,
+      // クリアまでのバッジには、その範囲で数えなかった本数を出す。
+      toClearDuplicateCount: toClear?.duplicates ?? 0,
+    };
+  }, [live, firstClearAt]);
 
   return (
     <div className="flex flex-col gap-3">
@@ -719,7 +728,15 @@ export function VideosList({
                         ? "border-emerald-400/45 bg-emerald-400/10 text-emerald-200"
                         : "border-violet-400/45 bg-violet-400/10 text-violet-200")
                     }
-                    title={`${challengeLabel}: ${formatDurationLong(challengeValue, locale)}${manualTimeToClearSeconds !== null ? m.videos.manualInput : `${missingDurationCount > 0 && !isCleared ? m.videos.missingDurations(missingDurationCount) : ""}${duplicateCount > 0 ? m.videos.duplicatesNote(duplicateCount) : ""}`}`}
+                    title={(() => {
+                      // クリア済みは「クリアまで」の範囲で数えなかった本数。
+                      const dup = isCleared ? toClearDuplicateCount : duplicateCount;
+                      const note =
+                        manualTimeToClearSeconds !== null
+                          ? m.videos.manualInput
+                          : `${missingDurationCount > 0 && !isCleared ? m.videos.missingDurations(missingDurationCount) : ""}${dup > 0 ? m.videos.duplicatesNote(dup) : ""}`;
+                      return `${challengeLabel}: ${formatDurationLong(challengeValue, locale)}${note}`;
+                    })()}
                   >
                     {isCleared ? (
                       <>→{formatDurationShort(challengeValue)}</>

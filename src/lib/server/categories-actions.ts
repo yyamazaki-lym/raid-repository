@@ -3807,12 +3807,12 @@ export async function fetchPracticeSecondsByCategory(): Promise<
   // SQL の `SUM(duration_seconds)` (RPC `practice_seconds_by_category`) から
   // 動画の行を読んで JS で集計する形に戻した。まとめる判定は題名の番号と
   // 日付を見るので SQL では書けない (`challengeTime`)。転送は動画数に比例
-  // するが、読むのは 5 列だけ。RPC は schema に残してある (呼ばない)。
+  // するが、読むのは 7 列だけ。RPC は schema に残してある (呼ばない)。
   const supabase = await createClient();
   const res = await fetchAllPages(async (from, to) => {
     const { data, error } = await supabase
       .from("category_links")
-      .select("id, category_id, title, url, duration_seconds, posted_at")
+      .select("id, category_id, title, url, duration_seconds, posted_at, created_at")
       .eq("kind", "video")
       .order("id", { ascending: true })
       .range(from, to);
@@ -3831,7 +3831,8 @@ export async function fetchPracticeSecondsByCategory(): Promise<
       title: (r.title as string | null) ?? null,
       url: (r.url as string | null) ?? null,
       durationSeconds: (r.duration_seconds as number | null) ?? null,
-      postedAt: (r.posted_at as string | null) ?? null,
+      // 動画タブ・クリアまでの時間と同じく、投稿日時が無ければ行の作成日時。
+      postedAt: (r.posted_at as string | null) ?? ((r.created_at as string | null) ?? null),
     });
     byCategory.set(cid, list);
   }
