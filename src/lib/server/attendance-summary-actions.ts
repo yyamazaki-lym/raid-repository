@@ -1,5 +1,6 @@
 "use server";
 
+import { unstable_cache } from "next/cache";
 import { headers } from "next/headers";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { checkRateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
@@ -88,6 +89,11 @@ const MISMATCH_LIMIT = 40;
  * ⚠ "use server" のファイルなので export しない。
  */
 const DEMO_GUEST_SUMMARY_LIMIT = { limit: 10, windowMs: 60_000 };
+/**
+ * 公開デモの匿名ゲストへの結果を共有キャッシュに置く秒数。ゲストへの値は全員同じ
+ * なので、1 分古くても困らない。⚠ export しない。
+ */
+const DEMO_GUEST_SUMMARY_CACHE_SECONDS = 60;
 export type AttendanceSummaryResult =
   | {
       ok: true;
@@ -119,8 +125,29 @@ export async function fetchAttendanceSummaryAction(): Promise<AttendanceSummaryR
         reason: `短時間に何度も取得しています。${rl.retryAfterSeconds} 秒ほど待ってから試してください`,
       };
     }
+    // 2026-10-08: 上の回数は Upstash が無いとインスタンスごとに数えるので、
+    // 呼び出しが複数のインスタンスに散ると 10 回 × インスタンス数まで緩む
+    // (公開デモで実測)。ゲストへの結果は全員同じ (同じ ID・admin でない) なので、
+    // インスタンスをまたいで共有される Data Cache に置き、DB を読むのを
+    // IP やインスタンスに関係なく 1 分に 1 回にする。
+    return fetchDemoGuestSummary(user.discordId);
   }
-  const isAdmin = userIsAdmin(user.roles);
+  return computeAttendanceSummary({
+    discordId: user.discordId,
+    isAdmin: userIsAdmin(user.roles),
+  });
+}
+
+/**
+ * 出席サマリーの集計の本体。見る人によって変わるのは、admin か (全員分か本人だけか)
+ * と本人の Discord ID だけ。⚠ cookie / headers を読まないこと — 公開デモの
+ * ゲスト向けには `unstable_cache` の中で呼ぶ (`fetchDemoGuestSummary`)。
+ */
+async function computeAttendanceSummary(viewer: {
+  discordId: string;
+  isAdmin: boolean;
+}): Promise<AttendanceSummaryResult> {
+  const isAdmin = viewer.isAdmin;
   const selfOnly = !isAdmin;
 
   try {
@@ -408,7 +435,7 @@ export async function fetchAttendanceSummaryAction(): Promise<AttendanceSummaryR
     }
 
     const members = memberRows
-      .filter((mem) => isAdmin || mem.discord_user_id === user.discordId)
+      .filter((mem) => isAdmin || mem.discord_user_id === viewer.discordId)
       .map((mem) => ({
         discordUserId: mem.discord_user_id,
         displayName: mem.display_name ?? "",
@@ -428,6 +455,34 @@ export async function fetchAttendanceSummaryAction(): Promise<AttendanceSummaryR
   } catch (e) {
     console.warn("[attendance-summary] failed:", e);
     return { ok: false, reason: "出席サマリーの取得に失敗しました" };
+  }
+}
+
+/** ゲスト向けの集計の失敗 (キャッシュに残さないために投げる)。 */
+class DemoGuestSummaryError extends Error {}
+
+/**
+ * 公開デモの匿名ゲスト向けの出席サマリーを Data Cache に 60 秒置く (2026-10-08)。
+ * 引数 (ゲストの ID) は鍵に入る。失敗は投げて保存させず、次の呼び出しで取り直す。
+ */
+const demoGuestSummaryCache = unstable_cache(
+  async (guestId: string): Promise<AttendanceSummaryResult> => {
+    const r = await computeAttendanceSummary({ discordId: guestId, isAdmin: false });
+    if (!r.ok) throw new DemoGuestSummaryError(r.reason);
+    return r;
+  },
+  ["attendance-summary-demo-guest"],
+  { revalidate: DEMO_GUEST_SUMMARY_CACHE_SECONDS },
+);
+
+async function fetchDemoGuestSummary(
+  guestId: string,
+): Promise<AttendanceSummaryResult> {
+  try {
+    return await demoGuestSummaryCache(guestId);
+  } catch (e) {
+    if (e instanceof DemoGuestSummaryError) return { ok: false, reason: e.message };
+    throw e;
   }
 }
 
