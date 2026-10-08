@@ -29,9 +29,10 @@ function timingSafeStringEqual(a: string, b: string): boolean {
  * 認証の判定:
  *   - 環境変数 `CRON_SECRET` が未設定 → 503 を返す (deploy ミス検知)
  *   - `Authorization: Bearer ${CRON_SECRET}` ヘッダが一致 → 通過
- *   - `x-vercel-cron` ヘッダ存在 → **Vercel の preview (VERCEL_ENV='preview') でのみ**
- *     通過 (Dashboard "Run" / preview 検証用)。本番・Vercel 以外・ローカルでは
- *     Bearer を必須にする (2026-10-07 に「本番以外」から許可リスト型へ)。
+ *   - `x-vercel-cron` ヘッダ存在 → **Vercel の preview (VERCEL_ENV='preview' かつ
+ *     NODE_ENV='production') でのみ** 通過 (Dashboard "Run" / preview 検証用)。
+ *     本番・Vercel 以外・ローカルの dev では Bearer を必須にする (2026-10-07 に
+ *     「本番以外」から許可リスト型へ、2026-10-08 にローカルの dev を除外)。
  *     `x-vercel-cron` はヘッダ存在のみで通るため「Vercel が外部リクエストの
  *     x-vercel-* を edge で剥がす」というプラットフォーム挙動への単一依存に
  *     なる。Vercel は `CRON_SECRET` 設定時に scheduled cron へ Bearer を自動
@@ -95,8 +96,15 @@ export function assertCronAuth(
   // `VERCEL_ENV` が無い環境 (Vercel 以外での `next start`・ローカルの dev) では
   // ヘッダを付けるだけで cron が service role で動いた。許可リスト型にする
   // (ローカルで試すときは `Authorization: Bearer <CRON_SECRET>` を付ける)。
+  // 2026-10-08: `NODE_ENV === "production"` も条件にする。`vercel env pull` で
+  // 作った `.env.local` には `VERCEL_ENV="preview"` が入り、`next dev` はそれを
+  // process.env に読むので、ローカルの dev でもヘッダだけで通っていた。Vercel の
+  // preview のデプロイは本番ビルド (NODE_ENV=production) で動き、`next dev` は
+  // development なので、これで Vercel の preview だけに絞れる。
   const allowHeaderOnly =
-    isVercelCron && process.env.VERCEL_ENV === "preview";
+    isVercelCron &&
+    process.env.VERCEL_ENV === "preview" &&
+    process.env.NODE_ENV === "production";
 
   if (!headerOk && !allowHeaderOnly) {
     // 詳細は本体ログにのみ吐く (response body には載せない)。

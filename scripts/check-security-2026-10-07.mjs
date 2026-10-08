@@ -15,6 +15,7 @@
  *       メンバーの Action で再検証しない・YouTube リンクと取り込みの URL は http(s)
  *   L   DB: ポリシー 0 本の表の権限を外す (デプロイ時の表明も)・fflogs_report_days の anon /
  *       開発サーバーは 127.0.0.1 だけ
+ *   L   公開デモの匿名ゲストの出席サマリーは IP ごとに 1 分 10 回 (2026-10-08)
  *
  * URL の安全判定・safeFetch の redirect・画像最適化のホスト・cron のヘッダは
  * check-url-safe.mjs、書き出しの backpressure は check-data-export.mjs が見る。
@@ -239,6 +240,43 @@ console.log("\nL DB の権限と開発サーバー");
 
   const pkg = JSON.parse(readFileSync("package.json", "utf8"));
   check("開発サーバーはこのパソコンからだけ (127.0.0.1)", pkg.scripts.dev, "next dev -H 127.0.0.1");
+}
+
+console.log("\nL 公開デモの匿名ゲストの出席サマリー (2026-10-08)");
+{
+  const src = read("src/lib/server/attendance-summary-actions.ts");
+  const body = code(fnBody(src, "fetchAttendanceSummaryAction"));
+  const iGuard = body.indexOf("if (user.isDemoGuest) {");
+  check(
+    "匿名ゲストは IP ごとに回数を確かめる",
+    /if \(user\.isDemoGuest\) \{\s*const rl = await checkRateLimit\(\s*"action-attendance-summary",\s*`ip:\$\{clientIpFromHeaders\(await headers\(\)\)\}`,\s*DEMO_GUEST_SUMMARY_LIMIT\.limit,\s*DEMO_GUEST_SUMMARY_LIMIT\.windowMs,\s*\);\s*if \(!rl\.allowed\) \{/.test(body),
+    true,
+  );
+  check(
+    "回数の確認は重い読み取り (service role・設定の読み取り) より前",
+    iGuard > 0 && iGuard < body.indexOf("createSupabaseServiceRoleClient()") && iGuard < body.indexOf("getScheduleSourceMode()"),
+    true,
+  );
+  check("上限は 1 分 10 回 (export しない)", /^const DEMO_GUEST_SUMMARY_LIMIT = \{ limit: 10, windowMs: 60_000 \};/m.test(src) && !/export const DEMO_GUEST_SUMMARY_LIMIT/.test(src), true);
+  // 回数の器 (scope) が他の制限と混ざらない。
+  const scopes = [];
+  const walk = (dir) => {
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      const p = `${dir}/${e.name}`;
+      if (e.isDirectory()) walk(p);
+      else if (/\.tsx?$/.test(e.name)) for (const x of read(p).matchAll(/"action-attendance-summary"/g)) scopes.push(p + x.index);
+    }
+  };
+  walk("src");
+  check("scope \"action-attendance-summary\" を使うのはこの 1 か所だけ", scopes.length, 1);
+  // guardExternalFetch は `action-${scope}` をテンプレートで作るので、文字列の
+  // 一致だけでは重なりを見落とす。上限表のキーに "attendance-summary" が無いこと
+  // も確かめる (足すと、メンバーの user: とゲストの ip: が同じ器を使う)。
+  const guard = read("src/lib/server/external-fetch-guard.ts");
+  const guardScopes = [...(guard.match(/EXTERNAL_FETCH_LIMITS: Record<[\s\S]*?> = \{([\s\S]*?)\n\};/)?.[1] ?? "").matchAll(/^\s*"?([a-z-]+)"?: \{/gm)].map((x) => x[1]);
+  check("guardExternalFetch の scope を拾えている (4 つ以上)", guardScopes.length >= 4, true);
+  check("guardExternalFetch の scope に attendance-summary が無い (器が重ならない)", guardScopes.includes("attendance-summary"), false);
+  check("guardExternalFetch は `action-${scope}` の形で器を作る (上の確かめの前提)", /checkRateLimit\(`action-\$\{scope\}`/.test(guard), true);
 }
 
 if (failures > 0) {
