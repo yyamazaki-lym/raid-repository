@@ -99,7 +99,11 @@ check("safeFetch: http(s) 以外への redirect は追わない", /if \(next\.pr
 const nc = read("next.config.ts");
 check("next.config: Supabase の画像は自分の project のホストだけ", !/\*\.supabase\.co/.test(nc.replace(/^\s*(\/\/|\*).*$/gm, "")) && /hostname: SUPABASE_IMAGE_HOST,/.test(nc), true);
 const cron = read("src/lib/server/cron-auth.ts");
-check("cron: ヘッダだけの通過は Vercel の preview だけ (許可リスト型)", /const allowHeaderOnly =\s*isVercelCron && process\.env\.VERCEL_ENV === "preview";/.test(cron), true);
+check(
+  "cron: ヘッダだけの通過は Vercel の preview だけ (許可リスト型・ローカルの dev は除く)",
+  /const allowHeaderOnly =\s*isVercelCron &&\s*process\.env\.VERCEL_ENV === "preview" &&\s*process\.env\.NODE_ENV === "production";/.test(cron),
+  true,
+);
 
 console.log("");
 if (failures > 0) {

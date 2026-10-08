@@ -1,6 +1,8 @@
 "use server";
 
+import { headers } from "next/headers";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
+import { checkRateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
 import {
   fetchAttendanceActualsByReports,
   type ActualRow,
@@ -80,6 +82,12 @@ import {
 const WINDOW_DAYS = 90;
 /** ズレ一覧の表示上限 (多すぎると読まれない)。 */
 const MISMATCH_LIMIT = 40;
+/**
+ * 公開デモの匿名ゲストが出席サマリーを取れる回数 (IP ごと)。画面はダイアログを
+ * 開いたときに 1 回取るだけなので、1 分 10 回は普通の使い方を大きく超える。
+ * ⚠ "use server" のファイルなので export しない。
+ */
+const DEMO_GUEST_SUMMARY_LIMIT = { limit: 10, windowMs: 60_000 };
 export type AttendanceSummaryResult =
   | {
       ok: true;
@@ -93,6 +101,25 @@ export type AttendanceSummaryResult =
 
 export async function fetchAttendanceSummaryAction(): Promise<AttendanceSummaryResult> {
   const user = await requireDiscordMember();
+  // 2026-10-08 (2026-10-07 セキュリティ精査の残り): 公開デモの匿名ゲストは
+  // IP ごとに回数を絞る。1 回ごとに service role の読み取り 5 本以上と RPC 2 本が
+  // 走るのに、ゲストはログインせずに呼べて回数の制限が無かった (返すのは集計値
+  // だけで漏れは無い)。ゲストは全員同じ ID なので IP で数える
+  // (`guardExternalFetch` と同じ形)。メンバーは絞らない。
+  if (user.isDemoGuest) {
+    const rl = await checkRateLimit(
+      "action-attendance-summary",
+      `ip:${clientIpFromHeaders(await headers())}`,
+      DEMO_GUEST_SUMMARY_LIMIT.limit,
+      DEMO_GUEST_SUMMARY_LIMIT.windowMs,
+    );
+    if (!rl.allowed) {
+      return {
+        ok: false,
+        reason: `短時間に何度も取得しています。${rl.retryAfterSeconds} 秒ほど待ってから試してください`,
+      };
+    }
+  }
   const isAdmin = userIsAdmin(user.roles);
   const selfOnly = !isAdmin;
 
