@@ -49,6 +49,31 @@ export const EXTERNAL_FETCH_LIMITS: Record<
   "fflogs-death-leadup": { limit: 20, windowMs: 60_000 },
 };
 
+/**
+ * 公開デモの匿名ゲストだけ、IP ごとに回数を絞る (メンバーは絞らない。2026-10-08)。
+ * 外部を叩かないが service role で DB を読む Action (出席サマリー・ミス注釈の取得) 用。
+ * 絞ったときは画面に出す理由、通してよいときは null を返す。
+ *
+ * scope は `action-${scope}` の器になる。`EXTERNAL_FETCH_LIMITS` のキーと同じ名前を
+ * 使わないこと (メンバーの user: とゲストの ip: が同じ器に混ざる)。
+ * ⚠ Upstash の env が無いと回数はインスタンスごと (rate-limit.ts)。
+ */
+export async function limitDemoGuest(
+  member: AuthorizedUser,
+  scope: string,
+  opts: { limit: number; windowMs: number },
+): Promise<string | null> {
+  if (!member.isDemoGuest) return null;
+  const rl = await checkRateLimit(
+    `action-${scope}`,
+    `ip:${clientIpFromHeaders(await headers())}`,
+    opts.limit,
+    opts.windowMs,
+  );
+  if (rl.allowed) return null;
+  return `短時間に何度も取得しています。${rl.retryAfterSeconds} 秒ほど待ってから試してください`;
+}
+
 export type ExternalFetchGuard =
   | { ok: true; member: AuthorizedUser }
   | { ok: false; reason: string };

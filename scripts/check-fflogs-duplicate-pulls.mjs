@@ -172,7 +172,24 @@ try {
     true,
   );
   const grants = schema.slice(schema.indexOf("-- ---- 15. RPC の anon EXECUTE"));
-  check("権限: 15 章でスパークラインと同じ配り方 (デモの anon も読める)", /'public\.fflogs_duplicate_pulls\(bigint\)'/.test(grants), true);
+  // 2026-10-08: 重い集計はデモでも anon に配らない (15 章の 2 つ目のループ)。
+  // デモの匿名ゲストのスパークラインは service role で計算する (category-progress.ts)。
+  const loops = [...grants.matchAll(/FOREACH fn IN ARRAY ARRAY\[([\s\S]*?)\] LOOP([\s\S]*?)END LOOP;/g)].map((m) => ({ fns: m[1], body: m[2] }));
+  const heavy = loops.find((l) => l.fns.includes("'public.fflogs_duplicate_pulls(bigint)'"));
+  check(
+    "権限: スパークラインと同じループで、本番は authenticated と service_role、デモは service_role だけ",
+    !!heavy &&
+      heavy.fns.includes("'public.category_progress_by_day(integer)'") &&
+      /GRANT EXECUTE ON FUNCTION %s TO %s', fn, heavy_roles\);/.test(heavy.body) &&
+      !/exec_roles/.test(heavy.body) &&
+      /heavy_roles text := CASE\s*WHEN coalesce\(current_setting\('app\.public_demo', true\), ''\) = 'true'\s*THEN 'service_role'\s*ELSE 'authenticated, service_role'\s*END;/.test(grants),
+    true,
+  );
+  check(
+    "権限: 並び順の RPC のループ (デモで anon に戻す方) に重い集計が無い",
+    loops.filter((l) => /exec_roles/.test(l.body)).every((l) => !/fflogs_duplicate_pulls|category_progress_by_day|practice_seconds_by_category/.test(l.fns)),
+    true,
+  );
   check("権限: 出席サマリーの service role に配る", /GRANT EXECUTE ON FUNCTION public\.fflogs_duplicate_pulls\(bigint\) TO service_role;/.test(schema), true);
 } finally {
   rmSync(outDir, { recursive: true, force: true });

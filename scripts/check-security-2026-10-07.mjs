@@ -15,7 +15,8 @@
  *       メンバーの Action で再検証しない・YouTube リンクと取り込みの URL は http(s)
  *   L   DB: ポリシー 0 本の表の権限を外す (デプロイ時の表明も)・fflogs_report_days の anon /
  *       開発サーバーは 127.0.0.1 だけ
- *   L   公開デモの匿名ゲストの出席サマリーは IP ごとに 1 分 10 回 (2026-10-08)
+ *   L   公開デモの匿名ゲスト: 出席サマリー (IP ごと 1 分 10 回 + 共有キャッシュ)・ミス注釈の取得
+ *       (1 分 60 回)・集計 3 本を "use server" の外へ・スパークラインは共有キャッシュ (2026-10-08)
  *
  * URL の安全判定・safeFetch の redirect・画像最適化のホスト・cron のヘッダは
  * check-url-safe.mjs、書き出しの backpressure は check-data-export.mjs が見る。
@@ -227,7 +228,8 @@ console.log("\nL DB の権限と開発サーバー");
   );
   check("ポリシー 0 本の表を拾えている (7 表以上)", policyless.length >= 7, true);
   check("ポリシー 0 本の表はすべて anon / authenticated の権限を外す", policyless.filter((t) => !revoked.has(t)), []);
-  check("fflogs_report_days は anon も名指しで外す", /REVOKE EXECUTE ON FUNCTION public\.fflogs_report_days\(bigint\) FROM PUBLIC, anon;/.test(schema), true);
+  // 2026-10-08: アプリは service role からしか呼ばないので authenticated からも外した。
+  check("fflogs_report_days は anon も authenticated も外し、service_role だけ", /REVOKE EXECUTE ON FUNCTION public\.fflogs_report_days\(bigint\) FROM PUBLIC, anon, authenticated;\s*GRANT EXECUTE ON FUNCTION public\.fflogs_report_days\(bigint\) TO service_role;/.test(schema), true);
   const wf = read(".github/workflows/deploy-database.yml");
   check("デプロイ時に、ポリシーの無い表に権限が残っていないことを確かめる", /name: Assert no client privileges on policy-less tables[\s\S]{0,1500}NOT EXISTS \(SELECT 1 FROM pg_policy p WHERE p\.polrelid = c\.oid\)[\s\S]{0,200}has_table_privilege\(r\.rolname, c\.oid, 'SELECT,INSERT,UPDATE,DELETE'\)/.test(wf), true);
 
@@ -242,65 +244,140 @@ console.log("\nL DB の権限と開発サーバー");
   check("開発サーバーはこのパソコンからだけ (127.0.0.1)", pkg.scripts.dev, "next dev -H 127.0.0.1");
 }
 
-console.log("\nL 公開デモの匿名ゲストの出席サマリー (2026-10-08)");
+console.log("\nL 公開デモの匿名ゲスト (2026-10-08)");
 {
-  const src = read("src/lib/server/attendance-summary-actions.ts");
-  const body = code(fnBody(src, "fetchAttendanceSummaryAction"));
-  const iGuard = body.indexOf("if (user.isDemoGuest) {");
+  // 共通の関数: ゲストだけ、IP ごとの器 `action-${scope}` で数える。
+  const guard = read("src/lib/server/external-fetch-guard.ts");
+  const helper = code(fnBody(guard, "limitDemoGuest"));
   check(
-    "匿名ゲストは IP ごとに回数を確かめる",
-    /if \(user\.isDemoGuest\) \{\s*const rl = await checkRateLimit\(\s*"action-attendance-summary",\s*`ip:\$\{clientIpFromHeaders\(await headers\(\)\)\}`,\s*DEMO_GUEST_SUMMARY_LIMIT\.limit,\s*DEMO_GUEST_SUMMARY_LIMIT\.windowMs,\s*\);\s*if \(!rl\.allowed\) \{/.test(body),
+    "limitDemoGuest: メンバーは絞らず、ゲストは IP ごとに `action-${scope}` の器で数える",
+    /if \(!member\.isDemoGuest\) return null;/.test(helper) &&
+      /checkRateLimit\(\s*`action-\$\{scope\}`,\s*`ip:\$\{clientIpFromHeaders\(await headers\(\)\)\}`,\s*opts\.limit,\s*opts\.windowMs,\s*\);/.test(helper) &&
+      /return `短時間に何度も取得しています。\$\{rl\.retryAfterSeconds\} 秒ほど待ってから試してください`;/.test(helper),
     true,
   );
-  // 2026-10-08: 入口は「ゲストは回数を確かめて共有キャッシュから」「メンバーは本体を
-  // 直接」に分かれ、重い読み取りは本体 (computeAttendanceSummary) にだけある。
-  check(
-    "入口に重い読み取りは無い (service role・設定の読み取りは本体だけ)",
-    iGuard > 0 && !/createSupabaseServiceRoleClient\(\)|getScheduleSourceMode\(\)/.test(body),
-    true,
-  );
-  check(
-    "ゲストは回数を確かめた後、共有キャッシュから返す",
-    body.indexOf("return fetchDemoGuestSummary(user.discordId);") > body.indexOf("if (!rl.allowed) {") &&
-      body.indexOf("if (!rl.allowed) {") > iGuard,
-    true,
-  );
-  check(
-    "メンバーは本体を直接呼ぶ (admin かと本人の ID だけを渡す)",
-    /return computeAttendanceSummary\(\{\s*discordId: user\.discordId,\s*isAdmin: userIsAdmin\(user\.roles\),\s*\}\);/.test(body),
-    true,
-  );
-  const compute = code(src.slice(src.indexOf("async function computeAttendanceSummary("), src.indexOf("/** ゲスト向けの集計の失敗")));
-  check("本体は cookie / headers / ログインの確認を読まない (キャッシュの中で呼ぶため)", compute.length > 1000 && !/headers\(\)|cookies\(\)|requireDiscordMember\(|createClient\(\)/.test(compute), true);
-  check("本体の本人だけの絞り込みは viewer の ID で", /mem\.discord_user_id === viewer\.discordId/.test(compute) && !/user\./.test(compute), true);
-  check(
-    "ゲスト向けのキャッシュは 60 秒・失敗は投げて保存しない・export しない",
-    /^const DEMO_GUEST_SUMMARY_CACHE_SECONDS = 60;/m.test(src) &&
-      /const r = await computeAttendanceSummary\(\{ discordId: guestId, isAdmin: false \}\);\s*if \(!r\.ok\) throw new DemoGuestSummaryError\(r\.reason\);/.test(src) &&
-      /\{ revalidate: DEMO_GUEST_SUMMARY_CACHE_SECONDS \}/.test(src) &&
-      !/export const (DEMO_GUEST_SUMMARY_CACHE_SECONDS|demoGuestSummaryCache)/.test(src),
-    true,
-  );
-  check("上限は 1 分 10 回 (export しない)", /^const DEMO_GUEST_SUMMARY_LIMIT = \{ limit: 10, windowMs: 60_000 \};/m.test(src) && !/export const DEMO_GUEST_SUMMARY_LIMIT/.test(src), true);
-  // 回数の器 (scope) が他の制限と混ざらない。
-  const scopes = [];
+  // 器 (scope) が他の制限と混ざらない: limitDemoGuest の scope どうしが重ならず、
+  // guardExternalFetch の上限表 (`action-${scope}` を同じ形で作る) のキーとも重ならない。
+  const guestScopes = [];
   const walk = (dir) => {
     for (const e of readdirSync(dir, { withFileTypes: true })) {
       const p = `${dir}/${e.name}`;
       if (e.isDirectory()) walk(p);
-      else if (/\.tsx?$/.test(e.name)) for (const x of read(p).matchAll(/"action-attendance-summary"/g)) scopes.push(p + x.index);
+      else if (/\.tsx?$/.test(e.name)) for (const x of read(p).matchAll(/limitDemoGuest\(\s*\w+,\s*"([a-z-]+)"/g)) guestScopes.push(x[1]);
     }
   };
   walk("src");
-  check("scope \"action-attendance-summary\" を使うのはこの 1 か所だけ", scopes.length, 1);
-  // guardExternalFetch は `action-${scope}` をテンプレートで作るので、文字列の
-  // 一致だけでは重なりを見落とす。上限表のキーに "attendance-summary" が無いこと
-  // も確かめる (足すと、メンバーの user: とゲストの ip: が同じ器を使う)。
-  const guard = read("src/lib/server/external-fetch-guard.ts");
   const guardScopes = [...(guard.match(/EXTERNAL_FETCH_LIMITS: Record<[\s\S]*?> = \{([\s\S]*?)\n\};/)?.[1] ?? "").matchAll(/^\s*"?([a-z-]+)"?: \{/gm)].map((x) => x[1]);
+  check("limitDemoGuest の呼び出しを拾えている (出席サマリー・ミス注釈)", [...guestScopes].sort(), ["attendance-summary", "pull-notes"]);
   check("guardExternalFetch の scope を拾えている (4 つ以上)", guardScopes.length >= 4, true);
-  check("guardExternalFetch の scope に attendance-summary が無い (器が重ならない)", guardScopes.includes("attendance-summary"), false);
+  check("器が重ならない (ゲストの scope どうし・guardExternalFetch のキーと)", new Set([...guestScopes, ...guardScopes]).size, guestScopes.length + guardScopes.length);
   check("guardExternalFetch は `action-${scope}` の形で器を作る (上の確かめの前提)", /checkRateLimit\(`action-\$\{scope\}`/.test(guard), true);
+
+  // 出席サマリー: ゲストは回数を確かめてから共有キャッシュ、メンバーは本体を直接。
+  const src = read("src/lib/server/attendance-summary-actions.ts");
+  const body = code(fnBody(src, "fetchAttendanceSummaryAction"));
+  const iGuard = body.indexOf("if (user.isDemoGuest) {");
+  check(
+    "出席サマリー: 匿名ゲストは IP ごとに回数を確かめる",
+    /if \(user\.isDemoGuest\) \{\s*const limited = await limitDemoGuest\(user, "attendance-summary", DEMO_GUEST_SUMMARY_LIMIT\);\s*if \(limited\) return \{ ok: false, reason: limited \};/.test(body),
+    true,
+  );
+  check(
+    "出席サマリー: 入口に重い読み取りは無い (service role・設定の読み取りは本体だけ)",
+    iGuard > 0 && !/createSupabaseServiceRoleClient\(\)|getScheduleSourceMode\(\)/.test(body),
+    true,
+  );
+  check(
+    "出席サマリー: ゲストは回数を確かめた後、共有キャッシュから返す",
+    body.indexOf("return fetchDemoGuestSummary(user.discordId);") > body.indexOf("if (limited) return") &&
+      body.indexOf("if (limited) return") > iGuard,
+    true,
+  );
+  check(
+    "出席サマリー: メンバーは本体を直接呼ぶ (admin かと本人の ID だけを渡す)",
+    /return computeAttendanceSummary\(\{\s*discordId: user\.discordId,\s*isAdmin: userIsAdmin\(user\.roles\),\s*\}\);/.test(body),
+    true,
+  );
+  const sliceBetween = (s, from, to) => {
+    const i = s.indexOf(from);
+    const j = s.indexOf(to, i + 1);
+    return i < 0 || j < 0 ? "" : s.slice(i, j);
+  };
+  const compute = code(sliceBetween(src, "async function computeAttendanceSummary(", "const demoGuestSummaryCache"));
+  const guestFetch = code(sliceBetween(src, "async function fetchDemoGuestSummary(", "/** 1 回の取り直しで"));
+  check("出席サマリー: 本体は cookie / headers / ログインの確認を読まない (キャッシュの中で呼ぶため)", compute.length > 1000 && !/headers\(\)|cookies\(\)|requireDiscordMember\(|createClient\(\)/.test(compute), true);
+  check("出席サマリー: 本体の本人だけの絞り込みは viewer の ID で", /mem\.discord_user_id === viewer\.discordId/.test(compute) && !/user\./.test(compute), true);
+  check(
+    "出席サマリー: ゲスト向けのキャッシュは 60 秒・失敗も使い回す・キャッシュ層の例外は失敗の形で返す・export しない",
+    // (guestFetch: export していない fetchDemoGuestSummary の本文)
+    /^const DEMO_GUEST_SUMMARY_CACHE_SECONDS = 60;/m.test(src) &&
+      /async \(guestId: string\): Promise<AttendanceSummaryResult> =>\s*computeAttendanceSummary\(\{ discordId: guestId, isAdmin: false \}\),/.test(src) &&
+      /\} catch \(e\) \{[\s\S]{0,300}return \{ ok: false, reason: "出席サマリーの取得に失敗しました" \};/.test(guestFetch) &&
+      !/throw e;/.test(guestFetch) &&
+      /\{ revalidate: DEMO_GUEST_SUMMARY_CACHE_SECONDS \}/.test(src) &&
+      !/export const (DEMO_GUEST_SUMMARY_CACHE_SECONDS|demoGuestSummaryCache)/.test(src),
+    true,
+  );
+  check("出席サマリー: 上限は 1 分 10 回 (export しない)", /^const DEMO_GUEST_SUMMARY_LIMIT = \{ limit: 10, windowMs: 60_000 \};/m.test(src) && !/export const DEMO_GUEST_SUMMARY_LIMIT/.test(src), true);
+
+  // ミス注釈の取得: ゲストは IP ごとに 1 分 60 回、service role で読む前に確かめる。
+  const notes = read("src/lib/server/pull-notes-actions.ts");
+  const fetchNotes = code(fnBody(notes, "fetchPullNotesAction"));
+  check(
+    "ミス注釈の取得: ゲストの回数を service role で読む前に確かめる",
+    /const limited = await limitDemoGuest\(user, "pull-notes", DEMO_GUEST_NOTES_LIMIT\);\s*if \(limited\) return \{ ok: false, reason: limited \};/.test(fetchNotes) &&
+      fetchNotes.indexOf("limitDemoGuest(") < fetchNotes.indexOf("createSupabaseServiceRoleClient()"),
+    true,
+  );
+  check("ミス注釈の取得: 上限は 1 分 60 回 (export しない)", /^const DEMO_GUEST_NOTES_LIMIT = \{ limit: 60, windowMs: 60_000 \};/m.test(notes) && !/export const DEMO_GUEST_NOTES_LIMIT/.test(notes), true);
+
+  // 認可の無い集計 3 本は "use server" の外 (Server Action として登録されない)。
+  const aggregates = read("src/lib/server/category-aggregates.ts");
+  const actions = read("src/lib/server/categories-actions.ts");
+  const AGG = ["fetchPracticeSecondsByCategory", "fetchTimeToClearByCategory", "fetchRecentImportCountsByCategory"];
+  check("集計 3 本は category-aggregates.ts にある", AGG.map((n) => aggregates.includes(`export async function ${n}(`)), [true, true, true]);
+  check("集計 3 本は categories-actions.ts (\"use server\") に無い", AGG.map((n) => actions.includes(`function ${n}(`)), [false, false, false]);
+  check("category-aggregates.ts は \"use server\" ではなく server-only", !/^\s*["']use server["']/.test(aggregates) && /^import "server-only";/m.test(aggregates), true);
+  const page = read("src/app/(portal)/category/page.tsx");
+  check("コンテンツ一覧は集計 3 本を category-aggregates から読む", /\} from "@\/lib\/server\/category-aggregates";/.test(page) && !AGG.some((n) => new RegExp(`${n}[\\s\\S]{0,200}from "@/lib/server/categories-actions"`).test(page)), true);
+
+  // スパークライン: ゲストは service role + 共有キャッシュ (重い RPC はデモでも anon に配らない)。
+  const progress = read("src/lib/server/category-progress.ts");
+  const fetchSpark = code(fnBody(progress, "fetchProgressSparklinesByCategory"));
+  check(
+    "スパークライン: 公開デモは見る人に関係なく共有キャッシュ、本番のメンバーは自分の cookie のクライアント",
+    /if \(isPublicDemo\(\)\) return await demoSparksCache\(\);\s*return \(await sparklinesWith\(await createClient\(\)\)\) \?\? \{\};/.test(fetchSpark) &&
+      /function isPublicDemo\(\): boolean \{\s*return process\.env\.PUBLIC_DEMO_MODE === "true";/.test(progress),
+    true,
+  );
+  check(
+    "スパークライン: デモは service role で計算し 60 秒・失敗 (空) も使い回す",
+    /\(await sparklinesWith\(createSupabaseServiceRoleClient\(\)\)\) \?\? \{\},/.test(progress) &&
+      /\{ revalidate: DEMO_SPARK_CACHE_SECONDS \}/.test(progress) &&
+      /^const DEMO_SPARK_CACHE_SECONDS = 60;/m.test(progress),
+    true,
+  );
+  const sparkBody = code(progress.slice(progress.indexOf("async function sparklinesWith(")));
+  check("スパークライン: 計算の本体は cookie / headers を読まない", sparkBody.length > 300 && !/headers\(\)|cookies\(\)|createClient\(\)|requireDiscordMember\(/.test(sparkBody), true);
+
+  // デモのデプロイ時に、重い集計の RPC が anon / authenticated に配られていないことを確かめる。
+  const demoWf = read(".github/workflows/deploy-database-demo.yml");
+  const demoStep = sliceBetween(demoWf, "name: Verify heavy aggregate RPCs are service-role only on demo", "exit 1");
+  check(
+    "デモのデプロイ: 重い集計 5 本に anon / authenticated の EXECUTE が無いことを確かめる",
+    ["category_progress_by_day(integer)", "fflogs_duplicate_pulls(bigint)", "practice_seconds_by_category()", "fflogs_report_days(bigint)", "fflogs_report_duplicate_pulls(bigint)"].every((f) => demoStep.includes(`'public.${f}'`)) &&
+      /unnest\(ARRAY\['anon', 'authenticated'\]\) AS r/.test(demoStep) &&
+      /has_function_privilege\(r, f::regprocedure, 'EXECUTE'\)/.test(demoStep),
+    true,
+  );
+
+  // 本番とデモで同じ Upstash の DB を使っても、器が混ざらない。
+  const rlSrc = read("src/lib/rate-limit.ts");
+  check(
+    "回数制限の器の名前にプロジェクトの本番 URL を入れる (本番とデモで混ざらない)",
+    /const RL_NAMESPACE = process\.env\.VERCEL_PROJECT_PRODUCTION_URL\?\.trim\(\) \|\| "local";/.test(rlSrc) && /prefix: `rl:\$\{RL_NAMESPACE\}:\$\{scope\}`,/.test(rlSrc),
+    true,
+  );
 }
 
 if (failures > 0) {

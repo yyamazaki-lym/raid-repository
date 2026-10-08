@@ -11,7 +11,7 @@ import {
   fetchPracticeSecondsByCategory,
   fetchRecentImportCountsByCategory,
   fetchTimeToClearByCategory,
-} from "@/lib/server/categories-actions";
+} from "@/lib/server/category-aggregates";
 import { fetchProgressSparklinesByCategory } from "@/lib/server/category-progress";
 import {
   getAuthorizedUserRoles,

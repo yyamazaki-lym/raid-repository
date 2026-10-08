@@ -149,8 +149,9 @@ const fnAt = schema.indexOf("CREATE OR REPLACE FUNCTION public.fflogs_report_dup
 const fnBody = fnAt < 0 ? "" : schema.slice(fnAt, schema.indexOf("\n$$;", fnAt));
 check("schema: 重複の数は 13c-2b の関数から、相手のレポートごとに数える", /FROM public\.fflogs_duplicate_pulls\(p_from_ms\) d\s*GROUP BY d\.report_code, d\.counted_report_code/.test(fnBody), true);
 check("相手のレポートを読んで渡す (同じ日の相手だけ割り引く)", /countedReportCode: d\.counted_report_code/.test(actions) && /countedAttendancePulls\(\s*reportDays,\s*duplicates,/.test(actions), true);
-check("schema: anon には配らない", /REVOKE EXECUTE ON FUNCTION public\.fflogs_report_duplicate_pulls\(bigint\) FROM PUBLIC, anon;/.test(schema), true);
-check("schema: service role (出席サマリー) に配る", /GRANT EXECUTE ON FUNCTION public\.fflogs_report_duplicate_pulls\(bigint\)\s*TO authenticated, service_role;/.test(schema), true);
+// 2026-10-08: アプリは service role からしか呼ばないので authenticated からも外した。
+check("schema: anon にも authenticated にも配らない", /REVOKE EXECUTE ON FUNCTION public\.fflogs_report_duplicate_pulls\(bigint\) FROM PUBLIC, anon, authenticated;/.test(schema), true);
+check("schema: service role (出席サマリー) だけに配る", /GRANT EXECUTE ON FUNCTION public\.fflogs_report_duplicate_pulls\(bigint\) TO service_role;/.test(schema), true);
 
 if (failures > 0) {
   console.log(`\n${failures} check(s) failed`);

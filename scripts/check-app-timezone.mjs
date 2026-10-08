@@ -177,7 +177,10 @@ try {
     const ca = readFileSync("src/lib/server/categories-actions.ts", "utf8");
     const ff = readFileSync("src/lib/server/fflogs.ts", "utf8");
     check("categories-actions: 年ヒントに getUTCFullYear を使わない", /(?:fallbackYear|youtubeYear|existingYear)[\s\S]{0,160}?getUTCFullYear\(\)/.test(ca), false);
-    check("categories-actions: 年ヒントは toJstYmd の年 (3 箇所 + resolvePostedAt 2 つ)", (ca.match(/toJstYmd\(\s*new Date\([^)]*\)\.getTime\(\),?\s*\)\.y/g) ?? []).length, 4);
+    // 2026-10-08: 一覧カードの集計 (fetchTimeToClearByCategory) は category-aggregates.ts へ移した。
+    const agg = readFileSync("src/lib/server/category-aggregates.ts", "utf8");
+    check("categories-actions + category-aggregates: 年ヒントに getUTCFullYear を使わない", /(?:fallbackYear|youtubeYear|existingYear)[\s\S]{0,160}?getUTCFullYear\(\)/.test(agg), false);
+    check("categories-actions + category-aggregates: 年ヒントは toJstYmd の年 (3 箇所 + resolvePostedAt 2 つ)", ((ca + agg).match(/toJstYmd\(\s*new Date\([^)]*\)\.getTime\(\),?\s*\)\.y/g) ?? []).length, 4);
     check("fflogs: 年ヒントは jstCalendarDate の年", /const fallbackYear = jstCalendarDate\(postedTMs \?\? Date\.now\(\)\)\.y;/.test(ff), true);
     check("fflogs: 年ヒントに getUTCFullYear を使わない", /fallbackYear[\s\S]{0,160}?getUTCFullYear\(\)/.test(ff), false);
   }
