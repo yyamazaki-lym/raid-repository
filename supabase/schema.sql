@@ -3383,7 +3383,8 @@ GRANT EXECUTE ON FUNCTION public.practice_seconds_by_category()
 -- (13c-4 の `fflogs_report_duplicate_pulls`)。
 --
 -- STABLE read-only の INVOKER (呼び出し元の RLS がそのまま効く)。13c-3 の中から
--- 呼ぶので、EXECUTE は 13c-3 と同じく 15 章で配る (公開デモだけ anon にも)。
+-- 呼ぶので、EXECUTE は 13c-3 と同じく 15 章で配る (本番は authenticated と
+-- service_role、公開デモは service_role だけ。2026-10-08)。
 -- 出席サマリーは service role から呼ぶので service_role にも付ける。
 CREATE OR REPLACE FUNCTION public.fflogs_duplicate_pulls(p_from_ms bigint)
 RETURNS TABLE (report_code text, fight_id integer, counted_report_code text)
@@ -3680,9 +3681,11 @@ $$;
 -- Supabase の既定で anon に付いている EXECUTE が残っていた (INVOKER で
 -- anon は fflogs_fights を読めないので 0 行しか返らないが、15 章の
 -- 「anon の EXECUTE は公開デモだけ」の方針と揃える)。
-REVOKE EXECUTE ON FUNCTION public.fflogs_report_days(bigint) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.fflogs_report_days(bigint)
-  TO authenticated, service_role;
+-- 2026-10-08: アプリは service role (出席サマリー) からしか呼ばないので、
+-- authenticated からも外す。公開デモでは部外者でも Supabase Auth に直接ログイン
+-- すれば authenticated になれ、全行が読める表で集計を回数の制限なく回せた。
+REVOKE EXECUTE ON FUNCTION public.fflogs_report_days(bigint) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.fflogs_report_days(bigint) TO service_role;
 
 -- 2026-10-07 C-3: レポートごとの「別のログと同じ pull」の数を、重なった相手の
 -- レポート (`counted_report_code`) ごとに返す (13c-2b)。出席サマリーが、日の
@@ -3703,9 +3706,10 @@ LANGUAGE sql STABLE SET search_path = public AS $$
    GROUP BY d.report_code, d.counted_report_code
 $$;
 
-REVOKE EXECUTE ON FUNCTION public.fflogs_report_duplicate_pulls(bigint) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.fflogs_report_duplicate_pulls(bigint)
-  TO authenticated, service_role;
+-- 2026-10-08: アプリは service role からしか呼ばないので service_role だけに付ける
+-- (fflogs_report_days と同じ理由)。
+REVOKE EXECUTE ON FUNCTION public.fflogs_report_duplicate_pulls(bigint) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.fflogs_report_duplicate_pulls(bigint) TO service_role;
 
 -- ---- 13d. native placeholder raid time retro-update RPC (TODO #85) ----
 -- 2.6 (2026-06-10): TODO #81 follow-up。`ensureNativeMonthlyPlaceholders()`
@@ -3934,9 +3938,9 @@ DELETE FROM public.app_settings
 -- (`practice_seconds_by_category` は動画の累計秒数。`next_*_sort_order` は
 -- 整数 1 個で実害はほぼ無いが、同じ理由で anon に配る必要が無いので揃える)
 --
--- ⚠ **デモの挙動は変えない。** スパークラインと累計練習時間はデモの匿名
--- ゲスト (= anon) が `createClient()` 経由で読むので、`app.public_demo` が
--- 立っているときだけ anon に戻す。7 章の SELECT ポリシーと同じ分岐。
+-- ⚠ 並び順の RPC は、`app.public_demo` が立っているときだけ anon に戻す (7 章の
+-- SELECT ポリシーと同じ分岐)。2026-10-08 から、重い集計 (スパークライン等) は
+-- デモでも anon に配らない (下の 2 つ目のループ)。
 --
 -- ⚠ **`REVOKE ... FROM PUBLIC` では消えない。** 既存の本番 DB には anon への
 -- **直接の** GRANT が入っているので、anon を名指しで REVOKE してから配り直す
@@ -3944,6 +3948,11 @@ DELETE FROM public.app_settings
 DO $$
 DECLARE
   fn text;
+  heavy_roles text := CASE
+    WHEN coalesce(current_setting('app.public_demo', true), '') = 'true'
+      THEN 'service_role'
+    ELSE 'authenticated, service_role'
+  END;
   exec_roles text := CASE
     WHEN coalesce(current_setting('app.public_demo', true), '') = 'true'
       THEN 'anon, authenticated'
@@ -3951,9 +3960,9 @@ DECLARE
   END;
 BEGIN
   IF exec_roles = 'authenticated' THEN
-    RAISE NOTICE '[GRANT] 集計 RPC の EXECUTE を authenticated 限定にします';
+    RAISE NOTICE '[GRANT] 並び順の RPC の EXECUTE を authenticated 限定にします';
   ELSE
-    RAISE NOTICE '[GRANT] app.public_demo=true — 集計 RPC を anon にも開放します (公開デモ用)';
+    RAISE NOTICE '[GRANT] app.public_demo=true — 並び順の RPC を anon にも開放します (公開デモ用。重い集計は service_role だけ)';
   END IF;
   FOREACH fn IN ARRAY ARRAY[
     'public.next_category_waymark_sort_order(uuid)',
@@ -3961,15 +3970,28 @@ BEGIN
     'public.next_category_sort_order()',
     'public.next_category_link_sort_order(uuid, text)',
     'public.next_recruitment_template_sort_order()',
-    'public.next_category_macro_sort_order(uuid)',
-    'public.practice_seconds_by_category()',
-    'public.category_progress_by_day(integer)',
-    -- 2026-10-07: 13c-3 の中から呼ぶので同じ配り方にする (デモの anon が
-    -- スパークラインを読むときにも EXECUTE が要る)。
-    'public.fflogs_duplicate_pulls(bigint)'
+    'public.next_category_macro_sort_order(uuid)'
   ] LOOP
     EXECUTE format('REVOKE EXECUTE ON FUNCTION %s FROM PUBLIC, anon, authenticated', fn);
     EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO %s', fn, exec_roles);
+  END LOOP;
+
+  -- 2026-10-08 (2026-10-07 セキュリティ精査の残り): 重い集計の RPC は、公開デモでは
+  -- service_role だけに配る (本番は authenticated と service_role)。デモでは anon キーで
+  -- PostgREST から直接、回数の制限なく (`fflogs_duplicate_pulls(0)` なら全期間を)
+  -- 集計させられた。authenticated も、部外者が Supabase Auth に直接ログインすれば
+  -- なれて、デモの表は全行が読めるので同じことができる。デモのスパークラインは
+  -- 見る人に関係なくサーバーが service role で計算して共有キャッシュから返す
+  -- (`src/lib/server/category-progress.ts`)。`practice_seconds_by_category` は
+  -- アプリからはもう呼んでいない (残してある)。
+  FOREACH fn IN ARRAY ARRAY[
+    'public.practice_seconds_by_category()',
+    'public.category_progress_by_day(integer)',
+    -- 13c-3 の中から呼ぶので、スパークラインと同じ配り方にする。
+    'public.fflogs_duplicate_pulls(bigint)'
+  ] LOOP
+    EXECUTE format('REVOKE EXECUTE ON FUNCTION %s FROM PUBLIC, anon, authenticated', fn);
+    EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO %s', fn, heavy_roles);
   END LOOP;
 END $$;
 

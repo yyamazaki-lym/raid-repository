@@ -156,6 +156,13 @@ function getRedis(): Redis | null {
   return cachedRedis;
 }
 
+/**
+ * 器の名前の頭に付けるプロジェクトの区別 (2026-10-08)。本番とデモが同じ
+ * Upstash の DB を使っても、同じ IP の数が混ざらないようにする。Vercel では
+ * プロジェクトの本番 URL (本番とデモで別の値)、それ以外は "local"。
+ */
+const RL_NAMESPACE = process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim() || "local";
+
 const ratelimiters = new Map<string, Ratelimit>();
 function getRatelimiter(
   scope: string,
@@ -171,7 +178,7 @@ function getRatelimiter(
       redis,
       // 固定ウィンドウ。`limit` 回 / `windowMs` ms。
       limiter: Ratelimit.fixedWindow(limit, `${windowMs} ms`),
-      prefix: `rl:${scope}`,
+      prefix: `rl:${RL_NAMESPACE}:${scope}`,
       analytics: false,
     });
     ratelimiters.set(key, rl);

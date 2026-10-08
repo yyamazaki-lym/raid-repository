@@ -1,9 +1,8 @@
 "use server";
 
 import { unstable_cache } from "next/cache";
-import { headers } from "next/headers";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
-import { checkRateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
+import { limitDemoGuest } from "./external-fetch-guard";
 import {
   fetchAttendanceActualsByReports,
   type ActualRow,
@@ -113,18 +112,8 @@ export async function fetchAttendanceSummaryAction(): Promise<AttendanceSummaryR
   // だけで漏れは無い)。ゲストは全員同じ ID なので IP で数える
   // (`guardExternalFetch` と同じ形)。メンバーは絞らない。
   if (user.isDemoGuest) {
-    const rl = await checkRateLimit(
-      "action-attendance-summary",
-      `ip:${clientIpFromHeaders(await headers())}`,
-      DEMO_GUEST_SUMMARY_LIMIT.limit,
-      DEMO_GUEST_SUMMARY_LIMIT.windowMs,
-    );
-    if (!rl.allowed) {
-      return {
-        ok: false,
-        reason: `短時間に何度も取得しています。${rl.retryAfterSeconds} 秒ほど待ってから試してください`,
-      };
-    }
+    const limited = await limitDemoGuest(user, "attendance-summary", DEMO_GUEST_SUMMARY_LIMIT);
+    if (limited) return { ok: false, reason: limited };
     // 2026-10-08: 上の回数は Upstash が無いとインスタンスごとに数えるので、
     // 呼び出しが複数のインスタンスに散ると 10 回 × インスタンス数まで緩む
     // (公開デモで実測)。ゲストへの結果は全員同じ (同じ ID・admin でない) なので、
@@ -458,19 +447,14 @@ async function computeAttendanceSummary(viewer: {
   }
 }
 
-/** ゲスト向けの集計の失敗 (キャッシュに残さないために投げる)。 */
-class DemoGuestSummaryError extends Error {}
-
 /**
  * 公開デモの匿名ゲスト向けの出席サマリーを Data Cache に 60 秒置く (2026-10-08)。
- * 引数 (ゲストの ID) は鍵に入る。失敗は投げて保存させず、次の呼び出しで取り直す。
+ * 引数 (ゲストの ID) は鍵に入る。失敗 (`{ ok: false }`) も同じく 60 秒置く —
+ * 保存しないと、DB が苦しいときほど呼ばれるたびに集計が走るため。
  */
 const demoGuestSummaryCache = unstable_cache(
-  async (guestId: string): Promise<AttendanceSummaryResult> => {
-    const r = await computeAttendanceSummary({ discordId: guestId, isAdmin: false });
-    if (!r.ok) throw new DemoGuestSummaryError(r.reason);
-    return r;
-  },
+  async (guestId: string): Promise<AttendanceSummaryResult> =>
+    computeAttendanceSummary({ discordId: guestId, isAdmin: false }),
   ["attendance-summary-demo-guest"],
   { revalidate: DEMO_GUEST_SUMMARY_CACHE_SECONDS },
 );
@@ -481,8 +465,10 @@ async function fetchDemoGuestSummary(
   try {
     return await demoGuestSummaryCache(guestId);
   } catch (e) {
-    if (e instanceof DemoGuestSummaryError) return { ok: false, reason: e.message };
-    throw e;
+    // キャッシュ層 (Data Cache の読み書き) の失敗は、Server Action の外へ漏らさず
+    // 本体の失敗と同じ形で返す (本体は自分の失敗を { ok: false } にして返す)。
+    console.warn("[attendance-summary] demo guest cache failed:", e);
+    return { ok: false, reason: "出席サマリーの取得に失敗しました" };
   }
 }
 

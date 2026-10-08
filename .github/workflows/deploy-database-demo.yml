@@ -86,6 +86,32 @@ jobs:
             exit 1
           fi
 
+      # 2026-10-08 (2026-10-07 セキュリティ精査の残り) の回帰ガード。公開デモでは、
+      # 重い集計の RPC を anon にも authenticated にも配らない (service_role だけ)。
+      # デモの表は全行が誰にでも読めるので、配ると部外者が回数の制限なく
+      # 全期間の集計を回せる。schema.sql 13c-4 と 15 章の 2 つ目のループ。
+      - name: Verify heavy aggregate RPCs are service-role only on demo
+        if: steps.guard.outputs.skip == 'false'
+        env:
+          SUPABASE_DB_URL_DEMO: ${{ secrets.SUPABASE_DB_URL_DEMO }}
+        run: |
+          rows=$(psql "$SUPABASE_DB_URL_DEMO" -tAc "
+            SELECT coalesce(string_agg(f || ':' || r, ', '), '')
+              FROM unnest(ARRAY[
+                'public.category_progress_by_day(integer)',
+                'public.fflogs_duplicate_pulls(bigint)',
+                'public.practice_seconds_by_category()',
+                'public.fflogs_report_days(bigint)',
+                'public.fflogs_report_duplicate_pulls(bigint)'
+              ]) AS f
+             CROSS JOIN unnest(ARRAY['anon', 'authenticated']) AS r
+             WHERE has_function_privilege(r, f::regprocedure, 'EXECUTE');")
+          echo "heavy RPC EXECUTE for anon/authenticated on demo: '${rows}'"
+          if [ -n "$rows" ]; then
+            echo "::error::公開デモで重い集計の RPC が anon / authenticated に配られています (${rows})。schema.sql 15 章の 2 つ目のループと 13c-4 を確認してください。"
+            exit 1
+          fi
+
       # 2026-10-01 監査 C-3 の回帰ガード。公開デモ DB は HTTP を叩く pg_cron
       # ジョブを持たない (以前は本番の route を毎時・5 分毎に叩いていた)。
       # schema.sql 13-0 が app.public_demo を見て外すので、残っていたら落とす。

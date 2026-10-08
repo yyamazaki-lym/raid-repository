@@ -317,6 +317,9 @@ try {
 console.log("\n[配線]");
 const read = (p) => readFileSync(p, "utf8").replace(/\r\n/g, "\n");
 const actions = read("src/lib/server/categories-actions.ts");
+// 2026-10-08: 一覧カードの集計 2 本は素のモジュールへ移した (Server Action から外すため)。
+const aggregates = read("src/lib/server/category-aggregates.ts");
+const server = actions + "\n" + aggregates;
 const list = read("src/app/(portal)/category/[slug]/videos/videos-list.tsx");
 const fnBody = (src, name) => {
   const i = src.indexOf(`function ${name}(`);
@@ -327,16 +330,16 @@ const fnBody = (src, name) => {
 check(
   "一覧カードの挑戦時間: 動画の行を全ページ読んで challengeTime (SQL の単純な合計 RPC を呼ばない)",
   [
-    /fetchAllPages\(/.test(fnBody(actions, "fetchPracticeSecondsByCategory")),
-    /challengeTime\(list\)/.test(fnBody(actions, "fetchPracticeSecondsByCategory")),
-    /rpc\("practice_seconds_by_category"\)/.test(actions),
+    /fetchAllPages\(/.test(fnBody(aggregates, "fetchPracticeSecondsByCategory")),
+    /challengeTime\(list\)/.test(fnBody(aggregates, "fetchPracticeSecondsByCategory")),
+    /rpc\("practice_seconds_by_category"\)/.test(server),
   ],
   [true, true, false],
 );
 check(
   "一覧カードのクリアまでの時間: 範囲で絞ってから challengeTime",
   /const total = challengeTime\(\s*list\s*\.filter\(\(v\) => v\.effectiveIso >= startAt && v\.effectiveIso <= info\.firstClearAt\)/.test(
-    fnBody(actions, "fetchTimeToClearByCategory"),
+    fnBody(aggregates, "fetchTimeToClearByCategory"),
   ),
   true,
 );
@@ -360,9 +363,9 @@ check(
   "4 か所とも日付は posted_at、無ければ created_at (場所ごとに組み方を変えない)",
   [
     /postedAt: \(r\.posted_at as string \| null\) \?\? \(\(r\.created_at as string \| null\) \?\? null\),/.test(
-      fnBody(actions, "fetchPracticeSecondsByCategory"),
+      fnBody(aggregates, "fetchPracticeSecondsByCategory"),
     ),
-    (actions.match(/postedAt: \(v\.posted_at as string \| null\) \?\? \(v\.created_at as string\),/g) ?? []).length,
+    (server.match(/postedAt: \(v\.posted_at as string \| null\) \?\? \(v\.created_at as string\),/g) ?? []).length,
     /postedAt: v\.postedAt \?\? v\.createdAt,/.test(list),
   ],
   [true, 2, true],
@@ -379,7 +382,7 @@ check(
 );
 check(
   "サーバー側でクリアまでの時間を単純に足していない",
-  /total \+= sec;|timeToClearSeconds \+= sec;/.test(actions),
+  /total \+= sec;|timeToClearSeconds \+= sec;/.test(server),
   false,
 );
 

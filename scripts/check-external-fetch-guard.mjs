@@ -93,7 +93,10 @@ check("外部取得に繋がる export を 1 本以上見つけた (検査が空
 check("ゲートより前に外部取得する export が無い", offenders, []);
 
 console.log("ゲート本体");
-const guard = readFileSync("src/lib/server/external-fetch-guard.ts", "utf8");
+// 2026-10-08: 同じファイルに limitDemoGuest (ゲストだけ絞る) を足したので、
+// guardExternalFetch の中だけを見る。
+const guardFile = readFileSync("src/lib/server/external-fetch-guard.ts", "utf8");
+const guard = guardFile.slice(guardFile.indexOf("export async function guardExternalFetch("));
 const demoAt = guard.indexOf("member.isDemoGuest && !opts.allowDemoGuest");
 const rlAt = guard.indexOf("await checkRateLimit(");
 check("ゲストの判定がレート制限より前", demoAt > 0 && rlAt > demoAt, true);

@@ -3,6 +3,7 @@
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { requireDiscordMember } from "./auth";
 import { userIsAdmin } from "./admin-roles";
+import { limitDemoGuest } from "./external-fetch-guard";
 import {
   isPullNoteScope,
   isPullNoteTagId,
@@ -50,6 +51,12 @@ const NOTE_MAX = 200;
  * 埋まった。⚠ "use server" のファイルなので export しない。
  */
 const NOTES_PER_DAY_LIMIT = 200;
+/**
+ * 公開デモの匿名ゲストが pull 1 本ぶんの注釈を取れる回数 (IP ごと、2026-10-08)。
+ * 練習ログの行を開くたびに 1 回なので、pull 詳細 (1 分 60 回) と同じにする。
+ * ⚠ export しない。
+ */
+const DEMO_GUEST_NOTES_LIMIT = { limit: 60, windowMs: 60_000 };
 
 export type PullNotesResult =
   | { ok: true; notes: PullNote[]; viewerId: string; isAdmin: boolean }
@@ -65,6 +72,10 @@ export async function fetchPullNotesAction(
   if (!/^[A-Za-z0-9]{8,64}$/.test(code) || !Number.isInteger(fightId)) {
     return { ok: false, reason: "pull の指定が不正です" };
   }
+  // 2026-10-08 (2026-10-07 セキュリティ精査の残り): 公開デモの匿名ゲストは
+  // IP ごとに回数を絞る (service role の読み取りを回数の制限なく起こせた)。
+  const limited = await limitDemoGuest(user, "pull-notes", DEMO_GUEST_NOTES_LIMIT);
+  if (limited) return { ok: false, reason: limited };
   try {
     const db = createSupabaseServiceRoleClient();
     const { data, error } = await db
