@@ -252,9 +252,33 @@ console.log("\nL 公開デモの匿名ゲストの出席サマリー (2026-10-08
     /if \(user\.isDemoGuest\) \{\s*const rl = await checkRateLimit\(\s*"action-attendance-summary",\s*`ip:\$\{clientIpFromHeaders\(await headers\(\)\)\}`,\s*DEMO_GUEST_SUMMARY_LIMIT\.limit,\s*DEMO_GUEST_SUMMARY_LIMIT\.windowMs,\s*\);\s*if \(!rl\.allowed\) \{/.test(body),
     true,
   );
+  // 2026-10-08: 入口は「ゲストは回数を確かめて共有キャッシュから」「メンバーは本体を
+  // 直接」に分かれ、重い読み取りは本体 (computeAttendanceSummary) にだけある。
   check(
-    "回数の確認は重い読み取り (service role・設定の読み取り) より前",
-    iGuard > 0 && iGuard < body.indexOf("createSupabaseServiceRoleClient()") && iGuard < body.indexOf("getScheduleSourceMode()"),
+    "入口に重い読み取りは無い (service role・設定の読み取りは本体だけ)",
+    iGuard > 0 && !/createSupabaseServiceRoleClient\(\)|getScheduleSourceMode\(\)/.test(body),
+    true,
+  );
+  check(
+    "ゲストは回数を確かめた後、共有キャッシュから返す",
+    body.indexOf("return fetchDemoGuestSummary(user.discordId);") > body.indexOf("if (!rl.allowed) {") &&
+      body.indexOf("if (!rl.allowed) {") > iGuard,
+    true,
+  );
+  check(
+    "メンバーは本体を直接呼ぶ (admin かと本人の ID だけを渡す)",
+    /return computeAttendanceSummary\(\{\s*discordId: user\.discordId,\s*isAdmin: userIsAdmin\(user\.roles\),\s*\}\);/.test(body),
+    true,
+  );
+  const compute = code(src.slice(src.indexOf("async function computeAttendanceSummary("), src.indexOf("/** ゲスト向けの集計の失敗")));
+  check("本体は cookie / headers / ログインの確認を読まない (キャッシュの中で呼ぶため)", compute.length > 1000 && !/headers\(\)|cookies\(\)|requireDiscordMember\(|createClient\(\)/.test(compute), true);
+  check("本体の本人だけの絞り込みは viewer の ID で", /mem\.discord_user_id === viewer\.discordId/.test(compute) && !/user\./.test(compute), true);
+  check(
+    "ゲスト向けのキャッシュは 60 秒・失敗は投げて保存しない・export しない",
+    /^const DEMO_GUEST_SUMMARY_CACHE_SECONDS = 60;/m.test(src) &&
+      /const r = await computeAttendanceSummary\(\{ discordId: guestId, isAdmin: false \}\);\s*if \(!r\.ok\) throw new DemoGuestSummaryError\(r\.reason\);/.test(src) &&
+      /\{ revalidate: DEMO_GUEST_SUMMARY_CACHE_SECONDS \}/.test(src) &&
+      !/export const (DEMO_GUEST_SUMMARY_CACHE_SECONDS|demoGuestSummaryCache)/.test(src),
     true,
   );
   check("上限は 1 分 10 回 (export しない)", /^const DEMO_GUEST_SUMMARY_LIMIT = \{ limit: 10, windowMs: 60_000 \};/m.test(src) && !/export const DEMO_GUEST_SUMMARY_LIMIT/.test(src), true);
