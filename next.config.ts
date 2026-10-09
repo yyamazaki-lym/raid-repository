@@ -93,6 +93,15 @@ const SUPABASE_IMAGE_HOST = supabaseImageHost();
 
 const nextConfig: NextConfig = {
   ...(deploymentId ? { deploymentId } : {}),
+  experimental: {
+    // 2026-10-09: `next build` の Turbopack のファイルキャッシュ (既定で有効、
+    // `.next/cache/turbopack`) を止める。Vercel は前のデプロイの `.next/cache` を
+    // 戻してから build するが、#475 で globals.css に足した @font-face が本番・
+    // デモの CSS に出なかった (同じツリーの手元のきれいなビルドには出る。CSS の
+    // ファイル名も前のデプロイと同じだった = 古い出力が使われた)。ビルドは
+    // 数十秒遅くなるが、ソースと違う CSS が配られるよりよい。
+    turbopackFileSystemCacheForBuild: false,
+  },
   images: {
     // Allow next/image to proxy YouTube thumbnails for the videos sub-tab.
     // Even though we render with `unoptimized`, declaring the pattern here
