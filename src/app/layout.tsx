@@ -19,12 +19,20 @@ import "./globals.css";
 // 置いて next/font/local で読む (ライセンスは ./fonts/OFL-*.txt)。太さの範囲と
 // unicode-range は Google の CSS の latin ブロックと同じ値 (next/font の引数はリテラル
 // しか書けないので 3 か所に同じ値を書いている)。latin 以外の文字はフォールバックで描く。
+// 出どころ (URL・版・ハッシュ) は ./fonts/README.md。
+//
+// フォールバック (フォントに無い文字・読み込み中に使う Arial) は、next/font/local の
+// 自動計算 (fontkit) だと next/font/google の値 (capsize の事前計算) と size-adjust が
+// 1.5〜2.3% ずれる。`→` などはずっとフォールバックで描かれるので、自動計算を止め、
+// 以前と同じ名前・同じ値の @font-face を globals.css に書いている。
 const geistSans = localFont({
   src: "./fonts/geist-latin-wght.woff2",
   variable: "--font-geist-sans",
   display: "swap",
   weight: "100 900",
   style: "normal",
+  adjustFontFallback: false,
+  fallback: ["Geist Fallback"],
   declarations: [
     {
       prop: "unicode-range",
@@ -40,6 +48,8 @@ const jetbrainsMono = localFont({
   display: "swap",
   weight: "100 800",
   style: "normal",
+  adjustFontFallback: false,
+  fallback: ["JetBrains Mono Fallback"],
   declarations: [
     {
       prop: "unicode-range",
@@ -60,6 +70,8 @@ const orbitron = localFont({
   variable: "--font-orbitron",
   display: "swap",
   style: "normal",
+  adjustFontFallback: false,
+  fallback: ["Orbitron Fallback"],
   declarations: [
     {
       prop: "unicode-range",

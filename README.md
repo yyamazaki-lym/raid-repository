@@ -191,3 +191,5 @@ http://localhost:3000 を開きます。
 ## License
 
 MIT
+
+ただし `src/app/fonts/` のフォント (Geist・JetBrains Mono・Orbitron) は SIL Open Font License 1.1 です (各フォントの `OFL-*.txt`)。
