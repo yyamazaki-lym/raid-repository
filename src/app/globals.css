@@ -4,6 +4,40 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/*
+ * フォールバック (layout.tsx の next/font/local の fallback)。2026-10-09 に
+ * next/font/google から next/font/local に替えたとき、以前と同じ見た目を保つため、
+ * next/font/google が出していたのと同じ名前・同じ値を書く。値は
+ * node_modules/next/dist/server/font-utils.js の calculateSizeAdjustValues
+ * (capsize の事前計算) で出したもの。
+ */
+@font-face {
+  font-family: "Geist Fallback";
+  src: local("Arial");
+  ascent-override: 95.94%;
+  descent-override: 28.16%;
+  line-gap-override: 0.00%;
+  size-adjust: 104.76%;
+}
+
+@font-face {
+  font-family: "JetBrains Mono Fallback";
+  src: local("Arial");
+  ascent-override: 75.79%;
+  descent-override: 22.29%;
+  line-gap-override: 0.00%;
+  size-adjust: 134.59%;
+}
+
+@font-face {
+  font-family: "Orbitron Fallback";
+  src: local("Arial");
+  ascent-override: 81.50%;
+  descent-override: 19.59%;
+  line-gap-override: 0.00%;
+  size-adjust: 124.05%;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);

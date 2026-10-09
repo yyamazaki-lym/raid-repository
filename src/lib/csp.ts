@@ -57,8 +57,10 @@ export function buildCspHeader(nonce: string): string {
     scriptSrc,
     // style-src の `'unsafe-inline'` は本 TODO スコープ外で維持。詳細は
     // モジュール冒頭の設計判断を参照。
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-    "font-src 'self' data: https://fonts.gstatic.com",
+    // 2026-10-09: フォントは next/font/local で自分のサイトから配るので、
+    // Google Fonts (fonts.googleapis.com / fonts.gstatic.com) の許可を外した。
+    "style-src 'self' 'unsafe-inline'",
+    "font-src 'self' data:",
     // ユーザーがカテゴリ背景画像を任意の HTTPS ホスト (imgur 等) から
     // 貼るユースケース (TODO #17) があるため、img-src は `https:` 全許可。
     "img-src 'self' data: blob: https:",

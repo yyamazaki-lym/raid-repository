@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { headers } from "next/headers";
-import { Geist, JetBrains_Mono, Orbitron } from "next/font/google";
+import localFont from "next/font/local";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { DynamicToaster } from "@/components/ui/toaster-dynamic";
@@ -13,23 +13,72 @@ import { getLocale, getMessages } from "@/lib/i18n/server";
 import { LocaleProvider } from "@/lib/i18n/client";
 import "./globals.css";
 
-const geistSans = Geist({
+// 2026-10-09: 本番ビルドが next/font/google (Orbitron) で 1 回落ちた (Turbopack の
+// "next/font/google queries have exactly one entry")。ビルドのたびに Google Fonts へ
+// 取りに行く依存を外すため、Google Fonts の latin サブセットの可変フォントを ./fonts/ に
+// 置いて next/font/local で読む (ライセンスは ./fonts/OFL-*.txt)。太さの範囲と
+// unicode-range は Google の CSS の latin ブロックと同じ値 (next/font の引数はリテラル
+// しか書けないので 3 か所に同じ値を書いている)。latin 以外の文字はフォールバックで描く。
+// 出どころ (URL・版・ハッシュ) は ./fonts/README.md。
+//
+// フォールバック (フォントに無い文字・読み込み中に使う Arial) は、next/font/local の
+// 自動計算 (fontkit) だと next/font/google の値 (capsize の事前計算) と size-adjust が
+// 1.5〜2.3% ずれる。`→` などはずっとフォールバックで描かれるので、自動計算を止め、
+// 以前と同じ名前・同じ値の @font-face を globals.css に書いている。
+const geistSans = localFont({
+  src: "./fonts/geist-latin-wght.woff2",
   variable: "--font-geist-sans",
-  subsets: ["latin"],
   display: "swap",
+  weight: "100 900",
+  style: "normal",
+  adjustFontFallback: false,
+  fallback: ["Geist Fallback"],
+  declarations: [
+    {
+      prop: "unicode-range",
+      value:
+        "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD",
+    },
+  ],
 });
 
-const jetbrainsMono = JetBrains_Mono({
+const jetbrainsMono = localFont({
+  src: "./fonts/jetbrains-mono-latin-wght.woff2",
   variable: "--font-jetbrains-mono",
-  subsets: ["latin"],
   display: "swap",
+  weight: "100 800",
+  style: "normal",
+  adjustFontFallback: false,
+  fallback: ["JetBrains Mono Fallback"],
+  declarations: [
+    {
+      prop: "unicode-range",
+      value:
+        "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD",
+    },
+  ],
 });
 
-const orbitron = Orbitron({
+// 可変フォント 1 本を、以前と同じく 500 / 600 / 700 / 800 の 4 つの @font-face で出す。
+const orbitron = localFont({
+  src: [
+    { path: "./fonts/orbitron-latin-wght.woff2", weight: "500" },
+    { path: "./fonts/orbitron-latin-wght.woff2", weight: "600" },
+    { path: "./fonts/orbitron-latin-wght.woff2", weight: "700" },
+    { path: "./fonts/orbitron-latin-wght.woff2", weight: "800" },
+  ],
   variable: "--font-orbitron",
-  subsets: ["latin"],
   display: "swap",
-  weight: ["500", "600", "700", "800"],
+  style: "normal",
+  adjustFontFallback: false,
+  fallback: ["Orbitron Fallback"],
+  declarations: [
+    {
+      prop: "unicode-range",
+      value:
+        "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD",
+    },
+  ],
 });
 
 export async function generateMetadata(): Promise<Metadata> {
