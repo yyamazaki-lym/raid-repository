@@ -11,11 +11,18 @@
  *   (a) 純ロジック: 偽の unstable_cache / after / 時計で、いつ取りに行き、
  *       いつ書き、何を返すか
  *   (b) 結合: 本物の Next のモジュール (unstable_cache / AfterContext / after /
- *       IncrementalCache) とメモリの CacheHandler で、書き込みが waitUntil の
- *       **解決より前に** 終わること。RSC 要求を模して executeRevalidates は
- *       呼ばない (= 描画中に積まれた分は誰も待たない)。外部通信なし
+ *       IncrementalCache / tags manifest) とメモリの CacheHandler で、書き込みが
+ *       waitUntil の **解決より前に** 終わること。RSC 要求を模して
+ *       executeRevalidates は呼ばない (= 描画中に積まれた分は誰も待たない)。
+ *       冷えた / 古い / 期限超え / revalidatePath で冷えた / 同じインスタンスに
+ *       要求が重なった、を回す。外部通信なし
  *   (c) 静的: sheet-table.ts が unstable_cache / revalidateTag を import しない、
- *       R が `revalidate: false` で tags を持たない、after に関数を渡す
+ *       R が `revalidate: false` で tags を持たない、after に関数を渡す、
+ *       handoff が AsyncLocalStorage、src が profile 付きの revalidateTag を
+ *       呼ばない、FRESH_MS が W の 30 秒より長い
+ *
+ * 層ごとに回し、1 つの層が投げても止まっても残りの層は続ける (どこが壊れたかを
+ * 1 回で見るため)。
  *
  * ⚠ (b) は next/dist/server/... の内部に結びついている。Next を上げてここが
  *   赤くなったら、data-cache-swr.ts の冒頭に挙げた箇所を読み直す。特に
@@ -29,7 +36,7 @@
  */
 import { AsyncLocalStorage } from "node:async_hooks";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -43,6 +50,26 @@ function check(name, actual, expected) {
   else {
     failures += 1;
     console.log(`  FAIL ${name}\n       expected: ${e}\n       actual:   ${a}`);
+  }
+}
+
+const consoleError = console.error;
+/** 層を回す。投げても、時間内に終わらなくても、失敗を数えて次へ進む。 */
+async function layer(name, ms, fn) {
+  let timer;
+  try {
+    await Promise.race([
+      fn(),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`${ms}ms で終わらなかった`)), ms);
+      }),
+    ]);
+  } catch (e) {
+    failures += 1;
+    console.log(`  FAIL ${name} が途中で止まった: ${e instanceof Error ? e.message : e}`);
+  } finally {
+    clearTimeout(timer);
+    console.error = consoleError; // (b) が差し替えたまま止まっても戻す
   }
 }
 
@@ -78,6 +105,33 @@ function code(src) {
     }
   }
   return out;
+}
+
+function walk(dir, out = []) {
+  for (const name of readdirSync(dir)) {
+    const p = join(dir, name);
+    if (statSync(p).isDirectory()) walk(p, out);
+    else if (/\.(ts|tsx)$/.test(name)) out.push(p);
+  }
+  return out;
+}
+
+/** `(` の直後 (i) から対応する `)` までに、深さ 1 の `,` があるか。 */
+function hasSecondArg(src, i) {
+  let depth = 1;
+  for (let j = i; j < src.length; j += 1) {
+    const c = src[j];
+    if (c === '"' || c === "'" || c === "`") {
+      let k = j + 1;
+      while (k < src.length && src[k] !== c) k += src[k] === "\\" ? 2 : 1;
+      j = k;
+    } else if (c === "(" || c === "[" || c === "{") depth += 1;
+    else if (c === ")" || c === "]" || c === "}") {
+      depth -= 1;
+      if (depth === 0) return false;
+    } else if (c === "," && depth === 1) return true;
+  }
+  return false;
 }
 
 /** setTimeout に渡された待ち時間を記録する (呼び出しはそのまま通す)。 */
@@ -150,9 +204,10 @@ function fakeNext() {
       env.afterTasks.push(task);
     },
   };
-  env.flushAfter = async () => {
+  /** 溜まった after を n 本 (省略で全部) 応答の後として実行する。 */
+  env.flushAfter = async (n = Infinity) => {
     env.phase = "after";
-    for (const task of env.afterTasks.splice(0)) await task();
+    for (const task of env.afterTasks.splice(0, n)) await task();
     env.phase = "render";
   };
   env.log = (level, event, key, detail) =>
@@ -188,7 +243,8 @@ async function pureLogic(createSwrEntry) {
     timedOutReason: "時間切れ",
     log: env.log,
   });
-  const far = () => env.t + 60_000;
+  // 外れたときの締切。取得が終わらない壊れ方でも、本物の待ちは 2 秒で切れる。
+  const far = () => env.t + 2_000;
 
   check(
     "unstable_cache は 2 本 (R: revalidate false / W: 30)。tags は無い",
@@ -263,11 +319,40 @@ async function pureLogic(createSwrEntry) {
     fx.gate = null;
     await env.flushAfter();
     check("打ち切った取得も after の中で書かれる", (await swr.get("k2", far())).ok, true);
-    check("handoff / inflight が残らない", swr.stats(), {
-      inflight: 0,
-      handoff: 0,
-      failMemo: 0,
-    });
+    check("inflight / 失敗メモが残らない", swr.stats(), { inflight: 0, failMemo: 0 });
+  }
+
+  // 取得が終わってから after が書くまでの間 (Data Cache にはまだ無い)
+  {
+    const c0 = fx.calls;
+    const a0 = env.afterCalls;
+    const first = await swr.get("kj", far());
+    const second = await swr.get("kj", far());
+    check(
+      "取得が終わり after が書く前に来た冷えた要求は、終わった取得の値を受け取る (取り直さない)",
+      [first.ok, second, fx.calls - c0, env.afterCalls - a0],
+      [true, first, 1, 1],
+    );
+    check("after が走るまで印 (inflight) を残す", swr.stats().inflight, 1);
+    await env.flushAfter();
+    check("after が書き込みを渡し終えたら印を外す", swr.stats().inflight, 0);
+  }
+
+  // after が走らないまま残った印 (応答が閉じない等の保険)
+  {
+    const c0 = fx.calls;
+    await swr.get("kl", far());
+    env.t += 60_000;
+    const r = await swr.get("kl", far());
+    check(
+      "after が走らないまま freshMs を過ぎた取得には合流しない (取り直す)",
+      [r.ok, fx.calls - c0],
+      [true, 2],
+    );
+    await env.flushAfter(1);
+    check("古い取得の after は新しい取得の印を外さない", swr.stats().inflight, 1);
+    await env.flushAfter();
+    check("新しい取得の after が印を外す", swr.stats().inflight, 0);
   }
 
   // 失敗
@@ -301,6 +386,29 @@ async function pureLogic(createSwrEntry) {
     await env.flushAfter();
   }
 
+  // 古い値の取り直しが失敗した
+  {
+    await swr.get("ks", far());
+    await env.flushAfter();
+    env.t += 61_000;
+    fx.mode = "fail";
+    const c0 = fx.calls;
+    const first = await swr.get("ks", far());
+    await env.flushAfter();
+    env.t += 10_000;
+    const second = await swr.get("ks", far());
+    check(
+      "古い値の取り直しが失敗したら、覚えている間は古い値を返して取り直さない",
+      [first.ok, second.ok, fx.calls - c0],
+      [true, true, 1],
+    );
+    env.t += 21_000;
+    fx.mode = "ok";
+    await swr.get("ks", far());
+    check("覚えておく時間を過ぎたら古い値の取り直しを再開する", fx.calls - c0, 2);
+    await env.flushAfter();
+  }
+
   // キャッシュ済みの値はメモに隠されない
   {
     fx.mode = "fail";
@@ -318,15 +426,15 @@ async function pureLogic(createSwrEntry) {
     });
   }
 
-  // W が投げても handoff が残らない
+  // W が投げても印が残らない
   {
     env.t += 120_000;
     env.writeThrowsOnce = true;
     await swr.get("k1", far());
     await env.flushAfter();
     check(
-      "W が投げても handoff が残らず、warn に出る",
-      [swr.stats().handoff, env.logs.some((l) => l.event === "write failed")],
+      "W が投げても印 (inflight) が残らず、warn に出る",
+      [swr.stats().inflight, env.logs.some((l) => l.event === "write failed")],
       [0, true],
     );
   }
@@ -343,6 +451,11 @@ async function pureLogic(createSwrEntry) {
 
   check("W は描画中に一度も呼ばれない", env.writeCallsInRender, 0);
   check("after に渡したのはすべて関数", env.afterNonFunction, 0);
+  check(
+    "refresh fetched の write は queued か skipped",
+    [...new Set(env.logs.filter((l) => l.event === "refresh fetched").map((l) => l.write))].sort(),
+    ["queued", "skipped"],
+  );
 
   // リクエストの外 (after が投げる)
   {
@@ -357,7 +470,7 @@ async function pureLogic(createSwrEntry) {
       timedOutReason: "時間切れ",
       log: env2.log,
     });
-    const r = await swr2.get("k", env2.t + 60_000);
+    const r = await swr2.get("k", env2.t + 2_000);
     check("after が使えなくても値は返す (書かない)", [r, env2.store.size], [
       { ok: true, value: { v: 1 } },
       0,
@@ -368,6 +481,29 @@ async function pureLogic(createSwrEntry) {
       true,
     );
     check("inflight が残らない (after なし)", swr2.stats().inflight, 0);
+  }
+
+  // freshMs は W の 30 秒より長くないといけない (でないと取っても書かれない)
+  {
+    const make = (freshMs) => {
+      try {
+        createSwrEntry(fakeNext().deps, {
+          keyPart: "f",
+          fetch: fx.fn,
+          freshMs,
+          timedOutReason: "時間切れ",
+          log: () => {},
+        });
+        return "ok";
+      } catch {
+        return "threw";
+      }
+    };
+    check(
+      "freshMs が W の 30 秒以下なら作る時点で投げる",
+      [make(20_000), make(30_000), make(30_001)],
+      ["threw", "threw", "ok"],
+    );
   }
 }
 
@@ -387,25 +523,27 @@ async function integration(createSwrEntry) {
   const { AfterContext } = require(`${N}/after/after-context`);
   const { after } = require(`${N}/after/after`);
   const { IncrementalCache } = require(`${N}/lib/incremental-cache`);
+  const { tagsManifest } = require(`${N}/lib/incremental-cache/tags-manifest.external`);
 
   // 書き込みの往復。負の対照は「応答の後の処理 (タイマーは get の 1ms だけ)
   // より書き込みが遅い」ことに頼るので、余裕を持たせる。
   const SET_MS = 100;
   const SETTLE_MS = 300; // 待たれなかった書き込みが着くのを見届ける
   const mem = new Map();
-  let settled = false;
-  let sets = [];
+  const sets = [];
+  /** Data Cache の読みの往復 (ms)。先頭から 1 つずつ使い、空なら 1ms。 */
+  let getDelays = [];
 
   class MemHandler {
     async get(key) {
-      await sleep(1);
+      await sleep(getDelays.length > 0 ? getDelays.shift() : 1);
       const e = mem.get(key);
       return e ? { value: e.value, lastModified: e.lastModified } : null;
     }
     async set(key, data) {
       await sleep(SET_MS);
       mem.set(key, { value: data, lastModified: Date.now() });
-      sets.push({ body: JSON.parse(data.data.body), late: settled });
+      sets.push({ at: performance.now(), body: JSON.parse(data.data.body) });
     }
     async revalidateTag() {}
     resetRequestCache() {}
@@ -425,13 +563,17 @@ async function integration(createSwrEntry) {
     maxMemoryCacheSize: 0,
   });
 
-  /** 1 リクエスト。描画 → 応答を閉じる → waitUntil の解決 → 見届け。 */
-  async function request(render) {
-    sets = [];
-    settled = false;
+  /** ページの暗黙タグ。本物の要求には必ずあり、R と W の softTags になる。 */
+  const IMPLICIT_TAGS = ["_N_T_/layout", "_N_T_/x/layout", "_N_T_/x/page", "_N_T_/x"];
+  let errors = 0;
+  console.error = () => {
+    errors += 1;
+  };
+
+  /** 1 リクエスト。描画・応答を閉じる・waitUntil の解決を別々に進める。 */
+  function makeRequest() {
     const waits = [];
     const closeCbs = [];
-    let errors = 0;
     const afterContext = new AfterContext({
       waitUntil: (p) => waits.push(p),
       onClose: (cb) => closeCbs.push(cb),
@@ -454,31 +596,49 @@ async function integration(createSwrEntry) {
     const requestStore = {
       type: "request",
       phase: "render",
-      implicitTags: { tags: [] },
+      implicitTags: { tags: IMPLICIT_TAGS },
       url: { pathname: "/x", search: "" },
       resumeDataCache: null,
     };
-    const origError = console.error;
-    console.error = () => {
-      errors += 1;
-    };
-    try {
-      let out;
+    const req = { waits };
+    req.render = async (fn) => {
       await workAsyncStorage.run(workStore, () =>
         workUnitAsyncStorage.run(requestStore, async () => {
-          out = await render();
+          req.out = await fn();
         }),
       );
-      const pendingInRender = Object.keys(workStore.pendingRevalidates ?? {}).length;
-      // RSC 要求: executeRevalidates は呼ばれない。応答を閉じるだけ。
+      req.pendingInRender = Object.keys(workStore.pendingRevalidates ?? {}).length;
+    };
+    // RSC 要求: executeRevalidates は呼ばれない。応答を閉じるだけ。
+    req.close = () => {
       for (const cb of closeCbs.splice(0)) cb();
-      await Promise.all(waits);
-      settled = true;
-      await sleep(SETTLE_MS);
-      return { out, pendingInRender, waits: waits.length, sets, errors };
-    } finally {
-      console.error = origError;
-    }
+    };
+    req.settle = async () => {
+      for (let n = -1; n !== waits.length; ) {
+        n = waits.length;
+        await Promise.all(waits);
+      }
+      req.settledAt = performance.now();
+    };
+    return req;
+  }
+
+  /** 1 リクエストを最後まで。描画 → 応答を閉じる → waitUntil の解決 → 見届け。 */
+  async function request(render) {
+    const s0 = sets.length;
+    const e0 = errors;
+    const req = makeRequest();
+    await req.render(render);
+    req.close();
+    await req.settle();
+    await sleep(SETTLE_MS);
+    return {
+      out: req.out,
+      pendingInRender: req.pendingInRender,
+      waits: req.waits.length,
+      sets: sets.slice(s0).map((s) => ({ ...s, late: s.at > req.settledAt })),
+      errors: errors - e0,
+    };
   }
 
   const ageAll = (ms) => {
@@ -505,7 +665,8 @@ async function integration(createSwrEntry) {
         return { ok: true, value: { v: version } };
       },
       timedOutReason: "時間切れ",
-      log: (level, event) => logs.push(`${level} ${event}`),
+      log: (level, event, _key, detail) =>
+        logs.push(`${level} ${event}${detail.write ? ` ${detail.write}` : ""}`),
     },
   );
   const get = (key, waitMs = 2_000) => () => swr.get(key, Date.now() + waitMs);
@@ -552,7 +713,103 @@ async function integration(createSwrEntry) {
     const next = await request(get("k2"));
     check("期限超え: 次の要求は当たる", next.out, { ok: true, value: { v: 3 } });
   }
-  check("どの場合も after の中で refresh ok", logs.filter((l) => l === "info refresh ok").length, 3);
+  check(
+    "どの場合も after の中で refresh fetched (write: queued)",
+    logs.filter((l) => l === "info refresh fetched queued").length,
+    3,
+  );
+
+  // revalidatePath は暗黙タグを即時に expire する (profile なし)。R が外れ、
+  // after の W も外れて書き直す。
+  {
+    await sleep(20);
+    tagsManifest.set("_N_T_/x/layout", { expired: Date.now() });
+    await sleep(20);
+    const f0 = fetchCalls;
+    const r = await request(get("k1"));
+    check("revalidatePath で冷えた: 取り直した値を返す", [r.out.ok, fetchCalls - f0], [true, 1]);
+    check("revalidatePath で冷えた: SET が waitUntil の解決より前", writtenInside(r), [true, 0]);
+    check("revalidatePath で冷えた: 描画中の pendingRevalidates 0 件 / console.error 0 回", [
+      r.pendingInRender,
+      r.errors,
+    ], [0, 0]);
+    const next = await request(get("k1"));
+    check("revalidatePath で冷えた: 次の要求は当たる (取得しない)", [next.out, fetchCalls - f0], [
+      r.out,
+      1,
+    ]);
+    tagsManifest.delete("_N_T_/x/layout");
+  }
+
+  // 同じインスタンスに要求が重なった (冷えた): A の after が W の読みを
+  // 待っている間に、C の R が同じキーを読んで外れる。handoff をインスタンスで
+  // 共有すると C の R が値を拾い、C の描画中に書き込みを積む (RSC 要求なので
+  // 待たれない)。
+  {
+    const f0 = fetchCalls;
+    const s0 = sets.length;
+    const e0 = errors;
+    const A = makeRequest();
+    await A.render(get("k3")); // 冷えた: 取得して返す (書くのは after)
+    getDelays = [60, 150]; // C の R の読み / A の W の読み
+    const C = makeRequest();
+    const cRender = C.render(get("k3"));
+    await sleep(20);
+    A.close(); // A の after: W の読み (150ms) の間に C の R が外れる
+    await cRender;
+    C.close();
+    await Promise.all([A.settle(), C.settle()]);
+    await sleep(SETTLE_MS);
+    getDelays = [];
+    const mine = sets.slice(s0);
+    check("重なった (冷えた): C は A の取得の値を受け取る (取得は 1 回)", [
+      C.out?.ok,
+      JSON.stringify(C.out) === JSON.stringify(A.out),
+      fetchCalls - f0,
+    ], [true, true, 1]);
+    check("重なった (冷えた): C の描画中の pendingRevalidates 0 件 / console.error 0 回", [
+      C.pendingInRender,
+      errors - e0,
+    ], [0, 0]);
+    check("重なった (冷えた): SET は A の waitUntil の解決より前", [
+      mine.length > 0,
+      mine.every((s) => s.at <= A.settledAt),
+    ], [true, true]);
+  }
+
+  // 同じインスタンスに要求が重なった (古い): A の取り直しが終わり、A の応答が
+  // まだ閉じていない間に B が同じ古い entry を読む。取り直しを重ねると、同じ
+  // キーの after が 2 本になる。
+  {
+    ageAll(120_000);
+    const f0 = fetchCalls;
+    const s0 = sets.length;
+    const e0 = errors;
+    const A = makeRequest();
+    await A.render(get("k1")); // 古い: 古い値を返し、取り直しを始める
+    await sleep(fetchMs + 50); // 取得は終わったが、A の応答はまだ閉じていない
+    const B = makeRequest();
+    await B.render(get("k1"));
+    A.close();
+    B.close();
+    await Promise.all([A.settle(), B.settle()]);
+    await sleep(SETTLE_MS);
+    const mine = sets.slice(s0);
+    check("重なった (古い): B は取り直しを重ねない (取得 1 回 / SET 1 件)", [
+      fetchCalls - f0,
+      mine.length,
+    ], [1, 1]);
+    check("重なった (古い): 描画中の pendingRevalidates 0 件 / console.error 0 回", [
+      A.pendingInRender,
+      B.pendingInRender,
+      errors - e0,
+    ], [0, 0, 0]);
+    check(
+      "重なった (古い): SET は A の waitUntil の解決より前",
+      mine.every((s) => s.at <= A.settledAt),
+      true,
+    );
+  }
 
   // 負の対照: 描画中に W を呼ぶと、after でもう一度 W を呼んでも待たれない。
   {
@@ -627,6 +884,14 @@ function staticChecks() {
     ],
     [true, 2],
   );
+  {
+    const m = sheet.match(/const FRESH_MS = ([\d_]+);/);
+    check(
+      "sheet-table.ts の FRESH_MS は W の 30 秒より長い (短いと取っても書かれない)",
+      m ? Number(m[1].replace(/_/g, "")) > 30_000 : "FRESH_MS が見つからない",
+      true,
+    );
+  }
   check(
     "helper は next を import しない",
     imports(helper).map((i) => i.from).filter((f) => /^next(\/|$)/.test(f)),
@@ -651,6 +916,15 @@ function staticChecks() {
   );
   check("R は revalidate: false で tags なし", uc[0]?.options, "{ revalidate: false }");
   check("どちらも tags を持たない", uc.some((u) => /tags/.test(u.options)), false);
+  check(
+    "handoff は AsyncLocalStorage で、W はその run の内側で呼ぶ (インスタンス共有の Map にしない)",
+    [
+      /const handoff = new AsyncLocalStorage</.test(helper),
+      /\bhandoff\.(?:set|get|delete)\(/.test(helper),
+      /handoff\.run\(\s*\w+\s*,\s*\(\)\s*=>\s*write\(/.test(helper),
+    ],
+    [true, false, true],
+  );
 
   const afterCalls = [...helper.matchAll(/deps\.after\(\s*(.{0,20})/g)].map((m) => m[1]);
   check("after は 1 か所で、関数を渡す", afterCalls.map((s) => /^async \(\) =>/.test(s)), [true]);
@@ -680,6 +954,23 @@ function staticChecks() {
     ],
     [true, true, true],
   );
+
+  // 暗黙タグ (`_N_T_/…`) が stale にされると、tags を持たない R も Next の
+  // 取り直しに入って詰まる (data-cache-swr.ts の禁じ手)。stale にするのは
+  // profile 付きの revalidateTag だけ (revalidatePath / updateTag は即時 expire)。
+  const offenders = [];
+  for (const file of walk("src")) {
+    const src = code(read(file));
+    if (/\brevalidateTag\s+as\b/.test(src)) offenders.push(`${file} (別名で import)`);
+    for (const m of src.matchAll(/\brevalidateTag\s*\(/g)) {
+      if (hasSecondArg(src, m.index + m[0].length)) offenders.push(file);
+    }
+  }
+  check(
+    "src は revalidateTag を profile 付き (2 引数) で呼ばない (使うなら暗黙タグを stale にしないことを確かめてから外す)",
+    offenders,
+    [],
+  );
 }
 
 const outDir = mkdtempSync(join(tmpdir(), "sheet-swr-check-"));
@@ -700,8 +991,8 @@ try {
   const { createSwrEntry } = await import(
     pathToFileURL(join(outDir, "data-cache-swr.js")).href
   );
-  await pureLogic(createSwrEntry);
-  await integration(createSwrEntry);
+  await layer("(a)", 30_000, () => pureLogic(createSwrEntry));
+  await layer("(b)", 60_000, () => integration(createSwrEntry));
 } finally {
   rmSync(outDir, { recursive: true, force: true });
 }

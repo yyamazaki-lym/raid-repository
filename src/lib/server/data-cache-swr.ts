@@ -29,21 +29,31 @@
  *
  *   R (読み) … `revalidate: false`。stale の判定は呼び出し側の値が勝つ
  *     (`lib/incremental-cache/index.js:413`) ので、W が書いた entry も
- *     stale にならない = **描画中に Next の取り直しを一度も起こさない**。
- *     外れたら entryFn が NoHandoff を投げるだけで、取得も書き込みもしない
- *     (投げた cb は何も積まず、ログも出ない)
+ *     時間では stale にならない = **描画中に Next の取り直しを起こさない**
+ *     (例外はタグの経路。下の禁じ手)。外れたら entryFn が NoHandoff を
+ *     投げるだけで、取得も書き込みもしない (投げた cb は何も積まず、ログも
+ *     出ない)
  *   W (書き) … `revalidate: 30`。**`after()` に渡した関数の中からだけ**
  *     呼ぶ。そこで積まれた書き込みは「応答が閉じた後の差分」なので
  *     waitUntil に待たれる (RSC 要求でも)。entry が 30 秒以内に書かれて
  *     いれば書かない (ほかのインスタンスが書いた新しい値があるので害は無い)
  *
  * 取得はこちらで行い (同じキーは 1 インスタンスで 1 本)、成功した値を
- * `handoff` に置いてから W を呼ぶ。W の entryFn はそれを返すだけ。古さは
- * 値に入れた `fetchedAt` で自前に判定する (`freshMs`)。失敗は Data Cache に
- * 書かず、プロセス内のメモ (`failTtlMs`) で連打だけ抑える。
+ * `handoff` (AsyncLocalStorage) に置いた **内側で** W を呼ぶ。W の entryFn は
+ * それを返すだけ。Next は W の呼び出しの中から cb を呼ぶ
+ * (`unstable-cache.js:190, 224`) ので値が届き、同じインスタンスのほかの
+ * 要求の R からは見えない。古さは値に入れた `fetchedAt` で自前に判定する
+ * (`freshMs`)。失敗は Data Cache に書かず、プロセス内のメモ (`failTtlMs`) で
+ * 連打だけ抑える。
+ *
+ * 取得中の印 (`inflight`) は、取得が終わっても after の書き込みを渡し終える
+ * まで残す。その間に同じインスタンスへ来た要求は、終わった取得の値を
+ * そのまま受け取る (Data Cache にまだ無くても取り直さない)。after が
+ * 走らないまま `freshMs` を過ぎた印は捨てる (古い値を配り続けない保険)。
  *
  * 実測 (2026-10-09、Next 16.3.8 の実モジュールとメモリの CacheHandler):
- * 冷えた / 古い / 待ち上限を超えた、のどれでも書き込みが waitUntil の内側で
+ * 冷えた / 古い / 待ち上限を超えた / revalidatePath で冷えた / 同じ
+ * インスタンスに要求が重なった、のどれでも書き込みが waitUntil の内側で
  * 終わり、描画中の pendingRevalidates は 0 件、console.error は 0 回。
  * 旧方式 (revalidate: 60 を描画中に呼ぶ) は冷えた・古いの両方で、書き込みが
  * waitUntil の解決より後だった。`scripts/check-sheet-swr.mjs` で固定している
@@ -51,18 +61,44 @@
  *
  * ## 禁じ手 (どれも検査で固定している)
  *
+ * ⚠ **handoff を Map などインスタンス共有の入れ物にしない。** 同じ
+ *   インスタンスの別の要求の R が描画中に値を拾い、その要求の
+ *   pendingRevalidates に書き込みを積む (RSC 要求では待たれない)。同じキーの
+ *   after が 2 本重なると、片方が消した後にもう片方の W の cb が投げて
+ *   console.error になる (2026-10-09 のレビューで Map の版から直した。
+ *   検査 (b) の「重なった」)
  * ⚠ **R に tags を付けない。** タグが stale にされると R が Next の取り直しに
  *   入り、entryFn が投げて console.error になる。さらに描画中に同じキーが
- *   積まれるので、after の W が差分から外れて書けなくなる (古いまま詰まる)
+ *   積まれるので、after の W が差分から外れて書けなくなる (古いまま詰まる)。
+ *   ただし **付けなくてもページの暗黙タグ (`_N_T_/…`) は softTags として必ず
+ *   渡る** (`unstable-cache.js:101, 166`)。暗黙タグが stale にされると
+ *   (`revalidateTag(<暗黙タグ>, profile)`。`incremental-cache/index.js:419-421`)
+ *   同じく詰まり、そのインスタンスが落ちるまで直らない。そのとき Next の
+ *   console.error に出るキーにはシートの URL がそのまま入る。src は profile
+ *   付きの revalidateTag を呼ばない (検査 (c))。revalidatePath は即時 expire
+ *   なので R が外れて after の W が書き直す (検査 (b))
  * ⚠ **描画中に W を呼ばない。** 描画中に積まれたキーは after の差分から
  *   外れるので、書き込みが待たれない (検査の負の対照)
  * ⚠ **after には Promise ではなく関数を渡す。** Promise だとその Promise が
  *   解決した時点で終わり、W が積んだ書き込みは待たれない
  *   (`after-context.js:75-87`)
+ * ⚠ **freshMs を W の 30 秒以下にしない。** 取り直しても W が書かず、閲覧の
+ *   たびに取りに行く (作る時点で投げる)
+ *
+ * ## ログ
+ *
+ * `refresh fetched` (info) は、取得が成功して W を呼び終えたこと。書き込みの
+ * 完了ではない (書き込みは after の後に Next が waitUntil の中で行い、ここ
+ * からは見えない。失敗は Next の warn「Failed to update prerender cache」)。
+ * `write` は W が値を受け取ったか:
+ *   queued  … W の entryFn が呼ばれた = Next が書き込みを積んだ
+ *   skipped … 呼ばれなかった。30 秒以内にほかのインスタンスが書いていたか、
+ *             同じキーの取り直しがすでに積まれていた
  *
  * next は import しない (unstable_cache / after / 時計は引数で受け取る)。
  * 検査から本物と偽物の両方を差し込むため。本物は `data-cache-swr-next.ts`。
  */
+import { AsyncLocalStorage } from "node:async_hooks";
 
 /** Data Cache に置く形。JSON にして保存される。 */
 type Entry<V> = { fetchedAt: number; value: V };
@@ -111,7 +147,7 @@ export type SwrOptions<V> = {
   /** `unstable_cache` の keyParts。値の形を変えたら上げる。 */
   keyPart: string;
   fetch: (key: string) => Promise<SwrFetched<V>>;
-  /** 取り直しを始める古さ (ms)。W の 30 秒より長くする。 */
+  /** 取り直しを始める古さ (ms)。W の 30 秒より長くする (でないと投げる)。 */
   freshMs?: number;
   /** 失敗を覚えておく時間 (ms)。 */
   failTtlMs?: number;
@@ -131,7 +167,14 @@ class NoHandoff extends Error {}
 type Outcome<V> =
   | { ok: true; value: V; fetchedAt: number }
   | { ok: false; reason: string };
-type Flight<V> = { startedAt: number; done: Promise<Outcome<V>> };
+type Flight<V> = {
+  startedAt: number;
+  done: Promise<Outcome<V>>;
+  /** 取得が終わった時刻。after が書き込みを渡し終えるまで inflight に残る。 */
+  settledAt?: number;
+};
+/** W の entryFn への受け渡し。`taken` は entryFn が受け取ったか (ログ用)。 */
+type Handoff<V> = { key: string; entry: Entry<V>; taken: boolean };
 
 const errorName = (e: unknown): string =>
   e instanceof Error ? e.name : typeof e;
@@ -139,16 +182,27 @@ const errorName = (e: unknown): string =>
 export function createSwrEntry<V>(deps: SwrDeps, opts: SwrOptions<V>) {
   const freshMs = opts.freshMs ?? 60_000;
   const failTtlMs = opts.failTtlMs ?? 30_000;
-  /** after の中で W の entryFn に値を渡すためだけに使う。 */
-  const handoff = new Map<string, Entry<V>>();
+  if (!(freshMs > WRITE_REVALIDATE_SECONDS * 1000)) {
+    // ⚠ W は 30 秒以内に書かれた entry に書かないので、取っても書かれない。
+    throw new Error(
+      `freshMs (${freshMs}) must be longer than ${WRITE_REVALIDATE_SECONDS}s`,
+    );
+  }
+  /**
+   * W の entryFn に値を渡す。⚠ Map などインスタンス共有の入れ物にしない
+   * (冒頭の禁じ手)。after の中の `handoff.run` の内側 = W の呼び出しの中
+   * からしか見えない。
+   */
+  const handoff = new AsyncLocalStorage<Handoff<V>>();
   const inflight = new Map<string, Flight<V>>();
   const failMemo = new Map<string, { at: number; reason: string }>();
 
   // R と W に **同じ関数** を渡す (キーに関数の文字列化が入る)。
   const entryFn = async (key: string): Promise<Entry<V>> => {
-    const e = handoff.get(key);
-    if (!e) throw new NoHandoff();
-    return e;
+    const h = handoff.getStore();
+    if (!h || h.key !== key) throw new NoHandoff();
+    h.taken = true;
+    return h.entry;
   };
   // ⚠ tags を付けない (冒頭の禁じ手)。
   const read = deps.unstable_cache(entryFn, [opts.keyPart], {
@@ -161,6 +215,19 @@ export function createSwrEntry<V>(deps: SwrDeps, opts: SwrOptions<V>) {
   const memoFresh = (key: string, t: number): boolean => {
     const m = failMemo.get(key);
     return m !== undefined && t - m.at < failTtlMs;
+  };
+
+  /**
+   * 取得中か、取得を終えて after の書き込みを待っている flight。after が
+   * 走らないまま freshMs を過ぎたものは捨てる (古い値を配り続けない)。
+   */
+  const liveFlight = (key: string, t: number): Flight<V> | undefined => {
+    const f = inflight.get(key);
+    if (f?.settledAt !== undefined && t - f.settledAt >= freshMs) {
+      inflight.delete(key);
+      return undefined;
+    }
+    return f;
   };
 
   async function run(key: string, startedAt: number): Promise<Outcome<V>> {
@@ -203,31 +270,42 @@ export function createSwrEntry<V>(deps: SwrDeps, opts: SwrOptions<V>) {
     const done = run(key, startedAt);
     const flight: Flight<V> = { startedAt, done };
     inflight.set(key, flight);
-    void done.then(() => {
+    // 後から始まった取得の印は消さない (自分の分だけ)。
+    const release = () => {
       if (inflight.get(key) === flight) inflight.delete(key);
+    };
+    void done.then(() => {
+      flight.settledAt = deps.now();
     });
     try {
       // ⚠ 描画中に同期で登録する (await より前)。Promise ではなく関数を渡す。
       deps.after(async () => {
-        const r = await done;
-        if (!r.ok) return;
-        const entry: Entry<V> = { fetchedAt: r.fetchedAt, value: r.value };
-        handoff.set(key, entry);
         try {
-          await write(key);
-          opts.log("info", "refresh ok", key, {
-            ms: deps.now() - startedAt,
-          });
-        } catch (e) {
-          opts.log("warn", "write failed", key, { error: errorName(e) });
+          const r = await done;
+          if (!r.ok) return;
+          const h: Handoff<V> = {
+            key,
+            entry: { fetchedAt: r.fetchedAt, value: r.value },
+            taken: false,
+          };
+          try {
+            // ⚠ handoff は W の呼び出しの中にだけ見せる (冒頭の禁じ手)。
+            await handoff.run(h, () => write(key));
+            opts.log("info", "refresh fetched", key, {
+              ms: deps.now() - startedAt,
+              write: h.taken ? "queued" : "skipped",
+            });
+          } catch (e) {
+            opts.log("warn", "write failed", key, { error: errorName(e) });
+          }
         } finally {
-          // 後から始まった取得の値は消さない (自分の分だけ)。
-          if (handoff.get(key) === entry) handoff.delete(key);
+          release();
         }
       });
     } catch (e) {
       // リクエストの外 (after が投げる)。書かずに、取得した値を返すだけにする。
       opts.log("warn", "after unavailable", key, { error: errorName(e) });
+      void done.then(release);
     }
     return flight;
   }
@@ -251,11 +329,11 @@ export function createSwrEntry<V>(deps: SwrDeps, opts: SwrOptions<V>) {
     if (entry && typeof entry.fetchedAt === "number") {
       // 当たり: 待たずに返す。古ければ取り直しを始める (書くのは after)。
       const stale = t - entry.fetchedAt >= freshMs;
-      if (stale && !memoFresh(key, t) && !inflight.has(key)) start(key);
+      if (stale && !memoFresh(key, t) && !liveFlight(key, t)) start(key);
       return { ok: true, value: entry.value };
     }
     // 外れ: 失敗を覚えていて取得中でもなければ、その失敗をすぐ返す。
-    const flight = inflight.get(key);
+    const flight = liveFlight(key, t);
     const memo = failMemo.get(key);
     if (!flight && memo && t - memo.at < failTtlMs) {
       return { ok: false, reason: memo.reason };
@@ -288,7 +366,6 @@ export function createSwrEntry<V>(deps: SwrDeps, opts: SwrOptions<V>) {
   /** 検査用: プロセス内に残っている件数。 */
   const stats = () => ({
     inflight: inflight.size,
-    handoff: handoff.size,
     failMemo: failMemo.size,
   });
 

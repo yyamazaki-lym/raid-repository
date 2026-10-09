@@ -80,6 +80,9 @@ const RENDER_WAIT_MS = 6_000;
  * 5 分から 60 秒に縮めたのは、共有キャッシュでは「冷えたインスタンスに
  * 当たれば即座に最新が見える」という逃げ道が無くなるため。シート編集 →
  * カード反映の最大待ちは 5 分から 1 分に縮まる。
+ *
+ * ⚠ 30 秒以下にしない (data-cache-swr.ts の W が書かなくなる。helper が
+ * 作る時点で投げ、check-sheet-swr.mjs も見ている)。
  */
 const FRESH_MS = 60_000;
 /**
@@ -122,9 +125,11 @@ const renderDeadline = cache(() => Date.now() + RENDER_WAIT_MS);
 /**
  * ログ。URL (シートの ID を含む) は出さず、キーの短いハッシュを出す。
  *
- * `refresh ok` (info) は出した直後の観測用 — 取り直しが、引き金になった
+ * `refresh fetched` (info) は出した直後の観測用 — 取り直しが、引き金になった
  * 閲覧と同じ要求 (`/category/<slug>/mitigation` か `/loot`) に記録される
- * ことを runtime logs で確かめたら、info は出さないようにする。
+ * ことを runtime logs で確かめたら、info は出さないようにする。書き込みの
+ * 完了ではない (`write: queued` は Next が書き込みを積んだ、`skipped` は
+ * 積まなかった。意味は data-cache-swr.ts の冒頭の「ログ」)。
  */
 const log: SwrLog = (level, event, key, detail) => {
   const hash = createHash("sha256").update(key).digest("hex").slice(0, 8);
