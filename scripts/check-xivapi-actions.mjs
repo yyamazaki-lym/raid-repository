@@ -85,6 +85,25 @@ try {
   check("rows が無い", [...m.parseActionSheetRows({ error: "x" }).entries()], []);
   check("object 以外", [...m.parseActionSheetRows("nope").entries()], []);
 
+  console.log("\n[404 本文から無い行 ID を取り出す (2026-10-10)]");
+  // 実測した本文: 1 つでも無い ID が混ざると要求全体が 404 になる。
+  check(
+    "実応答の形 (object)",
+    m.parseMissingRowId({
+      code: 404,
+      message: "not found: the Excel row Action/99999999:0 could not be found",
+    }),
+    99999999,
+  );
+  check(
+    "文字列のままでも取れる / サブ行無し",
+    m.parseMissingRowId("not found: the Excel row Action/40194 could not be found"),
+    40194,
+  );
+  check("別シートの 404 は拾わない", m.parseMissingRowId({ message: "the Excel row Status/1:0 could not be found" }), null);
+  check("形が違えば null", [m.parseMissingRowId({ error: "x" }), m.parseMissingRowId(null), m.parseMissingRowId("")], [null, null, null]);
+  check("引き直しの上限は締切に収まる回数", m.XIVAPI_MAX_MISSING_RETRIES <= 5, true);
+
   console.log("\n[引くべき ID の選別]");
   const events = [
     { t: 1, job: "Paladin", ability: "Akh Morn", id: 26814 },

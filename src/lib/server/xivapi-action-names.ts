@@ -3,12 +3,14 @@ import { unstable_cache } from "next/cache";
 import { safeFetch } from "./safe-fetch";
 import type { StoredDeathEvent } from "@/lib/fflogs-fight-detail";
 import {
+  XIVAPI_MAX_MISSING_RETRIES,
   XIVAPI_ROWS_PER_REQUEST,
   applyResolvedNames,
   buildActionSheetUrl,
   chunk,
   collectLookupIds,
   parseActionSheetRows,
+  parseMissingRowId,
   type ActionNameLang,
 } from "@/lib/xivapi-actions";
 
@@ -60,17 +62,35 @@ const cachedBatch = unstable_cache(
     lang: ActionNameLang,
     ids: number[],
   ): Promise<Array<[number, string | null]>> => {
-    const res = await safeFetch(buildActionSheetUrl(ids, lang), {
-      headers: { Accept: "application/json" },
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-    });
-    if (!res.ok) {
+    // 2026-10-10: XIVAPI v2 は**シートに無い行 ID が 1 つでも混ざると要求全体を
+    // 404** にする。本番では FFLogs の guid にそういう ID が混ざり、同じ
+    // バッチの他の技まで全部英語のままだった (練習ログの「ワイプ原因」が
+    // 一部だけ日本語になるのはこれ)。404 の本文から無い ID を取り出して
+    // 除き、上限回数まで引き直す。除いた ID は「シートに無い」(null) として
+    // 覚える。
+    let remaining = ids;
+    for (let attempt = 0; ; attempt++) {
+      if (remaining.length === 0) return ids.map((id) => [id, null]);
+      const res = await safeFetch(buildActionSheetUrl(remaining, lang), {
+        headers: { Accept: "application/json" },
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+      });
+      if (res.ok) {
+        const names = parseActionSheetRows(await res.json());
+        return ids.map((id) => [id, names.get(id) ?? null]);
+      }
+      const missing =
+        res.status === 404 && attempt < XIVAPI_MAX_MISSING_RETRIES
+          ? parseMissingRowId(await res.text().catch(() => null))
+          : null;
+      if (missing !== null && remaining.includes(missing)) {
+        remaining = remaining.filter((id) => id !== missing);
+        continue;
+      }
       // ⚠ 失敗は**投げる** — 失敗を値として返すと Data Cache が
       // 「名前が無い」を TTL いっぱい覚えてしまう。
       throw new Error(`XIVAPI Action sheet ${res.status}`);
     }
-    const names = parseActionSheetRows(await res.json());
-    return ids.map((id) => [id, names.get(id) ?? null]);
   },
   ["xivapi-action-names"],
   { revalidate: CACHE_TTL_SECONDS },
