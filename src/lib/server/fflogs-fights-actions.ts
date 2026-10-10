@@ -245,6 +245,12 @@ export async function setReportVideoAction(input: {
 /**
  * 紐づけた動画を 1 本外す (2026-09-07)。pull 側のログには触らない —
  * 消えるのは「この動画とオフセット」だけで、レポート自体は残る。
+ *
+ * 2026-10-10: 動画側 (`category_links.logs_url`) がこのレポートを指して
+ * いれば、それも外す。同期の seed (`seedReportVideosFromLinks`) は
+ * 「logs_url の指すレポートに行の無い動画」を毎回足すので、ここで外さないと
+ * 次の同期で同じ動画が戻ってくる。動画カードの FFLogs / Analysis バッジも
+ * 消えるが、「この動画はこのレポートのものではない」という操作なので一致する。
  */
 export async function deleteReportVideoAction(id: string): Promise<WriteResult> {
   const auth = await assertAdminResult();
@@ -253,11 +259,40 @@ export async function deleteReportVideoAction(id: string): Promise<WriteResult> 
     return { ok: false, reason: "動画の ID が不正です" };
   }
   const supabase = await createClient();
-  const { error } = await supabase
+  const { data: removed, error } = await supabase
     .from("fflogs_report_videos")
     .delete()
-    .eq("id", id.trim());
+    .eq("id", id.trim())
+    .select("report_code, video_url");
   if (error) return { ok: false, reason: dbError("動画リンク削除", error) };
+
+  // 動画側の logs_url も外す (同じ URL の動画が複数コンテンツに入っていても、
+  // このレポートを指す行だけ)。失敗しても行の削除は済んでいるので警告に留める。
+  const row = (removed ?? [])[0] as
+    | { report_code: string; video_url: string | null }
+    | undefined;
+  if (row?.video_url) {
+    const { data: videos, error: readErr } = await supabase
+      .from("category_links")
+      .select("id, logs_url")
+      .eq("kind", "video")
+      .eq("url", row.video_url)
+      .not("logs_url", "is", null);
+    const ids = (videos ?? [])
+      .filter((v) => parseFflogsReportCode(v.logs_url as string) === row.report_code)
+      .map((v) => v.id as string);
+    if (readErr) {
+      console.warn("[fflogs-fights-actions] video logs_url lookup failed:", readErr.message);
+    } else if (ids.length > 0) {
+      const { error: clearErr } = await supabase
+        .from("category_links")
+        .update({ logs_url: null })
+        .in("id", ids);
+      if (clearErr) {
+        console.warn("[fflogs-fights-actions] video logs_url clear failed:", clearErr.message);
+      }
+    }
+  }
   revalidateQuietly();
   return { ok: true };
 }
