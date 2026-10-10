@@ -108,6 +108,36 @@ function localizedName(
   return v && v !== "" ? v : null;
 }
 
+/**
+ * XIVAPI v2 の 404 本文から「無かった行 ID」を取り出す (2026-10-10)。
+ *
+ * ⚠ XIVAPI v2 は `rows=` に**シートに無い行 ID が 1 つでも混ざると要求全体を
+ * 404** にする (実測: `{"code":404,"message":"not found: the Excel row
+ * Action/99999999:0 could not be found"}`)。FFLogs の `ability.guid` には
+ * Action シートに無い ID が混ざることがあり (本番で 2026-10-10 に確認)、
+ * そのバッチの他の技まで全部名前が付かなかった。呼び出し側はこの ID を
+ * 除いて引き直す。本文の形が違えば null (= 従来どおり失敗として扱う)。
+ */
+export function parseMissingRowId(body: unknown): number | null {
+  let message: string | null = null;
+  if (typeof body === "string") message = body;
+  else if (body && typeof body === "object") {
+    const m = (body as Record<string, unknown>)["message"];
+    if (typeof m === "string") message = m;
+  }
+  if (!message) return null;
+  const hit = /\bAction\/(\d+)(?::\d+)?\s+could not be found/.exec(message);
+  if (!hit) return null;
+  const id = Number(hit[1]);
+  return Number.isSafeInteger(id) && id > 0 ? id : null;
+}
+
+/**
+ * 1 バッチで「無い行 ID」を除いて引き直す回数の上限。1 回の引き直しが
+ * 1 往復なので、締切 (描画中は 2.5 秒) の中で収まる程度に絞る。
+ */
+export const XIVAPI_MAX_MISSING_RETRIES = 5;
+
 /** 配列を `size` 件ずつに切る。 */
 export function chunk<T>(items: readonly T[], size: number): T[][] {
   const out: T[][] = [];
