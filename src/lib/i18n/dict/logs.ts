@@ -481,7 +481,7 @@ export const ja = {
     deleteVideo: "この動画を外す",
     deleteVideoConfirmTitle: "この動画の紐づけを外しますか？",
     deleteVideoConfirmDescription:
-      "pull 側のログはそのまま残ります。開始位置の調整は消えるので、あとで紐づけ直すときは合わせ直しになります。",
+      "pull 側のログはそのまま残ります。開始位置の調整は消えるので、あとで紐づけ直すときは合わせ直しになります。動画側の Logs リンクも外れます (外さないと次の同期で自動で戻ります)。",
     toastDeleted: "動画の紐づけを外しました",
     // W-11 動画で合わせる (2026-09-07)。
     syncTitle: "動画を見ながら合わせる",
@@ -974,7 +974,7 @@ export const en: LogsMessages = {
     deleteVideo: "Unlink this video",
     deleteVideoConfirmTitle: "Unlink this video?",
     deleteVideoConfirmDescription:
-      "The pull logs stay. The start offset is removed, so you will need to set it again if you re-link the video.",
+      "The pull logs stay. The start offset is removed, so you will need to set it again if you re-link the video. The video's Logs link is removed too (otherwise the next sync would re-add it).",
     toastDeleted: "Unlinked the video",
     syncTitle: "Set it while watching",
     syncHint:

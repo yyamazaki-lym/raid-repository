@@ -239,7 +239,13 @@ try {
   check("サーバー: 絶は絞らず、零式は層クラスタで絞る (画面と同じ)", /const phases = resolveProgressModel\(model, [^\n]*\) === "phases";\s*const tier = phases \? fights : filterToFloorCluster\(fights, buildFloorMap\(fights\)\);/.test(seedFn), true);
   check("サーバー: 画面と同じ範囲 (新しい順に MAX_FIGHTS 件) を読む", /\.order\("start_ms", \{ ascending: false \}\)\s*\.order\("fight_id", \{ ascending: false \}\)[\s\S]*?\}, MAX_FIGHTS\);/.test(seedFn), true);
   check("サーバー: pullSpanByReport と offsetFromRecordingStart で出す", seedFn.includes("pullSpanByReport(tier)") && seedFn.includes("offsetFromRecordingStart("), true);
-  check("サーバー: 出せなければ従来どおり 0", /offset_seconds: offsets\.get\(report_code\) \?\? 0,/.test(seed), true);
+  // 2026-10-10: 1 レポートに複数の候補が来るので、キーは (レポート + 動画 URL)。
+  check("サーバー: 出せなければ従来どおり 0", /offset_seconds: offsets\.get\(c\.key\) \?\? 0,/.test(seed), true);
+  check("サーバー: 足す行は既存の末尾に付ける (既存の並びを崩さない)", /existing\.get\(c\.code\)\?\.nextOrder/.test(seed), true);
+  const del = readFileSync("src/lib/server/fflogs-fights-actions.ts", "utf8").replace(/\r\n/g, "\n");
+  const delAt = del.indexOf("export async function deleteReportVideoAction(");
+  const delFn = delAt < 0 ? "" : del.slice(delAt, del.indexOf("\n}\n", delAt));
+  check("外す: 動画側の logs_url も外す (次の同期で戻らない)", delFn.includes('.update({ logs_url: null })') && delFn.includes("parseFflogsReportCode(v.logs_url as string) === row.report_code"), true);
   const view = readFileSync("src/app/(portal)/category/[slug]/logs/logs-view.tsx", "utf8").replace(/\r\n/g, "\n");
   check("画面: pull #1 も pullSpanByReport (tierFights) から", /for \(const \[code, span\] of pullSpanByReport\(tierFights\)\)/.test(view), true);
   check("画面: tierFights は filterToFloorCluster で絞る", /const tierFights = useMemo\(\s*\(\) => filterToFloorCluster\(fights, floors\),/.test(view), true);

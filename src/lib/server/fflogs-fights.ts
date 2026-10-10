@@ -2243,10 +2243,17 @@ async function postGraphql(
  * 差を秒数にする (実機要望)。時刻が読めない・取り違えの検査
  * (`offsetFromRecordingStart`) に通らない動画は従来どおり 0。
  *
- * 既存行は一切触らない (人が入れた秒数を壊さない)。**すでに 1 行でもある
- * report は候補から外す** — 2026-09-07 に 1 レポート N 動画へ移行したが、
- * seed が後から 2 本目を勝手に足すと、人が「この日はこの動画」と決めた
- * 並びを機械が崩してしまう。2 本目以降は UI の「動画を追加」で入れる。
+ * 既存行は一切触らない (人が入れた秒数を壊さない)。
+ *
+ * 2026-10-10: **行の無い動画は、既に行があるレポートにも足す** (実機報告
+ * 「同日に別経路で取り込んだ動画が片方紐づかない」)。2026-10-02 までは
+ * 「1 行でもあるレポートは候補から外す」としていた (seed が 2 本目を勝手に
+ * 足すと人が決めた並びを崩す、2 本目は「動画を追加」で) が、Discord 取り込みと
+ * YouTube 再生リスト取り込みで**同じ日の動画が毎回 2 本**入る運用になり、
+ * 2 本目が毎回手作業になっていた。並びは崩さない — 新しい行は既存の
+ * `sort_order` の**末尾**に付け、既存行の秒数・表示名・並びは触らない。
+ * 人が外した動画が次の同期で戻らないように、「この動画を外す」
+ * (`deleteReportVideoAction`) は動画側の `logs_url` も外す (= 候補から消える)。
  */
 export async function seedReportVideosFromLinks(db: Db): Promise<number> {
   const [videosRes, existingRes] = await Promise.all([
@@ -2255,20 +2262,35 @@ export async function seedReportVideosFromLinks(db: Db): Promise<number> {
       .select("url, logs_url, title, category_id")
       .eq("kind", "video")
       .not("logs_url", "is", null)
-      .not("url", "is", null),
-    db.from("fflogs_report_videos").select("report_code"),
+      .not("url", "is", null)
+      // 同じレポートの動画が複数あるとき、足す順 (= 並び) を投稿順で安定させる。
+      .order("posted_at", { ascending: true, nullsFirst: false })
+      .order("id", { ascending: true }),
+    db.from("fflogs_report_videos").select("report_code, video_url, sort_order"),
   ]);
-  const already = new Set(
-    ((existingRes.data ?? []) as Array<{ report_code: string }>).map(
-      (r) => r.report_code,
-    ),
-  );
+  // report code → 既に紐づいている URL と、末尾の sort_order。
+  const existing = new Map<string, { urls: Set<string>; nextOrder: number }>();
+  for (const r of (existingRes.data ?? []) as Array<{
+    report_code: string;
+    video_url: string | null;
+    sort_order: number | string | null;
+  }>) {
+    const e = existing.get(r.report_code) ?? { urls: new Set<string>(), nextOrder: 0 };
+    if (r.video_url) e.urls.add(r.video_url);
+    e.nextOrder = Math.max(e.nextOrder, Number(r.sort_order ?? 0) + 1);
+    existing.set(r.report_code, e);
+  }
 
-  // report code → 動画。既に行がある report は候補から外す。
-  const byCode = new Map<
-    string,
-    { url: string; title: string | null; categoryId: string | null }
-  >();
+  // 候補 = logs_url の指すレポートにまだ行の無い動画 (同じ URL は 1 回)。
+  type Candidate = {
+    key: string;
+    code: string;
+    url: string;
+    title: string | null;
+    categoryId: string | null;
+  };
+  const candidates: Candidate[] = [];
+  const seen = new Set<string>();
   for (const row of (videosRes.data ?? []) as Array<{
     url: string | null;
     logs_url: string | null;
@@ -2277,29 +2299,40 @@ export async function seedReportVideosFromLinks(db: Db): Promise<number> {
   }>) {
     const code = parseFflogsReportCode(row.logs_url);
     if (!code || !row.url) continue;
-    if (already.has(code) || byCode.has(code)) continue;
-    byCode.set(code, {
+    const key = `${code}\u0000${row.url}`;
+    if (seen.has(key) || existing.get(code)?.urls.has(row.url)) continue;
+    seen.add(key);
+    candidates.push({
+      key,
+      code,
       url: row.url,
       title: row.title ?? null,
       categoryId: row.category_id ?? null,
     });
   }
-  if (byCode.size === 0) return 0;
+  if (candidates.length === 0) return 0;
 
   // 2026-10-02: タイトルに録画開始の時刻がある動画は秒数も入れる。
   let offsets = new Map<string, number>();
   try {
-    offsets = await offsetsFromRecordingTitles(db, byCode);
+    offsets = await offsetsFromRecordingTitles(db, candidates);
   } catch (e) {
     // 秒数は補助。出せなくても行は従来どおり 0 で作る。
     console.warn("[fflogs-fights] offset from title failed:", e);
   }
-  const rows = [...byCode.entries()].map(([report_code, v]) => ({
-    report_code,
-    video_url: v.url,
-    offset_seconds: offsets.get(report_code) ?? 0,
-    sort_order: 0,
-  }));
+  // 並びは「既存の末尾 → 候補の順 (投稿順)」。同じレポートに 2 本足すときも
+  // 番号が重ならないようにここで採番する。
+  const nextOrder = new Map<string, number>();
+  const rows = candidates.map((c) => {
+    const order = nextOrder.get(c.code) ?? existing.get(c.code)?.nextOrder ?? 0;
+    nextOrder.set(c.code, order + 1);
+    return {
+      report_code: c.code,
+      video_url: c.url,
+      offset_seconds: offsets.get(c.key) ?? 0,
+      sort_order: order,
+    };
+  });
   // ignoreDuplicates: 取得と書き込みの間に人が登録した行を上書きしない。
   // 一意キーは (report_code, video_url) — 主キーが id になったため。
   const { data, error } = await db
@@ -2314,8 +2347,11 @@ export async function seedReportVideosFromLinks(db: Db): Promise<number> {
 }
 
 /**
- * タイトルにある録画開始の時刻から、レポートごとのオフセットを出す
- * (2026-10-02)。出せなかったレポートは Map に載らない (呼び出し側は 0)。
+ * タイトルにある録画開始の時刻から、動画ごとのオフセットを出す
+ * (2026-10-02)。出せなかった動画は Map に載らない (呼び出し側は 0)。
+ * 2026-10-10 から 1 レポートに複数の候補が来るので、キーは呼び出し側の
+ * `key` (レポート + 動画 URL)。同じレポートの動画は同じ pull #1 を基準にし、
+ * 録画開始の時刻だけが動画ごとに違う。
  *
  * pull #1 は練習ログ画面と **同じ定義** にする — 層クラスタ内の最も早い
  * pull (絶はフェーズ管理なので絞らない)。画面と同じ範囲 (カテゴリの pull を
@@ -2325,20 +2361,25 @@ export async function seedReportVideosFromLinks(db: Db): Promise<number> {
  */
 async function offsetsFromRecordingTitles(
   db: Db,
-  byCode: ReadonlyMap<
-    string,
-    { title: string | null; categoryId: string | null }
-  >,
+  candidates: ReadonlyArray<{
+    key: string;
+    code: string;
+    title: string | null;
+    categoryId: string | null;
+  }>,
 ): Promise<Map<string, number>> {
   const out = new Map<string, number>();
-  // カテゴリ → (report code, 録画開始)。時刻の読めない動画はここで落とす。
-  const pending = new Map<string, Array<{ code: string; recordingStartMs: number }>>();
-  for (const [code, v] of byCode) {
+  // カテゴリ → (key, report code, 録画開始)。時刻の読めない動画はここで落とす。
+  const pending = new Map<
+    string,
+    Array<{ key: string; code: string; recordingStartMs: number }>
+  >();
+  for (const v of candidates) {
     if (!v.categoryId || !v.title) continue;
     const recordingStartMs = parseRecordingStartFromTitle(v.title, APP_UTC_OFFSET_ISO);
     if (recordingStartMs === null) continue;
     const list = pending.get(v.categoryId) ?? [];
-    list.push({ code, recordingStartMs });
+    list.push({ key: v.key, code: v.code, recordingStartMs });
     pending.set(v.categoryId, list);
   }
 
@@ -2383,7 +2424,7 @@ async function offsetsFromRecordingTitles(
         span.firstStartMs,
         span.lastStartMs,
       );
-      if (seconds !== null) out.set(t.code, seconds);
+      if (seconds !== null) out.set(t.key, seconds);
     }
   }
   return out;
