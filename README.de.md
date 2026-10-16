@@ -91,26 +91,32 @@ Next.js 16 + React 19 + Tailwind CSS v4 · Supabase (Postgres + Realtime + RLS) 
 
 ## Einrichtung (Kurzfassung, 20–40 Minuten)
 
-**Von Hand sammelst du nur fünf Werte.** Die ausführliche Anleitung steht im [englischen Guide](docs/setup.en.md).
+**Von Hand sammelst du nur sechs Werte** (fünf Pflichtwerte + die Admin-Rollen-ID). Die ausführliche Anleitung steht im [englischen Guide](docs/setup.en.md).
 
-> ⚠ Beim Forken **den Repository-Namen ändern** (z. B. `pandora-raid`). Mit dem Standardnamen ist dein Fork von allen anderen nicht zu unterscheiden.
+> ⚠ Beim Forken **den Standardnamen `raid-repository` ändern** (z. B. `pandora-raid`). Mit dem Standardnamen ist dein Fork von allen anderen nicht zu unterscheiden. Der Name wird auch zum Standardnamen des Vercel-Projekts.
 
-### 1. Fünf Werte sammeln (im Browser)
+### 1. Sechs Werte sammeln (im Browser)
 
 | # | Wert | Wo |
 |---|---|---|
 | 1–3 | Supabase **Project URL** / **anon** / **service_role** | Projekt bei [Supabase](https://supabase.com) anlegen → Settings → API |
 | 4 | Discord **Bot-Token** | [Developer Portal](https://discord.com/developers/applications) → Bot → Reset Token (**SERVER MEMBERS INTENT einschalten**) |
 | 5 | Discord **Server-ID** | Discord (Entwicklermodus) → Rechtsklick auf den Server |
+| 6 | **Admin-Rollen-ID** (`DISCORD_ADMIN_ROLE_IDS`) | Discord → Servereinstellungen → Rollen → Rechtsklick → Rollen-ID kopieren. **Ohne diesen Wert kann niemand Inhalte bearbeiten oder Einstellungen ändern** |
 
-Zwei weitere Dinge im Browser:
+Drei weitere Dinge im Browser:
 
+- Den Bot auf deinen Server einladen (Developer Portal → **OAuth2 → URL Generator** → Scopes `bot`). **Ist der Bot nicht auf dem Server, kann sich niemand anmelden**
 - In Discord **OAuth2 → Redirects** `https://<project ref>.supabase.co/auth/v1/callback` eintragen
 - In Supabase **Authentication → Providers → Discord** aktivieren und Client ID / Secret einfügen
 
-### 2. Konfiguration und Datenbank (ein Befehl)
+### 2. Konfiguration und Datenbank (Befehle)
+
+Dieses Repository **forken** und dann deinen Fork klonen:
 
 ```bash
+git clone https://github.com/<du>/<dein-fork>.git
+cd <dein-fork>
 npm install
 npm run setup
 ```
@@ -119,7 +125,9 @@ Das Skript prüft jeden Wert bei der Eingabe, schreibt `.env.local`, **erzeugt**
 
 ### 3. Deployen und die Rücksprung-URL eintragen
 
-Nach dem Deployment bei Vercel unter **Supabase → Authentication → URL Configuration** die Site URL und die Redirect URLs (`https://<deine Domain>/auth/callback` und `http://localhost:3000/auth/callback`) eintragen. **Ohne diesen Schritt kommt die Anmeldung nicht zurück.**
+In [Vercel](https://vercel.com/new) **Add New → Project** wählen, **deinen eigenen Fork** importieren, den gesamten Inhalt von `.env.local` unter **Environment Variables** einfügen und deployen (inklusive `CRON_SECRET`, `SECRET_ENCRYPTION_KEY` und `DISCORD_ADMIN_ROLE_IDS`; Details in Schritt 6 der [Anleitung](docs/setup.en.md#6-deploy-to-vercel-5-min)). ⚠ Die Zeilen `DEV_AUTH_BYPASS` / `PUBLIC_DEMO_MODE` nicht einfügen.
+
+Sobald die Domain feststeht, unter **Supabase → Authentication → URL Configuration** die Site URL und die Redirect URLs (`https://<deine Domain>/auth/callback` und `http://localhost:3000/auth/callback`) eintragen. **Ohne diesen Schritt kommt die Anmeldung nicht zurück.**
 
 ```bash
 npm run doctor -- --url https://<deine Domain>
@@ -143,6 +151,10 @@ npm run setup   # beim ersten Mal (erzeugt .env.local)
 npm run dev
 ```
 
+http://localhost:3000 öffnen (im Terminal steht `127.0.0.1`, aber die Rücksprung-URL der Anmeldung ist für `localhost` eingetragen — also `localhost` verwenden).
+
 ## Lizenz
 
 MIT
+
+Die Schriften in `src/app/fonts/` (Geist, JetBrains Mono, Orbitron) stehen unter der SIL Open Font License 1.1 (siehe die jeweilige `OFL-*.txt`).

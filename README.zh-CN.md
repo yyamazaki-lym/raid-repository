@@ -91,26 +91,32 @@ Next.js 16 + React 19 + Tailwind CSS v4 · Supabase（Postgres + Realtime + RLS�
 
 ## 安装（摘要，20–40 分钟）
 
-**需要手动收集的值只有 5 个**。逐屏说明见[英文指南](docs/setup.en.md)。
+**需要手动收集的值只有 6 个**（必填 5 个 + 管理员角色 ID）。逐屏说明见[英文指南](docs/setup.en.md)。
 
-> ⚠ fork 时**务必修改仓库名**（如 `pandora-raid`）。保留默认名会与其他队伍的 fork 无法区分。
+> ⚠ fork 时**务必修改仓库名的默认值 `raid-repository`**（如 `pandora-raid`）。保留默认名会与其他队伍的 fork 无法区分。它也会成为 Vercel 项目名的默认值。
 
-### 1. 收集 5 个值（浏览器）
+### 1. 收集 6 个值（浏览器）
 
 | # | 值 | 位置 |
 |---|---|---|
 | 1–3 | Supabase 的 **Project URL** / **anon** / **service_role** | 在 [Supabase](https://supabase.com) 建项目 → Settings → API |
 | 4 | Discord **Bot 令牌** | [Developer Portal](https://discord.com/developers/applications) → Bot → Reset Token（**打开 SERVER MEMBERS INTENT**） |
 | 5 | Discord **服务器 ID** | Discord（开发者模式）→ 右键服务器 |
+| 6 | **管理员角色 ID**（`DISCORD_ADMIN_ROLE_IDS`） | Discord → 服务器设置 → 身份组 → 右键 → 复制身份组 ID。**不设置的话，谁都无法编辑内容或更改设置** |
 
-浏览器里还有两件事：
+浏览器里还有三件事：
 
+- 把 Bot 邀请进你的服务器（Developer Portal → **OAuth2 → URL Generator** → Scopes `bot`）。**Bot 不在服务器里的话，谁都无法登录**
 - 在 Discord **OAuth2 → Redirects** 添加 `https://<project ref>.supabase.co/auth/v1/callback`
 - 在 Supabase **Authentication → Providers → Discord** 打开并粘贴 Client ID / Secret
 
-### 2. 配置与数据库（一条命令）
+### 2. 配置与数据库（命令）
+
+先 **Fork** 本仓库，再把你的 fork clone 到本地：
 
 ```bash
+git clone https://github.com/<你>/<你的 fork>.git
+cd <你的 fork>
 npm install
 npm run setup
 ```
@@ -119,7 +125,9 @@ npm run setup
 
 ### 3. 部署并登记回跳地址
 
-部署到 Vercel 后，在 **Supabase → Authentication → URL Configuration** 填写 Site URL 与 Redirect URLs（`https://<域名>/auth/callback` 和 `http://localhost:3000/auth/callback`）。**漏掉这一步，登录后就回不来。**
+在 [Vercel](https://vercel.com/new) → **Add New → Project** 导入**你自己的 fork**，把 `.env.local` 的全部内容粘贴到 **Environment Variables**，然后 Deploy（包括 `CRON_SECRET`、`SECRET_ENCRYPTION_KEY`、`DISCORD_ADMIN_ROLE_IDS`；详见[英文指南](docs/setup.en.md#6-deploy-to-vercel-5-min)第 6 步）。⚠ 不要粘贴 `DEV_AUTH_BYPASS` / `PUBLIC_DEMO_MODE` 这两行。
+
+部署确定域名后，在 **Supabase → Authentication → URL Configuration** 填写 Site URL 与 Redirect URLs（`https://<域名>/auth/callback` 和 `http://localhost:3000/auth/callback`）。**漏掉这一步，登录后就回不来。**
 
 ```bash
 npm run doctor -- --url https://<你的域名>
@@ -143,6 +151,10 @@ npm run setup   # 首次（生成 .env.local）
 npm run dev
 ```
 
+打开 http://localhost:3000（终端里显示的是 `127.0.0.1`，但登录回跳地址登记的是 `localhost`，所以请用 `localhost` 打开）。
+
 ## 许可证
 
 MIT
+
+但 `src/app/fonts/` 中的字体（Geist、JetBrains Mono、Orbitron）采用 SIL Open Font License 1.1（见各字体的 `OFL-*.txt`）。

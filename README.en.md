@@ -81,28 +81,34 @@ Opened from the person icon in the header. It shows **only your own data** (admi
 
 ## Getting started
 
-**You collect five values by hand**; the rest is scripted. Expect 20–40 minutes. Screen-by-screen detail lives in **[`docs/setup.en.md`](docs/setup.en.md)**.
+**You collect six values by hand** (five required + the admin role ID); the rest is scripted. Expect 20–40 minutes. Screen-by-screen detail lives in **[`docs/setup.en.md`](docs/setup.en.md)**.
 
 > ### ⚠ Before you fork
 >
-> On the page the Deploy / Fork button takes you to, **change the default `my-raid-repository` name**. Leaving it means your fork is indistinguishable from everyone else's in your Vercel dashboard (pick something like `pandora-raid` or `tuesday-night-raid`). It applies to **both GitHub and Vercel**.
+> On the page the Fork button takes you to, **change the default repository name `raid-repository`**. Leaving it means your fork is indistinguishable from everyone else's (pick something like `pandora-raid` or `tuesday-night-raid`). It also becomes the default Vercel project name.
 
-### 1. Collect five values (in the browser)
+### 1. Collect six values (in the browser)
 
 | # | Value | Where |
 |---|---|---|
 | 1–3 | Supabase **Project URL** / **anon** / **service_role** | Create a project at [Supabase](https://supabase.com), then Settings → API |
 | 4 | Discord **bot token** | [Developer Portal](https://discord.com/developers/applications) → Bot → Reset Token (**turn SERVER MEMBERS INTENT on**) |
 | 5 | Discord **server ID** | Discord (developer mode) → right-click the server |
+| 6 | **Admin role ID** (`DISCORD_ADMIN_ROLE_IDS`) | Discord → Server Settings → Roles → right-click → Copy Role ID. **If unset, nobody can edit content or change settings** |
 
-Two more things in the browser:
+Three more things in the browser:
 
+- Invite the bot to your server (Developer Portal → **OAuth2 → URL Generator** → Scopes `bot`). **If the bot is not in your server, nobody can log in**
 - Add `https://<project ref>.supabase.co/auth/v1/callback` under Discord **OAuth2 → Redirects**
 - Turn on **Authentication → Providers → Discord** in Supabase and paste the Discord Client ID / Secret
 
-### 2. Config and database (one command)
+### 2. Config and database (commands)
+
+**Fork** this repository, then clone your fork:
 
 ```bash
+git clone https://github.com/<you>/<your-fork>.git
+cd <your-fork>
 npm install
 npm run setup
 ```
@@ -111,7 +117,7 @@ npm run setup
 
 ### 3. Deploy, then register the return URL
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/yyamazaki-lym/raid-repository&env=NEXT_PUBLIC_SUPABASE_URL,NEXT_PUBLIC_SUPABASE_ANON_KEY,SUPABASE_SERVICE_ROLE_KEY,DISCORD_BOT_TOKEN,DISCORD_GUILD_ID&envDescription=Supabase%20%2B%20Discord%20OAuth%20required%20%28details%20%3A%20envLink%29&envLink=https://github.com/yyamazaki-lym/raid-repository/blob/main/.env.local.example&project-name=my-raid-repository&repository-name=my-raid-repository)
+In [Vercel](https://vercel.com/new), **Add New → Project**, import **your own fork**, paste the whole of `.env.local` into **Environment Variables**, and Deploy (including `CRON_SECRET`, `SECRET_ENCRYPTION_KEY`, and `DISCORD_ADMIN_ROLE_IDS`; details in step 6 of [`docs/setup.en.md`](docs/setup.en.md#6-deploy-to-vercel-5-min)). ⚠ Do not paste the `DEV_AUTH_BYPASS` / `PUBLIC_DEMO_MODE` lines.
 
 Once the deployment gives you a domain, add it under **Supabase → Authentication → URL Configuration**: the Site URL, plus `https://<your-domain>/auth/callback` and `http://localhost:3000/auth/callback` as Redirect URLs. **Skip this and login will not come back to your site.**
 
@@ -152,13 +158,13 @@ npm run setup   # first time; writes .env.local (or copy .env.local.example by h
 npm run dev
 ```
 
-Open http://localhost:3000
+Open http://localhost:3000 (the terminal prints `127.0.0.1`, but the login return URL is registered for `localhost`, so open `localhost`).
 
 | Command | What it does |
 |---|---|
 | `npm run setup` | Interactive setup (`.env.local` → schema → diagnostics) |
 | `npm run doctor` | Diagnose the configuration; add `-- --url https://…` to check a deployment |
-| `npm run dev` | Dev server |
+| `npm run dev` | Dev server (bound to `127.0.0.1`, so only this computer can open it: `DEV_AUTH_BYPASS` makes you admin, so other devices on the same Wi-Fi are kept out) |
 | `npm run build` | Production build |
 | `npm run lint` | ESLint |
 
@@ -191,3 +197,5 @@ The logos live in `public/brand/`. In `logo-mark.svg` the crystal is the vessel 
 ## License
 
 MIT
+
+The fonts in `src/app/fonts/` (Geist, JetBrains Mono, Orbitron) are under the SIL Open Font License 1.1 (see each font's `OFL-*.txt`).
