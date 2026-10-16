@@ -21,8 +21,15 @@ on:
       - '.github/workflows/deploy-database.yml'
   workflow_dispatch:
 
+# 読むだけ (checkout) なので GITHUB_TOKEN の権限は最小にする。
+permissions:
+  contents: read
+
 jobs:
   deploy:
+    # workflow_dispatch はどのブランチからでも起動できるので、main 以外の
+    # (レビュー前の) schema.sql が本番 / デモの DB に流れないよう main に限る。
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6

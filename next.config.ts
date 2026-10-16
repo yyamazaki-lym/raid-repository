@@ -93,6 +93,8 @@ const SUPABASE_IMAGE_HOST = supabaseImageHost();
 
 const nextConfig: NextConfig = {
   ...(deploymentId ? { deploymentId } : {}),
+  // `X-Powered-By: Next.js` を返さない (使っているフレームワークを外に教えない)
+  poweredByHeader: false,
   experimental: {
     // 2026-10-09: `next build` の Turbopack のファイルキャッシュ (既定で有効、
     // `.next/cache/turbopack`) を止める。Vercel は前のデプロイの `.next/cache` を

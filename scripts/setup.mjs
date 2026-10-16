@@ -25,7 +25,7 @@
  */
 import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
 import { REQUIRED, OPTIONAL, mask, parseEnvText } from "./setup-env-spec.mjs";
@@ -220,7 +220,7 @@ if (existsSync(ENV_PATH)) {
   }
   // 上書き前に控えを残す (取り返しがつくようにする)
   const backup = `${ENV_PATH}.bak`;
-  writeFileSync(backup, readFileSync(ENV_PATH));
+  writeFileSync(backup, readFileSync(ENV_PATH), { mode: 0o600 });
   console.log(`  控えを ${backup} に残しました`);
 }
 
@@ -245,8 +245,16 @@ const extra = Object.entries(values)
 writeFileSync(
   ENV_PATH,
   extra.length > 0 ? `${body}\n# --- setup が追加 ---\n${extra.join("\n")}\n` : `${body}\n`,
-  "utf8",
+  // 秘密の値が入るので、共有マシンでも本人以外が読めないようにする
+  { encoding: "utf8", mode: 0o600 },
 );
+// mode は新規作成時にしか効かないので、上書きした既存ファイルにも掛け直す
+// (Windows では効かないが害も無い)
+try {
+  chmodSync(ENV_PATH, 0o600);
+} catch {
+  // 権限を変えられない FS でも続行する
+}
 console.log(`✅ ${ENV_PATH} を書きました`);
 
 // ---- スキーマ適用 ----------------------------------------------------------
@@ -284,18 +292,21 @@ if (!hasPsql) {
     console.log("  → 空だったので飛ばします。");
   } else {
     console.log("  適用中…");
+    // shell: true にしない。接続文字列にはパスワードが入り、`$ & ; |` などを
+    // 含むとシェルに解釈されて壊れる (コマンドとして実行され得る)。
     const r = spawnSync(
       "psql",
       [dbUrl, "-v", "ON_ERROR_STOP=1", "--single-transaction", "-f", "supabase/schema.sql"],
-      { stdio: "inherit", shell: true },
+      { stdio: "inherit" },
     );
     if (r.status === 0) {
       console.log("✅ スキーマを適用しました");
       // 以後の更新を自動化する導線 (gh があるときだけ提案する)
       if (has("gh") && (await confirm("\n今後の schema 更新を GitHub Actions に任せますか?"))) {
-        const g = spawnSync("gh", ["secret", "set", "SUPABASE_DB_URL", "--body", dbUrl], {
-          stdio: "inherit",
-          shell: true,
+        // 値は標準入力で渡す (--body だとパスワード入りの接続文字列がプロセス一覧に出る)。
+        const g = spawnSync("gh", ["secret", "set", "SUPABASE_DB_URL"], {
+          input: dbUrl,
+          stdio: ["pipe", "inherit", "inherit"],
         });
         if (g.status === 0) {
           console.log(
