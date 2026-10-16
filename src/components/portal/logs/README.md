@@ -11,7 +11,7 @@
 「W-1〜W-4 を載せる前に、行ヘッダー / pull 行 / サマリの部品分割が要る」と
 指摘されていた箇所です。
 
-分割後は `logs-view.tsx` が 1,319 行で、**状態と組み立てだけ**を持ちます
+分割直後の `logs-view.tsx` は 1,319 行 (2026-10-16 時点で 1,648 行) で、**状態と組み立てだけ**を持ちます
 (同期 / 取り込み / 診断のダイアログ、フィルタ、集計の `useMemo`、
 `offsetTarget` の保持)。表示は本ディレクトリの部品が担います。
 
@@ -35,6 +35,9 @@
 | `session-summary-row.tsx` | セッションサマリー (W-3。拘束 / 実戦闘 / 戦闘外 / 平均プル長) |
 | `team-badges-card.tsx` | チーム実績バッジ (W-31。初討伐 / ノーデス / 最速 / 回数) |
 | `trend-card.tsx` | 進行トレンド (W-4。インライン SVG の折れ線 2 本 + ペースの目安) |
+| `pull-detail-panel.tsx` | pull 1 本の明細 (ミス注釈・死亡直前の被ダメージ。`pull-row.tsx` から開く) |
+| `mitigation-draft-panel.tsx` | 被ダメージのタイムラインから軽減表の下書きを作るパネル (`pull-detail-panel.tsx` が使う) |
+| `pull-notes-card.tsx` | ミス注釈の集計カード (タグ別の件数とまとめのコピー) |
 
 依存の向きは一方向です:
 
@@ -42,13 +45,16 @@
 logs-view.tsx
   ├── stat-card / wipe-causes-card / phase-time-card / floor-clear-card
   │   / team-badges-card / trend-card / failed-list / segment-filter
+  ├── pull-notes-card
   ├── offset-dialog
   │     └── video-sync-panel
   └── day-row
         ├── session-summary-row
         ├── pull-box-row
         └── pull-row
-              └── phase-span-bar
+              ├── phase-span-bar
+              └── pull-detail-panel
+                    └── mitigation-draft-panel
   (day-row と pull-row は video-link を共有)
 ```
 
@@ -61,8 +67,10 @@ logs-view.tsx
   `floorTextToneClass()` / `phaseTextToneClass()` / `phaseBarToneClass()`
   として置いてあります。フォールバック色が呼び出し側で
   `text-foreground/70` と `/75` に分かれていた (事故) のは `/75` に揃えました。
-- **部品は表示だけを持つ**。Server Action の呼び出しは
-  `offset-dialog.tsx` (動画の保存 / 削除) だけが持ちます。
+- **部品は原則として表示だけを持つ**。Server Action を呼ぶのは
+  `offset-dialog.tsx` (動画の保存 / 削除)、`pull-detail-panel.tsx`
+  (pull 明細・ミス注釈・死亡直前)、`mitigation-draft-panel.tsx`
+  (被ダメージのタイムライン) だけです。
   `video-sync-panel.tsx` は外部プレーヤーと `postMessage` するだけで、
   保存はしません (オフセットの値を `offset-dialog` に返すところまで)。同期・取り込み・
   診断・再分類は `logs-view.tsx` 側です。
