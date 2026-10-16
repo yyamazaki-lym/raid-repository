@@ -161,9 +161,9 @@ hr("任意の設定");
 
 const adminSpec = OPTIONAL.find((o) => o.key === "DISCORD_ADMIN_ROLE_IDS");
 console.log(
-  "\n管理者ロールを設定しないと、**サーバーのメンバー全員がコンテンツを編集できます**。",
+  "\n管理者ロールを設定しないと、**誰もコンテンツの編集や ⚙️ の設定ができません**。自分が持っているロールの ID を入れてください。",
 );
-if (await confirm("管理者ロールを設定しますか?", false)) {
+if (await confirm("管理者ロールを設定しますか?", true)) {
   values.DISCORD_ADMIN_ROLE_IDS = await ask(adminSpec, current.DISCORD_ADMIN_ROLE_IDS);
 } else {
   values.DISCORD_ADMIN_ROLE_IDS = current.DISCORD_ADMIN_ROLE_IDS ?? "";

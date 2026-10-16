@@ -81,28 +81,34 @@ FFLogs から pull 単位で取り込んで表示します。
 
 ## 使い始める
 
-**手で集める値は 5 つだけ**、所要 20〜40 分です。詳しい画面の位置は **[`docs/setup.md`](docs/setup.md)** にあります。
+**手で集める値は 6 つだけ** (必須 5 つ + 管理者ロール ID)、所要 20〜40 分です。詳しい画面の位置は **[`docs/setup.md`](docs/setup.md)** にあります。
 
 > ### ⚠ fork する前に
 >
-> Deploy ボタン / Fork ボタンの先で、**リポジトリ名とプロジェクト名の既定値 `my-raid-repository` を必ず変えてください**。そのままだと他の固定の fork と見分けが付かなくなります (例: `pandora-raid`, `tuesday-night-raid`)。**GitHub と Vercel の両方**に反映されます。
+> Fork ボタンの先で、**リポジトリ名の既定値 `raid-repository` を必ず変えてください**。そのままだと他の固定の fork と見分けが付かなくなります (例: `pandora-raid`, `tuesday-night-raid`)。Vercel のプロジェクト名の既定値にもなります。
 
-### 1. 値を 5 つ集める (ブラウザ)
+### 1. 値を 6 つ集める (ブラウザ)
 
 | # | 値 | どこで |
 |---|---|---|
 | 1〜3 | Supabase の **Project URL** / **anon** / **service_role** | [Supabase](https://supabase.com) でプロジェクトを作り、Settings → API |
 | 4 | Discord の **Bot トークン** | [Developer Portal](https://discord.com/developers/applications) → Bot → Reset Token (**SERVER MEMBERS INTENT を ON**) |
 | 5 | Discord の **サーバー ID** | Discord (開発者モード) → サーバー右クリック |
+| 6 | **管理者ロール ID** (`DISCORD_ADMIN_ROLE_IDS`) | Discord → サーバー設定 → ロール → 右クリック → ロール ID をコピー。**未設定だと誰も編集・設定できません** |
 
-あわせてブラウザ側で 2 つ:
+あわせてブラウザ側で 3 つ:
 
+- Bot を自分のサーバーに招待 (Developer Portal → **OAuth2 → URL Generator** → Scopes `bot`)。**Bot がサーバーに居ないと誰もログインできません**
 - Discord の **OAuth2 → Redirects** に `https://<project ref>.supabase.co/auth/v1/callback` を登録
 - Supabase の **Authentication → Providers → Discord** を ON にして、Discord の Client ID / Secret を貼る
 
 ### 2. 設定とデータベース (コマンド)
 
+このリポジトリを **Fork** してから、自分の fork を手元に clone します。
+
 ```bash
+git clone https://github.com/<自分>/<fork 名>.git
+cd <fork 名>
 npm install
 npm run setup
 ```
@@ -111,7 +117,7 @@ npm run setup
 
 ### 3. デプロイして、戻り先を登録する
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/yyamazaki-lym/raid-repository&env=NEXT_PUBLIC_SUPABASE_URL,NEXT_PUBLIC_SUPABASE_ANON_KEY,SUPABASE_SERVICE_ROLE_KEY,DISCORD_BOT_TOKEN,DISCORD_GUILD_ID&envDescription=Supabase%20%2B%20Discord%20OAuth%20%E5%BF%85%E9%A0%88%20%28%E8%A9%B3%E7%B4%B0%20%3A%20envLink%29&envLink=https://github.com/yyamazaki-lym/raid-repository/blob/main/.env.local.example&project-name=my-raid-repository&repository-name=my-raid-repository)
+[Vercel](https://vercel.com/new) → **Add New → Project** で**自分の fork** を Import し、**Environment Variables** に `.env.local` の中身を全部貼って Deploy します (`CRON_SECRET`・`SECRET_ENCRYPTION_KEY`・`DISCORD_ADMIN_ROLE_IDS` も含めて。詳しくは [`docs/setup.md`](docs/setup.md#6-vercel-にデプロイする-5-分) の手順 6)。⚠ `DEV_AUTH_BYPASS` / `PUBLIC_DEMO_MODE` の行は貼らないでください。
 
 デプロイでドメインが決まったら、**Supabase → Authentication → URL Configuration** に Site URL と Redirect URLs (`https://<ドメイン>/auth/callback` と `http://localhost:3000/auth/callback`) を登録します。**ここを忘れるとログイン後に戻れません。**
 
@@ -152,7 +158,7 @@ npm run setup   # 初回。.env.local を作ります (手で書くなら .env.l
 npm run dev
 ```
 
-http://localhost:3000 を開きます。
+http://localhost:3000 を開きます (ターミナルには `127.0.0.1` と出ますが、ログインの戻り先は `localhost` で登録しているので `localhost` で開いてください)。
 
 | コマンド | 何をするか |
 |---|---|

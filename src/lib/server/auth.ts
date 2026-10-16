@@ -213,8 +213,8 @@ export async function getAuthorizedUserRoles(): Promise<string[]> {
 //
 // `DISCORD_ADMIN_ROLE_IDS` env (カンマ区切り role ID) で「管理者ロール」を
 // 定義し、カテゴリの create / update / delete をそのロール持ちのみに制限
-// する。env 未設定 = 旧挙動 (全 guild メンバー編集可) — 既存デプロイの
-// 後方互換のため fail-open。本番は env を設定してロックダウンすべき。
+// する。env 未設定なら **誰も admin にならない** (2026-06-09 に fail-closed 化。
+// 以前は全 guild メンバー編集可の fail-open だった — admin-roles.ts 参照)。
 //
 // UI 側は `getCurrentUserCanEdit()` で sync 状態をフェッチし、編集 UI
 // を非 admin に対して隠す。Server Action 側は `requireAdmin()` (ハード)

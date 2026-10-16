@@ -110,12 +110,14 @@ export async function safeFetch(
   const mode = init.redirect ?? "follow";
   const method = (init.method ?? "GET").toUpperCase();
   let current = url;
+  let headers = init.headers;
   for (let hop = 0; ; hop++) {
     assertNotBlockedLiteral(current);
     const res = (await undiciFetch(current, {
       ...(init as UndiciRequestInit),
       redirect: "manual",
       dispatcher: safeAgent,
+      headers: headers as UndiciRequestInit["headers"],
     })) as unknown as Response;
     const isRedirect = res.status >= 300 && res.status < 400;
     if (!isRedirect || mode === "manual") return res;
@@ -135,6 +137,16 @@ export async function safeFetch(
     const next = new URL(loc, current);
     if (next.protocol !== "http:" && next.protocol !== "https:") {
       throw new TypeError("redirect to a non-http(s) URL");
+    }
+    // 別オリジンへ移るときは資格情報のヘッダを落とす (fetch 仕様の follow と
+    // 同じ扱い。手で追っているので自分でやらないと Authorization / Cookie が
+    // redirect 先へそのまま渡る)。
+    if (next.origin !== new URL(current).origin && headers !== undefined) {
+      const h = new Headers(headers);
+      h.delete("authorization");
+      h.delete("cookie");
+      h.delete("proxy-authorization");
+      headers = h;
     }
     current = next.toString();
   }

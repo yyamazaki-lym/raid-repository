@@ -64,7 +64,7 @@ export default async function CategoryIndexPage() {
   // MainTabs ドロップダウンと subpage 直アクセスは引き続きロール gate。
   // 2.1 (TODO #21): admin 限定編集。canEdit=false のときは「+追加」/
   // MaintenanceMenu / DnD / ⋮ メニュー / ステータス変更 を全て隠す。
-  // env (`DISCORD_ADMIN_ROLE_IDS`) 未設定なら canEdit=true (後方互換)。
+  // env (`DISCORD_ADMIN_ROLE_IDS`) 未設定なら canEdit=false (fail-closed)。
   const canEdit = userIsAdmin(userRoles);
 
   return (

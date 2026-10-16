@@ -5,6 +5,7 @@ import {
   updateUserAppMetadata,
 } from "./discord-membership";
 import { userIsAdmin } from "./admin-roles";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 /**
  * Discord メンバーシップ / admin ロールの **定期再検証** (2026-08-05 監査 H-1)。
@@ -129,6 +130,17 @@ export async function revalidateMembership(
 
   const age = membershipAgeMs(claims, now);
   if (age < membershipSoftTtlMs()) return { status: "fresh" };
+
+  // 2026-10-16 セキュリティ精査: 問い合わせはユーザーごとに 1 分 1 回まで。
+  // 古い (soft TTL 超えの) アクセストークンを、更新後の cookie を捨てながら
+  // 送り続けると、リクエストのたびに Discord API と Supabase Admin を叩けて
+  // しまい、Bot トークンのレート制限を使い切って他の人のログイン
+  // (/auth/callback の fetchGuildMember) まで止められた。間引いた回は
+  // deferred で通す — hard TTL を超えていれば auth.ts と RLS の鮮度の検査が
+  // 別に拒否するので、ここで revoked にしない (同時に飛んだ正規の
+  // リクエストを巻き込んでサインアウトさせないため)。
+  const gate = await checkRateLimit("membership-reval", userId, 1, 60_000);
+  if (!gate.allowed) return { status: "deferred", reason: "throttled" };
 
   const membership = await fetchGuildMember(discordId);
 

@@ -139,10 +139,10 @@ export async function runDoctor({ envPath = ".env.local", siteUrl } = {}) {
   }
 
   if ((env.DISCORD_ADMIN_ROLE_IDS ?? "").trim() === "") {
-    warning(
+    ng(
       "DISCORD_ADMIN_ROLE_IDS が未設定",
-      "サーバーのメンバー全員が編集できます",
-      "幹部だけに絞るならロール ID を設定してください (後からでも可)",
+      "誰もコンテンツの編集や ⚙️ の設定ができません (未設定は全員非 admin)",
+      "Discord → サーバー設定 → ロール → 右クリック → ロール ID をコピー して、自分が持っているロールを設定してください",
     );
   }
 
