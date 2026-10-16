@@ -139,10 +139,10 @@ export async function runDoctor({ envPath = ".env.local", siteUrl } = {}) {
   }
 
   if ((env.DISCORD_ADMIN_ROLE_IDS ?? "").trim() === "") {
-    warning(
+    ng(
       "DISCORD_ADMIN_ROLE_IDS が未設定",
-      "サーバーのメンバー全員が編集できます",
-      "幹部だけに絞るならロール ID を設定してください (後からでも可)",
+      "誰もコンテンツの編集や ⚙️ の設定ができません (未設定は全員非 admin)",
+      "Discord → サーバー設定 → ロール → 右クリック → ロール ID をコピー して、自分が持っているロールを設定してください",
     );
   }
 
@@ -151,6 +151,14 @@ export async function runDoctor({ envPath = ".env.local", siteUrl } = {}) {
 
   if (supabaseUrl === "" || anonKey === "") {
     ng("接続確認", "URL か anon キーが無いので試せません");
+  } else if (!/^https:\/\/[^/?#\s]+$/.test(supabaseUrl)) {
+    // 綴り違いや http:// のまま送ると、anon / service_role キーを別のホストへ、
+    // あるいは平文で送ってしまう。https の URL になるまで通信しない。
+    ng(
+      "接続確認",
+      "NEXT_PUBLIC_SUPABASE_URL が https://<ホスト> の形ではないので、キーを送らずに止めました",
+      "Supabase → Settings → API → Project URL をもう一度コピーしてください",
+    );
   } else {
     // ⚠ **`/rest/v1/` のルートで疎通確認をしない。** anon キーでは 401 になる
     // (Supabase の応答: "Only the `service_role` API key can be used for this")。

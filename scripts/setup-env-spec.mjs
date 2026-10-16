@@ -110,7 +110,7 @@ export const OPTIONAL = [
   {
     key: "DISCORD_ADMIN_ROLE_IDS",
     label: "管理者にする Discord ロール ID (カンマ区切り)",
-    hint: "未設定だと**メンバー全員が編集できます**。幹部だけに絞るなら入れてください",
+    hint: "未設定だと**誰も編集できません** (⚙️ の設定も開けません)。自分が持っているロールの ID を必ず入れてください",
     where: "Discord → サーバー設定 → ロール → 右クリック → ロール ID をコピー",
     validate: validateRoleIds,
   },
@@ -124,14 +124,14 @@ export const OPTIONAL = [
   {
     key: "CRON_SECRET",
     label: "定期実行の合言葉 (32 文字以上のランダム)",
-    hint: "Discord 自動取り込みなどの定期実行に必要。setup で自動生成できます",
+    hint: "未設定だと Discord 自動取り込み・FFLogs 同期・通知などの定期実行がすべて止まります。setup で自動生成できます",
     where: "自分で決める (setup が生成します)",
     secret: true,
   },
   {
     key: "SECRET_ENCRYPTION_KEY",
     label: "保存する秘密の暗号化キー (64 文字の 16 進)",
-    hint: "FFLogs のトークンを暗号化して保管します。未設定だと平文で保存されます",
+    hint: "FFLogs のトークンを暗号化して保管します。未設定だと FFLogs の接続を保存できません",
     where: "自分で決める (setup が生成します)",
     secret: true,
     validate: (v) =>

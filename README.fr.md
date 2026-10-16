@@ -91,26 +91,32 @@ Next.js 16 + React 19 + Tailwind CSS v4 · Supabase (Postgres + Realtime + RLS) 
 
 ## Installation (résumé, 20–40 minutes)
 
-**Vous ne collectez que cinq valeurs à la main.** Le détail écran par écran est dans le [guide anglais](docs/setup.en.md).
+**Vous ne collectez que six valeurs à la main** (cinq obligatoires + l'ID du rôle admin). Le détail écran par écran est dans le [guide anglais](docs/setup.en.md).
 
-> ⚠ Au moment du fork, **changez le nom du dépôt** (par ex. `pandora-raid`). Avec le nom par défaut, votre fork est impossible à distinguer des autres.
+> ⚠ Au moment du fork, **changez le nom par défaut du dépôt, `raid-repository`** (par ex. `pandora-raid`). Avec le nom par défaut, votre fork est impossible à distinguer des autres. Ce nom devient aussi le nom par défaut du projet Vercel.
 
-### 1. Collecter cinq valeurs (dans le navigateur)
+### 1. Collecter six valeurs (dans le navigateur)
 
 | # | Valeur | Où |
 |---|---|---|
 | 1–3 | **Project URL** / **anon** / **service_role** Supabase | Créer un projet sur [Supabase](https://supabase.com) → Settings → API |
 | 4 | **Jeton du bot** Discord | [Developer Portal](https://discord.com/developers/applications) → Bot → Reset Token (**activer SERVER MEMBERS INTENT**) |
 | 5 | **ID du serveur** Discord | Discord (mode développeur) → clic droit sur le serveur |
+| 6 | **ID du rôle admin** (`DISCORD_ADMIN_ROLE_IDS`) | Discord → Paramètres du serveur → Rôles → clic droit → Copier l'identifiant du rôle. **Sans cette valeur, personne ne peut modifier le contenu ni les paramètres** |
 
-Deux choses de plus dans le navigateur :
+Trois choses de plus dans le navigateur :
 
+- Inviter le bot sur votre serveur (Developer Portal → **OAuth2 → URL Generator** → Scopes `bot`). **Si le bot n'est pas sur le serveur, personne ne peut se connecter**
 - Ajouter `https://<project ref>.supabase.co/auth/v1/callback` dans Discord **OAuth2 → Redirects**
 - Activer **Authentication → Providers → Discord** dans Supabase et y coller le Client ID / Secret
 
-### 2. Configuration et base de données (une commande)
+### 2. Configuration et base de données (commandes)
+
+**Forkez** ce dépôt, puis clonez votre fork :
 
 ```bash
+git clone https://github.com/<vous>/<votre-fork>.git
+cd <votre-fork>
 npm install
 npm run setup
 ```
@@ -119,7 +125,9 @@ Le script valide chaque valeur à la saisie, écrit `.env.local`, **génère** l
 
 ### 3. Déployer, puis enregistrer l'URL de retour
 
-Une fois déployé sur Vercel, renseignez dans **Supabase → Authentication → URL Configuration** la Site URL et les Redirect URLs (`https://<votre domaine>/auth/callback` et `http://localhost:3000/auth/callback`). **Sans cette étape, la connexion ne revient pas sur le site.**
+Dans [Vercel](https://vercel.com/new), **Add New → Project**, importez **votre propre fork**, collez tout le contenu de `.env.local` dans **Environment Variables**, puis déployez (y compris `CRON_SECRET`, `SECRET_ENCRYPTION_KEY` et `DISCORD_ADMIN_ROLE_IDS` ; détails à l'étape 6 du [guide](docs/setup.en.md#6-deploy-to-vercel-5-min)). ⚠ Ne collez pas les lignes `DEV_AUTH_BYPASS` / `PUBLIC_DEMO_MODE`.
+
+Une fois le domaine attribué, renseignez dans **Supabase → Authentication → URL Configuration** la Site URL et les Redirect URLs (`https://<votre domaine>/auth/callback` et `http://localhost:3000/auth/callback`). **Sans cette étape, la connexion ne revient pas sur le site.**
 
 ```bash
 npm run doctor -- --url https://<votre domaine>
@@ -143,6 +151,10 @@ npm run setup   # la première fois (crée .env.local)
 npm run dev
 ```
 
+Ouvrez http://localhost:3000 (le terminal affiche `127.0.0.1`, mais l'URL de retour de la connexion est enregistrée pour `localhost` : ouvrez donc `localhost`).
+
 ## Licence
 
 MIT
+
+Les polices de `src/app/fonts/` (Geist, JetBrains Mono, Orbitron) sont sous SIL Open Font License 1.1 (voir le `OFL-*.txt` de chaque police).

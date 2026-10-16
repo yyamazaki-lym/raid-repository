@@ -91,26 +91,32 @@ Next.js 16 + React 19 + Tailwind CSS v4 · Supabase(Postgres + Realtime + RLS) �
 
 ## 설치(요약, 20–40분)
 
-**손으로 모으는 값은 5개뿐**입니다. 화면별 안내는 [영어 가이드](docs/setup.en.md)를 보세요.
+**손으로 모으는 값은 6개뿐**입니다(필수 5개 + 관리자 역할 ID). 화면별 안내는 [영어 가이드](docs/setup.en.md)를 보세요.
 
-> ⚠ fork 할 때 **저장소 이름을 반드시 변경**하세요(예: `pandora-raid`). 기본값 그대로면 다른 고정의 fork 와 구분되지 않습니다.
+> ⚠ fork 할 때 **저장소 이름의 기본값 `raid-repository` 를 반드시 변경**하세요(예: `pandora-raid`). 기본값 그대로면 다른 고정의 fork 와 구분되지 않습니다. Vercel 프로젝트 이름의 기본값도 이 이름이 됩니다.
 
-### 1. 값 5개 모으기(브라우저)
+### 1. 값 6개 모으기(브라우저)
 
 | # | 값 | 위치 |
 |---|---|---|
 | 1–3 | Supabase 의 **Project URL** / **anon** / **service_role** | [Supabase](https://supabase.com) 프로젝트 생성 → Settings → API |
 | 4 | Discord **Bot 토큰** | [Developer Portal](https://discord.com/developers/applications) → Bot → Reset Token (**SERVER MEMBERS INTENT 켜기**) |
 | 5 | Discord **서버 ID** | Discord(개발자 모드) → 서버 우클릭 |
+| 6 | **관리자 역할 ID** (`DISCORD_ADMIN_ROLE_IDS`) | Discord → 서버 설정 → 역할 → 우클릭 → 역할 ID 복사하기. **설정하지 않으면 아무도 콘텐츠 편집이나 설정 변경을 할 수 없습니다** |
 
-브라우저에서 두 가지 더:
+브라우저에서 세 가지 더:
 
+- Bot 을 내 서버에 초대(Developer Portal → **OAuth2 → URL Generator** → Scopes `bot`). **Bot 이 서버에 없으면 아무도 로그인할 수 없습니다**
 - Discord **OAuth2 → Redirects** 에 `https://<project ref>.supabase.co/auth/v1/callback` 추가
 - Supabase **Authentication → Providers → Discord** 를 켜고 Client ID / Secret 붙여넣기
 
-### 2. 설정과 데이터베이스(명령 한 줄)
+### 2. 설정과 데이터베이스(명령)
+
+이 저장소를 **Fork** 한 뒤, 내 fork 를 clone 합니다.
 
 ```bash
+git clone https://github.com/<나>/<내 fork>.git
+cd <내 fork>
 npm install
 npm run setup
 ```
@@ -119,7 +125,9 @@ npm run setup
 
 ### 3. 배포하고 돌아올 주소 등록
 
-Vercel 에 배포한 뒤 **Supabase → Authentication → URL Configuration** 에 Site URL 과 Redirect URLs(`https://<도메인>/auth/callback`, `http://localhost:3000/auth/callback`)를 등록합니다. **이걸 빠뜨리면 로그인 후 돌아오지 못합니다.**
+[Vercel](https://vercel.com/new) → **Add New → Project** 에서 **내 fork** 를 Import 하고, **Environment Variables** 에 `.env.local` 내용을 전부 붙여넣은 뒤 Deploy 합니다(`CRON_SECRET`·`SECRET_ENCRYPTION_KEY`·`DISCORD_ADMIN_ROLE_IDS` 포함. 자세한 내용은 [가이드](docs/setup.en.md#6-deploy-to-vercel-5-min)의 6단계). ⚠ `DEV_AUTH_BYPASS` / `PUBLIC_DEMO_MODE` 줄은 붙여넣지 마세요.
+
+배포로 도메인이 정해지면 **Supabase → Authentication → URL Configuration** 에 Site URL 과 Redirect URLs(`https://<도메인>/auth/callback`, `http://localhost:3000/auth/callback`)를 등록합니다. **이걸 빠뜨리면 로그인 후 돌아오지 못합니다.**
 
 ```bash
 npm run doctor -- --url https://<내 도메인>
@@ -143,6 +151,10 @@ npm run setup   # 처음 한 번(.env.local 생성)
 npm run dev
 ```
 
+http://localhost:3000 을 엽니다(터미널에는 `127.0.0.1` 로 표시되지만, 로그인 후 돌아올 주소는 `localhost` 로 등록되어 있으므로 `localhost` 로 여세요).
+
 ## 라이선스
 
 MIT
+
+단, `src/app/fonts/` 의 폰트(Geist·JetBrains Mono·Orbitron)는 SIL Open Font License 1.1 입니다(각 폰트의 `OFL-*.txt`).

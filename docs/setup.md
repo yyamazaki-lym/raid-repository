@@ -4,7 +4,7 @@
 README の「[使い始める](../README.md#使い始める)」を詳しくしたものです。
 
 - 迷ったら **`npm run doctor`**。どこで止まっているかを機械が判定します
-- 手で集める値は **5 つだけ**。それ以外は `npm run setup` が用意します
+- 手で集める値は **6 つだけ** (必須 5 つ + 管理者ロール ID)。それ以外は `npm run setup` が用意します
 
 > このリポジトリの[デモサイト](https://demo-raid-repository.vercel.app)は
 > 「動いている様子を見せる」ためのもので、**自分の固定用に作る必要はありません**
@@ -21,7 +21,7 @@ README の「[使い始める](../README.md#使い始める)」を詳しくし�
 | 必須 | [Vercel](https://vercel.com) | 公開先 | Hobby 無料枠で足ります |
 | 必須 | [Discord Developer](https://discord.com/developers/applications) | ログインの入口 (サーバー会員かの判定) | 無料 |
 
-ローカルで `npm run setup` を使うなら **Node.js 20 以上**。
+ローカルで `npm run setup` を使うなら **Node.js 20.9 以上** (推奨は CI と同じ 24)。
 
 > ⚠ **Discord は「使わない」選択ができません。** このポータルは
 > 「**指定した Discord サーバーのメンバーだけが入れる**」形で入口を守っています。
@@ -29,7 +29,7 @@ README の「[使い始める](../README.md#使い始める)」を詳しくし�
 
 ---
 
-## 集める値は 5 つ
+## 集める値は 6 つ
 
 | # | 値 | どこで取るか |
 |---|---|---|
@@ -38,8 +38,12 @@ README の「[使い始める](../README.md#使い始める)」を詳しくし�
 | 3 | Supabase の service_role キー | 同上 (⚠ ブラウザに出さない) |
 | 4 | Discord Bot のトークン | Developer Portal → Bot → Reset Token |
 | 5 | Discord サーバー ID | Discord (開発者モード) → サーバー右クリック → サーバー ID をコピー |
+| 6 | 管理者ロール ID | Discord → サーバー設定 → ロール → 右クリック → ロール ID をコピー (手順 3-5) |
 
-以降はこの 5 つを集める手順です。
+> ⚠ **6 (管理者ロール ID) を入れないと、誰もコンテンツの編集や ⚙️ の設定ができません。**
+> 未設定は「全員が非 admin」として扱われます (安全側に倒しています)。自分が持っているロールの ID を入れてください。
+
+以降はこの 6 つを集める手順です。
 
 ---
 
@@ -78,7 +82,7 @@ README の「[使い始める](../README.md#使い始める)」を詳しくし�
 
 ---
 
-## 3. Discord の Application と Bot を作る (10 分) — 値 4〜5
+## 3. Discord の Application と Bot を作る (10 分) — 値 4〜6
 
 ### 3-1. Application
 
@@ -113,16 +117,20 @@ https://<project ref>.supabase.co/auth/v1/callback
    - **Save Changes**
 3. **Token** → **Reset Token** → 表示されたトークンをコピー … 値 4
 
-### 3-5. サーバー ID — 値 5
+### 3-5. サーバー ID と管理者ロール ID — 値 5・6
 
 1. Discord 本体 → 設定 → 詳細設定 → **開発者モード** を ON
 2. サーバーアイコンを右クリック → **サーバー ID をコピー** … 値 5
+3. サーバー設定 → **ロール** → 編集を任せるロール (自分が持っているもの) を右クリック →
+   **ロール ID をコピー** … 値 6 (複数ならカンマ区切り)
 
 ### 3-6. Bot をサーバーに入れる
 
 1. **OAuth2 → URL Generator**
 2. Scopes: **bot**
-3. Bot Permissions: **View Channels** / **Read Message History**
+3. Bot Permissions: **View Channels** / **Read Message History** /
+   **Send Messages** (開催通知・出欠の催促を使うなら) /
+   **Mention @everyone, @here, and All Roles** (通知でロールをメンションするなら)
 4. 生成された URL を開いて、自分のサーバーを選んで認証
 
 > ⚠ Bot がサーバーに**居ない**と、メンバー判定 API が使えずログインが通りません。
@@ -158,10 +166,11 @@ npm run setup
 `npm run setup` がすること:
 
 1. 値 1〜5 を順に聞いて、**形が正しいかその場で検証**する
-2. `CRON_SECRET` と `SECRET_ENCRYPTION_KEY` を**自動生成**する (自分で考えなくてよい)
-3. `.env.local` を書く (既にあれば `.env.local.bak` に控えを取ってから)
-4. (任意) `supabase/schema.sql` を流してテーブルを作る
-5. 最後に **`npm run doctor` と同じ診断**を実行する
+2. 管理者ロール ID (値 6) を聞く (未設定だと誰も編集できません)
+3. `CRON_SECRET` と `SECRET_ENCRYPTION_KEY` を**自動生成**する (自分で考えなくてよい)
+4. `.env.local` を書く (既にあれば `.env.local.bak` に控えを取ってから。どちらも本人だけが読める権限で書きます)
+5. (任意) `supabase/schema.sql` を流してテーブルを作る
+6. 最後に **`npm run doctor` と同じ診断**を実行する
 
 > ⚠ **自動化できないもの**: Supabase プロジェクトの作成 / Discord アプリの作成 /
 > Supabase の Authentication 設定。この 3 つは Web ダッシュボードにしか操作口が
@@ -176,6 +185,8 @@ npm run setup
     IPv6 のみで、GitHub Actions からも繋がりません
 - URI の `[YOUR-PASSWORD]` を手順 2 で控えた DB パスワードに置き換えて貼る
 - `psql` が入っていない環境では選べません (B へ)
+- パスワードに `@ : / ? #` などの記号が入っていると URL として読めません。
+  その部分を URL エンコードする (`@` → `%40` など) か、B を使ってください
 
 **B. SQL Editor に貼る** — psql が無くてもできます。
 
@@ -195,6 +206,11 @@ npm run setup
    - Vercel の入力欄は **`.env` の中身をそのまま貼り付けられます** (キーと値に分解されます)
    - ⚠ `NEXT_PUBLIC_` が付いていない値 (service_role キー / Bot トークン等) に、
      あとから接頭辞を足さないこと
+   - ⚠ `DEV_AUTH_BYPASS` / `PUBLIC_DEMO_MODE` の行は**貼らない**こと
+     (`PUBLIC_DEMO_MODE` は本番でもログインの入口を外します)
+   - 秘密の値 (service_role キー / Bot トークン / `CRON_SECRET` /
+     `SECRET_ENCRYPTION_KEY` など) は Vercel で **Sensitive** にしておくと、
+     後からダッシュボードで値を読めなくなります
 3. **Deploy** → 1〜2 分で `https://<プロジェクト名>.vercel.app` が払い出されます
 
 ### 6-1. ログインの戻り先を登録する (ここを忘れると必ず詰まります)
@@ -206,8 +222,13 @@ npm run setup
    https://<自分のドメイン>/auth/callback
    http://localhost:3000/auth/callback
    ```
-   - preview デプロイも使うなら `https://<自分のドメイン>/**` も足しておくと楽です
+   - `vercel.json` で `main` 以外のデプロイは無効にしてあります。preview デプロイを
+     有効にするなら、preview のドメイン (`https://*-<チーム名>.vercel.app/**` など) も足します
 4. **Save**
+
+> 💡 ローカルで `npm run dev` したときは、ターミナルに出る `http://127.0.0.1:3000`
+> ではなく **`http://localhost:3000`** をブラウザで開いてください。戻り先は
+> `localhost` で登録しているので、`127.0.0.1` から始めるとログインが戻れません。
 
 ### 6-2. 確認
 
@@ -289,7 +310,7 @@ BiS の所有者・欲しい人行列・軽減表の「自分の担当」の**�
 | `エラー: discord 401/403` | Bot トークンか権限の問題 |
 
 > `CRON_SECRET` を後から足した場合は、Vercel で **Redeploy** しないと反映されません
-> (環境変数はビルド時に取り込まれます)。
+> (Vercel の環境変数の変更は、その後に作られたデプロイにだけ反映されます)。
 
 ---
 
@@ -299,8 +320,11 @@ BiS の所有者・欲しい人行列・軽減表の「自分の担当」の**�
 **push だけで反映**されるようにできます。
 
 1. 手順 5 の接続文字列 (Session pooler) を用意
-2. fork した GitHub リポジトリ → **Settings → Secrets and variables → Actions**
-3. **New repository secret** → Name `SUPABASE_DB_URL` / Value に接続文字列
+2. **fork した直後は GitHub Actions が無効です。** fork の **Actions** タブを開き、
+   **I understand my workflows, go ahead and enable them** を押して有効にする
+   (押さないと手順 9・10 の workflow が一度も動きません)
+3. fork した GitHub リポジトリ → **Settings → Secrets and variables → Actions**
+4. **New repository secret** → Name `SUPABASE_DB_URL` / Value に接続文字列
 
 以後、`supabase/schema.sql` を含む main への push で
 "Deploy Database (Production)" が自動実行されます。
@@ -329,6 +353,14 @@ SQL Editor で新しい `schema.sql` を貼り直してください。
    ```sql
    SELECT vault.create_secret('<.env.local の CRON_SECRET>', 'cron_notify_native_schedule_bearer');
    ```
+   - SQL Editor はクエリの履歴を保存します。実行したら、その query を履歴
+     (左の一覧) から削除しておいてください
+   - あとで `CRON_SECRET` を変えたときは、同じ名前で `create_secret` すると
+     重複エラーになります。次で更新します:
+     ```sql
+     SELECT vault.update_secret(id, '<新しい CRON_SECRET>')
+       FROM vault.secrets WHERE name = 'cron_notify_native_schedule_bearer';
+     ```
 2. **叩く先を渡してスキーマを流し直す** (手順 6 で決まった本番 URL。パスは付けない)
    - 手順 9 を設定済み: GitHub → **Settings → Secrets and variables → Actions →
      Variables** → **New repository variable** → Name `CRON_BASE_URL` /
@@ -351,6 +383,29 @@ SQL Editor で新しい `schema.sql` を貼り直してください。
 
 ---
 
+## 11. (任意) FFLogs の練習ログを取り込む
+
+ログタブ (練習ログの集計) を使うときの設定です。
+
+1. **API キー (公開ログ用)**: FFLogs にログイン → アカウント設定 → **Web API** で
+   v1 のキーを作り、`FFLOGS_API_KEY` に入れる
+2. **OAuth (Private / Unlisted のレポートも扱うとき)**:
+   1. https://www.fflogs.com/api/clients/ → **Create New Client**
+   2. Redirect URLs に次の 2 つを登録 (**完全一致**。ドメインを変えたら更新)
+      ```
+      https://<自分のドメイン>/api/auth/fflogs/callback
+      http://localhost:3000/api/auth/fflogs/callback
+      ```
+   3. 表示された Client ID / Client Secret を `FFLOGS_OAUTH_CLIENT_ID` /
+      `FFLOGS_OAUTH_CLIENT_SECRET` に入れる
+   4. `SECRET_ENCRYPTION_KEY` が設定されていることを確認する
+      (トークンはこの鍵で暗号化して保存します。未設定だと保存できません)
+3. `.env.local` と Vercel の両方に入れて **Redeploy**
+4. ポータルの ⚙️ → **FFLogs 連携** のセクションで FFLogs のユーザー名を設定し、
+   OAuth を使うなら接続ボタンから認可する (admin 1 人が 1 回だけ)
+
+---
+
 ## 困ったとき
 
 まず **`npm run doctor`**。以下は doctor が出す指摘と対応の一覧です。
@@ -358,6 +413,7 @@ SQL Editor で新しい `schema.sql` を貼り直してください。
 | doctor の指摘 | 対応 |
 |---|---|
 | `DISCORD_BOT_TOKEN 未設定` | 手順 3-4 |
+| `DISCORD_ADMIN_ROLE_IDS が未設定` | 手順 3-5 の 3 (ロール ID) |
 | `Bot トークンが無効` | Reset Token でやり直して `.env.local` と Vercel の両方を更新 |
 | `Bot がサーバーに居ません` | 手順 3-6 の招待をやり直す |
 | `メンバー一覧を取得できません (403)` | 手順 3-4 の **SERVER MEMBERS INTENT** が OFF |
@@ -370,9 +426,10 @@ doctor で分からないもの:
 
 | 症状 | 原因 / 対応 |
 |---|---|
-| ログイン後に `redirect_uri_mismatch` | 手順 6-1 の Redirect URLs。**完全一致**で入っている必要があります |
+| Discord の画面で `Invalid OAuth2 redirect_uri` | 手順 3-3 の Redirects (`https://<project ref>.supabase.co/auth/v1/callback`) |
+| ログイン後に本番のトップ (`/?code=…`) に飛ばされる / 戻れない | 手順 6-1 の Redirect URLs。**完全一致**で入っている必要があります |
 | ログイン後すぐ `/auth/denied` | Bot がサーバーに居ない / intent が OFF / サーバー ID 違い のどれか |
-| 設定ダイアログで保存できない | 自分が admin ロールを持っているか (`DISCORD_ADMIN_ROLE_IDS`) |
+| ⚙️ が出ない / 設定ダイアログで保存できない | `DISCORD_ADMIN_ROLE_IDS` が未設定か、自分がそのロールを持っていない (未設定だと誰も admin になりません) |
 | コンテンツ追加でエラー | スキーマ未適用の可能性。`npm run doctor` で確認 |
 | ホームに案内文しか出ない | スケジュールの方式が未選択 (手順 7-1) |
 

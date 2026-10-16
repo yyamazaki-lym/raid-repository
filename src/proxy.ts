@@ -253,6 +253,27 @@ export async function proxy(request: NextRequest) {
         }),
       );
     }
+    // 2026-10-16 セキュリティ精査: demo でも実セッションを持つ guild member には
+    // 本物の roles が渡る (TODO #91 — owner が demo を編集する)。ここで
+    // 再検証しないと、admin ロールを外された / kick された人が auth.ts の
+    // hard TTL (72h) まで service role を使う admin の Server Action を叩ける。
+    // 本番と同じ再検証を走らせ、失効ならサインアウトしてゲスト扱いに落とす
+    // (signOut は request 側の cookie も書き換えるので、このリクエストの
+    // Server Component / Action からもゲストに見える)。
+    if (user) {
+      const demoMeta = (user.app_metadata ?? {}) as MembershipClaims;
+      if (demoMeta.discord_guild_member === true) {
+        const outcome = await revalidateMembership(user.id, demoMeta);
+        if (outcome.status === "revoked") {
+          await supabase.auth.signOut();
+        } else if (outcome.status === "refreshed") {
+          const { error: refreshError } = await supabase.auth.refreshSession();
+          if (refreshError) {
+            console.warn("[proxy] refreshSession after revalidation failed:", refreshError.message);
+          }
+        }
+      }
+    }
     return withCsp(getResponse());
   }
 

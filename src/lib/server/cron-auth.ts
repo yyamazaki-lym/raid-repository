@@ -108,12 +108,14 @@ export function assertCronAuth(
 
   if (!headerOk && !allowHeaderOnly) {
     // 詳細は本体ログにのみ吐く (response body には載せない)。
-    // 長さ / prefix だけで攻撃側に full secret は推測できない。
+    // 2026-10-16 セキュリティ精査: 届いた値の先頭をログに残さない (以前は
+    // `slice(0, 14)` = "Bearer " + secret の先頭 7 文字が平文で残っていた。
+    // 古い / ローテーション前の secret や惜しい不一致のとき本物の一部になる)。
     console.warn(
       `[${routeLabel}] auth failed`,
       JSON.stringify({
         receivedHeaderLength: authHeader?.length ?? 0,
-        receivedHeaderPrefix: authHeader?.slice(0, 14) ?? null,
+        receivedBearerScheme: authHeader?.startsWith("Bearer ") ?? false,
         expectedSecretLength: secret.length,
         hasVercelCronHeader: isVercelCron,
       }),
