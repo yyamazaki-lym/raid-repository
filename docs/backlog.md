@@ -18,6 +18,9 @@ W-17 は不採用、UI-11 は既に実装済みだったことが分かった。
 判断待ち」に載せた (2026-10-05 に W-21 / C-2 / C-4 を実装、B-4 の残りは見送り)。
 2026-10-09: **L-24 (シートのキャッシュの作り直し)** を着手判断待ちで足した
 (下の「実機報告 (2026-10-09)」)。
+2026-10-16: セキュリティ精査 (#489) のうち、GitHub の設定に関わる
+**G-1 (DB デプロイの承認制) / G-2 (main のブランチ保護)** を保留で足した
+(下の「2026-10-16 セキュリティ精査からの保留」)。
 
 ---
 
@@ -157,6 +160,77 @@ S-3 の `raw_date` の長さ・制御文字は #406 で CHECK を足した。行
 練習ログの明細は Vercel の応答サイズ上限 (4.5 MB) が streaming にかかるかを
 確かめていない — かかるなら pull 8,000 前後で明細だけ取れなくなるので、
 その時はコンテンツ単位に分ける。
+
+---
+
+## 2026-10-16 セキュリティ精査からの保留
+
+セキュリティ精査 (#489) で見つかったが、コードではなく GitHub の設定と運用の
+判断になるので、**ユーザー判断で 2 つとも保留**にしたもの (2026-10-16)。
+
+### G-1. 本番 DB へのデプロイを承認制にする — 保留 (推奨度: 高)
+
+**今の状態**: `supabase/schema.sql` を変えたコミットが main に入ると、
+`deploy-database.yml` が**誰の確認も無く**本番 DB に適用する。接続文字列
+`SUPABASE_DB_URL` はリポジトリ全体の secret。
+
+**しない場合のリスク**:
+- 間違った (またはプロンプトインジェクションで混ざった) SQL が即座に本番に入る。
+  適用後の検査 (anon SELECT / 誰でも書けるポリシー等) は**適用した後**に走るので
+  検出しても戻らず、`DROP` やデータ削除はそもそも検査の対象外
+- **リポジトリ全体の secret は、どのブランチの workflow からでも読める。**
+  Claude のクラウドセッションは `claude/*` ブランチに push できるので、
+  secret を外に送る workflow をブランチに置くだけで、RLS を無視できる
+  接続文字列を抜き出せる (main に入れる必要すら無い)
+
+**やる場合の手順**:
+1. Settings → Environments → New environment で `database` を作る
+   (⚠ `production` は不可。Vercel が GitHub Deployment に `Production` を使い、
+   環境名は大文字小文字を区別しないので衝突する — `warmup-after-deploy.yml` 参照)
+2. Required reviewers に自分を追加 (public リポジトリなら無料。
+   "Prevent self-review" はオフのまま)
+3. Deployment branches を Selected branches → `main` のみ
+4. `SUPABASE_DB_URL` を Environment secrets に登録し、**リポジトリ secret は削除**
+5. デモも同様に `database-demo` + `SUPABASE_DB_URL_DEMO`
+6. 1〜5 の後で、`deploy-database.yml` / `deploy-database-demo.yml` のジョブに
+   `environment: database` / `environment: database-demo` を足す
+   (`if: github.ref == 'refs/heads/main'` の下)
+
+**運用への影響**: schema を変えたときだけ Actions に「Waiting for review」が出て、
+Approve を 1 回押す。普段の push は変わらない。fork は Environment が自動で
+作られる (保護なし) ので従来どおり動く。
+
+### G-2. main のブランチ保護 — 保留 (推奨度: 中〜低)
+
+**今の状態**: main に保護が無い (API で `protected: false`)。手元の Stop フックは
+main を自動 push する (`claude/*` ブランチでは止めた、#490)。
+
+**しない場合のリスク**: CI を通らないコードを直接 push すると Vercel がそのまま
+本番にデプロイする (Instant Rollback で戻せる)。force push / 削除で main の
+履歴を壊す事故 (手元の clone から戻せることが多い)。
+
+**やる場合の選択肢** (Settings → Rules → Rulesets → 対象 `main`):
+- **最低限**: Restrict deletions + Block force pushes。今の運用は変わらない
+- **しっかり**: 上に加えて Require a pull request (承認 0) + Require status
+  checks (`lint`)、Bypass 無し。**手元の Stop フックの自動 push は拒否される**
+  ようになるので、自動 push の運用をやめる必要がある。自分を Bypass に入れると、
+  自分の権限で動くもの (手元の Claude Code 等) もすり抜けるので効き目がほぼ無い
+
+### 同じ精査で見つけ、直さずに残したもの (参考)
+
+どれも Low か受容済み。詳細は #489 の PR 本文と会話の記録。
+
+- 公開デモが本番の Discord Bot トークンを共有している (`.claude/HANDOFF.md`)。
+  デモ専用の Bot に分けるのが望ましい
+- カテゴリのロール制限は DB で強制されない / kick された元メンバーはサイトに
+  来ない限り読み取りを続けられる (どちらも schema.sql 1 章で受容済み)
+- 本番でも `anon` にテーブルの既定権限が残っている (RLS だけが防壁)
+- オンライン表示の Realtime チャンネルが公開 (anon キーで参加できる)
+- データ取り込み (admin のみ) で書き込める列を絞っていない
+- スケジュール URL (admin が設定) の DNS 確認を 10 分キャッシュしていて、
+  その間は DNS rebinding が成立しうる (`safe-fetch.ts` の `assertPublicResolution`)
+- `schema.sql` 冒頭の「Anon key has full read/write」という古い説明
+  (直すと本番 DB への適用が走るので、次に schema を変えるときに一緒に直す)
 
 ---
 
