@@ -6,6 +6,7 @@ import {
   type LookupAddress,
 } from "node:dns";
 import { isBlockedIpLiteral } from "@/lib/url-safe";
+import { refuseBrotliInterceptor, withSafeAcceptEncoding } from "./refuse-brotli";
 
 /**
  * SSRF 対策の要: **DNS 解決結果を検証してから、その IP にピン留めして接続する**
@@ -45,6 +46,12 @@ import { isBlockedIpLiteral } from "@/lib/url-safe";
  * 噛み合わない。`undici.fetch` + `undici.Agent` を同一コピーで揃えるのが確実。
  * 戻り値は spec 準拠の Response なので、呼び出し側 (`res.body.getReader()` /
  * `res.headers.get()` / `res.text()`) は global fetch と同じまま使える。
+ *
+ * ## Brotli を展開しない (2026-10-21)
+ *
+ * Node の Brotli のデコーダの脆弱性 (CVE-2026-111497) が本番の Node に残っている
+ * 間、相手が細工した Brotli を展開しないよう、br を求めず、br の応答は展開する前に
+ * 断る (`refuse-brotli.ts`)。
  */
 
 /** 検証に失敗した接続で投げるエラー。呼び出し側は通常の fetch 失敗として扱う。 */
@@ -85,7 +92,7 @@ const safeAgent = new Agent({
       });
     },
   },
-});
+}).compose(refuseBrotliInterceptor);
 
 /**
  * 解決先 IP を検証 + ピン留めしたうえで fetch する。
@@ -110,7 +117,8 @@ export async function safeFetch(
   const mode = init.redirect ?? "follow";
   const method = (init.method ?? "GET").toUpperCase();
   let current = url;
-  let headers = init.headers;
+  // br を求めない (呼び出し側の指定も上書きする)。理由は `refuse-brotli.ts`。
+  let headers: HeadersInit = withSafeAcceptEncoding(init.headers);
   for (let hop = 0; ; hop++) {
     assertNotBlockedLiteral(current);
     const res = (await undiciFetch(current, {
@@ -141,8 +149,8 @@ export async function safeFetch(
     // 別オリジンへ移るときは資格情報のヘッダを落とす (fetch 仕様の follow と
     // 同じ扱い。手で追っているので自分でやらないと Authorization / Cookie が
     // redirect 先へそのまま渡る)。
-    if (next.origin !== new URL(current).origin && headers !== undefined) {
-      const h = new Headers(headers);
+    if (next.origin !== new URL(current).origin) {
+      const h: Headers = new Headers(headers);
       h.delete("authorization");
       h.delete("cookie");
       h.delete("proxy-authorization");
