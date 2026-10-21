@@ -316,9 +316,12 @@ function SortableCategoryCard({
   // カテゴリ名 (英数字 1 トークン等) で列幅が押し広げられるのを防ぐ。
   return (
     <li ref={setNodeRef} style={style} {...attributes} className="min-w-0">
+      {/* h-full (2026-10-21): li は段で一番高いカードの高さまで伸びるが、
+          中の Card は伸びないので、名前の折り返しなどで高さが違うと同じ段で
+          カードの大きさが揃わない。Card を li の高さに合わせる。 */}
       <Card
         className={cn(
-          "glass neon-edge group relative flex items-stretch gap-2 p-0 transition-transform hover:-translate-y-0.5",
+          "glass neon-edge group relative flex h-full items-stretch gap-2 p-0 transition-transform hover:-translate-y-0.5",
           // 2.0 (2026-04-29): viewer cannot view → 視覚的に「ロック中」を
           // 示すため彩度を落とす + 枠を amber 寄りにずらす。クリックすると
           // /auth/denied に飛ぶが、編集メニューから role 解除可能。
@@ -403,9 +406,9 @@ function SortableCategoryCard({
             </p>
             {/* UI-2 (2026-09-08): 日別の到達度スパークライン。「今どこまで
                 来たか」をタブを開かずに出す。2 日未満のカテゴリでは
-                `ProgressSparkline` 側が何も描かない (プレースホルダも
-                置かない — 中央列は可変高なので、右カラムのバッジ列とは
-                違って高さを揃える必要が無い)。 */}
+                `ProgressSparkline` 側が同じ高さの空の枠を置く (2026-10-21。
+                カードの高さはこの中央列で決まるので、置かないとスパークラインの
+                あるカードだけ高くなる)。 */}
             <ProgressSparkline points={progressSpark} />
             {/* 2.1 (2026-04-29): Timer (累計練習時間) は card 上に出さない
                 方針 (ユーザー要望)。Trophy + Hourglass のみ右カラムで表示。 */}
