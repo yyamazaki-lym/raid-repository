@@ -17,9 +17,11 @@
  * ## 出さない条件
  *
  * 2 日未満は線にならないので描かない (1 点だと水平線が出るだけで、
- * 「伸びているか」を何も語らない)。カードの高さを揃えるための
- * プレースホルダも置かない — スパークラインはカード中央列の可変高な
- * 位置にあり、右カラムのバッジ列 (高さ固定) とは別扱いで良い。
+ * 「伸びているか」を何も語らない)。代わりに同じ高さの空の枠
+ * (`invisible`) を置く (2026-10-21)。以前は「中央列は可変高なので揃えなくて
+ * よい」として何も置かなかったが、カードの高さは中央列で決まるので、
+ * スパークラインのあるカードだけ 24px 高くなり、同じ段の他のカードと
+ * 大きさが揃わなかった (カードの高さを揃える 2026-04-29 の要望に反する)。
  */
 "use client";
 
@@ -39,7 +41,7 @@ const H = 16;
 
 export function ProgressSparkline({ points }: { points: ProgressSparkPoint[] }) {
   const m = useMessages();
-  if (points.length < 2) return null;
+  if (points.length < 2) return <SparklinePlaceholder />;
 
   const values = points.map((p) => p.progress);
   const path = sparklinePath(values, W, H);
@@ -90,6 +92,19 @@ export function ProgressSparkline({ points }: { points: ProgressSparkPoint[] }) 
       <span className={"font-mono text-[11px] tabular-nums " + tone}>
         {label}
       </span>
+    </span>
+  );
+}
+
+/**
+ * 2 日未満のカードに置く空の枠。本物と同じ組み (同じ大きさの svg + 11px の
+ * 文字) にして、文字の行の高さまで本物と一致させる。
+ */
+function SparklinePlaceholder() {
+  return (
+    <span aria-hidden className="invisible mt-1 inline-flex items-center gap-1.5">
+      <svg width={W} height={H} className="shrink-0" />
+      <span className="font-mono text-[11px] tabular-nums">0%</span>
     </span>
   );
 }
