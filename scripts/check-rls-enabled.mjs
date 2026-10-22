@@ -24,6 +24,8 @@
  *      `ALTER TABLE public.<name> ENABLE ROW LEVEL SECURITY` があるか
  *   2. 逆に、CREATE が無いのに ENABLE だけ書かれた表が無いか (名前の打ち間違い)
  *   3. 7 章の汎用ポリシーループが名指ししている表が実在するか
+ *   4. 2026-10-30 より後に足した表に、GRANT / REVOKE の明示があるか (下の
+ *      `PRE_2026_10_30_TABLES` の節)
  *
  * ポリシーの**内容**は見ない (それは 2026-08-05 監査の担当範囲で、
  * 「ポリシー 0 本 = service role 専用」という正しい形もある)。ここは
@@ -31,7 +33,33 @@
  */
 import { readFileSync } from "node:fs";
 
-const SCHEMA = "supabase/schema.sql";
+// 検査そのものの確かめ用に、読むファイルを差し替えられる (CI では使わない)。
+const SCHEMA = process.env.CHECK_SCHEMA_PATH ?? "supabase/schema.sql";
+
+/**
+ * 2026-10-30 より前から schema.sql にある表 (2026-10-22 時点の 37 件)。
+ *
+ * Supabase は 2026-10-30 から、public に新しく作った表を、明示の GRANT があるまで
+ * Data API (PostgREST) に出さない。既存の表は従来の既定の権限 (anon / authenticated
+ * にも付く) のまま変わらない。schema.sql は表の GRANT を明示せず既定の権限に
+ * 頼ってきたので、この一覧に無い (= これから足す) 表は、GRANT か REVOKE を書いて
+ * 誰に何を許すかを明示しないと、supabase-js から permission denied になる。
+ * ここには表を足さないこと (消した表は外す)。
+ */
+const PRE_2026_10_30_TABLES = [
+  "app_settings", "categories", "category_bis_links", "category_bis_slots",
+  "category_discord_blocklist", "category_gphoto_albums", "category_link_reads",
+  "category_links", "category_macros", "category_onboarding_steps", "category_waymarks",
+  "fflogs_attendance_actuals", "fflogs_attendance_unresolved", "fflogs_fights",
+  "fflogs_notify_state", "fflogs_pull_notes", "fflogs_report_blocklist",
+  "fflogs_report_syncs", "fflogs_report_videos", "loot_entries", "loot_items",
+  "loot_weekly_checks", "mitigation_entries", "mitigation_phases",
+  "native_schedule_attendances", "native_schedule_member_jobs",
+  "native_schedule_members", "native_schedule_session_logs",
+  "native_schedule_sessions", "native_schedules", "recruitment_templates",
+  "schedule_past_session_logs", "schedule_past_sessions", "schedule_session_memos",
+  "secrets", "strategy_docs", "tags",
+];
 
 let failures = 0;
 function fail(msg) {
@@ -153,6 +181,42 @@ console.log("\n[書き込みポリシーに USING (true) / WITH CHECK (true) が
     ok("書き込み (INSERT / UPDATE / DELETE / ALL) で true を使うポリシーは 0 本");
   } else {
     for (const o of offenders) fail(`SELECT 以外で true を使っている — ${o}`);
+  }
+}
+
+console.log("\n[2026-10-30 より後に足した表の GRANT / REVOKE の明示]");
+{
+  const code = src.replace(/--.*$/gm, "");
+  const newTables = created.filter((t) => !PRE_2026_10_30_TABLES.includes(t));
+  const missing = newTables.filter(
+    (t) =>
+      !new RegExp(
+        `\\b(GRANT|REVOKE)\\s[^;]*?\\sON\\s+(TABLE\\s+)?public\\.${t}\\b`,
+        "i",
+      ).test(code),
+  );
+  if (missing.length === 0) {
+    ok(
+      newTables.length === 0
+        ? "新しい表は無い"
+        : `新しい表 ${newTables.length} 件すべてに GRANT / REVOKE がある`,
+    );
+  } else {
+    for (const t of missing) {
+      fail(
+        `public.${t} に GRANT / REVOKE が無い — 2026-10-30 以降の Supabase は、` +
+          `明示の GRANT が無い新しい表を Data API に出さない (supabase-js から ` +
+          `permission denied)。使うロールへの GRANT (ポリシーの無い表なら REVOKE) を書くこと`,
+      );
+    }
+  }
+  const stale = PRE_2026_10_30_TABLES.filter((t) => !created.includes(t));
+  if (stale.length === 0) {
+    ok(`10-30 より前の表 ${PRE_2026_10_30_TABLES.length} 件はすべて実在する`);
+  } else {
+    for (const t of stale) {
+      fail(`PRE_2026_10_30_TABLES の ${t} に CREATE TABLE が無い — 消した表は一覧からも外す`);
+    }
   }
 }
 
