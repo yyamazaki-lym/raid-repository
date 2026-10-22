@@ -23,6 +23,7 @@
  * 結果は `$GITHUB_STEP_SUMMARY` にも書く。
  *
  * 引数: `--as next=16.3.8,undici=8.10.2` で使っている版を差し替える (検知できるかの確かめ用)。
+ * workflow の手動の実行では入力 `simulate` が環境変数 `ADVISORY_SIMULATE` で同じ形で届く。
  */
 import { appendFileSync, readFileSync } from "node:fs";
 import { githubRepoOf, isAffected } from "./advisory-range.mjs";
@@ -41,12 +42,22 @@ if (!token) {
   process.exit(2);
 }
 
-/** `--as a=1.2.3,b=4.5.6` を { a: "1.2.3", b: "4.5.6" } に。 */
+/**
+ * `--as a=1.2.3,b=4.5.6` (または環境変数 `ADVISORY_SIMULATE`) を { a: "1.2.3", b: "4.5.6" } に。
+ * 形が違えば止める (手動の実行の入力をそのまま信じない)。
+ */
 function parseOverrides(argv) {
   const i = argv.indexOf("--as");
-  if (i < 0 || !argv[i + 1]) return {};
+  const raw = (i >= 0 ? argv[i + 1] : process.env.ADVISORY_SIMULATE)?.trim();
+  if (!raw) return {};
+  const pairs = raw.split(",").map((pair) => pair.trim());
+  const bad = pairs.filter((pair) => !/^(@[a-z0-9._-]+\/)?[a-z0-9._-]+=\d+\.\d+\.\d+$/i.test(pair));
+  if (bad.length > 0) {
+    console.error(`版の差し替えの形が違います (名前=x.y.z をカンマ区切り): ${bad.join(", ")}`);
+    process.exit(2);
+  }
   return Object.fromEntries(
-    argv[i + 1].split(",").map((pair) => {
+    pairs.map((pair) => {
       const at = pair.lastIndexOf("=");
       return [pair.slice(0, at), pair.slice(at + 1)];
     }),

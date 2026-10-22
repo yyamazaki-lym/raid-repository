@@ -24,6 +24,11 @@ on:
     # 毎週月曜 09:00 JST (= 月曜 00:00 UTC)
     - cron: "0 0 * * 1"
   workflow_dispatch:
+    inputs:
+      simulate:
+        description: "使っている版の差し替え (検知できるかの確かめ用。例: next=16.3.8,undici=8.10.2)"
+        required: false
+        default: ""
   pull_request:
     paths:
       - package.json
@@ -51,3 +56,5 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NODE_NOTICE: ${{ github.event_name == 'pull_request' && 'off' || 'on' }}
+          # 入力はシェルに埋め込まず環境変数で渡す (スクリプト側で形を確かめる)
+          ADVISORY_SIMULATE: ${{ github.event.inputs.simulate }}
