@@ -53,7 +53,11 @@ function parseOverrides(argv) {
   );
 }
 
-async function getJson(url, { github = false, allow404 = false } = {}) {
+/**
+ * JSON を取る。`missingStatuses` の状態コードは「無い」として `{ status, body: null }` を返す
+ * (それ以外の失敗は投げる)。回数の上限に当たった 403 は、無いことにせず投げる。
+ */
+async function getJson(url, { github = false, missingStatuses = [] } = {}) {
   const res = await fetch(url, {
     headers: github
       ? {
@@ -65,8 +69,11 @@ async function getJson(url, { github = false, allow404 = false } = {}) {
       : { Accept: "application/json" },
     signal: AbortSignal.timeout(20_000),
   });
-  if (allow404 && res.status === 404) return { status: 404, body: null, link: null };
-  if (!res.ok) throw new Error(`${url} → HTTP ${res.status}`);
+  const rateLimited = res.status === 403 && res.headers.get("x-ratelimit-remaining") === "0";
+  if (missingStatuses.includes(res.status) && !rateLimited) {
+    return { status: res.status, body: null, link: null };
+  }
+  if (!res.ok) throw new Error(`${url} → HTTP ${res.status}${rateLimited ? " (rate limit)" : ""}`);
   return { status: res.status, body: await res.json(), link: res.headers.get("link") };
 }
 
@@ -131,7 +138,7 @@ for (const [repo, repoDeps] of reposToDeps) {
   let url = `https://api.github.com/repos/${repo}/security-advisories?state=published&sort=published&direction=desc&per_page=100`;
   const recent = [];
   while (url) {
-    const res = await getJson(url, { github: true, allow404: true });
+    const res = await getJson(url, { github: true, missingStatuses: [404] });
     if (res.status === 404) {
       notes.push(`${repo}: リポジトリの advisory を引けなかった (404)`);
       break;
@@ -144,8 +151,14 @@ for (const [repo, repoDeps] of reposToDeps) {
   for (const a of recent) {
     if (knownIds.has(a.ghsa_id)) continue;
     if (!inGlobalDb.has(a.ghsa_id)) {
-      const g = await getJson(`https://api.github.com/advisories/${a.ghsa_id}`, { github: true, allow404: true });
-      inGlobalDb.set(a.ghsa_id, g.status !== 404);
+      // 全体の DB に未掲載の advisory は、手元のトークンでは 404、Actions の GITHUB_TOKEN
+      // では 403 が返る (2026-10-22 に実測)。どちらも「全体の DB で確かめられない」として、
+      // 下の範囲の照合に回す (見落とさない側)。
+      const g = await getJson(`https://api.github.com/advisories/${a.ghsa_id}`, {
+        github: true,
+        missingStatuses: [403, 404],
+      });
+      inGlobalDb.set(a.ghsa_id, g.body !== null);
     }
     // 全体の DB に入っていれば、1. の `affects` の答え (範囲が整っている) に任せる
     if (inGlobalDb.get(a.ghsa_id)) continue;
