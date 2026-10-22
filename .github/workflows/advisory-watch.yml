@@ -1,0 +1,53 @@
+# 依存の advisory の見張り (週 1 回・2026-10-21)
+#
+# 本番の依存 (package.json の dependencies と sharp) について、GitHub の全体の
+# advisory DB と、パッケージのリポジトリの advisory (全体の DB に入る前の早い知らせ)
+# を引き、package-lock の版が対象なら失敗する。Node の security release が出た週も
+# 失敗する (本番の Node は Vercel が入れるので、runtime logs の `[runtime] node` を
+# 確かめる合図)。中身は scripts/advisory-watch.mjs。
+#
+# 経緯: Next.js / React (2026-10-14) と undici (10-15) の advisory が、公開から
+# 1 週間たっても npm audit / Dependabot に出なかった (全体の DB に入っていなかった)。
+#
+# 知らせ方: scheduled の実行が失敗すると、GitHub が cron を最後に変えた人へ通知する
+# (GitHub の通知設定の「Actions」)。結果の表は実行の Summary に出る。リポジトリは
+# 公開なので誰でも見られるが、出すのは公開済みの advisory と、公開している
+# package-lock の版だけ。
+#
+# PR では、依存・見張りの中身を変えたときだけ動き、Node の知らせは出さない
+# (PR の中身と関係なく 8 日間赤くなるため)。
+
+name: Advisory Watch
+
+on:
+  schedule:
+    # 毎週月曜 09:00 JST (= 月曜 00:00 UTC)
+    - cron: "0 0 * * 1"
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - package.json
+      - package-lock.json
+      - scripts/advisory-watch.mjs
+      - scripts/advisory-range.mjs
+      - .github/workflows/advisory-watch.yml
+
+permissions:
+  contents: read
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Check advisories
+        run: node scripts/advisory-watch.mjs
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NODE_NOTICE: ${{ github.event_name == 'pull_request' && 'off' || 'on' }}
