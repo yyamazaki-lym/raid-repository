@@ -198,14 +198,16 @@ try {
 console.log("\n3. 配線");
 const view = read("src/app/(portal)/category/[slug]/logs/logs-view.tsx");
 check("画面: 印の表は tierFights から 1 回作る", /const duplicateOf = useMemo\(\(\) => duplicatePulls\(tierFights\), \[tierFights\]\);/.test(view), true);
-check("画面: summarize に印の表を渡す", /summarize\(tierFights, floors, showPhase, duplicateOf\)/.test(view), true);
-check("画面: 絞り込みの summarize にも同じ表", /summarize\(kept, floors, showPhase, duplicateOf\)\.days/.test(view), true);
+// 2026-11-08: 5 つ目の引数 (手動の記録) が続く形も許す。
+check("画面: summarize に印の表を渡す", /summarize\(tierFights, floors, showPhase, duplicateOf(?:, manualDays)?\)/.test(view), true);
+check("画面: 絞り込みの summarize にも同じ表", /summarize\(\s*kept,\s*floors,\s*showPhase,\s*duplicateOf\b[^;]*?\)\.days/.test(view), true);
 for (const [name, re] of [
   ["バッジ", /teamBadges\(countedFights,/],
   ["内訳", /pullBreakdown\(countedFights,/],
   ["ワイプ原因", /wipeCauseCounts\(countedFights\.map/],
   ["フェーズ滞在 (表示中の分)", /phaseTimeTotals\(countedFights\.map/],
-  ["層ごとの初討伐", /floorFirstClears\(\s*countedFights\.flatMap/],
+  // 2026-11-08: 手動の記録を重ねる floorFirstClearsWithManual も同じ pull を渡す。
+  ["層ごとの初討伐", /floorFirstClears(?:WithManual)?\(\s*countedFights\.flatMap/],
   ["注釈の通し番号", /numberedFights=\{truncated \? null : countedFights\}/],
 ]) {
   check(`画面: ${name}は数える pull から`, re.test(view), true);
@@ -224,7 +226,8 @@ check("日の行: ワイプ原因は数える pull", /wipeCauseCounts\(counted\.
 check("日の行: プル箱は数える pull", /<PullBoxRow\s+fights=\{counted\}/.test(dayRow), true);
 check("日の行: pull 一覧は全部の行に印を渡す", /day\.fights\.map\(\(f\) => \(\s*<PullRow[\s\S]*?duplicate=\{day\.duplicateOf\.has\(pullKey\(f\)\)\}/.test(dayRow), true);
 check("日の行: 番号は数える側と同じ", /index=\{numberOf\(f\)\}/.test(dayRow) && /chapterPullLabel\(f, numberOf\(f\),/.test(dayRow), true);
-check("日の行: 層・フェーズの範囲のチップも数える pull", /const dayFloors = counted\b/.test(dayRow) && /const dayPhases = counted\b/.test(dayRow), true);
+// 2026-11-08: 手動の記録の区間を足す配列の形 (`[...counted.map(…), ...manualSegs…]`) も許す。
+check("日の行: 層・フェーズの範囲のチップも数える pull", /const dayFloors = (?:\[\s*\.\.\.)?counted\b/.test(dayRow) && /const dayPhases = (?:\[\s*\.\.\.)?counted\b/.test(dayRow), true);
 const noteCard = read("src/components/portal/logs/pull-notes-card.tsx");
 check("注釈カード: 表を番号の数え方に渡す", /pullNoteDetailsByTag\(\s*[\s\S]*?numberedFights,\s*duplicateOf,\s*\)/.test(noteCard), true);
 const pullRow = read("src/components/portal/logs/pull-row.tsx");

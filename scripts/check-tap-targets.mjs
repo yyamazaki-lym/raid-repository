@@ -115,8 +115,9 @@ console.log("3. U-2 ヘッダーの版数");
 console.log("4. U-3 練習ログのツールバー");
 {
   const src = readFileSync("src/app/(portal)/category/[slug]/logs/logs-view.tsx", "utf8");
-  check("3 つの並びは折り返す", /<span className="flex flex-wrap items-center justify-end gap-2">\s*\{difficultyButton\}\s*\{importButton\}\s*\{syncButton\}/.test(src), true);
-  check("レポート 0 件の並びも折り返す", /<div className="flex flex-wrap justify-end gap-2">\s*\{importButton\}\s*\{syncButton\}/.test(src), true);
+  // 2026-11-08: 「手動で記録」(manualButton) が並びに入った形も許す。
+  check("3 つの並びは折り返す", /<span className="flex flex-wrap items-center justify-end gap-2">\s*\{difficultyButton\}\s*(?:\{manualButton\}\s*)?\{importButton\}\s*\{syncButton\}/.test(src), true);
+  check("レポート 0 件の並びも折り返す", /<div className="flex flex-wrap justify-end gap-2">\s*(?:\{manualButton\}\s*)?\{importButton\}\s*\{syncButton\}/.test(src), true);
 }
 
 console.log("5. U-10 過去詳細表");

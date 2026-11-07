@@ -433,6 +433,35 @@ export const SERVER_TEXT_EN: ServerTextDictRaw = {
       "Enter the start time as HH:MM",
     "難易度は 0〜1000 の整数で指定してください":
       "The difficulty must be an integer from 0 to 1000",
+    // 2026-11-08: 練習ログの手動の記録 (practice-log-manual-actions.ts)。
+    "コンテンツが不正です":
+      "Invalid content",
+    "記録の ID が不正です":
+      "Invalid record ID",
+    "記録が見つかりませんでした (消されたか、権限がありません)":
+      "The record was not found (it was deleted, or you do not have permission)",
+    "その日の手動の記録はすでにあります (その日の記録を直してください)":
+      "A manual record for that day already exists (edit that record instead)",
+    "日付が不正です":
+      "Invalid date",
+    "今日より後の日は記録できません":
+      "You cannot record a day after today",
+    "区間は 1〜12 個で入力してください":
+      "Enter 1 to 12 segments",
+    "pull 数は 1〜500 で入力してください":
+      "Enter between 1 and 500 pulls",
+    "討伐数は 0 以上、pull 数以下で入力してください":
+      "Enter kills from 0 up to the number of pulls",
+    "残 HP% は 0〜100 で入力してください":
+      "Enter the HP% left between 0 and 100",
+    "層 / フェーズの指定が不正です":
+      "Invalid floor / phase",
+    "同じ層 / フェーズが 2 回入っています":
+      "The same floor / phase is entered twice",
+    "練習時間は 0〜1440 分で入力してください":
+      "Enter the practice time between 0 and 1440 minutes",
+    "メモは改行なしの 200 文字以内で入力してください":
+      "Keep the note to 200 characters without line breaks",
   },
   templates: {
     "${row} 行目: 日時の形式が不正です":
@@ -793,5 +822,10 @@ export const SERVER_TEXT_EN: ServerTextDictRaw = {
       "remove the exclusion",
     "難易度設定の保存":
       "save the difficulty setting",
+    // 2026-11-08: 練習ログの手動の記録。
+    "手動の記録の保存":
+      "save the manual record",
+    "手動の記録の削除":
+      "delete the manual record",
   },
 };

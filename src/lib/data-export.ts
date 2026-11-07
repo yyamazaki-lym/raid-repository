@@ -65,6 +65,8 @@ export const EXPORT_PARTS: readonly ExportPart[] = [
       { table: "fflogs_report_videos", order: ["id"] },
       { table: "fflogs_report_blocklist", order: ["report_code"] },
       { table: "fflogs_pull_notes", order: ["id"] },
+      // 2026-11-08: 練習ログの手動の記録 (ACT が使えなかった日の分)。
+      { table: "practice_log_manual_days", order: ["id"] },
       { table: "fflogs_attendance_actuals", order: ["report_code", "discord_user_id"] },
       { table: "fflogs_attendance_unresolved", order: ["character_name"] },
       { table: "fflogs_notify_state", order: ["category_id"] },

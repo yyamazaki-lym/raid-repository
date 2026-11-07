@@ -40,6 +40,9 @@ const SELF = new Set(["native_schedule_members.discord_user_id"]);
 const EXCLUDED = {
   "native_schedule_sessions.created_by_id":
     "日程を作った admin の記録 (メンバーの個人データではない)",
+  // 2026-11-08: 練習ログの手動の記録は admin が書く (チームの練習の記録)。
+  "practice_log_manual_days.created_by_id":
+    "手動の記録を足した admin の記録 (メンバーの個人データではない)",
 };
 
 const outDir = mkdtempSync(join(tmpdir(), "member-data-check-"));

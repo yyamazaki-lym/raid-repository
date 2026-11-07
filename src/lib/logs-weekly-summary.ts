@@ -31,6 +31,8 @@ import {
   floorLabel,
   formatPercentage,
   isClearFight,
+  manualSegmentClears,
+  manualSegmentIndex,
   totalLogMs,
   unionLengthMs,
   type FightRow,
@@ -39,6 +41,12 @@ import {
 } from "./fflogs-progress";
 import { floorFirstClears } from "./fflogs-session";
 import { countedPulls, duplicatePulls, pullKey } from "./fflogs-duplicate-pulls";
+import {
+  manualDayLogMs,
+  manualDayPulls,
+  manualSegmentPercentage,
+  type ManualDay,
+} from "./practice-log-manual";
 
 /** 送ってよい日の数 (火曜から数えて。火・水・木)。 */
 export const WEEKLY_SUMMARY_DUE_DAYS = 3;
@@ -131,17 +139,32 @@ export function bestReach(
   fights: ReadonlyArray<FightRow>,
   floors: FloorMap,
   phaseModel: boolean,
+  /** 手動の記録 (2026-11-08)。区間ごとの残 HP% と討伐を pull と同じ物差しで見る。 */
+  manual: ReadonlyArray<ManualDay> = [],
 ): WeeklyReach | null {
-  if (fights.length === 0) return null;
-  const segs = fights.map((f) => segmentOf(f, floors, phaseModel));
-  const known = segs.filter((s): s is number => s !== null);
+  const items = [
+    ...fights.map((f) => ({
+      segment: segmentOf(f, floors, phaseModel),
+      pct: f.kill ? 0 : f.fightPercentage,
+      kill: f.kill,
+    })),
+    ...manual.flatMap((d) =>
+      d.segments.map((s) => ({
+        segment: manualSegmentIndex(s, floors, phaseModel),
+        pct: manualSegmentPercentage(s),
+        kill: s.kills > 0,
+      })),
+    ),
+  ];
+  if (items.length === 0) return null;
+  const known = items.map((i) => i.segment).filter((s): s is number => s !== null);
   const top = known.length > 0 ? Math.max(...known) : null;
-  const scope = top === null ? fights : fights.filter((_, i) => segs[i] === top);
+  const scope = top === null ? items : items.filter((i) => i.segment === top);
   let percentage: number | null = null;
   let cleared = false;
-  for (const f of scope) {
-    const p = f.kill ? 0 : f.fightPercentage;
-    if (f.kill) cleared = true;
+  for (const i of scope) {
+    if (i.kill) cleared = true;
+    const p = i.pct;
     if (p === null || !Number.isFinite(p)) continue;
     if (percentage === null || p < percentage) percentage = p;
   }
@@ -170,6 +193,12 @@ export function summarizeWeek(
   floors: FloorMap,
   phaseModel: boolean,
   locale: ProgressLocale = "ja",
+  /**
+   * 手動の記録 (2026-11-08、`practice-log-manual.ts`)。日数・pull 数・ログ合計
+   * (練習時間)・到達・討伐・初突破 / 初到達 / 初討伐に日単位で足す。戦闘時間と
+   * ノーデスには入らない (pull の時刻と死亡数が無い)。
+   */
+  manual: ReadonlyArray<ManualDay> = [],
 ): WeeklySummary | null {
   // 2026-10-07 C-3: 同じ夜を 2 人が上げたログの同じ pull は 1 回だけ数える
   // (練習ログの画面と同じ `fflogs-duplicate-pulls.ts`)。
@@ -177,7 +206,10 @@ export function summarizeWeek(
   const counted = countedPulls(fights, duplicateOf);
   const upToEnd = counted.filter((f) => fightDate(f) <= week.end);
   const inWeek = upToEnd.filter((f) => fightDate(f) >= week.start);
-  if (inWeek.length === 0) return null;
+  const manualUpToEnd = manual.filter((d) => d.date <= week.end && manualDayPulls(d) > 0);
+  const manualInWeek = manualUpToEnd.filter((d) => d.date >= week.start);
+  const manualBefore = manualUpToEnd.filter((d) => d.date < week.start);
+  if (inWeek.length === 0 && manualInWeek.length === 0) return null;
   // ログ合計と戦闘時間は区間の和集合なので、数えない側の pull も渡す (そのレポートの
   // 開始も入れる)。ただし**数える側がこの週にある pull だけ** — 2 本で練習日の付き方が
   // 違うと、数えない側だけが次の週に入り、前の週で数えた時間をもう一度足していた
@@ -191,22 +223,43 @@ export function summarizeWeek(
     const d = fightDate(f);
     byDay.set(d, [...(byDay.get(d) ?? []), f]);
   }
+  // 手動の記録だけの日も練習日に数える。
+  for (const d of manualInWeek) if (!byDay.has(d.date)) byDay.set(d.date, []);
   // 2026-10-07: 戦闘時間も pull の区間の和集合で出す。同じ夜を 2 人がログに
   // 取ると pull が 2 本ずつ入り、単純に足すと「ログ合計 (和集合)」より
   // 「うち戦闘」が長くなって文面が矛盾する (PR のレビューで検出)。
   const fightMs = unionLengthMs(inWeekAll.map((f) => ({ start: f.startMs, end: f.endMs })));
   // 週の pull をまとめて渡す (日ごとに出して足すと、日をまたいだログの開始が
   // 両方の日に入って二重になる)。
-  const logMs = totalLogMs(inWeekAll);
+  // 手動の記録の練習時間はログ合計に足す (ログの区間とは重ねない — 時刻が無い)。
+  const logMs =
+    totalLogMs(inWeekAll) + manualInWeek.reduce((acc, d) => acc + manualDayLogMs(d), 0);
 
-  const best = bestReach(inWeek, floors, phaseModel);
-  const bestBefore = bestReach(before, floors, phaseModel);
+  const best = bestReach(inWeek, floors, phaseModel, manualInWeek);
+  const bestBefore = bestReach(before, floors, phaseModel, manualBefore);
   const isClear = (f: FightRow) => isClearFight(f, floors);
-  const clearedBefore = before.some(isClear);
+  const manualClears = (d: ManualDay) =>
+    d.segments.reduce((acc, s) => acc + manualSegmentClears(s, floors), 0);
+  const clearedBefore = before.some(isClear) || manualBefore.some((d) => manualClears(d) > 0);
   const weekClears = inWeek.filter(isClear).sort((a, b) => a.startMs - b.startMs);
+  const manualWeekClearDays = manualInWeek
+    .filter((d) => manualClears(d) > 0)
+    .map((d) => d.date)
+    .sort();
+  const weekClearCount =
+    weekClears.length + manualInWeek.reduce((acc, d) => acc + manualClears(d), 0);
+  const firstWeekClearDate = [
+    ...(weekClears.length > 0 ? [fightDate(weekClears[0]!)] : []),
+    ...manualWeekClearDays.slice(0, 1),
+  ].sort()[0];
 
   const milestones: WeeklySummary["milestones"] = [];
   const inThisWeek = (d: string | null) => d !== null && d >= week.start && d <= week.end;
+  /** 区間 → 初めての日。手動の記録の日のほうが早ければそちら (2026-11-08)。 */
+  const earliest = (map: Map<number, string | null>, index: number, date: string) => {
+    const cur = map.get(index);
+    if (cur === undefined || cur === null || date < cur) map.set(index, date);
+  };
   if (floors) {
     const finalIndex = floors.byEncounter.get(floors.finalEncounterId) ?? null;
     const perFloor = floorFirstClears(
@@ -217,9 +270,16 @@ export function summarizeWeek(
           : [{ startMs: f.startMs, endMs: f.endMs, kill: f.kill, floorIndex: idx, sessionDate: fightDate(f) }];
       }),
     );
-    for (const c of perFloor) {
-      if (c.index === finalIndex || !inThisWeek(c.date)) continue;
-      milestones.push({ label: floorLabel(floors, c.index, locale), date: c.date });
+    const firstClear = new Map<number, string | null>(perFloor.map((c) => [c.index, c.date]));
+    for (const d of manualUpToEnd) {
+      for (const s of d.segments) {
+        const idx = manualSegmentIndex(s, floors, false);
+        if (idx !== null && s.kills > 0) earliest(firstClear, idx, d.date);
+      }
+    }
+    for (const [index, date] of [...firstClear.entries()].sort((a, b) => a[0] - b[0])) {
+      if (index === finalIndex || !inThisWeek(date)) continue;
+      milestones.push({ label: floorLabel(floors, index, locale), date });
     }
   } else if (phaseModel) {
     const reaches = firstPhaseReaches(
@@ -230,25 +290,32 @@ export function summarizeWeek(
         date: fightDate(f),
       })),
     );
-    for (const r of reaches) {
-      if (!inThisWeek(r.date)) continue;
-      milestones.push({ label: `P${r.id}`, date: r.date });
+    const firstReach = new Map<number, string | null>(reaches.map((r) => [r.id, r.date]));
+    // 手動の記録のフェーズ: そのフェーズに着いた = それより前のフェーズにも着いた。
+    // P1 は 1 本目で必ず着くので節目にしない (`firstPhaseReaches` と同じ)。
+    for (const d of manualUpToEnd) {
+      const top = Math.max(0, ...d.segments.map((s) => s.phase ?? 0));
+      for (let p = 2; p <= top; p++) earliest(firstReach, p, d.date);
+    }
+    for (const [id, date] of [...firstReach.entries()].sort((a, b) => a[0] - b[0])) {
+      if (!inThisWeek(date)) continue;
+      milestones.push({ label: `P${id}`, date });
     }
   }
 
   return {
     week,
     days: byDay.size,
-    pulls: inWeek.length,
+    pulls: inWeek.length + manualInWeek.reduce((acc, d) => acc + manualDayPulls(d), 0),
     fightMs,
     logMs,
     best,
     bestBefore,
     improved: best !== null && bestBefore !== null && isReachAhead(best, bestBefore),
     clearedBefore,
-    clears: weekClears.length,
+    clears: weekClearCount,
     flawlessClears: weekClears.filter((f) => f.deaths === 0).length,
-    firstClearDate: !clearedBefore && weekClears.length > 0 ? fightDate(weekClears[0]!) : null,
+    firstClearDate: !clearedBefore && firstWeekClearDate !== undefined ? firstWeekClearDate : null,
     milestones,
   };
 }

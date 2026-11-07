@@ -8,6 +8,7 @@ import {
   BookMarked,
   ClipboardPaste,
   Flag,
+  PencilLine,
   RefreshCw,
   SlidersHorizontal,
 } from "lucide-react";
@@ -27,7 +28,10 @@ import { EmptyState } from "@/components/portal/empty-state";
 import { MirrorActionSlot } from "@/components/portal/action-slot";
 import {
   buildFloorMap,
+  fightDate,
+  filterManualToSegment,
   filterToFloorCluster,
+  manualSegmentClears,
   pullSpanByReport,
   floorHalf,
   floorLabel,
@@ -61,7 +65,7 @@ import {
   resolveProgressModel,
   type ProgressModel,
 } from "@/lib/content-model";
-import { floorFirstClears, teamBadges } from "@/lib/fflogs-session";
+import { teamBadges } from "@/lib/fflogs-session";
 import { duplicatePulls, pullKey } from "@/lib/fflogs-duplicate-pulls";
 import {
   floorParamValue,
@@ -97,7 +101,7 @@ import {
   type FloorClearItem,
 } from "@/components/portal/logs/floor-clear-card";
 import { PhaseTimeCard } from "@/components/portal/logs/phase-time-card";
-import { APP_TIME_ZONE } from "@/lib/app-timezone";
+import { APP_TIME_ZONE, APP_UTC_OFFSET_ISO } from "@/lib/app-timezone";
 import { SegmentFilter } from "@/components/portal/logs/segment-filter";
 import { PullBreakdownChips, StatCard } from "@/components/portal/logs/stat-card";
 import type { OffsetTarget } from "@/components/portal/logs/video-link";
@@ -105,6 +109,28 @@ import { TeamBadgesCard } from "@/components/portal/logs/team-badges-card";
 import { TrendCard } from "@/components/portal/logs/trend-card";
 import { WipeCausesCard } from "@/components/portal/logs/wipe-causes-card";
 import { PullNotesCard } from "@/components/portal/logs/pull-notes-card";
+import { MissingDaysCard } from "@/components/portal/logs/missing-days-card";
+import {
+  ManualDayDialog,
+  UNKNOWN_SEGMENT_KEY,
+  draftFromManualDay,
+  newManualDraft,
+  type ManualDayDraft,
+  type ManualSegmentChoice,
+} from "@/components/portal/logs/manual-day-dialog";
+import {
+  MANUAL_MAX_PHASE,
+  manualDayLogMs,
+  manualDayPulls,
+  type ManualDay,
+  type MissingDaysResult,
+} from "@/lib/practice-log-manual";
+import {
+  floorFirstClearsWithManual,
+  mergeManualBadges,
+  phaseFirstReachesWithManual,
+} from "@/lib/practice-log-manual-merge";
+import { jstYmdString } from "@/lib/jst-date";
 
 /**
  * 練習ログの表示 (TODO #94 / A-1 + A-2)。
@@ -127,6 +153,9 @@ import { PullNotesCard } from "@/components/portal/logs/pull-notes-card";
  * `@/components/portal/logs/*` の部品に任せる。分割の経緯と依存の向きは
  * `src/components/portal/logs/README.md` を参照。
  */
+/** 手動の記録が無いときの既定値 (毎回新しい配列にすると useMemo が毎回走る)。 */
+const NO_MANUAL_DAYS: ManualDay[] = [];
+
 export function LogsView({
   categoryId,
   categoryName,
@@ -144,6 +173,8 @@ export function LogsView({
   videoLinks,
   failedSyncs,
   canEdit,
+  manualDays = NO_MANUAL_DAYS,
+  missingDays = null,
 }: {
   categoryId: string;
   categoryName: string;
@@ -187,6 +218,13 @@ export function LogsView({
     unassigned: boolean;
   }>;
   canEdit: boolean;
+  /**
+   * 手動の記録 (2026-11-08、ACT が使えなかった日の分)。日単位の要約で、数・到達・
+   * 討伐・練習日数・ログ合計に足す (`@/lib/practice-log-manual` の docstring)。
+   */
+  manualDays?: ManualDay[];
+  /** ログが欠けている日 (2026-11-08)。読めなければ null (カードを出さない)。 */
+  missingDays?: MissingDaysResult | null;
 }) {
   const router = useRouter();
   const confirm = useConfirm();
@@ -312,10 +350,17 @@ export function LogsView({
     [fights, floors],
   );
   // 絶のフェーズ数 (観測値)。層モデルと同じ「区間」として扱う (2026-09-03)。
-  const phaseCount = useMemo(
-    () => (showPhase ? observedPhaseCount(tierFights) : null),
-    [showPhase, tierFights],
-  );
+  // 2026-11-08: 手動の記録の日に初めて着いたフェーズも数える (スパークラインの
+  // SQL の phase_meta と同じ)。
+  const phaseCount = useMemo(() => {
+    if (!showPhase) return null;
+    const observed = observedPhaseCount(tierFights);
+    const manualMax = Math.max(
+      0,
+      ...manualDays.flatMap((d) => d.segments.map((s) => s.phase ?? 0)),
+    );
+    return manualMax > (observed ?? 0) ? manualMax : observed;
+  }, [showPhase, tierFights, manualDays]);
   // 2026-10-07 C-3 (ユーザーの選択「集計だけ 1 本に」): 同じ夜を 2 人が上げた
   // ログでは同じ pull が 2 本入る。集計 (数・クリア・ワイプ原因・バッジなど) は
   // `countedFights` で 1 回だけ数え、日の振り返りには両方の行を出して数えない側に
@@ -328,14 +373,31 @@ export function LogsView({
         : tierFights.filter((f) => !duplicateOf.has(pullKey(f))),
     [tierFights, duplicateOf],
   );
+  // 2026-11-08: 手動の記録も日単位で足す (数・到達・討伐・練習日数)。
   const summary = useMemo(
-    () => summarize(tierFights, floors, showPhase, duplicateOf),
-    [tierFights, floors, showPhase, duplicateOf],
+    () => summarize(tierFights, floors, showPhase, duplicateOf, manualDays),
+    [tierFights, floors, showPhase, duplicateOf, manualDays],
+  );
+  // 手動の記録の合計 (総 pull・クリア数のタイルに足す。DB の数には入っていない)。
+  const manualTotals = useMemo(
+    () => ({
+      pulls: manualDays.reduce((acc, d) => acc + manualDayPulls(d), 0),
+      clears: manualDays.reduce(
+        (acc, d) => acc + d.segments.reduce((a, s) => a + manualSegmentClears(s, floors), 0),
+        0,
+      ),
+      logMs: manualDays.reduce((acc, d) => acc + manualDayLogMs(d), 0),
+    }),
+    [manualDays, floors],
   );
   // 2026-10-06: 練習日数の下に出すログの合計時間 (日数と同じ pull から)。
   // 区間の和集合なので、同じ夜の 2 本のログはもともと 1 回だけ数える
   // (数えない側のレポートの開始も入れるため、全 pull のまま渡す)。
-  const logTotalMs = useMemo(() => totalLogMs(tierFights), [tierFights]);
+  // 2026-11-08: 手動の記録の練習時間を足す (時刻が無いのでログの区間とは重ねない)。
+  const logTotalMs = useMemo(
+    () => totalLogMs(tierFights) + manualTotals.logMs,
+    [tierFights, manualTotals],
+  );
   // 2026-09-07 W-31: チーム実績バッジ。層クラスタ外 (別コンテンツの混入) を
   // 除いた pull を対象にする — 混ざった別コンテンツの kill が「初討伐」に
   // なると日付が狂う。明細が打ち切られている場合は「登録ログのうち」の
@@ -343,9 +405,16 @@ export function LogsView({
   // 2026-10-05: 零式は最終層の kill だけを「討伐」と数える (サマリーのクリア数と
   // 同じ `isClearFight`)。下の層の討伐が「初討伐」になっていた。絶は floors が
   // null なので kill のまま。
+  // 2026-11-08: 手動の記録の討伐を「初討伐」の日と「討伐 N 回」に日単位で重ねる
+  // (最速・ノーデスはログだけ。`practice-log-manual-merge.ts`)。
   const badges = useMemo(
-    () => teamBadges(countedFights, (f) => isClearFight(f, floors)),
-    [countedFights, floors],
+    () =>
+      mergeManualBadges(
+        teamBadges(countedFights, (f) => isClearFight(f, floors)),
+        manualDays,
+        floors,
+      ),
+    [countedFights, floors, manualDays],
   );
   // バーを区切る区間数 = 層数 (零式) / フェーズ数 (絶)。
   const segmentCount = floors ? floors.floorCount : phaseCount;
@@ -357,8 +426,8 @@ export function LogsView({
   // 総 pull の層 / フェーズ内訳 (2026-09-03 実機要望)。明細が打ち切られて
   // いる場合は表示中の分だけの内訳になる (タイルの sub に明記)。
   const breakdown = useMemo(
-    () => pullBreakdown(countedFights, floors, showPhase, locale),
-    [countedFights, floors, showPhase, locale],
+    () => pullBreakdown(countedFights, floors, showPhase, locale, manualDays),
+    [countedFights, floors, showPhase, locale, manualDays],
   );
   // 2026-09-06 W-1: ワイプ原因 (初死亡の技) の集計。個人名は持たない。
   // 明細が打ち切られている場合は表示中の分だけの集計 (sub に明記)。
@@ -398,10 +467,10 @@ export function LogsView({
   // 混入数だけ差し引く (未打ち切りなら tierFights.length と一致する)。
   // 2026-10-07 C-3: 別のログと同じ pull も差し引く (未打ち切りなら
   // countedFights.length と一致する)。クリア数 (DB の count) も同じ。
-  const shownTotalPulls = Math.max(
-    0,
-    totalPulls - (fights.length - tierFights.length) - duplicateOf.size,
-  );
+  // 2026-11-08: 手動の記録の pull / クリアを足す (DB の count はログの行だけ)。
+  const shownTotalPulls =
+    Math.max(0, totalPulls - (fights.length - tierFights.length) - duplicateOf.size) +
+    manualTotals.pulls;
   const shownTotalClears = useMemo(
     () =>
       Math.max(
@@ -409,8 +478,8 @@ export function LogsView({
         totalClears -
           tierFights.filter((f) => duplicateOf.has(pullKey(f)) && isClearFight(f, floors))
             .length,
-      ),
-    [totalClears, tierFights, duplicateOf, floors],
+      ) + manualTotals.clears,
+    [totalClears, tierFights, duplicateOf, floors, manualTotals],
   );
   // 動画オフセットの基準: レポートごとの「最初の pull の戦闘開始時刻」。
   // 旧基準は「レポート開始時刻」だったが、ユーザーが動画で見つけて合わせる
@@ -582,9 +651,10 @@ export function LogsView({
   // 明細が打ち切られている (`truncated`) ときは出さない — 明細は新しい順に
   // 切られるため、古い pull が落ちると「初討伐」も pull 数も過小になる
   // (サマリータイルの「初クリア」を truncated で伏せているのと同じ理由)。
+  // 2026-11-08: 手動の記録の討伐 / pull を日単位で重ねる (`floorFirstClearsWithManual`)。
   const floorClears = useMemo<FloorClearItem[]>(() => {
     if (!floors || truncated) return [];
-    const rows = floorFirstClears(
+    const rows = floorFirstClearsWithManual(
       countedFights.flatMap((f) => {
         const index =
           f.encounterId === null ? undefined : floors.byEncounter.get(f.encounterId);
@@ -600,6 +670,8 @@ export function LogsView({
               },
             ];
       }),
+      manualDays,
+      floors,
     );
     return rows.map((c) => ({
       ...c,
@@ -607,7 +679,24 @@ export function LogsView({
       displayFloor: floors.displayFloorByIndex.get(c.index) ?? c.index,
       half: floorHalf(floors, c.index),
     }));
-  }, [floors, countedFights, truncated, locale]);
+  }, [floors, countedFights, truncated, locale, manualDays]);
+
+  // 2026-11-08: 絶の各フェーズへの初到達にも手動の記録を日単位で重ねる。明細が
+  // 打ち切られているときは重ねない (ログ側の母数が表示中の分だけになるため)。
+  const phaseFirstReach = useMemo(() => {
+    const base = phaseTotalsAll?.firstReach ?? [];
+    if (!showPhase || truncated || manualDays.length === 0) {
+      return base.map((r) => ({ ...r, manual: null }));
+    }
+    return phaseFirstReachesWithManual(
+      base,
+      countedFights.map((f) => ({
+        durationMs: Math.max(0, f.endMs - f.startMs),
+        date: fightDate(f),
+      })),
+      manualDays,
+    );
+  }, [phaseTotalsAll, showPhase, truncated, manualDays, countedFights]);
 
   // 絞り込み適用後の日リスト。pull が 1 つも残らない日は出さない
   // (その層に挑んでいない日を空行で並べても意味が無い)。
@@ -626,8 +715,71 @@ export function LogsView({
         : f.lastPhase === segment,
     );
     // 別のログと同じ pull の印は絞る前の表を渡す (絞った中だけで比べ直さない)。
-    return summarize(kept, floors, showPhase, duplicateOf).days;
-  }, [summary.days, tierFights, floors, floorFilter, phaseFilter, showPhase, duplicateOf]);
+    // 2026-11-08: 手動の記録もその区間の分だけに絞る。
+    return summarize(
+      kept,
+      floors,
+      showPhase,
+      duplicateOf,
+      filterManualToSegment(manualDays, floors, showPhase, segment),
+    ).days;
+  }, [
+    summary.days,
+    tierFights,
+    floors,
+    floorFilter,
+    phaseFilter,
+    showPhase,
+    duplicateOf,
+    manualDays,
+  ]);
+
+  // 2026-11-08: 手動の記録のダイアログ。区間の選択肢は、零式はログに出てきた層
+  // (深い順)、絶は観測したフェーズ + 1 (手動の日に初めて着いたフェーズ)、どちらも
+  // 「不明」を最後に置く。区間の無いコンテンツは「不明」だけ (区間の列を出さない)。
+  const [manualDraft, setManualDraft] = useState<ManualDayDraft | null>(null);
+  const manualChoices = useMemo<ManualSegmentChoice[]>(() => {
+    const unknown: ManualSegmentChoice = {
+      key: UNKNOWN_SEGMENT_KEY,
+      label: m.logsManual.segmentUnknown,
+      encounterId: null,
+      phase: null,
+    };
+    if (floors) {
+      return [
+        ...[...floors.byEncounter.entries()]
+          .sort((a, b) => b[1] - a[1])
+          .map(([encounterId, idx]) => ({
+            key: `e${encounterId}`,
+            label: floorLabel(floors, idx, locale),
+            encounterId,
+            phase: null,
+          })),
+        unknown,
+      ];
+    }
+    if (showPhase) {
+      const top = Math.min(MANUAL_MAX_PHASE, (phaseCount ?? 0) + 1);
+      return [
+        ...Array.from({ length: top }, (_, i) => top - i).map((p) => ({
+          key: `p${p}`,
+          label: `P${p}`,
+          encounterId: null,
+          phase: p,
+        })),
+        unknown,
+      ];
+    }
+    return [unknown];
+  }, [floors, showPhase, phaseCount, locale, m]);
+  // 既定の日付: 欠けている日のいちばん新しい日、無ければ今日 (イベントの中で決める)。
+  const openNewManual = (date?: string) =>
+    setManualDraft(
+      newManualDraft(
+        date ?? missingDays?.days[0]?.date ?? jstYmdString(new Date()),
+        manualChoices,
+      ),
+    );
 
   /** いま効いている絞り込み (層 / フェーズのどちらか)。 */
   const segmentFilter = floors ? floorFilter : phaseFilter;
@@ -734,6 +886,35 @@ export function LogsView({
       {m.logsImport.button}
     </Button>
   ) : null;
+
+  // 2026-11-08: 手動の記録 (admin のみ。「ログを同期」と同じ権限)。
+  const manualButton = canEdit ? (
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      onClick={() => openNewManual()}
+      className="gap-1.5 text-[11px] tracking-normal"
+      title={m.logsManual.buttonTitle}
+    >
+      <PencilLine className="h-3.5 w-3.5" aria-hidden />
+      {m.logsManual.button}
+    </Button>
+  ) : null;
+
+  const manualDialog = (
+    <ManualDayDialog
+      draft={manualDraft}
+      categoryId={categoryId}
+      choices={manualChoices}
+      segmentKind={floors ? "floor" : showPhase ? "phase" : null}
+      onChange={setManualDraft}
+      onSaved={() => {
+        setManualDraft(null);
+        router.refresh();
+      }}
+    />
+  );
 
   const importDialog = (
     <Dialog
@@ -1130,14 +1311,18 @@ export function LogsView({
       </section>
     ) : null;
 
-  if (fights.length === 0) {
+  // 2026-11-08: 手動の記録だけのコンテンツ (ティアの最初の日に ACT が使えなかった)
+  // も集計を出すので、空の表示はログも手動の記録も無いときだけ。
+  if (fights.length === 0 && manualDays.length === 0) {
     return (
       <div className="flex flex-col gap-3 p-3">
         <div className="flex flex-wrap justify-end gap-2">
+          {manualButton}
           {importButton}
           {syncButton}
         </div>
         {importDialog}
+        {manualDialog}
         {lastSyncFailuresBlock}
         <div className="flex flex-col gap-2">
           {/* 2026-09-04 実機要望「分かりにくい文章の修正」。旧文は 1 段落に
@@ -1237,6 +1422,7 @@ export function LogsView({
             (header は折り返すが、この 3 つの並びは折り返さなかった)。 */}
         <span className="flex flex-wrap items-center justify-end gap-2">
           {difficultyButton}
+          {manualButton}
           {importButton}
           {syncButton}
         </span>
@@ -1255,6 +1441,7 @@ export function LogsView({
 
       {importDialog}
       {difficultyDialog}
+      {manualDialog}
 
       {lastSyncFailuresBlock}
 
@@ -1262,7 +1449,15 @@ export function LogsView({
         <StatCard
           label={m.logs.statTotalPulls}
           value={String(shownTotalPulls)}
-          sub={truncated ? m.logs.statRecentShown(summary.totalPulls) : undefined}
+          // 2026-11-08: 手動の記録の pull があれば「うち手動 N」を添える。
+          sub={
+            [
+              truncated ? m.logs.statRecentShown(summary.totalPulls) : null,
+              manualTotals.pulls > 0 ? m.logsManual.statIncluded(manualTotals.pulls) : null,
+            ]
+              .filter((s): s is string => s !== null)
+              .join(" / ") || undefined
+          }
           detail={
             breakdown.length > 1 ? (
               <PullBreakdownChips items={breakdown} truncated={truncated} />
@@ -1322,18 +1517,33 @@ export function LogsView({
             // クリアでしかないので出さない (誤情報を作らない)。
             summary.fastestClearSeconds !== null
               ? m.logs.fastestClear(formatFightDuration(summary.fastestClearSeconds))
-              : !truncated && summary.firstKill
+              : !truncated && summary.firstClearDate
                 ? m.logs.firstClear(
-                    new Date(summary.firstKill.startMs).toLocaleDateString(
-                      locale === "en" ? "en-US" : "ja-JP",
-                      { timeZone: APP_TIME_ZONE },
-                    ),
+                    // 2026-11-08: 手動の記録の討伐がログより前の日なら、その日 (時刻は
+                    // 無いので練習日の正午として JST で書く)。ログなら従来どおり。
+                    new Date(
+                      summary.firstKill && fightDate(summary.firstKill) === summary.firstClearDate
+                        ? summary.firstKill.startMs
+                        : Date.parse(`${summary.firstClearDate}T12:00:00${APP_UTC_OFFSET_ISO}`),
+                    ).toLocaleDateString(locale === "en" ? "en-US" : "ja-JP", {
+                      timeZone: APP_TIME_ZONE,
+                    }),
                   )
                 : undefined
           }
           highlight={shownTotalClears > 0}
         />
       </ul>
+
+      {/* 2026-11-08: ログが欠けている日 (開催日でどこにもログも手動の記録も無い日)。
+          集計の数字が欠けていることが分かるよう、サマリーの直下に置く。
+          欠けている日が無ければ何も描かない。 */}
+      {missingDays && (
+        <MissingDaysCard
+          missing={missingDays}
+          onRecord={canEdit ? (date) => openNewManual(date) : undefined}
+        />
+      )}
 
       {/* 2026-09-06 W-1 / W-2: ワイプ原因の内訳とフェーズ滞在時間。
           どちらも「PT として何で止まっているか」の指標で、個人の値は無い。
@@ -1379,7 +1589,7 @@ export function LogsView({
           {phaseTotals.length > 1 && (
             <PhaseTimeCard
               totals={phaseTotals}
-              firstReach={phaseTotalsAll?.firstReach ?? []}
+              firstReach={phaseFirstReach}
               truncated={truncated}
               allPulls={phaseTotalsAll?.pulls ?? null}
               totalPulls={shownTotalPulls}
@@ -1501,6 +1711,18 @@ export function LogsView({
                 <span className="w-14 shrink-0 text-right font-mono text-[11px] text-muted-foreground tabular-nums">
                   {m.logs.pulls(t.pulls)}
                 </span>
+                {/* 2026-11-08: 手動の記録を含む日の印 (無い日も幅を取って縦をそろえる)。 */}
+                <span
+                  className="w-3 shrink-0"
+                  title={t.manual ? m.logsManual.timelineMarkTitle : undefined}
+                >
+                  {t.manual && (
+                    <PencilLine
+                      className="h-3 w-3 text-amber-200/80"
+                      aria-label={m.logsManual.timelineMarkTitle}
+                    />
+                  )}
+                </span>
                 {/* 2026-09-07 実機質問「右端のフラグの意味は」。読み上げ用の
                     aria しか無く hover で何も出なかったので、包む span に
                     title を付ける (lucide のアイコンは title prop を取らない)。 */}
@@ -1597,6 +1819,15 @@ export function LogsView({
               floors={floors}
               segmentCount={segmentCount}
               firstPullStartByReport={firstPullStartByReport}
+              onEditManual={
+                canEdit
+                  ? (d) => {
+                      // 絞り込み中の日は区間が絞られているので、元の記録から開く。
+                      const full = manualDays.find((x) => x.id === d.id) ?? d;
+                      setManualDraft(draftFromManualDay(full, manualChoices));
+                    }
+                  : undefined
+              }
               onEditOffset={(reportCode, videoId) => {
                 const existing =
                   videoId === null

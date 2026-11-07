@@ -1273,3 +1273,125 @@ BEGIN
 
   RAISE NOTICE 'Demo seed (L-8) applied — % members considered for job.', v_rows;
 END $$;
+
+-- ============================================================================
+-- Section 9: 練習ログの手動の記録とログが欠けている日 (2026-11-08)
+-- ============================================================================
+-- 手動の記録 (schema.sql 6b-13) が 1 件も無いと、デモでは「手動」の印も、
+-- 総 pull の「うち手動」も、ログが欠けている日を手動で埋めた形も出ない。
+-- また、デモの確定日はどれもログがあるので、欠けている日のカードも出ない。
+--
+--   - 零式 (arcadion-heavy): ログの最後の日より後の、どこにもログの無い最初の
+--     確定日に手動の記録を 1 件 (「ACT が起動しなかった日」)。その次の過去の
+--     候補日を確定にして、欠けている日として 1 日残す
+--   - 絶 (ultimate-futures-rewritten): ログの最後の日の 4 日後に、ログの最深
+--     フェーズの 1 つ先へ着いた手動の記録を 1 件 (フェーズモデルの形を見せる)
+--   - 日付は既存のデモのデータ (Section 3 が適用日から逆算して入れた日) から
+--     決める。固定の日付は焼かない
+--   - 冪等: sentinel `demo_seed_manual_days_applied` で 2 回目以降スキップ。
+--     手動の記録は ON CONFLICT (category_id, session_date) DO NOTHING
+DO $$
+DECLARE
+  v_arc      uuid;
+  v_fru      uuid;
+  v_today    date := (now() AT TIME ZONE 'Asia/Tokyo')::date;
+  v_last     date;
+  v_day      date;
+  v_enc_last integer;
+  v_fru_last date;
+  v_phase    integer;
+  v_gap      uuid;
+BEGIN
+  IF EXISTS (SELECT 1 FROM public.app_settings WHERE key = 'demo_seed_manual_days_applied') THEN
+    RAISE NOTICE 'Demo seed (manual days) already applied — skipping.';
+    RETURN;
+  END IF;
+
+  SELECT id INTO v_arc FROM public.categories WHERE slug = 'arcadion-heavy';
+  SELECT id INTO v_fru FROM public.categories WHERE slug = 'ultimate-futures-rewritten';
+
+  -- ---- 9.1 零式 --------------------------------------------------------
+  IF v_arc IS NOT NULL THEN
+    SELECT max(session_date)::date, max(encounter_id)
+      INTO v_last, v_enc_last
+      FROM public.fflogs_fights
+     WHERE category_id = v_arc;
+  END IF;
+  IF v_last IS NOT NULL THEN
+    -- ログの後の、どこにもログの無い最初の確定日 (過去)。
+    SELECT (s.parsed_date AT TIME ZONE 'Asia/Tokyo')::date
+      INTO v_day
+      FROM public.native_schedule_sessions s
+     WHERE s.status = 'DECISION'
+       AND s.is_optional = false
+       AND (s.parsed_date AT TIME ZONE 'Asia/Tokyo')::date > v_last
+       AND (s.parsed_date AT TIME ZONE 'Asia/Tokyo')::date < v_today
+       AND NOT EXISTS (
+         SELECT 1 FROM public.fflogs_fights f
+          WHERE f.session_date = to_char((s.parsed_date AT TIME ZONE 'Asia/Tokyo')::date, 'YYYY-MM-DD')
+       )
+     ORDER BY s.parsed_date
+     LIMIT 1;
+    -- 確定日が無いデモ (スケジュールを触った後) でも、ログの後の日に 1 件は置く。
+    v_day := COALESCE(v_day, v_last + 5);
+    INSERT INTO public.practice_log_manual_days
+      (category_id, session_date, segments, log_minutes, note)
+    VALUES (
+      v_arc,
+      to_char(v_day, 'YYYY-MM-DD'),
+      jsonb_build_array(
+        jsonb_build_object('encounter', v_enc_last, 'phase', NULL, 'pulls', 9, 'kills', 1, 'best', NULL),
+        jsonb_build_object('encounter', v_enc_last - 1, 'phase', NULL, 'pulls', 2, 'kills', 2, 'best', NULL),
+        jsonb_build_object('encounter', NULL, 'phase', NULL, 'pulls', 3, 'kills', 0, 'best', NULL)
+      ),
+      125,
+      'ACT が起動しなかった日 (デモ)'
+    )
+    ON CONFLICT (category_id, session_date) DO NOTHING;
+
+    -- 欠けている日を 1 日残す: 手動の記録の日の次の、過去の候補日を確定にする。
+    SELECT s.id
+      INTO v_gap
+      FROM public.native_schedule_sessions s
+     WHERE s.status = 'CANDIDATE'
+       AND s.is_optional = false
+       AND (s.parsed_date AT TIME ZONE 'Asia/Tokyo')::date > v_day
+       AND (s.parsed_date AT TIME ZONE 'Asia/Tokyo')::date < v_today
+     ORDER BY s.parsed_date
+     LIMIT 1;
+    IF v_gap IS NOT NULL THEN
+      UPDATE public.native_schedule_sessions SET status = 'DECISION' WHERE id = v_gap;
+    END IF;
+  ELSE
+    RAISE NOTICE 'Demo seed (manual days): arcadion-heavy にログが無いので零式は飛ばします';
+  END IF;
+
+  -- ---- 9.2 絶 ----------------------------------------------------------
+  IF v_fru IS NOT NULL THEN
+    SELECT max(session_date)::date, max(last_phase)
+      INTO v_fru_last, v_phase
+      FROM public.fflogs_fights
+     WHERE category_id = v_fru;
+  END IF;
+  IF v_fru_last IS NOT NULL AND v_phase IS NOT NULL THEN
+    INSERT INTO public.practice_log_manual_days
+      (category_id, session_date, segments, log_minutes, note)
+    VALUES (
+      v_fru,
+      to_char(v_fru_last + 4, 'YYYY-MM-DD'),
+      jsonb_build_array(
+        jsonb_build_object('encounter', NULL, 'phase', v_phase + 1, 'pulls', 4, 'kills', 0, 'best', 61.5),
+        jsonb_build_object('encounter', NULL, 'phase', v_phase, 'pulls', 11, 'kills', 0, 'best', 7.2)
+      ),
+      150,
+      'ACT のログを取り忘れた日 (デモ)'
+    )
+    ON CONFLICT (category_id, session_date) DO NOTHING;
+  END IF;
+
+  INSERT INTO public.app_settings (key, value) VALUES
+    ('demo_seed_manual_days_applied', '1')
+  ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
+
+  RAISE NOTICE 'Demo seed (manual days) applied — savage %, ultimate %.', v_day, v_fru_last + 4;
+END $$;

@@ -2,6 +2,7 @@ import "server-only";
 import { discordFetch } from "@/lib/server/discord-api";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { fetchAllCategoryFightRows } from "@/lib/supabase/fflogs-fights";
+import { fetchManualDaysWith } from "@/lib/supabase/practice-log-manual";
 import { claimMarker, type MarkerClaimOps } from "@/lib/schedule/marker-claim";
 import { jstYmdString } from "@/lib/jst-date";
 import {
@@ -201,21 +202,33 @@ async function categoriesPracticedIn(db: Db, week: RaidWeek): Promise<CategoryMe
     slug: string | null;
     progress_model: string | null;
   }>;
-  const counts = await Promise.all(
-    categories.map((c) =>
-      db
-        .from("fflogs_fights")
-        .select("fight_id", { count: "exact", head: true })
-        .eq("category_id", c.id)
-        .gte("session_date", week.start)
-        .lte("session_date", week.end),
+  const [counts, manual] = await Promise.all([
+    Promise.all(
+      categories.map((c) =>
+        db
+          .from("fflogs_fights")
+          .select("fight_id", { count: "exact", head: true })
+          .eq("category_id", c.id)
+          .gte("session_date", week.start)
+          .lte("session_date", week.end),
+      ),
     ),
+    // 2026-11-08: 手動の記録だけの週 (ACT が使えなかった週) も送る。
+    db
+      .from("practice_log_manual_days")
+      .select("category_id")
+      .gte("session_date", week.start)
+      .lte("session_date", week.end),
+  ]);
+  if (manual.error) throw new Error(manual.error.message);
+  const manualCategories = new Set(
+    ((manual.data ?? []) as Array<{ category_id: string }>).map((r) => r.category_id),
   );
   return categories
-    .filter((_, i) => {
+    .filter((c, i) => {
       const res = counts[i]!;
       if (res.error) throw new Error(res.error.message);
-      return (res.count ?? 0) > 0;
+      return (res.count ?? 0) > 0 || manualCategories.has(c.id);
     })
     .map((c) => ({ id: c.id, name: c.name, slug: c.slug, progressModel: c.progress_model }));
 }
@@ -231,8 +244,13 @@ async function buildCategoryMessage(
   week: RaidWeek,
   baseUrl: string | null,
 ): Promise<WeeklySummaryMessage | null> {
-  const paged = await fetchAllCategoryFightRows(db, FIGHT_COLUMNS, category.id);
+  const [paged, manual] = await Promise.all([
+    fetchAllCategoryFightRows(db, FIGHT_COLUMNS, category.id),
+    // 2026-11-08: 手動の記録 (日単位の要約) も週のまとめに足す。
+    fetchManualDaysWith(db, category.id),
+  ]);
   if (!paged) throw new Error("練習ログを読めませんでした");
+  if (!manual) throw new Error("手動の記録を読めませんでした");
   const fights: FightRow[] = paged.rows.map((r) => ({
     reportCode: String(r.report_code),
     fightId: Number(r.fight_id),
@@ -258,7 +276,7 @@ async function buildCategoryMessage(
     ? null
     : buildFloorMap(fights, resolveFloorCount(model, category.name), "ja");
   const tierFights = filterToFloorCluster(fights, floors);
-  const summary = summarizeWeek(tierFights, week, floors, phaseModel, "ja");
+  const summary = summarizeWeek(tierFights, week, floors, phaseModel, "ja", manual);
   if (!summary) return null;
   const url =
     baseUrl && category.slug

@@ -10,6 +10,8 @@ import {
 import { resolveProgressModel } from "@/lib/content-model";
 import { getLocale, getMessages } from "@/lib/i18n/server";
 import { localizeWipeAbilities } from "@/lib/server/wipe-ability-names";
+import { fetchCategoryManualDays } from "@/lib/supabase/practice-log-manual";
+import { fetchMissingPracticeDays } from "@/lib/server/practice-log-missing-days";
 import { LogsView } from "./logs-view";
 
 /**
@@ -74,18 +76,28 @@ export default async function LogsPage({
   // category_id / 同じ並び / 同じページングで `fflogs_fights` をもう一度
   // フルスキャンしていた (集計が使う列は明細側の列に完全に含まれる)。
   // 実機の絶竜詩 1047 pull で 4 クエリ / 約 2,100 行の転送になっていた。
-  const {
-    fights,
-    totalPulls,
-    totalClears,
-    truncated,
-    phaseTotals: phaseTotalsAll,
-  } = await fetchCategoryFights(category.id, {
-    // フェーズ滞在区間は絶 (フェーズ管理コンテンツ) だけ表示に使う。
-    includePhases: ultimate,
-    includePhaseTotals: ultimate,
-    ultimate,
-  });
+  // 2026-11-08: 手動の記録 (ACT が使えなかった日の分) とログが欠けている日は、
+  // 明細と並列に読む (どちらも明細に依存しない)。
+  const [
+    {
+      fights,
+      totalPulls,
+      totalClears,
+      truncated,
+      phaseTotals: phaseTotalsAll,
+    },
+    manualDays,
+    missingDays,
+  ] = await Promise.all([
+    fetchCategoryFights(category.id, {
+      // フェーズ滞在区間は絶 (フェーズ管理コンテンツ) だけ表示に使う。
+      includePhases: ultimate,
+      includePhaseTotals: ultimate,
+      ultimate,
+    }),
+    fetchCategoryManualDays(category.id),
+    fetchMissingPracticeDays(category.id),
+  ]);
   const codes = Array.from(new Set(fights.map((f) => f.reportCode)));
   const [videoLinks, failedSyncs, pullNotes] = await Promise.all([
     fetchReportVideoLinks(codes),
@@ -120,6 +132,8 @@ export default async function LogsPage({
       videoLinks={videoLinks}
       failedSyncs={failedSyncs}
       canEdit={canEdit}
+      manualDays={manualDays}
+      missingDays={missingDays}
     />
   );
 }

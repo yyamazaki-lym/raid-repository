@@ -7,7 +7,16 @@
 "use client";
 
 import { Fragment, useState } from "react";
-import { ChevronDown, ListOrdered, Plus, Skull, Trash2, Trophy, Video } from "lucide-react";
+import {
+  ChevronDown,
+  ListOrdered,
+  PencilLine,
+  Plus,
+  Skull,
+  Trash2,
+  Trophy,
+  Video,
+} from "lucide-react";
 import { toast } from "sonner";
 import { buildYoutubeChapters, chapterPullLabel } from "@/lib/video-chapters";
 import { parseYouTubeId } from "@/lib/youtube";
@@ -24,9 +33,12 @@ import {
   floorToneClass,
   formatFightDuration,
   formatPercentage,
+  manualSegmentIndex,
   percentageToneClass,
   phaseToneClass,
 } from "@/lib/fflogs-progress";
+import { formatMs } from "@/lib/fflogs-fight-detail";
+import type { ManualDay, ManualSegment } from "@/lib/practice-log-manual";
 import { useLocale, useMessages } from "@/lib/i18n/client";
 import { PERF_TEXT } from "@/lib/perf-tone";
 import { type ReportVideoLink } from "@/lib/supabase/fflogs-fights";
@@ -48,6 +60,7 @@ export function DayRow({
   segmentCount,
   firstPullStartByReport,
   onEditOffset,
+  onEditManual,
 }: {
   /** W-7 (2026-09-08): ミス注釈の集計キー。PullRow へ drill する。 */
   categoryId: string | null;
@@ -74,9 +87,23 @@ export function DayRow({
   firstPullStartByReport: Map<string, number>;
   /** videoId=null で「この report に動画を追加」、非 null でその行の編集。 */
   onEditOffset: (reportCode: string, videoId: string | null) => void;
+  /** admin のみ (2026-11-08): その日の手動の記録を直す。 */
+  onEditManual?: (day: ManualDay) => void;
 }) {
   const m = useMessages();
   const locale = useLocale();
+  // 2026-11-08: 手動の記録 (日単位の要約)。見出しの数・到達・討伐には
+  // `summarize` が足し込み済み。区間の範囲チップにもここで足す。
+  const manual = day.manual;
+  const manualSegs: ManualSegment[] = manual?.segments ?? [];
+  const manualLabel = (s: ManualSegment): string => {
+    if (floors) {
+      const idx = manualSegmentIndex(s, floors, false);
+      return idx === null ? m.logsManual.segmentUnknown : floorLabel(floors, idx, locale);
+    }
+    if (showPhase && s.phase !== null) return `P${s.phase}`;
+    return m.logsManual.segmentUnknown;
+  };
 
   /**
    * 2026-10-07 C-3: pull の番号は数える pull だけに振り、別のログと同じ pull
@@ -207,12 +234,25 @@ export function DayRow({
             {day.date.slice(5)}
           </span>
           <span className="sr-only sm:not-sr-only">{day.date}</span>
+          {/* 2026-11-08: 手動の記録のある日。数・到達・討伐に入っている。 */}
+          {manual && (
+            <span
+              className="ml-1.5 inline-flex items-center gap-0.5 rounded-sm border border-amber-400/40 px-1 py-px align-middle font-mono text-[11px] text-amber-200"
+              title={m.logsManual.badgeTitle}
+            >
+              <PencilLine className="h-2.5 w-2.5 shrink-0" aria-hidden />
+              {m.logsManual.badge}
+            </span>
+          )}
         </span>
         <span className="flex shrink-0 items-center gap-2 font-mono text-[11px] whitespace-nowrap text-muted-foreground tabular-nums">
           {/* 「12 pull」を右寄せで固定幅に入れると、数字の右端も単位も揃う。 */}
           <span className="w-14 text-right">{m.logs.pulls(day.pulls)}</span>
+          {/* 戦闘時間はログの pull だけ。手動の記録だけの日は分からないので —。 */}
           <span className="w-20 text-right">
-            {m.logs.combatTime(formatFightDuration(day.fightSeconds))}
+            {counted.length > 0
+              ? m.logs.combatTime(formatFightDuration(day.fightSeconds))
+              : "—"}
           </span>
           {reserveDeaths && (
             <span
@@ -238,13 +278,15 @@ export function DayRow({
             // 2026-10-07 C-3: 範囲も数える pull から (見出しの数・結果のチップと同じ。
             // 別のログと同じ pull だけの日はチップを出さない)。
             if (floors && day.bestFloor !== null) {
-              const dayFloors = counted
-                .map((f) =>
+              const dayFloors = [
+                ...counted.map((f) =>
                   f.encounterId !== null
                     ? (floors.byEncounter.get(f.encounterId) ?? null)
                     : null,
-                )
-                .filter((v): v is number => v !== null);
+                ),
+                // 2026-11-08: 手動の記録の層も範囲に入れる。
+                ...manualSegs.map((s) => manualSegmentIndex(s, floors, false)),
+              ].filter((v): v is number => v !== null);
               const minF = Math.min(...dayFloors);
               const maxF = Math.max(...dayFloors);
               // 範囲は表示層番号 (前半/後半とも 4) で出す。単一 index の
@@ -268,9 +310,10 @@ export function DayRow({
               );
             }
             if (!showPhase) return null;
-            const dayPhases = counted
-              .map((f) => f.lastPhase)
-              .filter((v): v is number => v !== null);
+            const dayPhases = [
+              ...counted.map((f) => f.lastPhase),
+              ...manualSegs.map((s) => s.phase),
+            ].filter((v): v is number => v !== null);
             if (dayPhases.length === 0) return null;
             const minP = Math.min(...dayPhases);
             const maxP = Math.max(...dayPhases);
@@ -331,7 +374,51 @@ export function DayRow({
 
       {open && (
         <div className="flex flex-col gap-2 border-t border-border/30 px-3 py-2">
-          {canEdit && (
+          {/* 2026-11-08: 手動の記録 (区間ごとの pull・討伐・最良の残%、練習時間、メモ)。 */}
+          {manual && (
+            <div className="flex flex-col gap-1 rounded-sm border border-amber-400/25 bg-amber-400/5 px-2 py-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="inline-flex items-center gap-1 font-mono text-[11px] tracking-[0.14em] text-amber-200/90 uppercase">
+                  <PencilLine className="h-3 w-3 shrink-0" aria-hidden />
+                  {m.logsManual.panelTitle}
+                </span>
+                {canEdit && onEditManual && (
+                  <button
+                    type="button"
+                    onClick={() => onEditManual(manual)}
+                    className="rounded-sm border border-amber-400/40 px-1.5 py-0.5 font-mono text-[11px] text-amber-200 transition-colors hover:bg-amber-400/15"
+                  >
+                    {m.logsManual.edit}
+                  </button>
+                )}
+              </div>
+              <ul className="flex flex-wrap gap-x-3 gap-y-0.5 font-mono text-[12px] tabular-nums">
+                {manualSegs.map((s, i) => (
+                  <li key={i} className="inline-flex items-baseline gap-1.5 whitespace-nowrap">
+                    <span className="text-foreground/85">{manualLabel(s)}</span>
+                    <span className="text-muted-foreground">{m.logs.pulls(s.pulls)}</span>
+                    {s.kills > 0 && (
+                      <span className="text-emerald-200">{m.logsManual.killsValue(s.kills)}</span>
+                    )}
+                    {s.kills === 0 && s.bestPercentage !== null && (
+                      <span className={percentageToneClass(s.bestPercentage)}>
+                        {m.logsManual.bestValue(formatPercentage(s.bestPercentage))}
+                      </span>
+                    )}
+                  </li>
+                ))}
+                {manual.logMinutes !== null && (
+                  <li className="whitespace-nowrap text-muted-foreground">
+                    {m.logsManual.minutesValue(formatMs(manual.logMinutes * 60_000))}
+                  </li>
+                )}
+              </ul>
+              {manual.note && (
+                <p className="text-[12px] leading-relaxed text-muted-foreground">{manual.note}</p>
+              )}
+            </div>
+          )}
+          {canEdit && codes.length > 0 && (
             <div className="flex flex-col gap-1">
               <span className="font-mono text-[11px] tracking-[0.14em] text-muted-foreground uppercase">
                 {m.logs.videoOffset}
