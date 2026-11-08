@@ -14,6 +14,11 @@ import type { PhaseSpan, WipeSummary } from "./fflogs-fight-detail";
 import { PERF_TEXT, perfForRemainingPercent } from "./perf-tone";
 import { BREAK_CAP_MS, cappedBreakIntervals, unionLengthMs } from "./fflogs-session";
 import { duplicatePulls, pullKey } from "./fflogs-duplicate-pulls";
+import {
+  manualSegmentPercentage,
+  type ManualDay,
+  type ManualSegment,
+} from "./practice-log-manual";
 // 区間の和集合は fflogs-session.ts へ移した (拘束とログ合計で共通)。ここからも使えるよう再公開する。
 export { unionLengthMs } from "./fflogs-session";
 
@@ -343,6 +348,45 @@ export function isClearFight(f: FightRow, floors: FloorMap): boolean {
   return f.encounterId === floors.finalEncounterId;
 }
 
+/**
+ * 手動の記録 (2026-11-08、`practice-log-manual.ts`) の区間の index。零式は層
+ * index (encounter から `floors` で引く)、絶はフェーズ、どちらも無ければ null。
+ * pull の `segmentOf` (層 / フェーズ) と同じ物差し。
+ */
+export function manualSegmentIndex(
+  s: Pick<ManualSegment, "encounterId" | "phase">,
+  floors: FloorMap,
+  phaseModel: boolean,
+): number | null {
+  if (floors) return s.encounterId !== null ? (floors.byEncounter.get(s.encounterId) ?? null) : null;
+  return phaseModel ? s.phase : null;
+}
+
+/** 手動の記録の区間のクリア数 (`isClearFight` と同じ: 零式は最終層の討伐だけ)。 */
+export function manualSegmentClears(s: ManualSegment, floors: FloorMap): number {
+  if (s.kills <= 0) return 0;
+  if (!floors) return s.kills;
+  return s.encounterId === floors.finalEncounterId ? s.kills : 0;
+}
+
+/**
+ * 手動の記録を、層 / フェーズの絞り込みに合わせて区間ごとに絞る (UI-5 の絞り込み)。
+ * 区間が残らない日は落とす。
+ */
+export function filterManualToSegment(
+  manual: ReadonlyArray<ManualDay>,
+  floors: FloorMap,
+  phaseModel: boolean,
+  segment: number,
+): ManualDay[] {
+  return manual.flatMap((d) => {
+    const segments = d.segments.filter(
+      (s) => manualSegmentIndex(s, floors, phaseModel) === segment,
+    );
+    return segments.length === 0 ? [] : [{ ...d, segments }];
+  });
+}
+
 export type DaySummary = {
   /** JST 暦日 `YYYY-MM-DD`。 */
   date: string;
@@ -372,16 +416,29 @@ export type DaySummary = {
    * `summarize` に渡した pull 全体の表なので、ほかの日の pull も載っている。
    */
   duplicateOf: ReadonlyMap<string, string>;
+  /**
+   * その日の手動の記録 (2026-11-08)。`pulls` / `kills` / `clears` / 到達は
+   * これも足した値。`fightSeconds` と `fights` には入らない (pull の時刻が無い)。
+   */
+  manual: ManualDay | null;
+  /** 手動の記録の pull 数 (`pulls` の内数)。 */
+  manualPulls: number;
 };
 
 export type ProgressSummary = {
+  /** 総 pull (手動の記録を含む)。 */
   totalPulls: number;
-  /** 最終層クリア (絶なら kill) の数。 */
+  /** 最終層クリア (絶なら kill) の数 (手動の記録を含む)。 */
   totalClears: number;
   bestPercentage: number | null;
   bestPhase: number | null;
-  /** 初クリアの pull (時系列で最初の最終層 kill)。 */
+  /** 初クリアの pull (時系列で最初の最終層 kill)。**ログの pull だけ**。 */
   firstKill: FightRow | null;
+  /**
+   * 初クリアの日 (2026-11-08)。手動の記録の討伐がログより前の日にあれば
+   * その日。無ければ null。
+   */
+  firstClearDate: string | null;
   /** クリア pull の最短戦闘時間 (秒)。クリアが無ければ null。 */
   fastestClearSeconds: number | null;
   days: DaySummary[];
@@ -414,6 +471,12 @@ export function summarize(
    * 渡せる (層で絞った pull を渡すときも、絞る前の表で同じ印になる)。
    */
   duplicateOf: ReadonlyMap<string, string> = duplicatePulls(fights),
+  /**
+   * 手動の記録 (2026-11-08、`practice-log-manual.ts`)。数・クリア・到達に日単位で
+   * 足す。ログの無い日は手動の記録だけの日になる。戦闘時間と `fights` には入らない。
+   * 層で絞るときは呼び出し側が `filterManualToSegment` で絞って渡す。
+   */
+  manual: ReadonlyArray<ManualDay> = [],
 ): ProgressSummary {
   const isCounted = (f: FightRow) => !duplicateOf.has(pullKey(f));
   const counted = duplicateOf.size === 0 ? fights : fights.filter(isCounted);
@@ -426,6 +489,12 @@ export function summarize(
       byDay.set(d, list);
     }
     list.push(f);
+  }
+  const manualByDay = new Map<string, ManualDay>();
+  for (const m of manual) {
+    if (m.segments.length === 0) continue;
+    manualByDay.set(m.date, m);
+    if (!byDay.has(m.date)) byDay.set(m.date, []);
   }
 
   const floorOf = (f: FightRow): number | null =>
@@ -440,32 +509,60 @@ export function summarize(
   // 0% として混ぜると消化日が常に「残0%」になり数字が意味を失う
   // (2026-08-28 実機報告)。最高到達層の戦闘だけで残% を出す。
   // フェーズ管理 (絶) も同様に最深フェーズ内で見る (2026-09-03)。
-  const bestPercentageOf = (list: FightRow[]): number | null => {
+  // 2026-11-08: 手動の記録の区間も同じ物差しで並べる (区間 + 残%)。
+  type Reach = { segment: number | null; pct: number | null };
+  const fightReach = (f: FightRow): Reach => ({
+    segment: segmentOf(f),
+    pct: f.kill ? 0 : f.fightPercentage,
+  });
+  const manualReach = (s: ManualSegment): Reach => ({
+    segment: manualSegmentIndex(s, floors, phaseModel),
+    pct: manualSegmentPercentage(s),
+  });
+  const bestPercentageOf = (list: Reach[]): number | null => {
     let scope = list;
     if (floors || phaseModel) {
       const idxs = list
-        .map(segmentOf)
+        .map((r) => r.segment)
         .filter((v): v is number => v !== null);
       if (idxs.length > 0) {
         const top = Math.max(...idxs);
-        scope = list.filter((f) => segmentOf(f) === top);
+        scope = list.filter((r) => r.segment === top);
       }
     }
-    return minOrNull(scope.map((f) => (f.kill ? 0 : f.fightPercentage)));
+    return minOrNull(scope.map((r) => r.pct));
   };
+  const manualSegs = (list: ReadonlyArray<ManualDay>): ManualSegment[] =>
+    list.flatMap((d) => d.segments);
+  const sumOf = (segs: ManualSegment[], f: (s: ManualSegment) => number) =>
+    segs.reduce((acc, s) => acc + f(s), 0);
+  // 絶 (と区間の無いコンテンツ) の「最深フェーズ」に手動の記録のフェーズを足す。
+  // 零式の手動の記録は phase を持たない (null)。
+  const manualPhases = (segs: ManualSegment[]) => segs.map((s) => s.phase);
 
   const days: DaySummary[] = [];
   for (const [date, list] of byDay) {
     const sorted = [...list].sort((a, b) => a.startMs - b.startMs);
     const dayCounted = duplicateOf.size === 0 ? sorted : sorted.filter(isCounted);
+    const md = manualByDay.get(date) ?? null;
+    const segs = md?.segments ?? [];
+    const manualPulls = sumOf(segs, (s) => s.pulls);
     days.push({
       date,
-      pulls: dayCounted.length,
-      kills: dayCounted.filter((f) => f.kill).length,
-      clears: dayCounted.filter((f) => isClearFight(f, floors)).length,
-      bestPercentage: bestPercentageOf(dayCounted),
-      bestPhase: maxOrNull(dayCounted.map((f) => f.lastPhase)),
-      bestFloor: maxOrNull(dayCounted.map(floorOf)),
+      pulls: dayCounted.length + manualPulls,
+      kills: dayCounted.filter((f) => f.kill).length + sumOf(segs, (s) => s.kills),
+      clears:
+        dayCounted.filter((f) => isClearFight(f, floors)).length +
+        sumOf(segs, (s) => manualSegmentClears(s, floors)),
+      bestPercentage: bestPercentageOf([
+        ...dayCounted.map(fightReach),
+        ...segs.map(manualReach),
+      ]),
+      bestPhase: maxOrNull([...dayCounted.map((f) => f.lastPhase), ...manualPhases(segs)]),
+      bestFloor: maxOrNull([
+        ...dayCounted.map(floorOf),
+        ...(floors ? segs.map((s) => manualSegmentIndex(s, floors, false)) : []),
+      ]),
       fightSeconds: Math.round(
         dayCounted.reduce((acc, f) => acc + Math.max(0, f.endMs - f.startMs), 0) /
           1000,
@@ -473,6 +570,8 @@ export function summarize(
       fights: sorted,
       countedFights: dayCounted,
       duplicateOf,
+      manual: md,
+      manualPulls,
     });
   }
   // 新しい日が上。
@@ -480,12 +579,29 @@ export function summarize(
 
   const chronological = [...counted].sort((a, b) => a.startMs - b.startMs);
   const clears = counted.filter((f) => isClearFight(f, floors));
+  const allManual = manualSegs([...manualByDay.values()]);
+  const firstKill = chronological.find((f) => isClearFight(f, floors)) ?? null;
+  // 初クリアの日: ログの初クリアの日と、討伐のある手動の記録の日の早い方。
+  const firstManualClear =
+    [...manualByDay.values()]
+      .filter((d) => d.segments.some((s) => manualSegmentClears(s, floors) > 0))
+      .map((d) => d.date)
+      .sort()[0] ?? null;
+  const firstLoggedClear = firstKill ? fightDate(firstKill) : null;
+  const firstClearDate =
+    firstManualClear !== null && (firstLoggedClear === null || firstManualClear < firstLoggedClear)
+      ? firstManualClear
+      : firstLoggedClear;
   return {
-    totalPulls: counted.length,
-    totalClears: clears.length,
-    bestPercentage: bestPercentageOf(counted),
-    bestPhase: maxOrNull(counted.map((f) => f.lastPhase)),
-    firstKill: chronological.find((f) => isClearFight(f, floors)) ?? null,
+    totalPulls: counted.length + sumOf(allManual, (s) => s.pulls),
+    totalClears: clears.length + sumOf(allManual, (s) => manualSegmentClears(s, floors)),
+    bestPercentage: bestPercentageOf([
+      ...counted.map(fightReach),
+      ...allManual.map(manualReach),
+    ]),
+    bestPhase: maxOrNull([...counted.map((f) => f.lastPhase), ...manualPhases(allManual)]),
+    firstKill,
+    firstClearDate,
     fastestClearSeconds:
       clears.length > 0
         ? Math.round(
@@ -519,6 +635,8 @@ export type ProgressPoint = {
   isFirstClear: boolean;
   /** 最終層クリア (絶なら kill) があった日。 */
   hasClear: boolean;
+  /** 手動の記録を含む日 (2026-11-08)。到達度の推移で印を付ける。 */
+  manual: boolean;
 };
 
 /**
@@ -669,6 +787,7 @@ export function progressTimeline(
       isRecord: improvedPct || improvedPhase || improvedSegment || isFirstClear,
       isFirstClear,
       hasClear,
+      manual: d.manual !== null,
     });
   }
   return out;
@@ -702,7 +821,21 @@ export function pullBreakdown(
   floors: FloorMap,
   showPhase: boolean,
   locale: ProgressLocale = "ja",
+  /**
+   * 手動の記録 (2026-11-08)。区間ごとの pull 数を同じバケットに足す。層 /
+   * フェーズが分からない区間は「不明」に入れる。
+   */
+  manual: ReadonlyArray<ManualDay> = [],
 ): PullBreakdownItem[] {
+  const unknownItem = (count: number): PullBreakdownItem => ({
+    label: locale === "en" ? "Unknown" : "不明",
+    count,
+    kind: "unknown",
+    displayFloor: null,
+    phase: null,
+    half: null,
+  });
+  const segs = manual.flatMap((d) => d.segments);
   if (floors) {
     const counts = new Map<number, number>();
     for (const f of fights) {
@@ -711,7 +844,13 @@ export function pullBreakdown(
       if (idx === undefined) continue;
       counts.set(idx, (counts.get(idx) ?? 0) + 1);
     }
-    return [...counts.entries()]
+    let manualUnknown = 0;
+    for (const s of segs) {
+      const idx = manualSegmentIndex(s, floors, false);
+      if (idx === null) manualUnknown += s.pulls;
+      else counts.set(idx, (counts.get(idx) ?? 0) + s.pulls);
+    }
+    const out: PullBreakdownItem[] = [...counts.entries()]
       .sort((a, b) => a[0] - b[0])
       .map(([idx, count]) => ({
         label: floorLabel(floors, idx, locale),
@@ -721,6 +860,8 @@ export function pullBreakdown(
         phase: null,
         half: floorHalf(floors, idx),
       }));
+    if (manualUnknown > 0) out.push(unknownItem(manualUnknown));
+    return out;
   }
   if (!showPhase) return [];
   const byPhase = new Map<number, number>();
@@ -734,6 +875,14 @@ export function pullBreakdown(
     } else {
       unknown += 1;
     }
+  }
+  // 手動の記録: 討伐は「討伐」、残り (ワイプ) は到達フェーズに入れる (pull と同じ)。
+  for (const s of segs) {
+    clears += s.kills;
+    const wipes = s.pulls - s.kills;
+    if (wipes <= 0) continue;
+    if (s.phase !== null) byPhase.set(s.phase, (byPhase.get(s.phase) ?? 0) + wipes);
+    else unknown += wipes;
   }
   const out: PullBreakdownItem[] = [...byPhase.entries()]
     .sort((a, b) => a[0] - b[0])

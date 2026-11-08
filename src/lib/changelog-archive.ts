@@ -26,6 +26,16 @@ import type { ReleaseEntry } from "./changelog";
 export const RELEASES_ARCHIVE: ReleaseEntry[] = [
   {
     version: "2.18",
+    date: "2026-10-21",
+    parts: [
+      {
+        title:
+          "🩹 コンテンツ: 一覧のカードの大きさが揃わないことがあったのを直した (進行のスパークラインがあるカードだけ高くなり、同じ段の他のカードが短く見えていた)",
+      },
+    ],
+  },
+  {
+    version: "2.18",
     date: "2026-10-10",
     parts: [
       {

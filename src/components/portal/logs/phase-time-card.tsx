@@ -10,6 +10,8 @@
 import { type PhaseFirstReach, formatMs } from "@/lib/fflogs-fight-detail";
 import { phaseBarToneClass, phaseTextToneClass } from "@/lib/fflogs-progress";
 import { useMessages } from "@/lib/i18n/client";
+import { PencilLine } from "lucide-react";
+import type { ManualMark } from "@/lib/practice-log-manual-merge";
 
 /**
  * フェーズ滞在時間カード (2026-09-06 W-2、絶のみ)。取得済み pull の各
@@ -25,7 +27,7 @@ export function PhaseTimeCard({
 }: {
   totals: Array<{ id: number; ms: number; share: number }>;
   /** 各フェーズへの初到達 (2026-09-07)。空なら節ごと出さない。 */
-  firstReach: PhaseFirstReach[];
+  firstReach: Array<PhaseFirstReach & { manual?: ManualMark }>;
   truncated: boolean;
   /** 全件集計のときの母数 (pull 数)。null なら表示中の明細からの集計。 */
   allPulls: number | null;
@@ -106,12 +108,24 @@ export function PhaseTimeCard({
               <li
                 key={r.id}
                 className="inline-flex items-baseline gap-1 whitespace-nowrap font-mono text-[12px] tabular-nums"
-                title={r.date ?? undefined}
+                title={
+                  // 2026-11-08: 手動の記録の日に初到達 / 手動の pull を含む。
+                  r.manual === "first"
+                    ? m.logsManual.milestoneFirstTitle(r.date ?? "")
+                    : r.manual === "partial"
+                      ? `${r.date ?? ""} / ${m.logsManual.milestonePartialTitle}`
+                      : (r.date ?? undefined)
+                }
               >
                 <span className={phaseTextToneClass(r.id)}>
                   P{r.id}
                 </span>
-                <span className="text-foreground/80">{formatMs(r.ms)}</span>
+                <span className="text-foreground/80">
+                  {r.manual === "first" ? "—" : formatMs(r.ms)}
+                </span>
+                {r.manual && (
+                  <PencilLine className="h-2.5 w-2.5 shrink-0 self-center text-amber-200/80" aria-label={m.logsManual.badge} />
+                )}
                 <span className="text-muted-foreground/80">
                   ({m.logs.pulls(r.pulls)})
                 </span>

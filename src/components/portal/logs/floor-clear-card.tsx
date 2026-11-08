@@ -51,12 +51,14 @@
  */
 "use client";
 
+import { PencilLine } from "lucide-react";
 import { formatMs } from "@/lib/fflogs-fight-detail";
 import { floorTextToneClass } from "@/lib/fflogs-progress";
 import type { FloorFirstClear } from "@/lib/fflogs-session";
 import { useMessages } from "@/lib/i18n/client";
 import { jstYmdString } from "@/lib/jst-date";
 import { APP_TIME_ZONE } from "@/lib/app-timezone";
+import type { ManualMark } from "@/lib/practice-log-manual-merge";
 
 export type FloorClearItem = FloorFirstClear & {
   /** 表示ラベル (例: "3層" / "4層後半")。`floorLabel` で引いたもの。 */
@@ -65,6 +67,11 @@ export type FloorClearItem = FloorFirstClear & {
   displayFloor: number;
   /** 最終層の前半 / 後半 (分割の無い層は null)。 */
   half: "first" | "second" | null;
+  /**
+   * 手動の記録 (2026-11-08) がどう効いたか。"first" = 手動の記録の日に初討伐
+   * (時刻と時間は分からない)、"partial" = 手動の pull を pull 数に含む。
+   */
+  manual?: ManualMark;
 };
 
 export function FloorClearCard({ clears }: { clears: FloorClearItem[] }) {
@@ -88,7 +95,11 @@ export function FloorClearCard({ clears }: { clears: FloorClearItem[] }) {
             // flex-wrap: 想定より狭い端末で「通算 N」だけが折り返せるように
             // する (項目ごと横へ溢れさせない)。個々の断片は nowrap。
             className="inline-flex flex-wrap items-baseline gap-x-1 font-mono text-[12px] tabular-nums"
-            title={m.logs.floorClearHover(
+            title={
+              // 2026-11-08: 手動の記録の日の初討伐は時刻が無い (日付だけ出す)。
+              c.manual === "first"
+                ? m.logsManual.milestoneFirstTitle(c.date ?? "")
+                : m.logs.floorClearHover(
               // 日付は `session_date` (日ごとの行と同じキー) を優先する。
               // 深夜まで続いたセッションでは startMs の JST 暦日が翌日に
               // なるため、ここで壁時計から作ると日の行と食い違う。
@@ -101,7 +112,8 @@ export function FloorClearCard({ clears }: { clears: FloorClearItem[] }) {
                 timeZone: APP_TIME_ZONE,
               }),
               c.overallPulls,
-            )}
+            ) + (c.manual === "partial" ? ` / ${m.logsManual.milestonePartialTitle}` : "")
+            }
           >
             {/* 層の識別色。4 層前半 / 後半は色相を分ける (`stat-card.tsx` の
                 内訳チップと同じ扱い — floorTextToneClass は表示層番号しか
@@ -117,8 +129,11 @@ export function FloorClearCard({ clears }: { clears: FloorClearItem[] }) {
               {c.label}
             </span>
             <span className="whitespace-nowrap text-foreground/80">
-              {formatMs(c.ms)}
+              {c.manual === "first" ? "—" : formatMs(c.ms)}
             </span>
+            {c.manual && (
+              <PencilLine className="h-2.5 w-2.5 shrink-0 self-center text-amber-200/80" aria-label={m.logsManual.badge} />
+            )}
             <span className="whitespace-nowrap text-muted-foreground/80">
               {m.logs.pulls(c.pulls)}
             </span>

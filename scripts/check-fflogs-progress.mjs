@@ -436,7 +436,8 @@ console.log("\n練習日数のタイルの配線");
   const view = readFileSync("src/app/(portal)/category/[slug]/logs/logs-view.tsx", "utf8").replace(/\r\n/g, "\n");
   check(
     "合計は練習日数と同じ tierFights から",
-    /const logTotalMs = useMemo\(\(\) => totalLogMs\(tierFights\), \[tierFights\]\);/.test(view),
+    // 2026-11-08: 手動の記録の練習時間を足す形 (`+ manualTotals.logMs`) も許す。
+    /const logTotalMs = useMemo\(\s*\(\) => totalLogMs\(tierFights\)(?: \+ manualTotals\.logMs)?,\s*\[tierFights(?:, manualTotals)?\],?\s*\);/.test(view),
     true,
   );
   // 2026-10-07: 説明 (ja / en) の 30 分・60 分が実装の定数と一致すること

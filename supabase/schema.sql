@@ -2310,6 +2310,80 @@ BEGIN
   END LOOP;
 END $$;
 
+-- ---- 6b-13. 練習ログの手動の記録 (2026-11-08) -----------------------------
+-- ACT が使えなかった日は FFLogs にログを上げられず、練習ログの集計 (総 pull・
+-- 層ごとの pull・練習日数・ログ合計・到達度・討伐数) からその日が抜ける。
+-- その日の分を **日単位の要約** で足す (ユーザーの選択「日の要約」)。
+--
+-- 1 行 = (コンテンツ, 練習日)。区間 (零式の層 / 絶のフェーズ) ごとの値は
+-- segments の jsonb 配列に持つ:
+--   [{ "encounter": 101 | null, "phase": 3 | null,
+--      "pulls": 12, "kills": 2, "best": 23.4 | null }, ...]
+--   - encounter: 零式の層 (FFLogs の encounter ID。層の番号はログの encounter の
+--     最小から数えるので、番号で持つと下の層のログが後から入ったときにずれる)
+--   - phase: 絶のフェーズ
+--   - best: 区間での最良の残 HP% (討伐があれば 0 とみなす)
+-- 形の検査は書き込む Server Action (`src/lib/practice-log-manual.ts` の
+-- `validateManualDayInput`) が持つ。DB は配列であることと件数だけ見る
+-- (ミス注釈のタグと同じく、形を DB に焼くと変えるたびにデプロイ順で弾かれる)。
+--
+-- ⚠ **偽の pull を fflogs_fights に入れない。** 同期・重複の判定・動画・注釈が
+-- すべて FFLogs のレポートを前提にしている。手動の記録は日単位で決まる集計
+-- (数・到達・討伐・日数・ログ合計) にだけ足し、戦闘時間・最速・ノーデス・
+-- ワイプ原因・フェーズ滞在時間には入れない。
+--
+-- 書き込みは admin (7 章の汎用ループ。「ログを同期」と同じ権限)。
+CREATE TABLE IF NOT EXISTS public.practice_log_manual_days (
+  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  category_id   uuid NOT NULL REFERENCES public.categories(id) ON DELETE CASCADE,
+  session_date  text NOT NULL,
+  segments      jsonb NOT NULL DEFAULT '[]'::jsonb,
+  -- 練習時間 (分)。ログ合計に足す。分からなければ NULL。
+  log_minutes   integer,
+  note          text,
+  created_by_id text,
+  created_at    timestamptz NOT NULL DEFAULT now(),
+  updated_at    timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (category_id, session_date)
+);
+-- 日の範囲での読み出し (週のまとめ・欠けている日の判定は全コンテンツを日で引く)。
+CREATE INDEX IF NOT EXISTS practice_log_manual_days_date_idx
+  ON public.practice_log_manual_days(session_date);
+ALTER TABLE public.practice_log_manual_days
+  DROP CONSTRAINT IF EXISTS practice_log_manual_days_sane;
+ALTER TABLE public.practice_log_manual_days
+  ADD CONSTRAINT practice_log_manual_days_sane
+  CHECK (
+    session_date ~ '^\d{4}-\d{2}-\d{2}$'
+    AND jsonb_typeof(segments) = 'array'
+    AND jsonb_array_length(segments) BETWEEN 1 AND 12
+    AND (log_minutes IS NULL OR log_minutes BETWEEN 0 AND 1440)
+    AND (note IS NULL OR (char_length(note) <= 200 AND note !~ '[[:cntrl:]]'))
+    AND (created_by_id IS NULL OR char_length(created_by_id) <= 64)
+  );
+
+DROP TRIGGER IF EXISTS set_updated_at_practice_log_manual_days
+  ON public.practice_log_manual_days;
+CREATE TRIGGER set_updated_at_practice_log_manual_days
+  BEFORE UPDATE ON public.practice_log_manual_days
+  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+-- 2026-10-30 から Supabase は新しい表を、明示の GRANT があるまで Data API に
+-- 出さない (`scripts/check-rls-enabled.mjs` の節)。行の可否は 7 章の汎用ループの
+-- ポリシー (読み取りはメンバー、書き込みは admin) が決め、ここはロールの権限だけ:
+--   - authenticated: 読み書き (ポリシーで admin の書き込みだけ通る)
+--   - service_role: 週のまとめ (cron) と欠けている日の判定 (公開デモ) が読む
+--   - anon: 公開デモだけ読み取り (7-0 の SELECT と同じ分岐)。本番は何も持たない
+REVOKE ALL ON public.practice_log_manual_days FROM anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.practice_log_manual_days TO authenticated;
+GRANT ALL ON public.practice_log_manual_days TO service_role;
+DO $$
+BEGIN
+  IF coalesce(current_setting('app.public_demo', true), '') = 'true' THEN
+    GRANT SELECT ON public.practice_log_manual_days TO anon;
+  END IF;
+END $$;
+
 -- ---- 7. RLS — SELECT 解放 / 書き込みは admin (is_admin claim) のみ ----
 -- TODO #36 phase 1 (2.1, 2026-04-29): 書き込みを `TO authenticated` に。
 -- TODO #36 phase 2 (2.1, 2026-04-29): さらに `auth.jwt()->>is_admin` を
@@ -2383,6 +2457,8 @@ ALTER TABLE public.fflogs_report_blocklist       ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.fflogs_fights                 ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.fflogs_report_syncs           ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.fflogs_report_videos          ENABLE ROW LEVEL SECURITY;
+-- 2026-11-08: 練習ログの手動の記録 (6b-13)。下の汎用ループに載せる。
+ALTER TABLE public.practice_log_manual_days      ENABLE ROW LEVEL SECURITY;
 -- W-27 (2026-09-07): category_link_reads は **policy を 1 つも張らない**。
 -- RLS 有効 + policy なし = anon / authenticated からは読み書き不可で、
 -- service role だけが通る。誰が何を読んだかの生データを公開 anon key で
@@ -2517,7 +2593,10 @@ BEGIN
     'fflogs_fights','fflogs_report_syncs','fflogs_report_videos',
     -- 2026-09-07: 取り込み除外リスト。SELECT は同期処理 (ユーザースコープの
     -- クライアント) が読むので開放し、書き込みは admin に限る。
-    'fflogs_report_blocklist'
+    'fflogs_report_blocklist',
+    -- 2026-11-08: 練習ログの手動の記録 (6b-13)。読み取りはメンバー、書き込みは
+    -- admin (「ログを同期」と同じ権限)。
+    'practice_log_manual_days'
   ]) LOOP
     FOREACH op IN ARRAY ops LOOP
       policy_name := t || '_anon_' || op;
@@ -3493,6 +3572,11 @@ GRANT EXECUTE ON FUNCTION public.fflogs_duplicate_pulls(bigint) TO service_role;
 --     回していない期間に 2 区間となり、同じ 4 層の到達度がカードと練習ログ
 --     画面で食い違っていた (encounter 100 / 103 / 104 のデータで TS の
 --     `buildFloorMap` が 5、SQL が 3 を返していた)。
+--
+-- 2026-11-08: 練習ログの手動の記録 (6b-13) も日ごとに足す (ユーザーの選択
+-- 「画面・週のまとめ・一覧」。足さないとカードとタブで pull 数が食い違う)。
+-- 区間ごとの pull 数・討伐・最良の残 HP% を pull と同じ列に載せ、pull 数は
+-- 行数ではなく n の和で数える。PGlite で TS の `summarize` と突き合わせた。
 CREATE OR REPLACE FUNCTION public.category_progress_by_day(p_days integer DEFAULT 56)
 RETURNS TABLE (
   category_id      uuid,
@@ -3561,14 +3645,46 @@ LANGUAGE sql STABLE SET search_path = public AS $$
     SELECT cm.category_id, cm.floor_count, cm.final_encounter_id
       FROM cluster_meta cm
   ),
+  -- 2026-11-08: 手動の記録 (6b-13) の区間 (全期間)。1 区間 = 1 行で、pull 数は
+  -- pulls に持つ。形の壊れた要素 (数でない値) は読まない (書き込みは Server Action が
+  -- 検める。ここで cast に落ちるとスパークラインごと出なくなるため)。
+  manual_seg AS (
+    SELECT m.category_id,
+           m.session_date AS day,
+           CASE WHEN jsonb_typeof(s->'encounter') = 'number'
+                THEN (s->>'encounter')::numeric::integer END AS encounter_id,
+           CASE WHEN jsonb_typeof(s->'phase') = 'number'
+                THEN (s->>'phase')::numeric::integer END AS phase,
+           (s->>'pulls')::numeric::integer AS pulls,
+           CASE WHEN jsonb_typeof(s->'kills') = 'number'
+                THEN (s->>'kills')::numeric::integer ELSE 0 END AS kills,
+           CASE WHEN jsonb_typeof(s->'best') = 'number'
+                THEN (s->>'best')::numeric END AS best
+      FROM public.practice_log_manual_days m
+      CROSS JOIN LATERAL jsonb_array_elements(m.segments) s
+     WHERE jsonb_typeof(s) = 'object'
+       AND jsonb_typeof(s->'pulls') = 'number'
+       AND (s->>'pulls')::numeric >= 1
+  ),
   -- 絶 / 討滅 (encounter 1 つ) 用のフェーズ数。
+  -- 2026-11-08: 手動の記録のフェーズも数える (練習ログの画面と同じ。手動の日に
+  -- 初めて着いたフェーズがあると、ログだけでは区間数が足りない)。
   phase_meta AS (
-    SELECT f.category_id, MAX(f.last_phase)::integer AS phase_count
-      FROM public.fflogs_fights f
-     WHERE f.category_id IS NOT NULL AND f.last_phase IS NOT NULL
-     GROUP BY f.category_id
+    SELECT x.category_id, MAX(x.phase)::integer AS phase_count
+      FROM (
+        SELECT f.category_id, f.last_phase AS phase
+          FROM public.fflogs_fights f
+         WHERE f.category_id IS NOT NULL AND f.last_phase IS NOT NULL
+        UNION ALL
+        SELECT ms.category_id, ms.phase
+          FROM manual_seg ms
+         WHERE ms.phase IS NOT NULL
+      ) x
+     GROUP BY x.category_id
   ),
   -- 直近ぶんの pull に、区間 index と区間数を付ける。
+  -- 2026-11-08: 手動の記録の区間も同じ形で足す (下の UNION ALL)。pull 1 本 = 1 行
+  -- ではなくなったので、pull 数は n で数える。
   recent AS (
     SELECT f.category_id,
            COALESCE(
@@ -3578,6 +3694,7 @@ LANGUAGE sql STABLE SET search_path = public AS $$
                'YYYY-MM-DD'
              )
            ) AS day,
+           1 AS n,
            f.kill,
            f.fight_percentage,
            f.encounter_id,
@@ -3607,11 +3724,42 @@ LANGUAGE sql STABLE SET search_path = public AS $$
        AND (COALESCE(tm.floor_count, 0) <= 1 OR t.encounter_id IS NOT NULL)
        -- 別のログと同じ pull は数えない (上の dups)。
        AND dp.report_code IS NULL
+    UNION ALL
+    -- 2026-11-08: 手動の記録の区間。討伐があれば残 0% (kill)、無ければ区間の最良の
+    -- 残 HP%。層が分からない区間 (encounter NULL) やティア外の区間も pull 数には
+    -- 入れる (練習ログの画面の `summarize` と同じ。区間 index は NULL)。
+    SELECT ms.category_id,
+           ms.day,
+           ms.pulls AS n,
+           ms.kills > 0 AS kill,
+           ms.best AS fight_percentage,
+           ms.encounter_id,
+           CASE
+             WHEN COALESCE(tm.floor_count, 0) > 1 THEN t.segment_index
+             ELSE ms.phase
+           END AS segment_index,
+           CASE
+             WHEN COALESCE(tm.floor_count, 0) > 1 THEN tm.floor_count
+             ELSE pm.phase_count
+           END AS segment_count,
+           tm.final_encounter_id
+      FROM manual_seg ms
+      CROSS JOIN bounds b
+      LEFT JOIN tier_meta  tm ON tm.category_id = ms.category_id
+      LEFT JOIN phase_meta pm ON pm.category_id = ms.category_id
+      LEFT JOIN tier t
+             ON t.category_id = ms.category_id
+            AND t.encounter_id = ms.encounter_id
+     WHERE ms.day >= to_char(
+             to_timestamp(b.from_ms / 1000.0) AT TIME ZONE 'Asia/Tokyo',
+             'YYYY-MM-DD'
+           )
   ),
   per_day AS (
     SELECT r.category_id,
            r.day,
-           COUNT(*)::integer AS pulls,
+           -- 2026-11-08: 手動の記録の行は 1 行で複数 pull なので、行数ではなく n の和。
+           SUM(r.n)::integer AS pulls,
            MAX(r.segment_index)::integer AS segment,
            MAX(r.segment_count)::integer AS segment_count,
            -- クリア = 最終区間の討伐。層モデルでは最終 encounter の kill、
@@ -3710,6 +3858,43 @@ $$;
 -- (fflogs_report_days と同じ理由)。
 REVOKE EXECUTE ON FUNCTION public.fflogs_report_duplicate_pulls(bigint) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.fflogs_report_duplicate_pulls(bigint) TO service_role;
+
+-- ---- 13c-5. practice_log_days (ログが欠けている日の判定、2026-11-08) -------
+-- 練習ログの「ログが欠けている日」は、スケジュールの開催日のうち **どの
+-- コンテンツにも** ログも手動の記録も無い日 (ユーザーの選択。スケジュールは
+-- コンテンツに紐づいていないため。判定は `src/lib/practice-log-manual.ts` の
+-- `missingPracticeDays`)。そのために「ログのある日」をコンテンツごとに返す。
+--
+-- 日は練習ログの画面の `fightDate` と同じ: session_date (6b-12 で YYYY-MM-DD に
+-- そろえてある) が無ければ開始の JST 暦日。カテゴリの無いログは category_id
+-- NULL の行で返す (その日も「ログがある」に数える)。
+--
+-- 返すのは「コンテンツ × 日」なので 1 年でも数百行 (PostgREST の 1000 行の上限
+-- に当たらないよう、呼び出し側は 1 年以内に抑える)。新しい日から返す。
+--
+-- STABLE read-only の INVOKER (呼び出し元の RLS がそのまま効く)。EXECUTE は
+-- 15 章で配る (重い集計と同じ: 本番は authenticated と service_role、公開デモは
+-- service_role だけ。デモは画面がサーバーの service role で読んで共有キャッシュに
+-- 置く。`src/lib/server/practice-log-missing-days.ts`)。
+CREATE OR REPLACE FUNCTION public.practice_log_days(p_from text)
+RETURNS TABLE (category_id uuid, day text, pulls integer)
+LANGUAGE sql STABLE SET search_path = public AS $$
+  SELECT d.category_id, d.day, count(*)::integer AS pulls
+    FROM (
+      SELECT f.category_id,
+             COALESCE(
+               f.session_date,
+               to_char(
+                 to_timestamp(f.start_ms / 1000.0) AT TIME ZONE 'Asia/Tokyo',
+                 'YYYY-MM-DD'
+               )
+             ) AS day
+        FROM public.fflogs_fights f
+    ) d
+   WHERE d.day >= p_from
+   GROUP BY d.category_id, d.day
+   ORDER BY d.day DESC, d.category_id
+$$;
 
 -- ---- 13d. native placeholder raid time retro-update RPC (TODO #85) ----
 -- 2.6 (2026-06-10): TODO #81 follow-up。`ensureNativeMonthlyPlaceholders()`
@@ -3988,7 +4173,10 @@ BEGIN
     'public.practice_seconds_by_category()',
     'public.category_progress_by_day(integer)',
     -- 13c-3 の中から呼ぶので、スパークラインと同じ配り方にする。
-    'public.fflogs_duplicate_pulls(bigint)'
+    'public.fflogs_duplicate_pulls(bigint)',
+    -- 2026-11-08: 欠けている日の判定 (13c-5)。デモは画面がサーバーの service role で
+    -- 読む (スパークラインと同じ)。
+    'public.practice_log_days(text)'
   ] LOOP
     EXECUTE format('REVOKE EXECUTE ON FUNCTION %s FROM PUBLIC, anon, authenticated', fn);
     EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO %s', fn, heavy_roles);
