@@ -541,7 +541,8 @@ export const ja = {
     pullsLabel: "pull",
     killsLabel: "討伐",
     bestLabel: "最良の残%",
-    bestPlaceholder: "例: 12.5",
+    // 欄が 4.25rem と狭いので「例:」を付けない (375px でも切れない長さ)。
+    bestPlaceholder: "12.5",
     addSegment: "区間を足す",
     removeSegment: (label: string): string => `${label} の行を消す`,
     totalPulls: (n: number): string => `合計 ${n} pull`,
@@ -1087,7 +1088,7 @@ export const en: LogsMessages = {
     pullsLabel: "Pulls",
     killsLabel: "Kills",
     bestLabel: "Best HP%",
-    bestPlaceholder: "e.g. 12.5",
+    bestPlaceholder: "12.5",
     addSegment: "Add a segment",
     removeSegment: (label) => `Remove the ${label} row`,
     totalPulls: (n) => `${n} ${plural(n, "pull", "pulls")} in total`,
