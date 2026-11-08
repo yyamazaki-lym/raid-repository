@@ -26,6 +26,7 @@
  * `@/` を import しない (`scripts/check-practice-log-manual.mjs` が単体で
  * コンパイルする)。
  */
+import { jstMidnightIso } from "./jst-date";
 
 /** 区間 1 つぶんの手動の記録。 */
 export type ManualSegment = {
@@ -262,6 +263,19 @@ export function validateManualDayInput(
 // ---------------------------------------------------------------------------
 // ログが欠けている日 (ユーザーの選択「開催日でどこにもログ無し」)
 // ---------------------------------------------------------------------------
+
+/**
+ * JST の暦日 `YYYY-MM-DD` の始まりと次の日の始まり (ISO、UTC)。開催日の
+ * `parsed_date` (timestamptz) をその日の分だけ引くのに使う
+ * (`gte(from)` + `lt(to)`)。欠けている日の判定と同じく JST の暦日で区切る。
+ * 2026-11-08: 欠けている日を「中止だった」にする Action が使う。
+ */
+export function jstDayRangeIso(date: string): { from: string; to: string } | null {
+  if (!isYmd(date)) return null;
+  const [y, m, d] = date.split("-").map(Number) as [number, number, number];
+  // Date.UTC は日のあふれ (月末の次の日) を翌月に繰り上げる。
+  return { from: jstMidnightIso(y, m, d), to: jstMidnightIso(y, m, d + 1) };
+}
 
 /** スケジュールの開催日 (確定・中止でない・有志練習でない)。 */
 export type HeldScheduleDay = {

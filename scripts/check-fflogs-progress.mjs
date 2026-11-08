@@ -58,6 +58,8 @@ try {
     "jst-date.js",
     "fflogs-fight-detail.js",
     "perf-tone.js",
+    // 2026-11-08: 手動の記録のモジュールが ./jst-date を読むようになった。
+    "practice-log-manual.js",
   ]) {
     const path = join(outDir, f);
     writeFileSync(

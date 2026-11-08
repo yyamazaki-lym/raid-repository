@@ -581,9 +581,17 @@ export const ja = {
   logsMissing: {
     title: "ログが欠けている日",
     count: (n: number): string => `${n} 日`,
-    hint: "スケジュールの開催日 (確定したもの。中止と有志練習は除く) のうち、どのコンテンツにもログも手動の記録も無い日です。範囲はこのコンテンツの最初の練習日から、別のコンテンツに移ったあとはこのコンテンツの最後の練習日まで。前日の分は毎朝の同期の前は欠けて見えることがあります。",
+    hint: "スケジュールの開催日 (確定したもの。中止と有志練習は除く) のうち、どのコンテンツにもログも手動の記録も無い日です。範囲はこのコンテンツの最初の練習日から、別のコンテンツに移ったあとはこのコンテンツの最後の練習日まで。前日の分は毎朝の同期の前は欠けて見えることがあります。練習が中止になった日は、admin が「中止だった」でスケジュールの日程を中止にすると消えます。",
     record: "記録する",
     recordTitle: (date: string): string => `${date} の分を手動で記録する`,
+    // 2026-11-08: 練習が中止になった日 (ユーザーの選択「カードから中止にする」)。
+    cancel: "中止だった",
+    cancelTitle: (date: string): string => `${date} は練習しなかった (スケジュールの日程を中止にする)`,
+    cancelConfirmTitle: (date: string): string => `${date} を中止にしますか？`,
+    cancelConfirmDescription:
+      "スケジュールでこの日の確定した日程を中止にします (同期式では過去ログから除外します)。欠けている日と出席サマリーの集計から外れます。出欠の記録は残り、設定ダイアログの「中止した日程」(同期式は「過去ログから除外中の日程」) から元に戻せます。",
+    cancelConfirmButton: "中止にする",
+    toastCancelled: (date: string): string => `${date} を中止にしました`,
     showAll: (n: number): string => `残り ${n} 日を表示`,
     showLess: "直近だけ表示",
   },
@@ -1122,9 +1130,16 @@ export const en: LogsMessages = {
   logsMissing: {
     title: "Days missing a log",
     count: (n) => `${n} ${plural(n, "day", "days")}`,
-    hint: "Scheduled days (confirmed; cancelled and optional practice excluded) that have no log and no manual record in any content. The range starts at this content's first practice day and, once you have moved on to other content, ends at this content's last practice day. Yesterday may look missing until the morning sync.",
+    hint: "Scheduled days (confirmed; cancelled and optional practice excluded) that have no log and no manual record in any content. The range starts at this content's first practice day and, once you have moved on to other content, ends at this content's last practice day. Yesterday may look missing until the morning sync. If practice was cancelled, an admin can press “Cancelled” to cancel the day in the schedule and it disappears from here.",
     record: "Record",
     recordTitle: (date) => `Record ${date} manually`,
+    cancel: "Cancelled",
+    cancelTitle: (date) => `No practice on ${date} (cancel the day in the schedule)`,
+    cancelConfirmTitle: (date) => `Cancel ${date}?`,
+    cancelConfirmDescription:
+      "Cancels the confirmed session of this day in the schedule (in sync mode, excludes it from the past log). It is removed from the missing days and the attendance summary. Answers are kept, and you can restore it from “Cancelled sessions” (sync mode: “Dates excluded from past sessions”) in the settings dialog.",
+    cancelConfirmButton: "Cancel the day",
+    toastCancelled: (date) => `Cancelled ${date}`,
     showAll: (n) => `Show ${n} more ${plural(n, "day", "days")}`,
     showLess: "Show recent only",
   },

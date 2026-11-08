@@ -131,6 +131,7 @@ import {
   phaseFirstReachesWithManual,
 } from "@/lib/practice-log-manual-merge";
 import { jstYmdString } from "@/lib/jst-date";
+import { cancelMissingPracticeDayAction } from "@/lib/server/practice-log-manual-actions";
 
 /**
  * 練習ログの表示 (TODO #94 / A-1 + A-2)。
@@ -780,6 +781,29 @@ export function LogsView({
         manualChoices,
       ),
     );
+
+  // 2026-11-08: 練習が中止になった日 (ユーザーの選択「カードから中止にする」)。
+  // スケジュールの過去ログのゴミ箱と同じ印 (自前作成式は中止 / 同期式は除外) を
+  // 付けて、欠けている日と出席サマリーから外す。取り消しは設定ダイアログの欄。
+  const [cancellingDate, setCancellingDate] = useState<string | null>(null);
+  const cancelMissingDay = async (date: string) => {
+    const ok = await confirm({
+      title: m.logsMissing.cancelConfirmTitle(date),
+      description: m.logsMissing.cancelConfirmDescription,
+      confirmText: m.logsMissing.cancelConfirmButton,
+      destructive: true,
+    });
+    if (!ok) return;
+    setCancellingDate(date);
+    const r = await cancelMissingPracticeDayAction({ date });
+    setCancellingDate(null);
+    if (!r.ok) {
+      toast.error(m.logs.saveFailed(r.reason));
+      return;
+    }
+    toast.success(m.logsMissing.toastCancelled(date));
+    router.refresh();
+  };
 
   /** いま効いている絞り込み (層 / フェーズのどちらか)。 */
   const segmentFilter = floors ? floorFilter : phaseFilter;
@@ -1542,6 +1566,8 @@ export function LogsView({
         <MissingDaysCard
           missing={missingDays}
           onRecord={canEdit ? (date) => openNewManual(date) : undefined}
+          onCancel={canEdit ? (date) => void cancelMissingDay(date) : undefined}
+          busyDate={cancellingDate}
         />
       )}
 

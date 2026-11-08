@@ -462,6 +462,15 @@ export const SERVER_TEXT_EN: ServerTextDictRaw = {
       "Enter the practice time between 0 and 1440 minutes",
     "メモは改行なしの 200 文字以内で入力してください":
       "Keep the note to 200 characters without line breaks",
+    // 2026-11-08: 欠けている日を「中止だった」にする (cancelMissingPracticeDayAction)。
+    "今日より前の日だけ中止にできます":
+      "Only days before today can be cancelled",
+    "その日にはログか手動の記録があります (練習した日は中止にできません)":
+      "That day has a log or a manual record (a day you practiced cannot be cancelled)",
+    "その日の確定した日程が見つかりませんでした":
+      "No confirmed session was found on that day",
+    "その日の過去の日程が見つかりませんでした":
+      "No past session was found on that day",
   },
   templates: {
     "${row} 行目: 日時の形式が不正です":
@@ -827,5 +836,7 @@ export const SERVER_TEXT_EN: ServerTextDictRaw = {
       "save the manual record",
     "手動の記録の削除":
       "delete the manual record",
+    "練習した日の確認":
+      "check the practice days",
   },
 };
