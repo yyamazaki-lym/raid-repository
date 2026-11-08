@@ -5,13 +5,15 @@
  * (ユーザーの選択。判定は `@/lib/practice-log-manual` の
  * `missingPracticeDays`、読み取りは `server/practice-log-missing-days.ts`)。
  * 見るのは誰でも、「記録する」は admin だけ (手動の記録のダイアログを開く)。
+ * 「中止だった」(2026-11-08、admin) は、練習が中止になった日をスケジュールで
+ * 中止にする (同期式は過去ログから除外。`cancelMissingPracticeDayAction`)。
  *
  * 欠けている日が無ければ何も描かない (空の枠で「何も無い」を主張しない)。
  */
 "use client";
 
 import { useState } from "react";
-import { CalendarX2, PencilLine } from "lucide-react";
+import { CalendarOff, CalendarX2, PencilLine } from "lucide-react";
 import { useMessages } from "@/lib/i18n/client";
 import type { MissingDaysResult } from "@/lib/practice-log-manual";
 
@@ -21,10 +23,19 @@ const INITIAL = 5;
 export function MissingDaysCard({
   missing,
   onRecord,
+  onCancel,
+  busyDate = null,
 }: {
   missing: MissingDaysResult;
   /** admin のみ: その日の手動の記録を足す。 */
   onRecord?: (date: string) => void;
+  /**
+   * admin のみ (2026-11-08): 練習が中止になった日を、スケジュールの日程を中止に
+   * して欠けている日から外す (確認と書き込みは呼び出し側)。
+   */
+  onCancel?: (date: string) => void;
+  /** 中止の処理中の日 (その日のボタンを押せなくする)。 */
+  busyDate?: string | null;
 }) {
   const m = useMessages();
   const [showAll, setShowAll] = useState(false);
@@ -57,6 +68,18 @@ export function MissingDaysCard({
               >
                 <PencilLine className="h-3 w-3 shrink-0" aria-hidden />
                 {m.logsMissing.record}
+              </button>
+            )}
+            {onCancel && (
+              <button
+                type="button"
+                onClick={() => onCancel(d.date)}
+                disabled={busyDate !== null}
+                title={m.logsMissing.cancelTitle(d.date)}
+                className="inline-flex shrink-0 items-center gap-1 rounded-sm border border-border/60 px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground transition-colors hover:border-rose-400/45 hover:text-rose-200 disabled:opacity-40"
+              >
+                <CalendarOff className="h-3 w-3 shrink-0" aria-hidden />
+                {m.logsMissing.cancel}
               </button>
             )}
           </li>

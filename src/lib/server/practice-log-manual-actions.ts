@@ -4,10 +4,13 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { jstYmdString } from "@/lib/jst-date";
 import {
+  isYmd,
+  jstDayRangeIso,
   toStoredSegments,
   validateManualDayInput,
   type ManualDayInputError,
 } from "@/lib/practice-log-manual";
+import { getScheduleSourceMode } from "@/lib/schedule/source-mode";
 import { assertAdminResult } from "./auth";
 import { dbError } from "./db-error";
 
@@ -139,6 +142,93 @@ export async function deleteManualPracticeDayAction(input: {
   }
   revalidateQuietly();
   return { ok: true };
+}
+
+export type CancelMissingDayResult =
+  | { ok: true; method: "native-cancelled" | "excluded"; sessions: number }
+  | { ok: false; reason: string };
+
+/**
+ * ログが欠けている日を「中止だった」にする (2026-11-08、ユーザーの選択
+ * 「カードから中止にする」)。
+ *
+ * スケジュールの過去ログのゴミ箱 (`excludePastSessionAction`) と同じ印を使う:
+ *   - 自前作成式: その日の確定 (DECISION)・有志練習でない日程を `CANCELLED` に
+ *     する (全スケジュール。欠けている日の判定と同じ母数)
+ *   - 同期式: その日の過去の日程に `excluded_at` を付ける (行は消さない。
+ *     時刻違いの重複も同じ日なので一緒に外れる。ADR-007)
+ * 戻すのは設定ダイアログの「中止した日程」/「過去ログから除外中の日程」。
+ *
+ * ⚠ **ログか手動の記録がある日は中止にしない。** 欠けている日は「どこにも
+ * ログが無い日」なので、画面が古いまま押された (その後に同期でログが入った)
+ * 場合に、練習した日の日程を中止にしてしまわないよう書く前に確かめる。
+ * 今日以降も中止にしない (欠けている日に出ない日)。
+ */
+export async function cancelMissingPracticeDayAction(input: {
+  date: unknown;
+}): Promise<CancelMissingDayResult> {
+  const auth = await assertAdminResult();
+  if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
+  const date = typeof input.date === "string" ? input.date.trim() : "";
+  const range = isYmd(date) ? jstDayRangeIso(date) : null;
+  if (!range) return { ok: false, reason: "日付が不正です" };
+  if (date >= jstYmdString(new Date())) {
+    return { ok: false, reason: "今日より前の日だけ中止にできます" };
+  }
+  const mode = await getScheduleSourceMode();
+  if (mode === "disabled") return { ok: false, reason: "スケジュール機能が無効です" };
+
+  const supabase = await createClient();
+  // 練習した日 (ログか手動の記録がある日) は中止にしない。
+  const [daysRes, manualRes] = await Promise.all([
+    supabase.rpc("practice_log_days", { p_from: date }),
+    supabase.from("practice_log_manual_days").select("id").eq("session_date", date).limit(1),
+  ]);
+  if (daysRes.error || manualRes.error) {
+    return { ok: false, reason: dbError("練習した日の確認", daysRes.error ?? manualRes.error) };
+  }
+  const practiced =
+    ((daysRes.data ?? []) as Array<{ day: string }>).some((r) => r.day === date) ||
+    (manualRes.data ?? []).length > 0;
+  if (practiced) {
+    return { ok: false, reason: "その日にはログか手動の記録があります (練習した日は中止にできません)" };
+  }
+
+  if (mode === "native") {
+    const { data, error } = await supabase
+      .from("native_schedule_sessions")
+      .update({ status: "CANCELLED" })
+      .eq("status", "DECISION")
+      .eq("is_optional", false)
+      .gte("parsed_date", range.from)
+      .lt("parsed_date", range.to)
+      .select("id");
+    if (error) return { ok: false, reason: dbError("日程の中止", error) };
+    const n = (data ?? []).length;
+    if (n === 0) return { ok: false, reason: "その日の確定した日程が見つかりませんでした" };
+    // TOP の予定表 (過去ログ) も中止を反映する (`excludePastSessionAction` と同じ)。
+    try {
+      revalidatePath("/");
+    } catch {
+      // best-effort
+    }
+    return { ok: true, method: "native-cancelled", sessions: n };
+  }
+
+  // 同期式: revalidatePath("/") は呼ばない (`excludePastSessionAction` の
+  // sync の分岐と同じ理由。TOP の描画が外部シートの取得を待つ)。画面が自分で
+  // 取り直す。
+  const { data, error } = await supabase
+    .from("schedule_past_sessions")
+    .update({ excluded_at: new Date().toISOString() })
+    .is("excluded_at", null)
+    .gte("parsed_date", range.from)
+    .lt("parsed_date", range.to)
+    .select("raw_date");
+  if (error) return { ok: false, reason: dbError("過去ログからの除外", error) };
+  const n = (data ?? []).length;
+  if (n === 0) return { ok: false, reason: "その日の過去の日程が見つかりませんでした" };
+  return { ok: true, method: "excluded", sessions: n };
 }
 
 /** 同じ日の 2 行目 (UNIQUE 違反) だけは分かる文にする。 */

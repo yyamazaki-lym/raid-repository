@@ -237,6 +237,11 @@ try {
     const moved = man.missingPracticeDays({ categoryId: "c1", heldDays, practiceDays: [...practice, { categoryId: "c2", date: "2026-10-06" }], today: "2026-10-08" });
     check("別のコンテンツに移ったら最後の練習日まで", [moved.to, moved.days], ["2026-10-04", []]);
     check("このコンテンツに練習が無ければ何も出さない", man.missingPracticeDays({ categoryId: "c9", heldDays, practiceDays: practice, today: "2026-10-08" }), { from: null, to: null, days: [] });
+    // 2026-11-08: 「中止だった」が日程を引く JST の 1 日 (UTC で前日 15:00 から)。
+    check("JST の 1 日の範囲", man.jstDayRangeIso("2026-09-10"), { from: "2026-09-09T15:00:00.000Z", to: "2026-09-10T15:00:00.000Z" });
+    check("月末の次の日は翌月に繰り上げる", man.jstDayRangeIso("2026-09-30").to, "2026-09-30T15:00:00.000Z");
+    check("年末", man.jstDayRangeIso("2026-12-31"), { from: "2026-12-30T15:00:00.000Z", to: "2026-12-31T15:00:00.000Z" });
+    check("暦に無い日は null", man.jstDayRangeIso("2026-02-30"), null);
   }
 
   // ---- 5. 配線 --------------------------------------------------------------
@@ -257,6 +262,29 @@ try {
     check("保存は検証を通す", /validateManualDayInput\(/.test(fnBody("saveManualPracticeDayAction")), true);
     check("更新・削除は同じコンテンツの行だけ", (action.match(/\.eq\("category_id", categoryId\)/g) ?? []).length, 2);
     check("削除の 0 行を成功にしない", /\(data \?\? \[\]\)\.length === 0/.test(fnBody("deleteManualPracticeDayAction")), true);
+    // 2026-11-08: 欠けている日を「中止だった」にする。
+    {
+      const body = fnBody("cancelMissingPracticeDayAction");
+      const gate = body.indexOf("assertAdminResult()");
+      const practiced = body.indexOf("if (practiced)");
+      const writes = [...body.matchAll(/\.update\(/g)].map((x) => x.index);
+      check("中止: admin を確かめ、練習した日でないことを確かめてから書く", gate >= 0 && practiced > gate && writes.length === 2 && writes.every((i) => i > practiced), true);
+      check("中止: ログ (practice_log_days) と手動の記録の両方を見る", /rpc\("practice_log_days"/.test(body) && /\.from\("practice_log_manual_days"\)[\s\S]{0,80}\.eq\("session_date", date\)/.test(body), true);
+      // 読んだ結果が両方とも「練習した日」の判定に入っていること (変異テストで検出)。
+      check(
+        "中止: 練習した日の判定 = その日のログ OR 手動の記録",
+        /const practiced =\s*\(\(daysRes\.data \?\? \[\]\)[^;]*?\.some\(\(r\) => r\.day === date\)\s*\|\|\s*\(manualRes\.data \?\? \[\]\)\.length > 0;/.test(body),
+        true,
+      );
+      check("中止: 今日以降は中止にしない", /if \(date >= jstYmdString\(new Date\(\)\)\)/.test(body), true);
+      check("中止 (自前作成式): 確定・有志練習でない日程だけを、その日の範囲で", /\.update\(\{ status: "CANCELLED" \}\)\s*\.eq\("status", "DECISION"\)\s*\.eq\("is_optional", false\)\s*\.gte\("parsed_date", range\.from\)\s*\.lt\("parsed_date", range\.to\)/.test(body), true);
+      check("中止 (同期式): 除外していない過去の日程だけに印を付ける (行は消さない)", /\.update\(\{ excluded_at: [^}]+\}\)\s*\.is\("excluded_at", null\)\s*\.gte\("parsed_date", range\.from\)\s*\.lt\("parsed_date", range\.to\)/.test(body) && !/\.delete\(/.test(body), true);
+      check("中止: 0 件を成功にしない", (body.match(/if \(n === 0\)/g) ?? []).length, 2);
+      const card = read("src/components/portal/logs/missing-days-card.tsx");
+      check("カード: 「中止だった」は onCancel を渡したとき (admin) だけ", /\{onCancel && \(/.test(card), true);
+      const viewSrc = read("src/app/(portal)/category/[slug]/logs/logs-view.tsx");
+      check("画面: 中止は確認してから・admin だけに渡す", /const ok = await confirm\(\{\s*title: m\.logsMissing\.cancelConfirmTitle/.test(viewSrc) && /onCancel=\{canEdit \?/.test(viewSrc), true);
+    }
 
     const schema = read("supabase/schema.sql");
     const loopAt = schema.indexOf("FOR t IN SELECT unnest(ARRAY[");
