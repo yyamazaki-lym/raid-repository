@@ -323,7 +323,10 @@ const logsView = readFileSync("src/app/(portal)/category/[slug]/logs/logs-view.t
 // 2026-10-07 C-3: pull は別のログと同じ pull を除いた countedFights。
 check(
   "練習ログ: バッジは最終層の kill で数える (isClearFight)",
-  /teamBadges\(countedFights, \(f\) => isClearFight\(f, floors\)\)/.test(logsView),
+  // 2026-11-09: 判定を `isClear` に名前を付けて渡す形 (手動の記録と比べる日にも使う) も許す。
+  /teamBadges\(countedFights, \(f\) => isClearFight\(f, floors\)\)/.test(logsView) ||
+    (/const isClear = \(f: FightRow\) => isClearFight\(f, floors\);/.test(logsView) &&
+      /teamBadges\(countedFights, isClear\)/.test(logsView)),
   true,
 );
 

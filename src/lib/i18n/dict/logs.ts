@@ -558,6 +558,8 @@ export const ja = {
     toastSaved: "手動の記録を保存しました",
     toastDeleted: "手動の記録を消しました",
     errNoPulls: "pull 数を 1 以上入れてください",
+    errNoPullsInRow: (label: string): string =>
+      `${label} の行は討伐数か残% があるのに pull 数が空です。pull 数を入れるか、行を消してください`,
     errNumber: "数は半角の数字で入れてください",
     // 日の行
     badge: "手動",
@@ -1112,6 +1114,8 @@ export const en: LogsMessages = {
     toastSaved: "Manual record saved",
     toastDeleted: "Manual record deleted",
     errNoPulls: "Enter at least 1 pull",
+    errNoPullsInRow: (label) =>
+      `The ${label} row has kills or an HP% but no pulls. Enter the pulls or remove the row`,
     errNumber: "Enter numbers using half-width digits",
     badge: "Manual",
     badgeTitle:

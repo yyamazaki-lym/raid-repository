@@ -150,8 +150,16 @@ export function ManualDayDialog({
         toast.error(m.logsManual.errNumber);
         return;
       }
-      // pull 数の空欄の行は捨てる (足しかけて使わなかった行)。
-      if (pulls === null || pulls === 0) continue;
+      // pull 数が空欄の行は捨てる (足しかけて使わなかった行)。ただし討伐数か残% を
+      // 入れた行は pull の入れ忘れなので止める (2026-11-09、レビューで検出: 以前は
+      // 黙って捨てて「保存しました」と出し、その区間の討伐が記録から消えていた)。
+      if (pulls === null || pulls === 0) {
+        if ((kills !== null && kills > 0) || best !== null) {
+          toast.error(m.logsManual.errNoPullsInRow(labelOf(r.key)));
+          return;
+        }
+        continue;
+      }
       const choice = choices.find((c) => c.key === r.key);
       segments.push({
         encounterId: choice?.encounterId ?? null,

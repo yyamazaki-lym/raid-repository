@@ -4,7 +4,6 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { jstYmdString } from "@/lib/jst-date";
 import {
-  isYmd,
   jstDayRangeIso,
   toStoredSegments,
   validateManualDayInput,
@@ -170,7 +169,8 @@ export async function cancelMissingPracticeDayAction(input: {
   const auth = await assertAdminResult();
   if (!auth.ok) return { ok: false, reason: "ADMIN ロールが必要です" };
   const date = typeof input.date === "string" ? input.date.trim() : "";
-  const range = isYmd(date) ? jstDayRangeIso(date) : null;
+  // jstDayRangeIso は YYYY-MM-DD でなければ null (下の .or() の文字列に入れる前の検査も兼ねる)。
+  const range = jstDayRangeIso(date);
   if (!range) return { ok: false, reason: "日付が不正です" };
   if (date >= jstYmdString(new Date())) {
     return { ok: false, reason: "今日より前の日だけ中止にできます" };
@@ -180,16 +180,26 @@ export async function cancelMissingPracticeDayAction(input: {
 
   const supabase = await createClient();
   // 練習した日 (ログか手動の記録がある日) は中止にしない。
-  const [daysRes, manualRes] = await Promise.all([
-    supabase.rpc("practice_log_days", { p_from: date }),
+  // ⚠ ログはその日だけを直接引く (練習ログの `fightDate` と同じ日: session_date、
+  // 無ければ開始の JST 暦日)。以前は practice_log_days(p_from = その日) で
+  // 「その日以降の全コンテンツ × 日」を新しい順に読んでいたため、1000 行の上限で
+  // いちばん古い対象の日が抜け、ログのある日を中止にし得た (レビューで検出)。
+  const fromMs = Date.parse(range.from);
+  const toMs = Date.parse(range.to);
+  const [logRes, manualRes] = await Promise.all([
+    supabase
+      .from("fflogs_fights")
+      .select("id")
+      .or(
+        `session_date.eq.${date},and(session_date.is.null,start_ms.gte.${fromMs},start_ms.lt.${toMs})`,
+      )
+      .limit(1),
     supabase.from("practice_log_manual_days").select("id").eq("session_date", date).limit(1),
   ]);
-  if (daysRes.error || manualRes.error) {
-    return { ok: false, reason: dbError("練習した日の確認", daysRes.error ?? manualRes.error) };
+  if (logRes.error || manualRes.error) {
+    return { ok: false, reason: dbError("練習した日の確認", logRes.error ?? manualRes.error) };
   }
-  const practiced =
-    ((daysRes.data ?? []) as Array<{ day: string }>).some((r) => r.day === date) ||
-    (manualRes.data ?? []).length > 0;
+  const practiced = (logRes.data ?? []).length > 0 || (manualRes.data ?? []).length > 0;
   if (practiced) {
     return { ok: false, reason: "その日にはログか手動の記録があります (練習した日は中止にできません)" };
   }
