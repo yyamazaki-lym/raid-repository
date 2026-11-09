@@ -197,6 +197,19 @@ try {
     );
     check("バッジ: 手動の討伐が無ければそのまま", merge.mergeManualBadges(loggedBadges, [manual[1]], floors), loggedBadges);
     check("バッジ: ログに討伐が無くても手動の討伐で初討伐", merge.mergeManualBadges([], manual, floors), [{ kind: "firstClear", value: null, date: "2026-10-05" }]);
+    // 2026-11-09 (レビューで検出): バッジの日 (session_date そのもの) が null の古い
+    // ログでも、ログの練習日で比べる (以前は null を「手動が早い」としていた)。
+    const nullDated = [{ kind: "firstClear", value: null, date: null }];
+    check(
+      "バッジ: ログの日が null でもログの練習日で比べる (ログが先ならログの日)",
+      merge.mergeManualBadges(nullDated, manual, floors, { first: "2026-09-01", last: "2026-09-01" }),
+      [{ kind: "firstClear", value: null, date: "2026-09-01" }, { kind: "clears", value: 2, date: "2026-10-05" }],
+    );
+    check(
+      "バッジ: 手動の日が先なら手動の日 (ログの練習日と比べて)",
+      merge.mergeManualBadges(nullDated, manual, floors, { first: "2026-11-01", last: "2026-11-02" }),
+      [{ kind: "firstClear", value: null, date: "2026-10-05" }, { kind: "clears", value: 2, date: "2026-11-02" }],
+    );
     const fcIn = savage.map((f) => ({ startMs: f.startMs, endMs: f.endMs, kill: f.kill, floorIndex: floors.byEncounter.get(f.encounterId), sessionDate: f.sessionDate }));
     const fc = merge.floorFirstClearsWithManual(fcIn, manual, floors);
     check("初討伐: 1 層はログのまま (手動の pull は前に無い)", fc.find((c) => c.index === 1).manual, null);
@@ -242,6 +255,30 @@ try {
     check("月末の次の日は翌月に繰り上げる", man.jstDayRangeIso("2026-09-30").to, "2026-09-30T15:00:00.000Z");
     check("年末", man.jstDayRangeIso("2026-12-31"), { from: "2026-12-30T15:00:00.000Z", to: "2026-12-31T15:00:00.000Z" });
     check("暦に無い日は null", man.jstDayRangeIso("2026-02-30"), null);
+    check("形の違う日付は null (.or() に入れる前の検査)", man.jstDayRangeIso("2026-09-10,id.gt.0"), null);
+    // 2026-11-09: ページで読み切る (1000 行の上限)。
+    const pager = (total) => {
+      const calls = [];
+      const fetchPage = async (from, to) => {
+        calls.push([from, to]);
+        const n = Math.max(0, Math.min(to, total - 1) - from + 1);
+        return { rows: Array.from({ length: n }, (_, i) => from + i), error: null };
+      };
+      return { calls, fetchPage };
+    };
+    {
+      const p = pager(2500);
+      const r = await man.readAllPages(p.fetchPage);
+      check("ページ: 2500 行を 3 回で読み切る", [r.rows.length, r.rows[2499], p.calls, r.truncated], [2500, 2499, [[0, 999], [1000, 1999], [2000, 2999]], false]);
+      const p2 = pager(1000);
+      const r2 = await man.readAllPages(p2.fetchPage);
+      check("ページ: ちょうど 1000 行なら空のページを確かめて終える", [r2.rows.length, p2.calls.length, r2.truncated], [1000, 2, false]);
+      const p3 = pager(5000);
+      const r3 = await man.readAllPages(p3.fetchPage, 3);
+      check("ページ: 上限のページ数で終わらなければ truncated", [r3.rows.length, r3.truncated], [3000, true]);
+      const r4 = await man.readAllPages(async (from) => (from === 0 ? { rows: Array(1000).fill(0), error: null } : { rows: null, error: "boom" }));
+      check("ページ: 途中の失敗は error で返す", [r4.error, r4.truncated], ["boom", false]);
+    }
   }
 
   // ---- 5. 配線 --------------------------------------------------------------
@@ -269,11 +306,19 @@ try {
       const practiced = body.indexOf("if (practiced)");
       const writes = [...body.matchAll(/\.update\(/g)].map((x) => x.index);
       check("中止: admin を確かめ、練習した日でないことを確かめてから書く", gate >= 0 && practiced > gate && writes.length === 2 && writes.every((i) => i > practiced), true);
-      check("中止: ログ (practice_log_days) と手動の記録の両方を見る", /rpc\("practice_log_days"/.test(body) && /\.from\("practice_log_manual_days"\)[\s\S]{0,80}\.eq\("session_date", date\)/.test(body), true);
+      // 2026-11-09 (レビューで検出): ログはその日だけを直接引く。practice_log_days
+      // (その日以降の全部) を読むと 1000 行の上限で対象の日が抜けた。
+      check(
+        "中止: ログはその日だけを引く (session_date、無ければ開始の JST 暦日)",
+        /\.from\("fflogs_fights"\)[\s\S]{0,60}\.or\(\s*`session_date\.eq\.\$\{date\},and\(session_date\.is\.null,start_ms\.gte\.\$\{fromMs\},start_ms\.lt\.\$\{toMs\}\)`,?\s*\)\s*\.limit\(1\)/.test(body) &&
+          !/rpc\("practice_log_days"/.test(body),
+        true,
+      );
+      check("中止: 手動の記録もその日を見る", /\.from\("practice_log_manual_days"\)[\s\S]{0,80}\.eq\("session_date", date\)/.test(body), true);
       // 読んだ結果が両方とも「練習した日」の判定に入っていること (変異テストで検出)。
       check(
         "中止: 練習した日の判定 = その日のログ OR 手動の記録",
-        /const practiced =\s*\(\(daysRes\.data \?\? \[\]\)[^;]*?\.some\(\(r\) => r\.day === date\)\s*\|\|\s*\(manualRes\.data \?\? \[\]\)\.length > 0;/.test(body),
+        /const practiced = \(logRes\.data \?\? \[\]\)\.length > 0 \|\| \(manualRes\.data \?\? \[\]\)\.length > 0;/.test(body),
         true,
       );
       check("中止: 今日以降は中止にしない", /if \(date >= jstYmdString\(new Date\(\)\)\)/.test(body), true);
@@ -310,12 +355,48 @@ try {
     const view = read("src/app/(portal)/category/[slug]/logs/logs-view.tsx");
     check("画面: 総 pull・クリア数のタイルに手動を足す", /manualTotals\.pulls;/.test(view) && /\+ manualTotals\.clears/.test(view), true);
     check("画面: 内訳に手動の記録を渡す", /pullBreakdown\(countedFights, floors, showPhase, locale, manualDays\)/.test(view), true);
+    // 2026-11-09 (レビューで検出) の直し 3 点。
+    check(
+      "画面: バッジはログの練習日 (fightDate) と比べる",
+      /const loggedClearDates =[\s\S]{0,160}first: fightDate\(clears\[0\]!\), last: fightDate\(clears\[clears\.length - 1\]!\)[\s\S]{0,200}mergeManualBadges\([\s\S]{0,120}loggedClearDates,?\s*\)/.test(view),
+      true,
+    );
+    check(
+      "画面: フェーズの絞り込みに手動の記録のフェーズも出す",
+      /const phaseChoices = useMemo\([\s\S]{0,500}for \(const d of manualDays\)[\s\S]{0,120}set\.add\(s\.phase\)[\s\S]{0,120}\[showPhase, tierFights, manualDays\]/.test(view),
+      true,
+    );
+    {
+      const dialog = read("src/components/portal/logs/manual-day-dialog.tsx");
+      check(
+        "ダイアログ: 討伐数か残% があって pull が空の行は止める (黙って捨てない)",
+        /if \(pulls === null \|\| pulls === 0\) \{\s*if \(\(kills !== null && kills > 0\) \|\| best !== null\) \{\s*toast\.error\(m\.logsManual\.errNoPullsInRow\(labelOf\(r\.key\)\)\);\s*return;\s*\}\s*continue;\s*\}/.test(dialog),
+        true,
+      );
+    }
     check("画面: 手動の記録だけのコンテンツも空の表示にしない", /fights\.length === 0 && manualDays\.length === 0/.test(view), true);
     const weekly = read("src/lib/server/logs-weekly-summary.ts");
     check("週のまとめ: 手動の記録を読んで渡す", /fetchManualDaysWith\(db, category\.id\)/.test(weekly) && /summarizeWeek\([^)]*, manual\)/.test(weekly), true);
     check("週のまとめ: 手動の記録だけの週のコンテンツも探す", /\.from\("practice_log_manual_days"\)[\s\S]{0,120}\.gte\("session_date", week\.start\)/.test(weekly), true);
     const missing = read("src/lib/server/practice-log-missing-days.ts");
-    check("欠けている日: 読めなければ null (全部欠けて見せない)", /if \(daysRes\.error \|\| manualRes\.error \|\| held === null\)[\s\S]{0,200}return null;/.test(missing), true);
+    check(
+      "欠けている日: 読めない・読み切れないときは null (全部欠けて見せない)",
+      /daysRes\.error \|\|\s*daysRes\.truncated \|\|\s*manualRes\.error \|\|\s*manualRes\.truncated \|\|\s*held === null\s*\)[\s\S]{0,300}return null;/.test(missing),
+      true,
+    );
+    // 2026-11-09 (レビューで検出): 1000 行の上限で古い日が抜けないようページで読み切る。
+    check(
+      "欠けている日: ログのある日と手動の記録はページで読み切る (並び順つき)",
+      /readAllPages[^(]*\(\(lo, hi\) =>\s*db\s*\.rpc\("practice_log_days", \{ p_from: from \}\)\s*\.range\(lo, hi\)/.test(missing) &&
+        /readAllPages[^(]*\(\(lo, hi\) =>\s*db\s*\.from\("practice_log_manual_days"\)[\s\S]{0,260}\.order\("session_date", \{ ascending: false \}\)\s*\.order\("category_id", \{ ascending: true \}\)\s*\.range\(lo, hi\)/.test(missing),
+      true,
+    );
+    // 関数の並び順がページの境目の前提 (day DESC, category_id で 1 行に決まる)。
+    {
+      const schemaSrc = read("supabase/schema.sql");
+      const fn = schemaSrc.slice(schemaSrc.indexOf("CREATE OR REPLACE FUNCTION public.practice_log_days"));
+      check("practice_log_days は (day, category_id) で並べる", /GROUP BY d\.category_id, d\.day\s*ORDER BY d\.day DESC, d\.category_id/.test(fn.slice(0, 1500)), true);
+    }
     check("欠けている日: 自前作成式は確定・有志練習でない日", /\.eq\("status", "DECISION"\)/.test(missing) && /is_optional !== true/.test(missing), true);
   }
 } finally {

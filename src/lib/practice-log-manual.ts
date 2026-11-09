@@ -264,6 +264,37 @@ export function validateManualDayInput(
 // ログが欠けている日 (ユーザーの選択「開催日でどこにもログ無し」)
 // ---------------------------------------------------------------------------
 
+/** PostgREST が 1 回に返す行の上限 (既定)。 */
+export const PAGE_ROWS = 1000;
+
+/**
+ * 1 ページ (`from`〜`to`、両端を含む) ずつ読み切る (2026-11-09、レビューで検出)。
+ *
+ * PostgREST は既定で 1 回に 1000 行しか返さない。欠けている日の判定で
+ * 「ログのある日」を 1 回で読んでいたため、コンテンツ × 日が 1000 行を超えると
+ * 古い日が黙って抜け、ログのある開催日が欠けて見えた。呼び出し側は並び順を
+ * 決めて (`order` / 関数の ORDER BY) ページの境目で行がずれないようにすること。
+ *
+ * `maxPages` ページ読んでも終わらなければ `truncated` を立てる (呼び出し側は
+ * 判定を出さない)。読み取りの失敗は `error` で返す。
+ */
+export async function readAllPages<T>(
+  fetchPage: (from: number, to: number) => PromiseLike<{ rows: T[] | null; error: unknown }>,
+  maxPages = 20,
+  pageRows: number = PAGE_ROWS,
+): Promise<{ rows: T[]; error: unknown; truncated: boolean }> {
+  const rows: T[] = [];
+  for (let page = 0; page < maxPages; page++) {
+    const from = page * pageRows;
+    const res = await fetchPage(from, from + pageRows - 1);
+    if (res.error) return { rows, error: res.error, truncated: false };
+    const got = res.rows ?? [];
+    rows.push(...got);
+    if (got.length < pageRows) return { rows, error: null, truncated: false };
+  }
+  return { rows, error: null, truncated: true };
+}
+
 /**
  * JST の暦日 `YYYY-MM-DD` の始まりと次の日の始まり (ISO、UTC)。開催日の
  * `parsed_date` (timestamptz) をその日の分だけ引くのに使う

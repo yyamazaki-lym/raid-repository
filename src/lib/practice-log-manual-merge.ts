@@ -62,6 +62,13 @@ export function mergeManualBadges(
   badges: ReadonlyArray<TeamBadge>,
   manual: ReadonlyArray<ManualDay>,
   floors: FloorMap,
+  /**
+   * ログの最初と最後のクリアの練習日 (`fightDate`、JST 暦日で補うので null に
+   * ならない)。2026-11-09 (レビューで検出): `teamBadges` の日は `session_date`
+   * そのままで、古い行では null になる。null を「手動の日のほうが早い」と比べて
+   * いたので、ログの初討伐が先でも手動の日が初討伐になっていた。比べるのはこちら。
+   */
+  loggedClearDates: { first: string; last: string } | null = null,
 ): TeamBadge[] {
   const clearDays = manual
     .map((d) => ({
@@ -79,9 +86,9 @@ export function mergeManualBadges(
   const loggedClears = badges.find((b) => b.kind === "clears") ?? null;
   const loggedCount = loggedClears?.value ?? (loggedFirst ? 1 : 0);
   const total = loggedCount + manualClears;
-  const firstDate =
-    loggedFirst?.date && loggedFirst.date <= firstManual ? loggedFirst.date : firstManual;
-  const lastLogged = loggedClears?.date ?? loggedFirst?.date ?? null;
+  const firstLogged = loggedClearDates?.first ?? loggedFirst?.date ?? null;
+  const firstDate = firstLogged && firstLogged <= firstManual ? firstLogged : firstManual;
+  const lastLogged = loggedClearDates?.last ?? loggedClears?.date ?? loggedFirst?.date ?? null;
   const lastDate = lastLogged && lastLogged > lastManual ? lastLogged : lastManual;
 
   const out: TeamBadge[] = [{ kind: "firstClear", value: null, date: firstDate }];

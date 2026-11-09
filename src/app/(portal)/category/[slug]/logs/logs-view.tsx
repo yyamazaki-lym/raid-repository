@@ -408,15 +408,22 @@ export function LogsView({
   // null なので kill のまま。
   // 2026-11-08: 手動の記録の討伐を「初討伐」の日と「討伐 N 回」に日単位で重ねる
   // (最速・ノーデスはログだけ。`practice-log-manual-merge.ts`)。
-  const badges = useMemo(
-    () =>
-      mergeManualBadges(
-        teamBadges(countedFights, (f) => isClearFight(f, floors)),
-        manualDays,
-        floors,
-      ),
-    [countedFights, floors, manualDays],
-  );
+  const badges = useMemo(() => {
+    const isClear = (f: FightRow) => isClearFight(f, floors);
+    // 2026-11-09: 手動の記録と比べる日はログの練習日 (`fightDate`)。バッジの日
+    // (`session_date` そのもの) は古い行で null になり、比べると手動の日が勝っていた。
+    const clears = countedFights.filter(isClear).sort((a, b) => a.startMs - b.startMs);
+    const loggedClearDates =
+      clears.length > 0
+        ? { first: fightDate(clears[0]!), last: fightDate(clears[clears.length - 1]!) }
+        : null;
+    return mergeManualBadges(
+      teamBadges(countedFights, isClear),
+      manualDays,
+      floors,
+      loggedClearDates,
+    );
+  }, [countedFights, floors, manualDays]);
   // バーを区切る区間数 = 層数 (零式) / フェーズ数 (絶)。
   const segmentCount = floors ? floors.floorCount : phaseCount;
   // 死亡数の列を確保するか (1 pull も取得できていないカテゴリでは幅を取らない)。
@@ -541,8 +548,13 @@ export function LogsView({
     for (const f of tierFights) {
       if (f.lastPhase !== null && Number.isFinite(f.lastPhase)) set.add(f.lastPhase);
     }
+    // 2026-11-09 (レビューで検出): 手動の記録の日にだけ着いたフェーズも選べるように
+    // する (内訳・最深到達・区間数には入るのに、絞り込みでは選べなかった)。
+    for (const d of manualDays) {
+      for (const s of d.segments) if (s.phase !== null) set.add(s.phase);
+    }
     return [...set].sort((a, b) => a - b);
-  }, [showPhase, tierFights]);
+  }, [showPhase, tierFights, manualDays]);
 
   // 2026-08-30 (Tier3-13): 層で pull を絞り込む。層チップに色が付いた
   // ので「4層だけ見たい」を安価に足せる。null = 全層 / 全フェーズ。

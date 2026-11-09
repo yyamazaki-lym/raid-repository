@@ -11,6 +11,7 @@ import { getScheduleSourceMode } from "@/lib/schedule/source-mode";
 import { planPastSessionMerge } from "@/lib/schedule/past-session-dedup";
 import {
   missingPracticeDays,
+  readAllPages,
   type HeldScheduleDay,
   type MissingDaysResult,
   type PracticeDayRef,
@@ -95,32 +96,48 @@ async function computeWith(
   const fromIso = new Date(Date.now() - (WINDOW_DAYS + 1) * 86_400_000).toISOString();
   const nowIso = new Date().toISOString();
 
+  // ⚠ どちらも 1000 行の上限で切れないようページで読み切る (2026-11-09、レビューで
+  // 検出)。以前は 1 回で読んでいたので、コンテンツ × 日が 1000 行を超えると古い日の
+  // 「ログがある」が抜け、ログのある開催日が欠けている日に出た。並び順は
+  // practice_log_days の ORDER BY (day DESC, category_id) と、下の order で決める。
   const [daysRes, manualRes, held] = await Promise.all([
-    db.rpc("practice_log_days", { p_from: from }),
-    db
-      .from("practice_log_manual_days")
-      .select("category_id, session_date")
-      .gte("session_date", from)
-      .order("session_date", { ascending: false })
-      .limit(1000),
+    readAllPages<{ category_id: string | null; day: string }>((lo, hi) =>
+      db
+        .rpc("practice_log_days", { p_from: from })
+        .range(lo, hi)
+        .then((r) => ({ rows: r.data as Array<{ category_id: string | null; day: string }> | null, error: r.error })),
+    ),
+    readAllPages<{ category_id: string; session_date: string }>((lo, hi) =>
+      db
+        .from("practice_log_manual_days")
+        .select("category_id, session_date")
+        .gte("session_date", from)
+        .order("session_date", { ascending: false })
+        .order("category_id", { ascending: true })
+        .range(lo, hi)
+        .then((r) => ({ rows: r.data as Array<{ category_id: string; session_date: string }> | null, error: r.error })),
+    ),
     readHeldDays(db, mode, fromIso, nowIso),
   ]);
-  // ⚠ 読み取りの失敗を「ログが無い」と扱わない (全部の開催日が欠けて見える)。
-  if (daysRes.error || manualRes.error || held === null) {
-    console.warn(
-      "[practice-log-missing-days] read failed:",
-      daysRes.error?.message ?? manualRes.error?.message ?? "schedule",
-    );
+  // ⚠ 読み取りの失敗・読み切れなかったときを「ログが無い」と扱わない (全部の
+  // 開催日が欠けて見える)。
+  if (
+    daysRes.error ||
+    daysRes.truncated ||
+    manualRes.error ||
+    manualRes.truncated ||
+    held === null
+  ) {
+    console.warn("[practice-log-missing-days] read failed:", {
+      days: daysRes.error ?? (daysRes.truncated ? "truncated" : null),
+      manual: manualRes.error ?? (manualRes.truncated ? "truncated" : null),
+      schedule: held === null,
+    });
     return null;
   }
   const practiceDays: PracticeDayRef[] = [
-    ...((daysRes.data ?? []) as Array<{ category_id: string | null; day: string }>).map((r) => ({
-      categoryId: r.category_id ?? null,
-      date: r.day,
-    })),
-    ...((manualRes.data ?? []) as Array<{ category_id: string; session_date: string }>).map(
-      (r) => ({ categoryId: r.category_id, date: r.session_date }),
-    ),
+    ...daysRes.rows.map((r) => ({ categoryId: r.category_id ?? null, date: r.day })),
+    ...manualRes.rows.map((r) => ({ categoryId: r.category_id, date: r.session_date })),
   ];
   return missingPracticeDays({ categoryId, heldDays: held, practiceDays, today });
 }
