@@ -114,6 +114,11 @@ const MEMO_MAX = 64;
  * と書き込みより十分長くする。
  */
 const FLIGHT_MAX_MS = 60_000;
+/**
+ * setTimeout に渡せる上限 (ms)。これを超える締め切り (`Infinity` = 待ち切る) に
+ * timer を張ると Node は 1ms に丸めて即座に発火させるので、張らずに取得を待つ。
+ */
+const MAX_TIMER_MS = 2_147_483_647;
 
 type Outcome<V> =
   | { ok: true; value: V; fetchedAt: number }
@@ -280,6 +285,7 @@ export function createRedisSwr<V>(deps: SwrDeps, opts: SwrOptions<V>) {
   /**
    * 値を返す。当たれば待たない (古ければ取り直しを after に回す)。無ければ
    * `deadlineAt` (絶対時刻、ms) まで取得を待ち、超えたら `timedOutReason`。
+   * `Infinity` なら取得の終わりまで待つ (同期の Server Action・cron)。
    */
   async function get(arg: string, deadlineAt: number): Promise<SwrResult<V>> {
     const key = opts.storeKey(arg);
@@ -314,14 +320,16 @@ export function createRedisSwr<V>(deps: SwrDeps, opts: SwrOptions<V>) {
     // 締め切りはリクエスト単位の絶対時刻なので、2 本目は残りしか待たない。
     const remaining = deadlineAt - deps.now();
     if (remaining <= 0) return timedOut();
+    const toResult = (r: Outcome<V>): SwrResult<V> =>
+      r.ok ? { ok: true, value: r.value } : { ok: false, reason: r.reason };
+    if (!(remaining <= MAX_TIMER_MS)) return toResult(await f.done);
     let timer: ReturnType<typeof setTimeout> | undefined;
     const deadline = new Promise<null>((resolve) => {
       timer = setTimeout(() => resolve(null), remaining);
     });
     try {
       const r = await Promise.race([f.done, deadline]);
-      if (r === null) return timedOut();
-      return r.ok ? { ok: true, value: r.value } : { ok: false, reason: r.reason };
+      return r === null ? timedOut() : toResult(r);
     } finally {
       clearTimeout(timer);
     }

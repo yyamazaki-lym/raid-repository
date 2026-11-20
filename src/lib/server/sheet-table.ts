@@ -1,15 +1,9 @@
 import "server-only";
-import { createHash } from "node:crypto";
 import { cache } from "react";
-import { after } from "next/server";
-import { unstable_rethrow } from "next/navigation";
 import { isPublicHttpUrl } from "@/lib/url-safe";
-import {
-  createRedisSwr,
-  type SwrFetched,
-  type SwrLog,
-} from "./redis-swr";
-import { getSwrStore, SWR_NAMESPACE } from "./redis-swr-store";
+import { createRedisSwr, type SwrFetched } from "./redis-swr";
+import { hashArg, nextSwrDeps } from "./redis-swr-next";
+import { SWR_NAMESPACE } from "./redis-swr-store";
 import { safeFetch } from "./safe-fetch";
 import {
   parseCsv,
@@ -96,33 +90,18 @@ const RENDER_TIMED_OUT = {
 /** リクエストの待ちの締め切り。React `cache()` でリクエストごとに 1 つ。 */
 const renderDeadline = cache(() => Date.now() + RENDER_WAIT_MS);
 
-const sha256 = (s: string) => createHash("sha256").update(s).digest("hex");
-
 /**
  * 保存先のキー。本番・デモ・手元を分け、URL はハッシュにする (キーにも
  * ログにも URL を出さない)。値の形を変えたら v を上げる。
  */
 const storeKey = (kind: "table" | "tabs") => (arg: string) =>
-  `sheet:v1:${SWR_NAMESPACE}:${kind}:${sha256(arg).slice(0, 32)}`;
+  `sheet:v1:${SWR_NAMESPACE}:${kind}:${hashArg(arg)}`;
 
 /**
- * ログ。キーの末尾の短いハッシュだけを出す。
- *
- * `written` (info) は出した直後の観測用 — 書き込みが、引き金になった閲覧と
- * 同じ要求 (`/category/<slug>/mitigation` か `/loot`) に記録されることを
- * runtime logs で確かめたら、info は出さないようにする。
+ * `written` は出さない (2026-11-20 に本番で空・古い・新しいの 3 経路を
+ * runtime logs で確かめた)。失敗・締め切り超えは引き続き出す。
  */
-const log: SwrLog = (level, event, key, detail) => {
-  console[level](`[sheet-swr] ${event}`, { key: key.slice(-8), ...detail });
-};
-
-const deps = {
-  store: getSwrStore(),
-  after,
-  now: Date.now,
-  log,
-  rethrow: unstable_rethrow,
-};
+const deps = nextSwrDeps("sheet-swr");
 
 const tableSwr = createRedisSwr<SheetTableValue>(deps, {
   storeKey: storeKey("table"),

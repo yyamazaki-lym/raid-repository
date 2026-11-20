@@ -1,7 +1,9 @@
 "use server";
 
-import { unstable_cache } from "next/cache";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
+import { createRedisSwr } from "./redis-swr";
+import { hashArg, nextSwrDeps } from "./redis-swr-next";
+import { SWR_NAMESPACE } from "./redis-swr-store";
 import { limitDemoGuest } from "./external-fetch-guard";
 import {
   fetchAttendanceActualsByReports,
@@ -89,10 +91,10 @@ const MISMATCH_LIMIT = 40;
  */
 const DEMO_GUEST_SUMMARY_LIMIT = { limit: 10, windowMs: 60_000 };
 /**
- * 公開デモの匿名ゲストへの結果を共有キャッシュに置く秒数。ゲストへの値は全員同じ
+ * 公開デモの匿名ゲストへの結果を取り直すまでの時間 (ms)。ゲストへの値は全員同じ
  * なので、1 分古くても困らない。⚠ export しない。
  */
-const DEMO_GUEST_SUMMARY_CACHE_SECONDS = 60;
+const DEMO_GUEST_SUMMARY_FRESH_MS = 60_000;
 export type AttendanceSummaryResult =
   | {
       ok: true;
@@ -117,7 +119,7 @@ export async function fetchAttendanceSummaryAction(): Promise<AttendanceSummaryR
     // 2026-10-08: 上の回数は Upstash が無いとインスタンスごとに数えるので、
     // 呼び出しが複数のインスタンスに散ると 10 回 × インスタンス数まで緩む
     // (公開デモで実測)。ゲストへの結果は全員同じ (同じ ID・admin でない) なので、
-    // インスタンスをまたいで共有される Data Cache に置き、DB を読むのを
+    // インスタンスをまたいで共有される保存先 (Upstash) に置き、DB を読むのを
     // IP やインスタンスに関係なく 1 分に 1 回にする。
     return fetchDemoGuestSummary(user.discordId);
   }
@@ -130,7 +132,8 @@ export async function fetchAttendanceSummaryAction(): Promise<AttendanceSummaryR
 /**
  * 出席サマリーの集計の本体。見る人によって変わるのは、admin か (全員分か本人だけか)
  * と本人の Discord ID だけ。⚠ cookie / headers を読まないこと — 公開デモの
- * ゲスト向けには `unstable_cache` の中で呼ぶ (`fetchDemoGuestSummary`)。
+ * ゲスト向けには共有の保存先に置く値を作る (`fetchDemoGuestSummary`。取り直しは
+ * 応答の後の `after()` の中で走る)。
  */
 async function computeAttendanceSummary(viewer: {
   discordId: string;
@@ -448,28 +451,34 @@ async function computeAttendanceSummary(viewer: {
 }
 
 /**
- * 公開デモの匿名ゲスト向けの出席サマリーを Data Cache に 60 秒置く (2026-10-08)。
- * 引数 (ゲストの ID) は鍵に入る。失敗 (`{ ok: false }`) も同じく 60 秒置く —
- * 保存しないと、DB が苦しいときほど呼ばれるたびに集計が走るため。
+ * 公開デモの匿名ゲスト向けの出席サマリーを共有の保存先 (Upstash、`redis-swr.ts`)
+ * に置く (2026-10-08 に Data Cache で導入、2026-11-20 に替えた。Data Cache の
+ * 取り直しは凍結で落ちる。経緯は redis-swr.ts の冒頭)。引数 (ゲストの ID) は
+ * ハッシュにしてキーに入れる。失敗 (`{ ok: false }`) も値として置く — 置かないと、
+ * DB が苦しいときほど呼ばれるたびに集計が走るため。`written` は本番 (デモ) で
+ * 確かめるまで出す。⚠ export しない ("use server" のファイル)。
  */
-const demoGuestSummaryCache = unstable_cache(
-  async (guestId: string): Promise<AttendanceSummaryResult> =>
-    computeAttendanceSummary({ discordId: guestId, isAdmin: false }),
-  ["attendance-summary-demo-guest"],
-  { revalidate: DEMO_GUEST_SUMMARY_CACHE_SECONDS },
+const demoGuestSummarySwr = createRedisSwr<AttendanceSummaryResult>(
+  nextSwrDeps("attendance-summary-swr", { logWrites: true }),
+  {
+    storeKey: (guestId) =>
+      `attendance-summary:v1:${SWR_NAMESPACE}:${hashArg(guestId)}`,
+    fetch: async (guestId) => ({
+      ok: true,
+      value: await computeAttendanceSummary({ discordId: guestId, isAdmin: false }),
+    }),
+    freshMs: DEMO_GUEST_SUMMARY_FRESH_MS,
+    timedOutReason: "attendance summary wait exceeded",
+  },
 );
 
 async function fetchDemoGuestSummary(
   guestId: string,
 ): Promise<AttendanceSummaryResult> {
-  try {
-    return await demoGuestSummaryCache(guestId);
-  } catch (e) {
-    // キャッシュ層 (Data Cache の読み書き) の失敗は、Server Action の外へ漏らさず
-    // 本体の失敗と同じ形で返す (本体は自分の失敗を { ok: false } にして返す)。
-    console.warn("[attendance-summary] demo guest cache failed:", e);
-    return { ok: false, reason: "出席サマリーの取得に失敗しました" };
-  }
+  // 締め切りなし: 空のときは集計の終わりまで待つ (Data Cache の頃と同じ)。
+  // 保存先の読み書きの失敗は redis-swr が握って、その場の集計を返す。
+  const r = await demoGuestSummarySwr.get(guestId, Number.POSITIVE_INFINITY);
+  return r.ok ? r.value : { ok: false, reason: "出席サマリーの取得に失敗しました" };
 }
 
 /** 1 回の取り直しで取りに行くレポート数 (URL を貼る取り込みと同じ上限)。 */
