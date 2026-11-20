@@ -95,6 +95,34 @@ function dateInputToIso(value: string): string | null {
   return jstMidnightIso(y, m, d);
 }
 
+// Phase 17 (2026-05-13): カテゴリカードから飛ぶ既定タブと、SubTabs 表示
+// 設定 (ON/OFF + ラベル上書き)。tabSettings は UI 内部用の Record。
+// L-15 (2026-09-09): `loot` タブだけ「欲しい人」行列の表示指定を持つ。
+// 2026-10-01 監査 F-8: 同じく `loot` タブだけ週制限の消化チェックの表示指定。
+// props も state も読まない純関数なので、コンポーネントの外に置く
+// (中に置くと開き直しの useEffect の依存に毎回新しい関数として入る)。
+type TabSetting = {
+  enabled: boolean;
+  label: string;
+  wantMatrix: boolean;
+  weekly: boolean;
+};
+function buildInitialTabSettings(
+  cfg: Category["tabConfig"] | undefined,
+): Record<CategoryTabId, TabSetting> {
+  const out = {} as Record<CategoryTabId, TabSetting>;
+  for (const id of CATEGORY_TAB_IDS) {
+    const c = cfg?.[id];
+    out[id] = {
+      enabled: c?.enabled !== false,
+      wantMatrix: c?.wantMatrix !== false,
+      weekly: c?.weekly !== false,
+      label: typeof c?.label === "string" ? c.label : "",
+    };
+  }
+  return out;
+}
+
 type Props = {
   /** Existing category for edit mode; omit for create. */
   category?: Category;
@@ -251,31 +279,7 @@ export function CategoryFormDialog({
   const [availableRoles, setAvailableRoles] = useState<DiscordGuildRole[]>([]);
   const [rolesLoading, setRolesLoading] = useState(false);
 
-  // Phase 17 (2026-05-13): カテゴリカードから飛ぶ既定タブと、SubTabs 表示
-  // 設定 (ON/OFF + ラベル上書き)。tabSettings は UI 内部用の Record。
-  // L-15 (2026-09-09): `loot` タブだけ「欲しい人」行列の表示指定を持つ。
-  // 2026-10-01 監査 F-8: 同じく `loot` タブだけ週制限の消化チェックの表示指定。
-  type TabSetting = {
-    enabled: boolean;
-    label: string;
-    wantMatrix: boolean;
-    weekly: boolean;
-  };
-  const buildInitialTabSettings = (
-    cfg: Category["tabConfig"] | undefined,
-  ): Record<CategoryTabId, TabSetting> => {
-    const out = {} as Record<CategoryTabId, TabSetting>;
-    for (const id of CATEGORY_TAB_IDS) {
-      const c = cfg?.[id];
-      out[id] = {
-        enabled: c?.enabled !== false,
-        wantMatrix: c?.wantMatrix !== false,
-        weekly: c?.weekly !== false,
-        label: typeof c?.label === "string" ? c.label : "",
-      };
-    }
-    return out;
-  };
+  // Phase 17: 既定タブと SubTabs の表示設定 (型と初期値は上の buildInitialTabSettings)
   const [defaultTab, setDefaultTab] = useState<CategoryTabId>(
     category?.defaultTab && isCategoryTabId(category.defaultTab)
       ? category.defaultTab
