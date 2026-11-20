@@ -186,6 +186,8 @@ export const SERVER_TEXT_EN: ServerTextDictRaw = {
       "The sheet is private (HTML was returned instead of CSV)",
     "シート取得に失敗しました":
       "Failed to fetch the sheet",
+    "シート取得が時間内に終わりませんでした":
+      "Fetching the sheet did not finish in time",
     "ジョブの指定が不正です":
       "Invalid job",
     "スケジュールが見つかりません (URL を確認してください)":

@@ -104,10 +104,11 @@ export async function setMyJobsAction(input: {
   //     プリレンダーが 1 枚も無い) ので、ページ HTML のキャッシュは
   //     そもそも無く、無効化する対象が無い
   //   * 一方でこの呼び出しは `_N_T_/category/layout` の softTag を
-  //     expire させるため、**軽減表 / ロットが使う Google Sheets の
-  //     Data Cache (`sheet-table.ts` の `unstable_cache`、TTL 60 秒) を
-  //     全カテゴリぶん捨てる**。ジョブを保存するたびに、次に軽減表を
-  //     開いた人が Sheets への往復 (最大 6 秒) を待つことになる
+  //     expire させるため、当時は **軽減表 / ロットが使う Google Sheets の
+  //     Data Cache を全カテゴリぶん捨てていた**。ジョブを保存するたびに、
+  //     次に軽減表を開いた人が Sheets への往復 (最大 6 秒) を待つことになる
+  //     (2026-11-20 の L-24 でシートは Upstash の自前 SWR に移り、タグの
+  //     影響は受けなくなったが、Data Cache を使う他の経路のために呼ばない)
   // 画面側は保存した値を draft として持つので、表示は即座に追いつく。
   revalidatePath("/me");
   return { ok: true, jobs };
