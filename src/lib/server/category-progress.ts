@@ -1,6 +1,8 @@
 import "server-only";
 
-import { unstable_cache } from "next/cache";
+import { createRedisSwr } from "./redis-swr";
+import { nextSwrDeps } from "./redis-swr-next";
+import { SWR_NAMESPACE } from "./redis-swr-store";
 import {
   createClient,
   createSupabaseServiceRoleClient,
@@ -40,10 +42,13 @@ import { progressValue } from "@/lib/fflogs-progress";
  * 配っていたため、anon キーで PostgREST から直接、回数の制限なく
  * (`fflogs_duplicate_pulls(0)` なら全期間を) 集計させられた (authenticated も、
  * 部外者が Supabase Auth に直接ログインすればなれる)。デモでは見る人に関係なく
- * サーバーが service role で計算し、全員同じ結果なので Data Cache に 60 秒置く。
+ * サーバーが service role で計算し、全員同じ結果なので共有の保存先 (Upstash、
+ * `redis-swr.ts`) に置き、60 秒過ぎたら古い値を返しつつ応答の後に取り直す。
  * 失敗 (空) も置く。デモの SELECT は誰にでも全行開いている (7 章) ので、見える
- * 範囲は変わらない。DB の集計はおおむね 1 分に 1 回 (保存は Next の Data Cache の
- * 最善努力で、厳密な上限ではない)。
+ * 範囲は変わらない。DB の集計はおおむね 1 分に 1 回 (取り直しは全インスタンスで
+ * 1 本だが、保存先が無い・空のときはインスタンスごとに走る)。
+ * 2026-11-20 に Data Cache (`unstable_cache`) から替えた (取り直しが凍結で落ちる
+ * 問題。経緯は redis-swr.ts の冒頭)。
  */
 
 /** カード 1 枚ぶんの日別到達度 (古い順)。 */
@@ -67,19 +72,32 @@ function numberOrNull(v: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-/** 公開デモのスパークラインを共有キャッシュに置く秒数。 */
-const DEMO_SPARK_CACHE_SECONDS = 60;
+/** 公開デモのスパークラインを取り直すまでの時間 (ms)。 */
+const DEMO_SPARK_FRESH_MS = 60_000;
 
 /**
- * 公開デモのスパークライン (見る人に関係なく同じ)。失敗 (空) も 60 秒置く —
- * 保存しないと、DB が苦しいときほど描画のたびに集計が走るため。
+ * 公開デモのスパークライン (見る人に関係なく同じ)。失敗 (空) も値として置く —
+ * 置かないと、DB が苦しいときほど描画のたびに集計が走るため。
+ * `written` は本番 (デモ) で確かめるまで出す。
  */
-const demoSparksCache = unstable_cache(
-  async (): Promise<Record<string, ProgressSpark[]>> =>
-    (await sparklinesWith(createSupabaseServiceRoleClient())) ?? {},
-  ["category-progress-demo"],
-  { revalidate: DEMO_SPARK_CACHE_SECONDS },
+const demoSparksSwr = createRedisSwr<Record<string, ProgressSpark[]>>(
+  nextSwrDeps("category-progress-swr", { logWrites: true }),
+  {
+    storeKey: () => `category-progress:v1:${SWR_NAMESPACE}:demo`,
+    fetch: async () => ({
+      ok: true,
+      value: (await sparklinesWith(createSupabaseServiceRoleClient())) ?? {},
+    }),
+    freshMs: DEMO_SPARK_FRESH_MS,
+    timedOutReason: "sparkline wait exceeded",
+  },
 );
+
+async function demoSparks(): Promise<Record<string, ProgressSpark[]>> {
+  // 締め切りなし: 空のときは集計の終わりまで待つ (Data Cache の頃と同じ)。
+  const r = await demoSparksSwr.get("", Number.POSITIVE_INFINITY);
+  return r.ok ? r.value : {};
+}
 
 /** 公開デモか (auth.ts の isPublicDemoModeEnabled と同じ判定)。 */
 function isPublicDemo(): boolean {
@@ -93,7 +111,7 @@ export async function fetchProgressSparklinesByCategory(): Promise<
     // 公開デモでは、ログインしているかに関係なく全員この経路 (重い集計の RPC は
     // デモでは service_role にしか配っていない。デモの表は誰にでも全行読めるので、
     // 見る人で結果は変わらない)。
-    if (isPublicDemo()) return await demoSparksCache();
+    if (isPublicDemo()) return await demoSparks();
     return (await sparklinesWith(await createClient())) ?? {};
   } catch (e) {
     console.warn("[category-progress] sparkline fetch threw:", e);
@@ -103,7 +121,8 @@ export async function fetchProgressSparklinesByCategory(): Promise<
 
 /**
  * RPC を呼んでカードごとの点に直す。RPC が失敗したら null (呼び出し側で空にする)。
- * ⚠ cookie / headers を読まないこと — ゲスト向けには `unstable_cache` の中で呼ぶ。
+ * ⚠ cookie / headers を読まないこと — デモでは共有の保存先に置く値を作る
+ * (取り直しは応答の後の `after()` の中で走る)。
  */
 async function sparklinesWith(
   supabase: ReturnType<typeof createSupabaseServiceRoleClient>,

@@ -11,21 +11,24 @@
  *       失敗・非公開・一時的な失敗・締め切り超え・同じインスタンスの重なり・
  *       印の取り合い・after が使えない、を回す。どの経路でも「after を流す
  *       前に保存先へ書いていない」ことを見る
- *   (b) 静的: sheet-table.ts が unstable_cache を使わない、redis-swr.ts が
- *       next も Redis も import しない、after に関数を渡す、Upstash の再試行を
- *       切っている
+ *   (b) 静的: src のどこも unstable_cache を使わない (2026-11-20 に xivapi・
+ *       デモの 3 か所も redis-swr に移した。同じ凍結のエラーが xivapi でも本番で
+ *       出ていた)、redis-swr.ts が next も Redis も import しない、after に関数を
+ *       渡す、Upstash の再試行を切っている
  *
  * ⚠ tsc は `process.execPath` + `node_modules/typescript/bin/tsc` で起動する
  *   (`npx` 経由は Windows で ENOENT / EINVAL になり、CI の ubuntu では
  *   通るので壊れていることに気付けない)。
  */
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 let failures = 0;
+const warnings = [];
+process.on("warning", (w) => warnings.push(w.name));
 function check(name, actual, expected) {
   const a = JSON.stringify(actual);
   const e = JSON.stringify(expected);
@@ -269,6 +272,23 @@ async function pureLogic(createRedisSwr) {
     check("取得は止めず、after の中で書いた", r.state.data.get("k:a")?.value, "late");
   }
 
+  console.log("(a) 締め切りなし (Infinity。同期の Server Action・cron)");
+  {
+    const r = rig();
+    let release;
+    const slow = new Promise((res) => (release = res));
+    const swr = make(r, () => slow);
+    const p = swr.get("a", Number.POSITIVE_INFINITY);
+    await new Promise((res) => setTimeout(res, 30));
+    release(OK("late"));
+    check("取得の終わりまで待って値を返す (時間切れにしない)", await p, { ok: true, value: "late" });
+    check("描画中は書かない", r.state.writesDuringRender, []);
+    await r.flush();
+    check("after の中で書いた", r.state.data.get("k:a")?.value, "late");
+    await tick();
+    check("timer の上限超えの警告を出さない", warnings.includes("TimeoutOverflowWarning"), false);
+  }
+
   console.log("(a) 同じインスタンスに要求が重なった (空)");
   {
     const r = rig();
@@ -316,12 +336,38 @@ async function pureLogic(createRedisSwr) {
   }
 }
 
+/** src の .ts / .tsx を全部並べる。 */
+function sourceFiles(dir) {
+  const out = [];
+  for (const e of readdirSync(dir, { withFileTypes: true })) {
+    const p = join(dir, e.name);
+    if (e.isDirectory()) out.push(...sourceFiles(p));
+    else if (/\.tsx?$/.test(e.name)) out.push(p.replace(/\\/g, "/"));
+  }
+  return out;
+}
+
 function staticChecks() {
   console.log("(b) 静的");
+  const files = sourceFiles("src");
+  check("src の .ts を読めている (対照)", files.includes("src/lib/server/sheet-table.ts"), true);
+  check(
+    "src のどこも unstable_cache を使わない (コメントは除く)",
+    files.filter((f) => /unstable_cache/.test(code(read(f)))),
+    [],
+  );
   const sheet = code(read("src/lib/server/sheet-table.ts"));
-  check("sheet-table.ts は unstable_cache を使わない", /unstable_cache/.test(sheet), false);
   check("sheet-table.ts は next/cache を import しない", /from\s+["']next\/cache["']/.test(sheet), false);
   check("sheet-table.ts は redis-swr を使う (表とタブの 2 本)", (sheet.match(/createRedisSwr<[^>]+>\(deps,/g) ?? []).length, 2);
+  check("sheet-table.ts は written を出さない (本番で確認済み)", /nextSwrDeps\("sheet-swr"\)/.test(sheet), true);
+  for (const f of [
+    "src/lib/server/xivapi-action-names.ts",
+    "src/lib/server/category-progress.ts",
+    "src/lib/server/practice-log-missing-days.ts",
+    "src/lib/server/attendance-summary-actions.ts",
+  ]) {
+    check(`${f.split("/").pop()} は redis-swr を使う`, /createRedisSwr</.test(code(read(f))), true);
+  }
   const swr = code(read("src/lib/server/redis-swr.ts"));
   check("redis-swr.ts は何も import しない (偽物を差し込むため)", /^\s*import\s/m.test(swr), false);
   check("redis-swr.ts は after に関数を渡す", /deps\.after\(async \(\) =>/.test(swr), true);

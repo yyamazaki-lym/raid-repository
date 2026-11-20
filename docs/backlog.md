@@ -17,7 +17,7 @@ W-17 は不採用、UI-11 は既に実装済みだったことが分かった。
 入っていなかった** (2026-10-01 監査 F-6)。下の「2026-10-01 全体精査からの
 判断待ち」に載せた (2026-10-05 に W-21 / C-2 / C-4 を実装、B-4 の残りは見送り)。
 2026-10-09: **L-24 (シートのキャッシュの作り直し)** を着手判断待ちで足した
-(下の「実機報告 (2026-10-09)」)。
+(下の「実機報告 (2026-10-09)」)。2026-11-20 に案 B で実装し、本番で確認した。
 2026-10-16: セキュリティ精査 (#489) のうち、GitHub の設定に関わる
 **G-1 (DB デプロイの承認制) / G-2 (main のブランチ保護)** を保留で足した
 (下の「2026-10-16 セキュリティ精査からの保留」)。
@@ -236,7 +236,23 @@ main を自動 push する (`claude/*` ブランチでは止めた、#490)。
 
 ## 実機報告 (2026-10-09)
 
-### L-24. シートの Data Cache の裏の取り直しが本番でエラーを出す — 着手判断待ち (作り直すなら案 B)
+### L-24. シートの Data Cache の裏の取り直しが本番でエラーを出す — 2026-11-20 実装 (案 B)
+
+**進み (2026-11-20)**:
+
+- #508 でシートを案 B に載せ替えた。下の「確認済み」の条件 1 と 3 を満たした:
+  本番で空 (`written mode: miss`、4 カテゴリで 9 件)・古い (`written mode:
+  refresh`、0.4〜0.6 秒)・新しい (ログなし) を runtime logs で見て、シート系の
+  `revalidating cache` は 0 件。初回が 15 秒で打ち切られることがあるのは
+  Google の応答の揺れ (同じ公開シートの `htmlview` が手元でも 0.5 秒と 27.8 秒)
+- 続きの PR で残りの `unstable_cache` 4 か所 (`xivapi-action-names.ts`、
+  デモの `category-progress.ts` / `practice-log-missing-days.ts` /
+  `attendance-summary-actions.ts`) も同じ部品に移した。#508 の確認中に
+  `/category` で `revalidating cache … xivapi-action-names … TimeoutError` が
+  本番で出ていた。`src` に `unstable_cache` を戻さないことは
+  `check-sheet-swr.mjs` が見る
+- 残り: 4 か所の本番・デモでの `written` の確認と `logWrites` を外すこと、
+  条件 4 (2〜4 週間後にシート系・xivapi 系のエラー 0 件)
 
 **症状**: 本番の実行時エラーに `revalidating cache with key: …sheet-table…` /
 `…sheet-tabs…` (`TimeoutError`) が月 7 件ほど出る。記録されるのは引き金の

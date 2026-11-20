@@ -303,19 +303,22 @@ console.log("\nL 公開デモの匿名ゲスト (2026-10-08)");
     const j = s.indexOf(to, i + 1);
     return i < 0 || j < 0 ? "" : s.slice(i, j);
   };
-  const compute = code(sliceBetween(src, "async function computeAttendanceSummary(", "const demoGuestSummaryCache"));
+  const compute = code(sliceBetween(src, "async function computeAttendanceSummary(", "const demoGuestSummarySwr"));
   const guestFetch = code(sliceBetween(src, "async function fetchDemoGuestSummary(", "/** 1 回の取り直しで"));
   check("出席サマリー: 本体は cookie / headers / ログインの確認を読まない (キャッシュの中で呼ぶため)", compute.length > 1000 && !/headers\(\)|cookies\(\)|requireDiscordMember\(|createClient\(\)/.test(compute), true);
   check("出席サマリー: 本体の本人だけの絞り込みは viewer の ID で", /mem\.discord_user_id === viewer\.discordId/.test(compute) && !/user\./.test(compute), true);
+  // 2026-11-20: 置き場を Data Cache から Upstash の自前の SWR (redis-swr.ts) に替えた。
+  // 保存先の読み書きの例外は redis-swr が握り、取得が投げたら ok: false になる。
   check(
-    "出席サマリー: ゲスト向けのキャッシュは 60 秒・失敗も使い回す・キャッシュ層の例外は失敗の形で返す・export しない",
+    "出席サマリー: ゲスト向けのキャッシュは 60 秒・失敗も使い回す・キャッシュ層の失敗は失敗の形で返す・ID はハッシュでキーに・export しない",
     // (guestFetch: export していない fetchDemoGuestSummary の本文)
-    /^const DEMO_GUEST_SUMMARY_CACHE_SECONDS = 60;/m.test(src) &&
-      /async \(guestId: string\): Promise<AttendanceSummaryResult> =>\s*computeAttendanceSummary\(\{ discordId: guestId, isAdmin: false \}\),/.test(src) &&
-      /\} catch \(e\) \{[\s\S]{0,300}return \{ ok: false, reason: "出席サマリーの取得に失敗しました" \};/.test(guestFetch) &&
-      !/throw e;/.test(guestFetch) &&
-      /\{ revalidate: DEMO_GUEST_SUMMARY_CACHE_SECONDS \}/.test(src) &&
-      !/export const (DEMO_GUEST_SUMMARY_CACHE_SECONDS|demoGuestSummaryCache)/.test(src),
+    /^const DEMO_GUEST_SUMMARY_FRESH_MS = 60_000;/m.test(src) &&
+      /freshMs: DEMO_GUEST_SUMMARY_FRESH_MS,/.test(src) &&
+      /fetch: async \(guestId\) => \(\{\s*ok: true,\s*value: await computeAttendanceSummary\(\{ discordId: guestId, isAdmin: false \}\),/.test(src) &&
+      /hashArg\(guestId\)/.test(src) &&
+      /return r\.ok \? r\.value : \{ ok: false, reason: "出席サマリーの取得に失敗しました" \};/.test(guestFetch) &&
+      !/throw /.test(guestFetch) &&
+      !/export const (DEMO_GUEST_SUMMARY_FRESH_MS|demoGuestSummarySwr)/.test(src),
     true,
   );
   check("出席サマリー: 上限は 1 分 10 回 (export しない)", /^const DEMO_GUEST_SUMMARY_LIMIT = \{ limit: 10, windowMs: 60_000 \};/m.test(src) && !/export const DEMO_GUEST_SUMMARY_LIMIT/.test(src), true);
@@ -346,15 +349,15 @@ console.log("\nL 公開デモの匿名ゲスト (2026-10-08)");
   const fetchSpark = code(fnBody(progress, "fetchProgressSparklinesByCategory"));
   check(
     "スパークライン: 公開デモは見る人に関係なく共有キャッシュ、本番のメンバーは自分の cookie のクライアント",
-    /if \(isPublicDemo\(\)\) return await demoSparksCache\(\);\s*return \(await sparklinesWith\(await createClient\(\)\)\) \?\? \{\};/.test(fetchSpark) &&
+    /if \(isPublicDemo\(\)\) return await demoSparks\(\);\s*return \(await sparklinesWith\(await createClient\(\)\)\) \?\? \{\};/.test(fetchSpark) &&
       /function isPublicDemo\(\): boolean \{\s*return process\.env\.PUBLIC_DEMO_MODE === "true";/.test(progress),
     true,
   );
   check(
     "スパークライン: デモは service role で計算し 60 秒・失敗 (空) も使い回す",
-    /\(await sparklinesWith\(createSupabaseServiceRoleClient\(\)\)\) \?\? \{\},/.test(progress) &&
-      /\{ revalidate: DEMO_SPARK_CACHE_SECONDS \}/.test(progress) &&
-      /^const DEMO_SPARK_CACHE_SECONDS = 60;/m.test(progress),
+    /value: \(await sparklinesWith\(createSupabaseServiceRoleClient\(\)\)\) \?\? \{\},/.test(progress) &&
+      /freshMs: DEMO_SPARK_FRESH_MS,/.test(progress) &&
+      /^const DEMO_SPARK_FRESH_MS = 60_000;/m.test(progress),
     true,
   );
   const sparkBody = code(progress.slice(progress.indexOf("async function sparklinesWith(")));

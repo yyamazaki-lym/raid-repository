@@ -1,7 +1,9 @@
 import "server-only";
 
-import { unstable_cache } from "next/cache";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { createRedisSwr } from "./redis-swr";
+import { hashArg, nextSwrDeps } from "./redis-swr-next";
+import { SWR_NAMESPACE } from "./redis-swr-store";
 import {
   createClient,
   createSupabaseServiceRoleClient,
@@ -35,14 +37,15 @@ import {
  *
  * `practice_log_days` はデモでは service_role にしか配らない (schema.sql 15 章。
  * スパークラインと同じ)。デモでは見る人に関係なくサーバーが service role で
- * 計算し、Data Cache に 60 秒置く (`category-progress.ts` と同じ)。デモの表は
- * 誰にでも全行開いているので見える範囲は変わらない。
+ * 計算し、共有の保存先 (Upstash、`redis-swr.ts`) に置いて 60 秒過ぎたら応答の
+ * 後に取り直す (`category-progress.ts` と同じ。2026-11-20 に Data Cache から
+ * 替えた)。デモの表は誰にでも全行開いているので見える範囲は変わらない。
  */
 
 /** 遡る日数。 */
 const WINDOW_DAYS = 365;
-/** 公開デモの共有キャッシュの秒数。 */
-const DEMO_CACHE_SECONDS = 60;
+/** 公開デモで取り直すまでの時間 (ms)。 */
+const DEMO_FRESH_MS = 60_000;
 
 type Db = SupabaseClient;
 type ScheduleMode = "sync" | "native";
@@ -59,7 +62,14 @@ export async function fetchMissingPracticeDays(
     const mode = await getScheduleSourceMode();
     if (mode === "disabled") return null;
     const today = jstYmdString(new Date());
-    if (isPublicDemo()) return await demoCache(categoryId, mode, today);
+    if (isPublicDemo()) {
+      // 締め切りなし: 空のときは計算の終わりまで待つ (Data Cache の頃と同じ)。
+      const r = await demoSwr.get(
+        JSON.stringify([categoryId, mode, today]),
+        Number.POSITIVE_INFINITY,
+      );
+      return r.ok ? r.value : null;
+    }
     return await computeWith(
       (await createClient()) as unknown as Db,
       categoryId,
@@ -73,17 +83,34 @@ export async function fetchMissingPracticeDays(
   }
 }
 
-/** 公開デモ: 引数 (コンテンツ・モード・今日) ごとに 60 秒置く。失敗 (null) も置く。 */
-const demoCache = unstable_cache(
-  async (categoryId: string, mode: ScheduleMode, today: string) =>
-    computeWith(createSupabaseServiceRoleClient() as unknown as Db, categoryId, mode, today),
-  ["practice-log-missing-days-demo"],
-  { revalidate: DEMO_CACHE_SECONDS },
+/**
+ * 公開デモ: 引数 `[コンテンツ, モード, 今日]` の JSON ごとに置く。失敗 (null) も
+ * 値として置く。`written` は本番 (デモ) で確かめるまで出す。
+ */
+const demoSwr = createRedisSwr<MissingDaysResult | null>(
+  nextSwrDeps("missing-days-swr", { logWrites: true }),
+  {
+    storeKey: (arg) => `missing-days:v1:${SWR_NAMESPACE}:${hashArg(arg)}`,
+    fetch: async (arg) => {
+      const [categoryId, mode, today] = JSON.parse(arg) as [string, ScheduleMode, string];
+      return {
+        ok: true,
+        value: await computeWith(
+          createSupabaseServiceRoleClient() as unknown as Db,
+          categoryId,
+          mode,
+          today,
+        ),
+      };
+    },
+    freshMs: DEMO_FRESH_MS,
+    timedOutReason: "missing days wait exceeded",
+  },
 );
 
 /**
  * 読み取りと判定の本体。⚠ cookie / headers を読まないこと — デモでは
- * `unstable_cache` の中で呼ぶ。
+ * 共有の保存先に置く値を作る (取り直しは応答の後の `after()` の中で走る)。
  */
 async function computeWith(
   db: Db,
