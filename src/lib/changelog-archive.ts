@@ -26,6 +26,16 @@ import type { ReleaseEntry } from "./changelog";
 export const RELEASES_ARCHIVE: ReleaseEntry[] = [
   {
     version: "2.19",
+    date: "2026-11-09",
+    parts: [
+      {
+        title:
+          "🩹 練習ログ: ログの多い固定で、ログが欠けている日と「中止だった」がログのある日を見落とし得たのを直した (ほか手動の記録の直し 3 点)",
+      },
+    ],
+  },
+  {
+    version: "2.19",
     date: "2026-11-08",
     parts: [
       {

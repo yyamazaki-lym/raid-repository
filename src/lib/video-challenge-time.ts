@@ -133,6 +133,42 @@ export function videoDayNumber(v: Pick<ChallengeVideo, "title" | "postedAt">): n
   return titleDate(v).day;
 }
 
+export type DatedVideo = {
+  title: string | null;
+  postedAt: string | null;
+  createdAt: string;
+  sortOrder: number;
+};
+
+/**
+ * 動画タブの「日付順」(新しい順)。練習日 (題名の日付 > 投稿日時 > 行の作成日時、
+ * 挑戦時間の集計と同じ順) で並べ、同じ日は投稿日時 → 行の作成日時の新しい順、
+ * 最後に sort_order。日付の分からない動画は下にまとめる。
+ *
+ * 2026-11-22 実機報告: 以前は行の作成日時だけで並べていたので、消して取り込み
+ * 直した動画が古い練習日でも一番上に来て、メタ情報を取り直しても動かなかった。
+ */
+export function sortVideosNewestFirst<T extends DatedVideo>(videos: ReadonlyArray<T>): T[] {
+  const ms = (iso: string | null) => {
+    const t = iso ? Date.parse(iso) : Number.NaN;
+    return Number.isFinite(t) ? t : Number.NEGATIVE_INFINITY;
+  };
+  const keyed = videos.map((v) => ({
+    v,
+    day: videoDayNumber({ title: v.title, postedAt: v.postedAt ?? v.createdAt }) ?? Number.NEGATIVE_INFINITY,
+    posted: ms(v.postedAt ?? v.createdAt),
+    created: ms(v.createdAt),
+  }));
+  keyed.sort(
+    (a, b) =>
+      b.day - a.day ||
+      b.posted - a.posted ||
+      b.created - a.created ||
+      a.v.sortOrder - b.v.sortOrder,
+  );
+  return keyed.map((k) => k.v);
+}
+
 /**
  * 日付と番号を除いた、題名に残る数字 (並べ替えた列)。`7-1` の `1`、`M3S` の
  * `3`、`①` (NFKC で `1`) など。値で 1 つずつ取り除く。

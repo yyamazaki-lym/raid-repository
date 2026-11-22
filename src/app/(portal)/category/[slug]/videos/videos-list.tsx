@@ -59,7 +59,11 @@ import {
 import { safeHref } from "@/lib/url-safe";
 import { toXivAnalysisUrl } from "@/lib/fflogs-url";
 import { extractDateFromTitle } from "@/lib/title-date";
-import { challengeTime, type ChallengeVideo } from "@/lib/video-challenge-time";
+import {
+  challengeTime,
+  sortVideosNewestFirst,
+  type ChallengeVideo,
+} from "@/lib/video-challenge-time";
 import { jstYmd, jstYmdString } from "@/lib/jst-date";
 import {
   applyOptimisticOrder,
@@ -406,16 +410,13 @@ export function VideosList({
       ? liveWithFav.filter((v) => v.isFavorite)
       : liveWithFav;
     if (sortMode === "date") {
-      // Newest first by created_at; ties (within the same insert batch from
-      // the cron) fall back to sort_order ascending.
-      return [...base].sort((a, b) => {
-        const cmp = b.createdAt.localeCompare(a.createdAt);
-        return cmp !== 0 ? cmp : a.sortOrder - b.sortOrder;
-      });
+      // 練習日 (題名の日付 > 投稿日時 > 作成日時) の新しい順。作成日時だけで
+      // 並べると、取り込み直した動画が古い日付でも先頭に来る (2026-11-22)。
+      return sortVideosNewestFirst(base);
     }
     // Custom mode — DB stores `sort_order` ascending so insertion order is
-    // 0, 1, 2, ... (oldest first). Date 並び順 (default) is newest-first
-    // by createdAt, so just returning DB order would visually flip the
+    // 0, 1, 2, ... (oldest first). Date 並び順 (default) is newest-first,
+    // so just returning DB order would visually flip the
     // list when the user toggles date → custom. Reverse here so custom mode
     // shares the same top-of-list direction as date mode (newest at top)
     // while still respecting whatever DnD reorder the user has applied.

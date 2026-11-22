@@ -308,6 +308,45 @@ try {
   const none = m.challengeTime([v("A 2026 10 01 Day 1", null), v("B 2026 10 01 Day 1", null)]);
   check("組のどれにも長さが無ければ 0 秒・未取得 2 本", [none.totalSeconds, none.missing, none.duplicates], [0, 2, 1]);
   check("0 件", m.challengeTime([]).totalSeconds, 0);
+
+  console.log("\n[動画タブの日付順]");
+  // 2026-11-22 の本番: 消して再生リストから取り込み直した 2 本 (行の作成日時と
+  // 公開日時が今日) が、題名の日付 (11/14) より新しい Discord 取り込み (11/20) の
+  // 上に来ていた。
+  const row = (id, title, postedAt, createdAt, sortOrder = 0) => ({ id, title, postedAt, createdAt, sortOrder });
+  const order = (rows) => m.sortVideosNewestFirst(rows).map((r) => r.id);
+  check(
+    "題名の日付で並べる (取り込み直した行が先頭に来ない)",
+    order([
+      row("p23", "FINAL FANTASY XIV 絶エデン2026 11 14 PART23 途中から", "2026-11-22T01:30:00Z", "2026-11-22T02:05:00Z"),
+      row("p25", "FINAL FANTASY XIV 絶エデン2026 11 20 PART25", "2026-11-22T01:31:00Z", "2026-11-22T02:05:00Z"),
+      row("d25", "【2026 11 20】絶もうひとつの未来【DAY 25】", "2026-11-20T14:40:00Z", "2026-11-20T16:00:00Z"),
+      row("d24", "【2026 11 19】絶もうひとつの未来【DAY 24】", "2026-11-19T14:40:00Z", "2026-11-19T16:00:00Z"),
+    ]),
+    ["p25", "d25", "d24", "p23"],
+  );
+  check(
+    "題名に日付が無ければ投稿日時の JST 暦日、それも無ければ作成日時 (posted と titled は同じ 11/19 で、titled は投稿日時の代わりの作成日時が新しい)",
+    order([
+      row("posted", "練習", "2026-11-18T16:00:00Z", "2026-11-22T00:00:00Z"), // JST 11/19 01:00
+      row("created", "練習", null, "2026-11-18T10:00:00Z"), // JST 11/18
+      row("titled", "2026 11 19 練習", null, "2026-11-22T00:00:00Z"),
+    ]),
+    ["titled", "posted", "created"],
+  );
+  check(
+    "同じ日は投稿日時 → 作成日時の新しい順、最後に sort_order",
+    order([
+      row("early", "2026 11 20 前半", "2026-11-20T12:00:00Z", "2026-11-20T15:00:00Z"),
+      row("late", "2026 11 20 後半", "2026-11-20T13:00:00Z", "2026-11-20T15:00:00Z"),
+      row("b", "2026 11 20 B", null, "2026-11-20T15:00:00Z", 2),
+      row("a", "2026 11 20 A", null, "2026-11-20T15:00:00Z", 1),
+    ]),
+    ["a", "b", "late", "early"],
+  );
+  check("日付の読めない行は下にまとめる", order([row("bad", "練習", "not-a-date", "also-bad"), row("ok", "練習", null, "2026-01-01T00:00:00Z")]), ["ok", "bad"]);
+  const input = [row("x", "2026 11 01", null, "2026-11-01T00:00:00Z"), row("y", "2026 11 02", null, "2026-11-02T00:00:00Z")];
+  check("渡した配列を書き換えない", [m.sortVideosNewestFirst(input).map((r) => r.id), input.map((r) => r.id)], [["y", "x"], ["x", "y"]]);
 } finally {
   rmSync(outDir, { recursive: true, force: true });
 }
@@ -321,6 +360,11 @@ const actions = read("src/lib/server/categories-actions.ts");
 const aggregates = read("src/lib/server/category-aggregates.ts");
 const server = actions + "\n" + aggregates;
 const list = read("src/app/(portal)/category/[slug]/videos/videos-list.tsx");
+check(
+  "動画タブの日付順: sortVideosNewestFirst で並べる (行の作成日時だけで並べない)",
+  [/return sortVideosNewestFirst\(base\);/.test(list), /b\.createdAt\.localeCompare\(a\.createdAt\)/.test(list)],
+  [true, false],
+);
 const fnBody = (src, name) => {
   const i = src.indexOf(`function ${name}(`);
   if (i < 0) return "";
