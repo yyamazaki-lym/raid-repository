@@ -70,6 +70,7 @@ try {
     summarizePlaylistImportRun,
     mergeImportRunSummaries,
     earliestClearIso,
+    youtubeApiErrorReason,
   } = p;
 
   // 2026-10-02 に実測した再生リスト (限定公開 11 本)。
@@ -137,6 +138,32 @@ try {
   check("除外 (別の URL の形) も動画 ID で効く", sel.blocked, 1);
   check("残るのは新しい 1 本", sel.fresh.map((c) => c.videoId), ["BJB14iu9P7c"]);
   check("保存する URL の形", canonicalVideoUrl("BJB14iu9P7c"), "https://www.youtube.com/watch?v=BJB14iu9P7c");
+
+  console.log("\n   API の失敗の理由 (識別子 + 伏せ字の message)");
+  // 2026-11-22 に無効なキーで実際に返った本文 (本番の取り込みは badRequest としか出ず原因が分からなかった)。
+  const invalidKey = {
+    error: {
+      code: 400,
+      message: "API key not valid. Please pass a valid API key.",
+      errors: [{ message: "API key not valid. Please pass a valid API key.", domain: "global", reason: "badRequest" }],
+      status: "INVALID_ARGUMENT",
+    },
+  };
+  check("キーが無効: 識別子に message を添える", youtubeApiErrorReason(400, invalidKey), "youtube api 400: badRequest (API key not valid. Please pass a valid API key.)");
+  check(
+    "再生リストが無い: message の HTML タグを落とす",
+    youtubeApiErrorReason(404, { error: { message: "The playlist identified with the request's <code>playlistId</code> parameter cannot be found.", errors: [{ reason: "playlistNotFound" }] } }),
+    "youtube api 404: playlistNotFound (The playlist identified with the request's playlistId parameter cannot be found.)",
+  );
+  check(
+    "キーの形と URL は伏せる",
+    youtubeApiErrorReason(403, { error: { message: "bad AIzaSyA1234567890abcdefghij at https://www.googleapis.com/x?key=AIzaSyA1234567890abcdefghij", errors: [{ reason: "forbidden" }] } }),
+    "youtube api 403: forbidden (bad [key] at [url])",
+  );
+  check("長い message は 160 字で切る", youtubeApiErrorReason(500, { error: { message: "x".repeat(400) } }).length, "youtube api 500 (".length + 160 + 1);
+  check("識別子が無ければ message だけ", youtubeApiErrorReason(403, { error: { message: "Permission denied on the service." } }), "youtube api 403 (Permission denied on the service.)");
+  check("本文が JSON でなければ状態コードだけ", youtubeApiErrorReason(502, null), "youtube api 502");
+  check("形の違う本文でも投げない", youtubeApiErrorReason(500, { error: "boom" }), "youtube api 500");
 
   console.log("\n   自動処理の記録 (Discord 側の summarizeDiscordImportRun と同じ規則)");
   const r = (o) => ({ category: "c", playlistId: "PLx", ok: true, ...o });
@@ -253,6 +280,7 @@ try {
   );
   check("取り込み: 例外の理由は種類だけ (URL を含む message を出さない)", /e instanceof Error \? e\.name : "fetch failed"/.test(server), true);
   check("取り込み: 理由に apiKey / URL を埋め込まない", /reason: [^\n]*(apiKey|pathAndQuery|API_BASE)/.test(server), false);
+  check("取り込み: API の失敗は youtubeApiErrorReason で理由にする", /reason: youtubeApiErrorReason\(res\.status, body\)/.test(server), true);
   check("取り込み: DB の値もクエリに使う前に parsePlaylistId を通す", /\.map\(\(v\) => parsePlaylistId\(v\)\)/.test(server), true);
 
   const menu = read("src/components/portal/link-card-menu.tsx");
