@@ -85,10 +85,10 @@ export async function fetchMissingPracticeDays(
 
 /**
  * 公開デモ: 引数 `[コンテンツ, モード, 今日]` の JSON ごとに置く。失敗 (null) も
- * 値として置く。`written` は本番 (デモ) で確かめるまで出す。
+ * 値として置く。`written` は出さない (2026-11-20 にデモで空・古い・新しいを確かめた)。
  */
 const demoSwr = createRedisSwr<MissingDaysResult | null>(
-  nextSwrDeps("missing-days-swr", { logWrites: true }),
+  nextSwrDeps("missing-days-swr"),
   {
     storeKey: (arg) => `missing-days:v1:${SWR_NAMESPACE}:${hashArg(arg)}`,
     fetch: async (arg) => {

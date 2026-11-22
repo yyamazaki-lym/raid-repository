@@ -78,10 +78,10 @@ const DEMO_SPARK_FRESH_MS = 60_000;
 /**
  * 公開デモのスパークライン (見る人に関係なく同じ)。失敗 (空) も値として置く —
  * 置かないと、DB が苦しいときほど描画のたびに集計が走るため。
- * `written` は本番 (デモ) で確かめるまで出す。
+ * `written` は出さない (2026-11-20 にデモで空・古い・新しいを確かめた)。
  */
 const demoSparksSwr = createRedisSwr<Record<string, ProgressSpark[]>>(
-  nextSwrDeps("category-progress-swr", { logWrites: true }),
+  nextSwrDeps("category-progress-swr"),
   {
     storeKey: () => `category-progress:v1:${SWR_NAMESPACE}:demo`,
     fetch: async () => ({
