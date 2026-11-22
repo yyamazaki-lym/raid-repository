@@ -455,11 +455,11 @@ async function computeAttendanceSummary(viewer: {
  * に置く (2026-10-08 に Data Cache で導入、2026-11-20 に替えた。Data Cache の
  * 取り直しは凍結で落ちる。経緯は redis-swr.ts の冒頭)。引数 (ゲストの ID) は
  * ハッシュにしてキーに入れる。失敗 (`{ ok: false }`) も値として置く — 置かないと、
- * DB が苦しいときほど呼ばれるたびに集計が走るため。`written` は本番 (デモ) で
- * 確かめるまで出す。⚠ export しない ("use server" のファイル)。
+ * DB が苦しいときほど呼ばれるたびに集計が走るため。`written` は出さない
+ * (2026-11-22 にデモで空・古いを確かめた)。⚠ export しない ("use server" のファイル)。
  */
 const demoGuestSummarySwr = createRedisSwr<AttendanceSummaryResult>(
-  nextSwrDeps("attendance-summary-swr", { logWrites: true }),
+  nextSwrDeps("attendance-summary-swr"),
   {
     storeKey: (guestId) =>
       `attendance-summary:v1:${SWR_NAMESPACE}:${hashArg(guestId)}`,
