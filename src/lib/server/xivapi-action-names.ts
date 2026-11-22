@@ -115,10 +115,10 @@ async function loadBatch(
 
 /**
  * 引数は `[lang, 並べ替えた ID 列]` の JSON。ID は**呼び出し側で並べ替えてから**
- * 渡す (キーになる)。`written` は本番で確かめるまで出す。
+ * 渡す (キーになる)。`written` は出さない (2026-11-22 に本番の Logs 同期で確かめた)。
  */
 const batchSwr = createRedisSwr<BatchNames>(
-  nextSwrDeps("xivapi-swr", { logWrites: true }),
+  nextSwrDeps("xivapi-swr"),
   {
     storeKey: (arg) => `xivapi:v1:${SWR_NAMESPACE}:${hashArg(arg)}`,
     fetch: (arg) => {
