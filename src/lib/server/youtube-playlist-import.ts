@@ -11,6 +11,7 @@ import {
   parsePlaylistId,
   selectNewCandidates,
   toPlaylistCandidates,
+  youtubeApiErrorReason,
   type PlaylistApiItem,
   type PlaylistImportResult,
 } from "@/lib/youtube-playlist";
@@ -316,7 +317,8 @@ async function fetchDurations(
 /**
  * YouTube Data API を GET で呼ぶ。失敗の理由には **キーを含む URL を入れない**
  * (結果は画面と cron の応答に出る)。API のエラー本文からは理由の識別子
- * (`playlistNotFound` / `quotaExceeded` / `keyInvalid` など) だけを取る。
+ * (`playlistNotFound` / `quotaExceeded` / `badRequest` など) と、伏せ字にした
+ * message を取る (`youtubeApiErrorReason`)。
  */
 async function youtubeGet<T>(
   pathAndQuery: string,
@@ -328,19 +330,9 @@ async function youtubeGet<T>(
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
     if (!res.ok) {
-      let detail = "";
-      try {
-        const body = (await res.json()) as {
-          error?: { errors?: Array<{ reason?: string }> };
-        };
-        detail = body.error?.errors?.[0]?.reason ?? "";
-      } catch {
-        // 本文が JSON でなければ状態コードだけ返す。
-      }
-      return {
-        ok: false,
-        reason: `youtube api ${res.status}${detail ? `: ${detail}` : ""}`,
-      };
+      // 本文が JSON でなければ状態コードだけの理由になる。
+      const body: unknown = await res.json().catch(() => null);
+      return { ok: false, reason: youtubeApiErrorReason(res.status, body) };
     }
     return { ok: true, data: (await res.json()) as T };
   } catch (e) {

@@ -146,6 +146,35 @@ export function toPlaylistCandidates(
   return out;
 }
 
+/** 失敗の理由に付ける Google の message の上限 (文字)。 */
+const API_MESSAGE_MAX = 160;
+
+/**
+ * YouTube Data API の失敗の応答を、画面と自動処理の記録に出す理由にする。
+ *
+ * 識別子 (`errors[0].reason`) に加えて Google の `message` を括弧で付ける。
+ * キーが無効なとき (2026-11-22 の本番) は識別子が `badRequest` だけで、
+ * 「API key not valid」が message にしか無く、画面から原因が分からなかった。
+ * message にキーは入らない (実測) が、念のため `AIza…` の形と URL を伏せ、
+ * HTML のタグ (`<code>` など) を落とし、長さを切る。
+ */
+export function youtubeApiErrorReason(status: number, body: unknown): string {
+  const error =
+    typeof body === "object" && body !== null
+      ? (body as { error?: { message?: unknown; errors?: Array<{ reason?: unknown }> } }).error
+      : undefined;
+  const code = typeof error?.errors?.[0]?.reason === "string" ? error.errors[0].reason : "";
+  let message = typeof error?.message === "string" ? error.message : "";
+  message = message
+    .replace(/<[^>]*>/g, "")
+    .replace(/AIza[0-9A-Za-z_-]{10,}/g, "[key]")
+    .replace(/https?:\/\/\S+/g, "[url]")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (message.length > API_MESSAGE_MAX) message = `${message.slice(0, API_MESSAGE_MAX - 1)}…`;
+  return `youtube api ${status}${code ? `: ${code}` : ""}${message ? ` (${message})` : ""}`;
+}
+
 /** 取り込みの結果 (再生リスト 1 本)。取り込み本体と画面・cron で共有する。 */
 export type PlaylistImportResult = {
   /** コンテンツの slug。 */
