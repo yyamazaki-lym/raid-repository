@@ -26,7 +26,7 @@ Click around to see the real thing. **You do not need to build a demo of your ow
 - Confirmed sessions are highlighted as **the next run** (on the day itself, with a "starts in N h M m" countdown)
 - Set your **regular days** (e.g. every Tue/Thu/Sat) and candidate dates are auto-added only on those days. A dialog can **bulk-generate a date range × weekdays**. Days outside the regular pattern get an "extra" / "one-off" badge
 - Beyond ○ × △, members can enter **an arrival time when late or a leaving time when early** (shown as `21:30〜` next to the symbol)
-- **Automatic nudges** for people who haven't answered, and **auto-confirm** once everyone has (optional)
+- **Automatic nudges** for people who haven't answered, and **auto-confirm** once everyone has (optional). Add answer buttons to the nudge and members can **answer straight from Discord** (native mode, optional)
 - Discord notification templates support `{discord_relative}` / `{discord_time}`, which render in each reader's own timezone ("in 3 hours")
 - Per-date **memos** with a severity label. The author and admins can edit them; older memos with no recorded author can be cleaned up by any member
 - **Attendance summary** — reconciles answers (○ × △) against actual practice logs for the last 90 days and lists the mismatches. Works in both native and sync modes
@@ -59,6 +59,7 @@ Pull-level data imported from FFLogs.
 - Ultimates get **time spent per phase** and first arrival at each phase; savage gets **first clear per floor**
 - A day is drawn as a **row of pull boxes** (one box = one pull, `✓` for a clear)
 - **Mistake notes** per pull — write down "this is what went wrong here" after the fact
+- **Filling the gaps** — see the session days that have no logs at all; for a day ACT failed, **record the pulls and progress by hand** so they count in the totals, and mark a day you didn't play as cancelled
 - ⚠ **Individual DPS is never stored or shown.** Death records stop at "job + ability" and carry no player names
 
 ### Your own page (`/me`)
@@ -73,6 +74,8 @@ Opened from the person icon in the header. It shows **only your own data** (admi
 
 - **Command palette** (Ctrl+K) — search across encounters, tabs, and actions
 - **Discord auto-import** — register strategy / video channel IDs per encounter and a daily 01:00 JST job pulls URLs from the last 100 messages into the right tab (a button runs it on demand too)
+- **YouTube playlist import** — unlisted videos don't show up in a channel's video list, so put them in a playlist and register it; the same daily job brings them into the video tab (needs a YouTube API key)
+- **Practice-log notifications** — posts new reports, best-progress updates, first clears, and a **weekly summary** on Tuesday morning (last week's pulls, best progress, first breakthroughs and clears) to Discord. Each kind can be turned on separately; all are off by default
 - **Learning path** — an ordered checklist for new members: video → positions → macro → mitigation
 - **Themes** — seven expansion themes, each with its own background treatment
 - **One five-step colour scale everywhere** (`src/lib/perf-tone.ts`) — good = emerald → lime → amber → orange → rose = bad, used for remaining HP, deaths, progress bars, attendance symbols, and weekly lockouts. ⚠ **Colour never carries meaning on its own** (a number or symbol is always next to it)

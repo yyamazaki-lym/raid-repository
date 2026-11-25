@@ -238,6 +238,19 @@ npm run doctor -- --url https://<your-domain>
 
 Then open the site, log in with Discord, and confirm you land on the top page.
 
+### 6-3. When you add or change an environment variable later
+
+A change to Vercel environment variables only applies to deployments created **after**
+it. This repository identifies each deployment by its commit, so you **cannot rebuild
+the same commit with Redeploy** in the dashboard (it fails with
+`duplicate_user_configured_deployment_id`). To apply the change, **push anything to
+`main`** (an empty commit is fine when there is nothing else to push).
+
+```bash
+git commit --allow-empty -m "chore: apply environment variables"
+git push
+```
+
 ---
 
 ## 7. First-run configuration (5 min)
@@ -309,8 +322,8 @@ Pulls URLs from the last 100 messages of a channel into the strategy / video tab
 | `no URLs found` | Empty channel, or the bot cannot see it (revisit 1) |
 | `error: discord 401/403` | Bot token or permission problem |
 
-> If you added `CRON_SECRET` after deploying, **Redeploy** in Vercel — a change to
-> Vercel environment variables only applies to deployments created after it.
+> If you added `CRON_SECRET` after deploying, it takes effect only once a new
+> deployment is created (step 6-3).
 
 ---
 
@@ -400,9 +413,98 @@ Settings for the practice-logs tab (the practice-log summary).
       `FFLOGS_OAUTH_CLIENT_SECRET`
    4. Make sure `SECRET_ENCRYPTION_KEY` is set
       (tokens are stored encrypted with this key; without it they cannot be saved)
-3. Set them in both `.env.local` and Vercel, then **Redeploy**
+3. Set them in both `.env.local` and Vercel, then create a new deployment (step 6-3)
 4. In the portal, ⚙️ → the **FFLogs** integration section: set the FFLogs user name and,
    if you use OAuth, authorize with the connect button (one admin, once)
+
+---
+
+## 12. (Optional) YouTube video lengths and playlist import
+
+An API key used to fetch the **length and publish date** of videos in the video tab, and
+to **import videos from YouTube playlists**. Without it, unlisted videos have no length or
+publish date, so the total challenge time and the first-clear date come out incomplete.
+Playlist import does not run at all without it (the result says
+`YOUTUBE_API_KEY not configured`).
+
+1. Create a project at https://console.cloud.google.com (an existing one is fine)
+2. **APIs & Services → Library** → search for **YouTube Data API v3** → **Enable**
+   (until it is enabled, it does not appear in the API restriction list in the next step)
+3. **APIs & Services → Credentials → Create credentials → API key**
+4. Restrict the new key to **YouTube Data API v3** only (**API restrictions**)
+5. Put it in `YOUTUBE_API_KEY` and in Vercel (apply it as in step 6-3)
+
+The free tier is 10,000 units a day; one video lookup and one playlist page (50 videos)
+cost 1 unit each, well within the limit for a single static.
+
+### Importing from a playlist
+
+Unlisted videos do not appear in a channel's video list, so put the videos you want into
+a **public or unlisted playlist** and register that (private videos are never imported).
+
+1. In the encounter's edit dialog, paste playlist URLs into **YouTube playlists (optional)**,
+   one per line (up to 10)
+2. New videos land in the video tab with the daily import at 01:00 JST (the same run as the
+   Discord import). To import right away, use **⑤ YouTube playlist import** in the
+   maintenance menu on the content list
+
+| Result | Meaning |
+|---|---|
+| `N videos → +M (existing K)` | Worked (M new videos imported, K already there) |
+| `YOUTUBE_API_KEY not configured` | No key (or not deployed yet) |
+| `youtube api 400: badRequest (API key not valid…)` | The key is invalid (deleted or recreated) — create a new one and replace it |
+| `youtube api 404: playlistNotFound …` | Wrong playlist URL, or the playlist is private |
+
+> Deleting an imported video is not enough — the next import brings it back. Use
+> **Don't import again** in the video's ⋮ menu instead (it goes into the encounter's
+> exclusion list, where **Remove** brings it back).
+
+---
+
+## 13. (Optional) Answer attendance with Discord buttons
+
+Adds an answer button per event to the native-schedule **attendance reminder**. Pressing one
+records that person's attendance in the portal and replies only to them.
+
+1. Discord Developer Portal → your application → **General Information** → copy the
+   **PUBLIC KEY** into `DISCORD_PUBLIC_KEY`, set it in Vercel too, and deploy (step 6-3).
+   The key only verifies signatures; it is not a secret
+2. On the same page, set **INTERACTIONS ENDPOINT URL** to
+   `https://<your-domain>/api/discord/interactions` and **Save**
+   (Discord sends a signed check, so finish the deployment in 1 first)
+3. In the portal, ⚙️ → **Attendance reminders** → turn on **Answer with Discord buttons
+   (self-hosted schedule only)**
+
+> ⚠ Once the endpoint URL is set, **every button and slash command of that application is
+> sent to the portal**. Use a bot application dedicated to the portal.
+
+---
+
+## 14. (Optional) Put a link to the portal in notifications
+
+Adds a link to the portal to the Discord session notice, the attendance reminder and the
+practice-log notifications. It is also what `{site_url}` expands to in notification
+templates.
+
+- Set `NEXT_PUBLIC_SITE_URL` to `https://<your-domain>` (no path)
+- `NEXT_PUBLIC_` values are baked in at build time, so changing it needs a new deployment (step 6-3)
+
+---
+
+## 15. (Optional) Share rate limits and caches with Upstash
+
+Vercel serves requests from several instances. Connecting Upstash (Redis) shares the
+**rate-limit counters** and the **caches for the mitigation / loot sheets, ability names and
+the demo's aggregates** across instances. Everything works without it, but both fall back
+to per-instance memory: rate limits get looser and the sheets are fetched more often.
+
+1. Vercel → your project → **Storage** → **Browse Marketplace** → **Upstash for Redis** →
+   **Connect**. `KV_REST_API_URL` / `KV_REST_API_TOKEN` are added automatically
+   (`UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` also work if you use Upstash directly)
+2. Create a new deployment (step 6-3)
+
+Production and the demo can share one Upstash database; keys are separated by each project's
+production URL.
 
 ---
 
