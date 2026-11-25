@@ -28,7 +28,7 @@ Une application mono-locataire pensée pour « une équipe = un déploiement » 
 - La séance confirmée est mise en avant comme **prochaine session** (le jour même avec un compte à rebours « début dans N h M min »)
 - En fixant des **jours réguliers**, les dates candidates ne sont créées que ces jours-là ; la boîte de dialogue permet aussi une **génération en lot par période × jours**. Les dates hors cadre reçoivent la mention « exceptionnel » / « juste cette fois »
 - En plus de ○ × △, chacun peut indiquer **une heure d'arrivée en cas de retard ou de départ anticipé** (affichée `21:30〜` à côté du symbole)
-- **Relance automatique** des personnes sans réponse, et **confirmation automatique** une fois tout le monde inscrit (optionnel)
+- **Relance automatique** des personnes sans réponse, et **confirmation automatique** une fois tout le monde inscrit (optionnel). Avec des boutons de réponse sur la relance, chacun peut **répondre directement depuis Discord** (mode natif, optionnel)
 - Les modèles de notification Discord acceptent `{discord_relative}` / `{discord_time}`, rendus dans le fuseau horaire de chaque lecteur
 - **Notes par date** avec niveau d'importance. L'auteur et les administrateurs peuvent les modifier ; les anciennes notes sans auteur enregistré peuvent être supprimées par n'importe quel membre
 - **Récapitulatif de présence** — confronte les réponses (○ × △) aux journaux d'entraînement réels sur 90 jours et liste les écarts. Fonctionne dans les deux modes
@@ -61,6 +61,7 @@ Données FFLogs importées pull par pull.
 - Les ultimes affichent le **temps passé par phase** et la première arrivée, les savages la **première clear par étage**
 - Une journée est dessinée comme une **rangée de cases** (une case = un pull, `✓` pour une clear)
 - Des **notes d'erreur** par pull peuvent être ajoutées après coup
+- **Combler les trous** — les jours de séance sans aucun journal sont listés ; pour un jour où ACT n'a pas fonctionné, on peut **saisir à la main** les pulls et la progression pour qu'ils comptent dans les totaux, et marquer comme annulé un jour sans entraînement
 - ⚠ **Le DPS individuel n'est ni stocké ni affiché.** Les morts s'arrêtent à « job + capacité », sans nom de joueur
 
 ### Votre page (`/me`)
@@ -75,6 +76,8 @@ Accessible par l'icône de personne dans l'en-tête. Elle n'affiche **que vos pr
 
 - **Palette de commandes** (Ctrl+K) — recherche transversale des contenus, onglets et actions
 - **Import Discord automatique** — avec les identifiants de salon enregistrés, une tâche quotidienne à 01:00 JST extrait les URL des 100 derniers messages vers le bon onglet (également déclenchable par un bouton)
+- **Import de playlists YouTube** — les vidéos non répertoriées n'apparaissent pas dans la liste des vidéos d'une chaîne ; mettez-les dans une playlist et enregistrez-la, la même tâche quotidienne les ajoute à l'onglet Vidéos (nécessite une clé d'API YouTube)
+- **Notifications des journaux** — nouveaux rapports, nouveau record de progression, premier clear, et un **bilan hebdomadaire** le mardi matin (pulls, meilleure progression, premières percées et clears de la semaine précédente) publiés sur Discord. Chaque type s'active séparément ; tous sont désactivés par défaut
 - **Parcours d'apprentissage** — checklist ordonnée pour les nouveaux : vidéo → placements → macro → mitigation
 - **Thèmes** — sept thèmes d'extension, chacun avec son fond
 - **Une seule échelle de cinq couleurs partout** (`src/lib/perf-tone.ts`) — bon = emerald → lime → amber → orange → rose = mauvais. ⚠ **La couleur ne porte jamais le sens à elle seule** (un chiffre ou un symbole l'accompagne toujours)
@@ -85,7 +88,14 @@ Accessible par l'icône de personne dans l'en-tête. Elle n'affiche **que vos pr
 
 Next.js 16 + React 19 + Tailwind CSS v4 · Supabase (Postgres + Realtime + RLS) · shadcn/ui + Base UI · Vercel (déploiement auto depuis `main`, Cron Jobs).
 
-**Quatre couches de défense** : ① porte OAuth Discord dans le proxy ② visibilité par rôle sur chaque page ③ vérification admin dans chaque Server Action ④ RLS côté base. Les jetons FFLogs sont chiffrés en AES-256-GCM.
+### Quatre couches de défense
+
+1. **Proxy** — la porte OAuth Discord ; les non-membres du serveur ne passent pas
+2. **Page** — visibilité selon le rôle
+3. **Server Action** — chaque écriture revérifie le statut admin
+4. **RLS** — la base applique la même règle (contourner l'application n'y change rien)
+
+Les jetons FFLogs sont chiffrés en AES-256-GCM.
 
 ---
 
@@ -93,7 +103,7 @@ Next.js 16 + React 19 + Tailwind CSS v4 · Supabase (Postgres + Realtime + RLS) 
 
 **Vous ne collectez que six valeurs à la main** (cinq obligatoires + l'ID du rôle admin). Le détail écran par écran est dans le [guide anglais](docs/setup.en.md).
 
-> ⚠ Au moment du fork, **changez le nom par défaut du dépôt, `raid-repository`** (par ex. `pandora-raid`). Avec le nom par défaut, votre fork est impossible à distinguer des autres. Ce nom devient aussi le nom par défaut du projet Vercel.
+> ⚠ Au moment du fork, **changez le nom par défaut du dépôt, `raid-repository`** (par ex. `pandora-raid` ou `tuesday-night-raid`). Avec le nom par défaut, votre fork est impossible à distinguer des autres. Ce nom devient aussi le nom par défaut du projet Vercel.
 
 ### 1. Collecter six valeurs (dans le navigateur)
 
@@ -152,6 +162,40 @@ npm run dev
 ```
 
 Ouvrez http://localhost:3000 (le terminal affiche `127.0.0.1`, mais l'URL de retour de la connexion est enregistrée pour `localhost` : ouvrez donc `localhost`).
+
+| Commande | Rôle |
+|---|---|
+| `npm run setup` | Installation interactive (`.env.local` → schéma → diagnostic) |
+| `npm run doctor` | Diagnostic de la configuration ; avec `-- --url https://…`, vérifie aussi un déploiement |
+| `npm run dev` | Serveur de développement (lié à `127.0.0.1`, donc accessible depuis cet ordinateur seulement : `DEV_AUTH_BYPASS` vous rend admin, les autres appareils du même Wi-Fi restent donc à l'écart) |
+| `npm run build` | Build de production |
+| `npm run lint` | ESLint |
+
+`scripts/check-*.mjs` sont des vérifications de fonctions pures et de contrats ; la CI les exécute toutes.
+
+---
+
+## Documentation
+
+| Fichier | Contenu |
+|---|---|
+| [`docs/setup.en.md`](docs/setup.en.md) | **Guide d'installation complet** et dépannage (anglais) |
+| [`docs/backlog.md`](docs/backlog.md) | Travail restant (japonais) |
+| [`docs/guides/discord-setup.md`](docs/guides/discord-setup.md) | Organisation des salons Discord recommandée (japonais) |
+| [`docs/guides/log-runner.md`](docs/guides/log-runner.md) | Notes pour la personne qui enregistre les journaux (japonais) |
+| [`docs/demo-site.md`](docs/demo-site.md) | Construction du site de démo (**inutile pour vous**) |
+| [`docs/release-notes/`](docs/release-notes/) | Détail de chaque version (les résumés d'une ligne affichés dans l'app sont dans `src/lib/changelog.ts`) |
+| [`.env.local.example`](.env.local.example) | Toutes les variables d'environnement, commentées |
+
+---
+
+## Identité visuelle
+
+Les logos sont dans `public/brand/`. Dans `logo-mark.svg`, le cristal est le réceptacle de ce que le groupe a appris, et les huit points qui l'entourent sont l'équipe de huit : deux tanks en haut (bleu), deux soigneurs en bas (vert), quatre DPS sur les côtés (rouge). `logo-wordmark-dark.svg` / `logo-wordmark-light.svg` sont les versions avec le nom pour fonds sombres et clairs ; l'en-tête de ce README bascule automatiquement. La même marque sert de favicon, d'icône d'écran d'accueil iOS, d'écran de connexion et d'écran de démarrage à froid.
+
+`social-preview.png` (1280×640) est l'image que GitHub affiche sur la carte du dépôt. **Téléversez-la à la main depuis Settings → Social preview** — l'API GitHub ne permet pas de la définir.
+
+---
 
 ## Licence
 
