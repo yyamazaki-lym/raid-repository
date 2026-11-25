@@ -9,6 +9,7 @@ import {
   parseCsv,
   parseSheetTabs,
   toSheetCsvUrl,
+  toSheetExportCsvUrl,
   toSheetTabListUrl,
   toSheetTable,
   type SheetTab,
@@ -94,7 +95,7 @@ const renderDeadline = cache(() => Date.now() + RENDER_WAIT_MS);
  * 保存先のキー。本番・デモ・手元を分け、URL はハッシュにする (キーにも
  * ログにも URL を出さない)。値の形を変えたら v を上げる。
  */
-const storeKey = (kind: "table" | "tabs") => (arg: string) =>
+const storeKey = (kind: "table" | "tabs" | "full") => (arg: string) =>
   `sheet:v1:${SWR_NAMESPACE}:${kind}:${hashArg(arg)}`;
 
 /**
@@ -118,6 +119,18 @@ const tableSwr = createRedisSwr<SheetTableValue>(deps, {
 const tabsSwr = createRedisSwr<SheetTab[]>(deps, {
   storeKey: storeKey("tabs"),
   fetch: loadSheetTabs,
+  freshMs: FRESH_MS,
+  ttlSeconds: STORE_TTL_SECONDS,
+  failTtlMs: FAIL_TTL_MS,
+  timedOutReason: RENDER_TIMED_OUT.reason,
+});
+
+const fullGridSwr = createRedisSwr<string[][]>(deps, {
+  storeKey: storeKey("full"),
+  fetch: (arg) => {
+    const [url, gid] = JSON.parse(arg) as [string, string];
+    return loadSheetFullGrid(url, gid || null);
+  },
   freshMs: FRESH_MS,
   ttlSeconds: STORE_TTL_SECONDS,
   failTtlMs: FAIL_TTL_MS,
@@ -162,6 +175,67 @@ export const fetchSheetTabs = cache(
     return r.ok ? r.value : [];
   },
 );
+
+/**
+ * 隠した行も含む全行の表 (2026-11-25、L-8)。軽減表のページが、表示中の表
+ * (gviz、隠した行が落ちる) から見出し行を見つけられなかったときだけ呼ぶ。
+ * 見出し (ジョブ名・アビリティ名) を読むためだけに使い、カードには出さない。
+ * 取れなければ null (今までどおり見出し無しで描く)。
+ */
+export const fetchSheetFullGrid = cache(
+  async (
+    sheetUrl: string | null | undefined,
+    gid?: string | null,
+  ): Promise<string[][] | null> => {
+    const url = (sheetUrl ?? "").trim();
+    const exportUrl = url ? toSheetExportCsvUrl(url, gid) : null;
+    if (!exportUrl || !isPublicHttpUrl(exportUrl)) return null;
+    const r = await fullGridSwr.get(
+      JSON.stringify([url, gid ?? ""]),
+      renderDeadline(),
+    );
+    return r.ok ? r.value : null;
+  },
+);
+
+/** 全行の表を取りに行く (保存先を通さない。fullGridSwr の取得)。 */
+async function loadSheetFullGrid(
+  sheetUrl: string,
+  gid: string | null,
+): Promise<SwrFetched<string[][]>> {
+  const exportUrl = toSheetExportCsvUrl(sheetUrl, gid);
+  if (!exportUrl || !isPublicHttpUrl(exportUrl)) {
+    return { ok: false, kind: "content", reason: "export url unsupported" };
+  }
+  try {
+    const res = await safeFetch(exportUrl, {
+      headers: { Accept: "text/csv,*/*" },
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    });
+    if (!res.ok) {
+      const denied = res.status === 401 || res.status === 403;
+      return {
+        ok: false,
+        kind: denied ? "denied" : "transient",
+        detail: `status ${res.status}`,
+        reason: `export ${res.status}`,
+      };
+    }
+    if (/text\/html/i.test(res.headers.get("content-type") ?? "")) {
+      return { ok: false, kind: "denied", reason: "export returned html" };
+    }
+    const text = await readCapped(res);
+    if (text === null) return { ok: false, kind: "content", reason: "export too large" };
+    return { ok: true, value: parseCsv(text) };
+  } catch (e) {
+    return {
+      ok: false,
+      kind: "transient",
+      detail: e instanceof Error ? e.name : typeof e,
+      reason: "export fetch failed",
+    };
+  }
+}
 
 /** 表を取りに行く (保存先を通さない。tableSwr の取得)。 */
 async function loadSheetTable(

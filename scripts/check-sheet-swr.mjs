@@ -358,7 +358,8 @@ function staticChecks() {
   );
   const sheet = code(read("src/lib/server/sheet-table.ts"));
   check("sheet-table.ts は next/cache を import しない", /from\s+["']next\/cache["']/.test(sheet), false);
-  check("sheet-table.ts は redis-swr を使う (表とタブの 2 本)", (sheet.match(/createRedisSwr<[^>]+>\(deps,/g) ?? []).length, 2);
+  // 2026-11-25 (L-8): 見出しを読むための全行の表 (export) を足して 3 本。
+  check("sheet-table.ts は redis-swr を使う (表・タブ・全行の表の 3 本)", (sheet.match(/createRedisSwr<[^>]+>\(deps,/g) ?? []).length, 3);
   check("sheet-table.ts は written を出さない (本番で確認済み)", /nextSwrDeps\("sheet-swr"\)/.test(sheet), true);
   for (const f of [
     "src/lib/server/xivapi-action-names.ts",

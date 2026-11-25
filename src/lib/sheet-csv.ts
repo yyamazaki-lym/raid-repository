@@ -86,6 +86,68 @@ export function toSheetCsvUrl(
   return null;
 }
 
+/**
+ * 通常の共有 URL の全行の CSV (`/export?format=csv`) (2026-11-25、L-8)。
+ *
+ * `toSheetCsvUrl` の gviz の CSV は**シートで隠した行を落とす**。軽減表の
+ * テンプレートはジョブ名・アビリティ名の行を隠すことがあり、そのままでは
+ * 見出し行が見つからない (本番の実物で、チェック列 29 本の自動ラベルが 0)。
+ * export は隠した行も含むので、**見出しを読むためだけ**に使う (カードに出す行は
+ * gviz のまま — 隠した行を出さない)。export は `*.googleusercontent.com` へ
+ * 1 段リダイレクトする (safeFetch が段ごとに検査する)。公開 (pub) の URL は null。
+ */
+export function toSheetExportCsvUrl(
+  raw: string | null | undefined,
+  overrideGid?: string | null,
+): string | null {
+  if (!raw) return null;
+  let u: URL;
+  try {
+    u = new URL(raw.trim());
+  } catch {
+    return null;
+  }
+  if (u.hostname !== "docs.google.com") return null;
+  if (/^\/spreadsheets\/d\/e\//.test(u.pathname)) return null;
+  const doc = /^\/spreadsheets\/d\/([a-zA-Z0-9-_]{10,})/.exec(u.pathname);
+  if (!doc) return null;
+  const gid =
+    overrideGid ??
+    u.searchParams.get("gid") ??
+    /(?:^|[#&])gid=(\d+)/.exec(u.hash)?.[1] ??
+    null;
+  const out = new URL(`https://docs.google.com/spreadsheets/d/${doc[1]}/export`);
+  out.searchParams.set("format", "csv");
+  if (gid) out.searchParams.set("gid", gid);
+  return out.toString();
+}
+
+/**
+ * 全行の表 (export) が、カードに出す表 (gviz) と同じ列の並びかを確かめる
+ * (2026-11-25、L-8)。gviz の空でないデータ行のうち 8 割以上が、末尾の空セルを
+ * 除いて export のどこかの行と完全に一致すれば揃っているとみなす。列が 1 本でも
+ * ずれると一致はほぼ 0 になるので、ずれた表の見出しを別の列に付けない。
+ * 本番の実物では 53 行中 52 行が一致した (1 列ずらすと 0)。
+ * `toSheetTable` がセルの前後の空白を削るので、比べる前に両方とも削る。
+ */
+export function sameColumnLayout(view: SheetTable, full: string[][]): boolean {
+  const key = (r: string[]) => {
+    const t = r.map((c) => c.trim());
+    let end = t.length;
+    while (end > 0 && t[end - 1] === "") end -= 1;
+    return JSON.stringify(t.slice(0, end));
+  };
+  const fullKeys = new Set(full.map(key));
+  let compared = 0;
+  let matched = 0;
+  for (const r of view.rows) {
+    if (r.every((c) => c === "")) continue;
+    compared += 1;
+    if (fullKeys.has(key(r))) matched += 1;
+  }
+  return compared > 0 && matched / compared >= 0.8;
+}
+
 /** シート URL 自身に埋まっている gid (query / hash) を取り出す。 */
 export function extractSheetGid(raw: string | null | undefined): string | null {
   if (!raw) return null;
