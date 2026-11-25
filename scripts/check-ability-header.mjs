@@ -147,9 +147,91 @@ try {
     check(`${v} は残す`, mod.isNoiseValue(v), false);
   }
 
+  console.log("\n[隠した見出し行 (2026-11-25、L-8)]");
+  // 本番の実物 (絶もうひとつの未来): ジョブ名・アビリティ名の行をシートで隠して
+  // いて、gviz の CSV からは落ちる。export の CSV には全行が入る。
+  const ID = "1iiRaSESMf_bKw3IOMXdfb-5Merlrwhmvj2f1zMwouG0";
+  const shareUrl = `https://docs.google.com/spreadsheets/d/${ID}/edit?gid=2111891566#gid=2111891566`;
+  check(
+    "export の URL (URL の gid)",
+    mod.toSheetExportCsvUrl(shareUrl),
+    `https://docs.google.com/spreadsheets/d/${ID}/export?format=csv&gid=2111891566`,
+  );
+  check(
+    "export の URL (層の gid で上書き)",
+    mod.toSheetExportCsvUrl(shareUrl, "123"),
+    `https://docs.google.com/spreadsheets/d/${ID}/export?format=csv&gid=123`,
+  );
+  check(
+    "公開 (pub) の URL・別ホスト・壊れた URL は null",
+    [
+      mod.toSheetExportCsvUrl("https://docs.google.com/spreadsheets/d/e/2PACX-abcdefghijk/pubhtml?gid=0"),
+      mod.toSheetExportCsvUrl(`https://evil.example.com/spreadsheets/d/${ID}/edit`),
+      mod.toSheetExportCsvUrl("not a url"),
+      mod.toSheetExportCsvUrl(null),
+    ],
+    [null, null, null, null],
+  );
+
+  // 実物の形を縮めたもの。列 0..4 は Phase/Time/Action 等、5..8 がチェック列。
+  const fullGrid = [
+    ["", "", "", "", "", "", "", "", ""],
+    ["", "Phase", "Total Time", "Time", "Action", "Mitigation", "Barrier", "Mitigation", "Mitigation"],
+    ["", "TRUE", "", "", "P1_フェイトブレイカー", "ナイト", "ナイト", "賢者", "賢者"], // ジョブ (隠し行)
+    ["", "FALSE", "", "", "Skill", "パッセージ・オブ・アームズ", "ディヴァインヴェール", "ホーリズム", "ケーラコレ"], // 技名 (隠し行)
+    ["", "TRUE", "", "", "Assign", "RANGE_PARTY", "RANGE_PARTY", "RANGE_PARTY", "RANGE_PARTY"], // 対象 (隠し行)
+    ["", "FALSE", "", "", "Charge", "1", "1", "1", "1"],
+    ["", "Phase", "Time", "", "Action", "", "", "", ""],
+    ["", "戦闘前", "-00:20", "-00:20", "戦闘開始まで20秒", "FALSE", "FALSE", "FALSE", "FALSE"], // 隠し行
+    ["", "開幕", "00:00", "00:00", "戦闘開始！", "FALSE", "TRUE", "FALSE", "FALSE"],
+    ["", "", "00:03", "00:03", "AA ", "FALSE", "FALSE", "TRUE", "FALSE"],
+    ["", "", "00:06", "00:06", "AA", "TRUE", "FALSE", "FALSE", "TRUE", ""],
+  ];
+  // gviz は隠した行 (2〜5、7) を落とし、見出しを 1 行目に寄せる。セルの空白は toSheetTable が削る。
+  const viewRaw = [fullGrid[6], fullGrid[8], fullGrid[9], fullGrid[10]];
+  const view = mod.toSheetTable(viewRaw);
+  const viewGrid = [view.headers, ...view.rows];
+  const checks = mod.diagnoseSheetColumns(view).filter((c) => c.role === "check").map((c) => c.index);
+  check("表示中の表のチェック列", checks, [5, 6, 7, 8]);
+  check("表示中の表 (gviz) からは見出し行が見つからない (今までの症状)", mod.findAbilityHeaderRows(viewGrid, checks), null);
+  check("全行の表 (export) と列の並びが揃っている", mod.sameColumnLayout(view, fullGrid), true);
+  const fullRows = mod.findAbilityHeaderRows(fullGrid, checks);
+  check("全行の表から見出し行が見つかる", fullRows, { abilityRow: 3, jobRow: 2, targetRow: 4 });
+  const fullLabels = mod.buildAutoColumnLabels(fullGrid, fullRows);
+  check("列 5 は パッセージ・オブ・アームズ / ナイト", fullLabels[5], { name: "パッセージ・オブ・アームズ", job: "ナイト" });
+  check("列 8 は ケーラコレ / 賢者", fullLabels[8], { name: "ケーラコレ", job: "賢者" });
+
+  // 対照: 列が 1 本ずれた表・別のシートの表・空の表では揃っていると言わない。
+  check("1 列ずれた全行の表は揃っていない", mod.sameColumnLayout(view, fullGrid.map((r) => ["", ...r])), false);
+  check(
+    "別のシートの表は揃っていない",
+    mod.sameColumnLayout(view, [["", "P2", "01:00", "01:00", "別の技", "TRUE", "TRUE", "TRUE", "TRUE"]]),
+    false,
+  );
+  check("データ行の無い表示中の表は揃っていない", mod.sameColumnLayout({ headers: ["a"], rows: [["", ""]] }, fullGrid), false);
+  // 8 割の線 (表示中の表のデータ行は 3 本)。一致しない行 ["x", …] を混ぜて比べる。
+  const odd = ["x", "合わない行"];
+  check("4 行中 3 行 (75%) は揃っていない", mod.sameColumnLayout({ headers: view.headers, rows: [...view.rows, odd] }, fullGrid), false);
+  check("5 行中 4 行 (80%) は揃っている", mod.sameColumnLayout({ headers: view.headers, rows: [...view.rows, view.rows[0], odd] }, fullGrid), true);
+
 } finally {
   rmSync(outDir, { recursive: true, force: true });
 }
+
+console.log("\n[軽減表のページの配線]");
+const page = readFileSync("src/app/(portal)/category/[slug]/mitigation/page.tsx", "utf8").replace(/\r\n/g, "\n");
+check(
+  "見出し行が見つからないときだけ全行の表を取る",
+  /if \(table\.ok && !headerRows && checkColumns\.length > 0\) \{\s*const full = await fetchSheetFullGrid\(category\.mitigationSheetUrl, activeGid\);/.test(page),
+  true,
+);
+check("列の並びが揃っているときだけ使う", /if \(full && sameColumnLayout\(table\.table, full\)\) \{/.test(page), true);
+check("自動ラベルは見出しを見つけた表から作る", /buildAutoColumnLabels\(labelSource\.grid, labelSource\.rows\)/.test(page), true);
+check(
+  "カードから除く見出し行は表示中の表で見つけた分だけ (全行の表の行番号を混ぜない)",
+  /if \(headerRows\) \{\s*for \(const r of \[\s*headerRows\.jobRow,/.test(page),
+  true,
+);
 
 console.log(failures === 0 ? "\nすべて OK" : `\n${failures} 件 FAIL`);
 process.exit(failures === 0 ? 0 : 1);

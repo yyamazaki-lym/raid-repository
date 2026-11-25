@@ -3,7 +3,11 @@ import { SheetIframe } from "@/components/portal/sheet-iframe";
 import { SheetCards } from "@/components/portal/sheet-cards";
 import { SheetViewSwitch } from "@/components/portal/sheet-view-switch";
 import { SheetUrlOnboarding } from "@/components/portal/sheet-url-onboarding";
-import { fetchSheetTable, fetchSheetTabs } from "@/lib/server/sheet-table";
+import {
+  fetchSheetFullGrid,
+  fetchSheetTable,
+  fetchSheetTabs,
+} from "@/lib/server/sheet-table";
 import {
   diagnoseSheetColumns,
   extractSheetGid,
@@ -11,6 +15,7 @@ import {
   findAbilityHeaderRows,
   buildAutoColumnLabels,
   parseSheetTabsSetting,
+  sameColumnLayout,
   toSheetEmbedUrl,
 } from "@/lib/sheet-csv";
 import { MitigationColumnsDialog } from "@/components/portal/mitigation-columns-dialog";
@@ -142,12 +147,21 @@ export default async function MitigationPage({
     ? [table.table.headers, ...table.table.rows]
     : ([] as string[][]);
   const firstPass = table.ok ? diagnoseSheetColumns(table.table) : [];
-  const headerRows = table.ok
-    ? findAbilityHeaderRows(
-        grid,
-        firstPass.filter((c) => c.role === "check").map((c) => c.index),
-      )
-    : null;
+  const checkColumns = firstPass.filter((c) => c.role === "check").map((c) => c.index);
+  const headerRows = table.ok ? findAbilityHeaderRows(grid, checkColumns) : null;
+  // 2026-11-25 (L-8): 見出し行 (ジョブ名・アビリティ名) をシートで隠していると、
+  // 表示中の表 (gviz の CSV) からは落ちて見つからない (本番の実物で自動ラベル 0)。
+  // そのときだけ隠した行も含む全行の表 (export) を取り、**列の並びが表示中の表と
+  // 揃っているときだけ**そこから見出しを読む。カードに出す行は変えない。
+  let labelSource: { grid: string[][]; rows: NonNullable<typeof headerRows> } | null =
+    headerRows ? { grid, rows: headerRows } : null;
+  if (table.ok && !headerRows && checkColumns.length > 0) {
+    const full = await fetchSheetFullGrid(category.mitigationSheetUrl, activeGid);
+    if (full && sameColumnLayout(table.table, full)) {
+      const rows = findAbilityHeaderRows(full, checkColumns);
+      if (rows) labelSource = { grid: full, rows };
+    }
+  }
   // 見出し 3 行はデータではない。判定にもカードにも混ぜない。
   const ignoreRows = new Set<number>();
   if (headerRows) {
@@ -160,8 +174,9 @@ export default async function MitigationPage({
       if (r !== null && r >= 1) ignoreRows.add(r - 1);
     }
   }
-  const autoLabels =
-    headerRows && table.ok ? buildAutoColumnLabels(grid, headerRows) : {};
+  const autoLabels = labelSource
+    ? buildAutoColumnLabels(labelSource.grid, labelSource.rows)
+    : {};
   // 手動登録は自動判定より優先する (シート側の名前が実態と違うこともある)。
   const columnLabels: Record<number, string> = {};
   for (const [k, v] of Object.entries(autoLabels)) {

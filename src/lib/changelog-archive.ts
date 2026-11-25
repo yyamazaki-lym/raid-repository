@@ -26,6 +26,16 @@ import type { ReleaseEntry } from "./changelog";
 export const RELEASES_ARCHIVE: ReleaseEntry[] = [
   {
     version: "2.19",
+    date: "2026-11-22",
+    parts: [
+      {
+        title:
+          "🩹 動画: 「日付順」を題名の日付 (無ければ公開日時) の新しい順にした。取り込み直した動画が古い日付でも先頭に来ていたのを直した",
+      },
+    ],
+  },
+  {
+    version: "2.19",
     date: "2026-11-09",
     parts: [
       {
