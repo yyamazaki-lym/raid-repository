@@ -31,15 +31,18 @@ _(現在なし)_
 
 残っている実装は **W-9 + UI-13 (軽減の計画 × 実測) のみ**で、これは 8.0 の
 軽減再編後に着手する方が保守的に有利 (調査ノート自身の判断)。TODO #11
-(パフォーマンス) は休眠中。ほかは **L-24 (シートのキャッシュの作り直し) が
-着手判断待ち** (2026-10-09。表示は壊れておらず急がない)。
+(パフォーマンス) は休眠中。L-24 (シートのキャッシュの作り直し) は 2026-11-20〜22
+に実装・本番確認まで済んだ (下の「完了済み TODO」)。
 
 手が空いたときに拾う順:
 
 1. **実機確認** (ユーザー操作が必要。下記「実機確認待ち」)
-2. **判断待ち** (`docs/backlog.md` の G-1 DB デプロイの承認制 / G-2 main のブランチ保護 / L-24。
-   旧「判断待ち 2 件」(Discord 通知 / TODO #92) は 2026-10-02 に閉じた)
-3. W-9 + UI-13 (8.0 後)
+2. **保留** (`docs/backlog.md` の G-1 DB デプロイの承認制 / G-2 main のブランチ保護。
+   2026-11-25 にユーザー判断で保留のまま。旧「判断待ち 2 件」(Discord 通知 / TODO #92)
+   は 2026-10-02 に閉じた)
+3. **L-24 の最後の確認**: 2026-12 上旬に本番の実行時エラーで `revalidating cache` が
+   0 件のままか (`docs/backlog.md` の L-24 の条件 4)
+4. W-9 + UI-13 (8.0 後)
 
 ## 🔢 TODO 番号の体系
 
@@ -88,7 +91,7 @@ _(現在なし)_
 
 | # | 項目 | 規模 |
 |---|---|---|
-| L-24 | シートの Data Cache の裏の取り直しが本番でエラーを出す (表示は壊れない、月 7 件ほど)。#484 の作り直しは本番で詰まり #485 で差し戻した。作り直すなら Upstash に自前の SWR (案 B)。**着手判断待ち**。設計と「確認済み」の条件は `docs/backlog.md` の L-24 | 中 |
+| _(現在なし)_ | — | — |
 
 ### 🚀 インフラ / デプロイ (コード外作業)
 
@@ -113,6 +116,13 @@ _(現在なし)_
 ## 完了済み TODO
 
 直近版のみ列挙。詳細経緯は `src/lib/changelog.ts`、過去版アーカイブは `.claude/done.md`。
+
+- **2026-11-20〜22: L-24 — キャッシュを Upstash の自前の SWR に置き換え、`unstable_cache` を全廃** — `unstable_cache` の取り直しが応答の後に waitUntil の外で走り、凍結で落ちて「revalidating cache with key … TimeoutError」を本番の別のルートに残していた (表示は壊れない、月 7 件ほど)。`docs/backlog.md` の L-24 の案 B で実装
+  - **#508**: シート (軽減表・ロット) を `redis-swr.ts` (純ロジック) + `redis-swr-store.ts` (Upstash、`retry: false`) に載せ替え。保存先に書くのは `after()` の中だけ
+  - **#509**: 残りの 4 か所 (`xivapi-action-names` / デモの `category-progress`・`practice-log-missing-days`・出席サマリーのゲスト) も移し、`redis-swr-next.ts` に共通化。締め切り `Infinity` で `setTimeout` が 1ms に丸められる不具合も直した。`check-sheet-swr.mjs` が「`src` に `unstable_cache` が無い」を見る
+  - **#511 / #513**: 確認用の `written` ログを止めた
+  - **✅ 本番・デモで確認**: シートは本番で空 (miss)・古い (refresh)・新しい (ログなし) の 3 経路、xivapi は本番の Logs 同期、スパークライン・欠けている日・出席サマリーはデモで miss / refresh。#509 の後、本番の `revalidating cache` は 0 件 (2026-11-25 時点)
+  - **残り**: 2026-12 上旬に 0 件のままかを見る (L-24 の条件 4)
 
 - **2026-08-28: TODO #94 — FF14 ツール調査 (Tier A) の実装 5 件 + XIVAnalysis 連携 + BiS リンク** — 外部ツール調査 (`docs/ff14-tools-research-2026-08.md`) の Tier A 提案をユーザー指示で一括実装。ブランチ `claude/ff14-tools-features-research-kr8l44`。
   - **schema**: 6b 章を新設 (`category_waymarks` / `category_bis_links` / `loot_weekly_checks` / `fflogs_fights` / `fflogs_report_syncs` / `fflogs_report_videos` + sort_order RPC 2 本)。**7 章 (RLS) より前に配置**する必要がある (ENABLE / policy ループが名指しするため)。realtime 購読は `category_waymarks` のみ追加 (7b FULL + 8 章 publication)、他 5 テーブルは DEFAULT のまま。`categories_default_tab_check` に `'logs'` を追加
